@@ -4160,7 +4160,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     if (!meta.initialized && !meta.loading) {
       loadHistoryPage(activeTab);
     }
-  }, [isLoggedIn, activeTab]);
+  }, [isLoggedIn, activeTab, historyMeta]);
 
   // Toggle favorite with API linkage
   function handleToggleFavorite(cardKey) {

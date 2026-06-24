@@ -161,7 +161,7 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: isAudio ? '1fr' : 'repeat(auto-fill, minmax(240px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
             width: '100%',
             gap: '16px',
             alignContent: 'flex-start',

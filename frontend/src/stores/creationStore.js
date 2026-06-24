@@ -14,6 +14,19 @@ export const useCreationStore = create(
         video:   { page: 0, hasMore: true, loading: false, initialized: false },
         dubbing: { page: 0, hasMore: true, loading: false, initialized: false },
       },
+      // 持久化的生成 pending 状态：刷新后可恢复占位槽
+      // 结构：{ image: { count, startedAt } | null, video: ..., dubbing: ... }
+      pendingByTab: { image: null, video: null, dubbing: null },
+
+      setPendingTab: (tab, count) =>
+        set((state) => ({
+          pendingByTab: { ...state.pendingByTab, [tab]: { count, startedAt: Date.now() } },
+        })),
+
+      clearPendingTab: (tab) =>
+        set((state) => ({
+          pendingByTab: { ...state.pendingByTab, [tab]: null },
+        })),
 
       // 合并历史数据（按卡片后端ID去重，避免重复）
       // store 约定：数组越靠后 = 越新（display 时 reverse 展示最新在前）
@@ -169,12 +182,24 @@ export const useCreationStore = create(
           const str = localStorage.getItem(name);
           if (!str) return null;
           const parsed = JSON.parse(str);
+          // 过期检查：超过 10 分钟的 pending 自动清零，避免永久残留
+          const PENDING_TIMEOUT = 10 * 60 * 1000;
+          const now = Date.now();
+          const rawPending = parsed.state?.pendingByTab ?? {};
+          const pendingByTab = Object.fromEntries(
+            ['image', 'video', 'dubbing'].map((tab) => {
+              const val = rawPending[tab];
+              const alive = val && val.startedAt && (now - val.startedAt) < PENDING_TIMEOUT;
+              return [tab, alive ? val : null];
+            })
+          );
           return {
             ...parsed,
             state: {
               ...parsed.state,
               favorites: new Set(parsed.state?.favorites || []),
               pendingFavoriteToggles: new Set(),
+              pendingByTab,
             },
           };
         },
@@ -193,6 +218,7 @@ export const useCreationStore = create(
       partialize: (state) => ({
         // generationsByTab 不再持久化：现在由后端历史接口提供数据，localStorage 缓存会导致重复展示
         favorites: state.favorites,
+        pendingByTab: state.pendingByTab,
       }),
       version: 2, // 升版本清除旧 localStorage 缓存（旧版持久化了 generationsByTab 导致数据叠加）
       migrate: (persistedState, version) => {

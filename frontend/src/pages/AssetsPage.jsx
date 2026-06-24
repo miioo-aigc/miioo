@@ -208,6 +208,8 @@ function CreativeAssetsPanel({ isLoggedIn }) {
   const storeDeleteCard = useCreationStore((s) => s.deleteCard);
   const storeDeleteSelectedCards = useCreationStore((s) => s.deleteSelectedCards);
   const storeToggleFavorite = useCreationStore((s) => s.toggleFavorite);
+  const storeConfirmFavoriteToggle = useCreationStore((s) => s.confirmFavoriteToggle);
+  const storeRollbackFavoriteToggle = useCreationStore((s) => s.rollbackFavoriteToggle);
   const historyMeta = useCreationStore((s) => s.historyMeta);
   const mergeHistoryGenerations = useCreationStore((s) => s.mergeHistoryGenerations);
   const updateHistoryMeta = useCreationStore((s) => s.updateHistoryMeta);
@@ -343,12 +345,18 @@ function CreativeAssetsPanel({ isLoggedIn }) {
     const isLiked = favorites.has(cardKey);
     storeToggleFavorite(cardKey);
     showToast(isLiked ? '取消收藏' : '收藏成功');
-    if (!backendId) return;
+    if (!backendId) {
+      // No backend ID yet; clear from pending so syncFavorites can take over later
+      storeConfirmFavoriteToggle(cardKey);
+      return;
+    }
     const type = cardType || activeType;
     const apiCall = type === 'video'
       ? apiToggleVideoFavorite(backendId, !isLiked)
       : apiToggleImageFavorite(backendId, !isLiked);
-    apiCall.catch(() => storeToggleFavorite(cardKey)); // rollback on failure
+    apiCall
+      .then(() => storeConfirmFavoriteToggle(cardKey))
+      .catch(() => storeRollbackFavoriteToggle(cardKey));
   }
 
   function deleteSingle(card) {

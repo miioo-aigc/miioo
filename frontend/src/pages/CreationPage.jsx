@@ -3478,10 +3478,12 @@ function ImageResultCard({ status, imageUrl, prompt, promptHTML, model, ratio, r
   );
 }
 
-function CreationResultState({ generations, onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onDeleteCard, batchMode = false, selected, onToggleSelect, onSwitchToFrameMode, onVideoCardClick, favorites, toggleFavorite, showToast, onBeforeModelOpen }) {
+function CreationResultState({ generations, onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onDeleteCard, batchMode = false, selected, onToggleSelect, onSwitchToFrameMode, onVideoCardClick, favorites, toggleFavorite, showToast, onBeforeModelOpen, isGenerating = false, pendingCount = 0 }) {
   const scrollRef = useRef(null);
   const [prefillVersion, setPrefillVersion] = useState(0);
   const [prefillData, setPrefillData] = useState(null);
+
+  useEffect(() => { ensureShimmerStyle(); }, []);
 
   // Newest generation first — index 0 is the most recently generated image/video
   const allCards = [...generations].reverse().flatMap((gen) =>
@@ -3539,10 +3541,23 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-            gap: '8px',
+            gap: '16px',
             alignContent: 'flex-start',
           }}
         >
+          {isGenerating && Array.from({ length: Math.max(pendingCount, 1) }).map((_, i) => (
+            <div key={`pending-${i}`} style={{
+              width: '100%',
+              aspectRatio: '16/9',
+              borderRadius: '8px',
+              backgroundColor: '#272727',
+              overflow: 'hidden',
+              flexShrink: 0,
+              position: 'relative',
+            }}>
+              <div className="creation-shimmer" style={{ width: '100%', height: '100%' }} />
+            </div>
+          ))}
           {allCards.map((card) => {
             const { key, ...cardProps } = card;
             if (isVideo) {
@@ -3557,10 +3572,12 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
                   favorited={favorites?.has(key)}
                   onToggleFavorite={() => toggleFavorite?.(key)}
                  onReEdit={() => {
+                   // 首尾帧模式下，参考图已通过 firstFrameFile/lastFrameFile 填入，不再重复放入 files
+                   const isFrameMode = card.refMode === 'frame';
                    setPrefillData({
                      prompt: card.prompt,
                      promptHTML: card.promptHTML || '',
-                     files: (card.refImages || []).map((img) => ({
+                     files: isFrameMode ? [] : (card.refImages || []).map((img) => ({
                        name: (img.name && /\.(jpg|jpeg|png|webp|gif|bmp|tiff?|heic|heif)$/i.test(img.name)) ? img.name : 'ref.png',
                        url: img.url || img.previewUrl || '',
                        previewUrl: img.url || img.previewUrl || '',
@@ -3976,8 +3993,16 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     confirmFavoriteToggle: storeConfirmFavoriteToggle, rollbackFavoriteToggle: storeRollbackFavoriteToggle,
     favorites, toggleFavorite: storeToggleFavorite, historyMeta,
     mergeHistoryGenerations, updateHistoryMeta,
+    pendingByTab, setPendingTab: storePendingTab, clearPendingTab: storeClearPendingTab,
   } = useCreationStore();
   const generations = generationsByTab[activeTab] ?? [];
+
+  // 合并组件内 state 和 store 持久化值：store 中有值时（刷新恢复场景）优先使用
+  const pendingCountForTab = (tab) => {
+    const storeVal = pendingByTab?.[tab]?.count ?? 0;
+    const stateVal = pendingCountByTab[tab] ?? 0;
+    return Math.max(storeVal, stateVal);
+  };
 
   // Toast state
   const [toasts, setToasts] = useState([]);
@@ -4107,6 +4132,8 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       const hasMore = list.length >= PAGE_SIZE;
       const normalized = list.map((item) => normalizeHistoryItem(item, type));
       mergeHistoryGenerations(tab, normalized);
+      // 历史数据加载回来后，清除该 tab 的持久化 pending（生成结果已呈现，占位槽不再需要）
+      storeClearPendingTab(tab);
       // 同步后端收藏状态
       const latestGens = useCreationStore.getState().generationsByTab[tab] ?? [];
       const syncItems = [];
@@ -4124,7 +4151,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       console.error('[CreationPage] 历史数据加载失败:', err);
       updateHistoryMeta(tab, { loading: false, initialized: true });
     }
-  }, [isLoggedIn, mergeHistoryGenerations, updateHistoryMeta, syncFavorites]);
+  }, [isLoggedIn, mergeHistoryGenerations, updateHistoryMeta, syncFavorites, storeClearPendingTab]);
 
   // 登录后 / 切换 tab 时，若当前 tab 未初始化则拉第一页
   useEffect(() => {
@@ -4146,11 +4173,15 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     const gen = generationsByTab[activeTab]?.find((g) => g.id === genId);
     const card = gen?.cards?.[cardIdx];
     if (card?.id) {
-      if (card.type === 'video') {
-        apiToggleVideoFavorite(card.id).catch(() => {});
-      } else {
-        apiToggleImageFavorite(card.id, !wasFav).catch(() => {});
-      }
+      const apiCall = card.type === 'video'
+        ? apiToggleVideoFavorite(card.id, !wasFav)
+        : apiToggleImageFavorite(card.id, !wasFav);
+      apiCall
+        .then(() => storeConfirmFavoriteToggle(cardKey))
+        .catch(() => storeRollbackFavoriteToggle(cardKey));
+    } else {
+      // card.id not yet available; clear from pending so syncFavorites can update later
+      storeConfirmFavoriteToggle(cardKey);
     }
   }
 
@@ -4311,6 +4342,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     const countNum = parseInt(params.count) || 1;
     const genTabKey = params.genType || 'image';
     setPendingCountByTab(prev => ({ ...prev, [genTabKey]: countNum }));
+    storePendingTab(genTabKey, countNum);  // 持久化，刷新后可恢复占位槽
     let shotId = null;
 
     // Create a backend shot if session is active
@@ -4393,8 +4425,8 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         refMode,
         ...(firstFrameUrl ? { firstFrame: firstFrameUrl } : {}),
         ...(lastFrameUrl ? { lastFrame: lastFrameUrl } : {}),
-        cards: mediaUrls.map((url) => ({
-          id: null,  // 后端 ID，待轮询返回后回写
+        cards: mediaUrls.map((url, i) => ({
+          id: result.cardIds?.[i] ?? null,
           type: isVideoGen ? 'video' : 'image',
           status: 'done',
           imageUrl: isVideoGen ? null : url,
@@ -4431,6 +4463,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     } finally {
       setGenerating(false);
       setPendingCountByTab(prev => ({ ...prev, [genTabKey]: 0 }));
+      storeClearPendingTab(genTabKey);  // 清除持久化 pending
     }
   };
 
@@ -4584,11 +4617,11 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               favorites={favorites}
               toggleFavorite={handleToggleFavorite}
               showToast={showToast}
-              isGenerating={generating}
+              isGenerating={pendingCountForTab(genType) > 0}
               historyLoading={historyMeta[activeTab]?.loading}
               historyHasMore={historyMeta[activeTab]?.hasMore}
               onLoadMore={() => loadHistoryPage(activeTab)}
-              pendingCount={pendingCountByTab[genType] ?? 0}
+              pendingCount={pendingCountForTab(genType)}
               activeCount={activeCountByTab[genType] ?? 0}
               onBeforeModelOpen={() => {
                 if (!apiConfigured) { onShowNoModelNotice?.(); return false; }

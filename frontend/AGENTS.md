@@ -5,7 +5,7 @@ React 19 + Tailwind CSS v4 + Vite 8 / 仅深色主题 / Token 通过 `@theme` �
 
 ## Git 推送
 ```bash
-git push https://wangchengxv:<token>@github.com/wangchengxv/miioo.git <branch>
+git push https://wangchengxv:<token>@github.com/miioo-aigc/miioo.git <branch>
 ```
 
 ## 规则文档

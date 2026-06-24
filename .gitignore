@@ -1,0 +1,11 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/.venv/
+backend/.runtime/
+backend/uploads/

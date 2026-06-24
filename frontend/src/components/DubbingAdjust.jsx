@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, memo } from 'react';
 import { FONT } from '../utils/fonts';
 import DubbingEqIcon from './DubbingEqIcon';
 
-const DEFAULT_EMOTIONS = ['中性', '愤怒', '开心', '悲伤', '恐惧', '冷漠', '惊讶', '温柔'];
+export const DEFAULT_EMOTIONS = ['中性', '愤怒', '开心', '悲伤', '恐惧', '冷漠', '惊讶', '温柔'];
 
 function DubbingAdjust({ speed, emotion, onSpeedChange, onEmotionChange, emotions, disabled }) {
   const [open, setOpen] = useState(false);

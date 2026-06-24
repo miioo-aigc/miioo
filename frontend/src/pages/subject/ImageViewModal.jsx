@@ -1,4 +1,9 @@
 import { useState } from "react";
+import { useModalSize } from '../../utils/useModalSize';
+import { FONT, FONT_MEDIUM } from '../../utils/fonts';
+import { apiDownloadSubjectImage } from '../../api/subject';
+import { triggerBlobDownload } from '../../utils/downloadImage';
+import DotsLoading from '../../components/DotsLoading';
 
 export default function ImageViewModal({ open, imageUrl, imageId, projectId, subjectId, onClose }) {
   const { width: modalW, height: modalH } = useModalSize();

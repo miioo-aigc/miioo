@@ -1,5 +1,17 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { FONT, FONT_MEDIUM } from "../../utils/fonts";
+ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+ import { createPortal } from "react-dom";
+ import { FONT, FONT_MEDIUM } from "../../utils/fonts";
+import { apiListModels } from '../../api/config';
+import { apiBindSubjectReferenceImages, apiDownloadSubjectImage, apiGenerateSubjectImage, apiGetSubjectDetail, apiSetPrimarySubjectImage, apiUploadSubjectReferenceImage } from '../../api/subject';
+import { triggerBlobDownload } from '../../utils/downloadImage';
+import { normalizeImageUrl } from '../../utils/imageUrl';
+import ChevronDownIcon from '../../components/ChevronDownIcon';
+import ImageItem from './ImageItem';
+const pendingGenerations = new Map();
+import ImageItemUpload from './ImageItemUpload';
+import ImageViewModal from './ImageViewModal';
+import RadioOption from './RadioOption';
+import RefImageField from './RefImageField';
 
 export default 
 function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, onClose, onCommit, onCoverChange, refreshToken, setBatchLoadingSubjects }) {
@@ -152,9 +164,11 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
 
       // 合并，候选图在前，手动上传在后，去重
       const seen = new Set();
+      const seenUrls = new Set();
       let finalImages = [...candidateMapped, ...refMapped].filter((img) => {
         if (!img.id || seen.has(img.id)) return false;
         seen.add(img.id);
+        if (img.url) seenUrls.add(img.url);
         return true;
       });
 
@@ -162,7 +176,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       const pending = pendingGenerations.get(char.id);
       if (pending?.status === 'pending') {
         finalImages.unshift({ url: null, settled: false, id: pending.placeholderId, isReference: false });
-      } else if (pending?.status === 'done') {
+      } else if (pending?.status === 'done' && !seenUrls.has(normalizeImageUrl(pending.rawUrl))) {
         finalImages.unshift({
           rawUrl: pending.rawUrl,
           url: normalizeImageUrl(pending.rawUrl),
@@ -170,6 +184,8 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
           id: pending.placeholderId,
           isReference: false,
         });
+        pendingGenerations.delete(char.id);
+      } else if (pending?.status === 'done') {
         pendingGenerations.delete(char.id);
       }
 
@@ -640,16 +656,16 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
               if (fileOrId && typeof fileOrId === 'object' && fileOrId.id) {
                 const raw = fileOrId.url || fileOrId.file_url || fileOrId.fileUrl;
                 // 从资产库选择的图片，settled 强制为 false，不继承原资产的定稿状态
+                const hasSettled = generatedImages.some((img) => img.settled && img.rawUrl);
                 setGeneratedImages((prev) => {
-                  const hasSettled = prev.some((img) => img.settled && img.rawUrl);
                   const newImg = { rawUrl: raw, url: normalizeImageUrl(raw), settled: !hasSettled, id: fileOrId.id, isReference: true };
-                  if (!hasSettled) {
-                    setPrimaryImageUrl(raw);
-                    setPrimaryImageId(fileOrId.id);
-                    onCoverChange?.(raw);
-                  }
                   return [newImg, ...prev];
                 });
+                if (!hasSettled) {
+                  setPrimaryImageUrl(raw);
+                  setPrimaryImageId(fileOrId.id);
+                  onCoverChange?.(raw);
+                }
                 // 绑定资产到主体
                 if (projectId && char?.id) {
                   apiBindSubjectReferenceImages(projectId, char.id, { asset_ids: [fileOrId.id] }).catch((err) => {
@@ -668,20 +684,21 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                       // res: SubjectReferenceImage
                       const realId = res?.asset_id;
                       const realUrl = res?.file_url;
+                      const hasSettled2 = generatedImages.some((img) => img.settled && img.rawUrl);
+                      const shouldBecomeCover = !hasSettled2 && realUrl;
                       setGeneratedImages((prev) => {
-                        const hasSettled = prev.some((img) => img.settled && img.rawUrl);
                         const updated = prev.map((img) =>
                           img.id === tempId
-                            ? { ...img, id: realId || tempId, rawUrl: realUrl || blobUrl, url: normalizeImageUrl(realUrl || blobUrl), settled: !hasSettled }
+                            ? { ...img, id: realId || tempId, rawUrl: realUrl || blobUrl, url: normalizeImageUrl(realUrl || blobUrl), settled: !hasSettled2 }
                             : img
                         );
-                        if (!hasSettled && realUrl) {
-                          setPrimaryImageUrl(realUrl);
-                          setPrimaryImageId(realId);
-                          onCoverChange?.(realUrl);
-                        }
                         return updated;
                       });
+                      if (shouldBecomeCover) {
+                        setPrimaryImageUrl(realUrl);
+                        setPrimaryImageId(realId);
+                        onCoverChange?.(realUrl);
+                      }
                     })
                     .catch((err) => {
                       console.error('[SubjectPage] 上传参考图失败:', err);
@@ -804,6 +821,9 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                   // 弹窗仍打开：正常更新图片列表
                   const imageUrl = normalizeImageUrl(rawUrl);
                   const realImageId = result.id || result.image_id || null;
+                  let _shouldBecomeCover = false;
+                  let _coverUrl = null;
+                  let _coverId = null;
                   setGeneratedImages((prev) => {
                     // ① 占位图替换为真实数据
                     const updated = prev.map((img) =>
@@ -815,12 +835,17 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                     const hasSettled = updated.some((img) => img.settled && img.rawUrl);
                     if (!hasSettled && rawUrl) {
                       updated[0] = { ...updated[0], settled: true };
-                      setPrimaryImageUrl(rawUrl);
-                      setPrimaryImageId(realImageId);
-                      onCoverChange?.(rawUrl);
+                      _shouldBecomeCover = true;
+                      _coverUrl = rawUrl;
+                      _coverId = realImageId;
                     }
                     return updated;
                   });
+                  if (_shouldBecomeCover) {
+                    setPrimaryImageUrl(_coverUrl);
+                    setPrimaryImageId(_coverId);
+                    onCoverChange?.(_coverUrl);
+                  }
                   setBatchLoadingSubjects((prev) => {
                     const next = { ...prev };
                     delete next[char.id];

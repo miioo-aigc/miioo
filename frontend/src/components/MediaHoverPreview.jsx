@@ -1,5 +1,5 @@
-import { useState, memo } from "react";
-import { FONT } from "../utils/fonts";
+ import { useState, useEffect, memo } from "react";
+ import { FONT } from "../utils/fonts";
 function MediaHoverPreview({ url, isVideo, mouseX, mouseY }) {
   const [size, setSize] = useState(null);
   const GAP = 16;

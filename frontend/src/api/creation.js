@@ -473,6 +473,60 @@ export async function apiPollVideoTask(taskId, timeoutMs = 1800000) {
   throw new Error('Generation timeout');
 }
 
+
+// ── Public polling for image tasks (used for refresh recovery) ──────────────
+export async function apiPollImageTask(taskId, timeoutMs = 1800000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const pollRes = await authFetch(`${BASE}/api/creation/tasks/${taskId}`);
+    const pollData = await pollRes.json();
+    const status = pollData.status;
+    if (status === 'done' || status === 'completed' || status === 'success' || status === 'partial') {
+      if (status !== 'partial' && pollData.partial === true) continue;
+      const imgs = pollData.images || [];
+      return {
+        images: imgs.map((img) => img.original_url || img.originalUrl || img.thumbnail_url || img.thumbnailUrl),
+        cardIds: imgs.map((img) => img.id),
+        referenceImages: pollData.reference_images || pollData.referenceImages || [],
+      };
+    }
+    if (status === 'failed' || status === 'error') {
+      const rawMsg = pollData.error_msg || pollData.errorMsg || '';
+      const userMessage = rawMsg || 'Generation failed';
+      const err = new Error(userMessage);
+      err.rawMessage = rawMsg;
+      throw err;
+    }
+  }
+  throw new Error('Generation timeout');
+}
+
+// ── Public polling for audio/dubbing tasks (used for refresh recovery) ──────
+export async function apiPollAudioTask(taskId, timeoutMs = 1800000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const pollRes = await authFetch(`${BASE}/api/creation/audios/tasks/${taskId}`);
+    const pollData = await pollRes.json();
+    const status = pollData.status;
+    if (status === 'done' || status === 'completed' || status === 'success') {
+      const result = pollData.result;
+      if (!result) return { audios: [] };
+      const audioUrl = result.audio_url || result.audioUrl || pollData.audio_url || pollData.audioUrl;
+      return { audios: audioUrl ? [audioUrl] : [] };
+    }
+    if (status === 'failed' || status === 'error') {
+      const rawMsg = pollData.error_msg || pollData.errorMsg || '';
+      const userMessage = rawMsg || 'Generation failed';
+      const err = new Error(userMessage);
+      err.rawMessage = rawMsg;
+      throw err;
+    }
+  }
+  throw new Error('Generation timeout');
+}
+
 // ── Legacy：apiGenerateCreation（兼容旧调用，内部拆分图片/视频分支）──────────
 
 export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
@@ -570,10 +624,10 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
   let firstFrameUrl, lastFrameUrl, firstFrameAssetId, lastFrameAssetId;
   if (params.firstFrameFile instanceof File) {
     try {
-      const r = await apiUploadCreationImage({ file: params.firstFrameFile, category: 'first_frame', ...uploadContext });
+      const r = await apiUploadCreationImage({ file: params.firstFrameFile, category: 'reference', ...uploadContext });
       firstFrameUrl = r.uploaded_url || r.uploadedUrl || undefined;
       firstFrameAssetId = r.asset_id || undefined;
-    } catch {}
+    } catch (err) { console.error('首帧图上传失败:', err); }
   } else if (params.firstFrameFile && params.firstFrameFile.url) {
     // 资产库选择的首帧：已有 URL，无需上传
     firstFrameUrl = params.firstFrameFile.url;
@@ -581,10 +635,10 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
   }
   if (params.lastFrameFile instanceof File) {
     try {
-      const r = await apiUploadCreationImage({ file: params.lastFrameFile, category: 'last_frame', ...uploadContext });
+      const r = await apiUploadCreationImage({ file: params.lastFrameFile, category: 'reference', ...uploadContext });
       lastFrameUrl = r.uploaded_url || r.uploadedUrl || undefined;
       lastFrameAssetId = r.asset_id || undefined;
-    } catch {}
+    } catch (err) { console.error('尾帧图上传失败:', err); }
   } else if (params.lastFrameFile && params.lastFrameFile.url) {
     // 资产库选择的尾帧：已有 URL，无需上传
     lastFrameUrl = params.lastFrameFile.url;
@@ -640,6 +694,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       const asyncData = await asyncRes.json();
       const taskId = asyncData.task_id || asyncData.id;
       if (!taskId) throw new Error('No task_id returned');
+      onTaskCreated?.({ taskId, genType: "dubbing" });
 
       const { audios } = await pollTask(
         `${BASE}/api/creation/audios/tasks/${taskId}`,
@@ -657,6 +712,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     const genData = await apiGenerateCreationAudio(dubbingBody);
     const taskId = genData.task_id || genData.id;
     if (!taskId) throw new Error('No task_id returned');
+    onTaskCreated?.({ taskId, genType: "dubbing" });
 
     const { audios } = await pollTask(
       `${BASE}/api/creation/audios/tasks/${taskId}`,
@@ -702,6 +758,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       : [genData.task_id || genData.id].filter(Boolean);
     if (taskIds.length === 0) throw new Error('No task_id returned');
 
+    onTaskCreated?.({ taskId: taskIds[0], genType: "image", count: countNum });
     // 并行轮询所有任务，合并结果
     const pollResults = await Promise.all(
       taskIds.map((tid) =>
@@ -793,7 +850,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
   const taskId = genData.task_id || genData.id;
   if (!taskId) throw new Error('No task_id returned');
 
-  onTaskCreated?.({ taskId, params });
+  onTaskCreated?.({ taskId, genType: 'video' });
 
   const { videos, cardIds, posterUrl } = await pollTask(
     `${BASE}/api/creation/videos/tasks/${taskId}`,

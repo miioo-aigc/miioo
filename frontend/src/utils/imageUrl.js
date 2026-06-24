@@ -7,7 +7,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
  */
 export function normalizeImageUrl(url) {
   if (!url) return null;
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) return url;
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) return url;
   // 开发环境返回相对路径，走 Vite proxy 避免 CORS
   if (import.meta.env.DEV) {
     return url.startsWith('/') ? url : `/${url}`;
@@ -21,7 +21,7 @@ export function normalizeImageUrl(url) {
  */
 export function toAbsoluteUrl(url) {
   if (!url) return url;
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) return url;
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) return url;
   const origin = API_BASE.replace(/\/api\/?$/, '');
   if (!origin) return url.startsWith('/') ? url : `/${url}`;
   return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;

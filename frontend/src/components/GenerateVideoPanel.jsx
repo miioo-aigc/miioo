@@ -64,7 +64,13 @@ export default function GenerateVideoPanel({ shot, projectId, nextShot = null, c
           }
           {
             const durList = caps?.supported_durations;
-            if (durList?.length > 0) setDuration(`${durList[0]}s`);
+            if (durList?.length > 0) {
+              const shotDuration = shot?.params?.duration;
+              const avail = durList.map((d) => `${d}s`);
+              if (shotDuration && avail.includes(shotDuration)) {
+                setDuration(shotDuration);
+              } else setDuration(`${durList[0]}s`);
+            }
           }
         }
       } catch {
@@ -121,7 +127,13 @@ export default function GenerateVideoPanel({ shot, projectId, nextShot = null, c
         const resList = (caps?.supported_resolutions?.length ? caps.supported_resolutions : caps?.supported_sizes) || [];
         if (resList.length > 0) setResolution(resList[0]);
         const durList = caps?.supported_durations;
-        if (durList?.length > 0) setDuration(`${durList[0]}s`);
+        if (durList?.length > 0) {
+          const shotDuration = shot?.params?.duration;
+          const avail = durList.map((d) => `${d}s`);
+          if (shotDuration && avail.includes(shotDuration)) {
+            setDuration(shotDuration);
+          } else setDuration(`${durList[0]}s`);
+        }
       }
     }
   }
@@ -169,24 +181,29 @@ export default function GenerateVideoPanel({ shot, projectId, nextShot = null, c
         setResolution(availableResolutions[0]);
       }
     }
-    if (duration && availableDurations.length > 0 && !availableDurations.includes(duration)) {
-      setDuration(availableDurations[0]);
+    if (availableDurations.length > 0) {
+      const shotDuration = shot?.params?.duration;
+      if (shotDuration && availableDurations.includes(shotDuration)) {
+        setDuration(shotDuration);
+      } else if (!duration || !availableDurations.includes(duration)) {
+        setDuration(availableDurations[0]);
+      }
     }
   }, [model, availableResolutions]);
 
   const videoReferenceItems = useMemo(() => {
     const items = [];
     refSubjects.forEach(s => {
-      items.push({ id: s.id, name: s.name || '参考主体', _type: s._type || s.type || 'char' });
+      items.push({ id: s.id, name: s.name || '参考主体', type: ((t) => t === "char" ? "character" : t)(s._type || s.type || "character") });
     });
     refImages.forEach(img => {
-      items.push({ id: img.id, name: img.name || (img.url ? img.url.split('/').pop()?.split('?')[0]?.replace(/\.[^.]+$/, '') || '参考图' : '参考图'), _type: 'image' });
+      items.push({ id: img.id, name: img.name || (img.url ? img.url.split('/').pop()?.split('?')[0]?.replace(/\.[^.]+$/, '') || '参考图' : '参考图'), type: 'image' });
     });
     if (refVideo) {
-      items.push({ id: refVideo.id, name: refVideo.name || '参考视频', _type: 'video' });
+      items.push({ id: refVideo.id, name: refVideo.name || '参考视频', type: 'video' });
     }
     if (refAudio) {
-      items.push({ id: refAudio.id, name: refAudio.name || '参考音频', _type: 'audio' });
+      items.push({ id: refAudio.id, name: refAudio.name || '参考音频', type: 'audio' });
     }
     return items;
   }, [refSubjects, refImages, refVideo, refAudio]);

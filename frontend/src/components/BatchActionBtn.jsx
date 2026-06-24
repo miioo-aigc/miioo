@@ -1,6 +1,6 @@
-import { memo } from "react";
-
-function BatchActionBtn({ children, onClick }) {
+ import { useState, memo } from "react";
+ 
+ function BatchActionBtn({ children, onClick }) {
   const [hov, setHov] = useState(false);
   return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}

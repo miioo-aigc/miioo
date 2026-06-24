@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalSize } from '../../utils/useModalSize';
 import { FONT, FONT_MEDIUM } from '../../utils/fonts';
@@ -8,8 +8,17 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteImage, onShowToast, name, description, images }) {
   const { width: modalW, height: modalH } = useModalSize();
   const imgs = images ?? [];
-  const defaultIdx = imgs.findIndex((img) => img.is_primary);
+  const [deletedIds, setDeletedIds] = useState(new Set());
+  const visibleImgs = useMemo(() => imgs.filter((img) => !deletedIds.has(img.id)), [imgs, deletedIds]);
+  const defaultIdx = visibleImgs.findIndex((img) => img.is_primary);
   const [activeImg, setActiveImg] = useState(defaultIdx >= 0 ? defaultIdx : 0);
+  // 当父组件更新 images 时，确保 activeImg 仍在有效范围
+  useEffect(() => {
+    if (visibleImgs.length > 0 && activeImg >= visibleImgs.length) {
+      setActiveImg(Math.max(0, visibleImgs.length - 1));
+    }
+  }, [visibleImgs.length, activeImg]);
+
   const [hovClose, setHovClose] = useState(false);
   const [hovDownload, setHovDownload] = useState(false);
   const [hovDelete, setHovDelete] = useState(false);
@@ -24,7 +33,7 @@ export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteI
     copyToastTimer.current = setTimeout(() => setCopyToast(false), 2000);
   }
 
-  const currentImg = imgs[activeImg];
+  const currentImg = visibleImgs[activeImg];
   const isPrimary = currentImg?.is_primary ?? false;
   const refImages = currentImg?.refImages ?? [];
 
@@ -137,7 +146,7 @@ export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteI
               backgroundColor: '#111111',
             }}>
               <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', alignItems: 'center' }}>
-                {imgs.map((img, idx) => {
+                {visibleImgs.map((img, idx) => {
                   const isActive = activeImg === idx;
                   const isHov = hovThumb === idx;
                   return (
@@ -343,9 +352,13 @@ export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteI
           onCancel={() => setShowDeleteConfirm(false)}
           onConfirm={() => {
             setShowDeleteConfirm(false);
-            onShowToast?.('删除成功', 'success');
+            setDeletedIds((prev) => {
+              const next = new Set(prev);
+              next.add(currentImg.id);
+              return next;
+            });
             const deletedId = currentImg.id;
-            if (imgs.length === 1) {
+            if (visibleImgs.length === 1) {
               // 最后一张：先关弹窗，再通知父组件删除
               onDeleteImage?.(deletedId);
             } else {
@@ -370,4 +383,3 @@ export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteI
     </div>
   );
 }
-

@@ -1,4 +1,6 @@
 import { useState, useRef } from "react";
+import AssetPickerModal from '../../components/AssetPickerModal';
+import UploadBtn from './UploadBtn';
 
 export default 
 function ImageItemUpload({ onUpload, projectId }) {

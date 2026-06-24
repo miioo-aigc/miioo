@@ -3,11 +3,15 @@ import { FONT } from '../utils/fonts';
 import ModalSelectItem from './ModalSelectItem';
 
 const PARAM_OPTIONS = {
+  framing: ['全景', '中景', '近景', '特写'],
+  cameraMotion: ['固定机位', '跟拍镜头', '环绕镜头', '缓推镜头', '缓拉镜头', '左摇镜头', '右摇镜头', '左移镜头', '右移镜头', '上升镜头', '下降镜头'],
+  angle: ['平视拍摄', '仰视拍摄', '俯视拍摄', '左侧45度拍摄', '右侧45度拍摄', '正面视角拍摄', '背面视角拍摄', '侧面视角拍摄', '过肩镜头拍摄', '主观镜头拍摄'],
+  composition: ['三分法构图', '中心构图', '前景构图', '对角线构图', '对称构图', '框架构图', '三角形构图', '留白构图', '引导线构图'],
   ratio:    ['16:9', '9:16', '1:1', '4:3', '3:4'],
   duration: ['3s', '5s', '8s', '10s', '15s'],
   size:     ['1080p', '720p', '480p'],
 };
-const PARAM_LABELS = { ratio: '比例', size: '大小', duration: '时长' };
+const PARAM_LABELS = { framing: '景别', cameraMotion: '运镜', angle: '拍摄角度', composition: '构图', ratio: '比例', size: '大小', duration: '时长' };
 
 function ParamSelect({ field, value, onChange, onClose, triggerRef }) {
   const ref = useRef(null);

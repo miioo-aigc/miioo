@@ -1,4 +1,7 @@
-export default function UploadBtn({ label, onClick }) {
+ import { useState } from "react";
+ import { FONT } from "../../utils/fonts";
+ 
+ export default function UploadBtn({ label, onClick }) {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
   return (

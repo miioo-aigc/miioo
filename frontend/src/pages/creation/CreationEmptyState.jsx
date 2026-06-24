@@ -3,6 +3,7 @@ import CreationEmptyIconImage from './CreationEmptyIconImage';
 import CreationEmptyIconVideo from './CreationEmptyIconVideo';
 import CreationEmptyIconDubbing from './CreationEmptyIconDubbing';
 import InputCard from '../../components/InputCard';
+import EmptyIconShell from './EmptyIconShell';
 
 const EMPTY_ICON_MAP = {
   image: CreationEmptyIconImage,

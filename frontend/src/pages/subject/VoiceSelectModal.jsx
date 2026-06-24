@@ -1,5 +1,11 @@
-import { useState, useRef } from "react";
+ import { useState, useRef, useMemo, useEffect } from "react";
+ import { apiGetVoiceLibrary } from '../../api/voices';
 import { FONT, FONT_MEDIUM } from "../../utils/fonts";
+const GENDER_OPTIONS = ['不限', '男', '女'];
+const AGE_OPTIONS = ['不限', '幼年', '青年', '中年', '老年'];
+import DotsLoading from '../../components/DotsLoading';
+import SelectField from './SelectField';
+import VoiceCard from './VoiceCard';
 
 export default 
 function VoiceSelectModal({ open, onClose, onConfirm, currentVoice, onVoicesLoaded, preloadedVoices }) {

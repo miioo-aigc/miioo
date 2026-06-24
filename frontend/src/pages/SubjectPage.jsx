@@ -20,6 +20,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import Checkbox from '../components/Checkbox';
 import SubjectRefHoverPreview from './subject/SubjectRefHoverPreview';
 import TabNav from './subject/TabNav';
+import { TABS } from './subject/TabNav';
 import VoiceSelectModal from './subject/VoiceSelectModal';
 import CharCard from './subject/CharCard';
 import ImageItemUpload from './subject/ImageItemUpload';
@@ -35,21 +36,11 @@ import IconBtn from './subject/IconBtn';
 import UploadBtn from './subject/UploadBtn';
 import RadioOption from './subject/RadioOption';
 import EditSubjectPanel from './subject/EditSubjectPanel';
+import { triggerBlobDownload } from '../utils/downloadImage';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-// ── 工具：触发浏览器下载 Blob ──────────────────────────────────────────
-function triggerBlobDownload(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 // ── Ghost button (添加角色 / 批量生成角色) ─────────────────────────────────
 
@@ -59,48 +50,7 @@ function triggerBlobDownload(blob, filename) {
 
 // ── Tab nav ────────────────────────────────────────────────────────────────
 
-const TABS = [
-  { key: 'char', label: '角色' },
-  { key: 'scene', label: '场景' },
-  { key: 'prop', label: '道具' },
-];
 
-// ── Voice select modal ─────────────────────────────────────────────────────
-
-const GENDER_OPTIONS = ['不限', '男', '女'];
-const AGE_OPTIONS = ['不限', '幼年', '青年', '中年', '老年'];
-
-const ChevronDownIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-    <path d="M12 6.333L8 10.333L4 6.333H12Z" fill="#FFFFFF" stroke="#FFFFFF" strokeWidth="1.333" strokeLinejoin="round" />
-  </svg>
-);
-
-const HeadphoneIcon = ({ color = '#2DC3E1' }) => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-    <path d="M3.333 12V8C3.333 5.423 5.423 3.333 8 3.333C10.577 3.333 12.667 5.423 12.667 8V12M3.333 8.667H2C1.632 8.667 1.333 8.965 1.333 9.333V12C1.333 12.368 1.632 12.667 2 12.667H3.333V8.667ZM12.667 8.667H14C14.368 8.667 14.667 8.965 14.667 9.333V12C14.667 12.368 14.368 12.667 14 12.667H12.667V8.667Z" stroke={color} strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M5.333 10.667H6.667L7.333 8.667L8.667 12.667L9.333 10.667H10.667" stroke={color} strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const PlayingWaveIcon = ({ color = '#2DC3E1', size = 16 }) => (
-  <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', flexShrink: 0 }}>
-    {[
-      { anim: 'voice-bar-1 0.8s ease-in-out infinite', h: 4 },
-      { anim: 'voice-bar-2 0.8s ease-in-out infinite 0.15s', h: 8 },
-      { anim: 'voice-bar-3 0.8s ease-in-out infinite 0.3s', h: 5 },
-      { anim: 'voice-bar-4 0.8s ease-in-out infinite 0.45s', h: 10 },
-    ].map((bar, i) => (
-      <div
-        key={i}
-        style={{
-          width: '2px', height: `${bar.h}px`, borderRadius: '1px',
-          backgroundColor: color, animation: bar.anim,
-        }}
-      />
-    ))}
-  </div>
-);
 
 // ── Delete confirm modal ───────────────────────────────────────────────────
 
@@ -120,7 +70,6 @@ const INITIAL_CHARS = [
   { id: 6, name: '大灰狼', desc: '看似凶猛的反派，实则只是想找人一起玩，孤独是他最大的秘密。', imageUrl: null, voice: null },
 ];
 
-const MOCK_PROPS = [];
 
 // Icon button with hover/press states for image overlays
 
@@ -139,7 +88,6 @@ const MOCK_PROPS = [];
 
 // 模块级缓存：跨弹窗打开/关闭保留生成中的图片状态
 // key: subjectId, value: { placeholderId, status: 'pending'|'done', imageUrl?, rawUrl? }
-const pendingGenerations = new Map();
 
 // ── Main export ────────────────────────────────────────────────────────────
 
@@ -704,10 +652,11 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
             key={char.id}
             name={char.name}
             desc={char.desc}
-            imageUrl={char.imageUrl}
-            voice={charVoices[char.id]}
-            voiceName={(() => { const v = voiceList.find(x => x.voice_id === charVoices[char.id]); return v ? v.name : undefined; })()}
-            voicePreviewUrl={voiceList.find((v) => v.voice_id === charVoices[char.id])?.preview_url}
+           imageUrl={char.imageUrl}
+           voice={charVoices[char.id]}
+           voiceName={(() => { const v = voiceList.find(x => x.voice_id === charVoices[char.id]); return v ? v.name : undefined; })()}
+            cardPlaceholder={placeholderImg}
+           voicePreviewUrl={voiceList.find((v) => v.voice_id === charVoices[char.id])?.preview_url}
             onVoiceClick={() => setVoiceModalChar(char)}
             onClick={() => setSelectedChar(char)}
             onDownloadImage={() => handleDownloadSubjectImage(char.id)}
@@ -723,7 +672,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
             name={scene.name}
             desc={scene.desc}
             imageUrl={scene.imageUrl}
-            placeholderImg={scenePlaceholderImg}
+            cardPlaceholder={scenePlaceholderImg}
             onClick={() => setSelectedScene(scene)}
             onDownloadImage={() => handleDownloadSubjectImage(scene.id)}
             onDeleteSubject={() => handleDeleteSubject(scene.id)}
@@ -738,7 +687,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
             name={prop.name}
             desc={prop.desc}
             imageUrl={prop.imageUrl}
-            placeholderImg={propPlaceholderImg}
+            cardPlaceholder={propPlaceholderImg}
             onClick={() => setSelectedProp(prop)}
             onDownloadImage={() => handleDownloadSubjectImage(prop.id)}
             onDeleteSubject={() => handleDeleteSubject(prop.id)}

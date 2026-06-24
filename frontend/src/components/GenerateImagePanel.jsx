@@ -188,12 +188,31 @@ export default function GenerateImagePanel({ shot, projectId, chars = [], scenes
   }
 
   const imageReferenceItems = useMemo(() => {
-    return refImages.map((img) => ({
-      id: img.id,
-      name: img.name || (img.url ? img.url.split('/').pop()?.split('?')[0]?.replace(/\.[^.]+$/, '') || '参考图' : '参考图'),
-      _type: 'image',
-    }));
-  }, [refImages]);
+    const items = [];
+    refImages.forEach((img) => {
+      items.push({
+        id: img.id,
+        name: img.name || (img.url ? img.url.split('/').pop()?.split('?')[0]?.replace(/\.[^.]+$/, '') || '参考图' : '参考图'),
+        type: 'image',
+      });
+    });
+    chars.forEach((c) => {
+      if (!items.some((i) => i.id === c.id)) {
+        items.push({ id: c.id, name: c.name || '角色', type: 'character' });
+      }
+    });
+    scenes.forEach((s) => {
+      if (!items.some((i) => i.id === s.id)) {
+        items.push({ id: s.id, name: s.name || '场景', type: 'scene' });
+      }
+    });
+    props.forEach((p) => {
+      if (!items.some((i) => i.id === p.id)) {
+        items.push({ id: p.id, name: p.name || '道具', type: 'prop' });
+      }
+    });
+    return items;
+  }, [refImages, chars, scenes, props]);
 
   const btnBg = loading ? 'rgba(45,195,225,0.60)' : btnPressed ? '#28b0cc' : btnHov ? '#32cde8' : '#2DC3E1';
 

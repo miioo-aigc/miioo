@@ -27,9 +27,11 @@ function Dropdown({ trigger, children, open, onClose, dropUp = true }) {
             background: '#1D1E1E',
             border: '1px solid #FFFFFF0D',
             boxShadow: '0px 4px 16px #00000066',
-            minWidth: '112px',
-            padding: '4px',
-          }}
+            right: 0,
+           padding: '4px',
+            display: 'flex',
+            flexDirection: 'column',
+         }}
         >
           {children}
         </div>

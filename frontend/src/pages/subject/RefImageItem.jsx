@@ -1,5 +1,6 @@
-import { useState } from "react";
-import SubjectRefHoverPreview from "./SubjectRefHoverPreview";
+ import { useState, useRef } from "react";
+ import { createPortal } from 'react-dom';
+ import SubjectRefHoverPreview from "./SubjectRefHoverPreview";
 
 export default 
 function RefImageItem({ url, onRemove }) {

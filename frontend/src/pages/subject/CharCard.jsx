@@ -1,8 +1,12 @@
 import { useState, useRef } from "react";
 import { FONT, FONT_MEDIUM } from "../../utils/fonts";
+import DotsLoading from '../../components/DotsLoading';
+import HeadphoneIcon from '../../components/HeadphoneIcon';
+import MoreMenu from './MoreMenu';
+import PlayingWaveIcon from '../../components/PlayingWaveIcon';
 
 export default 
-function CharCard({ name, desc, imageUrl, voice, voiceName, voicePreviewUrl, onVoiceClick, onClick, onDownloadImage, onDeleteSubject, placeholderImg: cardPlaceholder = placeholderImg, loading = false, selected = false }) {
+function CharCard({ name, desc, imageUrl, voice, voiceName, voicePreviewUrl, onVoiceClick, onClick, onDownloadImage, onDeleteSubject, cardPlaceholder, loading = false, selected = false }) {
   const [hovered, setHovered] = useState(false);
   const [voicePlaying, setVoicePlaying] = useState(false);
   const voiceAudioRef = useRef(null);

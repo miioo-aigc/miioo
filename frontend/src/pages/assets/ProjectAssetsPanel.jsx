@@ -4,27 +4,42 @@ import { invalidate } from '../../utils/cache';
 import { K } from '../../utils/cacheKeys';
 import { FONT, FONT_MEDIUM } from '../../utils/fonts';
 import { apiGetProjects, apiDeleteProject, apiUpdateProject, apiDownloadProjectAssets } from '../../api/project';
-import { apiGetProjectAssetsPage, calcProjectAssetsLimit, apiBatchDeleteAssets, apiUpdateAsset } from '../../api/assets';
-import { apiDeleteSubject } from '../../api/subject';
-import GhostBtn from '../../components/GhostBtn';
+import { apiGetProjectAssetsPage, calcProjectAssetsLimit, apiBatchDeleteAssets, apiUpdateAsset, apiDeleteAsset, apiDownloadAsset } from '../../api/assets';
+import { apiDeleteSubject, apiGetSubjects } from '../../api/subject';
+import GhostButton from './GhostButton';
 import DotsLoading from '../../components/DotsLoading';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import ProjectListItem from './ProjectListItem';
 import WaveformBars from '../../components/WaveformBars';
 import AudioCard from './AudioCard';
 import FavFilterCheckbox from './FavFilterCheckbox';
-import BatchActionBtn from './BatchActionBtn';
 import MoreMenu from './MoreMenu';
 import StarIcon from '../../components/StarIcon';
 import TrashIcon from './TrashIcon';
 import DownloadIcon from './DownloadIcon';
 import VideoFrameThumbnail from './VideoFrameThumbnail';
+
 import AssetDetailModal from './AssetDetailModal';
 import ShotDetailModal from './ShotDetailModal';
 import SubjectAssetDetailModal from './SubjectAssetDetailModal';
 import ShotVideoDetailModal from './ShotVideoDetailModal';
 import { EmptyProjectAssets } from './EmptyAssetState';
 import '../../App.css';
+import AssetCard from './AssetCard';
+import PlainBtn from './PlainBtn';
+import ProjectAssetCard from './ProjectAssetCard';
+
+const PROJECT_CATEGORY_TABS = [
+  { key: 'chars', label: '角色' },
+  { key: 'scenes', label: '场景' },
+  { key: 'props', label: '道具' },
+  { key: 'storyboard_img', label: '分镜图' },
+  { key: 'storyboard_video', label: '分镜视频' },
+  { key: 'audio', label: '音频' },
+  { key: 'final', label: '成片' },
+];
+
+const SUBJECT_CARD_CATEGORIES = new Set(['chars', 'scenes', 'props', 'storyboard_img', 'storyboard_video']);
 
 const TOAST_PORTAL_ID = 'assets-toast-portal';
 
@@ -189,8 +204,9 @@ export default function ProjectAssetsPanel() {
 
   useEffect(() => {
     apiGetProjects().then((list) => {
-      setProjects(list);
-      setActiveProject((prev) => prev ?? list[0]?.id ?? null);
+      const sorted = [...list].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      setProjects(sorted);
+      setActiveProject((prev) => prev ?? sorted[0]?.id ?? null);
     });
   }, []);
 
@@ -259,6 +275,7 @@ export default function ProjectAssetsPanel() {
             return asset;
           }).filter(Boolean),
         }));
+        showToast('删除成功', 'success');
         // 触发主体页面更新：删除图后重新拉取该类型主体，notify 会推给 SubjectPage 的 subscribe
         const subjectType = SUBJECT_TYPE_MAP[activeCategory];
         if (subjectType && activeProject) {
@@ -279,6 +296,7 @@ export default function ProjectAssetsPanel() {
           ...prev,
           [activeCategory]: prev[activeCategory].filter((a) => a.id !== id),
         }));
+        showToast('删除成功', 'success');
         // 整个主体删除也同步更新
         const subjectType = SUBJECT_TYPE_MAP[activeCategory];
         if (subjectType && activeProject) {
@@ -288,6 +306,7 @@ export default function ProjectAssetsPanel() {
       notifyProjectAssetsDeleted(activeProject);
     } catch (err) {
       console.error('删除资产失败', err);
+      showToast('删除失败', 'error');
     }
   }
 
@@ -330,6 +349,7 @@ export default function ProjectAssetsPanel() {
       notifyProjectAssetsDeleted(activeProject);
     } catch (err) {
       console.error('批量删除资产失败', err);
+      showToast('删除失败', 'error');
     }
   }
 
@@ -483,21 +503,21 @@ export default function ProjectAssetsPanel() {
                 <span style={{ fontFamily: FONT, fontSize: '14px', color: '#FFFFFF99' }}>已选 {selected.size} 项</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <GhostBtn onClick={selectAll}>
+                <GhostButton onClick={selectAll}>
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
                     <path d="M14 6.667V13C14 13.552 13.552 14 13 14H3C2.448 14 2 13.552 2 13V3C2 2.448 2.448 2 3 2H10" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
                     <path d="M5.333 6.667L8.667 9.333L13.667 2.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                   <span style={{ fontFamily: FONT, fontSize: '14px', color: '#FFFFFF', whiteSpace: 'nowrap' }}>全选</span>
-                </GhostBtn>
-                <GhostBtn onClick={downloadSelected}>
+                </GhostButton>
+                <GhostButton onClick={downloadSelected}>
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, rotate: '180deg', transformOrigin: '50% 50%' }}>
                     <path d="M8.003 4.7V14" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
                     <path d="M4 8.667L8 4.667L12 8.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
                     <path d="M4 2H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                   <span style={{ fontFamily: FONT, fontSize: '14px', color: '#FFFFFF', whiteSpace: 'nowrap' }}>下载</span>
-                </GhostBtn>
+                </GhostButton>
                 <PlainBtn onClick={() => setBatchDeleteConfirm(true)} danger>
                   <TrashIcon color="#F75F5F" />
                   <span style={{ fontFamily: FONT, fontSize: '14px', color: '#F75F5F', whiteSpace: 'nowrap' }}>删除</span>
@@ -509,14 +529,14 @@ export default function ProjectAssetsPanel() {
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '24px', paddingRight: '24px', height: '48px', flexShrink: 0 }}>
-              <GhostBtn onClick={() => setBatchMode(true)}>
+              <GhostButton onClick={() => setBatchMode(true)}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
                   <path d="M11.333 1.667H2.667C2.114 1.667 1.667 2.114 1.667 2.667V11.333C1.667 11.886 2.114 12.333 2.667 12.333H11.333C11.886 12.333 12.333 11.886 12.333 11.333V2.667C12.333 2.114 11.886 1.667 11.333 1.667Z" stroke="#FFFFFF" strokeLinejoin="round" />
                   <path d="M14.667 4.334V14C14.667 14.368 14.368 14.667 14 14.667H4.334" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
                   <path d="M4.333 6.829L6.333 8.67L9.667 5.24" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 <span style={{ fontFamily: FONT, fontSize: '14px', color: '#FFFFFF', whiteSpace: 'nowrap' }}>批量操作</span>
-              </GhostBtn>
+              </GhostButton>
             </div>
           )}
         </div>

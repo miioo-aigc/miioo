@@ -1,4 +1,5 @@
-import { FONT } from "../../utils/fonts";
+ import { useState } from "react";
+ import { FONT } from "../../utils/fonts";
 
 export default function RadioOption({ label, checked, onChange }) {
   const [hovered, setHovered] = useState(false);

@@ -7,8 +7,30 @@ import ImageResultCard from '../../components/ImageResultCard';
 import AudioResultCard from '../../components/AudioResultCard';
 import BatchButton from '../../components/BatchButton';
 
-function CreationResultState({ generations, onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onDeleteCard, batchMode = false, selected, onToggleSelect, onSwitchToFrameMode, onVideoCardClick, favorites, toggleFavorite, showToast, onBeforeModelOpen, isGenerating = false, historyLoading = false, historyHasMore = false, onLoadMore, activeCount = 0 }) {
+const SHIMMER_STYLE_ID = 'creation-shimmer-style';
+
+function ensureShimmerStyle() {
+  if (document.getElementById(SHIMMER_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = SHIMMER_STYLE_ID;
+  style.textContent = `
+    @keyframes creation-shimmer {
+      0% { background-position: -400px 0; }
+      100% { background-position: 400px 0; }
+    }
+    .creation-shimmer {
+      background: linear-gradient(90deg, #FFFFFF08 25%, #FFFFFF14 50%, #FFFFFF08 75%);
+      background-size: 800px 100%;
+      animation: creation-shimmer 1.6s ease-in-out infinite;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+
+function CreationResultState({ generations, onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onDeleteCard, batchMode = false, selected, onToggleSelect, onSwitchToFrameMode, onVideoCardClick, favorites, toggleFavorite, showToast, onBeforeModelOpen, isGenerating = false, historyLoading = false, historyHasMore = false, onLoadMore, pendingCount = 0, activeCount = 0 }) {
   const scrollRef = useRef(null);
+  useEffect(() => { ensureShimmerStyle(); }, []);
   const sentinelRef = useRef(null);
   const [prefillVersion, setPrefillVersion] = useState(0);
   const [prefillData, setPrefillData] = useState(null);
@@ -26,16 +48,18 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
       resolution: gen.resolution,
       duration: gen.duration,
       refImages: gen.refImages,
+      refMode: gen.refMode || (gen.firstFrame ? "frame" : "all"),
+      firstFrame: gen.firstFrame,
+      lastFrame: gen.lastFrame,
+      refVideos: gen.refVideos || [],
+      refAudios: gen.refAudios || [],
       createdAt: gen.createdAt,
     }))
   );
 
-  const videoCards = allCards.filter(c => c.type === 'video');
-  const imageCards = allCards.filter(c => c.type === 'image');
-  const audioCards = allCards.filter(c => c.type === 'audio');
 
   // 如果 generation 为空，渲染空状态
-  if (generations.length === 0 && !historyLoading) {
+  if (generations.length === 0 && !historyLoading && !isGenerating) {
     return null;
   }
 
@@ -46,171 +70,216 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
     setPrefillVersion(v => v + 1);
     setPrefillData({
       prompt: gen.prompt,
-      model: gen.model,
+      promptHTML: gen.promptHTML || '',
+      files: (gen.refImages || []).map((img) => ({
+        name: img.name && /\.(jpg|jpeg|png|webp|gif|bmp|tiff?|heic|heif)$/i.test(img.name) ? img.name : 'ref.png',
+        url: img.url || img.previewUrl || '',
+        previewUrl: img.url || img.previewUrl || '',
+        type: 'image/png',
+        isAsset: true,
+        size: 0,
+      })),
+      refMode: gen.refMode || (gen.firstFrame ? "frame" : "all"),
+      ...(gen.firstFrame ? { firstFrameFile: { name: 'firstframe.png', url: gen.firstFrame, previewUrl: gen.firstFrame, isAsset: true, size: 0 } } : {}),
+      ...(gen.lastFrame ? { lastFrameFile: { name: 'lastframe.png', url: gen.lastFrame, previewUrl: gen.lastFrame, isAsset: true, size: 0 } } : {}),
       ratio: gen.ratio,
       resolution: gen.resolution,
       ...(gen.duration ? { duration: gen.duration } : {}),
-      refImages: gen.refImages || [],
     });
   }, [generations]);
 
   // ─── 处理尾帧 → 首帧参考（视频） ─────
   const handleVideoFrameSwap = useCallback(async (videoUrl) => {
     try {
-      const res = await fetch(videoUrl);
-      const blob = await res.blob();
+      // 用 video + canvas 抽取视频最后一帧为图片
+      const video = document.createElement('video');
+      video.crossOrigin = 'anonymous';
+      video.preload = 'metadata';
+      video.src = videoUrl;
+
+      await new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => {
+          video.currentTime = Math.max(0, video.duration - 0.1);
+        };
+        video.onseeked = () => resolve();
+        video.onerror = () => reject(new Error('视频加载失败'));
+      });
+
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      if (!w || !h) throw new Error('视频帧尺寸无效');
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+
+      // canvas.toBlob 直接产出 Blob，无需 dataUrl → fetch 中转
+      const blob = await new Promise((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob failed')), 'image/png'));
       const file = new File([blob], 'lastframe.png', { type: 'image/png' });
+
       setPrefillVersion(v => v + 1);
       setPrefillData(prev => ({
         ...(prev || {}),
+        refMode: 'frame',
         firstFrameFile: file,
       }));
-      showToast('success', '尾帧已添加为首帧参考');
+      showToast('success', '尾帧已提取为首帧参考');
     } catch {
       showToast('error', '获取尾帧失败，请重试');
     }
+
   }, [showToast]);
 
-  function renderCard(card) {
-    const key = card.key;
-    const isFav = !!favorites?.[card.genId]?.includes(card.cardIndex);
-    const sel = !!selected?.[card.genId]?.includes(card.cardIndex);
 
-    function handleDelete() {
-      onDeleteCard?.(card.genId, card.cardIndex);
-    }
 
-    function toggleFav() {
-      toggleFavorite?.(card.genId, card.cardIndex, !isFav);
-      if (isFav) showToast('success', '取消收藏');
-      else showToast('success', '收藏成功');
-    }
 
-    function handleSelect() {
-      onToggleSelect?.(card.genId, card.cardIndex);
-    }
-
-    if (card.type === 'video') {
-      return (
-        <VideoResultCard
-          key={key}
-          status={card.status}
-          videoUrl={card.videoUrl}
-          prompt={card.prompt}
-          model={card.model}
-          ratio={card.ratio}
-          resolution={card.resolution}
-          duration={card.duration}
-          refImages={card.refImages}
-          createdAt={card.createdAt}
-          onReEdit={() => handleReEdit(card)}
-          onUseAsFirstFrame={() => handleVideoFrameSwap(card.videoUrl)}
-          onDelete={handleDelete}
-          onCardClick={() => onVideoCardClick?.(card)}
-          batchMode={batchMode}
-          isSelected={sel}
-          onToggleSelect={handleSelect}
-          favorited={isFav}
-          onToggleFavorite={toggleFav}
-        />
-      );
-    }
-
-    if (card.type === 'audio') {
-      return (
-        <AudioResultCard
-          key={key}
-          status={card.status}
-          audioUrl={card.audioUrl}
-          prompt={card.prompt}
-          model={card.model}
-          createdAt={card.createdAt}
-          onDelete={handleDelete}
-          batchMode={batchMode}
-          isSelected={sel}
-          onToggleSelect={handleSelect}
-        />
-      );
-    }
-
-    return (
-      <ImageResultCard
-        key={key}
-        status={card.status}
-        imageUrl={card.imageUrl}
-        originalUrl={card.originalUrl}
-        prompt={card.prompt}
-        promptHTML={card.promptHTML}
-        model={card.model}
-        ratio={card.ratio}
-        resolution={card.resolution}
-        refImages={card.refImages}
-        createdAt={card.createdAt}
-        onReEdit={() => handleReEdit(card)}
-        onUseAsRef={() => {}}
-        onDelete={handleDelete}
-        onSave={() => {}}
-        batchMode={batchMode}
-        isSelected={sel}
-        onToggleSelect={handleSelect}
-        favorited={isFav}
-        onToggleFavorite={toggleFav}
-      />
-    );
-  }
+  const isAudio = genType === 'dubbing';
 
   return (
-    <div style={{ display: 'flex', flex: 1, minHeight: 0, flexDirection: 'column', alignSelf: 'stretch' }}>
-      {/* Scrollable content */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '16px 24px 16px 24px', display: 'flex', flexDirection: 'column' }}>
-        <div ref={sentinelRef} />
+    <div
+      style={{
+        position: 'relative',
+        flex: 1,
+        minHeight: 0,
+        alignSelf: 'stretch',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Grid: absolutely fills the container, scrolls internally */}
+      <div
+        ref={scrollRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          padding: '8px 24px 220px',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isAudio ? '1fr' : 'repeat(auto-fill, minmax(240px, 1fr))',
+            width: '100%',
+            gap: '16px',
+            alignContent: 'flex-start',
+          }}
+        >
+          {isGenerating && Array.from({ length: Math.max(pendingCount, 1) }).map((_, i) => (
+            <div key={`pending-${i}`} style={{
+              width: '100%',
+              height: isAudio ? '72px' : undefined,
+              aspectRatio: isAudio ? undefined : '16/9',
+              borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.06)',
+              overflow: 'hidden',
+              flexShrink: 0,
+              position: 'relative',
+            }}>
+              <div className="creation-shimmer" style={{ width: '100%', height: '100%' }} />
+            </div>
+          ))}
 
-        {isGenerating && (
-          <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#272727' }}>
-            <div className="creation-shimmer" style={{ width: '100%', height: '100%' }} />
-          </div>
-        )}
+          {allCards.map((card) => {
+            const { key, ...cardProps } = card;
+            if (card.type === 'audio' || isAudio) {
+              return (
+                <AudioResultCard
+                  key={key}
+                  {...cardProps}
+                  batchMode={batchMode}
+                  isSelected={batchMode && selected?.has(key)}
+                  onToggleSelect={() => onToggleSelect?.(key)}
+                  onDelete={() => onDeleteCard?.(card.genId, card.cardIndex)}
+                />
+              );
+            }
+            if (card.type === 'video') {
+              return (
+                <VideoResultCard
+                  key={key}
+                  status={card.status}
+                  videoUrl={card.videoUrl}
+                  prompt={card.prompt}
+                  model={card.model}
+                  ratio={card.ratio}
+                  resolution={card.resolution}
+                  duration={card.duration}
+                  refImages={card.refImages}
+                  createdAt={card.createdAt}
+                  onReEdit={() => handleReEdit(card)}
+                  onUseAsFirstFrame={() => handleVideoFrameSwap(card.videoUrl)}
+                  onDelete={() => onDeleteCard?.(card.genId, card.cardIndex)}
+                  onCardClick={() => onVideoCardClick?.(card)}
+                  batchMode={batchMode}
+                  isSelected={batchMode && selected?.has(key)}
+                  onToggleSelect={() => onToggleSelect?.(key)}
+                  favorited={favorites?.has(key)}
+                  onToggleFavorite={() => toggleFavorite?.(key)}
+                />
+              );
+            }
+            return (
+              <ImageResultCard
+                key={key}
+                status={card.status}
+                imageUrl={card.imageUrl}
+                originalUrl={card.originalUrl}
+                prompt={card.prompt}
+                promptHTML={card.promptHTML}
+                model={card.model}
+                ratio={card.ratio}
+                resolution={card.resolution}
+                refImages={card.refImages}
+                createdAt={card.createdAt}
+                onReEdit={() => handleReEdit(card)}
+                onUseAsRef={() => {
+                  const newFile = { name: 'creation.png', url: card.imageUrl, previewUrl: card.imageUrl, assetId: card.assetId || card.id || undefined, isAsset: true, size: 0 };
+                  setPrefillData({
+                    appendFiles: [newFile],
+                  });
+                  setPrefillVersion((v) => v + 1);
+                }}
+                onDelete={() => onDeleteCard?.(card.genId, card.cardIndex)}
+                onSave={() => {}}
+                batchMode={batchMode}
+                isSelected={batchMode && selected?.has(key)}
+                onToggleSelect={() => onToggleSelect?.(key)}
+                favorited={favorites?.has(key)}
+                onToggleFavorite={() => toggleFavorite?.(key)}
+              />
+            );
+          })}
 
-        {imageCards.length > 0 && genType === 'image' && (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-[8px]">
-            {imageCards.map(renderCard)}
-          </div>
-        )}
+          {historyLoading && (
+            <div style={{ width: '100%', display: 'flex', justifyContent: 'center', padding: '16px' }}>
+              <span style={{ fontFamily: FONT, fontSize: '12px', color: '#FFFFFF66' }}>加载中...</span>
+            </div>
+          )}
 
-        {videoCards.length > 0 && genType === 'video' && (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-[8px]">
-            {videoCards.map(renderCard)}
-          </div>
-        )}
+          {!historyLoading && historyHasMore && (
+            <div style={{ width: '100%', display: 'flex', justifyContent: 'center', padding: '8px' }}>
+              <button type="button" onClick={onLoadMore}
+                style={{ fontFamily: FONT, fontSize: '12px', color: '#2DC3E1', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 16px' }}>
+                加载更多
+              </button>
+            </div>
+          )}
 
-        {audioCards.length > 0 && genType === 'dubbing' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {audioCards.map(renderCard)}
-          </div>
-        )}
-
-        {historyLoading && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '16px' }}>
-            <span style={{ fontFamily: FONT, fontSize: '12px', color: '#FFFFFF66' }}>加载中...</span>
-          </div>
-        )}
-
-        {!historyLoading && historyHasMore && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '8px' }}>
-            <button type="button" onClick={onLoadMore}
-              style={{ fontFamily: FONT, fontSize: '12px', color: '#2DC3E1', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 16px' }}>
-              加载更多
-            </button>
-          </div>
-        )}
+          <div ref={sentinelRef} />
+        </div>
       </div>
 
       {/* InputCard */}
-      <div style={{ flexShrink: 0, alignSelf: 'center' }}>
-        <InputCard onGenerate={onGenerate} width="100%" genType={genType} onGenTypeChange={onGenTypeChange}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', justifyContent: 'center', paddingLeft: '32px', paddingRight: '32px', paddingBottom: '16px', paddingTop: '8px', zIndex: 1 }}>
+        <div style={{ width: 'min(800px, 100%)' }}>
+          <InputCard onGenerate={onGenerate} width="100%" genType={genType} onGenTypeChange={onGenTypeChange}
           model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams}
           onBeforeModelOpen={onBeforeModelOpen} showToast={showToast} activeCount={activeCount}
           prefillVersion={prefillVersion} prefillData={prefillData} />
+        </div>
       </div>
     </div>
   );

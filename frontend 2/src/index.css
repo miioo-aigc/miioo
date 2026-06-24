@@ -1,0 +1,872 @@
+@import "tailwindcss";
+
+/* ============================================================
+   全局隐藏原生滚动条（保留滚动功能）
+   自定义滚动条通过各组件的类选择器覆盖此规则
+   ============================================================ */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* ============================================================
+   设计系统 Design Tokens
+   影视AI工作流产品 · 深色主题 · Tailwind v4
+   ============================================================ */
+
+@theme {
+
+  /* ----------------------------------------------------------
+     中性色 Neutral
+     数字越大颜色越深
+     ---------------------------------------------------------- */
+  --color-neutral-100: #1D1E1E; /* 输入框背景 */
+  --color-neutral-200: #161616; /* 内容区域、按钮 */
+  --color-neutral-300: #131313; /* 卡片、大输入框 */
+  --color-neutral-400: #111111; /* 导航栏 */
+  --color-neutral-500: #090909; /* 工具栏 */
+
+  /* ----------------------------------------------------------
+     白色透明度 White Alpha
+     用于文字、图标、描边
+     ---------------------------------------------------------- */
+  --color-white-5: rgba(255, 255, 255, 0.05);
+  --color-white-8: rgba(255, 255, 255, 0.08);
+  --color-white-10: rgba(255, 255, 255, 0.10);
+  --color-white-20: rgba(255, 255, 255, 0.20);
+  --color-white-30: rgba(255, 255, 255, 0.30);
+  --color-white-40: rgba(255, 255, 255, 0.40);
+  --color-white-50: rgba(255, 255, 255, 0.50);
+  --color-white-60: rgba(255, 255, 255, 0.60);
+  --color-white-70: rgba(255, 255, 255, 0.70);
+  --color-white-80: rgba(255, 255, 255, 0.80);
+  --color-white-90: rgba(255, 255, 255, 0.90);
+  --color-white-100: #FFFFFF;
+
+  /* ----------------------------------------------------------
+     黑色透明度 Black Alpha
+     用于阴影、禁用遮罩
+     ---------------------------------------------------------- */
+  --color-black-5: rgba(0, 0, 0, 0.05);
+  --color-black-8: rgba(0, 0, 0, 0.08);
+  --color-black-10: rgba(0, 0, 0, 0.10);
+  --color-black-20: rgba(0, 0, 0, 0.20);
+  --color-black-30: rgba(0, 0, 0, 0.30);
+  --color-black-40: rgba(0, 0, 0, 0.40);
+  --color-black-50: rgba(0, 0, 0, 0.50);
+  --color-black-60: rgba(0, 0, 0, 0.60);
+  --color-black-70: rgba(0, 0, 0, 0.70);
+  --color-black-80: rgba(0, 0, 0, 0.80);
+  --color-black-90: rgba(0, 0, 0, 0.90);
+
+  /* ----------------------------------------------------------
+     品牌色-青 Blue（纯色梯度，数字越大颜色越深）
+     ---------------------------------------------------------- */
+  --color-blue-100: #7DE5FA;
+  --color-blue-200: #53D3ED;
+  --color-blue-300: #2DC3E1; /* 基准品牌色 */
+  --color-blue-400: #139EBA;
+  --color-blue-500: #077C94;
+
+  /* 青色透明度 */
+  --color-blue-alpha-10: rgba(45, 195, 225, 0.10);
+  --color-blue-alpha-20: rgba(45, 195, 225, 0.20);
+  --color-blue-alpha-40: rgba(45, 195, 225, 0.40);
+  --color-blue-alpha-60: rgba(45, 195, 225, 0.60);
+  --color-blue-alpha-80: rgba(45, 195, 225, 0.80);
+
+  /* ----------------------------------------------------------
+     辅助色-绿 Green（纯色梯度，数字越大颜色越深）
+     ---------------------------------------------------------- */
+  --color-green-100: #D4FFED;
+  --color-green-200: #A5F2D2;
+  --color-green-300: #7AE5B9; /* 基准辅助色 */
+  --color-green-400: #52BF92;
+  --color-green-500: #3A9972;
+
+  /* 绿色透明度 */
+  --color-green-alpha-10: rgba(122, 229, 185, 0.10);
+  --color-green-alpha-20: rgba(122, 229, 185, 0.20);
+  --color-green-alpha-40: rgba(122, 229, 185, 0.40);
+  --color-green-alpha-60: rgba(122, 229, 185, 0.60);
+  --color-green-alpha-80: rgba(122, 229, 185, 0.80);
+
+  /* ----------------------------------------------------------
+     状态色-黄 Yellow（警告）
+     ---------------------------------------------------------- */
+  --color-yellow-100: #FCFC9F;
+  --color-yellow-200: #EDED72;
+  --color-yellow-300: #E2E24B; /* 基准色 */
+  --color-yellow-400: #BDBD2B;
+  --color-yellow-500: #96961B;
+
+  /* 黄色透明度 */
+  --color-yellow-alpha-10: rgba(226, 226, 75, 0.10);
+  --color-yellow-alpha-20: rgba(226, 226, 75, 0.20);
+  --color-yellow-alpha-40: rgba(226, 226, 75, 0.40);
+  --color-yellow-alpha-60: rgba(226, 226, 75, 0.60);
+  --color-yellow-alpha-80: rgba(226, 226, 75, 0.80);
+
+  /* ----------------------------------------------------------
+     状态色-橙 Orange（提醒）
+     ---------------------------------------------------------- */
+  --color-orange-100: #FFBA63;
+  --color-orange-200: #F7A33B;
+  --color-orange-300: #EB8B14; /* 基准色 */
+  --color-orange-400: #C46D00;
+  --color-orange-500: #9E5800;
+
+  /* 橙色透明度 */
+  --color-orange-alpha-10: rgba(235, 139, 20, 0.10);
+  --color-orange-alpha-20: rgba(235, 139, 20, 0.20);
+  --color-orange-alpha-40: rgba(235, 139, 20, 0.40);
+  --color-orange-alpha-60: rgba(235, 139, 20, 0.60);
+  --color-orange-alpha-80: rgba(235, 139, 20, 0.80);
+
+  /* ----------------------------------------------------------
+     状态色-红 Red（危险/失败）
+     ---------------------------------------------------------- */
+  --color-red-100: #FFADAD;
+  --color-red-200: #FF8787;
+  --color-red-300: #F75F5F; /* 基准色 */
+  --color-red-400: #D13B3B;
+  --color-red-500: #AB2727;
+
+  /* 红色透明度 */
+  --color-red-alpha-10: rgba(247, 95, 95, 0.10);
+  --color-red-alpha-20: rgba(247, 95, 95, 0.20);
+  --color-red-alpha-40: rgba(247, 95, 95, 0.40);
+  --color-red-alpha-60: rgba(247, 95, 95, 0.60);
+  --color-red-alpha-80: rgba(247, 95, 95, 0.80);
+
+  /* ----------------------------------------------------------
+     紫色 Purple（标签用色）
+     ---------------------------------------------------------- */
+  --color-purple-100: #8870FF;
+
+  /* 紫色透明度 */
+  --color-purple-alpha-10: rgba(136, 112, 255, 0.10);
+  --color-purple-alpha-20: rgba(136, 112, 255, 0.20);
+  --color-purple-alpha-40: rgba(136, 112, 255, 0.40);
+  --color-purple-alpha-60: rgba(136, 112, 255, 0.60);
+  --color-purple-alpha-80: rgba(136, 112, 255, 0.80);
+
+  /* ============================================================
+     语义色 Semantic Colors
+     ============================================================ */
+
+  /* ----------------------------------------------------------
+     界面层级 Surface
+     ---------------------------------------------------------- */
+  --color-surface-base: #111111;          /* 最底层，导航栏背景 */
+  --color-surface-content-area: #161616;  /* 内容区背景 */
+  --color-surface-modal: #161616;         /* 弹窗背景 */
+  --color-surface-card: #131313;          /* 卡片背景 */
+  --color-surface-toolbar: #090909;       /* 工具栏背景 */
+  --color-surface-overlay: rgba(0, 0, 0, 0.50);  /* 遮罩层，配合 backdrop-blur-[20px] 使用 → Black-alpha/50 */
+  --color-surface-border-content: rgba(255, 255, 255, 0.08);  /* 内容区描边 */
+  --color-surface-border-card: rgba(255, 255, 255, 0.08);     /* 卡片描边 */
+
+  /* ----------------------------------------------------------
+     描边 Stroke
+     ---------------------------------------------------------- */
+  --color-stroke-normal: rgba(255, 255, 255, 0.08);   /* 常规描边 */
+  --color-stroke-accent: rgba(255, 255, 255, 0.20);   /* 增强描边 */
+  --color-stroke-active: rgba(45, 195, 225, 0.60);    /* 激活描边（品牌青色） */
+  --color-stroke-outline: rgba(0, 0, 0, 0.50);        /* 外描边 */
+
+  /* ----------------------------------------------------------
+     文字 Text
+     ---------------------------------------------------------- */
+  --color-text-primary: rgba(255, 255, 255, 1.00);    /* 主要文字 */
+  --color-text-secondary: rgba(255, 255, 255, 0.60);  /* 次要文字 */
+  --color-text-hint: rgba(255, 255, 255, 0.40);       /* 提醒/占位文字 */
+  --color-text-disabled: rgba(255, 255, 255, 0.20);   /* 禁用文字 */
+  --color-text-inverse: #090909;                      /* 反色文字（用于浅色按钮） */
+  --color-text-accent: #2DC3E1;                       /* 特别强调文字（品牌色） */
+  --color-text-danger: #F75F5F;                       /* 危险/错误文字 */
+  --color-text-alert: #EB8B14;                        /* 提醒文字 */
+  --color-text-success: #4DC49A;                      /* 成功文字 */
+
+  /* ----------------------------------------------------------
+     品牌色 Brand
+     ---------------------------------------------------------- */
+  --color-brand-main: #2DC3E1;   /* 主品牌色-青 */
+  --color-brand-secondary: #7AE5B9; /* 辅助品牌色-绿 */
+
+  /* ----------------------------------------------------------
+     阴影 Shadow
+     ---------------------------------------------------------- */
+  --color-shadow: rgba(0, 0, 0, 0.40);
+  --color-glow: rgba(45, 195, 225, 0.10);
+
+  /* ----------------------------------------------------------
+     输入框 Input
+     ---------------------------------------------------------- */
+  --color-input-bg-normal: #1D1E1E;
+  --color-input-bg-hover: #1D1E1E;
+  --color-input-bg-focus: #1D1E1E;
+  --color-input-bg-disabled: #131313;
+  --color-input-border-normal: rgba(255, 255, 255, 0.08);
+  --color-input-border-hover: rgba(255, 255, 255, 0.20);
+  --color-input-border-focus: rgba(45, 195, 225, 0.60);
+  --color-input-border-wrong: #F75F5F;                      /* 错误态描边 → Red/300 */
+  --color-input-text-hint: rgba(255, 255, 255, 0.40);       /* 占位符/禁用态文字 → Text/hint */
+  --color-input-text-content: rgba(255, 255, 255, 1.00);    /* 已输入内容文字 → Text/Primary */
+
+  /* ----------------------------------------------------------
+     选择器 Select
+     ---------------------------------------------------------- */
+  --color-select-bg: #1D1E1E;                           /* 面板背景 → Input/bg-normal */
+  --color-select-border: rgba(255, 255, 255, 0.08);     /* 面板描边 → Stroke/Normal */
+  --color-select-shadow: rgba(0, 0, 0, 0.40);           /* 面板阴影 x+0 y+4 blur16 → Black-alpha/40 */
+  --color-select-item-bg-normal: transparent;            /* 选项默认背景，透明 */
+  --color-select-item-bg-hover: rgba(255, 255, 255, 0.05);  /* 选项悬停背景 → White-alpha/5 */
+  --color-select-item-bg-active: #161616;               /* 选项选中背景 → Neutral/200 */
+  --color-select-item-bg-disabled: transparent;          /* 选项禁用背景，透明 */
+  --color-select-item-text-normal: rgba(255, 255, 255, 0.60);   /* 选项默认文字 → Text/Secondary */
+  --color-select-item-text-hover: rgba(255, 255, 255, 1.00);    /* 选项悬停文字 → Text/Primary */
+  --color-select-item-text-active: rgba(255, 255, 255, 1.00);   /* 选项选中文字 → Text/Primary */
+  --color-select-item-text-disabled: rgba(255, 255, 255, 0.20); /* 选项禁用文字 → Text/disable */
+
+  /* ----------------------------------------------------------
+     Toast
+     ---------------------------------------------------------- */
+  --color-toast-bg: rgba(0, 0, 0, 0.50);        /* 背景 → Surface/overlay，配合 backdrop-blur-[20px] */
+
+  /* ----------------------------------------------------------
+     Tooltip
+     ---------------------------------------------------------- */
+  --color-tooltip-bg: #090909;                   /* 背景 → Neutral/500，配合 backdrop-blur-[10px] */
+
+  /* ----------------------------------------------------------
+     Checkbox / Radio
+     ---------------------------------------------------------- */
+  --color-checkbox-bg-normal: #090909;                           /* 未选中背景 → Neutral/500 */
+  --color-checkbox-bg-hover: #090909;                            /* 悬停背景 → 同 normal */
+  --color-checkbox-bg-active: #2DC3E1;                           /* 选中背景 → Brand/Main */
+  --color-checkbox-bg-disabled: #090909;                         /* 禁用背景 → 同 normal */
+  --color-checkbox-bg-disabled-active: rgba(45, 195, 225, 0.20); /* 禁用已选中 → Blue-alpha/30 */
+  --color-checkbox-border-normal: rgba(255, 255, 255, 0.20);     /* 默认描边 → Stroke/Accent */
+  --color-checkbox-border-hover: rgba(45, 195, 225, 0.60);       /* 悬停描边 → Stroke/Active */
+  --color-checkbox-border-active: rgba(255, 255, 255, 0.20);     /* 选中描边 → Stroke/Accent */
+  --color-checkbox-border-disabled: transparent;                  /* 禁用描边 → transparent */
+
+  /* ----------------------------------------------------------
+     状态色 Status
+     ---------------------------------------------------------- */
+  --color-status-success: #52BF92;   /* 成功 → Green/400 */
+  --color-status-warning: #EB8B14;   /* 警告 → Orange/300 */
+  --color-status-wrong: #F75F5F;     /* 错误 → Red/300 */
+
+  /* ----------------------------------------------------------
+     按钮 Button - Accent（强调按钮，品牌青色，少量使用）
+     ---------------------------------------------------------- */
+  --color-btn-accent-bg-normal: #2DC3E1;
+  --color-btn-accent-bg-hover: #52D4ED;
+  --color-btn-accent-bg-active: #1E9BB5;
+  --color-btn-accent-bg-disabled: rgba(45, 195, 225, 0.40);
+  --color-btn-accent-border: rgba(255, 255, 255, 0.20);
+  --color-btn-accent-text: #090909;
+
+  /* ----------------------------------------------------------
+     按钮 Button - Primary（主要按钮，日常主操作）
+     ---------------------------------------------------------- */
+  --color-btn-primary-bg-normal: #161616;
+  --color-btn-primary-bg-hover: #1D1E1E;
+  --color-btn-primary-bg-active: #161616;
+  --color-btn-primary-bg-disabled: rgba(0, 0, 0, 0.10);
+  --color-btn-primary-border: rgba(255, 255, 255, 0.08);
+  --color-btn-primary-text: rgba(255, 255, 255, 0.60);    /* 文字色 → text-secondary，Secondary 按钮用 */
+
+  /* ----------------------------------------------------------
+     按钮 Button - Danger（危险操作按钮）
+     ---------------------------------------------------------- */
+  --color-btn-danger-bg-normal: #D13B3B;
+  --color-btn-danger-bg-hover: #F75F5F;
+  --color-btn-danger-bg-active: #D13B3B;
+  --color-btn-danger-bg-disabled: rgba(247, 95, 95, 0.20);
+  --color-btn-danger-border: rgba(255, 255, 255, 0.20);
+  --color-btn-danger-text: rgba(255, 255, 255, 1.00);
+
+  /* ----------------------------------------------------------
+     标签 Label-Tag
+     ---------------------------------------------------------- */
+  --color-tag-bg-blue: rgba(45, 195, 225, 0.10);
+  --color-tag-bg-purple: rgba(136, 112, 255, 0.10);
+  --color-tag-bg-green: rgba(122, 229, 185, 0.10);
+  --color-tag-bg-yellow: rgba(226, 226, 75, 0.10);
+  --color-tag-bg-red: rgba(247, 95, 95, 0.10);
+  --color-tag-text-blue: #2DC3E1;
+  --color-tag-text-purple: #8870FF;
+  --color-tag-text-green: #7AE5B9;
+  --color-tag-text-yellow: #E2E24B;
+  --color-tag-text-red: #F75F5F;
+  --color-tag-border: rgba(255, 255, 255, 0.05);
+
+  /* ============================================================
+     间距 Spacing
+     ============================================================ */
+  --spacing-2: 2px;
+  --spacing-4: 4px;
+  --spacing-6: 6px;
+  --spacing-8: 8px;
+  --spacing-12: 12px;
+  --spacing-16: 16px;
+  --spacing-20: 20px;
+  --spacing-24: 24px;
+  --spacing-32: 32px;
+  --spacing-44: 44px;
+  --spacing-64: 64px;
+
+  /* ============================================================
+     圆角 Border Radius
+     ============================================================ */
+  --radius-small: 4px;
+  --radius-medium: 8px;
+  --radius-large: 16px;
+
+  /* ============================================================
+     字号 Font Size
+     ============================================================ */
+  --font-size-12: 12px; /* 注释、标签、不重要文字 */
+  --font-size-14: 14px; /* 大多数正文 */
+  --font-size-16: 16px; /* 卡片标题 */
+  --font-size-20: 20px; /* 页面标题、版块标题 */
+
+  /* ============================================================
+     字重 Font Weight
+     ============================================================ */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 700;
+}
+
+/* ============================================================
+   全局基础样式
+   ============================================================ */
+body {
+  margin: 0;
+  background-color: var(--color-surface-content-area);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-regular);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================
+   Fluid Glass · 流体玻璃效果
+   灵感来自 reactbits.dev/components/fluid-glass
+   纯 CSS 模拟：backdrop-filter + SVG 置换 + 多层高光
+   ============================================================ */
+/* 旧版 · 顶光源玻璃效果 — 保留备用，需要时取消注释并移除下方 v2 规则
+.fluid-glass {
+  position: relative;
+  isolation: isolate;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: url(#liquid-glass) blur(1.5px);
+  -webkit-backdrop-filter: blur(3px);
+  box-shadow:
+    inset 0 1.5px 0.5px rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0.5px rgba(255, 255, 255, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    inset 0 0 8px 2px rgba(0, 0, 0, 0.25),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+}
+*/
+
+/* ============================================================
+   Fluid Glass v2 · 参考 Figma Glass 参数
+   Light -45°/80% | Refraction 100 | Depth 44 | Dispersion 50 | Frost 10 | Splay 74
+   ============================================================ */
+.fluid-glass {
+  position: relative;
+  isolation: isolate;
+  background: rgba(255, 255, 255, 0.05);
+  /* Frost 10 ≈ 轻磨砂 · Refraction 由 SVG filter 位移承担 */
+  backdrop-filter: url(#liquid-glass) blur(1px);
+  -webkit-backdrop-filter: blur(2px);
+  box-shadow:
+    /* Splay 74 — 高光从左上向内柔和扩散（45°入射的体积光） */
+    inset 3px 3px 14px rgba(255, 255, 255, 0.14),
+    /* 底部一丝内反光（不触碰左下角） */
+    inset -2px -4px 8px rgba(255, 255, 255, 0.03);
+}
+
+/* Firefox 不支持 url() 作为 backdrop-filter */
+@-moz-document url-prefix() {
+  .fluid-glass {
+    backdrop-filter: blur(2px);
+  }
+}
+
+/* Dispersion 25 — 边缘色散：只在 TL(青) 和 BR(紫) 两个对角端出现，TR/BL 消失 */
+.fluid-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(125, 229, 250, 0.28) 0%,
+    rgba(255, 255, 255, 0) 30%,
+    rgba(255, 255, 255, 0) 70%,
+    rgba(208, 78, 232, 0.25) 100%
+  );
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  z-index: 1;
+}
+
+/* 对角白色高光描边：TL 强、BR 中等（反光）、TR 与 BL 趋近消失 */
+.fluid-glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 255, 255, 0.08) 28%,
+    rgba(255, 255, 255, 0) 50%,
+    rgba(255, 255, 255, 0.08) 72%,
+    rgba(255, 255, 255, 0.6) 100%
+  );
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  z-index: 2;
+}
+
+.fluid-glass > * {
+  position: relative;
+  z-index: 3;
+}
+
+/* ============================================================
+   Nav Item · 导航项悬停 / 焦点态
+   ! 已废弃：现改用 <PrimaryNav> 组件的流动 indicator 方案
+   保留规则兜底给其他沿用 .nav-item 的按钮（底部图标组）
+   ============================================================ */
+.nav-item {
+  position: relative;
+  isolation: isolate;
+  cursor: pointer;
+  outline: none;
+  transition: box-shadow 200ms ease;
+}
+
+.nav-item::before,
+.nav-item::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+/* 液态玻璃底层：背景 + 高光渐变 */
+.nav-item::before {
+  background:
+    radial-gradient(120% 60% at 30% 0%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 40%, rgba(255, 255, 255, 0.05) 100%);
+  mix-blend-mode: screen;
+  z-index: 1;
+}
+
+/* 色散层 */
+.nav-item::after {
+  background: linear-gradient(135deg, rgba(125, 229, 250, 0.10) 0%, rgba(255, 255, 255, 0) 35%, rgba(255, 255, 255, 0) 65%, rgba(208, 78, 232, 0.08) 100%);
+  mix-blend-mode: screen;
+  z-index: 1;
+}
+
+.nav-item:hover,
+.nav-item:focus-visible {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: url(#liquid-glass) blur(1.5px);
+  -webkit-backdrop-filter: blur(3px);
+  box-shadow:
+    inset 0 1.5px 0.5px rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0.5px rgba(255, 255, 255, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    inset 0 0 8px 2px rgba(0, 0, 0, 0.25),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.nav-item:hover::before,
+.nav-item:hover::after,
+.nav-item:focus-visible::before,
+.nav-item:focus-visible::after {
+  opacity: 1;
+}
+
+.nav-item > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* ============================================================
+   PrimaryNav · 流动指示器
+   苹果风格液态切换：indicator 在 item 之间流动 + 轻微挤压
+   ============================================================ */
+.primary-nav {
+  position: relative;
+}
+
+.primary-nav-indicator {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  transition:
+    top 460ms cubic-bezier(0.32, 1.2, 0.58, 1),
+    left 460ms cubic-bezier(0.32, 1.2, 0.58, 1),
+    width 460ms cubic-bezier(0.32, 1.2, 0.58, 1),
+    height 460ms cubic-bezier(0.32, 1.2, 0.58, 1);
+}
+
+.primary-nav-indicator-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  transform-origin: 50% 50%;
+}
+
+.primary-nav-squish {
+  animation: primary-nav-pop 520ms cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+@keyframes primary-nav-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(0.55); }  /* 源位置挤压变小 */
+  82%  { transform: scale(1.08); }  /* 目标位置液态放大过冲 */
+  100% { transform: scale(1); }     /* 稳定 */
+}
+
+.primary-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  outline: none;
+  color: #fff;
+  transform-origin: 50% 50%;
+}
+
+/* 源按钮：液态挤压缩小然后回弹到 1 */
+.primary-nav-item-shrink {
+  animation: primary-nav-shrink 520ms cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+@keyframes primary-nav-shrink {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(0.88); }
+  100% { transform: scale(1); }
+}
+
+/* 目标按钮：液态放大过冲然后回落到 1 */
+.primary-nav-item-pop {
+  animation: primary-nav-pop-item 520ms cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+@keyframes primary-nav-pop-item {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+.notification-popup {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 320px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(22, 22, 22, 0.9);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  animation: notification-popup-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.notification-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.notification-popup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 332px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: none;
+}
+
+.notification-popup-list[data-scrolling='true'] {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.notification-popup-list::-webkit-scrollbar {
+  width: 0;
+}
+
+.notification-popup-list[data-scrolling='true']::-webkit-scrollbar {
+  width: 4px;
+}
+
+.notification-popup-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: transparent;
+}
+
+.notification-popup-list[data-scrolling='true']::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.notification-card {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.notification-card[data-hovered='true'] {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.notification-card[data-pressed='true'] {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+  transform: scale(0.985);
+}
+
+.notification-card-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: #7ae5b9;
+  box-shadow: 0 0 0 4px rgba(122, 229, 185, 0.1);
+}
+
+.notification-card-content {
+  display: -webkit-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.notification-close {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.66);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    transform 120ms ease;
+}
+
+.notification-close[data-hovered='true'] {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.notification-close[data-pressed='true'] {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  transform: scale(0.94);
+}
+
+.notification-empty-state {
+  min-height: 248px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 8px 8px;
+}
+
+.notification-empty-icon-wrap {
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: radial-gradient(circle at 50% 30%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
+}
+
+@keyframes notification-popup-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(-6px, 0, 0) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.qr-popup {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #161616;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  animation: qr-popup-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.qr-popup-code {
+  width: 120px;
+  height: 120px;
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: 50%;
+  background-repeat: no-repeat;
+}
+
+.qr-popup-caption {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+@keyframes qr-popup-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(-6px, 0, 0) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes voice-bar-1 {
+  0%, 100% { height: 4px; }
+  50% { height: 10px; }
+}
+@keyframes voice-bar-2 {
+  0%, 100% { height: 8px; }
+  50% { height: 3px; }
+}
+@keyframes voice-bar-3 {
+  0%, 100% { height: 5px; }
+  50% { height: 12px; }
+}
+@keyframes voice-bar-4 {
+  0%, 100% { height: 10px; }
+  50% { height: 4px; }
+}
+
+@keyframes api-bubble-nudge {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(6px); }
+  40%       { transform: translateX(-4px); }
+  60%       { transform: translateX(5px); }
+  80%       { transform: translateX(-3px); }
+}
+
+@keyframes slideDownBounce {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
+@keyframes slideUpBounce {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

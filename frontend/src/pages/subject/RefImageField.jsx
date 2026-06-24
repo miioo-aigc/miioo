@@ -1,6 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { apiBindSubjectReferenceImages } from '../../api/subject';
+import { normalizeImageUrl } from '../../utils/imageUrl';
 import { FONT } from "../../utils/fonts";
 import RefImageUploadCard from "./RefImageUploadCard";
+import AssetPickerModal from '../../components/AssetPickerModal';
+import RefImageItem from './RefImageItem';
 
 export default 
 function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], onRefImagesChange }) {

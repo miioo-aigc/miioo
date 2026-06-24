@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import CopyPromptButton from './CopyPromptButton';
 import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
 import ConfirmDialog from './ConfirmDialog';
@@ -6,35 +7,6 @@ import ConfirmDialog from './ConfirmDialog';
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-// ConfirmDeleteModal 已迁移至 ConfirmDialog 共享组件
-
-// Confirm delete modal component
-function CopyPromptButton({ text, onCopy }) {
-  const [hovCopy, setHovCopy] = useState(false);
-  const [pressCopy, setPressCopy] = useState(false);
-  const copyColor = pressCopy ? '#FFFFFF99' : hovCopy ? '#FFFFFFCC' : '#FFFFFF66';
-  return (
-    <button
-      type="button"
-      style={{ padding: 0, margin: 0, border: 0, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: copyColor, transition: 'color 120ms ease', flexShrink: 0 }}
-      onMouseEnter={() => setHovCopy(true)}
-      onMouseLeave={() => { setHovCopy(false); setPressCopy(false); }}
-      onMouseDown={() => setPressCopy(true)}
-      onMouseUp={() => setPressCopy(false)}
-      onClick={() => {
-        navigator.clipboard.writeText(text || '');
-        onCopy?.();
-      }}
-    >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M4.33337 4.14383V2.60413C4.33337 2.08636 4.75311 1.66663 5.27087 1.66663H13.3959C13.9136 1.66663 14.3334 2.08636 14.3334 2.60413V10.7291C14.3334 11.2469 13.9136 11.6666 13.3959 11.6666H11.8388" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M10.7291 4.33337H2.60413C2.08636 4.33337 1.66663 4.75311 1.66663 5.27087V13.3959C1.66663 13.9136 2.08636 14.3334 2.60413 14.3334H10.7291C11.2469 14.3334 11.6666 13.9136 11.6666 13.3959V5.27087C11.6666 4.75311 11.2469 4.33337 10.7291 4.33337Z" stroke="currentColor" strokeLinejoin="round"/>
-      </svg>
-    </button>
-  );
-}
-
-// ConfirmDeleteModal 已迁移至 ConfirmDialog 共享组件
 
 /**
  * 创作页视频详情弹窗
@@ -80,7 +52,6 @@ export default function CreationVideoDetailModal({
   favorited = false,
   onFavorite,
 }) {
-  console.log('CreationVideoDetailModal props:', { videoUrl, prompt, model, ratio, resolution, duration });
 
   if (!videoUrl) {
     console.error('CreationVideoDetailModal: videoUrl is missing!');
@@ -119,8 +90,6 @@ export default function CreationVideoDetailModal({
     const onTimeUpdate = () => setCurrentTime(vid.currentTime);
     const onLoaded = () => {
       setVideoDuration(vid.duration);
-      vid.volume = volume;
-      console.log('Video loaded:', vid.duration, vid.videoWidth, vid.videoHeight);
     };
     const onEnded = () => setIsPlaying(false);
     const onError = (e) => {
@@ -173,7 +142,6 @@ export default function CreationVideoDetailModal({
     setVolume(v);
     if (videoRef.current) {
       videoRef.current.volume = v;
-      console.log('Volume set to:', v);
     }
   }
 
@@ -318,7 +286,7 @@ export default function CreationVideoDetailModal({
             {/* Prompt */}
             <div className="flex flex-col py-[16px] px-[20px] gap-[10px]">
               <div className="flex items-center justify-between w-full">
-                <div className="tracking-[0.66px] uppercase font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[11px]/[14px]">
+                <div className="tracking-[0.66px] uppercase font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[12px]/[14px]">
                   提示词
                 </div>
                 <CopyPromptButton text={prompt} onCopy={handleCopyPrompt} />
@@ -406,80 +374,20 @@ export default function CreationVideoDetailModal({
               </>
             )}
 
-            {/* Generation params */}
-            <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
-            <div className="flex flex-col py-[16px] px-[20px] gap-[12px] bg-[#161616]">
-              <div className="tracking-[0.66px] uppercase inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[11px]/[14px]">
-                生成参数
-              </div>
-              {model && (
-                <div className="flex items-center justify-between">
-                  <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-xs/4">
-                    模型
-                  </div>
-                  <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFFCC] text-xs/4">
-                    {model}
-                  </div>
-                </div>
-              )}
-              {refMode && (
-                <div className="flex items-center justify-between">
-                  <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-xs/4">
-                    参考模式
-                  </div>
-                  <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFFCC] text-xs/4">
-                    {refMode === 'frame' ? '首尾帧' : refMode}
-                  </div>
-                </div>
-              )}
-              {ratio && (
-                <div className="flex items-center justify-between">
-                  <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-xs/4">
-                    画面比例
-                  </div>
-                  <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFFCC] text-xs/4">
-                    {ratio}
-                  </div>
-                </div>
-              )}
-              {resolution && (
-                <div className="flex items-center justify-between">
-                  <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-xs/4">
-                    分辨率
-                  </div>
-                  <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFFCC] text-xs/4">
-                    {resolution}
-                  </div>
-                </div>
-              )}
-              {duration && (
-                <div className="flex items-center justify-between">
-                  <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-xs/4">
-                    时长
-                  </div>
-                  <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFFCC] text-xs/4">
-                    {duration}
-                  </div>
-                </div>
-              )}
-              {sound !== undefined && (
-                <div className="flex items-center justify-between">
-                  <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-xs/4">
-                    声音
-                  </div>
-                  <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFFCC] text-xs/4">
-                    {sound ? '有' : '无'}
-                  </div>
-                </div>
-              )}
-            </div>
+           {/* Generation params */}
+           <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
+           <div className="flex flex-col py-[16px] px-[20px] gap-[12px] bg-[#161616]">
+             <div className="tracking-[0.66px] uppercase inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[12px]/[14px]">
+               生成参数
+             </div>
+           </div>
 
             {/* AI generation time */}
             {createdAt && (
               <>
                 <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
                 <div className="flex flex-col w-[280px] h-[66px] py-[16px] px-[20px] gap-[4px] shrink-0 bg-[#161616]">
-                  <div className="tracking-[0.66px] uppercase font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[11px]/[14px]">
+                  <div className="tracking-[0.66px] uppercase font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[12px]/[14px]">
                     AI 生成时间
                   </div>
                   <div className="tracking-[0.12px] font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF66] text-xs/4">

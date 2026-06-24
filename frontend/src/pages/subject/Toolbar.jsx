@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FONT, FONT_MEDIUM } from "../../utils/fonts";
 import GhostBtn from "../../components/GhostBtn";
 import MoreMenu from "./MoreMenu";
+ import PrimaryButton from './PrimaryButton';
 
 export default 
 function Toolbar({ projectName, onBack, onAddChar, onBatchGen, onStartStoryboard, addLabel = '添加角色', tabLabel = '角色' }) {
@@ -26,27 +27,22 @@ function Toolbar({ projectName, onBack, onAddChar, onBatchGen, onStartStoryboard
 
       {/* actions */}
       <div className="flex items-center gap-[8px]">
-        <GhostButton
-          label={addLabel}
-          onClick={onAddChar}
-          icon={
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-              <path d="M8 3v10M3 8h10" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          }
-        />
-        <GhostButton
-          label={`批量生成${tabLabel}`}
-          fontSize={13}
-          onClick={onBatchGen}
-          icon={
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-              <rect x="2" y="3" width="4" height="5" rx="1" stroke="#FFFFFF" strokeWidth="1.2" />
-              <rect x="8" y="3" width="4" height="5" rx="1" stroke="#FFFFFF" strokeWidth="1.2" />
-              <path d="M2 10.5H12" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
-            </svg>
-          }
-        />
+       <GhostBtn onClick={onAddChar} icon={
+         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+           <path d="M8 3v10M3 8h10" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
+         </svg>
+        }>
+        {addLabel}
+       </GhostBtn>
+       <GhostBtn fontSize={13} onClick={onBatchGen} icon={
+         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+           <rect x="2" y="3" width="4" height="5" rx="1" stroke="#FFFFFF" strokeWidth="1.2" />
+           <rect x="8" y="3" width="4" height="5" rx="1" stroke="#FFFFFF" strokeWidth="1.2" />
+           <path d="M2 10.5H12" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
+         </svg>
+        }>
+        批量生成{tabLabel}
+       </GhostBtn>
         <PrimaryButton
           label="开始智能分镜"
           onClick={onStartStoryboard}

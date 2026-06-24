@@ -151,7 +151,7 @@ function MoreOptionsMenu({ close, setWatermarkSettingsOpen }) {
     } else if (label === '更新日志') {
       // 链接待补充
     } else if (label === '开源社区') {
-      window.open('https://github.com/wangchengxv/miioo', '_blank');
+      window.open('https://github.com/miioo-aigc/miioo', '_blank');
     } else if (label === '用户协议') {
       window.open('https://gcn0je6sgrhe.feishu.cn/wiki/FIspwGURtikxiwk28svc4thOn9c?from=from_copylink', '_blank');
     } else if (label === '隐私政策') {
@@ -1467,7 +1467,8 @@ export default function Home({ onProjectCreated }) {
     const projectName = activeProject.name || projectId;
     setExtractError(null);
     try {
-      // 调用主动提取接口（POST）而非仅查询已有主体
+      // 先定稿剧本，再提取主体
+      await apiFinalizeScriptWorkspace(projectId, { episode_count: null, model: null });
       const result = await apiExtractSubjectsFromScript(projectId);
       const allSubjects = [...(result.created || []), ...(result.updated || [])];
 

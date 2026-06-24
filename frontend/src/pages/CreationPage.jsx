@@ -2,13 +2,14 @@ import { normalizeImageUrl } from '../utils/imageUrl';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { PulsingBorder } from '@paper-design/shaders-react';
-import { apiGenerateCreation, apiGetVideoLastFrame, apiDeleteCreationImage, apiDeleteCreationVideo, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiCreateSession, apiGetSession, apiCreateShot, apiUpdateShot, apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../api/creation';
+import { apiGenerateCreation, apiDeleteCreationImage, apiDeleteCreationVideo, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiCreateSession, apiGetSession, apiCreateShot, apiUpdateShot, apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { apiListModels } from '../api/config';
 import { adaptModels, getModelParams } from '../utils/modelAdapter';
 import AssetPickerModal from '../components/AssetPickerModal';
 import CreationVideoDetailModal from '../components/CreationVideoDetailModal';
 import buildPromptHTML from '../utils/buildPromptHTML';
+import { cachePromptHTML, getCachedPromptHTML } from '../utils/promptHTMLCache';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -330,9 +331,9 @@ function UploadPlaceholder({ onFileSelect, onAssetPick, disabled = false, allowe
       e.target.value = '';
       return;
     }
-    const oversizedImg = selected.find((file) => isImageFile(file) && file.size > 5 * 1024 * 1024);
+    const oversizedImg = selected.find((file) => isImageFile(file) && file.size > 20 * 1024 * 1024);
     if (oversizedImg) {
-      alert('抱歉，平台暂不支持上传5M以上的图片资源！');
+      alert('抱歉，平台暂不支持上传20M以上的图片资源！');
       e.target.value = '';
       return;
     }
@@ -452,8 +453,8 @@ function FrameUploader({ firstFile, lastFile, onFirstChange, onLastChange, onSwa
       e.target.value = '';
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      alert('抱歉，平台暂不支持上传5M以上的图片资源！');
+    if (file.size > 20 * 1024 * 1024) {
+      alert('抱歉，平台暂不支持上传20M以上的图片资源！');
       e.target.value = '';
       return;
     }
@@ -462,7 +463,7 @@ function FrameUploader({ firstFile, lastFile, onFirstChange, onLastChange, onSwa
     e.target.value = '';
   };
 
-  const firstPreview = firstFile ? (firstFile.previewUrl || URL.createObjectURL(firstFile)) : null;
+  const firstPreview = firstFile ? (firstFile.previewUrl || (firstFile instanceof File || firstFile instanceof Blob ? URL.createObjectURL(firstFile) : null)) : null;
   const lastPreview = lastFile ? (lastFile.previewUrl || URL.createObjectURL(lastFile)) : null;
 
   const renderSlot = ({ label, preview, hovered, setHovered, wrapperRef, inputRef, menuOpen, setMenuOpen, onChange, onAssetPick, isFirst }) => {
@@ -510,9 +511,11 @@ function FrameUploader({ firstFile, lastFile, onFirstChange, onLastChange, onSwa
           {hasImg && hovered && (
             <>
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', borderRadius: '4px' }} />
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={(e) => { e.stopPropagation(); e.preventDefault(); onChange(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); onChange(null); } }}
                 style={{
                   position: 'absolute', top: '-7px', right: '-7px',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -524,7 +527,7 @@ function FrameUploader({ firstFile, lastFile, onFirstChange, onLastChange, onSwa
                   <path d="M4.667 4.667L11.333 11.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
                   <path d="M4.667 11.333L11.333 4.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-              </button>
+              </div>
             </>
           )}
         </button>
@@ -718,15 +721,17 @@ const IMAGE_EXTS_SET = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'
 const VIDEO_EXTS_SET = new Set(['.mp4', '.mov', '.avi', '.webm', '.mkv', '.wmv', '.flv']);
 
 function isImageFile(file) {
+  if (file.asset_type === 'image') return true;
   if (file.isAsset && file.url) {
     if (/\.(jpg|jpeg|png|webp|gif|bmp|tiff?|heic|heif)$/i.test(file.url)) return true;
-    // URL has no extension (e.g. picsum.photos) — fall through to check file.name
+    // URL has no extension (e.g. CDN/OSS paths) — fall through to check file.name
   }
   const ext = '.' + (file.name || '').split('.').pop().toLowerCase();
   return IMAGE_EXTS_SET.has(ext);
 }
 
 function isVideoFile(file) {
+  if (file.asset_type === 'video') return true;
   if (file.isAsset && file.url) {
     if (/\.(mp4|mov|avi|webm|mkv|wmv|flv)$/i.test(file.url)) return true;
   }
@@ -2082,9 +2087,21 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       } else if (prefillData.prompt) {
         editorRef.current.textContent = prefillData.prompt;
       }
-      setHasContent((prefillData.prompt || '').trim().length > 0);
+      setHasContent(
+        (prefillData.prompt || '').trim().length > 0 ||
+        !!(prefillData.promptHTML && prefillData.promptHTML.trim().length > 0)
+      );
     }
-    if (prefillData.files !== undefined) setFiles(prefillData.files);
+    if (prefillData.appendFiles !== undefined) {
+      setFiles((prev) => {
+        const toAdd = prefillData.appendFiles.filter(
+          (f) => !prev.some((p) => p.url === f.url)
+        );
+        return [...prev, ...toAdd];
+      });
+    } else if (prefillData.files !== undefined) {
+      setFiles(prefillData.files);
+    }
     if (prefillData.ratio !== undefined) setRatio(prefillData.ratio);
     if (prefillData.resolution !== undefined) setResolution(prefillData.resolution);
     if (prefillData.count !== undefined) setCount(prefillData.count);
@@ -2119,9 +2136,9 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
   const uploadAcceptAttr = uploadAllowedExts.join(',');
 
   const handleFileSelect = (newFiles) => {
-    const oversized = newFiles.filter((f) => isImageFile(f) && f.size > 5 * 1024 * 1024);
+    const oversized = newFiles.filter((f) => isImageFile(f) && f.size > 20 * 1024 * 1024);
     if (oversized.length > 0) {
-      alert('抱歉，平台暂不支持上传5M以上的图片资源！');
+      alert('抱歉，平台暂不支持上传20M以上的图片资源！');
       return;
     }
     const enriched = newFiles.map((f) => {
@@ -2152,7 +2169,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     setAssetPickerOpen(false);
     if (frameAssetTarget && selectedAssets.length > 0) {
       const asset = selectedAssets[0];
-      const assetFile = { name: asset.name || asset.id, size: 0, url: asset.url, isAsset: true };
+      const assetFile = { name: asset.name || asset.id, size: 0, url: asset.fileUrl || asset.url, isAsset: true, asset_type: asset.asset_type || null };
       if (frameAssetTarget === 'first') setFirstFrameFile(assetFile);
       else setLastFrameFile(assetFile);
       setFrameAssetTarget(null);
@@ -2161,9 +2178,10 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     const assetFiles = selectedAssets.map((asset) => ({
       name: asset.name || asset.id,
       size: 0,
-      url: asset.url,
+      url: asset.fileUrl || asset.url,
       assetId: asset.id || asset.asset_id || undefined,
       isAsset: true,
+      asset_type: asset.asset_type || null,
     }));
     setFiles((prev) => [...prev, ...assetFiles]);
   };
@@ -2285,7 +2303,15 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
 
   const handleSend = async () => {
     if (!canSend) return;
-    const currentText = editorRef.current?.innerText?.trim() ?? '';
+    // 剔除 @标签节点后取纯文字，避免把文件名混入发给后端的 prompt
+    let currentText = '';
+    if (editorRef.current) {
+      const clone = editorRef.current.cloneNode(true);
+      clone.querySelectorAll('[data-file-ref]').forEach((el) => el.remove());
+      currentText = clone.innerText?.trim() ?? '';
+    }
+    // 保存完整 HTML（含标签样式节点），用于详情展示和重新编辑回填
+    const savedHTML = editorRef.current?.innerHTML ?? '';
     // 视频模式：把「全能参考」/「首尾帧」映射为当前模型支持的实际 reference_mode
     let actualRefMode = refMode;
     if (genType === 'video') {
@@ -2298,6 +2324,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     }
     const result = await onGenerate?.({
       prompt: currentText,
+      promptHTML: savedHTML,
       genType,
       model,
       ...(genType === 'image' ? { ratio, resolution, count } : {}),
@@ -2961,7 +2988,11 @@ function ImageDetailModal({ card, onClose, onDelete, favorited, onToggleFavorite
                       <div style={{ fontFamily: FONT, fontSize: '11px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>提示词</div>
                       <CopyPromptButton text={card.prompt} onCopy={handleCopyPrompt} />
                     </div>
-                    <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{card.prompt || '—'}</div>
+                    <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>
+                      {card.promptHTML
+                        ? <span dangerouslySetInnerHTML={{ __html: card.promptHTML }} />
+                        : (card.prompt || '—')}
+                    </div>
                   </div>
 
                   {/* 参考图 */}
@@ -3546,33 +3577,49 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
                    });
                    setPrefillVersion((v) => v + 1);
                  }}
-                 onUseAsFirstFrame={async () => {
-                    try {
-                      // 调用后端 API 获取视频尾帧
-                      const result = await apiGetVideoLastFrame(card.videoUrl);
-                      const lastFrameUrl = result.lastFrameUrl;
+                 onUseAsFirstFrame={() => {
+                    if (!card.videoUrl) return;
+                    const video = document.createElement('video');
+                    video.crossOrigin = 'anonymous';
+                    video.preload = 'metadata';
+                    video.muted = true;
+                    video.src = card.videoUrl;
+
+                    const extractFrame = () => {
+                      const canvas = document.createElement('canvas');
+                      canvas.width = video.videoWidth;
+                      canvas.height = video.videoHeight;
+                      const ctx = canvas.getContext('2d');
+                      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
 
                       // 切换到首尾帧模式
                       onSwitchToFrameMode?.();
 
-                      // 将尾帧作为首帧参考传入
+                      // 将提取到的尾帧作为首帧参考填入
                       setPrefillData({
                         firstFrameFile: {
                           name: 'last-frame.jpg',
-                          url: lastFrameUrl,
-                          previewUrl: lastFrameUrl,
+                          url: dataUrl,
+                          previewUrl: dataUrl,
                           isAsset: false,
-                          size: 0
+                          size: 0,
+                          type: 'image/jpeg',
                         },
                         refMode: 'frame',
                       });
                       setPrefillVersion((v) => v + 1);
-
                       showToast('success', '尾帧已添加为首帧参考');
-                    } catch (error) {
-                      console.error('Failed to get video last frame:', error);
+                    };
+
+                    video.addEventListener('loadedmetadata', () => {
+                      // seek 到最后一帧（留 0.1s 冗余避免部分浏览器 seek 不到末尾）
+                      video.currentTime = Math.max(0, video.duration - 0.1);
+                    });
+                    video.addEventListener('seeked', extractFrame, { once: true });
+                    video.addEventListener('error', () => {
                       showToast('error', '获取尾帧失败，请重试');
-                    }
+                    });
                   }}
                   onDelete={() => onDeleteCard?.(card.genId, card.cardIndex)}
                 />
@@ -3605,7 +3652,7 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
                }}
                onUseAsRef={() => {
                  setPrefillData({
-                    files: [{ name: 'creation.png', url: card.imageUrl, previewUrl: card.imageUrl, assetId: card.assetId || card.id || undefined, isAsset: true, size: 0, type: 'image/png' }],
+                    appendFiles: [{ name: 'creation.png', url: card.imageUrl, previewUrl: card.imageUrl, assetId: card.assetId || card.id || undefined, isAsset: true, size: 0, type: 'image/png' }],
                  });
                  setPrefillVersion((v) => v + 1);
                 }}
@@ -3919,6 +3966,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   const [activeTab, setActiveTab] = useState('image');
   const [genType, setGenType] = useState('image');
   const [generating, setGenerating] = useState(false);
+  const [pendingCountByTab, setPendingCountByTab] = useState({ image: 0, video: 0, dubbing: 0 });
   const [activeCountByTab, setActiveCountByTab] = useState({ image: 0, video: 0, dubbing: 0 });
   const incrementActive = (tab) => setActiveCountByTab(prev => ({ ...prev, [tab]: (prev[tab] || 0) + 1 }));
   const decrementActive = (tab) => setActiveCountByTab(prev => ({ ...prev, [tab]: Math.max(0, (prev[tab] || 0) - 1) }));
@@ -4017,6 +4065,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       duration: item.duration || undefined,
       model: item.model || '',
       prompt: item.prompt || '',
+      promptHTML: getCachedPromptHTML(url) || buildPromptHTML(item.prompt || '', refImages),
       refImages,
       ...(histRefMode ? { refMode: histRefMode } : {}),
       ...(histFirstFrame ? { firstFrame: histFirstFrame } : {}),
@@ -4260,6 +4309,8 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     setGenerating(true);
     // Parse count: '2张' → 2, fallback to 1
     const countNum = parseInt(params.count) || 1;
+    const genTabKey = params.genType || 'image';
+    setPendingCountByTab(prev => ({ ...prev, [genTabKey]: countNum }));
     let shotId = null;
 
     // Create a backend shot if session is active
@@ -4303,14 +4354,24 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         createdAt: new Date().toISOString(),
         genType: params.genType || 'image',
       };
-
       // 添加成功生成的卡片
 
-      const refModeVal = (result.reference_mode || result.referenceMode || '').toLowerCase();
+      const refModeVal = (result.reference_mode || result.referenceMode || params.refMode || '').toLowerCase();
       const FRAME_MODE_VALS = new Set(['first_frame', 'last_frame', 'start_end', 'multiframe']);
       const refMode = FRAME_MODE_VALS.has(refModeVal) ? 'frame' : (refModeVal === 'full' ? 'all' : (refModeVal || ''));
-      const firstFrameUrl = normalizeImageUrl(result.first_frame_url || result.firstFrameUrl || '') || undefined;
-      const lastFrameUrl = normalizeImageUrl(result.last_frame_url || result.lastFrameUrl || '') || undefined;
+      // 后端不一定会回传首尾帧 URL，fallback 到用户提交的 params 中的文件 URL
+      // 跳过 data: / blob: 这类临时 URL（data: 存进状态会触发 431，blob: 刷新后失效）
+      const isPersistableUrl = (u) => typeof u === 'string' && u.length > 0 && !u.startsWith('data:') && !u.startsWith('blob:');
+      const firstFrameRaw =
+        result.first_frame_url || result.firstFrameUrl ||
+        (isPersistableUrl(params.firstFrameFile?.url) ? params.firstFrameFile.url : undefined) ||
+        (isPersistableUrl(params.firstFrameFile?.previewUrl) ? params.firstFrameFile.previewUrl : undefined) || '';
+      const lastFrameRaw =
+        result.last_frame_url || result.lastFrameUrl ||
+        (isPersistableUrl(params.lastFrameFile?.url) ? params.lastFrameFile.url : undefined) ||
+        (isPersistableUrl(params.lastFrameFile?.previewUrl) ? params.lastFrameFile.previewUrl : undefined) || '';
+      const firstFrameUrl = normalizeImageUrl(firstFrameRaw) || undefined;
+      const lastFrameUrl = normalizeImageUrl(lastFrameRaw) || undefined;
       addGeneration(currentTab, {
         id: genId,
         shot_id: shotId || undefined,
@@ -4341,6 +4402,14 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         })),
       });
 
+      // 缓存 promptHTML 到 localStorage，供刷新后历史记录恢复芯片样式
+      if (!isVideoGen && genMeta.promptHTML) {
+        mediaUrls.forEach((url) => {
+          const normalizedUrl = normalizeImageUrl(url) || url;
+          cachePromptHTML(normalizedUrl, genMeta.promptHTML);
+        });
+      }
+
       // Update backend shot with result URLs
       if (shotId) {
         try {
@@ -4361,6 +4430,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       return { success: false };
     } finally {
       setGenerating(false);
+      setPendingCountByTab(prev => ({ ...prev, [genTabKey]: 0 }));
     }
   };
 
@@ -4518,6 +4588,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               historyLoading={historyMeta[activeTab]?.loading}
               historyHasMore={historyMeta[activeTab]?.hasMore}
               onLoadMore={() => loadHistoryPage(activeTab)}
+              pendingCount={pendingCountByTab[genType] ?? 0}
               activeCount={activeCountByTab[genType] ?? 0}
               onBeforeModelOpen={() => {
                 if (!apiConfigured) { onShowNoModelNotice?.(); return false; }

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { FONT } from "../../utils/fonts";
 import GhostBtn from "../../components/GhostBtn";
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 export default 
 function MoreMenu({ onDownload, onDelete }) {

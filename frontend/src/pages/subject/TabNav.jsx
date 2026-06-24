@@ -1,5 +1,10 @@
 import { useState } from "react";
 import { FONT, FONT_MEDIUM } from "../../utils/fonts";
+export const TABS = [
+  { key: 'char', label: '角色' },
+  { key: 'scene', label: '场景' },
+  { key: 'prop', label: '道具' },
+];
 
 export default 
 function TabNav({ activeTab, counts, onChange }) {

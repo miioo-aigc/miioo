@@ -38,10 +38,11 @@ let refreshPromise = null;
 function cloneFormData(fd) {
   const c = new FormData();
   for (const [k, v] of fd.entries()) {
-    // File 类型需要保留克隆前已设置的文件名（第三参数），
-    // 直接 append(k, v) 会回退到 File.name（可能含中文），导致服务端 500
+    // 创建独立 File 副本：new File([v], ...) 深拷贝 Blob 数据，
+    // 避免 401 重试时共享引用导致首次 fetch 消耗流后 body 为空 → 422
     if (v instanceof File) {
-      c.append(k, v, v.name);
+      const copy = new File([v], v.name, { type: v.type, lastModified: v.lastModified });
+      c.append(k, copy, v.name);
     } else {
       c.append(k, v);
     }

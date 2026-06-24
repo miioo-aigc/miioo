@@ -9,6 +9,10 @@ import ParamsSelector from './ParamsSelector';
 import VideoParamsSelector from './VideoParamsSelector';
 import SoundToggle from './SoundToggle';
 import DubbingAdjust from './DubbingAdjust';
+import { DEFAULT_EMOTIONS } from './DubbingAdjust';
+import AssetPickerModal from './AssetPickerModal';
+import RefModeSelector from './RefModeSelector';
+import DubbingVoiceModal, { DubbingVoiceFileCard } from '../pages/DubbingVoiceModal';
 import UploadPlaceholder from './UploadPlaceholder';
 import FrameUploader from './FrameUploader';
 import FileCard from './FileCard';
@@ -189,18 +193,21 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
   }, [genType, refMode, modelOptions]);
 
   // Video: sync model when refMode changes
-  const handleRefModeChange = useCallback((newRefMode) => {
-    // 切换到首尾帧：将 files 中的图片迁移到帧槽位，其余丢弃
-    if (newRefMode === 'frame') {
-      const imageFiles = files.filter(f => isImageFile(f));
-      setFirstFrameFile(imageFiles[0] || null);
-      setLastFrameFile(imageFiles[1] || null);
-      setFiles([]);
-    }
-    // 离开首尾帧：将帧槽位的图片合并回 files 作为普通参考图
-    if (refMode === 'frame' && newRefMode !== 'frame') {
-      const carried = [firstFrameFile, lastFrameFile].filter(Boolean);
-      if (carried.length > 0) setFiles(carried);
+  const handleRefModeChange = useCallback((newRefMode, { fromPrefill = false } = {}) => {
+    // 用户手动切换时：迁移 files ↔ 帧槽位
+    if (!fromPrefill) {
+      // 切换到首尾帧：将 files 中的图片迁移到帧槽位，其余丢弃
+      if (newRefMode === 'frame') {
+        const imageFiles = files.filter(f => isImageFile(f));
+        setFirstFrameFile(imageFiles[0] || null);
+        setLastFrameFile(imageFiles[1] || null);
+        setFiles([]);
+      }
+      // 离开首尾帧：将帧槽位的图片合并回 files 作为普通参考图
+      if (refMode === 'frame' && newRefMode !== 'frame') {
+        const carried = [firstFrameFile, lastFrameFile].filter(Boolean);
+        if (carried.length > 0) setFiles(carried);
+      }
     }
     setRefMode(newRefMode);
     const filtered = newRefMode === 'frame'
@@ -292,7 +299,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     if (prefillData.resolution !== undefined) setResolution(prefillData.resolution);
     if (prefillData.count !== undefined) setCount(prefillData.count);
     if (prefillData.duration !== undefined) setVideoDuration(prefillData.duration);
-    if (prefillData.refMode !== undefined) setRefMode(prefillData.refMode);
+    if (prefillData.refMode !== undefined) handleRefModeChange(prefillData.refMode, { fromPrefill: true });
     if (prefillData.firstFrameFile !== undefined) setFirstFrameFile(prefillData.firstFrameFile);
     if (prefillData.lastFrameFile !== undefined) setLastFrameFile(prefillData.lastFrameFile);
   }, [prefillVersion]); // eslint-disable-line react-hooks/exhaustive-deps

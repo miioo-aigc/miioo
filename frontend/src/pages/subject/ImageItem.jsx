@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { FONT } from "../../utils/fonts";
+import Checkbox from '../../components/Checkbox';
+import DotsLoading from '../../components/DotsLoading';
+import IconBtn from './IconBtn';
 
 export default function ImageItem({ settled, imageUrl, imageId, onView, onSettledChange, onDownload }) {
   const [hovered, setHovered] = useState(false);

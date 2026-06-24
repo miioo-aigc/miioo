@@ -127,7 +127,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
 
     const normalizeShots = (data) => {
       if (!Array.isArray(data)) return [];
-      return data.map(be => enrichMainRefs(normalizeStoryboard(be), chars));
+      return data.map(be => enrichMainRefs(normalizeStoryboard(be), chars))
+        .map((s, i) => ({ ...s, number: i + 1 }));
     };
 
     apiGetStoryboards(projectId, { episode_id: episodeId })

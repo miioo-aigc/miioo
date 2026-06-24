@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { FONT } from '../../utils/fonts';
 import GhostBtn from '../../components/GhostBtn';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import DownloadIcon from './DownloadIcon';
+import TrashIcon from './TrashIcon';
 
 export default function MoreMenu({ onDownload, onDelete }) {
   const [open, setOpen] = useState(false);

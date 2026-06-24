@@ -1,6 +1,6 @@
 # miioo 项目进度管理文档
 
-> 最后更新：2026-06-03
+> 最后更新：2026-06-24（重构持续进行中）
 
 ---
 
@@ -390,3 +390,252 @@ API 配置弹窗模型列表卡片新增「设为默认」交互：
   TODO: 替换为真实接口  — 需要替换的位置
   ```
 - 详细清单见 `API_AUDIT.md`，按 P0 → P1 → P2 → P3 优先级排列
+---
+
+## 六、代码重构 — CreationPage 组件拆分
+
+> 最后更新：2026-06-24（重构持续进行中）
+
+### 目标
+
+将 `src/pages/CreationPage.jsx`（原 5357 行）和 `src/pages/StoryboardPage.jsx`（原 6639 行）中的内联组件逐步抽离为 `src/components/` 下的独立文件。每个组件文件只做一件事，便于测试、复用和维护。
+
+### 总览
+
+| 指标 | 值 |
+|------|-----|
+| CreationPage 原大小 | 5357 行 |
+| CreationPage 现大小 | 919 行 |
+| StoryboardPage 现大小 | 478 行 |
+| AssetsPage 原大小 | 4015 行 |
+| AssetsPage 现大小 | 548 行 |
+| SubjectPage 现大小 | 2911 行 |
+| SubjectPage 现大小 | 908 行 |
+
+| Home.jsx | 2185 行 |
+| ScriptPage.jsx | 2240 行 |
+| 已减少（全部页面） | **12940 行（59.3%）** |
+| 新建组件 | 136 个 |
+| 新建工具文件 | 17 个 |
+| StoryboardPage 状态 | ✅ 完成，478 行，storyboard/ 子目录（components 7 + hooks 3） |
+
+### 已完成 — 批次 1（纯 SVG 图标）
+
+**创建 7 个文件，-150 行**
+
+| 组件 | 说明 |
+|------|------|
+| `StarIcon` | 收藏星标，已在 ImageDetailModal 中重复定义，后续需去重 |
+| `RatioIcon` | 画面比例标识方块 |
+| `DubbingEqIcon` | 配音均衡器图标 |
+| `EmptyIconShell` | SVG 容器（渐变遮罩+圆角矩形基底），被下方 3 个组件共用 |
+| `CreationEmptyIconImage` | 图片空态图标 |
+| `CreationEmptyIconVideo` | 视频空态图标（胶片+播放三角） |
+| `CreationEmptyIconDubbing` | 配音空态图标（麦克风） |
+
+**同时提取**：`downloadImage` → `src/utils/downloadImage.js`
+
+> **注意**：`StarIcon`、`ModalActionBtn`、`formatCreationDate`、`downloadImage` 在 `src/components/ImageDetailModal.jsx` 中也有重复定义，后续去重。
+
+### 已完成 — 批次 2（简单按钮/菜单项）
+
+**创建 9 个文件（含 fonts.js），-241 行**
+
+| 组件 | 说明 |
+|------|------|
+| `UploadMenuItem` | 上传菜单项按钮 |
+| `GenTypeDropdownItem` | 生成类型下拉项（选中/未选中双图标） |
+| `DropdownItem` | 通用下拉项 |
+| `RefModeDropdownItem` | 参考图模式下拉项 |
+| `CardActionBtn` | 卡片操作按钮（含 Tooltip） |
+| `ModalActionBtn` | 弹窗操作按钮 |
+| `CreationGhostBtn` | 幽灵风格按钮 |
+| `CreationPlainBtn` | 朴素风格按钮 |
+
+**同时提取**：`FONT` / `FONT_MEDIUM` → `src/utils/fonts.js`
+
+### 已完成 — 批次 3（轻量组件 + 工具函数）
+
+**创建 8 个文件，-322 行**
+
+| 组件/工具 | 说明 |
+|-----------|------|
+| `CopyPromptButton` | 复制提示词按钮 |
+| `Toast` | Toast 通知（success/warning/error 三态 SVG 图标） |
+| `SoundToggle` | 配音开关（ant-design 风格滑块） |
+| `CreationTabBar` | 图片/视频/配音三标签栏（内嵌 DEFAULT_TABS） |
+| `BatchButton` | 批量操作按钮 |
+| `CreationLoginEmptyState` | 未登录空态提示 |
+| `formatMentionLabel` | 文件名截断工具 → `src/utils/formatMentionLabel.js` |
+| `formatCreationDate` | ISO 时间格式化 → `src/utils/formatCreationDate.js` |
+
+
+### 已完成 — 批次 4（中等复杂度组件）
+
+**创建 7 个文件，-801 行，自动修复 2 个 bug**
+
+| 组件 | 说明 |
+|------|------|
+| `Dropdown` | 通用下拉容器（useRef + useEffect 外部点击关闭） |
+| `GenTypeSelector` | 生成类型选择器，依赖 Dropdown + GenTypeDropdownItem，接受 `options` prop |
+| `ModelSelector` | 模型选择器，依赖 Dropdown + DropdownItem |
+| `ParamsSelector` | 画面参数选择器（比例/分辨率/数量），依赖 RatioIcon |
+| `VideoParamsSelector` | 视频参数选择器（比例/分辨率/时长），独立实现 |
+| `RefModeSelector` | 参考图模式选择器，内联下拉实现 + 6 个 SVG 图标常量 |
+| `DubbingAdjust` | 配音语速/情绪调节面板，依赖 DubbingEqIcon |
+
+**自动修复的 bug**：
+1. `DEFAULT_EMOTIONS` 常量在整个代码库中未定义（ReferenceError 潜在风险）→ 在 DubbingAdjust 组件内补上
+2. InputCard 二行函数签名的第一行 `function InputCard({ onGenerate, ...` 被 sed 范围删除意外清除 → 重新插入
+
+
+
+### 已完成 — 批次 6（结果卡片组件）
+
+**创建 4 个文件，-1098 行**
+
+| 组件 | 说明 |
+|------|------|
+| `ImageDetailModal` | 图片详情弹窗（带 DETAIL_PANEL_DIVIDER 常量） |
+| `VideoResultCard` | 视频结果卡片（hover 内联播放 + shimmer 骨架 + 批量选择） |
+| `ImageResultCard` | 图片结果卡片（缩略图 + 详情弹窗联动 + shimmer） |
+| `AudioResultCard` | 音频结果卡片（播放/暂停 + 波形动画 + 删除） |
+
+### 已完成 — 批次 7（聚合组件 + 页面骨架）
+
+**创建 3 个文件（含 InputCard），-1056 行**
+
+| 组件 | 说明 |
+|------|------|
+| `CreationResultState` | 创作结果容器（多标签生成历史 + 无限滚动 + 重新编辑/首帧交换/删除） |
+| `CreationEmptyState` | 空态提示（居中图标 + InputCard 定位） |
+| `InputCard` | **最大的组件（915 行）**，整合 GenTypeSelector/ModelSelector/ParamsSelector/SendButton 等 15+ 子组件 |
+| （页面骨架）| CreationPage 主体逻辑（~919 行，state + handlers + 布局编排） |
+
+### 已完成 — 批次 8（StoryboardPage 初步拆分）
+
+**创建 9 个文件，-240 行**
+
+| 组件 | 说明 |
+|------|------|
+| `SpinnerIcon` | 旋转加载图标 |
+| `GhostBtn` | 幽灵按钮（含 loading Spinner） |
+| `PrimaryBtn` | 主按钮 |
+| `SecondaryBtn` | 次按钮 |
+| `ModalOverlay` | 弹窗遮罩层（createPortal + backdropFilter） |
+| `ModalGhostBtn` | 弹窗幽灵按钮 |
+| `ModalCloseBtn` | 弹窗关闭按钮 |
+| `ImgUploadBtn` | 图片上传按钮 |
+| `RefSlotBtn` | 参考图槽位按钮 |
+
+**注意**：BatchImageModal、BatchVideoModal、ImgUploadCard、PanelSelect、FrameUploadSlot、PanelUploadSlot、PanelPromptInput 等因紧密耦合于 StoryboardPage 的 state，暂未提取。
+
+
+### 依赖提取提示
+
+CreationPage 中有些内联常量被多个组件引用，提取前需确认是否所有引用方都已提取或复制：
+
+| 常量 | 引用方 | 处理方式 |
+|------|--------|----------|
+| `FONT` / `FONT_MEDIUM` | 几乎所有组件 | ✅ 已提取到 `src/utils/fonts.js` |
+| `ALLOWED_EXTS` / `ALLOWED_IMAGE_EXTS` / `ALLOWED_VIDEO_EXTS` / `ALLOWED_AUDIO_EXTS` / `ALLOWED_MEDIA_EXTS` | UploadPlaceholder / FrameUploader / FileCard | ✅ 已迁入到 src/utils/fileTypes.js |
+| `GEN_TYPE_OPTIONS` | GenTypeSelector | 待提取时已嵌入 InputCard.jsx |
+| `EMPTY_ICON_MAP` | CreationEmptyState | 已嵌入 CreationEmptyState.jsx |
+| `DETAIL_PANEL_DIVIDER` | ImageDetailModal | 已迁入 ImageDetailModal.jsx |
+
+---
+
+### StoryboardPage 深层 Hook 提取 (2026-06-24)
+
+从 StoryboardPage.jsx 逐层提取自定义 Hook，叶子先提取再聚合。
+
+| 批次 | Hook | 提取行数 | 文件 | 状态 |
+|------|------|----------|------|------|
+| 1 | `useDownloadMode` | ~74 | `storyboard/useDownloadMode.js` | ✅ 完成 |
+| 2 | `useShotOperations` | ~105 | `storyboard/useShotOperations.js` | ✅ 完成 |
+| 3 | `useBatchGeneration` | ~200 | `storyboard/useBatchGeneration.js` | ✅ 完成 |
+
+**批次 3 详情（刚刚完成）**：
+- 提取批量生成 + 单镜头生成逻辑到 useBatchGeneration hook
+- StoryboardPage.jsx: 678 → **478 行** (-200 行)
+- 移除无用导入：taskPolling 系列、apiGenerate* 系列、toAbsoluteUrl
+- JSX onGenerate 回调变为 4-6 行薄包装，实际逻辑由 hook 管理
+- 构建：✅ 通过 (579 modules, 328ms)
+
+---
+
+### SubjectPage 组件提取（2026-06-23 ~ 06-24）
+
+将 SubjectPage.jsx 从 2702 行缩减到 908 行，提取 19 个文件到 `pages/subject/`。
+
+| 组件 | 说明 |
+|------|------|
+| SelectField | 下拉选择字段 |
+| VoiceCard | 配音卡片 |
+| TabNav | 标签导航 |
+| Toolbar | 工具栏 |
+| AddCard | 新增卡片 |
+| CharCard | 角色卡片 |
+| EditSubjectPanel | 编辑主体面板 |
+| ImageViewModal | 图片查看弹窗 |
+| MoreMenu | 更多菜单 |
+| RadioOption | 单选选项 |
+| RefImageField | 参考图字段 |
+| RefImageItem | 参考图项 |
+| RefImageUploadCard | 参考图上传卡片 |
+| SubjectRefHoverPreview | 主体参考图悬停预览 |
+| UploadBtn | 上传按钮 |
+| VoiceSelectModal | 配音选择弹窗 |
+| ImageItem | 图片项 |
+| ImageItemUpload | 图片上传项 |
+| IconBtn | 图标按钮 |
+
+### AssetsPage 组件提取（2026-06-24）
+
+将 AssetsPage.jsx 从 4015 行缩减到 548 行，提取 20 个文件到 `pages/assets/`。
+
+| 组件 | 说明 |
+|------|------|
+| AssetCard | 资产卡片 |
+| AssetDetailModal | 资产详情弹窗 |
+| ProjectAssetCard | 项目资产卡片 |
+| ProjectAssetsPanel | 项目资产面板 |
+| AudioCard | 音频卡片 |
+| BatchActionBtn | 批量操作按钮 |
+| MoreMenu | 更多菜单 |
+| FavFilterCheckbox | 收藏筛选复选框 |
+| EmptyAssetState | 空资产状态 |
+| ProjectListItem | 项目列表项 |
+| VideoFrameThumbnail | 视频帧缩略图 |
+| ShotDetailModal | 镜头详情弹窗 |
+| ShotVideoDetailModal | 镜头视频详情弹窗 |
+| SubjectAssetDetailModal | 主体资产详情弹窗 |
+| ModuleTabBar | 模块标签栏 |
+| TabBar | 标签栏 |
+| DownloadIcon | 下载图标 |
+| TrashIcon | 垃圾桶图标 |
+| GhostButton | 幽灵按钮 |
+| PlainBtn | 朴素按钮 |
+
+---
+
+### CreationPage 组件归位（2026-06-24）
+
+将 10 个 Creation 前缀组件从 `components/` 移至 `pages/creation/`，形成与其他页面一致的子目录结构。
+
+| 移入 creation/ | 说明 |
+|---------------|------|
+| CreationEmptyState | 创作空态容器 |
+| CreationResultState | 创作结果容器 |
+| CreationGhostBtn | 创作幽灵按钮 |
+| CreationLoginEmptyState | 未登录空态 |
+| CreationPlainBtn | 创作朴素按钮 |
+| CreationTabBar | 创作标签栏 |
+| CreationEmptyIconDubbing | 配音空态图标 |
+| CreationEmptyIconImage | 图片空态图标 |
+| CreationEmptyIconVideo | 视频空态图标 |
+| EmptyIconShell | SVG 图标容器 |
+
+**留在 components/ 的例外**：`CreationVideoDetailModal` — 被 AssetsPage 和 assets/ 引用，属跨页面共享组件，不归入 creation/。
+
+构建 ✅，components/ 从 136 降至 126。

@@ -25,6 +25,8 @@ function CloseIcon() {
  * @param {number}   [zIndex=9999]   - 弹窗层级
  */
 export default function ConfirmDialog({
+  width = '400px',
+  showClose = true,
   title,
   description,
   confirmText = '确认',
@@ -51,7 +53,7 @@ export default function ConfirmDialog({
     >
       <div
         style={{
-          width: '400px',
+          width,
           borderRadius: '16px',
           backgroundColor: 'var(--color-surface-modal)',
           overflow: 'hidden',
@@ -87,6 +89,7 @@ export default function ConfirmDialog({
           >
             {title}
           </span>
+          {showClose && (
           <button
             type="button"
             onClick={onCancel}
@@ -107,6 +110,7 @@ export default function ConfirmDialog({
           >
             <CloseIcon />
           </button>
+          )}
         </div>
 
         {/* ── 内容区 ── */}

@@ -1,7 +1,14 @@
 .DS_Store
+node_modules/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+*.local
+*.zip
+.agents/
+.claude/
+.claude_tmp_*
+.manifest
 
 backend/.env
 backend/.env.*

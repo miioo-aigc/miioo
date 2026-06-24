@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Debug localStorage</title>
+  <style>
+    body { font-family: monospace; padding: 20px; }
+    pre { background: #f5f5f5; padding: 10px; border-radius: 4px; }
+    button { margin: 10px 0; padding: 8px 16px; }
+  </style>
+</head>
+<body>
+  <h1>miioo localStorage 调试工具</h1>
+
+  <button onclick="showAll()">显示所有 miioo 相关数据</button>
+  <button onclick="clearAll()">清除所有 miioo 数据</button>
+
+  <div id="output"></div>
+
+  <script>
+    function showAll() {
+      const output = document.getElementById('output');
+      const data = {};
+
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith('miioo_')) {
+          try {
+            data[key] = JSON.parse(localStorage.getItem(key));
+          } catch {
+            data[key] = localStorage.getItem(key);
+          }
+        }
+      }
+
+      output.innerHTML = '<h2>localStorage 内容：</h2><pre>' +
+        JSON.stringify(data, null, 2) + '</pre>';
+    }
+
+    function clearAll() {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith('miioo_')) {
+          keys.push(key);
+        }
+      }
+
+      keys.forEach(key => localStorage.removeItem(key));
+      alert('已清除 ' + keys.length + ' 个 miioo 相关数据');
+      showAll();
+    }
+
+    // 自动显示
+    showAll();
+  </script>
+</body>
+</html>

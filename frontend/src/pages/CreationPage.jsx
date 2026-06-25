@@ -4134,10 +4134,9 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       mergeHistoryGenerations(tab, normalized);
       // 历史数据加载回来后，清除该 tab 的持久化 pending（生成结果已呈现，占位槽不再需要）
       storeClearPendingTab(tab);
-      // 同步后端收藏状态
-      const latestGens = useCreationStore.getState().generationsByTab[tab] ?? [];
+      // 仅同步本次新加载的条目的收藏状态，避免覆盖用户在本次会话中已手动切换的收藏
       const syncItems = [];
-      for (const gen of latestGens) {
+      for (const gen of normalized) {
         for (let i = 0; i < gen.cards.length; i++) {
           const card = gen.cards[i];
           if (card.isFavorite !== undefined) {

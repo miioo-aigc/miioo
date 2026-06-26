@@ -308,7 +308,7 @@ export default function AssetPickerModal({
         setProjectsLoading(true);
         // 拉取所有项目列表
         const projList = await apiGetProjects();
-        const projs = Array.isArray(projList) ? projList.map(p => ({ id: p.id, name: p.name })) : [];
+        const projs = Array.isArray(projList) ? [...projList].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)).map(p => ({ id: p.id, name: p.name })) : [];
         setApiProjects(projs);
       } catch (err) {
         console.error('[AssetPickerModal] 拉取项目列表失败:', err);
@@ -499,7 +499,7 @@ export default function AssetPickerModal({
   };
 
   const getProjectBtnRect = () => projectBtnRef.current?.getBoundingClientRect() ?? null;
-  const isCompactCard = activeTab === 'creative' && (creativeSubTab === '图片' || creativeSubTab === '视频');
+  const isCompactCard = (activeTab === 'creative' && (creativeSubTab === '图片' || creativeSubTab === '视频')) || (activeTab === 'project' && (projectSubTab === '分镜图' || projectSubTab === '分镜视频'));
 
   // 获取当前内容区资产列表
   const getCurrentAssets = () => {

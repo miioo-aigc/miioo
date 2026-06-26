@@ -1642,7 +1642,7 @@ function ScriptPanel({
   const showActions = phase === 'view' || phase === 'edit';
 
   // 按钮禁用：无剧本 / 提取中
- const isExtractDisabled = !scriptContent;
+  const isExtractDisabled = !scriptContent || isExtractingSubjects;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignSelf: 'stretch', minHeight: 0, flex: 1 }}>
@@ -1802,21 +1802,28 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
           setScriptContent(content);
           setPhase('view');
           setHasStarted(true);
+          return content;
         }
       })
       .catch((err) => {
         console.error('[ScriptPage] 加载剧本失败:', err);
-      });
-
-    // 加载完剧本后同时拉取剧集结构列表
-    apiGetEpisodes(projectId)
-      .then((episodes) => {
-        if (Array.isArray(episodes) && episodes.length > 0) {
-          setBackendEpisodes(episodes);
+        throw err; // 阻止继续链到 finalize
+      })
+      .then((content) => {
+        if (content && projectId) {
+          return apiFinalizeScriptWorkspace(projectId, { split_mode: 'rule_first' });
+        }
+      })
+      .then((finalizeResult) => {
+        if (finalizeResult) {
+          const episodes = finalizeResult?.items || finalizeResult?.episodes || finalizeResult?.data;
+          if (Array.isArray(episodes) && episodes.length > 0) {
+            setBackendEpisodes(episodes);
+          }
         }
       })
       .catch((err) => {
-        console.error('[ScriptPage] 加载剧集列表失败:', err);
+        if (err) console.error('[ScriptPage] 定稿失败:', err);
       });
   }, [projectId, isControlled, setScriptContent, setPhase, setHasStarted]);
 
@@ -2128,8 +2135,8 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
     setPhase('view');
   };
 
- // 提取主体按钮点击：已提取过主体 → 弹窗二次确认（覆盖风险）；首次 → 直接跳转
- const [extractConfirmOpen, setExtractConfirmOpen] = useState(false);
+  // 提取主体按钮点击：已提取过主体 → 弹窗二次确认（覆盖风险）；首次 → 直接跳转
+  const [extractConfirmOpen, setExtractConfirmOpen] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
 
   const handleFinalizeAndExtract = useCallback(async () => {
@@ -2163,13 +2170,13 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
     }
   }, [projectId, scriptContent, episodeCount, selectedModel, onGoToSubject]);
 
- const handleExtractRequest = () => {
-   if (isSubjectUnlocked) {
-     setExtractConfirmOpen(true);
-     return;
-   }
+  const handleExtractRequest = () => {
+    if (isSubjectUnlocked) {
+      setExtractConfirmOpen(true);
+      return;
+    }
     handleFinalizeAndExtract();
- };
+  };
 
   // 提取主体二次确认弹窗
   const handleSelectEpisode = useCallback(
@@ -2199,11 +2206,11 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
         title="确定要提取主体吗？"
         description="本次提取主体会覆盖之前的主体内容，一旦提取不可撤销，请谨慎操作！"
         confirmText="确认提取主体"
-       confirmVariant="orange"
-       onConfirm={() => {
-         setExtractConfirmOpen(false);
+        confirmVariant="orange"
+        onConfirm={() => {
+          setExtractConfirmOpen(false);
           handleFinalizeAndExtract();
-       }}
+        }}
         onCancel={() => setExtractConfirmOpen(false)}
       />
     );
@@ -2245,7 +2252,7 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
 
           <div style={{ display: 'flex', minHeight: 0, flex: 1, flexDirection: 'column', alignItems: 'stretch', justifyContent: 'space-between', gap: '24px', alignSelf: 'stretch', overflow: 'hidden' }}>
             <div style={{ display: 'flex', flex: 1, minHeight: 0, justifyContent: 'center', alignItems: 'stretch', overflow: 'hidden' }}>
-              <div style={{ display: 'flex', width: '80%', maxWidth: '80%', minWidth: '0px', minHeight: 0, flexDirection: 'column', alignSelf: 'stretch' }}>
+              <div style={{ display: 'flex', width: '80%', maxWidth: '80%', minWidth: '420px', minHeight: 0, flexDirection: 'column', alignSelf: 'stretch' }}>
                 <ScriptPanel
                   phase={phase}
                   scriptContent={scriptContent}
@@ -2289,4 +2296,3 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
 
     </>  );
 }
-  const isExtractDisabled = !scriptContent || isExtractingSubjects;

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useModalSize } from '../utils/useModalSize';
 import { createPortal } from 'react-dom';
 import { PulsingBorder } from '@paper-design/shaders-react';
-import { apiGenerateCreation, apiPollVideoTask, apiGetVideoLastFrame, apiDeleteCreationImage, apiDeleteCreationVideo, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiCreateSession, apiGetSession, apiListShots, apiCreateShot, apiUpdateShot, apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../api/creation';
+import { apiGenerateCreation, apiPollCreationTask, apiGetVideoLastFrame, apiDeleteCreationImage, apiDeleteCreationVideo, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiCreateSession, apiGetSession, apiListShots, apiCreateShot, apiUpdateShot, apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { apiListModels } from '../api/config';
 import { adaptModels, getModelParams } from '../utils/modelAdapter';
@@ -449,7 +449,7 @@ function FrameUploader({ firstFile, lastFile, onFirstChange, onLastChange, onSwa
   const firstPreview = firstFile ? (firstFile.previewUrl || URL.createObjectURL(firstFile)) : null;
   const lastPreview = lastFile ? (lastFile.previewUrl || URL.createObjectURL(lastFile)) : null;
 
-  const renderSlot = ({ label, preview, hovered, setHovered, wrapperRef, inputRef, menuOpen, setMenuOpen, onChange, onAssetPick, isFirst }) => {
+  const renderSlot = ({ label, preview, hovered, setHovered, wrapperRef, inputRef, menuOpen, setMenuOpen, onChange, onAssetPick, onDirectClick, isFirst }) => {
     const hasImg = !!preview;
     return (
       <div ref={wrapperRef} style={{ position: 'relative', flexShrink: 0 }}>
@@ -808,21 +808,32 @@ function FileCard({ file, onRemove, disabled = false, onInsert }) {
       const video = document.createElement('video');
       video.preload = 'metadata';
       video.muted = true;
-      const handleLoadedData = () => { video.currentTime = 0.1; };
+      let cancelled = false;
+      const timeoutId = setTimeout(() => { cancelled = true; }, 5000);
+      const handleLoadedData = () => { if (!cancelled) video.currentTime = 0.1; };
       const handleSeeked = () => {
+        if (cancelled) return;
+        const maxW = 320;
+        const scale = Math.min(1, maxW / video.videoWidth);
         const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        canvas.width = Math.round(video.videoWidth * scale);
+        canvas.height = Math.round(video.videoHeight * scale);
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        setPreviewUrl(canvas.toDataURL('image/jpeg', 0.8));
+        setPreviewUrl(canvas.toDataURL('image/jpeg', 0.7));
+        clearTimeout(timeoutId);
       };
+      const handleError = () => { cancelled = true; };
       video.addEventListener('loadeddata', handleLoadedData);
       video.addEventListener('seeked', handleSeeked);
+      video.addEventListener('error', handleError);
       video.src = videoUrl;
       return () => {
+        cancelled = true;
+        clearTimeout(timeoutId);
         video.removeEventListener('loadeddata', handleLoadedData);
         video.removeEventListener('seeked', handleSeeked);
+        video.removeEventListener('error', handleError);
         // 仅 revoke 在此 effect 内创建的 URL（_objectUrl 由 handleRemoveFile 统一管理）
         if (objectUrl) URL.revokeObjectURL(objectUrl);
       };
@@ -871,29 +882,25 @@ ref={cardRef}
             }
           }}
         >
-          {/* 视频 hover 时切换为内联播放 */}
-          {isVideo && hovered && videoSrc ? (
-            <video
-              src={videoSrc}
-              autoPlay
-              muted
-              loop
-              playsInline
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              onClick={(e) => { e.stopPropagation(); if (!disabled && onInsert) onInsert(); }}
-            />
-          ) : (
-            <div
-              style={{
-                flex: 1,
-                borderRadius: '7px',
-                alignSelf: 'stretch',
-                ...(previewUrl
-                  ? { backgroundImage: `url(${previewUrl})`, backgroundSize: 'cover', backgroundPosition: '50%' }
-                  : { background: '#FFFFFF14' }),
-              }}
-            />
-          )}
+          <div
+            style={{
+              flex: 1,
+              borderRadius: '7px',
+              alignSelf: 'stretch',
+              ...(previewUrl
+                ? { backgroundImage: `url(${previewUrl})`, backgroundSize: 'cover', backgroundPosition: '50%' }
+                : { background: '#FFFFFF14' }),
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {isVideo && !previewUrl && (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, opacity: 0.35 }}>
+                <path d="M5 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5Zm10.7 7.316a1 1 0 0 1 0 1.368l-4.7 4.8a1 1 0 0 1-1.7-.684V7.2a1 1 0 0 1 1.7-.684l4.7 4.8Z" fill="currentColor" />
+              </svg>
+            )}
+          </div>
           {hovered && !disabled && (
             <button
               type="button"
@@ -2165,7 +2172,12 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       setVideoRatio(creationParams.defaults?.ratio || creationParams.ratios?.[0]?.value || '');
       setVideoResolution(creationParams.defaults?.resolution || creationParams.resolutions?.[0] || '');
       setVideoDuration(creationParams.defaults?.duration || creationParams.durations?.[0] || '');
-      setRefMode(creationParams.defaults?.refMode || creationParams.refModes?.[0]?.value || '');
+      // 切换模型时：如果当前 refMode 在新模型中也支持，保留当前选择
+      const newRefModes = creationParams.refModes?.map(m => m.value) || [];
+      const keepRefMode = newRefModes.includes(refMode)
+        ? refMode
+        : (creationParams.defaults?.refMode || creationParams.refModes?.[0]?.value || '');
+      setRefMode(keepRefMode);
     }
   }, [creationParams, genType]);
 
@@ -4116,22 +4128,25 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
                   }}
                   onUseAsFirstFrame={async () => {
                     try {
-                      // 调用后端 API 获取视频尾帧
+                      // 前端抽取视频尾帧（<video> + <canvas>）
                       const result = await apiGetVideoLastFrame(card.videoUrl);
                       const lastFrameUrl = result.lastFrameUrl;
+                      const frameBlob = result.blob;
+
+                      if (!lastFrameUrl || !frameBlob) {
+                        showToast("error", "获取尾帧失败，请重试");
+                        return;
+                      }
 
                       // 切换到首尾帧模式
                       onSwitchToFrameMode?.();
 
+                      // 构建 File 对象，提交时 apiGenerateCreation 自动上传到 CDN
+                      const frameFile = new File([frameBlob], 'last-frame.png', { type: 'image/png' });
+
                       // 将尾帧作为首帧参考传入
                       setPrefillData({
-                        firstFrameFile: {
-                          name: 'last-frame.jpg',
-                          url: lastFrameUrl,
-                          previewUrl: lastFrameUrl,
-                          isAsset: false,
-                          size: 0
-                        },
+                        firstFrameFile: frameFile,
                         refMode: 'frame',
                       });
                       setPrefillVersion((v) => v + 1);
@@ -4495,7 +4510,7 @@ function CreationLoginEmptyState({ onLoginClick }) {
 
 // 模块级常量和 ref：组件卸载重挂载不重置，避免 session 重复恢复导致数据叠加
 const SESSION_KEY = 'miioo_creation_session_id';
-const PENDING_VIDEO_TASKS_KEY = 'miioo_pending_video_tasks';
+const PENDING_CREATION_TASKS_KEY = 'miioo_pending_tasks';
 const _sessionIdRef = { current: localStorage.getItem(SESSION_KEY) };
 const _sessionInitRef = { current: false };
 const _restoredShotIdsRef = { current: new Set() };
@@ -4684,26 +4699,28 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     initSession();
   }, [isLoggedIn]);
 
-  // 刷新恢复：检测 localStorage 中未完成的视频任务，重建占位卡片并继续轮询
+  // 刷新恢复：检测 localStorage 中未完成的创作任务，重建占位卡片并继续轮询（支持图片/视频/配音）
   useEffect(() => {
     let pending;
     try {
-      pending = JSON.parse(localStorage.getItem(PENDING_VIDEO_TASKS_KEY) || '[]');
+      pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
     } catch {
       pending = [];
     }
     if (!pending.length) return;
 
     // 清掉已恢复的，避免重复
-    localStorage.setItem(PENDING_VIDEO_TASKS_KEY, JSON.stringify([]));
+    localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify([]));
 
     pending.forEach((task) => {
-      const { taskId, genId, shotId, tab, prompt, promptHTML, model, ratio, resolution, duration, createdAt } = task;
+      const { taskId, genId, shotId, tab, genType, count: taskCount, prompt, promptHTML, model, ratio, resolution, duration, createdAt } = task;
+      const isVideo = genType === 'video';
+      const isDubbing = genType === 'dubbing';
 
-      // 先删除 store 中可能残留的同 genId 旧条目（Zustand store 是内存单例，页面导航不清空）
+      // 先删除 store 中可能残留的同 genId 旧条目
       storeDeleteGeneration(tab, genId);
 
-      // 重建占位卡片
+      // 重建占位卡片（按类型生成对应数量的占位）
       addGeneration(tab, {
         id: genId,
         shot_id: shotId || undefined,
@@ -4715,14 +4732,35 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         promptHTML: promptHTML || '',
         refImages: [],
         createdAt,
-        cards: [{ id: null, type: 'video', status: 'loading', imageUrl: null, videoUrl: null, audioUrl: null }],
+        cards: Array.from({ length: isVideo || isDubbing ? 1 : (parseInt(taskCount) || 1) }, (_, i) => ({
+          id: null,
+          type: isVideo ? 'video' : isDubbing ? 'audio' : 'image',
+          status: 'loading',
+          imageUrl: null,
+          videoUrl: null,
+          audioUrl: null,
+          placeholderId: 'restored-' + genId + '-' + i,
+        })),
       });
-      incrementActive('video');
+      incrementActive(genType === 'video' ? 'video' : genType === 'dubbing' ? 'dubbing' : 'image');
 
       // 重新轮询
-      apiPollVideoTask(taskId)
-        .then(({ videos, cardIds }) => {
-          const mediaUrls = (videos || []).map((u) => normalizeImageUrl(u) || u);
+      apiPollCreationTask(genType || 'image', taskId)
+        .then((result) => {
+          let mediaUrls = [];
+          let cardIds = [];
+          let refImages = [];
+          if (isVideo) {
+            mediaUrls = (result.videos || []).map((u) => normalizeImageUrl(u) || u);
+            cardIds = result.cardIds || [];
+          } else if (isDubbing) {
+            mediaUrls = (result.audios || []);
+          } else {
+            mediaUrls = (result.images || []).map((u) => normalizeImageUrl(u) || u);
+            cardIds = result.cardIds || [];
+            refImages = result.referenceImages || [];
+          }
+
           if (!mediaUrls.length) {
             showToast('error', '生成失败，请稍后重试');
             storeDeleteGeneration(tab, genId);
@@ -4734,27 +4772,38 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
             shot_id: shotId || undefined,
             ratio, resolution, duration, model, prompt,
             promptHTML: promptHTML || '',
-            refImages: [],
+            refImages: refImages.map((url) => ({
+              url: normalizeImageUrl(url) || url,
+              previewUrl: normalizeImageUrl(url) || url,
+              isAsset: true,
+              name: (url || '').split('/').pop() || 'ref.png',
+              size: 0,
+            })),
             createdAt,
             cards: mediaUrls.map((url) => ({
-              id: null, type: 'video', status: 'done',
-              imageUrl: null, videoUrl: url, audioUrl: null,
+              id: null,
+              type: isVideo ? 'video' : isDubbing ? 'audio' : 'image',
+              status: 'done',
+              imageUrl: isDubbing || isVideo ? null : url,
+              videoUrl: isVideo ? url : null,
+              audioUrl: isDubbing ? url : null,
             })),
           });
           if (cardIds?.length) storeUpdateCardIds(tab, genId, cardIds);
-          // 写回 localStorage（此时任务已完成，不需要重新存）
         })
         .catch((err) => {
           showToast('error', err?.message || '生成失败，请稍后重试');
           storeDeleteGeneration(tab, genId);
         })
         .finally(() => {
-          decrementActive('video');
+          decrementActive(genType === 'video' ? 'video' : genType === 'dubbing' ? 'dubbing' : 'image');
         });
     });
   // 只在挂载时执行一次
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  
 
   const [videoDetailModal, setVideoDetailModal] = useState(null);
 
@@ -5002,14 +5051,15 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     try {
       const result = await apiGenerateCreation(params, {
         onTaskCreated: ({ taskId }) => {
-          if (params.genType !== 'video') return;
           try {
-            const pending = JSON.parse(localStorage.getItem(PENDING_VIDEO_TASKS_KEY) || '[]');
+            const pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
             pending.push({
               taskId,
               genId,
               shotId: shotId || null,
               tab: currentTab,
+              genType: params.genType || 'image',
+              count: parseInt(params.count) || 1,
               prompt: params.prompt || '',
               promptHTML: params.promptHTML || '',
               model: params.model || '',
@@ -5018,7 +5068,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               duration: params.videoDuration || '5s',
               createdAt: new Date().toISOString(),
             });
-            localStorage.setItem(PENDING_VIDEO_TASKS_KEY, JSON.stringify(pending));
+            localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(pending));
           } catch {}
         },
       });
@@ -5099,16 +5149,16 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       }
       // 清除 pending task 记录
       try {
-        const pending = JSON.parse(localStorage.getItem(PENDING_VIDEO_TASKS_KEY) || '[]');
+        const pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
         const filtered = pending.filter((t) => t.genId !== genId);
-        localStorage.setItem(PENDING_VIDEO_TASKS_KEY, JSON.stringify(filtered));
+        localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(filtered));
       } catch {}
       return { success: true };
     } catch (error) {
       try {
-        const pending = JSON.parse(localStorage.getItem(PENDING_VIDEO_TASKS_KEY) || '[]');
+        const pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
         const filtered = pending.filter((t) => t.genId !== genId);
-        localStorage.setItem(PENDING_VIDEO_TASKS_KEY, JSON.stringify(filtered));
+        localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(filtered));
       } catch {}
       showToast('error', error?.message || '生成失败，请稍后重试');
       // 删除占位卡片

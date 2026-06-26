@@ -1506,6 +1506,17 @@ function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shot
     };
   }, []);
 
+  // 弹窗打开后自动播放视频
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || !src) return;
+    const onCanPlay = () => {
+      vid.play().then(() => setIsPlaying(true)).catch(() => {});
+    };
+    vid.addEventListener('canplay', onCanPlay, { once: true });
+    return () => vid.removeEventListener('canplay', onCanPlay);
+  }, [src]);
+
   function togglePlay() {
     const vid = videoRef.current;
     if (!vid) return;

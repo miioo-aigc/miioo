@@ -607,6 +607,7 @@ function BatchImageModal({ shotCount, onClose, onConfirm }) {
   const [model, setModel] = useState('');
   const [resolution, setResolution] = useState('');
 
+  const [duration, setDuration] = useState(null);
   useEffect(() => {
     (async () => {
       try {
@@ -688,7 +689,7 @@ function BatchImageModal({ shotCount, onClose, onConfirm }) {
 
 // ─── 批量生成分镜视频弹窗 ─────────────────────────────────────────────────────
 
-function BatchVideoModal({ shotCount, onClose, onConfirm }) {
+function BatchVideoModal({ shots, onClose, onConfirm }) {
   const [modelList, setModelList] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [model, setModel] = useState('');
@@ -724,8 +725,55 @@ function BatchVideoModal({ shotCount, onClose, onConfirm }) {
           if (first.resolutions.length > 0) {
             setResolution(first.resolutions[0]);
           }
-          if (first.durationRange) {
-            setDuration(Array.isArray(first.durationRange) ? first.durationRange[0] : `${first.durationRange[0]}s`);
+          // 时长：优先匹配分镜列表的时长，匹配不上则用模型默认值
+          function matchDuration(dur, range) {
+            if (!dur || !range) return false;
+            const norm = dur.endsWith('s') ? dur : dur + 's';
+            if (Array.isArray(range)) {
+              // 数值范围 [3, 5] → 检查是否在范围内
+              if (range.length === 2 && typeof range[0] === 'number' && typeof range[1] === 'number') {
+                const sec = parseInt(norm);
+                return !isNaN(sec) && sec >= range[0] && sec <= range[1];
+              }
+              // 字符串列表 ['3s', '4s', '5s'] → 直接 includes
+              return range.includes(norm);
+            }
+            // 非数组范围（解构赋值 min/max）
+            const sec = parseInt(norm);
+            const [min, max] = range;
+            return !isNaN(sec) && sec >= min && sec <= max;
+          }
+          let matchedDuration = null;
+          if (Array.isArray(shots) && shots.length > 0) {
+            const durationCounts = {};
+            for (const shot of shots) {
+              const raw = shot?.params?.duration;
+              if (raw && typeof raw === 'string') {
+                const norm = raw.endsWith('s') ? raw : raw + 's';
+                durationCounts[norm] = (durationCounts[norm] || 0) + 1;
+              }
+            }
+            const entries = Object.entries(durationCounts);
+            if (entries.length > 0) {
+              const mostCommon = entries.sort((a, b) => b[1] - a[1])[0][0];
+              if (matchDuration(mostCommon, first.durationRange)) {
+                matchedDuration = mostCommon;
+              }
+            }
+          }
+          if (matchedDuration) {
+            setDuration(matchedDuration);
+          } else if (first.durationRange) {
+            if (Array.isArray(first.durationRange)) {
+              // 数值范围 [3, 5] 转 '3s'
+              if (first.durationRange.length === 2 && typeof first.durationRange[0] === 'number' && typeof first.durationRange[1] === 'number') {
+                setDuration(`${first.durationRange[0]}s`);
+              } else {
+                setDuration(first.durationRange[0]);
+              }
+            } else {
+              setDuration(`${first.durationRange[0]}s`);
+            }
           }
         }
       } catch {
@@ -759,7 +807,20 @@ function BatchVideoModal({ shotCount, onClose, onConfirm }) {
     }
     if (selected.durationRange) {
       if (Array.isArray(selected.durationRange)) {
-        if (!selected.durationRange.includes(duration)) setDuration(selected.durationRange[0]);
+        const isSupported = (() => {
+          if (selected.durationRange.length === 2 && typeof selected.durationRange[0] === "number") {
+            const sec = parseInt(duration);
+            return !isNaN(sec) && sec >= selected.durationRange[0] && sec <= selected.durationRange[1];
+          }
+          return selected.durationRange.includes(duration);
+        })();
+        if (!isSupported) {
+          if (selected.durationRange.length === 2 && typeof selected.durationRange[0] === "number") {
+            setDuration(`${selected.durationRange[0]}s`);
+          } else {
+            setDuration(selected.durationRange[0]);
+          }
+        }
       } else {
         const durSec = parseInt(duration);
         const [minDur, maxDur] = selected.durationRange;
@@ -788,7 +849,7 @@ function BatchVideoModal({ shotCount, onClose, onConfirm }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px 24px' }}>
           <div style={{ display: 'flex', gap: '8px', alignSelf: 'stretch', alignItems: 'flex-start', justifyContent: 'space-between' }}>
             <span style={{ fontSize: '14px', lineHeight: '18px', color: 'rgba(255,255,255,0.60)', fontFamily: FONT, flexShrink: 0 }}>待生成的分镜视频数量</span>
-            <span style={{ fontSize: '14px', lineHeight: '18px', color: '#FFFFFF', fontFamily: FONT, flexShrink: 0 }}>{shotCount}个</span>
+            <span style={{ fontSize: '14px', lineHeight: '18px', color: '#FFFFFF', fontFamily: FONT, flexShrink: 0 }}>{shots.length}个</span>
           </div>
           <ModalSelect
             label="选择模型"
@@ -2080,7 +2141,11 @@ function GenerateImagePanel({ shot, projectId, chars = [], scenes = [], props = 
           }
           {
             const durList = caps?.supported_durations;
-            if (durList?.length > 0) setDuration(`${durList[0]}s`);
+            if (durList?.length > 0) {
+              const shotDur = shot?.params?.duration;
+              const matched = shotDur && durList.some(d => (String(d).endsWith('s') ? String(d) : String(d) + 's') === shotDur);
+              setDuration(matched ? shotDur : (String(durList[0]).endsWith("s") ? String(durList[0]) : String(durList[0]) + "s"));
+            }
           }
         }
       } catch {
@@ -2455,6 +2520,7 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
   const [frameModels, setFrameModels] = useState([]);
   const [allModels, setAllModels] = useState([]);
   const [resolution, setResolution] = useState('');
+  const [duration, setDuration] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -2496,7 +2562,11 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
           }
           {
             const durList = caps?.supported_durations;
-            if (durList?.length > 0) setDuration(`${durList[0]}s`);
+            if (durList?.length > 0) {
+              const shotDur = shot?.params?.duration;
+              const matched = shotDur && durList.some(d => (String(d).endsWith('s') ? String(d) : String(d) + 's') === shotDur);
+              setDuration(matched ? shotDur : (String(durList[0]).endsWith("s") ? String(durList[0]) : String(durList[0]) + "s"));
+            }
           }
         }
       } catch {
@@ -2506,7 +2576,6 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
       }
     })();
   }, []);
-  const [duration, setDuration] = useState(null);
   const [sound, setSound] = useState(true);
   // 提示词：仅暂存在当前弹窗的本地 state，编辑不回写分镜列表字段。
   // 关闭面板时组件卸载、本地态丢弃，下次打开按 shot 当前字段重新生成初始内容。
@@ -2561,7 +2630,11 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
         const resList = (caps?.supported_resolutions?.length ? caps.supported_resolutions : caps?.supported_sizes) || [];
         if (resList.length > 0) setResolution(resList[0]);
         const durList = caps?.supported_durations;
-        if (durList?.length > 0) setDuration(`${durList[0]}s`);
+        if (durList?.length > 0) {
+              const shotDur = shot?.params?.duration;
+              const matched = shotDur && durList.some(d => (String(d).endsWith("s") ? String(d) : String(d) + "s") === shotDur);
+              setDuration(matched ? shotDur : (String(durList[0]).endsWith("s") ? String(durList[0]) : String(durList[0]) + "s"));
+            }
       }
     }
   }
@@ -2576,7 +2649,7 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
     const caps = currentVideoModel?.capabilities;
     // 新格式：supported_durations = ["4","5",...,"15"]
     if (caps?.supported_durations?.length > 0) {
-      return caps.supported_durations.map(d => `${d}s`);
+      return caps.supported_durations.map(d => String(d).endsWith('s') ? String(d) : String(d) + 's');
     }
     // 旧格式兜底：supported_duration_range = [4, 15]
     const range = caps?.supported_duration_range;
@@ -2616,8 +2689,13 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
       }
     }
     // 时长：若当前时长在新模型时长列表中则保留，否则回退第一个
-    if (duration && availableDurations.length > 0 && !availableDurations.includes(duration)) {
-      setDuration(availableDurations[0]);
+    if (availableDurations.length > 0) {
+      const shotDur = shot?.params?.duration;
+      if (shotDur && availableDurations.includes(shotDur)) {
+        setDuration(shotDur);
+      } else if (duration && !availableDurations.includes(duration)) {
+        setDuration(availableDurations[0]);
+      }
     }
   }, [model, availableResolutions]);
 
@@ -6414,7 +6492,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     )}
     {showVideoModal && (
       <BatchVideoModal
-        shotCount={shots.length}
+        shots={shots}
         onClose={() => setShowVideoModal(false)}
         onConfirm={(params) => startBatchGenVideos(params)}
       />

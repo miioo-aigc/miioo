@@ -1,7 +1,75 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
+// ── 通用任务轮询（供刷新后恢复使用，支持图片/视频/音频）───────────────────
+
+export async function apiPollCreationTask(type, taskId, timeoutMs = 1800000) {
+  const start = Date.now();
+  const pollUrl = type === 'image'
+    ? `${BASE}/api/creation/tasks/${taskId}`
+    : type === 'audio'
+      ? `${BASE}/api/creation/audios/tasks/${taskId}`
+      : `${BASE}/api/creation/videos/tasks/${taskId}`;
+
+  while (Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const pollRes = await authFetch(pollUrl);
+    const pollData = await pollRes.json();
+    const status = pollData.status;
+
+    if (status === 'done' || status === 'completed' || status === 'success' || status === 'partial') {
+      if (status !== 'partial' && pollData.partial === true) continue;
+
+      if (type === 'image') {
+        const imgs = pollData.images || [];
+        return {
+          images: imgs.map((img) => img.original_url || img.originalUrl || img.thumbnail_url || img.thumbnailUrl),
+          cardIds: imgs.map((img) => img.id),
+          referenceImages: pollData.reference_images || pollData.referenceImages || [],
+        };
+      } else if (type === 'audio') {
+        const result = pollData.result;
+        if (!result) return { audios: [] };
+        const audioUrl = result.audio_url || result.audioUrl || pollData.audio_url || pollData.audioUrl;
+        return {
+          audios: audioUrl ? [audioUrl] : [],
+        };
+      } else {
+        const result = pollData.result;
+        if (!result) continue;
+        const videoUrl = result.hlsUrl || result.hls_url
+          || result.previewVideoUrl || result.preview_video_url
+          || result.video_url || result.videoUrl;
+        if (!videoUrl) continue;
+        return {
+          videos: [videoUrl].filter(Boolean),
+          cardIds: [result.id].filter(Boolean),
+          posterUrl: result.posterUrl || result.poster_url || undefined,
+        };
+      }
+    }
+
+    if (status === 'failed' || status === 'error') {
+      const rawMsg = pollData.error_msg || pollData.errorMsg || '';
+      let userMessage;
+      if (rawMsg.includes('copyright')) {
+        userMessage = '生成内容可能涉及版权限制，请修改素材或创作描述后重试';
+      } else if (rawMsg.includes('sensitive') || rawMsg.includes('policy')) {
+        userMessage = '生成内容触发了内容安全限制，请修改素材或创作描述后重试';
+      } else {
+        userMessage = rawMsg || 'Generation failed';
+      }
+      const err = new Error(userMessage);
+      err.rawMessage = rawMsg;
+      throw err;
+    }
+  }
+  throw new Error('Generation timeout');
+}
+
+
 import { authFetch } from './request.js';
 import { toAbsoluteUrl } from '../utils/imageUrl.js';
+import { captureVideoLastFrame } from '../utils/videoUtils';
 
 // ── 创作会话（Session）───────────────────────────────────────────────────────
 
@@ -424,13 +492,21 @@ export async function apiUploadCreationAudio({ file, category, asset_name, sessi
   return res.json();
 }
 
-// ── Legacy：apiGetVideoLastFrame（后端无此接口，暂返回 null）──────────────────
+// ── 前端抽取视频尾帧（<video> + <canvas> 方案）─────────────────────────────
+
 
 export async function apiGetVideoLastFrame(videoUrl) {
-  // 后端无 /api/creation/video-last-frame 接口
-  // 如需此功能，可在前端用 ffmpeg.wasm 提取，或等待后端提供
-  console.warn('[api] apiGetVideoLastFrame: 后端无此接口，返回 null');
-  return { lastFrameUrl: null };
+  if (!videoUrl) {
+    console.warn('[api] apiGetVideoLastFrame: 无 videoUrl');
+    return { lastFrameUrl: null, blob: null };
+  }
+  try {
+    const { url, blob } = await captureVideoLastFrame(videoUrl);
+    return { lastFrameUrl: url, blob };
+  } catch (err) {
+    console.error('[api] apiGetVideoLastFrame: 前端抽帧失败', err);
+    return { lastFrameUrl: null, blob: null };
+  }
 }
 
 // ── 视频任务独立轮询（供刷新后恢复使用）──────────────────────────────────────
@@ -570,7 +646,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
   let firstFrameUrl, lastFrameUrl, firstFrameAssetId, lastFrameAssetId;
   if (params.firstFrameFile instanceof File) {
     try {
-      const r = await apiUploadCreationImage({ file: params.firstFrameFile, category: 'first_frame', ...uploadContext });
+      const r = await apiUploadCreationImage({ file: params.firstFrameFile, category: 'reference', ...uploadContext });
       firstFrameUrl = r.uploaded_url || r.uploadedUrl || undefined;
       firstFrameAssetId = r.asset_id || undefined;
     } catch {}
@@ -581,7 +657,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
   }
   if (params.lastFrameFile instanceof File) {
     try {
-      const r = await apiUploadCreationImage({ file: params.lastFrameFile, category: 'last_frame', ...uploadContext });
+      const r = await apiUploadCreationImage({ file: params.lastFrameFile, category: 'reference', ...uploadContext });
       lastFrameUrl = r.uploaded_url || r.uploadedUrl || undefined;
       lastFrameAssetId = r.asset_id || undefined;
     } catch {}
@@ -641,6 +717,8 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       const taskId = asyncData.task_id || asyncData.id;
       if (!taskId) throw new Error('No task_id returned');
 
+      onTaskCreated?.({ taskId, params });
+
       const { audios } = await pollTask(
         `${BASE}/api/creation/audios/tasks/${taskId}`,
         (pollData) => {
@@ -657,6 +735,8 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     const genData = await apiGenerateCreationAudio(dubbingBody);
     const taskId = genData.task_id || genData.id;
     if (!taskId) throw new Error('No task_id returned');
+
+    onTaskCreated?.({ taskId, params });
 
     const { audios } = await pollTask(
       `${BASE}/api/creation/audios/tasks/${taskId}`,
@@ -701,6 +781,8 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       ? genData.task_ids
       : [genData.task_id || genData.id].filter(Boolean);
     if (taskIds.length === 0) throw new Error('No task_id returned');
+
+    onTaskCreated?.({ taskId: taskIds[0], params });
 
     // 并行轮询所有任务，合并结果
     const pollResults = await Promise.all(

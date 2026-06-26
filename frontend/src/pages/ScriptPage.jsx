@@ -3,7 +3,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
 import ReactMarkdown from 'react-markdown';
-import { apiSaveScriptWorkspace, apiGetScriptWorkspace, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiFinalizeScriptWorkspace, apiUpdateEpisode, apiGetEpisodes } from '../api/subject';
+import { apiSaveScriptWorkspace, apiGetScriptWorkspace, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiFinalizeScriptWorkspace, apiUpdateEpisode, apiGetEpisodes, apiExtractSubjectsFromScript } from '../api/subject';
 import { apiListModels } from '../api/config';
 import { PulsingBorder } from '@paper-design/shaders-react';
 import DotsLoading from '../components/DotsLoading';
@@ -1642,7 +1642,7 @@ function ScriptPanel({
   const showActions = phase === 'view' || phase === 'edit';
 
   // 按钮禁用：无剧本 / 提取中
-  const isExtractDisabled = !scriptContent;
+ const isExtractDisabled = !scriptContent;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignSelf: 'stretch', minHeight: 0, flex: 1 }}>
@@ -1724,12 +1724,19 @@ function ScriptPanel({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <PrimaryBtn onClick={isExtractDisabled ? undefined : onExtractRequest} disabled={isExtractDisabled}>
               <span style={{ fontFamily: FONT_MEDIUM, fontSize: '14px', lineHeight: '18px', color: '#090909', whiteSpace: 'nowrap' }}>
-                开始提取主体
+                {isExtractingSubjects ? '正在提取...' : '开始提取主体'}
               </span>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M14 8H2" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M10 4L14 8L10 12" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              {isExtractingSubjects ? (
+                <svg className="spinner" width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ animation: 'btn-spin 0.8s linear infinite' }}>
+                  <circle cx="8" cy="8" r="6" stroke="#09090933" strokeWidth="2" />
+                  <path d="M8 2a6 6 0 0 1 6 6" stroke="#090909" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M14 8H2" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M10 4L14 8L10 12" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
             </PrimaryBtn>
           </div>
         </div>
@@ -1799,6 +1806,17 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
       })
       .catch((err) => {
         console.error('[ScriptPage] 加载剧本失败:', err);
+      });
+
+    // 加载完剧本后同时拉取剧集结构列表
+    apiGetEpisodes(projectId)
+      .then((episodes) => {
+        if (Array.isArray(episodes) && episodes.length > 0) {
+          setBackendEpisodes(episodes);
+        }
+      })
+      .catch((err) => {
+        console.error('[ScriptPage] 加载剧集列表失败:', err);
       });
   }, [projectId, isControlled, setScriptContent, setPhase, setHasStarted]);
 
@@ -2110,16 +2128,48 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
     setPhase('view');
   };
 
-  // 提取主体按钮点击：已提取过主体 → 弹窗二次确认（覆盖风险）；首次 → 直接跳转
-  const [extractConfirmOpen, setExtractConfirmOpen] = useState(false);
+ // 提取主体按钮点击：已提取过主体 → 弹窗二次确认（覆盖风险）；首次 → 直接跳转
+ const [extractConfirmOpen, setExtractConfirmOpen] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
 
-  const handleExtractRequest = () => {
-    if (isSubjectUnlocked) {
-      setExtractConfirmOpen(true);
-      return;
+  const handleFinalizeAndExtract = useCallback(async () => {
+    setIsExtracting(true);
+    showToast('正在定稿并提取主体...', 'info');
+    try {
+      // 1. 先定稿：拆分为剧集
+      const parsedEpisodes = parseScriptOutline(scriptContent)
+        .filter(item => item.level === 2)
+        .map((item, i) => ({
+          title: item.title,
+          episode_number: i + 1,
+        }));
+      const resolvedEpisodeCount = episodeCount ?? (parsedEpisodes.length > 0 ? parsedEpisodes.length : null);
+      await apiFinalizeScriptWorkspace(projectId, {
+        episode_count: resolvedEpisodeCount,
+        model: selectedModel,
+      });
+
+      // 2. 从剧本中抽取主体
+      await apiExtractSubjectsFromScript(projectId);
+
+      // 3. 跳转到主体页
+      showToast('定稿并提取主体成功', 'success');
+      onGoToSubject?.('char');
+    } catch (err) {
+      console.error('[ScriptPage] 定稿或提取主体失败:', err);
+      showToast('定稿或提取主体失败，请重试', 'error');
+    } finally {
+      setIsExtracting(false);
     }
-    onGoToSubject?.('char');
-  };
+  }, [projectId, scriptContent, episodeCount, selectedModel, onGoToSubject]);
+
+ const handleExtractRequest = () => {
+   if (isSubjectUnlocked) {
+     setExtractConfirmOpen(true);
+     return;
+   }
+    handleFinalizeAndExtract();
+ };
 
   // 提取主体二次确认弹窗
   const handleSelectEpisode = useCallback(
@@ -2149,11 +2199,11 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
         title="确定要提取主体吗？"
         description="本次提取主体会覆盖之前的主体内容，一旦提取不可撤销，请谨慎操作！"
         confirmText="确认提取主体"
-        confirmVariant="orange"
-        onConfirm={() => {
-          setExtractConfirmOpen(false);
-          onGoToSubject?.('char');
-        }}
+       confirmVariant="orange"
+       onConfirm={() => {
+         setExtractConfirmOpen(false);
+          handleFinalizeAndExtract();
+       }}
         onCancel={() => setExtractConfirmOpen(false)}
       />
     );
@@ -2212,6 +2262,7 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
                   renderedContentRef={renderedContentRef}
                   editorContentRef={editorContentRef}
                   isSaving={isSaving}
+                  isExtractingSubjects={isExtracting}
                 />
               </div>
             </div>
@@ -2238,3 +2289,4 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
 
     </>  );
 }
+  const isExtractDisabled = !scriptContent || isExtractingSubjects;

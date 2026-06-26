@@ -92,6 +92,17 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
     if (videoRef.current) videoRef.current.volume = volume;
   }, [volume]);
 
+  // 弹窗打开后自动播放视频
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || !shot?.videoUrl) return;
+    const onCanPlay = () => {
+      vid.play().then(() => setPlaying(true)).catch(() => {});
+    };
+    vid.addEventListener('canplay', onCanPlay, { once: true });
+    return () => vid.removeEventListener('canplay', onCanPlay);
+  }, [shot?.videoUrl]);
+
   // 键盘快捷键
   useEffect(() => {
     const onKey = (e) => {

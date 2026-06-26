@@ -140,6 +140,17 @@ export default function CreationVideoDetailModal({
     };
   }, [volume, videoUrl]);
 
+  // 弹窗打开后自动播放视频
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || !videoUrl) return;
+    const onCanPlay = () => {
+      vid.play().then(() => setIsPlaying(true)).catch(() => {});
+    };
+    vid.addEventListener('canplay', onCanPlay, { once: true });
+    return () => vid.removeEventListener('canplay', onCanPlay);
+  }, [videoUrl]);
+
   function togglePlay() {
     const vid = videoRef.current;
     if (!vid) return;

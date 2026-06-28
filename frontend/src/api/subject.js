@@ -733,20 +733,59 @@ export async function apiFinalizeScriptWorkspace(projectId, { episode_count, mod
   if (model) body.model = model;
   if (episode_count != null) body.episode_count = episode_count;
 
-  const res = await authFetch(
-    `${BASE}/api/projects/${projectId}/script-workspace/finalize`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+  const MAX_RETRIES = 3;
+  const RETRY_DELAYS = [2000, 4000, 8000];
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      console.warn(`finalize 请求失败，第 ${attempt} 次重试中...`);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt - 1]));
     }
-  );
-  // 定稿会拆分生成剧集，影响 script / episodes / overview
-  invalidate(K.script(projectId));
-  invalidate(K.episodes(projectId));
-  invalidate(K.projectOverview(projectId));
-  return res.json();
+
+    let res;
+    try {
+      res = await authFetch(
+        `${BASE}/api/projects/${projectId}/script-workspace/finalize`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }
+      );
+    } catch (err) {
+      // Cloudflare 524 在浏览器侧表现为网络错误（net::ERR_ABORTED），
+      // authFetch 会 catch 并包装为 isNetworkError，不会返回 Response 对象
+      if (err.isNetworkError && attempt < MAX_RETRIES) {
+        continue;
+      }
+      throw err;
+    }
+
+    // nginx 504 等 5xx 网关错误：重试
+    if (res.status >= 500 && attempt < MAX_RETRIES) {
+      continue;
+    }
+
+    if (!res.ok) {
+      let errorDetail = `HTTP ${res.status}`;
+      try {
+        const errBody = await res.json();
+        errorDetail = errBody?.message || errBody?.detail || errBody?.error || JSON.stringify(errBody);
+      } catch {
+        try { errorDetail = await res.text(); } catch { /* keep HTTP status */ }
+      }
+      const err = new Error(errorDetail);
+      err.status = res.status;
+      throw err;
+    }
+
+    invalidate(K.script(projectId));
+    invalidate(K.episodes(projectId));
+    invalidate(K.projectOverview(projectId));
+    return res.json();
+  }
 }
+
 
 export async function apiExtractSubjectsFromScript(projectId) {
   const res = await authFetch(

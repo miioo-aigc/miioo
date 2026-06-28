@@ -1253,7 +1253,7 @@ const CHAR_INTERVAL = 15;
 // 流式内容渲染组件：逐字打字动画 + 自动滚动到底部
 // content 由 SSE 实时推送逐步增长，组件负责以打字机效果逐字展示
 // 当浏览器标签页切到后台时，跳过打字动画直接展示全部内容，避免 setTimeout 被浏览器节流导致卡顿
-function AiStreamingContent({ content, onDone, paused = false, onPause }) {
+function AiStreamingContent({ content, onDone, paused = false, onPause, sseActive = false }) {
   const allChars = useMemo(() => [...content], [content]);
   const [renderIndex, setRenderIndex] = useState(0);
   const [pageVisible, setPageVisible] = useState(true);
@@ -1297,7 +1297,7 @@ function AiStreamingContent({ content, onDone, paused = false, onPause }) {
     if (!pageVisible || paused) return undefined;
 
     if (renderIndex >= allChars.length) {
-      if (allChars.length > 0) {
+      if (allChars.length > 0 && !sseActive) {
         onDoneRef.current?.();
       }
       return undefined;
@@ -1308,7 +1308,7 @@ function AiStreamingContent({ content, onDone, paused = false, onPause }) {
     }, CHAR_INTERVAL);
 
     return () => window.clearTimeout(timer);
-  }, [pageVisible, paused, allChars.length, renderIndex]);
+  }, [pageVisible, paused, allChars.length, renderIndex, sseActive]);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -1695,6 +1695,7 @@ function ScriptPanel({
   onExtractRequest,
   isSubjectUnlocked,
   onStreamingDone,
+  isSseActive,
   onStreamingPause,
   streamingPaused,
   onActiveIndexChange,
@@ -1738,7 +1739,7 @@ function ScriptPanel({
             <AiThinkingMessage />
           </div>
         ) : isStreaming ? (
-          <AiStreamingContent content={scriptContent} onDone={onStreamingDone} paused={streamingPaused} onPause={onStreamingPause} />
+          <AiStreamingContent content={scriptContent} onDone={onStreamingDone} paused={streamingPaused} onPause={onStreamingPause} sseActive={isSseActive} />
         ) : isEditing ? (
           <ScriptEditor initialContent={draftContent} onContentChange={onDraftChange} containerRef={editorContentRef} />
         ) : (
@@ -1834,6 +1835,7 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
   const [toasts, setToasts] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [streamingPaused, setStreamingPaused] = useState(false);
+  const [isSseRunning, setIsSseRunning] = useState(false);
   const stopReasonRef = useRef(null); // 'user-thinking' | 'user-streaming' | null
   const renderedContentRef = useRef(null);
   const editorContentRef = useRef(null);
@@ -2004,6 +2006,7 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
 
         let hasStartedStreaming = false;
 
+        setIsSseRunning(true);
         await apiChatScriptWorkspaceStream(
           projectId,
           { message: chatMessage, model, episode_count: epCount },
@@ -2108,7 +2111,7 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
         showToast(toastMsg);
       })();
     } finally {
-      clearTimeout(timeoutId);
+      clearTimeout(timeoutId); setIsSseRunning(false);
     }
   };
 
@@ -2328,6 +2331,7 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
                   onStreamingDone={handleStreamingDone}
                   onStreamingPause={handleStreamingPause}
                   streamingPaused={streamingPaused}
+                  isSseActive={isSseRunning}
                   onActiveIndexChange={setSelectedEpisode}
                   renderedContentRef={renderedContentRef}
                   editorContentRef={editorContentRef}

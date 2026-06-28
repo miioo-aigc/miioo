@@ -895,6 +895,8 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
   return {
     taskId, videos, cardIds, posterUrl,
     referenceImages: refUrls,
+    referenceVideos: uploadedRefVideoUrl ? [uploadedRefVideoUrl] : [],
+    referenceAudios: uploadedRefAudioUrl ? [uploadedRefAudioUrl] : [],
     refMode: params.refMode || undefined,
     firstFrameUrl: firstFrameUrl || undefined,
     lastFrameUrl: lastFrameUrl || undefined,

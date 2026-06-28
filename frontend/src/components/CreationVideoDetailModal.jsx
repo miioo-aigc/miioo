@@ -2,11 +2,90 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
 import ConfirmDialog from './ConfirmDialog';
+import FilePreviewTooltip from './FilePreviewTooltip';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 // ConfirmDeleteModal 已迁移至 ConfirmDialog 共享组件
+
+
+// ─── Reference video card (thumbnail + hover preview) ──────────────────────
+function ReferenceVideoCard({ vidUrl }) {
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [cardRect, setCardRect] = useState(null);
+  const hoverTimerRef = useRef(null);
+  const cardRef = useRef(null);
+
+  useEffect(() => {
+    if (!vidUrl) return;
+    let cancelled = false;
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    if (!vidUrl.startsWith('blob:')) video.crossOrigin = 'anonymous';
+    const timeoutId = setTimeout(() => { cancelled = true; }, 5000);
+
+    const handleLoadedData = () => { if (!cancelled) video.currentTime = 0.1; };
+    const handleSeeked = () => {
+      if (cancelled) return;
+      try {
+        const maxW = 320; const scale = Math.min(1, maxW / (video.videoWidth || 1));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round((video.videoWidth || 320) * scale);
+        canvas.height = Math.round((video.videoHeight || 240) * scale);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        setPreviewUrl(canvas.toDataURL('image/jpeg', 0.7));
+      } catch (_) { /* CORS — use fallback */ }
+      clearTimeout(timeoutId);
+    };
+    const handleError = () => { cancelled = true; };
+    video.addEventListener('loadeddata', handleLoadedData);
+    video.addEventListener('seeked', handleSeeked);
+    video.addEventListener('error', handleError);
+    video.src = vidUrl;
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+      video.removeEventListener('loadeddata', handleLoadedData);
+      video.removeEventListener('seeked', handleSeeked);
+      video.removeEventListener('error', handleError);
+    };
+  }, [vidUrl]);
+
+  return (
+    <>
+      <div
+        ref={cardRef}
+        className="rounded-md overflow-clip h-[84px] w-[calc(47.49%)] bg-[#FFFFFF14] border border-solid border-[#FFFFFF14] cursor-pointer"
+        style={previewUrl ? { backgroundImage: `url(${previewUrl})`, backgroundSize: 'cover', backgroundPosition: '50%' } : {}}
+        onMouseEnter={() => {
+          hoverTimerRef.current = setTimeout(() => {
+            if (cardRef.current) setCardRect(cardRef.current.getBoundingClientRect());
+            setTooltipVisible(true);
+          }, 500);
+        }}
+        onMouseLeave={() => {
+          clearTimeout(hoverTimerRef.current);
+          setTooltipVisible(false);
+        }}
+      >
+        {!previewUrl && (
+          <div className="w-full h-full flex items-center justify-center">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, opacity: 0.25 }}>
+              <path d="M5 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5Zm10.7 7.316a1 1 0 0 1 0 1.368l-4.7 4.8a1 1 0 0 1-1.7-.684V7.2a1 1 0 0 1 1.7-.684l4.7 4.8Z" fill="currentColor" />
+            </svg>
+          </div>
+        )}
+      </div>
+      {tooltipVisible && vidUrl && (
+        <FilePreviewTooltip isVideo previewUrl={previewUrl} videoSrc={vidUrl} cardRect={cardRect} />
+      )}
+    </>
+  );
+}
 
 // Confirm delete modal component
 function CopyPromptButton({ text, onCopy }) {
@@ -391,16 +470,7 @@ export default function CreationVideoDetailModal({
                     })}
                     {refVideos.map((vid, i) => {
                       const vidUrl = typeof vid === 'string' ? vid : (vid.url || vid.previewUrl || '');
-                      return (
-                        <div key={i} className="rounded-md overflow-clip flex flex-col items-center gap-0 justify-center h-[84px] w-[calc(47.49%)] relative bg-[#FFFFFF14] border border-solid border-[#FFFFFF14] p-0">
-                          <video src={vidUrl} className="w-[93px] h-[144px] shrink-0 object-cover" />
-                          <div className="flex items-center justify-center rounded-[50%] absolute left-[50%] top-[50%] [backdrop-filter:blur(8px)] bg-[#0000001F] border border-solid border-[#FFFFFF33] size-[32px]" style={{ translate: '-50% -50%' }}>
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: '0' }}>
-                              <path d="M7 5L16 10L7 15V5Z" fill="#FFFFFF" />
-                            </svg>
-                          </div>
-                        </div>
-                      );
+                      return vidUrl ? <ReferenceVideoCard key={i} vidUrl={vidUrl} /> : null;
                     })}
                     {refAudios.map((audio, i) => (
                       <div key={i} className="flex flex-col items-start gap-[2px] px-[8px] py-[6px] overflow-clip rounded-lg w-[calc(47.699%)] h-[84px] justify-between bg-[#1D1E1E] border border-solid border-[#FFFFFF14]">

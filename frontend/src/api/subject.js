@@ -601,7 +601,7 @@ export async function apiSaveScriptWorkspace(projectId, data) {
 export async function apiChatScriptWorkspace(projectId, { message, model } = {}) {
   const body = { message, apply_to_script: true };
   if (model) body.model = model;
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/chat`, {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/chat/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -623,7 +623,7 @@ export async function apiChatScriptWorkspaceStream(
   if (episode_count != null) body.episode_count = episode_count;
 
   const res = await authFetchStream(
-    `${BASE}/api/projects/${projectId}/script-workspace/chat`,
+    `${BASE}/api/projects/${projectId}/script-workspace/chat/stream`,
     {
       method: 'POST',
       headers: {

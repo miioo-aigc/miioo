@@ -11,6 +11,7 @@ import AssetPickerModal from '../components/AssetPickerModal';
 import DubbingVoiceModal, { DubbingVoiceFileCard } from './DubbingVoiceModal';
 import CreationVideoDetailModal from '../components/CreationVideoDetailModal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import FilePreviewTooltip from '../components/FilePreviewTooltip';
 import DotsLoading from '../components/DotsLoading';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -700,50 +701,9 @@ function ImageViewModal({ imageUrl, onClose, isVideo = false }) {
   );
 }
 
-// ─── File preview tooltip (hover) ───────────────────────────────────────────
-function FilePreviewTooltip({ isVideo, previewUrl, videoSrc, cardRect }) {
-  if (!cardRect) return null;
-  const maxW = Math.round(window.innerWidth * 0.35);
-  const gap = 12;
-  // Prefer right side, fallback to left
-  const rightSpace = window.innerWidth - cardRect.right - gap;
-  const leftSpace = cardRect.left - gap;
-  let left, right;
-  if (rightSpace >= maxW) {
-    left = cardRect.right + gap;
-  } else if (leftSpace >= maxW) {
-    right = window.innerWidth - cardRect.left + gap;
-    left = undefined;
-  } else {
-    left = Math.max(8, Math.min(window.innerWidth - maxW - 8, cardRect.right + gap));
-  }
-  // Vertical: align top to card top, clamp to viewport
-  let top = cardRect.top;
-  const estH = maxW; // guess square for now; browser will handle
-  if (top + estH > window.innerHeight - 8) top = Math.max(8, window.innerHeight - estH - 8);
-  return (
-    <div style={{
-      position: 'fixed',
-      zIndex: 9998,
-      top,
-      ...(left !== undefined ? { left } : { right }),
-      maxWidth: maxW,
-      borderRadius: '10px',
-      overflow: 'hidden',
-      boxShadow: '0 8px 32px #00000099',
-      pointerEvents: 'none',
-      background: '#1D1E1E',
-    }}>
-      {isVideo && videoSrc
-        ? <video src={videoSrc} autoPlay muted loop playsInline style={{ display: 'block', maxWidth: maxW, maxHeight: maxW }} />
-        : previewUrl && <img src={previewUrl} alt="" style={{ display: 'block', maxWidth: maxW, maxHeight: maxW, objectFit: 'contain' }} />
-      }
-    </div>
-  );
-}
-
 // ─── File card ────────────────────────────────────────────────────────────────
 const IMAGE_EXTS_SET = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.tiff', '.tif', '.heic', '.heif']);
+const AUDIO_EXTS_SET = new Set([".mp3", ".wav", ".aac", ".ogg", ".flac", ".m4a", ".wma"]);
 const VIDEO_EXTS_SET = new Set(['.mp4', '.mov', '.avi', '.webm', '.mkv', '.wmv', '.flv']);
 
 function isImageFile(file) {
@@ -809,19 +769,21 @@ function FileCard({ file, onRemove, disabled = false, onInsert }) {
       const video = document.createElement('video');
       video.preload = 'metadata';
       video.muted = true;
+      if (videoUrl && !videoUrl.startsWith("blob:")) video.crossOrigin = "anonymous";
       let cancelled = false;
       const timeoutId = setTimeout(() => { cancelled = true; }, 5000);
       const handleLoadedData = () => { if (!cancelled) video.currentTime = 0.1; };
       const handleSeeked = () => {
         if (cancelled) return;
-        const maxW = 320;
-        const scale = Math.min(1, maxW / video.videoWidth);
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(video.videoWidth * scale);
-        canvas.height = Math.round(video.videoHeight * scale);
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        setPreviewUrl(canvas.toDataURL('image/jpeg', 0.7));
+        try {
+          const maxW = 320; const scale = Math.min(1, maxW / video.videoWidth);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(video.videoWidth * scale);
+          canvas.height = Math.round(video.videoHeight * scale);
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          setPreviewUrl(canvas.toDataURL('image/jpeg', 0.7));
+        } catch (_) { /* cross-origin video w/o CORS — keep fallback icon */ }
         clearTimeout(timeoutId);
       };
       const handleError = () => { cancelled = true; };
@@ -915,14 +877,13 @@ ref={cardRef}
             </button>
           )}
         </div>
-        {previewVisible && (previewUrl || videoSrc) && createPortal(
+        {previewVisible && (previewUrl || videoSrc) && (
           <FilePreviewTooltip
             isVideo={isVideo}
             previewUrl={previewUrl}
             videoSrc={videoSrc}
             cardRect={cardRect}
-          />,
-          document.body
+          />
         )}
       </>
     );
@@ -2151,7 +2112,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     // 离开首尾帧：将帧槽位的图片合并回 files 作为普通参考图
     if (refMode === 'frame' && newRefMode !== 'frame') {
       const carried = [firstFrameFile, lastFrameFile].filter(Boolean);
-      if (carried.length > 0) setFiles(carried);
+      if (carried.length > 0) setFiles(carried.map(f => (f instanceof File) ? f : { ...f, isAsset: true }));
     }
     setRefMode(newRefMode);
     const filtered = newRefMode === 'frame'
@@ -2329,13 +2290,19 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     // 有图片时阻止浏览器把 <img> 插入 contentEditable
     if (imageFiles.length > 0) {
       e.preventDefault();
-      handleFileSelect(imageFiles);
+      // 首尾帧模式下不允许输入框内粘贴参考图，参考图只能放到首尾帧上传槽中
+      if (refMode === 'frame') {
+        showToast?.('info', '首尾帧模式下不支持粘贴参考图，请使用首尾帧上传槽');
+      } else {
+        handleFileSelect(imageFiles);
+      }
       return;
     }
     // 视频/音频粘贴
     if (mediaFiles.length > 0) {
       e.preventDefault();
-      if (genType === 'image') {
+      // 首尾帧模式下同样不允许粘贴视频/音频参考素材
+      if (genType === 'image' || refMode === 'frame') {
         showToast?.('error', '不支持的文件格式！');
       } else {
         handleFileSelect(mediaFiles);
@@ -2348,7 +2315,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     if (text) {
       document.execCommand('insertText', false, text);
     }
-  }, [genType, showToast]);
+  }, [genType, refMode, showToast]);
 
   const handleRemoveFile = (index) => {
     setFiles((prev) => {
@@ -3990,6 +3957,8 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
       resolution: gen.resolution,
       duration: gen.duration,
       refImages: gen.refImages,
+      refVideos: gen.refVideos,
+      refAudios: gen.refAudios,
       refMode: gen.refMode,
       firstFrameUrl: gen.firstFrameUrl,
       lastFrameUrl: gen.lastFrameUrl,
@@ -4117,14 +4086,22 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
                     setPrefillData({
                       prompt: card.prompt,
                       promptHTML: card.promptHTML || '',
-                      files: (card.refImages || []).map((img) => ({
-                        name: img.name || 'ref.png',
-                        url: img.url || img.previewUrl || '',
-                        previewUrl: img.url || img.previewUrl || '',
-                        isAsset: true,
-                        size: 0,
-                      })),
-                      ratio: card.ratio,
+                      files: card.refMode === 'first_frame' ? [] : [
+                        ...(card.refImages || []).map((img) => ({
+                          name: img.name || 'ref.png',
+                          url: img.url || img.previewUrl || '',
+                          previewUrl: img.url || img.previewUrl || '',
+                          isAsset: true,
+                          size: 0,
+                        })),
+                        ...(card.refVideos || []).map((vid) => ({
+                          name: vid.name || 'ref.mp4',
+                          url: vid.url || vid.previewUrl || '',
+                          previewUrl: vid.url || vid.previewUrl || '',
+                          isAsset: true,
+                          size: 0,
+                        })),
+                      ],
                       resolution: card.resolution,
                       duration: card.duration,
                       refMode: card.refMode === 'first_frame' ? 'frame' : 'all',
@@ -4597,13 +4574,34 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
             .map((b) => {
               const imgUrl = b.preview_url || b.previewUrl || b.url || '';
               const normalized = normalizeImageUrl(imgUrl) || imgUrl;
-              return { url: normalized, previewUrl: normalized, isAsset: true, name: b.asset_name || 'ref.png', size: 0 };
+              return { url: normalized, previewUrl: normalized, isAsset: true, name: b.asset_name || 'ref.png', size: 0, assetId: b.asset_id };
             })
         : (item.reference_images || item.referenceImages || []).map((img) => {
             const imgUrl = typeof img === 'string' ? img : (img?.url || img?.original_url || '');
             const normalized = normalizeImageUrl(imgUrl) || imgUrl;
-            return { url: normalized, previewUrl: normalized, isAsset: true, name: normalized.split('/').pop() || 'ref.png', size: 0 };
+            return { url: normalized, previewUrl: normalized, isAsset: true, name: normalized.split('/').pop() || 'ref.png', size: 0, assetId: img?.asset_id };
           });
+    // 从 asset_bindings 提取参考视频（仅视频类型）
+    const refVideos =
+      type === 'video'
+        ? assetBindings
+            .filter((b) => b.asset_type === 'video')
+            .map((b) => {
+              const vidUrl = b.url || '';
+              const previewVidUrl = b.preview_video_url || b.previewVideoUrl || b.preview_url || b.previewUrl || vidUrl;
+              return { url: vidUrl, previewUrl: previewVidUrl, isAsset: true, name: b.asset_name || 'ref.mp4', size: 0, duration: b.duration, assetId: b.asset_id };
+            })
+        : [];
+    // 从 asset_bindings 提取参考音频（仅视频类型）
+    const refAudios =
+      type === 'video'
+        ? assetBindings
+            .filter((b) => b.asset_type === 'audio')
+            .map((b) => ({
+              url: b.url || '', name: b.asset_name || 'ref.mp3', size: 0, duration: b.duration, assetId: b.asset_id,
+            }))
+        : [];
+
 
     // poster：视频封面图
     const posterUrl = normalizeImageUrl(item.poster_url || item.posterUrl || '') || undefined;
@@ -4622,6 +4620,8 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       prompt: item.prompt || '',
       refImages,
       refMode: type === 'video' ? refMode : undefined,
+      refVideos: type === 'video' ? refVideos : undefined,
+      refAudios: type === 'video' ? refAudios : undefined,
       firstFrameUrl: type === 'video' ? firstFrameUrl : undefined,
       lastFrameUrl: type === 'video' ? lastFrameUrl : undefined,
       createdAt: item.created_at || new Date().toISOString(),
@@ -4743,7 +4743,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify([]));
 
     pending.forEach((task) => {
-      const { taskId, genId, shotId, tab, genType, count: taskCount, prompt, promptHTML, model, ratio, resolution, duration, createdAt } = task;
+      const { taskId, genId, shotId, tab, genType, count: taskCount, prompt, promptHTML, model, ratio, resolution, duration, createdAt, refVideos: taskRefVideos = [], refAudios: taskRefAudios = [] } = task;
       const isVideo = genType === 'video';
       const isDubbing = genType === 'dubbing';
 
@@ -4760,7 +4760,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         model,
         prompt,
         promptHTML: promptHTML || '',
-        refImages: [],
+        refImages: [], refVideos: taskRefVideos, refAudios: taskRefAudios,
         createdAt,
         cards: Array.from({ length: isVideo || isDubbing ? 1 : (parseInt(taskCount) || 1) }, (_, i) => ({
           id: null,
@@ -4809,6 +4809,8 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               name: (url || '').split('/').pop() || 'ref.png',
               size: 0,
             })),
+        refVideos: taskRefVideos || [],
+        refAudios: taskRefAudios || [],
             createdAt,
             cards: mediaUrls.map((url) => ({
               id: null,
@@ -5066,6 +5068,26 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       prompt: params.prompt || '',
       promptHTML: params.promptHTML || '',
       refImages: [],
+      refVideos: (params.files || []).filter(f => isVideoFile(f)).map(f => ({
+        url: f.url || null,
+        previewUrl: f.previewUrl || (f instanceof File ? URL.createObjectURL(f) : (f.url || null)),
+        isAsset: true,
+        name: f.name || 'ref.mp4',
+        size: f.size || 0,
+      })),
+      refAudios: (params.files || []).filter(f => {
+        if (!f || typeof f !== 'object') return false;
+        if (f.type && f.type.startsWith('audio/')) return true;
+        if (f.isAsset && f.url) {
+          if (/\.(mp3|wav|aac|ogg|flac|m4a|wma)$/i.test(f.url)) return true;
+        }
+        const ext = '.' + (f.name || '').split('.').pop().toLowerCase();
+        return AUDIO_EXTS_SET.has(ext);
+      }).map(f => ({
+        url: f.url || null,
+        name: f.name || 'ref.mp3',
+        size: f.size || 0,
+      })),
       createdAt: new Date().toISOString(),
       cards: Array.from({ length: isVideoGen || isDubbingGen ? 1 : countNum }, (_, i) => ({
         id: null,
@@ -5097,6 +5119,21 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               resolution: params.resolution || params.videoResolution || '',
               duration: params.videoDuration || '5s',
               createdAt: new Date().toISOString(),
+              refVideos: (params.files || []).filter(f => isVideoFile(f)).map(f => ({
+                url: f.url || null,
+                name: f.name || 'ref.mp4',
+                size: f.size || 0,
+              })),
+              refAudios: (params.files || []).filter(f => {
+                if (!f || typeof f !== 'object') return false;
+                if (f.type && f.type.startsWith('audio/')) return true;
+                const ext = '.' + (f.name || '').split('.').pop().toLowerCase();
+                return AUDIO_EXTS_SET.has(ext);
+              }).map(f => ({
+                url: f.url || null,
+                name: f.name || 'ref.mp3',
+                size: f.size || 0,
+              })),
             });
             localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(pending));
           } catch {}
@@ -5145,6 +5182,18 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
           previewUrl: normalizeImageUrl(url) || url,
           isAsset: true,
           name: (url || '').split('/').pop() || 'ref.png',
+          size: 0,
+        })),
+        refVideos: (result.referenceVideos || []).map((url) => ({
+          url: url,
+          previewUrl: url,
+          isAsset: true,
+          name: (url || '').split('/').pop() || 'ref.mp4',
+          size: 0,
+        })),
+        refAudios: (result.referenceAudios || []).map((url) => ({
+          url: url,
+          name: (url || '').split('/').pop() || 'ref.mp3',
           size: 0,
         })),
         refMode: result.refMode || undefined,

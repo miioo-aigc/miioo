@@ -3,7 +3,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
 import ReactMarkdown from 'react-markdown';
-import { apiSaveScriptWorkspace, apiGetScriptWorkspace, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiFinalizeScriptWorkspace, apiUpdateEpisode, apiGetEpisodes } from '../api/subject';
+import { apiSaveScriptWorkspace, apiGetScriptWorkspace, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiFinalizeScriptWorkspace, apiExtractSubjectsFromScript, apiUpdateEpisode, apiGetEpisodes } from '../api/subject';
 import { apiListModels } from '../api/config';
 import { PulsingBorder } from '@paper-design/shaders-react';
 import DotsLoading from '../components/DotsLoading';
@@ -2183,13 +2183,13 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
   // 提取主体按钮点击：已提取过主体 → 弹窗二次确认（覆盖风险）；首次 → 直接跳转
   const [extractConfirmOpen, setExtractConfirmOpen] = useState(false);
 
-  const handleFinalizeAndExtract = useCallback(async () => {
+  const handleExtractSubjects = useCallback(async () => {
     try {
-      await apiFinalizeScriptWorkspace(projectId, { split_mode: 'rule_first' });
+      await apiExtractSubjectsFromScript(projectId);
       onGoToSubject?.('char');
     } catch (err) {
-      console.error('[ScriptPage] 定稿失败:', err);
-      showToast('定稿失败，请重试', 'error');
+      console.error('[ScriptPage] 提取主体失败:', err);
+      showToast('提取主体失败，请重试', 'error');
     }
   }, [projectId, onGoToSubject]);
 
@@ -2198,7 +2198,7 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
       setExtractConfirmOpen(true);
       return;
     }
-    handleFinalizeAndExtract();
+    handleExtractSubjects();
   };
 
   // 提取主体二次确认弹窗
@@ -2232,7 +2232,7 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
         confirmVariant="orange"
         onConfirm={() => {
           setExtractConfirmOpen(false);
-          handleFinalizeAndExtract();
+          handleExtractSubjects();
         }}
         onCancel={() => setExtractConfirmOpen(false)}
       />

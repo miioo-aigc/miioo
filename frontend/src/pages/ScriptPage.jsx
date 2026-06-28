@@ -3,13 +3,16 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
 import ReactMarkdown from 'react-markdown';
-import { apiSaveScriptWorkspace, apiGetScriptWorkspace, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiFinalizeScriptWorkspace, apiUpdateEpisode, apiGetEpisodes, apiExtractSubjectsFromScript } from '../api/subject';
+import { apiSaveScriptWorkspace, apiGetScriptWorkspace, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiFinalizeScriptWorkspace, apiUpdateEpisode, apiGetEpisodes } from '../api/subject';
 import { apiListModels } from '../api/config';
 import { PulsingBorder } from '@paper-design/shaders-react';
 import DotsLoading from '../components/DotsLoading';
 import ConfirmDialog from '../components/ConfirmDialog';
 
+import { saveDraft } from '../utils/scriptDraftCache';
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
+
+import { getCacheCount, getDraft } from '../utils/scriptDraftCache';
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
 const ALLOWED_EXTS = ['.txt', '.md', '.pdf', '.docx', '.doc'];
@@ -827,13 +830,14 @@ function FileCard({ file, onRemove, disabled = false }) {
   );
 }
 
-function InputCard({ onSend, onStop, restoreText = '', restoreFiles = [], selectedModel, onModelChange, episodeCount, onEpisodeCountChange, width = '700px', disabled = false }) {
+function InputCard({ onSend, onStop, restoreText = '', restoreFiles = [], selectedModel, onModelChange, episodeCount, onEpisodeCountChange, width = '700px', disabled = false, projectId = '', showToast }) {
   const [text, setText] = useState(restoreText); // 挂载时使用 restoreText 作为初始值（超时回到空状态时预填充）
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [files, setFiles] = useState(restoreFiles);
   const [models, setModels] = useState([]);
   const prevDisabledRef = useRef(false);
+  const cacheNavIndex = useRef(-1);
 
   useEffect(() => {
     ensureRotateKeyframe();
@@ -864,6 +868,7 @@ function InputCard({ onSend, onStop, restoreText = '', restoreFiles = [], select
 
   const handleSend = () => {
     if (!canSend) return;
+    cacheNavIndex.current = -1;
     onSend(text.trim(), files, selectedModel, episodeCount);
     setText('');
     setFiles([]);
@@ -873,7 +878,69 @@ function InputCard({ onSend, onStop, restoreText = '', restoreFiles = [], select
     onStop?.();
   };
 
+  // 方向键上 + Shift：回退到历史暂存输入
+  const handleNavigateCache = useCallback(async () => {
+    const count = await getCacheCount(projectId);
+    if (count === 0) {
+      showToast?.('请先创作剧本', 'warning');
+      return;
+    }
+
+    const newIndex = cacheNavIndex.current + 1;
+    if (newIndex >= 10) {
+      showToast?.('没有更多了！最多为您保存近10次剧本创作指令', 'warning');
+      return;
+    }
+    if (newIndex >= count) {
+      showToast?.('没有更多了', 'warning');
+      return;
+    }
+
+    const draft = await getDraft(projectId, newIndex);
+    if (draft) {
+      setText(draft.text);
+      if (draft.files?.length) setFiles(draft.files);
+      if (draft.modelId) onModelChange(draft.modelId);
+      if (draft.episodeCount != null) onEpisodeCountChange(draft.episodeCount);
+      cacheNavIndex.current = newIndex;
+    }
+  }, [projectId, showToast]);
+
+  // Shift+Down: 向前切换到更新的暂存输入
+  const handleNavigateCacheBack = useCallback(async () => {
+    const count = await getCacheCount(projectId);
+    if (count === 0) {
+      showToast?.('请先创作剧本', 'warning');
+      return;
+    }
+
+    const newIndex = cacheNavIndex.current - 1;
+    if (newIndex < 0) {
+      showToast?.('已经是最近的一条了', 'warning');
+      return;
+    }
+
+    const draft = await getDraft(projectId, newIndex);
+    if (draft) {
+      setText(draft.text);
+      if (draft.files?.length) setFiles(draft.files);
+      if (draft.modelId) onModelChange(draft.modelId);
+      if (draft.episodeCount != null) onEpisodeCountChange(draft.episodeCount);
+      cacheNavIndex.current = newIndex;
+    }
+  }, [projectId, showToast]);
+
   const handleKeyDown = (e) => {
+    if (e.key === 'ArrowDown' && e.shiftKey) {
+      e.preventDefault();
+      handleNavigateCacheBack();
+      return;
+    }
+    if (e.key === 'ArrowUp' && e.shiftKey) {
+      e.preventDefault();
+      handleNavigateCache();
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -991,7 +1058,7 @@ function InputCard({ onSend, onStop, restoreText = '', restoreFiles = [], select
   );
 }
 
-function ScriptEmptyState({ onSend, selectedModel, onModelChange, episodeCount, onEpisodeCountChange, restoreText = '', restoreFiles = [] }) {
+function ScriptEmptyState({ onSend, selectedModel, onModelChange, episodeCount, onEpisodeCountChange, restoreText = '', restoreFiles = [], projectId = '', showToast }) {
   return (
     <div
       style={{
@@ -1007,6 +1074,8 @@ function ScriptEmptyState({ onSend, selectedModel, onModelChange, episodeCount, 
     >
       <InputCard
         onSend={onSend}
+        projectId={projectId}
+        showToast={showToast}
         width="700px"
         selectedModel={selectedModel}
         onModelChange={onModelChange}
@@ -1624,7 +1693,6 @@ function ScriptPanel({
   onSave,
   onCancelEdit,
   onExtractRequest,
-  isExtractingSubjects,
   isSubjectUnlocked,
   onStreamingDone,
   onStreamingPause,
@@ -1642,7 +1710,7 @@ function ScriptPanel({
   const showActions = phase === 'view' || phase === 'edit';
 
   // 按钮禁用：无剧本 / 提取中
-  const isExtractDisabled = !scriptContent || isExtractingSubjects;
+  const isExtractDisabled = !scriptContent;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignSelf: 'stretch', minHeight: 0, flex: 1 }}>
@@ -1724,19 +1792,12 @@ function ScriptPanel({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <PrimaryBtn onClick={isExtractDisabled ? undefined : onExtractRequest} disabled={isExtractDisabled}>
               <span style={{ fontFamily: FONT_MEDIUM, fontSize: '14px', lineHeight: '18px', color: '#090909', whiteSpace: 'nowrap' }}>
-                {isExtractingSubjects ? '正在提取...' : '开始提取主体'}
+                开始提取主体
               </span>
-              {isExtractingSubjects ? (
-                <svg className="spinner" width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ animation: 'btn-spin 0.8s linear infinite' }}>
-                  <circle cx="8" cy="8" r="6" stroke="#09090933" strokeWidth="2" />
-                  <path d="M8 2a6 6 0 0 1 6 6" stroke="#090909" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              ) : (
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M14 8H2" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M10 4L14 8L10 12" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M14 8H2" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M10 4L14 8L10 12" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </PrimaryBtn>
           </div>
         </div>
@@ -1811,19 +1872,14 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
       })
       .then((content) => {
         if (content && projectId) {
-          return apiFinalizeScriptWorkspace(projectId, { split_mode: 'rule_first' });
+        return apiFinalizeScriptWorkspace(projectId, { split_mode: "rule_first" })
+          .then(() => apiGetEpisodes(projectId))
+          .then((episodes) => {
+            if (Array.isArray(episodes) && episodes.length > 0) {
+              setBackendEpisodes(episodes);
+            }
+          });
         }
-      })
-      .then((finalizeResult) => {
-        if (finalizeResult) {
-          const episodes = finalizeResult?.items || finalizeResult?.episodes || finalizeResult?.data;
-          if (Array.isArray(episodes) && episodes.length > 0) {
-            setBackendEpisodes(episodes);
-          }
-        }
-      })
-      .catch((err) => {
-        if (err) console.error('[ScriptPage] 定稿失败:', err);
       });
   }, [projectId, isControlled, setScriptContent, setPhase, setHasStarted]);
 
@@ -1867,6 +1923,9 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
 
   const handleSend = async (text, files, model, epCount) => {
     if (!text && files.length === 0) return;
+
+    // 暂存输入到本地缓存（fire-and-forget）
+    saveDraft(projectId, { text, modelId: model, episodeCount: epCount, files });
 
     // 发送前保存当前内容，超时时可恢复（避免丢失已有剧本）
     const prevContent = scriptContent;
@@ -1971,6 +2030,14 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
           throw new Error('后端未返回剧本内容');
         }
         setPhase('view');
+        apiFinalizeScriptWorkspace(projectId, { split_mode: "rule_first" })
+          .then(() => apiGetEpisodes(projectId))
+          .then((episodes) => {
+            if (Array.isArray(episodes) && episodes.length > 0) {
+              setBackendEpisodes(episodes);
+            }
+          })
+          .catch((err) => console.error('[ScriptPage] 定稿失败:', err));
       }
     } catch (err) {
       // 504 网关超时
@@ -2048,7 +2115,15 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
   const handleStreamingDone = useCallback(() => {
     setStreamingPaused(false);
     setPhase('view');
-  }, []);
+    apiFinalizeScriptWorkspace(projectId, { split_mode: "rule_first" })
+      .then(() => apiGetEpisodes(projectId))
+      .then((episodes) => {
+        if (Array.isArray(episodes) && episodes.length > 0) {
+          setBackendEpisodes(episodes);
+        }
+      })
+      .catch((err) => console.error('[ScriptPage] 定稿失败:', err));
+  }, [projectId]);
 
   // 打字动画暂停回调：用已渲染的文字作为最终内容，切到 view 阶段
   const handleStreamingPause = useCallback((displayedText) => {
@@ -2058,6 +2133,14 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
       setPhase('view');
       // 把已渲染的部分内容同步到后端，刷新后显示实际播放到的位置
       apiSaveScriptWorkspace(projectId, { content: displayedText }).catch(() => {});
+      apiFinalizeScriptWorkspace(projectId, { split_mode: "rule_first" })
+        .then(() => apiGetEpisodes(projectId))
+        .then((episodes) => {
+          if (Array.isArray(episodes) && episodes.length > 0) {
+            setBackendEpisodes(episodes);
+          }
+        })
+        .catch((err) => console.error('[ScriptPage] 定稿失败:', err));
     } else {
       // 动画还没开始播放，退回到发送前的状态，清空后端内容
       setScriptContent('');
@@ -2137,38 +2220,16 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
 
   // 提取主体按钮点击：已提取过主体 → 弹窗二次确认（覆盖风险）；首次 → 直接跳转
   const [extractConfirmOpen, setExtractConfirmOpen] = useState(false);
-  const [isExtracting, setIsExtracting] = useState(false);
 
   const handleFinalizeAndExtract = useCallback(async () => {
-    setIsExtracting(true);
-    showToast('正在定稿并提取主体...', 'info');
     try {
-      // 1. 先定稿：拆分为剧集
-      const parsedEpisodes = parseScriptOutline(scriptContent)
-        .filter(item => item.level === 2)
-        .map((item, i) => ({
-          title: item.title,
-          episode_number: i + 1,
-        }));
-      const resolvedEpisodeCount = episodeCount ?? (parsedEpisodes.length > 0 ? parsedEpisodes.length : null);
-      await apiFinalizeScriptWorkspace(projectId, {
-        episode_count: resolvedEpisodeCount,
-        model: selectedModel,
-      });
-
-      // 2. 从剧本中抽取主体
-      await apiExtractSubjectsFromScript(projectId);
-
-      // 3. 跳转到主体页
-      showToast('定稿并提取主体成功', 'success');
+      await apiFinalizeScriptWorkspace(projectId, { split_mode: 'rule_first' });
       onGoToSubject?.('char');
     } catch (err) {
-      console.error('[ScriptPage] 定稿或提取主体失败:', err);
-      showToast('定稿或提取主体失败，请重试', 'error');
-    } finally {
-      setIsExtracting(false);
+      console.error('[ScriptPage] 定稿失败:', err);
+      showToast('定稿失败，请重试', 'error');
     }
-  }, [projectId, scriptContent, episodeCount, selectedModel, onGoToSubject]);
+  }, [projectId, onGoToSubject]);
 
   const handleExtractRequest = () => {
     if (isSubjectUnlocked) {
@@ -2239,6 +2300,8 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
       {!hasStarted ? (
         <ScriptEmptyState
           onSend={handleSend}
+          projectId={projectId}
+          showToast={showToast}
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
           episodeCount={episodeCount}
@@ -2269,7 +2332,6 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
                   renderedContentRef={renderedContentRef}
                   editorContentRef={editorContentRef}
                   isSaving={isSaving}
-                  isExtractingSubjects={isExtracting}
                 />
               </div>
             </div>
@@ -2277,6 +2339,8 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
             <div style={{ display: 'flex', justifyContent: 'center', alignSelf: 'stretch', paddingTop: '8px', overflow: 'visible', flexShrink: 0 }}>
               <InputCard
                 onSend={handleSend}
+                projectId={projectId}
+                showToast={showToast}
                 onStop={handleStop}
                 restoreText={inputRestoreText}
                 restoreFiles={inputRestoreFiles}

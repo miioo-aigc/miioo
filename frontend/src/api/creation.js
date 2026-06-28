@@ -892,5 +892,11 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       };
     },
   );
-  return { taskId, videos, cardIds, posterUrl, referenceImages: refUrls };
+  return {
+    taskId, videos, cardIds, posterUrl,
+    referenceImages: refUrls,
+    refMode: params.refMode || undefined,
+    firstFrameUrl: firstFrameUrl || undefined,
+    lastFrameUrl: lastFrameUrl || undefined,
+  };
 }

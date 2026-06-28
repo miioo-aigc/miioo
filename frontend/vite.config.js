@@ -11,8 +11,18 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss()],
     server: {
       proxy: {
-        '/uploads': { target, changeOrigin: true },
-        '/api': { target, changeOrigin: true },
+        '/uploads': {
+          target,
+          changeOrigin: true,
+          timeout: 0,
+          proxyTimeout: 300000,
+        },
+        '/api': {
+          target,
+          changeOrigin: true,
+          timeout: 0,
+          proxyTimeout: 300000,
+        },
       },
     },
   }

@@ -626,14 +626,18 @@ export async function apiChatScriptWorkspaceStream(
     `${BASE}/api/projects/${projectId}/script-workspace/chat`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+      },
       body: JSON.stringify(body),
       signal,
     }
   );
 
-  // 504 网关超时 → 抛出带标记的错误，由调用方统一处理
-  if (res.status === 504) {
+  // 504 / 524 网关超时 → 抛出带标记的错误，由调用方统一处理
+  // 504: nginx 网关超时；524: Cloudflare 源站超时（~100s 内无响应）
+  if (res.status === 504 || res.status === 524) {
     const err = new Error('Gateway Timeout');
     err.isGatewayTimeout = true;
     throw err;

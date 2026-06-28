@@ -11,6 +11,7 @@ import AssetPickerModal from '../components/AssetPickerModal';
 import DubbingVoiceModal, { DubbingVoiceFileCard } from './DubbingVoiceModal';
 import CreationVideoDetailModal from '../components/CreationVideoDetailModal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import DotsLoading from '../components/DotsLoading';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -3989,6 +3990,9 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
       resolution: gen.resolution,
       duration: gen.duration,
       refImages: gen.refImages,
+      refMode: gen.refMode,
+      firstFrameUrl: gen.firstFrameUrl,
+      lastFrameUrl: gen.lastFrameUrl,
       createdAt: gen.createdAt,
     }))
   );
@@ -4123,6 +4127,9 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
                       ratio: card.ratio,
                       resolution: card.resolution,
                       duration: card.duration,
+                      refMode: card.refMode === 'first_frame' ? 'frame' : 'all',
+                      firstFrameFile: card.firstFrameUrl ? { url: card.firstFrameUrl, previewUrl: card.firstFrameUrl, name: 'first-frame.png', size: 0 } : undefined,
+                      lastFrameFile: card.lastFrameUrl ? { url: card.lastFrameUrl, previewUrl: card.lastFrameUrl, name: 'last-frame.png', size: 0 } : undefined,
                     });
                     setPrefillVersion((v) => v + 1);
                   }}
@@ -4208,6 +4215,22 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
           </div>
         )}
       </div>
+
+      {!isGenerating && allCards.length === 0 && historyLoading && (
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: '12px',
+          zIndex: 0,
+          pointerEvents: 'none',
+        }}>
+          <DotsLoading size={6} color="#FFFFFF99" gap={4} />
+          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '18px', color: '#FFFFFF99' }}>
+            正在获取数据，请稍后
+          </span>
+        </div>
+      )}
 
       {/* Gradient fade: bridges images and InputCard, does not intercept clicks */}
       <div
@@ -4585,6 +4608,10 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     // poster：视频封面图
     const posterUrl = normalizeImageUrl(item.poster_url || item.posterUrl || '') || undefined;
 
+    const refMode = item.reference_mode || item.referenceMode || undefined;
+    const firstFrameUrl = normalizeImageUrl(item.first_frame_url || item.firstFrameUrl || '') || undefined;
+    const lastFrameUrl = normalizeImageUrl(item.last_frame_url || item.lastFrameUrl || '') || undefined;
+
     return {
       id,
       backendId: item.id,
@@ -4594,6 +4621,9 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       model: item.model || '',
       prompt: item.prompt || '',
       refImages,
+      refMode: type === 'video' ? refMode : undefined,
+      firstFrameUrl: type === 'video' ? firstFrameUrl : undefined,
+      lastFrameUrl: type === 'video' ? lastFrameUrl : undefined,
       createdAt: item.created_at || new Date().toISOString(),
       cards: [{
         id: item.id,
@@ -5117,6 +5147,9 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
           name: (url || '').split('/').pop() || 'ref.png',
           size: 0,
         })),
+        refMode: result.refMode || undefined,
+        firstFrameUrl: result.firstFrameUrl || undefined,
+        lastFrameUrl: result.lastFrameUrl || undefined,
         createdAt: genMeta.createdAt,
         cards: mediaUrls.map((url) => ({
           id: null,  // 后端 ID，待轮询返回后回写

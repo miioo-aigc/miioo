@@ -2492,16 +2492,8 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           else {
             showBatchToast('批量生成失败，未能接收到任何结果', 'error');
           }
-       },
-     });
-      // 批量生成成功后，从后端刷新当前 tab 主体列表的封面 URL
-      if (successCount > 0) {
-        const typeMap = { char: 'character', scene: 'scene', prop: 'prop' };
-        const freshSubjects = await apiGetSubjects(projectId, { type: typeMap[captureTab], limit: 100 }).catch(() => null);
-        if (freshSubjects && Array.isArray(freshSubjects)) {
-          targetSetter(normalizeSubjectList(freshSubjects));
-        }
-      }
+      },
+    });
     } catch (err) {
       // 忽略用户主动取消的错误
       if (err?.name === 'AbortError') return;

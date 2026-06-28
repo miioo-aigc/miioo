@@ -1248,7 +1248,7 @@ function AiThinkingMessage() {
 }
 
 // 流式打字动画速度：每个字符之间的间隔（毫秒）
-const CHAR_INTERVAL = 15;
+const CHAR_INTERVAL = 7;
 
 // 流式内容渲染组件：逐字打字动画 + 自动滚动到底部
 // content 由 SSE 实时推送逐步增长，组件负责以打字机效果逐字展示
@@ -1841,6 +1841,8 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
   const editorContentRef = useRef(null);
   const abortControllerRef = useRef(null); // 用于取消进行中的流式请求
 
+  const scriptContentRef = useRef(scriptContent);
+  scriptContentRef.current = scriptContent;
   useEffect(() => {
     ensureScrollbarStyle();
     ensureEditorStyle();
@@ -2118,8 +2120,11 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
   const handleStreamingDone = useCallback(() => {
     setStreamingPaused(false);
     setPhase('view');
-  }, []);
-
+    if (projectId && scriptContentRef.current) {
+      apiSaveScriptWorkspace(projectId, { content: scriptContentRef.current })
+        .catch(() => {});
+    }
+  }, [projectId]);
   // 打字动画暂停回调：用已渲染的文字作为最终内容，切到 view 阶段
   const handleStreamingPause = useCallback((displayedText) => {
     setStreamingPaused(false);

@@ -586,16 +586,45 @@ export async function apiGetScriptWorkspace(projectId) {
 }
 
 export async function apiSaveScriptWorkspace(projectId, data) {
-  const res = await authFetch(
-    `${BASE}/api/projects/${projectId}/script-workspace`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+  const MAX_RETRIES = 3;
+  const RETRY_DELAYS = [2000, 4000, 8000];
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      console.warn(`save script workspace 失败，第 ${attempt} 次重试中...`);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt - 1]));
     }
-  );
-  invalidate(K.script(projectId));
-  return res.json();
+
+    let res;
+    try {
+      res = await authFetch(
+        `${BASE}/api/projects/${projectId}/script-workspace`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        }
+      );
+    } catch (err) {
+      if (err.isNetworkError && attempt < MAX_RETRIES) {
+        continue;
+      }
+      throw err;
+    }
+
+    if (res.status >= 500 && attempt < MAX_RETRIES) {
+      continue;
+    }
+
+    if (!res.ok) {
+      const err = new Error(`HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+
+    invalidate(K.script(projectId));
+    return res.json();
+  }
 }
 
 export async function apiChatScriptWorkspace(projectId, { message, model } = {}) {

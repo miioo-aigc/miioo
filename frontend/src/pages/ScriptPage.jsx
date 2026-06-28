@@ -2118,15 +2118,7 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
   const handleStreamingDone = useCallback(() => {
     setStreamingPaused(false);
     setPhase('view');
-    apiFinalizeScriptWorkspace(projectId, { split_mode: "rule_first" })
-      .then(() => apiGetEpisodes(projectId))
-      .then((episodes) => {
-        if (Array.isArray(episodes) && episodes.length > 0) {
-          setBackendEpisodes(episodes);
-        }
-      })
-      .catch((err) => console.error('[ScriptPage] 定稿失败:', err));
-  }, [projectId]);
+  }, []);
 
   // 打字动画暂停回调：用已渲染的文字作为最终内容，切到 view 阶段
   const handleStreamingPause = useCallback((displayedText) => {
@@ -2163,46 +2155,8 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
 
     setIsSaving(true);
     try {
-      // 1. 保存 markdown 内容
       if (projectId) {
         await apiSaveScriptWorkspace(projectId, { content: draftContent });
-      }
-
-      // 2. 从编辑内容解析分集结构（## 标题 + 序号），确保定稿时传给后端
-      const parsedEpisodes = parseScriptOutline(draftContent)
-        .filter(item => item.level === 2)
-        .map((item, i) => ({
-          title: item.title,
-          episode_number: i + 1,
-        }));
-      const resolvedEpisodeCount = episodeCount ?? (parsedEpisodes.length > 0 ? parsedEpisodes.length : null);
-
-      // 3. 定稿：拆分为分集
-      if (projectId) {
-        const finalizeResult = await apiFinalizeScriptWorkspace(projectId, {
-          episode_count: resolvedEpisodeCount,
-          model: selectedModel,
-        });
-        // 兼容后端可能返回的不同字段名：items / episodes / data
-        const episodesFromFinalize = finalizeResult?.items || finalizeResult?.episodes || finalizeResult?.data;
-        if (Array.isArray(episodesFromFinalize) && episodesFromFinalize.length > 0) {
-          // 重新获取分集列表（含正确 ID），再用每集 content 中第一个 ## 标题更新
-          const episodesWithIds = await apiGetEpisodes(projectId);
-          if (Array.isArray(episodesWithIds)) {
-           for (const ep of episodesWithIds) {
-             const firstHeading = ep.content?.match(/^##\s+(.+)/m)?.[1];
-             if (firstHeading && firstHeading !== ep.title) {
-               try {
-                 await apiUpdateEpisode(projectId, ep.id, { title: firstHeading });
-                ep.title = firstHeading;
-               } catch (e) {
-                 console.error('更新分集标题失败:', e);
-               }
-             }
-           }
-            setBackendEpisodes(episodesWithIds);
-          }
-        }
       }
       setScriptContent(draftContent);
       setPhase('view');

@@ -601,7 +601,7 @@ const ModalToggle = Toggle;
 // ─── 批量生成分镜图弹窗 ───────────────────────────────────────────────────────
 
 
-function BatchImageModal({ shotCount, onClose, onConfirm }) {
+function BatchImageModal({ shotCount, onClose, onConfirm, projectRatio }) {
   const [modelList, setModelList] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [model, setModel] = useState('');
@@ -618,7 +618,8 @@ function BatchImageModal({ shotCount, onClose, onConfirm }) {
           const name = m.name || '';
           const caps = m.capabilities || {};
           const resolutions = (caps.supported_resolutions?.length ? caps.supported_resolutions : caps.supported_sizes) || [];
-          return { value: modelId, label: name || modelId, capabilities: caps, resolutions };
+          const resolutionSizeMap = caps.resolution_size_map || {};
+          return { value: modelId, label: name || modelId, capabilities: caps, resolutions, resolutionSizeMap };
         });
         setModelList(merged);
         if (merged.length > 0) {
@@ -638,8 +639,15 @@ function BatchImageModal({ shotCount, onClose, onConfirm }) {
 
   const resolutionOptions = useMemo(() => {
     const selected = modelList.find(m => m.value === model);
-    return selected?.resolutions || [];
-  }, [model, modelList]);
+    const allRes = selected?.resolutions || [];
+    if (projectRatio && selected?.resolutionSizeMap) {
+      return allRes.filter(r => {
+        const ratios = selected.resolutionSizeMap[r] || {};
+        return Object.keys(ratios).length === 0 || Object.keys(ratios).includes(projectRatio);
+      });
+    }
+    return allRes;
+  }, [model, modelList, projectRatio]);
 
   const handleModelChange = useCallback((label) => {
     const selected = modelList.find(m => m.label === label);
@@ -689,7 +697,7 @@ function BatchImageModal({ shotCount, onClose, onConfirm }) {
 
 // ─── 批量生成分镜视频弹窗 ─────────────────────────────────────────────────────
 
-function BatchVideoModal({ shots, onClose, onConfirm }) {
+function BatchVideoModal({ shots, onClose, onConfirm, projectRatio }) {
   const [modelList, setModelList] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [model, setModel] = useState('');
@@ -707,6 +715,7 @@ function BatchVideoModal({ shots, onClose, onConfirm }) {
           const name = m.name || '';
           const caps = m.capabilities || {};
           const resolutions = (caps.supported_resolutions?.length ? caps.supported_resolutions : caps.supported_sizes) || [];
+          const resolutionSizeMap = caps.resolution_size_map || {};
           // 时长：优先 supported_durations 数组，其次 supported_duration_range，最后本地兜底
           let durationRange = null;
           const durArr = caps.supported_durations || [];
@@ -716,7 +725,7 @@ function BatchVideoModal({ shots, onClose, onConfirm }) {
             const localCaps = getVideoModelCapabilities(modelId);
             if (localCaps?.outputVideo?.durationRange) durationRange = localCaps.outputVideo.durationRange;
           }
-          return { value: modelId, label: name || modelId, capabilities: caps, resolutions, durationRange, is_default: m.is_default };
+          return { value: modelId, label: name || modelId, capabilities: caps, resolutions, resolutionSizeMap, durationRange, is_default: m.is_default };
         });
         setModelList(merged);
         if (merged.length > 0) {
@@ -786,8 +795,15 @@ function BatchVideoModal({ shots, onClose, onConfirm }) {
 
   const resolutionOptions = useMemo(() => {
     const selected = modelList.find(m => m.value === model);
-    return selected?.resolutions || [];
-  }, [model, modelList]);
+    const allRes = selected?.resolutions || [];
+    if (projectRatio && selected?.resolutionSizeMap) {
+      return allRes.filter(r => {
+        const ratios = selected.resolutionSizeMap[r] || {};
+        return Object.keys(ratios).length === 0 || Object.keys(ratios).includes(projectRatio);
+      });
+    }
+    return allRes;
+  }, [model, modelList, projectRatio]);
 
   const durationOptions = useMemo(() => {
     const selected = modelList.find(m => m.value === model);
@@ -2115,7 +2131,7 @@ function RefSlotBtn({ onClick, children }) {
   );
 }
 
-function GenerateImagePanel({ shot, projectId, chars = [], scenes = [], props = [], onClose, onGenerate, onShowToast, generatedImages = [], onSetGeneratedImages, onSettleImage }) {
+function GenerateImagePanel({ shot, projectId, chars = [], scenes = [], props = [], onClose, onGenerate, onShowToast, generatedImages = [], onSetGeneratedImages, onSettleImage, projectRatio }) {
   const [modelList, setModelList] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [model, setModel] = useState('');
@@ -2128,7 +2144,7 @@ function GenerateImagePanel({ shot, projectId, chars = [], scenes = [], props = 
         const list = Array.isArray(data) ? data : (data?.items || data?.models || []);
         const merged = list.map((m) => {
           const modelId = m.model_id || m.id;
-          return { value: modelId, label: m.name || modelId, capabilities: m.capabilities || {}, is_default: m.is_default };
+          return { value: modelId, label: m.name || modelId, capabilities: m.capabilities || {}, is_default: m.is_default, resolutionSizeMap: m.capabilities?.resolution_size_map || {} };
         });
         setModelList(merged);
         if (merged.length > 0) {
@@ -2192,7 +2208,14 @@ function GenerateImagePanel({ shot, projectId, chars = [], scenes = [], props = 
   const currentModel = useMemo(() => modelList.find(m => m.value === model), [model, modelList]);
   const availableResolutions = (() => {
     const caps = currentModel?.capabilities || {};
-    return (caps.supported_resolutions?.length ? caps.supported_resolutions : caps.supported_sizes) || [];
+    const allRes = (caps.supported_resolutions?.length ? caps.supported_resolutions : caps.supported_sizes) || [];
+    if (projectRatio && currentModel?.resolutionSizeMap) {
+      return allRes.filter(r => {
+        const ratios = currentModel.resolutionSizeMap[r] || {};
+        return Object.keys(ratios).length === 0 || Object.keys(ratios).includes(projectRatio);
+      });
+    }
+    return allRes;
   })();
 
   const maxRefImages = currentModel?.capabilities?.max_reference_images;
@@ -2511,7 +2534,7 @@ function GenerateImagePanel({ shot, projectId, chars = [], scenes = [], props = 
   );
 }
 
-function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scenes = [], props = [], onClose, onGenerate, onShowToast, onSettleVideo, generatedVideos = [], onSetGeneratedVideos }) {
+function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scenes = [], props = [], onClose, onGenerate, onShowToast, onSettleVideo, generatedVideos = [], onSetGeneratedVideos, projectRatio }) {
   // 生成方式 Tab：'all' 全能参考 | 'frame' 首尾帧
   const [tab, setTab] = useState('all');
   const [modelList, setModelList] = useState([]);
@@ -2529,7 +2552,7 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
         const list = Array.isArray(data) ? data : (data?.items || data?.models || []);
         const merged = list.map((m) => {
           const modelId = m.model_id || m.id;
-          return { value: modelId, label: m.name || modelId, capabilities: m.capabilities || {}, is_default: m.is_default };
+          return { value: modelId, label: m.name || modelId, capabilities: m.capabilities || {}, is_default: m.is_default, resolutionSizeMap: m.capabilities?.resolution_size_map || {} };
         });
 
         // 按 reference_modes 分类模型
@@ -2641,7 +2664,14 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
 
   const availableResolutions = (() => {
     const caps = currentVideoModel?.capabilities || {};
-    return (caps.supported_resolutions?.length ? caps.supported_resolutions : caps.supported_sizes) || [];
+    const allRes = (caps.supported_resolutions?.length ? caps.supported_resolutions : caps.supported_sizes) || [];
+    if (projectRatio && currentVideoModel?.resolutionSizeMap) {
+      return allRes.filter(r => {
+        const ratios = currentVideoModel.resolutionSizeMap[r] || {};
+        return Object.keys(ratios).length === 0 || Object.keys(ratios).includes(projectRatio);
+      });
+    }
+    return allRes;
   })();
 
   // 时长：优先读 supported_durations（字符串数组），兼容旧的 supported_duration_range
@@ -6488,6 +6518,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         shotCount={shots.length}
         onClose={() => setShowImageModal(false)}
         onConfirm={(params) => startBatchGenImages(params)}
+        projectRatio={projectRatio}
       />
     )}
     {showVideoModal && (
@@ -6495,6 +6526,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         shots={shots}
         onClose={() => setShowVideoModal(false)}
         onConfirm={(params) => startBatchGenVideos(params)}
+        projectRatio={projectRatio}
       />
     )}
     {showDownloadModal && (
@@ -6522,6 +6554,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         projectId={projectId}
         scenes={scenes}
         props={props}
+        projectRatio={projectRatio}
         generatedImages={genImageHistoryMap[imagePanel.shot?.id] ?? []}
         onSetGeneratedImages={(updater) => {
           const shotId = imagePanel.shot?.id;
@@ -6580,6 +6613,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         chars={chars}
         scenes={scenes}
         props={props}
+        projectRatio={projectRatio}
         generatedVideos={genVideoHistoryMap[videoPanel.shot?.id] ?? []}
         onSetGeneratedVideos={(updater) => {
           const shotId = videoPanel.shot?.id;

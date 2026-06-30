@@ -496,9 +496,11 @@ function FrameUploader({ firstFile, lastFile, onFirstChange, onLastChange, onSwa
           {hasImg && hovered && (
             <>
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', borderRadius: '4px' }} />
-              <button
-                type="button"
+              <div
+                role="button"
+                tabindex={0}
                 onClick={(e) => { e.stopPropagation(); e.preventDefault(); onChange(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); onChange(null); } }}
                 style={{
                   position: 'absolute', top: '-7px', right: '-7px',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -510,7 +512,7 @@ function FrameUploader({ firstFile, lastFile, onFirstChange, onLastChange, onSwa
                   <path d="M4.667 4.667L11.333 11.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
                   <path d="M4.667 11.333L11.333 4.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-              </button>
+              </div>
             </>
           )}
         </button>
@@ -1195,7 +1197,7 @@ function RatioIcon({ rw = 16, rh = 9, selected = false }) {
 
 // ─── Params selector (ratio + resolution + count) ─────────────────────────────
 function ParamsSelector({ ratio, resolution, count, onRatioChange, onResolutionChange, onCountChange, disabled,
-  ratioOptions = [], resolutionOptions = [], countOptions = [] }) {
+  ratioOptions = [], resolutionOptions = [], countOptions = [], resolutionRatios = {} }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -1254,6 +1256,16 @@ function ParamsSelector({ ratio, resolution, count, onRatioChange, onResolutionC
     boxShadow: selected ? '#FFFFFF33 0px 0px 0px 1px inset' : 'none',
     transition: 'background 0.15s, box-shadow 0.15s',
     flexShrink: 0,
+  });
+
+  // Filter options by resolutionRatios: only show combos that are valid
+  const filteredRatioOpts = ratioOptions.filter(opt => {
+    if (!resolution || !resolutionRatios[resolution]) return true;
+    return resolutionRatios[resolution].includes(opt.value);
+  });
+  const filteredResolutionOpts = resolutionOptions.filter(res => {
+    if (!ratio || !resolutionRatios[res]) return true;
+    return resolutionRatios[res].includes(ratio);
   });
 
   return (
@@ -1318,7 +1330,7 @@ function ParamsSelector({ ratio, resolution, count, onRatioChange, onResolutionC
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>比例</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {ratioOptions.map((opt) => {
+              {filteredRatioOpts.map((opt) => {
                 const sel = opt.value === ratio;
                 return (
                   <button key={opt.value} type="button" style={cellStyle(sel)}
@@ -1338,7 +1350,7 @@ function ParamsSelector({ ratio, resolution, count, onRatioChange, onResolutionC
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>分辨率</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {resolutionOptions.map((opt) => {
+              {filteredResolutionOpts.map((opt) => {
                 const sel = opt === resolution;
                 return (
                   <button key={opt} type="button" style={simpleCellStyle(sel)}
@@ -1591,7 +1603,7 @@ function RefModeDropdownItem({ label, icon, selected, onClick }) {
 
 // ─── Video params selector (ratio + resolution + duration) ────────────────────
 function VideoParamsSelector({ ratio, resolution, duration, onRatioChange, onResolutionChange, onDurationChange, disabled,
-  ratioOptions = [], resolutionOptions = [], durationOptions = [] }) {
+  ratioOptions = [], resolutionOptions = [], durationOptions = [], resolutionRatios = {} }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const isActive = open || hovered;
@@ -1649,6 +1661,16 @@ function VideoParamsSelector({ ratio, resolution, duration, onRatioChange, onRes
     boxShadow: selected ? '#FFFFFF33 0px 0px 0px 1px inset' : 'none',
     transition: 'background 0.15s, box-shadow 0.15s',
     flexShrink: 0,
+  });
+
+  // Filter options by resolutionRatios: only show combos that are valid
+  const filteredRatioOpts = ratioOptions.filter(opt => {
+    if (!resolution || !resolutionRatios[resolution]) return true;
+    return resolutionRatios[resolution].includes(opt.value);
+  });
+  const filteredResolutionOpts = resolutionOptions.filter(res => {
+    if (!ratio || !resolutionRatios[res]) return true;
+    return resolutionRatios[res].includes(ratio);
   });
 
   return (
@@ -1712,7 +1734,7 @@ function VideoParamsSelector({ ratio, resolution, duration, onRatioChange, onRes
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>比例</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {ratioOptions.map((opt) => {
+              {filteredRatioOpts.map((opt) => {
                 const sel = opt.value === ratio;
                 return (
                   <button key={opt.value} type="button" style={cellStyle(sel)}
@@ -1732,7 +1754,7 @@ function VideoParamsSelector({ ratio, resolution, duration, onRatioChange, onRes
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>分辨率</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {resolutionOptions.map((opt) => {
+              {filteredResolutionOpts.map((opt) => {
                 const sel = opt === resolution;
                 return (
                   <button key={opt} type="button" style={simpleCellStyle(sel)}
@@ -2127,12 +2149,41 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
   useEffect(() => {
     if (!creationParams) return;
     if (genType === 'image') {
-      setRatio(creationParams.defaults?.ratio || creationParams.ratios?.[0]?.value || '');
-      setResolution(creationParams.defaults?.resolution || creationParams.resolutions?.[0] || '');
+      let defRatio = creationParams.defaults?.ratio || creationParams.ratios?.[0]?.value || '';
+      let defRes = creationParams.defaults?.resolution || creationParams.resolutions?.[0] || '';
+      // Validate combo: if default ratio not supported at default resolution, find valid pair
+      const imgRR = creationParams.resolutionRatios || {};
+      if (defRatio && defRes && imgRR[defRes] && !imgRR[defRes].includes(defRatio)) {
+        for (const res of creationParams.resolutions || []) {
+          if (imgRR[res] && imgRR[res].includes(defRatio)) { defRes = res; break; }
+        }
+        if (imgRR[defRes] && !imgRR[defRes].includes(defRatio)) {
+          const firstRes = creationParams.resolutions?.[0] || '';
+          const firstRatios = imgRR[firstRes] || [];
+          defRatio = firstRatios[0] || creationParams.ratios?.[0]?.value || '';
+          defRes = firstRes;
+        }
+      }
+      setRatio(defRatio);
+      setResolution(defRes);
       setCount(creationParams.defaults?.count || creationParams.counts?.[0] || '');
     } else {
-      setVideoRatio(creationParams.defaults?.ratio || creationParams.ratios?.[0]?.value || '');
-      setVideoResolution(creationParams.defaults?.resolution || creationParams.resolutions?.[0] || '');
+      let vRatio = creationParams.defaults?.ratio || creationParams.ratios?.[0]?.value || '';
+      let vRes = creationParams.defaults?.resolution || creationParams.resolutions?.[0] || '';
+      const vidRR = creationParams.resolutionRatios || {};
+      if (vRatio && vRes && vidRR[vRes] && !vidRR[vRes].includes(vRatio)) {
+        for (const res of creationParams.resolutions || []) {
+          if (vidRR[res] && vidRR[res].includes(vRatio)) { vRes = res; break; }
+        }
+        if (vidRR[vRes] && !vidRR[vRes].includes(vRatio)) {
+          const firstRes = creationParams.resolutions?.[0] || '';
+          const firstRatios = vidRR[firstRes] || [];
+          vRatio = firstRatios[0] || creationParams.ratios?.[0]?.value || '';
+          vRes = firstRes;
+        }
+      }
+      setVideoRatio(vRatio);
+      setVideoResolution(vRes);
       setVideoDuration(creationParams.defaults?.duration || creationParams.durations?.[0] || '');
       // 切换模型时：如果当前 refMode 在新模型中也支持，保留当前选择
       const newRefModes = creationParams.refModes?.map(m => m.value) || [];
@@ -2931,6 +2982,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
                 ratioOptions={creationParams?.ratios ?? []}
                 resolutionOptions={creationParams?.resolutions ?? []}
                 countOptions={creationParams?.counts ?? []}
+                resolutionRatios={creationParams?.resolutionRatios ?? {}}
               />
             )}
             {genType === 'video' && (
@@ -2947,6 +2999,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
                   ratioOptions={creationParams?.ratios ?? []}
                   resolutionOptions={creationParams?.resolutions ?? []}
                   durationOptions={creationParams?.durations ?? []}
+                  resolutionRatios={creationParams?.resolutionRatios ?? {}}
                 />
                 {creationParams?.supportsAudio && (
                   <SoundToggle enabled={soundEnabled} onChange={setSoundEnabled} disabled={disabled} />
@@ -4185,7 +4238,7 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
         </div>
         {/* 底部 sentinel：滚动到底时触发加载更多 */}
         <div ref={sentinelRef} style={{ height: '1px', flexShrink: 0 }} />
-        {historyLoading && (
+        {(historyLoading && allCards.length > 0) && (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '24px 0', gap: '8px' }}>
             <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: '#2DC3E1', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
             <span style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular',system-ui,sans-serif", fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>加载中…</span>

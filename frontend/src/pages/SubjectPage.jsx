@@ -1643,7 +1643,18 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
     if (resRatios) return Object.keys(resRatios);
     return currentModel.ratios || [];
   }, [currentModel, selectedResolution]);
-  const availableResolutions = currentModel.resolutions || [];
+  // Filter resolutions to only those supporting the current ratio (reverse direction)
+  const availableResolutions = useMemo(() => {
+    const resList = currentModel.resolutions || [];
+    const map = currentModel.resolutionSizeMap || {};
+    if (selectedRatio && Object.keys(map).length > 0) {
+      return resList.filter(res => {
+        const ratios = map[res] || {};
+        return Object.keys(ratios).length === 0 || Object.keys(ratios).includes(selectedRatio);
+      });
+    }
+    return resList;
+  }, [currentModel, selectedRatio]);
   const maxRefImages = currentModel.maxRefImages || 3;
 
   // 当模型切换时（非首次加载），保留当前比例/分辨率（若新模型支持）

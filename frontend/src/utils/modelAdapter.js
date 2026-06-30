@@ -199,7 +199,7 @@ function getVideoModelParamsFromCap(capabilities) {
     || capabilities.supported_resolutions !== undefined
     || capabilities.supported_sizes !== undefined;
 
-  let ratios, resolutions, durations, refModes, supportsAudio;
+  let ratios, resolutions, durations, refModes, supportsAudio, resolutionRatios;
 
   if (hasBackendFormat) {
     // Backend format: flat arrays
@@ -235,6 +235,15 @@ function getVideoModelParamsFromCap(capabilities) {
 
     // Audio support
     supportsAudio = capabilities.supports_reference_audio || false;
+
+    // Build resolutionRatios from resolution_size_map for bi-directional filtering
+    const sizeMap = capabilities.resolution_size_map || {};
+    resolutionRatios = {};
+    for (const res of resolutions) {
+      const map = sizeMap[res] || {};
+      const validRatios = Object.keys(map).filter(r => /^\d+:\d+$/.test(r));
+      if (validRatios.length > 0) resolutionRatios[res] = validRatios;
+    }
   } else {
     // Local config format: resolutions = { "1080p": [{ratio, width, height}] }
     const resKeys = Object.keys(capabilities.resolutions || {})
@@ -249,6 +258,15 @@ function getVideoModelParamsFromCap(capabilities) {
     })) || [];
 
     resolutions = resKeys;
+
+    // Build resolutionRatios from local capabilities.resolutions
+    resolutionRatios = {};
+    for (const res of resKeys) {
+      const items = capabilities.resolutions?.[res];
+      if (Array.isArray(items)) {
+        resolutionRatios[res] = items.map(item => item.ratio);
+      }
+    }
 
     const [minDuration, maxDuration] = capabilities.outputVideo?.durationRange || [4, 15];
     durations = Array.from(
@@ -274,6 +292,7 @@ function getVideoModelParamsFromCap(capabilities) {
     ratios,
     resolutions,
     durations,
+    resolutionRatios,
     refModes,
     supportsAudio,
     defaults: capabilities.defaults || {

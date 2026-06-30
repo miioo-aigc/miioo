@@ -214,11 +214,6 @@ export default function AccountMenu({
               label="编辑个人信息"
               onClick={() => { setOpen(false); onOpenProfile?.(); }}
             />
-            <MenuItem
-              icon={IconLogout}
-              label="退出登录"
-              onClick={async () => { setOpen(false); await apiLogout(); onLogout?.(); }}
-            />
             {isAdmin && onGoToAdmin && (
               <>
                 <div className="self-stretch h-px bg-stroke-normal mx-[4px] flex-shrink-0" />
@@ -243,6 +238,11 @@ export default function AccountMenu({
                 </button>
               </>
             )}
+            <MenuItem
+              icon={IconLogout}
+              label="退出登录"
+              onClick={async () => { setOpen(false); await apiLogout(); onLogout?.(); }}
+            />
           </div>
         </div>
       )}

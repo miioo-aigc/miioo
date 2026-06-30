@@ -22,10 +22,16 @@ export const K = {
   defaultModels: () => 'models:defaults',
   visualStyles: () => 'visual-styles',
   voiceLibrary: (params = {}) => `voices-library:${stable(params)}`,
+  voiceLibraryPrefix: () => 'voices-library:',
   voices: (params = {}) => `voices:${stable(params)}`,
   officialVoices: (params = {}) => `voices-official:${stable(params)}`,
   cardVisibility: () => 'card-visibility',
   banner: () => 'banner',
+  adminCommunityQr: () => 'admin-community-qr',
+  adminModelVisibility: (params = {}) => `admin-model-visibility:${stable(params)}`,
+  adminModelVisibilityPrefix: () => 'admin-model-visibility:',
+  adminAccounts: (params = {}) => `admin-accounts:${stable(params)}`,
+  adminAccountsPrefix: () => 'admin-accounts:',
 
   // ── L2 项目内容（medium: 'local'，SWR + 写失效）──────────────────────────────
   project: (id) => `project:${id}`,

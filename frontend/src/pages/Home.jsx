@@ -796,6 +796,8 @@ function WorkflowHeadbar({ activeStep, onStepChange, unlockedSteps, isLoggedIn, 
             avatarUrl={currentUser.avatar_url ?? ''}
             onLogout={onLogout}
             onOpenProfile={onOpenProfile}
+            isAdmin={currentUser.is_admin ?? false}
+            onGoToAdmin={onGoToAdmin}
           />
         ) : (
           <LoginButton onClick={onLoginClick} />
@@ -905,7 +907,7 @@ function normalizeSubjects(items) {
 const BG_VIDEOS = ["/video/bg-video-01.mp4", "/video/bg-video-02.mp4", "/video/bg-video-03.mp4", "/video/bg-video-04.mp4", "/video/bg-video-05.mp4", "/video/bg-video-06.mp4", "/video/bg-video-07.mp4", "/video/bg-video-08.mp4"];
 const BG_VIDEO_POSTER = "/video/bg-video-poster.png";
 
-export default function Home({ onProjectCreated }) {
+export default function Home({ onProjectCreated, onGoToAdmin }) {
   const [activeKey, setActiveKey] = useState(() => {
     // 只有明确保存了非 home 的 activeKey 才恢复，否则默认 home
     const savedKey = localStorage.getItem('miioo_active_key');
@@ -1845,6 +1847,8 @@ export default function Home({ onProjectCreated }) {
                 avatarUrl={currentUser.avatar_url ?? ''}
                 onLogout={handleLogout}
                 onOpenProfile={() => setProfileOpen(true)}
+                isAdmin={currentUser.is_admin ?? false}
+                onGoToAdmin={onGoToAdmin}
               />
             ) : (
               <LoginButton onClick={() => setLoginOpen(true)} />

@@ -135,6 +135,8 @@ export default function AccountMenu({
   avatarUrl = '',
   onLogout,
   onOpenProfile,
+  isAdmin = false,
+  onGoToAdmin,
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -217,6 +219,30 @@ export default function AccountMenu({
               label="退出登录"
               onClick={async () => { setOpen(false); await apiLogout(); onLogout?.(); }}
             />
+            {isAdmin && onGoToAdmin && (
+              <>
+                <div className="self-stretch h-px bg-stroke-normal mx-[4px] flex-shrink-0" />
+                <button
+                  type="button"
+                  className="flex items-center gap-[4px] px-[12px] py-[8px] self-stretch rounded-md cursor-pointer w-full text-left border-0"
+                  style={{
+                    background: 'transparent',
+                    color: 'rgba(255,255,255,0.6)',
+                    fontFamily: "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif",
+                    transition: 'background 120ms, color 120ms',
+                  }}
+                  onClick={() => { setOpen(false); onGoToAdmin?.(); }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                    <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" />
+                    <path d="M5 8H11M8 5V11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  </svg>
+                  <span style={{ fontFamily: "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif", fontSize: '14px', lineHeight: '20px' }}>
+                    管理员控制台
+                  </span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

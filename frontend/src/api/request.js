@@ -1,6 +1,7 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 import { clearAllCache } from '../utils/cache.js';
+import { createDisplayError } from './error.js';
 
 export function getToken() {
   return localStorage.getItem('token');
@@ -89,7 +90,7 @@ export async function authFetch(url, options = {}) {
   } catch (networkErr) {
     // AbortError 是用户主动取消，直接透传
     if (networkErr.name === 'AbortError') throw networkErr;
-    const err = new Error(networkErr.message || 'Network request failed');
+    const err = createDisplayError(networkErr.message || '网络请求失败，请检查网络后重试');
     err.isNetworkError = true;
     err.cause = networkErr;
     throw err;
@@ -102,7 +103,7 @@ export async function authFetch(url, options = {}) {
     }
     clearTokens();
     window.dispatchEvent(new CustomEvent('auth:logout'));
-    throw new Error('Unauthorized');
+    throw createDisplayError('登录状态已失效，请重新登录');
   }
   return res;
 }
@@ -120,7 +121,7 @@ export async function authFetchForm(url, options = {}) {
   try {
     res = await fetch(url, { ...options, headers });
   } catch (networkErr) {
-    const err = new Error(networkErr.message || 'Network request failed');
+    const err = createDisplayError(networkErr.message || '网络请求失败，请检查网络后重试');
     err.isNetworkError = true;
     err.cause = networkErr;
     throw err;
@@ -139,7 +140,7 @@ export async function authFetchForm(url, options = {}) {
     }
     clearTokens();
     window.dispatchEvent(new CustomEvent('auth:logout'));
-    throw new Error('Unauthorized');
+    throw createDisplayError('登录状态已失效，请重新登录');
   }
   return res;
 }
@@ -154,7 +155,7 @@ export async function authFetchStream(url, options = {}) {
     // AbortError 是用户主动取消，直接透传
     if (networkErr.name === 'AbortError') throw networkErr;
     // 网络层错误（DNS 失败、连接被拒等）→ 包装为可识别的错误
-    const err = new Error(networkErr.message || 'Network request failed');
+    const err = createDisplayError(networkErr.message || '网络请求失败，请检查网络后重试');
     err.isNetworkError = true;
     err.cause = networkErr;
     throw err;
@@ -165,7 +166,7 @@ export async function authFetchStream(url, options = {}) {
       try {
         return await fetch(url, withAuth(options));
       } catch (retryErr) {
-        const err = new Error(retryErr.message || 'Network request failed after token refresh');
+        const err = createDisplayError(retryErr.message || '刷新登录态后网络请求仍失败，请稍后重试');
         err.isNetworkError = true;
         err.cause = retryErr;
         throw err;
@@ -173,7 +174,7 @@ export async function authFetchStream(url, options = {}) {
     }
     clearTokens();
     window.dispatchEvent(new CustomEvent('auth:logout'));
-    throw new Error('Unauthorized');
+    throw createDisplayError('登录状态已失效，请重新登录');
   }
   return res;
 }

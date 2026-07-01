@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useCreationStore } from '../stores/creationStore';
 import Checkbox from './Checkbox';
+import AudioPlayer from './AudioPlayer';
 import { generationsToFlatList } from '../utils/creativeDaysAdapter';
 import { apiGetProjects } from '../api/project';
 import { apiGetAssetsPage, enrichWithStoryboards } from '../api/assets';
@@ -48,7 +49,26 @@ const SUB_TAB_CATEGORY_MAP = {
   '成片':   { category: 'film' },
 };
 
+function getAssetKind(asset) {
+  const rawType = String(asset?.asset_type || asset?.type || '').toLowerCase();
+  if (rawType.includes('video')) return 'video';
+  if (rawType.includes('audio')) return 'audio';
+  return 'image';
+}
+
+function getPreviewSource(asset) {
+  const kind = getAssetKind(asset);
+  if (kind === 'video') {
+    return asset.fileUrl || asset.videoUrl || asset.originalUrl || asset.original_url || asset.url || null;
+  }
+  if (kind === 'audio') {
+    return asset.fileUrl || asset.audioUrl || asset.originalUrl || asset.original_url || asset.url || null;
+  }
+  return asset.fullUrl || asset.url || null;
+}
+
 function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onMouseMove, onMouseLeave, onClick, compact = false }) {
+  const assetKind = getAssetKind(asset);
   return (
     <div
       onClick={isDisabled ? undefined : onClick}
@@ -73,7 +93,7 @@ function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onM
         background: asset.url ? 'transparent' : (asset.bgColor || '#252525'),
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        {asset.asset_type === 'video' && (asset.posterUrl || asset.url) ? (
+        {assetKind === 'video' && (asset.posterUrl || asset.url) ? (
           // 视频卡片：优先用封面图显示（清晰、快速），无封面时回退到 video 标签加载首帧
           asset.posterUrl ? (
             <img src={asset.posterUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }} />
@@ -88,7 +108,7 @@ function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onM
           )
         ) : asset.url ? (
           <img src={asset.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }} />
-        ) : asset.type === 'audio' ? (
+        ) : assetKind === 'audio' ? (
           <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
             <path d="M12 26V8l16-3v18" stroke="#FFFFFF26" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             <circle cx="8" cy="26" r="4" stroke="#FFFFFF26" strokeWidth="1.5"/>
@@ -169,10 +189,12 @@ export default function AssetPickerModal({
 
   // 将后端历史记录条目归一化为 picker 卡片格式
   function normalizeCreativeItem(item, type) {
-    // 视频优先取 video_url，图片/音频取 original_url/file_url
+    // 视频优先取 video_url，音频优先取 audio_url，图片取 original_url/file_url
     const rawUrl = type === 'video'
       ? (item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '')
-      : (item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || '');
+      : type === 'audio'
+        ? (item.audio_url || item.audioUrl || item.file_url || item.fileUrl || item.original_url || item.url || '')
+        : (item.original_url || item.file_url || item.fileUrl || item.url || item.thumbnail_url || item.thumbnailUrl || '');
     const url = normalizeImageUrl(rawUrl) || null;
 
     // 视频封面：poster_url / thumbnail_url，用于静态预览
@@ -279,6 +301,7 @@ export default function AssetPickerModal({
   const [previewImage, setPreviewImage] = useState(null); // { url, x, y }
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const hoverTimerRef = useRef(null);
+  const previewCloseTimerRef = useRef(null);
   const [cancelHovered, setCancelHovered] = useState(false);
   const [cancelPressed, setCancelPressed] = useState(false);
   const [confirmHovered, setConfirmHovered] = useState(false);
@@ -518,11 +541,13 @@ export default function AssetPickerModal({
 
     // ── 资产卡片悬浮预览处理 ──────────────────────────────────────────────
   function handlePreviewEnter(e, asset) {
-    if (!asset?.url) return;
+    const src = getPreviewSource(asset);
+    if (!src) return;
     const { clientX, clientY } = e;
     setMousePos({ x: clientX, y: clientY });
+    clearTimeout(previewCloseTimerRef.current);
     hoverTimerRef.current = setTimeout(() => {
-      setPreviewImage({ url: asset.fullUrl || asset.url, x: clientX, y: clientY });
+      setPreviewImage({ src, kind: getAssetKind(asset), x: clientX, y: clientY });
     }, 500);
   }
 
@@ -532,36 +557,47 @@ export default function AssetPickerModal({
 
   function handlePreviewLeave() {
     clearTimeout(hoverTimerRef.current);
-    setPreviewImage(null);
+    clearTimeout(previewCloseTimerRef.current);
+    previewCloseTimerRef.current = setTimeout(() => {
+      setPreviewImage(null);
+    }, 120);
   }
 
 // ── 悬浮预览 ───────────────────────────────────────────────────────────────
-  function AssetHoverPreview({ url, mouseX, mouseY }) {
+  function AssetHoverPreview({ preview, mouseX, mouseY, onEnter, onLeave }) {
+    const { src, kind } = preview;
     const [imgSize, setImgSize] = useState(null);
     const GAP = 16;
 
     useEffect(() => {
+      if (kind !== 'image') return undefined;
       setImgSize(null);
       const img = new Image();
       img.onload = () => setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
-      img.src = url;
-    }, [url]);
-
-    if (!imgSize) return null;
+      img.src = src;
+      return undefined;
+    }, [kind, src]);
 
     const maxW = window.innerWidth * 0.35;
     const maxH = window.innerHeight * 0.35;
-    const ratio = imgSize.w / imgSize.h;
+    let previewW = maxW;
+    let previewH = maxH;
 
-    let previewW, previewH;
-    if (ratio >= 1) {
-      previewW = maxW;
-      previewH = previewW / ratio;
-      if (previewH > maxH) { previewH = maxH; previewW = previewH * ratio; }
-    } else {
-      previewH = maxH;
-      previewW = previewH * ratio;
-      if (previewW > maxW) { previewW = maxW; previewH = previewW / ratio; }
+    if (kind === 'image') {
+      if (!imgSize) return null;
+      const ratio = imgSize.w / imgSize.h;
+      if (ratio >= 1) {
+        previewW = maxW;
+        previewH = previewW / ratio;
+        if (previewH > maxH) { previewH = maxH; previewW = previewH * ratio; }
+      } else {
+        previewH = maxH;
+        previewW = previewH * ratio;
+        if (previewW > maxW) { previewW = maxW; previewH = previewW * ratio; }
+      }
+    } else if (kind === 'audio') {
+      previewW = Math.min(360, window.innerWidth - GAP * 2);
+      previewH = 132;
     }
 
     let left = mouseX + GAP;
@@ -576,14 +612,33 @@ export default function AssetPickerModal({
         style={{
           position: 'fixed', left, top,
           width: previewW, height: previewH,
-          zIndex: 99999, pointerEvents: 'none',
+          zIndex: 99999, pointerEvents: kind === 'audio' ? 'auto' : 'none',
           borderRadius: '8px', overflow: 'hidden',
           boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
           border: '1px solid rgba(255,255,255,0.12)',
           backgroundColor: '#111',
         }}
+        onMouseEnter={onEnter}
+        onMouseLeave={onLeave}
       >
-        <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        {kind === 'video' ? (
+          <video
+            src={src}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#111' }}
+          />
+        ) : kind === 'audio' ? (
+          <div style={{ display: 'flex', height: '100%', flexDirection: 'column', justifyContent: 'center', gap: '14px', padding: '16px', background: 'linear-gradient(180deg, rgba(28,28,28,0.96), rgba(17,17,17,0.98))' }}>
+            <span style={{ fontFamily: FONT_MEDIUM, fontSize: '14px', lineHeight: '18px', color: '#FFFFFFCC' }}>音频试听</span>
+            <AudioPlayer src={src} label="资产库音频预览" size="compact" />
+          </div>
+        ) : (
+          <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        )}
       </div>
     );
   }
@@ -850,7 +905,18 @@ export default function AssetPickerModal({
         </div>
       </div>
       {previewImage && createPortal(
-        <AssetHoverPreview url={previewImage.url} mouseX={mousePos.x} mouseY={mousePos.y} />,
+        <AssetHoverPreview
+          preview={previewImage}
+          mouseX={mousePos.x}
+          mouseY={mousePos.y}
+          onEnter={() => {
+            clearTimeout(previewCloseTimerRef.current);
+          }}
+          onLeave={() => {
+            clearTimeout(previewCloseTimerRef.current);
+            setPreviewImage(null);
+          }}
+        />,
         document.body
       )}
     </div>,

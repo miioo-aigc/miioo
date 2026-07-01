@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PulsingBorder } from '@paper-design/shaders-react';
 import { apiGetProjects, apiUpdateProject, apiDeleteProject, apiGetProject, apiGetProjectOverview } from '../api/project';
 import { getToken, getRefreshToken, refreshAccessToken } from '../api/request';
 import { clearTokens, apiLogout, apiCompleteWechatCallback } from '../api/auth';
 import { apiListProviders } from '../api/config';
+import { GLOBAL_ERROR_DIALOG_EVENT, openGlobalErrorDialog, shouldPromoteErrorToDialog } from '../api/error';
 import { apiGetCurrentUser, apiGetNotifications } from '../api/user';
 import { apiGetSubjects, apiGetSubjectsPage, apiGetEpisodes, apiGetScriptWorkspace, apiFinalizeScriptWorkspace, apiExtractSubjectsFromScript } from '../api/subject';
 import { apiGetStoryboards, apiGenerateStoryboardsFromFinalScript, apiGetTask } from '../api/storyboard';
+import { LIVE_MATERIAL_AUTH_COMPLETED_EVENT } from '../api/liveMaterials';
 import { invalidate } from '../utils/cache';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { subscribe, peekCache } from '../utils/cache';
@@ -16,6 +18,7 @@ import wechatQR from '../assets/wechat.jpg';
 import PrimaryNav from '../components/PrimaryNav';
 import LoginModal from '../components/LoginModal';
 import ApiConfigModal from '../components/ApiConfigModal';
+import GlobalErrorDialog from '../components/GlobalErrorDialog';
 import NoModelNotice from '../components/NoModelNotice';
 import AccountMenu from '../components/AccountMenu';
 import ProfileModal from '../components/ProfileModal';
@@ -29,6 +32,7 @@ import StoryboardPage from './StoryboardPage';
 import DotsLoading from '../components/DotsLoading';
 import AssetsPage from './AssetsPage';
 import CreationPage from './CreationPage';
+import AdminConsolePage from './AdminConsolePage';
 import bizQrCodeImg from '../assets/biz-qr-code.png';
 
 const ICON_STYLE = { flexShrink: '0' };
@@ -766,7 +770,7 @@ const STEP_TABS = [
   },
 ];
 
-function WorkflowHeadbar({ activeStep, onStepChange, unlockedSteps, isLoggedIn, currentUser, onLoginClick, onLogout, onOpenProfile, onLogoClick }) {
+function WorkflowHeadbar({ activeStep, onStepChange, unlockedSteps, isLoggedIn, currentUser, onLoginClick, onLogout, onOpenProfile, onOpenAdminConsole, onLogoClick }) {
   return (
     <div className="[font-synthesis:none] flex items-center justify-between gap-[37px] self-stretch h-[60px] relative shrink-0 antialiased px-24">
       {/* Logo */}
@@ -794,8 +798,10 @@ function WorkflowHeadbar({ activeStep, onStepChange, unlockedSteps, isLoggedIn, 
             phone={currentUser.phone_bound ? (currentUser.phone ?? '已绑定') : '未绑定'}
             wechat={currentUser.wechat_bound ? (currentUser.wechat ?? '已绑定') : '未绑定'}
             avatarUrl={currentUser.avatar_url ?? ''}
+            isAdmin={Boolean(currentUser?.is_admin)}
             onLogout={onLogout}
             onOpenProfile={onOpenProfile}
+            onOpenAdminConsole={onOpenAdminConsole}
           />
         ) : (
           <LoginButton onClick={onLoginClick} />
@@ -907,9 +913,10 @@ const BG_VIDEO_POSTER = "/video/bg-video-poster.png";
 
 export default function Home({ onProjectCreated }) {
   const [activeKey, setActiveKey] = useState(() => {
-    // 只有明确保存了非 home 的 activeKey 才恢复，否则默认 home
+    // 管理员控制台不参与持久化恢复，避免普通用户刷新落到隐藏页
     const savedKey = localStorage.getItem('miioo_active_key');
-    return savedKey || 'home';
+    if (!getToken()) return 'home';
+    return savedKey && savedKey !== 'admin' ? savedKey : 'home';
   });
   const [bottomActiveKey, setBottomActiveKey] = useState(null);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -959,12 +966,14 @@ export default function Home({ onProjectCreated }) {
   const [currentUser, setCurrentUser] = useState({});
   const [forceExtract, setForceExtract] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [liveMaterialRefreshToken, setLiveMaterialRefreshToken] = useState(0);
 
   // 同步跟踪当前项目 ID
   useEffect(() => {
     currentProjectIdRef.current = activeProject?.id || null;
   }, [activeProject?.id]);
   const [toast, setToast] = useState(null);
+  const [globalError, setGlobalError] = useState(null);
   const toastTimerRef = useRef(null);
   // 跨项目异步操作的 pending 结果暂存
   const pendingExtractionsRef = useRef({}); // { projectId: { chars, scenes, props } }
@@ -972,11 +981,30 @@ export default function Home({ onProjectCreated }) {
   const bgVideoRef = useRef(null);
   const currentVideoIndexRef = useRef(0);
 
-  const showToast = (msg, type = 'warning') => {
+  const showToast = useCallback((msg, type = 'warning') => {
+    if (type === 'error' && shouldPromoteErrorToDialog(msg)) {
+      openGlobalErrorDialog(msg);
+      return;
+    }
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ msg, type });
     toastTimerRef.current = setTimeout(() => setToast(null), 2500);
-  };
+  }, []);
+
+  const closeGlobalErrorDialog = () => setGlobalError(null);
+
+  useEffect(() => {
+    const handleGlobalError = (event) => {
+      const payload = event?.detail || {};
+      setGlobalError({
+        title: payload.title || '操作失败',
+        message: payload.message || '操作失败，请稍后重试',
+        detail: payload.detail || '',
+      });
+    };
+    window.addEventListener(GLOBAL_ERROR_DIALOG_EVENT, handleGlobalError);
+    return () => window.removeEventListener(GLOBAL_ERROR_DIALOG_EVENT, handleGlobalError);
+  }, []);
 
   // 背景视频循环：播完当前视频后切换到下一个（纯 ref 操作，不触发 React 重渲染）
   const handleVideoEnded = () => {
@@ -1035,13 +1063,20 @@ export default function Home({ onProjectCreated }) {
 
   // 监听 activeKey 变化并保存
   useEffect(() => {
-    if (activeKey !== 'home') {
+    if (activeKey !== 'home' && activeKey !== 'admin') {
       localStorage.setItem('miioo_active_key', activeKey);
     } else {
-      // 回到首页时清除缓存，确保刷新不会跳转
+      // 回到首页或管理员控制台时清除缓存，确保刷新不会跳转到隐藏页
       localStorage.removeItem('miioo_active_key');
     }
   }, [activeKey]);
+
+  useEffect(() => {
+    if (activeKey === 'admin' && !currentUser?.is_admin) {
+      setActiveKey('home');
+      localStorage.removeItem('miioo_active_key');
+    }
+  }, [activeKey, currentUser?.is_admin]);
 
   // 监听解锁状态变化并保存（按项目 ID）
   useEffect(() => {
@@ -1420,13 +1455,19 @@ export default function Home({ onProjectCreated }) {
       });
     };
 
+    const handleLiveMaterialAuthCompleted = () => {
+      setLiveMaterialRefreshToken((prev) => prev + 1);
+    };
+
     window.addEventListener('auth:logout', handleForceLogout);
     window.addEventListener('message', handleWechatNeedBind);
     window.addEventListener('project-assets:deleted', handleProjectAssetsDeleted);
+    window.addEventListener(LIVE_MATERIAL_AUTH_COMPLETED_EVENT, handleLiveMaterialAuthCompleted);
     return () => {
       window.removeEventListener('auth:logout', handleForceLogout);
       window.removeEventListener('message', handleWechatNeedBind);
       window.removeEventListener('project-assets:deleted', handleProjectAssetsDeleted);
+      window.removeEventListener(LIVE_MATERIAL_AUTH_COMPLETED_EVENT, handleLiveMaterialAuthCompleted);
     };
   }, [activeProject?.id]);
 
@@ -1690,6 +1731,23 @@ export default function Home({ onProjectCreated }) {
     }
   };
 
+  const handleOpenAdminConsole = () => {
+    if (!isLoggedIn) {
+      setLoginOpen(true);
+      return;
+    }
+    if (!currentUser?.is_admin) {
+      showToast('仅管理员可访问管理员控制台', 'error');
+      return;
+    }
+    setActiveKey('admin');
+    setActiveProject(null);
+    setActiveProjectId(null);
+    localStorage.removeItem('miioo_active_project_id');
+    localStorage.removeItem('miioo_active_step');
+    localStorage.removeItem('miioo_active_key');
+  };
+
   const showApiBubble = !apiConfigOpen && (!isLoggedIn || (isLoggedIn && !apiConfigured));
 
   const bottomNavItems = useMemo(() => BOTTOM_NAV_ITEMS.map((item) => {
@@ -1843,8 +1901,10 @@ export default function Home({ onProjectCreated }) {
                 phone={currentUser.phone_bound ? (currentUser.phone ?? '已绑定') : '未绑定'}
                 wechat={currentUser.wechat_bound ? (currentUser.wechat ?? '已绑定') : '未绑定'}
                 avatarUrl={currentUser.avatar_url ?? ''}
+                isAdmin={Boolean(currentUser?.is_admin)}
                 onLogout={handleLogout}
                 onOpenProfile={() => setProfileOpen(true)}
+                onOpenAdminConsole={handleOpenAdminConsole}
               />
             ) : (
               <LoginButton onClick={() => setLoginOpen(true)} />
@@ -1861,6 +1921,7 @@ export default function Home({ onProjectCreated }) {
           onLoginClick={() => setLoginOpen(true)}
           onLogout={handleLogout}
           onOpenProfile={() => setProfileOpen(true)}
+          onOpenAdminConsole={handleOpenAdminConsole}
           onLogoClick={() => {
             setActiveProject(null);
             setActiveProjectId(null);
@@ -2059,6 +2120,7 @@ export default function Home({ onProjectCreated }) {
                 isGenerating={isGeneratingStoryboards}
                 completedEpisodesCount={completedEpisodesCount}
                 generateError={generateError}
+                liveMaterialRefreshToken={liveMaterialRefreshToken}
                 onVideoGenerated={(episodeIndex) => {
                   setEpisodeStatuses((prev) => {
                     if (prev[episodeIndex] === 'generated' || prev[episodeIndex] === 'edited') return prev;
@@ -2075,7 +2137,15 @@ export default function Home({ onProjectCreated }) {
                 isLoggedIn={isLoggedIn}
                 onLoginClick={() => setLoginOpen(true)}
                 apiConfigured={apiConfigured}
+                liveMaterialRefreshToken={liveMaterialRefreshToken}
                 onShowNoModelNotice={() => setNoModelNoticeOpen(true)}
+              />
+            )}
+            {activeKey === 'admin' && (
+              <AdminConsolePage
+                currentUser={currentUser}
+                onBackHome={() => handleNavChange('home')}
+                showToast={showToast}
               />
             )}
           </div>
@@ -2105,6 +2175,12 @@ export default function Home({ onProjectCreated }) {
         }).catch(() => {});
       }} />
       <ApiConfigModal open={apiConfigOpen} onClose={() => setApiConfigOpen(false)} onConfigured={() => setApiConfigured(true)} />
+      <GlobalErrorDialog
+        title={globalError?.title}
+        message={globalError?.message}
+        detail={globalError?.detail}
+        onClose={closeGlobalErrorDialog}
+      />
       {noModelNoticeOpen && (
         <NoModelNotice
           onConfigureAPI={() => {

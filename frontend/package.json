@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:downloads": "node scripts/verify-download-buttons.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^2.1.177",

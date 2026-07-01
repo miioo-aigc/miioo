@@ -52,6 +52,44 @@
 - 当前 `CORS_ORIGIN_REGEX` 额外允许常见局域网来源：`10.x.x.x`、`192.168.x.x`、`172.16-31.x.x`、`localhost`、`127.0.0.1`、`*.local`，并允许携带端口
 - 若需新增精确来源，请同步更新后端 `.env` 中的 `CORS_ORIGINS`；当前应用启动时也会对这份精确白名单做最小归一化，自动补齐同协议下的 `apex <-> www` 域名变体并去掉尾部 `/`
 
+## 真人素材
+
+### 真人认证与素材管理
+
+- `POST /api/live-materials/auth-sessions`
+- `POST /api/live-materials/auth-sessions/{session_id}/complete`
+- `GET /api/live-materials/groups`
+- `GET /api/live-materials/groups/{group_id}/assets`
+- `POST /api/live-materials/groups/{group_id}/assets`
+- `GET /api/live-materials/assets/{asset_id}`
+
+请求与返回要点：
+
+- `POST /api/live-materials/auth-sessions`
+  - 用途：创建真人认证 H5 会话
+  - 常用请求字段：`source`、`project_id`、`storyboard_id`、`return_path`
+  - 返回重点：`session_id`、`h5_link`、`callback_url`、`expires_at`
+- `POST /api/live-materials/auth-sessions/{session_id}/complete`
+  - 用途：前端回调页拿到 `resultCode / bytedToken` 后，向后端换取并持久化真人素材组
+  - 常用请求字段：`result_code`、`byted_token`、`query_params`
+  - 返回重点：`group`、`redirect_path`
+- `GET /api/live-materials/groups`
+  - 用途：列当前用户已完成认证的真人素材组
+- `GET /api/live-materials/groups/{group_id}/assets`
+  - 用途：列某个真人素材组下的真人素材资产
+- `POST /api/live-materials/groups/{group_id}/assets`
+  - 用途：向真人素材组内提交图片 / 视频 / 音频素材，后端会调用上游 `CreateAsset`
+  - 常用请求字段：`url`、`asset_type`、`name`
+- `GET /api/live-materials/assets/{asset_id}`
+  - 用途：读取单个真人素材资产，支持前端轮询状态直到 `Active`
+
+补充说明：
+
+- 真人素材当前统一服务于 `Seedance` 视频生成链路
+- 素材状态必须变为 `Active` 才允许进入生成
+- 后端在视频生成前会把 `provider_params.live_material` 解析为附件池，并把上游素材引用写成 `asset://<upstream_asset_id>`
+- 页面层不要直接猜测真人素材字段语义；前端继续通过 `src/api/` 统一承接认证、回调完成、素材列表与轮询逻辑
+
 ## 认证与 Token 规则
 
 ### Token 机制
@@ -1223,9 +1261,11 @@ FastAPI 默认错误响应，前端重点读取 `detail`：
 - 官方 `Vidu` 当前会自动补齐图片模型 `image-vidu-q2`，以及视频模型 `viduq3-pro / viduq3-turbo / viduq3-pro-fast / viduq3-mix / viduq2-pro / viduq2-turbo`
 - 官方 `fal` 当前会自动补齐图片模型 `fal-ai/flux/dev / fal-ai/flux/schnell`，以及视频模型 `fal-ai/stable-video / fal-ai/wan-flf2v / fal-ai/kling-video/v3/* / bytedance/seedance-2.0/*`
 - `fal` 预置模型补齐后默认均为 `is_enabled=false`、`is_default=false`
-- `OneLinkAI` 当前对话模型已扩展为 `gpt-4o / deepseek-v4-pro / deepseek-v4-flash / GLM-5.1 / mimo-v2-pro / minimax-m2.7 / minimax-m3 / step-3.5-flash / doubao-seed-2.0-lite-260215 / doubao-seed-2.0-pro-260215 / qwen3.7-max / qwen3.7-plus / qwen-long / kimi-k2-thinking`
+- `OneLinkAI` 当前对话模型已扩展为 `gpt-4o / deepseek-v4-pro / deepseek-v4-flash / GLM-5.1 / mimo-v2-pro / minimax-m2.7 / minimax-m3 / step-3.5-flash / doubao-seed-2.0-lite-260215 / doubao-seed-2.0-pro-260215 / doubao-seed-2.1-pro-260628 / qwen3.7-max / qwen3.7-plus / qwen-long / kimi-k2-thinking`
 - 若 OneLinkAI Base URL 按 OpenAI SDK 示例填写为 `https://api.onelinkai.cloud/v1`，后端会自动规整到稳定基地址，避免内部再次拼接 `/v1` 后出现重复路径
-- `OneLinkAI` 当前保留的豆包视频模型为 `doubao-seedance-1.5-pro / doubao-seedance-2.0 / doubao-seedance-2-0-fast`；豆包图片模型 `doubao-seedream-5.0-lite / doubao-seedream-4.5 / doubao-seedream-4.0` 继续保留
+- `OneLinkAI` 当前默认图片/视频入口仍分别为 `doubao-seedream-5.0-lite` 与 `doubao-seedance-2.0 / doubao-seedance-2-0-fast`；同时已恢复同步 `image-kling-v3 / image-kling-v3-omni / video-kling-v3 / video-kling-v3-omni` 到模型列表，供创作页、主体页与分镜页按能力选择，但不会抢占默认模型
+- `OneLinkAI` 下的 `image-kling-v3` 当前已按 Kling 兼容文档收口：0 图走文生图、2-4 图走多图参考生图，并新增扩图能力映射；`image-kling-v3-omni` 支持单图 Omni 与主体补全（ai-multi-shot）
+- `OneLinkAI` 下的 `video-kling-v3` 当前已按 Kling 兼容文档收口：支持文生、首帧图生、多图参考与多镜头扩展能力；`video-kling-v3-omni` 支持参考视频驱动的 Omni 视频
 - `OneLinkAI` 下的 `doubao-seedream-5.0-lite / 4.5 / 4.0` 已按豆包官方图片生成文档收口：支持文生图、单图/多图参考生图，以及文生/单图/多图参考组图；参考图最多 `14` 张，且参考图数量 + 生成数量总和最多 `15`
 - 当前后端继续沿用 `OneLinkAI` provider 已保存的默认 Base URL 与 API Key，不会强改成豆包官方地址；仅在请求体层按官方参数补齐为 `image=string|array` 与 `sequential_image_generation=auto|disabled`，以适配 OneLinkAI 透传官网能力的场景
 - 2026-06-22：`doubao-seedream-5.0-lite / 4.5 / 4.0` 已补全官方可选参数透传（详见 `docs/plans/seedream5.0-image-capabilities-completion.md`）：组图上限由 4 放开到 15；新增 `output_format`(png/jpeg，仅 5.0-lite)、`response_format`(url/b64_json)、`web_search`(仅 5.0-lite，透传 `tools:[{type:web_search}]`)、`optimize_prompt`(standard/fast)、`stream` 流式输出；新增流式路由 `POST /api/creation/images/generate/stream`（SSE：`event: task/image/done/error`）。模型 ID 仍为 `doubao-seedream-5.0-lite`（官方原生 `doubao-seedream-5-0-260128` 由 OneLinkAI 映射）
@@ -1950,6 +1990,7 @@ FastAPI 默认错误响应，前端重点读取 `detail`：
 
 - `POST /api/projects/{project_id}/subjects/{subject_id}/generate-image`
 - 后端默认约定：当主体类型为 `character / prop` 时，若请求提示词里未显式包含“纯白背景”语义，后端会在最终生成提示词末尾自动补充 `纯白色背景 / pure white background` 约束，尽量统一输出纯白底主体图
+- 当前图片模型可继续使用 `gpt-image-2`（稳定版）或 `sp-gpt-image-2`（逆向版）；两者都支持文本、图片输入并输出图片，继续复用同一条主体图片生成主链
 - 角色多视图仍继续兼容 `generation_mode=three_view`；但当前后端对该枚举的实际编排语义已升级为“四视图角色参考板”，会明确要求模型输出：
   - 面部特写
   - 正面全身
@@ -1970,9 +2011,17 @@ FastAPI 默认错误响应，前端重点读取 `detail`：
   "ratio": "1:1",
   "resolution": "1K",
   "generation_mode": "single",
-  "reference_mode": "subject"
+  "reference_mode": "subject",
+  "reference_images": [
+    "https://example.com/reference-1.png"
+  ]
 }
 ```
+
+- `reference_images` 可选
+- 当请求显式传 `reference_mode = "ignore_reference"` 时，后端会强制按文生图处理，不再回退主体已绑定参考图
+- 当请求显式传 `reference_images` 时，后端优先使用本次请求参考图
+- 仅当本次请求未显式传 `reference_images` 时，后端才会回退主体当前已绑定的参考图
 
 ### 获取主体图片列表
 
@@ -2357,6 +2406,7 @@ FastAPI 默认错误响应，前端重点读取 `detail`：
 ### 生成分镜图片
 
 - `POST /api/projects/{project_id}/storyboards/{storyboard_id}/generate-image`
+- 当前图片模型可继续使用 `gpt-image-2`（稳定版）或 `sp-gpt-image-2`（逆向版）；两者都支持文本、图片输入并输出图片，继续复用同一条分镜图片生成主链
 
 返回值示例：
 
@@ -2461,6 +2511,7 @@ FastAPI 默认错误响应，前端重点读取 `detail`：
 - `generate_mode`
 - `generate_audio`
 - `watermark`
+- `provider_params.live_material`
 - `mentioned_subjects`
 - 若本次请求未显式传入 `ratio`，后端会优先回退当前 storyboard 已保存的 `gen_params.ratio`，再回退当前项目 `aspect_ratio`
 - 当前接口已切为真正任务制：请求会立即返回 `task_id`
@@ -2483,6 +2534,7 @@ FastAPI 默认错误响应，前端重点读取 `detail`：
 - 分镜视频生成现已支持与创作页一致的数字资产编排字段：`mentions / attachments / *_asset_id`
 - 前端可以在提示词中 `@` 当前参考素材，后端会在调用 Seedance 前重写成 `图片1 / 视频1 / 音频1`
 - `asset_id` 仅作为内部绑定标识，不会直接作为提示词发送给模型
+- 当 `provider_params.live_material.group_id + asset_ids` 存在时，后端会校验这些真人素材都属于当前用户、状态均为 `Active`，并把它们转换为 `asset://...` 引用后并入当前 `attachments`
 - 若前端在请求发出后切换页面，后端仍会继续执行生成、托管与分镜回写；重新进入分镜页刷新后可看到最终视频
 - 当前若模型为 `veo-3.1-generate-preview`，运行时会改走 OneLinkAI Gemini 兼容 `predictLongRunning + operations` 链路，不直接请求 Google 官方域名
 - Veo 当前能力口径收口为 `文生 / 图生 / 首尾帧 / 多参考图引导`；其中图生、首尾帧、多参考图模式统一只支持 `8` 秒，仍通过本接口现有 `model / first_frame_url / last_frame_url / attachments / duration / resolution / ratio` 字段承接，无需新增协议字段
@@ -2551,6 +2603,7 @@ FastAPI 默认错误响应，前端重点读取 `detail`：
 ### 生成工作台图片
 
 - `POST /api/projects/{project_id}/workbench/images/generate`
+- 当前图片模型可继续使用 `gpt-image-2`（稳定版）或 `sp-gpt-image-2`（逆向版）；两者都支持文本、图片输入并输出图片，继续复用同一条工作台图片生成主链
 
 请求体示例：
 
@@ -3807,7 +3860,14 @@ FastAPI 默认错误响应，前端重点读取 `detail`：
   "first_frame_url": "https://example.com/uploads/ref-image.png",
   "last_frame_url": null,
   "reference_video_url": "https://example.com/uploads/ref-video.mp4",
-  "reference_audio_url": "https://example.com/uploads/ref-audio.mp3"
+  "reference_audio_url": "https://example.com/uploads/ref-audio.mp3",
+  "provider_params": {
+    "live_material": {
+      "group_id": "live-group-uuid",
+      "asset_ids": ["live-asset-uuid-1", "live-asset-uuid-2"],
+      "group_type": "LivenessFace"
+    }
+  }
 }
 ```
 
@@ -3820,6 +3880,12 @@ FastAPI 默认错误响应，前端重点读取 `detail`：
 - `attachments` 用于声明本次请求实际入模的素材池，后端会结合既有 URL 字段统一编排
 - `first_frame_asset_id / reference_*_asset_id / reference_image_asset_ids` 为强语义绑定字段，优先级高于自然语言推断
 - `asset_id` 不会直接发给豆包模型，后端会根据最终入模顺序把提示词重写为 `图片1 / 视频1 / 音频1`
+- 当请求里带 `provider_params.live_material` 时，后端会先把真人素材组与素材 ID 解析为当前用户可用的真人素材附件，再以 `asset://<upstream_asset_id>` 形式并入 `attachments`
+- `provider_params.live_material` 当前重点字段为：
+  - `group_id`
+  - `asset_ids`
+  - `group_type`
+- 若任一真人素材未就绪、跨组或不属于当前用户，接口会直接拒绝本次生成请求
 - 当前若模型为 `veo-3.1-generate-preview`，运行时会通过 OneLinkAI Gemini 兼容 `POST /v1beta/models/{model}:predictLongRunning` 创建任务，并轮询 `operations` 终态
 - Veo 当前能力口径收口为 `文生 / 图生 / 首尾帧 / 多参考图引导`；图生、首尾帧、多参考图模式统一只支持 `8` 秒，创作页继续复用本接口现有 `generation_mode / attachments / 首尾帧 / ratio / resolution / duration` 字段即可承接
 

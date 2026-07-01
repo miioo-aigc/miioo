@@ -8,6 +8,10 @@ import uuid
 import httpx
 
 from app.services.http_client import upstream_async_client
+from app.services.onelink_error_mapper import (
+    describe_onelink_http_error,
+    describe_onelink_timeout_error,
+)
 from app.utils.onelink_base_url import get_onelink_openai_compat_base_url
 
 
@@ -105,12 +109,24 @@ class LLMService:
                 # #region debug-point A:llm-chat-http-error
                 _send_storyboard_debug_event(_dbg_trace_id, "[DEBUG] LLM chat HTTP error", {"model": payload["model"], "elapsed_ms": round((time.perf_counter() - _dbg_started_at) * 1000, 2), "status_code": getattr(exc.response, "status_code", None), "error_type": type(exc).__name__, "response_text": (exc.response.text or "")[:400], "request_url": str(exc.request.url) if exc.request else None})
                 # #endregion
-                raise
+                raise ValueError(
+                    describe_onelink_http_error(
+                        exc,
+                        model=payload["model"],
+                        route="chat/completions",
+                    )
+                ) from exc
             except httpx.TimeoutException as exc:
                 # #region debug-point A:llm-chat-timeout
                 _send_storyboard_debug_event(_dbg_trace_id, "[DEBUG] LLM chat timeout", {"model": payload["model"], "elapsed_ms": round((time.perf_counter() - _dbg_started_at) * 1000, 2), "error_type": type(exc).__name__, "request_url": str(exc.request.url) if getattr(exc, "request", None) else None})
                 # #endregion
-                raise
+                raise ValueError(
+                    describe_onelink_timeout_error(
+                        exc,
+                        model=payload["model"],
+                        route="chat/completions",
+                    )
+                ) from exc
             except Exception as exc:
                 # #region debug-point A:llm-chat-unexpected
                 _send_storyboard_debug_event(_dbg_trace_id, "[DEBUG] LLM chat unexpected error", {"model": payload["model"], "elapsed_ms": round((time.perf_counter() - _dbg_started_at) * 1000, 2), "error_type": type(exc).__name__, "error_message": str(exc)[:400]})
@@ -139,16 +155,33 @@ class LLMService:
 
         request_base_url = get_onelink_openai_compat_base_url(base_url)
         async with upstream_async_client(profile="model", timeout=timeout) as client:
-            async with client.stream(
-                "POST",
-                f"{request_base_url.rstrip('/')}/v1/chat/completions",
-                headers=self._headers(api_key),
-                json=payload,
-            ) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if line.startswith("data: "):
-                        yield line + "\n\n"
+            try:
+                async with client.stream(
+                    "POST",
+                    f"{request_base_url.rstrip('/')}/v1/chat/completions",
+                    headers=self._headers(api_key),
+                    json=payload,
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if line.startswith("data: "):
+                            yield line + "\n\n"
+            except httpx.HTTPStatusError as exc:
+                raise ValueError(
+                    describe_onelink_http_error(
+                        exc,
+                        model=payload["model"],
+                        route="chat/completions/stream",
+                    )
+                ) from exc
+            except httpx.TimeoutException as exc:
+                raise ValueError(
+                    describe_onelink_timeout_error(
+                        exc,
+                        model=payload["model"],
+                        route="chat/completions/stream",
+                    )
+                ) from exc
 
     async def list_models(
         self,
@@ -157,13 +190,28 @@ class LLMService:
     ) -> list[dict]:
         request_base_url = get_onelink_openai_compat_base_url(base_url)
         async with upstream_async_client(profile="model", timeout=10.0) as client:
-            resp = await client.get(
-                f"{request_base_url.rstrip('/')}/v1/models",
-                headers=self._headers(api_key),
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("data", [])
+            try:
+                resp = await client.get(
+                    f"{request_base_url.rstrip('/')}/v1/models",
+                    headers=self._headers(api_key),
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return data.get("data", [])
+            except httpx.HTTPStatusError as exc:
+                raise ValueError(
+                    describe_onelink_http_error(
+                        exc,
+                        route="models",
+                    )
+                ) from exc
+            except httpx.TimeoutException as exc:
+                raise ValueError(
+                    describe_onelink_timeout_error(
+                        exc,
+                        route="models",
+                    )
+                ) from exc
 
 
 llm_service = LLMService()

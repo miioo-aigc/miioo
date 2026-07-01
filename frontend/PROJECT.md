@@ -1,6 +1,6 @@
 # miioo 项目进度管理文档
 
-> 最后更新：2026-06-24（重构持续进行中）
+> 最后更新：2026-06-28
 
 ---
 
@@ -55,6 +55,96 @@
 ---
 
 ## 四、当前进度
+
+**✅ 已完成（2026-06-28）— 前端下载能力统一收口为真实资产下载链路**
+
+- 新增 `src/api/download.js` 作为统一下载辅助层，集中处理 Blob 下载、鉴权 URL 下载与资产 ID 下载，统一覆盖同源资源、`/api/`、`/uploads/`、`/media/` 等受管媒体路径
+- `StoryboardPage.jsx` 已把分镜视频卡、媒体查看弹窗、批量下载与分镜详情下载全部切到真实资产下载路径，优先使用 `assetId` / `downloadUrl`，不再手写裸 `<a>` 或把预览 URL 直接当下载地址
+- `CreationPage.jsx` 的图片、视频、音频下载兜底已由 `window.open` 切到 `downloadFromUrl()`，详情弹窗与批量下载也继续保持 Blob 优先
+- `ImageDetailModal.jsx`、`ShotViewerModal.jsx`、`BatchDownloadModal.jsx` 与 `api/assets.js` 已一并接入统一下载辅助，页面层不再自行猜测下载语义
+- 本地 `frontend_new` 已通过 `npm run build`，本轮未修改后端接口契约
+- 当前这版代码也已同步落到 129 云主机的新 release 目录：`/www/wwwroot/miiooaib.com/frontend_new_releases/20260628_220103/frontend_new`
+
+**✅ 已完成（2026-06-28）— 统一媒体 URL 归一化修复并同步云端 frontend_new**
+
+- `src/utils/imageUrl.js` 当前已把 `/uploads` 与 `/media` 的受管媒体 URL 收口为统一归一入口：绝对 URL 若路径属于受管媒体，会重新写回当前可访问的媒体 origin，避免历史数据、旧缓存或 `http` 绝对地址继续把图片带到错误域名；同一逻辑也同步下沉到 `toAbsoluteUrl()`，保证创作/分镜/主体/资产库需要对外发送的媒体引用不会再把旧 origin 带进模型请求
+- `src/components/ApiConfigModal.jsx` 的推荐 Banner 也已改为复用 `normalizeImageUrl()`，不再手写判断 `http` 后直接透传
+- 云端 `129.211.162.176` 上运行中的 `frontend_new` 已同步这次修复，Vite dev 进程当前服务的源码已更新；本次本地 `npm run build` 也已通过
+- 这次修复是在前一轮 `miiooai.com` 反代白屏收口基础上的进一步收口，目标是让所有用户在前端侧尽量不再因旧域名、错 origin 或 `http` 媒体地址出现破图
+
+**✅ 已完成（2026-06-28）— 修复管理员音色库子页状态筛选假分页问题并同步 152**
+
+- 管理员音色库子页此前“启用中 / 已停用”状态筛选只对当前页结果做本地过滤，切换筛选后 `total / hasMore / 上下页` 与真实数据不一致
+- 后端 `GET /api/voices/library` 新增 `is_enabled` 查询参数，将状态筛选下沉到数据库查询层做真实分页筛选
+- 前端 `AdminVoiceLibraryPage.jsx` 删除当前页本地过滤逻辑，改为直接传 `isEnabled` 消费后端筛选结果；`api/voices.js` 补齐 `is_enabled / isEnabled` 透传
+- 后端测试 `test_admin_voice_library.py` 新增管理员"仅停用音色"分页筛选用例
+- `PYTHONPATH=. pytest tests/test_admin_model_visibility.py tests/test_admin_voice_library.py` 通过 `4 passed`，`frontend_new` 已执行 `npm run build` 成功
+- 本轮已将最新前后端非破坏性同步到 `152.136.237.31`，前端新 release 为 `/www/wwwroot/chengxvblog.top/frontend_new_releases/20260628_152707/frontend_new`
+
+**✅ 已完成（2026-06-28）— 修复 152 测试机管理员页面持续报错并补齐管理员模型开放路由**
+
+- 运行时日志已确认：管理员页初始化请求中只有 `/api/admin/model-visibility` 在 `152.136.237.31` 上持续返回 `404 Not Found`，而本地 `backend/app/main.py` 已注册 `admin_model_visibility.router`
+- 当前已将本地 `backend/` 以保留 `.env / uploads / .venv / logs` 的方式安全同步到 152；同步后测试机 `openapi.json` 已包含 `/api/admin/model-visibility`，未登录访问状态码已从 `404` 恢复为 `401`
+- `src/pages/Home.jsx` 中传给 `AdminConsolePage` 的 `showToast` 已改为 `useCallback` 固定引用，避免管理员页任一初始化接口失败时因 toast 触发父组件重渲染而再次拉起 `loadData`
+- 为保证后续测试机后端同步链路可复用，`backend/deploy/supervisor/deploy_backend_code_preserve_runtime_chengxvblog.sh` 已同步改为 `scp -O + ssh -tt`
+- 本轮已重新将 `frontend_new` 发布到 152，测试机前端当前 release 为 `/www/wwwroot/chengxvblog.top/frontend_new_releases/20260628_142015/frontend_new`
+
+**✅ 已完成（2026-06-28）— 测试机 `frontend_new` 发布入口兼容性修复并完成新 release 切换**
+
+- `deploy/supervisor/deploy_frontend_new_dev_chengxvblog.sh` 已补齐测试机传输兼容性：由于 `152.136.237.31` 当前 `sftp` 子系统异常，脚本现显式使用 `scp -O` 上传代码包与远端刷新脚本，并在远端执行阶段改为 `ssh -tt`
+- 远端仍继续复用 `deploy/supervisor/refresh_frontend_new_dev_chengxvblog.sh` 的新目录发布逻辑，即保留线上 `.env / .npmrc`、在 `frontend_new_releases/<timestamp>/frontend_new` 创建新 release、健康检查通过后再切换 `Supervisor`
+- 本轮已重新真实发布成功，当前测试机新 release 为 `/www/wwwroot/chengxvblog.top/frontend_new_releases/20260628_135244/frontend_new`
+- `chengxvblog-frontend-new` 当前已确认为 `RUNNING`，远端本机 `http://127.0.0.1:3000/` 返回 `HTTP 200`
+- 公网 `https://chengxvblog.top/` 与 `https://www.chengxvblog.top/` 当前均返回 `HTTP 200`，可继续作为你后续手工联调的前端事实基线
+
+**✅ 已完成（2026-06-28）— 管理员模型开放控制在普通用户端的模型可见性与 API 配置状态解耦收口**
+
+- `src/api/config.js` 当前已将普通用户模型统一入口继续收口到 `apiListModels({ category, availableOnly = true })`，并在请求层稳定携带 `available_only=true`
+- `src/pages/CreationPage.jsx`、`src/pages/ScriptPage.jsx`、`src/pages/SubjectPage.jsx`、`src/pages/StoryboardPage.jsx` 与 `src/components/BatchGenerateModal.jsx` 现都显式只消费管理员当前开放模型，不再依赖页面层自行猜测模型可见性
+- `src/components/ApiConfigModal.jsx` 已继续把 OneLinkAI provider 已配置状态与可用模型数解耦，`availableModelCount` 现仅统计当前 OneLink provider 自己的管理员开放模型
+- `src/pages/SubjectPage.jsx` 已补齐历史隐藏模型的页面级回退保护：主体详情即使继续回显旧生成记录与旧模型上下文，只要 `latest_generate_config / subject.model` 对应模型已不在当前管理员开放模型集合内，页面就不再把它重新写回可提交状态，而是回退到当前默认可用模型
+- `src/pages/StoryboardPage.jsx` 已清理图片面板初始化中残留的无效 `setDuration(...)` 视频逻辑，避免图片模型能力初始化继续混入时长分支
+- 后端聚焦回归 `tests/test_admin_model_visibility.py`、`tests/test_user_api_key.py`、`tests/test_model_selection.py` 与 `tests/test_onelink_error_mapper.py` 当前已重新通过 `15 passed`
+- 历史结果继续回显的语义保持不变；其中 `SubjectPage` 的历史隐藏模型重新提交风险已补齐页面级保护，其它入口的“历史模型后来被管理员关闭后重新生成必须禁止”当前仍保留为真实页面手工联调项
+
+**✅ 已完成（2026-06-26）— 真人素材认证与使用功能接入收尾**
+
+- 已新增 `src/api/liveMaterials.js`，统一承接真人认证会话、回调完成、真人素材组列表、素材列表、素材创建与状态轮询
+- 已新增 `src/pages/LiveMaterialAuthCallbackPage.jsx`，继续沿单入口 + pathname 分流方案承接真人认证回跳
+- 已新增 `src/components/LiveMaterialPickerModal.jsx`，作为真人素材专用选择弹窗，不复用项目资产选择器语义
+- `src/pages/CreationPage.jsx` 与 `src/pages/StoryboardPage.jsx` 已补真人素材视频入口，并统一把页面状态收口到 `provider_params.live_material`
+- `src/utils/modelAdapter.js` 与 `src/config/videoModelCapabilities.js` 已补真人素材能力承接，`Seedance` 系列可稳定显示真人素材入口
+- 当前代码、测试与文档已收口完成；真实环境认证回跳、素材转 `Active` 与视频结果承接继续由你手工联调验证
+
+**✅ 已完成（2026-06-24）— 创作页音频模块样式统一优化**
+
+- 新增通用音频播放器组件 `src/components/AudioPlayer.jsx`，统一播放按钮、进度条、时长显示与单实例播放体验
+- 优化 `DubbingVoiceModal.jsx` 中的自定义音色、收藏音频和已选音频卡，替换为与参考项目一致的播放器视觉语言
+- 优化 `CreationPage.jsx` 中的音频结果卡，移除随机波形占位，改为真实可控的播放器展示
+- 为创作页已选配音项新增试听 URL 状态，选择音色后可直接沿用统一播放器样式进行预览
+- 将配音弹窗中的官方音色宫格从一行 4 个压缩为一行 5 个，同步缩小卡片比例，提升列表信息密度
+
+**✅ 已完成（2026-06-24）— 创作模块配音真实音频展示修复**
+
+- 修正创作页配音历史归一化逻辑，兼容后端返回的 `audio_url / audioUrl / fileUrl`
+- 修正资产选择器中的创作音频映射，保证音频资产卡片拿到真实可播放地址
+- 修正 `DubbingVoiceModal.jsx` 直接请求接口和错误读取 `access_token` 的问题，统一改走 `src/api/` 鉴权链路
+- 为音色试听和收藏音频统一补全 `/uploads/...` 相对路径，前端可直接播放真实音频
+
+**✅ 已完成（2026-06-24）— 本地登录验证码 404 修复**
+
+- 修正本地前端环境变量：新增 `VITE_API_BASE_URL=`，让开发环境请求走相对路径 `/api/...`
+- 修正本地代理目标：`VITE_API_TARGET` 从错误的 `https://localhost:8080` 调整为 `http://localhost:8000`
+- 修正 `vite.config.js` 默认代理目标，与后端本地启动文档保持一致
+- 新增记录文档：`前端改动记录.md`
+
+**✅ 已完成（2026-06-24）— Seedance 2.0 重复显示根因排查**
+
+- 排查确认创作页模型下拉直接消费 `GET /api/models` 返回值，前端当前未按 `model_id` 做去重
+- 数据库确认存在历史 `model_configs` 记录：同一用户下 `doubao-seedance-2.0` 同时挂在 `OneLinkAI` 与两条旧 `Volcengine` provider 上
+- 两条旧 `Volcengine` provider 本身已是禁用状态，但其模型记录仍为启用，属于历史残留数据
+- 后端 `GET /api/models` 默认分支未过滤 `ApiProvider.is_enabled`，导致禁用 provider 下面的历史模型也返回给前端
+- 结合前端不去重，最终在下拉框中出现 3 条 `Seedance 2.0`：1 条来自当前 `OneLinkAI`，2 条来自历史 `Volcengine`
 
 ### Design System 文档
 - [x] tokens.md — Token 完整定义
@@ -390,252 +480,3 @@ API 配置弹窗模型列表卡片新增「设为默认」交互：
   TODO: 替换为真实接口  — 需要替换的位置
   ```
 - 详细清单见 `API_AUDIT.md`，按 P0 → P1 → P2 → P3 优先级排列
----
-
-## 六、代码重构 — CreationPage 组件拆分
-
-> 最后更新：2026-06-24（重构持续进行中）
-
-### 目标
-
-将 `src/pages/CreationPage.jsx`（原 5357 行）和 `src/pages/StoryboardPage.jsx`（原 6639 行）中的内联组件逐步抽离为 `src/components/` 下的独立文件。每个组件文件只做一件事，便于测试、复用和维护。
-
-### 总览
-
-| 指标 | 值 |
-|------|-----|
-| CreationPage 原大小 | 5357 行 |
-| CreationPage 现大小 | 919 行 |
-| StoryboardPage 现大小 | 478 行 |
-| AssetsPage 原大小 | 4015 行 |
-| AssetsPage 现大小 | 548 行 |
-| SubjectPage 现大小 | 2911 行 |
-| SubjectPage 现大小 | 908 行 |
-
-| Home.jsx | 2185 行 |
-| ScriptPage.jsx | 2240 行 |
-| 已减少（全部页面） | **12940 行（59.3%）** |
-| 新建组件 | 136 个 |
-| 新建工具文件 | 17 个 |
-| StoryboardPage 状态 | ✅ 完成，478 行，storyboard/ 子目录（components 7 + hooks 3） |
-
-### 已完成 — 批次 1（纯 SVG 图标）
-
-**创建 7 个文件，-150 行**
-
-| 组件 | 说明 |
-|------|------|
-| `StarIcon` | 收藏星标，已在 ImageDetailModal 中重复定义，后续需去重 |
-| `RatioIcon` | 画面比例标识方块 |
-| `DubbingEqIcon` | 配音均衡器图标 |
-| `EmptyIconShell` | SVG 容器（渐变遮罩+圆角矩形基底），被下方 3 个组件共用 |
-| `CreationEmptyIconImage` | 图片空态图标 |
-| `CreationEmptyIconVideo` | 视频空态图标（胶片+播放三角） |
-| `CreationEmptyIconDubbing` | 配音空态图标（麦克风） |
-
-**同时提取**：`downloadImage` → `src/utils/downloadImage.js`
-
-> **注意**：`StarIcon`、`ModalActionBtn`、`formatCreationDate`、`downloadImage` 在 `src/components/ImageDetailModal.jsx` 中也有重复定义，后续去重。
-
-### 已完成 — 批次 2（简单按钮/菜单项）
-
-**创建 9 个文件（含 fonts.js），-241 行**
-
-| 组件 | 说明 |
-|------|------|
-| `UploadMenuItem` | 上传菜单项按钮 |
-| `GenTypeDropdownItem` | 生成类型下拉项（选中/未选中双图标） |
-| `DropdownItem` | 通用下拉项 |
-| `RefModeDropdownItem` | 参考图模式下拉项 |
-| `CardActionBtn` | 卡片操作按钮（含 Tooltip） |
-| `ModalActionBtn` | 弹窗操作按钮 |
-| `CreationGhostBtn` | 幽灵风格按钮 |
-| `CreationPlainBtn` | 朴素风格按钮 |
-
-**同时提取**：`FONT` / `FONT_MEDIUM` → `src/utils/fonts.js`
-
-### 已完成 — 批次 3（轻量组件 + 工具函数）
-
-**创建 8 个文件，-322 行**
-
-| 组件/工具 | 说明 |
-|-----------|------|
-| `CopyPromptButton` | 复制提示词按钮 |
-| `Toast` | Toast 通知（success/warning/error 三态 SVG 图标） |
-| `SoundToggle` | 配音开关（ant-design 风格滑块） |
-| `CreationTabBar` | 图片/视频/配音三标签栏（内嵌 DEFAULT_TABS） |
-| `BatchButton` | 批量操作按钮 |
-| `CreationLoginEmptyState` | 未登录空态提示 |
-| `formatMentionLabel` | 文件名截断工具 → `src/utils/formatMentionLabel.js` |
-| `formatCreationDate` | ISO 时间格式化 → `src/utils/formatCreationDate.js` |
-
-
-### 已完成 — 批次 4（中等复杂度组件）
-
-**创建 7 个文件，-801 行，自动修复 2 个 bug**
-
-| 组件 | 说明 |
-|------|------|
-| `Dropdown` | 通用下拉容器（useRef + useEffect 外部点击关闭） |
-| `GenTypeSelector` | 生成类型选择器，依赖 Dropdown + GenTypeDropdownItem，接受 `options` prop |
-| `ModelSelector` | 模型选择器，依赖 Dropdown + DropdownItem |
-| `ParamsSelector` | 画面参数选择器（比例/分辨率/数量），依赖 RatioIcon |
-| `VideoParamsSelector` | 视频参数选择器（比例/分辨率/时长），独立实现 |
-| `RefModeSelector` | 参考图模式选择器，内联下拉实现 + 6 个 SVG 图标常量 |
-| `DubbingAdjust` | 配音语速/情绪调节面板，依赖 DubbingEqIcon |
-
-**自动修复的 bug**：
-1. `DEFAULT_EMOTIONS` 常量在整个代码库中未定义（ReferenceError 潜在风险）→ 在 DubbingAdjust 组件内补上
-2. InputCard 二行函数签名的第一行 `function InputCard({ onGenerate, ...` 被 sed 范围删除意外清除 → 重新插入
-
-
-
-### 已完成 — 批次 6（结果卡片组件）
-
-**创建 4 个文件，-1098 行**
-
-| 组件 | 说明 |
-|------|------|
-| `ImageDetailModal` | 图片详情弹窗（带 DETAIL_PANEL_DIVIDER 常量） |
-| `VideoResultCard` | 视频结果卡片（hover 内联播放 + shimmer 骨架 + 批量选择） |
-| `ImageResultCard` | 图片结果卡片（缩略图 + 详情弹窗联动 + shimmer） |
-| `AudioResultCard` | 音频结果卡片（播放/暂停 + 波形动画 + 删除） |
-
-### 已完成 — 批次 7（聚合组件 + 页面骨架）
-
-**创建 3 个文件（含 InputCard），-1056 行**
-
-| 组件 | 说明 |
-|------|------|
-| `CreationResultState` | 创作结果容器（多标签生成历史 + 无限滚动 + 重新编辑/首帧交换/删除） |
-| `CreationEmptyState` | 空态提示（居中图标 + InputCard 定位） |
-| `InputCard` | **最大的组件（915 行）**，整合 GenTypeSelector/ModelSelector/ParamsSelector/SendButton 等 15+ 子组件 |
-| （页面骨架）| CreationPage 主体逻辑（~919 行，state + handlers + 布局编排） |
-
-### 已完成 — 批次 8（StoryboardPage 初步拆分）
-
-**创建 9 个文件，-240 行**
-
-| 组件 | 说明 |
-|------|------|
-| `SpinnerIcon` | 旋转加载图标 |
-| `GhostBtn` | 幽灵按钮（含 loading Spinner） |
-| `PrimaryBtn` | 主按钮 |
-| `SecondaryBtn` | 次按钮 |
-| `ModalOverlay` | 弹窗遮罩层（createPortal + backdropFilter） |
-| `ModalGhostBtn` | 弹窗幽灵按钮 |
-| `ModalCloseBtn` | 弹窗关闭按钮 |
-| `ImgUploadBtn` | 图片上传按钮 |
-| `RefSlotBtn` | 参考图槽位按钮 |
-
-**注意**：BatchImageModal、BatchVideoModal、ImgUploadCard、PanelSelect、FrameUploadSlot、PanelUploadSlot、PanelPromptInput 等因紧密耦合于 StoryboardPage 的 state，暂未提取。
-
-
-### 依赖提取提示
-
-CreationPage 中有些内联常量被多个组件引用，提取前需确认是否所有引用方都已提取或复制：
-
-| 常量 | 引用方 | 处理方式 |
-|------|--------|----------|
-| `FONT` / `FONT_MEDIUM` | 几乎所有组件 | ✅ 已提取到 `src/utils/fonts.js` |
-| `ALLOWED_EXTS` / `ALLOWED_IMAGE_EXTS` / `ALLOWED_VIDEO_EXTS` / `ALLOWED_AUDIO_EXTS` / `ALLOWED_MEDIA_EXTS` | UploadPlaceholder / FrameUploader / FileCard | ✅ 已迁入到 src/utils/fileTypes.js |
-| `GEN_TYPE_OPTIONS` | GenTypeSelector | 待提取时已嵌入 InputCard.jsx |
-| `EMPTY_ICON_MAP` | CreationEmptyState | 已嵌入 CreationEmptyState.jsx |
-| `DETAIL_PANEL_DIVIDER` | ImageDetailModal | 已迁入 ImageDetailModal.jsx |
-
----
-
-### StoryboardPage 深层 Hook 提取 (2026-06-24)
-
-从 StoryboardPage.jsx 逐层提取自定义 Hook，叶子先提取再聚合。
-
-| 批次 | Hook | 提取行数 | 文件 | 状态 |
-|------|------|----------|------|------|
-| 1 | `useDownloadMode` | ~74 | `storyboard/useDownloadMode.js` | ✅ 完成 |
-| 2 | `useShotOperations` | ~105 | `storyboard/useShotOperations.js` | ✅ 完成 |
-| 3 | `useBatchGeneration` | ~200 | `storyboard/useBatchGeneration.js` | ✅ 完成 |
-
-**批次 3 详情（刚刚完成）**：
-- 提取批量生成 + 单镜头生成逻辑到 useBatchGeneration hook
-- StoryboardPage.jsx: 678 → **478 行** (-200 行)
-- 移除无用导入：taskPolling 系列、apiGenerate* 系列、toAbsoluteUrl
-- JSX onGenerate 回调变为 4-6 行薄包装，实际逻辑由 hook 管理
-- 构建：✅ 通过 (579 modules, 328ms)
-
----
-
-### SubjectPage 组件提取（2026-06-23 ~ 06-24）
-
-将 SubjectPage.jsx 从 2702 行缩减到 908 行，提取 19 个文件到 `pages/subject/`。
-
-| 组件 | 说明 |
-|------|------|
-| SelectField | 下拉选择字段 |
-| VoiceCard | 配音卡片 |
-| TabNav | 标签导航 |
-| Toolbar | 工具栏 |
-| AddCard | 新增卡片 |
-| CharCard | 角色卡片 |
-| EditSubjectPanel | 编辑主体面板 |
-| ImageViewModal | 图片查看弹窗 |
-| MoreMenu | 更多菜单 |
-| RadioOption | 单选选项 |
-| RefImageField | 参考图字段 |
-| RefImageItem | 参考图项 |
-| RefImageUploadCard | 参考图上传卡片 |
-| SubjectRefHoverPreview | 主体参考图悬停预览 |
-| UploadBtn | 上传按钮 |
-| VoiceSelectModal | 配音选择弹窗 |
-| ImageItem | 图片项 |
-| ImageItemUpload | 图片上传项 |
-| IconBtn | 图标按钮 |
-
-### AssetsPage 组件提取（2026-06-24）
-
-将 AssetsPage.jsx 从 4015 行缩减到 548 行，提取 20 个文件到 `pages/assets/`。
-
-| 组件 | 说明 |
-|------|------|
-| AssetCard | 资产卡片 |
-| AssetDetailModal | 资产详情弹窗 |
-| ProjectAssetCard | 项目资产卡片 |
-| ProjectAssetsPanel | 项目资产面板 |
-| AudioCard | 音频卡片 |
-| BatchActionBtn | 批量操作按钮 |
-| MoreMenu | 更多菜单 |
-| FavFilterCheckbox | 收藏筛选复选框 |
-| EmptyAssetState | 空资产状态 |
-| ProjectListItem | 项目列表项 |
-| VideoFrameThumbnail | 视频帧缩略图 |
-| ShotDetailModal | 镜头详情弹窗 |
-| ShotVideoDetailModal | 镜头视频详情弹窗 |
-| SubjectAssetDetailModal | 主体资产详情弹窗 |
-| ModuleTabBar | 模块标签栏 |
-| TabBar | 标签栏 |
-| DownloadIcon | 下载图标 |
-| TrashIcon | 垃圾桶图标 |
-| GhostButton | 幽灵按钮 |
-| PlainBtn | 朴素按钮 |
-
----
-
-### CreationPage 组件归位（2026-06-24）
-
-将 10 个 Creation 前缀组件从 `components/` 移至 `pages/creation/`，形成与其他页面一致的子目录结构。
-
-| 移入 creation/ | 说明 |
-|---------------|------|
-| CreationEmptyState | 创作空态容器 |
-| CreationResultState | 创作结果容器 |
-| CreationGhostBtn | 创作幽灵按钮 |
-| CreationLoginEmptyState | 未登录空态 |
-| CreationPlainBtn | 创作朴素按钮 |
-| CreationTabBar | 创作标签栏 |
-| CreationEmptyIconDubbing | 配音空态图标 |
-| CreationEmptyIconImage | 图片空态图标 |
-| CreationEmptyIconVideo | 视频空态图标 |
-| EmptyIconShell | SVG 图标容器 |
-
-**留在 components/ 的例外**：`CreationVideoDetailModal` — 被 AssetsPage 和 assets/ 引用，属跨页面共享组件，不归入 creation/。
-
-构建 ✅，components/ 从 136 降至 126。

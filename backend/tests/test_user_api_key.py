@@ -2,9 +2,11 @@ from datetime import datetime, timedelta
 import uuid
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
+from app.models.admin_model_visibility import AdminModelVisibility
 from app.models.model_config import ModelConfig
 from app.models.provider import ApiProvider
 from app.models.user import User
@@ -22,7 +24,12 @@ async def test_get_user_model_provider_runtime_prefers_volcengine_for_doubao_dup
         await conn.run_sync(
             lambda sync_conn: Base.metadata.create_all(
                 sync_conn,
-                tables=[User.__table__, ApiProvider.__table__, ModelConfig.__table__],
+                tables=[
+                    User.__table__,
+                    ApiProvider.__table__,
+                    ModelConfig.__table__,
+                    AdminModelVisibility.__table__,
+                ],
             )
         )
 
@@ -115,7 +122,12 @@ async def test_get_user_model_provider_runtime_keeps_existing_order_for_non_offi
         await conn.run_sync(
             lambda sync_conn: Base.metadata.create_all(
                 sync_conn,
-                tables=[User.__table__, ApiProvider.__table__, ModelConfig.__table__],
+                tables=[
+                    User.__table__,
+                    ApiProvider.__table__,
+                    ModelConfig.__table__,
+                    AdminModelVisibility.__table__,
+                ],
             )
         )
 
@@ -210,7 +222,12 @@ async def test_get_user_model_provider_runtime_falls_back_to_preferred_provider_
         await conn.run_sync(
             lambda sync_conn: Base.metadata.create_all(
                 sync_conn,
-                tables=[User.__table__, ApiProvider.__table__, ModelConfig.__table__],
+                tables=[
+                    User.__table__,
+                    ApiProvider.__table__,
+                    ModelConfig.__table__,
+                    AdminModelVisibility.__table__,
+                ],
             )
         )
 
@@ -278,5 +295,84 @@ async def test_get_user_model_provider_runtime_falls_back_to_preferred_provider_
         assert provider_type == "volcengine"
         assert model_id == "doubao-seedance-2.0"
         assert default_video_watermark is True
+
+    await engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_get_user_model_provider_runtime_raises_when_requested_model_hidden_by_admin(monkeypatch):
+    monkeypatch.setattr("app.services.user_api_key.decrypt_api_key", lambda value: value)
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(
+            lambda sync_conn: Base.metadata.create_all(
+                sync_conn,
+                tables=[
+                    User.__table__,
+                    ApiProvider.__table__,
+                    ModelConfig.__table__,
+                    AdminModelVisibility.__table__,
+                ],
+            )
+        )
+
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        user = User(
+            id=user_id,
+            display_id="miioo_100104",
+            phone="13800000104",
+            password_hash="hashed",
+            nickname="tester",
+        )
+        session.add(user)
+        await session.flush()
+
+        provider = ApiProvider(
+            user_id=user_id,
+            name="OneLinkAI",
+            provider_type="onelink",
+            base_url="https://api.onelinkai.cloud",
+            api_key_encrypted="onelink-key",
+            is_enabled=True,
+        )
+        session.add(provider)
+        await session.flush()
+
+        session.add(
+            ModelConfig(
+                provider_id=provider.id,
+                user_id=user_id,
+                name="Hidden Chat Model",
+                model_id="hidden-chat-model",
+                category="chat",
+                is_enabled=True,
+                is_default=True,
+            )
+        )
+        session.add(
+            AdminModelVisibility(
+                provider_type="onelink",
+                model_id="hidden-chat-model",
+                category="chat",
+                is_visible=False,
+            )
+        )
+        await session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await get_user_model_provider_runtime(
+                user_id,
+                session,
+                category="chat",
+                requested_model="hidden-chat-model",
+            )
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == "当前模型已被管理员关闭，请选择其他模型"
 
     await engine.dispose()

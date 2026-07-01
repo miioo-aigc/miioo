@@ -24,6 +24,15 @@ function IconLogout() {
   );
 }
 
+function IconAdmin() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+      <path d="M8 2L12.667 4.333V8.333C12.667 10.973 10.907 13.36 8 14C5.093 13.36 3.333 10.973 3.333 8.333V4.333L8 2Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M6.333 7.667L7.333 8.667L9.667 6.333" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function MenuItem({ icon: Icon, label, onClick }) {
   const [hovered, setHovered] = useState(false);
   return (
@@ -133,8 +142,10 @@ export default function AccountMenu({
   phone = '未绑定',
   wechat = '未绑定',
   avatarUrl = '',
+  isAdmin = false,
   onLogout,
   onOpenProfile,
+  onOpenAdminConsole,
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -207,6 +218,13 @@ export default function AccountMenu({
           <Divider />
 
           <div className="flex flex-col pt-[4px]">
+            {isAdmin ? (
+              <MenuItem
+                icon={IconAdmin}
+                label="管理员控制台"
+                onClick={() => { setOpen(false); onOpenAdminConsole?.(); }}
+              />
+            ) : null}
             <MenuItem
               icon={IconEdit}
               label="编辑个人信息"

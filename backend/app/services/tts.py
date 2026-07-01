@@ -3,8 +3,14 @@ import binascii
 import re
 import uuid
 
+import httpx
+
 from app.services.http_client import upstream_async_client
 from app.services.minimax_voice_runtime import extract_minimax_tts_result
+from app.services.onelink_error_mapper import (
+    describe_onelink_http_error,
+    describe_onelink_timeout_error,
+)
 from app.services.volcengine_voice_runtime import (
     VOLCENGINE_VOICE_DEFAULT_ENCODING,
     build_volcengine_voice_headers,
@@ -329,16 +335,33 @@ class TTSService:
             )
 
         async with upstream_async_client(profile="provider", timeout=60.0) as client:
-            resp = await client.post(
-                request_url,
-                headers=(
-                    build_volcengine_voice_headers(credentials)
-                    if normalized_provider_type == "volcengine"
-                    else self._headers(api_key)
-                ),
-                json=payload,
-            )
-            resp.raise_for_status()
+            try:
+                resp = await client.post(
+                    request_url,
+                    headers=(
+                        build_volcengine_voice_headers(credentials)
+                        if normalized_provider_type == "volcengine"
+                        else self._headers(api_key)
+                    ),
+                    json=payload,
+                )
+                resp.raise_for_status()
+            except httpx.TimeoutException as exc:
+                raise ValueError(
+                    describe_onelink_timeout_error(
+                        exc,
+                        model=model,
+                        route="audio/speech",
+                    )
+                ) from exc
+            except httpx.HTTPStatusError as exc:
+                raise ValueError(
+                    describe_onelink_http_error(
+                        exc,
+                        model=model,
+                        route="audio/speech",
+                    )
+                ) from exc
 
             content_type = resp.headers.get("content-type", "")
             if "json" in content_type:

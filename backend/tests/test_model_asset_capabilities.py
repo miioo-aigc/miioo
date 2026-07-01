@@ -6,7 +6,9 @@ from fastapi import HTTPException
 
 from app.services.model_capabilities import (
     get_model_asset_binding_capabilities,
+    get_model_capabilities,
     validate_asset_bindings,
+    validate_image_request,
 )
 
 
@@ -16,6 +18,7 @@ class TestGetModelAssetBindingCapabilities:
     def test_seedance_capabilities(self):
         """Seedance 2.0 应支持完整资产绑定"""
         caps = get_model_asset_binding_capabilities("doubao-seedance-2.0")
+        model_caps = get_model_capabilities("doubao-seedance-2.0", "video")
 
         assert caps["reference_video"]["enabled"] is True
         assert caps["reference_video"]["max_count"] >= 1
@@ -23,6 +26,20 @@ class TestGetModelAssetBindingCapabilities:
         assert caps["reference_audio"]["max_count"] >= 1
         assert caps["reference_image"]["enabled"] is True
         assert caps["reference_image"]["max_count"] > 0
+        assert model_caps["supports_live_material"] is True
+
+    def test_seedance_mini_capabilities(self):
+        """Seedance 2.0 Mini 应复用标准版完整资产绑定能力"""
+        caps = get_model_asset_binding_capabilities("doubao-seedance-2-0-mini-260615")
+        model_caps = get_model_capabilities("doubao-seedance-2-0-mini-260615", "video")
+
+        assert caps["reference_video"]["enabled"] is True
+        assert caps["reference_video"]["max_count"] >= 1
+        assert caps["reference_audio"]["enabled"] is True
+        assert caps["reference_audio"]["max_count"] >= 1
+        assert caps["reference_image"]["enabled"] is True
+        assert caps["reference_image"]["max_count"] > 0
+        assert model_caps["supports_live_material"] is True
 
     def test_subject_reference_capabilities(self):
         """主体参考模型应支持主体参考但不支持视频/音频"""
@@ -41,6 +58,19 @@ class TestGetModelAssetBindingCapabilities:
         assert caps["reference_audio"]["enabled"] is False
         assert caps["reference_image"]["enabled"] is True
         assert caps["first_last_frame"]["enabled"] is True
+
+    def test_vidu_q3_variants_keep_distinct_capabilities(self):
+        """Vidu Q3 不同变体应返回各自能力，而不是全部折叠到 Pro"""
+        pro_caps = get_model_capabilities("viduq3-pro", "video")
+        turbo_caps = get_model_capabilities("viduq3-turbo", "video")
+        fast_caps = get_model_capabilities("viduq3-pro-fast", "video")
+        legacy_alias_caps = get_model_capabilities("video-viduq3-pro", "video")
+
+        assert "text_to_video" in pro_caps["supported_generation_modes"]
+        assert "text_to_video" in turbo_caps["supported_generation_modes"]
+        assert "text_to_video" not in fast_caps["supported_generation_modes"]
+        assert "first_frame" in fast_caps["supported_generation_modes"]
+        assert legacy_alias_caps == pro_caps
 
 
 class TestValidateAssetBindings:
@@ -271,3 +301,34 @@ class TestIntegration:
 
         assert len(result["image_refs"]) == 2
         assert len(result["video_refs"]) == 0
+
+
+class TestValidateImageRequest:
+    def test_kling_outpainting_allows_single_reference_image(self):
+        result = validate_image_request(
+            model="image-kling-v3",
+            size="1K",
+            aspect_ratio="16:9",
+            resolution="1K",
+            count=1,
+            reference_images=["https://example.com/input.png"],
+            generation_mode="outpainting",
+        )
+
+        assert result["generation_mode"] == "outpainting"
+        assert result["reference_images"] == ["https://example.com/input.png"]
+
+    def test_kling_subject_completion_requires_reference_image(self):
+        with pytest.raises(HTTPException) as exc_info:
+            validate_image_request(
+                model="image-kling-v3-omni",
+                size="1K",
+                aspect_ratio="1:1",
+                resolution="1K",
+                count=1,
+                reference_images=[],
+                generation_mode="subject_completion",
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "主体补全模式至少需要 1 张主体参考图" in exc_info.value.detail

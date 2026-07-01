@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
+from app.models.admin_model_visibility import AdminModelVisibility
 from app.models.model_config import ModelConfig
 from app.models.provider import ApiProvider
 from app.models.user import User
@@ -24,7 +25,12 @@ async def test_build_available_models_query_excludes_disabled_provider_models():
         await conn.run_sync(
             lambda sync_conn: Base.metadata.create_all(
                 sync_conn,
-                tables=[User.__table__, ApiProvider.__table__, ModelConfig.__table__],
+                tables=[
+                    User.__table__,
+                    ApiProvider.__table__,
+                    ModelConfig.__table__,
+                    AdminModelVisibility.__table__,
+                ],
             )
         )
 
@@ -107,7 +113,12 @@ async def test_get_default_available_model_id_ignores_disabled_provider_default(
         await conn.run_sync(
             lambda sync_conn: Base.metadata.create_all(
                 sync_conn,
-                tables=[User.__table__, ApiProvider.__table__, ModelConfig.__table__],
+                tables=[
+                    User.__table__,
+                    ApiProvider.__table__,
+                    ModelConfig.__table__,
+                    AdminModelVisibility.__table__,
+                ],
             )
         )
 
@@ -170,6 +181,86 @@ async def test_get_default_available_model_id_ignores_disabled_provider_default(
         )
 
         assert selected_model_id == "enabled-fallback-image"
+
+    await engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_build_available_models_query_excludes_models_hidden_by_admin():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(
+            lambda sync_conn: Base.metadata.create_all(
+                sync_conn,
+                tables=[
+                    User.__table__,
+                    ApiProvider.__table__,
+                    ModelConfig.__table__,
+                    AdminModelVisibility.__table__,
+                ],
+            )
+        )
+
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        user = User(
+            id=user_id,
+            display_id="miioo_100003",
+            phone="13800000003",
+            password_hash="hashed",
+            nickname="tester",
+        )
+        session.add(user)
+        await session.flush()
+
+        provider = ApiProvider(
+            user_id=user_id,
+            name="OneLinkAI",
+            provider_type="onelink",
+            api_key_encrypted="key-3",
+            is_enabled=True,
+        )
+        session.add(provider)
+        await session.flush()
+
+        visible_model = ModelConfig(
+            provider_id=provider.id,
+            user_id=user_id,
+            name="Visible Chat",
+            model_id="visible-chat-model",
+            category="chat",
+            is_enabled=True,
+            is_default=False,
+        )
+        hidden_model = ModelConfig(
+            provider_id=provider.id,
+            user_id=user_id,
+            name="Hidden Chat",
+            model_id="hidden-chat-model",
+            category="chat",
+            is_enabled=True,
+            is_default=False,
+        )
+        session.add_all([visible_model, hidden_model])
+        await session.flush()
+
+        session.add(
+            AdminModelVisibility(
+                provider_type="onelink",
+                model_id="hidden-chat-model",
+                category="chat",
+                is_visible=False,
+            )
+        )
+        await session.commit()
+
+        result = await session.execute(build_available_models_query(user_id, category="chat"))
+        models = result.scalars().all()
+
+        assert [model.model_id for model in models] == ["visible-chat-model"]
 
     await engine.dispose()
 

@@ -77,7 +77,7 @@ async def test_sync_onelink_presets_preserves_user_disabled_state():
 
 
 @pytest.mark.anyio
-async def test_cleanup_onelink_presets_keeps_chat_seedream_and_seedance_models():
+async def test_cleanup_onelink_presets_keeps_chat_seedream_seedance_and_kling_models():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -154,7 +154,7 @@ async def test_cleanup_onelink_presets_keeps_chat_seedream_and_seedance_models()
         model_ids = {model.model_id for model in models}
         categories = Counter(model.category for model in models)
 
-        assert cleanup_result["removed_legacy_count"] == 1
+        assert cleanup_result["removed_legacy_count"] == 0
         assert cleanup_result["removed_duplicate_count"] == 0
         assert model_ids == {
             "gpt-4o",
@@ -168,14 +168,20 @@ async def test_cleanup_onelink_presets_keeps_chat_seedream_and_seedance_models()
             "step-3.5-flash",
             "doubao-seed-2.0-lite-260215",
             "doubao-seed-2.0-pro-260215",
+            "doubao-seed-2.1-pro-260628",
             "qwen3.7-max",
             "qwen3.7-plus",
             "qwen-long",
             "kimi-k2-thinking",
             "doubao-seedream-5.0-lite",
+            "image-kling-v3",
+            "image-kling-v3-omni",
             "doubao-seedance-2.0",
+            "doubao-seedance-2-0-mini-260615",
             "doubao-seedance-2-0-fast",
+            "video-kling-v3",
+            "video-kling-v3-omni",
         }
-        assert categories == {"chat": 15, "image": 1, "video": 2}
+        assert categories == {"chat": 16, "image": 3, "video": 5}
 
     await engine.dispose()

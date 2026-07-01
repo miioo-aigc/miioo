@@ -403,6 +403,7 @@ async def extract_subjects(
     base_url: str = "https://api.onelinkai.cloud",
     model: str | None = None,
     mode: str = "episode",
+    timeout: float = 120.0,
 ) -> dict:
     if not script_content or not script_content.strip():
         return {"characters": [], "scenes": [], "props": []}
@@ -419,6 +420,7 @@ async def extract_subjects(
         base_url=base_url,
         model=model,
         temperature=0.3,
+        timeout=timeout,
     )
     content = result["choices"][0]["message"]["content"]
     payload = json.loads(_extract_json_content(content))

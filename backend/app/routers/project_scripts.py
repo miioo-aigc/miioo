@@ -6,8 +6,9 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.database import get_db, async_session
 from app.dependencies import get_current_user
+from app.models.gen_task import GenTask
 from app.models.project import Project
 from app.models.subject import Subject
 from app.models.subject_image import SubjectImage
@@ -17,6 +18,7 @@ from app.schemas.project_script import (
     ProjectScriptApplySplitResponse,
     ProjectScriptChatRequest,
     ProjectScriptExtractSubjectsResponse,
+    ProjectScriptFinalizeAsyncResponse,
     ProjectScriptFinalizeRequest,
     ProjectScriptFinalizeResponse,
     ProjectScriptHistoryListResponse,
@@ -29,6 +31,10 @@ from app.schemas.project_script import (
     ProjectScriptWorkspaceResponse,
 )
 from app.schemas.subject import SubjectResponse
+from app.services.background_runtime import (
+    build_gen_task_job_key,
+    dispatch_background_job,
+)
 from app.services.project_script_service import (
     apply_split_to_episodes,
     chat_with_project_script,
@@ -381,44 +387,23 @@ async def apply_project_script_split(
 
 @router.post(
     "/finalize",
-    response_model=ProjectScriptFinalizeResponse,
+    response_model=ProjectScriptFinalizeAsyncResponse | ProjectScriptFinalizeResponse,
     summary="定稿主剧本并拆分分集",
-    description="将主剧本工作区正式定稿为 episodes，并可选自动触发主体提取。这是剧本页整稿生成链路的关键收口接口。",
+    description=(
+        "将主剧本工作区正式定稿为 episodes，并可选自动触发主体提取。"
+        "当 apply_split=True 时返回异步任务，前端需轮询 /api/tasks/{task_id} 获取最终结果；"
+        "当 apply_split=False 时同步返回。"
+    ),
     response_description="定稿、拆分与主体提取结果。",
     responses={
         200: {
-            "description": "定稿成功",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "replaced_count": 0,
-                        "created_count": 3,
-                        "script_status": "finalized",
-                        "selected_episode_number": 1,
-                        "backup_history_id": "8d89e4fb-4b7f-409d-8bb6-c5539fef91d2",
-                        "items": [
-                            {
-                                "episode_number": 1,
-                                "title": "第1集 误入侯府",
-                                "summary": "女主误入侯府并与男主第一次交锋",
-                                "content": "第1集完整正文……",
-                            },
-                            {
-                                "episode_number": 2,
-                                "title": "第2集 暗潮涌动",
-                                "summary": "误会升级，双方开始试探",
-                                "content": "第2集完整正文……",
-                            },
-                        ],
-                        "split_source": "ai",
-                        "extracted_episode_count": 3,
-                        "subject_created_count": 9,
-                        "subject_updated_count": 2,
-                        "failed_episode_numbers": [],
-                    }
-                }
-            },
-        }
+            "description": "定稿成功（apply_split=False 时同步返回）",
+            "model": ProjectScriptFinalizeResponse,
+        },
+        202: {
+            "description": "定稿任务已提交（apply_split=True 时异步返回）",
+            "model": ProjectScriptFinalizeAsyncResponse,
+        },
     },
     openapi_extra={
         "requestBody": {
@@ -444,6 +429,8 @@ async def finalize_project_script_endpoint(
 ):
     project = await _get_project(project_id, user, db)
     script = await get_or_create_project_script(project_id, db)
+
+    # 快速路径：仅定稿不拆分，保持同步
     if not req.apply_split:
         await finalize_project_script_workspace(script, db, source_detail="剧本定稿（仅整稿）")
         await db.commit()
@@ -463,39 +450,44 @@ async def finalize_project_script_endpoint(
             failed_episode_numbers=[],
         )
 
-    (
-        items,
-        replaced_count,
-        created_count,
-        selected_episode_number,
-        backup_history,
-        split_source,
-        extracted_episode_count,
-        subject_created_count,
-        subject_updated_count,
-        failed_episode_numbers,
-    ) = await finalize_project_script_and_extract_subjects(
-        project=project,
-        project_script=script,
-        episode_count=req.episode_count,
-        model=req.model,
-        split_mode=req.split_mode,
-        auto_extract_subjects=req.auto_extract_subjects,
-        db=db,
+    # 异步路径：创建 GenTask，后台执行定稿+拆分+主体提取
+    task = GenTask(
+        user_id=user.id,
+        project_id=UUID(project_id),
+        task_type="script_finalize",
+        status="pending",
+        total_count=1,
+        params={
+            "episode_count": req.episode_count,
+            "model": req.model,
+            "split_mode": req.split_mode,
+            "auto_extract_subjects": req.auto_extract_subjects,
+        },
+        results=[],
     )
-    return ProjectScriptFinalizeResponse(
-        split_applied=True,
-        replaced_count=replaced_count,
-        created_count=created_count,
-        script_status=script.status,
-        selected_episode_number=selected_episode_number,
-        backup_history_id=str(backup_history.id) if backup_history else None,
-        items=items,
-        split_source=split_source,
-        extracted_episode_count=extracted_episode_count,
-        subject_created_count=subject_created_count,
-        subject_updated_count=subject_updated_count,
-        failed_episode_numbers=failed_episode_numbers,
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+
+    await dispatch_background_job(
+        build_gen_task_job_key(task.id, task.task_type),
+        handler_path="app.services.project_script_service:finalize_script_as_background_job",
+        kwargs={
+            "task_id": task.id,
+            "project_id": UUID(project_id),
+            "user_id": user.id,
+            "episode_count": req.episode_count,
+            "model": req.model,
+            "split_mode": req.split_mode,
+            "auto_extract_subjects": req.auto_extract_subjects,
+        },
+        name=f"gen-task:{task.id}:script-finalize",
+    )
+
+    return ProjectScriptFinalizeAsyncResponse(
+        task_id=str(task.id),
+        status="pending",
+        message="定稿任务已提交，正在后台处理中。请轮询任务中心获取最终结果。",
     )
 
 

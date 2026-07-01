@@ -2,6 +2,10 @@ import httpx
 
 from app.services.fal_runtime import FAL_BASE_URL
 from app.services.http_client import log_upstream_failure, upstream_async_client
+from app.services.onelink_error_mapper import (
+    describe_onelink_response_error,
+    describe_onelink_timeout_error,
+)
 from app.services.minimax_presets import MINIMAX_BASE_URL
 from app.services.volcengine_presets import VOLCENGINE_ARK_BASE_URL, VOLCENGINE_VOICE_BASE_URL
 from app.services.volcengine_voice_runtime import (
@@ -63,7 +67,11 @@ async def _test_openai_compatible_connection(
         resp = await client.get(url, headers={"Authorization": f"Bearer {api_key}"})
         if resp.status_code == 200:
             return True, "连接成功"
-        return False, f"服务商返回错误: {resp.status_code}"
+        return False, describe_onelink_response_error(
+            response_text=resp.text,
+            status_code=resp.status_code,
+            route="models",
+        )
 
 
 async def _test_aiping_connection(base_url: str, api_key: str) -> tuple[bool, str]:
@@ -290,7 +298,7 @@ async def test_provider_connection(
                 "secondary_base_url": secondary_base_url,
             },
         )
-        return False, "连接超时，请检查 Base URL"
+        return False, describe_onelink_timeout_error(exc, route="provider/test")
     except ValueError as exc:
         return False, str(exc)
     except Exception as exc:

@@ -46,6 +46,7 @@ def _build_image_capability(
     supports_watermark_toggle: bool = True,
     supports_editing: bool = False,
     supports_outpainting: bool = False,
+    supports_subject_completion: bool = False,
     max_total_images: int | None = None,
     supported_output_formats: list[str] | None = None,
     supported_response_formats: list[str] | None = None,
@@ -78,6 +79,7 @@ def _build_image_capability(
         "supports_watermark_toggle": supports_watermark_toggle,
         "supports_editing": supports_editing,
         "supports_outpainting": supports_outpainting,
+        "supports_subject_completion": supports_subject_completion,
         "supported_output_formats": supported_output_formats or [],
         "supported_response_formats": supported_response_formats or [],
         "supports_web_search": supports_web_search,
@@ -105,6 +107,8 @@ def _build_video_capability(
     supports_watermark_toggle: bool = False,
     supports_text_only: bool = False,
     supports_reference_subjects: bool = False,
+    supports_multishot: bool = False,
+    supports_native_audio: bool = False,
     supports_multiframe: bool = False,
     supports_audio_type: bool = False,
     supports_audio_setting: bool = False,
@@ -123,6 +127,7 @@ def _build_video_capability(
     max_subject_images_per_subject: int = 0,
     max_multiframe_segments: int = 0,
     notes: str | None = None,
+    supports_live_material: bool = False,
 ) -> dict[str, Any]:
     return {
         "category": "video",
@@ -145,6 +150,8 @@ def _build_video_capability(
         "supports_watermark_toggle": supports_watermark_toggle,
         "supports_text_only": supports_text_only,
         "supports_reference_subjects": supports_reference_subjects,
+        "supports_multishot": supports_multishot,
+        "supports_native_audio": supports_native_audio,
         "supports_multiframe": supports_multiframe,
         "supports_audio_type": supports_audio_type,
         "supports_audio_setting": supports_audio_setting,
@@ -155,6 +162,7 @@ def _build_video_capability(
         "supports_return_last_frame": supports_return_last_frame,
         "supports_sample_mode": supports_sample_mode,
         "supports_service_tier_flex": supports_service_tier_flex,
+        "supports_live_material": supports_live_material,
         "supports_ratio_selection": bool(supported_aspect_ratios)
         if supports_ratio_selection is None
         else supports_ratio_selection,
@@ -254,8 +262,8 @@ IMAGE_MODEL_CAPABILITIES: dict[str, dict[str, Any]] = {
         supported_response_formats=["url", "b64_json"],
         supports_web_search=True,
         supports_optimize_prompt=True,
-        supports_stream=True,
-        notes="依据豆包 Seedream 5.0 Lite 官方图片生成文档收口；当前按官方 image/string|array 与 sequential_image_generation 参数透传，已支持文生图、单图/多图参考生图，以及文生/单图/多图参考组图；新增 output_format(png/jpeg)、response_format(url/b64_json)、web_search 联网搜索、optimize_prompt 提示词优化、stream 流式输出透传；参考图最多 14 张，且参考图数量 + 生成数量总和需 <= 15。",
+        supports_stream=False,
+        notes="依据豆包 Seedream 5.0 Lite 官方图片生成文档收口；当前按官方 image/string|array 与 sequential_image_generation 参数透传，已支持文生图、单图/多图参考生图，以及文生/单图/多图参考组图；新增 output_format(png/jpeg)、response_format(url/b64_json)、web_search 联网搜索、optimize_prompt 提示词优化；OneLinkAI 当前不支持该接口流式响应，默认按非流式方式调用。参考图最多 14 张，且参考图数量 + 生成数量总和需 <= 15。",
     ),
     "doubao-seedream-4.5": _build_image_capability(
         supported_sizes=["2K", "4K"],
@@ -292,8 +300,8 @@ IMAGE_MODEL_CAPABILITIES: dict[str, dict[str, Any]] = {
         supports_watermark_toggle=True,
         supported_response_formats=["url", "b64_json"],
         supports_optimize_prompt=True,
-        supports_stream=True,
-        notes="依据豆包 Seedream 4.5 官方图片生成文档收口；当前按官方 image/string|array 与 sequential_image_generation 参数透传，已支持文生图、单图/多图参考生图，以及文生/单图/多图参考组图；支持 response_format、optimize_prompt、stream，但不支持 output_format/web_search（仅 5.0-lite）；不支持原生 1K 和 3K 档位，参考图最多 14 张，且参考图数量 + 生成数量总和需 <= 15。",
+        supports_stream=False,
+        notes="依据豆包 Seedream 4.5 官方图片生成文档收口；当前按官方 image/string|array 与 sequential_image_generation 参数透传，已支持文生图、单图/多图参考生图，以及文生/单图/多图参考组图；支持 response_format、optimize_prompt，但 OneLinkAI 当前不支持该接口流式响应，默认按非流式方式调用；不支持 output_format/web_search（仅 5.0-lite）。不支持原生 1K 和 3K 档位，参考图最多 14 张，且参考图数量 + 生成数量总和需 <= 15。",
     ),
     "doubao-seedream-4.0": _build_image_capability(
         supported_sizes=["1K", "2K", "4K"],
@@ -340,8 +348,8 @@ IMAGE_MODEL_CAPABILITIES: dict[str, dict[str, Any]] = {
         supports_watermark_toggle=True,
         supported_response_formats=["url", "b64_json"],
         supports_optimize_prompt=True,
-        supports_stream=True,
-        notes="依据豆包 Seedream 4.0 官方图片生成文档收口；当前按官方 image/string|array 与 sequential_image_generation 参数透传，已支持文生图、单图/多图参考生图，以及文生/单图/多图参考组图；支持 response_format、optimize_prompt、stream，但不支持 output_format/web_search（仅 5.0-lite）；不支持原生 3K 档位，参考图最多 14 张，且参考图数量 + 生成数量总和需 <= 15。",
+        supports_stream=False,
+        notes="依据豆包 Seedream 4.0 官方图片生成文档收口；当前按官方 image/string|array 与 sequential_image_generation 参数透传，已支持文生图、单图/多图参考生图，以及文生/单图/多图参考组图；支持 response_format、optimize_prompt，但 OneLinkAI 当前不支持该接口流式响应，默认按非流式方式调用；不支持 output_format/web_search（仅 5.0-lite）。不支持原生 3K 档位，参考图最多 14 张，且参考图数量 + 生成数量总和需 <= 15。",
     ),
     "gpt-image-2": _build_image_capability(
         supported_sizes=["1024x1024", "1536x1024", "1024x1536", "1792x1024", "1024x1792"],
@@ -366,6 +374,30 @@ IMAGE_MODEL_CAPABILITIES: dict[str, dict[str, Any]] = {
         supports_editing=True,
         supports_outpainting=True,
         notes="依据《模型要求.md》整理，并结合 OpenAI 官方 Image Generation 文档与现有服务适配收口；当前项目按新版兼容接口通过 image_urls 透传参考图，保留单图 / 多图参考声明，但多图上限仍待真实联调进一步核实。",
+    ),
+    "sp-gpt-image-2": _build_image_capability(
+        supported_sizes=["1024x1024", "1536x1024", "1024x1536", "1792x1024", "1024x1792"],
+        supported_aspect_ratios=["1:1", "3:2", "2:3", "16:9", "9:16"],
+        supported_generation_modes=["text_to_image", "reference_image"],
+        resolution_size_map={
+            "1K": {"1:1": "1024x1024"},
+            "2K": {
+                "3:2": "1536x1024",
+                "2:3": "1024x1536",
+                "16:9": "1792x1024",
+                "9:16": "1024x1792",
+                "1:1": "1024x1024",
+            },
+        },
+        max_reference_images=16,
+        max_output_images=1,
+        max_total_images=17,
+        supports_reference_images=True,
+        supports_multi_image=False,
+        supports_watermark_toggle=False,
+        supports_editing=True,
+        supports_outpainting=True,
+        notes="与 gpt-image-2 保持同一套图片能力事实源；当前作为逆向版模型承接，支持文本、图片输入并输出图片，继续沿新版兼容接口通过 image_urls 透传参考图。",
     ),
     "gemini-3.1-flash-image-preview": _build_image_capability(
         supported_sizes=["1K", "2K", "4K"],
@@ -422,6 +454,7 @@ IMAGE_MODEL_CAPABILITIES: dict[str, dict[str, Any]] = {
     "image-kling-v3": _build_image_capability(
         supported_sizes=["1K"],
         supported_aspect_ratios=COMMON_IMAGE_RATIOS,
+        supported_generation_modes=["text_to_image", "reference_image", "outpainting"],
         resolution_size_map={
             "1K": {
                 "1:1": "1K",
@@ -441,11 +474,14 @@ IMAGE_MODEL_CAPABILITIES: dict[str, dict[str, Any]] = {
         supports_reference_images=True,
         supports_multi_image=True,
         supports_watermark_toggle=False,
-        notes="依据 OneLinkAI Kling 图像兼容文档；当前统一使用真实模型名 image-kling-v3；无参考图时走 /kling/v1/images/generations，2 至 4 张参考图时走 /kling/v1/images/multi-image2image；页面按模型能力自动收敛输入。",
+        supports_editing=True,
+        supports_outpainting=True,
+        notes="依据 OneLinkAI Kling 图像兼容文档；当前统一使用真实模型名 image-kling-v3；无参考图时走 /kling/v1/images/generations，2 至 4 张参考图时走 /kling/v1/images/multi-image2image；扩图能力走 /kling/v1/images/editing/expand；页面按模型能力自动收敛输入。",
     ),
     "image-kling-v3-omni": _build_image_capability(
         supported_sizes=["1K"],
         supported_aspect_ratios=COMMON_IMAGE_RATIOS + ["auto"],
+        supported_generation_modes=["reference_image", "subject_completion"],
         resolution_size_map={
             "1K": {
                 "1:1": "1K",
@@ -459,7 +495,7 @@ IMAGE_MODEL_CAPABILITIES: dict[str, dict[str, Any]] = {
                 "auto": "1K",
             }
         },
-        supported_reference_counts=[0, 1],
+        supported_reference_counts=[1],
         max_reference_images=1,
         max_output_images=1,
         max_total_images=2,
@@ -467,7 +503,8 @@ IMAGE_MODEL_CAPABILITIES: dict[str, dict[str, Any]] = {
         supports_multi_image=False,
         supports_watermark_toggle=False,
         supports_editing=True,
-        notes="依据 OneLinkAI Kling 图像 Omni 兼容文档；当前统一使用真实模型名 image-kling-v3-omni；走 /kling/v1/images/omni-image；页面仅取首张参考图作为主输入。",
+        supports_subject_completion=True,
+        notes="依据 OneLinkAI Kling 图像 Omni 与 ai-multi-shot 兼容文档；当前统一使用真实模型名 image-kling-v3-omni；单图参考走 /kling/v1/images/omni-image；主体补全走 /kling/v1/general/ai-multi-shot；页面仅取首张参考图作为主输入。",
     ),
 }
 
@@ -527,6 +564,7 @@ SEEDANCE_2_CAPABILITIES = _build_video_capability(
     supports_return_last_frame=True,
     supports_sample_mode=True,
     supports_service_tier_flex=True,
+    supports_live_material=True,
     notes=SEEDANCE_SERIES_NOTES,
 )
 SEEDANCE_2_FAST_CAPABILITIES = _build_video_capability(
@@ -550,6 +588,7 @@ SEEDANCE_2_FAST_CAPABILITIES = _build_video_capability(
     supports_return_last_frame=True,
     supports_sample_mode=True,
     supports_service_tier_flex=True,
+    supports_live_material=True,
     notes=SEEDANCE_SERIES_NOTES,
 )
 KLING_V3_SUPPORTED_RATIOS = ["16:9", "9:16", "1:1"]
@@ -650,19 +689,22 @@ FAL_KLING_V3_PRO_MOTION_CAPABILITIES = _build_video_capability(
 KLING_V3_VIDEO_CAPABILITIES = _build_video_capability(
     supported_aspect_ratios=COMMON_VIDEO_RATIOS,
     supported_resolutions=[],
-    supported_durations=["5"],
-    supported_generation_modes=["text_to_video", "first_frame", "reference_subjects"],
+    supported_durations=[str(value) for value in range(5, 16)],
+    supported_generation_modes=["text_to_video", "first_frame", "reference_subjects", "multi_shot"],
     reference_modes=["full", "first_frame"],
     max_reference_images=4,
     max_total_attachments=4,
     prompt_max_chars=2500,
     supports_generate_audio_toggle=True,
-    notes="依据 OneLinkAI Kling 视频兼容文档；当前统一使用真实模型名 video-kling-v3；纯提示词走 /kling/v1/videos/text2video，单图参考走 /kling/v1/videos/image2video，多图参考走 /kling/v1/videos/multi-image2video。",
+    supports_reference_subjects=True,
+    supports_multishot=True,
+    supports_native_audio=True,
+    notes="依据 OneLinkAI Kling 视频兼容文档与官网 3.0 系列说明；当前统一使用真实模型名 video-kling-v3；纯提示词走 /kling/v1/videos/text2video，单图参考走 /kling/v1/videos/image2video，多图参考走 /kling/v1/videos/multi-image2video；原生音频与多镜头能力按现有页面参数面受控开放。",
 )
 KLING_OMNI_CAPABILITIES = _build_video_capability(
-    supported_aspect_ratios=[],
+    supported_aspect_ratios=COMMON_VIDEO_RATIOS,
     supported_resolutions=[],
-    supported_durations=["5"],
+    supported_durations=[str(value) for value in range(5, 16)],
     supported_generation_modes=["video_ref"],
     reference_modes=["video_ref"],
     max_reference_images=0,
@@ -670,8 +712,9 @@ KLING_OMNI_CAPABILITIES = _build_video_capability(
     max_total_attachments=1,
     prompt_max_chars=2500,
     supports_reference_video=True,
+    supports_native_audio=True,
     requires_reference_video=True,
-    notes="依据 OneLinkAI Kling 视频 Omni 兼容文档；当前统一使用真实模型名 video-kling-v3-omni；走 /kling/v1/videos/omni-video；需要 1 段参考视频。",
+    notes="依据 OneLinkAI Kling 视频 Omni 兼容文档与官网 3.0 Omni 说明；当前统一使用真实模型名 video-kling-v3-omni；走 /kling/v1/videos/omni-video；需要 1 段参考视频，并支持更长时长与更强一致性控制。",
 )
 VEO_31_CAPABILITIES = _build_video_capability(
     supported_aspect_ratios=["16:9", "9:16"],
@@ -878,11 +921,18 @@ VIDEO_MODEL_CAPABILITIES: dict[str, dict[str, Any]] = {
         supports_text_only=True,
         notes="依据 fal.ai Seedance 2.0 fast reference-to-video 官方 API 收口；当前按多模态参考生视频快速档接入，可同时使用图片、视频与音频参考，支持 480P / 720P 和 4-15 秒。",
     ),
+    "viduq3-pro": VIDU_Q3_PRO_CAPABILITIES,
+    "viduq3-turbo": VIDU_Q3_TURBO_CAPABILITIES,
+    "viduq3-pro-fast": VIDU_Q3_PRO_FAST_CAPABILITIES,
+    "viduq3-mix": VIDU_Q3_MIX_CAPABILITIES,
+    "viduq2-pro": VIDU_Q2_MULTIFRAME_CAPABILITIES,
+    "viduq2-turbo": VIDU_Q2_MULTIFRAME_CAPABILITIES,
     "video-viduq3-pro": VIDU_Q3_PRO_CAPABILITIES,
     "video-vidu-q2": VIDU_Q2_MULTIFRAME_CAPABILITIES,
     "vidu-q2-turbo": VIDU_Q2_MULTIFRAME_CAPABILITIES,
     "doubao-seedance-1.5-pro": SEEDANCE_15_PRO_CAPABILITIES,
     "doubao-seedance-2.0": SEEDANCE_2_CAPABILITIES,
+    "doubao-seedance-2-0-mini-260615": SEEDANCE_2_CAPABILITIES,
     "doubao-seedance-2-0-fast": SEEDANCE_2_FAST_CAPABILITIES,
     "happyhorse-1.0-t2v": _build_video_capability(
         supported_aspect_ratios=["16:9", "9:16", "1:1", "4:3", "3:4", "4:5", "5:4"],
@@ -1035,22 +1085,42 @@ def normalize_model_id(model_id: str | None) -> str:
     if normalized in {"kling-image-o1", "kling-v3-omni-image"}:
         return "image-kling-v3-omni"
     if normalized in {
-        "video-viduq3-pro",
-        "video-vidu-q2",
-        "vidu-q2-turbo",
+        "viduq3-pro",
+        "viduq3-turbo",
+        "viduq3-pro-fast",
+        "viduq3-mix",
+        "viduq2-pro",
+        "viduq2-turbo",
         "image-vidu-q2",
     }:
         return normalized
+    if normalized in {
+        "video-viduq3-pro",
+        "video-viduq3-turbo",
+        "video-viduq3-pro-fast",
+        "video-viduq3-mix",
+    }:
+        return normalized.removeprefix("video-")
+    if normalized == "video-vidu-q2":
+        return "viduq2-pro"
+    if normalized in {"vidu-q2-turbo", "video-vidu-q2-turbo"}:
+        return "viduq2-turbo"
     if normalized.startswith("viduq3"):
-        return "video-viduq3-pro"
+        if "pro-fast" in normalized or normalized.endswith("fast"):
+            return "viduq3-pro-fast"
+        if "turbo" in normalized:
+            return "viduq3-turbo"
+        if "mix" in normalized:
+            return "viduq3-mix"
+        return "viduq3-pro"
     if (
         normalized.startswith("image-vidu") and normalized.endswith("q2")
     ) or normalized.endswith("-turbo-image"):
         return "image-vidu-q2"
-    if normalized.startswith("vidu" "q2"):
+    if normalized.startswith("viduq2") or normalized.startswith("vidu" "q2"):
         if "turbo" in normalized and "image" not in normalized:
-            return "vidu-q2-turbo"
-        return "video-vidu-q2"
+            return "viduq2-turbo"
+        return "viduq2-pro"
     return normalized
 
 
@@ -1226,6 +1296,7 @@ def validate_image_request(
     count: int | None,
     reference_images: list[str] | None = None,
     watermark: bool | None = None,
+    generation_mode: str | None = None,
 ) -> dict[str, Any]:
     capabilities = get_model_capabilities(model, "image")
     resolution_size_map = capabilities.get("resolution_size_map") or {}
@@ -1234,6 +1305,7 @@ def validate_image_request(
     normalized_size = _normalize_image_size(size)
     normalized_count = _coerce_count(count, default=1)
     normalized_references = [item for item in (reference_images or []) if item]
+    normalized_generation_mode = (generation_mode or "").strip().lower().replace("-", "_") or None
 
     if normalized_count > int(capabilities.get("max_output_images") or 1):
         raise HTTPException(status_code=400, detail=f"模型 {model} 最多生成 {capabilities['max_output_images']} 张图片")
@@ -1247,12 +1319,39 @@ def validate_image_request(
         for item in (capabilities.get("supported_reference_counts") or [])
         if isinstance(item, (int, float)) or str(item).isdigit()
     ]
-    if supported_reference_counts and len(normalized_references) not in supported_reference_counts:
+    allow_outpainting_single_image = (
+        normalized_generation_mode == "outpainting"
+        and capabilities.get("supports_outpainting", False)
+        and len(normalized_references) == 1
+    )
+    allow_subject_completion_missing_reference = (
+        normalized_generation_mode == "subject_completion"
+        and capabilities.get("supports_subject_completion", False)
+        and len(normalized_references) == 0
+    )
+    if (
+        supported_reference_counts
+        and len(normalized_references) not in supported_reference_counts
+        and not allow_outpainting_single_image
+        and not allow_subject_completion_missing_reference
+    ):
         allowed_counts = "、".join(str(item) for item in supported_reference_counts)
         raise HTTPException(
             status_code=400,
             detail=f"模型 {model} 仅支持 {allowed_counts} 张参考图组合，当前为 {len(normalized_references)} 张",
         )
+
+    supported_generation_modes = capabilities.get("supported_generation_modes") or []
+    if normalized_generation_mode and supported_generation_modes and normalized_generation_mode not in supported_generation_modes:
+        raise HTTPException(status_code=400, detail=f"模型 {model} 不支持 {normalized_generation_mode} 模式")
+    if normalized_generation_mode == "outpainting" and not capabilities.get("supports_outpainting", False):
+        raise HTTPException(status_code=400, detail=f"模型 {model} 不支持扩图模式")
+    if normalized_generation_mode == "outpainting" and len(normalized_references) < 1:
+        raise HTTPException(status_code=400, detail=f"模型 {model} 的扩图模式至少需要 1 张输入图片")
+    if normalized_generation_mode == "subject_completion" and not capabilities.get("supports_subject_completion", False):
+        raise HTTPException(status_code=400, detail=f"模型 {model} 不支持主体补全模式")
+    if normalized_generation_mode == "subject_completion" and len(normalized_references) < 1:
+        raise HTTPException(status_code=400, detail=f"模型 {model} 的主体补全模式至少需要 1 张主体参考图")
 
     max_total_images = capabilities.get("max_total_images")
     if max_total_images is not None and (len(normalized_references) + normalized_count) > int(max_total_images):
@@ -1319,6 +1418,7 @@ def validate_image_request(
         "resolution": normalized_resolution,
         "count": normalized_count,
         "reference_images": normalized_references,
+        "generation_mode": normalized_generation_mode,
     }
 
 
@@ -1348,8 +1448,15 @@ def validate_video_request(
     audio_setting: str | None = None,
     off_peak: bool | None = None,
     watermark: bool | None = None,
+    multi_shot: bool | None = None,
+    shot_type: str | None = None,
+    multi_prompt: list[dict[str, Any]] | None = None,
+    provider_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     capabilities = get_model_capabilities(model, "video")
+    # `multi_shot` / `provider_params` 等参数在生成服务层消费；校验层保持兼容，
+    # 避免路由在进入真实校验前因签名漂移直接抛出 500。
+    _ = (multi_shot, shot_type, multi_prompt, provider_params)
     normalized_ratio = _normalize_ratio(ratio)
     normalized_resolution = _normalize_video_resolution(resolution)
     duration_value = str(int(duration)) if isinstance(duration, (int, float)) else (str(duration).strip() if duration is not None else None)
@@ -1464,7 +1571,7 @@ def validate_video_request(
             )
             if should_infer_video_edit:
                 normalized_generation_mode = "video_edit"
-            elif normalize_model_id(model) in {"video-vidu-q2", "vidu-q2-turbo"}:
+            elif normalize_model_id(model) in {"viduq2-pro", "viduq2-turbo"}:
                 normalized_generation_mode = "multiframe"
             elif "reference_subjects" in supported_generation_modes and (reference_image_asset_ids or reference_counts.get("image", 0) > 0):
                 normalized_generation_mode = "reference_subjects"

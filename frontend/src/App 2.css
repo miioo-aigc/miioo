@@ -1,0 +1,119 @@
+.maintenance-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(232, 230, 255, 0.78) 0%, rgba(232, 230, 255, 0.36) 24%, rgba(232, 230, 255, 0) 56%),
+    radial-gradient(circle at 88% 34%, rgba(249, 233, 244, 0.92) 0%, rgba(249, 233, 244, 0.30) 20%, rgba(249, 233, 244, 0) 54%),
+    linear-gradient(180deg, #fbfbfd 0%, #f7f7fb 100%);
+}
+
+.maintenance-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 82%, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0) 48%),
+    radial-gradient(circle at 78% 84%, rgba(255, 255, 255, 0.40) 0%, rgba(255, 255, 255, 0) 46%);
+  pointer-events: none;
+}
+
+.maintenance-card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 760px);
+  min-height: 528px;
+  border-radius: 28px;
+  border: 1px solid rgba(15, 15, 15, 0.08);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 24px 44px rgba(19, 19, 35, 0.06),
+    0 4px 10px rgba(19, 19, 35, 0.04);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 72px 40px 56px;
+  text-align: center;
+}
+
+.status-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(250, 211, 127, 0.38);
+  display: grid;
+  place-items: center;
+  box-shadow:
+    0 0 0 1px rgba(245, 158, 11, 0.08),
+    0 0 0 7px rgba(249, 185, 48, 0.08);
+}
+
+.status-dot__core {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.42);
+}
+
+.maintenance-title {
+  margin: 42px 0 0;
+  font-size: clamp(34px, 3vw, 58px);
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #111114;
+  font-family: "AlibabaPuHuiTi 2_55 Regular", "Alibaba PuHuiTi 2.0", system-ui, sans-serif;
+}
+
+.maintenance-copy {
+  margin: 24px 0 0;
+  max-width: 540px;
+  font-size: clamp(18px, 1.35vw, 28px);
+  line-height: 1.85;
+  color: rgba(72, 76, 87, 0.86);
+  font-family: "AlibabaPuHuiTi 2_55 Regular", "Alibaba PuHuiTi 2.0", system-ui, sans-serif;
+}
+
+.maintenance-contact {
+  margin: 58px 0 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 10px;
+  border-bottom: 2px solid rgba(17, 17, 20, 0.92);
+  font-size: clamp(18px, 1.45vw, 28px);
+  line-height: 1.25;
+  font-weight: 600;
+  color: #111114;
+  font-family: "AlibabaPuHuiTi 2_55 Regular", "Alibaba PuHuiTi 2.0", system-ui, sans-serif;
+}
+
+@media (max-width: 768px) {
+  .maintenance-page {
+    padding: 16px;
+  }
+
+  .maintenance-card {
+    min-height: 460px;
+    padding: 56px 24px 44px;
+    border-radius: 24px;
+  }
+
+  .maintenance-title {
+    margin-top: 32px;
+  }
+
+  .maintenance-copy {
+    margin-top: 20px;
+    max-width: 30ch;
+    line-height: 1.72;
+  }
+
+  .maintenance-contact {
+    margin-top: 44px;
+  }
+}

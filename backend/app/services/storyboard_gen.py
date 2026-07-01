@@ -3,6 +3,7 @@ import json
 import re
 
 from app.services.llm import llm_service
+from app.services.narration_duration import estimate_narration_duration_seconds
 
 
 DEFAULT_FRAMING = "中景"
@@ -137,7 +138,7 @@ STORYBOARD_SYSTEM_PROMPT = """你是一位专业影视分镜师和剧本拆解�
       "duration": 4,
       "lighting": "中文，描述光影、光线来源和氛围",
       "ambient_sound": "中文，描述该镜头环境音或现场氛围声，没有可留空",
-      "voiceover": "中文，旁白、画外音或关键台词摘要，没有可留空",
+      "voiceover": "中文，旁白、画外音或角色完整台词原文，禁止摘要或截断，没有可留空",
       "image_prompt": "English visual prompt. Must include: character appearance (hair, clothing, expression), specific action, spatial composition, shot type, camera movement, lighting quality and color, mood. No generic phrases like 'a person' or 'someone'.",
       "characters": ["角色原名1", "角色原名2"],
       "scene": "场景原名",
@@ -500,7 +501,7 @@ def _build_user_prompt(
         "请根据以下信息拆解分镜：\n"
         f"{chr(10).join(episode_label) if episode_label else '分集信息：未提供标题'}\n"
         f"目标镜头数：{target_shot_count}（必须精确返回这个数量）\n"
-        "单镜头建议时长：3-6 秒，必要时允许 2-8 秒\n\n"
+        "单镜头建议时长：3-6 秒，有台词时按台词长度适当延长，最长 15 秒\n\n"
         "项目要求：\n"
         f"{chr(10).join(style_guidance)}\n\n"
         "主体库：\n"
@@ -557,7 +558,7 @@ def _normalize_beat_refs(value: object) -> list[int]:
     return []
 
 
-def _normalize_duration(value: object) -> float | None:
+def _normalize_duration(value: object, *, has_voiceover: bool = False) -> float | None:
     if isinstance(value, (int, float)):
         duration = float(value)
     elif isinstance(value, str):
@@ -566,10 +567,11 @@ def _normalize_duration(value: object) -> float | None:
     else:
         return None
 
+    max_duration = 15.0 if has_voiceover else 8.0
     if duration < 2:
         return 2.0
-    if duration > 8:
-        return 8.0
+    if duration > max_duration:
+        return max_duration
     return round(duration, 1)
 
 
@@ -740,6 +742,12 @@ def _post_process_shots(
                 camera_motion=camera_motion,
             )
 
+        normalized_duration = _normalize_duration(shot.get("duration"), has_voiceover=bool(voiceover))
+        if voiceover:
+            estimated_duration = estimate_narration_duration_seconds(voiceover)
+            if estimated_duration is not None:
+                normalized_duration = max(normalized_duration or DEFAULT_DURATION, estimated_duration)
+
         processed.append(
             {
                 "content": content or None,
@@ -747,7 +755,7 @@ def _post_process_shots(
                 "camera": camera_motion,
                 "camera_angle": camera_angle,
                 "composition": composition,
-                "duration": _normalize_duration(shot.get("duration")) or DEFAULT_DURATION,
+                "duration": normalized_duration or DEFAULT_DURATION,
                 "lighting": lighting,
                 "ambient_sound": ambient_sound,
                 "voiceover": voiceover,

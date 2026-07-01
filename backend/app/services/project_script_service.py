@@ -8,7 +8,9 @@ import httpx
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import async_session
 from app.models.episode import Episode
+from app.models.gen_task import GenTask
 from app.models.project import Project
 from app.models.project_script import ProjectScript
 from app.models.project_script_history import ProjectScriptHistory
@@ -1040,6 +1042,7 @@ async def extract_global_subjects_from_script(
             base_url=base_url,
             model=resolved_model_id,
             mode="global",
+            timeout=600.0,
         )
     except Exception as exc:
         _raise_model_call_error("主剧本全局主体提取", exc)
@@ -1269,3 +1272,103 @@ async def restore_episode_snapshot_history(
     await db.commit()
     await db.refresh(script)
     return script
+
+
+async def finalize_script_as_background_job(
+    task_id: UUID,
+    project_id: UUID,
+    user_id: UUID,
+    episode_count: int | None,
+    model: str | None,
+    split_mode: str,
+    auto_extract_subjects: bool,
+) -> None:
+    """Background job handler for async script finalization.
+
+    Runs inside a worker process, loads its own DB session,
+    performs the full finalize+extract pipeline, and writes results
+    back to the GenTask record.
+    """
+    async with async_session() as db:
+        task = (
+            await db.execute(
+                select(GenTask).where(
+                    GenTask.id == task_id,
+                    GenTask.user_id == user_id,
+                    GenTask.project_id == project_id,
+                )
+            )
+        ).scalar_one_or_none()
+        project = (
+            await db.execute(select(Project).where(Project.id == project_id))
+        ).scalar_one_or_none()
+        script = await get_or_create_project_script(str(project_id), db)
+
+        if not task or not project or not script:
+            return
+
+        try:
+            task.status = "running"
+            await db.commit()
+
+            (
+                items,
+                replaced_count,
+                created_count,
+                selected_episode_number,
+                backup_history,
+                split_source,
+                extracted_episode_count,
+                subject_created_count,
+                subject_updated_count,
+                failed_episode_numbers,
+            ) = await finalize_project_script_and_extract_subjects(
+                project=project,
+                project_script=script,
+                episode_count=episode_count,
+                model=model,
+                split_mode=split_mode,
+                auto_extract_subjects=auto_extract_subjects,
+                db=db,
+            )
+
+            task.status = "completed"
+            task.success_count = created_count
+            task.fail_count = len(failed_episode_numbers)
+            task.results = [
+                {
+                    "split_applied": True,
+                    "replaced_count": replaced_count,
+                    "created_count": created_count,
+                    "script_status": script.status,
+                    "selected_episode_number": selected_episode_number,
+                    "backup_history_id": str(backup_history.id) if backup_history else None,
+                    "items": [
+                        {
+                            "episode_number": item.episode_number,
+                            "title": item.title,
+                            "summary": item.summary,
+                            "content": item.content,
+                        }
+                        for item in items
+                    ],
+                    "split_source": split_source,
+                    "extracted_episode_count": extracted_episode_count,
+                    "subject_created_count": subject_created_count,
+                    "subject_updated_count": subject_updated_count,
+                    "failed_episode_numbers": failed_episode_numbers,
+                    "success": True,
+                }
+            ]
+            await db.commit()
+        except Exception as exc:
+            task.status = "failed"
+            task.success_count = 0
+            task.fail_count = 1
+            task.results = [
+                {
+                    "success": False,
+                    "error": str(exc),
+                }
+            ]
+            await db.commit()

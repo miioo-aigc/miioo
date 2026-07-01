@@ -95,8 +95,8 @@ def test_build_storyboard_bundle_zip_response_groups_files_by_storyboard(monkeyp
     archive_bytes = asyncio.run(_collect_streaming_response_bytes(response))
     archive = zipfile.ZipFile(io.BytesIO(archive_bytes))
 
-    expected_image_path = "测试项目/镜头_01/images/镜头_01_分镜图.png"
-    expected_video_path = "测试项目/镜头_01/videos/镜头_01_分镜视频.mp4"
+    expected_image_path = "测试项目/镜头_01/images/封面分镜图.png"
+    expected_video_path = "测试项目/镜头_01/videos/预览分镜视频.mp4"
     assert expected_image_path in archive.namelist()
     assert expected_video_path in archive.namelist()
     assert "测试项目/manifest.json" in archive.namelist()

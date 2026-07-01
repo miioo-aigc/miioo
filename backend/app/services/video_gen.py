@@ -16,6 +16,10 @@ import httpx
 from app.config import settings
 from app.services.http_client import upstream_async_client
 from app.services.model_capabilities import validate_asset_bindings
+from app.services.onelink_error_mapper import (
+    describe_onelink_http_error,
+    describe_onelink_timeout_error,
+)
 from app.services.fal_runtime import (
     FAL_STABLE_VIDEO_MODEL_ID,
     FAL_WAN_FLF2V_MODEL_ID,
@@ -538,6 +542,9 @@ class VideoGenService:
 
     def _is_data_uri(self, url: str) -> bool:
         return url.startswith("data:")
+
+    def _is_seedance_asset_ref(self, url: str) -> bool:
+        return str(url or "").strip().startswith("asset://")
 
     def _split_url(self, url: str):
         try:
@@ -1740,18 +1747,35 @@ class VideoGenService:
                 resp.raise_for_status()
                 return resp.json()
             except httpx.HTTPStatusError as exc:
-                raise Exception(
-                    f"{model} 请求失败: endpoint={endpoint}, message={exc.response.text}"
+                raise ValueError(
+                    describe_onelink_http_error(
+                        exc,
+                        model=model,
+                        route=endpoint,
+                    )
+                ) from exc
+            except httpx.TimeoutException as exc:
+                raise ValueError(
+                    describe_onelink_timeout_error(
+                        exc,
+                        model=model,
+                        route=endpoint,
+                    )
                 ) from exc
 
-        raise Exception(
-            f"{model} 请求失败: 所有视频生成端点均不可用，"
-            f"tried={', '.join(endpoints)}, last_error={last_probe_error or 'unknown'}"
-        )
+        if last_probe_error:
+            raise Exception(
+                f"{model} 请求失败: 所有视频生成端点均不可用，"
+                f"tried={', '.join(endpoints)}, last_error={last_probe_error}"
+            )
+        raise ValueError(f"{model} 请求失败：所有视频生成端点均不可用，请联系管理员检查上游配置")
 
     def _prepare_external_media_url(self, url: str, media_label: str) -> str:
         if not url:
             raise ValueError(f"{media_label}地址不能为空")
+
+        if self._is_seedance_asset_ref(url):
+            return url
 
         local_upload_path = self._extract_local_upload_path(url)
         if local_upload_path:
@@ -1827,6 +1851,8 @@ class VideoGenService:
         cleaned = str(url or "").strip()
         if not cleaned:
             raise ValueError(f"{media_label}地址不能为空")
+        if self._is_seedance_asset_ref(cleaned):
+            return cleaned
 
         normalized_url = cleaned
         if media_type == "audio":
@@ -2041,6 +2067,8 @@ class VideoGenService:
             raise ValueError("图片地址不能为空")
 
         if self._is_data_uri(url):
+            return url
+        if self._is_seedance_asset_ref(url):
             return url
 
         local_upload_path = self._extract_local_upload_path(url)
@@ -2891,6 +2919,10 @@ class VideoGenService:
         reference_audio_asset_id: str | None = None,
         reference_image_asset_ids: list[str] | None = None,
         speech_text: str | None = None,
+        multi_shot: bool | None = None,
+        shot_type: str | None = None,
+        multi_prompt: list[dict[str, Any]] | None = None,
+        provider_params: dict[str, Any] | None = None,
     ) -> dict:
         normalized_reference_mode = (reference_mode or "").strip() or None
         validated_assets = validate_asset_bindings(
@@ -3149,6 +3181,17 @@ class VideoGenService:
                 generate_mode=generate_mode,
                 generate_audio=generate_audio,
                 attachments=normalized_attachments,
+                multi_shot=multi_shot,
+                shot_type=shot_type,
+                multi_prompt=multi_prompt,
+                provider_params=provider_params,
+                mentions=mentions,
+                first_frame_asset_id=first_frame_asset_id,
+                last_frame_asset_id=last_frame_asset_id,
+                reference_video_asset_id=reference_video_asset_id,
+                reference_audio_asset_id=reference_audio_asset_id,
+                reference_image_asset_ids=reference_image_asset_ids,
+                speech_text=speech_text,
             )
 
         resolved_image_url = effective_image_url or effective_first_frame_url
@@ -3421,13 +3464,20 @@ class VideoGenService:
                 resp.raise_for_status()
                 data = resp.json()
             except httpx.HTTPStatusError as exc:
-                response_text = exc.response.text
-                image_count = len(vidu_payload.get("images") or [])
-                if not image_count and vidu_payload.get("start_image"):
-                    image_count = 1
-                raise Exception(
-                    f"Vidu 请求失败: endpoint={endpoint}, generation_mode={normalized_generation_mode}, images_count={image_count}, "
-                    f"message={response_text}"
+                raise ValueError(
+                    describe_onelink_http_error(
+                        exc,
+                        model=model,
+                        route=f"vidu:{endpoint}",
+                    )
+                ) from exc
+            except httpx.TimeoutException as exc:
+                raise ValueError(
+                    describe_onelink_timeout_error(
+                        exc,
+                        model=model,
+                        route=f"vidu:{endpoint}",
+                    )
                 ) from exc
 
             _log(f"Vidu API response: {data}")
@@ -3792,6 +3842,83 @@ class VideoGenService:
                 sources=[result],
             )
 
+    def _build_kling_enhanced_prompt(
+        self,
+        prompt: str,
+        mentions: list[dict] | None,
+        attachments: list[dict] | None,
+    ) -> str:
+        """
+        为Kling模型构建增强的提示词，把用户提到的资产信息以自然语言的方式附加到提示词中
+        """
+        base_prompt = (prompt or "").strip()
+        if not mentions and not attachments:
+            return base_prompt
+
+        lines = []
+        if base_prompt:
+            lines.append(base_prompt)
+
+        # 处理mentions - 用户明确@的资产
+        if mentions:
+            for mention in mentions:
+                asset_name = mention.get("asset_name") or mention.get("display_text") or "未命名资产"
+                asset_type = mention.get("asset_type") or "file"
+                role = mention.get("role") or ""
+                
+                type_desc = {
+                    "image": "图片",
+                    "video": "视频",
+                    "audio": "音频",
+                }.get(asset_type, "文件")
+                
+                role_desc = ""
+                if role:
+                    role_desc = {
+                        "character": "角色",
+                        "scene": "场景",
+                        "prop": "道具",
+                        "reference": "参考",
+                        "first_frame": "首帧",
+                        "last_frame": "尾帧",
+                    }.get(role, "")
+                
+                if role_desc:
+                    lines.append(f"【参考{role_desc}】请参考{type_desc}「{asset_name}」的风格和内容")
+                else:
+                    lines.append(f"【参考{type_desc}】请参考「{asset_name}」")
+
+        # 处理attachments - 附加的资产
+        if attachments:
+            for idx, attachment in enumerate(attachments):
+                asset_name = attachment.get("asset_name") or f"附件{idx+1}"
+                asset_type = attachment.get("asset_type") or "file"
+                role = attachment.get("role") or ""
+                
+                type_desc = {
+                    "image": "图片",
+                    "video": "视频",
+                    "audio": "音频",
+                }.get(asset_type, "文件")
+                
+                role_desc = ""
+                if role:
+                    role_desc = {
+                        "character": "角色",
+                        "scene": "场景",
+                        "prop": "道具",
+                        "reference": "参考",
+                        "first_frame": "首帧",
+                        "last_frame": "尾帧",
+                    }.get(role, "")
+                
+                if role_desc:
+                    lines.append(f"【附件{role_desc}】请参考{type_desc}「{asset_name}」")
+                else:
+                    lines.append(f"【附件】请参考{type_desc}「{asset_name}」")
+
+        return "\n".join(lines)
+
     async def _generate_kling(
         self,
         prompt: str,
@@ -3808,6 +3935,17 @@ class VideoGenService:
         reference_mode: str | None = None,
         generate_mode: str | None = None,
         generate_audio: bool | None = None,
+        multi_shot: bool | None = None,
+        shot_type: str | None = None,
+        multi_prompt: list[dict[str, Any]] | None = None,
+        provider_params: dict[str, Any] | None = None,
+        mentions: list[dict] | None = None,
+        first_frame_asset_id: str | None = None,
+        last_frame_asset_id: str | None = None,
+        reference_video_asset_id: str | None = None,
+        reference_audio_asset_id: str | None = None,
+        reference_image_asset_ids: list[str] | None = None,
+        speech_text: str | None = None,
     ) -> dict:
         image_urls = self._collect_kling_image_urls(
             image_url=image_url,
@@ -3830,15 +3968,37 @@ class VideoGenService:
             generate_mode,
             default=route_config["default_mode"],
         )
+        normalized_provider_params = {
+            str(key): value
+            for key, value in (provider_params or {}).items()
+            if isinstance(key, str) and value is not None
+        }
         model_name = route_config["model_name"]
         task_label = route_config["task_label"]
+        
+        # 构建增强的提示词，包含mentions和attachments信息
+        enhanced_prompt = self._build_kling_enhanced_prompt(
+            prompt=prompt,
+            mentions=mentions,
+            attachments=attachments,
+        )
+        
         payload: dict[str, Any] = {
+            **normalized_provider_params,
             "model_name": model_name,
-            "prompt": prompt,
+            "prompt": enhanced_prompt,
             "duration": normalized_duration,
-            "callback_url": "",
-            "external_task_id": "",
+            "callback_url": normalized_provider_params.get("callback_url", ""),
+            "external_task_id": normalized_provider_params.get("external_task_id", ""),
         }
+
+        normalized_multi_shot = bool(multi_shot)
+        if normalized_multi_shot:
+            payload["multi_shot"] = True
+            if shot_type:
+                payload["shot_type"] = shot_type
+            if multi_prompt:
+                payload["multi_prompt"] = multi_prompt
 
         if route == "text2video":
             payload["negative_prompt"] = ""
@@ -3851,6 +4011,7 @@ class VideoGenService:
                 raise ValueError("Kling 图生视频需要至少 1 张参考图")
             payload["image"] = image_urls[0]
             payload["mode"] = normalized_mode
+            payload["sound"] = "off" if generate_audio is False else "on"
             if ratio:
                 payload["aspect_ratio"] = ratio
         elif route == "multi-image2video":
@@ -3858,6 +4019,7 @@ class VideoGenService:
                 raise ValueError("Kling 多图参考生视频需要至少 2 张参考图")
             payload["image_list"] = [{"image": url} for url in image_urls[:4]]
             payload["mode"] = normalized_mode
+            payload["sound"] = "off" if generate_audio is False else "on"
             if ratio:
                 payload["aspect_ratio"] = ratio
         elif route == "omni-video":
@@ -3878,8 +4040,20 @@ class VideoGenService:
                 resp.raise_for_status()
                 data = resp.json()
             except httpx.HTTPStatusError as exc:
-                raise Exception(
-                    f"{task_label} 请求失败: message={exc.response.text}"
+                raise ValueError(
+                    describe_onelink_http_error(
+                        exc,
+                        model=model,
+                        route=f"kling:{route_config['submit_path']}",
+                    )
+                ) from exc
+            except httpx.TimeoutException as exc:
+                raise ValueError(
+                    describe_onelink_timeout_error(
+                        exc,
+                        model=model,
+                        route=f"kling:{route_config['submit_path']}",
+                    )
                 ) from exc
 
             parsed = self._extract_video_task_payload(data)
@@ -4002,7 +4176,21 @@ class VideoGenService:
                 resp.raise_for_status()
                 data = resp.json()
             except httpx.HTTPStatusError as exc:
-                raise Exception(f"Veo 请求失败: message={exc.response.text}") from exc
+                raise ValueError(
+                    describe_onelink_http_error(
+                        exc,
+                        model=model,
+                        route="veo:predictLongRunning",
+                    )
+                ) from exc
+            except httpx.TimeoutException as exc:
+                raise ValueError(
+                    describe_onelink_timeout_error(
+                        exc,
+                        model=model,
+                        route="veo:predictLongRunning",
+                    )
+                ) from exc
 
         operation_name = str(data.get("name") or data.get("operation") or "").strip()
         if not operation_name:

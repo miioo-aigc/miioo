@@ -4,10 +4,10 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -109,6 +109,15 @@ class UpdateCustomVoiceRequest(BaseModel):
 
 class AdminVoiceLibraryResponse(VoiceResponse):
     pass
+
+
+class AdminVoiceLibraryListResponse(BaseModel):
+    list: list[AdminVoiceLibraryResponse]
+    total: int
+    enabled_total: int
+    page: int
+    page_size: int
+    has_more: bool
 
 
 class MiiooVoiceLibrarySyncResponse(BaseModel):
@@ -307,18 +316,21 @@ async def list_voices(
 
 @router.get(
     "/library",
-    response_model=list[AdminVoiceLibraryResponse],
+    response_model=AdminVoiceLibraryListResponse,
     summary="获取系统音色库",
     description="读取后台系统音色库。普通用户默认只看到启用项，管理员可通过 `include_disabled=true` 查看停用项。",
     response_description="系统音色库列表。",
 )
 async def list_voice_library(
+    page: int = Query(1, ge=1, description="页码，从 1 开始。"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量，默认 20。"),
     provider: str | None = None,
     gender: str | None = None,
     age_group: str | None = None,
     language: str | None = None,
     emotion: str | None = None,
     keyword: str | None = None,
+    is_enabled: bool | None = Query(None, description="按启用状态筛选，仅后台音色库使用。"),
     include_disabled: bool = False,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -339,7 +351,17 @@ async def list_voice_library(
     if keyword:
         keyword_value = f"%{keyword.strip()}%"
         query = query.where(or_(Voice.name.ilike(keyword_value), Voice.style.ilike(keyword_value), Voice.emotions.ilike(keyword_value)))
-    query = query.order_by(Voice.sort_order.asc(), Voice.name.asc(), Voice.id.asc())
+    if is_enabled is not None:
+        query = query.where(Voice.is_enabled == is_enabled)
+    total = int((await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one() or 0)
+    enabled_total_query = query.where(Voice.is_enabled == True)
+    enabled_total = int((await db.execute(select(func.count()).select_from(enabled_total_query.subquery()))).scalar_one() or 0)
+    query = (
+        query
+        .order_by(Voice.sort_order.asc(), Voice.name.asc(), Voice.id.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     result = await db.execute(query)
     voices = result.scalars().all()
     favorite_voice_ids: set[UUID] = set()
@@ -348,7 +370,19 @@ async def list_voice_library(
             select(VoiceFavorite.voice_id).where(VoiceFavorite.user_id == current_user.id)
         )
         favorite_voice_ids = {row[0] for row in fav_result.all()}
-    return [serialize_voice(voice, favorite_voice_ids) for voice in voices]
+    return AdminVoiceLibraryListResponse(
+        list=[
+            AdminVoiceLibraryResponse.model_validate(
+                serialize_voice(voice, favorite_voice_ids).model_dump()
+            )
+            for voice in voices
+        ],
+        total=total,
+        enabled_total=enabled_total,
+        page=page,
+        page_size=page_size,
+        has_more=(page * page_size) < total,
+    )
 
 
 @router.post(

@@ -1,8 +1,15 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 import { authFetch } from './request.js';
+import { throwResponseError } from './error.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
+async function readJson(res, fallback, options) {
+  if (!res.ok) {
+    await throwResponseError(res, fallback, options);
+  }
+  return res.json();
+}
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -10,15 +17,7 @@ export async function apiListProviders() {
   const res = await authFetch(`${BASE}/api/providers`, {
     headers: { 'Content-Type': 'application/json' },
   });
-  if (!res.ok) {
-    let message = `请求失败 (${res.status})`;
-    try {
-      const err = await res.json();
-      if (err?.detail) message = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
-    } catch {}
-    throw new Error(message);
-  }
-  return res.json();
+  return readJson(res, `获取服务商失败（${res.status}）`);
 }
 
 export async function apiCreateProvider({ name, provider_type, base_url, api_key }) {
@@ -27,16 +26,9 @@ export async function apiCreateProvider({ name, provider_type, base_url, api_key
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, provider_type, base_url, api_key }),
   });
-  if (!res.ok) {
-    let message = `请求失败 (${res.status})`;
-    try {
-      const err = await res.json();
-      if (err?.detail) message = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
-    } catch {}
-    throw new Error(message);
-  }
+  const payload = await readJson(res, `保存服务商失败（${res.status}）`);
   invalidate('models:'); // provider 变化会影响可用模型列表
-  return res.json();
+  return payload;
 }
 
 export async function apiUpdateProvider(providerId, data) {
@@ -45,16 +37,9 @@ export async function apiUpdateProvider(providerId, data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) {
-    let message = `请求失败 (${res.status})`;
-    try {
-      const err = await res.json();
-      if (err?.detail) message = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
-    } catch {}
-    throw new Error(message);
-  }
+  const payload = await readJson(res, `更新服务商失败（${res.status}）`);
   invalidate('models:');
-  return res.json();
+  return payload;
 }
 
 export async function apiDeleteProvider(providerId) {
@@ -70,15 +55,7 @@ export async function apiTestConnection(providerId) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
-  if (!res.ok) {
-    let message = `请求失败 (${res.status})`;
-    try {
-      const err = await res.json();
-      if (err?.detail) message = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
-    } catch {}
-    throw new Error(message);
-  }
-  return res.json();
+  return readJson(res, `连接测试失败（${res.status}）`, { showDialog: true, title: '连接失败' });
 }
 
 export async function apiOneClickSetup({ api_key }) {
@@ -87,16 +64,9 @@ export async function apiOneClickSetup({ api_key }) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ api_key }),
   });
-  if (!res.ok) {
-    let message = `请求失败 (${res.status})`;
-    try {
-      const err = await res.json();
-      if (err?.detail) message = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
-    } catch {}
-    throw new Error(message);
-  }
+  const payload = await readJson(res, `一键配置失败（${res.status}）`, { showDialog: true, title: '配置失败' });
   invalidate('models:'); // 一键配置会批量创建 provider/model
-  return res.json();
+  return payload;
 }
 
 export async function apiOneClickCleanup() {
@@ -110,16 +80,17 @@ export async function apiOneClickCleanup() {
 
 // ── Models ────────────────────────────────────────────────────────────────────
 
-export async function apiListModels({ category } = {}) {
+export async function apiListModels({ category, availableOnly = true } = {}) {
   return cached(
-    K.models(category),
+    K.models(category, { availableOnly }),
     async () => {
       const params = new URLSearchParams();
       if (category) params.append('category', category);
+      if (availableOnly) params.append('available_only', 'true');
       const query = params.toString();
       const url = query ? `${BASE}/api/models?${query}` : `${BASE}/api/models`;
       const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
-      return res.json();
+      return readJson(res, `获取模型列表失败（${res.status}）`);
     },
     { medium: MEDIUM.STATIC, ttl: TTL.STATIC },
   );
@@ -203,7 +174,7 @@ export async function apiGetBanner() {
 export async function apiGetApiConfig() {
   const [providers, models] = await Promise.all([
     apiListProviders(),
-    apiListModels(),
+    apiListModels({ availableOnly: true }),
   ]);
   return { providers, models };
 }

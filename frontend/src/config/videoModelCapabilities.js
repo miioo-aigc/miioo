@@ -3,6 +3,7 @@ export const VIDEO_MODEL_CAPABILITIES = {
     id: 'seedance-2.0',
     name: 'Seedance 2.0',
     displayName: 'Seedance 2.0',
+    supportsLiveMaterial: true,
     category: ['text-to-video', 'image-to-video', 'first-last-frame', 'multi-modal-ref', 'edit-video', 'extend-video'],
 
     promptLimit: {

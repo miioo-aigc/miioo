@@ -29,6 +29,7 @@ from app.services.asset_recycle import (
 )
 from app.services.asset_reference_cleanup import cleanup_asset_references
 from app.services.media_download_runtime import MediaDownloadAccessError, resolve_verified_download_target_from_url
+from app.services.media_download_filenames import build_download_filename
 from app.services.media_fetch import read_media_bytes
 from app.services.image_derivatives import (
     build_derivative_metadata,
@@ -214,10 +215,24 @@ def _guess_download_extension(url: str | None, asset_type: str | None) -> str:
 
 
 def _build_asset_download_filename(asset: Asset, url: str | None) -> str:
-    safe_name = _sanitize_download_name(asset.name)
-    if Path(safe_name).suffix:
-        return safe_name
-    return f"{safe_name}{_guess_download_extension(url, asset.asset_type)}"
+    metadata = asset.metadata_json if isinstance(asset.metadata_json, dict) else {}
+    suffix = _guess_download_extension(url, asset.asset_type)
+    return build_download_filename(
+        prefix="项目资产",
+        prompt=(
+            metadata.get("input_prompt"),
+            asset.prompt,
+            metadata.get("prompt_resolved"),
+            metadata.get("prompt_raw"),
+            metadata.get("original_prompt"),
+            metadata.get("text"),
+        ),
+        preferred_name=asset.name,
+        fallback_name=metadata.get("episode_label") or metadata.get("episodeLabel"),
+        url=url or asset.file_url,
+        asset_type=asset.asset_type,
+        extension=suffix,
+    )
 
 
 async def _read_media_bytes(url: str, *, label: str, timeout: float = 60.0) -> bytes:

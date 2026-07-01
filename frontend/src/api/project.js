@@ -83,11 +83,12 @@ export async function apiDeleteProject(projectId) {
   invalidate(K.projectsPrefix());
 }
 
-export async function apiDownloadProjectAssets(projectId) {
-  await authFetch(`${BASE}/api/projects/${projectId}/assets/download`, {
+export async function apiDownloadProjectAssets(projectId, { rawResponse = false } = {}) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/assets/download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
+  return rawResponse ? res : res.blob();
 }
 
 export async function apiGetProjectOverview(projectId) {

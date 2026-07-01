@@ -35,10 +35,12 @@ from app.services.media_derivative_pipeline import (
     build_video_playback_metadata,
     build_video_poster_bundle,
 )
+from app.services.media_download_filenames import build_download_filename, guess_extension, sanitize_filename_segment
 from app.services.media_fetch import read_media_bytes
 from app.services.media_download_runtime import MediaDownloadAccessError, resolve_verified_download_target_from_url
 from app.services.storyboard_gen import generate_storyboard
 from app.services.image_gen import image_gen_service
+from app.services.live_material_runtime import resolve_live_material_attachments
 from app.services.model_selection import get_default_available_model_id
 from app.services.model_capabilities import (
     get_model_capabilities,
@@ -60,6 +62,20 @@ from app.services.media_storage import (
     resolve_upload_path,
 )
 from app.services.project_audio import resolve_storyboard_seedance_voice_video_inputs
+from app.services.narration_duration import (
+    estimate_narration_duration_seconds,
+    estimate_segments_duration_seconds,
+)
+from app.services.narration_segments import (
+    merge_storyboard_narration_gen_params,
+    parse_voiceover_lines,
+    enrich_narration_segments,
+)
+from app.services.storyboard_voice_split import (
+    apply_storyboard_voice_split,
+    build_voice_split_shot_payloads,
+    should_split_storyboard_by_voice,
+)
 from app.services.project_script_service import finalize_project_script, get_or_create_project_script
 from app.services.media_view_models import build_image_media_fields, build_video_media_fields
 from app.services.video_gen import video_gen_service
@@ -73,6 +89,7 @@ from app.utils.media_urls import is_video_like_url, pick_safe_thumbnail_url
 router = APIRouter()
 STORYBOARD_SEEDANCE_VOICE_VIDEO_MODEL_IDS = {
     "doubao-seedance-2.0",
+    "doubao-seedance-2-0-mini-260615",
     "doubao-seedance-2-0-fast",
 }
 
@@ -83,6 +100,55 @@ STORYBOARD_VIDEO_ALLOWED_CONTENT_TYPES = {"video/mp4", "video/webm", "video/quic
 MAX_STORYBOARD_IMAGE_SIZE = 20 * 1024 * 1024
 STORYBOARD_LIST_DEFAULT_LIMIT = 100
 STORYBOARD_LIST_MAX_LIMIT = 200
+
+
+async def _resolve_storyboard_live_material_inputs(
+    *,
+    user_id: UUID,
+    db: AsyncSession,
+    provider_params: dict[str, Any] | None,
+    attachments: list[dict[str, Any]] | None,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    merged_attachments = list(attachments or [])
+    if not isinstance(provider_params, dict):
+        return provider_params, merged_attachments
+    resolved_live_material, live_material_attachments = await resolve_live_material_attachments(
+        user_id=user_id,
+        db=db,
+        provider_params=provider_params,
+    )
+    if not resolved_live_material:
+        return provider_params, merged_attachments
+    resolved_provider_params = dict(provider_params)
+    resolved_provider_params["live_material"] = resolved_live_material
+    merged_attachments.extend(live_material_attachments)
+    return resolved_provider_params, merged_attachments
+
+
+def _validated_storyboard_asset_bindings_to_attachments(
+    validated_asset_bindings: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    bindings = validated_asset_bindings or {}
+    resolved: list[dict[str, Any]] = []
+    for asset_type, key in (
+        ("image", "image_refs"),
+        ("video", "video_refs"),
+        ("audio", "audio_refs"),
+    ):
+        for item in (bindings.get(key) or []):
+            if not isinstance(item, dict):
+                continue
+            binding = {
+                "asset_id": item.get("asset_id"),
+                "asset_type": asset_type,
+                "asset_name": item.get("asset_name"),
+                "url": item.get("url"),
+                "role": item.get("role"),
+                "source": item.get("source"),
+            }
+            if any(binding.get(field) for field in ("asset_id", "asset_name", "url")):
+                resolved.append(binding)
+    return resolved
 
 
 def _derive_asset_thumbnail(source_url: str | None, *, asset_type: str) -> tuple[str | None, dict]:
@@ -431,6 +497,55 @@ def _merge_storyboard_prompt_layers(
     return next_gen_params
 
 
+def _resolve_storyboard_video_duration(
+    *,
+    storyboard: Storyboard,
+    requested_duration: float | None,
+    model: str,
+) -> float | None:
+    if requested_duration is not None:
+        return requested_duration
+
+    gen_params = _get_storyboard_gen_params(storyboard)
+    segments = gen_params.get("narration_segments")
+    estimated = estimate_segments_duration_seconds(
+        segments if isinstance(segments, list) else None
+    )
+    if estimated is None and storyboard.voiceover:
+        estimated = estimate_narration_duration_seconds(storyboard.voiceover)
+    if estimated is None and storyboard.duration:
+        try:
+            estimated = float(storyboard.duration)
+        except (TypeError, ValueError):
+            estimated = None
+
+    if estimated is None:
+        return None
+
+    capabilities = get_model_capabilities(model, "video")
+    supported = capabilities.get("supported_durations") or []
+    if supported:
+        numeric_supported = [float(item) for item in supported]
+        clamped = max(min(estimated, max(numeric_supported)), min(numeric_supported))
+        return clamped
+    return estimated
+
+
+def _apply_storyboard_narration_updates(
+    *,
+    storyboard: Storyboard,
+    subjects: list[Subject],
+    incoming_gen_params: dict | None,
+) -> dict:
+    merged_gen_params = merge_storyboard_narration_gen_params(
+        storyboard.gen_params if isinstance(storyboard.gen_params, dict) else {},
+        incoming_gen_params,
+        subjects=subjects,
+        storyboard=storyboard,
+    )
+    return merged_gen_params
+
+
 def _resolve_storyboard_generation_prompt(storyboard: Storyboard, request_prompt: str | None) -> str | None:
     if request_prompt and request_prompt.strip():
         return request_prompt.strip()
@@ -578,14 +693,27 @@ def _resolve_subject_ids(
 
 
 def _sanitize_zip_segment(value: str | None) -> str:
-    cleaned = re.sub(r'[\\/:*?"<>|]+', "_", (value or "").strip())
-    return cleaned or "project"
+    return sanitize_filename_segment(value, fallback="project", limit=80)
 
 
-def _build_archive_filename(shot_number: int, url: str, fallback_ext: str) -> str:
-    parsed = urlparse(url)
-    ext = Path(unquote(parsed.path or url)).suffix.lower() or fallback_ext
-    return f"shot_{shot_number}{ext}"
+def _build_archive_filename(
+    shot_number: int,
+    url: str,
+    fallback_ext: str,
+    *,
+    prompt: object = None,
+    preferred_name: str | None = None,
+    asset_role: str = "storyboard_image",
+) -> str:
+    prefix = "分镜图" if asset_role == "storyboard_image" else "分镜视频"
+    return build_download_filename(
+        prefix=f"{prefix}_镜头{int(shot_number):02d}",
+        prompt=prompt,
+        preferred_name=preferred_name,
+        url=url,
+        asset_type="image" if asset_role == "storyboard_image" else "video",
+        extension=guess_extension(url, "image" if asset_role == "storyboard_image" else "video") or fallback_ext,
+    )
 
 
 def _get_url_extension(url: str, fallback_ext: str) -> str:
@@ -603,10 +731,35 @@ def _build_storyboard_bundle_filename(
     asset_role: str,
     url: str,
     fallback_ext: str,
+    prompt: object = None,
+    preferred_name: str | None = None,
 ) -> str:
-    ext = _get_url_extension(url, fallback_ext)
     role_label = "分镜图" if asset_role == "storyboard_image" else "分镜视频"
-    return f"镜头_{int(shot_number):02d}_{role_label}{ext}"
+    return build_download_filename(
+        prefix=f"{role_label}_镜头{int(shot_number):02d}",
+        prompt=prompt,
+        preferred_name=preferred_name,
+        url=url,
+        asset_type="image" if asset_role == "storyboard_image" else "video",
+        extension=guess_extension(url, "image" if asset_role == "storyboard_image" else "video") or fallback_ext,
+    )
+
+
+def _build_storyboard_prompt_candidates(
+    shot: Storyboard,
+    matched_asset: Asset | None = None,
+) -> tuple[object, ...]:
+    asset_metadata = _get_asset_metadata(matched_asset)
+    gen_params = _get_storyboard_gen_params(shot)
+    return (
+        asset_metadata.get("input_prompt"),
+        matched_asset.prompt if matched_asset else None,
+        getattr(shot, "image_prompt", None),
+        gen_params.get("prompt"),
+        gen_params.get("prompt_resolved"),
+        gen_params.get("prompt_raw"),
+        getattr(shot, "content", None),
+    )
 
 
 def _build_storyboard_asset_lookup_key(
@@ -743,7 +896,15 @@ async def _build_storyboard_zip_response(
             if not source_url:
                 continue
 
-            filename = _build_archive_filename(shot.shot_number, source_url, fallback_ext)
+            matched_asset = download_context.get("matched_asset")
+            filename = _build_archive_filename(
+                shot.shot_number,
+                source_url,
+                fallback_ext,
+                prompt=_build_storyboard_prompt_candidates(shot, matched_asset if isinstance(matched_asset, Asset) else None),
+                preferred_name=matched_asset.name if isinstance(matched_asset, Asset) else None,
+                asset_role="storyboard_video" if fallback_ext == ".mp4" else "storyboard_image",
+            )
             try:
                 resolved_target = resolve_verified_download_target_from_url(
                     download_url or source_url,
@@ -848,6 +1009,8 @@ async def _build_storyboard_bundle_zip_response(
                     asset_role=spec["asset_role"],
                     url=source_url,
                     fallback_ext=spec["fallback_ext"],
+                    prompt=_build_storyboard_prompt_candidates(shot, matched_asset if isinstance(matched_asset, Asset) else None),
+                    preferred_name=matched_asset.name if isinstance(matched_asset, Asset) else None,
                 )
                 archive_path = f"{project_folder}/{storyboard_folder}/{spec['subdir']}/{archive_filename}"
                 zip_file.writestr(archive_path, content)
@@ -930,6 +1093,7 @@ class StoryboardResponse(BaseModel):
     prop_ids: list[str] | None
     reference_image_urls: list[str] | None
     gen_params: dict | None
+    split_result: dict | None = None
     sort_order: int
     created_at: str
     updated_at: str
@@ -1290,6 +1454,7 @@ def _to_response(
     image_asset: Asset | None = None,
     video_asset: Asset | None = None,
     include_gen_params: bool = True,
+    split_result: dict | None = None,
 ) -> StoryboardResponse:
     image_metadata = _get_asset_metadata(image_asset)
     asset_metadata = _get_asset_metadata(video_asset)
@@ -1382,6 +1547,7 @@ def _to_response(
         prop_ids=s.prop_ids,
         reference_image_urls=s.reference_image_urls,
         gen_params=s.gen_params if include_gen_params else None,
+        split_result=split_result,
         sort_order=s.sort_order,
         created_at=s.created_at.isoformat(),
         updated_at=s.updated_at.isoformat(),
@@ -1404,6 +1570,9 @@ async def _run_storyboard_image_generation_job(
     request_reference_images: list[str],
     generation_mode: str,
     count: int,
+    expand_options: dict[str, Any] | None = None,
+    subject_completion_options: dict[str, Any] | None = None,
+    provider_params: dict[str, Any] | None = None,
 ) -> None:
     async with async_session() as db:
         result = await db.execute(
@@ -1424,6 +1593,10 @@ async def _run_storyboard_image_generation_job(
                 resolution=resolution,
                 reference_images=reference_images,
                 n=count,
+                generation_mode=generation_mode,
+                expand_options=expand_options,
+                subject_completion_options=subject_completion_options,
+                provider_params=provider_params,
             )
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"图片生成失败: {str(exc)}") from exc
@@ -1458,7 +1631,19 @@ async def _run_storyboard_image_generation_job(
             asset = Asset(
                 user_id=user_id,
                 project_id=project_id,
-                name=f"分镜 #{sb.shot_number}" if len(persisted_urls) == 1 else f"分镜 #{sb.shot_number} {index}",
+                name=build_download_filename(
+                    prefix=f"分镜图_镜头{sb.shot_number:02d}",
+                    prompt=(
+                        enhanced_prompt,
+                        sb.image_prompt,
+                        sb.content,
+                    ),
+                    fallback_name=f"镜头{sb.shot_number}",
+                    sequence=index if len(persisted_urls) > 1 else None,
+                    url=persisted_url,
+                    asset_type="image",
+                    extension=guess_extension(persisted_url, asset_type="image", fallback=".png"),
+                ).rsplit(".", 1)[0],
                 asset_type="image",
                 category="storyboard",
                 file_url=persisted_url,
@@ -1528,6 +1713,9 @@ async def _run_storyboard_image_task(
     request_reference_images: list[str],
     generation_mode: str,
     count: int,
+    expand_options: dict[str, Any] | None = None,
+    subject_completion_options: dict[str, Any] | None = None,
+    provider_params: dict[str, Any] | None = None,
 ) -> None:
     async with async_session() as db:
         result = await db.execute(select(GenTask).where(GenTask.id == task_id))
@@ -1553,6 +1741,9 @@ async def _run_storyboard_image_task(
             request_reference_images=request_reference_images,
             generation_mode=generation_mode,
             count=count,
+            expand_options=expand_options,
+            subject_completion_options=subject_completion_options,
+            provider_params=provider_params,
         )
     except Exception as exc:
         async with async_session() as db:
@@ -1637,6 +1828,10 @@ async def _run_storyboard_video_generation_job(
     request_reference_images: list[str],
     speech_text: str | None,
     seedance_voice_video_trace: dict | None,
+    multi_shot: bool | None = None,
+    shot_type: str | None = None,
+    multi_prompt: list[dict[str, Any]] | None = None,
+    provider_params: dict[str, Any] | None = None,
 ) -> str | None:
     async with async_session() as db:
         result = await db.execute(
@@ -1684,6 +1879,10 @@ async def _run_storyboard_video_generation_job(
                 reference_audio_asset_id=reference_audio_asset_id,
                 reference_image_asset_ids=reference_image_asset_ids,
                 speech_text=speech_text,
+                multi_shot=multi_shot,
+                shot_type=shot_type,
+                multi_prompt=multi_prompt,
+                provider_params=provider_params,
             )
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"视频生成失败: {str(exc)}") from exc
@@ -1789,7 +1988,19 @@ async def _run_storyboard_video_generation_job(
         asset = Asset(
             user_id=user_id,
             project_id=project_id,
-            name=f"分镜视频 #{sb.shot_number}",
+            name=build_download_filename(
+                prefix=f"分镜视频_镜头{sb.shot_number:02d}",
+                prompt=(
+                    prompt,
+                    result_data.get("prompt_resolved"),
+                    sb.image_prompt,
+                    sb.content,
+                ),
+                fallback_name=f"镜头{sb.shot_number}",
+                url=video_url,
+                asset_type="video",
+                extension=guess_extension(video_url, asset_type="video", fallback=".mp4"),
+            ).rsplit(".", 1)[0],
             asset_type="video",
             category="storyboard",
             file_url=video_url,
@@ -1856,6 +2067,10 @@ async def _run_storyboard_video_task(
     request_reference_images: list[str],
     speech_text: str | None,
     seedance_voice_video_trace: dict | None,
+    multi_shot: bool | None = None,
+    shot_type: str | None = None,
+    multi_prompt: list[dict[str, Any]] | None = None,
+    provider_params: dict[str, Any] | None = None,
 ) -> None:
     async with async_session() as db:
         result = await db.execute(select(GenTask).where(GenTask.id == task_id))
@@ -1896,6 +2111,10 @@ async def _run_storyboard_video_task(
             request_reference_images=request_reference_images,
             speech_text=speech_text,
             seedance_voice_video_trace=seedance_voice_video_trace,
+            multi_shot=multi_shot,
+            shot_type=shot_type,
+            multi_prompt=multi_prompt,
+            provider_params=provider_params,
         )
     except Exception as exc:
         async with async_session() as db:
@@ -2168,6 +2387,11 @@ async def _generate_storyboards_for_episode(
             subjects=subjects,
             visual_style=visual_style,
         )
+        narration_gen_params = _apply_storyboard_narration_updates(
+            storyboard=temporary_storyboard,
+            subjects=subjects,
+            incoming_gen_params=None,
+        )
 
         storyboard = Storyboard(
             project_id=UUID(project_id),
@@ -2181,7 +2405,7 @@ async def _generate_storyboards_for_episode(
             duration=shot.get("duration"),
             lighting=shot.get("lighting"),
             ambient_sound=shot.get("ambient_sound"),
-            voiceover=shot.get("voiceover"),
+            voiceover=temporary_storyboard.voiceover or shot.get("voiceover"),
             image_prompt=shot.get("image_prompt"),
             character_ids=shot_char_ids or None,
             scene_id=shot_scene_id,
@@ -2201,12 +2425,22 @@ async def _generate_storyboards_for_episode(
                     "generation_source": generation_metadata.get("generation_source") or (
                         "final_script_batch" if replace_existing else "episode_generate"
                     ),
+                    **narration_gen_params,
                 },
                 composed_prompt_auto=composed_prompt_auto,
                 composed_prompt_source_version=composed_prompt_source_version,
             ),
             sort_order=idx,
         )
+        estimated_duration = estimate_segments_duration_seconds(
+            narration_gen_params.get("narration_segments")
+            if isinstance(narration_gen_params.get("narration_segments"), list)
+            else None
+        )
+        if estimated_duration is None and storyboard.voiceover:
+            estimated_duration = estimate_narration_duration_seconds(storyboard.voiceover)
+        if estimated_duration is not None:
+            storyboard.duration = estimated_duration
         db.add(storyboard)
         created.append(storyboard)
 
@@ -2214,6 +2448,30 @@ async def _generate_storyboards_for_episode(
         _mark_episode_storyboarded(episode)
 
     await db.flush()
+
+    split_applied = False
+    for storyboard in list(created):
+        split_result = await apply_storyboard_voice_split(
+            db=db,
+            storyboard=storyboard,
+            subjects=subjects,
+            segments=(
+                storyboard.gen_params.get("narration_segments")
+                if isinstance(storyboard.gen_params, dict)
+                else None
+            ),
+        )
+        if split_result:
+            split_applied = True
+            created = [
+                item
+                for item in created
+                if str(item.id) != split_result["source_storyboard_id"]
+            ]
+
+    if split_applied:
+        return await _list_storyboards_in_scope(db, UUID(project_id), episode.id)
+
     return created
 
 
@@ -2490,6 +2748,10 @@ class GenerateVideoRequest(BaseModel):
     reference_video_asset_id: str | None = None
     reference_audio_asset_id: str | None = None
     reference_image_asset_ids: list[str] | None = None
+    multi_shot: bool | None = None
+    shot_type: str | None = None
+    multi_prompt: list[dict[str, Any]] | None = None
+    provider_params: dict[str, Any] | None = None
 
 
 class StoryboardPromptMention(BaseModel):
@@ -2678,22 +2940,37 @@ async def generate_storyboard_video(
         and reference_audio_url
     ):
         seedance_requested_generate_audio = True
+    request_attachments = [
+        item.model_dump(exclude_none=True)
+        for item in (req.attachments or [])
+    ]
+    try:
+        resolved_provider_params, request_attachments = await _resolve_storyboard_live_material_inputs(
+            user_id=user.id,
+            db=db,
+            provider_params=req.provider_params,
+            attachments=request_attachments,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    resolved_duration = _resolve_storyboard_video_duration(
+        storyboard=sb,
+        requested_duration=req.duration,
+        model=model,
+    )
     validated = validate_video_request(
         model=model,
         prompt=prompt,
         ratio=ratio,
         resolution=resolution,
-        duration=req.duration,
+        duration=resolved_duration,
         generation_mode=generate_mode,
         reference_mode=reference_mode,
         first_frame_url=first_frame,
         last_frame_url=last_frame,
         reference_video_url=reference_video_url,
         reference_audio_url=reference_audio_url,
-        attachments=[
-            item.model_dump(exclude_none=True)
-            for item in (req.attachments or [])
-        ],
+        attachments=request_attachments,
         first_frame_asset_id=req.first_frame_asset_id,
         last_frame_asset_id=req.last_frame_asset_id,
         reference_video_asset_id=req.reference_video_asset_id,
@@ -2702,6 +2979,10 @@ async def generate_storyboard_video(
         generate_audio=generate_audio,
         audio_setting=req.audio_setting,
         watermark=watermark,
+        provider_params=resolved_provider_params,
+    )
+    validated_attachments = _validated_storyboard_asset_bindings_to_attachments(
+        validated.get("asset_bindings")
     )
     seedance_voice_video_trace["enabled"] = bool(
         seedance_voice_video_trace.get("eligible_model")
@@ -2752,10 +3033,14 @@ async def generate_storyboard_video(
             "reference_mode": validated["reference_mode"],
             "ratio": ratio,
             "resolution": validated["resolution"],
-            "duration": req.duration,
+            "duration": validated.get("duration") or resolved_duration,
             "generate_mode": generate_mode,
             "generate_audio": generate_audio,
             "watermark": watermark,
+            "multi_shot": req.multi_shot,
+            "shot_type": req.shot_type,
+            "multi_prompt": req.multi_prompt,
+            "provider_params": resolved_provider_params,
             "source": "storyboard_generate_video",
             "seedance_voice_video": seedance_voice_video_trace or None,
         },
@@ -2775,7 +3060,7 @@ async def generate_storyboard_video(
             "storyboard_id": sb.id,
             "prompt": prompt,
             "model": model,
-            "duration": req.duration,
+            "duration": validated.get("duration") or resolved_duration,
             "reference_mode": validated["reference_mode"],
             "effective_image_url": effective_image_url,
             "effective_first_frame": effective_first_frame,
@@ -2793,10 +3078,7 @@ async def generate_storyboard_video(
                 item.model_dump(exclude_none=True)
                 for item in (req.mentions or [])
             ],
-            "attachments": [
-                item.model_dump(exclude_none=True)
-                for item in (req.attachments or [])
-            ],
+            "attachments": validated_attachments,
             "first_frame_asset_id": req.first_frame_asset_id,
             "last_frame_asset_id": req.last_frame_asset_id,
             "reference_video_asset_id": req.reference_video_asset_id,
@@ -2805,6 +3087,10 @@ async def generate_storyboard_video(
             "request_reference_images": request_reference_images,
             "speech_text": speech_text,
             "seedance_voice_video_trace": seedance_voice_video_trace,
+            "multi_shot": req.multi_shot,
+            "shot_type": req.shot_type,
+            "multi_prompt": req.multi_prompt,
+            "provider_params": resolved_provider_params,
         },
         name=f"gen-task:{task.id}:storyboard-video",
     )
@@ -2813,6 +3099,73 @@ async def generate_storyboard_video(
 
 class BatchDownloadRequest(BaseModel):
     storyboard_ids: list[str] | None = None
+
+
+@router.get(
+    "/{storyboard_id}/download-image",
+    summary="下载分镜图",
+    description="下载指定分镜的图片文件。",
+    response_description="分镜图二进制流。",
+)
+async def download_storyboard_image(
+    project_id: str,
+    storyboard_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project = await _get_project(project_id, user, db)
+    result = await db.execute(
+        select(Storyboard).where(
+            Storyboard.id == UUID(storyboard_id),
+            Storyboard.project_id == UUID(project_id),
+        )
+    )
+    storyboard = result.scalar_one_or_none()
+    if not storyboard or not storyboard.image_url:
+        raise HTTPException(status_code=404, detail="当前分镜没有可下载的分镜图")
+
+    try:
+        asset_lookup = await _load_storyboard_asset_lookup(
+            db,
+            user_id=user.id,
+            project_id=UUID(project_id),
+        )
+        download_context = _resolve_storyboard_image_download_context(
+            storyboard,
+            asset_lookup=asset_lookup,
+        )
+        download_target = resolve_verified_download_target_from_url(
+            str(download_context["download_url"] or storyboard.image_url),
+            expected_user_id=str(user.id),
+        )
+        content = await _read_media_bytes(download_target, 60.0)
+    except MediaDownloadAccessError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="分镜图文件不存在")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"分镜图下载失败: {exc}")
+
+    matched_asset = download_context.get("matched_asset")
+    filename = _build_archive_filename(
+        storyboard.shot_number,
+        storyboard.image_url,
+        ".png",
+        prompt=_build_storyboard_prompt_candidates(
+            storyboard,
+            matched_asset if isinstance(matched_asset, Asset) else None,
+        ),
+        preferred_name=matched_asset.name if isinstance(matched_asset, Asset) else None,
+        asset_role="storyboard_image",
+    )
+    project_prefix = _sanitize_zip_segment(project.name)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(project_prefix + '_' + filename)}"
+        },
+    )
 
 
 @router.get(
@@ -2870,7 +3223,14 @@ async def download_storyboard_video(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"视频下载失败: {exc}")
 
-    filename = _build_archive_filename(storyboard.shot_number, storyboard.video_url, ".mp4")
+    filename = _build_archive_filename(
+        storyboard.shot_number,
+        storyboard.video_url,
+        ".mp4",
+        prompt=_build_storyboard_prompt_candidates(storyboard, video_asset),
+        preferred_name=video_asset.name if video_asset else None,
+        asset_role="storyboard_video",
+    )
     project_prefix = _sanitize_zip_segment(project.name)
     return StreamingResponse(
         io.BytesIO(content),
@@ -3096,6 +3456,22 @@ async def update_storyboard(
         sb.scene_id = UUID(req.scene_id) if req.scene_id else None
 
     subjects, _, _, _, _, _, _ = await _load_storyboard_subject_context(db, project_id=project_id)
+    narration_gen_params = _apply_storyboard_narration_updates(
+        storyboard=sb,
+        subjects=subjects,
+        incoming_gen_params=req.gen_params,
+    )
+    if req.duration is None:
+        estimated_duration = estimate_segments_duration_seconds(
+            narration_gen_params.get("narration_segments")
+            if isinstance(narration_gen_params.get("narration_segments"), list)
+            else None
+        )
+        if estimated_duration is None and sb.voiceover:
+            estimated_duration = estimate_narration_duration_seconds(sb.voiceover)
+        if estimated_duration is not None:
+            sb.duration = estimated_duration
+
     visual_style = await resolve_visual_style_text(project.visual_style, user.id, db)
     composed_prompt_auto, composed_prompt_source_version = _build_storyboard_composed_prompt(
         sb,
@@ -3106,10 +3482,36 @@ async def update_storyboard(
         existing_gen_params=sb.gen_params,
         composed_prompt_auto=composed_prompt_auto,
         composed_prompt_source_version=composed_prompt_source_version,
-        incoming_gen_params=req.gen_params,
+        incoming_gen_params={
+            **(req.gen_params or {}),
+            **narration_gen_params,
+        },
+    )
+
+    split_result = await apply_storyboard_voice_split(
+        db=db,
+        storyboard=sb,
+        subjects=subjects,
+        segments=(
+            sb.gen_params.get("narration_segments")
+            if isinstance(sb.gen_params, dict)
+            else None
+        ),
     )
 
     await db.commit()
+    if split_result:
+        first_id = split_result["created_storyboard_ids"][0]
+        result = await db.execute(
+            select(Storyboard).where(
+                Storyboard.id == UUID(first_id),
+                Storyboard.project_id == UUID(project_id),
+            )
+        )
+        refreshed = result.scalar_one()
+        await db.refresh(refreshed)
+        return _to_response(refreshed, split_result=split_result)
+
     await db.refresh(sb)
     return _to_response(sb)
 
@@ -3635,6 +4037,10 @@ class GenerateImageRequest(BaseModel):
     count: int | None = None
     image_count: int | None = None
     imageCount: int | None = None
+    generation_mode: str | None = None
+    expand_options: dict[str, Any] | None = None
+    subject_completion_options: dict[str, Any] | None = None
+    provider_params: dict[str, Any] | None = None
 
     def resolved_count(self) -> int:
         return self.image_count or self.imageCount or self.count or 1
@@ -3701,9 +4107,10 @@ async def generate_storyboard_image(
         resolution=req.resolution,
         count=req.resolved_count(),
         reference_images=reference_images,
+        generation_mode=req.generation_mode,
     )
     reference_images = validated["reference_images"]
-    generation_mode = _resolve_image_generation_mode(reference_images)
+    generation_mode = validated["generation_mode"] or _resolve_image_generation_mode(reference_images)
 
     task = GenTask(
         user_id=user.id,
@@ -3722,6 +4129,9 @@ async def generate_storyboard_image(
             "resolution": validated["resolution"],
             "generation_mode": generation_mode,
             "count": validated["count"],
+            "expand_options": req.expand_options,
+            "subject_completion_options": req.subject_completion_options,
+            "provider_params": req.provider_params,
             "source": "storyboard_generate_image",
         },
         results=[],
@@ -3749,6 +4159,9 @@ async def generate_storyboard_image(
             "request_reference_images": request_reference_images,
             "generation_mode": generation_mode,
             "count": validated["count"],
+            "expand_options": req.expand_options,
+            "subject_completion_options": req.subject_completion_options,
+            "provider_params": req.provider_params,
         },
         name=f"gen-task:{task.id}:storyboard-image",
     )
@@ -3815,7 +4228,19 @@ async def upload_storyboard_image(
     asset = Asset(
         user_id=user.id,
         project_id=UUID(project_id),
-        name=f"分镜图 #{sb.shot_number}",
+        name=build_download_filename(
+            prefix=f"分镜图_镜头{sb.shot_number:02d}",
+            prompt=(
+                sb.image_prompt,
+                _get_storyboard_gen_params(sb).get("prompt"),
+                _get_storyboard_gen_params(sb).get("prompt_resolved"),
+                sb.content,
+            ),
+            fallback_name=f"镜头{sb.shot_number}",
+            url=file_url,
+            asset_type="image",
+            extension=guess_extension(file_url, asset_type="image", fallback=".png"),
+        ).rsplit(".", 1)[0],
         asset_type="image",
         category="storyboard",
         file_url=file_url,
@@ -3912,7 +4337,20 @@ async def upload_storyboard_video(
     asset = Asset(
         user_id=user.id,
         project_id=UUID(project_id),
-        name=Path(original_filename).stem or f"分镜视频 #{sb.shot_number}",
+        name=build_download_filename(
+            prefix=f"分镜视频_镜头{sb.shot_number:02d}",
+            prompt=(
+                sb.image_prompt,
+                _get_storyboard_gen_params(sb).get("prompt"),
+                _get_storyboard_gen_params(sb).get("prompt_resolved"),
+                sb.content,
+            ),
+            preferred_name=Path(original_filename).stem or None,
+            fallback_name=f"镜头{sb.shot_number}",
+            url=file_url,
+            asset_type="video",
+            extension=guess_extension(file_url, asset_type="video", fallback=".mp4"),
+        ).rsplit(".", 1)[0],
         asset_type="video",
         category="storyboard",
         file_url=file_url,

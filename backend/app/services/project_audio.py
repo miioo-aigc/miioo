@@ -15,6 +15,7 @@ from app.models.voice import Voice
 from app.schemas.tts import TTSAdvancedOptionsMixin, build_tts_provider_options
 from app.services.audio_voice_context import resolve_audio_voice_context
 from app.services.media_storage import get_media_fallback_extension, persist_if_external
+from app.services.seedance_speech_prompt import build_seedance_speech_prompt
 from app.services.tts import tts_service
 from app.services.user_api_key import get_user_model_provider_credentials
 
@@ -93,12 +94,12 @@ def build_storyboard_narration_jobs(
     normalized_segments = [
         segment
         for segment in raw_segments
-        if isinstance(segment, dict) and _clean_text(segment.get("value"))
+        if isinstance(segment, dict) and _clean_text(segment.get("value") or segment.get("lines"))
     ]
     has_structured_segments = any(
         any(
             segment.get(field) is not None
-            for field in ("role", "speed", "volume", "usesGlobal", "_usesGlobal")
+            for field in ("role", "speed", "volume", "emotion", "usesGlobal", "_usesGlobal")
         )
         for segment in normalized_segments
     )
@@ -106,7 +107,7 @@ def build_storyboard_narration_jobs(
     jobs: list[dict] = []
     if has_structured_segments:
         for segment in normalized_segments:
-            text = _clean_text(segment.get("value"))
+            text = _clean_text(segment.get("value") or segment.get("lines"))
             role = _clean_text(segment.get("role"))
             matched_subject = role_subject_map.get(role)
             if matched_subject is None and len(voice_ready_subjects) == 1:
@@ -134,12 +135,13 @@ def build_storyboard_narration_jobs(
                         segment.get("speed", global_for_role.get("speed")),
                         1.0,
                     ),
+                    "emotion": _clean_text(segment.get("emotion") or global_for_role.get("emotion")) or "中性",
                 }
             )
         return jobs
 
     fallback_text = "".join(
-        _clean_text(segment.get("value"))
+        _clean_text(segment.get("value") or segment.get("lines"))
         for segment in normalized_segments
     ) or _clean_text(storyboard.voiceover)
     if not fallback_text or len(character_subjects) != 1:
@@ -178,19 +180,21 @@ async def resolve_storyboard_seedance_voice_video_inputs(
     normalized_segments = [
         segment
         for segment in raw_segments
-        if isinstance(segment, dict) and _clean_text(segment.get("value"))
+        if isinstance(segment, dict) and _clean_text(segment.get("value") or segment.get("lines"))
     ]
     structured_segment_count = len(normalized_segments)
-    speech_segments = [_clean_text(segment.get("value")) for segment in normalized_segments]
+    speech_segments = [_clean_text(segment.get("value") or segment.get("lines")) for segment in normalized_segments]
     speech_segments = [segment for segment in speech_segments if segment]
 
-    speech_text = "\n".join(speech_segments)
-    speech_text_source = "narration_segments" if speech_text else None
-    if not speech_text:
-        fallback_voiceover = _clean_text(storyboard.voiceover)
-        if fallback_voiceover:
-            speech_text = fallback_voiceover
-            speech_text_source = "voiceover"
+    fallback_voiceover = _clean_text(storyboard.voiceover)
+    speech_text = build_seedance_speech_prompt(
+        normalized_segments,
+        fallback_text=fallback_voiceover,
+    )
+    speech_text_source = "narration_segments" if speech_text and normalized_segments else None
+    if not speech_text and fallback_voiceover:
+        speech_text = build_seedance_speech_prompt([], fallback_text=fallback_voiceover)
+        speech_text_source = "voiceover"
 
     narration_jobs = build_storyboard_narration_jobs(
         storyboard,

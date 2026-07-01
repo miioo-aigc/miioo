@@ -116,5 +116,11 @@ class ProjectScriptHistoryResponse(BaseModel):
         from_attributes = True
 
 
+class ProjectScriptFinalizeAsyncResponse(BaseModel):
+    task_id: str = Field(description="异步定稿任务 UUID。")
+    status: str = Field(default="pending", description="任务初始状态。")
+    message: str = Field(default="定稿任务已提交，正在后台处理中", description="提示信息。")
+
+
 class ProjectScriptHistoryListResponse(BaseModel):
     items: list[ProjectScriptHistoryResponse] = Field(description="历史版本列表。")

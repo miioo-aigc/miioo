@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Toggle from './Toggle';
 import { apiUpdateShotFinalized } from '../api/storyboard';
+import { downloadMediaFile } from '../api/download';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -136,13 +137,16 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
   };
 
   const handleDownload = async () => {
-    if (!shot?.videoUrl || downloading) return;
+    if ((!shot?.videoUrl && !shot?.downloadUrl && !shot?.assetId) || downloading) return;
     setDownloading(true);
     try {
-      const a = document.createElement('a');
-      a.href = shot.videoUrl;
-      a.download = shot.filename ?? `shot_${shot.id}.mp4`;
-      a.click();
+      await downloadMediaFile(shot, {
+        prompt: shot.prompt,
+        mediaType: 'video',
+        contextLabel: '分镜视频',
+        sequence: shot.sequence ?? shot.number,
+        assetName: shot.assetName || shot.filename,
+      });
     } finally {
       setDownloading(false);
     }

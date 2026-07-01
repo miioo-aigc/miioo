@@ -119,11 +119,15 @@ export default function BatchDownloadModal({ shots, onClose, onConfirm }) {
           id: `${s.id}-${tab}`,
           shotId: s.id,
           label: `镜头 ${s.number}`,
-          url: media.url,
+          url: media.downloadUrl || media.url,
+          downloadUrl: media.downloadUrl || media.url,
+          assetId: media.assetId || media.asset_id || null,
           thumbnail: media.thumbnail || media.url,
-          name: tab === 'image'
-            ? `shot-${s.number}-image.jpg`
-            : `shot-${s.number}-video.mp4`,
+          prompt: s.description,
+          mediaType: tab === 'image' ? 'image' : 'video',
+          contextLabel: tab === 'image' ? '分镜图' : '分镜视频',
+          sequence: s.number,
+          assetName: media.name,
         };
       })
       .filter((item) => {

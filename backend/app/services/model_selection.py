@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.model_config import ModelConfig
 from app.models.provider import ApiProvider
+from app.services.admin_model_visibility import apply_visibility_filter
 
 
 def build_available_models_query(
@@ -22,6 +23,12 @@ def build_available_models_query(
             ModelConfig.is_enabled == True,
             ApiProvider.is_enabled == True,
         )
+    )
+    query = apply_visibility_filter(
+        query,
+        provider_type_column=ApiProvider.provider_type,
+        model_id_column=ModelConfig.model_id,
+        category_column=ModelConfig.category,
     )
     if category:
         query = query.where(ModelConfig.category == category)

@@ -15,6 +15,31 @@ import {
   getVideoModelList,
 } from '../config';
 
+function normalizeGenerationModes(capabilities) {
+  const modes = capabilities?.supported_generation_modes;
+  return Array.isArray(modes) ? modes.filter(Boolean) : [];
+}
+
+function hasGenerationMode(capabilities, mode) {
+  return normalizeGenerationModes(capabilities).includes(mode);
+}
+
+function supportsLiveMaterialModel(modelId) {
+  const normalized = String(modelId || '').trim().toLowerCase();
+  return normalized.startsWith('seedance') || normalized.startsWith('doubao-seedance');
+}
+
+function toAspectRatioOptions(aspectRatios = []) {
+  return aspectRatios
+    .filter((r) => /^\d+:\d+$/.test(r))
+    .map((ratio) => ({
+      value: ratio,
+      label: ratio,
+      w: parseInt(ratio.split(':')[0]),
+      h: parseInt(ratio.split(':')[1]),
+    }));
+}
+
 /**
  * 将后端模型列表转换为 CreationPage 需要的格式。
  */
@@ -71,11 +96,15 @@ export function adaptModels(backendModels, genType) {
 export function getModelParams(genType, modelId, capabilitiesMap) {
   const backendCap = capabilitiesMap?.[modelId];
   if (backendCap) {
-    return genType === 'image'
+    const resolved = genType === 'image'
      ? getImageModelParamsFromCap(backendCap)
       : genType === 'dubbing'
       ? getDubbingModelParamsFromCap(backendCap)
      : getVideoModelParamsFromCap(backendCap);
+    if (genType === 'video' && resolved && resolved.supportsLiveMaterial !== true && supportsLiveMaterialModel(modelId)) {
+      return { ...resolved, supportsLiveMaterial: true };
+    }
+    return resolved;
   }
   return genType === 'image'
    ? getImageModelParams(modelId)
@@ -106,6 +135,7 @@ function getImageModelParamsFromCap(capabilities) {
     || capabilities.supported_resolutions !== undefined
     || capabilities.supported_sizes !== undefined;
 
+  const generationModes = normalizeGenerationModes(capabilities);
   let resolutions, ratios, resolutionRatios, maxCount;
 
   if (hasBackendFormat) {
@@ -127,14 +157,8 @@ function getImageModelParamsFromCap(capabilities) {
     }
 
     // Filter out non-standard ratios like 'adaptive'
-    const aspectRatios = (capabilities.supported_aspect_ratios || [])
-      .filter(r => /^\d+:\d+$/.test(r));
-    ratios = aspectRatios.map(ratio => ({
-      value: ratio,
-      label: ratio,
-      w: parseInt(ratio.split(':')[0]),
-      h: parseInt(ratio.split(':')[1]),
-    }));
+    const aspectRatios = capabilities.supported_aspect_ratios || [];
+    ratios = toAspectRatioOptions(aspectRatios);
 
     // Build resolutionRatios from sizeMap: which ratios are available per resolution
     if (!resolutionRatios) {
@@ -185,6 +209,16 @@ function getImageModelParamsFromCap(capabilities) {
     resolutionRatios,
     resolutions,
     counts,
+    generationModes,
+    supportsOutpainting: capabilities?.supports_outpainting === true || hasGenerationMode(capabilities, 'outpainting'),
+    supportsSubjectCompletion: capabilities?.supports_subject_completion === true || hasGenerationMode(capabilities, 'subject_completion'),
+    supportsReferenceImage: capabilities?.supports_reference_images === true || hasGenerationMode(capabilities, 'reference_image'),
+    maxReferenceImages: capabilities?.max_reference_images ?? null,
+    supportedReferenceCounts: Array.isArray(capabilities?.supported_reference_counts)
+      ? capabilities.supported_reference_counts
+      : [],
+    maxOutputImages: capabilities?.max_output_images ?? null,
+    maxTotalImages: capabilities?.max_total_images ?? null,
     defaults: capabilities.defaults || {
       ratio: ratios[0]?.value || '16:9',
       resolution: resolutions[0] || '2K',
@@ -199,19 +233,14 @@ function getVideoModelParamsFromCap(capabilities) {
     || capabilities.supported_resolutions !== undefined
     || capabilities.supported_sizes !== undefined;
 
+  const generationModes = normalizeGenerationModes(capabilities);
   let ratios, resolutions, durations, refModes, supportsAudio;
 
   if (hasBackendFormat) {
     // Backend format: flat arrays
     // Filter out non-standard ratios like 'adaptive'
-    const aspectRatios = (capabilities.supported_aspect_ratios || [])
-      .filter(r => /^\d+:\d+$/.test(r));
-    ratios = aspectRatios.map(ratio => ({
-      value: ratio,
-      label: ratio,
-      w: parseInt(ratio.split(':')[0]),
-      h: parseInt(ratio.split(':')[1]),
-    }));
+    const aspectRatios = capabilities.supported_aspect_ratios || [];
+    ratios = toAspectRatioOptions(aspectRatios);
 
     resolutions = (capabilities.supported_resolutions?.length ? capabilities.supported_resolutions : capabilities.supported_sizes) || [];
 
@@ -276,6 +305,17 @@ function getVideoModelParamsFromCap(capabilities) {
     durations,
     refModes,
     supportsAudio,
+    supportsReferenceAudio: capabilities?.supports_reference_audio === true,
+    supportsNativeAudio: capabilities?.supports_native_audio === true,
+    supportsReferenceVideo: capabilities?.supports_reference_video === true,
+    supportsMultishot: capabilities?.supports_multishot === true || hasGenerationMode(capabilities, 'multi_shot'),
+    supportsReferenceSubjects: capabilities?.supports_reference_subjects === true || hasGenerationMode(capabilities, 'reference_subjects'),
+    supportsLiveMaterial: capabilities?.supports_live_material === true,
+    generationModes,
+    maxReferenceImages: capabilities?.max_reference_images ?? null,
+    maxReferenceVideos: capabilities?.max_reference_videos ?? null,
+    maxReferenceAudios: capabilities?.max_reference_audios ?? null,
+    maxTotalAttachments: capabilities?.max_total_attachments ?? null,
     defaults: capabilities.defaults || {
       ratio: ratios[0]?.value || '16:9',
       resolution: resolutions[0] || '1080P',

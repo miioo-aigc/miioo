@@ -14,7 +14,7 @@ const FALLBACK_MODELS = [
   { value: 'doubao-seedream-4.0', label: 'Doubao-Seed-4.0', resolutions: ['1K','2K','4K'], resolutionSizeMap: {} },
 ];
 
-const GENERATION_MODES = [
+const DEFAULT_GENERATION_MODES = [
   { label: '主视图', value: 'main' },
   { label: '多视图', value: 'three_view' },
 ];
@@ -154,7 +154,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
     if (!open) return;
     (async () => {
       try {
-        const data = await apiListModels({ category: 'image' });
+        const data = await apiListModels({ category: 'image', availableOnly: true });
         const list = Array.isArray(data) ? data : (data?.items || data?.models || []);
         const merged = list.map((m) => {
           const modelId = m.model_id || m.id;
@@ -169,6 +169,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
             resolutionSizeMap,
             ratios,
             is_default: m.is_default,
+            supportsSubjectCompletion: caps.supports_subject_completion === true,
          };
         });
         setModelList(merged.length > 0 ? merged : FALLBACK_MODELS);
@@ -185,6 +186,17 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
   const [ratio, setRatio] = useState(projectRatio || '16:9');
   const [resolution, setResolution] = useState('2K');
   const [mode, setMode] = useState('main');
+  const selectedModelMeta = useMemo(
+    () => modelList.find((item) => item.value === model),
+    [model, modelList]
+  );
+  const generationModes = useMemo(() => {
+    const modes = [...DEFAULT_GENERATION_MODES];
+    if (activeTab === 'char' && selectedModelMeta?.supportsSubjectCompletion) {
+      modes.push({ label: '主体补全', value: 'subject_completion' });
+    }
+    return modes;
+  }, [activeTab, selectedModelMeta]);
 
   // 根据当前选中的模型 + 分辨率，动态计算可用的比例列表
  const ratioOptions = useMemo(() => {
@@ -272,6 +284,12 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
   }, [open, modelList]);
 
   useEffect(() => {
+    if (!generationModes.some((item) => item.value === mode)) {
+      setMode(generationModes[0]?.value || 'main');
+    }
+  }, [generationModes, mode]);
+
+  useEffect(() => {
     if (!open) return undefined;
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose?.();
@@ -318,7 +336,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
           <SelectField label="比例" value={ratio} options={ratioOptions} onChange={setRatio} />
           <SelectField label="分辨率" value={resolution} options={resolutionOptions} onChange={handleResolutionChange} />
           {activeTab === 'char' && (
-            <RadioGroup label="生成方式" value={mode} options={GENERATION_MODES} onChange={setMode} />
+            <RadioGroup label="生成方式" value={mode} options={generationModes} onChange={setMode} />
           )}
         </div>
 

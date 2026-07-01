@@ -70,6 +70,21 @@ def resolve_managed_storage_key(url: str | None) -> str | None:
     return relative_path or None
 
 
+def build_object_storage_copy_metadata(url: str | None) -> dict | None:
+    """Backward-compatible shim for older runtime pipelines.
+
+    Some deployed pipeline modules still import this helper to enrich metadata
+    when media is copied to object storage. The current local implementation no
+    longer depends on that path, so returning empty metadata preserves behavior
+    while keeping mixed-version runtimes import-safe.
+    """
+
+    managed_url = extract_managed_or_private_upload_url(url)
+    if not managed_url:
+        return None
+    return None
+
+
 def _extract_private_upload_url(url: str | None) -> str | None:
     cleaned = (url or "").strip()
     if not cleaned:

@@ -21,12 +21,16 @@ from app.models.project_script_message import ProjectScriptMessage
 from app.models.project_script_history import ProjectScriptHistory
 from app.models.api_config_banner import ApiConfigBanner
 from app.models.api_config_card_visibility import ApiConfigCardVisibility
+from app.models.admin_model_visibility import AdminModelVisibility
 from app.models.community_qr_config import CommunityQrConfig
+from app.models.live_material_group import LiveMaterialGroup
+from app.models.live_material_asset import LiveMaterialAsset
 
 __all__ = [
     "User", "ApiProvider", "ModelConfig", "Project", "Subject", "SubjectImage",
     "Asset", "Storyboard", "GenTask", "Voice", "VoiceFavorite", "AudioClip", "VideoClip", "Composition",
     "Notification", "UserStyle", "CreationSession", "CreationShot",
     "ProjectScript", "ProjectScriptMessage", "ProjectScriptHistory", "ApiConfigBanner",
-    "ApiConfigCardVisibility", "CommunityQrConfig",
+    "ApiConfigCardVisibility", "AdminModelVisibility", "CommunityQrConfig", "LiveMaterialGroup",
+    "LiveMaterialAsset",
 ]

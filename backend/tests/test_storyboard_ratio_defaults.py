@@ -78,7 +78,16 @@ def test_generate_storyboard_image_defaults_to_project_aspect_ratio(monkeypatch)
     async def fake_get_user_model_provider_runtime(*_args, **_kwargs):
         return ("api-key", "https://example.com", None, "image-model", None, None)
 
-    def fake_validate_image_request(*, model, size, aspect_ratio, resolution, count, reference_images):
+    def fake_validate_image_request(
+        *,
+        model,
+        size,
+        aspect_ratio,
+        resolution,
+        count,
+        reference_images,
+        generation_mode=None,
+    ):
         captured["aspect_ratio"] = aspect_ratio
         return {
             "size": size,
@@ -86,6 +95,7 @@ def test_generate_storyboard_image_defaults_to_project_aspect_ratio(monkeypatch)
             "resolution": resolution,
             "count": count,
             "reference_images": reference_images,
+            "generation_mode": generation_mode,
         }
 
     async def fake_dispatch_background_job(*_args, **_kwargs):

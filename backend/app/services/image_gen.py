@@ -7,11 +7,13 @@ import mimetypes
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 from urllib.parse import unquote_to_bytes
 
 import httpx
 
+from app.config import settings
 from app.services.fal_runtime import (
     extract_fal_image_urls,
     is_fal_image_model,
@@ -19,6 +21,10 @@ from app.services.fal_runtime import (
     run_fal_job,
 )
 from app.services.http_client import upstream_async_client
+from app.services.onelink_error_mapper import (
+    describe_onelink_http_error,
+    describe_onelink_timeout_error,
+)
 from app.utils.onelink_base_url import get_onelink_openai_compat_base_url
 from app.services.media_storage import resolve_upload_path
 
@@ -50,6 +56,22 @@ class ImageGenService:
 
     def _doubao_generation_url(self, base_url: str) -> str:
         return f"{base_url.rstrip('/')}/volc/api/v3/images/generations"
+
+    def _is_onelink_base_url(self, base_url: str) -> bool:
+        return "onelinkai" in (base_url or "").strip().lower()
+
+    def _should_split_onelink_doubao_multi_request(
+        self,
+        *,
+        base_url: str,
+        model: str,
+        request_count: int,
+    ) -> bool:
+        return (
+            self._is_onelink_base_url(base_url)
+            and self._is_doubao_image_model(model)
+            and request_count > 1
+        )
 
     def _build_doubao_payload(
         self,
@@ -83,6 +105,9 @@ class ImageGenService:
             "prompt": prompt,
             "response_format": (response_format or "url"),
             "size": self._normalize_doubao_size(size),
+            # OneLinkAI 的 doubao 兼容层在组图场景下会识别 n；
+            # 官方 sequential 配置仍保留，用于直连火山方舟口径。
+            "n": max(1, request_count),
             "sequential_image_generation": sequential_mode,
         }
         if normalized_reference_images:
@@ -91,6 +116,10 @@ class ImageGenService:
                 if len(normalized_reference_images) == 1
                 else normalized_reference_images
             )
+            if request_count > 1:
+                # 部分兼容层在“带参考图 + 多张输出”场景只识别 image_urls，
+                # 仅透传 image 会退化成单张。保留官方 image 字段的同时补一份数组口径。
+                payload["image_urls"] = normalized_reference_images
         if sequential_mode == "auto":
             # 仅在开启组图时透传 max_images；取用户请求数量（已由 validate_image_request 限制 <= 15）。
             payload["sequential_image_generation_options"] = {
@@ -127,7 +156,7 @@ class ImageGenService:
         return normalized_model.startswith("nano-banana-")
 
     def _is_gpt_image_2_model(self, model: str) -> bool:
-        return self._normalize_model(model) == "gpt-image-2"
+        return self._normalize_model(model) in {"gpt-image-2", "sp-gpt-image-2"}
 
     def _is_vidu_image_model(self, model: str) -> bool:
         normalized_model = self._normalize_model(model)
@@ -147,9 +176,19 @@ class ImageGenService:
         model: str,
         *,
         reference_image_count: int = 0,
+        generation_mode: str | None = None,
     ) -> dict[str, str] | None:
         normalized_model = self._normalize_model(model)
+        normalized_generation_mode = (generation_mode or "").strip().lower().replace("-", "_")
         if normalized_model == "image-kling-v3-omni":
+            if normalized_generation_mode == "subject_completion":
+                return {
+                    "route": "subject-completion",
+                    "model_name": "image-kling-v3-omni",
+                    "submit_path": "/kling/v1/general/ai-multi-shot",
+                    "query_path": "/kling/v1/general/ai-multi-shot/{task_id}",
+                    "task_label": "Kling ai-multi-shot",
+                }
             return {
                 "route": "omni-image",
                 "model_name": "image-kling-v3-omni",
@@ -158,6 +197,14 @@ class ImageGenService:
                 "task_label": "Kling omni-image",
             }
         if normalized_model == "image-kling-v3":
+            if normalized_generation_mode == "outpainting":
+                return {
+                    "route": "expand",
+                    "model_name": "image-kling-v3",
+                    "submit_path": "/kling/v1/images/editing/expand",
+                    "query_path": "/kling/v1/images/editing/expand/{task_id}",
+                    "task_label": "Kling image expand",
+                }
             if reference_image_count == 1:
                 raise ValueError("image-kling-v3 仅支持 0 或 2-4 张参考图；单图参考请改用 image-kling-v3-omni")
             if reference_image_count >= 2:
@@ -263,6 +310,168 @@ class ImageGenService:
         }
         return size_map.get((normalized_ratio, normalized_resolution))
 
+    def _build_gpt_image_2_generation_payload(
+        self,
+        *,
+        resolved_model: str,
+        prompt: str,
+        request_count: int,
+        normalized_reference_images: list[str],
+        aspect_ratio: str | None,
+        resolution: str | None,
+        size: str | None,
+    ) -> dict[str, Any]:
+        normalized_gpt_size = self._normalize_gpt_image_2_size(
+            aspect_ratio,
+            resolution,
+            size,
+        )
+        normalized_gpt_resolution = self._normalize_gpt_image_2_resolution(
+            resolution,
+            size,
+        )
+        payload: dict[str, Any] = {
+            "model": resolved_model,
+            "prompt": prompt,
+            "n": request_count,
+            "response_format": "b64_json",
+        }
+        if normalized_gpt_size:
+            payload["size"] = normalized_gpt_size
+        elif size and "x" in size.lower():
+            payload["size"] = size
+        if normalized_gpt_resolution:
+            payload["resolution"] = normalized_gpt_resolution
+        if normalized_reference_images:
+            payload["image_urls"] = normalized_reference_images
+        if aspect_ratio:
+            payload["aspect_ratio"] = aspect_ratio
+        if resolution and "resolution" not in payload:
+            payload["resolution"] = resolution
+        return payload
+
+    def _guess_reference_filename(self, source: str, mime_type: str, index: int) -> str:
+        path = urlsplit(source).path if source else ""
+        candidate = Path(path).name if path else ""
+        if candidate:
+            return candidate
+        ext = mimetypes.guess_extension(mime_type) or ".png"
+        return f"reference-{index}{ext}"
+
+    async def _resolve_image_edit_source(
+        self,
+        client: httpx.AsyncClient,
+        source: str,
+        *,
+        index: int,
+    ) -> tuple[str, bytes, str]:
+        cleaned = (source or "").strip()
+        if not cleaned:
+            raise ValueError("参考图为空，无法发起图编辑请求")
+
+        if cleaned.startswith("/uploads/"):
+            file_path = self._resolve_local_upload_path(cleaned)
+            if not file_path.exists() or not file_path.is_file():
+                raise ValueError(f"reference_images 本地文件不存在: {cleaned}")
+            image_data = file_path.read_bytes()
+            mime_type = self._guess_image_content_type(str(file_path))
+            filename = file_path.name or self._guess_reference_filename(cleaned, mime_type, index)
+            return filename, image_data, mime_type
+
+        data_uri = self._parse_data_uri(cleaned)
+        if data_uri:
+            mime_type, encoded = data_uri
+            image_data = self._decode_base64_payload(encoded)
+            filename = self._guess_reference_filename(cleaned, mime_type, index)
+            return filename, image_data, mime_type
+
+        if cleaned.startswith("http://") or cleaned.startswith("https://"):
+            response = await client.get(cleaned)
+            response.raise_for_status()
+            mime_type = (
+                response.headers.get("content-type", "").split(";", 1)[0].strip()
+                or self._guess_binary_image_content_type(response.content)
+            )
+            filename = self._guess_reference_filename(cleaned, mime_type, index)
+            return filename, response.content, mime_type
+
+        try:
+            decoded_bytes = unquote_to_bytes(cleaned)
+            mime_type = self._guess_binary_image_content_type(decoded_bytes)
+            filename = self._guess_reference_filename(cleaned, mime_type, index)
+            return filename, decoded_bytes, mime_type
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            raise ValueError("GPT Image 2 图编辑仅支持 data URI、本地上传或可访问的图片 URL") from exc
+
+    async def _request_gpt_image_2_edits(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        api_key: str,
+        base_url: str,
+        resolved_model: str,
+        prompt: str,
+        request_count: int,
+        raw_reference_images: list[str],
+        normalized_reference_images: list[str],
+        aspect_ratio: str | None,
+        resolution: str | None,
+        size: str | None,
+    ) -> httpx.Response:
+        normalized_gpt_size = self._normalize_gpt_image_2_size(
+            aspect_ratio,
+            resolution,
+            size,
+        )
+        data: dict[str, str] = {
+            "model": resolved_model,
+            "prompt": prompt,
+            "n": str(request_count),
+            "response_format": "b64_json",
+        }
+        if normalized_gpt_size:
+            data["size"] = normalized_gpt_size
+        elif size and "x" in size.lower():
+            data["size"] = size
+
+        field_name = "image" if len(raw_reference_images) == 1 else "image[]"
+        files: list[tuple[str, tuple[str, bytes, str]]] = []
+        for index, raw_image in enumerate(raw_reference_images):
+            fallback_image = normalized_reference_images[index] if index < len(normalized_reference_images) else raw_image
+            source = raw_image if raw_image.startswith("/uploads/") else fallback_image
+            filename, image_data, mime_type = await self._resolve_image_edit_source(
+                client,
+                source,
+                index=index,
+            )
+            files.append((field_name, (filename, image_data, mime_type)))
+
+        request_base_url = get_onelink_openai_compat_base_url(base_url)
+        last_timeout_exc: httpx.TimeoutException | None = None
+        for attempt in range(2):
+            try:
+                return await client.post(
+                    f"{request_base_url.rstrip('/')}/v1/images/edits",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    data=data,
+                    files=files,
+                )
+            except httpx.TimeoutException as exc:
+                last_timeout_exc = exc
+                if attempt >= 1:
+                    raise
+                logger.warning(
+                    "gpt image edit timeout, retry once model=%s size=%s ref_count=%s",
+                    resolved_model,
+                    data.get("size"),
+                    len(files),
+                )
+                await asyncio.sleep(1)
+
+        if last_timeout_exc is not None:  # pragma: no cover - defensive fallback
+            raise last_timeout_exc
+        raise RuntimeError("gpt image edit request exited unexpectedly")
+
     def _normalize_vidu_aspect_ratio(
         self,
         aspect_ratio: str | None,
@@ -341,21 +550,19 @@ class ImageGenService:
 
     def _client_timeout(self, model: str) -> httpx.Timeout:
         normalized_model = self._normalize_model(model)
-        if normalized_model == "gpt-image-2":
-            # GPT-Image 2 在 OneLinkAI 网关上响应明显更慢，默认 120s 会频繁超时。
+        if normalized_model in {"gpt-image-2", "sp-gpt-image-2"}:
+            # GPT-Image 2 稳定版/逆向版在 OneLinkAI 网关上响应明显更慢，默认 120s 会频繁超时。
             return httpx.Timeout(connect=30.0, read=600.0, write=120.0, pool=120.0)
         return httpx.Timeout(120.0)
 
-    def _describe_http_error(self, exc: httpx.HTTPStatusError) -> str:
-        response = exc.response
-        body = ""
-        try:
-            body = response.text.strip()
-        except Exception:  # pragma: no cover - defensive fallback
-            body = ""
-        if body:
-            return f"HTTP request failed with status {response.status_code}: {body}"
-        return f"HTTP request failed with status {response.status_code}"
+    def _describe_http_error(
+        self,
+        exc: httpx.HTTPStatusError,
+        *,
+        model: str | None = None,
+        route: str | None = None,
+    ) -> str:
+        return describe_onelink_http_error(exc, model=model, route=route)
 
     def _should_fallback_stream_to_generate(self, exc: httpx.HTTPStatusError) -> bool:
         return exc.response.status_code in {400, 404, 405}
@@ -538,6 +745,49 @@ class ImageGenService:
             images.append(self._build_image_data_uri_from_base64(top_level_b64))
         return images
 
+    async def _request_doubao_generation(
+        self,
+        *,
+        client: httpx.AsyncClient,
+        api_key: str,
+        base_url: str,
+        resolved_model: str,
+        prompt: str,
+        size: str,
+        request_count: int,
+        normalized_reference_images: list[str],
+        watermark: bool | None,
+        output_format: str | None,
+        response_format: str | None,
+        web_search: bool,
+        optimize_prompt_mode: str | None,
+        sequential_image_generation: str | None,
+    ) -> list[str]:
+        payload = self._build_doubao_payload(
+            resolved_model=resolved_model,
+            prompt=prompt,
+            size=size,
+            request_count=request_count,
+            normalized_reference_images=normalized_reference_images,
+            watermark=watermark,
+            output_format=output_format,
+            response_format=response_format,
+            web_search=web_search,
+            optimize_prompt_mode=optimize_prompt_mode,
+            sequential_image_generation=sequential_image_generation,
+        )
+        resp = await client.post(
+            self._doubao_generation_url(base_url),
+            headers=self._headers(api_key),
+            json=payload,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        images = self._extract_generated_images(data)
+        if not images:
+            raise ValueError(f"{resolved_model} 未返回可用图片数据")
+        return images
+
     def _extract_kling_image_urls(self, payload: object) -> list[str]:
         return self._extract_image_urls_from_any(payload)
 
@@ -578,6 +828,83 @@ class ImageGenService:
             if normalized:
                 return normalized
         return ""
+
+    def _build_kling_enhanced_prompt(
+        self,
+        prompt: str,
+        mentions: list[dict] | None,
+        attachments: list[dict] | None,
+    ) -> str:
+        """
+        为 Kling 图片模型构建增强的提示词，把用户提到的资产信息以自然语言的方式附加到提示词中
+        """
+        base_prompt = (prompt or "").strip()
+        if not mentions and not attachments:
+            return base_prompt
+
+        lines = []
+        if base_prompt:
+            lines.append(base_prompt)
+
+        # 处理 mentions - 用户明确 @ 的资产
+        if mentions:
+            for mention in mentions:
+                asset_name = mention.get("asset_name") or mention.get("display_text") or "未命名资产"
+                asset_type = mention.get("asset_type") or "file"
+                role = mention.get("role") or ""
+                
+                type_desc = {
+                    "image": "图片",
+                    "video": "视频",
+                    "audio": "音频",
+                }.get(asset_type, "文件")
+                
+                role_desc = ""
+                if role:
+                    role_desc = {
+                        "character": "角色",
+                        "scene": "场景",
+                        "prop": "道具",
+                        "reference": "参考",
+                        "first_frame": "首帧",
+                        "last_frame": "尾帧",
+                    }.get(role, "")
+                
+                if role_desc:
+                    lines.append(f"【参考{role_desc}】请参考{type_desc}「{asset_name}」的风格和内容")
+                else:
+                    lines.append(f"【参考{type_desc}】请参考「{asset_name}」")
+
+        # 处理 attachments - 附加的资产
+        if attachments:
+            for idx, attachment in enumerate(attachments):
+                asset_name = attachment.get("asset_name") or f"附件{idx+1}"
+                asset_type = attachment.get("asset_type") or "file"
+                role = attachment.get("role") or ""
+                
+                type_desc = {
+                    "image": "图片",
+                    "video": "视频",
+                    "audio": "音频",
+                }.get(asset_type, "文件")
+                
+                role_desc = ""
+                if role:
+                    role_desc = {
+                        "character": "角色",
+                        "scene": "场景",
+                        "prop": "道具",
+                        "reference": "参考",
+                        "first_frame": "首帧",
+                        "last_frame": "尾帧",
+                    }.get(role, "")
+                
+                if role_desc:
+                    lines.append(f"【附件{role_desc}】请参考{type_desc}「{asset_name}」")
+                else:
+                    lines.append(f"【附件】请参考{type_desc}「{asset_name}」")
+
+        return "\n".join(lines)
 
     def _extract_gemini_generated_images(self, data: dict) -> list[str]:
         generic_images = self._extract_image_urls_from_any(data)
@@ -632,6 +959,13 @@ class ImageGenService:
     def _resolve_local_upload_path(self, url: str) -> Path:
         return resolve_upload_path(url)
 
+    def _build_public_upload_url(self, url: str) -> str | None:
+        public_base_url = settings.effective_public_base_url
+        cleaned_base = (public_base_url or "").strip().rstrip("/")
+        if not cleaned_base:
+            return None
+        return f"{cleaned_base}{url}"
+
     def _guess_image_content_type(self, path_or_url: str) -> str:
         guessed_type, _ = mimetypes.guess_type(path_or_url)
         return guessed_type or "image/jpeg"
@@ -643,6 +977,9 @@ class ImageGenService:
         if cleaned.startswith("http://") or cleaned.startswith("https://"):
             return cleaned
         if cleaned.startswith("/uploads/"):
+            public_url = self._build_public_upload_url(cleaned)
+            if public_url:
+                return public_url
             file_path = self._resolve_local_upload_path(cleaned)
             if not file_path.exists() or not file_path.is_file():
                 raise ValueError(f"reference_images 本地文件不存在: {cleaned}")
@@ -782,15 +1119,37 @@ class ImageGenService:
         web_search: bool = False,
         optimize_prompt_mode: str | None = None,
         sequential_image_generation: str | None = None,
+        generation_mode: str | None = None,
+        expand_options: dict[str, Any] | None = None,
+        subject_completion_options: dict[str, Any] | None = None,
+        provider_params: dict[str, Any] | None = None,
+        mentions: list[dict] | None = None,
+        attachments: list[dict] | None = None,
     ) -> list[str]:
         resolved_model = self._normalize_model(model)
+        normalized_generation_mode = (generation_mode or "").strip().lower().replace("-", "_") or None
         request_count = max(1, int(n or 1))
+        raw_reference_images = [str(item).strip() for item in (reference_images or []) if str(item).strip()]
         normalized_reference_images = [
-            self._prepare_reference_image_url(str(item))
-            for item in (reference_images or [])
-            if str(item).strip()
+            self._prepare_reference_image_url(item)
+            for item in raw_reference_images
         ]
         primary_reference_image = self._resolve_primary_reference_image(normalized_reference_images)
+        normalized_provider_params = {
+            str(key): value
+            for key, value in (provider_params or {}).items()
+            if isinstance(key, str) and value is not None
+        }
+        normalized_expand_options = {
+            str(key): value
+            for key, value in (expand_options or {}).items()
+            if isinstance(key, str) and value is not None
+        }
+        normalized_subject_completion_options = {
+            str(key): value
+            for key, value in (subject_completion_options or {}).items()
+            if isinstance(key, str) and value is not None
+        }
         try:
             if self._is_fal_image_model(resolved_model):
                 arguments = {
@@ -820,17 +1179,28 @@ class ImageGenService:
                     route_config = self._get_kling_image_route_config(
                         resolved_model,
                         reference_image_count=len(normalized_reference_images),
+                        generation_mode=normalized_generation_mode,
                     )
                     if not route_config:
                         raise ValueError(f"未识别的 Kling 图像模型: {model}")
 
                     route = route_config["route"]
+                    
+                    # 构建增强的提示词，包含 mentions 和 attachments 信息
+                    enhanced_prompt = self._build_kling_enhanced_prompt(
+                        prompt=prompt,
+                        mentions=mentions,
+                        attachments=attachments,
+                    )
+                    
                     payload = {
                         "model_name": route_config["model_name"],
-                        "prompt": prompt,
-                        "callback_url": "",
-                        "external_task_id": "",
+                        "prompt": enhanced_prompt,
                     }
+                    if "callback_url" in normalized_provider_params:
+                        payload["callback_url"] = normalized_provider_params["callback_url"]
+                    if "external_task_id" in normalized_provider_params:
+                        payload["external_task_id"] = normalized_provider_params["external_task_id"]
 
                     if route == "generations":
                         payload["negative_prompt"] = ""
@@ -838,12 +1208,30 @@ class ImageGenService:
                         if aspect_ratio:
                             payload["aspect_ratio"] = aspect_ratio
                     elif route == "omni-image":
-                        if not primary_reference_image:
+                        if not normalized_reference_images:
                             raise ValueError("Kling 图像 Omni 需要至少 1 张参考图")
-                        payload["image"] = primary_reference_image
-                        payload["n"] = 1
+                        payload["image_list"] = [
+                            {"image": image}
+                            for image in normalized_reference_images
+                        ]
+                        if resolution:
+                            payload["resolution"] = resolution
+                        if n is not None:
+                            payload["n"] = n
+                        else:
+                            payload["n"] = 1
                         if aspect_ratio:
                             payload["aspect_ratio"] = aspect_ratio
+                        # 支持 result_type 和 series_amount 参数透传
+                        if "result_type" in normalized_provider_params:
+                            payload["result_type"] = normalized_provider_params["result_type"]
+                        if "series_amount" in normalized_provider_params:
+                            payload["series_amount"] = normalized_provider_params["series_amount"]
+                        if "watermark_info" in normalized_provider_params:
+                            payload["watermark_info"] = normalized_provider_params["watermark_info"]
+                        # 支持 element_list 参数透传
+                        if "element_list" in normalized_provider_params:
+                            payload["element_list"] = normalized_provider_params["element_list"]
                     elif route == "multi-image2image":
                         if len(normalized_reference_images) < 2:
                             raise ValueError("Kling 多图参考生图至少需要 2 张参考图")
@@ -855,6 +1243,36 @@ class ImageGenService:
                         payload["n"] = request_count
                         if aspect_ratio:
                             payload["aspect_ratio"] = aspect_ratio
+                    elif route == "expand":
+                        expansion_image = str(
+                            normalized_expand_options.get("image")
+                            or normalized_expand_options.get("input_image")
+                            or primary_reference_image
+                            or ""
+                        ).strip()
+                        if not expansion_image:
+                            raise ValueError("Kling 扩图需要至少 1 张输入图片")
+                        payload["image"] = expansion_image
+                        payload["n"] = request_count
+                        for field_name in (
+                            "up_expansion_ratio",
+                            "down_expansion_ratio",
+                            "left_expansion_ratio",
+                            "right_expansion_ratio",
+                        ):
+                            if field_name in normalized_expand_options:
+                                payload[field_name] = normalized_expand_options[field_name]
+                    elif route == "subject-completion":
+                        element_frontal_image = str(
+                            normalized_subject_completion_options.get("element_frontal_image")
+                            or normalized_subject_completion_options.get("image")
+                            or normalized_subject_completion_options.get("input_image")
+                            or primary_reference_image
+                            or ""
+                        ).strip()
+                        if not element_frontal_image:
+                            raise ValueError("Kling 主体补全需要至少 1 张主体正面图")
+                        payload["element_frontal_image"] = element_frontal_image
                     else:
                         raise ValueError(f"未支持的 Kling 图像路由类型: {route}")
 
@@ -962,7 +1380,44 @@ class ImageGenService:
 
                     return images[:request_count]
                 if self._is_doubao_image_model(resolved_model):
-                    payload = self._build_doubao_payload(
+                    if self._should_split_onelink_doubao_multi_request(
+                        base_url=base_url,
+                        model=resolved_model,
+                        request_count=request_count,
+                    ):
+                        images: list[str] = []
+                        logger.info(
+                            "split onelink doubao multi request model=%s size=%s count=%s refs=%s",
+                            resolved_model,
+                            size,
+                            request_count,
+                            len(normalized_reference_images),
+                        )
+                        for _ in range(request_count):
+                            batch_images = await self._request_doubao_generation(
+                                client=client,
+                                api_key=api_key,
+                                base_url=base_url,
+                                resolved_model=resolved_model,
+                                prompt=prompt,
+                                size=size,
+                                request_count=1,
+                                normalized_reference_images=normalized_reference_images,
+                                watermark=watermark,
+                                output_format=output_format,
+                                response_format=response_format,
+                                web_search=web_search,
+                                optimize_prompt_mode=optimize_prompt_mode,
+                                sequential_image_generation="disabled",
+                            )
+                            images.extend(batch_images[:1])
+                        if not images:
+                            raise ValueError(f"{resolved_model} 未返回可用图片数据")
+                        return images[:request_count]
+                    images = await self._request_doubao_generation(
+                        client=client,
+                        api_key=api_key,
+                        base_url=base_url,
                         resolved_model=resolved_model,
                         prompt=prompt,
                         size=size,
@@ -975,11 +1430,7 @@ class ImageGenService:
                         optimize_prompt_mode=optimize_prompt_mode,
                         sequential_image_generation=sequential_image_generation,
                     )
-                    resp = await client.post(
-                        self._doubao_generation_url(base_url),
-                        headers=self._headers(api_key),
-                        json=payload,
-                    )
+                    return images
                 else:
                     payload = {
                         "model": resolved_model,
@@ -987,38 +1438,71 @@ class ImageGenService:
                         "n": request_count,
                     }
                     if self._is_gpt_image_2_model(resolved_model):
-                        normalized_gpt_size = self._normalize_gpt_image_2_size(
-                            aspect_ratio,
-                            resolution,
-                            size,
-                        )
-                        normalized_gpt_resolution = self._normalize_gpt_image_2_resolution(
-                            resolution,
-                            size,
-                        )
-                        payload["response_format"] = "b64_json"
-                        if normalized_gpt_size:
-                            payload["size"] = normalized_gpt_size
-                        elif size and "x" in size.lower():
-                            payload["size"] = size
-                        if normalized_gpt_resolution:
-                            payload["resolution"] = normalized_gpt_resolution
-                        if normalized_reference_images:
-                            payload["image_urls"] = normalized_reference_images
+                        if raw_reference_images:
+                            try:
+                                resp = await self._request_gpt_image_2_edits(
+                                    client,
+                                    api_key=api_key,
+                                    base_url=base_url,
+                                    resolved_model=resolved_model,
+                                    prompt=prompt,
+                                    request_count=request_count,
+                                    raw_reference_images=raw_reference_images,
+                                    normalized_reference_images=normalized_reference_images,
+                                    aspect_ratio=aspect_ratio,
+                                    resolution=resolution,
+                                    size=size,
+                                )
+                                resp.raise_for_status()
+                            except httpx.HTTPStatusError as exc:
+                                status_code = exc.response.status_code if exc.response is not None else None
+                                if status_code not in {400, 404, 405, 415, 422}:
+                                    raise
+                                logger.warning(
+                                    "gpt image edit endpoint rejected request, fallback to generations model=%s status=%s",
+                                    resolved_model,
+                                    status_code,
+                                )
+                                payload = self._build_gpt_image_2_generation_payload(
+                                    resolved_model=resolved_model,
+                                    prompt=prompt,
+                                    request_count=request_count,
+                                    normalized_reference_images=normalized_reference_images,
+                                    aspect_ratio=aspect_ratio,
+                                    resolution=resolution,
+                                    size=size,
+                                )
+                                request_base_url = get_onelink_openai_compat_base_url(base_url)
+                                resp = await client.post(
+                                    f"{request_base_url.rstrip('/')}/v1/images/generations",
+                                    headers=self._headers(api_key),
+                                    json=payload,
+                                )
+                        else:
+                            payload = self._build_gpt_image_2_generation_payload(
+                                resolved_model=resolved_model,
+                                prompt=prompt,
+                                request_count=request_count,
+                                normalized_reference_images=normalized_reference_images,
+                                aspect_ratio=aspect_ratio,
+                                resolution=resolution,
+                                size=size,
+                            )
                     else:
                         payload["size"] = size
                         if normalized_reference_images:
                             payload["reference_images"] = normalized_reference_images
-                    if aspect_ratio:
+                    if aspect_ratio and not (self._is_gpt_image_2_model(resolved_model) and raw_reference_images):
                         payload["aspect_ratio"] = aspect_ratio
                     if resolution and "resolution" not in payload:
                         payload["resolution"] = resolution
-                    request_base_url = get_onelink_openai_compat_base_url(base_url)
-                    resp = await client.post(
-                        f"{request_base_url.rstrip('/')}/v1/images/generations",
-                        headers=self._headers(api_key),
-                        json=payload,
-                    )
+                    if not (self._is_gpt_image_2_model(resolved_model) and raw_reference_images):
+                        request_base_url = get_onelink_openai_compat_base_url(base_url)
+                        resp = await client.post(
+                            f"{request_base_url.rstrip('/')}/v1/images/generations",
+                            headers=self._headers(api_key),
+                            json=payload,
+                        )
                 resp.raise_for_status()
                 data = resp.json()
                 images = self._extract_generated_images(data)
@@ -1026,9 +1510,21 @@ class ImageGenService:
                     raise ValueError(f"{resolved_model} 未返回可用图片数据")
                 return images
         except httpx.TimeoutException as exc:
-            raise ValueError(f"{resolved_model} 响应超时，请稍后重试") from exc
+            raise ValueError(
+                describe_onelink_timeout_error(
+                    exc,
+                    model=resolved_model,
+                    route="images/generations",
+                )
+            ) from exc
         except httpx.HTTPStatusError as exc:
-            raise ValueError(self._describe_http_error(exc)) from exc
+            raise ValueError(
+                self._describe_http_error(
+                    exc,
+                    model=resolved_model,
+                    route="images/generations",
+                )
+            ) from exc
 
     def supports_stream(self, model: str) -> bool:
         """是否支持流式输出。当前仅 doubao seedream 系列透传 stream=true。"""
@@ -1175,7 +1671,7 @@ class ImageGenService:
                 request_count,
                 len(normalized_reference_images),
                 exc.response.status_code,
-                self._describe_http_error(exc),
+                self._describe_http_error(exc, model=resolved_model, route="images/generations/stream"),
             )
             if self._should_fallback_stream_to_generate(exc):
                 images = await self.generate(
@@ -1204,7 +1700,13 @@ class ImageGenService:
                     }
                 yield {"type": "completed", "usage": None}
                 return
-            raise ValueError(self._describe_http_error(exc)) from exc
+            raise ValueError(
+                self._describe_http_error(
+                    exc,
+                    model=resolved_model,
+                    route="images/generations/stream",
+                )
+            ) from exc
 
 
 image_gen_service = ImageGenService()

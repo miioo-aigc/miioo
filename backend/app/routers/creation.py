@@ -37,7 +37,9 @@ from app.schemas.tts import TTSAdvancedOptionsMixin, build_tts_provider_options
 from app.services.asset_recycle import apply_asset_visibility, mark_asset_deleted
 from app.services.background_runtime import build_gen_task_job_key, dispatch_background_job
 from app.services.image_gen import image_gen_service
+from app.services.live_material_runtime import resolve_live_material_attachments
 from app.services.media_fetch import read_media_bytes
+from app.services.media_download_filenames import build_download_filename, guess_extension
 from app.services.media_download_runtime import MediaDownloadAccessError, resolve_verified_download_target_from_url
 from app.services.media_derivative_pipeline import (
     build_image_derivative_bundle,
@@ -459,6 +461,29 @@ def _validated_asset_bindings_to_attachments(
     return resolved
 
 
+async def _resolve_creation_live_material_inputs(
+    *,
+    user_id: UUID,
+    db: AsyncSession,
+    provider_params: dict[str, Any] | None,
+    attachments: list[dict[str, Any]] | None,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    merged_attachments = list(attachments or [])
+    if not isinstance(provider_params, dict):
+        return provider_params, merged_attachments
+    resolved_live_material, live_material_attachments = await resolve_live_material_attachments(
+        user_id=user_id,
+        db=db,
+        provider_params=provider_params,
+    )
+    if not resolved_live_material:
+        return provider_params, merged_attachments
+    resolved_provider_params = dict(provider_params)
+    resolved_provider_params["live_material"] = resolved_live_material
+    merged_attachments.extend(live_material_attachments)
+    return resolved_provider_params, merged_attachments
+
+
 async def _enrich_creation_asset_bindings(
     bindings: list[dict[str, Any]] | list[CreationAssetBinding] | None,
     *,
@@ -603,17 +628,67 @@ def _dedupe_urls(urls: list[str]) -> list[str]:
     return deduped
 
 
-def _build_prompt_resolved(prompt: str, mentions: list[dict[str, Any]]) -> str:
+def _build_prompt_resolved(prompt: str, mentions: list[dict[str, Any]], attachments: list[dict[str, Any]] | None = None) -> str:
     base = (prompt or "").strip()
-    if not mentions:
+    if not mentions and not attachments:
         return base
 
     lines = []
-    for index, mention in enumerate(mentions, start=1):
-        asset_name = mention.get("asset_name") or mention.get("display_text") or "未命名资产"
-        asset_type = mention.get("asset_type") or "file"
-        role = "主体、动作、构图或风格特征" if asset_type == "image" else "内容与语义特征"
-        lines.append(f"{index}. {asset_name}（{asset_type}），请优先参考其{role}")
+    # 处理 mentions
+    if mentions:
+        for index, mention in enumerate(mentions, start=1):
+            asset_name = mention.get("asset_name") or mention.get("display_text") or "未命名资产"
+            asset_type = mention.get("asset_type") or "file"
+            role = mention.get("role") or ""
+            type_desc = {
+                "image": "图片",
+                "video": "视频",
+                "audio": "音频",
+            }.get(asset_type, "文件")
+            role_desc = ""
+            if role:
+                role_desc = {
+                    "character": "角色",
+                    "scene": "场景",
+                    "prop": "道具",
+                    "reference": "参考",
+                    "first_frame": "首帧",
+                    "last_frame": "尾帧",
+                }.get(role, "")
+            if role_desc:
+                lines.append(f"{index}. {asset_name}（{type_desc}），请优先参考其{role_desc}特征")
+            else:
+                default_role = "主体、动作、构图或风格特征" if asset_type == "image" else "内容与语义特征"
+                lines.append(f"{index}. {asset_name}（{type_desc}），请优先参考其{default_role}")
+    
+    # 处理 attachments
+    if attachments:
+        start_index = len(lines) + 1
+        for index, attachment in enumerate(attachments, start=start_index):
+            asset_name = attachment.get("asset_name") or f"附件{index}"
+            asset_type = attachment.get("asset_type") or "file"
+            role = attachment.get("role") or ""
+            type_desc = {
+                "image": "图片",
+                "video": "视频",
+                "audio": "音频",
+            }.get(asset_type, "文件")
+            role_desc = ""
+            if role:
+                role_desc = {
+                    "character": "角色",
+                    "scene": "场景",
+                    "prop": "道具",
+                    "reference": "参考",
+                    "first_frame": "首帧",
+                    "last_frame": "尾帧",
+                }.get(role, "")
+            if role_desc:
+                lines.append(f"{index}. {asset_name}（{type_desc}），请参考其{role_desc}特征")
+            else:
+                default_role = "主体、动作、构图或风格特征" if asset_type == "image" else "内容与语义特征"
+                lines.append(f"{index}. {asset_name}（{type_desc}），请参考其{default_role}")
+    
     return "\n".join(part for part in [base, "重点参考资产：", *lines] if part)
 
 
@@ -648,7 +723,7 @@ def _resolve_image_binding_context(
     )
     prompt_resolved_value = (
         (prompt_resolved or "").strip()
-        or _build_prompt_resolved(prompt_raw_value or prompt, mentions)
+        or _build_prompt_resolved(prompt_raw_value or prompt, mentions, attachments)
     )
     return (
         prompt_raw_value,
@@ -671,7 +746,7 @@ def _resolve_audio_binding_context(
     prompt_raw_value = (prompt_raw or spoken_text or "").strip()
     prompt_resolved_value = (
         (prompt_resolved or "").strip()
-        or _build_prompt_resolved(prompt_raw_value or spoken_text, mentions)
+        or _build_prompt_resolved(prompt_raw_value or spoken_text, mentions, attachments)
     )
     explicit_reference_audio_url = str(reference_audio_url or "").strip() or None
     audio_bindings = [
@@ -748,10 +823,22 @@ async def _read_media_bytes(url: str, timeout: float) -> bytes:
 
 
 def _build_download_filename(asset: Asset, fallback_index: int) -> str:
-    parsed = urlparse(asset.file_url)
-    suffix = Path(unquote(parsed.path or asset.file_url)).suffix.lower() or ".png"
-    safe_name = _sanitize_zip_segment(asset.name or f"image_{fallback_index}")
-    return f"{safe_name}_{fallback_index}{suffix}"
+    metadata = asset.metadata_json if isinstance(asset.metadata_json, dict) else {}
+    return build_download_filename(
+        prefix="创作图片",
+        prompt=(
+            metadata.get("input_prompt"),
+            asset.prompt,
+            metadata.get("prompt_resolved"),
+            metadata.get("prompt_raw"),
+            metadata.get("original_prompt"),
+        ),
+        preferred_name=asset.name,
+        sequence=fallback_index,
+        url=asset.file_url,
+        asset_type=asset.asset_type,
+        extension=guess_extension(asset.file_url, asset.asset_type),
+    )
 
 
 async def _load_creation_audio_asset_map(
@@ -825,10 +912,25 @@ def _build_creation_audio_filename(
     voice_name: str | None = None,
     asset: Asset | None = None,
 ) -> str:
-    raw_name = asset.name if asset and asset.name else f"配音-{voice_name or clip.voice_id}"
-    parsed = urlparse(asset.file_url if asset and asset.file_url else clip.audio_url)
-    suffix = Path(unquote(parsed.path or clip.audio_url)).suffix.lower() or ".mp3"
-    return f"{_sanitize_zip_segment(raw_name)}_{fallback_index}{suffix}"
+    metadata = asset.metadata_json if asset and isinstance(asset.metadata_json, dict) else {}
+    audio_url = asset.file_url if asset and asset.file_url else clip.audio_url
+    return build_download_filename(
+        prefix="创作配音",
+        prompt=(
+            metadata.get("input_prompt"),
+            clip.text,
+            asset.prompt if asset else None,
+            metadata.get("prompt_resolved"),
+            metadata.get("prompt_raw"),
+            metadata.get("text"),
+        ),
+        preferred_name=asset.name if asset else None,
+        fallback_name=voice_name or clip.voice_id,
+        sequence=fallback_index,
+        url=audio_url,
+        asset_type="audio",
+        extension=guess_extension(audio_url, "audio"),
+    )
 
 
 def _is_creation_managed_video(asset: Asset) -> bool:
@@ -844,10 +946,21 @@ def _build_creation_video_filename(asset: Asset, fallback_index: int) -> str:
         or metadata.get("origin_url")
         or asset.file_url
     )
-    parsed = urlparse(source_url)
-    suffix = Path(unquote(parsed.path or source_url)).suffix.lower() or ".mp4"
-    safe_name = _sanitize_zip_segment(asset.name or f"video_{fallback_index}")
-    return f"{safe_name}_{fallback_index}{suffix}"
+    return build_download_filename(
+        prefix="创作视频",
+        prompt=(
+            metadata.get("input_prompt"),
+            asset.prompt,
+            metadata.get("prompt_resolved"),
+            metadata.get("prompt_raw"),
+            metadata.get("original_prompt"),
+        ),
+        preferred_name=asset.name,
+        sequence=fallback_index,
+        url=source_url,
+        asset_type="video",
+        extension=guess_extension(source_url, "video"),
+    )
 
 
 def _iter_creation_video_download_candidates(asset: Asset) -> list[str]:
@@ -1560,6 +1673,10 @@ class CreationImageGenerateRequest(BaseModel):
     optimize_prompt: str | None = None
     sequential_image_generation: str | None = None
     stream: bool | None = None
+    generation_mode: str | None = None
+    expand_options: dict[str, Any] | None = None
+    subject_completion_options: dict[str, Any] | None = None
+    provider_params: dict[str, Any] | None = None
     attachments: list["CreationAssetBinding"] | None = None
     mentions: list["CreationPromptMention"] | None = None
 
@@ -1603,6 +1720,10 @@ class CreationShotImageGenerateRequest(BaseModel):
     save_to_assets: bool = True
     inherit_project_style: bool = True
     watermark: bool | None = None
+    generation_mode: str | None = None
+    expand_options: dict[str, Any] | None = None
+    subject_completion_options: dict[str, Any] | None = None
+    provider_params: dict[str, Any] | None = None
 
     def resolved_aspect_ratio(self, shot: CreationShot, session: CreationSession) -> str:
         return (
@@ -1676,6 +1797,10 @@ class CreationVideoGenerateRequest(BaseModel):
     reference_video_asset_id: str | None = None
     reference_audio_asset_id: str | None = None
     reference_image_asset_ids: list[str] | None = None
+    multi_shot: bool | None = None
+    shot_type: str | None = None
+    multi_prompt: list[dict[str, Any]] | None = None
+    provider_params: dict[str, Any] | None = None
     session_id: str | None = None
     shot_id: str | None = None
     project_id: str | None = None
@@ -1854,6 +1979,10 @@ class CreationShotVideoGenerateRequest(BaseModel):
     generate_audio: bool | None = None
     audio_setting: str | None = None
     watermark: bool | None = None
+    multi_shot: bool | None = None
+    shot_type: str | None = None
+    multi_prompt: list[dict[str, Any]] | None = None
+    provider_params: dict[str, Any] | None = None
 
 
 class CreationShotVideoResponse(BaseModel):
@@ -2364,7 +2493,15 @@ async def _create_creation_audio_records(
     asset = Asset(
         user_id=user.id,
         project_id=project_id,
-        name=f"配音-{voice_name}",
+        name=build_download_filename(
+            prefix="创作配音",
+            prompt=text,
+            preferred_name=None,
+            fallback_name=voice_name,
+            url=audio_url,
+            asset_type="audio",
+            extension=guess_extension(audio_url, "audio"),
+        ).rsplit(".", 1)[0],
         asset_type="audio",
         category="audio",
         file_url=audio_url,
@@ -2617,12 +2754,14 @@ async def _resolve_and_create_image_task(
         count=count,
         reference_images=reference_images,
         watermark=watermark,
+        generation_mode=req.generation_mode,
     )
     aspect_ratio = validated["aspect_ratio"]
     resolution = validated["resolution"]
     count = validated["count"]
     reference_images = validated["reference_images"]
     resolved_size = validated["size"]
+    generation_mode = validated["generation_mode"] or ("reference_image" if reference_images else "text_to_image")
 
     task_source = source or ("creation_shot_image" if shot else "creation_image")
     task = GenTask(
@@ -2662,6 +2801,10 @@ async def _resolve_and_create_image_task(
             "web_search": req.web_search,
             "optimize_prompt": req.optimize_prompt,
             "sequential_image_generation": req.sequential_image_generation,
+            "generation_mode": generation_mode,
+            "expand_options": req.expand_options,
+            "subject_completion_options": req.subject_completion_options,
+            "provider_params": req.provider_params,
         },
         results=[],
     )
@@ -2688,10 +2831,14 @@ async def _resolve_and_create_image_task(
         "aspect_ratio": aspect_ratio,
         "resolution": resolution,
         "count": count,
+        "generation_mode": generation_mode,
         "resolved_size": resolved_size,
         "task_source": task_source,
         "category": category or req.category,
         "asset_name": asset_name or req.asset_name,
+        "expand_options": req.expand_options,
+        "subject_completion_options": req.subject_completion_options,
+        "provider_params": req.provider_params,
     }
 
 
@@ -2765,6 +2912,10 @@ async def _create_creation_image_task(
             "web_search": req.web_search,
             "optimize_prompt": req.optimize_prompt,
             "sequential_image_generation": req.sequential_image_generation,
+            "generation_mode": ctx["generation_mode"],
+            "expand_options": ctx.get("expand_options"),
+            "subject_completion_options": ctx.get("subject_completion_options"),
+            "provider_params": ctx.get("provider_params"),
         },
         name=f"gen-task:{task.id}:creation-image",
     )
@@ -2799,6 +2950,7 @@ async def _persist_one_creation_image(
     source: str,
     task_id: UUID,
     count: int,
+    generation_mode: str | None = None,
 ) -> dict:
     """落地单张创作图片：转存远端文件 → 派生缩略图/预览 → 可选建 Asset/更新镜头。
 
@@ -2832,9 +2984,15 @@ async def _persist_one_creation_image(
 
     asset_id = None
     if save_to_assets:
-        base_name = asset_name or "创作图片"
-        if count > 1:
-            base_name = f"{base_name} {index}"
+        base_name = build_download_filename(
+            prefix="创作图片",
+            prompt=(prompt, prompt_raw, final_prompt),
+            preferred_name=asset_name,
+            sequence=index if count > 1 else None,
+            url=persisted_url,
+            asset_type="image",
+            extension=guess_extension(persisted_url, "image"),
+        ).rsplit(".", 1)[0]
         asset = Asset(
             user_id=user_id,
             project_id=project_id,
@@ -2862,6 +3020,7 @@ async def _persist_one_creation_image(
                 "mentions": mentions,
                 "asset_bindings": attachments,
                 "watermark": watermark,
+                "generation_mode": generation_mode,
                 "session_id": str(session_id) if session_id else None,
                 "shot_id": str(shot_id) if shot_id else None,
                 **derivative_metadata,
@@ -2925,6 +3084,10 @@ async def _run_creation_image_task(
     web_search: bool | None = None,
     optimize_prompt: str | None = None,
     sequential_image_generation: str | None = None,
+    generation_mode: str | None = None,
+    expand_options: dict[str, Any] | None = None,
+    subject_completion_options: dict[str, Any] | None = None,
+    provider_params: dict[str, Any] | None = None,
 ):
     async with async_session() as db:
         result = await db.execute(select(GenTask).where(GenTask.id == task_id))
@@ -2995,6 +3158,12 @@ async def _run_creation_image_task(
                 web_search=bool(web_search),
                 optimize_prompt_mode=optimize_prompt,
                 sequential_image_generation=sequential_image_generation,
+                generation_mode=generation_mode,
+                expand_options=expand_options,
+                subject_completion_options=subject_completion_options,
+                provider_params=provider_params,
+                mentions=mentions,
+                attachments=attachments,
             )
 
             for index, url in enumerate(urls, start=1):
@@ -3025,10 +3194,11 @@ async def _run_creation_image_task(
                     source=source,
                     task_id=task_id,
                     count=count,
+                    generation_mode=generation_mode,
                 )
                 results.append(result_record)
                 task.success_count += 1
-                task.results = results
+                task.results = list(results)
                 await db.commit()
 
             if len(urls) < count:
@@ -3041,13 +3211,13 @@ async def _run_creation_image_task(
                         }
                     )
                     task.fail_count += 1
-                task.results = results
+                task.results = list(results)
                 await db.commit()
 
         except Exception as exc:
             results.append({"success": False, "error": str(exc)})
             task.fail_count = max(task.fail_count, count - task.success_count)
-            task.results = results
+            task.results = list(results)
             await db.commit()
 
         if task.fail_count == 0 and task.success_count > 0:
@@ -3929,6 +4099,28 @@ async def generate_creation_images_stream(
         project_id=req.project_id,
     )
 
+    requested_model = req.model or await _get_default_image_model(user.id, db)
+    model = await resolve_user_model(
+        db=db,
+        user_id=user.id,
+        category="image",
+        requested_model=requested_model,
+        fallback_model=requested_model,
+    )
+    provider_runtime = await get_user_model_provider_runtime(
+        user.id,
+        db,
+        category="image",
+        requested_model=model,
+    )
+    if provider_runtime:
+        provider_type = str(provider_runtime[2] or "").strip().lower()
+        if provider_type == "onelink" and image_gen_service.supports_stream(model):
+            raise HTTPException(
+                status_code=400,
+                detail="OneLinkAI 当前不支持该接口的流式响应，请按非流式方式调用。",
+            )
+
     ctx = await _resolve_and_create_image_task(
         req=req,
         user=user,
@@ -4079,7 +4271,7 @@ async def generate_creation_images_stream(
                         )
                         results.append(result_record)
                         db_task.success_count += 1
-                        db_task.results = results
+                        db_task.results = list(results)
                         await task_db.commit()
                         yield _sse_frame(
                             "image",
@@ -4095,13 +4287,13 @@ async def generate_creation_images_stream(
                     elif event_type == "error":
                         results.append({"success": False, "error": event.get("error")})
                         db_task.fail_count += 1
-                        db_task.results = results
+                        db_task.results = list(results)
                         await task_db.commit()
                         yield _sse_frame("error", {"error": event.get("error"), "index": event.get("index")})
             except Exception as exc:  # noqa: BLE001 - 透传上游错误到 SSE
                 results.append({"success": False, "error": str(exc)})
                 db_task.fail_count = max(db_task.fail_count, count - db_task.success_count)
-                db_task.results = results
+                db_task.results = list(results)
                 await task_db.commit()
                 yield _sse_frame("error", {"error": str(exc)})
 
@@ -4647,7 +4839,15 @@ async def generate_creation_shot_audio(
     asset = Asset(
         user_id=user.id,
         project_id=shot.project_id,
-        name=f"{session.title} - 镜头{shot.shot_number}配音",
+        name=build_download_filename(
+            prefix="创作配音",
+            prompt=text,
+            preferred_name=None,
+            fallback_name=f"镜头{shot.shot_number}_{req.voice_id}",
+            url=audio_url,
+            asset_type="audio",
+            extension=guess_extension(audio_url, "audio"),
+        ).rsplit(".", 1)[0],
         asset_type="audio",
         category="audio",
         file_url=audio_url,
@@ -4763,6 +4963,19 @@ async def generate_creation_shot_video(
             fallback_to_full_on_unsupported_first_frame=True,
         )
     )
+    request_attachments = [
+        item.model_dump(exclude_none=True)
+        for item in (req.attachments or [])
+    ]
+    try:
+        resolved_provider_params, request_attachments = await _resolve_creation_live_material_inputs(
+            user_id=user.id,
+            db=db,
+            provider_params=req.provider_params,
+            attachments=request_attachments,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     validated = validate_video_request(
         model=model,
         prompt=prompt,
@@ -4775,10 +4988,7 @@ async def generate_creation_shot_video(
         last_frame_url=req.last_frame_url,
         reference_video_url=req.reference_video_url,
         reference_audio_url=req.reference_audio_url or shot.audio_url,
-        attachments=[
-            item.model_dump(exclude_none=True)
-            for item in (req.attachments or [])
-        ],
+        attachments=request_attachments,
         first_frame_asset_id=req.first_frame_asset_id,
         last_frame_asset_id=req.last_frame_asset_id,
         reference_video_asset_id=req.reference_video_asset_id,
@@ -4787,6 +4997,10 @@ async def generate_creation_shot_video(
         generate_audio=req.generate_audio,
         audio_setting=req.audio_setting,
         watermark=watermark,
+        multi_shot=req.multi_shot,
+        shot_type=req.shot_type,
+        multi_prompt=req.multi_prompt,
+        provider_params=resolved_provider_params,
     )
     validated_attachments = _validated_asset_bindings_to_attachments(
         validated.get("asset_bindings")
@@ -4820,11 +5034,21 @@ async def generate_creation_shot_video(
             sound_effect=req.sound_effect,
             reference_video_url=req.reference_video_url,
             reference_audio_url=req.reference_audio_url or shot.audio_url,
+            attachments=validated_attachments,
+            first_frame_asset_id=req.first_frame_asset_id,
+            last_frame_asset_id=req.last_frame_asset_id,
+            reference_video_asset_id=req.reference_video_asset_id,
+            reference_audio_asset_id=req.reference_audio_asset_id,
+            reference_image_asset_ids=req.reference_image_asset_ids or [],
             ratio=ratio,
             generate_mode=req.generation_mode,
             generate_audio=req.generate_audio,
             audio_setting=validated["audio_setting"],
             watermark=watermark,
+            multi_shot=req.multi_shot,
+            shot_type=req.shot_type,
+            multi_prompt=req.multi_prompt,
+            provider_params=resolved_provider_params,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"视频生成失败: {str(exc)}") from exc
@@ -5294,6 +5518,19 @@ async def generate_creation_video(
         requested_value=req.watermark,
         default_value=default_video_watermark,
     )
+    request_attachments = [
+        item.model_dump(exclude_none=True)
+        for item in (req.attachments or [])
+    ]
+    try:
+        resolved_provider_params, request_attachments = await _resolve_creation_live_material_inputs(
+            user_id=user.id,
+            db=db,
+            provider_params=req.provider_params,
+            attachments=request_attachments,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     validated = validate_video_request(
         model=model,
         prompt=req.prompt,
@@ -5306,10 +5543,7 @@ async def generate_creation_video(
         last_frame_url=req.last_frame_url,
         reference_video_url=req.reference_video_url,
         reference_audio_url=req.reference_audio_url,
-        attachments=[
-            item.model_dump(exclude_none=True)
-            for item in (req.attachments or [])
-        ],
+        attachments=request_attachments,
         subjects=[
             item.model_dump(exclude_none=True)
             for item in (req.subjects or [])
@@ -5328,6 +5562,10 @@ async def generate_creation_video(
         audio_setting=req.audio_setting,
         off_peak=req.off_peak,
         watermark=watermark,
+        multi_shot=req.multi_shot,
+        shot_type=req.shot_type,
+        multi_prompt=req.multi_prompt,
+        provider_params=resolved_provider_params,
     )
     validated_attachments = _validated_asset_bindings_to_attachments(
         validated.get("asset_bindings")
@@ -5367,6 +5605,10 @@ async def generate_creation_video(
             "reference_video_asset_id": req.reference_video_asset_id,
             "reference_audio_asset_id": req.reference_audio_asset_id,
             "reference_image_asset_ids": req.reference_image_asset_ids or [],
+            "multi_shot": req.multi_shot,
+            "shot_type": req.shot_type,
+            "multi_prompt": req.multi_prompt,
+            "provider_params": resolved_provider_params,
             "session_id": str(session.id) if session else None,
             "shot_id": str(shot.id) if shot else None,
             "project_id": str(project.id) if project else None,
@@ -5425,6 +5667,10 @@ async def generate_creation_video(
             "reference_video_asset_id": req.reference_video_asset_id,
             "reference_audio_asset_id": req.reference_audio_asset_id,
             "reference_image_asset_ids": req.reference_image_asset_ids or [],
+            "multi_shot": req.multi_shot,
+            "shot_type": req.shot_type,
+            "multi_prompt": req.multi_prompt,
+            "provider_params": resolved_provider_params,
             "session_id": str(session.id) if session else None,
             "shot_id": str(shot.id) if shot else None,
             "project_id": str(project.id) if project else None,
@@ -5718,6 +5964,10 @@ async def _run_creation_video_task(
     subjects: list[dict[str, Any]] | None,
     multiframe_segments: list[dict[str, Any]] | None,
     attachments: list[dict] | None,
+    multi_shot: bool | None = None,
+    shot_type: str | None = None,
+    multi_prompt: list[dict[str, Any]] | None = None,
+    provider_params: dict[str, Any] | None = None,
 ):
     async with async_session() as db:
         result = await db.execute(select(GenTask).where(GenTask.id == task_id))
@@ -5830,6 +6080,10 @@ async def _run_creation_video_task(
                 reference_video_asset_id=reference_video_asset_id,
                 reference_audio_asset_id=reference_audio_asset_id,
                 reference_image_asset_ids=reference_image_asset_ids or [],
+                multi_shot=multi_shot,
+                shot_type=shot_type,
+                multi_prompt=multi_prompt,
+                provider_params=provider_params,
             )
         except Exception as exc:
             task.status = "failed"
@@ -5962,7 +6216,14 @@ async def _run_creation_video_task(
         asset = Asset(
             user_id=user_id,
             project_id=UUID(project_id) if project_id else None,
-            name=f"创作视频 - {prompt[:30]}",
+            name=build_download_filename(
+                prefix="创作视频",
+                prompt=(prompt, video_result.get("prompt_resolved")),
+                preferred_name=None,
+                url=video_url,
+                asset_type="video",
+                extension=guess_extension(video_url, "video"),
+            ).rsplit(".", 1)[0],
             asset_type="video",
             category="storyboard",
             file_url=video_url,

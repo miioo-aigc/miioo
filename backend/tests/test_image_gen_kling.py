@@ -106,3 +106,70 @@ async def test_kling_multi_image2image_forwards_requested_count(monkeypatch):
         "https://cdn.example.com/generated-3.png",
         "https://cdn.example.com/generated-4.png",
     ]
+
+
+@pytest.mark.anyio
+async def test_kling_expand_forwards_expand_options(monkeypatch):
+    client = _FakeKlingClient()
+
+    def _fake_upstream_async_client(*args, **kwargs):
+        return client
+
+    async def _fake_sleep(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.services.image_gen.upstream_async_client", _fake_upstream_async_client)
+    monkeypatch.setattr("app.services.image_gen.asyncio.sleep", _fake_sleep)
+
+    service = ImageGenService()
+    await service.generate(
+        prompt="把角色图向右扩展留白",
+        api_key="test-key",
+        base_url="https://api.onelinkai.cloud",
+        model="image-kling-v3",
+        aspect_ratio="16:9",
+        reference_images=["https://cdn.example.com/input.png"],
+        generation_mode="outpainting",
+        expand_options={
+            "right_expansion_ratio": 0.4,
+            "left_expansion_ratio": 0.1,
+        },
+    )
+
+    assert len(client.post_calls) == 1
+    assert client.post_calls[0]["url"].endswith("/kling/v1/images/editing/expand")
+    assert client.post_calls[0]["json"]["image"] == "https://cdn.example.com/input.png"
+    assert client.post_calls[0]["json"]["left_expansion_ratio"] == 0.1
+    assert client.post_calls[0]["json"]["right_expansion_ratio"] == 0.4
+
+
+@pytest.mark.anyio
+async def test_kling_subject_completion_forwards_element_frontal_image(monkeypatch):
+    client = _FakeKlingClient()
+
+    def _fake_upstream_async_client(*args, **kwargs):
+        return client
+
+    async def _fake_sleep(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.services.image_gen.upstream_async_client", _fake_upstream_async_client)
+    monkeypatch.setattr("app.services.image_gen.asyncio.sleep", _fake_sleep)
+
+    service = ImageGenService()
+    await service.generate(
+        prompt="为主体补全一张完整站姿图",
+        api_key="test-key",
+        base_url="https://api.onelinkai.cloud",
+        model="image-kling-v3-omni",
+        aspect_ratio="1:1",
+        reference_images=["https://cdn.example.com/subject-main.png"],
+        generation_mode="subject_completion",
+        subject_completion_options={
+            "element_frontal_image": "https://cdn.example.com/subject-main.png",
+        },
+    )
+
+    assert len(client.post_calls) == 1
+    assert client.post_calls[0]["url"].endswith("/kling/v1/general/ai-multi-shot")
+    assert client.post_calls[0]["json"]["element_frontal_image"] == "https://cdn.example.com/subject-main.png"

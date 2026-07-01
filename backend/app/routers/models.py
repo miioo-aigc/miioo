@@ -10,6 +10,7 @@ from app.models.provider import ApiProvider
 from app.models.user import User
 from app.models.model_config import ModelConfig
 from app.services.aiping_presets import AIPING_PROVIDER_NAME, sync_aiping_preset_models
+from app.services.admin_model_visibility import apply_visibility_filter
 from app.services.fal_presets import FAL_PROVIDER_NAME, sync_fal_preset_models
 from app.services.minimax_presets import MINIMAX_PROVIDER_NAME, sync_minimax_preset_models
 from app.services.model_capabilities import get_model_asset_binding_capabilities
@@ -127,6 +128,12 @@ async def _get_shared_admin_voice_models(
             ModelConfig.id.asc(),
         )
     )
+    query = apply_visibility_filter(
+        query,
+        provider_type_column=ApiProvider.provider_type,
+        model_id_column=ModelConfig.model_id,
+        category_column=ModelConfig.category,
+    )
     result = await db.execute(query)
     rows = result.all()
     models: list[ModelConfig] = []
@@ -161,7 +168,20 @@ async def list_models(
     if available_only:
         query = build_available_models_query(user.id, category=category)
     else:
-        query = select(ModelConfig).where(ModelConfig.user_id == user.id)
+        query = (
+            select(ModelConfig)
+            .join(ApiProvider, ApiProvider.id == ModelConfig.provider_id)
+            .where(
+                ModelConfig.user_id == user.id,
+                ApiProvider.user_id == user.id,
+            )
+        )
+        query = apply_visibility_filter(
+            query,
+            provider_type_column=ApiProvider.provider_type,
+            model_id_column=ModelConfig.model_id,
+            category_column=ModelConfig.category,
+        )
         if category:
             query = query.where(ModelConfig.category == category)
     query = query.where(~ModelConfig.model_id.in_(LEGACY_HIDDEN_MODEL_IDS))

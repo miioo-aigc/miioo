@@ -15,7 +15,7 @@ const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-u
 const ALLOWED_EXTS = ['.txt', '.md', '.pdf', '.docx', '.doc'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_CHARS = 100000;
-const CHAT_TIMEOUT_MS = 120_000; // 2 分钟客户端超时兜底（后端通常先返回 504）
+const CHAT_TIMEOUT_MS = 600_000; // 10 分钟客户端超时兜底，避免慢模型流式生成时被前端过早中断
 
 function parseScriptOutline(markdown) {
   if (!markdown) return [];
@@ -841,13 +841,17 @@ function InputCard({ onSend, onStop, restoreText = '', restoreFiles = [], select
   }, []);
 
   useEffect(() => {
-    apiListModels({ category: 'chat' }).then((list) => {
+    apiListModels({ category: 'chat', availableOnly: true }).then((list) => {
       if (Array.isArray(list) && list.length > 0) {
         setModels(list);
-        if (!selectedModel) { const def = list.find(m => m.is_default === true) || list[0]; onModelChange?.(def.model_id); }
+        const hasSelectedModel = selectedModel && list.some((item) => item.model_id === selectedModel);
+        if (!hasSelectedModel) {
+          const def = list.find(m => m.is_default === true) || list[0];
+          onModelChange?.(def.model_id);
+        }
       }
     }).catch(() => {});
-  }, []);
+  }, [onModelChange, selectedModel]);
 
   useEffect(() => {
     if (prevDisabledRef.current && !disabled) {

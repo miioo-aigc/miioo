@@ -1,8 +1,71 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 import { authFetch, authFetchForm, authFetchStream } from './request.js';
+import { getDisplayErrorMessage, throwResponseError } from './error.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
+
+function isPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeGenerationMode(value) {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase().replace(/-/g, '_');
+  if (!normalized) return undefined;
+  if (normalized === 'main') return 'single';
+  if (normalized === 'multi_view') return 'three_view';
+  return normalized;
+}
+
+function normalizeExpandOptions(params = {}) {
+  const options = isPlainObject(params.expand_options)
+    ? { ...params.expand_options }
+    : isPlainObject(params.expandOptions)
+      ? { ...params.expandOptions }
+      : {};
+  const mappings = [
+    ['up_expansion_ratio', params.up_expansion_ratio ?? params.upExpansionRatio],
+    ['down_expansion_ratio', params.down_expansion_ratio ?? params.downExpansionRatio],
+    ['left_expansion_ratio', params.left_expansion_ratio ?? params.leftExpansionRatio],
+    ['right_expansion_ratio', params.right_expansion_ratio ?? params.rightExpansionRatio],
+  ];
+  mappings.forEach(([key, value]) => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      options[key] = value;
+    }
+  });
+  return Object.keys(options).length > 0 ? options : undefined;
+}
+
+function normalizeSubjectCompletionOptions(params = {}) {
+  const options = isPlainObject(params.subject_completion_options)
+    ? { ...params.subject_completion_options }
+    : isPlainObject(params.subjectCompletionOptions)
+      ? { ...params.subjectCompletionOptions }
+      : {};
+  const elementFrontalImage = params.element_frontal_image ?? params.elementFrontalImage;
+  if (typeof elementFrontalImage === 'string' && elementFrontalImage.trim()) {
+    options.element_frontal_image = elementFrontalImage.trim();
+  }
+  return Object.keys(options).length > 0 ? options : undefined;
+}
+
+function normalizeProviderParams(params = {}) {
+  if (isPlainObject(params.provider_params)) return params.provider_params;
+  if (isPlainObject(params.providerParams)) return params.providerParams;
+  return undefined;
+}
+
+function normalizeSubjectImagePayload(params = {}) {
+  return {
+    ...params,
+    generation_mode: normalizeGenerationMode(params.generation_mode ?? params.mode),
+    expand_options: normalizeExpandOptions(params),
+    subject_completion_options: normalizeSubjectCompletionOptions(params),
+    provider_params: normalizeProviderParams(params),
+  };
+}
 
 // 主体写操作后统一失效该项目的主体缓存 + 概览（概览含主体进度）
 function invalidateSubjects(projectId) {
@@ -96,20 +159,7 @@ export async function apiUpdateSubject(projectId, subjectId, data) {
     body,
   });
   if (!res.ok) {
-    let detail = '';
-    try {
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const body = await res.json();
-        detail = body?.detail || body?.message || '';
-        if (typeof detail === 'object') detail = JSON.stringify(detail);
-      } else {
-        detail = await res.text();
-      }
-    } catch {}
-    const err = new Error(detail || `更新主体失败（${res.status}）`);
-    err.status = res.status;
-    throw err;
+    await throwResponseError(res, `更新主体失败（${res.status}）`);
   }
   invalidateSubjects(projectId);
   return res.json();
@@ -144,28 +194,23 @@ export async function apiGetSubjectImages(projectId, subjectId) {
 }
 
 export async function apiGenerateSubjectImage(projectId, subjectId, params) {
+  const payload = normalizeSubjectImagePayload(params);
   const res = await authFetch(`${BASE}/api/projects/${projectId}/subjects/${subjectId}/generate-image`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    let detail = '';
-    try {
-      const body = await res.json();
-      detail = body?.detail || body?.message || '';
-    } catch {
-      // 502 等返回 HTML，无法解析 JSON
-    }
     const statusMessages = {
       502: 'AI 绘图服务暂时不可用，请稍后重试',
       504: 'AI 绘图服务响应超时，请简化提示词后重试',
       500: '服务器内部错误，请稍后重试',
     };
-    const msg = detail || statusMessages[res.status] || `图片生成失败（${res.status}）`;
-    const err = new Error(msg);
-    err.status = res.status;
-    throw err;
+    await throwResponseError(
+      res,
+      statusMessages[res.status] || `图片生成失败（${res.status}）`,
+      { showDialog: true, title: '图片生成失败' }
+    );
   }
   invalidateSubjects(projectId);
   return res.json();
@@ -212,12 +257,12 @@ export async function apiBindSubjectReferenceImages(projectId, subjectId, { asse
   return res.json();
 }
 
-export async function apiDownloadSubjectImage(projectId, subjectId, imageId) {
+export async function apiDownloadSubjectImage(projectId, subjectId, imageId, { rawResponse = false } = {}) {
   const res = await authFetch(
     `${BASE}/api/projects/${projectId}/subjects/${subjectId}/images/${imageId}/download`,
     { headers: { 'Content-Type': 'application/json' } }
   );
-  return res.blob();
+  return rawResponse ? res : res.blob();
 }
 
 // ── 批量生成 ──────────────────────────────────────────────────────────────────
@@ -232,26 +277,14 @@ export async function apiBatchGenerate(projectIdOrParams, maybeParams) {
     projectId = undefined;
     params = projectIdOrParams;
   }
+  const payload = normalizeSubjectImagePayload(params);
   const res = await authFetch(`${BASE}/api/projects/${projectId}/subjects/batch-generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    let detail = '';
-    try {
-      const body = await res.json();
-      detail = body?.detail || body?.message || '';
-      // FastAPI 422 返回 detail 为数组 [{msg, loc, ...}]
-      if (Array.isArray(detail)) {
-        detail = detail.map(d => d.msg || JSON.stringify(d)).join('; ');
-      }
-    } catch {
-      // 非 JSON 响应
-    }
-    const err = new Error(detail || `批量生成失败（${res.status}）`);
-    err.status = res.status;
-    throw err;
+    await throwResponseError(res, `批量生成失败（${res.status}）`, { showDialog: true, title: '批量生成失败' });
   }
   invalidateSubjects(projectId);
   return res.json();
@@ -268,30 +301,19 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
     invalidateSubjects(projectId);
     return rawOnComplete?.(...args);
   };
+  const payload = normalizeSubjectImagePayload(params);
   const res = await authFetchStream(`${BASE}/api/projects/${projectId}/subjects/batch-generate`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
     },
-    body: JSON.stringify(params),
+    body: JSON.stringify(payload),
     signal,
   });
 
   if (!res.ok) {
-    let detail = '';
-    try {
-      const body = await res.json();
-      detail = body?.detail || body?.message || '';
-      if (Array.isArray(detail)) {
-        detail = detail.map(d => d.msg || JSON.stringify(d)).join('; ');
-      }
-    } catch {
-      // 非 JSON 响应
-    }
-    const err = new Error(detail || `批量生成失败（${res.status}）`);
-    err.status = res.status;
-    throw err;
+    await throwResponseError(res, `批量生成失败（${res.status}）`, { showDialog: true, title: '批量生成失败' });
   }
 
   const contentType = res.headers.get('content-type') || '';
@@ -623,7 +645,7 @@ export async function apiChatScriptWorkspaceStream(
   if (episode_count != null) body.episode_count = episode_count;
 
   const res = await authFetchStream(
-    `${BASE}/api/projects/${projectId}/script-workspace/chat`,
+    `${BASE}/api/projects/${projectId}/script-workspace/chat/stream`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -644,7 +666,7 @@ export async function apiChatScriptWorkspaceStream(
     let errorDetail = `HTTP ${res.status}`;
     try {
       const errBody = await res.json();
-      errorDetail = errBody?.message || errBody?.detail || errBody?.error || JSON.stringify(errBody);
+      errorDetail = getDisplayErrorMessage(errBody, errorDetail);
     } catch {
       try {
         errorDetail = await res.text();
@@ -737,11 +759,152 @@ export async function apiFinalizeScriptWorkspace(projectId, { episode_count, mod
       body: JSON.stringify(body),
     }
   );
-  // 定稿会拆分生成剧集，影响 script / episodes / overview
-  invalidate(K.script(projectId));
-  invalidate(K.episodes(projectId));
-  invalidate(K.projectOverview(projectId));
-  return res.json();
+
+  const rawText = await res.text();
+  const trimmedText = rawText.trim();
+  const parsed = trimmedText ? (() => {
+    try {
+      return JSON.parse(trimmedText);
+    } catch {
+      return null;
+    }
+  })() : null;
+
+  // 快速路径：apply_split=False，同步返回最终结果
+  if (res.ok && parsed && parsed.split_applied === false) {
+    invalidate(K.script(projectId));
+    return parsed;
+  }
+
+  // 异步路径：apply_split=True，返回 task_id，需要轮询
+  if (res.ok && parsed && parsed.task_id) {
+    const taskId = parsed.task_id;
+    // 定稿会拆分生成剧集，先 invalidate
+    invalidate(K.script(projectId));
+    invalidate(K.episodes(projectId));
+    invalidate(K.projectOverview(projectId));
+
+    // 轮询任务直到完成
+    const start = Date.now();
+    const TIMEOUT_MS = 1800_000; // 30 分钟，与 Nginx 1800s 一致
+    while (Date.now() - start < TIMEOUT_MS) {
+      await new Promise((r) => setTimeout(r, 3000));
+      try {
+        const taskRes = await authFetch(`${BASE}/api/tasks/${taskId}`, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!taskRes.ok) continue;
+
+        const task = await taskRes.json();
+        const status = task.status || '';
+        const results = task.results || [];
+
+        if (status === 'completed') {
+          const result = results[0] || {};
+          if (result.success) {
+            // 从 task results 中提取 finalize 结果
+            invalidate(K.episodes(projectId));
+            invalidate(K.projectOverview(projectId));
+            return {
+              split_applied: true,
+              replaced_count: result.replaced_count ?? 0,
+              created_count: result.created_count ?? 0,
+              script_status: result.script_status ?? 'finalized',
+              selected_episode_number: result.selected_episode_number,
+              backup_history_id: result.backup_history_id,
+              items: result.items ?? [],
+              split_source: result.split_source ?? 'ai',
+              extracted_episode_count: result.extracted_episode_count ?? 0,
+              subject_created_count: result.subject_created_count ?? 0,
+              subject_updated_count: result.subject_updated_count ?? 0,
+              failed_episode_numbers: result.failed_episode_numbers ?? [],
+            };
+          }
+          // success=false → 任务完成但执行失败
+          const err = new Error(result.error || '定稿任务执行失败');
+          err.status = 500;
+          throw err;
+        }
+
+        if (status === 'failed') {
+          const result = results[0] || {};
+          const err = new Error(result.error || '定稿任务执行失败');
+          err.status = 500;
+          throw err;
+        }
+        // pending / running → 继续轮询
+      } catch (pollErr) {
+        if (pollErr.status) throw pollErr; // 确定的错误直接抛出
+        console.warn('[apiFinalizeScriptWorkspace] 轮询出错:', pollErr);
+        // 网络瞬断等继续重试
+      }
+    }
+
+    // 超时后的兜底：回查 episodes 确认是否已落库
+    invalidate(K.episodes(projectId));
+    try {
+      const fallbackRes = await authFetch(`${BASE}/api/projects/${projectId}/episodes`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (fallbackRes.ok) {
+        const fallbackText = (await fallbackRes.text()).trim();
+        const episodes = fallbackText ? JSON.parse(fallbackText) : [];
+        if (Array.isArray(episodes) && episodes.length > 0) {
+          return {
+            items: episodes,
+            recovered_from_timeout: true,
+          };
+        }
+      }
+    } catch {
+      // fallback 也失败，抛超时错误
+    }
+
+    const err = new Error('定稿任务超时，请稍后检查分集列表');
+    err.status = 524;
+    throw err;
+  }
+
+  // 兼容旧路径：如果后端仍是同步返回（非 task_id 模式）
+  if (res.ok) {
+    invalidate(K.script(projectId));
+    invalidate(K.episodes(projectId));
+    invalidate(K.projectOverview(projectId));
+    return parsed ?? {};
+  }
+
+  // 某些长耗时定稿在边缘层会先返回 524/空包体，但后端可能已经完成正式分集落库。
+  // 这里做一次非缓存回查，只要正式分集已经存在，就按成功结果返回，避免用户看到假失败。
+  if ([499, 502, 504, 520, 522, 524].includes(res.status)) {
+    try {
+      const fallbackRes = await authFetch(`${BASE}/api/projects/${projectId}/episodes`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (fallbackRes.ok) {
+        const fallbackText = (await fallbackRes.text()).trim();
+        const episodes = fallbackText ? JSON.parse(fallbackText) : [];
+        if (Array.isArray(episodes) && episodes.length > 0) {
+          invalidate(K.episodes(projectId));
+          return {
+            items: episodes,
+            recovered_from_timeout: true,
+            recovered_status: res.status,
+          };
+        }
+      }
+    } catch {
+      // 保留原始错误继续向上抛出
+    }
+  }
+
+  const err = new Error(
+    parsed?.detail
+      || parsed?.message
+      || (trimmedText ? trimmedText.slice(0, 200) : `HTTP ${res.status}`)
+  );
+  err.status = res.status;
+  err.response = parsed;
+  throw err;
 }
 
 export async function apiExtractSubjectsFromScript(projectId) {

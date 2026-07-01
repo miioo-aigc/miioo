@@ -18,14 +18,20 @@ export const TTL = {
 // ── L1 静态配置（medium: 'local'，长缓存 + SWR）────────────────────────────────
 export const K = {
   // 模型列表，按 category 区分
-  models: (category) => `models:${category || 'all'}`,
+  models: (category, { availableOnly = true } = {}) => `models:${availableOnly ? 'available' : 'all'}:${category || 'all'}`,
   defaultModels: () => 'models:defaults',
+  adminModelVisibility: (params = {}) => `admin-model-visibility:${stable(params)}`,
+  adminModelVisibilityPrefix: () => 'admin-model-visibility:',
   visualStyles: () => 'visual-styles',
   voiceLibrary: (params = {}) => `voices-library:${stable(params)}`,
+  voiceLibraryPrefix: () => 'voices-library:',
   voices: (params = {}) => `voices:${stable(params)}`,
   officialVoices: (params = {}) => `voices-official:${stable(params)}`,
   cardVisibility: () => 'card-visibility',
   banner: () => 'banner',
+  adminCommunityQr: () => 'admin-community-qr',
+  adminAccounts: (params = {}) => `admin-accounts:${stable(params)}`,
+  adminAccountsPrefix: () => 'admin-accounts:',
 
   // ── L2 项目内容（medium: 'local'，SWR + 写失效）──────────────────────────────
   project: (id) => `project:${id}`,

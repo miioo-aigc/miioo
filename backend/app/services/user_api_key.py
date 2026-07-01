@@ -6,6 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.model_config import ModelConfig
 from app.models.provider import ApiProvider
 from app.models.user import User
+from app.services.admin_model_visibility import (
+    apply_visibility_filter,
+    raise_if_model_hidden_for_user,
+)
 from app.services.aiping_presets import AIPING_BASE_URL
 from app.services.fal_presets import FAL_BASE_URL
 from app.services.minimax_presets import MINIMAX_BASE_URL
@@ -153,6 +157,12 @@ async def _get_shared_admin_model_provider_row(
         )
         .order_by(ModelConfig.is_default.desc(), ApiProvider.updated_at.desc(), ModelConfig.created_at.asc())
     )
+    query = apply_visibility_filter(
+        query,
+        provider_type_column=ApiProvider.provider_type,
+        model_id_column=ModelConfig.model_id,
+        category_column=ModelConfig.category,
+    )
 
     if normalized_model and normalized_model not in legacy_requested_models:
         query = query.where(ModelConfig.model_id == normalized_model)
@@ -199,6 +209,12 @@ async def _get_user_model_provider_row(
             ModelConfig.id.asc(),
         )
     )
+    base_query = apply_visibility_filter(
+        base_query,
+        provider_type_column=ApiProvider.provider_type,
+        model_id_column=ModelConfig.model_id,
+        category_column=ModelConfig.category,
+    )
     deprecated_models = LEGACY_REQUESTED_MODEL_FALLBACKS.get(category, set())
     if deprecated_models:
         base_query = base_query.where(~ModelConfig.model_id.in_(deprecated_models))
@@ -220,6 +236,12 @@ async def _get_user_model_provider_row(
         fallback_rows = fallback_result.all()
         row = fallback_rows[0] if fallback_rows else None
     if not row:
+        await raise_if_model_hidden_for_user(
+            db,
+            user_id=user_id,
+            category=category,
+            requested_model=normalized_model,
+        )
         row = await _get_shared_admin_model_provider_row(
             db,
             category=category,

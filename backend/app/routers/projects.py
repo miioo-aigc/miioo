@@ -28,6 +28,7 @@ from app.schemas.project_overview import (
     StoryboardOperationRecord,
 )
 from app.services.asset_recycle import apply_asset_visibility
+from app.services.media_download_filenames import build_download_filename, guess_extension, sanitize_filename_segment
 from app.services.media_download_runtime import MediaDownloadAccessError, resolve_verified_download_target_from_url
 from app.services.media_fetch import read_media_bytes
 from app.services.media_storage import (
@@ -48,10 +49,7 @@ router = APIRouter()
 
 
 def _sanitize_zip_segment(value: str | None) -> str:
-    raw = (value or "").strip()
-    cleaned = "".join(ch if ch not in '<>:"/\\|?*' else "_" for ch in raw)
-    collapsed = " ".join(cleaned.split())
-    return collapsed[:80] or "untitled"
+    return sanitize_filename_segment(value, fallback="untitled", limit=80)
 
 
 async def _persist_project_cover_url(cover_url: str | None, *, user_id: UUID) -> str | None:
@@ -82,23 +80,25 @@ async def _read_media_bytes(url: str, timeout: float = 60.0) -> bytes:
     )
 
 
-def _guess_asset_extension(asset: Asset) -> str:
-    parsed = urlparse(asset.file_url)
-    suffix = Path(unquote(parsed.path or asset.file_url)).suffix.lower()
-    if suffix:
-        return suffix
-    if asset.asset_type == "image":
-        return ".png"
-    if asset.asset_type == "audio":
-        return ".mp3"
-    if asset.asset_type == "video":
-        return ".mp4"
-    return ".bin"
-
-
 def _build_project_asset_download_filename(asset: Asset, fallback_index: int) -> str:
-    safe_name = _sanitize_zip_segment(asset.name or f"asset_{fallback_index}")
-    return f"{safe_name}_{fallback_index}{_guess_asset_extension(asset)}"
+    metadata = asset.metadata_json if isinstance(asset.metadata_json, dict) else {}
+    return build_download_filename(
+        prefix="项目资产",
+        prompt=(
+            metadata.get("input_prompt"),
+            asset.prompt,
+            metadata.get("prompt_resolved"),
+            metadata.get("prompt_raw"),
+            metadata.get("original_prompt"),
+            metadata.get("text"),
+        ),
+        preferred_name=asset.name,
+        fallback_name=metadata.get("episode_label") or metadata.get("episodeLabel") or asset.category,
+        sequence=fallback_index,
+        url=asset.file_url,
+        asset_type=asset.asset_type,
+        extension=guess_extension(asset.file_url, asset.asset_type),
+    )
 
 
 def _resolve_project_asset_media_fields(asset: Asset) -> dict[str, str | bool | None]:

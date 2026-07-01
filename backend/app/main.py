@@ -8,7 +8,7 @@ from app.middleware import RequestContextMiddleware
 from app.observability import initialize_logging
 from app.services.background_runtime import ensure_background_runtime_ready, shutdown_background_jobs
 from app.services.runtime_state import ensure_runtime_state_ready
-from app.routers import auth, users, providers, models, projects, llm, episodes, subjects, upload, assets, storyboards, tasks, voices, audio_clips, video_clips, compositions, notifications, exports, images, user_styles, workbench, creation, project_scripts, minimax, api_config_banner, api_config_card_visibility, community_qr_config, reference_audio_library, project_templates, media_access
+from app.routers import auth, users, providers, models, projects, llm, episodes, subjects, upload, assets, storyboards, tasks, voices, audio_clips, video_clips, compositions, notifications, exports, images, user_styles, workbench, creation, project_scripts, minimax, api_config_banner, api_config_card_visibility, admin_model_visibility, community_qr_config, reference_audio_library, project_templates, media_access, live_materials
 from app.utils.cors import build_allowed_origins
 
 initialize_logging()
@@ -40,6 +40,7 @@ OPENAPI_TAGS = [
     {"name": "users", "description": "个人资料维护，包括昵称头像更新、手机号换绑、微信绑定解绑与账号注销。"},
     {"name": "api-config-banner", "description": "API 配置弹窗推荐图区主图配置，普通用户可读、管理员可维护。"},
     {"name": "api-config-card-visibility", "description": "API 配置页内置服务商卡片展示开关，仅影响前端展示，不影响 provider 实际可用性。"},
+    {"name": "admin-model-visibility", "description": "管理员模型开放控制，决定普通用户是否能看到并使用具体模型。"},
     {"name": "community-qr-config", "description": "首页社群二维码配置，匿名可读，管理员可替换上传后的二维码图。"},
     {"name": "providers", "description": "服务商配置与内置一键 setup 能力，供 API 配置弹窗和模型能力初始化使用。"},
     {"name": "models", "description": "模型列表、启停、默认模型管理。前端通常按 `category` 读取可用模型。"},
@@ -65,6 +66,7 @@ OPENAPI_TAGS = [
     {"name": "images", "description": "通用图片上传入口，常用于项目封面、二维码或其它非业务专属图片上传。"},
     {"name": "user-styles", "description": "用户视觉风格接口，覆盖内置风格选项聚合和自定义风格 CRUD。"},
     {"name": "creation", "description": "创作页统一入口，覆盖图片、视频、音频生成及其任务查询。"},
+    {"name": "live-materials", "description": "真人素材认证、真人素材组与真人素材资产管理，用于 Seedance 真人素材工作流。"},
     {"name": "media-access", "description": "统一媒体受控下载入口，校验短时 token 后跳转到真实媒体地址。"},
 ]
 
@@ -105,6 +107,7 @@ def create_app() -> FastAPI:
     app.include_router(users.router, prefix="/api/users", tags=["users"])
     app.include_router(api_config_banner.router, prefix="/api/api-config/banner", tags=["api-config-banner"])
     app.include_router(api_config_card_visibility.router, prefix="/api/api-config/card-visibility", tags=["api-config-card-visibility"])
+    app.include_router(admin_model_visibility.router, prefix="/api/admin/model-visibility", tags=["admin-model-visibility"])
     app.include_router(community_qr_config.router, prefix="/api/community/qr-config", tags=["community-qr-config"])
     app.include_router(providers.router, prefix="/api/providers", tags=["providers"])
     app.include_router(models.router, prefix="/api/models", tags=["models"])
@@ -130,6 +133,7 @@ def create_app() -> FastAPI:
     app.include_router(images.router, prefix="/api/images", tags=["images"])
     app.include_router(user_styles.router, prefix="/api/user-styles", tags=["user-styles"])
     app.include_router(creation.router, prefix="/api/creation", tags=["creation"])
+    app.include_router(live_materials.router, prefix="/api/live-materials", tags=["live-materials"])
     app.include_router(media_access.router, prefix="/api/media", tags=["media-access"])
 
     # Production should keep `/uploads` on Nginx, but local dev still needs an

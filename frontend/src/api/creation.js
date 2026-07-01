@@ -1,7 +1,117 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 import { authFetch } from './request.js';
+import { throwResponseError } from './error.js';
 import { toAbsoluteUrl } from '../utils/imageUrl.js';
+
+function isPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeGenerationMode(value) {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase().replace(/-/g, '_');
+  if (!normalized) return undefined;
+  if (normalized === 'main') return 'single';
+  if (normalized === 'multi_view') return 'three_view';
+  return normalized;
+}
+
+function normalizeExpandOptions(params = {}) {
+  const options = isPlainObject(params.expand_options)
+    ? { ...params.expand_options }
+    : isPlainObject(params.expandOptions)
+      ? { ...params.expandOptions }
+      : {};
+  const mappings = [
+    ['up_expansion_ratio', params.up_expansion_ratio ?? params.upExpansionRatio],
+    ['down_expansion_ratio', params.down_expansion_ratio ?? params.downExpansionRatio],
+    ['left_expansion_ratio', params.left_expansion_ratio ?? params.leftExpansionRatio],
+    ['right_expansion_ratio', params.right_expansion_ratio ?? params.rightExpansionRatio],
+  ];
+  mappings.forEach(([key, value]) => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      options[key] = value;
+    }
+  });
+  return Object.keys(options).length > 0 ? options : undefined;
+}
+
+function normalizeSubjectCompletionOptions(params = {}) {
+  const options = isPlainObject(params.subject_completion_options)
+    ? { ...params.subject_completion_options }
+    : isPlainObject(params.subjectCompletionOptions)
+      ? { ...params.subjectCompletionOptions }
+      : {};
+  const elementFrontalImage = params.element_frontal_image ?? params.elementFrontalImage;
+  if (typeof elementFrontalImage === 'string' && elementFrontalImage.trim()) {
+    options.element_frontal_image = toAbsoluteUrl(elementFrontalImage.trim());
+  }
+  return Object.keys(options).length > 0 ? options : undefined;
+}
+
+function normalizeProviderParams(params = {}) {
+  const base = isPlainObject(params.provider_params)
+    ? { ...params.provider_params }
+    : isPlainObject(params.providerParams)
+      ? { ...params.providerParams }
+      : {};
+  const liveMaterial = isPlainObject(params.live_material)
+    ? params.live_material
+    : isPlainObject(params.liveMaterial)
+      ? params.liveMaterial
+      : null;
+  if (liveMaterial) {
+    const assetIds = Array.isArray(liveMaterial.asset_ids)
+      ? liveMaterial.asset_ids
+      : Array.isArray(liveMaterial.assetIds)
+        ? liveMaterial.assetIds
+        : [];
+    const normalizedAssetIds = assetIds
+      .map((item) => String(item || '').trim())
+      .filter(Boolean);
+    const groupId = String(liveMaterial.group_id ?? liveMaterial.groupId ?? '').trim();
+    if (groupId || normalizedAssetIds.length > 0) {
+      base.live_material = {
+        group_id: groupId || undefined,
+        asset_ids: normalizedAssetIds,
+        group_type: String(liveMaterial.group_type ?? liveMaterial.groupType ?? 'LivenessFace').trim() || 'LivenessFace',
+      };
+    }
+  }
+  return Object.keys(base).length > 0 ? base : undefined;
+}
+
+function normalizeReferenceImages(params = {}) {
+  const directImages = Array.isArray(params.reference_images)
+    ? params.reference_images
+    : Array.isArray(params.referenceImages)
+      ? params.referenceImages
+      : [];
+  return directImages
+    .map((item) => {
+      if (typeof item === 'string') return toAbsoluteUrl(item);
+      if (item && typeof item === 'object' && typeof item.url === 'string') return toAbsoluteUrl(item.url);
+      return null;
+    })
+    .filter(Boolean);
+}
+
+function normalizeMultiPrompt(params = {}) {
+  const prompts = Array.isArray(params.multi_prompt)
+    ? params.multi_prompt
+    : Array.isArray(params.multiPrompt)
+      ? params.multiPrompt
+      : null;
+  return prompts && prompts.length > 0 ? prompts : undefined;
+}
+
+async function readJson(res, fallback, options) {
+  if (!res.ok) {
+    await throwResponseError(res, fallback || `请求失败（${res.status}）`, options);
+  }
+  return res.json();
+}
 
 // ── 创作会话（Session）───────────────────────────────────────────────────────
 
@@ -123,7 +233,7 @@ export async function apiGenerateCreationImages(data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return readJson(res, `图片生成失败（${res.status}）`, { showDialog: true, title: '图片生成失败' });
 }
 
 export async function apiGenerateShotImage(shotId, data) {
@@ -132,7 +242,7 @@ export async function apiGenerateShotImage(shotId, data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return readJson(res, `图片生成失败（${res.status}）`, { showDialog: true, title: '图片生成失败' });
 }
 
 export async function apiDeleteCreationImage(imageId) {
@@ -158,13 +268,13 @@ export async function apiBatchDeleteImages(ids) {
   return res.json();
 }
 
-export async function apiBatchDownloadImages(ids) {
+export async function apiBatchDownloadImages(ids, { rawResponse = false } = {}) {
   const res = await authFetch(`${BASE}/api/creation/images/batch-download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids, asset_ids: ids }),
   });
-  return res.blob();
+  return rawResponse ? res : res.blob();
 }
 
 export async function apiBatchFavoriteImages(ids, liked) {
@@ -176,11 +286,11 @@ export async function apiBatchFavoriteImages(ids, liked) {
   return res.json();
 }
 
-export async function apiDownloadCreationImage(imageId) {
+export async function apiDownloadCreationImage(imageId, { rawResponse = false } = {}) {
   const res = await authFetch(`${BASE}/api/creation/images/${imageId}/download`, {
     headers: { 'Content-Type': 'application/json' },
   });
-  return res.blob();
+  return rawResponse ? res : res.blob();
 }
 
 // ── 创作视频 ──────────────────────────────────────────────────────────────────
@@ -201,7 +311,7 @@ export async function apiGenerateCreationVideo(data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return readJson(res, `视频生成失败（${res.status}）`, { showDialog: true, title: '视频生成失败' });
 }
 
 export async function apiGenerateShotVideo(shotId, data) {
@@ -210,7 +320,7 @@ export async function apiGenerateShotVideo(shotId, data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return readJson(res, `视频生成失败（${res.status}）`, { showDialog: true, title: '视频生成失败' });
 }
 
 export async function apiDeleteCreationVideo(videoId) {
@@ -224,12 +334,7 @@ export async function apiToggleVideoFavorite(videoId, liked) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ liked }),
   });
-  if (!res.ok) {
-    const err = new Error(`toggleVideoFavorite failed: ${res.status}`);
-    err.status = res.status;
-    throw err;
-  }
-  return res.json();
+  return readJson(res, `收藏视频失败（${res.status}）`);
 }
 
 export async function apiBatchDeleteVideos(ids) {
@@ -241,20 +346,20 @@ export async function apiBatchDeleteVideos(ids) {
   return res.json();
 }
 
-export async function apiBatchDownloadVideos(ids) {
+export async function apiBatchDownloadVideos(ids, { rawResponse = false } = {}) {
   const res = await authFetch(`${BASE}/api/creation/videos/batch-download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids, asset_ids: ids }),
   });
-  return res.blob();
+  return rawResponse ? res : res.blob();
 }
 
-export async function apiDownloadCreationVideo(videoId) {
+export async function apiDownloadCreationVideo(videoId, { rawResponse = false } = {}) {
   const res = await authFetch(`${BASE}/api/creation/videos/${videoId}/download`, {
     headers: { 'Content-Type': 'application/json' },
   });
-  return res.blob();
+  return rawResponse ? res : res.blob();
 }
 
 // ── 创作音频 ──────────────────────────────────────────────────────────────────
@@ -265,7 +370,7 @@ export async function apiGenerateCreationAudio(data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return readJson(res, `音频生成失败（${res.status}）`, { showDialog: true, title: '音频生成失败' });
 }
 
 export async function apiGenerateShotAudio(shotId, data) {
@@ -274,7 +379,7 @@ export async function apiGenerateShotAudio(shotId, data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return readJson(res, `音频生成失败（${res.status}）`, { showDialog: true, title: '音频生成失败' });
 }
 
 export async function apiListCreationAudios({ page, page_size, is_favorite, search } = {}) {
@@ -312,20 +417,20 @@ export async function apiBatchDeleteAudios(audio_ids) {
   });
 }
 
-export async function apiBatchDownloadAudios(audio_ids) {
+export async function apiBatchDownloadAudios(audio_ids, { rawResponse = false } = {}) {
   const res = await authFetch(`${BASE}/api/creation/audios/batch-download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ audio_ids }),
   });
-  return res.blob();
+  return rawResponse ? res : res.blob();
 }
 
-export async function apiDownloadCreationAudio(audioId) {
+export async function apiDownloadCreationAudio(audioId, { rawResponse = false } = {}) {
   const res = await authFetch(`${BASE}/api/creation/audios/${audioId}/download`, {
     headers: { 'Content-Type': 'application/json' },
   });
-  return res.blob();
+  return rawResponse ? res : res.blob();
 }
 
 // ── 创作任务轮询 ──────────────────────────────────────────────────────────────
@@ -519,7 +624,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
 
   // 上传参考文件（按媒体类型分类：图片 / 视频 / 音频）
   const files = params.files ? (Array.isArray(params.files) ? params.files : [params.files]) : [];
-  const refUrls = [];
+  const refUrls = normalizeReferenceImages(params);
   const refAssetIds = [];
   let uploadedRefVideoUrl;
   let uploadedRefAudioUrl;
@@ -688,6 +793,10 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       category: params.category || undefined,
       asset_name: params.asset_name || undefined,
       watermark: params.watermark || undefined,
+      generation_mode: normalizeGenerationMode(params.generation_mode ?? params.mode),
+      expand_options: normalizeExpandOptions(params),
+      subject_completion_options: normalizeSubjectCompletionOptions(params),
+      provider_params: normalizeProviderParams(params),
       save_to_assets: params.save_to_assets ?? true,
       inherit_project_style: params.inherit_project_style ?? false,
       session_id: uploadContext.session_id,
@@ -730,8 +839,14 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
 
   // ── 视频生成 ────────────────────────────────────────────────────────────
   // 有参考图/参考视频时强制 generation_mode=full，不让后端自行推断（资产库选图时后端会错误设为 text_to_video）
-  const hasRefMedia = refUrls.length > 0 || refAssetIds.length > 0 || uploadedRefVideoUrl || uploadedRefAudioUrl;
-  const effectiveGenerationMode = hasRefMedia ? 'full' : (params.generation_mode || undefined);
+  const hasRefMedia = refUrls.length > 0
+    || refAssetIds.length > 0
+    || uploadedRefVideoUrl
+    || uploadedRefAudioUrl
+    || params.reference_video_url
+    || params.reference_audio_url;
+  const explicitGenerationMode = normalizeGenerationMode(params.generation_mode);
+  const effectiveGenerationMode = explicitGenerationMode || (hasRefMedia ? 'full' : undefined);
 
   // ── @ 数字资产绑定（attachments）────────────────────────────────────────
   // 后端视频生成消费 @ 参考图的真正入口是 attachments（CreationAssetBinding[]），
@@ -771,7 +886,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     duration: parseInt(params.videoDuration) || 5,
     reference_mode: params.refMode || undefined,
     generation_mode: effectiveGenerationMode,
-    with_audio: params.soundEnabled ?? false,
+    with_audio: params.with_audio ?? params.soundEnabled ?? false,
     // 首尾帧（URL + asset_id 双通道，后端优先看 asset_id）
     first_frame_url: firstFrameUrl || params.firstFrameUrl || undefined,
     last_frame_url: lastFrameUrl || params.lastFrameUrl || undefined,
@@ -784,6 +899,10 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     // 视频/音频参考的独立 URL 字段（兼容后端既有取数口径）
     reference_video_url: uploadedRefVideoUrl ? toAbsoluteUrl(uploadedRefVideoUrl) : (params.reference_video_url ? toAbsoluteUrl(params.reference_video_url) : undefined),
     reference_audio_url: uploadedRefAudioUrl ? toAbsoluteUrl(uploadedRefAudioUrl) : (params.reference_audio_url ? toAbsoluteUrl(params.reference_audio_url) : undefined),
+    multi_shot: typeof params.multi_shot === 'boolean' ? params.multi_shot : undefined,
+    shot_type: typeof params.shot_type === 'string' && params.shot_type.trim() ? params.shot_type.trim() : undefined,
+    multi_prompt: normalizeMultiPrompt(params),
+    provider_params: normalizeProviderParams(params),
     watermark: params.watermark || undefined,
     session_id: uploadContext.session_id,
     shot_id: uploadContext.shot_id,

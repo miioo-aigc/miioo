@@ -1,5 +1,6 @@
 import io
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote, unquote, urlparse
 from uuid import UUID
 
@@ -527,14 +528,30 @@ def _append_pure_white_background_suffix(prompt: str, subject: Subject) -> str:
     )
 
 
+def _resolve_subject_provider_generation_mode(generation_mode: str | None) -> str | None:
+    normalized = _normalize_subject_generation_mode(generation_mode)
+    if normalized in {"three_view", "single"}:
+        return None
+    return normalized
+
+
 async def _get_reference_image_urls_for_generation(
     subject_id: UUID,
     reference_mode: str | None,
+    request_reference_images: list[str] | None,
     db: AsyncSession,
 ) -> list[str]:
     normalized_mode = (reference_mode or "auto").strip().lower()
     if normalized_mode == "ignore_reference":
         return []
+
+    normalized_request_reference_images = [
+        str(item).strip()
+        for item in (request_reference_images or [])
+        if str(item).strip()
+    ]
+    if normalized_request_reference_images:
+        return normalized_request_reference_images
 
     references = await _get_reference_images(subject_id, db)
     urls = [item.file_url for item in references if item.file_url]
@@ -556,8 +573,10 @@ async def _create_candidate_image_and_asset(
     watermark: bool | None,
     ratio: str | None,
     resolution: str | None,
+    input_prompt: str | None,
     generation_mode: str | None,
     reference_mode: str | None,
+    reference_image_urls: list[str] | None,
     db: AsyncSession,
 ) -> tuple[SubjectImage, Asset]:
     derivative_bundle = build_image_derivative_bundle(
@@ -594,11 +613,13 @@ async def _create_candidate_image_and_asset(
         model=model,
         size=size,
         is_primary=is_primary,
+        reference_image_urls=reference_image_urls or None,
         metadata_json={
             "subject_asset_role": "candidate",
             "watermark": watermark,
             "ratio": ratio,
             "resolution": resolution,
+            "input_prompt": input_prompt or prompt,
             "generation_mode": generation_mode,
             "reference_mode": reference_mode,
             **derivative_bundle["metadata_updates"],
@@ -1068,6 +1089,10 @@ class GenerateImageRequest(BaseModel):
     imageCount: int | None = None
     generation_mode: str | None = None
     reference_mode: str | None = None
+    reference_images: list[str] | None = None
+    expand_options: dict[str, Any] | None = None
+    subject_completion_options: dict[str, Any] | None = None
+    provider_params: dict[str, Any] | None = None
 
     def resolved_count(self) -> int:
         return self.image_count or self.imageCount or self.count or 1
@@ -1249,26 +1274,39 @@ async def generate_subject_image(
         requested_value=req.watermark,
         default_value=default_image_watermark,
     )
+    reference_images = await _get_reference_image_urls_for_generation(
+        subject.id,
+        req.reference_mode,
+        req.reference_images,
+        db,
+    )
+    provider_generation_mode = _resolve_subject_provider_generation_mode(normalized_generation_mode)
     validated = validate_image_request(
         model=model,
         size=req.size,
         aspect_ratio=req.ratio,
         resolution=req.resolution,
         count=req.resolved_count(),
+        reference_images=reference_images,
         watermark=watermark,
+        generation_mode=provider_generation_mode,
     )
+    reference_images = validated["reference_images"]
+    effective_generation_mode = (
+        validated["generation_mode"]
+        or ("reference_image" if reference_images else "text_to_image")
+    )
+    normalized_subject_completion_options = dict(req.subject_completion_options or {})
+    if effective_generation_mode == "subject_completion" and "element_frontal_image" not in normalized_subject_completion_options:
+        element_frontal_image = reference_images[0] if reference_images else subject.image_url
+        if element_frontal_image:
+            normalized_subject_completion_options["element_frontal_image"] = element_frontal_image
 
     enhanced_prompt = await append_visual_styles(prompt, [project.visual_style], user.id, db)
     style_parts = _build_subject_style_suffix(subject, normalized_generation_mode)
     if style_parts:
         enhanced_prompt = f"{enhanced_prompt}, {', '.join(style_parts)}"
     enhanced_prompt = _append_pure_white_background_suffix(enhanced_prompt, subject)
-
-    reference_images = await _get_reference_image_urls_for_generation(
-        subject.id,
-        req.reference_mode,
-        db,
-    )
 
     try:
         urls = await image_gen_service.generate(
@@ -1282,6 +1320,10 @@ async def generate_subject_image(
             reference_images=reference_images,
             n=validated["count"],
             watermark=watermark,
+            generation_mode=effective_generation_mode,
+            expand_options=req.expand_options,
+            subject_completion_options=normalized_subject_completion_options or None,
+            provider_params=req.provider_params,
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"图片生成失败: {str(e)}")
@@ -1315,8 +1357,10 @@ async def generate_subject_image(
             watermark=watermark,
             ratio=validated["aspect_ratio"],
             resolution=validated["resolution"],
+            input_prompt=user_input_prompt,
             generation_mode=normalized_generation_mode,
             reference_mode=req.reference_mode,
+            reference_image_urls=reference_images,
             db=db,
         )
         next_asset.metadata_json = {
@@ -1542,6 +1586,10 @@ class BatchGenerateRequest(BaseModel):
     imageCount: int | None = None
     generation_mode: str | None = None
     reference_mode: str | None = None
+    reference_images: list[str] | None = None
+    expand_options: dict[str, Any] | None = None
+    subject_completion_options: dict[str, Any] | None = None
+    provider_params: dict[str, Any] | None = None
 
     def resolved_count(self) -> int:
         return self.image_count or self.imageCount or self.count or 1
@@ -1613,8 +1661,10 @@ async def batch_generate_images(
             reference_images = await _get_reference_image_urls_for_generation(
                 subject.id,
                 req.reference_mode,
+                req.reference_images,
                 db,
             )
+            provider_generation_mode = _resolve_subject_provider_generation_mode(normalized_generation_mode)
             validated = validate_image_request(
                 model=model,
                 size=req.size,
@@ -1623,8 +1673,18 @@ async def batch_generate_images(
                 count=req.resolved_count(),
                 reference_images=reference_images,
                 watermark=watermark,
+                generation_mode=provider_generation_mode,
             )
             reference_images = validated["reference_images"]
+            effective_generation_mode = (
+                validated["generation_mode"]
+                or ("reference_image" if reference_images else "text_to_image")
+            )
+            normalized_subject_completion_options = dict(req.subject_completion_options or {})
+            if effective_generation_mode == "subject_completion" and "element_frontal_image" not in normalized_subject_completion_options:
+                element_frontal_image = reference_images[0] if reference_images else subject.image_url
+                if element_frontal_image:
+                    normalized_subject_completion_options["element_frontal_image"] = element_frontal_image
 
             urls = await image_gen_service.generate(
                 prompt=enhanced_prompt,
@@ -1637,6 +1697,10 @@ async def batch_generate_images(
                 reference_images=reference_images,
                 n=validated["count"],
                 watermark=watermark,
+                generation_mode=effective_generation_mode,
+                expand_options=req.expand_options,
+                subject_completion_options=normalized_subject_completion_options or None,
+                provider_params=req.provider_params,
             )
             if not urls:
                 results.append(BatchGenerateResult(subject_id=sid, success=False, error="未返回结果"))

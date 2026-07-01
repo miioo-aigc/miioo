@@ -97,7 +97,7 @@ async def ensure_runtime_schema_compatibility() -> None:
                 SELECT table_name, column_name
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
-                  AND table_name IN ('project_script_histories', 'api_providers', 'voices', 'projects', 'users', 'api_config_banners', 'api_config_card_visibility', 'community_qr_configs', 'reference_audio_library_items')
+                  AND table_name IN ('project_script_histories', 'api_providers', 'voices', 'projects', 'users', 'api_config_banners', 'api_config_card_visibility', 'community_qr_configs', 'reference_audio_library_items', 'live_material_groups', 'live_material_assets')
                 """
             )
         )
@@ -515,6 +515,93 @@ async def ensure_runtime_schema_compatibility() -> None:
                         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
                     )
+                    """
+                )
+            )
+
+        live_material_group_columns = table_columns.get("live_material_groups", set())
+        if not live_material_group_columns and "live_material_groups" not in table_columns:
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE live_material_groups (
+                        id UUID PRIMARY KEY,
+                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        upstream_group_id VARCHAR(120) NOT NULL,
+                        provider_type VARCHAR(40) NOT NULL DEFAULT 'onelink',
+                        group_type VARCHAR(40) NOT NULL DEFAULT 'LivenessFace',
+                        name VARCHAR(120) NULL,
+                        description TEXT NULL,
+                        auth_status VARCHAR(40) NOT NULL DEFAULT 'verified',
+                        last_result_code VARCHAR(40) NULL,
+                        metadata_json JSON NULL,
+                        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_live_material_groups_user_id
+                    ON live_material_groups (user_id)
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_live_material_groups_upstream_group_id
+                    ON live_material_groups (upstream_group_id)
+                    """
+                )
+            )
+
+        live_material_asset_columns = table_columns.get("live_material_assets", set())
+        if not live_material_asset_columns and "live_material_assets" not in table_columns:
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE live_material_assets (
+                        id UUID PRIMARY KEY,
+                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        group_id UUID NOT NULL REFERENCES live_material_groups(id) ON DELETE CASCADE,
+                        upstream_asset_id VARCHAR(120) NOT NULL,
+                        asset_type VARCHAR(20) NOT NULL,
+                        name VARCHAR(120) NULL,
+                        status VARCHAR(40) NOT NULL DEFAULT 'Processing',
+                        source_url VARCHAR(1000) NULL,
+                        preview_url VARCHAR(1000) NULL,
+                        error_message TEXT NULL,
+                        metadata_json JSON NULL,
+                        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_live_material_assets_user_id
+                    ON live_material_assets (user_id)
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_live_material_assets_group_id
+                    ON live_material_assets (group_id)
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_live_material_assets_upstream_asset_id
+                    ON live_material_assets (upstream_asset_id)
                     """
                 )
             )

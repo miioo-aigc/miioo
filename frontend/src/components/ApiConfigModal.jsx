@@ -2,6 +2,8 @@ import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, u
 import Toggle from './Toggle';
 import ConfirmDialog from './ConfirmDialog';
 import { apiOneClickSetup, apiCreateModel, apiListModels, apiUpdateModel, apiGetBanner, apiListProviders, apiTestConnection, apiUpdateProvider, apiGetCardVisibility } from '../api/config';
+import { presentPromotedError } from '../api/error';
+import { normalizeImageUrl } from '../utils/imageUrl';
 import bizQrCodeImg from '../assets/biz-qr-code.png';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -87,9 +89,13 @@ function createEmptyModelsByTab() {
   return Object.fromEntries(MODEL_TABS.map((tab) => [tab, []]));
 }
 
+function countModelsByTab(modelsByTab) {
+  return Object.values(modelsByTab ?? {}).reduce((sum, arr) => sum + arr.length, 0);
+}
+
 function createDefaultState() {
   return {
-    mainConfigured: false,
+    onelinkConfigured: false,
     childView: null,
     onelinkEnabled: false,
     onelinkProviderId: null,
@@ -412,7 +418,7 @@ function RecommendationBanner({ bannerData }) {
   if (!image_url) return null;
 
   const tutorialUrl = ''; // 教程链接，前端写死，暂时留空
-  const fullImageUrl = image_url.startsWith('http') ? image_url : `${import.meta.env.VITE_API_BASE_URL}${image_url}`;
+  const fullImageUrl = normalizeImageUrl(image_url) || image_url;
 
   return (
     <div
@@ -488,6 +494,7 @@ function UnconfiguredProviderCard({ name, onConfigure }) {
 }
 
 function ConfiguredProviderCard({ title, modelCount, date, enabled, onEdit, onTest, onToggle, deletable = false, onDelete }) {
+  const hasAvailableModels = Number(modelCount || 0) > 0;
   return (
     <div className={CARD_BASE} onClick={onEdit}>
       <div className="flex items-center gap-3 self-stretch justify-between">
@@ -499,7 +506,12 @@ function ConfiguredProviderCard({ title, modelCount, date, enabled, onEdit, onTe
         </div>
       </div>
       <div className="flex flex-col items-start gap-3 self-stretch flex-1">
-        <InfoRow label="已配置模型" value={`${modelCount}个`} />
+        <InfoRow label="可用模型" value={`${modelCount}个`} />
+        {!hasAvailableModels ? (
+          <div className="text-font-size-12 leading-[18px] text-text-hint" style={{ fontFamily: FONT }}>
+            API 已保存，当前管理员未开放可用模型
+          </div>
+        ) : null}
         <InfoRow label="添加时间" value={date} />
       </div>
       <div
@@ -542,7 +554,7 @@ function ConfiguredProviderCard({ title, modelCount, date, enabled, onEdit, onTe
 // }
 
 function MainModal({
-  configured,
+  onelinkConfigured,
   onelinkEnabled,
   onelinkModelsByTab,
   onelinkCreatedAt,
@@ -552,7 +564,7 @@ function MainModal({
   onEditOneLink,
   onToggleOneLink,
   onTestOneLink,
-  availableModelCount = 23,
+  availableModelCount = 0,
   bannerData,
   otherProviders = [],
   onEditOtherProvider,
@@ -581,10 +593,10 @@ function MainModal({
           </div>
           <div className="flex flex-wrap items-start gap-[16px] self-stretch">
             <div className="w-[calc((100%-32px)/3)]">
-              {configured ? (
+              {onelinkConfigured ? (
                 <ConfiguredProviderCard
                   title="OneLinkAI"
-                  modelCount={Object.values(onelinkModelsByTab ?? {}).reduce((sum, arr) => sum + arr.length, 0)}
+                  modelCount={availableModelCount}
                   date={onelinkCreatedAt || '---'}
                   enabled={onelinkEnabled}
                   onEdit={onEditOneLink}
@@ -601,7 +613,7 @@ function MainModal({
                 {provider.configured ? (
                   <ConfiguredProviderCard
                     title={provider.name}
-                    modelCount={Object.values(provider.modelsByTab ?? {}).reduce((sum, arr) => sum + arr.length, 0)}
+                    modelCount={countModelsByTab(provider.modelsByTab)}
                     date={provider.createdAt}
                     enabled={provider.enabled}
                     onEdit={() => onEditOtherProvider(provider.id)}
@@ -986,22 +998,30 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   const [state, setState] = useState(createDefaultState);
   const [toasts, setToasts] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [availableModelCount, setAvailableModelCount] = useState(23);
+  const [availableModelCount, setAvailableModelCount] = useState(0);
   const [bannerData, setBannerData] = useState(null);
 
   const showToast = useCallback((type, message) => {
+    if (type === 'error' && presentPromotedError(message, { title: '操作失败' })) {
+      return;
+    }
     const id = Date.now();
     setToasts((prev) => [...prev, { id, type, message }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
   }, []);
 
   const loadModelsFromBackend = useCallback(() => {
-    apiListModels().then((models) => {
-      if (!models || !models.length) return;
+    apiListModels({ availableOnly: true }).then((models) => {
+      const safeModels = Array.isArray(models) ? models : [];
+      let onelinkVisibleModelCount = 0;
       setState((current) => {
         const modelsByTab = createEmptyModelsByTab();
-        models.forEach((model) => {
+        const onelinkModels = safeModels.filter((model) => {
           if (current.onelinkProviderId && model.provider_id !== current.onelinkProviderId) return;
+          return true;
+        });
+        onelinkVisibleModelCount = onelinkModels.length;
+        onelinkModels.forEach((model) => {
           const tab = getCategoryTab(model.category);
           if (!tab) return;
           modelsByTab[tab].push({
@@ -1020,7 +1040,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
           ),
         };
       });
-      setAvailableModelCount(models.length);
+      setAvailableModelCount(onelinkVisibleModelCount);
     }).catch((err) => {
       console.error('加载模型列表失败:', err);
     });
@@ -1029,7 +1049,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   const initializeFromBackend = useCallback(() => {
     Promise.all([
       apiListProviders().catch(() => []),
-      apiListModels().catch(() => []),
+      apiListModels({ availableOnly: true }).catch(() => []),
       apiGetBanner().catch(() => null),
       apiGetCardVisibility().catch(() => []),
     ]).then(([providersData, allModels, bannerResult, cardVisibility]) => {
@@ -1069,7 +1089,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
       if (onelinkProvider) {
         const maskedKey = onelinkProvider.api_key_masked || '';
         onelinkUpdate = {
-          mainConfigured: true,
+          onelinkConfigured: true,
           onelinkEnabled: onelinkProvider.is_enabled ?? false,
           onelinkProviderId: onelinkProvider.id,
           onelinkCreatedAt: onelinkProvider.created_at ? onelinkProvider.created_at.slice(0, 10) : '---',
@@ -1124,7 +1144,12 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
         visibleCardKeys,
       }));
 
-      setAvailableModelCount((allModels || []).length);
+      const availableModels = Array.isArray(allModels) ? allModels : [];
+      setAvailableModelCount(
+        onelinkProvider
+          ? availableModels.filter((model) => model.provider_id === onelinkProvider.id).length
+          : 0
+      );
     }).catch(err => {
       console.warn('初始化配置失败:', err);
     });
@@ -1225,7 +1250,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
       // 只有已配置的 provider（有 UUID）才拉模型
       const provider = state.otherProviders.find(p => p.id === providerId);
       if (!provider?.configured) return;
-      apiListModels().then((models) => {
+      apiListModels({ availableOnly: true }).then((models) => {
         if (!models || !models.length) return;
         const providerModels = models.filter(m => m.provider_id === providerId);
         if (providerModels.length === 0) return;
@@ -1283,7 +1308,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
 
     // 打开配置弹窗时重新拉取该 provider 的最新模型列表
     if (provider.configured) {
-      apiListModels().then((models) => {
+      apiListModels({ availableOnly: true }).then((models) => {
         if (!models || !models.length) return;
         const providerModels = models.filter(m => m.provider_id === providerId);
         const modelsByTab = createEmptyModelsByTab();
@@ -1341,7 +1366,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
     // 保存时刷新该 provider 的模型列表以同步最新状态
     const providerId = state.activeOtherProviderId;
     if (providerId) {
-      apiListModels().then((models) => {
+      apiListModels({ availableOnly: true }).then((models) => {
         if (!models || !models.length) return;
         const providerModels = models.filter(m => m.provider_id === providerId);
         if (providerModels.length === 0) return;
@@ -1446,7 +1471,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
               showToast('success', '连接成功！');
               setState(current => ({ ...current, editProviderApiTested: true }));
               // 拉取该 provider 的模型列表
-              const models = await apiListModels().catch(() => []);
+              const models = await apiListModels({ availableOnly: true }).catch(() => []);
               const providerModels = (models || []).filter(m => m.provider_id === created.id);
               if (providerModels.length > 0) {
                 setState(current => {
@@ -1492,7 +1517,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
         showToast('success', '连接成功！');
         setState(current => ({ ...current, editProviderApiTested: true }));
         // 拉取该 provider 的模型列表
-        apiListModels().then((models) => {
+        apiListModels({ availableOnly: true }).then((models) => {
           if (!models || !models.length) return;
           const providerModels = models.filter(m => m.provider_id === providerId);
           if (providerModels.length === 0) return;
@@ -1624,7 +1649,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   const saveOneLinkConfig = () => {
     // 保存时刷新模型列表以同步最新状态
     loadModelsFromBackend();
-    setState((current) => ({ ...current, mainConfigured: true, onelinkEnabled: true, childView: null }));
+    setState((current) => ({ ...current, onelinkConfigured: true, onelinkEnabled: true, childView: null }));
     onConfigured?.();
   };
 
@@ -1973,7 +1998,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
       <div className="fixed inset-0 z-[60] flex items-center justify-center bg-surface-overlay p-[24px] backdrop-blur-[20px]" onClick={closeMain}>
         <div className="relative overflow-hidden rounded-2xl" onClick={(event) => event.stopPropagation()}>
           <MainModal
-            configured={state.mainConfigured}
+            onelinkConfigured={state.onelinkConfigured}
             onelinkEnabled={state.onelinkEnabled}
             onelinkModelsByTab={state.onelinkModelsByTab}
             onelinkCreatedAt={state.onelinkCreatedAt}
@@ -1983,7 +2008,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             onEditOneLink={openOneLinkConfig}
             onToggleOneLink={() =>
               setState((current) => {
-                if (!current.mainConfigured) return { ...current, childView: 'onelink-config' };
+                if (!current.onelinkConfigured) return { ...current, childView: 'onelink-config' };
                 return { ...current, onelinkEnabled: !current.onelinkEnabled };
               })
             }

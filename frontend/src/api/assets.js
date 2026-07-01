@@ -121,13 +121,13 @@ export async function apiExtractAssetFrame(assetId, { position }) {
   return res.json();
 }
 
-export async function apiDownloadAsset(assetId, { prefer_origin } = {}) {
+export async function apiDownloadAsset(assetId, { prefer_origin, rawResponse = false } = {}) {
   const params = new URLSearchParams();
   if (prefer_origin !== undefined) params.append('prefer_origin', prefer_origin);
   const query = params.toString();
   const url = query ? `${BASE}/api/assets/${assetId}/download?${query}` : `${BASE}/api/assets/${assetId}/download`;
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
-  return res.blob();
+  return rawResponse ? res : res.blob();
 }
 
 // ── 项目资产（按 tab key 分组） ────────────────────────────────────────────────
@@ -156,7 +156,7 @@ function normalizeAsset(item) {
     previewUrl: isVideo
       ? null
       : (normalizeImageUrl(item.preview_url || item.previewUrl || item.file_url) || null),
-    downloadUrl: item.download_url || item.downloadUrl || item.file_url || null,
+    downloadUrl: normalizeImageUrl(item.download_url || item.downloadUrl || item.file_url) || null,
     posterUrl: isVideo ? (normalizeImageUrl(item.poster_url || item.posterUrl) || null) : null,
     previewVideoUrl: isVideo
       ? (normalizeImageUrl(item.preview_video_url || item.previewVideoUrl || item.file_url) || null)

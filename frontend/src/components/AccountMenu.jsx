@@ -155,7 +155,7 @@ export default function AccountMenu({
      {/* Trigger */}
      <button
        type="button"
-      className="[font-synthesis:none] flex items-center gap-[4px] rounded-full pl-[4px] pr-[12px] py-[4px] bg-black-20 antialiased cursor-pointer border-0"
+className="[font-synthesis:none] flex items-center gap-[8px] rounded-full pl-[4px] pr-[12px] py-[4px] bg-black-20 antialiased cursor-pointer border-0"
        onClick={() => setOpen((v) => !v)}
        aria-expanded={open}
      >

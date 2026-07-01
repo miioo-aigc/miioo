@@ -1,3 +1,102 @@
+/**
+ * @file CreationPage.jsx
+ * @structure-index
+ *
+ * ─── 全局常量 & 工具函数 ───────────────────────────────────── L17–L98
+ *   FONT / FONT_MEDIUM                                         L17–L18
+ *   ALLOWED_EXTS / ALLOWED_IMAGE_EXTS / ...                   L78–L82
+ *   formatFileSize()                                           L84
+ *   truncateFileName()                                         L90
+ *   downloadImage()                                            L60
+ *
+ * ─── 动画注入函数（运行时往 <head> 写 keyframe）────────────── L100–L155
+ *   ensureRotateKeyframe()   chatbox 边框旋转动画              L104
+ *   ensureThinkingStyle()    thinking 点动画                  L122
+ *   ensureShimmerStyle()     shimmer 骨架屏动画               L139
+ *
+ * ─── 原子 UI 组件（无业务逻辑）────────────────────────────── L157–L1055
+ *   <Toast>                  全局 Toast 容器                  L158
+ *   <CopyPromptButton>       复制按钮                         L20
+ *   <StarIcon>               收藏星形图标                     L46
+ *   <UploadPlaceholder>      文件上传触发区域（含菜单）        L278
+ *   <UploadMenuItem>         上传菜单项                       L620
+ *   <FrameUploader>          首尾帧上传（视频模式专用）        L约460
+ *   <ImageViewModal>         查看图片/视频的浮层              L654
+ *   <FileCard>               已上传文件卡片（图/视/文本）      L739
+ *   <Dropdown>               通用下拉容器                     L951
+ *   <DropdownItem>           通用下拉菜单项                   L1024
+ *   <GenTypeDropdownItem>    生成类型专用菜单项               L989
+ *
+ * ─── 业务选择器组件 ────────────────────────────────────────── L1057–L2100
+ *   <GenTypeSelector>        生成类型下拉（图片/视频/配音）    L1058
+ *   <RefModeSelector>        参考模式下拉（全能/首尾帧/多帧）  L1484
+ *   <ModelSelector>          模型选择下拉                     L约1600
+ *   <ParamsSelector>         图片参数（比例/分辨率/数量）      L约1700
+ *   <VideoParamsSelector>    视频参数（比例/分辨率/时长）      L约1800
+ *   <DubbingAdjust>          配音参数（语速/情绪）            L约1900
+ *   <SoundToggle>            视频音效开关                     L约2000
+ *   <SendButton>             发送/生成按钮                    L约2050
+ *
+ * ─── 核心输入组件 ──────────────────────────────────────────── L约2100–L3143
+ *   <InputCard>              主输入框（含文件上传/参数控制）   L约2100
+ *     ├ 状态: files / firstFrameFile / lastFrameFile / prompt
+ *     ├ 状态: genType / model / ratio / resolution / count
+ *     ├ Ref: editorRef / mentionFromTagRef / savedCursorRangeRef / savedContentRef(失败回退)
+ *     └ handleSend() → 构建请求 → apiGenerateCreation → 轮询
+ *
+ * ─── 空状态图标 ────────────────────────────────────────────── L3145–L3300
+ *   <EmptyIconShell>         空状态图标外壳（SVG 渐变容器）   L3146
+ *   <CreationEmptyIconImage> 图片空态图标                     L3170
+ *   <CreationEmptyIconVideo> 视频空态图标                     L3190
+ *   <CreationEmptyIconAudio> 配音空态图标                     L约3230
+ *
+ * ─── 结果卡片组件 ──────────────────────────────────────────── L约3300–L4460
+ *   <ImageResultCard>        单张图片结果卡                   L约3300
+ *   <VideoResultCard>        单条视频结果卡                   L约3600
+ *   <AudioResultCard>        单条配音结果卡                   L约3900
+ *   <CreationResultState>    结果列表容器（含无限滚动）        L约4100
+ *   <CreationEmptyState>     空状态容器（含 InputCard 定位）   L约4415
+ *
+ * ─── 顶部 TabBar & 批量操作 ────────────────────────────────── L4460–L4607
+ *   <CreationTabBar>         图片/视频/配音 Tab               L4467
+ *   <BatchButton>            批量操作触发按钮                  L4510
+ *   <CreationGhostBtn>       批量操作幽灵按钮（下载等）        L4569
+ *   <CreationPlainBtn>       批量操作普通按钮（删除/取消）     L4590
+ *
+ * ─── 主页面入口 ────────────────────────────────────────────── L4609–L5659
+ *   <CreationLoginEmptyState>  未登录空态                     L4610
+ *
+ *   模块级常量（组件卸载重挂载不重置）                         L4677–L4681
+ *     SESSION_KEY / PENDING_CREATION_TASKS_KEY
+ *     _sessionIdRef / _sessionInitRef / _restoredShotIdsRef
+ *
+ *   export default CreationPage()                              L4683
+ *     ├─ [状态] activeTab / genType / generating              L4684–L4686
+ *     ├─ [状态] activeCountByTab（各类型并发数）               L4687
+ *     ├─ [Store] useCreationStore → generations / favorites   L4689–L4696
+ *     ├─ [状态] toasts + showToast()                          L4700–L4705
+ *     ├─ [状态] videoDetailModal                              L5005
+ *     ├─ [状态] modelOptions / model / creationParams         L5032–L5036
+ *     ├─ [状态] batchMode / batchDeleteConfirm / selected     L5038–L5040
+ *     │
+ *     ├─ [函数] normalizeHistoryItem()  后端数据适配          L4717
+ *     ├─ [函数] loadHistoryPage()       分页拉历史数据         L4809
+ *     ├─ [函数] handleToggleFavorite()  收藏（乐观更新）       L5008
+ *     ├─ [函数] handleTabChange()       切换 Tab              L5091
+ *     ├─ [函数] handleGenTypeChange()   切换生成类型           L5097
+ *     ├─ [函数] handleDeleteCard()      删除结果卡             L约5105
+ *     ├─ [函数] handleGenerate()        发起生成               L约5130
+ *     │
+ *     ├─ [副作用] 登录/切 tab 时拉历史首页                    L4858
+ *     ├─ [副作用] session 初始化（登录后）                    L4870
+ *     ├─ [副作用] 页面刷新恢复未完成任务                      L4898
+ *     ├─ [副作用] genType 变化时加载模型列表                  L5043
+ *     └─ [副作用] model 变化时加载生成参数                    L5072
+ *
+ * ─── 更新记录 ──────────────────────────────────────────────────────────
+ *   2026-05-28  初始结构索引建立
+ */
+
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useModalSize } from '../utils/useModalSize';
 import { createPortal } from 'react-dom';
@@ -13,6 +112,7 @@ import CreationVideoDetailModal from '../components/CreationVideoDetailModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import FilePreviewTooltip from '../components/FilePreviewTooltip';
 import DotsLoading from '../components/DotsLoading';
+import { cached, peekCache, invalidate } from '../utils/cache';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -2116,6 +2216,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
   const editorRef = useRef(null);
   const mentionFromTagRef = useRef(false);
   const savedCursorRangeRef = useRef(null); // 失焦前保存的光标位置
+  const savedContentRef = useRef({ html: "", text: "", voiceId: "", voiceName: "" }); // 用于失败时回退
 
 
   // Video: filter modelOptions by refMode
@@ -2716,6 +2817,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     }
     const savedFiles = files;
     const savedHTML = editorRef.current?.innerHTML ?? '';
+    savedContentRef.current = { html: savedHTML, text: currentText, voiceId: selectedVoiceId || "", voiceName: selectedVoiceName || "" };
     // 立即清空输入框和附件
     if (editorRef.current) editorRef.current.innerHTML = '';
     setHasContent(false);
@@ -2746,10 +2848,14 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       ...(genType === 'dubbing' ? { speed: dubbingSpeed, emotion: dubbingEmotion, voiceId: selectedVoiceId, voiceName: selectedVoiceName } : {}),
       files,
       onFail: (fallbackPrompt) => {
+        const backup = savedContentRef.current;
         // 失败时回退输入框内容（含标签 HTML）和附件
         if (editorRef.current) {
-          if (savedHTML) {
-            editorRef.current.innerHTML = savedHTML;
+          if (backup.html) {
+            editorRef.current.innerHTML = backup.html;
+            setHasContent(true);
+          } else if (backup.text) {
+            editorRef.current.innerText = backup.text;
             setHasContent(true);
           } else if (fallbackPrompt) {
             editorRef.current.innerText = fallbackPrompt;
@@ -2758,6 +2864,10 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         }
         if (savedFiles.length > 0) {
           setFiles(savedFiles);
+        }
+        if (backup.voiceId) {
+          setSelectedVoiceId(backup.voiceId);
+          setSelectedVoiceName(backup.voiceName || '');
         }
       },
     });
@@ -2956,8 +3066,16 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
                     <span style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF66', userSelect: 'none' }}>
                       请添加智能多帧分镜图
                     </span>
+
                   );
                 }
+              }
+              if (genType === 'dubbing') {
+                return (
+                  <span style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF66', userSelect: 'none' }}>
+                    先添加音色，再输入您要创作的内容
+                  </span>
+                );
               }
               // 默认提示词
               return (
@@ -4816,17 +4934,25 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     const PAGE_SIZE = 18; // 比默认9大，保证大屏填满
 
     try {
-      let resp;
-      if (tab === 'image') {
-        resp = await apiListCreationImages({ page: nextPage, page_size: PAGE_SIZE });
-      } else if (tab === 'video') {
-        resp = await apiListCreationVideos({ page: nextPage, page_size: PAGE_SIZE });
+      let list;
+      const apiMap = {
+        image: apiListCreationImages,
+        video: apiListCreationVideos,
+        dubbing: apiListCreationAudios,
+      };
+      if (nextPage === 1) {
+        const resp = await cached(`creation_history:${tab}:page1`, () => apiMap[tab]({ page: 1, page_size: PAGE_SIZE }), {
+          medium: 'local',
+          ttl: 5 * 60 * 1000,
+          swr: true,
+        });
+        list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
       } else {
-        resp = await apiListCreationAudios({ page: nextPage, page_size: PAGE_SIZE });
+        const resp = await apiMap[tab]({ page: nextPage, page_size: PAGE_SIZE });
+        list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
       }
 
       const type = tab === 'dubbing' ? 'audio' : tab;
-      const list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
       const hasMore = list.length >= PAGE_SIZE;
 
      const normalized = list.map((item) => normalizeHistoryItem(item, type));
@@ -4859,7 +4985,13 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     if (!isLoggedIn) return;
     const meta = historyMeta[activeTab];
     if (!meta.initialized && !meta.loading) {
-      loadHistoryPage(activeTab);
+      const cachedData = peekCache(`creation_history:${activeTab}:page1`, 'local');
+      if (cachedData) {
+        // 有缓存 → 数据已通过 zustand persist 恢复，无需重新请求
+        updateHistoryMeta(activeTab, { initialized: true });
+      } else {
+        loadHistoryPage(activeTab);
+      }
     }
   }, [isLoggedIn, activeTab]);
 
@@ -4987,6 +5119,8 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
             })),
           });
           if (cardIds?.length) storeUpdateCardIds(tab, genId, cardIds);
+          // 新创作完成 → 清除历史缓存，下次刷新时能拿到新数据
+          invalidate(`creation_history:${tab}:`, 'local');
         })
         .catch((err) => {
           showToast('error', err?.message || '生成失败，请稍后重试');
@@ -5137,6 +5271,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     if (videoIds.length > 0) apiBatchDeleteVideos(videoIds).catch(() => {});
     // Update local store
     deleteSelectedCards(activeTab, selected);
+    invalidate(`creation_history:${activeTab}:`, 'local');
     setSelected(new Set());
   }
 
@@ -5194,6 +5329,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       }
     }
     storeDeleteCard(activeTab, genId, cardIdx);
+    invalidate(`creation_history:${activeTab}:`, 'local');
   };
 
   const handleGenerate = async (params) => {

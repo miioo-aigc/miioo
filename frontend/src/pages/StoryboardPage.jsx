@@ -1,3 +1,78 @@
+/**
+ * @file StoryboardPage.jsx
+ * @structure-index
+ *
+ * ─── 全局常量 & 工具函数 ──────────── L25–L192
+ *   normalizeStoryboard(be)      后端→前端数据映射           L25–L95
+ *   toBackendStoryboard(shot)    前端→后端数据映射           L97–L146
+ *   urlPathKey(url)              URL 规范化去重             L132
+ *   enrichMainRefs(shot, chars)  主体引用补全去重            L148–L188
+ *   FONT / FONT_MEDIUM           字体家族常量               L191–L192
+ *   EPISODE_ITEM_H / EPISODE_MAX_VISIBLE  集数选择器常量    L196–L197
+ *   MAX_PROMPT_LEN               提示词最大长度              L1531
+ *   PARAM_OPTIONS / PARAM_LABELS 镜头参数枚举                L3347–L3361
+ *   MENTION_TYPE_LABEL / MENTION_TYPE_COLOR / MENTION_TABS  L3573–L3581
+ *   SPEED_OPTIONS                语速选项                    L3882
+ *
+ * ─── 原子 UI 组件 ────────────────── L211–L5648
+ *   <EpisodeSelector>            集数选择器                  L211–L317
+ *   <SpinnerIcon> / <GhostBtn> / <PrimaryBtn> / <SecondaryBtn>  按钮  L320–L448
+ *   <ModalOverlay> / <ModalGhostBtn> / <ModalPrimaryBtn>       弹窗底座  L450–L524
+ *   <ModalSelect> / <ModalSelectItem> / <ModalToggle>          弹窗选择器  L526–L599
+ *   <ModalCloseBtn> / <ImgUploadBtn> / <ImgUploadCard>  L894–L975
+ *   <ImgItem> / <PanelSelect> / <FrameUploadSlot> / <PanelUploadSlot>  L977–L1529
+ *   <PanelPromptInput> (forwardRef)  提示词输入框             L1690–L2107
+ *   <RefSlotBtn> / <VideoUploadCard> / <VideoItem>           L2109–L3238
+ *   SVG 图标组件 (IconBatchImage ~ IconVideoPlaceholder)      L3240–L3345
+ *   <ParamSelect>                 镜头参数下拉选择            L3363–L3432
+ *   <EditableText>                可编辑文本                  L3434–L3499
+ *   <CharMentionDropdown> / <ReferenceMentionDropdown> L3501–L3719
+ *   <SubjectTag> / <CharReplaceDropdown> / <CharTag> / <AddSlotBtn>  L3721–L3879
+ *   <VoiceDubModal>               配音弹窗                    L3884–L4154
+ *   <NarrationItem> / <AddNarrationBtn> / <NarrationCol>     L4156–L4383
+ *   <AddSlotDropdown> / <MainRefCol> / <MediaHoverPreview>  L4385–L4699
+ *   <MainRefModal> / <MediaViewModal> / <ImgIconBtn> / <MediaIconBtn>  L4701–L4944
+ *   <MediaCol> / <CardActionBtn> / <NumberCol> / <ParamTrigger>  L4946–L5327
+ *   <DescriptionCol> / <TextEditCol> / <NarrationColWrapper>  L5329–L5414
+ *   <MainRefColWrapper> / <MediaColWrapper> / <ShotRow>      L5416–L5648
+ *
+ * ─── 核心业务组件 ────────────────── L604–L3150
+ *   <BatchImageModal>             批量生成分镜图弹窗           L604–L698
+ *   <BatchVideoModal>             批量生成分镜视频弹窗         L700–L892
+ *   buildPromptFromShot(shot)     从分镜构造提示词             L2073
+ *   <GenerateImagePanel>          单个镜头生成分镜图面板        L2134–L2535
+ *     ├─ [状态] model / resolution / prompt / refImages / submitting / historyTab
+ *     ├─ [函数] handleGenerate / handleRefImageUpload / handleRefFileChange
+ *     └─ [副作用] 生成历史懒加载 / focused 自动回填
+ *   <GenerateVideoPanel>          单个镜头生成分镜视频面板      L2537–L3150
+ *     ├─ [状态] model / resolution / duration / prompt / refs / tab / submitting
+ *     ├─ [函数] handleGenerate / handleRefMediaUpload / handleTabChange
+ *     └─ [副作用] 生成历史懒加载 / 模型列表 / focused 回填
+ *
+ * ─── 主页面入口 ──────────────────── L5650–L6753
+ *   export default function StoryboardPage()                 L5650
+ *     ├─ [状态] shots / episode / dragId / isGenerating / 批量与下载模式开关  L5652–L5663
+ *     ├─ [状态] generatingImageShotIds / generatingVideoShotIds / toast       L5663+
+ *     ├─ [状态] imagePanel / videoPanel / genImageHistoryMap / genVideoHistoryMap  L5663+
+ *     ├─ [Ref] hasManuallyInteracted / batchBtnRef             L5683
+ *     ├─ [函数] showToast(msg, type)                          L5800
+ *     ├─ [函数] pollTask(taskId)  轮询生成任务                  L5807
+ *     ├─ [函数] extractVideoUrlFromTask / extractImageUrlFromTask  L5822+
+ *     ├─ [函数] hasImageTaskResult / hasVideoTaskResult        L5870+
+ *     ├─ [函数] handleBatchDownload / enterDownloadMode / exitDownloadMode  L5994+
+ *     ├─ [函数] toggleSelectAll / toggleShotSelection / triggerDownload      L6025+
+ *     ├─ [函数] handleStartEdit / updateShot / addShotAfter    L6077+
+ *     ├─ [函数] copyShot / deleteShot / addNewShot             L6112+
+ *     ├─ [函数] handleDrop(targetId)  拖拽排序                  L6168
+ *     ├─ [副作用] loadingText 轮播                             L5688
+ *     ├─ [副作用] 后端 storyboard 数据加载与订阅                L5715+
+ *     ├─ [副作用] episode 切换 / 完成度统计 / 鼠标点击关闭       L5770+
+ *     └─ [副作用] 弹出面板生成逻辑调用生成接口                   L6753 end
+ *
+ * ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-07-01  初始结构索引建立
+ */
+
 import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
@@ -6593,7 +6668,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
                return { url: normalizedUrl };
              }
            }
-           throw new Error('生成失败，请重试');
+           const errMsg = task.error_msg || task.errorMsg || '生成失败，请重试';
+           throw new Error(errMsg);
          } catch (err) {
           console.error('[StoryboardPage] 生成分镜图失败:', err);
           throw err;
@@ -6697,7 +6773,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
               || (task.status ? `任务状态: ${task.status}` : '');
               throw Object.assign(new Error(errMsg || '视频生成失败'), { status: task.status });
             }
-            throw new Error('生成失败，请重试');
+            const errMsg = task.error_msg || task.errorMsg || '生成失败，请重试';
+           throw new Error(errMsg);
           } catch (err) {
            console.error('[StoryboardPage] 生成分镜视频失败:', err);
            throw err;

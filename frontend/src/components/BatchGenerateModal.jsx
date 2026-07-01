@@ -15,7 +15,7 @@ const FALLBACK_MODELS = [
 ];
 
 const GENERATION_MODES = [
-  { label: '主视图', value: 'main' },
+  { label: '主视图', value: 'single' },
   { label: '多视图', value: 'three_view' },
 ];
 
@@ -184,7 +184,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
   const [model, setModel] = useState(defaultModel?.value || '');
   const [ratio, setRatio] = useState(projectRatio || '16:9');
   const [resolution, setResolution] = useState('2K');
-  const [mode, setMode] = useState('main');
+  const [mode, setMode] = useState('single');
 
   // 根据当前选中的模型 + 分辨率，动态计算可用的比例列表
  const ratioOptions = useMemo(() => {
@@ -268,7 +268,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
         }
       }
     }
-    setMode('main');
+    setMode('single');
   }, [open, modelList]);
 
   useEffect(() => {

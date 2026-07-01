@@ -5,7 +5,7 @@ React 19 + Tailwind CSS v4 + Vite 8 / 仅深色主题 / Token 通过 `@theme` �
 
 ## Git 推送
 ```bash
-git push https://miioo-aigc:<token>@github.com/miioo-aigc/miioo.git <branch>
+git push https://wangchengxv:<token>@github.com/wangchengxv/miioo.git <branch>
 ```
 
 ## 文件结构
@@ -46,6 +46,17 @@ src/
 - 涉及样式、颜色、间距、组件视觉 → 读 `design-system/CLAUDE.md`
 - 涉及 API 函数、数据请求、mock、接口对接 → 读 `src/api/CLAUDE.md`
 - 新建或修改页面组件 → 读 `src/pages/CLAUDE.md`
+
+## 代码文件阅读规则
+- 打开任何页面或组件文件前，**先阅读文件顶部的结构索引注释**，再开始分析或修改代码
+- 结构索引格式为文件顶部的 `/** 结构索引 ... */` 注释块，包含状态层、数据流、组件结构、副作用的位置索引
+- 若文件无结构索引，说明该文件尚未整理，直接阅读代码即可
+
+## 代码文件修改规则
+- 每次完成任务后，**必须同步更新该文件顶部的结构索引**，确保行号和结构描述与当前代码一致
+- 若新增了组件、hook、副作用，必须追加到索引对应分类下
+- 若删除或移动了代码块，必须从索引中移除或修正对应条目
+- 索引更新是任务完成的必要条件，未更新索引视为任务未完成
 
 ## 后端接口对接
 - 日常调接口 → 直接读 `src/api/api文档.json`

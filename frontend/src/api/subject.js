@@ -329,7 +329,7 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
               if (!sid || processedIds.has(sid)) continue;
 
               const imgUrl = item.image_url || item.imageUrl || item.url;
-              const errMsg = item.error || item.message;
+              const errMsg = item.error_msg || item.errorMsg || item.error || item.message;
 
               if (errMsg || item.success === false || item.status === 'error') {
                 processedIds.add(sid);
@@ -362,8 +362,8 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
       for (const item of results) {
         const sid = item.subject_id || item.id;
         const imgUrl = item.image_url || item.imageUrl || item.url;
-        if (item.status === 'error' || item.error || item.success === false) {
-          onSubjectError?.(sid, item.error || item.message || '生成失败');
+        if (item.status === 'error' || item.error_msg || item.errorMsg || item.error || item.success === false) {
+          onSubjectError?.(sid, item.error_msg || item.errorMsg || item.error || item.message || '生成失败');
         } else if (imgUrl) {
           onSubjectImage?.(sid, imgUrl);
         }
@@ -432,7 +432,7 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
                     const s = item.subject_id || item.id;
                     if (!s || processedIds.has(s)) continue;
                     const u = item.image_url || item.imageUrl || item.url;
-                    const e = item.error || item.message;
+                    const e = item.error_msg || item.errorMsg || item.error || item.message;
                     if (e || item.success === false || item.status === 'error') {
                       processedIds.add(s);
                       onSubjectError?.(s, e || '生成失败');
@@ -461,7 +461,7 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
           }
 
           const sid = parsed.subject_id || parsed.id;
-          const errMsg = parsed.error || parsed.message;
+          const errMsg = parsed.error_msg || parsed.errorMsg || parsed.error || parsed.message;
           const imgUrl = parsed.image_url || parsed.imageUrl || parsed.url;
 
           if (errMsg || parsed.success === false) {
@@ -827,5 +827,21 @@ export async function apiExtractSubjectsFromScript(projectId) {
   // 抽取主体会新增主体数据
   invalidate(K.subjectsPrefix(projectId));
   invalidate(K.projectOverview(projectId));
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body?.detail || body?.message || '';
+    } catch {}
+    const statusMessages = {
+      524: 'AI 角色提取超时，剧本内容可能过长，请缩短后重试',
+      502: 'AI 提取服务暂时不可用，请稍后重试',
+      504: 'AI 提取服务响应超时，请稍后重试',
+    };
+    const msg = detail || statusMessages[res.status] || `主体提取失败（${res.status}）`;
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }

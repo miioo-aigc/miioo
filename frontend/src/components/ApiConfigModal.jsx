@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Toggle from './Toggle';
 import ConfirmDialog from './ConfirmDialog';
-import { apiOneClickSetup, apiCreateModel, apiListModels, apiUpdateModel, apiGetBanner, apiListProviders, apiTestConnection, apiUpdateProvider, apiGetCardVisibility } from '../api/config';
+import { apiOneClickSetup, apiCreateModel, apiListModels, apiUpdateModel, apiDeleteModel, apiGetBanner, apiListProviders, apiTestConnection, apiUpdateProvider, apiGetCardVisibility } from '../api/config';
 import bizQrCodeImg from '../assets/biz-qr-code.png';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -34,7 +34,7 @@ function getCategoryTab(category) {
     'chat': '对话模型',
     'image': '图片模型',
     'video': '视频模型',
-    'audio': '配音模型',
+    'voice': '配音模型',
   };
   return mapping[category] || null;
 }
@@ -45,7 +45,7 @@ function getTabCategory(tab) {
     '对话模型': 'chat',
     '图片模型': 'image',
     '视频模型': 'video',
-    '配音模型': 'audio',
+    '配音模型': 'voice',
   };
   return mapping[tab] || null;
 }
@@ -407,7 +407,7 @@ function SelectOption({ option, selected, onSelect }) {
 // }
 
 function RecommendationBanner({ bannerData }) {
-  const { image_url } = bannerData || {};
+  const { image_url, link_url } = bannerData || {};
 
   if (!image_url) return null;
 
@@ -460,7 +460,7 @@ function InitialProviderCard({ onConfigure, onToggle }) {
       </div>
       <div className="flex flex-1 items-center justify-center self-stretch">
         <AccentButton className="h-9" onClick={(e) => { e.stopPropagation(); onConfigure(); }} textClassName="text-center">
-          开始配置API
+          开始配置API Key
         </AccentButton>
       </div>
     </div>
@@ -480,7 +480,7 @@ function UnconfiguredProviderCard({ name, onConfigure }) {
       </div>
       <div className="flex flex-1 items-center justify-center self-stretch">
         <SecondaryButton className="h-9" onClick={(e) => { e.stopPropagation(); onConfigure(); }}>
-          开始配置API
+          开始配置API Key
         </SecondaryButton>
       </div>
     </div>
@@ -565,9 +565,9 @@ function MainModal({
     <div className="[font-synthesis:none] flex h-[600px] w-[800px] max-w-[calc(100vw-48px)] flex-col overflow-hidden text-xs/4 antialiased">
       <div className="flex items-center justify-between gap-[16px] rounded-t-2xl bg-surface-modal px-[24px] py-[16px]">
         <div className="flex-1 text-base/5 font-medium text-text-primary" style={{ fontFamily: FONT_MEDIUM }}>
-          配置API
+          配置API Key
         </div>
-        <button type="button" onClick={onClose} className="flex shrink-0 items-center justify-center transition-opacity hover:opacity-80 active:opacity-60" aria-label="关闭配置API">
+        <button type="button" onClick={onClose} className="flex shrink-0 items-center justify-center transition-opacity hover:opacity-80 active:opacity-60" aria-label="关闭配置API Key">
           <CloseIcon />
         </button>
       </div>
@@ -810,7 +810,7 @@ function ConfigModelModal({
         requestAnimationFrame(() => {
           el.style.transition = 'transform 320ms cubic-bezier(0.4, 0, 0.2, 1)';
           el.style.transform = 'translateY(0)';
-        });
+      });
       });
     }
   }, [activeModels]);
@@ -1012,7 +1012,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             isDefault: model.is_default ?? false,
             modelId: model.model_id,
           });
-        });
+      });
         return {
           ...current,
           onelinkModelsByTab: Object.fromEntries(
@@ -1059,7 +1059,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
           enabled: model.is_enabled ?? false,
           isDefault: model.is_default ?? false,
           modelId: model.model_id,
-        });
+      });
       });
       Object.values(groupedByProvider).forEach(byTab => {
         MODEL_TABS.forEach(tab => { if (byTab[tab]) byTab[tab] = sortModels(byTab[tab]); });
@@ -1105,7 +1105,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             };
           }
           // 未配置但可见的服务商
-          return {
+        return {
             id: key,
             cardKey: key,
             name: CARD_KEY_NAMES[key] || key,
@@ -1114,8 +1114,8 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             createdAt: '---',
             apiKeyMasked: '',
             modelsByTab: createEmptyModelsByTab(),
-          };
-        });
+        };
+      });
 
       setState(current => ({
         ...current,
@@ -1215,45 +1215,6 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open, onClose, state.childView]);
 
-  // 打开 onelink-config 或 other-provider-config 子弹窗时从后端加载模型列表
-  useEffect(() => {
-    if (state.childView === 'onelink-config') {
-      loadModelsFromBackend();
-    } else if (state.childView === 'other-provider-config') {
-      const providerId = state.activeOtherProviderId;
-      if (!providerId) return;
-      // 只有已配置的 provider（有 UUID）才拉模型
-      const provider = state.otherProviders.find(p => p.id === providerId);
-      if (!provider?.configured) return;
-      apiListModels().then((models) => {
-        if (!models || !models.length) return;
-        const providerModels = models.filter(m => m.provider_id === providerId);
-        if (providerModels.length === 0) return;
-        setState(current => {
-          const modelsByTab = createEmptyModelsByTab();
-          providerModels.forEach(model => {
-            const tab = getCategoryTab(model.category);
-            if (!tab) return;
-            modelsByTab[tab].push({
-              id: model.id,
-              name: model.name || model.model_id,
-              description: model.description || MODEL_DESCRIPTION,
-              enabled: model.is_enabled ?? false,
-              isDefault: model.is_default ?? false,
-              modelId: model.model_id,
-            });
-          });
-          return {
-            ...current,
-            editProviderModelsByTab: Object.fromEntries(
-              Object.entries(modelsByTab).map(([tab, list]) => [tab, sortModels(list)])
-            ),
-          };
-        });
-      }).catch(err => console.error('加载自定义服务商模型列表失败:', err));
-    }
-  }, [state.childView, state.activeOtherProviderId, loadModelsFromBackend]);
-
   // const activeCustomProvider = useMemo(
   //   () => state.customProviders.find((provider) => provider.id === state.activeCustomProviderId) ?? null,
   //   [state.customProviders, state.activeCustomProviderId],
@@ -1298,7 +1259,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             isDefault: model.is_default ?? false,
             modelId: model.model_id,
           });
-        });
+      });
         setState(current => ({
           ...current,
           activeOtherProviderId: providerId,
@@ -1338,44 +1299,19 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   };
 
   const saveOtherProviderConfig = () => {
-    // 保存时刷新该 provider 的模型列表以同步最新状态
     const providerId = state.activeOtherProviderId;
     if (providerId) {
-      apiListModels().then((models) => {
-        if (!models || !models.length) return;
-        const providerModels = models.filter(m => m.provider_id === providerId);
-        if (providerModels.length === 0) return;
-        setState(current => {
-          const modelsByTab = createEmptyModelsByTab();
-          providerModels.forEach(model => {
-            const tab = getCategoryTab(model.category);
-            if (!tab) return;
-            modelsByTab[tab].push({
-              id: model.id,
-              name: model.name || model.model_id,
-              description: model.description || MODEL_DESCRIPTION,
-              enabled: model.is_enabled ?? false,
-              isDefault: model.is_default ?? false,
-              modelId: model.model_id,
-            });
-          });
-          const updatedOtherProviders = current.otherProviders.map(p =>
-            p.id === providerId
-              ? { ...p, modelsByTab: Object.fromEntries(
-                  Object.entries(modelsByTab).map(([tab, list]) => [tab, sortModels(list)])
-                )}
-              : p
-          );
-          return {
-            ...current,
-            otherProviders: updatedOtherProviders,
-            editProviderModelsByTab: Object.fromEntries(
-              Object.entries(modelsByTab).map(([tab, list]) => [tab, sortModels(list)])
-            ),
-            childView: null,
-          };
-        });
-      }).catch(err => console.error('刷新模型列表失败:', err));
+      setState(current => {
+        const modelsByTab = current.editProviderModelsByTab;
+        const updatedOtherProviders = current.otherProviders.map(p =>
+          p.id === providerId ? { ...p, modelsByTab } : p
+        );
+        return {
+          ...current,
+          otherProviders: updatedOtherProviders,
+          childView: null,
+        };
+      });
     }
   };
 
@@ -1475,9 +1411,9 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             return;
           }
           setState(current => ({
-            ...current,
+          ...current,
             editProviderKeyIsFromServer: true,
-            otherProviders: current.otherProviders.map(p =>
+          otherProviders: current.otherProviders.map(p =>
               p.id === providerId ? { ...p, apiKeyMasked: current.editProviderApiKey } : p
             ),
           }));
@@ -1571,6 +1507,9 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   const deleteEditProviderModel = (modelId) =>
     setState((current) => {
       const tab = current.activeModelTab;
+      apiDeleteModel(modelId).catch((err) => {
+        console.error('删除模型失败:', err);
+      });
       return {
         ...current,
         editProviderModelsByTab: {
@@ -1622,8 +1561,6 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   };
 
   const saveOneLinkConfig = () => {
-    // 保存时刷新模型列表以同步最新状态
-    loadModelsFromBackend();
     setState((current) => ({ ...current, mainConfigured: true, onelinkEnabled: true, childView: null }));
     onConfigured?.();
   };
@@ -1740,6 +1677,9 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   const deleteOnelinkModel = (modelId) =>
     setState((current) => {
       const tab = current.activeModelTab;
+      apiDeleteModel(modelId).catch((err) => {
+        console.error('删除模型失败:', err);
+      });
       return {
         ...current,
         onelinkModelsByTab: {
@@ -1780,7 +1720,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
           ...(nowDefault !== model.isDefault ? { is_default: nowDefault } : {})
         }).catch((err) => {
           console.error('更新模型状态失败:', err);
-        });
+      });
 
         return { ...model, enabled: nowEnabled, isDefault: nowDefault, isNew: false, justDisabled: !nowEnabled };
       });
@@ -1990,7 +1930,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             onTestOneLink={testConnection}
             availableModelCount={availableModelCount}
             bannerData={bannerData}
-            otherProviders={state.otherProviders}
+          otherProviders={state.otherProviders}
             onEditOtherProvider={openOtherProviderConfig}
             onToggleOtherProvider={toggleOtherProvider}
             onTestOtherProvider={testOtherProviderFromCard}

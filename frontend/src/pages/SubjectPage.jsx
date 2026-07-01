@@ -1,3 +1,69 @@
+/**
+ * @file SubjectPage.jsx
+ * @structure-index
+ *
+ * ─── 全局常量 ────────────────────── L19–L42
+ *   EMPTY_CHAR_ICON / EMPTY_SCENE_ICON / EMPTY_PROP_ICON  L19–L39
+ *   FONT / FONT_MEDIUM           字体家族常量              L41–L42
+ *   TABS                        char / scene / prop 标签   L283–L287
+ *   GENDER_OPTIONS / AGE_OPTIONS 音色筛选项                L349–L350
+ *   INITIAL_CHARS / MOCK_PROPS   初始角色/道具 Mock         L940–L950
+ *
+ * ─── 工具函数 ────────────────────── L47–L55
+ *   triggerBlobDownload(blob, filename)  触发浏览器下载     L47
+ *
+ * ─── 原子 UI 组件 ────────────────── L58–L1453
+ *   <GhostButton> / <PrimaryButton>     通用按钮           L58–L137
+ *   <ChevronDownIcon> / <HeadphoneIcon> / <PlayingWaveIcon>   L352–L382
+ *   <SelectField>                       筛选下拉选择        L384–L450
+ *   <VoiceCard>                         音色卡片           L452–L508
+ *   <MoreMenu>                          更多操作菜单        L657–L776
+ *   <IconBtn> / <UploadBtn>             图标/上传按钮       L953–L998
+ *   <ImageItemUpload> / <ImageViewModal> 图片上传/查看弹窗  L1000–L1119
+ *   <ImageItem> / <RadioOption>         图片项/单选项       L1121–L1203
+ *   <RefImageItem> / <SubjectRefHoverPreview>  参考图项/悬浮预览  L1205–L1308
+ *   <RefImageUploadCard> / <RefImageField>    参考图上传/字段  L1310–L1453
+ *
+ * ─── 业务组件 ────────────────────── L139–L2370
+ *   <ConfirmStoryboardModal>            重新生成二次确认弹窗  L139–L215
+ *   <Toolbar>                           顶栏（项目名/按钮）  L217–L281
+ *   <TabNav>                            角色/场景/道具标签栏  L289–L347
+ *   <VoiceSelectModal>                  音色选择弹窗         L510–L655
+ *   <CharCard>                          主体卡片            L778–L910
+ *   <AddCard>                           新增空卡片          L912–L938
+ *   <EditSubjectPanel>                  编辑主体侧面板       L1455–L2370
+ *     ├─ [状态] isSubmitting / editName / editDesc / editVoices / images / focused  L1455+
+ *     ├─ [Ref] fileInputRef / composingRef / refImageIds / editRefImages
+ *     ├─ [函数] handleGenerateImage / handleSetPrimary / handleSave / 图片上传/换填
+ *     └─ [副作用] 加载主体详情 / 图片列表 / 参考图 / 键盘事件 / 模型列表
+ *
+ * ─── 主页面入口 ──────────────────── L2372–L3128
+ *   export default function SubjectPage()                 L2372
+ *     ├─ [状态] activeTab / batchGenOpen / isExtracting / batchGeneratingByTab  L2374–L2408
+ *     ├─ [状态] batchToast / batchLoadingSubjects / confirmStoryboardOpen / selectedChar/Scene/Prop  L2407–L2573
+ *     ├─ [状态] subjectDetailRefreshToken / voiceList / charVoices / chars/scenes/props  L2574+
+ *     ├─ [Ref] extractingRef / subjectListRef / subjectSentinelRef / batchToastTimerRef  L2377–L2412
+ *     ├─ [Ref] prevCoverUrlsRef / batchAbortRef     L2412–L2414
+ *     ├─ [函数] showBatchToast(msg, type)            L2416
+ *     ├─ [函数] normalizeSubjectList(items)  主体列表标准化  L2423
+ *     ├─ [函数] handleBatchGenerate(params)  批量生成主体图  L2438
+ *     ├─ [函数] handleAdd()  添加新主体                 L2589+
+ *     ├─ [函数] handleDownloadSubjectImage(subjectId)   L2604+
+ *     ├─ [函数] handleDeleteSubject(subjectId)          L2618+
+ *     ├─ [函数] handleStartStoryboardRequest()          L2648+
+ *     ├─ [函数] loading / error 态渲染                    L2660–L2718
+ *     ├─ [副作用] onExtractSubjects 触发提取              L2381–L2391
+ *     ├─ [副作用] 提取中 loadingText 动画轮播              L2398–L2402
+ *     ├─ [副作用] 初始同步 external 数据                   L2381+
+ *     ├─ [副作用] 订阅主体数据缓存更新                     L2400+
+ *     ├─ [副作用] 监听 delete 事件刷新详情                 L2550+
+ *     ├─ [副作用] 有主体时 unlockStep('subject')           L2635
+ *     └─ [副作用] 滚动触底加载更多主体（IntersectionObserver）  L2638+
+ *
+ * ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-07-01  初始结构索引建立
+ */
+
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
@@ -10,14 +76,33 @@ import { apiGetProjects } from '../api/project';
 import { apiGetAssets } from '../api/assets';
 import { apiListModels } from '../api/config';
 import { apiGetVoices, apiGetVoiceLibrary } from '../api/voices';
-import placeholderImg from '../assets/placeholder-img.webp';
-import scenePlaceholderImg from '../assets/Mountain landscape.avif';
-import propPlaceholderImg from '../assets/Tool box silhouette.avif';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { subscribe } from '../utils/cache';
 import { K } from '../utils/cacheKeys';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Checkbox from '../components/Checkbox';
+
+const EMPTY_CHAR_ICON = (
+  <svg viewBox="0 0 163.84 163.84" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+    <path d="M81.92 12.801a33.28 33.28 0 1 0 0 66.56 33.28 33.28 0 0 0 0-66.56zM81.92 89.837c-29.163 0-47.923 9.882-57.846 24.955-6.154 9.36-3.798 19.098 2.499 25.886 6.042 6.523 15.779 10.598 25.917 10.599h58.861c10.138 0 19.866-4.075 25.907-10.599 6.307-6.789 8.662-16.528 2.509-25.886-9.933-15.074-28.682-24.955-57.847-24.955z" fill="#FFFFFF33" />
+    <path d="M14.664 79.054c-0.594 0.061-0.594 0.922 0 0.983A14.95 14.95 90 0 1 27.853 93.225v0.012c0.072 0.594 0.922 0.594 0.994 0a14.971 14.971 90 0 1 13.209-13.2c0.584-0.061 0.584-0.922-0.011-0.994a14.96 14.96 0 0 1-13.209-13.189c-0.061-0.594-0.922-0.594-0.983 0a14.95 14.95 90 0 1-13.189 13.189z" fill="#FFFFFF33" />
+    <path d="M121.815 31.366c-0.717 0.082-0.717 1.117 0 1.187a17.95 17.95 90 0 1 15.832 15.832v0.01c0.082 0.717 1.106 0.717 1.187 0a17.962 17.962 0 0 1 15.842-15.842c0.717-0.072 0.717-1.106 0-1.187a17.95 17.95 90 0 1-15.842-15.83c-0.082-0.717-1.106-0.717-1.187 0a17.95 17.95 90 0 1-15.832 15.83z" fill="#FFFFFF33" />
+  </svg>
+);
+
+const EMPTY_SCENE_ICON = (
+  <svg viewBox="0 0 163.84 163.84" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+    <path d="M28.692 64.02c8.54 0 15.695 4.717 19.047 11.64 8.827-4.41 21.538-6.929 35.457-6.929 14.295 0 27.389 2.669 36.161 7.25a20.453 20.453 0 0 1 18.562-11.954c1.283 0 2.519 0.15 3.734 0.355v-20.405c0-7.53-6.124-13.653-13.653-13.653h-88.747c-7.53 0-13.653 6.124-13.653 13.653v20.364c1.017-0.164 2.034-0.321 3.092-0.321z" fill="#FFFFFF33" />
+    <path d="M137.919 70.847c-7.53 0-13.653 6.124-13.653 13.653v4.267c0 3.768-3.065 6.827-6.827 6.827h-67.625c-3.761 0-6.827-3.058-6.827-6.827v-4.267c0-7.523-6.124-13.653-14.295-13.653-7.53 0-13.653 6.124-13.653 13.653v28.44c0 7.53 6.124 13.653 14.295 13.653h0.485v7.858a6.827 6.827 0 1 0 13.653 0v-7.858h80.309v7.858a6.827 6.827 0 1 0 13.653 0v-7.858h1.133c7.53 0 13.653-6.124 13.654-13.653v-28.44c-0.007-7.523-6.13-13.653-14.302-13.653z" fill="#FFFFFF33" />
+    <path d="M117.439 88.767v-4.267c0-0.56 0.123-1.085 0.164-1.638-7.571-4.519-20.46-7.304-34.407-7.305-13.373 0-25.846 2.546-33.6 6.813 0.075 0.71 0.212 1.4 0.211 2.13v4.267h67.632z" fill="#FFFFFF33" />
+  </svg>
+);
+
+const EMPTY_PROP_ICON = (
+  <svg viewBox="0 0 163.84 163.84" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+    <path d="M75.092 80.021L20.48 58.025L20.48 122.878L75.092 146.771L75.092 80.021ZM20.48 44.372L81.926 71.678L143.365 44.372L81.926 17.066L20.487 44.372L20.48 44.372ZM143.358 119.464L143.358 58.025L88.745 81.918L88.745 146.771L143.358 119.464Z" fill="#FFFFFF33" />
+  </svg>
+);
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -756,7 +841,7 @@ function MoreMenu({ onDownload, onDelete }) {
   );
 }
 
-function CharCard({ name, desc, imageUrl, voice, voiceName, voicePreviewUrl, onVoiceClick, onClick, onDownloadImage, onDeleteSubject, placeholderImg: cardPlaceholder = placeholderImg, loading = false, selected = false }) {
+function CharCard({ name, desc, imageUrl, voice, voiceName, voicePreviewUrl, onVoiceClick, onClick, onDownloadImage, onDeleteSubject, loading = false, selected = false, emptyIcon }) {
   const [hovered, setHovered] = useState(false);
   const [voicePlaying, setVoicePlaying] = useState(false);
   const voiceAudioRef = useRef(null);
@@ -802,12 +887,15 @@ function CharCard({ name, desc, imageUrl, voice, voiceName, voicePreviewUrl, onV
       <div
         className="self-stretch relative shrink-0"
         style={{
-          flex: '1 0 65%',
-          backgroundImage: `url(${imageUrl || cardPlaceholder})`,
-          backgroundSize: 'cover',
-          backgroundPosition: '50%',
+          flex: '1',
+          background: imageUrl ? `url(${imageUrl}) 50% / cover no-repeat` : '#0D0D0D',
         }}
       >
+        {!imageUrl && emptyIcon && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            {emptyIcon}
+          </div>
+        )}
         {/* 加载遮罩 */}
         {loading && (
           <div
@@ -840,7 +928,7 @@ function CharCard({ name, desc, imageUrl, voice, voiceName, voicePreviewUrl, onV
         </div>
         <div
           className="text-[#FFFFFF66] line-clamp-2"
-          style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '17px' }}
+          style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '17px', flex: '0 1 auto', height: '34px' }}
         >
           {desc}
         </div>
@@ -2918,6 +3006,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
             onDeleteSubject={() => handleDeleteSubject(char.id)}
             loading={!!batchLoadingSubjects[char.id]}
             selected={selectedChar?.id === char.id}
+                      emptyIcon={EMPTY_CHAR_ICON}
           />
         ))}
         {activeTab === 'char' && <AddCard onClick={handleAdd} />}
@@ -2927,7 +3016,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
             name={scene.name}
             desc={scene.desc}
             imageUrl={scene.imageUrl}
-            placeholderImg={scenePlaceholderImg}
+            emptyIcon={EMPTY_SCENE_ICON}
             onClick={() => setSelectedScene(scene)}
             onDownloadImage={() => handleDownloadSubjectImage(scene.id)}
             onDeleteSubject={() => handleDeleteSubject(scene.id)}
@@ -2942,7 +3031,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
             name={prop.name}
             desc={prop.desc}
             imageUrl={prop.imageUrl}
-            placeholderImg={propPlaceholderImg}
+            emptyIcon={EMPTY_PROP_ICON}
             onClick={() => setSelectedProp(prop)}
             onDownloadImage={() => handleDownloadSubjectImage(prop.id)}
             onDeleteSubject={() => handleDeleteSubject(prop.id)}

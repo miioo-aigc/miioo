@@ -2189,7 +2189,7 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
       onGoToSubject?.('char');
     } catch (err) {
       console.error('[ScriptPage] 提取主体失败:', err);
-      showToast('提取主体失败，请重试', 'error');
+      showToast(err.message || '提取主体失败，请重试', 'error');
     }
   }, [projectId, onGoToSubject]);
 

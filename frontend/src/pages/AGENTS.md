@@ -12,3 +12,6 @@
 
 ## 样式
 写页面时同步参考 `design-system/CLAUDE.md`。
+
+## 结构索引
+超过 300 行的页面文件需在顶部维护结构索引，格式与维护规则详见 `src/pages/STRUCTURE_INDEX_SPEC.md`。

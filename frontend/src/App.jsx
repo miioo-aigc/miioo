@@ -6,6 +6,12 @@ import LiquidGlassDefs from './components/LiquidGlassDefs'
 import { apiGetCurrentUser } from './api/user'
 
 function App() {
+  // 非 www 域名自动跳转到 www，避免跨域 CORS 问题
+  if (window.location.hostname === 'miiooai.com') {
+    window.location.replace('https://www.miiooai.com' + window.location.pathname + window.location.search);
+    return null;
+  }
+
   const [adminView, setAdminView] = useState(false)
   const [adminUser, setAdminUser] = useState(null)
   const [toast, setToast] = useState(null)

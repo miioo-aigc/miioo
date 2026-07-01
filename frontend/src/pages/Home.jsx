@@ -1,3 +1,55 @@
+/**
+ * @file Home.jsx
+ * @structure-index
+ *
+ * ─── 全局常量 ────────────────────── L34–L130
+ *   ICON_STYLE            SVG 图标通用样式               L34
+ *   NAV_ITEMS             主导航项目配置                 L36–L103
+ *   COMMUNITY_QR_CODE_URL / BIZ_QR_CODE_URL / CREATION_MANUAL_URL  L127–L130
+ *   CMB_ICON_DEFAULT / CMB_ICON_HOVER                  L331–L355
+ *   SECONDARY_TEXT / SLOGAN_LINES / SOFT_BLUR_*         L420–L427
+ *   STEP_TABS              工作流步骤标签栏配置          L610–L767
+ *   BG_VIDEOS              背景视频列表                 L907–L908
+ *
+ * ─── 原子 UI 组件 ────────────────── L87–L417
+ *   <MenuPopupItem>        通用菜单项按钮                L87–L125
+ *   <QRCodePopup>          二维码浮层组件                L132–L141
+ *   <MoreOptionsMenu>      更多选项菜单                  L143–L271
+ *   BOTTOM_NAV_ITEMS       底部导航项目配置              L273–L329
+ *   <CreationManualButton> 创作手册按钮                  L357–L385
+ *   <LoginButton>          登录按钮                      L387–L417
+ *
+ * ─── 业务组件 ────────────────────── L429–L908
+ *   <HomeSloganText>       首页标语文字动画              L429–L535
+ *   <StartCreationButton>  开始创作按钮                  L537–L608
+ *   <WorkflowHeadbar>      工作流顶栏                    L769–L905
+ *
+ * ─── 主页面入口 ──────────────────── L910–L2189
+ *   export default function Home()                     L910
+ *     ├─ [状态] activeKey / bottomActiveKey / 页面模态开关 / 登录与API状态   L911–L966
+ *     ├─ [状态] projects / activeProject / 主体 / 剧本 / 分镜 / 工作流       L927–L962
+ *     ├─ [Ref] toastTimerRef / pendingExtractionsRef / currentProjectIdRef / bgVideoRef  L963–L975
+ *     ├─ [函数] showToast(msg, type)                  L977
+ *     ├─ [函数] handleVideoEnded()                    L984
+ *     ├─ [函数] handleLogout()                        L995
+ *     ├─ [函数] loadProjectDetails(projectId)         L1057
+ *     ├─ [函数] handleUnlockStep(stepKey)             L1435
+ *     ├─ [函数] loadMoreSubjects(type)                L1445
+ *     ├─ [函数] handleExtractSubjects()               L1467
+ *     ├─ [函数] handleGenerateStoryboards()           L1532
+ *     ├─ [函数] handleScriptFinalized()               L1666
+ *     ├─ [函数] handleNavChange(key)                  L1673
+ *     ├─ [函数] handleBottomNavChange(key)            L1754
+ *     ├─ [函数] handleProjectCreated(project)         L1770
+ *     ├─ [副作用] 键盘快捷键 "i" 监听 / currentProjectIdRef 同步  L966–L975
+ *     ├─ [副作用] 页面初始化 / 登录检查 / 通知轮询 / unlockedSteps 持久化  L1018–L1054
+ *     ├─ [副作用] 微信回调 / 项目恢复自动加载 / 提取后跳转 / forceExtract  L1240–L1430
+ *     └─ [副作用] 事件监听 (auth:logout / message / project-assets:deleted)  L1387–L1430
+ *
+ * ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-07-01  初始结构索引建立
+ */
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PulsingBorder } from '@paper-design/shaders-react';
@@ -303,7 +355,7 @@ const BOTTOM_NAV_ITEMS = [
   {
     key: 'api',
     label: 'API',
-    tooltip: '配置API',
+    tooltip: '配置API Key',
     icon: (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={ICON_STYLE}>
         <rect x="2" y="2" width="12" height="12" rx="2" stroke="#FFFFFF" />

@@ -8,19 +8,13 @@
  * 策略：后端优先；单个模型 capabilities 为 null 时回退到本地配置文件。
  */
 
-import {
-  getImageModelParams,
-  getVideoModelParams,
-  getImageModelList,
-  getVideoModelList,
-} from '../config';
 
 /**
  * 将后端模型列表转换为 CreationPage 需要的格式。
  */
 export function adaptModels(backendModels, genType) {
   if (!Array.isArray(backendModels) || backendModels.length === 0) {
-    return fallbackToLocal(genType);
+    return { modelOptions: [], capabilitiesMap: {} };
   }
 
   const options = [];
@@ -77,11 +71,11 @@ export function getModelParams(genType, modelId, capabilitiesMap) {
       ? getDubbingModelParamsFromCap(backendCap)
      : getVideoModelParamsFromCap(backendCap);
   }
-  return genType === 'image'
-   ? getImageModelParams(modelId)
-    : genType === 'dubbing'
-    ? getDubbingModelParamsFromCap(null)
-   : getVideoModelParams(modelId);
+  // 无后端 capabilities 时返回空默认值
+  return {
+    ratios: [], resolutionRatios: {}, resolutions: [], counts: [],
+    defaults: { ratio: '', resolution: '', count: '' },
+  };
 }
 
 // ── Dubbing model params ──────────────────────────────────────────────────────
@@ -302,16 +296,4 @@ function getVideoModelParamsFromCap(capabilities) {
       refMode: refModes[0]?.value,
     },
   };
-}
-
-function fallbackToLocal(genType) {
-  if (genType === 'image') {
-    const list = getImageModelList();
-    return { modelOptions: list, capabilitiesMap: {} };
-  }
-  if (genType === 'dubbing') {
-    return { modelOptions: [], capabilitiesMap: {} };
-  }
-  const list = getVideoModelList();
-  return { modelOptions: list, capabilitiesMap: {} };
 }

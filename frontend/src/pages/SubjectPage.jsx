@@ -1687,7 +1687,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
           rawUrl: pending.rawUrl,
           url: normalizeImageUrl(pending.rawUrl),
           settled: false,
-          id: pending.placeholderId,
+          id: pending.realId || pending.placeholderId,
           isReference: false,
         });
         pendingGenerations.delete(char.id);
@@ -2334,11 +2334,11 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
             apiGenerateSubjectImage(projectId, char.id, genParams)
               .then((result) => {
                 const rawUrl = result.image_url || result.imageUrl || result.url || null;
+                const realImageId = result.id || result.image_id || null;
 
                 if (isMountedRef.current) {
                   // 弹窗仍打开：正常更新图片列表
                   const imageUrl = normalizeImageUrl(rawUrl);
-                  const realImageId = result.id || result.image_id || null;
                   setGeneratedImages((prev) => {
                     // ① 占位图替换为真实数据
                     const updated = prev.map((img) =>
@@ -2356,13 +2356,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                     }
                     return updated;
                   });
-                  setBatchLoadingSubjects((prev) => {
-                    const next = { ...prev };
-                    delete next[char.id];
-                    return next;
-                  });
                   showToast('图片生成成功', 'success');
-                  pendingGenerations.delete(char.id);
                 } else {
                   // 弹窗已关闭：缓存结果，下次打开弹窗时显示
                   pendingGenerations.set(char.id, {
@@ -2370,9 +2364,17 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                     status: 'done',
                     rawUrl,
                     imageUrl: result.image_url || result.imageUrl || result.url || null,
+                    realId: realImageId,
                   });
                   console.log('[SubjectPage] 弹窗已关闭，图片后台生成完成，结果已缓存');
                 }
+                // 无论弹窗是否打开，都清除 loading 状态
+                setBatchLoadingSubjects((prev) => {
+                  const next = { ...prev };
+                  delete next[char.id];
+                  return next;
+                });
+                pendingGenerations.delete(char.id);
               })
               .catch((err) => {
                 console.error('[SubjectPage] 生成图片失败:', err);

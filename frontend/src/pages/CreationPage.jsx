@@ -2306,15 +2306,13 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
   const currentCap = capabilitiesMap[model] || {};
 
   // 统一写入入口：按类型检查模型上限，避免各入口重复实现
+  const toastMsgRef = useRef(null);
+  // toastMsgRef 由 updater 写入、由 useEffect 消费，避免 updater 内调用 showToast
   const safeSetFiles = (updater) => {
-    let toastFired = false;
     setFiles((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
       if (!Array.isArray(next) || next.length <= prev.length) return next;
 
-      const currentImages = prev.filter(isImageFile).length;
-      const currentVideos = prev.filter(isVideoFile).length;
-      const currentAudios = prev.filter(isAudioFile).length;
       const maxImages = currentCap.max_reference_images;
       const maxVideos = currentCap.max_reference_videos;
       const maxAudios = currentCap.max_reference_audios;
@@ -2339,14 +2337,70 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         }
       }
 
-      if (rejectedLabels.length > 0 && !toastFired) {
-        toastFired = true;
-        showToast('warning', rejectedLabels.join('、') + '已达该模型的上限，无法继续添加');
+      if (rejectedLabels.length > 0) {
+        toastMsgRef.current = 'warning:' + rejectedLabels.join('、') + '已达该模型的上限，无法继续添加';
         return prev;
       }
       return next;
     });
   };
+
+  // 切换模型时自动裁剪超出新模型上限的参考素材
+  // 在 setFiles 外部用 setTimeout 弹 toast，避免 updater 内调用 showToast
+  // StrictMode 下 effect 会执行两次，但第一次的 setTimeout 执行时 ref 已被第二次覆盖
+  // 用独立的 trimmedRef 确保最终只弹一次
+  const trimmedToastRef = useRef(null);
+  useEffect(() => {
+    const modelCap = capabilitiesMap[model];
+    if (!modelCap) return;
+    setFiles((prev) => {
+      const images = prev.filter(isImageFile);
+      const videos = prev.filter(isVideoFile);
+      const audios = prev.filter(isAudioFile);
+      const others = prev.filter(f => !isImageFile(f) && !isVideoFile(f) && !isAudioFile(f));
+
+      const maxImages = modelCap.max_reference_images;
+      const maxVideos = modelCap.max_reference_videos;
+      const maxAudios = modelCap.max_reference_audios;
+      const trimmedImages = maxImages != null ? images.slice(0, maxImages) : images;
+      const trimmedVideos = maxVideos != null ? videos.slice(0, maxVideos) : videos;
+      const trimmedAudios = maxAudios != null ? audios.slice(0, maxAudios) : audios;
+
+      const newFiles = [...trimmedImages, ...trimmedVideos, ...trimmedAudios, ...others];
+      if (newFiles.length !== prev.length) {
+        trimmedToastRef.current = '已切换模型，多余的参考素材已自动移除';
+      }
+      return newFiles;
+    });
+    // setTimeout 延迟到 React commit 阶段后执行
+    // StrictMode 下两次 mount 的 setTimeout 都会注册
+    // 但最终 trimmedToastRef.current 被第二次覆盖，所以只弹一次
+    setTimeout(() => {
+      if (trimmedToastRef.current) {
+        showToast('info', trimmedToastRef.current);
+        trimmedToastRef.current = null;
+      }
+    });
+  }, [model]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 统一消费 toastMsgRef：在 setFiles updater 外用 showToast 弹消息
+  // 用 useRef 计数确保 StrictMode 下只弹一次
+  const toastSeqRef = useRef(0);
+  useEffect(() => {
+    if (toastMsgRef.current) {
+      const msg = toastMsgRef.current;
+      const seq = ++toastSeqRef.current;
+      toastMsgRef.current = null;
+      // 微任务排队，第二次 mount 的同理也会排队
+      // 只有 seq === toastSeqRef.current 才弹（即最后注册的那个）
+      queueMicrotask(() => {
+        if (seq === toastSeqRef.current) {
+          const [type, ...rest] = msg.split(':');
+          showToast(type, rest.join(':'));
+        }
+      });
+    }
+  });
 
   const handleFileSelect = (newFiles) => {
     const oversized = newFiles.filter((f) => isImageFile(f) && f.size > 20 * 1024 * 1024);

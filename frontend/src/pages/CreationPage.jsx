@@ -727,6 +727,15 @@ function isVideoFile(file) {
   return VIDEO_EXTS_SET.has(ext);
 }
 
+function isAudioFile(file) {
+  if (file.type && file.type.startsWith('audio/')) return true;
+  if (file.isAsset && file.url) {
+    if (/\.(mp3|wav|aac|ogg|flac|m4a|wma)$/i.test(file.url)) return true;
+  }
+  const ext = '.' + (file.name || '').split('.').pop().toLowerCase();
+  return AUDIO_EXTS_SET.has(ext);
+}
+
 function FileCard({ file, onRemove, disabled = false, onInsert }) {
   const [hovered, setHovered] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
@@ -2077,7 +2086,7 @@ function DubbingAdjust({ speed, emotion, onSpeedChange, onEmotionChange, emotion
 }
 
 function InputCard({ onGenerate, width = '800px', disabled = false, genType, onGenTypeChange,
-  model, onModelChange, modelOptions = [], creationParams, prefillVersion = 0, prefillData = null, onBeforeModelOpen, showToast, activeCount = 0 }) {
+  model, onModelChange, modelOptions = [], creationParams, prefillVersion = 0, prefillData = null, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {} }) {
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [hasContent, setHasContent] = useState(false);
@@ -2240,14 +2249,16 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       // 替换模式（onReEdit 等场景）
       setFiles(prefillData.files);
     } else if (prefillData.appendFiles !== undefined) {
-      // 追加模式（onUseAsRef 场景）：追加到已有列表，按 url 去重，最多20个
-      setFiles((prev) => {
+      // 追加模式（onUseAsRef 场景）：追加到已有列表，按 url 去重，最多20个，同时检查模型上限
+      let toastFired = false;
+      safeSetFiles((prev) => {
         if (prev.length >= MAX_FILES) {
           showToast('error', '您添加的文件太多了，最多支持20个参考文件');
           return prev;
         }
         const existingUrls = new Set((prev ?? []).map((f) => f.url).filter(Boolean));
         const toAdd = prefillData.appendFiles.filter((f) => !f.url || !existingUrls.has(f.url));
+
         const merged = [...(prev ?? []), ...toAdd];
         if (merged.length > MAX_FILES) {
           showToast('error', '您添加的文件太多了，最多支持20个参考文件');
@@ -2291,32 +2302,78 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
 
   const MAX_FILES = 20;
 
+  // 根据型号能力计算参考素材上限
+  const currentCap = capabilitiesMap[model] || {};
+
+  // 统一写入入口：按类型检查模型上限，避免各入口重复实现
+  const safeSetFiles = (updater) => {
+    let toastFired = false;
+    setFiles((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      if (!Array.isArray(next) || next.length <= prev.length) return next;
+
+      const currentImages = prev.filter(isImageFile).length;
+      const currentVideos = prev.filter(isVideoFile).length;
+      const currentAudios = prev.filter(isAudioFile).length;
+      const maxImages = currentCap.max_reference_images;
+      const maxVideos = currentCap.max_reference_videos;
+      const maxAudios = currentCap.max_reference_audios;
+
+      let hasRejected = false;
+      const rejectedLabels = [];
+      for (const f of next) {
+        if (!prev.includes(f)) {
+          if (isImageFile(f)) {
+            if (maxImages != null && next.filter(isImageFile).length > maxImages) {
+              if (!hasRejected) { rejectedLabels.push('参考图'); hasRejected = true; }
+            }
+          } else if (isVideoFile(f)) {
+            if (maxVideos != null && next.filter(isVideoFile).length > maxVideos) {
+              if (!hasRejected) { rejectedLabels.push('参考视频'); hasRejected = true; }
+            }
+          } else if (isAudioFile(f)) {
+            if (maxAudios != null && next.filter(isAudioFile).length > maxAudios) {
+              if (!hasRejected) { rejectedLabels.push('参考音频'); hasRejected = true; }
+            }
+          }
+        }
+      }
+
+      if (rejectedLabels.length > 0 && !toastFired) {
+        toastFired = true;
+        showToast('warning', rejectedLabels.join('、') + '已达该模型的上限，无法继续添加');
+        return prev;
+      }
+      return next;
+    });
+  };
+
   const handleFileSelect = (newFiles) => {
     const oversized = newFiles.filter((f) => isImageFile(f) && f.size > 20 * 1024 * 1024);
     if (oversized.length > 0) {
       alert('抱歉，平台暂不支持上传20M以上的图片资源！');
       return;
     }
-    setFiles((prev) => {
-      if (prev.length >= MAX_FILES) {
-        showToast('error', '您添加的文件太多了，最多支持20个参考文件');
-        return prev;
-      }
-      const enriched = newFiles.map((f) => {
+    let toastFired = false;
+    safeSetFiles((prev) => {
+      // 筛选可添加的文件，创建预览 URL
+      const enriched = [];
+      for (const f of newFiles) {
         if (isImageFile(f)) {
           const previewUrl = URL.createObjectURL(f);
           Object.defineProperty(f, 'previewUrl', { value: previewUrl, writable: true });
         } else if (isVideoFile(f)) {
-          // 预先创建 blob URL，避免 FileCard effect 在 React Strict Mode 双执行时
-          // revoke 掉旧 URL 而新 URL 还未设置导致 ERR_FILE_NOT_FOUND
           const objectUrl = URL.createObjectURL(f);
           Object.defineProperty(f, '_objectUrl', { value: objectUrl, writable: true });
         }
-        return f;
-      });
+        enriched.push(f);
+      }
+
+      if (prev.length >= MAX_FILES) {
+        return prev;
+      }
       const merged = [...prev, ...enriched];
       if (merged.length > MAX_FILES) {
-        showToast('error', '您添加的文件太多了，最多支持20个参考文件');
         return merged.slice(0, MAX_FILES);
       }
       return merged;
@@ -2432,7 +2489,8 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         type: isVideo ? 'video/mp4' : isAudio ? 'audio/mpeg' : 'image/jpeg',
       };
     });
-    setFiles((prev) => [...prev, ...assetFiles]);
+    let toastFired = false;
+    safeSetFiles((prev) => [...prev, ...assetFiles]);
   };
 
   const [mentionTargetTag, setMentionTargetTag] = useState(null);
@@ -3990,7 +4048,7 @@ function AudioResultCard({ status, audioUrl, prompt, model, createdAt, onDelete,
   );
 }
 
-function CreationResultState({ generations, onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onDeleteCard, batchMode = false, selected, onToggleSelect, onSwitchToFrameMode, onVideoCardClick, favorites, toggleFavorite, showToast, onBeforeModelOpen, isGenerating = false, historyLoading = false, historyHasMore = false, onLoadMore, activeCount = 0 }) {
+function CreationResultState({ generations, onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onDeleteCard, batchMode = false, selected, onToggleSelect, onSwitchToFrameMode, onVideoCardClick, favorites, toggleFavorite, showToast, onBeforeModelOpen, isGenerating = false, historyLoading = false, historyHasMore = false, onLoadMore, activeCount = 0, capabilitiesMap = {} }) {
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
   const [prefillVersion, setPrefillVersion] = useState(0);
@@ -4295,7 +4353,7 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
         <div style={{ width: 'min(800px, 100%)' }}>
           <InputCard onGenerate={onGenerate} width="100%" genType={genType} onGenTypeChange={onGenTypeChange}
             model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams}
-            prefillVersion={prefillVersion} prefillData={prefillData} onBeforeModelOpen={onBeforeModelOpen} showToast={showToast} activeCount={activeCount} />
+            prefillVersion={prefillVersion} prefillData={prefillData} onBeforeModelOpen={onBeforeModelOpen} showToast={showToast} activeCount={activeCount} capabilitiesMap={capabilitiesMap} />
         </div>
       </div>
     </div>
@@ -4303,7 +4361,7 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
 }
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
-function CreationEmptyState({ onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onBeforeModelOpen, showToast, activeCount = 0 }) {
+function CreationEmptyState({ onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {} }) {
   const EmptyIcon = EMPTY_ICON_MAP[genType] ?? CreationEmptyIconImage;
   return (
     <div
@@ -4339,7 +4397,7 @@ function CreationEmptyState({ onGenerate, genType, onGenTypeChange, model, onMod
       {/* InputCard: absolute, centered horizontally, 16px from bottom */}
       <div style={{ position: 'absolute', left: '50%', bottom: '16px', translate: '-50% 0', width: 'min(800px, 100%)' }}>
         <InputCard onGenerate={onGenerate} width="100%" genType={genType} onGenTypeChange={onGenTypeChange}
-          model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} onBeforeModelOpen={onBeforeModelOpen} showToast={showToast} activeCount={activeCount} />
+          model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} onBeforeModelOpen={onBeforeModelOpen} showToast={showToast} activeCount={activeCount} capabilitiesMap={capabilitiesMap} />
       </div>
     </div>
   );
@@ -4921,6 +4979,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   const [model, setModel] = useState('');
   const [creationParams, setCreationParams] = useState(null);
   const capabilitiesMapRef = useRef({});
+  const [capabilitiesMap, setCapabilitiesMap] = useState({});
 
   const [batchMode, setBatchMode] = useState(false);
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
@@ -4935,6 +4994,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         const { modelOptions: opts, capabilitiesMap } = adaptModels(models, genType);
         if (cancelled) return;
         capabilitiesMapRef.current = capabilitiesMap;
+        setCapabilitiesMap(capabilitiesMap);
         setModelOptions(opts);
         // 优先使用用户在 API 配置中设置的默认模型（is_default: true），
         // 若未设置则回退到列表第一个
@@ -4946,6 +5006,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         if (cancelled) return;
         const { modelOptions: opts, capabilitiesMap } = adaptModels([], genType);
         capabilitiesMapRef.current = capabilitiesMap;
+        setCapabilitiesMap(capabilitiesMap);
         setModelOptions(opts);
         setModel(opts[0]?.value ?? '');
       }
@@ -5459,6 +5520,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               onModelChange={setModel}
               modelOptions={modelOptions}
               creationParams={creationParams}
+              capabilitiesMap={capabilitiesMap}
               onDeleteCard={handleDeleteCard}
               batchMode={batchMode}
               selected={selected}
@@ -5478,7 +5540,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
             />
           ) : (
             <CreationEmptyState onGenerate={handleGenerate} genType={genType} onGenTypeChange={handleGenTypeChange} showToast={showToast} activeCount={activeCountByTab[genType] ?? 0}
-              model={model} onModelChange={setModel} modelOptions={modelOptions} creationParams={creationParams}
+              model={model} onModelChange={setModel} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap}
               onBeforeModelOpen={() => {
                 if (!apiConfigured) { onShowNoModelNotice?.(); return false; }
               }}

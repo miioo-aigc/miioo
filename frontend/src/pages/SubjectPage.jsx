@@ -800,9 +800,9 @@ function CharCard({ name, desc, imageUrl, voice, voiceName, voicePreviewUrl, onV
     >
       {/* image area */}
       <div
-        className="flex-1 self-stretch relative"
+        className="self-stretch relative shrink-0"
         style={{
-          minHeight: '148px',
+          flex: '1 0 65%',
           backgroundImage: `url(${imageUrl || cardPlaceholder})`,
           backgroundSize: 'cover',
           backgroundPosition: '50%',
@@ -828,9 +828,9 @@ function CharCard({ name, desc, imageUrl, voice, voiceName, voicePreviewUrl, onV
         </div>
       </div>
 
-      {/* info overlay */}
+      {/* info section */}
       <div
-        className="flex flex-col gap-1.5 absolute -inset-x-px -bottom-px bg-[#161616F2] p-3"
+        className="flex flex-col gap-1.5 self-stretch shrink-0 bg-[#1A1A1A] p-3"
       >
         <div
           className="inline-block font-medium text-[#FFFFFFE6] text-sm/5 truncate max-w-full"

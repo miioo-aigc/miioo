@@ -833,8 +833,8 @@ function CharCard({ name, desc, imageUrl, voice, voiceName, voicePreviewUrl, onV
         className="flex flex-col gap-1.5 absolute -inset-x-px -bottom-px bg-[#161616F2] p-3"
       >
         <div
-          className="inline-block font-medium text-[#FFFFFFE6] text-sm/5"
-          style={{ fontFamily: FONT_MEDIUM }}
+          className="inline-block font-medium text-[#FFFFFFE6] text-sm/5 truncate max-w-full"
+          style={{ fontFamily: FONT_MEDIUM, height: '20px' }}
         >
           {name}
         </div>
@@ -1400,7 +1400,7 @@ function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], 
         onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); e.target.value = ''; }}
       />
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-        <span style={{ flex: 1, fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF99' }}>参考图{loadingRefs ? '（绑定中…）' : ''}</span>
+        <span style={{ flex: '0 1 auto', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: 'rgba(255,255,255,0.6)', width: 'auto' }}>参考图{loadingRefs ? '（绑定中…）' : ''}</span>
         <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF66' }}>{refImages.length}/{maxImages}</span>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
@@ -2901,7 +2901,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       <div
         ref={subjectListRef}
         className="flex-1 self-stretch overflow-auto min-h-0"
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '16px', alignContent: 'flex-start', padding: '16px 2px 2px 2px' }}
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(160px, 10vw, 208px), 1fr))', gap: '16px', alignContent: 'flex-start', padding: '16px 2px 2px 2px' }}
       >
         {activeTab === 'char' && chars.map((char) => (
           <CharCard

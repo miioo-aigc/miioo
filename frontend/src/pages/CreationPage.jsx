@@ -498,7 +498,7 @@ function FrameUploader({ firstFile, lastFile, onFirstChange, onLastChange, onSwa
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', borderRadius: '4px' }} />
               <div
                 role="button"
-                tabindex={0}
+                tabIndex={0}
                 onClick={(e) => { e.stopPropagation(); e.preventDefault(); onChange(null); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); onChange(null); } }}
                 style={{

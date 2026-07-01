@@ -49,22 +49,25 @@ export async function apiGetSubjects(projectId, { type, episode_id, limit } = {}
   return [];
 }
 
-export async function apiGetSubjectsPage(projectId, { type, episode_id, limit = 20, cursor } = {}) {
+export async function apiGetSubjectsPage(projectId, { type, episode_id, limit = 20, offset } = {}) {
   const params = new URLSearchParams();
   if (type) params.append('type', type);
   if (episode_id) params.append('episode_id', episode_id);
   if (limit) params.append('limit', limit);
-  if (cursor) params.append('cursor', cursor);
+  if (offset != null) params.append('offset', offset);
   const query = params.toString();
   const url = query ? `${BASE}/api/projects/${projectId}/subjects?${query}` : `${BASE}/api/projects/${projectId}/subjects`;
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
   const data = await res.json();
-  if (Array.isArray(data)) return { list: data, nextCursor: null, hasMore: false, total: data.length };
+  if (Array.isArray(data)) return { list: data, nextOffset: null, hasMore: false, total: data.length };
   const list = data?.list ?? data?.items ?? data?.data ?? [];
+  const currentOffset = offset ?? 0;
+  const hasMore = data?.has_more ?? data?.hasMore ?? false;
+  const nextOffset = hasMore ? currentOffset + limit : null;
   return {
     list,
-    nextCursor: data?.next_cursor ?? data?.nextCursor ?? null,
-    hasMore: data?.has_more ?? data?.hasMore ?? false,
+    nextOffset,
+    hasMore,
     total: data?.total ?? list.length,
   };
 }

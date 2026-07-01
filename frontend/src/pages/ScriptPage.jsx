@@ -3,7 +3,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
 import ReactMarkdown from 'react-markdown';
-import { apiSaveScriptWorkspace, apiGetScriptWorkspace, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiFinalizeScriptWorkspace, apiExtractSubjectsFromScript, apiUpdateEpisode, apiGetEpisodes } from '../api/subject';
+import { apiSaveScriptWorkspace, apiGetScriptWorkspace, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiFinalizeScriptWorkspace, apiUpdateEpisode, apiGetEpisodes } from '../api/subject';
 import { apiListModels } from '../api/config';
 import { PulsingBorder } from '@paper-design/shaders-react';
 import DotsLoading from '../components/DotsLoading';
@@ -2180,18 +2180,12 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
     setPhase('view');
   };
 
-  // 提取主体按钮点击：已提取过主体 → 弹窗二次确认（覆盖风险）；首次 → 直接跳转
+// 提取主体按钮点击：已提取过主体 → 弹窗二次确认（覆盖风险）；首次 → 直接跳转
   const [extractConfirmOpen, setExtractConfirmOpen] = useState(false);
 
-  const handleExtractSubjects = useCallback(async () => {
-    try {
-      await apiExtractSubjectsFromScript(projectId);
-      onGoToSubject?.('char');
-    } catch (err) {
-      console.error('[ScriptPage] 提取主体失败:', err);
-      showToast(err.message || '提取主体失败，请重试', 'error');
-    }
-  }, [projectId, onGoToSubject]);
+  const handleExtractSubjects = useCallback(() => {
+    onGoToSubject?.('char');
+  }, [onGoToSubject]);
 
   const handleExtractRequest = () => {
     if (isSubjectUnlocked) {

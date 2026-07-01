@@ -988,9 +988,9 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
   const [sharedProps, setSharedProps] = useState(null);
   // 主体分页 meta：{ cursor, hasMore, loading, rawList }
   const [subjectPageMeta, setSubjectPageMeta] = useState({
-    chars:  { cursor: null, hasMore: false, loading: false, rawList: [] },
-    scenes: { cursor: null, hasMore: false, loading: false, rawList: [] },
-    props:  { cursor: null, hasMore: false, loading: false, rawList: [] },
+    chars:  { nextOffset: null, hasMore: false, loading: false, rawList: [] },
+    scenes: { nextOffset: null, hasMore: false, loading: false, rawList: [] },
+    props:  { nextOffset: null, hasMore: false, loading: false, rawList: [] },
   });
   const [extractError, setExtractError] = useState(null);
   const [extractErrorProjectId, setExtractErrorProjectId] = useState(null);
@@ -1213,9 +1213,9 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
           console.error('加载剧本数据失败:', err);
           return { content: '', episodes: [], phase: 'initial' };
         }),
-        apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextCursor: null, hasMore: false })),
-        apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextCursor: null, hasMore: false })),
-        apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextCursor: null, hasMore: false })),
+        apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextOffset: null, hasMore: false })),
+        apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextOffset: null, hasMore: false })),
+        apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextOffset: null, hasMore: false })),
         apiGetEpisodes(projectId).catch(() => []),
         apiGetProjectOverview(projectId).catch(() => null),
       ]);
@@ -1231,9 +1231,9 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
       setSharedScenes(normalizeSubjects(scenesPage.list));
       setSharedProps(normalizeSubjects(propsPage.list));
       setSubjectPageMeta({
-        chars:  { cursor: charsPage.nextCursor,  hasMore: charsPage.hasMore,  loading: false, rawList: charsPage.list },
-        scenes: { cursor: scenesPage.nextCursor, hasMore: scenesPage.hasMore, loading: false, rawList: scenesPage.list },
-        props:  { cursor: propsPage.nextCursor,  hasMore: propsPage.hasMore,  loading: false, rawList: propsPage.list },
+        chars:  { nextOffset: charsPage.nextOffset,  hasMore: charsPage.hasMore,  loading: false, rawList: charsPage.list },
+        scenes: { nextOffset: scenesPage.nextOffset, hasMore: scenesPage.hasMore, loading: false, rawList: scenesPage.list },
+        props:  { nextOffset: propsPage.nextOffset,  hasMore: propsPage.hasMore,  loading: false, rawList: propsPage.list },
       });
       // setSharedProps already set above from propsPage.list
 
@@ -1457,17 +1457,17 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
 
       const SUBJECT_LIMIT = 20;
       Promise.all([
-        apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextCursor: null, hasMore: false })),
-        apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextCursor: null, hasMore: false })),
-        apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextCursor: null, hasMore: false })),
+        apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextOffset: null, hasMore: false })),
+        apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextOffset: null, hasMore: false })),
+        apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextOffset: null, hasMore: false })),
       ]).then(([charsPage, scenesPage, propsPage]) => {
         setSharedChars(normalizeSubjects(charsPage.list));
         setSharedScenes(normalizeSubjects(scenesPage.list));
         setSharedProps(normalizeSubjects(propsPage.list));
         setSubjectPageMeta({
-          chars:  { cursor: charsPage.nextCursor,  hasMore: charsPage.hasMore,  loading: false, rawList: charsPage.list },
-          scenes: { cursor: scenesPage.nextCursor, hasMore: scenesPage.hasMore, loading: false, rawList: scenesPage.list },
-          props:  { cursor: propsPage.nextCursor,  hasMore: propsPage.hasMore,  loading: false, rawList: propsPage.list },
+          chars:  { nextOffset: charsPage.nextOffset,  hasMore: charsPage.hasMore,  loading: false, rawList: charsPage.list },
+          scenes: { nextOffset: scenesPage.nextOffset, hasMore: scenesPage.hasMore, loading: false, rawList: scenesPage.list },
+          props:  { nextOffset: propsPage.nextOffset,  hasMore: propsPage.hasMore,  loading: false, rawList: propsPage.list },
         });
       }).catch((err) => {
         console.error('资产删除后刷新主体数据失败:', err);
@@ -1500,14 +1500,14 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
     if (!meta || meta.loading || !meta.hasMore) return;
     setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: true } }));
     try {
-      const page = await apiGetSubjectsPage(activeProject.id, { type, limit: 20, cursor: meta.cursor });
+      const page = await apiGetSubjectsPage(activeProject.id, { type, limit: 20, offset: meta.nextOffset });
       const newItems = normalizeSubjects(page.list);
       if (key === 'chars') setSharedChars(prev => [...(prev || []), ...newItems]);
       else if (key === 'scenes') setSharedScenes(prev => [...(prev || []), ...newItems]);
       else setSharedProps(prev => [...(prev || []), ...newItems]);
       setSubjectPageMeta(prev => ({
         ...prev,
-        [key]: { cursor: page.nextCursor, hasMore: page.hasMore, loading: false, rawList: [...meta.rawList, ...page.list] },
+        [key]: { nextOffset: page.nextOffset, hasMore: page.hasMore, loading: false, rawList: [...meta.rawList, ...page.list] },
       }));
     } catch (err) {
       console.error(`[Home] 加载更多主体失败 (${type}):`, err);

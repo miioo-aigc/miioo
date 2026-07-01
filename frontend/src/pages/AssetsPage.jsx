@@ -49,6 +49,7 @@
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-07-01  初始结构索引建立
  *   2026-07-01  [修复] 删除主体资产后不再调用 apiDeleteSubject，保留主体卡片占位
+ *   2026-07-01  项目资产卡片 grid 按屏幕比例缩放，最大 130%（L3336–L3338）
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -3334,8 +3335,8 @@ function ProjectAssetsPanel() {
           } : {
             display: 'grid',
             gridTemplateColumns: SUBJECT_CARD_CATEGORIES.has(activeCategory) && !['storyboard_img', 'storyboard_video'].includes(activeCategory)
-              ? 'repeat(auto-fill, minmax(160px, 1fr))'
-              : 'repeat(auto-fill, minmax(240px, 1fr))',
+              ? 'repeat(auto-fill, minmax(clamp(160px, 10.67vw, 192px), 1fr))'
+             : 'repeat(auto-fill, minmax(clamp(240px, 16vw, 288px), 1fr))',
             gap: '8px',
             alignContent: 'flex-start',
           }),

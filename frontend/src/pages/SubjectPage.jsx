@@ -27,8 +27,9 @@
  * ─── 业务组件 ────────────────────── L139–L2370
  *   <ConfirmStoryboardModal>            重新生成二次确认弹窗  L139–L215
  *   <Toolbar>                           顶栏（项目名/按钮）  L217–L281
- *   <TabNav>                            角色/场景/道具标签栏  L289–L347
- *   <VoiceSelectModal>                  音色选择弹窗         L510–L655
+*   <TabNav>                            角色/场景/道具标签栏  L289–L347
+ *     ├─ [样式] 数量统计气泡：maxWidth 30px + text-overflow ellipsis  L378–L400
+*   <VoiceSelectModal>                  音色选择弹窗         L510–L655
  *   <CharCard>                          主体卡片            L778–L910
  *   <AddCard>                           新增空卡片          L912–L938
  *   <EditSubjectPanel>                  编辑主体侧面板       L1455–L2370
@@ -382,7 +383,7 @@ function TabNav({ activeTab, counts, onChange }) {
                   className="flex items-center justify-center shrink-0"
                   style={{
                     minWidth: '18px',
-                    width: '16px',
+                    maxWidth: '30px',
                     height: '16px',
                     borderRadius: 'calc(infinity * 1px)',
                     paddingInline: '5px',
@@ -396,7 +397,10 @@ function TabNav({ activeTab, counts, onChange }) {
                       fontSize: '12px',
                       lineHeight: '100%',
                       color: isActive ? 'rgba(0, 0, 0, 0.75)' : 'rgba(255, 255, 255, 0.6)',
-                    }}
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                   }}
                   >
                     {counts[key] ?? 0}
                   </span>
@@ -1592,7 +1596,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   const modelDropdownRef = useRef(null);
   const ratioDropdownRef = useRef(null);
   const resolutionDropdownRef = useRef(null);
-  const [genMode, setGenMode] = useState('main');
+  const [genMode, setGenMode] = useState('single');
   const [generatedImages, setGeneratedImages] = useState([]);
   const [refImageIds, setRefImageIds] = useState(Array.isArray(char?.reference_image_ids) ? char.reference_image_ids : []);
   const [viewImageUrl, setViewImageUrl] = useState(null);
@@ -2145,7 +2149,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF99' }}>生成方式</span>
               <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
-                {[{ key: 'main', label: '单视图' }, { key: 'three_view', label: '多视图' }].map(({ key, label }) => {
+                {[{ key: 'single', label: '单视图' }, { key: 'three_view', label: '多视图' }].map(({ key, label }) => {
                   const active = genMode === key;
                   return (
                     <RadioOption key={key} label={label} checked={active} onChange={() => setGenMode(key)} />
@@ -2315,11 +2319,15 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
               model: selectedModel,
               ratio: selectedRatio,
               resolution: selectedResolution,
+              size: selectedResolution,
               prompt: promptText,
               generation_mode: genMode,
             };
             if (Array.isArray(refImageIds) && refImageIds.length > 0) {
-              genParams.reference_mode = 'subject';
+              genParams.reference_mode = 'use_reference';
+              genParams.reference_images = refImageIds.map(item =>
+                typeof item === 'object' && item?.url ? item.url : String(item)
+              );
             }
 
             // 使用 .then() 代替 await，使回调在组件卸载后仍能更新缓存
@@ -2549,7 +2557,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     let failCount = 0;
 
     try {
-      await apiBatchGenerateStream(projectId, { model: params.model, ratio: params.ratio, resolution: params.resolution, generation_mode: params.mode, subject_ids: subjectIds }, {
+      await apiBatchGenerateStream(projectId, { model: params.model, ratio: params.ratio, resolution: params.resolution, size: params.resolution, generation_mode: params.mode, subject_ids: subjectIds }, {
         signal: controller.signal,
         onSubjectImage: (subjectId, imageUrl) => {
           successCount++;
@@ -2864,6 +2872,10 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   // 滚动触底加载更多主体
   useEffect(() => {
     if (!subjectSentinelRef.current || !subjectListRef.current) return;
+    // 当前标签页已无更多数据，不加载
+    if (activeTab === 'char' && !hasMoreChars) return;
+    if (activeTab === 'scene' && !hasMoreScenes) return;
+    if (activeTab === 'prop' && !hasMoreProps) return;
     const loadMore = () => {
       if (activeTab === 'char') onLoadMoreChars?.();
       else if (activeTab === 'scene') onLoadMoreScenes?.();
@@ -2875,7 +2887,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     );
     observer.observe(subjectSentinelRef.current);
     return () => observer.disconnect();
-  }, [activeTab, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps]);
+  }, [activeTab, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars, hasMoreScenes, hasMoreProps]);
 
   // 开始智能分镜：跳转到分镜页（由 Home 处理解锁和导航）
   const handleStartStoryboardRequest = () => {

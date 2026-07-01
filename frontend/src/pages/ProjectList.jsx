@@ -715,7 +715,7 @@ export default function ProjectList({ projects = [], onNewProject, onRenameProje
         </div>
 
         {/* Card grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(240px, 16vw, 288px), 1fr))', gap: '16px' }}>
           <NewProjectCard onClick={onNewProject} />
           {filtered.map((project) => (
             <ProjectCard

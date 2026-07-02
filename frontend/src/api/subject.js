@@ -265,7 +265,7 @@ export async function apiBatchGenerate(projectIdOrParams, maybeParams) {
 // onSubjectError(subjectId, errorMsg)   — 单个主体生成失败
 // onComplete()                          — 全部完成
 // 如果后端尚未支持 SSE，会自动降级为普通 JSON 响应
-export async function apiBatchGenerateStream(projectId, params, { onSubjectImage, onSubjectError, onComplete: rawOnComplete, signal } = {}) {
+export async function apiBatchGenerateStream(projectId, params, { onTaskCreated, onSubjectImage, onSubjectError, onComplete: rawOnComplete, signal } = {}) {
   // 包装 onComplete：全部完成后先失效主体缓存，再触发调用方回调
   const onComplete = (...args) => {
     invalidateSubjects(projectId);
@@ -306,6 +306,7 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
     // ── 任务模式：后端返回 task_id → 轮询等待结果 ──────────────────
     if (data && (data.task_id || (data.id && data.status && (data.status === 'pending' || data.status === 'running')))) {
       const taskId = data.task_id || data.id;
+      onTaskCreated?.(taskId);
       const processedIds = new Set();
       let pollCount = 0;
       const MAX_POLLS = 200;
@@ -411,6 +412,7 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
           // SSE 中检测到任务模式 → 切换轮询
           if (parsed.type === 'task' && (parsed.task_id || (parsed.id && parsed.status))) {
             const taskId = parsed.task_id || parsed.id;
+            onTaskCreated?.(taskId);
             const processedIds = new Set();
             let pollCount = 0;
             const MAX_POLLS = 200;

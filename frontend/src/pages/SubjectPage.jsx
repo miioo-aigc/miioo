@@ -82,12 +82,14 @@ import DotsLoading from '../components/DotsLoading';
 import BatchGenerateModal from '../components/BatchGenerateModal';
 import AssetPickerModal from '../components/AssetPickerModal';
 import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiBindSubjectReferenceImages, apiUploadSubjectReferenceImage, apiDownloadSubjectImage, apiSetPrimarySubjectImage } from '../api/subject';
+import { apiGetTask } from '../api/storyboard';
 // 模型能力直接从后端 capabilities 获取
 import { apiGetProjects } from '../api/project';
 import { apiGetAssets } from '../api/assets';
 import { apiListModels } from '../api/config';
 import { apiGetVoices, apiGetVoiceLibrary } from '../api/voices';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import { addPendingTask, removePendingTask, getPendingTasks } from '../utils/taskPersistence';
 import { subscribe } from '../utils/cache';
 import { K } from '../utils/cacheKeys';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -1548,7 +1550,45 @@ function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], 
 
 // 模块级缓存：跨弹窗打开/关闭保留生成中的图片状态
 // key: subjectId, value: { placeholderId, status: 'pending'|'done', imageUrl?, rawUrl? }
+const PENDING_GEN_STORAGE = 'miioo:pending_subject_gens';
+
+function _savePendingGens() {
+  try {
+    const arr = Array.from(pendingGenerations.entries());
+    localStorage.setItem(PENDING_GEN_STORAGE, JSON.stringify(arr));
+  } catch {}
+}
+
+function _restorePendingGens() {
+  try {
+    const raw = localStorage.getItem(PENDING_GEN_STORAGE);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      for (const [k, v] of arr) {
+        if (!pendingGenerations.has(k)) {
+          pendingGenerations.set(k, v);
+        }
+      }
+    }
+  } catch {}
+}
+
 const pendingGenerations = new Map();
+// 拦截 set / delete 以自动同步到 localStorage
+const _origSet = pendingGenerations.set.bind(pendingGenerations);
+const _origDelete = pendingGenerations.delete.bind(pendingGenerations);
+pendingGenerations.set = function (key, value) {
+  const result = _origSet(key, value);
+  _savePendingGens();
+  return result;
+};
+pendingGenerations.delete = function (key) {
+  const result = _origDelete(key);
+  _savePendingGens();
+  return result;
+};
+// 页面加载时恢复
+_restorePendingGens();
 
 // 批量生成图片缓存（跨弹窗打开/关闭保留，优先于后端数据展示）
 // key: subjectId, value: { rawUrl }[]
@@ -2590,6 +2630,77 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   // 批量生成 AbortController，组件卸载时取消
   const batchAbortRef = useRef(null);
 
+  // ── 恢复跨刷新挂起的批量生成任务 ────────────────────────────────────────────
+  useEffect(() => {
+    if (!projectId) return;
+    const pending = getPendingTasks(projectId, '');
+    const batchTasks = pending.filter(t => t.type === 'batch-subject' && t.tab);
+    if (batchTasks.length === 0) return;
+
+    // 取最新的一个批量任务
+    const task = batchTasks.sort((a, b) => b.createdAt - a.createdAt)[0];
+    const captureTab = task.tab;
+
+    setBatchGeneratingByTab(prev => ({ ...prev, [captureTab]: true }));
+
+    const targetSetter =
+      captureTab === 'char' ? setChars :
+      captureTab === 'scene' ? setScenes :
+      setProps;
+
+    (async () => {
+      const processedIds = new Set();
+      try {
+        while (true) {
+          const t = await apiGetTask(task.taskId);
+          const results = t.results || [];
+          if (Array.isArray(results)) {
+            for (const item of results) {
+              const sid = item.subject_id || item.id;
+              if (!sid || processedIds.has(sid)) continue;
+              const imgUrl = item.image_url || item.imageUrl || item.url;
+              const errMsg = item.error_msg || item.errorMsg || item.error || item.message;
+              if (imgUrl) {
+                processedIds.add(sid);
+                const fullUrl = normalizeImageUrl(imgUrl);
+                targetSetter(prev => prev.map(s => s.id === sid ? { ...s, imageUrl: fullUrl } : s));
+                setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[sid]; return n; });
+                const existingCache = batchGeneratedImagesCache.get(sid) || [];
+                batchGeneratedImagesCache.set(sid, [...existingCache, { rawUrl: fullUrl }]);
+              } else if (errMsg) {
+                processedIds.add(sid);
+                setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[sid]; return n; });
+              }
+            }
+          }
+          const st = t.status || t.raw_status || '';
+          if (st === 'completed' || st === 'partial' || st === 'failed') break;
+          await new Promise(r => setTimeout(r, 3000));
+        }
+      } catch (err) {
+        console.error('[SubjectPage] 恢复批量任务失败:', task.taskId, err);
+      } finally {
+        removePendingTask(projectId, task.taskId);
+        setBatchGeneratingByTab(prev => { const n = { ...prev }; delete n[captureTab]; return n; });
+      }
+    })();
+  }, [projectId]);
+
+  // ── 恢复单主体 pending generations 的 loading 状态 ──────────────────────────
+  useEffect(() => {
+    const loadingMap = {};
+    for (const [subjectId, info] of pendingGenerations) {
+      if (info && info.status === 'pending') {
+        loadingMap[subjectId] = true;
+      }
+    }
+    if (Object.keys(loadingMap).length > 0) {
+      setBatchLoadingSubjects(prev => ({ ...loadingMap, ...prev }));
+    }
+  }, []);
+
+
+
   function showBatchToast(msg, type = 'success') {
     if (batchToastTimerRef.current) clearTimeout(batchToastTimerRef.current);
     setBatchToast({ msg, type });
@@ -2654,6 +2765,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     // 创建 AbortController，用于组件卸载时取消
     const controller = new AbortController();
     batchAbortRef.current = controller;
+    let batchTaskId = null;
 
     // 统计成功/失败数
     let successCount = 0;
@@ -2662,6 +2774,10 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     try {
       await apiBatchGenerateStream(projectId, { model: params.model, ratio: params.ratio, resolution: params.resolution, generation_mode: params.mode, subject_ids: subjectIds }, {
         signal: controller.signal,
+        onTaskCreated: (taskId) => {
+          batchTaskId = taskId;
+          addPendingTask(projectId, { taskId, shotId: '', episodeId: '', type: 'batch-subject', tab: captureTab });
+        },
         onSubjectImage: (subjectId, imageUrl) => {
           successCount++;
           const fullUrl = normalizeImageUrl(imageUrl);
@@ -2694,6 +2810,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           });
         },
       onComplete: () => {
+         if (batchTaskId) removePendingTask(projectId, batchTaskId);
          if (successCount > 0) {
            showBatchToast(successCount === subjectIds.length
              ? '批量生成全部完成'

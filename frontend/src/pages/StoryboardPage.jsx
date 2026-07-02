@@ -5886,6 +5886,10 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
 
     const resumeVideo = async (task) => {
       setGeneratingVideoShotIds(prev => new Set([...prev, task.shotId]));
+      setGenVideoHistoryMap(prev => ({
+        ...prev,
+        [task.shotId]: [{ url: null, settled: false, id: `pending-resume-${task.taskId}` }],
+      }));
       try {
         const t = await apiGetTask(task.taskId);
         if (t.status === 'pending' || t.status === 'running') {
@@ -5897,6 +5901,10 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
               ? { ...s, storyboardVideo: { id: `vid-${task.shotId}`, url: nu, name: 'generated.mp4', type: 'video/mp4' } }
               : s));
             apiUpdateStoryboard(projectId, task.shotId, { video_url: nu }).catch(console.error);
+            setGenVideoHistoryMap(prev => {
+              const list = prev[task.shotId] ?? [];
+              return { ...prev, [task.shotId]: [{ url: nu, settled: false, id: `vid-${task.shotId}-resumed` }, ...list.filter(v => !String(v.id).startsWith('pending-resume-'))] };
+            });
           }
         } else if (t.status === 'completed' || hasVideoTaskResult(t)) {
           const url = extractVideoUrlFromTask(t);
@@ -5906,6 +5914,10 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
               ? { ...s, storyboardVideo: { id: `vid-${task.shotId}`, url: nu, name: 'generated.mp4', type: 'video/mp4' } }
               : s));
             apiUpdateStoryboard(projectId, task.shotId, { video_url: nu }).catch(console.error);
+            setGenVideoHistoryMap(prev => {
+              const list = prev[task.shotId] ?? [];
+              return { ...prev, [task.shotId]: [{ url: nu, settled: false, id: `vid-${task.shotId}-resumed` }, ...list.filter(v => !String(v.id).startsWith('pending-resume-'))] };
+            });
           }
         }
       } catch (err) {
@@ -5918,6 +5930,10 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
 
     const resumeImage = async (task) => {
       setGeneratingImageShotIds(prev => new Set([...prev, task.shotId]));
+      setGenImageHistoryMap(prev => ({
+        ...prev,
+        [task.shotId]: [{ url: null, settled: false, id: `pending-resume-${task.taskId}` }],
+      }));
       try {
         const t = await apiGetTask(task.taskId);
         if (t.status === 'pending' || t.status === 'running') {
@@ -5929,6 +5945,10 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
               setShots(prev => prev.map(s => s.id === task.shotId && !s.storyboardImage
                 ? { ...s, storyboardImage: { id: nu, url: nu, name: 'generated.jpg', type: 'image/jpeg' } }
                 : s));
+              setGenImageHistoryMap(prev => {
+                const list = prev[task.shotId] ?? [];
+                return { ...prev, [task.shotId]: [{ url: nu, settled: false, id: `img-${task.shotId}-resumed` }, ...list.filter(v => !String(v.id).startsWith('pending-resume-'))] };
+              });
             }
           }
         } else if (t.status === 'completed' || t.status === 'partial' || hasImageTaskResult(t)) {
@@ -5938,6 +5958,10 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
             setShots(prev => prev.map(s => s.id === task.shotId && !s.storyboardImage
               ? { ...s, storyboardImage: { id: nu, url: nu, name: 'generated.jpg', type: 'image/jpeg' } }
               : s));
+          setGenImageHistoryMap(prev => {
+            const list = prev[task.shotId] ?? [];
+            return { ...prev, [task.shotId]: [{ url: nu, settled: false, id: `img-${task.shotId}-resumed` }, ...list.filter(v => !String(v.id).startsWith('pending-resume-'))] };
+          });
           }
         }
       } catch (err) {
@@ -6602,6 +6626,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
                   const initialized = { ...prev };
                   if (shot.storyboardImage?.url) {
                     initialized[shotId] = [{ url: shot.storyboardImage.url, settled: true, id: shot.storyboardImage.id }];
+                  } else if (generatingImageShotIds.has(shotId)) {
+                    initialized[shotId] = [{ url: null, settled: false, id: `pending-resume-${shotId}` }];
                   } else {
                     initialized[shotId] = [];
                   }
@@ -6619,6 +6645,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
                   const initialized = { ...prev };
                   if (shot.storyboardVideo?.url) {
                     initialized[shotId] = [{ url: shot.storyboardVideo.url, settled: true, id: shot.storyboardVideo.id }];
+                  } else if (generatingVideoShotIds.has(shotId)) {
+                    initialized[shotId] = [{ url: null, settled: false, id: `pending-resume-${shotId}` }];
                   } else {
                     initialized[shotId] = [];
                   }

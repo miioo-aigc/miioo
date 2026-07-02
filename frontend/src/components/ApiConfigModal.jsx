@@ -1319,15 +1319,24 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
     const provider = state.otherProviders.find(p => p.id === providerId);
     if (!provider || !provider.configured) return;
     const newEnabled = !provider.enabled;
-    apiUpdateProvider(providerId, { is_enabled: newEnabled }).catch(err => {
-      console.error('更新服务商状态失败:', err);
-    });
+    // 乐观更新
     setState(current => ({
       ...current,
       otherProviders: current.otherProviders.map(p =>
         p.id === providerId ? { ...p, enabled: newEnabled } : p
       ),
     }));
+    apiUpdateProvider(providerId, { is_enabled: newEnabled }).catch(err => {
+      // 回滚
+      setState(current => ({
+        ...current,
+        otherProviders: current.otherProviders.map(p =>
+          p.id === providerId ? { ...p, enabled: !newEnabled } : p
+        ),
+      }));
+      showToast('error', '更新服务商状态失败');
+      console.error('更新服务商状态失败:', err);
+    });
   };
 
   const testOtherProviderFromCard = async (providerId) => {
@@ -1921,12 +1930,27 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             onOpenOneLink={openOneLinkConfig}
             onComplete={closeMain}
             onEditOneLink={openOneLinkConfig}
-            onToggleOneLink={() =>
-              setState((current) => {
-                if (!current.mainConfigured) return { ...current, childView: 'onelink-config' };
-                return { ...current, onelinkEnabled: !current.onelinkEnabled };
-              })
-            }
+            onToggleOneLink={() => {
+              const providerId = state.onelinkProviderId;
+              if (!providerId) return;
+              if (!state.mainConfigured) {
+                setState((current) => ({ ...current, childView: 'onelink-config' }));
+                return;
+              }
+              const newEnabled = !state.onelinkEnabled;
+              // 乐观更新
+              setState((current) => ({ ...current, onelinkEnabled: newEnabled }));
+              apiUpdateProvider(providerId, { is_enabled: newEnabled })
+                .catch((err) => {
+                  // 回滚
+                  setState((current) => ({
+                    ...current,
+                    onelinkEnabled: !newEnabled,
+                  }));
+                  showToast('error', '更新服务商状态失败');
+                  console.error('更新OneLinkAI状态失败:', err);
+                });
+            }}
             onTestOneLink={testConnection}
             availableModelCount={availableModelCount}
             bannerData={bannerData}

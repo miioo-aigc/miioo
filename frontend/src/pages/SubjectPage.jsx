@@ -1433,7 +1433,7 @@ function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], 
         const id = item;
         const existing = prev.find(p => p?.id === id);
         if (existing?.url) return existing;
-        if (typeof id === 'string' && (id.startsWith('http') || id.startsWith('blob'))) {
+        if (typeof id === 'string' && (id.startsWith('http') || id.startsWith('blob') || id.startsWith('/'))) {
           return { url: id, id };
         }
         return { id, url: null };
@@ -1459,12 +1459,13 @@ function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], 
       apiUploadSubjectReferenceImage(projectId, subjectId, file)
         .then((res) => {
           const realId = res?.asset_id || res?.id;
-          const realUrl = res?.file_url || res?.url;
+          const rawUrl = res?.file_url || res?.url;
+          const realUrl = normalizeImageUrl(rawUrl) || rawUrl;
           if (realId && realUrl) {
             setRefImages((prev) =>
               prev.map((r) => (r.id === tempId ? { id: realId, url: realUrl, assetId: realId } : r))
             );
-            onRefImagesChange?.(newList.map((r) => (r.id === tempId ? realId : r.id)));
+            onRefImagesChange?.(newList.map((r) => (r.id === tempId ? realUrl : (r.url || r.id))));
           }
         })
         .catch((err) => {
@@ -1490,7 +1491,7 @@ function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], 
       apiBindSubjectReferenceImages(projectId, subjectId, { asset_ids: assetIds })
         .then(() => {
           if (onRefImagesChange) {
-            onRefImagesChange(newList.map(r => r.id));
+            onRefImagesChange(newList.map(r => r.url || r.id));
           }
         })
         .catch((err) => {
@@ -1530,7 +1531,7 @@ function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], 
             onRemove={() => {
               const newList = refImages.filter((_, idx) => idx !== i);
               setRefImages(newList);
-              if (onRefImagesChange) onRefImagesChange(newList.map(r => r.id));
+              if (onRefImagesChange) onRefImagesChange(newList.map(r => r.url || r.id));
             }}
           />
         ))}
@@ -1759,26 +1760,8 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
         isReference: false,
       }));
 
-      // ── 手动上传的图（SubjectReferenceImage[]）也放入右侧列表 ────
-      // 字段：asset_id, file_url, name, is_primary
-      // 注意：不写入 refImageIds，参考图字段由用户在本次 session 手动选择，不从后端自动填充
-      // settled 强制为 false：这类图片是用户手动上传的素材，不继承原资产的定稿状态
-      const refImgs = Array.isArray(detailRes.reference_images) ? detailRes.reference_images : [];
-      const refMapped = refImgs.map((img) => ({
-        id: img.asset_id,
-        rawUrl: img.file_url,
-        url: normalizeImageUrl(img.file_url),
-        settled: false,   // 手动上传的图永远不预设为定稿
-        isReference: true,
-      }));
-
-      // 合并，候选图在前，手动上传在后，去重
-      const seen = new Set();
-      let finalImages = [...candidateMapped, ...refMapped].filter((img) => {
-        if (!img.id || seen.has(img.id)) return false;
-        seen.add(img.id);
-        return true;
-      });
+      // ── 候选图作为右侧列表内容 ────
+      let finalImages = candidateMapped;
 
       // 检查是否有进行中/已完成的跨弹窗生成
       const pending = pendingGenerations.get(char.id);

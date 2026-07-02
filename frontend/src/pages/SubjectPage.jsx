@@ -22,7 +22,7 @@
  *   <ImageItemUpload> / <ImageViewModal> 图片上传/查看弹窗  L1000–L1119
  *   <ImageItem> / <RadioOption>         图片项/单选项       L1121–L1203
  *   <RefImageItem> / <SubjectRefHoverPreview>  参考图项/悬浮预览  L1205–L1308
- *   <RefImageUploadCard> / <RefImageField>    参考图上传/字段  L1310–L1453
+ *   <RefImageUploadCard> / <RefImageField>    参考图上传/字段  L1390–L1555
  *
  * ─── 业务组件 ────────────────────── L139–L2370
  *   <ConfirmStoryboardModal>            重新生成二次确认弹窗  L139–L215
@@ -1448,12 +1448,29 @@ function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], 
       alert('抱歉，平台暂不支持上传20M以上的图片资源！');
       return;
     }
-    const url = URL.createObjectURL(file);
-    const newList = [...refImages, { url, id: url }].slice(0, maxImages);
+    // 先用 blob URL 做本地预览
+    const blobUrl = URL.createObjectURL(file);
+    const tempId = `upload-${Date.now()}`;
+    const newList = [...refImages, { url: blobUrl, id: tempId }].slice(0, maxImages);
     setRefImages(newList);
-    // 通知父组件：上传本地文件作为参考图
-    if (onRefImagesChange) {
-      onRefImagesChange(newList.map(r => r.url));
+
+    // 上传到服务器获取真实 URL，避免把 blob URL 发给后端
+    if (projectId && subjectId) {
+      apiUploadSubjectReferenceImage(projectId, subjectId, file)
+        .then((res) => {
+          const realId = res?.asset_id || res?.id;
+          const realUrl = res?.file_url || res?.url;
+          if (realId && realUrl) {
+            setRefImages((prev) =>
+              prev.map((r) => (r.id === tempId ? { id: realId, url: realUrl, assetId: realId } : r))
+            );
+            onRefImagesChange?.(newList.map((r) => (r.id === tempId ? realId : r.id)));
+          }
+        })
+        .catch((err) => {
+          console.error('[SubjectPage] 上传参考图失败:', err);
+          setRefImages((prev) => prev.filter((r) => r.id !== tempId));
+        });
     }
   };
 
@@ -1618,6 +1635,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
   const isMountedRef = useRef(true); // 跟踪组件是否已挂载，关闭弹窗后仍让请求跑完
+  const cacheConsumedRef = useRef(false); // 标记 pendingGenerations 缓存已被本挂载消费
   const [detailLoaded, setDetailLoaded] = useState(false);
 
   const [primaryImageUrl, setPrimaryImageUrl] = useState(null);
@@ -1662,6 +1680,46 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       return; // 不发起后端请求
     }
 
+    // ── 无批量缓存时，检查跨弹窗单主体生成缓存，立即展示不等待后端 ──
+    // 如果本挂载已消费过缓存（StrictMode 二次调用），直接跳过
+    if (cacheConsumedRef.current) {
+      setDetailLoaded(true);
+      return;
+    }
+    const pendingPreflight = pendingGenerations.get(char.id);
+    if (pendingPreflight?.status === 'done') {
+      setGeneratedImages([{
+        rawUrl: pendingPreflight.rawUrl,
+        url: normalizeImageUrl(pendingPreflight.rawUrl),
+        settled: false,
+        id: pendingPreflight.realId || pendingPreflight.placeholderId,
+        isReference: false,
+      }]);
+      // 恢复生成参数，避免跳过 API 后字段为空
+      if (pendingPreflight.genParams) {
+        setPromptText(pendingPreflight.genParams.prompt || '');
+        if (pendingPreflight.genParams.model) setSelectedModel(pendingPreflight.genParams.model);
+        if (pendingPreflight.genParams.ratio) setSelectedRatio(pendingPreflight.genParams.ratio);
+        if (pendingPreflight.genParams.resolution) setSelectedResolution(pendingPreflight.genParams.resolution);
+      }
+      // 更新卡片封面（兜底：else 分支可能因时序问题未执行 onCoverChange）
+      if (!char.imageUrl && pendingPreflight.rawUrl) {
+        onCoverChange?.(pendingPreflight.rawUrl);
+      }
+      if (char?.imageUrl) {
+        setPrimaryImageUrl(char.imageUrl);
+      } else if (pendingPreflight.rawUrl) {
+        setPrimaryImageUrl(pendingPreflight.rawUrl);
+      }
+      cacheConsumedRef.current = true;
+      pendingGenerations.delete(char.id);
+      setDetailLoaded(true);
+      console.log('[SubjectPage] preflight DONE hit: skipped API, restored genParams, rawUrl:', pendingPreflight.rawUrl?.substring(0, 60));
+      return; // 跳过 API 请求
+    } else if (pendingPreflight?.status === 'pending') {
+      setGeneratedImages([{ url: null, settled: false, id: pendingPreflight.placeholderId, isReference: false }]);
+    }
+
     (async () => {
       // 只拉一次详情，SubjectDetailResponse 包含：
       //   subject (SubjectResponse)
@@ -1669,6 +1727,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       //   candidate_images (SubjectImageResponse[])
       //   reference_images (SubjectReferenceImage[])
       //   latest_generate_config (SubjectGenerateConfig | null)
+      console.log('[SubjectPage] preflight MISS: calling apiGetSubjectDetail for', char.id);
       const detailRes = await apiGetSubjectDetail(projectId, char.id).catch(() => null);
       if (cancelled) return;
 
@@ -2359,7 +2418,8 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
 
             const placeholder = `generated-${Date.now()}`;
             // 写入模块级缓存，跨弹窗打开/关闭保持
-            pendingGenerations.set(char.id, { placeholderId: placeholder, status: 'pending' });
+            const genParamsForCache = { model: selectedModel, ratio: selectedRatio, resolution: selectedResolution, prompt: promptText };
+            pendingGenerations.set(char.id, { placeholderId: placeholder, status: 'pending', genParams: genParamsForCache });
             setBatchLoadingSubjects((prev) => ({ ...prev, [char.id]: true }));
             setGeneratedImages((prev) => [{ url: null, settled: false, id: placeholder }, ...prev]);
 
@@ -2405,16 +2465,27 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                     return updated;
                   });
                   showToast('图片生成成功', 'success');
+                  console.log('[SubjectPage] single-gen displayed in open panel, deleting pending');
+                  pendingGenerations.delete(char.id);
                 } else {
                   // 弹窗已关闭：缓存结果，下次打开弹窗时显示
+                  const currentPending = pendingGenerations.get(char.id);
                   pendingGenerations.set(char.id, {
                     placeholderId: placeholder,
                     status: 'done',
                     rawUrl,
                     imageUrl: result.image_url || result.imageUrl || result.url || null,
                     realId: realImageId,
+                    genParams: currentPending?.genParams,
                   });
-                  console.log('[SubjectPage] 弹窗已关闭，图片后台生成完成，结果已缓存');
+                  // 主体没有封面图时，自动将生成结果设为封面
+                  console.log('[SubjectPage] .then() ELSE branch: panel closed, char.imageUrl=', char.imageUrl, 'rawUrl=', rawUrl?.substring(0, 60), 'will call onCoverChange=', !char.imageUrl && !!rawUrl);
+                  if (!char.imageUrl && rawUrl) {
+                    onCoverChange?.(rawUrl);
+                  } else {
+                    console.log('[SubjectPage] .then() ELSE: skipped onCoverChange, char.imageUrl=', char.imageUrl);
+                  }
+
                 }
                 // 无论弹窗是否打开，都清除 loading 状态
                 setBatchLoadingSubjects((prev) => {
@@ -2422,7 +2493,6 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                   delete next[char.id];
                   return next;
                 });
-                pendingGenerations.delete(char.id);
               })
               .catch((err) => {
                 console.error('[SubjectPage] 生成图片失败:', err);
@@ -2610,7 +2680,6 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       await apiBatchGenerateStream(projectId, { model: params.model, ratio: params.ratio, resolution: params.resolution, generation_mode: params.mode, subject_ids: subjectIds }, {
         signal: controller.signal,
         onSubjectImage: (subjectId, imageUrl) => {
-          console.log('[SubjectPage] onSubjectImage CALLED, subjectId:', subjectId, 'url:', imageUrl?.slice(0, 80));
           successCount++;
           const fullUrl = normalizeImageUrl(imageUrl);
           // 更新对应 tab 的主体封面
@@ -2628,7 +2697,6 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           batchGeneratedImagesCache.set(subjectId, [...existingCache, { rawUrl: fullUrl }]);
         },
         onSubjectError: (subjectId, errorMsg) => {
-          console.log('[SubjectPage] onSubjectError CALLED, subjectId:', subjectId, 'error:', errorMsg);
           failCount++;
           console.error(`[SubjectPage] 主体 ${subjectId} 批量生成失败:`, errorMsg);
           // Toast 提示单个失败
@@ -2643,7 +2711,6 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           });
         },
       onComplete: () => {
-          console.log('[SubjectPage] onComplete CALLED, successCount:', successCount, 'failCount:', failCount);
          if (successCount > 0) {
            showBatchToast(successCount === subjectIds.length
              ? '批量生成全部完成'

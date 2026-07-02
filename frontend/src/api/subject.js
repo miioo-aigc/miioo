@@ -301,9 +301,7 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
 
   // ── 非流式降级：后端返回普通 JSON ────────────────────────────────
   if (!contentType.includes('text/event-stream')) {
-    console.log('[apiBatchGenerateStream] JSON path, contentType:', contentType);
     const data = await res.json();
-    console.log('[apiBatchGenerateStream] JSON data keys:', Object.keys(data || {}), 'has task_id:', !!data?.task_id);
 
     // ── 任务模式：后端返回 task_id → 轮询等待结果 ──────────────────
     if (data && (data.task_id || (data.id && data.status && (data.status === 'pending' || data.status === 'running')))) {
@@ -329,7 +327,6 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
           const results = task.results || [];
 
           if (Array.isArray(results)) {
-            console.log('[apiBatchGenerateStream] Poll results count:', results.length);
             for (const item of results) {
               const sid = item.subject_id || item.id;
               if (!sid || processedIds.has(sid)) continue;
@@ -473,7 +470,6 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
           if (errMsg || parsed.success === false) {
             onSubjectError?.(sid, errMsg);
           } else if (imgUrl) {
-            console.log('[apiBatchGenerateStream] SSE onSubjectImage, sid:', sid, 'url:', imgUrl?.slice(0, 80));
             onSubjectImage?.(sid, imgUrl);
           }
         } catch {
@@ -699,9 +695,7 @@ export async function apiChatScriptWorkspaceStream(
 
   // ── 非流式 fallback：后端返回普通 JSON ───────────────────────────────────────
   if (!contentType.includes('text/event-stream')) {
-    console.log('[apiBatchGenerateStream] JSON path, contentType:', contentType);
     const data = await res.json();
-    console.log('[apiBatchGenerateStream] JSON data keys:', Object.keys(data || {}), 'has task_id:', !!data?.task_id);
     const content = data?.script?.content || data?.content || '';
     if (content) onChunk?.(content);
     return content;

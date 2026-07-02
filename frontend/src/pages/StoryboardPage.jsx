@@ -91,6 +91,7 @@ import { normalizeImageUrl, toAbsoluteUrl } from '../utils/imageUrl';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { subscribe, peekCache } from '../utils/cache';
 import { K, MEDIUM } from '../utils/cacheKeys';
+import { addPendingTask, removePendingTask, getPendingTasks } from '../utils/taskPersistence';
 
 // ─── 后端/前端数据模型双向映射 ───────────────────────────────────────────────
 
@@ -5871,6 +5872,85 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     document.addEventListener('mousedown', handleMouseDown);
     return () => document.removeEventListener('mousedown', handleMouseDown);
   }, [batchExpanded]);
+  // ── 恢复跨刷新挂起的生成任务 ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!projectId || typeof episode === 'string') return;
+    const epId = getEpisodeId(episode);
+    if (!epId) return;
+
+    const pending = getPendingTasks(projectId, epId);
+    if (pending.length === 0) return;
+
+    const resumeVideo = async (task) => {
+      setGeneratingVideoShotIds(prev => new Set([...prev, task.shotId]));
+      try {
+        const t = await apiGetTask(task.taskId);
+        if (t.status === 'pending' || t.status === 'running') {
+          const final = await pollTask(task.taskId, hasVideoTaskResult);
+          const url = extractVideoUrlFromTask(final);
+          if (url) {
+            const nu = normalizeImageUrl(url);
+            setShots(prev => prev.map(s => s.id === task.shotId && !s.storyboardVideo
+              ? { ...s, storyboardVideo: { id: `vid-${task.shotId}`, url: nu, name: 'generated.mp4', type: 'video/mp4' } }
+              : s));
+            apiUpdateStoryboard(projectId, task.shotId, { video_url: nu }).catch(console.error);
+          }
+        } else if (t.status === 'completed' || hasVideoTaskResult(t)) {
+          const url = extractVideoUrlFromTask(t);
+          if (url) {
+            const nu = normalizeImageUrl(url);
+            setShots(prev => prev.map(s => s.id === task.shotId && !s.storyboardVideo
+              ? { ...s, storyboardVideo: { id: `vid-${task.shotId}`, url: nu, name: 'generated.mp4', type: 'video/mp4' } }
+              : s));
+            apiUpdateStoryboard(projectId, task.shotId, { video_url: nu }).catch(console.error);
+          }
+        }
+      } catch (err) {
+        console.error('[StoryboardPage] 恢复视频任务失败:', task.taskId, err);
+      } finally {
+        removePendingTask(projectId, task.taskId);
+        setGeneratingVideoShotIds(prev => { const n = new Set(prev); n.delete(task.shotId); return n; });
+      }
+    };
+
+    const resumeImage = async (task) => {
+      setGeneratingImageShotIds(prev => new Set([...prev, task.shotId]));
+      try {
+        const t = await apiGetTask(task.taskId);
+        if (t.status === 'pending' || t.status === 'running') {
+          const final = await pollTask(task.taskId, hasImageTaskResult);
+          if (final.status === 'completed' || final.status === 'partial' || hasImageTaskResult(final)) {
+            const url = extractImageUrlFromTask(final);
+            if (url) {
+              const nu = normalizeImageUrl(url);
+              setShots(prev => prev.map(s => s.id === task.shotId && !s.storyboardImage
+                ? { ...s, storyboardImage: { id: nu, url: nu, name: 'generated.jpg', type: 'image/jpeg' } }
+                : s));
+            }
+          }
+        } else if (t.status === 'completed' || t.status === 'partial' || hasImageTaskResult(t)) {
+          const url = extractImageUrlFromTask(t);
+          if (url) {
+            const nu = normalizeImageUrl(url);
+            setShots(prev => prev.map(s => s.id === task.shotId && !s.storyboardImage
+              ? { ...s, storyboardImage: { id: nu, url: nu, name: 'generated.jpg', type: 'image/jpeg' } }
+              : s));
+          }
+        }
+      } catch (err) {
+        console.error('[StoryboardPage] 恢复图片任务失败:', task.taskId, err);
+      } finally {
+        removePendingTask(projectId, task.taskId);
+        setGeneratingImageShotIds(prev => { const n = new Set(prev); n.delete(task.shotId); return n; });
+      }
+    };
+
+    pending.forEach(task => {
+      if (task.type === 'video') resumeVideo(task);
+      else if (task.type === 'image') resumeImage(task);
+    });
+  }, [projectId, episode]);
+
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type });

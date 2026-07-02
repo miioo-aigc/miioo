@@ -3723,7 +3723,7 @@ function VideoResultCard({ status, videoUrl, prompt, model, ratio, resolution, d
       >
         {status === 'loading' ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <DotsLoading size={5} color="#FFFFFF40" gap={4} />
+            <DotsLoading size={5} color="#2DC3E1" gap={4} />
           </div>
         ) : isDone ? (
           <video
@@ -3891,7 +3891,7 @@ function ImageResultCard({ status, imageUrl, originalUrl, prompt, promptHTML, mo
       >
         {status === 'loading' ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <DotsLoading size={5} color="#FFFFFF40" gap={4} />
+            <DotsLoading size={5} color="#2DC3E1" gap={4} />
           </div>
         ) : isDone ? (
           <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
@@ -4084,7 +4084,7 @@ function AudioResultCard({ status, audioUrl, prompt, model, createdAt, onDelete,
       >
         {status === 'loading' ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <DotsLoading size={5} color="#FFFFFF40" gap={4} />
+            <DotsLoading size={5} color="#2DC3E1" gap={4} />
           </div>
         ) : isDone ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', padding: '16px' }}>
@@ -4471,7 +4471,7 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
           zIndex: 0,
           pointerEvents: 'none',
         }}>
-          <DotsLoading size={6} color="#FFFFFF99" gap={4} />
+          <DotsLoading size={6} color="#2DC3E1" gap={4} />
           <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '18px', color: '#FFFFFF99' }}>
             正在获取数据，请稍后
           </span>

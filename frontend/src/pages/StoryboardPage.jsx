@@ -67,10 +67,13 @@
  *     ├─ [副作用] loadingText 轮播                             L5688
  *     ├─ [副作用] 后端 storyboard 数据加载与订阅                L5715+
  *     ├─ [副作用] episode 切换 / 完成度统计 / 鼠标点击关闭       L5770+
- *     └─ [副作用] 弹出面板生成逻辑调用生成接口                   L6753 end
+ *     ├─ [副作用] 恢复跨刷新生效任务（taskPersistence）            L5876+
+ *     ├─ [副作用] 批量生成中持久化任务到 localStorage             L6043+
+ *     └─ [副作用] 单镜头生成中持久化任务到 localStorage           L6744+
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-07-01  初始结构索引建立
+ *   2026-07-02  生成任务跨刷新持久化（taskPersistence）
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
@@ -6040,6 +6043,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
 
     for (const shot of shots) {
       setGeneratingImageShotIds(prev => new Set([...prev, shot.id]));
+      let taskId = null;
       try {
         const taskResp = await apiGenerateStoryboardImage(projectId, shot.id, {
           model: params.model,
@@ -6048,6 +6052,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
           aspect_ratio: projectRatio,
           reference_images: (params.refImages || []).map(r => toAbsoluteUrl(typeof r === 'string' ? r : r.url)).filter(url => url && !url.toLowerCase().endsWith(".avif") && !url.includes("/derived/assets/")),
         });
+        taskId = taskResp.id;
+        addPendingTask(projectId, { taskId, shotId: shot.id, episodeId, type: 'image' });
         const task = await pollTask(taskResp.id, hasImageTaskResult);
         if (task.status === 'completed' || task.status === 'partial' || hasImageTaskResult(task)) {
           const imageUrl = extractImageUrlFromTask(task);
@@ -6068,6 +6074,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         console.error('[StoryboardPage] 生成分镜图失败:', err);
         failCount++;
       } finally {
+        if (taskId) removePendingTask(projectId, taskId);
         setGeneratingImageShotIds(prev => {
           const next = new Set(prev);
           next.delete(shot.id);
@@ -6092,6 +6099,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
 
     for (const shot of shots) {
       setGeneratingVideoShotIds(prev => new Set([...prev, shot.id]));
+      let taskId = null;
       try {
         const durationValue = (() => {
           if (!params.duration) return undefined;
@@ -6107,6 +6115,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
           ratio: projectRatio,
           reference_images: (params.refImages || []).map(r => toAbsoluteUrl(typeof r === 'string' ? r : r.url)).filter(url => url && !url.toLowerCase().endsWith(".avif") && !url.includes("/derived/assets/")),
         });
+        taskId = taskResp.id;
+        addPendingTask(projectId, { taskId, shotId: shot.id, episodeId, type: 'video' });
         const task = await pollTask(taskResp.id, hasVideoTaskResult);
         const videoUrl = extractVideoUrlFromTask(task);
         if (videoUrl) {
@@ -6130,6 +6140,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         console.error('[StoryboardPage] 生成分镜视频失败:', err);
         failCount++;
       } finally {
+        if (taskId) removePendingTask(projectId, taskId);
         setGeneratingVideoShotIds(prev => {
           const next = new Set(prev);
           next.delete(shot.id);
@@ -6733,9 +6744,12 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
        }}
       onGenerate={async (params) => {
         const shot = imagePanel.shot;
+        let taskId = null;
         try {
           setGeneratingImageShotIds(prev => new Set([...prev, shot.id]));
           const taskResp = await apiGenerateStoryboardImage(projectId, shot.id, { model: params.model, resolution: params.resolution, prompt: params.prompt, aspect_ratio: projectRatio, reference_images: (params.refImages || []).map(r => toAbsoluteUrl(typeof r === 'string' ? r : r.url)).filter(url => url && !url.toLowerCase().endsWith(".avif") && !url.includes("/derived/assets/")) });
+          taskId = taskResp.id;
+          addPendingTask(projectId, { taskId, shotId: shot.id, episodeId: getEpisodeId(episode), type: 'image' });
           const task = await pollTask(taskResp.id, hasImageTaskResult);
           if (task.status === 'completed' || task.status === 'partial' || hasImageTaskResult(task)) {
              const imageUrl = extractImageUrlFromTask(task);
@@ -6754,6 +6768,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
           console.error('[StoryboardPage] 生成分镜图失败:', err);
           throw err;
         } finally {
+          if (taskId) removePendingTask(projectId, taskId);
           setGeneratingImageShotIds(prev => {
             const next = new Set(prev); next.delete(shot.id); return next;
           });
@@ -6797,6 +6812,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         }}
        onGenerate={async (params) => {
          const shot = videoPanel.shot;
+         let taskId = null;
          try {
            setGeneratingVideoShotIds(prev => new Set([...prev, shot.id]));
            // 解析时长：将"Ns"格式转为数字
@@ -6818,6 +6834,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
                 reference_video_url: toAbsoluteUrl(params.reference_video_url),
                 reference_audio_url: toAbsoluteUrl(params.reference_audio_url),
               });
+            taskId = taskResp.id;
+            addPendingTask(projectId, { taskId, shotId: shot.id, episodeId: getEpisodeId(episode), type: 'video' });
             const task = await pollTask(taskResp.id, hasVideoTaskResult);
             const videoUrl = extractVideoUrlFromTask(task);
             if (videoUrl) {
@@ -6859,6 +6877,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
            console.error('[StoryboardPage] 生成分镜视频失败:', err);
            throw err;
          } finally {
+           if (taskId) removePendingTask(projectId, taskId);
            setGeneratingVideoShotIds(prev => {
              const next = new Set(prev); next.delete(shot.id); return next;
            });

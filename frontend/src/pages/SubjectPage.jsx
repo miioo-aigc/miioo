@@ -32,37 +32,47 @@
 *   <VoiceSelectModal>                  音色选择弹窗         L510–L655
  *   <CharCard>                          主体卡片            L778–L910
  *   <AddCard>                           新增空卡片          L912–L938
- *   <EditSubjectPanel>                  编辑主体侧面板       L1455–L2370
- *     ├─ [状态] isSubmitting / editName / editDesc / editVoices / images / focused  L1455+
- *     ├─ [Ref] fileInputRef / composingRef / refImageIds / editRefImages
- *     ├─ [函数] handleGenerateImage / handleSetPrimary / handleSave / 图片上传/换填
- *     └─ [副作用] 加载主体详情 / 图片列表 / 参考图 / 键盘事件 / 模型列表
- *
- * ─── 主页面入口 ──────────────────── L2372–L3128
- *   export default function SubjectPage()                 L2372
- *     ├─ [状态] activeTab / batchGenOpen / isExtracting / batchGeneratingByTab  L2374–L2408
- *     ├─ [状态] batchToast / batchLoadingSubjects / confirmStoryboardOpen / selectedChar/Scene/Prop  L2407–L2573
- *     ├─ [状态] subjectDetailRefreshToken / voiceList / charVoices / chars/scenes/props  L2574+
- *     ├─ [Ref] extractingRef / subjectListRef / subjectSentinelRef / batchToastTimerRef  L2377–L2412
- *     ├─ [Ref] prevCoverUrlsRef / batchAbortRef     L2412–L2414
- *     ├─ [函数] showBatchToast(msg, type)            L2416
- *     ├─ [函数] normalizeSubjectList(items)  主体列表标准化  L2423
- *     ├─ [函数] handleBatchGenerate(params)  批量生成主体图  L2438
- *     ├─ [函数] handleAdd()  添加新主体                 L2589+
- *     ├─ [函数] handleDownloadSubjectImage(subjectId)   L2604+
- *     ├─ [函数] handleDeleteSubject(subjectId)          L2618+
- *     ├─ [函数] handleStartStoryboardRequest()          L2648+
- *     ├─ [函数] loading / error 态渲染                    L2660–L2718
- *     ├─ [副作用] onExtractSubjects 触发提取              L2381–L2391
- *     ├─ [副作用] 提取中 loadingText 动画轮播              L2398–L2402
- *     ├─ [副作用] 初始同步 external 数据                   L2381+
- *     ├─ [副作用] 订阅主体数据缓存更新                     L2400+
- *     ├─ [副作用] 监听 delete 事件刷新详情                 L2550+
- *     ├─ [副作用] 有主体时 unlockStep('subject')           L2635
- *     └─ [副作用] 滚动触底加载更多主体（IntersectionObserver）  L2638+
- *
- * ─── 更新记录 ──────────────────────────────────────────────────────
- *   2026-07-01  初始结构索引建立
+*   <EditSubjectPanel>                  编辑主体侧面板       L1455–L2370
+*     ├─ [状态] isSubmitting / editName / editDesc / editVoices / images / focused  L1455+
+*     ├─ [Ref] fileInputRef / composingRef / refImageIds / editRefImages
+ *     ├─ [缓存] pendingGenerations Map （单主体生成跨弹窗保留）   L1520+
+ *     ├─ [缓存] batchGeneratedImagesCache Map （批量生成图片跨弹窗缓存）  L1527+
+*     ├─ [函数] handleGenerateImage / handleSetPrimary / handleSave / 图片上传/换填
+*     └─ [副作用] 加载主体详情 / 图片列表 / 参考图 / 键盘事件 / 模型列表
+*       ├─ 加载主体详情时，从 batchGeneratedImagesCache 读取缓存图片，合并到 finalImages
+ *       ├─ 缓存读取在 await apiGetSubjectDetail 之前执行，展示不阻塞网络请求
+ *       └─ 后端数据到达后用 functional updater 合并到已有缓存图片（URL 去重）
+*
+* ─── 主页面入口 ──────────────────── L2372–L3128
+*   export default function SubjectPage()                 L2372
+*     ├─ [状态] activeTab / batchGenOpen / isExtracting / batchGeneratingByTab  L2374–L2408
+*     ├─ [状态] batchToast / batchLoadingSubjects / confirmStoryboardOpen / selectedChar/Scene/Prop  L2407–L2573
+*     ├─ [状态] subjectDetailRefreshToken / voiceList / charVoices / chars/scenes/props  L2574+
+*     ├─ [Ref] extractingRef / subjectListRef / subjectSentinelRef / batchToastTimerRef  L2377–L2412
+*     ├─ [Ref] prevCoverUrlsRef / batchAbortRef     L2412–L2414
+*     ├─ [函数] showBatchToast(msg, type)            L2416
+*     ├─ [函数] normalizeSubjectList(items)  主体列表标准化  L2423
+*     ├─ [函数] handleBatchGenerate(params)  批量生成主体图  L2438
+*     │   └─ onSubjectImage 回调中将每个图片 URL 存入 batchGeneratedImagesCache
+*     ├─ [函数] handleAdd()  添加新主体                 L2589+
+*     ├─ [函数] handleDownloadSubjectImage(subjectId)   L2604+
+*     ├─ [函数] handleDeleteSubject(subjectId)          L2618+
+*     ├─ [函数] handleStartStoryboardRequest()          L2648+
+*     ├─ [函数] loading / error 态渲染                    L2660–L2718
+*     ├─ [副作用] onExtractSubjects 触发提取              L2381–L2391
+*     ├─ [副作用] 提取中 loadingText 动画轮播              L2398–L2402
+*     ├─ [副作用] 初始同步 external 数据                   L2381+
+*     ├─ [副作用] 订阅主体数据缓存更新                     L2400+
+*     ├─ [副作用] 监听 delete 事件刷新详情                 L2550+
+*     ├─ [副作用] 有主体时 unlockStep('subject')           L2635
+*     └─ [副作用] 滚动触底加载更多主体（IntersectionObserver）  L2638+
+*
+* ─── 更新记录 ──────────────────────────────────────────────────────
+*   2026-07-01  初始结构索引建立
+*   2026-07-02  添加 batchGeneratedImagesCache：批量生图结果跨弹窗缓存，
+ *               handleBatchGenerate 写入 → EditSubjectPanel 在 await 前读取并立即展示，
+ *               后端数据到达后用 functional updater 合并（URL 去重）
+ *               卡片封面由 handleBatchGenerate 的 targetSetter 即时更新
  */
 
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -1522,6 +1532,10 @@ function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], 
 // key: subjectId, value: { placeholderId, status: 'pending'|'done', imageUrl?, rawUrl? }
 const pendingGenerations = new Map();
 
+// 批量生成图片缓存（跨弹窗打开/关闭保留，优先于后端数据展示）
+// key: subjectId, value: { rawUrl }[]
+const batchGeneratedImagesCache = new Map();
+
 function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, onClose, onCommit, onCoverChange, refreshToken, setBatchLoadingSubjects }) {
   // ── 从后端拉取模型列表，直接使用后端 capabilities ──────────────
   const [imageModels, setImageModels] = useState([]);
@@ -1619,6 +1633,35 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
     if (!projectId || !char?.id) return;
     let cancelled = false;
 
+    // ── 优先从批量生成缓存读取图片，立即展示（不等待后端） ─────────
+    const batchCached = batchGeneratedImagesCache.get(char.id);
+    if (batchCached && batchCached.length > 0) {
+      setGeneratedImages(
+        batchCached.map((img, i) => ({
+          id: `batch-${char.id}-${Date.now()}-${i}`,
+          rawUrl: img.rawUrl,
+          url: normalizeImageUrl(img.rawUrl),
+          settled: false,
+          isReference: false,
+        }))
+      );
+      batchGeneratedImagesCache.delete(char.id);
+
+      // ── 缓存命中：跳过 apiGetSubjectDetail，直接完成初始化 ───────
+      setDetailLoaded(true);
+      // 如果 char 带封面图，设置 primaryImageUrl
+      if (char?.imageUrl) {
+        setPrimaryImageUrl(char.imageUrl);
+      }
+      // 检查是否有跨弹窗完成的单主体生成
+      const pending = pendingGenerations.get(char.id);
+      if (pending?.status === 'done') {
+        setGeneratedImages(prev => [...prev, { rawUrl: pending.rawUrl, url: normalizeImageUrl(pending.rawUrl), settled: false, id: pending.realId || pending.placeholderId, isReference: false }]);
+        pendingGenerations.delete(char.id);
+      }
+      return; // 不发起后端请求
+    }
+
     (async () => {
       // 只拉一次详情，SubjectDetailResponse 包含：
       //   subject (SubjectResponse)
@@ -1694,12 +1737,17 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       }
 
       if (finalImages.length > 0) {
-        setGeneratedImages(finalImages);
+        setGeneratedImages(prev => {
+          if (prev.length === 0) return finalImages;
+          const seenUrls = new Set(prev.map(img => img.rawUrl));
+          const toAdd = finalImages.filter(img => !seenUrls.has(img.rawUrl));
+          return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+        });
       } else if (char?.imageUrl) {
-        // 兜底用 char 的封面图
-        setGeneratedImages([{ rawUrl: char.imageUrl, url: normalizeImageUrl(char.imageUrl), settled: true, id: char.imageUrl, isReference: false }]);
+        // 兜底用 char 的封面图（不覆盖已展示的缓存图片）
+        setGeneratedImages(prev => prev.length > 0 ? prev : [{ rawUrl: char.imageUrl, url: normalizeImageUrl(char.imageUrl), settled: true, id: char.imageUrl, isReference: false }]);
       } else {
-        setGeneratedImages([]);
+        setGeneratedImages(prev => prev.length > 0 ? prev : []);
       }
 
       setDetailLoaded(true);
@@ -2559,9 +2607,10 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     let failCount = 0;
 
     try {
-      await apiBatchGenerateStream(projectId, { model: params.model, ratio: params.ratio, resolution: params.resolution, size: params.resolution, generation_mode: params.mode, subject_ids: subjectIds }, {
+      await apiBatchGenerateStream(projectId, { model: params.model, ratio: params.ratio, resolution: params.resolution, generation_mode: params.mode, subject_ids: subjectIds }, {
         signal: controller.signal,
         onSubjectImage: (subjectId, imageUrl) => {
+          console.log('[SubjectPage] onSubjectImage CALLED, subjectId:', subjectId, 'url:', imageUrl?.slice(0, 80));
           successCount++;
           const fullUrl = normalizeImageUrl(imageUrl);
           // 更新对应 tab 的主体封面
@@ -2572,10 +2621,14 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           setBatchLoadingSubjects(prev => {
             const next = { ...prev };
             delete next[subjectId];
-            return next;
+          return next;
           });
+          // 存入批量生成缓存，EditSubjectPanel 打开时优先从缓存读取
+          const existingCache = batchGeneratedImagesCache.get(subjectId) || [];
+          batchGeneratedImagesCache.set(subjectId, [...existingCache, { rawUrl: fullUrl }]);
         },
         onSubjectError: (subjectId, errorMsg) => {
+          console.log('[SubjectPage] onSubjectError CALLED, subjectId:', subjectId, 'error:', errorMsg);
           failCount++;
           console.error(`[SubjectPage] 主体 ${subjectId} 批量生成失败:`, errorMsg);
           // Toast 提示单个失败
@@ -2590,6 +2643,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           });
         },
       onComplete: () => {
+          console.log('[SubjectPage] onComplete CALLED, successCount:', successCount, 'failCount:', failCount);
          if (successCount > 0) {
            showBatchToast(successCount === subjectIds.length
              ? '批量生成全部完成'

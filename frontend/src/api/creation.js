@@ -79,6 +79,7 @@ export async function apiListCreationSessions({ project_id, status } = {}) {
   if (status) params.append('status', status);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/sessions?${query}` : `${BASE}/api/creation/sessions`;
+  console.log("[DEBUG apiListCreationVideos] URL:", url);
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
   return res.json();
 }
@@ -174,6 +175,7 @@ export async function apiListCreationImages(filters = {}) {
   });
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/images?${query}` : `${BASE}/api/creation/images`;
+  console.log("[DEBUG apiListCreationVideos] URL:", url);
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
   return res.json();
 }
@@ -254,12 +256,15 @@ export async function apiDownloadCreationImage(imageId) {
 // ── 创作视频 ──────────────────────────────────────────────────────────────────
 
 export async function apiListCreationVideos({ page, page_size } = {}) {
+  console.log("[DEBUG apiListCreationVideos] called with page:", page, "page_size:", page_size);
   const params = new URLSearchParams();
   if (page !== undefined) params.append('page', page);
   if (page_size !== undefined) params.append('page_size', page_size);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/videos?${query}` : `${BASE}/api/creation/videos`;
+  console.log("[DEBUG apiListCreationVideos] URL:", url);
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+  console.log("[DEBUG apiListCreationVideos] authFetch returned, status:", res.status);
   return res.json();
 }
 
@@ -353,6 +358,7 @@ export async function apiListCreationAudios({ page, page_size, is_favorite, sear
   if (search) params.append('search', search);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/audios?${query}` : `${BASE}/api/creation/audios`;
+  console.log("[DEBUG apiListCreationVideos] URL:", url);
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
   return res.json();
 }
@@ -406,6 +412,7 @@ export async function apiListCreationTasks({ status, task_type, session_id, shot
   if (shot_id) params.append('shot_id', shot_id);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/tasks?${query}` : `${BASE}/api/creation/tasks`;
+  console.log("[DEBUG apiListCreationVideos] URL:", url);
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
   return res.json();
 }

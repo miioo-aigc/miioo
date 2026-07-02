@@ -9,13 +9,12 @@
  *   truncateFileName()                                         L90
  *   downloadImage()                                            L60
  *
- * ─── 动画注入函数（运行时往 <head> 写 keyframe）────────────── L100–L155
- *   ensureRotateKeyframe()   chatbox 边框旋转动画              L104
- *   ensureThinkingStyle()    thinking 点动画                  L122
- *   ensureShimmerStyle()     shimmer 骨架屏动画               L139
+ * ─── 动画注入函数（运行时往 <head> 写 keyframe）────────────── L100–L235
+ *   ensureRotateKeyframe()   chatbox 边框旋转动画              L202
+ *   ensureThinkingStyle()    thinking 点动画                  L220
  *
- * ─── 原子 UI 组件（无业务逻辑）────────────────────────────── L157–L1055
- *   <Toast>                  全局 Toast 容器                  L158
+ * ─── 原子 UI 组件（无业务逻辑）────────────────────────────── L240–L1135
+ *   <Toast>                  全局 Toast 容器                  L241
  *   <CopyPromptButton>       复制按钮                         L20
  *   <StarIcon>               收藏星形图标                     L46
  *   <UploadPlaceholder>      文件上传触发区域（含菜单）        L278
@@ -199,7 +198,6 @@ function truncateFileName(name) {
 
 const ROTATE_STYLE_ID = 'creation-chatbox-rotate-style';
 const THINKING_STYLE_ID = 'creation-thinking-style';
-const SHIMMER_STYLE_ID = 'creation-shimmer-style';
 
 function ensureRotateKeyframe() {
   if (document.getElementById(ROTATE_STYLE_ID)) return;
@@ -220,7 +218,7 @@ function ensureRotateKeyframe() {
 }
 
 function ensureThinkingStyle() {
-  if (document.getElementById(THINKING_STYLE_ID)) return;
+
   const style = document.createElement('style');
   style.id = THINKING_STYLE_ID;
   style.textContent = `
@@ -232,24 +230,6 @@ function ensureThinkingStyle() {
     .creation-thinking-dot:nth-child(1) { animation-delay: 0s; }
     .creation-thinking-dot:nth-child(2) { animation-delay: 0.2s; }
     .creation-thinking-dot:nth-child(3) { animation-delay: 0.4s; }
-  `;
-  document.head.appendChild(style);
-}
-
-function ensureShimmerStyle() {
-  if (document.getElementById(SHIMMER_STYLE_ID)) return;
-  const style = document.createElement('style');
-  style.id = SHIMMER_STYLE_ID;
-  style.textContent = `
-    @keyframes creation-shimmer {
-      0% { background-position: -400px 0; }
-      100% { background-position: 400px 0; }
-    }
-    .creation-shimmer {
-      background: linear-gradient(90deg, #FFFFFF08 25%, #FFFFFF14 50%, #FFFFFF08 75%);
-      background-size: 800px 100%;
-      animation: creation-shimmer 1.6s ease-in-out infinite;
-    }
   `;
   document.head.appendChild(style);
 }
@@ -3679,7 +3659,7 @@ function VideoResultCard({ status, videoUrl, prompt, model, ratio, resolution, d
   const [starAnim, setStarAnim] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const videoRef = useRef(null);
-  useEffect(() => { ensureShimmerStyle(); }, []);
+  
 
   const isDone = status === 'done' && videoUrl;
 
@@ -3742,7 +3722,9 @@ function VideoResultCard({ status, videoUrl, prompt, model, ratio, resolution, d
         }}
       >
         {status === 'loading' ? (
-          <div className="creation-shimmer" style={{ width: '100%', height: '100%' }} />
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <DotsLoading size={5} color="#FFFFFF40" gap={4} />
+          </div>
         ) : isDone ? (
           <video
             ref={videoRef}
@@ -3874,7 +3856,7 @@ function ImageResultCard({ status, imageUrl, originalUrl, prompt, promptHTML, mo
   const [detailOpen, setDetailOpen] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  useEffect(() => { ensureShimmerStyle(); }, []);
+  
 
   const isDone = status === 'done' && imageUrl;
 
@@ -3908,7 +3890,9 @@ function ImageResultCard({ status, imageUrl, originalUrl, prompt, promptHTML, mo
         }}
       >
         {status === 'loading' ? (
-          <div className="creation-shimmer" style={{ width: '100%', height: '100%' }} />
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <DotsLoading size={5} color="#FFFFFF40" gap={4} />
+          </div>
         ) : isDone ? (
           <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
         ) : (
@@ -4099,7 +4083,9 @@ function AudioResultCard({ status, audioUrl, prompt, model, createdAt, onDelete,
         }}
       >
         {status === 'loading' ? (
-          <div className="creation-shimmer" style={{ width: '100%', height: '100%' }} />
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <DotsLoading size={5} color="#FFFFFF40" gap={4} />
+          </div>
         ) : isDone ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', padding: '16px' }}>
             {/* Play button */}
@@ -4941,6 +4927,8 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         dubbing: apiListCreationAudios,
       };
       if (nextPage === 1) {
+        console.log("[DEBUG] loadHistoryPage: about to call cached for", tab, "nextPage:", nextPage);
+        console.trace("[DEBUG] loadHistoryPage call stack");
         const resp = await cached(`creation_history:${tab}:page1`, () => apiMap[tab]({ page: 1, page_size: PAGE_SIZE }), {
           medium: 'local',
           ttl: 5 * 60 * 1000,
@@ -4985,7 +4973,9 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     if (!isLoggedIn) return;
     const meta = historyMeta[activeTab];
     if (!meta.initialized && !meta.loading) {
-      const cachedData = peekCache(`creation_history:${activeTab}:page1`, 'local');
+      console.log("[DEBUG] video tab peekCache key:", "creation_history:video:page1");
+        const cachedData = peekCache(`creation_history:video:page1`, "local");
+        console.log("[DEBUG] peekCache result:", cachedData ? "HIT (" + (Array.isArray(cachedData) ? cachedData.length + " items" : typeof cachedData) + ")" : "MISS");
       if (cachedData) {
         // 有缓存 → 数据已通过 zustand persist 恢复，无需重新请求
         updateHistoryMeta(activeTab, { initialized: true });

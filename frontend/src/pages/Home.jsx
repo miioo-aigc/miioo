@@ -203,7 +203,7 @@ function MoreOptionsMenu({ close, setWatermarkSettingsOpen }) {
     } else if (label === '更新日志') {
       // 链接待补充
     } else if (label === '开源社区') {
-      window.open('https://github.com/wangchengxv/miioo', '_blank');
+      window.open('https://github.com/miioo-aigc/miioo', '_blank');
     } else if (label === '用户协议') {
       window.open('https://gcn0je6sgrhe.feishu.cn/wiki/FIspwGURtikxiwk28svc4thOn9c?from=from_copylink', '_blank');
     } else if (label === '隐私政策') {

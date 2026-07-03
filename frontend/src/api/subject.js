@@ -149,6 +149,7 @@ export async function apiGetSubjectImages(projectId, subjectId) {
 export async function apiGenerateSubjectImage(projectId, subjectId, params) {
   const res = await authFetch(`${BASE}/api/projects/${projectId}/subjects/${subjectId}/generate-image`, {
     method: 'POST',
+    keepalive: true,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   });

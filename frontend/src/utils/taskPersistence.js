@@ -31,11 +31,11 @@ function _writeAll(tasks) {
 /**
  * 新增一条待完成任务
  */
-export function addPendingTask(projectId, { taskId, shotId, episodeId, type }) {
+export function addPendingTask(projectId, { taskId, shotId, episodeId, type, ...extra }) {
   const all = _readAll();
   // 去重：同一 taskId 不重复添加
   if (all.some((t) => t.taskId === taskId)) return;
-  all.push({ projectId, taskId, shotId, episodeId, type, createdAt: Date.now() });
+  all.push({ projectId, taskId, shotId, episodeId, type, createdAt: Date.now(), ...extra });
   _writeAll(all);
 }
 

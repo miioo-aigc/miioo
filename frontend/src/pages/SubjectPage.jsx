@@ -9,8 +9,9 @@
  *   GENDER_OPTIONS / AGE_OPTIONS 音色筛选项                L349–L350
  *   INITIAL_CHARS / MOCK_PROPS   初始角色/道具 Mock         L940–L950
  *
- * ─── 工具函数 ────────────────────── L47–L55
+ * ─── 工具函数 ────────────────────── L47–L58
  *   triggerBlobDownload(blob, filename)  触发浏览器下载     L47
+ *   sleep(ms) / getPendingGenResult() / saveSubjectPanelState()  恢复辅助  L51–L120
  *
  * ─── 原子 UI 组件 ────────────────── L58–L1453
  *   <GhostButton> / <PrimaryButton>     通用按钮           L58–L137
@@ -35,44 +36,49 @@
 *   <EditSubjectPanel>                  编辑主体侧面板       L1455–L2370
 *     ├─ [状态] isSubmitting / editName / editDesc / editVoices / images / focused  L1455+
 *     ├─ [Ref] fileInputRef / composingRef / refImageIds / editRefImages
- *     ├─ [缓存] pendingGenerations Map （单主体生成跨弹窗保留）   L1520+
- *     ├─ [缓存] batchGeneratedImagesCache Map （批量生成图片跨弹窗缓存）  L1527+
+ *     ├─ [缓存] pendingGenerations Map / subjectPanel sessionStorage   L1553+
+ *     ├─ [缓存] batchGeneratedImagesCache Map （批量生成图片跨弹窗缓存）  L1626+
 *     ├─ [函数] handleGenerateImage / handleSetPrimary / handleSave / 图片上传/换填
 *     └─ [副作用] 加载主体详情 / 图片列表 / 参考图 / 键盘事件 / 模型列表
 *       ├─ 加载主体详情时，从 batchGeneratedImagesCache 读取缓存图片，合并到 finalImages
  *       ├─ 缓存读取在 await apiGetSubjectDetail 之前执行，展示不阻塞网络请求
  *       └─ 后端数据到达后用 functional updater 合并到已有缓存图片（URL 去重）
 *
-* ─── 主页面入口 ──────────────────── L2372–L3128
-*   export default function SubjectPage()                 L2372
-*     ├─ [状态] activeTab / batchGenOpen / isExtracting / batchGeneratingByTab  L2374–L2408
-*     ├─ [状态] batchToast / batchLoadingSubjects / confirmStoryboardOpen / selectedChar/Scene/Prop  L2407–L2573
-*     ├─ [状态] subjectDetailRefreshToken / voiceList / charVoices / chars/scenes/props  L2574+
-*     ├─ [Ref] extractingRef / subjectListRef / subjectSentinelRef / batchToastTimerRef  L2377–L2412
-*     ├─ [Ref] prevCoverUrlsRef / batchAbortRef     L2412–L2414
-*     ├─ [函数] showBatchToast(msg, type)            L2416
-*     ├─ [函数] normalizeSubjectList(items)  主体列表标准化  L2423
-*     ├─ [函数] handleBatchGenerate(params)  批量生成主体图  L2438
+* ─── 主页面入口 ──────────────────── L2629–L3443
+*   export default function SubjectPage()                 L2629
+*     ├─ [状态] activeTab / batchGenOpen / isExtracting / batchGeneratingByTab  L2631+
+*     ├─ [状态] batchToast / batchLoadingSubjects / confirmStoryboardOpen / selectedChar/Scene/Prop  L2631+
+*     ├─ [状态] subjectDetailRefreshToken / voiceList / charVoices / chars/scenes/props  L2631+
+*     ├─ [Ref] extractingRef / subjectListRef / subjectSentinelRef / batchToastTimerRef  L2631+
+*     ├─ [Ref] prevCoverUrlsRef / batchAbortRef / singleGenRecoveryRunRef  L2705+
+*     ├─ [函数] showBatchToast(msg, type)            L2856+
+*     ├─ [函数] normalizeSubjectList(items)  主体列表标准化  L2863+
+*     ├─ [函数] handleBatchGenerate(params)  批量生成主体图  L2883+
 *     │   └─ onSubjectImage 回调中将每个图片 URL 存入 batchGeneratedImagesCache
-*     ├─ [函数] handleAdd()  添加新主体                 L2589+
-*     ├─ [函数] handleDownloadSubjectImage(subjectId)   L2604+
-*     ├─ [函数] handleDeleteSubject(subjectId)          L2618+
-*     ├─ [函数] handleStartStoryboardRequest()          L2648+
-*     ├─ [函数] loading / error 态渲染                    L2660–L2718
-*     ├─ [副作用] onExtractSubjects 触发提取              L2381–L2391
-*     ├─ [副作用] 提取中 loadingText 动画轮播              L2398–L2402
-*     ├─ [副作用] 初始同步 external 数据                   L2381+
-*     ├─ [副作用] 订阅主体数据缓存更新                     L2400+
-*     ├─ [副作用] 监听 delete 事件刷新详情                 L2550+
-*     ├─ [副作用] 有主体时 unlockStep('subject')           L2635
-*     └─ [副作用] 滚动触底加载更多主体（IntersectionObserver）  L2638+
+*     ├─ [函数] handleAdd()  添加新主体                 L3032+
+*     ├─ [函数] handleDownloadSubjectImage(subjectId)   L3147+
+*     ├─ [函数] handleDeleteSubject(subjectId)          L3168+
+*     ├─ [函数] handleStartStoryboardRequest()          L3198+
+*     ├─ [函数] loading / error 态渲染                    L3210–L3268
+*     ├─ [副作用] onExtractSubjects 触发提取              L2638+
+*     ├─ [副作用] 提取中 loadingText 动画轮播              L2662+
+*     ├─ [副作用] 初始同步 external 数据                   L2723+
+*     ├─ [副作用] 订阅主体数据缓存更新                     L2753+
+*     ├─ [副作用] 恢复单主体 pending generation 刷新轮询    L2770+
+*     ├─ [副作用] 记忆并恢复打开中的主体弹窗               L3101+
+*     ├─ [副作用] 监听 delete 事件刷新详情                 L2993+
+*     ├─ [副作用] 有主体时 unlockStep('subject')           L3185+
+*     └─ [副作用] 滚动触底加载更多主体（IntersectionObserver）  L3188+
 *
-* ─── 更新记录 ──────────────────────────────────────────────────────
-*   2026-07-01  初始结构索引建立
-*   2026-07-02  添加 batchGeneratedImagesCache：批量生图结果跨弹窗缓存，
+ * ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-07-01  初始结构索引建立
+ *   2026-07-02  添加 batchGeneratedImagesCache：批量生图结果跨弹窗缓存，
  *               handleBatchGenerate 写入 → EditSubjectPanel 在 await 前读取并立即展示，
  *               后端数据到达后用 functional updater 合并（URL 去重）
  *               卡片封面由 handleBatchGenerate 的 targetSetter 即时更新
+ *   2026-07-02  修复单主体生图刷新丢失：pending 状态持久化补充已知图片快照，
+ *               页面重载后继续轮询 SubjectDetail，命中新图后恢复列表/弹窗加载状态
+ *   2026-07-02  补充主体编辑弹窗 sessionStorage 恢复，并为单主体生图请求开启 keepalive
  */
 
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -1551,6 +1557,66 @@ function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], 
 // 模块级缓存：跨弹窗打开/关闭保留生成中的图片状态
 // key: subjectId, value: { placeholderId, status: 'pending'|'done', imageUrl?, rawUrl? }
 const PENDING_GEN_STORAGE = 'miioo:pending_subject_gens';
+const SUBJECT_PANEL_STORAGE_PREFIX = 'miioo:subject_panel:';
+const PENDING_GEN_POLL_MS = 3000;
+const PENDING_GEN_STALE_MS = 15 * 60 * 1000;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getPendingGenResult(detailRes, pendingInfo) {
+  const candidateImages = Array.isArray(detailRes?.candidate_images) ? detailRes.candidate_images : [];
+  const primaryImages = detailRes?.primary_image ? [detailRes.primary_image] : [];
+  const knownIds = new Set((pendingInfo?.knownImageIds || []).filter(Boolean));
+  const knownUrls = new Set(
+    (pendingInfo?.knownImageUrls || [])
+      .filter(Boolean)
+      .flatMap((url) => [url, normalizeImageUrl(url)])
+  );
+
+  return [...candidateImages, ...primaryImages].find((img) => {
+    const rawUrl = img?.image_url || img?.imageUrl || img?.url || null;
+    const normalizedUrl = rawUrl ? normalizeImageUrl(rawUrl) : null;
+    if (img?.id && !knownIds.has(img.id)) return true;
+    if (rawUrl && !knownUrls.has(rawUrl) && !knownUrls.has(normalizedUrl)) return true;
+    return false;
+  }) || null;
+}
+
+function getPendingGenTabSetter(tab, { setChars, setScenes, setProps }) {
+  if (tab === 'char') return setChars;
+  if (tab === 'scene') return setScenes;
+  return setProps;
+}
+
+function getSubjectPanelStorageKey(projectId) {
+  return `${SUBJECT_PANEL_STORAGE_PREFIX}${projectId}`;
+}
+
+function saveSubjectPanelState(projectId, state) {
+  if (!projectId) return;
+  try {
+    sessionStorage.setItem(getSubjectPanelStorageKey(projectId), JSON.stringify(state));
+  } catch {}
+}
+
+function readSubjectPanelState(projectId) {
+  if (!projectId) return null;
+  try {
+    const raw = sessionStorage.getItem(getSubjectPanelStorageKey(projectId));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearSubjectPanelState(projectId) {
+  if (!projectId) return;
+  try {
+    sessionStorage.removeItem(getSubjectPanelStorageKey(projectId));
+  } catch {}
+}
 
 function _savePendingGens() {
   try {
@@ -2442,7 +2508,16 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
             const placeholder = `generated-${Date.now()}`;
             // 写入模块级缓存，跨弹窗打开/关闭保持
             const genParamsForCache = { model: selectedModel, ratio: selectedRatio, resolution: selectedResolution, prompt: promptText };
-            pendingGenerations.set(char.id, { placeholderId: placeholder, status: 'pending', genParams: genParamsForCache });
+            const existingImages = generatedImages.filter((img) => img?.rawUrl || img?.url);
+            pendingGenerations.set(char.id, {
+              placeholderId: placeholder,
+              status: 'pending',
+              genParams: genParamsForCache,
+              createdAt: Date.now(),
+              tab: tabLabel === '角色' ? 'char' : tabLabel === '场景' ? 'scene' : 'prop',
+              knownImageIds: existingImages.map((img) => img.id).filter(Boolean),
+              knownImageUrls: existingImages.flatMap((img) => [img.rawUrl, img.url]).filter(Boolean),
+            });
             setBatchLoadingSubjects((prev) => ({ ...prev, [char.id]: true }));
             setGeneratedImages((prev) => [{ url: null, settled: false, id: placeholder }, ...prev]);
 
@@ -2629,6 +2704,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   const prevCoverUrlsRef = useRef({});
   // 批量生成 AbortController，组件卸载时取消
   const batchAbortRef = useRef(null);
+  const singleGenRecoveryRunRef = useRef(0);
 
   // ── 恢复跨刷新挂起的批量生成任务 ────────────────────────────────────────────
   useEffect(() => {
@@ -2642,6 +2718,12 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     const captureTab = task.tab;
 
     setBatchGeneratingByTab(prev => ({ ...prev, [captureTab]: true }));
+    // 初始化所有待生成主体的 loading 状态
+    if (task.subjectIds && task.subjectIds.length > 0) {
+      const loadingMap = {};
+      task.subjectIds.forEach(id => { loadingMap[id] = true; });
+      setBatchLoadingSubjects(loadingMap);
+    }
 
     const targetSetter =
       captureTab === 'char' ? setChars :
@@ -2682,6 +2764,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       } finally {
         removePendingTask(projectId, task.taskId);
         setBatchGeneratingByTab(prev => { const n = { ...prev }; delete n[captureTab]; return n; });
+        setBatchLoadingSubjects({});
       }
     })();
   }, [projectId]);
@@ -2690,14 +2773,86 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   useEffect(() => {
     const loadingMap = {};
     for (const [subjectId, info] of pendingGenerations) {
-      if (info && info.status === 'pending') {
+      if (info?.status === 'pending') {
+        if (info.createdAt && (Date.now() - info.createdAt > PENDING_GEN_STALE_MS)) {
+          pendingGenerations.delete(subjectId);
+          continue;
+        }
         loadingMap[subjectId] = true;
       }
     }
     if (Object.keys(loadingMap).length > 0) {
       setBatchLoadingSubjects(prev => ({ ...loadingMap, ...prev }));
     }
-  }, []);
+
+    const runId = Date.now();
+    singleGenRecoveryRunRef.current = runId;
+    let cancelled = false;
+
+    const pollPendingGenerations = async () => {
+      while (!cancelled && singleGenRecoveryRunRef.current === runId) {
+        const activeEntries = Array.from(pendingGenerations.entries()).filter(([, info]) => info?.status === 'pending');
+        if (activeEntries.length === 0) break;
+
+        await Promise.all(activeEntries.map(async ([subjectId, info]) => {
+          if (!info) return;
+
+          if (info.createdAt && (Date.now() - info.createdAt > PENDING_GEN_STALE_MS)) {
+            pendingGenerations.delete(subjectId);
+            setBatchLoadingSubjects((prev) => {
+              const next = { ...prev };
+              delete next[subjectId];
+              return next;
+            });
+            return;
+          }
+
+          try {
+            const detailRes = await apiGetSubjectDetail(projectId, subjectId);
+            if (cancelled || singleGenRecoveryRunRef.current !== runId) return;
+
+            const recoveredImage = getPendingGenResult(detailRes, info);
+            if (!recoveredImage) return;
+
+            const rawUrl = recoveredImage.image_url || recoveredImage.imageUrl || recoveredImage.url || null;
+            pendingGenerations.set(subjectId, {
+              ...info,
+              status: 'done',
+              rawUrl,
+              imageUrl: rawUrl,
+              realId: recoveredImage.id || info.realId || null,
+              recoveredAt: Date.now(),
+            });
+
+            const targetSetter = getPendingGenTabSetter(info.tab, { setChars, setScenes, setProps });
+            targetSetter((prev) => prev.map((item) => {
+              if (item.id !== subjectId || item.imageUrl || !rawUrl) return item;
+              return { ...item, imageUrl: normalizeImageUrl(rawUrl) };
+            }));
+
+            setBatchLoadingSubjects((prev) => {
+              const next = { ...prev };
+              delete next[subjectId];
+              return next;
+            });
+            setSubjectDetailRefreshToken((prev) => prev + 1);
+          } catch (err) {
+            console.error('[SubjectPage] 恢复单主体生成失败:', subjectId, err);
+          }
+        }));
+
+        const stillPending = Array.from(pendingGenerations.values()).some((info) => info?.status === 'pending');
+        if (!stillPending) break;
+        await sleep(PENDING_GEN_POLL_MS);
+      }
+    };
+
+    pollPendingGenerations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
 
 
@@ -2776,7 +2931,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         signal: controller.signal,
         onTaskCreated: (taskId) => {
           batchTaskId = taskId;
-          addPendingTask(projectId, { taskId, shotId: '', episodeId: '', type: 'batch-subject', tab: captureTab });
+          addPendingTask(projectId, { taskId, shotId: '', episodeId: '', type: 'batch-subject', tab: captureTab, subjectIds });
         },
         onSubjectImage: (subjectId, imageUrl) => {
           successCount++;
@@ -2943,6 +3098,49 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   const [charVoices, setCharVoices] = useState(() =>
     Object.fromEntries(INITIAL_CHARS.map((c) => [c.id, c.voice]))
   );
+
+  useEffect(() => {
+    const panelState =
+      selectedChar ? { tab: 'char', subjectId: selectedChar.id } :
+      selectedScene ? { tab: 'scene', subjectId: selectedScene.id } :
+      selectedProp ? { tab: 'prop', subjectId: selectedProp.id } :
+      null;
+
+    if (panelState) {
+      saveSubjectPanelState(projectId, panelState);
+    } else {
+      clearSubjectPanelState(projectId);
+    }
+  }, [projectId, selectedChar, selectedScene, selectedProp]);
+
+  useEffect(() => {
+    const panelState = readSubjectPanelState(projectId);
+    if (!panelState?.subjectId || !panelState?.tab) return;
+
+    const source =
+      panelState.tab === 'char' ? chars :
+      panelState.tab === 'scene' ? scenes :
+      props;
+    const matched = source.find((item) => item.id === panelState.subjectId);
+    if (!matched) return;
+
+    setActiveTab(panelState.tab);
+    if (panelState.tab === 'char') {
+      setSelectedChar((prev) => prev?.id === matched.id ? prev : matched);
+      setSelectedScene(null);
+      setSelectedProp(null);
+      return;
+    }
+    if (panelState.tab === 'scene') {
+      setSelectedScene((prev) => prev?.id === matched.id ? prev : matched);
+      setSelectedChar(null);
+      setSelectedProp(null);
+      return;
+    }
+    setSelectedProp((prev) => prev?.id === matched.id ? prev : matched);
+    setSelectedChar(null);
+    setSelectedScene(null);
+  }, [projectId, chars, scenes, props]);
 
   // 从后端数据同步 voice_id 到本地 charVoices（仅当本地无记录时）
   useEffect(() => {

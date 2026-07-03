@@ -255,6 +255,107 @@ export async function apiDownloadCreationImage(imageId) {
 
 // ── 创作视频 ──────────────────────────────────────────────────────────────────
 
+function summarizeVideoHistoryPayload(list) {
+  if (!Array.isArray(list) || list.length === 0) return null;
+
+  const fieldSizeOf = (value) => {
+    try {
+      return JSON.stringify(value).length;
+    } catch {
+      return -1;
+    }
+  };
+
+  const entries = list.map((item, index) => {
+    const assetBindings = Array.isArray(item?.asset_bindings || item?.assetBindings)
+      ? (item.asset_bindings || item.assetBindings)
+      : [];
+    const referenceImages = Array.isArray(item?.reference_images || item?.referenceImages)
+      ? (item.reference_images || item.referenceImages)
+      : [];
+    const prompt = item?.prompt || '';
+    const promptHTML = item?.prompt_html || item?.promptHTML || '';
+    const rawSize = (() => {
+      try {
+        return JSON.stringify(item).length;
+      } catch {
+        return -1;
+      }
+    })();
+
+    return {
+      index,
+      id: item?.id,
+      rawSize,
+      promptLength: typeof prompt === 'string' ? prompt.length : 0,
+      promptHtmlLength: typeof promptHTML === 'string' ? promptHTML.length : 0,
+      assetBindingCount: assetBindings.length,
+      referenceImageCount: referenceImages.length,
+      firstFrameUrlLength: (item?.first_frame_url || item?.firstFrameUrl || '').length,
+      lastFrameUrlLength: (item?.last_frame_url || item?.lastFrameUrl || '').length,
+      videoUrlLength: (item?.video_url || item?.videoUrl || item?.preview_video_url || item?.previewVideoUrl || item?.url || '').length,
+      posterUrlLength: (item?.poster_url || item?.posterUrl || '').length,
+      fieldSizes: {
+        asset_bindings: fieldSizeOf(item?.asset_bindings || item?.assetBindings || []),
+        metadata: fieldSizeOf(item?.metadata),
+        result: fieldSizeOf(item?.result),
+        output: fieldSizeOf(item?.output),
+        response: fieldSizeOf(item?.response),
+        extra: fieldSizeOf(item?.extra),
+        detail: fieldSizeOf(item?.detail),
+        data: fieldSizeOf(item?.data),
+        prompt: fieldSizeOf(prompt),
+        prompt_html: fieldSizeOf(promptHTML),
+        video_url: fieldSizeOf(item?.video_url || item?.videoUrl || item?.preview_video_url || item?.previewVideoUrl || item?.url || ''),
+        poster_url: fieldSizeOf(item?.poster_url || item?.posterUrl || ''),
+        first_frame_url: fieldSizeOf(item?.first_frame_url || item?.firstFrameUrl || ''),
+        last_frame_url: fieldSizeOf(item?.last_frame_url || item?.lastFrameUrl || ''),
+      },
+    };
+  });
+
+  const totals = entries.reduce((acc, entry) => ({
+    rawSize: acc.rawSize + Math.max(entry.rawSize, 0),
+    promptLength: acc.promptLength + entry.promptLength,
+    promptHtmlLength: acc.promptHtmlLength + entry.promptHtmlLength,
+    assetBindingCount: acc.assetBindingCount + entry.assetBindingCount,
+    referenceImageCount: acc.referenceImageCount + entry.referenceImageCount,
+  }), {
+    rawSize: 0,
+    promptLength: 0,
+    promptHtmlLength: 0,
+    assetBindingCount: 0,
+    referenceImageCount: 0,
+  });
+
+  const topByRawSize = [...entries]
+    .sort((a, b) => b.rawSize - a.rawSize)
+    .slice(0, 3)
+    .map(({ index, id, rawSize, promptLength, promptHtmlLength, assetBindingCount, referenceImageCount, videoUrlLength, posterUrlLength, fieldSizes }) => ({
+      index,
+      id,
+      rawSize,
+      promptLength,
+      promptHtmlLength,
+      assetBindingCount,
+      referenceImageCount,
+      videoUrlLength,
+      posterUrlLength,
+      fieldSizes,
+    }));
+
+  return {
+    itemCount: list.length,
+    totalApproxChars: totals.rawSize,
+    avgApproxChars: Math.round(totals.rawSize / list.length),
+    totalPromptChars: totals.promptLength,
+    totalPromptHtmlChars: totals.promptHtmlLength,
+    totalAssetBindings: totals.assetBindingCount,
+    totalReferenceImages: totals.referenceImageCount,
+    topHeavyItems: topByRawSize,
+  };
+}
+
 export async function apiListCreationVideos({ page, page_size } = {}) {
   console.log("[DEBUG apiListCreationVideos] called with page:", page, "page_size:", page_size);
   const params = new URLSearchParams();
@@ -263,9 +364,28 @@ export async function apiListCreationVideos({ page, page_size } = {}) {
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/videos?${query}` : `${BASE}/api/creation/videos`;
   console.log("[DEBUG apiListCreationVideos] URL:", url);
+  const startedAt = performance.now();
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
-  console.log("[DEBUG apiListCreationVideos] authFetch returned, status:", res.status);
-  return res.json();
+  const responseAt = performance.now();
+  console.log("[DEBUG apiListCreationVideos] authFetch returned, status:", res.status, "elapsed:", Math.round(responseAt - startedAt), 'ms');
+  console.log("[DEBUG apiListCreationVideos] response headers:", {
+    contentLength: res.headers.get('content-length'),
+    contentType: res.headers.get('content-type'),
+  });
+  const jsonStartedAt = performance.now();
+  const data = await res.json();
+  const jsonEndedAt = performance.now();
+  const list = Array.isArray(data) ? data : (data?.list ?? data?.items ?? data?.data ?? []);
+  console.log("[DEBUG apiListCreationVideos] json parsed:", {
+    itemCount: Array.isArray(list) ? list.length : 0,
+    parseMs: Math.round(jsonEndedAt - jsonStartedAt),
+    totalMs: Math.round(jsonEndedAt - startedAt),
+  });
+  const payloadSummary = summarizeVideoHistoryPayload(list);
+  if (payloadSummary) {
+    console.log('[DEBUG apiListCreationVideos] payload summary:', payloadSummary);
+  }
+  return data;
 }
 
 export async function apiGenerateCreationVideo(data) {

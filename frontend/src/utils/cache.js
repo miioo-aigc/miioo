@@ -228,6 +228,13 @@ export function peekCache(key, medium = 'memory') {
 }
 
 /**
+ * 同步读取缓存条目（含时间戳），用于判断是否命中本地缓存以及缓存年龄。
+ */
+export function peekCacheEntry(key, medium = 'memory') {
+  return readRaw(medium, key) ?? undefined;
+}
+
+/**
  * 清空本应用所有缓存（登出时调用）。
  */
 export function clearAllCache() {

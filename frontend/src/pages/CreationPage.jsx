@@ -62,7 +62,7 @@
  *   <CreationGhostBtn>       批量操作幽灵按钮（下载等）        L4569
  *   <CreationPlainBtn>       批量操作普通按钮（删除/取消）     L4590
  *
- * ─── 主页面入口 ────────────────────────────────────────────── L4609–L5659
+ * ─── 主页面入口 ────────────────────────────────────────────── L4609–L5723
  *   <CreationLoginEmptyState>  未登录空态                     L4610
  *
  *   模块级常量（组件卸载重挂载不重置）                         L4677–L4681
@@ -74,23 +74,28 @@
  *     ├─ [状态] activeCountByTab（各类型并发数）               L4687
  *     ├─ [Store] useCreationStore → generations / favorites   L4689–L4696
  *     ├─ [状态] toasts + showToast()                          L4700–L4705
- *     ├─ [状态] videoDetailModal                              L5005
- *     ├─ [状态] modelOptions / model / creationParams         L5032–L5036
- *     ├─ [状态] batchMode / batchDeleteConfirm / selected     L5038–L5040
+ *     ├─ [状态] videoDetailModal                              L5134
+ *     ├─ [状态] modelOptions / model / creationParams         L5161–L5165
+ *     ├─ [状态] batchMode / batchDeleteConfirm / selected     L5167–L5169
  *     │
- *     ├─ [函数] normalizeHistoryItem()  后端数据适配          L4717
- *     ├─ [函数] loadHistoryPage()       分页拉历史数据         L4809
- *     ├─ [函数] handleToggleFavorite()  收藏（乐观更新）       L5008
- *     ├─ [函数] handleTabChange()       切换 Tab              L5091
- *     ├─ [函数] handleGenTypeChange()   切换生成类型           L5097
- *     ├─ [函数] handleDeleteCard()      删除结果卡             L约5105
- *     ├─ [函数] handleGenerate()        发起生成               L约5130
+ *     ├─ [函数] normalizeHistoryItem()  后端数据适配          L4836
+ *     ├─ [函数] getHistoryListFromResponse() 历史响应解包     L4927
+ *     ├─ [函数] pickHistoryCacheItem() 瘦身历史缓存字段      L4931
+ *     ├─ [函数] buildHistoryCachePayload() 生成缓存载荷       L4988
+ *     ├─ [函数] hydrateHistoryFromCache() 本地缓存秒开        L4999
+ *     ├─ [函数] syncHistoryFavorites()  同步收藏状态          L5024
+ *     ├─ [函数] loadHistoryPage()       分页拉历史数据         L5039
+ *     ├─ [函数] handleToggleFavorite()  收藏（乐观更新）       L5137
+ *     ├─ [函数] handleTabChange()       切换 Tab              L5220
+ *     ├─ [函数] handleGenTypeChange()   切换生成类型           L5226
+ *     ├─ [函数] handleDeleteCard()      删除结果卡             L约5234
+ *     ├─ [函数] handleGenerate()        发起生成               L约5259
  *     │
- *     ├─ [副作用] 登录/切 tab 时拉历史首页                    L4858
- *     ├─ [副作用] session 初始化（登录后）                    L4870
- *     ├─ [副作用] 页面刷新恢复未完成任务                      L4898
- *     ├─ [副作用] genType 变化时加载模型列表                  L5043
- *     └─ [副作用] model 变化时加载生成参数                    L5072
+ *     ├─ [副作用] 登录/切 tab 时拉历史首页                    L5118
+ *     ├─ [副作用] session 初始化（登录后）                    L5133
+ *     ├─ [副作用] 页面刷新恢复未完成任务                      L5161
+ *     ├─ [副作用] genType 变化时加载模型列表                  L5273
+ *     └─ [副作用] model 变化时加载生成参数                    L5302
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────────
  *   2026-05-28  初始结构索引建立
@@ -111,7 +116,7 @@ import CreationVideoDetailModal from '../components/CreationVideoDetailModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import FilePreviewTooltip from '../components/FilePreviewTooltip';
 import DotsLoading from '../components/DotsLoading';
-import { cached, peekCache, invalidate } from '../utils/cache';
+import { cached, invalidate, peekCacheEntry, setCache } from '../utils/cache';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -790,9 +795,13 @@ const VIDEO_EXTS_SET = new Set(['.mp4', '.mov', '.avi', '.webm', '.mkv', '.wmv',
 
 function isImageFile(file) {
   if (file.type && file.type.startsWith('image/')) return true;
-  if (file.isAsset && file.url) {
-    if (/\.(jpg|jpeg|png|webp|gif|bmp|tiff?|heic|heif)$/i.test(file.url)) return true;
-    // URL has no extension (e.g. picsum.photos) — fall through to check file.name
+  if (file.isAsset) {
+    // 去掉 URL 查询参数再匹配扩展名，兼容 x-oss-process 等 OSS 处理指令
+    const urls = [file.url, file.previewUrl].filter(Boolean);
+    for (const url of urls) {
+      const cleanUrl = url.split('?')[0];
+      if (/\.(jpg|jpeg|png|webp|gif|bmp|tiff?|heic|heif)$/i.test(cleanUrl)) return true;
+    }
   }
   const ext = '.' + (file.name || '').split('.').pop().toLowerCase();
   return IMAGE_EXTS_SET.has(ext);
@@ -800,8 +809,12 @@ function isImageFile(file) {
 
 function isVideoFile(file) {
   if (file.type && file.type.startsWith('video/')) return true;
-  if (file.isAsset && file.url) {
-    if (/\.(mp4|mov|avi|webm|mkv|wmv|flv)$/i.test(file.url)) return true;
+  if (file.isAsset) {
+    const urls = [file.url, file.previewUrl].filter(Boolean);
+    for (const url of urls) {
+      const cleanUrl = url.split('?')[0];
+      if (/\.(mp4|mov|avi|webm|mkv|wmv|flv)$/i.test(cleanUrl)) return true;
+    }
   }
   const ext = '.' + (file.name || '').split('.').pop().toLowerCase();
   return VIDEO_EXTS_SET.has(ext);
@@ -809,8 +822,12 @@ function isVideoFile(file) {
 
 function isAudioFile(file) {
   if (file.type && file.type.startsWith('audio/')) return true;
-  if (file.isAsset && file.url) {
-    if (/\.(mp3|wav|aac|ogg|flac|m4a|wma)$/i.test(file.url)) return true;
+  if (file.isAsset) {
+    const urls = [file.url, file.previewUrl].filter(Boolean);
+    for (const url of urls) {
+      const cleanUrl = url.split('?')[0];
+      if (/\.(mp3|wav|aac|ogg|flac|m4a|wma)$/i.test(cleanUrl)) return true;
+    }
   }
   const ext = '.' + (file.name || '').split('.').pop().toLowerCase();
   return AUDIO_EXTS_SET.has(ext);
@@ -4360,6 +4377,7 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
                           name: img.name || 'ref.png',
                           url: img.url || img.previewUrl || '',
                           previewUrl: img.url || img.previewUrl || '',
+                          type: 'image/png',
                           isAsset: true,
                           size: 0,
                         })),
@@ -4367,6 +4385,7 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
                           name: vid.name || 'ref.mp4',
                           url: vid.url || vid.previewUrl || '',
                           previewUrl: vid.url || vid.previewUrl || '',
+                          type: 'video/mp4',
                           isAsset: true,
                           size: 0,
                         })),
@@ -4429,6 +4448,7 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
                       name: img.name || 'ref.png',
                       url: img.url || img.previewUrl || '',
                       previewUrl: img.url || img.previewUrl || '',
+                      type: 'image/png',
                       isAsset: true,
                       size: 0,
                     })),
@@ -4843,12 +4863,12 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
             .map((b) => {
               const imgUrl = b.preview_url || b.previewUrl || b.url || '';
               const normalized = normalizeImageUrl(imgUrl) || imgUrl;
-              return { url: normalized, previewUrl: normalized, isAsset: true, name: b.asset_name || 'ref.png', size: 0, assetId: b.asset_id };
+              return { url: normalized, previewUrl: normalized, type: 'image/png', isAsset: true, name: b.asset_name || 'ref.png', size: 0, assetId: b.asset_id };
             })
         : (item.reference_images || item.referenceImages || []).map((img) => {
             const imgUrl = typeof img === 'string' ? img : (img?.url || img?.original_url || '');
             const normalized = normalizeImageUrl(imgUrl) || imgUrl;
-            return { url: normalized, previewUrl: normalized, isAsset: true, name: normalized.split('/').pop() || 'ref.png', size: 0, assetId: img?.asset_id };
+            return { url: normalized, previewUrl: normalized, type: 'image/png', isAsset: true, name: normalized.split('/').pop() || 'ref.png', size: 0, assetId: img?.asset_id };
           });
     // 从 asset_bindings 提取参考视频（仅视频类型）
     const refVideos =
@@ -4858,7 +4878,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
             .map((b) => {
               const vidUrl = b.url || '';
               const previewVidUrl = b.preview_video_url || b.previewVideoUrl || b.preview_url || b.previewUrl || vidUrl;
-              return { url: vidUrl, previewUrl: previewVidUrl, isAsset: true, name: b.asset_name || 'ref.mp4', size: 0, duration: b.duration, assetId: b.asset_id };
+              return { url: vidUrl, previewUrl: previewVidUrl, type: 'video/mp4', isAsset: true, name: b.asset_name || 'ref.mp4', size: 0, duration: b.duration, assetId: b.asset_id };
             })
         : [];
     // 从 asset_bindings 提取参考音频（仅视频类型）
@@ -4909,15 +4929,136 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     };
   }
 
+  function getHistoryListFromResponse(resp) {
+    return Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
+  }
+
+  function pickHistoryCacheItem(item, tab) {
+    if (!item || typeof item !== 'object') return item;
+
+    const base = {
+      id: item.id,
+      prompt: item.prompt || '',
+      model: item.model || '',
+      ratio: item.ratio || item.aspect_ratio || '16:9',
+      resolution: item.resolution || item.size || '',
+      duration: item.duration || undefined,
+      created_at: item.created_at || item.createdAt || new Date().toISOString(),
+      is_favorite: item.is_favorite ?? item.is_liked ?? item.isLiked ?? false,
+    };
+
+    if (tab === 'image') {
+      return {
+        ...base,
+        original_url: item.original_url || item.file_url || item.url || '',
+        thumbnail_url: item.thumbnail_url || item.thumbnailUrl || item.original_url || item.file_url || item.url || '',
+        reference_images: Array.isArray(item.reference_images)
+          ? item.reference_images.map((img) => (typeof img === 'string'
+            ? img
+            : { url: img?.url || img?.original_url || '', asset_id: img?.asset_id }))
+          : [],
+      };
+    }
+
+    if (tab === 'video') {
+      const assetBindings = Array.isArray(item.asset_bindings || item.assetBindings)
+        ? (item.asset_bindings || item.assetBindings)
+        : [];
+      return {
+        ...base,
+        video_url: item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '',
+        preview_video_url: item.preview_video_url || item.previewVideoUrl || item.video_url || item.videoUrl || '',
+        poster_url: item.poster_url || item.posterUrl || '',
+        reference_mode: item.reference_mode || item.referenceMode || undefined,
+        first_frame_url: item.first_frame_url || item.firstFrameUrl || undefined,
+        last_frame_url: item.last_frame_url || item.lastFrameUrl || undefined,
+        asset_bindings: assetBindings.map((binding) => ({
+          asset_id: binding.asset_id,
+          asset_name: binding.asset_name,
+          asset_type: binding.asset_type,
+          url: binding.url || '',
+          preview_url: binding.preview_url || binding.previewUrl || '',
+          preview_video_url: binding.preview_video_url || binding.previewVideoUrl || '',
+          duration: binding.duration,
+        })),
+      };
+    }
+
+    return {
+      ...base,
+      file_url: item.file_url || item.url || item.original_url || '',
+    };
+  }
+
+  function buildHistoryCachePayload(tab, resp) {
+    const list = getHistoryListFromResponse(resp).map((item) => pickHistoryCacheItem(item, tab));
+    if (Array.isArray(resp)) return list;
+    if (resp && typeof resp === 'object') {
+      if (Array.isArray(resp.list)) return { ...resp, list };
+      if (Array.isArray(resp.items)) return { ...resp, items: list };
+      if (Array.isArray(resp.data)) return { ...resp, data: list };
+    }
+    return { list };
+  }
+
+  function hydrateHistoryFromCache(tab) {
+    const cacheKey = `creation_history:${tab}:page1`;
+    const cacheEntry = peekCacheEntry(cacheKey, 'local');
+    if (!cacheEntry?.d) {
+      console.log('[CreationPage][history] cache miss', { tab, cacheKey });
+      return false;
+    }
+
+    const list = getHistoryListFromResponse(cacheEntry.d);
+    const type = tab === 'dubbing' ? 'audio' : tab;
+    const normalized = list.map((item) => normalizeHistoryItem(item, type));
+    mergeHistoryGenerations(tab, normalized);
+
+    const cacheAgeMs = Date.now() - cacheEntry.t;
+    console.log('[CreationPage][history] hydrated from local cache', {
+      tab,
+      cacheKey,
+      itemCount: list.length,
+      cacheAgeMs,
+      isFresh: cacheAgeMs < 5 * 60 * 1000,
+    });
+
+    return true;
+  }
+
+  function syncHistoryFavorites(tab) {
+    const latestGens = useCreationStore.getState().generationsByTab[tab] ?? [];
+    const syncItems = [];
+    for (const gen of latestGens) {
+      for (let i = 0; i < gen.cards.length; i++) {
+        const card = gen.cards[i];
+        if (card.isFavorite !== undefined) {
+          syncItems.push({ key: `${gen.id}-${i}`, isFavorite: card.isFavorite });
+        }
+      }
+    }
+    if (syncItems.length > 0) {
+      storeSyncFavorites(syncItems);
+    }
+  }
+
   // 拉取一页历史数据，自动填满视口逻辑由 CreationResultState 触发
   const loadHistoryPage = useCallback(async (tab) => {
     if (!isLoggedIn) return;
     const meta = useCreationStore.getState().historyMeta[tab];
-    if (meta.loading || !meta.hasMore) return;
+    if (meta.loading || !meta.hasMore) {
+      console.log('[CreationPage][history] skip load', {
+        tab,
+        reason: meta.loading ? 'loading' : 'no-more',
+        meta,
+      });
+      return;
+    }
 
     updateHistoryMeta(tab, { loading: true });
     const nextPage = meta.page + 1;
-    const PAGE_SIZE = 18; // 比默认9大，保证大屏填满
+    const PAGE_SIZE = tab === 'video' ? 9 : 18;
+    console.log('[CreationPage][history] start load', { tab, nextPage, meta });
 
     try {
       let list;
@@ -4927,41 +5068,90 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         dubbing: apiListCreationAudios,
       };
       if (nextPage === 1) {
-        console.log("[DEBUG] loadHistoryPage: about to call cached for", tab, "nextPage:", nextPage);
-        console.trace("[DEBUG] loadHistoryPage call stack");
-        const resp = await cached(`creation_history:${tab}:page1`, () => apiMap[tab]({ page: 1, page_size: PAGE_SIZE }), {
-          medium: 'local',
-          ttl: 5 * 60 * 1000,
-          swr: true,
+        const cacheKey = `creation_history:${tab}:page1`;
+        const cacheEntry = peekCacheEntry(cacheKey, 'local');
+        const cacheList = cacheEntry?.d ? getHistoryListFromResponse(cacheEntry.d) : [];
+        console.log('[CreationPage][history] page1 cache status before cached()', {
+          tab,
+          cacheKey,
+          hit: Boolean(cacheEntry?.d),
+          cacheAgeMs: cacheEntry?.t ? Date.now() - cacheEntry.t : null,
         });
-        list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
+        let resp;
+        if (tab === 'video') {
+          const cacheAgeMs = cacheEntry?.t ? Date.now() - cacheEntry.t : null;
+          const isFresh = Boolean(cacheEntry?.d) && cacheAgeMs < 5 * 60 * 1000;
+          if (cacheEntry?.d) {
+            resp = cacheEntry.d;
+            if (!isFresh) {
+              console.log('[CreationPage][history] video cache stale, revalidating in background', {
+                tab,
+                cacheKey,
+                cacheAgeMs,
+              });
+              apiMap[tab]({ page: 1, page_size: PAGE_SIZE })
+                .then((networkResp) => {
+                  const slimResp = buildHistoryCachePayload(tab, networkResp);
+                  setCache(cacheKey, slimResp, { medium: 'local' });
+                })
+                .catch((err) => {
+                  console.warn('[CreationPage][history] video cache revalidate failed', { tab, cacheKey, message: err?.message });
+                });
+            }
+          } else {
+            console.log('[CreationPage][history] network request fired', { tab, page: 1, pageSize: PAGE_SIZE });
+            const networkResp = await apiMap[tab]({ page: 1, page_size: PAGE_SIZE });
+            resp = buildHistoryCachePayload(tab, networkResp);
+            setCache(cacheKey, resp, { medium: 'local' });
+          }
+        } else {
+          resp = await cached(cacheKey, async () => {
+            console.log('[CreationPage][history] network request fired', { tab, page: 1, pageSize: PAGE_SIZE });
+            return apiMap[tab]({ page: 1, page_size: PAGE_SIZE });
+          }, {
+            medium: 'local',
+            ttl: 5 * 60 * 1000,
+            swr: true,
+          });
+        }
+        list = getHistoryListFromResponse(resp);
+
+        const isSameAsHydratedCache = cacheEntry?.d && JSON.stringify(list) === JSON.stringify(cacheList);
+        if (isSameAsHydratedCache) {
+          const hasMore = list.length >= PAGE_SIZE;
+          syncHistoryFavorites(tab);
+          console.log('[CreationPage][history] reused hydrated cache result', {
+            tab,
+            nextPage,
+            itemCount: list.length,
+            hasMore,
+          });
+          updateHistoryMeta(tab, { page: nextPage, hasMore, loading: false, initialized: true });
+          return;
+        }
       } else {
+        console.log('[CreationPage][history] network request fired', { tab, page: nextPage, pageSize: PAGE_SIZE });
         const resp = await apiMap[tab]({ page: nextPage, page_size: PAGE_SIZE });
-        list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
+        list = getHistoryListFromResponse(resp);
       }
 
       const type = tab === 'dubbing' ? 'audio' : tab;
       const hasMore = list.length >= PAGE_SIZE;
 
-     const normalized = list.map((item) => normalizeHistoryItem(item, type));
-     mergeHistoryGenerations(tab, normalized);
+      const normalized = list.map((item) => normalizeHistoryItem(item, type));
+      mergeHistoryGenerations(tab, normalized);
+      console.log('[CreationPage][history] load success', {
+        tab,
+        nextPage,
+        itemCount: list.length,
+        normalizedCount: normalized.length,
+        hasMore,
+      });
 
       // 同步后端收藏状态到本地 favorites Set
-      const latestGens = useCreationStore.getState().generationsByTab[tab] ?? [];
-      const syncItems = [];
-      for (const gen of latestGens) {
-        for (let i = 0; i < gen.cards.length; i++) {
-          const card = gen.cards[i];
-          if (card.isFavorite !== undefined) {
-            syncItems.push({ key: `${gen.id}-${i}`, isFavorite: card.isFavorite });
-          }
-        }
-      }
-      if (syncItems.length > 0) {
-        storeSyncFavorites(syncItems);
-      }
+      syncHistoryFavorites(tab);
 
-     updateHistoryMeta(tab, { page: nextPage, hasMore, loading: false, initialized: true });
+      updateHistoryMeta(tab, { page: nextPage, hasMore, loading: false, initialized: true });
     } catch (err) {
       console.error('[CreationPage] 历史数据加载失败:', err);
       updateHistoryMeta(tab, { loading: false, initialized: true });
@@ -4972,18 +5162,18 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   useEffect(() => {
     if (!isLoggedIn) return;
     const meta = historyMeta[activeTab];
+    console.log('[CreationPage][history] tab effect', {
+      activeTab,
+      initialized: meta.initialized,
+      loading: meta.loading,
+      localGenerationCount: generationsByTab[activeTab]?.length ?? 0,
+    });
     if (!meta.initialized && !meta.loading) {
-      console.log("[DEBUG] video tab peekCache key:", "creation_history:video:page1");
-        const cachedData = peekCache(`creation_history:video:page1`, "local");
-        console.log("[DEBUG] peekCache result:", cachedData ? "HIT (" + (Array.isArray(cachedData) ? cachedData.length + " items" : typeof cachedData) + ")" : "MISS");
-      if (cachedData) {
-        // 有缓存 → 数据已通过 zustand persist 恢复，无需重新请求
-        updateHistoryMeta(activeTab, { initialized: true });
-      } else {
-        loadHistoryPage(activeTab);
-      }
+      const hydrated = hydrateHistoryFromCache(activeTab);
+      console.log('[CreationPage][history] initial hydrate result', { tab: activeTab, hydrated });
+      loadHistoryPage(activeTab);
     }
-  }, [isLoggedIn, activeTab]);
+  }, [isLoggedIn, activeTab, historyMeta, generationsByTab, loadHistoryPage]);
 
   // Video detail modal state
 

@@ -62,7 +62,7 @@
  *   <CreationGhostBtn>       批量操作幽灵按钮（下载等）        L4569
  *   <CreationPlainBtn>       批量操作普通按钮（删除/取消）     L4590
  *
- * ─── 主页面入口 ────────────────────────────────────────────── L4609–L5723
+ * ─── 主页面入口 ────────────────────────────────────────────── L4609–L5736
  *   <CreationLoginEmptyState>  未登录空态                     L4610
  *
  *   模块级常量（组件卸载重挂载不重置）                         L4677–L4681
@@ -84,7 +84,7 @@
  *     ├─ [函数] buildHistoryCachePayload() 生成缓存载荷       L4988
  *     ├─ [函数] hydrateHistoryFromCache() 本地缓存秒开        L4999
  *     ├─ [函数] syncHistoryFavorites()  同步收藏状态          L5024
- *     ├─ [函数] loadHistoryPage()       分页拉历史数据         L5039
+ *     ├─ [函数] loadHistoryPage()       视频首批6条，未满续拉  L5039
  *     ├─ [函数] handleToggleFavorite()  收藏（乐观更新）       L5137
  *     ├─ [函数] handleTabChange()       切换 Tab              L5220
  *     ├─ [函数] handleGenTypeChange()   切换生成类型           L5226
@@ -4223,9 +4223,10 @@ function AudioResultCard({ status, audioUrl, prompt, model, createdAt, onDelete,
   );
 }
 
-function CreationResultState({ generations, onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onDeleteCard, batchMode = false, selected, onToggleSelect, onSwitchToFrameMode, onVideoCardClick, favorites, toggleFavorite, showToast, onBeforeModelOpen, isGenerating = false, historyLoading = false, historyHasMore = false, onLoadMore, activeCount = 0, capabilitiesMap = {} }) {
+function CreationResultState({ generations, onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onDeleteCard, batchMode = false, selected, onToggleSelect, onSwitchToFrameMode, onVideoCardClick, favorites, toggleFavorite, showToast, onBeforeModelOpen, isGenerating = false, historyLoading = false, historyHasMore = false, onLoadMore, autoFillLimit = Infinity, activeCount = 0, capabilitiesMap = {} }) {
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
+  const autoFillCountRef = useRef(0);
   const [prefillVersion, setPrefillVersion] = useState(0);
   const [prefillData, setPrefillData] = useState(null);
 
@@ -4256,6 +4257,7 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
+    autoFillCountRef.current = 0;
   }, [genType]); // tab 切换时重置，历史追加不重置
 
   // ── 滚动到底加载更多（IntersectionObserver） ─────────────────────────────────
@@ -4280,12 +4282,21 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
     if (!container) return;
     // 等 DOM 更新后再检测
     const raf = requestAnimationFrame(() => {
-      if (container.scrollHeight <= container.clientHeight + 1) {
+      const underfilled = container.scrollHeight <= container.clientHeight + 1;
+      if (underfilled && autoFillCountRef.current < autoFillLimit) {
+        autoFillCountRef.current += 1;
+        console.log('[CreationPage][history] auto-fill loadMore', {
+          genType,
+          autoFillCount: autoFillCountRef.current,
+          autoFillLimit,
+          scrollHeight: container.scrollHeight,
+          clientHeight: container.clientHeight,
+        });
         onLoadMore();
       }
     });
     return () => cancelAnimationFrame(raf);
-  }, [generations.length, historyHasMore, historyLoading, onLoadMore]);
+  }, [autoFillLimit, genType, generations.length, historyHasMore, historyLoading, onLoadMore]);
 
   const isAudio = genType === 'dubbing';
 
@@ -5057,7 +5068,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
 
     updateHistoryMeta(tab, { loading: true });
     const nextPage = meta.page + 1;
-    const PAGE_SIZE = tab === 'video' ? 9 : 18;
+    const PAGE_SIZE = tab === 'video' ? 6 : 18;
     console.log('[CreationPage][history] start load', { tab, nextPage, meta });
 
     try {
@@ -5903,6 +5914,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               historyLoading={historyMeta[activeTab]?.loading}
               historyHasMore={historyMeta[activeTab]?.hasMore}
               onLoadMore={() => loadHistoryPage(activeTab)}
+              autoFillLimit={activeTab === 'video' ? 2 : Infinity}
               activeCount={activeCountByTab[genType] ?? 0}
               onBeforeModelOpen={() => {
                 if (!apiConfigured) { onShowNoModelNotice?.(); return false; }

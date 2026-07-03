@@ -180,10 +180,19 @@ function normalizeAsset(item) {
     // 分集展示字段（用于区分不同集的同编号分镜，避免跨集合并）
     episodeLabel: item.episode_label ?? item.episodeLabel ?? meta.episode_label ?? null,
     duration: meta.duration ?? item.duration ?? null,
-    refImages: (Array.isArray(item.ref_images) ? item.ref_images : []).map(img => ({
-      url: normalizeImageUrl(img.url || img.file_url || ''),
-      title: img.title || img.name || '',
-    })).filter(img => img.url),
+    refImages: (() => {
+      // API 返回 reference_image_urls (string[])，兼容旧字段 ref_images (object[])
+      const raw = Array.isArray(item.reference_image_urls) ? item.reference_image_urls
+        : Array.isArray(item.ref_images) ? item.ref_images
+        : [];
+      return raw.map(ref => {
+        if (typeof ref === 'string') return { url: normalizeImageUrl(ref), title: '' };
+        return {
+          url: normalizeImageUrl(ref.url || ref.file_url || ''),
+          title: ref.title || ref.name || '',
+        };
+      }).filter(img => img.url);
+    })(),
   };
 }
 

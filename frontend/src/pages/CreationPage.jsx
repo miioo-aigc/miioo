@@ -2891,6 +2891,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         return;
       }
       if (e.key === 'Enter' && mentionFiles.length > 0) {
+        if (e.nativeEvent.isComposing) return;
         e.preventDefault();
         insertMention(mentionFiles[mentionIndex] || mentionFiles[0]);
         return;
@@ -2930,6 +2931,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       }
     }
     if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.nativeEvent.isComposing) return;
       e.preventDefault();
       handleSend();
     }

@@ -31,7 +31,7 @@
  *   <VoiceDubModal>               配音弹窗                    L3884–L4154
  *   <NarrationItem> / <AddNarrationBtn> / <NarrationCol>     L4156–L4383
  *   <AddSlotDropdown> / <MainRefCol> / <MediaHoverPreview>  L4385–L4699
- *   <MainRefModal> / <MediaViewModal> / <ImgIconBtn> / <MediaIconBtn>  L4701–L4944
+ *   <MainRefModal> / <MediaViewModal> / <MediaDetailModal> / <ImgIconBtn> / <MediaIconBtn>  L4701–L4944
  *   <MediaCol> / <CardActionBtn> / <NumberCol> / <ParamTrigger>  L4946–L5327
  *   <DescriptionCol> / <TextEditCol> / <NarrationColWrapper>  L5329–L5414
  *   <MainRefColWrapper> / <MediaColWrapper> / <ShotRow>      L5416–L5648
@@ -72,6 +72,9 @@
  *     └─ [副作用] 单镜头生成中持久化任务到 localStorage           L6744+
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-07-03  MediaCol 图片查看按钮复用 MediaDetailModal（替代原 MediaViewModal）
+ *              MediaDetailModal/ShotViewerModal 传入 zIndex 避免被侧面板遮挡
+ *              GenerateImagePanel/GenerateVideoPanel 生成图片时快照 refImages
  *   2026-07-01  初始结构索引建立
  *   2026-07-02  生成任务跨刷新持久化（taskPersistence）
  */
@@ -80,6 +83,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImper
 import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
 import BatchDownloadModal from '../components/BatchDownloadModal';
+import MediaDetailModal from '../components/MediaDetailModal';
 import ShotViewerModal from '../components/ShotViewerModal';
 import Toggle from '../components/Toggle';
 import Checkbox from '../components/Checkbox';
@@ -2278,7 +2282,8 @@ function GenerateImagePanel({ shot, projectId, chars = [], scenes = [], props = 
   const [loading, setLoading] = useState(false);
   const [btnHov, setBtnHov] = useState(false);
   const [btnPressed, setBtnPressed] = useState(false);
-  const [viewImageUrl, setViewImageUrl] = useState(null);
+  const [mediaDetailOpen, setMediaDetailOpen] = useState(false);
+  const [mediaDetailActiveIdx, setMediaDetailActiveIdx] = useState(0);
   const [refImgPreview, setRefImgPreview] = useState(null); // { url, x, y }
   const refImgHoverTimer = useRef(null);
   const refFileRef = useRef(null);
@@ -2375,7 +2380,8 @@ function GenerateImagePanel({ shot, projectId, chars = [], scenes = [], props = 
     if (loading) return;
     setLoading(true);
     const placeholder = `pending-${Date.now()}`;
-    onSetGeneratedImages((prev) => [{ url: null, settled: false, id: placeholder }, ...prev]);
+    const refImagesSnapshot = refImages.map(r => ({ url: r.url, fileUrl: r.url }));
+    onSetGeneratedImages((prev) => [{ url: null, settled: false, id: placeholder, refImages: refImagesSnapshot }, ...prev]);
     try {
       const result = await onGenerate?.({ model, resolution, prompt, refImages });
       onSetGeneratedImages((prev) =>
@@ -2542,7 +2548,7 @@ function GenerateImagePanel({ shot, projectId, chars = [], scenes = [], props = 
                 key={img.id ?? img.url + i}
                 imageUrl={img.url}
                 settled={img.settled}
-                onView={setViewImageUrl}
+                onView={() => { setMediaDetailActiveIdx(i); setMediaDetailOpen(true); }}
                 onSettledChange={(newSettled) => {
                   onSetGeneratedImages((prev) =>
                     prev.map((item, idx) =>
@@ -2603,7 +2609,38 @@ function GenerateImagePanel({ shot, projectId, chars = [], scenes = [], props = 
           </div>
         </div>
       </div>
-      {viewImageUrl && <MediaViewModal url={viewImageUrl} onClose={() => setViewImageUrl(null)} />}
+      {mediaDetailOpen && (
+        <MediaDetailModal
+          zIndex={902}
+          mode="image"
+          images={generatedImages.filter(img => img.url).map(img => ({
+            id: img.id,
+            url: img.url,
+            fileUrl: img.url,
+            is_primary: img.settled ?? false,
+            prompt: prompt,
+            model: model,
+            resolution: resolution,
+            refImages: (img.refImages && img.refImages.length > 0) ? img.refImages : refImages.filter(r => r.url).map(r => ({ url: normalizeImageUrl(r.url || r.fileUrl || ''), fileUrl: r.url })),
+          }))}
+          name={`镜头 ${String(shot?.number ?? 1).padStart(2, '0')}`}
+          shotNumber={`镜头 ${String(shot?.number ?? 1).padStart(2, '0')}`}
+          showDelete={false}
+          showDownload={true}
+          activeIndex={mediaDetailActiveIdx}
+          onClose={() => setMediaDetailOpen(false)}
+          onDownload={(imageId, fileUrl) => {
+            const a = document.createElement('a');
+            a.href = fileUrl || generatedImages[mediaDetailActiveIdx]?.url;
+            a.download = `storyboard-image-${imageId || 'download'}.jpg`;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }}
+        />
+      )}
       {refImgPreview && createPortal(
         <MediaHoverPreview url={refImgPreview.url} isVideo={false} mouseX={refImgPreview.x} mouseY={refImgPreview.y} />,
         document.body
@@ -2854,7 +2891,8 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
     if (loading) return;
     setLoading(true);
     const placeholder = `pending-${Date.now()}`;
-    onSetGeneratedVideos?.((prev) => [{ url: null, settled: false, id: placeholder }, ...prev]);
+    const refImagesSnapshot = refImages.map(r => ({ url: r.url, fileUrl: r.url }));
+    onSetGeneratedVideos?.((prev) => [{ url: null, settled: false, id: placeholder, refImages: refImagesSnapshot }, ...prev]);
     try {
       // 收集参考媒体（仅用户手动上传的参考图，不自动附带主体参考图避免误触模型限制）
       const maxRefImages = currentVideoModel?.capabilities?.max_reference_images ?? null;
@@ -5026,6 +5064,7 @@ function MediaCol({ media, onUpload, accept, isVideo, label, onAIGenerate, shotM
   const [hovered, setHovered] = useState(false);
   const [viewUrl, setViewUrl] = useState(null);
   const [viewerShot, setViewerShot] = useState(null);
+  const [imageDetailOpen, setImageDetailOpen] = useState(false);
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
 
@@ -5123,7 +5162,7 @@ function MediaCol({ media, onUpload, accept, isVideo, label, onAIGenerate, shotM
               if (isVideo) {
                 setViewerShot({ videoUrl: media.url, filename: media.name, label: shotMeta?.label, prompt: shotMeta?.prompt, model: shotMeta?.model, resolution: shotMeta?.resolution, duration: shotMeta?.duration, aspectRatio: shotMeta?.aspectRatio, finalized: shotMeta?.finalized });
               } else {
-                setViewUrl(media.url);
+                setImageDetailOpen(true);
               }
             }; }}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -5186,6 +5225,28 @@ function MediaCol({ media, onUpload, accept, isVideo, label, onAIGenerate, shotM
       </div>
       {viewUrl && <MediaViewModal url={viewUrl} onClose={() => setViewUrl(null)} />}
       {viewerShot && <ShotViewerModal shot={viewerShot} onClose={() => setViewerShot(null)} />}
+      {imageDetailOpen && (
+        <MediaDetailModal
+          mode="image"
+          images={[{ id: media?.id ?? media?.url, url: media?.url, fileUrl: media?.url, prompt: shotMeta?.prompt, model: shotMeta?.model, resolution: shotMeta?.resolution, refImages: (shotMeta?.refImages ?? []) }]}
+          name={shotMeta?.label ?? ''}
+          shotNumber={shotMeta?.label ?? ''}
+          showDelete={false}
+          showDownload={true}
+          activeIndex={0}
+          onClose={() => setImageDetailOpen(false)}
+          onDownload={(imageId, fileUrl) => {
+            const a = document.createElement('a');
+            a.href = fileUrl || media?.url;
+            a.download = `storyboard-image-${imageId || 'download'}.jpg`;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -5634,6 +5695,13 @@ function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, o
           isVideo={false}
           onAIGenerate={onGenerateImage}
           generating={generatingImage}
+          shotMeta={{
+            label: `镜头 ${String(shot.number).padStart(2, '0')}`,
+            prompt: shot.description,
+            model: shot.storyboardImage?.model ?? '-',
+            resolution: shot.storyboardImage?.resolution ?? '-',
+            refImages: (shot.mainRefs || []).filter(r => r.url && r.type !== 'char' && r.type !== 'scene' && r.type !== 'prop').map(r => ({ url: r.url, fileUrl: r.url })),
+          }}
         />
         <MediaColWrapper
           label="分镜视频"

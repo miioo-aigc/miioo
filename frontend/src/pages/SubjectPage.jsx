@@ -21,6 +21,7 @@
  *   <MoreMenu>                          更多操作菜单        L657–L776
  *   <IconBtn> / <UploadBtn>             图标/上传按钮       L953–L998
  *   <ImageItemUpload> / <ImageViewModal> 图片上传/查看弹窗  L1000–L1119
+ *   <MediaDetailModal>         媒体详情弹窗（复用资产库结构） L2363+
  *   <ImageItem> / <RadioOption>         图片项/单选项       L1121–L1203
  *   <RefImageItem> / <SubjectRefHoverPreview>  参考图项/悬浮预览  L1205–L1308
  *   <RefImageUploadCard> / <RefImageField>    参考图上传/字段  L1390–L1555
@@ -34,7 +35,7 @@
  *   <CharCard>                          主体卡片            L778–L910
  *   <AddCard>                           新增空卡片          L912–L938
 *   <EditSubjectPanel>                  编辑主体侧面板       L1455–L2370
-*     ├─ [状态] isSubmitting / editName / editDesc / editVoices / images / focused  L1455+
+*     ├─ [状态] isSubmitting / editName / editDesc / editVoices / images / focused / refImagesForModal  L1455+
 *     ├─ [Ref] fileInputRef / composingRef / refImageIds / editRefImages
  *     ├─ [缓存] pendingGenerations Map / subjectPanel sessionStorage   L1553+
  *     ├─ [缓存] batchGeneratedImagesCache Map （批量生成图片跨弹窗缓存）  L1626+
@@ -71,7 +72,10 @@
 *     └─ [副作用] 滚动触底加载更多主体（IntersectionObserver）  L3188+
 *
  * ─── 更新记录 ──────────────────────────────────────────────────────
- *   2026-07-01  初始结构索引建立
+ *   2026-07-03  修复 MediaDetailModal refImages 数据源：
+ *               - 新增 refImagesForModal useMemo，从 refImageIds 解析参考图 URL
+ *               - 每个生成图片携带生成时的 refImages 快照，明细弹窗展示各自的参考图
+ *               - 覆盖单主体生成、批量生成、缓存恢复、后端加载等所有图片创建路径
  *   2026-07-02  添加 batchGeneratedImagesCache：批量生图结果跨弹窗缓存，
  *               handleBatchGenerate 写入 → EditSubjectPanel 在 await 前读取并立即展示，
  *               后端数据到达后用 functional updater 合并（URL 去重）
@@ -98,6 +102,7 @@ import { normalizeImageUrl } from '../utils/imageUrl';
 import { addPendingTask, removePendingTask, getPendingTasks } from '../utils/taskPersistence';
 import { subscribe } from '../utils/cache';
 import { K } from '../utils/cacheKeys';
+import MediaDetailModal from '../components/MediaDetailModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Checkbox from '../components/Checkbox';
 
@@ -1737,8 +1742,22 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   const [genMode, setGenMode] = useState('single');
   const [generatedImages, setGeneratedImages] = useState([]);
   const [refImageIds, setRefImageIds] = useState(Array.isArray(char?.reference_image_ids) ? char.reference_image_ids : []);
-  const [viewImageUrl, setViewImageUrl] = useState(null);
-  const [viewImageId, setViewImageId] = useState(null);
+
+  // 从 refImageIds 解析出 refImages（供 MediaDetailModal 使用）
+  const refImagesForModal = useMemo(() => {
+    return (refImageIds || []).map(item => {
+      if (item && typeof item === 'object' && item.url) {
+        return { url: normalizeImageUrl(item.url) || item.url, fileUrl: item.url };
+      }
+      if (typeof item === 'string' && (item.startsWith('http') || item.startsWith('blob') || item.startsWith('/'))) {
+        return { url: normalizeImageUrl(item) || item, fileUrl: item };
+      }
+      return null;
+    }).filter(Boolean);
+  }, [JSON.stringify(refImageIds)]);
+
+  const [mediaDetailOpen, setMediaDetailOpen] = useState(false);
+  const [mediaDetailActiveIdx, setMediaDetailActiveIdx] = useState(0);
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
   const isMountedRef = useRef(true); // 跟踪组件是否已挂载，关闭弹窗后仍让请求跑完
@@ -1768,6 +1787,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
           url: normalizeImageUrl(img.rawUrl),
           settled: false,
           isReference: false,
+          refImages: refImagesForModal,
         }))
       );
       batchGeneratedImagesCache.delete(char.id);
@@ -1781,7 +1801,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       // 检查是否有跨弹窗完成的单主体生成
       const pending = pendingGenerations.get(char.id);
       if (pending?.status === 'done') {
-        setGeneratedImages(prev => [...prev, { rawUrl: pending.rawUrl, url: normalizeImageUrl(pending.rawUrl), settled: false, id: pending.realId || pending.placeholderId, isReference: false }]);
+        setGeneratedImages(prev => [...prev, { rawUrl: pending.rawUrl, url: normalizeImageUrl(pending.rawUrl), settled: false, id: pending.realId || pending.placeholderId, isReference: false, refImages: pending.refImages || refImagesForModal }]);
         pendingGenerations.delete(char.id);
       }
       return; // 不发起后端请求
@@ -1801,6 +1821,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
         settled: false,
         id: pendingPreflight.realId || pendingPreflight.placeholderId,
         isReference: false,
+        refImages: pendingPreflight.refImages || refImagesForModal,
       }]);
       // 恢复生成参数，避免跳过 API 后字段为空
       if (pendingPreflight.genParams) {
@@ -1864,6 +1885,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
         url: normalizeImageUrl(img.image_url),
         settled: img.is_primary ?? false,
         isReference: false,
+        refImages: refImagesForModal,
       }));
 
       // ── 候选图作为右侧列表内容 ────
@@ -1880,6 +1902,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
           settled: false,
           id: pending.realId || pending.placeholderId,
           isReference: false,
+          refImages: pending.refImages || refImagesForModal,
         });
         pendingGenerations.delete(char.id);
       }
@@ -1893,7 +1916,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
         });
       } else if (char?.imageUrl) {
         // 兜底用 char 的封面图（不覆盖已展示的缓存图片）
-        setGeneratedImages(prev => prev.length > 0 ? prev : [{ rawUrl: char.imageUrl, url: normalizeImageUrl(char.imageUrl), settled: true, id: char.imageUrl, isReference: false }]);
+        setGeneratedImages(prev => prev.length > 0 ? prev : [{ rawUrl: char.imageUrl, url: normalizeImageUrl(char.imageUrl), settled: true, id: char.imageUrl, isReference: false, refImages: refImagesForModal }]);
       } else {
         setGeneratedImages(prev => prev.length > 0 ? prev : []);
       }
@@ -2358,7 +2381,38 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
 
         {/* right: image list */}
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '12px', paddingRight: '24px', paddingTop: '8px', paddingBottom: '8px', background: '#161616', height: '100%', boxSizing: 'border-box' }}>
-          <ImageViewModal open={!!viewImageUrl} imageUrl={viewImageUrl} imageId={viewImageId} projectId={projectId} subjectId={char?.id} onClose={() => { setViewImageUrl(null); setViewImageId(null); }} />
+          {mediaDetailOpen && (
+            <MediaDetailModal
+              mode="image"
+              images={generatedImages.filter(img => img.url).map(img => ({
+                id: img.id,
+                url: img.url,
+                fileUrl: img.rawUrl ?? img.url,
+                is_primary: img.settled ?? false,
+                prompt: promptText,
+                model: selectedModel,
+                ratio: selectedRatio,
+                resolution: selectedResolution,
+                refImages: (img.refImages && img.refImages.length > 0) ? img.refImages : refImagesForModal,
+              }))}
+              name={char?.name ?? ''}
+              description={char?.desc ?? ''}
+              showDelete={false}
+              showDownload={true}
+              activeIndex={mediaDetailActiveIdx}
+              onClose={() => setMediaDetailOpen(false)}
+              onDownload={async (imageId) => {
+                try {
+                  const blob = await apiDownloadSubjectImage(projectId, char.id, imageId);
+                  triggerBlobDownload(blob, `subject-image-${imageId}.jpg`);
+                  showToast('下载成功', 'success');
+                } catch (err) {
+                  console.error('[SubjectPage] 下载图片失败:', err);
+                  showToast('下载失败', 'error');
+                }
+              }}
+            />
+          )}
           {/* upload card always first */}
           <ImageItemUpload
             projectId={projectId}
@@ -2425,7 +2479,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
               imageUrl={img.url}
               imageId={img.id}
               settled={img.settled}
-              onView={(url) => { setViewImageUrl(url); setViewImageId(img.id); }}
+              onView={() => { setMediaDetailActiveIdx(i); setMediaDetailOpen(true); }}
               onDownload={async () => {
                 try {
                   const blob = await apiDownloadSubjectImage(projectId, char.id, img.id);
@@ -2536,6 +2590,9 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
               );
             }
 
+            // 快照当前参考图，生成成功后附加到图片对象
+            const refImagesSnapshot = refImagesForModal;
+
             // 使用 .then() 代替 await，使回调在组件卸载后仍能更新缓存
             apiGenerateSubjectImage(projectId, char.id, genParams)
               .then((result) => {
@@ -2549,7 +2606,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                     // ① 占位图替换为真实数据
                     const updated = prev.map((img) =>
                       img.id === placeholder
-                        ? { ...img, id: realImageId || placeholder, rawUrl, url: imageUrl, settled: false }
+                        ? { ...img, id: realImageId || placeholder, rawUrl, url: imageUrl, settled: false, refImages: refImagesSnapshot }
                         : img
                     );
                     // ② 如果没有任何定稿图，自动将新生成的图设为定稿并更新封面
@@ -2575,6 +2632,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                     imageUrl: result.image_url || result.imageUrl || result.url || null,
                     realId: realImageId,
                     genParams: currentPending?.genParams,
+                    refImages: refImagesSnapshot,
                   });
                   // 主体没有封面图时，自动将生成结果设为封面
                   console.log('[SubjectPage] .then() ELSE branch: panel closed, char.imageUrl=', char.imageUrl, 'rawUrl=', rawUrl?.substring(0, 60), 'will call onCoverChange=', !char.imageUrl && !!rawUrl);

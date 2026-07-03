@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useModalSize } from '../utils/useModalSize';
 import { createPortal } from 'react-dom';
 import Toggle from './Toggle';
 import { apiUpdateShotFinalized } from '../api/storyboard';
@@ -80,6 +81,7 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
   const [volume, setVolume] = useState(0.7);
   const [finalized, setFinalized] = useState(shot?.finalized ?? false);
   const [downloading, setDownloading] = useState(false);
+  const { width: modalW, height: modalH } = useModalSize();
 
   // 关闭时恢复滚动
   useEffect(() => {
@@ -179,7 +181,7 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
     >
       <div style={{
         display: 'flex', flexDirection: 'column',
-        width: '960px',
+        width: `${modalW}px`,
         borderRadius: '16px', overflow: 'hidden',
         backgroundColor: '#161616',
         border: '1px solid rgba(255,255,255,0.08)',
@@ -207,7 +209,7 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
         </div>
 
         {/* ── 主体 ── */}
-        <div style={{ display: 'flex', height: '540px' }}>
+        <div style={{ display: 'flex', height: `${modalH - 60}px` }}>
 
           {/* 左：视频区 */}
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', backgroundColor: '#0D0D0D' }}>

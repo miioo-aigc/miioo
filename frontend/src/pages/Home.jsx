@@ -216,13 +216,11 @@ function MoreOptionsMenu({ close, setWatermarkSettingsOpen }) {
     }
   };
 
-  const getBizQrTop = () => {
-    if (!bizItemRef.current || !containerRef.current) return 0;
-    const itemTop = bizItemRef.current.offsetTop;
-    const popupHeight = 177;
+
+  const getBizQrLeft = () => {
+    if (!containerRef.current) return 0;
     const containerRect = containerRef.current.getBoundingClientRect();
-    const maxTop = window.innerHeight - 24 - popupHeight - containerRect.top;
-    return Math.min(itemTop, maxTop);
+    return containerRect.right + 4;
   };
 
   const FONT = "'AlibabaPuHuiTi_2_55_Regular', 'Alibaba PuHuiTi 2.0', system-ui, sans-serif";
@@ -238,7 +236,7 @@ function MoreOptionsMenu({ close, setWatermarkSettingsOpen }) {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'stretch',
-        width: '150px',
+        width: '178px',
         borderRadius: '8px',
         boxShadow: '#00000066 0px 4px 16px',
         backgroundColor: '#161616',
@@ -273,13 +271,13 @@ function MoreOptionsMenu({ close, setWatermarkSettingsOpen }) {
           borderRadius: '6px',
         }}
       >
-        <span style={{ fontFamily: FONT, fontSize: '10px', lineHeight: '12px', color: '#FFFFFF80' }}>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', color: '#FFFFFF80' }}>
           ©2026 Miioo AI
         </span>
-        <span style={{ fontFamily: FONT, fontSize: '10px', lineHeight: '12px', color: '#FFFFFF80' }}>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', color: '#FFFFFF80' }}>
           济南三脚猫科技有限公司
         </span>
-        <span style={{ fontFamily: FONT, fontSize: '10px', lineHeight: '12px', color: '#FFFFFF80' }}>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', color: '#FFFFFF80' }}>
           鲁ICP备2026030778号
         </span>
       </div>
@@ -288,9 +286,9 @@ function MoreOptionsMenu({ close, setWatermarkSettingsOpen }) {
       {bizQrVisible && (
         <div
           style={{
-            position: 'absolute',
-            left: 'calc(100% + 8px)',
-            top: getBizQrTop(),
+            position: 'fixed',
+            left: getBizQrLeft(),
+            bottom: '24px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -1761,7 +1759,7 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
       bubble: (
         <div
           style={{
-            position: 'absolute',
+            position: 'fixed',
             left: '35.5px',
             top: '50%',
             translate: '0 -50%',
@@ -1788,7 +1786,7 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             style={{
-              position: 'absolute',
+              position: 'fixed',
               left: 7,
               top: '50%',
               rotate: '90deg',

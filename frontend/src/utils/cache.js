@@ -23,6 +23,9 @@ const memStore = new Map();
 // 进行中的请求去重：同一 key 并发只发一次网络请求
 const inflight = new Map();
 
+// 代际计数器：每次 invalidate 递增，防止旧的 inflight 请求在 invalidate 后覆盖新数据
+let epoch = 0;
+
 // 订阅者（用于 SWR 后台刷新后通知 UI 更新）
 const subscribers = new Map(); // key -> Set<fn>
 
@@ -71,7 +74,7 @@ function removeRaw(medium, key) {
 
 function notify(key, data) {
   const subs = subscribers.get(key);
-  if (subs) subs.forEach((fn) => { try { fn(data); } catch { /* 订阅回调异常不影响其他订阅者 */ } });
+  if (subs) subs.forEach((fn) => { try { fn(data); } catch (e) { /* ignore */ } });
 }
 
 /**
@@ -98,7 +101,6 @@ export function subscribe(key, fn) {
  *   - onUpdate: 后台刷新拿到新数据时的回调（也可用 subscribe）
  */
 export async function cached(key, fetcher, opts = {}) {
-  console.log("[DEBUG cache] cached called", key, "starting...");
   const {
     medium = 'memory',
     ttl = 0,
@@ -108,36 +110,33 @@ export async function cached(key, fetcher, opts = {}) {
   } = opts;
 
   const entry = readRaw(medium, key);
-  console.log("[DEBUG cache] readRaw entry:", entry ? "HIT (" + (entry.d ? "has data" : "empty") + ")" : "null");
   const isFresh = entry && ttl > 0 && (now() - entry.t < ttl);
 
   // 1. 命中且新鲜 → 直接返回，不发请求
   if (entry && isFresh) {
-    console.log("[DEBUG cache] BRANCH 1: fresh cache, skip fetch");
     return entry.d;
   }
 
   // 2. 命中但过期（或 ttl=0）→ SWR：先返回旧值，后台校验
   if (entry && swr) {
-    console.log("[DEBUG cache] BRANCH 2: stale cache + SWR, return stale, bg revalidate");
     revalidate(key, fetcher, medium, entry, equals, onUpdate);
     return entry.d;
   }
 
   // 3. 无缓存 → 必须等请求（带并发去重）
-  console.log("[DEBUG cache] BRANCH 3: no cache, about to call fetchAndStore");
   return fetchAndStore(key, fetcher, medium, entry, equals, onUpdate);
 }
 
 function fetchAndStore(key, fetcher, medium, prevEntry, equals, onUpdate) {
-  console.log("[DEBUG fetchAndStore] called, inflight.has:", inflight.has(key));
   if (inflight.has(key)) return inflight.get(key);
 
+  const startEpoch = epoch;
+
   const p = (async () => {
-    console.log("[DEBUG fetchAndStore] starting fetcher...");
     try {
       const data = await fetcher();
-      console.log("[DEBUG fetchAndStore] fetcher returned, data type:", typeof data);
+      // 若在请求期间发生了 invalidate（epoch 已递增），丢弃本次结果，不覆盖新数据
+      if (startEpoch !== epoch) return data;
       const changed = !prevEntry || !isEqual(prevEntry.d, data, equals);
       writeRaw(medium, key, { t: now(), d: data });
       if (changed) {
@@ -181,6 +180,7 @@ function isEqual(a, b, equals) {
  *   invalidate('subjects:p1:', 'local')  // 指定介质
  */
 export function invalidate(keyOrPrefix, medium) {
+  epoch++;
   const isPrefix = keyOrPrefix.endsWith(':');
   const media = medium ? [medium] : ['memory', 'local', 'session'];
 
@@ -206,6 +206,15 @@ export function invalidate(keyOrPrefix, medium) {
       } catch { /* 忽略存储访问异常 */ }
     }
   }
+
+  // 同时清理 inflight 去重表，保证 invalidate 后的下一次 fetchAndStore 发起全新请求
+  if (!isPrefix) {
+    inflight.delete(keyOrPrefix);
+  } else {
+    for (const k of inflight.keys()) {
+      if (k.startsWith(keyOrPrefix)) inflight.delete(k);
+    }
+  }
 }
 
 /**
@@ -223,7 +232,6 @@ export function setCache(key, data, opts = {}) {
  */
 export function peekCache(key, medium = 'memory') {
   const entry = readRaw(medium, key);
-  console.log("[DEBUG cache] readRaw entry:", entry ? "HIT (" + (entry.d ? "has data" : "empty") + ")" : "null");
   return entry ? entry.d : undefined;
 }
 

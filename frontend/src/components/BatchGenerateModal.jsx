@@ -185,6 +185,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
   const [ratio, setRatio] = useState(projectRatio || '16:9');
   const [resolution, setResolution] = useState('2K');
   const [mode, setMode] = useState('single');
+  const [onlyUndrafted, setOnlyUndrafted] = useState(false);
 
   // 根据当前选中的模型 + 分辨率，动态计算可用的比例列表
  const ratioOptions = useMemo(() => {
@@ -269,6 +270,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
       }
     }
     setMode('single');
+    setOnlyUndrafted(false);
   }, [open, modelList]);
 
   useEffect(() => {
@@ -283,7 +285,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
   if (!open) return null;
 
   const handleConfirm = async () => {
-    await onConfirm?.({ model, ratio, resolution, mode });
+    await onConfirm?.({ model, ratio, resolution, mode, only_undrafted: onlyUndrafted });
     // onClose 由父组件在成功后自行调用，避免异步请求未完成就关闭弹窗
   };
 
@@ -293,7 +295,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
       onClick={onClose}
     >
       <div
-        className="[font-synthesis:none] flex flex-col items-start antialiased text-xs/4 w-[400px] rounded-2xl overflow-hidden"
+        className="[font-synthesis:none] flex flex-col items-start antialiased text-xs/4 w-[400px] rounded-2xl"
         style={{ boxShadow: '0px 8px 32px rgba(0,0,0,0.6)' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -323,7 +325,36 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-[16px] justify-end w-full bg-[#161616] py-[16px] px-[24px] rounded-b-2xl">
+        <div className="flex items-center gap-[16px] justify-between w-full bg-[#161616] py-[16px] px-[24px] rounded-b-2xl">
+          {/* 左侧：仅生成未定稿 checkbox（角色/场景/道具通用） */}
+          <label
+            onClick={() => setOnlyUndrafted(v => !v)}
+            className="flex items-center gap-[4px] cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-0 p-[2px]">
+              <div
+                className={
+                  "relative rounded-sm shrink-0 border border-solid w-[16px] h-[16px] [outline:1px_solid_var(--color-stroke-outline)] outline-offset-0 " +
+                  (onlyUndrafted
+                    ? "bg-checkbox-bg-active border-checkbox-border-active"
+                    : "bg-checkbox-bg-normal border-checkbox-border-normal")
+                }
+              >
+                {onlyUndrafted && (
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    style={{ position: "absolute", left: "50%", top: "50%", translate: "-50% -50%" }}>
+                    <path d="M3.333 8L6.667 11.333L13.333 4.667"
+                      stroke="#090909" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </div>
+            </div>
+            <span className="text-sm/[18px] text-[#FFFFFFCC]" style={{ fontFamily: FONT }}>
+              {activeTab === 'scene' ? '仅生成未定稿场景' : activeTab === 'prop' ? '仅生成未定稿道具' : '仅生成未定稿角色'}
+            </span>
+          </label>
+          <div className="flex items-center gap-[16px]">
           <button
             type="button"
             onClick={onClose}
@@ -344,6 +375,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
               {generating ? '生成中…' : '开始生成'}
             </span>
           </button>
+          </div>
         </div>
       </div>
     </div>

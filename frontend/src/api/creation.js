@@ -411,6 +411,12 @@ export async function apiDeleteCreationVideo(videoId) {
   return res.json();
 }
 
+
+export async function apiGetCreationVideo(videoId) {
+  const res = await authFetch(`${BASE}/api/creation/videos/${videoId}`);
+  return res.json();
+}
+
 export async function apiToggleVideoFavorite(videoId, liked) {
   const res = await authFetch(`${BASE}/api/creation/videos/${videoId}/favorite`, {
     method: 'POST',

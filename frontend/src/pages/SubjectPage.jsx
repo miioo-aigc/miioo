@@ -35,7 +35,7 @@
  *   <CharCard>                          主体卡片            L778–L910
  *   <AddCard>                           新增空卡片          L912–L938
 *   <EditSubjectPanel>                  编辑主体侧面板       L1455–L2370
-*     ├─ [状态] isSubmitting / editName / editDesc / editVoices / images / focused / refImagesForModal  L1455+
+*     ├─ [状态] isSubmitting / editName / editDesc / editVoices / images / focused / refImagesForModal / promptText  L1455+
 *     ├─ [Ref] fileInputRef / composingRef / refImageIds / editRefImages
  *     ├─ [缓存] pendingGenerations Map / subjectPanel sessionStorage   L1553+
  *     ├─ [缓存] batchGeneratedImagesCache Map （批量生成图片跨弹窗缓存）  L1626+
@@ -54,7 +54,7 @@
 *     ├─ [Ref] prevCoverUrlsRef / batchAbortRef / singleGenRecoveryRunRef  L2705+
 *     ├─ [函数] showBatchToast(msg, type)            L2856+
 *     ├─ [函数] normalizeSubjectList(items)  主体列表标准化  L2863+
-*     ├─ [函数] handleBatchGenerate(params)  批量生成主体图  L2883+
+*     ├─ [函数] handleBatchGenerate(params)  批量生成主体图  L3081+
 *     │   └─ onSubjectImage 回调中将每个图片 URL 存入 batchGeneratedImagesCache
 *     ├─ [函数] handleAdd()  添加新主体                 L3032+
 *     ├─ [函数] handleDownloadSubjectImage(subjectId)   L3147+
@@ -65,7 +65,9 @@
 *     ├─ [副作用] 提取中 loadingText 动画轮播              L2662+
 *     ├─ [副作用] 初始同步 external 数据                   L2723+
 *     ├─ [副作用] 订阅主体数据缓存更新                     L2753+
-*     ├─ [副作用] 恢复单主体 pending generation 刷新轮询    L2770+
+ *     ├─ [副作用] 恢复批量生成任务（cross-refresh poll apiGetTask）  L2883+
+ *     ├─ [副作用] 恢复单主体生成任务（subject-single cross-refresh poll apiGetTask）  L2946+
+ *     ├─ [副作用] 恢复单主体 pending generations loading（旧同步路径，跳过 task 已覆盖项）  L3032+
 *     ├─ [副作用] 记忆并恢复打开中的主体弹窗               L3101+
 *     ├─ [副作用] 监听 delete 事件刷新详情                 L2993+
 *     ├─ [副作用] 有主体时 unlockStep('subject')           L3185+
@@ -82,6 +84,20 @@
  *               卡片封面由 handleBatchGenerate 的 targetSetter 即时更新
  *   2026-07-02  修复单主体生图刷新丢失：pending 状态持久化补充已知图片快照，
  *               页面重载后继续轮询 SubjectDetail，命中新图后恢复列表/弹窗加载状态
+ *   2026-07-06  单主体生图改为任务轮询模式（与批量生成统一）：
+ *               - apiGenerateSubjectImage 去掉 keepalive，返回 _taskId 字段
+ *               - onClick 支持 taskId → 写入 taskPersistence → 轮询 apiGetTask
+ *               - 新增 subject-single 任务恢复 useEffect（跨刷新轮询 apiGetTask）
+ *               - 同步模式（无 taskId）保持原有 pendingGenerations 恢复逻辑
+ *   2026-07-06  批量生成弹窗新增「仅生成未定稿角色」checkbox：
+ *               - BatchGenerateModal 添加 onlyUndrafted 状态，仅 char tab 可见
+ *               - handleBatchGenerate 将 only_undrafted 传入 apiBatchGenerateStream
+ *   2026-07-06  修复单主体任务刷新后双轨轮询导致请求重复/状态残留：
+ *               - 旧 pendingGenerations 恢复路径跳过已被 taskPersistence 覆盖的 subjectId
+ *               - subject-single 恢复路径成功/失败/异常分支统一清理 pendingGenerations
+ *   2026-07-06  修复单主体生成弹窗出现两个占位槽：
+ *               - isBatchLoading 的 BATCH_PLACEHOLDER 插入逻辑增加单主体占位槽检测，避免双占位
+ *               - preflight pending 分支设置 cacheConsumedRef + return，阻止 API 路径二次插入
  *   2026-07-02  补充主体编辑弹窗 sessionStorage 恢复，并为单主体生图请求开启 keepalive
  */
 
@@ -1665,7 +1681,7 @@ _restorePendingGens();
 // key: subjectId, value: { rawUrl }[]
 const batchGeneratedImagesCache = new Map();
 
-function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, onClose, onCommit, onCoverChange, refreshToken, setBatchLoadingSubjects }) {
+function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, onClose, onCommit, onCoverChange, refreshToken, setBatchLoadingSubjects, isBatchLoading = false }) {
   // ── 从后端拉取模型列表，直接使用后端 capabilities ──────────────
   const [imageModels, setImageModels] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
@@ -1845,7 +1861,12 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       console.log('[SubjectPage] preflight DONE hit: skipped API, restored genParams, rawUrl:', pendingPreflight.rawUrl?.substring(0, 60));
       return; // 跳过 API 请求
     } else if (pendingPreflight?.status === 'pending') {
+      // 生成进行中：占位槽已在 onClick 中创建，这里仅恢复 loading 状态
+      // 不进入 API 请求路径，避免重复占位槽（轮询由 subject-single 恢复 useEffect 接管）
       setGeneratedImages([{ url: null, settled: false, id: pendingPreflight.placeholderId, isReference: false }]);
+      cacheConsumedRef.current = true;
+      setDetailLoaded(true);
+      return; // 跳过 API 请求，避免 L1910 再次 unshift 占位槽
     }
 
     (async () => {
@@ -1935,6 +1956,63 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, char?.id, refreshToken]);
+
+  // ── 批量生成：占位槽插入 & 完成后消费缓存 ─────────────────────
+  const BATCH_PLACEHOLDER = '__batch_loading__';
+  const prevBatchLoadingRef = useRef(isBatchLoading);
+  useEffect(() => {
+    const wasLoading = prevBatchLoadingRef.current;
+    prevBatchLoadingRef.current = isBatchLoading;
+
+    if (isBatchLoading && !wasLoading) {
+      // 批量生成开始（面板已打开的情况下）：插入占位槽
+      // 单主体生成已在 onClick 中直接创建占位槽，此处仅服务于批量生成
+      setGeneratedImages(prev => {
+        if (prev.some(img => img.id === BATCH_PLACEHOLDER)) return prev;
+        // 若已有 pending 占位槽（单主体生成路径），跳过避免双占位
+        if (prev.some(img => String(img.id).startsWith('generated-') && !img.rawUrl)) return prev;
+        return [{ url: null, settled: false, id: BATCH_PLACEHOLDER, isReference: false }, ...prev];
+      });
+    } else if (!isBatchLoading && wasLoading) {
+      // 批量生成结束：消费缓存，用真实图片替换占位槽
+      const cached = batchGeneratedImagesCache.get(char.id);
+      if (cached && cached.length > 0) {
+        const newImgs = cached.map((img, i) => ({
+          id: `batch-${char.id}-${Date.now()}-${i}`,
+          rawUrl: img.rawUrl,
+          url: normalizeImageUrl(img.rawUrl),
+          settled: false,
+          isReference: false,
+          refImages: refImagesForModal,
+        }));
+        batchGeneratedImagesCache.delete(char.id);
+        setGeneratedImages(prev => {
+          const without = prev.filter(img => img.id !== BATCH_PLACEHOLDER);
+          // 去重：跳过已存在的 URL
+          const existingUrls = new Set(without.map(img => img.rawUrl));
+          const toAdd = newImgs.filter(img => !existingUrls.has(img.rawUrl));
+          return toAdd.length > 0 ? [toAdd[0], ...without, ...toAdd.slice(1)] : without;
+        });
+      } else {
+        // 无缓存（可能已被消费）：只移除占位槽
+        setGeneratedImages(prev => prev.filter(img => img.id !== BATCH_PLACEHOLDER));
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBatchLoading]);
+
+  // 面板刚打开时，若已在批量生成中且 detail 加载完成，同步插入占位槽
+  useEffect(() => {
+    if (isBatchLoading && detailLoaded) {
+      setGeneratedImages(prev => {
+        if (prev.some(img => img.id === BATCH_PLACEHOLDER)) return prev;
+        // 若已有 pending 占位槽（单主体生成路径），跳过避免双占位
+        if (prev.some(img => String(img.id).startsWith('generated-') && !img.rawUrl)) return prev;
+        return [{ url: null, settled: false, id: BATCH_PLACEHOLDER, isReference: false }, ...prev];
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailLoaded]);
 
   // ── 默认提示词 ────────────────────────────────────────────────
   function defaultPromptForTab(tab) {
@@ -2166,7 +2244,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                 value={promptText}
                 onChange={(e) => setPromptText(e.target.value)}
                 onFocus={() => setPromptFocused(true)}
-                onBlur={() => setPromptFocused(false)}
+                onBlur={() => { setPromptFocused(false); onCommit?.(charName, charDesc, promptText); }}
                 style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', resize: 'none', fontFamily: FONT, fontSize: '14px', lineHeight: '150%', color: '#FFFFFF' }}
               />
             </div>
@@ -2560,7 +2638,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
             }
 
             const placeholder = `generated-${Date.now()}`;
-            // 写入模块级缓存，跨弹窗打开/关闭保持
+            const tab = tabLabel === '角色' ? 'char' : tabLabel === '场景' ? 'scene' : 'prop';
             const genParamsForCache = { model: selectedModel, ratio: selectedRatio, resolution: selectedResolution, prompt: promptText };
             const existingImages = generatedImages.filter((img) => img?.rawUrl || img?.url);
             pendingGenerations.set(char.id, {
@@ -2568,7 +2646,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
               status: 'pending',
               genParams: genParamsForCache,
               createdAt: Date.now(),
-              tab: tabLabel === '角色' ? 'char' : tabLabel === '场景' ? 'scene' : 'prop',
+              tab,
               knownImageIds: existingImages.map((img) => img.id).filter(Boolean),
               knownImageUrls: existingImages.flatMap((img) => [img.rawUrl, img.url]).filter(Boolean),
             });
@@ -2593,77 +2671,133 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
             // 快照当前参考图，生成成功后附加到图片对象
             const refImagesSnapshot = refImagesForModal;
 
-            // 使用 .then() 代替 await，使回调在组件卸载后仍能更新缓存
-            apiGenerateSubjectImage(projectId, char.id, genParams)
-              .then((result) => {
-                const rawUrl = result.image_url || result.imageUrl || result.url || null;
-                const realImageId = result.id || result.image_id || null;
-
-                if (isMountedRef.current) {
-                  // 弹窗仍打开：正常更新图片列表
-                  const imageUrl = normalizeImageUrl(rawUrl);
-                  setGeneratedImages((prev) => {
-                    // ① 占位图替换为真实数据
-                    const updated = prev.map((img) =>
-                      img.id === placeholder
-                        ? { ...img, id: realImageId || placeholder, rawUrl, url: imageUrl, settled: false, refImages: refImagesSnapshot }
-                        : img
-                    );
-                    // ② 如果没有任何定稿图，自动将新生成的图设为定稿并更新封面
-                    const hasSettled = updated.some((img) => img.settled && img.rawUrl);
-                    if (!hasSettled && rawUrl) {
-                      updated[0] = { ...updated[0], settled: true };
-                      setPrimaryImageUrl(rawUrl);
-                      setPrimaryImageId(realImageId);
-                      onCoverChange?.(rawUrl);
-                    }
-                    return updated;
-                  });
-                  showToast('图片生成成功', 'success');
-                  console.log('[SubjectPage] single-gen displayed in open panel, deleting pending');
-                  pendingGenerations.delete(char.id);
-                } else {
-                  // 弹窗已关闭：缓存结果，下次打开弹窗时显示
-                  const currentPending = pendingGenerations.get(char.id);
-                  pendingGenerations.set(char.id, {
-                    placeholderId: placeholder,
-                    status: 'done',
-                    rawUrl,
-                    imageUrl: result.image_url || result.imageUrl || result.url || null,
-                    realId: realImageId,
-                    genParams: currentPending?.genParams,
-                    refImages: refImagesSnapshot,
-                  });
-                  // 主体没有封面图时，自动将生成结果设为封面
-                  console.log('[SubjectPage] .then() ELSE branch: panel closed, char.imageUrl=', char.imageUrl, 'rawUrl=', rawUrl?.substring(0, 60), 'will call onCoverChange=', !char.imageUrl && !!rawUrl);
-                  if (!char.imageUrl && rawUrl) {
+            // 处理生成结果的回调（无论同步返回还是异步轮询，最终都走这里）
+            const handleGenResult = (rawUrl, realImageId) => {
+              if (!rawUrl) return;
+              if (isMountedRef.current) {
+                const imageUrl = normalizeImageUrl(rawUrl);
+                setGeneratedImages((prev) => {
+                  const updated = prev.map((img) =>
+                    img.id === placeholder
+                      ? { ...img, id: realImageId || placeholder, rawUrl, url: imageUrl, settled: false, refImages: refImagesSnapshot }
+                      : img
+                  );
+                  const hasSettled = updated.some((img) => img.settled && img.rawUrl);
+                  if (!hasSettled && rawUrl) {
+                    updated[0] = { ...updated[0], settled: true };
+                    setPrimaryImageUrl(rawUrl);
+                    setPrimaryImageId(realImageId);
                     onCoverChange?.(rawUrl);
-                  } else {
-                    console.log('[SubjectPage] .then() ELSE: skipped onCoverChange, char.imageUrl=', char.imageUrl);
                   }
-
-                }
-                // 无论弹窗是否打开，都清除 loading 状态
-                setBatchLoadingSubjects((prev) => {
-                  const next = { ...prev };
-                  delete next[char.id];
-                  return next;
+                  return updated;
                 });
-              })
-              .catch((err) => {
-                console.error('[SubjectPage] 生成图片失败:', err);
+                showToast('图片生成成功', 'success');
                 pendingGenerations.delete(char.id);
-                setBatchLoadingSubjects((prev) => {
-                  const next = { ...prev };
-                  delete next[char.id];
-                  return next;
+              } else {
+                const currentPending = pendingGenerations.get(char.id);
+                pendingGenerations.set(char.id, {
+                  placeholderId: placeholder,
+                  status: 'done',
+                  rawUrl,
+                  imageUrl: rawUrl,
+                  realId: realImageId,
+                  genParams: currentPending?.genParams,
+                  refImages: refImagesSnapshot,
                 });
-                if (isMountedRef.current) {
-                  setGeneratedImages((prev) => prev.filter((img) => img.id !== placeholder));
+                if (!char.imageUrl && rawUrl) {
+                  onCoverChange?.(rawUrl);
                 }
-                const errMsg = err?.message || '图片生成失败';
-                showToast(errMsg, 'error');
+              }
+              setBatchLoadingSubjects((prev) => {
+                const next = { ...prev };
+                delete next[char.id];
+                return next;
               });
+            };
+
+            const handleGenError = (err) => {
+              console.error('[SubjectPage] 生成图片失败:', err);
+              pendingGenerations.delete(char.id);
+              setBatchLoadingSubjects((prev) => {
+                const next = { ...prev };
+                delete next[char.id];
+                return next;
+              });
+              if (isMountedRef.current) {
+                setGeneratedImages((prev) => prev.filter((img) => img.id !== placeholder));
+              }
+              const errMsg = err?.message || '图片生成失败';
+              showToast(errMsg, 'error');
+            };
+
+            try {
+              const result = await apiGenerateSubjectImage(projectId, char.id, genParams);
+              const taskId = result._taskId;
+              const rawUrl = result.image_url || result.imageUrl || result.url || null;
+              const realImageId = result.id || result.image_id || null;
+
+              if (taskId) {
+                // 后端改为任务模式：写入持久化，轮询 apiGetTask
+                addPendingTask(projectId, { taskId, shotId: '', episodeId: '', type: 'subject-single', subjectId: char.id, tab, placeholderId: placeholder });
+                // 后台轮询（不阻塞 onClick）
+                const pollTask = async () => {
+                  try {
+                    while (true) {
+                      await new Promise(r => setTimeout(r, 3000));
+                      const t = await apiGetTask(taskId).catch(() => null);
+                      if (!t) continue;
+                      const results = t.results || [];
+                      const st = t.status || t.raw_status || '';
+                      // 找到当前主体对应的结果
+                      const item = results.find(r => (r.subject_id || r.id) === char.id);
+                      if (item) {
+                        const imgUrl = item.image_url || item.imageUrl || item.url;
+                        const errMsg = item.error_msg || item.error || item.message;
+                        if (imgUrl) {
+                          handleGenResult(imgUrl, item.id || null);
+                          removePendingTask(projectId, taskId);
+                          return;
+                        } else if (errMsg) {
+                          handleGenError(new Error(errMsg));
+                          removePendingTask(projectId, taskId);
+                          return;
+                        }
+                      }
+                      if (st === 'completed' || st === 'partial' || st === 'failed') {
+                        // 任务已结束但未找到对应结果，回退检查主体详情
+                        const detail = await apiGetSubjectDetail(projectId, char.id).catch(() => null);
+                        const recovered = detail ? getPendingGenResult(detail, pendingGenerations.get(char.id)) : null;
+                        if (recovered) {
+                          const recoveredUrl = recovered.image_url || recovered.imageUrl || recovered.url;
+                          handleGenResult(recoveredUrl, recovered.id || null);
+                        } else {
+                          handleGenError(new Error('生成任务已完成但未获取到结果'));
+                        }
+                        removePendingTask(projectId, taskId);
+                        return;
+                      }
+                    }
+                  } catch (err) {
+                    handleGenError(err);
+                    removePendingTask(projectId, taskId);
+                  }
+                };
+                pollTask();
+                // 同步模式下也有可能返回 taskId + image_url 共存
+                if (rawUrl) {
+                  handleGenResult(rawUrl, realImageId);
+                  removePendingTask(projectId, taskId);
+                }
+              } else if (rawUrl) {
+                // 纯同步模式（后端未改造）：直接处理结果
+                handleGenResult(rawUrl, realImageId);
+              } else {
+                // 既无 taskId 也无 image_url：异常
+                handleGenError(new Error('生成接口未返回有效结果'));
+              }
+            } catch (err) {
+              handleGenError(err);
+            }
           }}
           style={{
             display: 'flex', alignItems: 'center', height: '36px', borderRadius: '8px', padding: '0 16px', gap: '4px', cursor: 'pointer',
@@ -2719,7 +2853,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
 
 // ── Main export ────────────────────────────────────────────────────────────
 
-export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onExtractSubjects, extractError = null, isStoryboardGenerated = false, initialTab = 'char', projectRatio, chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false }) {
+export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onExtractSubjects, extractError = null, isStoryboardGenerated = false, initialTab = 'char', projectRatio, chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps }) {
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [batchGenOpen, setBatchGenOpen] = useState(false);
@@ -2827,11 +2961,111 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     })();
   }, [projectId]);
 
+  // ── 恢复跨刷新挂起的单主体生成任务（subject-single 类型）────────────────────
+  useEffect(() => {
+    if (!projectId) return;
+    const pending = getPendingTasks(projectId, '');
+    const singleTasks = pending.filter(t => t.type === 'subject-single' && t.subjectId && t.taskId);
+    if (singleTasks.length === 0) return;
+
+    const processedIds = new Set();
+    const loadingMap = {};
+    singleTasks.forEach(t => { loadingMap[t.subjectId] = true; });
+    setBatchLoadingSubjects(prev => ({ ...loadingMap, ...prev }));
+
+    (async () => {
+      let allDone = false;
+      try {
+        while (!allDone) {
+          allDone = true;
+          await Promise.all(singleTasks.map(async (task) => {
+            if (processedIds.has(task.subjectId)) return;
+            try {
+              const t = await apiGetTask(task.taskId);
+              const results = t.results || [];
+              const st = t.status || t.raw_status || '';
+
+              // 查找当前主体对应的结果
+              const item = results.find(r => (r.subject_id || r.id) === task.subjectId);
+              if (item) {
+                const imgUrl = item.image_url || item.imageUrl || item.url;
+                const errMsg = item.error_msg || item.error || item.message;
+                if (imgUrl) {
+                  processedIds.add(task.subjectId);
+                  const fullUrl = normalizeImageUrl(imgUrl);
+                  const targetSetter = getPendingGenTabSetter(task.tab, { setChars, setScenes, setProps });
+                  targetSetter(prev => prev.map(s => s.id === task.subjectId ? { ...s, imageUrl: fullUrl } : s));
+                  setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[task.subjectId]; return n; });
+                  setSubjectDetailRefreshToken(prev => prev + 1);
+                  // 同步写入缓存供 EditSubjectPanel 读取
+                  const existingCache = batchGeneratedImagesCache.get(task.subjectId) || [];
+                  batchGeneratedImagesCache.set(task.subjectId, [...existingCache, { rawUrl: fullUrl }]);
+                  // 清理旧 pendingGenerations 路径的 pending 状态，避免残留 loading
+                  pendingGenerations.delete(task.subjectId);
+                  removePendingTask(projectId, task.taskId);
+                } else if (errMsg) {
+                  processedIds.add(task.subjectId);
+                  setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[task.subjectId]; return n; });
+                  pendingGenerations.delete(task.subjectId);
+                  removePendingTask(projectId, task.taskId);
+                }
+              } else if (st === 'completed' || st === 'partial' || st === 'failed') {
+                // 任务已结束但无对应结果，尝试从主体详情恢复
+                const detail = await apiGetSubjectDetail(projectId, task.subjectId).catch(() => null);
+                const pendingInfo = pendingGenerations.get(task.subjectId) || {};
+                const recovered = detail ? getPendingGenResult(detail, pendingInfo) : null;
+                if (recovered) {
+                  processedIds.add(task.subjectId);
+                  const recoveredUrl = recovered.image_url || recovered.imageUrl || recovered.url;
+                  if (recoveredUrl) {
+                    const fullUrl = normalizeImageUrl(recoveredUrl);
+                    const targetSetter = getPendingGenTabSetter(task.tab, { setChars, setScenes, setProps });
+                    targetSetter(prev => prev.map(s => s.id === task.subjectId ? { ...s, imageUrl: fullUrl } : s));
+                  }
+                } else {
+                  processedIds.add(task.subjectId);
+                }
+                setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[task.subjectId]; return n; });
+                pendingGenerations.delete(task.subjectId);
+                removePendingTask(projectId, task.taskId);
+              } else {
+                allDone = false;
+              }
+            } catch (err) {
+              console.error('[SubjectPage] 恢复单主体任务失败:', task.subjectId, err);
+              processedIds.add(task.subjectId);
+              setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[task.subjectId]; return n; });
+              pendingGenerations.delete(task.subjectId);
+              removePendingTask(projectId, task.taskId);
+            }
+          }));
+          if (!allDone) await new Promise(r => setTimeout(r, 3000));
+        }
+      } catch (err) {
+        console.error('[SubjectPage] 恢复单主体任务循环异常:', err);
+      }
+    })();
+  }, [projectId]);
+
   // ── 恢复单主体 pending generations 的 loading 状态 ──────────────────────────
   useEffect(() => {
     const loadingMap = {};
+    // 已被 subject-single 任务覆盖的 subjectId（避免与 taskPersistence 路径重复轮询）
+    const taskCoveredIds = new Set();
+    try {
+      const taskPending = getPendingTasks(projectId, "");
+      taskPending.filter(t => t.type === "subject-single" && t.subjectId).forEach(t => taskCoveredIds.add(t.subjectId));
+    } catch {
+      // getPendingTasks 失败不影响旧路径
+    }
+    
     for (const [subjectId, info] of pendingGenerations) {
       if (info?.status === 'pending') {
+        if (taskCoveredIds.has(subjectId)) {
+          // 该主体已有任务模式恢复在跑，本路径跳过避免双轨轮询
+          continue;
+        }
+        
         if (info.createdAt && (Date.now() - info.createdAt > PENDING_GEN_STALE_MS)) {
           pendingGenerations.delete(subjectId);
           continue;
@@ -2968,9 +3202,16 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       prevCoverUrlsRef.current[s.id] = s.imageUrl;
     });
 
-    // 所有卡片进入 loading 状态
+    // 仅让本次会实际生成的卡片进入 loading 状态：
+    // only_undrafted=true 时，只有没有定稿图（primary_image_url 为空）的主体才会被后端处理
     const loadingMap = {};
-    subjectIds.forEach(id => { loadingMap[id] = true; });
+    (currentSubjects || []).forEach(s => {
+      const isUndrafted = !s.primary_image_url;
+      if (!params.only_undrafted || isUndrafted) {
+        loadingMap[s.id] = true;
+      }
+    });
+    const targetCount = Object.keys(loadingMap).length;
     setBatchLoadingSubjects(loadingMap);
 
     setBatchGeneratingByTab(prev => ({ ...prev, [captureTab]: true }));
@@ -2985,7 +3226,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     let failCount = 0;
 
     try {
-      await apiBatchGenerateStream(projectId, { model: params.model, ratio: params.ratio, resolution: params.resolution, generation_mode: params.mode, subject_ids: subjectIds }, {
+      await apiBatchGenerateStream(projectId, { model: params.model, ratio: params.ratio, resolution: params.resolution, generation_mode: params.mode, only_undrafted: params.only_undrafted, subject_ids: subjectIds }, {
         signal: controller.signal,
         onTaskCreated: (taskId) => {
           batchTaskId = taskId;
@@ -3025,7 +3266,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       onComplete: () => {
          if (batchTaskId) removePendingTask(projectId, batchTaskId);
          if (successCount > 0) {
-           showBatchToast(successCount === subjectIds.length
+           showBatchToast(successCount === targetCount
              ? '批量生成全部完成'
              : `批量生成完成（成功 ${successCount}，失败 ${failCount}）`, 'success');
         }
@@ -3482,6 +3723,26 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         className="flex-1 self-stretch overflow-auto min-h-0"
         style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(160px, 10vw, 208px), 1fr))', gap: '16px', alignContent: 'flex-start', padding: '16px 2px 2px 2px' }}
       >
+        {(() => {
+          const errMap = { char: charsLoadError, scene: scenesLoadError, prop: propsLoadError };
+          const retryMap = { char: onRetryChars, scene: onRetryScenes, prop: onRetryProps };
+          if (!errMap[activeTab]) return null;
+          const label = TABS.find((t) => t.key === activeTab)?.label ?? '主体';
+          return (
+            <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', padding: '10px 14px', marginBottom: '4px', borderRadius: '8px', background: '#FF6B6B14', border: '1px solid #FF6B6B33' }}>
+              <span style={{ fontSize: '13px', color: '#FFB4B4', fontFamily: "'AlibabaPuHuiTi_2_55_Regular',system-ui,sans-serif" }}>
+                {label}加载失败，已保留当前已加载的卡片
+              </span>
+              <button
+                type="button"
+                onClick={() => retryMap[activeTab]?.()}
+                style={{ fontSize: '13px', color: '#FFFFFF', background: '#FF6B6B55', border: 'none', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer', fontFamily: "'AlibabaPuHuiTi_2_55_Regular',system-ui,sans-serif" }}
+              >
+                点击重试
+              </button>
+            </div>
+          );
+        })()}
         {activeTab === 'char' && chars.map((char) => (
           <CharCard
             key={char.id}
@@ -3550,11 +3811,12 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           tabLabel="角色"
           refreshToken={subjectDetailRefreshToken}
           setBatchLoadingSubjects={setBatchLoadingSubjects}
+          isBatchLoading={!!batchLoadingSubjects[selectedChar.id]}
           onClose={() => setSelectedChar(null)}
-          onCommit={(name, desc) => {
-            setChars((prev) => prev.map((c) => c.id === selectedChar.id ? { ...c, name, desc } : c));
-            setSelectedChar((prev) => ({ ...prev, name, desc }));
-            apiUpdateSubject(projectId, selectedChar.id, { name, description: desc });
+          onCommit={(name, desc, prompt) => {
+            setChars((prev) => prev.map((c) => c.id === selectedChar.id ? { ...c, name, desc, prompt } : c));
+            setSelectedChar((prev) => ({ ...prev, name, desc, prompt }));
+            apiUpdateSubject(projectId, selectedChar.id, { name, description: desc, prompt });
           }}
           onCoverChange={(imageUrl) => {
             // imageUrl: 原始相对路径，用于 API；同时存储完整 URL 用于卡片展示
@@ -3573,11 +3835,12 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           tabLabel="场景"
           refreshToken={subjectDetailRefreshToken}
           setBatchLoadingSubjects={setBatchLoadingSubjects}
+          isBatchLoading={!!batchLoadingSubjects[selectedScene.id]}
           onClose={() => setSelectedScene(null)}
-          onCommit={(name, desc) => {
-            setScenes((prev) => prev.map((s) => s.id === selectedScene.id ? { ...s, name, desc } : s));
-            setSelectedScene((prev) => ({ ...prev, name, desc }));
-            apiUpdateSubject(projectId, selectedScene.id, { name, description: desc });
+          onCommit={(name, desc, prompt) => {
+            setScenes((prev) => prev.map((s) => s.id === selectedScene.id ? { ...s, name, desc, prompt } : s));
+            setSelectedScene((prev) => ({ ...prev, name, desc, prompt }));
+            apiUpdateSubject(projectId, selectedScene.id, { name, description: desc, prompt });
           }}
           onCoverChange={(imageUrl) => {
             const fullUrl = normalizeImageUrl(imageUrl);
@@ -3595,11 +3858,12 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           tabLabel="道具"
           refreshToken={subjectDetailRefreshToken}
           setBatchLoadingSubjects={setBatchLoadingSubjects}
+          isBatchLoading={!!batchLoadingSubjects[selectedProp.id]}
           onClose={() => setSelectedProp(null)}
-          onCommit={(name, desc) => {
-            setProps((prev) => prev.map((p) => p.id === selectedProp.id ? { ...p, name, desc } : p));
-            setSelectedProp((prev) => ({ ...prev, name, desc }));
-            apiUpdateSubject(projectId, selectedProp.id, { name, description: desc });
+          onCommit={(name, desc, prompt) => {
+            setProps((prev) => prev.map((p) => p.id === selectedProp.id ? { ...p, name, desc, prompt } : p));
+            setSelectedProp((prev) => ({ ...prev, name, desc, prompt }));
+            apiUpdateSubject(projectId, selectedProp.id, { name, description: desc, prompt });
           }}
           onCoverChange={(imageUrl) => {
             const fullUrl = normalizeImageUrl(imageUrl);

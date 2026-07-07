@@ -1,9 +1,9 @@
 /**
  * 结构索引
  * ========
- *   组件 MediaDetailModal       通用媒体详情弹窗（图片/视频）     L30–L350
+ *   组件 MediaDetailModal       通用媒体详情弹窗（图片/视频）     L30–L420
  *     - 复用自 AssetsPage 的 SubjectAssetDetailModal
- *     - 左侧：大图/视频预览 + 缩略图列表
+ *     - 左侧：大图/视频预览 + 缩略图列表（始终显示，不设数量下限）
  *     - 右侧：创作信息面板（名称/描述/提示词/参数/按钮）
  *     - 尺寸跟随屏幕缩放（useModalSize）
  *
@@ -16,11 +16,15 @@
  *     showDelete?: boolean             是否显示删除按钮
  *     showDownload?: boolean           是否显示下载按钮
  *     zIndex?: number                  弹窗层级（默认 200）
+ *     source?: string                  图片来源：'local-upload' | 'asset-library'（AI生成无需传入）
  *     onClose: () => void              关闭回调
  *     onDownload?: (imageId?, fileUrl?) => void  下载回调
  *     onDeleteImage?: (imageId) => void 删除回调
  *     shotNumber?: string              分镜名称
  *     generatedAt?: string            AI 生成时间
+ *   2026-07-03  删除左侧底部 refImages 条（已在右侧信息区展示）；缩略图列表始终显示
+ *   2026-07-06  右侧信息区字段对齐 AssetsPage ShotDetailModal：分镜编号横向布局、分镜模式隐藏名称描述、生成参数仅模型+分辨率、时间标签统一"AI 生成时间"
+ *   2026-07-06  新增 source prop：区分 AI 生成 / 本地上传 / 资产库，非 AI 图片右侧显示「来源」字段；生成参数和 AI 生成时间仅 AI 生成时展示
  */
 
 import { useState, useRef } from 'react';
@@ -43,6 +47,7 @@ export default function MediaDetailModal({
   generatedAt = '',
   showDownload = true,
   zIndex = 200,
+  source = '',
   onClose,
   onDownload,
   onDeleteImage,
@@ -69,6 +74,17 @@ export default function MediaDetailModal({
   const currentImg = imgs[activeImg];
   const isPrimary = currentImg?.is_primary ?? false;
   const refImages = currentImg?.refImages ?? [];
+
+  // 分镜模式 / 非分镜模式判断
+  const isShotMode = !!shotNumber;
+  // 当前图片的生成参数（模型、分辨率、画面比例）
+  const genModel = currentImg?.model || null;
+  const genResolution = currentImg?.resolution || null;
+  const genRatio = currentImg?.ratio || null;
+  // 是否 AI 生成
+  const isAiGenerated = !source || source === 'ai-generated';
+  // 来源标签
+  const sourceLabel = source === 'local-upload' ? '本地上传' : source === 'asset-library' ? '资产库' : '';
 
   return (
     <>
@@ -151,42 +167,14 @@ export default function MediaDetailModal({
                 )}
               </div>
 
-              {/* Ref images strip */}
-              {refImages.length > 0 && (
-                <div style={{
-                  flexShrink: 0,
-                  paddingTop: '12px', paddingBottom: '12px', paddingLeft: '16px', paddingRight: '16px',
-                  backgroundColor: '#111111',
-                  borderTop: '1px solid #FFFFFF0A',
-                }}>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <span style={{ fontFamily: FONT, fontSize: '12px', color: '#FFFFFF99', flexShrink: 0, whiteSpace: 'nowrap' }}>参考图：</span>
-                    <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', flex: 1, minWidth: 0 }}>
-                      {refImages.map((ref, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            borderRadius: '4px', overflow: 'hidden',
-                            width: '80px', height: '60px', flexShrink: 0,
-                            backgroundImage: `url(${ref.url ?? ref.fileUrl ?? null})`,
-                            backgroundSize: 'cover', backgroundPosition: 'center',
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Thumbnails */}
-              {imgs.length > 1 && (
                 <div style={{
                   flexShrink: 0,
-                  paddingTop: '12px', paddingBottom: '12px', paddingLeft: '16px', paddingRight: '16px',
-                  backgroundColor: '#111111',
-                  borderTop: '1px solid #FFFFFF0A',
+                  paddingTop: '14px', paddingBottom: '16px', paddingLeft: '16px', paddingRight: '16px',
+                  backgroundColor: '#161616',
+                  borderTop: '1px solid #FFFFFF0F',
                 }}>
-                  <div style={{ display: 'flex', gap: '8px', overflowX: 'auto' }}>
+                  <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', alignItems: 'center' }}>
                     {imgs.map((img, idx) => {
                       const thumbUrl = img.fileUrl ?? img.url ?? null;
                       if (!thumbUrl) return null;
@@ -196,30 +184,22 @@ export default function MediaDetailModal({
                         <div
                           key={img.id ?? idx}
                           style={{
-                            borderRadius: '4px',
+                            borderRadius: '6px',
                             overflow: 'hidden',
-                            width: '80px',
-                            height: '60px',
+                            width: '120px',
+                            height: '84px',
                             flexShrink: 0,
                             cursor: 'pointer',
-                            border: isActive ? '2px solid #2DC3E1' : `2px solid ${isHov ? '#FFFFFF33' : 'transparent'}`,
-                            opacity: isActive ? 1 : 0.6,
-                            transition: 'border-color 0.12s, opacity 0.12s',
+                            boxShadow: isActive ? '#2DC3E166 0px 0px 10px 1px' : 'none',
+                            backgroundColor: '#FFFFFF14',
+                            border: isActive ? '1px solid #2DC3E1' : '1px solid #FFFFFF33',
+                            transition: 'border-color 0.15s, box-shadow 0.15s',
                           }}
                           onClick={() => setActiveImg(idx)}
                           onMouseEnter={() => setHovThumb(idx)}
                           onMouseLeave={() => setHovThumb(null)}
                         >
-                          <div
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              backgroundImage: `url(${thumbUrl})`,
-                              backgroundSize: 'cover',
-                              backgroundPosition: 'center',
-                              position: 'relative',
-                            }}
-                          >
+                          <div style={{ width: '100%', height: '100%', backgroundImage: `url(${thumbUrl})`, backgroundSize: 'cover', backgroundPosition: '50%' }} />
                             {img.is_primary && (
                               <div style={{
                                 position: 'absolute', top: '4px', left: '4px',
@@ -233,19 +213,17 @@ export default function MediaDetailModal({
                                 <span style={{ fontFamily: FONT, fontSize: '10px', lineHeight: '14px', color: '#0A0A0A', fontWeight: 500 }}>定稿</span>
                               </div>
                             )}
-                          </div>
                         </div>
                       );
                     })}
                   </div>
                 </div>
-              )}
             </div>
 
-            {/* Right: info panel */}
+            {/* Right: info panel — 对齐 ShotDetailModal 高度约束 */}
             <div style={{
               width: '280px', display: 'flex', flexDirection: 'column',
-              minHeight: 0, flexShrink: 0,
+              height: `${modalH - 60}px`, flexShrink: 0,
               backgroundColor: '#161616', borderLeft: '1px solid #FFFFFF0F',
             }}>
               {/* Scrollable content */}
@@ -271,25 +249,28 @@ export default function MediaDetailModal({
 
                 <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
 
-                {/* Shot number */}
-                {shotNumber && (
+                {/* Shot number（分镜模式）- 对齐 ShotDetailModal 横向布局 */}
+                {isShotMode && (
                   <>
-                    <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '4px' }}>
-                      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>分镜名称</span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
+                      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>分镜编号</span>
                       <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{shotNumber}</span>
                     </div>
                     <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
                   </>
                 )}
 
-                {/* Name + description */}
-                {(name || description) && (
-                  <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '8px' }}>
-                    {name && <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFF' }}>{name}</span>}
-                    {description && (
-                      <p style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC', margin: 0 }}>{description}</p>
-                    )}
-                  </div>
+                {/* Name + description（仅非分镜模式展示） */}
+                {!isShotMode && (name || description) && (
+                  <>
+                    <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '8px' }}>
+                      {name && <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFF' }}>{name}</span>}
+                      {description && (
+                        <p style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC', margin: 0 }}>{description}</p>
+                      )}
+                    </div>
+                    <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
+                  </>
                 )}
 
                 {/* Prompt */}
@@ -352,16 +333,16 @@ export default function MediaDetailModal({
                   </>
                 )}
 
-                {/* Generation params */}
-                {(currentImg?.model || currentImg?.ratio || currentImg?.resolution) && (
+                {/* Generation params — 分镜模式仅模型+分辨率，非分镜含画面比例 */}
+                {isAiGenerated && (genModel || genRatio || genResolution) && (
                   <>
                     <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
                     <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '12px' }}>
                       <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>生成参数</span>
                       {[
-                        { label: '模型', value: currentImg.model },
-                        { label: '画面比例', value: currentImg.ratio },
-                        { label: '分辨率', value: currentImg.resolution },
+                        { label: '模型', value: genModel },
+                        ...(isShotMode ? [] : [{ label: '画面比例', value: genRatio }]),
+                        { label: '分辨率', value: genResolution },
                       ].filter(({ value }) => value).map(({ label, value }) => (
                         <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>{label}</span>
@@ -372,17 +353,28 @@ export default function MediaDetailModal({
                   </>
                 )}
 
-                {/* Created time */}
-                {currentImg?.created_at && (
+                {/* AI 生成时间 — 对齐 ShotDetailModal 标签 */}
+                {isAiGenerated && (currentImg?.created_at || generatedAt) && (
                   <>
                     <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
                     <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '4px' }}>
-                      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>创建时间</span>
+                      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>AI 生成时间</span>
                       <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF66' }}>{generatedAt || currentImg.created_at}</span>
                     </div>
                   </>
                 )}
               </div>
+
+              {/* 非 AI 生成的来源标识 */}
+              {!isAiGenerated && (
+                <>
+                  <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
+                    <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>来源</span>
+                    <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{sourceLabel}</span>
+                  </div>
+                </>
+              )}
 
               {/* Sticky buttons */}
               <div style={{ flexShrink: 0, paddingTop: '12px', paddingBottom: '20px', paddingLeft: '20px', paddingRight: '20px', borderTop: '1px solid #FFFFFF0A', display: 'flex', gap: '8px' }}>

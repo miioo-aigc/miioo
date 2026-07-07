@@ -115,6 +115,10 @@ export async function apiUpdateSubject(projectId, subjectId, data) {
     throw err;
   }
   invalidateSubjects(projectId);
+  // 重新拉取主体列表以更新缓存，触发订阅者同步最新主图
+  apiGetSubjects(projectId, { type: "character" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "scene" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "prop" }).catch(() => {});
   return res.json();
 }
 
@@ -149,7 +153,6 @@ export async function apiGetSubjectImages(projectId, subjectId) {
 export async function apiGenerateSubjectImage(projectId, subjectId, params) {
   const res = await authFetch(`${BASE}/api/projects/${projectId}/subjects/${subjectId}/generate-image`, {
     method: 'POST',
-    keepalive: true,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   });
@@ -172,7 +175,9 @@ export async function apiGenerateSubjectImage(projectId, subjectId, params) {
     throw err;
   }
   invalidateSubjects(projectId);
-  return res.json();
+  const data = await res.json();
+  // 后端改为异步任务模式时，返回 task_id 供前端轮询恢复
+  return { ...data, _taskId: data.task_id || data.taskId || null };
 }
 
 export async function apiDeleteSubjectImage(projectId, subjectId, imageId) {
@@ -189,6 +194,10 @@ export async function apiSetPrimarySubjectImage(projectId, subjectId, imageId) {
     { method: 'PATCH', headers: { 'Content-Type': 'application/json' } }
   );
   invalidateSubjects(projectId); // 主图变化影响列表展示
+  // 重新拉取主体列表以更新缓存，触发订阅者（如 StoryboardPage）同步最新主图
+  apiGetSubjects(projectId, { type: "character" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "scene" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "prop" }).catch(() => {});
   return res.json();
 }
 
@@ -213,6 +222,10 @@ export async function apiBindSubjectReferenceImages(projectId, subjectId, { asse
     }
   );
   invalidateSubjects(projectId);
+  // 重新拉取主体列表以更新缓存，触发订阅者同步最新主图
+  apiGetSubjects(projectId, { type: "character" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "scene" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "prop" }).catch(() => {});
   return res.json();
 }
 

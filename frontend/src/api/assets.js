@@ -6,9 +6,15 @@ import { apiGetStoryboards } from './storyboard.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 
-function invalidateProjectAssetDependents(projectId) {
+// subjectType 存在时只失效对应类别的主体缓存（'character'|'scene'|'prop'），
+// 避免删除某一类资产时把三类主体缓存全部清掉。未知/未传时退回前缀失效（全部）。
+function invalidateProjectAssetDependents(projectId, subjectType) {
   if (!projectId) return;
-  invalidate(K.subjectsPrefix(projectId));
+  if (subjectType) {
+    invalidate(K.subjects(projectId, subjectType));
+  } else {
+    invalidate(K.subjectsPrefix(projectId));
+  }
   invalidate(K.storyboardsPrefix(projectId));
   invalidate(K.projectOverview(projectId));
   invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
@@ -82,18 +88,18 @@ export async function apiUpdateAsset(assetId, updates) {
   return res.json();
 }
 
-export async function apiDeleteAsset(assetId, { projectId } = {}) {
+export async function apiDeleteAsset(assetId, { projectId, subjectType } = {}) {
   await authFetch(`${BASE}/api/assets/${assetId}`, { method: 'DELETE' });
-  invalidateProjectAssetDependents(projectId);
+  invalidateProjectAssetDependents(projectId, subjectType);
 }
 
-export async function apiBatchDeleteAssets(asset_ids, { projectId } = {}) {
+export async function apiBatchDeleteAssets(asset_ids, { projectId, subjectType } = {}) {
   await authFetch(`${BASE}/api/assets/batch-delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ asset_ids }),
   });
-  invalidateProjectAssetDependents(projectId);
+  invalidateProjectAssetDependents(projectId, subjectType);
 }
 
 export async function apiBatchRestoreAssets(asset_ids) {

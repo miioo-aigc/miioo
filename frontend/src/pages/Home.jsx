@@ -47,6 +47,7 @@
  *     └─ [副作用] 事件监听 (auth:logout / message / project-assets:deleted)  L1387–L1430
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-07-06  新增 subject cache 订阅 useEffect，实时同步 sharedChars/sharedScenes/sharedProps
  *   2026-07-01  初始结构索引建立
  */
 
@@ -939,7 +940,7 @@ function normalizeSubjects(items) {
   const list = items.map(item => ({
     ...item,
     desc: item.description ?? item.desc ?? '',
-    imageUrl: normalizeImageUrl(item.primary_image_url ?? item.image_url ?? item.imageUrl),
+    imageUrl: normalizeImageUrl(item.primary_image_url ?? item.image_url ?? item.imageUrl ?? item.reference_image_url),
   }));
 
   // 按创建时间稳定排序，避免后端返回顺序不一致导致列表跳动
@@ -1211,9 +1212,12 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
           console.error('加载剧本数据失败:', err);
           return { content: '', episodes: [], phase: 'initial' };
         }),
-        apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextOffset: null, hasMore: false })),
-        apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextOffset: null, hasMore: false })),
-        apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextOffset: null, hasMore: false })),
+        // 注意：失败时返回 error 哨兵，而非空列表。
+        // 否则某一类主体接口 500（如后端主图脏数据触发 MultipleResultsFound）会被吞成空数组，
+        // 直接清空该类卡片，让用户误以为数据被删。error 标记让下方保留原有卡片并提示重试。
+        apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }).catch((err) => ({ error: true, err })),
+        apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }).catch((err) => ({ error: true, err })),
+        apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }).catch((err) => ({ error: true, err })),
         apiGetEpisodes(projectId).catch(() => []),
         apiGetProjectOverview(projectId).catch(() => null),
       ]);
@@ -1225,15 +1229,22 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
       setScriptPhase(scriptContent ? 'view' : 'initial');
       setScriptHasStarted(!!scriptContent);
 
-      setSharedChars(normalizeSubjects(charsPage.list));
-      setSharedScenes(normalizeSubjects(scenesPage.list));
-      setSharedProps(normalizeSubjects(propsPage.list));
-      setSubjectPageMeta({
-        chars:  { nextOffset: charsPage.nextOffset,  hasMore: charsPage.hasMore,  loading: false, rawList: charsPage.list },
-        scenes: { nextOffset: scenesPage.nextOffset, hasMore: scenesPage.hasMore, loading: false, rawList: scenesPage.list },
-        props:  { nextOffset: propsPage.nextOffset,  hasMore: propsPage.hasMore,  loading: false, rawList: propsPage.list },
-      });
-      // setSharedProps already set above from propsPage.list
+      // 某类主体加载失败时：不覆盖已有卡片（避免误清空），仅在 meta 上标记 error 供 UI 提示重试。
+      // 加载成功时才写入最新数据。
+      if (!charsPage.error)  setSharedChars(normalizeSubjects(charsPage.list));
+      if (!scenesPage.error) setSharedScenes(normalizeSubjects(scenesPage.list));
+      if (!propsPage.error)  setSharedProps(normalizeSubjects(propsPage.list));
+
+      const buildMeta = (page) => page.error
+        ? { nextOffset: null, hasMore: false, loading: false, rawList: null, error: true }
+        : { nextOffset: page.nextOffset, hasMore: page.hasMore, loading: false, rawList: page.list, error: false };
+      setSubjectPageMeta((prev) => ({
+        // 失败类保留上一次的分页 meta（rawList 等），只把 error 标记合并进去，
+        // 这样已加载的卡片和「加载更多」状态不被清掉。
+        chars:  charsPage.error  ? { ...(prev?.chars  || {}), loading: false, error: true } : buildMeta(charsPage),
+        scenes: scenesPage.error ? { ...(prev?.scenes || {}), loading: false, error: true } : buildMeta(scenesPage),
+        props:  propsPage.error  ? { ...(prev?.props  || {}), loading: false, error: true } : buildMeta(propsPage),
+      }));
 
       // 从后端数据中提取剧集状态，优先用 overview 的 episode_progress（状态更精准）
       // 不依赖后端 status 字符串（实际值与文档不符），直接用计数字段判断：
@@ -1434,6 +1445,27 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
     return unsubscribe;
   }, []);
 
+  // 订阅主体缓存更新 —— 当 SubjectPage 修改主体（如更换定稿图）后，分镜页面自动同步最新参考图
+  useEffect(() => {
+    if (!activeProject?.id) return;
+    const pid = activeProject.id;
+    const unsubs = [
+      subscribe(K.subjects(pid, 'character'), (data) => {
+        const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
+        if (list.length > 0) setSharedChars(normalizeSubjects(list));
+      }),
+      subscribe(K.subjects(pid, 'scene'), (data) => {
+        const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
+        if (list.length > 0) setSharedScenes(normalizeSubjects(list));
+      }),
+      subscribe(K.subjects(pid, 'prop'), (data) => {
+        const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
+        if (list.length > 0) setSharedProps(normalizeSubjects(list));
+      }),
+    ];
+    return () => unsubs.forEach((fn) => fn());
+  }, [activeProject?.id]);
+
   useEffect(() => {
     const handleForceLogout = () => {
       if (!localStorage.getItem('token')) return;
@@ -1454,21 +1486,32 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
       if (!projectId || projectId !== activeProject?.id) return;
 
       const SUBJECT_LIMIT = 20;
-      Promise.all([
-        apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextOffset: null, hasMore: false })),
-        apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextOffset: null, hasMore: false })),
-        apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextOffset: null, hasMore: false })),
-      ]).then(([charsPage, scenesPage, propsPage]) => {
-        setSharedChars(normalizeSubjects(charsPage.list));
-        setSharedScenes(normalizeSubjects(scenesPage.list));
-        setSharedProps(normalizeSubjects(propsPage.list));
-        setSubjectPageMeta({
-          chars:  { nextOffset: charsPage.nextOffset,  hasMore: charsPage.hasMore,  loading: false, rawList: charsPage.list },
-          scenes: { nextOffset: scenesPage.nextOffset, hasMore: scenesPage.hasMore, loading: false, rawList: scenesPage.list },
-          props:  { nextOffset: propsPage.nextOffset,  hasMore: propsPage.hasMore,  loading: false, rawList: propsPage.list },
-        });
-      }).catch((err) => {
-        console.error('资产删除后刷新主体数据失败:', err);
+      // subjectType（'character'|'scene'|'prop'）存在时只刷新对应类别，
+      // 完全不触碰其它类别的 state —— 删角色不会牵动场景/道具卡片。
+      // 缺失（旧事件或非主体资产）时回退刷新全部三类。
+      const subjectType = event?.detail?.subjectType;
+      const TYPE_TO_KEY = { character: 'chars', scene: 'scenes', prop: 'props' };
+      const SETTERS = { chars: setSharedChars, scenes: setSharedScenes, props: setSharedProps };
+
+      const targetTypes = subjectType && TYPE_TO_KEY[subjectType]
+        ? [subjectType]
+        : ['character', 'scene', 'prop'];
+
+      // 每个请求成功/失败独立处理：失败时保留原 state，不用空数组覆盖，
+      // 避免刷新失败导致已有卡片消失。
+      targetTypes.forEach((type) => {
+        const key = TYPE_TO_KEY[type];
+        apiGetSubjectsPage(projectId, { type, limit: SUBJECT_LIMIT })
+          .then((page) => {
+            SETTERS[key](normalizeSubjects(page.list));
+            setSubjectPageMeta((prev) => ({
+              ...prev,
+              [key]: { nextOffset: page.nextOffset, hasMore: page.hasMore, loading: false, rawList: page.list },
+            }));
+          })
+          .catch((err) => {
+            console.error(`资产删除后刷新主体数据失败（${type}）:`, err);
+          });
       });
     };
 
@@ -1510,6 +1553,26 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
     } catch (err) {
       console.error(`[Home] 加载更多主体失败 (${type}):`, err);
       setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: false } }));
+    }
+  };
+
+  // 重试单类主体首屏加载（首屏 500 后由 SubjectPage 的错误条触发）
+  const retrySubjects = async (type) => {
+    const key = type === 'character' ? 'chars' : type === 'scene' ? 'scenes' : 'props';
+    setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: true } }));
+    try {
+      const page = await apiGetSubjectsPage(activeProject.id, { type, limit: 20 });
+      const items = normalizeSubjects(page.list);
+      if (key === 'chars') setSharedChars(items);
+      else if (key === 'scenes') setSharedScenes(items);
+      else setSharedProps(items);
+      setSubjectPageMeta(prev => ({
+        ...prev,
+        [key]: { nextOffset: page.nextOffset, hasMore: page.hasMore, loading: false, rawList: page.list, error: false },
+      }));
+    } catch (err) {
+      console.error(`[Home] 重试加载主体失败 (${type}):`, err);
+      setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: false, error: true } }));
     }
   };
 
@@ -2096,6 +2159,12 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
                 hasMoreChars={subjectPageMeta.chars.hasMore}
                 hasMoreScenes={subjectPageMeta.scenes.hasMore}
                 hasMoreProps={subjectPageMeta.props.hasMore}
+                charsLoadError={!!subjectPageMeta.chars.error}
+                scenesLoadError={!!subjectPageMeta.scenes.error}
+                propsLoadError={!!subjectPageMeta.props.error}
+                onRetryChars={() => retrySubjects('character')}
+                onRetryScenes={() => retrySubjects('scene')}
+                onRetryProps={() => retrySubjects('prop')}
               />
             )}
             {activeKey === 'project' && activeProject && activeStep === 'storyboard' && (

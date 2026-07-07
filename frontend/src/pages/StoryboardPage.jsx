@@ -4,9 +4,10 @@
  *
  * ─── 全局常量 & 工具函数 ──────────── L25–L192
  *   normalizeStoryboard(be)      后端→前端数据映射           L25–L95
- *   toBackendStoryboard(shot)    前端→后端数据映射           L97–L146
+ *   toBackendStoryboard(shot)    前端→后端数据映射（voiceover 空时发 null）  L188–L222
  *   urlPathKey(url)              URL 规范化去重             L132
- *   enrichMainRefs(shot, chars)  主体引用补全去重            L148–L188
+ *   enrichMainRefs(shot, chars)  主体引用补全去重（按 subjectId/type 识别，随定稿图同步）  L235–L279
+ *   buildRefFromAsset(a)         资产库选中→mainRefs 条目（带 subject_id 时建主体引用）  L282–L298
  *   FONT / FONT_MEDIUM           字体家族常量               L191–L192
  *   EPISODE_ITEM_H / EPISODE_MAX_VISIBLE  集数选择器常量    L196–L197
  *   MAX_PROMPT_LEN               提示词最大长度              L1531
@@ -72,9 +73,15 @@
  *     └─ [副作用] 单镜头生成中持久化任务到 localStorage           L6744+
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
- *   2026-07-03  MediaCol 图片查看按钮复用 MediaDetailModal（替代原 MediaViewModal）
+ *   2026-07-07  修复「主体参考」与主体定稿图脱节：新增 buildRefFromAsset，从资产库选中带 subject_id 的图片时建立主体引用（落到 character_ids），
+ *              enrichMainRefs 改用 subjectId/type 识别并始终同步最新定稿图；preSelectedSubjectIds 只传真实 subjectId → 换定稿图自动替换、同一主体不可重复添加
+ *   2026-07-06  MediaDetailModal 新增 source prop：区分 AI 生成/本地上传/资产库；非 AI 图片右侧显示「来源」字段，提示词和生成参数留空；normalizeStoryboard 根据 image_prompt/gen_params 判断来源；MediaCol onUpload 标记 source
+ *   2026-07-06  MediaDetailModal 两处调用补传 generatedAt；生成图片时写入 created_at
+ *   2026-07-03  MediaCol 查看大图：传入完整生成历史图片列表（genImageHistoryMap），
+ *              底部缩略图展示创作历史而非参考图；参考图仅显示在右侧信息区
  *              MediaDetailModal/ShotViewerModal 传入 zIndex 避免被侧面板遮挡
  *              GenerateImagePanel/GenerateVideoPanel 生成图片时快照 refImages
+ *   2026-07-06  enrichMainRefs 移除 !ref.url 守卫，始终用最新 chars 数据更新；新增 useEffect 监听 chars/scenes/props 变化重新富化 shots
  *   2026-07-01  初始结构索引建立
  *   2026-07-02  生成任务跨刷新持久化（taskPersistence）
  */
@@ -153,7 +160,8 @@ function normalizeStoryboard(be) {
     ),
     storyboardImage: be.storyboardImage ?? (
       be.image_url
-        ? { id: `${be.id}_img`, url: normalizeImageUrl(be.image_url), name: '分镜图', type: 'image/jpeg' }
+        ? { id: `${be.id}_img`, url: normalizeImageUrl(be.image_url), name: '分镜图', type: 'image/jpeg',
+            source: (be.image_prompt || be.gen_params) ? 'ai-generated' : 'local-upload' }
         : null
     ),
     storyboardVideo: be.storyboardVideo ?? (
@@ -188,9 +196,11 @@ function toBackendStoryboard(shot) {
     duration: shot.params?.duration ? parseFloat(shot.params.duration) : undefined,
     lighting: shot.lightShadow || undefined,
     ambient_sound: shot.ambientSound || undefined,
+    // 台词清空时用空字符串而非 null：PATCH 接口通常会丢弃 None 字段（exclude_none），
+    // 传 null 会被后端忽略导致删除后刷新又出现；空字符串是真实值可被持久化清空。
     voiceover: shot.narration?.segments?.length
       ? shot.narration.segments.map(s => s.role ? `${s.role}：${s.lines}` : s.lines).join('\n')
-      : undefined,
+      : '',
     character_ids: (shot.mainRefs || [])
       .filter(ref => ref?.type === 'char' || ref?.type === 'scene' || ref?.type === 'prop')
       .map(ref => ref?.id).filter(Boolean),
@@ -236,12 +246,17 @@ function enrichMainRefs(shot, chars) {
   const usedPathKeys = new Set();
   const enrichedById = {};
   for (const ref of shot.mainRefs) {
-    if ((ref.type === 'char' || ref.type === 'scene' || ref.type === 'prop') && !ref.url) {
-      const ch = (chars || []).find(c => c.id === ref.id);
+    // 主体引用识别键：优先 subjectId（从资产库选中的主体图携带），
+    // 兼容旧数据用 type=char/scene/prop 时的 ref.id
+    const sid = ref.subjectId
+      || ((ref.type === 'char' || ref.type === 'scene' || ref.type === 'prop') ? ref.id : null);
+    if (sid) {
+      const ch = (chars || []).find(c => c.id === sid);
       if (ch?.imageUrl) {
         const url = normalizeImageUrl(ch.imageUrl);
         const pathKey = urlPathKey(url);
         if (pathKey) usedPathKeys.add(pathKey);
+        // 无论之前有无 url，都用最新 chars 里的 imageUrl 更新（主体换定稿图后自动同步）
         enrichedById[ref.id] = { ...ref, url, name: ch.name };
       }
     }
@@ -267,6 +282,23 @@ function enrichMainRefs(shot, chars) {
 
   shot.mainRefs = result;
   return shot;
+}
+
+/**
+ * 从资产库选中的资产构造 mainRefs 条目。
+ * 关键点：如果资产带 subject_id（即某主体的图片），则建立「主体引用」而非普通参考图：
+ *   - id 用 subjectId → 经 toBackendStoryboard 落到 character_ids，后端持久化主体关联；
+ *     刷新后仍是主体引用，且随主体定稿图变化自动同步（enrichMainRefs）。
+ *   - 同一主体只对应一个 id → 天然去重，避免同一主体被添加多遍。
+ * 普通图片资产（无 subject_id）保持原有的图片引用行为。
+ */
+function buildRefFromAsset(a) {
+  const url = normalizeImageUrl(a.fileUrl || a.url) ?? null;
+  const subjectId = a.subject_id ?? a.subjectId ?? null;
+  if (subjectId) {
+    return { id: subjectId, subjectId, assetId: a.id, url, name: a.name, type: 'char' };
+  }
+  return { id: a.id, assetId: a.id, url, name: a.name, type: a.type ?? 'image' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2381,11 +2413,11 @@ function GenerateImagePanel({ shot, projectId, chars = [], scenes = [], props = 
     setLoading(true);
     const placeholder = `pending-${Date.now()}`;
     const refImagesSnapshot = refImages.map(r => ({ url: r.url, fileUrl: r.url }));
-    onSetGeneratedImages((prev) => [{ url: null, settled: false, id: placeholder, refImages: refImagesSnapshot }, ...prev]);
+    onSetGeneratedImages((prev) => [{ url: null, settled: false, id: placeholder, refImages: refImagesSnapshot, prompt, model, resolution, created_at: new Date().toISOString().replace('T', ' ').slice(0, 19) }, ...prev]);
     try {
       const result = await onGenerate?.({ model, resolution, prompt, refImages });
       onSetGeneratedImages((prev) =>
-        prev.map((item) => item.id === placeholder ? { ...item, url: result?.url ?? null } : item)
+        prev.map((item) => item.id === placeholder ? { ...item, url: result?.url ?? null, created_at: item.created_at || new Date().toISOString().replace('T', ' ').slice(0, 19) } : item)
       );
       onShowToast?.('图片生成成功', 'success');
     } catch (err) {
@@ -2613,18 +2645,21 @@ function GenerateImagePanel({ shot, projectId, chars = [], scenes = [], props = 
         <MediaDetailModal
           zIndex={902}
           mode="image"
+          source="ai-generated"
           images={generatedImages.filter(img => img.url).map(img => ({
             id: img.id,
             url: img.url,
             fileUrl: img.url,
             is_primary: img.settled ?? false,
-            prompt: prompt,
-            model: model,
-            resolution: resolution,
+            prompt: img.prompt || prompt,
+            model: img.model || model,
+            resolution: img.resolution || resolution,
+            created_at: img.created_at,
             refImages: (img.refImages && img.refImages.length > 0) ? img.refImages : refImages.filter(r => r.url).map(r => ({ url: normalizeImageUrl(r.url || r.fileUrl || ''), fileUrl: r.url })),
           }))}
           name={`镜头 ${String(shot?.number ?? 1).padStart(2, '0')}`}
           shotNumber={`镜头 ${String(shot?.number ?? 1).padStart(2, '0')}`}
+          generatedAt={generatedImages[mediaDetailActiveIdx]?.created_at || null}
           showDelete={false}
           showDownload={true}
           activeIndex={mediaDetailActiveIdx}
@@ -2912,7 +2947,7 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
         reference_audio_url: refAudio?.url,
       });
       onSetGeneratedVideos?.((prev) =>
-        prev.map((item) => item.id === placeholder ? { ...item, url: result?.url ?? null } : item)
+        prev.map((item) => item.id === placeholder ? { ...item, url: result?.url ?? null, created_at: item.created_at || new Date().toISOString().replace('T', ' ').slice(0, 19) } : item)
       );
       onShowToast?.('视频生成成功', 'success');
     } catch (err) {
@@ -4646,7 +4681,7 @@ function MainRefCol({ shot, onChange, chars, projectId }) {
   }
 
   function handleAssetConfirm(assets) {
-    const newRefs = assets.map(a => ({ id: a.id, assetId: a.id, url: (a.fileUrl || a.url) ?? null, name: a.name, type: a.type ?? 'image' }));
+    const newRefs = assets.map(buildRefFromAsset);
     onChange({ ...shot, mainRefs: [...shot.mainRefs, ...newRefs] });
   }
 
@@ -4659,7 +4694,7 @@ function MainRefCol({ shot, onChange, chars, projectId }) {
         onClose={() => setAssetPickerOpen(false)}
         preSelectedIds={shot.mainRefs.map(r => r.assetId).filter(Boolean)}
         preSelectedUrls={shot.mainRefs.map(r => r.url).filter(Boolean)}
-        preSelectedSubjectIds={shot.mainRefs.map(r => r.id).filter(Boolean)}
+        preSelectedSubjectIds={shot.mainRefs.map(r => r.subjectId || ((r.type === 'char' || r.type === 'scene' || r.type === 'prop') ? r.id : null)).filter(Boolean)}
         onConfirm={handleAssetConfirm}
       />
       {dropdownOpen && (
@@ -4820,7 +4855,7 @@ function MainRefModal({ shot, onChange, onClose }) {
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
 
   function handleAssetConfirm(assets) {
-    const newRefs = assets.map(a => ({ id: a.id, assetId: a.id, url: (a.fileUrl || a.url) ?? null, name: a.name, type: a.type ?? 'image' }));
+    const newRefs = assets.map(buildRefFromAsset);
     onChange({ ...shot, mainRefs: [...shot.mainRefs, ...newRefs] });
   }
 
@@ -4837,7 +4872,7 @@ function MainRefModal({ shot, onChange, onClose }) {
         onClose={() => setAssetPickerOpen(false)}
         preSelectedIds={shot.mainRefs.map(r => r.assetId).filter(Boolean)}
         preSelectedUrls={shot.mainRefs.map(r => r.url).filter(Boolean)}
-        preSelectedSubjectIds={shot.mainRefs.map(r => r.id).filter(Boolean)}
+        preSelectedSubjectIds={shot.mainRefs.map(r => r.subjectId || ((r.type === 'char' || r.type === 'scene' || r.type === 'prop') ? r.id : null)).filter(Boolean)}
         onConfirm={handleAssetConfirm}
       />
       <div
@@ -5060,7 +5095,7 @@ function MediaIconBtn({ children, onClick }) {
   );
 }
 
-function MediaCol({ media, onUpload, accept, isVideo, label, onAIGenerate, shotMeta, generating }) {
+function MediaCol({ media, onUpload, accept, isVideo, label, onAIGenerate, shotMeta, generating, generatedImages = [], genRefImages = [] }) {
   const [hovered, setHovered] = useState(false);
   const [viewUrl, setViewUrl] = useState(null);
   const [viewerShot, setViewerShot] = useState(null);
@@ -5228,9 +5263,23 @@ function MediaCol({ media, onUpload, accept, isVideo, label, onAIGenerate, shotM
       {imageDetailOpen && (
         <MediaDetailModal
           mode="image"
-          images={[{ id: media?.id ?? media?.url, url: media?.url, fileUrl: media?.url, prompt: shotMeta?.prompt, model: shotMeta?.model, resolution: shotMeta?.resolution, refImages: (shotMeta?.refImages ?? []) }]}
+          source={(generatedImages.length > 0 && generatedImages.some(img => img.url === media?.url)) ? 'ai-generated' : (media?.source || 'local-upload')}
+          images={generatedImages.length > 0
+            ? generatedImages.map(img => ({
+                id: img.id ?? img.url,
+                url: img.url,
+                fileUrl: img.url,
+                is_primary: img.settled ?? (img.url === media?.url),
+                prompt: img.prompt || shotMeta?.prompt,
+                model: img.model || shotMeta?.model,
+                resolution: img.resolution || shotMeta?.resolution,
+                created_at: img.created_at,
+                refImages: (img.refImages && img.refImages.length > 0) ? img.refImages : genRefImages,
+              }))
+            : [{ id: media?.id ?? media?.url, url: media?.url, fileUrl: media?.url, refImages: genRefImages }]}
           name={shotMeta?.label ?? ''}
           shotNumber={shotMeta?.label ?? ''}
+          generatedAt={generatedImages[0]?.created_at || media?.created_at || null}
           showDelete={false}
           showDownload={true}
           activeIndex={0}
@@ -5579,7 +5628,7 @@ function MainRefColWrapper({ shot, onChange, chars, projectId }) {
 
 // ─── 媒体列容器 ───────────────────────────────────────────────────────────────
 
-function MediaColWrapper({ label, media, onUpload, accept, isVideo, isLast = false, onAIGenerate, shotMeta, generating }) {
+function MediaColWrapper({ label, media, onUpload, accept, isVideo, isLast = false, onAIGenerate, shotMeta, generating, generatedImages = [], genRefImages = [] }) {
   return (
     <div style={{
       width: 'calc(15% - 1px)',
@@ -5603,6 +5652,8 @@ function MediaColWrapper({ label, media, onUpload, accept, isVideo, isLast = fal
         onAIGenerate={onAIGenerate}
         shotMeta={shotMeta}
         generating={generating}
+        generatedImages={generatedImages}
+        genRefImages={genRefImages}
       />
     </div>
   );
@@ -5610,7 +5661,7 @@ function MediaColWrapper({ label, media, onUpload, accept, isVideo, isLast = fal
 
 // ─── 分镜行 ───────────────────────────────────────────────────────────────────
 
-function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, onDragStart, onDragOver, onDrop, insertBefore, insertAfter, onGenerateImage, onGenerateVideo, globalVoiceParams, onSaveGlobalVoice, projectId, generatingImage, generatingVideo, isSelectMode = false, isSelected = false, onToggleSelect }) {
+function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, onDragStart, onDragOver, onDrop, insertBefore, insertAfter, onGenerateImage, onGenerateVideo, globalVoiceParams, onSaveGlobalVoice, projectId, generatingImage, generatingVideo, genImageHistoryMap, genVideoHistoryMap, isSelectMode = false, isSelected = false, onToggleSelect }) {
   const [hovered, setHovered] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   // 仅当拖拽动作由「拖拽手柄」按钮发起时才允许排序，鼠标在卡片其他区域拖拽无效。
@@ -5681,12 +5732,13 @@ function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, o
           label="分镜图"
           media={shot.storyboardImage}
           onUpload={(m) => {
-            onChange({ ...shot, storyboardImage: m });
+            const source = m.file ? 'local-upload' : 'asset-library';
+            onChange({ ...shot, storyboardImage: { ...m, source } });
             if (m.file) {
               apiUploadStoryboardImage(projectId, shot.id, m.file)
                 .then(result => {
                   const url = normalizeImageUrl(result.url || result.image_url || result.imageUrl);
-                  if (url) onChange({ ...shot, storyboardImage: { id: url, url, name: m.name, type: m.type } });
+                  if (url) onChange({ ...shot, storyboardImage: { id: url, url, name: m.name, type: m.type, source } });
                 })
                 .catch(err => console.error('[StoryboardPage] 图片上传失败:', err));
             }
@@ -5702,6 +5754,8 @@ function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, o
             resolution: shot.storyboardImage?.resolution ?? '-',
             refImages: (shot.mainRefs || []).filter(r => r.url && r.type !== 'char' && r.type !== 'scene' && r.type !== 'prop').map(r => ({ url: r.url, fileUrl: r.url })),
           }}
+          generatedImages={(genImageHistoryMap?.[shot.id] || []).filter(img => img.url)}
+          genRefImages={(shot.mainRefs || []).filter(r => r.url && r.type !== 'char' && r.type !== 'scene' && r.type !== 'prop').map(r => ({ url: r.url, fileUrl: r.url }))}
         />
         <MediaColWrapper
           label="分镜视频"
@@ -5731,6 +5785,8 @@ function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, o
             aspectRatio: '16:9',
             finalized: shot.storyboardVideo?.finalized ?? false,
           }}
+          generatedImages={(genVideoHistoryMap?.[shot.id] || []).filter(v => v.url)}
+          genRefImages={[]}
         />
       </div>
       {confirmDelete && (
@@ -5913,6 +5969,21 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
 
     return () => { unsub1(); unsub2(); };
   }, [projectId, episode?.id, chars]);
+
+  // 当 chars/scenes/props 变化时（如主体页修改了定稿图），直接重新富化已有 shots，无需重新请求后端
+  useEffect(() => {
+    if (!chars.length) return;
+    setShots(prev => prev.map(shot => enrichMainRefs({ ...shot }, chars)));
+  }, [chars]);
+  useEffect(() => {
+    if (!scenes.length) return;
+    setShots(prev => prev.map(shot => enrichMainRefs({ ...shot }, scenes)));
+  }, [scenes]);
+  useEffect(() => {
+    if (!props.length) return;
+    setShots(prev => prev.map(shot => enrichMainRefs({ ...shot }, props)));
+  }, [props]);
+
 
   useEffect(() => {
     if (activeEpisodes.length > 0 && !activeEpisodes.some(ep => getEpisodeId(ep) === getEpisodeId(episode))) {
@@ -6728,6 +6799,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
             onSaveGlobalVoice={(role, params) => setGlobalVoiceParams((prev) => ({ ...prev, [role]: params }))}
             generatingImage={generatingImageShotIds.has(shot.id)}
             generatingVideo={generatingVideoShotIds.has(shot.id)}
+            genImageHistoryMap={genImageHistoryMap}
+            genVideoHistoryMap={genVideoHistoryMap}
             isSelectMode={downloadMode}
             isSelected={selectedShotIds.has(shot.id)}
             onToggleSelect={() => toggleShotSelection(shot.id)}

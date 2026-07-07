@@ -612,36 +612,6 @@ function SubjectAssetDetailModal({ onClose, onDownload, onDeleteImage, onShowToa
               />
             </div>
 
-            {/* Ref images strip — if exist */}
-            {refImages.length > 0 && (
-              <div style={{
-                flexShrink: 0,
-                paddingTop: '12px', paddingBottom: '12px', paddingLeft: '16px', paddingRight: '16px',
-                backgroundColor: '#111111',
-                borderTop: '1px solid #FFFFFF0A',
-              }}>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <span style={{ fontFamily: FONT, fontSize: '12px', color: '#FFFFFF99', flexShrink: 0, whiteSpace: 'nowrap' }}>参考图：</span>
-                  <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', flex: 1, minWidth: 0 }}>
-                    {refImages.map((ref, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          borderRadius: '4px', overflow: 'hidden',
-                          width: '80px', height: '56px', flexShrink: 0,
-                          backgroundColor: '#FFFFFF14',
-                          border: '1px solid #FFFFFF33',
-                          backgroundImage: `url(${ref.url})`,
-                          backgroundSize: 'cover', backgroundPosition: '50%',
-                        }}
-                        title={ref.title}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Thumbnails strip */}
             <div style={{
               flexShrink: 0,
@@ -732,36 +702,62 @@ function SubjectAssetDetailModal({ onClose, onDownload, onDeleteImage, onShowToa
                 )}
               </div>
 
-              {/* Prompt */}
-              {currentImg?.prompt && (
-                <>
-                  <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
-                  <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>提示词</span>
-                      <button
-                        type="button"
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          width: '24px', height: '24px', borderRadius: '4px',
-                          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                          opacity: 0.6, transition: 'opacity 0.12s',
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
-                        onClick={() => {
-                          navigator.clipboard.writeText(currentImg.prompt);
-                          showCopyToast();
-                        }}
-                        title="复制提示词"
-                      >
+             {/* Prompt */}
+              {(currentImg?.input_prompt || currentImg?.prompt) && (
+               <>
+                 <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
+                 <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
+                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                     <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>提示词</span>
+                     <button
+                       type="button"
+                       style={{
+                         display: 'flex', alignItems: 'center', justifyContent: 'center',
+                         width: '24px', height: '24px', borderRadius: '4px',
+                         background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                         opacity: 0.6, transition: 'opacity 0.12s',
+                       }}
+                       onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                       onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
+                       onClick={() => {
+                          navigator.clipboard.writeText(currentImg.input_prompt ?? currentImg.prompt);
+                         showCopyToast();
+                       }}
+                       title="复制提示词"
+                     >
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
                           <path d="M4.33337 4.14383V2.60413C4.33337 2.08636 4.75311 1.66663 5.27087 1.66663H13.3959C13.9136 1.66663 14.3334 2.08636 14.3334 2.60413V10.7291C14.3334 11.2469 13.9136 11.6666 13.3959 11.6666H11.8388" stroke="white" strokeOpacity="0.6" strokeLinecap="round" strokeLinejoin="round"/>
                           <path d="M10.7291 4.33337H2.60413C2.08636 4.33337 1.66663 4.75311 1.66663 5.27087V13.3959C1.66663 13.9136 2.08636 14.3334 2.60413 14.3334H10.7291C11.2469 14.3334 11.6666 13.9136 11.6666 13.3959V5.27087C11.6666 4.75311 11.2469 4.33337 10.7291 4.33337Z" stroke="white" strokeOpacity="0.6" strokeLinejoin="round"/>
                         </svg>
                       </button>
+                   </div>
+                    <p style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC', margin: 0 }}>{currentImg.input_prompt ?? currentImg.prompt}</p>
+                 </div>
+               </>
+             )}
+
+              {/* Ref images */}
+              {refImages.length > 0 && (
+                <>
+                  <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
+                    <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>参考图</span>
+                    <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', flex: 1, minWidth: 0 }}>
+                      {refImages.map((ref, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            borderRadius: '4px', overflow: 'hidden',
+                            width: '80px', height: '56px', flexShrink: 0,
+                            backgroundColor: '#FFFFFF14',
+                            border: '1px solid #FFFFFF33',
+                            backgroundImage: `url(${ref.url || ref.fileUrl || ''})`,
+                            backgroundSize: 'cover', backgroundPosition: '50%',
+                          }}
+                          title={ref.title || ''}
+                        />
+                      ))}
                     </div>
-                    <p style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC', margin: 0 }}>{currentImg.prompt}</p>
                   </div>
                 </>
               )}
@@ -1308,10 +1304,10 @@ function ShotDetailModal({ onClose, onDownload, onDelete, onShowToast, shotNumbe
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                         onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
-                        onClick={() => {
-                          navigator.clipboard.writeText((currentImg?.prompt || prompt) ?? MOCK_SHOT_DETAIL.prompt);
-                          showCopyToast();
-                        }}
+                       onClick={() => {
+                          navigator.clipboard.writeText((currentImg?.input_prompt ?? currentImg?.prompt ?? prompt) ?? MOCK_SHOT_DETAIL.prompt);
+                         showCopyToast();
+                       }}
                         title="复制提示词"
                       >
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
@@ -1320,9 +1316,9 @@ function ShotDetailModal({ onClose, onDownload, onDelete, onShowToast, shotNumbe
                         </svg>
                       </button>
                     </div>
-                    <p style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC', margin: 0 }}>{(currentImg?.prompt || prompt) ?? MOCK_SHOT_DETAIL.prompt}</p>
-                  </div>
-                  <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
+                    <p style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC', margin: 0 }}>{(currentImg?.input_prompt ?? currentImg?.prompt ?? prompt) ?? MOCK_SHOT_DETAIL.prompt}</p>
+                 </div>
+                 <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
                 </>
               )}
 
@@ -2190,7 +2186,7 @@ function AssetCard({ name, bgColor = '#252525', url = null, starred = false, sel
     </div>
     {detailOpen && assetType === 'shot_video' && (
       <ShotVideoDetailModal onClose={() => setDetailOpen(false)} onDownload={onDownload} onDelete={() => { setDetailOpen(false); onDelete?.(); }}
-        shotNumber={detailData?.shotNumber} prompt={detailData?.prompt} model={detailData?.model}
+        shotNumber={detailData?.shotNumber} prompt={detailData?.input_prompt ?? detailData?.prompt} model={detailData?.model}
         resolution={detailData?.resolution} duration={detailData?.duration} ratio={detailData?.ratio}
         generatedAt={detailData?.generatedAt} frames={detailData?.frames} videoSrc={detailData?.videoSrc}
         refMode={detailData?.refMode} firstFrame={detailData?.firstFrame} lastFrame={detailData?.lastFrame}
@@ -2199,7 +2195,7 @@ function AssetCard({ name, bgColor = '#252525', url = null, starred = false, sel
     )}
     {detailOpen && assetType === 'shot' && (
       <ShotDetailModal onClose={() => setDetailOpen(false)} onDownload={onDownload} onDelete={() => { setDetailOpen(false); onDelete?.(); }}
-        shotNumber={detailData?.shotNumber} prompt={detailData?.prompt} model={detailData?.model}
+        shotNumber={detailData?.shotNumber} prompt={detailData?.input_prompt ?? detailData?.prompt} model={detailData?.model}
         resolution={detailData?.resolution} generatedAt={detailData?.generatedAt} images={detailData?.images}
         refImages={detailData?.refImages}
       />
@@ -2224,12 +2220,12 @@ function AssetCard({ name, bgColor = '#252525', url = null, starred = false, sel
         onFavorite={() => onStar?.()}
       />
     )}
-    {detailOpen && asset.type === 'image' && (
-      <ImageDetailModal
-        card={{
-          imageUrl: asset.imageUrl || url,
-          prompt: asset.prompt,
-          model: asset.model,
+   {detailOpen && asset.type === 'image' && (
+     <ImageDetailModal
+       card={{
+         imageUrl: asset.imageUrl || url,
+          prompt: asset.input_prompt ?? asset.prompt,
+         model: asset.model,
           ratio: asset.ratio,
           resolution: asset.resolution,
           refImages: asset.refImages,
@@ -2243,10 +2239,10 @@ function AssetCard({ name, bgColor = '#252525', url = null, starred = false, sel
     )}
     {detailOpen && assetType !== 'shot' && assetType !== 'shot_video' && !asset.type && showStar && (
       <ImageDetailModal
-        card={{
-          imageUrl: url || detailData?.url,
-          prompt: detailData?.prompt,
-          model: detailData?.model,
+       card={{
+         imageUrl: url || detailData?.url,
+          prompt: detailData?.input_prompt ?? detailData?.prompt,
+         model: detailData?.model,
           ratio: detailData?.ratio,
           resolution: detailData?.resolution,
           refImages: detailData?.refImages,
@@ -2260,7 +2256,7 @@ function AssetCard({ name, bgColor = '#252525', url = null, starred = false, sel
     )}
     {detailOpen && assetType !== 'shot' && assetType !== 'shot_video' && !showStar && (
       <AssetDetailModal onClose={() => setDetailOpen(false)} onDownload={onDownload}
-        name={detailData?.name ?? name} description={detailData?.description} prompt={detailData?.prompt} model={detailData?.model}
+        name={detailData?.name ?? name} description={detailData?.description} prompt={detailData?.input_prompt ?? detailData?.prompt} model={detailData?.model}
         ratio={detailData?.ratio} resolution={detailData?.resolution} generatedAt={detailData?.generatedAt} images={detailData?.images}
       />
     )}
@@ -2417,25 +2413,25 @@ function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownload, on
           onDownload={() => onDownload?.()}
           onDelete={() => { onDelete?.(); }}
           onShowToast={onShowToast}
-          shotNumber={name}
-          prompt={asset.prompt}
-          model={asset.model}
-          resolution={asset.resolution}
-          generatedAt={asset.created_at}
-          images={images.map(img => ({ ...img, src: img.fileUrl ?? img.url, finalized: img.is_primary }))}
-          refImages={asset.refImages}
-        />
-      )}
+         shotNumber={name}
+          prompt={asset.input_prompt ?? asset.prompt}
+         model={asset.model}
+         resolution={asset.resolution}
+         generatedAt={asset.created_at}
+         images={images.map(img => ({ ...img, src: img.fileUrl ?? img.url, finalized: img.is_primary }))}
+         refImages={asset.refImages}
+       />
+     )}
 
-      {/* 分镜视频详情弹窗 */}
-      {detailOpen && category === 'storyboard_video' && (
-        <ShotVideoDetailModal
-          onClose={() => setDetailOpen(false)}
-          onDownload={() => onDownload?.()}
-          onDelete={() => { onDelete?.(); }}
-          onShowToast={onShowToast}
-          shotNumber={name}
-          prompt={asset.prompt}
+     {/* 分镜视频详情弹窗 */}
+     {detailOpen && category === 'storyboard_video' && (
+       <ShotVideoDetailModal
+         onClose={() => setDetailOpen(false)}
+         onDownload={() => onDownload?.()}
+         onDelete={() => { onDelete?.(); }}
+         onShowToast={onShowToast}
+         shotNumber={name}
+          prompt={asset.input_prompt ?? asset.prompt}
           model={asset.model}
           resolution={asset.resolution}
           ratio={asset.ratio}
@@ -2481,12 +2477,12 @@ function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownload, on
       )}
 
       {/* 兼容旧逻辑：若无 images 则用原 ImageDetailModal */}
-      {detailOpen && category !== 'storyboard_img' && category !== 'storyboard_video' && (!images || images.length === 0) && (
-        <ImageDetailModal
-          card={{
-            imageUrl: asset.fileUrl || asset.url || url,
-            prompt: asset.prompt,
-            model: asset.model,
+     {detailOpen && category !== 'storyboard_img' && category !== 'storyboard_video' && (!images || images.length === 0) && (
+       <ImageDetailModal
+         card={{
+           imageUrl: asset.fileUrl || asset.url || url,
+            prompt: asset.input_prompt ?? asset.prompt,
+           model: asset.model,
             ratio: asset.ratio,
             resolution: asset.resolution,
             refImages: asset.refImages,
@@ -2926,9 +2922,11 @@ function EmptyCreativeAssets({ type }) {
   return <EmptyAssetState mediaType={mediaType} />;
 }
 
-function notifyProjectAssetsDeleted(projectId) {
+// subjectType：本次删除影响的主体类别（'character'|'scene'|'prop'），
+// 让 Home 只刷新对应类别的主体，避免误刷/覆盖其它类别的卡片。
+function notifyProjectAssetsDeleted(projectId, subjectType) {
   if (!projectId) return;
-  window.dispatchEvent(new CustomEvent('project-assets:deleted', { detail: { projectId } }));
+  window.dispatchEvent(new CustomEvent('project-assets:deleted', { detail: { projectId, subjectType } }));
 }
 
 function ProjectAssetsPanel() {
@@ -3042,9 +3040,10 @@ function ProjectAssetsPanel() {
   async function deleteAsset(id, singleImageId = null) {
     // singleImageId 存在时表示删除单张图，否则删除整个主体
     const SUBJECT_TYPE_MAP = { chars: 'character', scenes: 'scene', props: 'prop' };
+    const subjectType = SUBJECT_TYPE_MAP[activeCategory];
     try {
       if (singleImageId) {
-        await apiDeleteAsset(singleImageId, { projectId: activeProject });
+        await apiDeleteAsset(singleImageId, { projectId: activeProject, subjectType });
         setAssetsMap((prev) => ({
           ...prev,
           [activeCategory]: prev[activeCategory].map((asset) => {
@@ -3069,16 +3068,15 @@ function ProjectAssetsPanel() {
           }),
         }));
         // 触发主体页面更新：删除图后重新拉取该类型主体，notify 会推给 SubjectPage 的 subscribe
-        const subjectType = SUBJECT_TYPE_MAP[activeCategory];
         if (subjectType && activeProject) {
           apiGetSubjects(activeProject, { type: subjectType }).catch(() => {});
         }
       } else {
         const asset = assetsMap[activeCategory]?.find((a) => a.id === id);
         if (asset && asset.images) {
-          await apiBatchDeleteAssets(asset.images.map((img) => img.id), { projectId: activeProject });
+          await apiBatchDeleteAssets(asset.images.map((img) => img.id), { projectId: activeProject, subjectType });
         } else {
-          await apiDeleteAsset(id, { projectId: activeProject });
+          await apiDeleteAsset(id, { projectId: activeProject, subjectType });
         }
         // 删除全部图片后，保留主体卡片占位
         setAssetsMap((prev) => ({
@@ -3086,12 +3084,11 @@ function ProjectAssetsPanel() {
           [activeCategory]: prev[activeCategory].map((a) => a.id === id ? { ...a, images: [], imageCount: 0, url: null } : a),
         }));
         // 清空主体图片后同步更新主体列表
-        const subjectType = SUBJECT_TYPE_MAP[activeCategory];
         if (subjectType && activeProject) {
           apiGetSubjects(activeProject, { type: subjectType }).catch(() => {});
         }
       }
-      notifyProjectAssetsDeleted(activeProject);
+      notifyProjectAssetsDeleted(activeProject, subjectType);
     } catch (err) {
       console.error('删除资产失败', err);
     }
@@ -3100,6 +3097,7 @@ function ProjectAssetsPanel() {
   async function deleteSelected() {
     const ids = [...selected];
     const SUBJECT_TYPE_MAP = { chars: 'character', scenes: 'scene', props: 'prop' };
+    const subjectType = SUBJECT_TYPE_MAP[activeCategory];
     try {
       // 对于主体卡片（chars/scenes/props），需要删除该主体下的所有图片
       if (SUBJECT_CARD_CATEGORIES.has(activeCategory)) {
@@ -3112,9 +3110,9 @@ function ProjectAssetsPanel() {
             allImageIds.push(cardId);
           }
         });
-        await apiBatchDeleteAssets(allImageIds, { projectId: activeProject });
+        await apiBatchDeleteAssets(allImageIds, { projectId: activeProject, subjectType });
       } else {
-        await apiBatchDeleteAssets(ids, { projectId: activeProject });
+        await apiBatchDeleteAssets(ids, { projectId: activeProject, subjectType });
       }
 
       setAssetsMap((prev) => ({
@@ -3122,7 +3120,7 @@ function ProjectAssetsPanel() {
         [activeCategory]: prev[activeCategory].map((a) => selected.has(a.id) ? { ...a, images: [], imageCount: 0, url: null } : a),
       }));
       setSelected(new Set());
-      notifyProjectAssetsDeleted(activeProject);
+      notifyProjectAssetsDeleted(activeProject, subjectType);
     } catch (err) {
       console.error('批量删除资产失败', err);
     }
@@ -3748,11 +3746,12 @@ function CreativeAssetsPanel({ isLoggedIn }) {
       id,
       backendId: item.id,
       ratio: item.ratio || item.aspect_ratio || '16:9',
-      resolution: item.resolution || item.size || '',
-      duration: item.duration || undefined,
-      model: item.model || '',
-      prompt: item.prompt || '',
-      refImages: (item.reference_images || item.referenceImages || []).map((img) => {
+     resolution: item.resolution || item.size || '',
+     duration: item.duration || undefined,
+     model: item.model || '',
+      input_prompt: item.input_prompt || '',
+     prompt: item.prompt || '',
+     refImages: (item.reference_images || item.referenceImages || []).map((img) => {
         const imgUrl = typeof img === 'string' ? img : (img?.url || img?.original_url || '');
         return { url: imgUrl, previewUrl: imgUrl, isAsset: true, name: imgUrl.split('/').pop() || 'ref.png', size: 0 };
       }),

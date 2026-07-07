@@ -69,33 +69,33 @@
  *     SESSION_KEY / PENDING_CREATION_TASKS_KEY
  *     _sessionIdRef / _sessionInitRef / _restoredShotIdsRef
  *
- *   export default CreationPage()                              L4683
- *     ├─ [状态] activeTab / genType / generating              L4684–L4686
- *     ├─ [状态] activeCountByTab（各类型并发数）               L4687
- *     ├─ [Store] useCreationStore → generations / favorites   L4689–L4696
- *     ├─ [状态] toasts + showToast()                          L4700–L4705
- *     ├─ [状态] videoDetailModal                              L5134
- *     ├─ [状态] modelOptions / model / creationParams         L5161–L5165
- *     ├─ [状态] batchMode / batchDeleteConfirm / selected     L5167–L5169
+ *   export default CreationPage()                              L4856
+ *     ├─ [状态] activeTab / genType / generating              L4856–L4858
+ *     ├─ [状态] activeCountByTab（各类型并发数）               L4859
+ *     ├─ [Store] useCreationStore → generations / favorites   L4861–L4868
+ *     ├─ [状态] toasts + showToast()                          L4873–L4880
+ *     ├─ [状态] videoDetailModal                              L5369
+ *     ├─ [状态] modelOptions / model / creationParams         L5396–L5398
+ *     ├─ [状态] batchMode / batchDeleteConfirm / selected     L5402–L5404
  *     │
- *     ├─ [函数] normalizeHistoryItem()  后端数据适配          L4836
- *     ├─ [函数] getHistoryListFromResponse() 历史响应解包     L4927
- *     ├─ [函数] pickHistoryCacheItem() 瘦身历史缓存字段      L4931
- *     ├─ [函数] buildHistoryCachePayload() 生成缓存载荷       L4988
- *     ├─ [函数] hydrateHistoryFromCache() 本地缓存秒开        L4999
- *     ├─ [函数] syncHistoryFavorites()  同步收藏状态          L5024
- *     ├─ [函数] loadHistoryPage()       视频首批6条，未满续拉  L5039
- *     ├─ [函数] handleToggleFavorite()  收藏（乐观更新）       L5137
- *     ├─ [函数] handleTabChange()       切换 Tab              L5220
- *     ├─ [函数] handleGenTypeChange()   切换生成类型           L5226
- *     ├─ [函数] handleDeleteCard()      删除结果卡             L约5234
- *     ├─ [函数] handleGenerate()        发起生成               L约5259
+ *     ├─ [函数] normalizeHistoryItem()  后端数据适配(+_needsDetail标记) L4890
+ *     ├─ [函数] getHistoryListFromResponse() 历史响应解包     L4988
+ *     ├─ [函数] pickHistoryCacheItem() 瘦身历史缓存字段      L4992
+ *     ├─ [函数] buildHistoryCachePayload() 生成缓存载荷       L5043
+ *     ├─ [函数] hydrateHistoryFromCache() 本地缓存秒开        L5054
+ *     ├─ [函数] syncHistoryFavorites()  同步收藏状态          L5079
+ *     ├─ [函数] loadHistoryPage()       视频首批6条，未满续拉  L5096
+ *     ├─ [函数] handleToggleFavorite()  收藏（乐观更新）       L5372
+ *     ├─ [函数] handleTabChange()       切换 Tab              L5455
+ *     ├─ [函数] handleGenTypeChange()   切换生成类型           L5461
+ *     ├─ [函数] handleDeleteCard()      删除结果卡             L5551
+ *     ├─ [函数] handleGenerate()        发起生成               L5565
  *     │
- *     ├─ [副作用] 登录/切 tab 时拉历史首页                    L5118
- *     ├─ [副作用] session 初始化（登录后）                    L5133
- *     ├─ [副作用] 页面刷新恢复未完成任务                      L5161
- *     ├─ [副作用] genType 变化时加载模型列表                  L5273
- *     └─ [副作用] model 变化时加载生成参数                    L5302
+ *     ├─ [副作用] 登录/切 tab 时拉历史首页                    L5209
+ *     ├─ [副作用] session 初始化（登录后）                    L5233
+ *     ├─ [副作用] 页面刷新恢复未完成任务                      L5257
+ *     ├─ [副作用] genType 变化时加载模型列表                  L约5580
+ *     └─ [副作用] model 变化时加载生成参数                    L约5610
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────────
  *   2026-05-28  初始结构索引建立
@@ -105,7 +105,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useModalSize } from '../utils/useModalSize';
 import { createPortal } from 'react-dom';
 import { PulsingBorder } from '@paper-design/shaders-react';
-import { apiGenerateCreation, apiPollCreationTask, apiGetVideoLastFrame, apiDeleteCreationImage, apiDeleteCreationVideo, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiCreateSession, apiGetSession, apiListShots, apiCreateShot, apiUpdateShot, apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../api/creation';
+import { apiGenerateCreation, apiPollCreationTask, apiGetVideoLastFrame, apiGetCreationVideo, apiDeleteCreationImage, apiDeleteCreationVideo, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiCreateSession, apiGetSession, apiListShots, apiCreateShot, apiUpdateShot, apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { apiListModels } from '../api/config';
 import { adaptModels, getModelParams } from '../utils/modelAdapter';
@@ -1124,6 +1124,7 @@ function DropdownItem({ label, selected, onClick, icon }) {
     <button
       type="button"
       onClick={onClick}
+      title={label}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -1146,7 +1147,11 @@ function DropdownItem({ label, selected, onClick, icon }) {
       }}
     >
       {icon && icon}
-      {label}
+      <span style={{
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}>{label}</span>
     </button>
   );
 }
@@ -4252,6 +4257,8 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
       firstFrameUrl: gen.firstFrameUrl,
       lastFrameUrl: gen.lastFrameUrl,
       createdAt: gen.createdAt,
+      _needsDetail: gen._needsDetail,
+      backendId: gen.backendId,
     }))
   );
 
@@ -4381,12 +4388,46 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
                   onCardClick={() => onVideoCardClick?.(card)}
                   favorited={favorites?.has(key)}
                   onToggleFavorite={() => toggleFavorite?.(key)}
-                  onReEdit={() => {
+                  onReEdit={async () => {
+                    // 轻量列表需要按需拉取完整详情以获取参考素材
+                    let refImages = card.refImages || [];
+                    let refVideos = card.refVideos || [];
+                    let refAudios = card.refAudios || [];
+                    if (card._needsDetail && card.backendId) {
+                      try {
+                        const detail = await apiGetCreationVideo(card.backendId);
+                        const bindings = detail.asset_bindings || detail.assetBindings || [];
+                        refImages = bindings
+                          .filter((b) => b.asset_type === 'image')
+                          .map((b) => ({
+                            name: b.asset_name || 'ref.png',
+                            url: b.url || b.preview_url || b.previewUrl || '',
+                            previewUrl: b.preview_url || b.previewUrl || b.url || '',
+                            type: 'image/png', isAsset: true, size: 0,
+                          }));
+                        refVideos = bindings
+                          .filter((b) => b.asset_type === 'video')
+                          .map((b) => ({
+                            name: b.asset_name || 'ref.mp4',
+                            url: b.url || '',
+                            previewUrl: b.preview_video_url || b.previewVideoUrl || b.preview_url || b.previewUrl || b.url || '',
+                            type: 'video/mp4', isAsset: true, size: 0,
+                          }));
+                        refAudios = bindings
+                          .filter((b) => b.asset_type === 'audio')
+                          .map((b) => ({
+                            name: b.asset_name || 'ref.mp3',
+                            url: b.url || '', size: 0, isAsset: true,
+                          }));
+                      } catch (e) {
+                        console.warn('[CreationPage] re-edit: failed to fetch video detail', e);
+                      }
+                    }
                     setPrefillData({
                       prompt: card.prompt,
                       promptHTML: card.promptHTML || '',
                       files: card.refMode === 'first_frame' ? [] : [
-                        ...(card.refImages || []).map((img) => ({
+                        ...refImages.map((img) => ({
                           name: img.name || 'ref.png',
                           url: img.url || img.previewUrl || '',
                           previewUrl: img.url || img.previewUrl || '',
@@ -4394,7 +4435,7 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
                           isAsset: true,
                           size: 0,
                         })),
-                        ...(card.refVideos || []).map((vid) => ({
+                        ...refVideos.map((vid) => ({
                           name: vid.name || 'ref.mp4',
                           url: vid.url || vid.previewUrl || '',
                           previewUrl: vid.url || vid.previewUrl || '',
@@ -4912,6 +4953,12 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     const firstFrameUrl = normalizeImageUrl(item.first_frame_url || item.firstFrameUrl || '') || undefined;
     const lastFrameUrl = normalizeImageUrl(item.last_frame_url || item.lastFrameUrl || '') || undefined;
 
+    // 轻量列表标记：video 类型无 asset_bindings 时需要按需加载详情
+    const needsDetail = type === 'video' && (
+      (item.has_reference_image || item.has_reference_video || item.has_reference_audio) &&
+      refImages.length === 0 && refVideos.length === 0 && refAudios.length === 0
+    );
+
     return {
       id,
       backendId: item.id,
@@ -4927,6 +4974,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       firstFrameUrl: type === 'video' ? firstFrameUrl : undefined,
       lastFrameUrl: type === 'video' ? lastFrameUrl : undefined,
       createdAt: item.created_at || new Date().toISOString(),
+      _needsDetail: needsDetail || undefined,
       cards: [{
         id: item.id,
         type,
@@ -4974,9 +5022,6 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     }
 
     if (tab === 'video') {
-      const assetBindings = Array.isArray(item.asset_bindings || item.assetBindings)
-        ? (item.asset_bindings || item.assetBindings)
-        : [];
       return {
         ...base,
         video_url: item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '',
@@ -4985,15 +5030,12 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         reference_mode: item.reference_mode || item.referenceMode || undefined,
         first_frame_url: item.first_frame_url || item.firstFrameUrl || undefined,
         last_frame_url: item.last_frame_url || item.lastFrameUrl || undefined,
-        asset_bindings: assetBindings.map((binding) => ({
-          asset_id: binding.asset_id,
-          asset_name: binding.asset_name,
-          asset_type: binding.asset_type,
-          url: binding.url || '',
-          preview_url: binding.preview_url || binding.previewUrl || '',
-          preview_video_url: binding.preview_video_url || binding.previewVideoUrl || '',
-          duration: binding.duration,
-        })),
+        // 轻量列表摘要（不再缓存完整 asset_bindings）
+        asset_binding_count: item.asset_binding_count ?? 0,
+        asset_binding_types: item.asset_binding_types || [],
+        has_reference_image: item.has_reference_image ?? false,
+        has_reference_video: item.has_reference_video ?? false,
+        has_reference_audio: item.has_reference_audio ?? false,
       };
     }
 
@@ -5909,7 +5951,44 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               selected={selected}
               onToggleSelect={toggleSelect}
               onSwitchToFrameMode={handleSwitchToFrameMode}
-              onVideoCardClick={(card) => setVideoDetailModal(card)}
+              onVideoCardClick={(card) => {
+                // 先以轻量数据打开弹窗
+                setVideoDetailModal(card);
+                // 轻量列表需要按需拉取完整详情（含参考素材、prompt_raw 等）
+                if (card._needsDetail && card.backendId) {
+                  apiGetCreationVideo(card.backendId).then((detail) => {
+                    const bindings = detail.asset_bindings || detail.assetBindings || [];
+                    const detailRefImages = bindings
+                      .filter((b) => b.asset_type === 'image')
+                      .map((b) => ({
+                        url: b.preview_url || b.previewUrl || b.url || '',
+                        previewUrl: b.preview_url || b.previewUrl || b.url || '',
+                        type: 'image/png', isAsset: true, name: b.asset_name || 'ref.png', size: 0, assetId: b.asset_id,
+                      }));
+                    const detailRefVideos = bindings
+                      .filter((b) => b.asset_type === 'video')
+                      .map((b) => ({
+                        url: b.url || '',
+                        previewUrl: b.preview_video_url || b.previewVideoUrl || b.preview_url || b.previewUrl || b.url || '',
+                        type: 'video/mp4', isAsset: true, name: b.asset_name || 'ref.mp4', size: 0, duration: b.duration, assetId: b.asset_id,
+                      }));
+                    const detailRefAudios = bindings
+                      .filter((b) => b.asset_type === 'audio')
+                      .map((b) => ({
+                        url: b.url || '', name: b.asset_name || 'ref.mp3', size: 0, duration: b.duration, assetId: b.asset_id,
+                      }));
+                    setVideoDetailModal((prev) => prev ? {
+                      ...prev,
+                      refImages: detailRefImages,
+                      refVideos: detailRefVideos,
+                      refAudios: detailRefAudios,
+                      promptHTML: detail.prompt_raw || detail.promptResolved || prev.promptHTML,
+                    } : null);
+                  }).catch((e) => {
+                    console.warn('[CreationPage] detail modal: failed to fetch video detail', e);
+                  });
+                }
+              }}
               favorites={favorites}
               toggleFavorite={handleToggleFavorite}
               showToast={showToast}

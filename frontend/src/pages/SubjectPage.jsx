@@ -1909,8 +1909,42 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
         refImages: refImagesForModal,
       }));
 
-      // ── 候选图作为右侧列表内容 ────
-      let finalImages = candidateMapped;
+      // ── 参考图列表（SubjectReferenceImage[]） ────────────────────
+      // 字段：asset_id, file_url, is_primary, name
+      // 本地上传/从资产库选择的图存为参考图，重开弹窗时需一并还原到右侧列表，
+      // 否则后端已持久化但前端只读 candidate_images 会导致这些图"消失"
+      const referenceImgs = Array.isArray(detailRes.reference_images) ? detailRes.reference_images : [];
+      // 参考图的 is_primary 不作为待定图列表的"定稿"依据：
+      // 从资产库选来的图可能在别处被设为定稿（后端返回 is_primary=true），
+      // 但右侧列表的定稿应由候选图决定，故这里参考图一律 settled=false
+      const referenceMapped = referenceImgs.map((img) => ({
+        id: img.asset_id,
+        rawUrl: img.file_url,
+        url: normalizeImageUrl(img.file_url),
+        settled: false,
+        isReference: true,
+        refImages: refImagesForModal,
+      }));
+
+      // ── 候选图 + 参考图作为右侧列表内容（按 id 去重） ────
+      const seenIds = new Set();
+      let finalImages = [...candidateMapped, ...referenceMapped].filter((img) => {
+        if (img.id == null) return true;
+        if (seenIds.has(img.id)) return false;
+        seenIds.add(img.id);
+        return true;
+      });
+
+      // 右侧列表定稿图有且只能有一个：保留第一个 settled（候选图优先，已排在参考图之前），
+      // 其余全部置为非定稿，避免多个定稿并存
+      let settledSeen = false;
+      finalImages = finalImages.map((img) => {
+        if (img.settled && !settledSeen) {
+          settledSeen = true;
+          return img;
+        }
+        return img.settled ? { ...img, settled: false } : img;
+      });
 
       // 检查是否有进行中/已完成的跨弹窗生成
       const pending = pendingGenerations.get(char.id);
@@ -2498,15 +2532,10 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
               // 从资产库选择的资产对象（有 id 和 url 属性）
               if (fileOrId && typeof fileOrId === 'object' && fileOrId.id) {
                 const raw = fileOrId.url || fileOrId.file_url || fileOrId.fileUrl;
-                // 从资产库选择的图片，settled 强制为 false，不继承原资产的定稿状态
+                // 从资产库选择的图片一律 settled=false：参考图不参与右侧列表的定稿，
+                // 定稿只由候选（生成）图决定，避免出现多个定稿
                 setGeneratedImages((prev) => {
-                  const hasSettled = prev.some((img) => img.settled && img.rawUrl);
-                  const newImg = { rawUrl: raw, url: normalizeImageUrl(raw), settled: !hasSettled, id: fileOrId.id, isReference: true };
-                  if (!hasSettled) {
-                    setPrimaryImageUrl(raw);
-                    setPrimaryImageId(fileOrId.id);
-                    onCoverChange?.(raw);
-                  }
+                  const newImg = { rawUrl: raw, url: normalizeImageUrl(raw), settled: false, id: fileOrId.id, isReference: true };
                   return [newImg, ...prev];
                 });
                 // 绑定资产到主体
@@ -2527,20 +2556,14 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                       // res: SubjectReferenceImage
                       const realId = res?.asset_id;
                       const realUrl = res?.file_url;
-                      setGeneratedImages((prev) => {
-                        const hasSettled = prev.some((img) => img.settled && img.rawUrl);
-                        const updated = prev.map((img) =>
+                      // 本地上传的图为参考图，不自动设为定稿（定稿只由候选图决定）
+                      setGeneratedImages((prev) =>
+                        prev.map((img) =>
                           img.id === tempId
-                            ? { ...img, id: realId || tempId, rawUrl: realUrl || blobUrl, url: normalizeImageUrl(realUrl || blobUrl), settled: !hasSettled }
+                            ? { ...img, id: realId || tempId, rawUrl: realUrl || blobUrl, url: normalizeImageUrl(realUrl || blobUrl), settled: false }
                             : img
-                        );
-                        if (!hasSettled && realUrl) {
-                          setPrimaryImageUrl(realUrl);
-                          setPrimaryImageId(realId);
-                          onCoverChange?.(realUrl);
-                        }
-                        return updated;
-                      });
+                        )
+                      );
                     })
                     .catch((err) => {
                       console.error('[SubjectPage] 上传参考图失败:', err);

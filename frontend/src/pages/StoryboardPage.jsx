@@ -7,12 +7,13 @@
  *   toBackendStoryboard(shot)    前端→后端数据映射（voiceover 空时发 null）  L188–L222
  *   urlPathKey(url)              URL 规范化去重             L132
  *   enrichMainRefs(shot, chars)  主体引用补全去重（按 subjectId/type 识别，随定稿图同步）  L235–L279
- *   buildRefFromAsset(a)         资产库选中→mainRefs 条目（带 subject_id 时建主体引用）  L282–L298
+ *   buildRefFromAsset(a)         资产库选中→mainRefs 条目（带 subject_id 时建主体引用，按 category 还原角色/场景/道具类型）  L282–L298
+ *   subjectTypeFromCategory(c)   资产 category → 主体 _type（character/scene/prop，其余 other）
  *   FONT / FONT_MEDIUM           字体家族常量               L191–L192
  *   EPISODE_ITEM_H / EPISODE_MAX_VISIBLE  集数选择器常量    L196–L197
  *   MAX_PROMPT_LEN               提示词最大长度              L1531
  *   PARAM_OPTIONS / PARAM_LABELS 镜头参数枚举                L3347–L3361
- *   MENTION_TYPE_LABEL / MENTION_TYPE_COLOR / MENTION_TABS  L3573–L3581
+ *   MENTION_TYPE_LABEL / MENTION_TYPE_COLOR / MENTION_TABS  L3573–L3581（含 other:「其他」）
  *   SPEED_OPTIONS                语速选项                    L3882
  *
  * ─── 原子 UI 组件 ────────────────── L211–L5648
@@ -73,6 +74,12 @@
  *     └─ [副作用] 单镜头生成中持久化任务到 localStorage           L6744+
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-07-08  修复分镜视频弹窗 @ 主体标签分类错乱（场景/道具都显示成「角色」、本地上传显示「其他」）：
+ *              1) 新增 subjectTypeFromCategory + MENTION 常量增加 other:「其他」；
+ *              2) videoReferenceItems 兜底改为 other（不再假冒 char）；
+ *              3) buildRefFromAsset 按资产 category 还原真实类型（角色/场景/道具），不再硬编码 char；
+ *              4) 视频弹窗 onAssetConfirm 改用 buildRefFromAsset，与图片弹窗一致，类型正确且落到 character_ids；
+ *              5) refSubjects 初始化时用 subjectId 跨 chars/scenes/props 反查真实类型 → 刷新后场景/道具标签不再退化成角色
  *   2026-07-07  修复「主体参考」与主体定稿图脱节：新增 buildRefFromAsset，从资产库选中带 subject_id 的图片时建立主体引用（落到 character_ids），
  *              enrichMainRefs 改用 subjectId/type 识别并始终同步最新定稿图；preSelectedSubjectIds 只传真实 subjectId → 换定稿图自动替换、同一主体不可重复添加
  *   2026-07-06  MediaDetailModal 新增 source prop：区分 AI 生成/本地上传/资产库；非 AI 图片右侧显示「来源」字段，提示词和生成参数留空；normalizeStoryboard 根据 image_prompt/gen_params 判断来源；MediaCol onUpload 标记 source
@@ -296,7 +303,10 @@ function buildRefFromAsset(a) {
   const url = normalizeImageUrl(a.fileUrl || a.url) ?? null;
   const subjectId = a.subject_id ?? a.subjectId ?? null;
   if (subjectId) {
-    return { id: subjectId, subjectId, assetId: a.id, url, name: a.name, type: 'char' };
+    // 主体资产：按 category 还原真实类型（character/scene/prop），无法识别时兜底 char
+    const t = subjectTypeFromCategory(a.category);
+    const type = (t === 'char' || t === 'scene' || t === 'prop') ? t : 'char';
+    return { id: subjectId, subjectId, assetId: a.id, url, name: a.name, type };
   }
   return { id: a.id, assetId: a.id, url, name: a.name, type: a.type ?? 'image' };
 }
@@ -2760,12 +2770,18 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
     // 从 shot.mainRefs 初始化主体列表，补全 url/name
     if (!shot?.mainRefs?.length) return [];
     return shot.mainRefs.map(ref => {
-      if (ref?.url) return ref;
-      if (ref?.type && ref?.id) {
-        const subjects = ref.type === 'char' ? chars : ref.type === 'scene' ? scenes : props;
-        const found = subjects?.find(s => s.id === ref.id);
-        if (found?.imageUrl) return { ...ref, url: normalizeImageUrl(found.imageUrl), name: found.name };
+      // character_ids 反序列化的条目 type 被统一置为 'char'，这里按 subjectId/id 跨角色/场景/道具反查真实类型
+      const sid = ref?.subjectId || ((ref?.type === 'char' || ref?.type === 'scene' || ref?.type === 'prop') ? ref?.id : null);
+      if (sid) {
+        const inChars = chars?.find(s => s.id === sid);
+        const inScenes = scenes?.find(s => s.id === sid);
+        const inProps = props?.find(s => s.id === sid);
+        const found = inChars || inScenes || inProps;
+        const realType = inChars ? 'char' : inScenes ? 'scene' : inProps ? 'prop' : ref.type;
+        if (found?.imageUrl) return { ...ref, type: realType, url: normalizeImageUrl(found.imageUrl), name: found.name };
+        if (ref?.url) return { ...ref, type: realType };
       }
+      if (ref?.url) return ref;
       return ref;
     }).filter(ref => ref?.url);
   });
@@ -2882,9 +2898,11 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
 
   const videoReferenceItems = useMemo(() => {
     const items = [];
-    // 参考主体（保持原始 _type: char/scene/prop，供 MENTION_TABS 中的 "参考主体" tab 筛选）
+    // 参考主体（_type: char/scene/prop 为真实主体，other 为本地上传/非主体资产；供 MENTION_TABS 中的 "参考主体" tab 筛选）
     refSubjects.forEach(s => {
-      items.push({ id: s.id, name: s.name || '参考主体', _type: s._type || s.type || 'char' });
+      const rawType = s._type || s.type;
+      const type = (rawType === 'char' || rawType === 'scene' || rawType === 'prop') ? rawType : 'other';
+      items.push({ id: s.id, name: s.name || '参考主体', _type: type });
     });
     // 参考图
     refImages.forEach(img => {
@@ -3072,12 +3090,8 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
                   }
                 }} onRemove={() => setRefSubjects([])} onRemoveItem={(idx) => setRefSubjects(prev => prev.filter((_, i) => i !== idx))} onAssetConfirm={(selectedAssets) => {
                   if (!selectedAssets?.length) return;
-                  const newItems = selectedAssets.map(a => ({
-                    id: a.id,
-                    assetId: a.id,
-                    url: normalizeImageUrl(a.fileUrl || a.originalUrl || a.original_url || a.thumbnailUrl || a.thumbnail_url || a.url || a.file_url),
-                    name: a.name || a.filename || '',
-                  }));
+                  // 用 buildRefFromAsset 统一构造：主体资产按 category 还原真实类型（角色/场景/道具）并落到 character_ids，非主体资产为普通参考图
+                  const newItems = selectedAssets.map(buildRefFromAsset);
                   setRefSubjects(prev => {
                     const merged = [...prev, ...newItems];
                     return maxRefImages != null ? merged.slice(0, maxRefImages) : merged;
@@ -3723,13 +3737,21 @@ function CharMentionDropdown({ chars, query, onSelect, onClose, triggerRef }) {
 // ─── 主体 @ 下拉（角色/场景/道具，用于提示词输入框）─────────────────────────────
 
 const MENTION_TYPE_LABEL = {
-  char: '角色', scene: '场景', prop: '道具',
+  char: '角色', scene: '场景', prop: '道具', other: '其他',
   image: '参考图', video: '参考视频', audio: '参考音频',
 };
 const MENTION_TYPE_COLOR = {
-  char: '#E2E24B', scene: '#4BE2C3', prop: '#4B9EE2',
+  char: '#E2E24B', scene: '#4BE2C3', prop: '#4B9EE2', other: '#9E9E9E',
   image: '#E8A1FF', video: '#FF8A65', audio: '#66BB6A',
 };
+
+// 资产 category → 主体参考 _type：仅角色/场景/道具为真实主体类型，其余（分镜图/参考图/创作资产/本地上传）统一为 other
+function subjectTypeFromCategory(category) {
+  if (category === 'character') return 'char';
+  if (category === 'scene') return 'scene';
+  if (category === 'prop') return 'prop';
+  return 'other';
+}
 const MENTION_TABS = [
   { key: 'all', label: '全部' },
   { key: 'image', label: '参考图' },
@@ -3772,13 +3794,13 @@ function ReferenceMentionDropdown({ referenceItems = [], query, onSelect, onClos
   const filteredItems = selectedTab === 'all'
     ? allItems
     : selectedTab === 'char'
-      ? allItems.filter(item => ['char', 'scene', 'prop'].includes(item._type))
+      ? allItems.filter(item => ['char', 'scene', 'prop', 'other'].includes(item._type))
       : allItems.filter(item => item._type === selectedTab);
 
   // 只显示当前有匹配项的 tab
   const visibleTabs = MENTION_TABS.filter(tab => {
     if (tab.key === 'all') return true;
-    if (tab.key === 'char') return allItems.some(item => ['char', 'scene', 'prop'].includes(item._type));
+    if (tab.key === 'char') return allItems.some(item => ['char', 'scene', 'prop', 'other'].includes(item._type));
     return allItems.some(item => item._type === tab.key);
   });
 

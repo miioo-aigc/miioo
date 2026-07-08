@@ -374,6 +374,7 @@ API 配置弹窗模型列表卡片新增「设为默认」交互：
 **改动文件**：`src/pages/GlobalSettings.jsx`
 
 ### 已完成
+- [x] 分镜视频创作弹窗 @ 主体标签分类修复（2026-07-08）：原先场景/道具主体标签都显示成「角色」、本地上传显示「其他」。根因是 `buildRefFromAsset` 对主体资产硬编码 `type:'char'`、视频弹窗 `onAssetConfirm` 手搓对象丢弃 category、`character_ids` 反序列化统一置 char。改为按资产 `category` 还原真实类型（角色/场景/道具），非主体资产与本地上传统一显示「其他」；刷新前后一致（char/scene/prop 靠 `character_ids` 持久化）。改动集中在 `src/pages/StoryboardPage.jsx`
 - [x] 创作页视频结果卡“尾帧用作首帧参考”：前端 canvas 方案抽取尾帧，回填首帧槽位
 
 ### 待开发

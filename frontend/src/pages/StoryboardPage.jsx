@@ -3,9 +3,9 @@
  * @structure-index
  *
  * ─── 全局常量 & 工具函数 ──────────── L25–L192
- *   normalizeStoryboard(be)      后端→前端数据映射           L25–L95
- *   toBackendStoryboard(shot)    前端→后端数据映射（voiceover 空时发 null）  L188–L222
- *   urlPathKey(url)              URL 规范化去重             L132
+*   normalizeStoryboard(be)      后端→前端数据映射           L25–L95
+ *   toBackendStoryboard(shot)    前端→后端数据映射（清空台词时发 gen_params.narration_segments=[]）  L195–L225
+*   urlPathKey(url)              URL 规范化去重             L132
  *   enrichMainRefs(shot, chars)  主体引用补全去重（按 subjectId/type 识别，随定稿图同步）  L235–L279
  *   buildRefFromAsset(a)         资产库选中→mainRefs 条目（带 subject_id 时建主体引用，按 category 还原角色/场景/道具类型）  L282–L298
  *   subjectTypeFromCategory(c)   资产 category → 主体 _type（character/scene/prop，其余 other）
@@ -73,8 +73,10 @@
  *     ├─ [副作用] 批量生成中持久化任务到 localStorage             L6043+
  *     └─ [副作用] 单镜头生成中持久化任务到 localStorage           L6744+
  *
- * ─── 更新记录 ──────────────────────────────────────────────────────
- *   2026-07-08  修复分镜视频弹窗 @ 主体标签分类错乱（场景/道具都显示成「角色」、本地上传显示「其他」）：
+* ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-07-08  修复台词分配列：删除所有台词后刷新又出现 → toBackendStoryboard 在 segments 为空时显式发送 gen_params.narration_segments=[]，
+ *              后端不再保留旧结构化数据，normalizeStoryboard 不再从 be.narration 恢复旧台词
+*   2026-07-08  修复分镜视频弹窗 @ 主体标签分类错乱（场景/道具都显示成「角色」、本地上传显示「其他」）：
  *              1) 新增 subjectTypeFromCategory + MENTION 常量增加 other:「其他」；
  *              2) videoReferenceItems 兜底改为 other（不再假冒 char）；
  *              3) buildRefFromAsset 按资产 category 还原真实类型（角色/场景/道具），不再硬编码 char；
@@ -200,17 +202,20 @@ function toBackendStoryboard(shot) {
     camera: shot.params?.cameraMotion || undefined,
     camera_angle: shot.params?.angle || undefined,
     composition: shot.params?.composition || undefined,
-    duration: shot.params?.duration ? parseFloat(shot.params.duration) : undefined,
-    lighting: shot.lightShadow || undefined,
-    ambient_sound: shot.ambientSound || undefined,
-    // 台词清空时用空字符串而非 null：PATCH 接口通常会丢弃 None 字段（exclude_none），
-    // 传 null 会被后端忽略导致删除后刷新又出现；空字符串是真实值可被持久化清空。
-    voiceover: shot.narration?.segments?.length
-      ? shot.narration.segments.map(s => s.role ? `${s.role}：${s.lines}` : s.lines).join('\n')
-      : '',
-    character_ids: (shot.mainRefs || [])
-      .filter(ref => ref?.type === 'char' || ref?.type === 'scene' || ref?.type === 'prop')
-      .map(ref => ref?.id).filter(Boolean),
+   duration: shot.params?.duration ? parseFloat(shot.params.duration) : undefined,
+   lighting: shot.lightShadow || undefined,
+   ambient_sound: shot.ambientSound || undefined,
+   voiceover: shot.narration?.segments?.length
+     ? shot.narration.segments.map(s => s.role ? `${s.role}：${s.lines}` : s.lines).join('\n')
+     : '',
+    // 台词全部删除时显式清空后端结构化台词字段（narration_segments），
+    // 否则 PATCH 不包含该字段 → 后端保留旧值 → 刷新后 normalizeStoryboard 从 be.narration 恢复旧数据
+    ...(shot.narration?.segments?.length === 0
+      ? { gen_params: { narration_segments: [] } }
+      : {}),
+   character_ids: (shot.mainRefs || [])
+     .filter(ref => ref?.type === 'char' || ref?.type === 'scene' || ref?.type === 'prop')
+     .map(ref => ref?.id).filter(Boolean),
     reference_image_urls: (shot.mainRefs || [])
       .filter(ref => ref?.url && !ref.uploading)
       .filter(ref => ref?.type !== 'char' && ref?.type !== 'scene' && ref?.type !== 'prop')

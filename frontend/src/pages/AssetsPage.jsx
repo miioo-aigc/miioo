@@ -61,7 +61,7 @@ import { apiGetSubjects } from '../api/subject';
 import { apiDeleteCreationImage, apiDeleteCreationVideo, apiBatchDeleteImages, apiBatchDeleteVideos, apiToggleImageFavorite, apiToggleVideoFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { generationsToDays } from '../utils/creativeDaysAdapter';
-import { apiGetProjects, apiDeleteProject, apiUpdateProject, apiDownloadProjectAssets } from '../api/project';
+import { apiGetProjects, apiDeleteProject, apiUpdateProject, apiCopyProject, apiDownloadProjectAssets } from '../api/project';
 import { invalidate } from '../utils/cache';
 import { K } from '../utils/cacheKeys';
 import ImageDetailModal from '../components/ImageDetailModal';
@@ -77,6 +77,15 @@ function DownloadIcon({ color = 'currentColor' }) {
       <path d="M2.667 11.333V13.333H13.333V11.333" stroke={color} strokeLinecap="round" strokeLinejoin="round" />
       <path d="M8 2.667V10.667" stroke={color} strokeLinecap="round" />
       <path d="M5 7.667L8 10.667L11 7.667" stroke={color} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CopyIcon({ color = 'currentColor' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+      <rect x="5.667" y="5.667" width="8.667" height="8.667" rx="1.5" stroke={color} strokeLinejoin="round" />
+      <path d="M10.333 5.667V4C10.333 3.079 9.587 2.333 8.667 2.333H4C3.079 2.333 2.333 3.079 2.333 4V8.667C2.333 9.587 3.079 10.333 4 10.333H5.667" stroke={color} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -2800,8 +2809,9 @@ function ProjectListItem({ project, active, onClick }) {
                   <path d="M10 3L13 6" stroke="rgba(255,255,255,0.8)" />
                 </svg>
               ), action: () => { setMenuOpen(false); project.onRename?.(); }, danger: false },
-              { label: '删除', icon: <TrashIcon color="#F75F5F" />, action: () => { setMenuOpen(false); project.onDelete?.(); }, danger: true },
+              { label: '复制项目', icon: <CopyIcon color="rgba(255,255,255,0.8)" />, action: () => { setMenuOpen(false); project.onCopy?.(); }, danger: false },
               { label: '下载项目', icon: <DownloadIcon color="rgba(255,255,255,0.8)" />, action: () => { setMenuOpen(false); project.onDownload?.(); }, danger: false },
+              { label: '删除', icon: <TrashIcon color="#F75F5F" />, action: () => { setMenuOpen(false); project.onDelete?.(); }, danger: true },
             ].map((item, i) => (
               <button
                 key={item.label}
@@ -2954,6 +2964,41 @@ function ProjectAssetsPanel() {
 
   const pageKey = (projectId, category) => `${projectId}__${category}`;
 
+  // chars/scenes/props → 后端 subject type
+  const SUBJECT_TYPE_MAP = { chars: 'character', scenes: 'scene', props: 'prop' };
+
+  // 资产库卡片的名称/描述以「主体」为准，而非资产记录自身。
+  // 主体页面编辑名称/描述只更新 subjects 表，不会回写到关联资产，
+  // 因此这里按 subject_id 用主体的最新名称/描述覆盖卡片展示，保证两端一致。
+  async function applySubjectMeta(projectId, category, cards) {
+    const subjectType = SUBJECT_TYPE_MAP[category];
+    if (!subjectType || !Array.isArray(cards) || cards.length === 0) return cards;
+    try {
+      const subjects = await apiGetSubjects(projectId, { type: subjectType });
+      const metaById = new Map();
+      (subjects || []).forEach((s) => {
+        if (s?.id == null) return;
+        metaById.set(String(s.id), {
+          name: s.name,
+          description: s.description ?? s.desc ?? '',
+        });
+      });
+      if (metaById.size === 0) return cards;
+      return cards.map((card) => {
+        const meta = card.subject_id != null ? metaById.get(String(card.subject_id)) : null;
+        if (!meta) return card;
+        return {
+          ...card,
+          name: meta.name ?? card.name,
+          description: meta.description ?? card.description,
+        };
+      });
+    } catch (err) {
+      console.warn('[ProjectAssetsPanel] 同步主体名称/描述失败:', err);
+      return cards;
+    }
+  }
+
   // 首屏加载：切换项目或 tab 时触发
   async function loadFirstPage(projectId, category) {
     const key = pageKey(projectId, category);
@@ -2963,7 +3008,8 @@ function ProjectAssetsPanel() {
     try {
       const limit = calcProjectAssetsLimit(category);
       const result = await apiGetProjectAssetsPage(projectId, { category, limit });
-      setAssetsMap(prev => ({ ...prev, [category]: result.grouped[category] ?? [] }));
+      const cards = await applySubjectMeta(projectId, category, result.grouped[category] ?? []);
+      setAssetsMap(prev => ({ ...prev, [category]: cards }));
       setPageMeta(prev => ({
         ...prev,
         [key]: { cursor: result.nextCursor, hasMore: result.hasMore, loading: false, rawList: result.rawList },
@@ -2985,7 +3031,8 @@ function ProjectAssetsPanel() {
       const result = await apiGetProjectAssetsPage(projectId, { category, limit, cursor: meta.cursor });
       const accumulated = [...(meta.rawList || []), ...result.rawList];
       const regrouped = groupByCategory(accumulated);
-      setAssetsMap(prev => ({ ...prev, [category]: regrouped[category] ?? [] }));
+      const cards = await applySubjectMeta(projectId, category, regrouped[category] ?? []);
+      setAssetsMap(prev => ({ ...prev, [category]: cards }));
       setPageMeta(prev => ({
         ...prev,
         [key]: { cursor: result.nextCursor, hasMore: result.hasMore, loading: false, rawList: accumulated },
@@ -3174,6 +3221,13 @@ function ProjectAssetsPanel() {
     }).catch(console.error);
   }
 
+  function handleCopyProject(project) {
+    apiCopyProject(project.id).then((created) => {
+      if (!created || !created.id) return;
+      setProjects((prev) => [created, ...prev]);
+    }).catch(console.error);
+  }
+
   function handleDownloadProject(project) {
     apiDownloadProjectAssets(project.id).catch(console.error);
   }
@@ -3255,7 +3309,7 @@ function ProjectAssetsPanel() {
         {projects.map((p) => (
           <ProjectListItem
             key={p.id}
-            project={{ ...p, onRename: () => handleRenameProject(p), onDelete: () => handleDeleteProject(p), onDownload: () => handleDownloadProject(p) }}
+            project={{ ...p, onRename: () => handleRenameProject(p), onCopy: () => handleCopyProject(p), onDelete: () => handleDeleteProject(p), onDownload: () => handleDownloadProject(p) }}
             active={activeProject === p.id}
             onClick={() => { setActiveProject(p.id); exitBatch(); }}
           />

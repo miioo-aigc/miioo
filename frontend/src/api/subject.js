@@ -5,9 +5,13 @@ import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 
 // 主体写操作后统一失效该项目的主体缓存 + 概览（概览含主体进度）
+// 主体的候选图/参考图（生成、上传、绑定、设定稿、删除）都会同步影响
+// 资产库-项目资产（按 subject_id 聚合的 category 资产），因此一并失效项目资产缓存，
+// 避免资产库开启状态下看到旧数据。
 function invalidateSubjects(projectId) {
   invalidate(K.subjectsPrefix(projectId));
   invalidate(K.projectOverview(projectId));
+  invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
 }
 
 export async function apiGetSubjects(projectId, { type, episode_id, limit } = {}) {

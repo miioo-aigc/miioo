@@ -161,7 +161,17 @@ function StarIcon({ filled = false, strokeColor = '#FFFFFF' }) {
   );
 }
 
-async function downloadImage(url) {
+// 取 prompt 前 10 个字符作为文件名，剔除文件名非法字符；为空时回退到默认名
+function filenameFromPrompt(prompt, ext, fallback = 'creation') {
+  const base = (prompt || '')
+    .replace(/[\\/:*?"<>|\r\n\t]/g, '')  // 去掉文件名非法字符
+    .trim()
+    .slice(0, 10)
+    .trim();
+  return `${base || fallback}.${ext}`;
+}
+
+async function downloadImage(url, prompt) {
   if (!url) return;
   try {
     const res = await fetch(url);
@@ -169,7 +179,7 @@ async function downloadImage(url) {
     const objUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = objUrl;
-    a.download = 'creation.png';
+    a.download = filenameFromPrompt(prompt, 'png');
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -3622,7 +3632,7 @@ function ImageDetailModal({ card, onClose, onDelete, favorited, onToggleFavorite
                   />
                   <ModalActionBtn
                     label="下载"
-                    onClick={() => downloadImage(card.imageUrl)}
+                    onClick={() => downloadImage(card.imageUrl, card.prompt)}
                     icon={
                       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                         <path d="M8.003 11.3V2" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
@@ -3713,7 +3723,7 @@ function VideoResultCard({ status, videoUrl, prompt, model, ratio, resolution, d
       const objUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = objUrl;
-      a.download = 'creation.mp4';
+      a.download = filenameFromPrompt(prompt, 'mp4');
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -3990,7 +4000,7 @@ function ImageResultCard({ status, imageUrl, originalUrl, prompt, promptHTML, mo
               />
               <CardActionBtn
                 tooltip="下载"
-                onClick={() => downloadImage(downloadUrl)}
+                onClick={() => downloadImage(downloadUrl, prompt)}
                 icon={
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path d="M8.003 11.3V2" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
@@ -4076,7 +4086,7 @@ function AudioResultCard({ status, audioUrl, prompt, model, createdAt, onDelete,
       const objUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = objUrl;
-      a.download = 'creation.mp3';
+      a.download = filenameFromPrompt(prompt, 'mp3');
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -5515,11 +5525,11 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       gen.cards.forEach((card, i) => {
         const key = `${gen.id}-${i}`;
         if (selected.has(key)) {
-          if (card.imageUrl) downloadImage(card.originalUrl || card.imageUrl);
+          if (card.imageUrl) downloadImage(card.originalUrl || card.imageUrl, card.prompt);
           if (card.audioUrl && !card.imageUrl && !card.videoUrl) {
             const a = document.createElement('a');
             a.href = card.audioUrl;
-            a.download = 'dubbing.wav';
+            a.download = filenameFromPrompt(card.prompt, 'wav', 'dubbing');
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -5532,7 +5542,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
                 const objUrl = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = objUrl;
-                a.download = 'creation.mp4';
+                a.download = filenameFromPrompt(card.prompt, 'mp4');
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
@@ -6034,7 +6044,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               const objUrl = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = objUrl;
-              a.download = 'creation.mp4';
+              a.download = filenameFromPrompt(videoDetailModal.prompt, 'mp4');
               document.body.appendChild(a);
               a.click();
               document.body.removeChild(a);

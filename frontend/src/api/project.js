@@ -68,6 +68,16 @@ export async function apiUpdateProject(projectId, data) {
   return updated;
 }
 
+export async function apiCopyProject(projectId) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/duplicate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const created = await res.json();
+  invalidate(K.projectsPrefix()); // 项目列表已变
+  return created;
+}
+
 export async function apiDeleteProject(projectId) {
   await authFetch(`${BASE}/api/projects/${projectId}`, {
     method: 'DELETE',

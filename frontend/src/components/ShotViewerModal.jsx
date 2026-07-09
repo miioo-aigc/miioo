@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useModalSize } from '../utils/useModalSize';
 import { createPortal } from 'react-dom';
 import Toggle from './Toggle';
-import { apiUpdateShotFinalized } from '../api/storyboard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -144,7 +143,7 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
 
   const handleFinalize = (val) => {
     setFinalized(val);
-    apiUpdateShotFinalized(shot?.id, val);
+    // 持久化由父级 onFinalizeChange 负责（更新候选视频列表 + 保存 video_url）
     onFinalizeChange?.(shot?.id, val);
   };
 

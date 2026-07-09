@@ -3,16 +3,16 @@ import ScriptPage from './ScriptPage';
 import { apiUpdateProject, apiUploadProjectCover } from '../api/project';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import styleXianxia from '../assets/styles/xianxia-3d.png';
-import styleSuspenseAnime from '../assets/styles/suspense-anime-2d.png';
-import styleCyberpunk from '../assets/styles/cyberpunk-3d.png';
-import stylePixar from '../assets/styles/pixar-style.png';
+import styleSuspenseAnime from '../assets/styles/suspense-anime-2d.avif';
+import styleCyberpunk from '../assets/styles/cyberpunk-3d.avif';
+import stylePixar from '../assets/styles/pixar-style.avif';
 import styleWuxia from '../assets/styles/wuxia-cg.png';
-import styleGhibli from '../assets/styles/ghibli-style.png';
-import styleShinkai from '../assets/styles/shinkai-style.png';
-import styleAncientChinese from '../assets/styles/ancient-chinese.png';
-import styleUrbanWorkplace from '../assets/styles/urban-workplace.png';
-import stylePostApocalyptic from '../assets/styles/post-apocalyptic.png';
-import styleLiveActionSuspense from '../assets/styles/live-action-suspense.png';
+import styleGhibli from '../assets/styles/ghibli-style.avif';
+import styleShinkai from '../assets/styles/shinkai-style.avif';
+import styleAncientChinese from '../assets/styles/ancient-chinese.avif';
+import styleUrbanWorkplace from '../assets/styles/urban-workplace.avif';
+import stylePostApocalyptic from '../assets/styles/post-apocalyptic.avif';
+import styleLiveActionSuspense from '../assets/styles/live-action-suspense.avif';
 
 // ─────────────────────────────────────────────────────────────────────────────
 

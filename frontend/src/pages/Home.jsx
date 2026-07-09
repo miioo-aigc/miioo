@@ -54,7 +54,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PulsingBorder } from '@paper-design/shaders-react';
-import { apiGetProjects, apiUpdateProject, apiDeleteProject, apiGetProject, apiGetProjectOverview } from '../api/project';
+import { apiGetProjects, apiUpdateProject, apiCopyProject, apiDeleteProject, apiGetProject, apiGetProjectOverview } from '../api/project';
 import { getToken, getRefreshToken, refreshAccessToken } from '../api/request';
 import { clearTokens, apiLogout, apiCompleteWechatCallback } from '../api/auth';
 import { apiListProviders } from '../api/config';
@@ -2054,6 +2054,13 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
                 onRenameProject={(projectId, newName) => {
                   apiUpdateProject(projectId, { name: newName }).then(() => {
                     setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, name: newName } : p)));
+                  });
+                }}
+                onCopyProject={(project) => {
+                  apiCopyProject(project.id).then((created) => {
+                    if (!created || !created.id) return;
+                    const normalized = { ...created, cover: created.cover ?? created.cover_url };
+                    setProjects((prev) => [normalized, ...prev]);
                   });
                 }}
                 onDeleteProject={(projectId) => {

@@ -3773,8 +3773,8 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
             desc={char.desc}
             imageUrl={char.imageUrl}
             voice={charVoices[char.id]}
-            voiceName={(() => { const v = voiceList.find(x => x.voice_id === charVoices[char.id]); return v ? v.name : undefined; })()}
-            voicePreviewUrl={voiceList.find((v) => v.voice_id === charVoices[char.id])?.preview_url}
+            voiceName={char.voice_name ?? (() => { const v = voiceList.find(x => x.voice_id === charVoices[char.id]); return v ? v.name : undefined; })()}
+            voicePreviewUrl={char.voice_preview_url ?? voiceList.find((v) => v.voice_id === charVoices[char.id])?.preview_url}
             onVoiceClick={() => setVoiceModalChar(char)}
             onClick={() => setSelectedChar(char)}
             onDownloadImage={() => handleDownloadSubjectImage(char.id)}
@@ -3908,6 +3908,11 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
             try {
               await apiUpdateSubject(projectId, voiceModalChar.id, { voice_id: normalizedVoiceId });
               setCharVoices((prev) => ({ ...prev, [voiceModalChar.id]: normalizedVoiceId }));
+              // 同步更新本地 char 的 voice_name / voice_preview_url，避免展示后端旧值
+              const selectedVoice = voiceList.find((v) => v.voice_id === normalizedVoiceId);
+              setChars((prev) => prev.map((c) => c.id === voiceModalChar.id
+                ? { ...c, voice_name: selectedVoice?.name ?? null, voice_preview_url: selectedVoice?.preview_url ?? null }
+                : c));
               setVoiceModalChar(null);
               showBatchToast('音色保存成功', 'success');
             } catch (err) {

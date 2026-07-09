@@ -2,6 +2,8 @@ import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, u
 import Toggle from './Toggle';
 import ConfirmDialog from './ConfirmDialog';
 import { apiOneClickSetup, apiCreateModel, apiListModels, apiUpdateModel, apiDeleteModel, apiGetBanner, apiListProviders, apiTestConnection, apiUpdateProvider, apiGetCardVisibility } from '../api/config';
+// 全局 API 卡片背景图（本地打包，保证离线可用）
+import globalApiBg from '../assets/api-global-bg.png';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -221,21 +223,6 @@ function PrimaryButton({ children, className = '', innerClassName = '', onClick,
         <div className={`shrink-0 text-sm/4.5 text-text-primary ${textClassName}`} style={{ fontFamily: FONT }}>
           {children}
         </div>
-      </div>
-    </button>
-  );
-}
-
-function AccentButton({ children, className = '', onClick, type = 'button', textClassName = '' }) {
-  return (
-    <button
-      type={type}
-      onClick={onClick}
-      className={`flex shrink-0 items-center justify-center gap-[4px] rounded-lg border border-solid border-stroke-accent bg-btn-accent-bg-normal bg-origin-border px-[16px] outline outline-1 outline-stroke-outline transition-colors hover:bg-btn-accent-bg-hover active:bg-btn-accent-bg-active ${className}`}
-      style={{ backgroundImage: ACCENT_BUTTON_GRADIENT }}
-    >
-      <div className={`shrink-0 text-center text-sm/4.5 font-medium text-text-inverse ${textClassName}`} style={{ fontFamily: FONT_MEDIUM }}>
-        {children}
       </div>
     </button>
   );
@@ -698,18 +685,18 @@ function NestedModal({ title, children, footer, onClose, wide = false }) {
 
 function ModelTabs({ activeTab, onChange }) {
   return (
-    <div className="flex items-start gap-[24px] self-stretch">
+    <div className="flex items-center gap-[8px] self-stretch">
       {MODEL_TABS.map((tab) => {
         const active = tab === activeTab;
         return (
           <button
             key={tab}
             type="button"
-            className="transition-opacity hover:opacity-80 active:opacity-60"
+            className={`flex items-center justify-center gap-[8px] rounded-t-lg px-[24px] pt-[10px] pb-[8px] transition-colors ${active ? 'bg-[#FFFFFF0D]' : 'hover:opacity-80 active:opacity-60'}`}
             onClick={() => onChange(tab)}
           >
             <div
-              className={`w-fit text-sm/4.5 transition-colors ${active ? 'font-medium text-text-primary' : 'text-text-secondary hover:text-text-primary active:text-text-secondary'}`}
+              className={active ? 'text-base/5 font-medium text-[#2DC3E1]' : 'text-sm/5 text-[#FFFFFF80]'}
               style={{ fontFamily: active ? FONT_MEDIUM : FONT, fontWeight: active ? 500 : 400 }}
             >
               {tab}
@@ -725,11 +712,11 @@ const ModelCard = forwardRef(function ModelCard({ model, onToggle, onDelete, onS
   return (
     <div
       ref={ref}
-      className="flex items-start gap-1.5 px-3 rounded-lg flex-col justify-center self-stretch bg-[#1D1E1E]"
+      className="flex flex-col justify-center gap-[6px] self-stretch rounded-lg p-[12px] transition-colors hover:bg-[#FFFFFF0D]"
       style={animating ? { animation: 'model-card-disable 280ms ease' } : undefined}
     >
-      <div className="flex items-center gap-1.5 justify-between self-stretch py-[8px]">
-        <div className="flex items-center gap-[8px]">
+      <div className="flex items-center gap-1.5 justify-between self-stretch">
+        <div className="flex items-center gap-[12px]">
           <div className="w-fit shrink-0 font-medium text-white text-sm/4.5" style={{ fontFamily: FONT_MEDIUM }}>
             {model.name}
           </div>
@@ -760,7 +747,7 @@ const ModelCard = forwardRef(function ModelCard({ model, onToggle, onDelete, onS
           )}
         </div>
       </div>
-      <div className="self-stretch pb-[8px] text-[#FFFFFF99] text-xs/4" style={{ fontFamily: FONT }}>
+      <div className="self-stretch text-[#FFFFFF99] text-xs/4" style={{ fontFamily: FONT }}>
         {model.description}
       </div>
     </div>
@@ -792,7 +779,6 @@ function ConfigModelModal({
   const prevPositions = useRef({});
 
   const activeModels = modelsByTab[activeTab] ?? [];
-  const showEmptyState = !apiTested && activeModels.length === 0;
 
   const snapshotPositions = useCallback(() => {
     prevPositions.current = {};
@@ -859,31 +845,45 @@ function ConfigModelModal({
         </PrimaryButton>
       }
     >
-      <div className="flex flex-col items-start gap-[8px] self-stretch">
-        <div className="self-stretch text-sm/4.5 text-text-primary" style={{ fontFamily: FONT }}>
-          全局API
+      <div className="flex min-h-0 flex-1 flex-col items-start gap-[12px] self-stretch">
+      <div
+        className="flex shrink-0 flex-col items-start gap-[12px] self-stretch rounded-lg px-[16px] py-[12px]"
+        style={{ backgroundImage: `url(${globalApiBg})`, backgroundSize: 'cover', backgroundPosition: '50%' }}
+      >
+        <div className="self-stretch text-base/5 font-medium text-white" style={{ fontFamily: FONT_MEDIUM }}>
+          全局 API
         </div>
-        <div className="flex items-start gap-[8px] self-stretch">
-          <TextInput
+        <div className="flex items-center gap-[18px] self-stretch">
+          <input
+            type="text"
             value={apiValue}
             onChange={apiDisabled ? undefined : onApiChange}
             placeholder={apiPlaceholder}
             disabled={apiDisabled}
+            className="h-[36px] min-w-0 flex-1 rounded-full border border-solid border-[#71E0FA66] bg-[#00000066] px-[18px] text-xs text-[#FFFFFFE6] shadow-[inset_0px_2px_3px_#00000066] outline-none placeholder:text-[#FFFFFF80] disabled:cursor-not-allowed"
+            style={{ fontFamily: FONT, lineHeight: '150%' }}
           />
-          <AccentButton className="h-9" textClassName="text-center" onClick={onTest}>
-            测试连接
-          </AccentButton>
+          <button
+            type="button"
+            onClick={onTest}
+            className="flex h-[30px] shrink-0 items-center justify-center gap-[4px] rounded-full border border-solid border-[#71E0FA66] bg-white bg-origin-border px-[12px] outline outline-1 outline-[#71E0FA66] transition-opacity hover:opacity-90 active:opacity-80"
+            style={{ backgroundImage: ACCENT_BUTTON_GRADIENT }}
+          >
+            <div className="text-center text-sm/4.5 font-medium text-[#000000CC]" style={{ fontFamily: FONT_MEDIUM }}>
+              测试链接
+            </div>
+          </button>
         </div>
         {apiTested && apiValue.includes('*') && (
-          <div className="text-xs/4 text-text-hint" style={{ fontFamily: FONT }}>
+          <div className="text-xs/4 text-[#FFFFFFCC]" style={{ fontFamily: FONT }}>
             API已配置，出于安全考虑仅显示部分字符。可重新输入完整 API 进行更新
           </div>
         )}
       </div>
 
-      <div className="flex flex-1 flex-col items-start gap-[12px] self-stretch overflow-hidden min-h-0">
+      <div className="flex flex-1 flex-col items-start self-stretch overflow-hidden min-h-0">
         <ModelTabs activeTab={activeTab} onChange={onChangeTab} />
-        <div className="w-full flex-1 overflow-hidden min-h-0">
+        <div className="w-full flex-1 overflow-hidden min-h-0 rounded-b-lg rounded-tr-lg bg-[#FFFFFF0D] px-[12px] py-[6px]">
           <div
             className="flex h-full will-change-transform"
             style={{
@@ -896,7 +896,7 @@ function ConfigModelModal({
               const tabModels = modelsByTab[tab] ?? [];
               const tabShowEmptyState = !apiTested && tabModels.length === 0;
               return (
-                <div key={tab} className="flex shrink-0 flex-col gap-[12px] overflow-y-auto pr-[2px]" style={{ width: `${100 / MODEL_TABS.length}%`, height: '100%' }}>
+                <div key={tab} className="flex shrink-0 flex-col gap-[2px] overflow-y-auto" style={{ width: `${100 / MODEL_TABS.length}%`, height: '100%' }}>
                   {tabShowEmptyState ? (
                     <div className="flex flex-1 flex-col items-center justify-center gap-[8px]">
                       <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -925,17 +925,19 @@ function ConfigModelModal({
                         />
                       ))}
                       {apiTested && tabModels.length < 30 && (
-                        <button
-                          type="button"
-                          onClick={onAddModel}
-                          className="flex h-9 w-full shrink-0 items-center justify-center gap-[4px] rounded-lg bg-btn-primary-bg-normal px-[16px] outline-none transition-colors hover:bg-btn-primary-bg-hover active:bg-btn-primary-bg-active"
-                          style={{ border: '1px dashed #FFFFFF33' }}
-                        >
-                          <PlusIcon className="h-[16px] w-[16px] text-text-secondary" />
-                          <div className="shrink-0 text-center text-sm/4.5 text-text-secondary" style={{ fontFamily: FONT }}>
-                            添加模型
-                          </div>
-                        </button>
+                        <div className="flex shrink-0 flex-col self-stretch py-[6px]">
+                          <button
+                            type="button"
+                            onClick={onAddModel}
+                            className="flex h-9 w-full shrink-0 items-center justify-center gap-[4px] rounded-lg bg-[#FFFFFF0D] px-[16px] outline-none transition-colors hover:bg-btn-primary-bg-hover active:bg-btn-primary-bg-active"
+                            style={{ border: '1px dashed #FFFFFF1F' }}
+                          >
+                            <PlusIcon className="h-[16px] w-[16px] text-[#FFFFFF99]" />
+                            <div className="shrink-0 text-center text-xs/4 text-[#FFFFFF99]" style={{ fontFamily: FONT }}>
+                              添加模型
+                            </div>
+                          </button>
+                        </div>
                       )}
                     </>
                   )}
@@ -944,6 +946,7 @@ function ConfigModelModal({
             })}
           </div>
         </div>
+      </div>
       </div>
     </NestedModal>
   );

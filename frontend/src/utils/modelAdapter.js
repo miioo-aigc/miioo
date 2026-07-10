@@ -45,10 +45,16 @@ export function adaptModels(backendModels, genType) {
     const actualAllRefMode = refModes.find(r => !frameKeys.includes(r)) || 'full';
     // 「首尾帧」对应的实际后端值（含 multiframe）
     const actualFrameRefMode = refModes.find(r => frameKeys.includes(r)) || 'first_frame';
+    // 支持真人素材：通过能力字段 or 模型 ID 前缀判断
+    const supportsLiveMaterial = !!(
+      m.capabilities?.supports_live_material ||
+      /^(doubao-)?seedance/i.test(m.model_id)
+    );
     options.push({
       value: m.model_id, label: m.name,
       refModes, hasFrame, hasFull,
       actualAllRefMode, actualFrameRefMode,
+      supportsLiveMaterial,
     });
 
     if (m.capabilities && typeof m.capabilities === 'object' && Object.keys(m.capabilities).length > 0) {

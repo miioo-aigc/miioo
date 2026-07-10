@@ -45,6 +45,20 @@ export const useCreationStore = create(
           },
         })),
 
+      // 清空当前 tab 的创作历史展示：仅重置前端列表与分页，真正的「隐藏」由后端持久化。
+      // 调用后页面会重新以 exclude_hidden=true 拉取，已隐藏记录不再返回。
+      clearHistoryTab: (tab) =>
+        set((state) => ({
+          generationsByTab: {
+            ...state.generationsByTab,
+            [tab]: [],
+          },
+          historyMeta: {
+            ...state.historyMeta,
+            [tab]: { page: 0, hasMore: true, loading: false, initialized: false },
+          },
+        })),
+
       addGeneration: (tab, generation) =>
         set((state) => ({
           generationsByTab: {

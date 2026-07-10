@@ -79,7 +79,6 @@ export async function apiListCreationSessions({ project_id, status } = {}) {
   if (status) params.append('status', status);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/sessions?${query}` : `${BASE}/api/creation/sessions`;
-  console.log("[DEBUG apiListCreationVideos] URL:", url);
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
   return res.json();
 }
@@ -175,7 +174,6 @@ export async function apiListCreationImages(filters = {}) {
   });
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/images?${query}` : `${BASE}/api/creation/images`;
-  console.log("[DEBUG apiListCreationVideos] URL:", url);
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
   return res.json();
 }
@@ -356,35 +354,15 @@ function summarizeVideoHistoryPayload(list) {
   };
 }
 
-export async function apiListCreationVideos({ page, page_size } = {}) {
-  console.log("[DEBUG apiListCreationVideos] called with page:", page, "page_size:", page_size);
+export async function apiListCreationVideos({ page, page_size, exclude_hidden } = {}) {
   const params = new URLSearchParams();
   if (page !== undefined) params.append('page', page);
   if (page_size !== undefined) params.append('page_size', page_size);
+  if (exclude_hidden !== undefined) params.append('exclude_hidden', exclude_hidden);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/videos?${query}` : `${BASE}/api/creation/videos`;
-  console.log("[DEBUG apiListCreationVideos] URL:", url);
-  const startedAt = performance.now();
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
-  const responseAt = performance.now();
-  console.log("[DEBUG apiListCreationVideos] authFetch returned, status:", res.status, "elapsed:", Math.round(responseAt - startedAt), 'ms');
-  console.log("[DEBUG apiListCreationVideos] response headers:", {
-    contentLength: res.headers.get('content-length'),
-    contentType: res.headers.get('content-type'),
-  });
-  const jsonStartedAt = performance.now();
   const data = await res.json();
-  const jsonEndedAt = performance.now();
-  const list = Array.isArray(data) ? data : (data?.list ?? data?.items ?? data?.data ?? []);
-  console.log("[DEBUG apiListCreationVideos] json parsed:", {
-    itemCount: Array.isArray(list) ? list.length : 0,
-    parseMs: Math.round(jsonEndedAt - jsonStartedAt),
-    totalMs: Math.round(jsonEndedAt - startedAt),
-  });
-  const payloadSummary = summarizeVideoHistoryPayload(list);
-  if (payloadSummary) {
-    console.log('[DEBUG apiListCreationVideos] payload summary:', payloadSummary);
-  }
   return data;
 }
 
@@ -476,16 +454,28 @@ export async function apiGenerateShotAudio(shotId, data) {
   return res.json();
 }
 
-export async function apiListCreationAudios({ page, page_size, is_favorite, search } = {}) {
+export async function apiListCreationAudios({ page, page_size, is_favorite, search, exclude_hidden } = {}) {
   const params = new URLSearchParams();
   if (page !== undefined) params.append('page', page);
   if (page_size !== undefined) params.append('page_size', page_size);
   if (is_favorite !== undefined) params.append('is_favorite', is_favorite);
   if (search) params.append('search', search);
+  if (exclude_hidden !== undefined) params.append('exclude_hidden', exclude_hidden);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/audios?${query}` : `${BASE}/api/creation/audios`;
-  console.log("[DEBUG apiListCreationVideos] URL:", url);
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+  return res.json();
+}
+
+// ── 清空创作历史（后端持久隐藏，按 tab）────────────────────────────────────────
+// 标记当前 tab 的全部创作历史为「已隐藏」（仅影响创作页展示，不删除创作资产），
+// 创作页后续以 exclude_hidden=true 读取，资产库仍按 exclude_hidden=false 看到全部。
+export async function apiHideCreationHistory(tab) {
+  const res = await authFetch(`${BASE}/api/creation/history/hide`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tab }),
+  });
   return res.json();
 }
 
@@ -538,7 +528,6 @@ export async function apiListCreationTasks({ status, task_type, session_id, shot
   if (shot_id) params.append('shot_id', shot_id);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/tasks?${query}` : `${BASE}/api/creation/tasks`;
-  console.log("[DEBUG apiListCreationVideos] URL:", url);
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
   return res.json();
 }
@@ -945,7 +934,8 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
 
   // ── 视频生成 ────────────────────────────────────────────────────────────
   // 有参考图/参考视频时强制 generation_mode=full，不让后端自行推断（资产库选图时后端会错误设为 text_to_video）
-  const hasRefMedia = refUrls.length > 0 || refAssetIds.length > 0 || uploadedRefVideoUrl || uploadedRefAudioUrl;
+  const liveMaterialParam = params.liveMaterialParam || null;
+  const hasRefMedia = refUrls.length > 0 || refAssetIds.length > 0 || uploadedRefVideoUrl || uploadedRefAudioUrl || (liveMaterialParam && liveMaterialParam.length > 0);
   const effectiveGenerationMode = hasRefMedia ? 'full' : (params.generation_mode || undefined);
 
   // ── @ 数字资产绑定（attachments）────────────────────────────────────────
@@ -987,6 +977,11 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     reference_mode: params.refMode || undefined,
     generation_mode: effectiveGenerationMode,
     with_audio: params.soundEnabled ?? false,
+    // 真人素材通过 provider_params.live_material 传递（后端 _resolve_creation_live_material_inputs 消费）
+    subjects: undefined,
+    provider_params: liveMaterialParam && liveMaterialParam.length > 0
+      ? { live_material: liveMaterialParam }
+      : undefined,
     // 首尾帧（URL + asset_id 双通道，后端优先看 asset_id）
     first_frame_url: firstFrameUrl || params.firstFrameUrl || undefined,
     last_frame_url: lastFrameUrl || params.lastFrameUrl || undefined,
@@ -1004,6 +999,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     shot_id: uploadContext.shot_id,
     project_id: uploadContext.project_id,
   };
+  console.log('[video-generate]', { generation_mode: body.generation_mode, provider_params: body.provider_params, hasRefMedia });
   const genData = await apiGenerateCreationVideo(body);
   const taskId = genData.task_id || genData.id;
   if (!taskId) throw new Error('No task_id returned');

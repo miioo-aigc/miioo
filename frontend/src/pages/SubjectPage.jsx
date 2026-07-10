@@ -39,7 +39,7 @@
 *     ├─ [Ref] fileInputRef / composingRef / refImageIds / editRefImages
  *     ├─ [缓存] pendingGenerations Map / subjectPanel sessionStorage   L1553+
  *     ├─ [缓存] batchGeneratedImagesCache Map （批量生成图片跨弹窗缓存）  L1626+
-*     ├─ [函数] handleGenerateImage / handleSetPrimary / handleSave / 图片上传/换填
+*     ├─ [函数] handleGenerateImage / handleSetPrimary / handleSave / 图片上传/换填 / onSettledChange(定稿切换·取消定稿清封面)
 *     └─ [副作用] 加载主体详情 / 图片列表 / 参考图 / 键盘事件 / 模型列表
 *       ├─ 加载主体详情时，从 batchGeneratedImagesCache 读取缓存图片，合并到 finalImages
  *       ├─ 缓存读取在 await apiGetSubjectDetail 之前执行，展示不阻塞网络请求
@@ -99,6 +99,9 @@
  *               - isBatchLoading 的 BATCH_PLACEHOLDER 插入逻辑增加单主体占位槽检测，避免双占位
  *               - preflight pending 分支设置 cacheConsumedRef + return，阻止 API 路径二次插入
  *   2026-07-02  补充主体编辑弹窗 sessionStorage 恢复，并为单主体生图请求开启 keepalive
+ *   2026-07-09  取消定稿改走语义化接口 apiUnsetPrimarySubjectImage
+ *               （PATCH .../subjects/{id}/unset-primary，后端同步清空 primary_image_url 与 is_primary），
+ *               移除 cancelledPrimaryIds / localStorage / applyCancelledPrimary / primaryCancelled 本地兜底
  */
 
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -107,7 +110,7 @@ import { useModalSize } from '../utils/useModalSize';
 import DotsLoading from '../components/DotsLoading';
 import BatchGenerateModal from '../components/BatchGenerateModal';
 import AssetPickerModal from '../components/AssetPickerModal';
-import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiBindSubjectReferenceImages, apiUploadSubjectReferenceImage, apiDownloadSubjectImage, apiSetPrimarySubjectImage } from '../api/subject';
+import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiBindSubjectReferenceImages, apiUploadSubjectReferenceImage, apiDownloadSubjectImage, apiSetPrimarySubjectImage, apiUnsetPrimarySubjectImage } from '../api/subject';
 import { apiGetTask } from '../api/storyboard';
 // 模型能力直接从后端 capabilities 获取
 import { apiGetProjects } from '../api/project';
@@ -2611,6 +2614,11 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                       });
                     }
                   }
+                } else {
+                  // 取消定稿：封面回到空状态（仅占位图标），并清空后端主图引用
+                  onCoverChange?.(null);
+                  setPrimaryImageUrl(null);
+                  setPrimaryImageId(null);
                 }
 
                 setGeneratedImages((prev) =>
@@ -3348,6 +3356,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   const [subjectDetailRefreshToken, setSubjectDetailRefreshToken] = useState(0);
   const [voiceModalChar, setVoiceModalChar] = useState(null);
   const [voiceList, setVoiceList] = useState([]);
+
   const [internalChars, setInternalChars] = useState(INITIAL_CHARS);
   const chars = (externalChars !== undefined && externalChars !== null) ? externalChars : internalChars;
   const hasExternalChars = externalChars !== undefined && externalChars !== null;
@@ -3511,24 +3520,21 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     // 订阅角色缓存
     unsubscribers.push(subscribe(K.subjects(projectId, 'character'), (data) => {
       if (Array.isArray(data)) {
-        const normalized = normalizeSubjectList(data);
-        setChars(normalized);
+        setChars(normalizeSubjectList(data));
       }
     }));
 
     // 订阅场景缓存
     unsubscribers.push(subscribe(K.subjects(projectId, 'scene'), (data) => {
       if (Array.isArray(data)) {
-        const normalized = normalizeSubjectList(data);
-        setScenes(normalized);
+        setScenes(normalizeSubjectList(data));
       }
     }));
 
     // 订阅道具缓存
     unsubscribers.push(subscribe(K.subjects(projectId, 'prop'), (data) => {
       if (Array.isArray(data)) {
-        const normalized = normalizeSubjectList(data);
-        setProps(normalized);
+        setProps(normalizeSubjectList(data));
       }
     }));
 
@@ -3845,7 +3851,9 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
             // imageUrl: 原始相对路径，用于 API；同时存储完整 URL 用于卡片展示
             const fullUrl = normalizeImageUrl(imageUrl);
             setChars((prev) => prev.map((c) => c.id === selectedChar.id ? { ...c, imageUrl: fullUrl } : c));
-            apiUpdateSubject(projectId, selectedChar.id, { image_url: imageUrl });
+            // 取消定稿走语义化接口，后端会同步清空 primary_image_url 与候选图 is_primary
+            if (imageUrl) apiUpdateSubject(projectId, selectedChar.id, { image_url: imageUrl });
+            else apiUnsetPrimarySubjectImage(projectId, selectedChar.id).catch(() => {});
           }}
         />
       )}
@@ -3868,7 +3876,8 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           onCoverChange={(imageUrl) => {
             const fullUrl = normalizeImageUrl(imageUrl);
             setScenes((prev) => prev.map((s) => s.id === selectedScene.id ? { ...s, imageUrl: fullUrl } : s));
-            apiUpdateSubject(projectId, selectedScene.id, { image_url: imageUrl });
+            if (imageUrl) apiUpdateSubject(projectId, selectedScene.id, { image_url: imageUrl });
+            else apiUnsetPrimarySubjectImage(projectId, selectedScene.id).catch(() => {});
           }}
         />
       )}
@@ -3891,7 +3900,8 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           onCoverChange={(imageUrl) => {
             const fullUrl = normalizeImageUrl(imageUrl);
             setProps((prev) => prev.map((p) => p.id === selectedProp.id ? { ...p, imageUrl: fullUrl } : p));
-            apiUpdateSubject(projectId, selectedProp.id, { image_url: imageUrl });
+            if (imageUrl) apiUpdateSubject(projectId, selectedProp.id, { image_url: imageUrl });
+            else apiUnsetPrimarySubjectImage(projectId, selectedProp.id).catch(() => {});
           }}
         />
       )}

@@ -38,7 +38,8 @@
  *     └─ [副作用] 项目切换 / tab 切换 / 无限滚动         L2880+
  *   <CreativeAssetsPanel>      创作资产面板             L3683–L3993
  *     ├─ [状态] activeType / batchMode / selected / toast / days  L3683+
- *     ├─ [Store] creationStore (generationsByTab / favorites)    L3683+
+ *     ├─ [状态] creationGenerationsByTab / creationHistoryMeta（本地，不与创作页共享 store）L3786+
+ *     ├─ [Store] creationStore（仅 favorites / toggleFavorite / syncFavorites）    L3786+
  *     ├─ [函数] normalizeHistoryItem / loadHistoryPage / 收藏/删除/批量操作  L3683+
  *     └─ [副作用] 登录后初始化 / tab 切换加载历史          L3683+
  *
@@ -50,6 +51,8 @@
  *   2026-07-01  初始结构索引建立
  *   2026-07-01  [修复] 删除主体资产后不再调用 apiDeleteSubject，保留主体卡片占位
  *   2026-07-01  项目资产卡片 grid 按屏幕比例缩放，最大 130%（L3336–L3338）
+ *   2026-07-09  [解耦] 创作资产历史改本地 state，资产库不再回灌共享创作历史 store
+ *               （解决「清空创作历史」后打开资产库又出现已隐藏记录的问题）
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -3782,14 +3785,22 @@ function CreativeAssetsPanel({ isLoggedIn }) {
   }
 
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
-  const generationsByTab = useCreationStore((s) => s.generationsByTab);
+  // 创作资产历史改为页面内本地 state，与创作页共享 store 解耦：
+  // 避免资产库拉取全部创作历史（不带 exclude_hidden）后回灌共享 store，
+  // 否则会把创作页已「清空」的记录重新写回。收藏状态仍复用共享 store。
+  const [creationGenerationsByTab, setCreationGenerationsByTab] = useState({ image: [], video: [], dubbing: [] });
+  const [creationHistoryMeta, setCreationHistoryMeta] = useState({
+    image:   { page: 0, hasMore: true, loading: false, initialized: false },
+    video:   { page: 0, hasMore: true, loading: false, initialized: false },
+    dubbing: { page: 0, hasMore: true, loading: false, initialized: false },
+  });
+  // 始终指向最新本地 state，供 loadHistoryPage 同步读取（对应原 useCreationStore.getState()）
+  const creationGenerationsRef = useRef(creationGenerationsByTab);
+  creationGenerationsRef.current = creationGenerationsByTab;
+  const creationHistoryMetaRef = useRef(creationHistoryMeta);
+  creationHistoryMetaRef.current = creationHistoryMeta;
   const favorites = useCreationStore((s) => s.favorites);
-  const storeDeleteCard = useCreationStore((s) => s.deleteCard);
-  const storeDeleteSelectedCards = useCreationStore((s) => s.deleteSelectedCards);
   const storeToggleFavorite = useCreationStore((s) => s.toggleFavorite);
-  const historyMeta = useCreationStore((s) => s.historyMeta);
-  const mergeHistoryGenerations = useCreationStore((s) => s.mergeHistoryGenerations);
-  const updateHistoryMeta = useCreationStore((s) => s.updateHistoryMeta);
   const storeSyncFavorites = useCreationStore((s) => s.syncFavorites);
 
   // 与 CreationPage 共用同一套 normalizeHistoryItem 逻辑
@@ -3842,16 +3853,17 @@ function CreativeAssetsPanel({ isLoggedIn }) {
 
   const loadHistoryPage = useCallback(async (tab) => {
     if (!isLoggedIn) return;
-    const meta = useCreationStore.getState().historyMeta[tab];
+    const meta = creationHistoryMetaRef.current[tab];
     if (meta.loading || !meta.hasMore) return;
 
-    updateHistoryMeta(tab, { loading: true });
+    setCreationHistoryMeta((prev) => ({ ...prev, [tab]: { ...prev[tab], loading: true } }));
     const nextPage = meta.page + 1;
     const pageSize = calcCreativePageSize(tab);
 
     try {
       let resp;
       if (tab === 'image') {
+        // 资产库不传 exclude_hidden，保持「可见全部创作资产」的既有口径
         resp = await apiListCreationImages({ page: nextPage, page_size: pageSize });
       } else if (tab === 'video') {
         resp = await apiListCreationVideos({ page: nextPage, page_size: pageSize });
@@ -3863,10 +3875,19 @@ function CreativeAssetsPanel({ isLoggedIn }) {
       const list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
       const hasMore = list.length >= pageSize;
       const normalized = list.map((item) => normalizeHistoryItem(item, type));
-      mergeHistoryGenerations(tab, normalized);
+      // 合并到本地创作资产列表（按卡片后端ID去重，后端最新在前则反转后前置）
+      const existing = creationGenerationsRef.current[tab] ?? [];
+      const existingCardIds = new Set(
+        existing.flatMap((g) => g.cards.map((c) => c.id).filter(Boolean))
+      );
+      const toAdd = normalized.filter((g) =>
+        g.cards.every((c) => !c.id || !existingCardIds.has(c.id))
+      );
+      const mergedGens = toAdd.length > 0 ? [...toAdd.reverse(), ...existing] : existing;
+      setCreationGenerationsByTab((prev) => ({ ...prev, [tab]: mergedGens }));
 
       // 同步收藏状态
-      const latestGens = useCreationStore.getState().generationsByTab[tab] ?? [];
+      const latestGens = mergedGens;
       const syncItems = [];
       for (const gen of latestGens) {
         for (let i = 0; i < gen.cards.length; i++) {
@@ -3878,22 +3899,28 @@ function CreativeAssetsPanel({ isLoggedIn }) {
       }
       if (syncItems.length > 0) storeSyncFavorites(syncItems);
 
-      updateHistoryMeta(tab, { page: nextPage, hasMore, loading: false, initialized: true });
+      setCreationHistoryMeta((prev) => ({
+        ...prev,
+        [tab]: { ...prev[tab], page: nextPage, hasMore, loading: false, initialized: true },
+      }));
     } catch {
-      updateHistoryMeta(tab, { loading: false, initialized: true });
+      setCreationHistoryMeta((prev) => ({
+        ...prev,
+        [tab]: { ...prev[tab], loading: false, initialized: true },
+      }));
     }
-  }, [isLoggedIn, mergeHistoryGenerations, updateHistoryMeta, storeSyncFavorites]);
+  }, [isLoggedIn, storeSyncFavorites]);
 
   // 登录后 / 切换 tab 时，若当前 tab 未初始化则拉第一页
   useEffect(() => {
     if (!isLoggedIn) return;
-    const meta = useCreationStore.getState().historyMeta[activeType];
+    const meta = creationHistoryMetaRef.current[activeType];
     if (!meta.initialized && !meta.loading) {
       loadHistoryPage(activeType);
     }
   }, [isLoggedIn, activeType, loadHistoryPage]);
 
-  const generations = generationsByTab[activeType] ?? [];
+  const generations = creationGenerationsByTab[activeType] ?? [];
   const days = generationsToDays(generations);
 
   function toggleSelect(id) {
@@ -3913,7 +3940,28 @@ function CreativeAssetsPanel({ isLoggedIn }) {
   function deleteSelected() {
     const ids = selected;
     const cardIds = [...ids];
-    storeDeleteSelectedCards(activeType, ids);
+    // 仅从本地创作资产列表移除（不回写共享 store），后端已删除；
+    // 创作页下次以 exclude_hidden=true 拉取时不会再返回该记录。
+    setCreationGenerationsByTab((prev) => {
+      const toDelete = {};
+      ids.forEach((key) => {
+        const lastDash = key.lastIndexOf('-');
+        const genId = key.slice(0, lastDash);
+        const cardIdx = parseInt(key.slice(lastDash + 1), 10);
+        if (!toDelete[genId]) toDelete[genId] = new Set();
+        toDelete[genId].add(cardIdx);
+      });
+      return {
+        ...prev,
+        [activeType]: prev[activeType]
+          .map((gen) =>
+            toDelete[gen.id]
+              ? { ...gen, cards: gen.cards.filter((_, i) => !toDelete[gen.id].has(i)) }
+              : gen
+          )
+          .filter((gen) => gen.cards.length > 0),
+      };
+    });
     if (activeType === 'image') apiBatchDeleteImages(cardIds);
     else if (activeType === 'video') apiBatchDeleteVideos(cardIds);
     setSelected(new Set());
@@ -3932,7 +3980,16 @@ function CreativeAssetsPanel({ isLoggedIn }) {
   }
 
   function deleteSingle(card) {
-    storeDeleteCard(activeType, card.genId, card.cardIdx);
+    setCreationGenerationsByTab((prev) => ({
+      ...prev,
+      [activeType]: prev[activeType]
+        .map((gen) =>
+          gen.id !== card.genId
+            ? gen
+            : { ...gen, cards: gen.cards.filter((_, i) => i !== card.cardIdx) }
+        )
+        .filter((gen) => gen.cards.length > 0),
+    }));
     if (activeType === 'image') apiDeleteCreationImage(card.id);
     else if (activeType === 'video') apiDeleteCreationVideo(card.id);
   }

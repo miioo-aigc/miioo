@@ -172,6 +172,7 @@ export default function CreationVideoDetailModal({
   const [currentTime, setCurrentTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const [volume, setVolume] = useState(0.7);
+  const [muted, setMuted] = useState(false);
   const [hovClose, setHovClose] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const videoRef = useRef(null);
@@ -199,6 +200,7 @@ export default function CreationVideoDetailModal({
     const onLoaded = () => {
       setVideoDuration(vid.duration);
       vid.volume = volume;
+      vid.muted = muted;
       console.log('Video loaded:', vid.duration, vid.videoWidth, vid.videoHeight);
     };
     const onEnded = () => setIsPlaying(false);
@@ -261,10 +263,21 @@ export default function CreationVideoDetailModal({
     const rect = volumeBarRef.current.getBoundingClientRect();
     const v = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     setVolume(v);
+    setMuted(v === 0);
     if (videoRef.current) {
       videoRef.current.volume = v;
+      videoRef.current.muted = v === 0;
       console.log('Volume set to:', v);
     }
+  }
+
+  // 点击音量图标：一键静音 / 恢复声音
+  function toggleMute() {
+    setMuted((prev) => {
+      const next = !prev;
+      if (videoRef.current) videoRef.current.muted = next;
+      return next;
+    });
   }
 
   const progressPct = videoDuration > 0 ? (currentTime / videoDuration) * 100 : 0;
@@ -383,9 +396,19 @@ export default function CreationVideoDetailModal({
                   </div>
                 </div>
                 <div className="flex items-center gap-[8px]">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ opacity: '0.4', flexShrink: '0' }}>
+                  <svg
+                    width="16" height="16" viewBox="0 0 16 16" fill="none"
+                    style={{ opacity: '0.4', flexShrink: '0', cursor: 'pointer' }}
+                    onClick={toggleMute}
+                    role="button"
+                    aria-label={muted ? '取消静音' : '静音'}
+                  >
                     <path d="M3 6H1V10H3L7 13V3L3 6Z" fill="#FFFFFF" />
-                    <path d="M10 5C11.1 6.1 11.1 9.9 10 11M12.5 3C14.7 5.2 14.7 10.8 12.5 13" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
+                    {muted ? (
+                      <path d="M10 6L14 10M14 6L10 10" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
+                    ) : (
+                      <path d="M10 5C11.1 6.1 11.1 9.9 10 11M12.5 3C14.7 5.2 14.7 10.8 12.5 13" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
+                    )}
                   </svg>
                   <div
                     ref={volumeBarRef}
@@ -393,7 +416,7 @@ export default function CreationVideoDetailModal({
                     style={{ cursor: 'pointer' }}
                     onClick={handleVolumeClick}
                   >
-                    <div className="h-full rounded-xs bg-[#FFFFFF99]" style={{ width: `${volume * 100}%` }} />
+                    <div className="h-full rounded-xs bg-[#FFFFFF99]" style={{ width: `${muted ? 0 : volume * 100}%` }} />
                   </div>
                 </div>
               </div>

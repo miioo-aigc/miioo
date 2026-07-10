@@ -205,6 +205,33 @@ export async function apiSetPrimarySubjectImage(projectId, subjectId, imageId) {
   return res.json();
 }
 
+// 取消定稿 / 清除主图（后端方案 B：语义化接口）
+// 后端会同时清空主体记录级 primary_image_url / image_url，并把候选图 is_primary 全部置 false，
+// 且不删除候选图本身。取消后重拉列表，卡片封面自然回到空占位。
+export async function apiUnsetPrimarySubjectImage(projectId, subjectId) {
+  const res = await authFetch(
+    `${BASE}/api/projects/${projectId}/subjects/${subjectId}/unset-primary`,
+    { method: 'PATCH', headers: { 'Content-Type': 'application/json' } }
+  );
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body?.detail || body?.message || '';
+      if (typeof detail === 'object') detail = JSON.stringify(detail);
+    } catch {}
+    const err = new Error(detail || `取消定稿失败（${res.status}）`);
+    err.status = res.status;
+    throw err;
+  }
+  invalidateSubjects(projectId); // 主图清空影响列表展示
+  // 重新拉取主体列表以更新缓存，触发订阅者同步（封面回到空占位）
+  apiGetSubjects(projectId, { type: "character" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "scene" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "prop" }).catch(() => {});
+  return res.json().catch(() => ({}));
+}
+
 export async function apiUploadSubjectReferenceImage(projectId, subjectId, file) {
   const form = new FormData();
   form.append('file', file);

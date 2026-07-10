@@ -3633,6 +3633,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         return {
           refMode: actualRefMode, videoRatio, videoResolution, videoDuration, soundEnabled, firstFrameFile, lastFrameFile,
           liveMaterialParam: liveMaterialParam.length > 0 ? liveMaterialParam : null,
+          liveMaterialFiles: liveMats,  // 保留预览信息用于详情展示和重新编辑
         };
       })() : {}),
       ...(genType === 'dubbing' ? { speed: dubbingSpeed, emotion: dubbingEmotion, voiceId: selectedVoiceId, voiceName: selectedVoiceName } : {}),
@@ -5267,12 +5268,25 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
                       prompt: card.prompt,
                       promptHTML: card.promptHTML || '',
                       files: card.refMode === 'first_frame' ? [] : [
-                        ...refImages.map((img) => ({
+                        ...refImages.filter(img => !img.isLiveMaterial).map((img) => ({
                           name: img.name || 'ref.png',
                           url: img.url || img.previewUrl || '',
                           previewUrl: img.url || img.previewUrl || '',
                           type: 'image/png',
                           isAsset: true,
+                          size: 0,
+                        })),
+                        ...refImages.filter(img => img.isLiveMaterial).map((img) => ({
+                          isAsset: true,
+                          isLiveMaterial: true,
+                          assetId: img.assetId,
+                          groupId: img.groupId,
+                          groupType: img.groupType,
+                          assetRefUrl: img.assetRefUrl,
+                          url: img.previewUrl || img.url || '',
+                          previewUrl: img.previewUrl || img.url || '',
+                          name: img.name || '真人素材',
+                          type: 'image/jpeg',
                           size: 0,
                         })),
                         ...refVideos.map((vid) => ({
@@ -6520,7 +6534,13 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       model: params.model || '',
       prompt: params.prompt || '',
       promptHTML: params.promptHTML || '',
-      refImages: [],
+      refImages: (params.liveMaterialFiles || []).map(f => ({
+        url: f.previewUrl || f.url || '',
+        previewUrl: f.previewUrl || f.url || '',
+        isAsset: true, isLiveMaterial: true,
+        assetId: f.assetId, groupId: f.groupId, groupType: f.groupType, assetRefUrl: f.assetRefUrl,
+        name: f.name || '真人素材', size: 0, type: 'image/jpeg',
+      })),
       refVideos: (params.files || []).filter(f => isVideoFile(f)).map(f => ({
         url: f.url || null,
         previewUrl: f.previewUrl || (f instanceof File ? URL.createObjectURL(f) : (f.url || null)),
@@ -6630,13 +6650,22 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         model: genMeta.model,
         prompt: genMeta.prompt,
         promptHTML: params.promptHTML || '',
-        refImages: (result.referenceImages || []).map((url) => ({
-          url: normalizeImageUrl(url) || url,
-          previewUrl: normalizeImageUrl(url) || url,
-          isAsset: true,
-          name: (url || '').split('/').pop() || 'ref.png',
-          size: 0,
-        })),
+        refImages: [
+          ...(result.referenceImages || []).map((url) => ({
+            url: normalizeImageUrl(url) || url,
+            previewUrl: normalizeImageUrl(url) || url,
+            isAsset: true,
+            name: (url || '').split('/').pop() || 'ref.png',
+            size: 0,
+          })),
+          ...(params.liveMaterialFiles || []).map(f => ({
+            url: f.previewUrl || f.url || '',
+            previewUrl: f.previewUrl || f.url || '',
+            isAsset: true, isLiveMaterial: true,
+            assetId: f.assetId, groupId: f.groupId, groupType: f.groupType, assetRefUrl: f.assetRefUrl,
+            name: f.name || '真人素材', size: 0, type: 'image/jpeg',
+          })),
+        ],
         refVideos: (result.referenceVideos || []).map((url) => ({
           url: url,
           previewUrl: url,

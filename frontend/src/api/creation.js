@@ -980,7 +980,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     // 真人素材通过 provider_params.live_material 传递（后端 _resolve_creation_live_material_inputs 消费）
     subjects: undefined,
     provider_params: liveMaterialParam && liveMaterialParam.length > 0
-      ? { live_material: liveMaterialParam }
+      ? { live_material: liveMaterialParam[0] }
       : undefined,
     // 首尾帧（URL + asset_id 双通道，后端优先看 asset_id）
     first_frame_url: firstFrameUrl || params.firstFrameUrl || undefined,

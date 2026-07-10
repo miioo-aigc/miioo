@@ -104,7 +104,8 @@ function getImageModelParamsFromCap(capabilities) {
   // Support both backend format and local config format
   const hasBackendFormat = capabilities.resolution_size_map !== undefined
     || capabilities.supported_resolutions !== undefined
-    || capabilities.supported_sizes !== undefined;
+    || capabilities.supported_sizes !== undefined
+    || capabilities.supported_aspect_ratios !== undefined;
 
   let resolutions, ratios, resolutionRatios, maxCount;
 
@@ -141,6 +142,9 @@ function getImageModelParamsFromCap(capabilities) {
       resolutionRatios = {};
     }
     for (const res of resolutions) {
+      // 已通过兜底（空 sizeMap 模型）为无映射的分辨率填充了全部比例，保留之；
+      // 仅用 resolution_size_map 精确覆盖存在映射的分辨率
+      if (resolutionRatios[res] !== undefined) continue;
       const map = sizeMap[res] || {};
       resolutionRatios[res] = Object.keys(map).filter(r => /^\d+:\d+$/.test(r));
     }
@@ -197,7 +201,8 @@ function getVideoModelParamsFromCap(capabilities) {
   // Support both backend format and local config format
   const hasBackendFormat = capabilities.supported_durations !== undefined
     || capabilities.supported_resolutions !== undefined
-    || capabilities.supported_sizes !== undefined;
+    || capabilities.supported_sizes !== undefined
+    || capabilities.supported_aspect_ratios !== undefined;
 
   let ratios, resolutions, durations, refModes, supportsAudio, resolutionRatios;
 
@@ -236,13 +241,17 @@ function getVideoModelParamsFromCap(capabilities) {
     // Audio support
     supportsAudio = capabilities.supports_reference_audio || false;
 
-    // Build resolutionRatios from resolution_size_map for bi-directional filtering
+    // Build resolutionRatios from resolution_size_map for bi-directional filtering.
+    // 空 resolution_size_map 的模型（如 Vidu Q2 / Gemini）按兜底逻辑把全部比例挂到每个分辨率，
+    // 避免 sizeMap 为空导致 resolutionRatios[res] 缺失、UI 把比例过滤成空白。
     const sizeMap = capabilities.resolution_size_map || {};
     resolutionRatios = {};
+    const aspectRatiosAll = (capabilities.supported_aspect_ratios || [])
+      .filter(r => /^\d+:\d+$/.test(r));
     for (const res of resolutions) {
       const map = sizeMap[res] || {};
       const validRatios = Object.keys(map).filter(r => /^\d+:\d+$/.test(r));
-      if (validRatios.length > 0) resolutionRatios[res] = validRatios;
+      resolutionRatios[res] = validRatios.length > 0 ? validRatios : aspectRatiosAll;
     }
   } else {
     // Local config format: resolutions = { "1080p": [{ratio, width, height}] }

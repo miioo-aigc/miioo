@@ -2066,7 +2066,9 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   // 比例根据当前选中的分辨率动态获取，不同分辨率可能支持不同比例
   const availableRatios = useMemo(() => {
     const resRatios = currentModel.resolutionSizeMap?.[selectedResolution];
-    if (resRatios) return Object.keys(resRatios);
+    // 空映射（resolutionSizeMap[res] 为 {}）表示「该分辨率不限制比例」，回退到模型全局比例，
+    // 否则会把比例错误过滤成空白（新接入模型常为空 resolution_size_map）
+    if (resRatios && Object.keys(resRatios).length > 0) return Object.keys(resRatios);
     return currentModel.ratios || [];
   }, [currentModel, selectedResolution]);
   // Filter resolutions to only those supporting the current ratio (reverse direction)

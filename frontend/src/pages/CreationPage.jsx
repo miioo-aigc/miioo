@@ -26,9 +26,9 @@
  *   <DropdownItem>           通用下拉菜单项                   L1024
  *   <GenTypeDropdownItem>    生成类型专用菜单项               L989
  *
- * ─── 业务选择器组件 ────────────────────────────────────────── L1057–L2100
- *   <GenTypeSelector>        生成类型下拉（图片/视频/配音）    L1058
- *   <RefModeSelector>        参考模式下拉（全能/首尾帧/多帧）  L1484
+ * ─── 业务选择器组件 ────────────────────────────────────────── L1063–L2106
+ *   <GenTypeSelector>        生成类型下拉（图片/视频/配音）    L1064
+ *   <RefModeSelector>        参考模式下拉（全能/首尾帧/多帧）  L1490
  *   <ModelSelector>          模型选择下拉                     L约1600
  *   <ParamsSelector>         图片参数（比例/分辨率/数量）      L约1700
  *   <VideoParamsSelector>    视频参数（比例/分辨率/时长）      L约1800
@@ -1309,9 +1309,16 @@ function ModelSelector({ value, onChange, options = [], disabled, onBeforeOpen }
 // ─── Ratio icon ───────────────────────────────────────────────────────────────
 function RatioIcon({ rw = 16, rh = 9, selected = false }) {
   const maxW = 16, maxH = 12;
-  const scale = Math.min(maxW / rw, maxH / rh);
-  const w = Math.round(rw * scale);
-  const h = Math.round(rh * scale);
+  // 竖屏比例（宽 < 高）以「横屏等价比例」的宽高置换来绘制：
+  // 先按横屏方向拟合到 16×12，再整体转置，使其与横屏成对一致（如 3:4 即为 4:3 的宽高置换）。
+  const portrait = rh > rw;
+  const baseW = portrait ? rh : rw;
+  const baseH = portrait ? rw : rh;
+  const scale = Math.min(maxW / baseW, maxH / baseH);
+  const wBase = Math.round(baseW * scale);
+  const hBase = Math.round(baseH * scale);
+  const w = portrait ? hBase : wBase;
+  const h = portrait ? wBase : hBase;
   return (
     <div style={{
       width: `${w}px`,
@@ -1386,15 +1393,16 @@ function ParamsSelector({ ratio, resolution, count, onRatioChange, onResolutionC
     flexShrink: 0,
   });
 
-  // Filter options by resolutionRatios: only show combos that are valid
-  const filteredRatioOpts = ratioOptions.filter(opt => {
-    if (!resolution || !resolutionRatios[resolution]) return true;
-    return resolutionRatios[resolution].includes(opt.value);
-  });
-  const filteredResolutionOpts = resolutionOptions.filter(res => {
-    if (!ratio || !resolutionRatios[res]) return true;
-    return resolutionRatios[res].includes(ratio);
-  });
+  // Filter options by resolutionRatios: only show combos that are valid.
+  // 空分辨率映射（resolutionRatios[res] 为 []）表示「该分辨率不限制比例」，放行全部比例，
+  // 否则会把所有比例错误地过滤成空白（新接入模型常为空 resolution_size_map）。
+  const ratioAllowed = (res, value) => {
+    const allowed = resolutionRatios[res];
+    if (!res || !Array.isArray(allowed) || allowed.length === 0) return true;
+    return allowed.includes(value);
+  };
+  const filteredRatioOpts = ratioOptions.filter(opt => ratioAllowed(resolution, opt.value));
+  const filteredResolutionOpts = resolutionOptions.filter(res => ratioAllowed(res, ratio));
 
   return (
     <div ref={dropdownRef} style={{ position: 'relative' }}>
@@ -1792,15 +1800,16 @@ function VideoParamsSelector({ ratio, resolution, duration, onRatioChange, onRes
     flexShrink: 0,
   });
 
-  // Filter options by resolutionRatios: only show combos that are valid
-  const filteredRatioOpts = ratioOptions.filter(opt => {
-    if (!resolution || !resolutionRatios[resolution]) return true;
-    return resolutionRatios[resolution].includes(opt.value);
-  });
-  const filteredResolutionOpts = resolutionOptions.filter(res => {
-    if (!ratio || !resolutionRatios[res]) return true;
-    return resolutionRatios[res].includes(ratio);
-  });
+  // Filter options by resolutionRatios: only show combos that are valid.
+  // 空分辨率映射（resolutionRatios[res] 为 []）表示「该分辨率不限制比例」，放行全部比例，
+  // 否则会把所有比例错误地过滤成空白（新接入模型常为空 resolution_size_map）。
+  const ratioAllowed = (res, value) => {
+    const allowed = resolutionRatios[res];
+    if (!res || !Array.isArray(allowed) || allowed.length === 0) return true;
+    return allowed.includes(value);
+  };
+  const filteredRatioOpts = ratioOptions.filter(opt => ratioAllowed(resolution, opt.value));
+  const filteredResolutionOpts = resolutionOptions.filter(res => ratioAllowed(res, ratio));
 
   return (
     <div ref={dropdownRef} style={{ position: 'relative' }}>

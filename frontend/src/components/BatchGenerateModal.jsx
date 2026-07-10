@@ -192,7 +192,9 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
    const selected = modelList.find(m => m.value === model);
    if (!selected) return [];
    const resRatios = selected.resolutionSizeMap?.[resolution];
-    if (resRatios) return Object.keys(resRatios).map((r) => ({ value: r, label: r }));
+    // 空映射（resolutionSizeMap[res] 为 {}）表示「该分辨率不限制比例」，回退到模型全局比例，
+    // 否则会把比例错误过滤成空白（新接入模型常为空 resolution_size_map）
+    if (resRatios && Object.keys(resRatios).length > 0) return Object.keys(resRatios).map((r) => ({ value: r, label: r }));
     // resolutionSizeMap 中没有当前分辨率时，回退到模型全局支持的 aspect ratios
     return (selected.ratios || []).map((r) => ({ value: r, label: r }));
  }, [model, resolution, modelList]);

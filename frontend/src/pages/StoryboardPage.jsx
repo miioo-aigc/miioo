@@ -6679,7 +6679,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       backgroundColor: '#161616',
       borderRadius: '16px',
       border: '1px solid rgba(255,255,255,0.08)',
-      padding: '24px',
+      padding: '16px 24px 24px',
       overflow: 'hidden',
       boxSizing: 'border-box',
     }}>

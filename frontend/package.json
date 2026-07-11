@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^2.1.177",
+    "@lottiefiles/dotlottie-react": "^0.19.9",
     "@paper-design/shaders-react": "^0.0.76",
     "@tailwindcss/vite": "^4.2.4",
     "@tiptap/react": "^3.23.4",

@@ -534,7 +534,6 @@
   }
 }
 #dot01 {
-  translate: 188px 235px;
   transform-origin: 0 0;
   transform-box: view-box;
   offset-path: path('M1000 0 C666.667 0 333.333 0 0 0 C-62.667 32.667 -125.333 65.333 -188 98');

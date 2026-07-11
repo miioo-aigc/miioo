@@ -4,13 +4,8 @@ import Home from './pages/Home'
 import AdminConsolePage from './pages/AdminConsolePage'
 import LiquidGlassDefs from './components/LiquidGlassDefs'
 import { apiGetCurrentUser } from './api/user'
-import LoadingAnimation from './components/LoadingAnimation'
-
-// ⚠️ 预览用，看完删掉这段 + 下面 if (PREVIEW) return ...（选优后把 PREVIEW 改回 false）
-const PREVIEW = false
 
 function App() {
-
   const [adminView, setAdminView] = useState(false)
   const [adminUser, setAdminUser] = useState(null)
   const [toast, setToast] = useState(null)
@@ -35,36 +30,6 @@ function App() {
   const handleBackHome = useCallback(() => {
     setAdminView(false)
   }, [])
-
-  // ⚠️ 预览模式：A=现版 loading01 / B=连贯版 loading01b，并排对比选优
-  if (PREVIEW) {
-    const Demo = ({ label, hint, src }) => (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-        <p style={{ color: '#cfcfcf', fontSize: 14, fontWeight: 600, margin: 0 }}>{label}</p>
-        <p style={{ color: '#777', fontSize: 12, margin: '-8px 0 4px' }}>{hint}</p>
-        <LoadingAnimation introSrc={src} />
-        <LoadingAnimation introSrc={src} width="480px" />
-        <div style={{ width: '100%', maxWidth: 480 }}>
-          <LoadingAnimation introSrc={src} width="100%" />
-        </div>
-      </div>
-    )
-    return (
-      <div style={{
-        minHeight: '100vh',
-        background: '#0d0d0f',
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 56,
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        padding: '56px 24px',
-      }}>
-        <Demo label="A · loading01（现版）" hint="dot 从右上飞入、左侧出框" src="/loading01.svg" />
-        <Demo label="B · loading01b（连贯版）" hint="dot 从右飞入、落左下接住 loading02" src="/loading01b.svg" />
-      </div>
-    )
-  }
 
   if (adminView) {
     return (

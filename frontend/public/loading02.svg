@@ -1,0 +1,65 @@
+<svg width="1118" height="405" viewBox="0 0 1118 405" fill="none" xmlns="http://www.w3.org/2000/svg">
+<style>
+@keyframes kf_dot01_transform_0 {
+  0% {
+    animation-timing-function: cubic-bezier(0.098, 0.649, 0.256, 0.964);
+    transform: translateX(188px) translateY(235px) translateX(-188px) translateY(100px);
+  }
+  100% {
+    transform: translateX(188px) translateY(235px) translateX(860px) translateY(100px);
+  }
+}
+#dot01 {
+  transform-origin: 0 0;
+  animation: kf_dot01_transform_0 2.3s linear infinite alternate;
+}
+@keyframes kf_eye01_transform_0 {
+  0% {
+    animation-timing-function: cubic-bezier(0, 0, 0.124, 1.008);
+    transform: translateX(681.09px) translateY(344.714px) translate(21.91px, -139.714px) rotate(2.793rad) translate(-21.91px, 139.714px) rotate(-2.201rad) scaleX(1) scaleY(1);
+  }
+  100% {
+    transform: translateX(681.09px) translateY(344.714px) translate(21.91px, -139.714px) rotate(0rad) translate(-21.91px, 139.714px) rotate(-2.201rad) scaleX(1) scaleY(1);
+  }
+}
+#eye01 {
+  transform-origin: 0 0;
+  animation: kf_eye01_transform_0 2.3s linear infinite alternate;
+}
+@keyframes kf_eye02_transform_0 {
+  0% {
+    animation-timing-function: cubic-bezier(0, 0, 0.124, 1.008);
+    transform: translateX(912.337px) translateY(344.86px) translate(20.958px, -139.86px) rotate(2.793rad) translate(-20.958px, 139.86px) rotate(-2.207rad) scaleX(1) scaleY(1) skewX(0rad);
+  }
+  100% {
+    transform: translateX(912.337px) translateY(344.86px) translate(20.958px, -139.86px) rotate(0rad) translate(-20.958px, 139.86px) rotate(-2.207rad) scaleX(1) scaleY(1) skewX(0rad);
+  }
+}
+#eye02 {
+  transform-origin: 0 0;
+  animation: kf_eye02_transform_0 2.3s linear infinite alternate;
+}
+</style>
+<g id="loading02" clip-path="url(#clip0_3141_373)">
+<path id="R1" transform="translate(423 105)" d="M0 0H54V200H0V0Z" fill="white"/>
+<path id="R2" transform="translate(513 105)" d="M0 0H54V200H0V0Z" fill="white"/>
+<path id="_1" transform="translate(417)" d="M66 33C66 51.2254 51.2254 66 33 66C14.7746 66 0 51.2254 0 33C0 14.7746 14.7746 0 33 0C51.2254 0 66 14.7746 66 33Z" fill="#00C8FF"/>
+<path id="_2" opacity="0.6" transform="translate(445)" d="M66 33C66 51.2254 51.2254 66 33 66C14.7746 66 0 51.2254 0 33C0 14.7746 14.7746 0 33 0C51.2254 0 66 14.7746 66 33Z" fill="#00C8FF"/>
+<path id="_3" opacity="0.3" transform="translate(473)" d="M66 33C66 51.2254 51.2254 66 33 66C14.7746 66 0 51.2254 0 33C0 14.7746 14.7746 0 33 0C51.2254 0 66 14.7746 66 33Z" fill="#00C8FF"/>
+<path id="_4" opacity="0.1" transform="translate(501)" d="M66 33C66 51.2254 51.2254 66 33 66C14.7746 66 0 51.2254 0 33C0 14.7746 14.7746 0 33 0C51.2254 0 66 14.7746 66 33Z" fill="#00C8FF"/>
+<g id="M" transform="translate(88 58)">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M0 247L0.00488281 0H0.667969H5.58887C13.9136 29.0675 31.0835 54.3978 54 72.8936V247H0Z" id="M_bg_0" fill="white">
+</path>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M290 247H236V72.8936C258.917 54.3978 276.086 29.0674 284.41 0H289.332H289.995L290 247Z" fill="white"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M145 105C211.206 105 267.047 60.6278 284.41 0H289.332C289.773 4.60706 290 9.2771 290 14C290 94.0813 225.081 159 145 159C64.9189 159 0 94.0813 0 14C0 9.27722 0.226074 4.60718 0.667969 0H5.58887C22.9517 60.6278 78.7935 105 145 105Z" fill="white"/>
+</g>
+<path id="dot01" transform="translate(188 235)" d="M70 35C70 54.33 54.33 70 35 70C15.67 70 0 54.33 0 35C0 15.67 15.67 0 35 0C54.33 0 70 15.67 70 35Z" fill="#00C8FF"/>
+<path id="eye01" transform="translate(681.09 344.714) rotate(-126.087)" d="M100 0C155.228 0 200 44.7716 200 100C200 155.228 155.228 200 100 200C44.7717 200 0 155.228 0 100C0.000118256 44.7717 44.7717 0.000160217 100 0ZM58 92C35.9088 92.0002 18.0001 109.909 18 132C18 154.091 35.9087 172 58 172C80.0914 172 98 154.091 98 132C97.9999 109.909 80.0913 92 58 92Z" fill="white"/>
+<path id="eye02" transform="translate(912.337 344.86) rotate(-126.478)" d="M100 0C155.228 0.000183105 200 44.7717 200 100C200 155.228 155.228 200 100 200C44.7715 200 0 155.228 0 100C4.95911e-05 44.7716 44.7716 0 100 0ZM58 92C35.9086 92 18 109.909 18 132C18 154.091 35.9086 172 58 172C80.0912 172 98 154.091 98 132C98 109.909 80.0912 92.0002 58 92Z" fill="white"/>
+</g>
+<defs>
+<clipPath id="clip0_3141_373">
+<rect width="1118" height="405" fill="white"/>
+</clipPath>
+</defs>
+</svg>

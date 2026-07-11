@@ -23,6 +23,9 @@ const memStore = new Map();
 // 进行中的请求去重：同一 key 并发只发一次网络请求
 const inflight = new Map();
 
+// 代际计数器：每次 invalidate 递增，防止旧的 inflight 请求在 invalidate 后覆盖新数据
+let epoch = 0;
+
 // 订阅者（用于 SWR 后台刷新后通知 UI 更新）
 const subscribers = new Map(); // key -> Set<fn>
 
@@ -71,7 +74,7 @@ function removeRaw(medium, key) {
 
 function notify(key, data) {
   const subs = subscribers.get(key);
-  if (subs) subs.forEach((fn) => { try { fn(data); } catch { /* 订阅回调异常不影响其他订阅者 */ } });
+  if (subs) subs.forEach((fn) => { try { fn(data); } catch (e) { /* ignore */ } });
 }
 
 /**
@@ -127,9 +130,13 @@ export async function cached(key, fetcher, opts = {}) {
 function fetchAndStore(key, fetcher, medium, prevEntry, equals, onUpdate) {
   if (inflight.has(key)) return inflight.get(key);
 
+  const startEpoch = epoch;
+
   const p = (async () => {
     try {
       const data = await fetcher();
+      // 若在请求期间发生了 invalidate（epoch 已递增），丢弃本次结果，不覆盖新数据
+      if (startEpoch !== epoch) return data;
       const changed = !prevEntry || !isEqual(prevEntry.d, data, equals);
       writeRaw(medium, key, { t: now(), d: data });
       if (changed) {
@@ -173,6 +180,7 @@ function isEqual(a, b, equals) {
  *   invalidate('subjects:p1:', 'local')  // 指定介质
  */
 export function invalidate(keyOrPrefix, medium) {
+  epoch++;
   const isPrefix = keyOrPrefix.endsWith(':');
   const media = medium ? [medium] : ['memory', 'local', 'session'];
 
@@ -198,6 +206,15 @@ export function invalidate(keyOrPrefix, medium) {
       } catch { /* 忽略存储访问异常 */ }
     }
   }
+
+  // 同时清理 inflight 去重表，保证 invalidate 后的下一次 fetchAndStore 发起全新请求
+  if (!isPrefix) {
+    inflight.delete(keyOrPrefix);
+  } else {
+    for (const k of inflight.keys()) {
+      if (k.startsWith(keyOrPrefix)) inflight.delete(k);
+    }
+  }
 }
 
 /**
@@ -216,6 +233,13 @@ export function setCache(key, data, opts = {}) {
 export function peekCache(key, medium = 'memory') {
   const entry = readRaw(medium, key);
   return entry ? entry.d : undefined;
+}
+
+/**
+ * 同步读取缓存条目（含时间戳），用于判断是否命中本地缓存以及缓存年龄。
+ */
+export function peekCacheEntry(key, medium = 'memory') {
+  return readRaw(medium, key) ?? undefined;
 }
 
 /**

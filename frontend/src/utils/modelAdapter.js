@@ -8,19 +8,13 @@
  * 策略：后端优先；单个模型 capabilities 为 null 时回退到本地配置文件。
  */
 
-import {
-  getImageModelParams,
-  getVideoModelParams,
-  getImageModelList,
-  getVideoModelList,
-} from '../config';
 
 /**
  * 将后端模型列表转换为 CreationPage 需要的格式。
  */
 export function adaptModels(backendModels, genType) {
   if (!Array.isArray(backendModels) || backendModels.length === 0) {
-    return fallbackToLocal(genType);
+    return { modelOptions: [], capabilitiesMap: {} };
   }
 
   const options = [];
@@ -51,10 +45,16 @@ export function adaptModels(backendModels, genType) {
     const actualAllRefMode = refModes.find(r => !frameKeys.includes(r)) || 'full';
     // 「首尾帧」对应的实际后端值（含 multiframe）
     const actualFrameRefMode = refModes.find(r => frameKeys.includes(r)) || 'first_frame';
+    // 支持真人素材：通过能力字段 or 模型 ID 前缀判断
+    const supportsLiveMaterial = !!(
+      m.capabilities?.supports_live_material ||
+      /^(doubao-)?seedance/i.test(m.model_id)
+    );
     options.push({
       value: m.model_id, label: m.name,
       refModes, hasFrame, hasFull,
       actualAllRefMode, actualFrameRefMode,
+      supportsLiveMaterial,
     });
 
     if (m.capabilities && typeof m.capabilities === 'object' && Object.keys(m.capabilities).length > 0) {
@@ -77,11 +77,11 @@ export function getModelParams(genType, modelId, capabilitiesMap) {
       ? getDubbingModelParamsFromCap(backendCap)
      : getVideoModelParamsFromCap(backendCap);
   }
-  return genType === 'image'
-   ? getImageModelParams(modelId)
-    : genType === 'dubbing'
-    ? getDubbingModelParamsFromCap(null)
-   : getVideoModelParams(modelId);
+  // 无后端 capabilities 时返回空默认值
+  return {
+    ratios: [], resolutionRatios: {}, resolutions: [], counts: [],
+    defaults: { ratio: '', resolution: '', count: '' },
+  };
 }
 
 // ── Dubbing model params ──────────────────────────────────────────────────────
@@ -104,7 +104,8 @@ function getImageModelParamsFromCap(capabilities) {
   // Support both backend format and local config format
   const hasBackendFormat = capabilities.resolution_size_map !== undefined
     || capabilities.supported_resolutions !== undefined
-    || capabilities.supported_sizes !== undefined;
+    || capabilities.supported_sizes !== undefined
+    || capabilities.supported_aspect_ratios !== undefined;
 
   let resolutions, ratios, resolutionRatios, maxCount;
 
@@ -141,6 +142,9 @@ function getImageModelParamsFromCap(capabilities) {
       resolutionRatios = {};
     }
     for (const res of resolutions) {
+      // 已通过兜底（空 sizeMap 模型）为无映射的分辨率填充了全部比例，保留之；
+      // 仅用 resolution_size_map 精确覆盖存在映射的分辨率
+      if (resolutionRatios[res] !== undefined) continue;
       const map = sizeMap[res] || {};
       resolutionRatios[res] = Object.keys(map).filter(r => /^\d+:\d+$/.test(r));
     }
@@ -197,9 +201,10 @@ function getVideoModelParamsFromCap(capabilities) {
   // Support both backend format and local config format
   const hasBackendFormat = capabilities.supported_durations !== undefined
     || capabilities.supported_resolutions !== undefined
-    || capabilities.supported_sizes !== undefined;
+    || capabilities.supported_sizes !== undefined
+    || capabilities.supported_aspect_ratios !== undefined;
 
-  let ratios, resolutions, durations, refModes, supportsAudio;
+  let ratios, resolutions, durations, refModes, supportsAudio, resolutionRatios;
 
   if (hasBackendFormat) {
     // Backend format: flat arrays
@@ -235,6 +240,19 @@ function getVideoModelParamsFromCap(capabilities) {
 
     // Audio support
     supportsAudio = capabilities.supports_reference_audio || false;
+
+    // Build resolutionRatios from resolution_size_map for bi-directional filtering.
+    // 空 resolution_size_map 的模型（如 Vidu Q2 / Gemini）按兜底逻辑把全部比例挂到每个分辨率，
+    // 避免 sizeMap 为空导致 resolutionRatios[res] 缺失、UI 把比例过滤成空白。
+    const sizeMap = capabilities.resolution_size_map || {};
+    resolutionRatios = {};
+    const aspectRatiosAll = (capabilities.supported_aspect_ratios || [])
+      .filter(r => /^\d+:\d+$/.test(r));
+    for (const res of resolutions) {
+      const map = sizeMap[res] || {};
+      const validRatios = Object.keys(map).filter(r => /^\d+:\d+$/.test(r));
+      resolutionRatios[res] = validRatios.length > 0 ? validRatios : aspectRatiosAll;
+    }
   } else {
     // Local config format: resolutions = { "1080p": [{ratio, width, height}] }
     const resKeys = Object.keys(capabilities.resolutions || {})
@@ -249,6 +267,15 @@ function getVideoModelParamsFromCap(capabilities) {
     })) || [];
 
     resolutions = resKeys;
+
+    // Build resolutionRatios from local capabilities.resolutions
+    resolutionRatios = {};
+    for (const res of resKeys) {
+      const items = capabilities.resolutions?.[res];
+      if (Array.isArray(items)) {
+        resolutionRatios[res] = items.map(item => item.ratio);
+      }
+    }
 
     const [minDuration, maxDuration] = capabilities.outputVideo?.durationRange || [4, 15];
     durations = Array.from(
@@ -274,6 +301,7 @@ function getVideoModelParamsFromCap(capabilities) {
     ratios,
     resolutions,
     durations,
+    resolutionRatios,
     refModes,
     supportsAudio,
     defaults: capabilities.defaults || {
@@ -283,16 +311,4 @@ function getVideoModelParamsFromCap(capabilities) {
       refMode: refModes[0]?.value,
     },
   };
-}
-
-function fallbackToLocal(genType) {
-  if (genType === 'image') {
-    const list = getImageModelList();
-    return { modelOptions: list, capabilitiesMap: {} };
-  }
-  if (genType === 'dubbing') {
-    return { modelOptions: [], capabilitiesMap: {} };
-  }
-  const list = getVideoModelList();
-  return { modelOptions: list, capabilitiesMap: {} };
 }

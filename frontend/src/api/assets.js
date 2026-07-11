@@ -6,9 +6,15 @@ import { apiGetStoryboards } from './storyboard.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 
-function invalidateProjectAssetDependents(projectId) {
+// subjectType 存在时只失效对应类别的主体缓存（'character'|'scene'|'prop'），
+// 避免删除某一类资产时把三类主体缓存全部清掉。未知/未传时退回前缀失效（全部）。
+function invalidateProjectAssetDependents(projectId, subjectType) {
   if (!projectId) return;
-  invalidate(K.subjectsPrefix(projectId));
+  if (subjectType) {
+    invalidate(K.subjects(projectId, subjectType));
+  } else {
+    invalidate(K.subjectsPrefix(projectId));
+  }
   invalidate(K.storyboardsPrefix(projectId));
   invalidate(K.projectOverview(projectId));
   invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
@@ -82,18 +88,18 @@ export async function apiUpdateAsset(assetId, updates) {
   return res.json();
 }
 
-export async function apiDeleteAsset(assetId, { projectId } = {}) {
+export async function apiDeleteAsset(assetId, { projectId, subjectType } = {}) {
   await authFetch(`${BASE}/api/assets/${assetId}`, { method: 'DELETE' });
-  invalidateProjectAssetDependents(projectId);
+  invalidateProjectAssetDependents(projectId, subjectType);
 }
 
-export async function apiBatchDeleteAssets(asset_ids, { projectId } = {}) {
+export async function apiBatchDeleteAssets(asset_ids, { projectId, subjectType } = {}) {
   await authFetch(`${BASE}/api/assets/batch-delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ asset_ids }),
   });
-  invalidateProjectAssetDependents(projectId);
+  invalidateProjectAssetDependents(projectId, subjectType);
 }
 
 export async function apiBatchRestoreAssets(asset_ids) {
@@ -166,6 +172,7 @@ function normalizeAsset(item) {
     starred: item.is_starred ?? false,
     description: item.description ?? '',
     prompt: item.prompt ?? '',
+    input_prompt: item.input_prompt ?? '',
     model: item.model ?? '',
     ratio: item.ratio || meta.ratio || '',
     resolution: item.resolution ?? meta.resolution ?? item.size ?? '',
@@ -180,10 +187,19 @@ function normalizeAsset(item) {
     // 分集展示字段（用于区分不同集的同编号分镜，避免跨集合并）
     episodeLabel: item.episode_label ?? item.episodeLabel ?? meta.episode_label ?? null,
     duration: meta.duration ?? item.duration ?? null,
-    refImages: (Array.isArray(item.ref_images) ? item.ref_images : []).map(img => ({
-      url: normalizeImageUrl(img.url || img.file_url || ''),
-      title: img.title || img.name || '',
-    })).filter(img => img.url),
+    refImages: (() => {
+      // API 返回 reference_image_urls (string[])，兼容旧字段 ref_images (object[])
+      const raw = Array.isArray(item.reference_image_urls) ? item.reference_image_urls
+        : Array.isArray(item.ref_images) ? item.ref_images
+        : [];
+      return raw.map(ref => {
+        if (typeof ref === 'string') return { url: normalizeImageUrl(ref), title: '' };
+        return {
+          url: normalizeImageUrl(ref.url || ref.file_url || ''),
+          title: ref.title || ref.name || '',
+        };
+      }).filter(img => img.url);
+    })(),
   };
 }
 
@@ -217,8 +233,9 @@ function groupBySubject(normalized) {
       videoUrl: primaryImage.videoUrl ?? null,
       images: sorted,
       imageCount: images.length,
-      prompt: primaryImage.prompt,
-      model: primaryImage.model,
+     prompt: primaryImage.prompt,
+      input_prompt: primaryImage.input_prompt ?? '',
+     model: primaryImage.model,
       ratio: primaryImage.ratio,
       resolution: primaryImage.resolution,
       created_at: primaryImage.created_at,
@@ -272,6 +289,7 @@ function groupByShot(normalized) {
       images: sorted,
       imageCount: images.length,
       prompt: primaryImage.prompt,
+      input_prompt: primaryImage.input_prompt ?? '',
       model: primaryImage.model,
       ratio: primaryImage.ratio || sorted.find(i => i.ratio)?.ratio || '',
       resolution: primaryImage.resolution,

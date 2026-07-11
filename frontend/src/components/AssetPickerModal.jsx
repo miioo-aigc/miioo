@@ -171,13 +171,13 @@ export default function AssetPickerModal({
   function normalizeCreativeItem(item, type) {
     // 视频优先取 video_url，图片/音频取 original_url/file_url
     const rawUrl = type === 'video'
-      ? (item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '')
+      ? (item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || item.thumbnail || '')
       : (item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || '');
     const url = normalizeImageUrl(rawUrl) || null;
 
     // 视频封面：poster_url / thumbnail_url，用于静态预览
     const posterUrl = type === 'video'
-      ? (normalizeImageUrl(item.poster_url || item.posterUrl || item.thumbnail_url || item.thumbnailUrl || '') || null)
+      ? (normalizeImageUrl(item.poster_url || item.posterUrl || item.thumbnail_url || item.thumbnailUrl || item.preview_url || item.previewUrl || item.image_url || item.imageUrl || item.thumbnail || '') || null)
       : null;
 
     return {
@@ -187,7 +187,7 @@ export default function AssetPickerModal({
       url,
       posterUrl,
       // 悬浮预览大图用 fullUrl（视频类型可以用 poster）
-      fullUrl: type === 'video' ? (posterUrl || url) : url,
+      fullUrl: type === 'video' ? (posterUrl || url || item.thumbnail_url || item.thumbnailUrl || '') : url,
       fileUrl: url,
       asset_type: type,
       starred: item.is_favorite ?? item.is_liked ?? item.isLiked ?? false,
@@ -208,8 +208,11 @@ export default function AssetPickerModal({
       })),
       videos: generationsToFlatList(generationsByTab.video || [], favorites).map(item => ({
         ...item,
-        // 视频卡片封面：posterUrl 字段（不是 poster）
-        url: item.posterUrl || item.url || null,
+        // url = 视频地址（给 <video> 标签），posterUrl = 封面图片（给 <img> 标签）
+        url: item.videoUrl || item.video_url || item.posterUrl || item.url || null,
+        // 封面图可能来自 store 卡片本身的缩略图字段，也可能来自 generationsToFlatList 提取的 imageUrl/poster
+        posterUrl: item.thumbnail_url || item.thumbnailUrl || item.thumbnail || item.image_url || item.imageUrl || item.url || item.poster || null,
+        asset_type: 'video',
         bgColor: item.bgColor || '#1F2324',
       })),
       dubbing: generationsToFlatList(generationsByTab.dubbing || [], favorites).map(item => ({
@@ -305,7 +308,7 @@ export default function AssetPickerModal({
         setProjectsLoading(true);
         // 拉取所有项目列表
         const projList = await apiGetProjects();
-        const projs = Array.isArray(projList) ? projList.map(p => ({ id: p.id, name: p.name })) : [];
+        const projs = Array.isArray(projList) ? [...projList].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)).map(p => ({ id: p.id, name: p.name })) : [];
         setApiProjects(projs);
       } catch (err) {
         console.error('[AssetPickerModal] 拉取项目列表失败:', err);
@@ -325,6 +328,9 @@ export default function AssetPickerModal({
       url: normalizeImageUrl(a.thumbnail_url || a.file_url) || null,
       fullUrl: normalizeImageUrl(a.file_url) || null,
       fileUrl: normalizeImageUrl(a.file_url) || null,
+      posterUrl: a.asset_type === 'video'
+        ? (normalizeImageUrl(a.poster_url || a.posterUrl || a.thumbnail_url || a.thumbnailUrl || '') || null)
+        : null,
       subject_id: a.subject_id ?? null,
       starred: a.is_starred ?? false,
       is_primary: a.is_primary ?? false,
@@ -493,7 +499,7 @@ export default function AssetPickerModal({
   };
 
   const getProjectBtnRect = () => projectBtnRef.current?.getBoundingClientRect() ?? null;
-  const isCompactCard = activeTab === 'creative' && (creativeSubTab === '图片' || creativeSubTab === '视频');
+  const isCompactCard = (activeTab === 'creative' && (creativeSubTab === '图片' || creativeSubTab === '视频')) || (activeTab === 'project' && (projectSubTab === '分镜图' || projectSubTab === '分镜视频'));
 
   // 获取当前内容区资产列表
   const getCurrentAssets = () => {

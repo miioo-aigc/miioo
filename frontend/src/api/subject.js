@@ -5,9 +5,13 @@ import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 
 // 主体写操作后统一失效该项目的主体缓存 + 概览（概览含主体进度）
+// 主体的候选图/参考图（生成、上传、绑定、设定稿、删除）都会同步影响
+// 资产库-项目资产（按 subject_id 聚合的 category 资产），因此一并失效项目资产缓存，
+// 避免资产库开启状态下看到旧数据。
 function invalidateSubjects(projectId) {
   invalidate(K.subjectsPrefix(projectId));
   invalidate(K.projectOverview(projectId));
+  invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
 }
 
 export async function apiGetSubjects(projectId, { type, episode_id, limit } = {}) {
@@ -49,22 +53,25 @@ export async function apiGetSubjects(projectId, { type, episode_id, limit } = {}
   return [];
 }
 
-export async function apiGetSubjectsPage(projectId, { type, episode_id, limit = 20, cursor } = {}) {
+export async function apiGetSubjectsPage(projectId, { type, episode_id, limit = 20, offset } = {}) {
   const params = new URLSearchParams();
   if (type) params.append('type', type);
   if (episode_id) params.append('episode_id', episode_id);
   if (limit) params.append('limit', limit);
-  if (cursor) params.append('cursor', cursor);
+  if (offset != null) params.append('offset', offset);
   const query = params.toString();
   const url = query ? `${BASE}/api/projects/${projectId}/subjects?${query}` : `${BASE}/api/projects/${projectId}/subjects`;
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
   const data = await res.json();
-  if (Array.isArray(data)) return { list: data, nextCursor: null, hasMore: false, total: data.length };
+  if (Array.isArray(data)) return { list: data, nextOffset: null, hasMore: false, total: data.length };
   const list = data?.list ?? data?.items ?? data?.data ?? [];
+  const currentOffset = offset ?? 0;
+  const hasMore = data?.has_more ?? data?.hasMore ?? false;
+  const nextOffset = hasMore ? currentOffset + limit : null;
   return {
     list,
-    nextCursor: data?.next_cursor ?? data?.nextCursor ?? null,
-    hasMore: data?.has_more ?? data?.hasMore ?? false,
+    nextOffset,
+    hasMore,
     total: data?.total ?? list.length,
   };
 }
@@ -112,6 +119,10 @@ export async function apiUpdateSubject(projectId, subjectId, data) {
     throw err;
   }
   invalidateSubjects(projectId);
+  // 重新拉取主体列表以更新缓存，触发订阅者同步最新主图
+  apiGetSubjects(projectId, { type: "character" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "scene" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "prop" }).catch(() => {});
   return res.json();
 }
 
@@ -168,7 +179,9 @@ export async function apiGenerateSubjectImage(projectId, subjectId, params) {
     throw err;
   }
   invalidateSubjects(projectId);
-  return res.json();
+  const data = await res.json();
+  // 后端改为异步任务模式时，返回 task_id 供前端轮询恢复
+  return { ...data, _taskId: data.task_id || data.taskId || null };
 }
 
 export async function apiDeleteSubjectImage(projectId, subjectId, imageId) {
@@ -185,7 +198,38 @@ export async function apiSetPrimarySubjectImage(projectId, subjectId, imageId) {
     { method: 'PATCH', headers: { 'Content-Type': 'application/json' } }
   );
   invalidateSubjects(projectId); // 主图变化影响列表展示
+  // 重新拉取主体列表以更新缓存，触发订阅者（如 StoryboardPage）同步最新主图
+  apiGetSubjects(projectId, { type: "character" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "scene" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "prop" }).catch(() => {});
   return res.json();
+}
+
+// 取消定稿 / 清除主图（后端方案 B：语义化接口）
+// 后端会同时清空主体记录级 primary_image_url / image_url，并把候选图 is_primary 全部置 false，
+// 且不删除候选图本身。取消后重拉列表，卡片封面自然回到空占位。
+export async function apiUnsetPrimarySubjectImage(projectId, subjectId) {
+  const res = await authFetch(
+    `${BASE}/api/projects/${projectId}/subjects/${subjectId}/unset-primary`,
+    { method: 'PATCH', headers: { 'Content-Type': 'application/json' } }
+  );
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body?.detail || body?.message || '';
+      if (typeof detail === 'object') detail = JSON.stringify(detail);
+    } catch {}
+    const err = new Error(detail || `取消定稿失败（${res.status}）`);
+    err.status = res.status;
+    throw err;
+  }
+  invalidateSubjects(projectId); // 主图清空影响列表展示
+  // 重新拉取主体列表以更新缓存，触发订阅者同步（封面回到空占位）
+  apiGetSubjects(projectId, { type: "character" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "scene" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "prop" }).catch(() => {});
+  return res.json().catch(() => ({}));
 }
 
 export async function apiUploadSubjectReferenceImage(projectId, subjectId, file) {
@@ -209,6 +253,10 @@ export async function apiBindSubjectReferenceImages(projectId, subjectId, { asse
     }
   );
   invalidateSubjects(projectId);
+  // 重新拉取主体列表以更新缓存，触发订阅者同步最新主图
+  apiGetSubjects(projectId, { type: "character" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "scene" }).catch(() => {});
+  apiGetSubjects(projectId, { type: "prop" }).catch(() => {});
   return res.json();
 }
 
@@ -262,7 +310,7 @@ export async function apiBatchGenerate(projectIdOrParams, maybeParams) {
 // onSubjectError(subjectId, errorMsg)   — 单个主体生成失败
 // onComplete()                          — 全部完成
 // 如果后端尚未支持 SSE，会自动降级为普通 JSON 响应
-export async function apiBatchGenerateStream(projectId, params, { onSubjectImage, onSubjectError, onComplete: rawOnComplete, signal } = {}) {
+export async function apiBatchGenerateStream(projectId, params, { onTaskCreated, onSubjectImage, onSubjectError, onComplete: rawOnComplete, signal } = {}) {
   // 包装 onComplete：全部完成后先失效主体缓存，再触发调用方回调
   const onComplete = (...args) => {
     invalidateSubjects(projectId);
@@ -303,6 +351,7 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
     // ── 任务模式：后端返回 task_id → 轮询等待结果 ──────────────────
     if (data && (data.task_id || (data.id && data.status && (data.status === 'pending' || data.status === 'running')))) {
       const taskId = data.task_id || data.id;
+      onTaskCreated?.(taskId);
       const processedIds = new Set();
       let pollCount = 0;
       const MAX_POLLS = 200;
@@ -329,7 +378,7 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
               if (!sid || processedIds.has(sid)) continue;
 
               const imgUrl = item.image_url || item.imageUrl || item.url;
-              const errMsg = item.error || item.message;
+              const errMsg = item.error_msg || item.errorMsg || item.error || item.message;
 
               if (errMsg || item.success === false || item.status === 'error') {
                 processedIds.add(sid);
@@ -362,8 +411,8 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
       for (const item of results) {
         const sid = item.subject_id || item.id;
         const imgUrl = item.image_url || item.imageUrl || item.url;
-        if (item.status === 'error' || item.error || item.success === false) {
-          onSubjectError?.(sid, item.error || item.message || '生成失败');
+        if (item.status === 'error' || item.error_msg || item.errorMsg || item.error || item.success === false) {
+          onSubjectError?.(sid, item.error_msg || item.errorMsg || item.error || item.message || '生成失败');
         } else if (imgUrl) {
           onSubjectImage?.(sid, imgUrl);
         }
@@ -408,6 +457,7 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
           // SSE 中检测到任务模式 → 切换轮询
           if (parsed.type === 'task' && (parsed.task_id || (parsed.id && parsed.status))) {
             const taskId = parsed.task_id || parsed.id;
+            onTaskCreated?.(taskId);
             const processedIds = new Set();
             let pollCount = 0;
             const MAX_POLLS = 200;
@@ -432,7 +482,7 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
                     const s = item.subject_id || item.id;
                     if (!s || processedIds.has(s)) continue;
                     const u = item.image_url || item.imageUrl || item.url;
-                    const e = item.error || item.message;
+                    const e = item.error_msg || item.errorMsg || item.error || item.message;
                     if (e || item.success === false || item.status === 'error') {
                       processedIds.add(s);
                       onSubjectError?.(s, e || '生成失败');
@@ -461,7 +511,7 @@ export async function apiBatchGenerateStream(projectId, params, { onSubjectImage
           }
 
           const sid = parsed.subject_id || parsed.id;
-          const errMsg = parsed.error || parsed.message;
+          const errMsg = parsed.error_msg || parsed.errorMsg || parsed.error || parsed.message;
           const imgUrl = parsed.image_url || parsed.imageUrl || parsed.url;
 
           if (errMsg || parsed.success === false) {
@@ -586,16 +636,45 @@ export async function apiGetScriptWorkspace(projectId) {
 }
 
 export async function apiSaveScriptWorkspace(projectId, data) {
-  const res = await authFetch(
-    `${BASE}/api/projects/${projectId}/script-workspace`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+  const MAX_RETRIES = 3;
+  const RETRY_DELAYS = [2000, 4000, 8000];
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      console.warn(`save script workspace 失败，第 ${attempt} 次重试中...`);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt - 1]));
     }
-  );
-  invalidate(K.script(projectId));
-  return res.json();
+
+    let res;
+    try {
+      res = await authFetch(
+        `${BASE}/api/projects/${projectId}/script-workspace`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        }
+      );
+    } catch (err) {
+      if (err.isNetworkError && attempt < MAX_RETRIES) {
+        continue;
+      }
+      throw err;
+    }
+
+    if (res.status >= 500 && attempt < MAX_RETRIES) {
+      continue;
+    }
+
+    if (!res.ok) {
+      const err = new Error(`HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+
+    invalidate(K.script(projectId));
+    return res.json();
+  }
 }
 
 export async function apiChatScriptWorkspace(projectId, { message, model } = {}) {
@@ -623,17 +702,21 @@ export async function apiChatScriptWorkspaceStream(
   if (episode_count != null) body.episode_count = episode_count;
 
   const res = await authFetchStream(
-    `${BASE}/api/projects/${projectId}/script-workspace/chat`,
+    `${BASE}/api/projects/${projectId}/script-workspace/chat/stream`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+      },
       body: JSON.stringify(body),
       signal,
     }
   );
 
-  // 504 网关超时 → 抛出带标记的错误，由调用方统一处理
-  if (res.status === 504) {
+  // 504 / 524 网关超时 → 抛出带标记的错误，由调用方统一处理
+  // 504: nginx 网关超时；524: Cloudflare 源站超时（~100s 内无响应）
+  if (res.status === 504 || res.status === 524) {
     const err = new Error('Gateway Timeout');
     err.isGatewayTimeout = true;
     throw err;
@@ -729,20 +812,59 @@ export async function apiFinalizeScriptWorkspace(projectId, { episode_count, mod
   if (model) body.model = model;
   if (episode_count != null) body.episode_count = episode_count;
 
-  const res = await authFetch(
-    `${BASE}/api/projects/${projectId}/script-workspace/finalize`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+  const MAX_RETRIES = 3;
+  const RETRY_DELAYS = [2000, 4000, 8000];
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      console.warn(`finalize 请求失败，第 ${attempt} 次重试中...`);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt - 1]));
     }
-  );
-  // 定稿会拆分生成剧集，影响 script / episodes / overview
-  invalidate(K.script(projectId));
-  invalidate(K.episodes(projectId));
-  invalidate(K.projectOverview(projectId));
-  return res.json();
+
+    let res;
+    try {
+      res = await authFetch(
+        `${BASE}/api/projects/${projectId}/script-workspace/finalize`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }
+      );
+    } catch (err) {
+      // Cloudflare 524 在浏览器侧表现为网络错误（net::ERR_ABORTED），
+      // authFetch 会 catch 并包装为 isNetworkError，不会返回 Response 对象
+      if (err.isNetworkError && attempt < MAX_RETRIES) {
+        continue;
+      }
+      throw err;
+    }
+
+    // nginx 504 等 5xx 网关错误：重试
+    if (res.status >= 500 && attempt < MAX_RETRIES) {
+      continue;
+    }
+
+    if (!res.ok) {
+      let errorDetail = `HTTP ${res.status}`;
+      try {
+        const errBody = await res.json();
+        errorDetail = errBody?.message || errBody?.detail || errBody?.error || JSON.stringify(errBody);
+      } catch {
+        try { errorDetail = await res.text(); } catch { /* keep HTTP status */ }
+      }
+      const err = new Error(errorDetail);
+      err.status = res.status;
+      throw err;
+    }
+
+    invalidate(K.script(projectId));
+    invalidate(K.episodes(projectId));
+    invalidate(K.projectOverview(projectId));
+    return res.json();
+  }
 }
+
 
 export async function apiExtractSubjectsFromScript(projectId) {
   const res = await authFetch(
@@ -755,5 +877,21 @@ export async function apiExtractSubjectsFromScript(projectId) {
   // 抽取主体会新增主体数据
   invalidate(K.subjectsPrefix(projectId));
   invalidate(K.projectOverview(projectId));
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body?.detail || body?.message || '';
+    } catch {}
+    const statusMessages = {
+      524: 'AI 角色提取超时，剧本内容可能过长，请缩短后重试',
+      502: 'AI 提取服务暂时不可用，请稍后重试',
+      504: 'AI 提取服务响应超时，请稍后重试',
+    };
+    const msg = detail || statusMessages[res.status] || `主体提取失败（${res.status}）`;
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }

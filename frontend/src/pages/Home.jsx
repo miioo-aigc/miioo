@@ -1,7 +1,60 @@
+/**
+ * @file Home.jsx
+ * @structure-index
+ *
+ * ─── 全局常量 ────────────────────── L34–L130
+ *   ICON_STYLE            SVG 图标通用样式               L34
+ *   NAV_ITEMS             主导航项目配置                 L36–L103
+ *   COMMUNITY_QR_CODE_URL / BIZ_QR_CODE_URL / CREATION_MANUAL_URL  L127–L130
+ *   CMB_ICON_DEFAULT / CMB_ICON_HOVER                  L331–L355
+ *   SECONDARY_TEXT / SLOGAN_LINES / SOFT_BLUR_*         L420–L427
+ *   STEP_TABS              工作流步骤标签栏配置          L610–L767
+ *   BG_VIDEOS              背景视频列表                 L907–L908
+ *
+ * ─── 原子 UI 组件 ────────────────── L87–L417
+ *   <MenuPopupItem>        通用菜单项按钮                L87–L125
+ *   <QRCodePopup>          二维码浮层组件                L132–L141
+ *   <MoreOptionsMenu>      更多选项菜单                  L143–L271
+ *   BOTTOM_NAV_ITEMS       底部导航项目配置              L273–L329
+ *   <CreationManualButton> 创作手册按钮                  L357–L385
+ *   <LoginButton>          登录按钮                      L387–L417
+ *
+ * ─── 业务组件 ────────────────────── L429–L908
+ *   <HomeSloganText>       首页标语文字动画              L429–L535
+ *   <StartCreationButton>  开始创作按钮                  L537–L608
+ *   <WorkflowHeadbar>      工作流顶栏                    L769–L905
+ *
+ * ─── 主页面入口 ──────────────────── L910–L2189
+ *   export default function Home()                     L910
+ *     ├─ [状态] activeKey / bottomActiveKey / 页面模态开关 / 登录与API状态   L911–L966
+ *     ├─ [状态] projects / activeProject / 主体 / 剧本 / 分镜 / 工作流       L927–L962
+ *     ├─ [Ref] toastTimerRef / pendingExtractionsRef / currentProjectIdRef / bgVideoRef  L963–L975
+ *     ├─ [函数] showToast(msg, type)                  L977
+ *     ├─ [函数] handleVideoEnded()                    L984
+ *     ├─ [函数] handleLogout()                        L995
+ *     ├─ [函数] loadProjectDetails(projectId)         L1057
+ *     ├─ [函数] handleUnlockStep(stepKey)             L1435
+ *     ├─ [函数] loadMoreSubjects(type)                L1445
+ *     ├─ [函数] handleExtractSubjects()               L1467
+ *     ├─ [函数] handleGenerateStoryboards()           L1532
+ *     ├─ [函数] handleScriptFinalized()               L1666
+ *     ├─ [函数] handleNavChange(key)                  L1673
+ *     ├─ [函数] handleBottomNavChange(key)            L1754
+ *     ├─ [函数] handleProjectCreated(project)         L1770
+ *     ├─ [副作用] 键盘快捷键 "i" 监听 / currentProjectIdRef 同步  L966–L975
+ *     ├─ [副作用] 页面初始化 / 登录检查 / 通知轮询 / unlockedSteps 持久化  L1018–L1054
+ *     ├─ [副作用] 微信回调 / 项目恢复自动加载 / 提取后跳转 / forceExtract  L1240–L1430
+ *     └─ [副作用] 事件监听 (auth:logout / message / project-assets:deleted)  L1387–L1430
+ *
+ * ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-07-06  新增 subject cache 订阅 useEffect，实时同步 sharedChars/sharedScenes/sharedProps
+ *   2026-07-01  初始结构索引建立
+ */
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PulsingBorder } from '@paper-design/shaders-react';
-import { apiGetProjects, apiUpdateProject, apiDeleteProject, apiGetProject, apiGetProjectOverview } from '../api/project';
+import { apiGetProjects, apiUpdateProject, apiCopyProject, apiDeleteProject, apiGetProject, apiGetProjectOverview } from '../api/project';
 import { getToken, getRefreshToken, refreshAccessToken } from '../api/request';
 import { clearTokens, apiLogout, apiCompleteWechatCallback } from '../api/auth';
 import { apiListProviders } from '../api/config';
@@ -151,7 +204,7 @@ function MoreOptionsMenu({ close, setWatermarkSettingsOpen }) {
     } else if (label === '更新日志') {
       // 链接待补充
     } else if (label === '开源社区') {
-      window.open('https://github.com/wangchengxv/miioo', '_blank');
+      window.open('https://github.com/miioo-aigc/miioo', '_blank');
     } else if (label === '用户协议') {
       window.open('https://gcn0je6sgrhe.feishu.cn/wiki/FIspwGURtikxiwk28svc4thOn9c?from=from_copylink', '_blank');
     } else if (label === '隐私政策') {
@@ -164,13 +217,11 @@ function MoreOptionsMenu({ close, setWatermarkSettingsOpen }) {
     }
   };
 
-  const getBizQrTop = () => {
-    if (!bizItemRef.current || !containerRef.current) return 0;
-    const itemTop = bizItemRef.current.offsetTop;
-    const popupHeight = 177;
+
+  const getBizQrLeft = () => {
+    if (!containerRef.current) return 0;
     const containerRect = containerRef.current.getBoundingClientRect();
-    const maxTop = window.innerHeight - 24 - popupHeight - containerRect.top;
-    return Math.min(itemTop, maxTop);
+    return containerRect.right + 4;
   };
 
   const FONT = "'AlibabaPuHuiTi_2_55_Regular', 'Alibaba PuHuiTi 2.0', system-ui, sans-serif";
@@ -186,7 +237,7 @@ function MoreOptionsMenu({ close, setWatermarkSettingsOpen }) {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'stretch',
-        width: '150px',
+        width: '178px',
         borderRadius: '8px',
         boxShadow: '#00000066 0px 4px 16px',
         backgroundColor: '#161616',
@@ -221,13 +272,13 @@ function MoreOptionsMenu({ close, setWatermarkSettingsOpen }) {
           borderRadius: '6px',
         }}
       >
-        <span style={{ fontFamily: FONT, fontSize: '10px', lineHeight: '12px', color: '#FFFFFF80' }}>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', color: '#FFFFFF80' }}>
           ©2026 Miioo AI
         </span>
-        <span style={{ fontFamily: FONT, fontSize: '10px', lineHeight: '12px', color: '#FFFFFF80' }}>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', color: '#FFFFFF80' }}>
           济南三脚猫科技有限公司
         </span>
-        <span style={{ fontFamily: FONT, fontSize: '10px', lineHeight: '12px', color: '#FFFFFF80' }}>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', color: '#FFFFFF80' }}>
           鲁ICP备2026030778号
         </span>
       </div>
@@ -236,9 +287,9 @@ function MoreOptionsMenu({ close, setWatermarkSettingsOpen }) {
       {bizQrVisible && (
         <div
           style={{
-            position: 'absolute',
-            left: 'calc(100% + 8px)',
-            top: getBizQrTop(),
+            position: 'fixed',
+            left: getBizQrLeft(),
+            bottom: '24px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -303,7 +354,7 @@ const BOTTOM_NAV_ITEMS = [
   {
     key: 'api',
     label: 'API',
-    tooltip: '配置API',
+    tooltip: '配置API Key',
     icon: (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={ICON_STYLE}>
         <rect x="2" y="2" width="12" height="12" rx="2" stroke="#FFFFFF" />
@@ -766,7 +817,7 @@ const STEP_TABS = [
   },
 ];
 
-function WorkflowHeadbar({ activeStep, onStepChange, unlockedSteps, isLoggedIn, currentUser, onLoginClick, onLogout, onOpenProfile, onLogoClick }) {
+function WorkflowHeadbar({ activeStep, onStepChange, unlockedSteps, isLoggedIn, currentUser, onLoginClick, onLogout, onOpenProfile, onLogoClick, onGoToAdmin }) {
   return (
     <div className="[font-synthesis:none] flex items-center justify-between gap-[37px] self-stretch h-[60px] relative shrink-0 antialiased px-24">
       {/* Logo */}
@@ -796,6 +847,8 @@ function WorkflowHeadbar({ activeStep, onStepChange, unlockedSteps, isLoggedIn, 
             avatarUrl={currentUser.avatar_url ?? ''}
             onLogout={onLogout}
             onOpenProfile={onOpenProfile}
+            isAdmin={currentUser.is_admin ?? false}
+            onGoToAdmin={onGoToAdmin}
           />
         ) : (
           <LoginButton onClick={onLoginClick} />
@@ -887,7 +940,7 @@ function normalizeSubjects(items) {
   const list = items.map(item => ({
     ...item,
     desc: item.description ?? item.desc ?? '',
-    imageUrl: normalizeImageUrl(item.primary_image_url ?? item.image_url ?? item.imageUrl),
+    imageUrl: normalizeImageUrl(item.primary_image_url ?? item.image_url ?? item.imageUrl ?? item.reference_image_url),
   }));
 
   // 按创建时间稳定排序，避免后端返回顺序不一致导致列表跳动
@@ -905,7 +958,7 @@ function normalizeSubjects(items) {
 const BG_VIDEOS = ["/video/bg-video-01.mp4", "/video/bg-video-02.mp4", "/video/bg-video-03.mp4", "/video/bg-video-04.mp4", "/video/bg-video-05.mp4", "/video/bg-video-06.mp4", "/video/bg-video-07.mp4", "/video/bg-video-08.mp4"];
 const BG_VIDEO_POSTER = "/video/bg-video-poster.png";
 
-export default function Home({ onProjectCreated }) {
+export default function Home({ onProjectCreated, onGoToAdmin }) {
   const [activeKey, setActiveKey] = useState(() => {
     // 只有明确保存了非 home 的 activeKey 才恢复，否则默认 home
     const savedKey = localStorage.getItem('miioo_active_key');
@@ -934,9 +987,9 @@ export default function Home({ onProjectCreated }) {
   const [sharedProps, setSharedProps] = useState(null);
   // 主体分页 meta：{ cursor, hasMore, loading, rawList }
   const [subjectPageMeta, setSubjectPageMeta] = useState({
-    chars:  { cursor: null, hasMore: false, loading: false, rawList: [] },
-    scenes: { cursor: null, hasMore: false, loading: false, rawList: [] },
-    props:  { cursor: null, hasMore: false, loading: false, rawList: [] },
+    chars:  { nextOffset: null, hasMore: false, loading: false, rawList: [] },
+    scenes: { nextOffset: null, hasMore: false, loading: false, rawList: [] },
+    props:  { nextOffset: null, hasMore: false, loading: false, rawList: [] },
   });
   const [extractError, setExtractError] = useState(null);
   const [extractErrorProjectId, setExtractErrorProjectId] = useState(null);
@@ -1159,9 +1212,12 @@ export default function Home({ onProjectCreated }) {
           console.error('加载剧本数据失败:', err);
           return { content: '', episodes: [], phase: 'initial' };
         }),
-        apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextCursor: null, hasMore: false })),
-        apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextCursor: null, hasMore: false })),
-        apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextCursor: null, hasMore: false })),
+        // 注意：失败时返回 error 哨兵，而非空列表。
+        // 否则某一类主体接口 500（如后端主图脏数据触发 MultipleResultsFound）会被吞成空数组，
+        // 直接清空该类卡片，让用户误以为数据被删。error 标记让下方保留原有卡片并提示重试。
+        apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }).catch((err) => ({ error: true, err })),
+        apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }).catch((err) => ({ error: true, err })),
+        apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }).catch((err) => ({ error: true, err })),
         apiGetEpisodes(projectId).catch(() => []),
         apiGetProjectOverview(projectId).catch(() => null),
       ]);
@@ -1173,15 +1229,22 @@ export default function Home({ onProjectCreated }) {
       setScriptPhase(scriptContent ? 'view' : 'initial');
       setScriptHasStarted(!!scriptContent);
 
-      setSharedChars(normalizeSubjects(charsPage.list));
-      setSharedScenes(normalizeSubjects(scenesPage.list));
-      setSharedProps(normalizeSubjects(propsPage.list));
-      setSubjectPageMeta({
-        chars:  { cursor: charsPage.nextCursor,  hasMore: charsPage.hasMore,  loading: false, rawList: charsPage.list },
-        scenes: { cursor: scenesPage.nextCursor, hasMore: scenesPage.hasMore, loading: false, rawList: scenesPage.list },
-        props:  { cursor: propsPage.nextCursor,  hasMore: propsPage.hasMore,  loading: false, rawList: propsPage.list },
-      });
-      // setSharedProps already set above from propsPage.list
+      // 某类主体加载失败时：不覆盖已有卡片（避免误清空），仅在 meta 上标记 error 供 UI 提示重试。
+      // 加载成功时才写入最新数据。
+      if (!charsPage.error)  setSharedChars(normalizeSubjects(charsPage.list));
+      if (!scenesPage.error) setSharedScenes(normalizeSubjects(scenesPage.list));
+      if (!propsPage.error)  setSharedProps(normalizeSubjects(propsPage.list));
+
+      const buildMeta = (page) => page.error
+        ? { nextOffset: null, hasMore: false, loading: false, rawList: null, error: true }
+        : { nextOffset: page.nextOffset, hasMore: page.hasMore, loading: false, rawList: page.list, error: false };
+      setSubjectPageMeta((prev) => ({
+        // 失败类保留上一次的分页 meta（rawList 等），只把 error 标记合并进去，
+        // 这样已加载的卡片和「加载更多」状态不被清掉。
+        chars:  charsPage.error  ? { ...(prev?.chars  || {}), loading: false, error: true } : buildMeta(charsPage),
+        scenes: scenesPage.error ? { ...(prev?.scenes || {}), loading: false, error: true } : buildMeta(scenesPage),
+        props:  propsPage.error  ? { ...(prev?.props  || {}), loading: false, error: true } : buildMeta(propsPage),
+      }));
 
       // 从后端数据中提取剧集状态，优先用 overview 的 episode_progress（状态更精准）
       // 不依赖后端 status 字符串（实际值与文档不符），直接用计数字段判断：
@@ -1382,6 +1445,27 @@ export default function Home({ onProjectCreated }) {
     return unsubscribe;
   }, []);
 
+  // 订阅主体缓存更新 —— 当 SubjectPage 修改主体（如更换定稿图）后，分镜页面自动同步最新参考图
+  useEffect(() => {
+    if (!activeProject?.id) return;
+    const pid = activeProject.id;
+    const unsubs = [
+      subscribe(K.subjects(pid, 'character'), (data) => {
+        const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
+        if (list.length > 0) setSharedChars(normalizeSubjects(list));
+      }),
+      subscribe(K.subjects(pid, 'scene'), (data) => {
+        const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
+        if (list.length > 0) setSharedScenes(normalizeSubjects(list));
+      }),
+      subscribe(K.subjects(pid, 'prop'), (data) => {
+        const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
+        if (list.length > 0) setSharedProps(normalizeSubjects(list));
+      }),
+    ];
+    return () => unsubs.forEach((fn) => fn());
+  }, [activeProject?.id]);
+
   useEffect(() => {
     const handleForceLogout = () => {
       if (!localStorage.getItem('token')) return;
@@ -1402,21 +1486,32 @@ export default function Home({ onProjectCreated }) {
       if (!projectId || projectId !== activeProject?.id) return;
 
       const SUBJECT_LIMIT = 20;
-      Promise.all([
-        apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextCursor: null, hasMore: false })),
-        apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextCursor: null, hasMore: false })),
-        apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }).catch(() => ({ list: [], nextCursor: null, hasMore: false })),
-      ]).then(([charsPage, scenesPage, propsPage]) => {
-        setSharedChars(normalizeSubjects(charsPage.list));
-        setSharedScenes(normalizeSubjects(scenesPage.list));
-        setSharedProps(normalizeSubjects(propsPage.list));
-        setSubjectPageMeta({
-          chars:  { cursor: charsPage.nextCursor,  hasMore: charsPage.hasMore,  loading: false, rawList: charsPage.list },
-          scenes: { cursor: scenesPage.nextCursor, hasMore: scenesPage.hasMore, loading: false, rawList: scenesPage.list },
-          props:  { cursor: propsPage.nextCursor,  hasMore: propsPage.hasMore,  loading: false, rawList: propsPage.list },
-        });
-      }).catch((err) => {
-        console.error('资产删除后刷新主体数据失败:', err);
+      // subjectType（'character'|'scene'|'prop'）存在时只刷新对应类别，
+      // 完全不触碰其它类别的 state —— 删角色不会牵动场景/道具卡片。
+      // 缺失（旧事件或非主体资产）时回退刷新全部三类。
+      const subjectType = event?.detail?.subjectType;
+      const TYPE_TO_KEY = { character: 'chars', scene: 'scenes', prop: 'props' };
+      const SETTERS = { chars: setSharedChars, scenes: setSharedScenes, props: setSharedProps };
+
+      const targetTypes = subjectType && TYPE_TO_KEY[subjectType]
+        ? [subjectType]
+        : ['character', 'scene', 'prop'];
+
+      // 每个请求成功/失败独立处理：失败时保留原 state，不用空数组覆盖，
+      // 避免刷新失败导致已有卡片消失。
+      targetTypes.forEach((type) => {
+        const key = TYPE_TO_KEY[type];
+        apiGetSubjectsPage(projectId, { type, limit: SUBJECT_LIMIT })
+          .then((page) => {
+            SETTERS[key](normalizeSubjects(page.list));
+            setSubjectPageMeta((prev) => ({
+              ...prev,
+              [key]: { nextOffset: page.nextOffset, hasMore: page.hasMore, loading: false, rawList: page.list },
+            }));
+          })
+          .catch((err) => {
+            console.error(`资产删除后刷新主体数据失败（${type}）:`, err);
+          });
       });
     };
 
@@ -1446,18 +1541,38 @@ export default function Home({ onProjectCreated }) {
     if (!meta || meta.loading || !meta.hasMore) return;
     setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: true } }));
     try {
-      const page = await apiGetSubjectsPage(activeProject.id, { type, limit: 20, cursor: meta.cursor });
+      const page = await apiGetSubjectsPage(activeProject.id, { type, limit: 20, offset: meta.nextOffset });
       const newItems = normalizeSubjects(page.list);
       if (key === 'chars') setSharedChars(prev => [...(prev || []), ...newItems]);
       else if (key === 'scenes') setSharedScenes(prev => [...(prev || []), ...newItems]);
       else setSharedProps(prev => [...(prev || []), ...newItems]);
       setSubjectPageMeta(prev => ({
         ...prev,
-        [key]: { cursor: page.nextCursor, hasMore: page.hasMore, loading: false, rawList: [...meta.rawList, ...page.list] },
+        [key]: { nextOffset: page.nextOffset, hasMore: page.hasMore, loading: false, rawList: [...meta.rawList, ...page.list] },
       }));
     } catch (err) {
       console.error(`[Home] 加载更多主体失败 (${type}):`, err);
       setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: false } }));
+    }
+  };
+
+  // 重试单类主体首屏加载（首屏 500 后由 SubjectPage 的错误条触发）
+  const retrySubjects = async (type) => {
+    const key = type === 'character' ? 'chars' : type === 'scene' ? 'scenes' : 'props';
+    setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: true } }));
+    try {
+      const page = await apiGetSubjectsPage(activeProject.id, { type, limit: 20 });
+      const items = normalizeSubjects(page.list);
+      if (key === 'chars') setSharedChars(items);
+      else if (key === 'scenes') setSharedScenes(items);
+      else setSharedProps(items);
+      setSubjectPageMeta(prev => ({
+        ...prev,
+        [key]: { nextOffset: page.nextOffset, hasMore: page.hasMore, loading: false, rawList: page.list, error: false },
+      }));
+    } catch (err) {
+      console.error(`[Home] 重试加载主体失败 (${type}):`, err);
+      setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: false, error: true } }));
     }
   };
 
@@ -1707,7 +1822,7 @@ export default function Home({ onProjectCreated }) {
       bubble: (
         <div
           style={{
-            position: 'absolute',
+            position: 'fixed',
             left: '35.5px',
             top: '50%',
             translate: '0 -50%',
@@ -1734,7 +1849,7 @@ export default function Home({ onProjectCreated }) {
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             style={{
-              position: 'absolute',
+              position: 'fixed',
               left: 7,
               top: '50%',
               rotate: '90deg',
@@ -1845,6 +1960,8 @@ export default function Home({ onProjectCreated }) {
                 avatarUrl={currentUser.avatar_url ?? ''}
                 onLogout={handleLogout}
                 onOpenProfile={() => setProfileOpen(true)}
+                isAdmin={currentUser.is_admin ?? false}
+                onGoToAdmin={onGoToAdmin}
               />
             ) : (
               <LoginButton onClick={() => setLoginOpen(true)} />
@@ -1937,6 +2054,13 @@ export default function Home({ onProjectCreated }) {
                 onRenameProject={(projectId, newName) => {
                   apiUpdateProject(projectId, { name: newName }).then(() => {
                     setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, name: newName } : p)));
+                  });
+                }}
+                onCopyProject={(project) => {
+                  apiCopyProject(project.id).then((created) => {
+                    if (!created || !created.id) return;
+                    const normalized = { ...created, cover: created.cover ?? created.cover_url };
+                    setProjects((prev) => [normalized, ...prev]);
                   });
                 }}
                 onDeleteProject={(projectId) => {
@@ -2042,6 +2166,12 @@ export default function Home({ onProjectCreated }) {
                 hasMoreChars={subjectPageMeta.chars.hasMore}
                 hasMoreScenes={subjectPageMeta.scenes.hasMore}
                 hasMoreProps={subjectPageMeta.props.hasMore}
+                charsLoadError={!!subjectPageMeta.chars.error}
+                scenesLoadError={!!subjectPageMeta.scenes.error}
+                propsLoadError={!!subjectPageMeta.props.error}
+                onRetryChars={() => retrySubjects('character')}
+                onRetryScenes={() => retrySubjects('scene')}
+                onRetryProps={() => retrySubjects('prop')}
               />
             )}
             {activeKey === 'project' && activeProject && activeStep === 'storyboard' && (

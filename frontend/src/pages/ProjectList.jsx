@@ -44,6 +44,15 @@ function PencilIcon() {
   );
 }
 
+function CopyIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+      <rect x="5" y="5" width="7.5" height="7.5" rx="1.5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M9 5V3.5C9 2.672 8.328 2 7.5 2H3.5C2.672 2 2 2.672 2 3.5V7.5C2 8.328 2.672 9 3.5 9H5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function TrashIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
@@ -67,7 +76,7 @@ function CloseIcon() {
 
 // ── More Menu Dropdown ─────────────────────────────────────────────────────
 
-function MoreMenu({ onRename, onDelete, onClose }) {
+function MoreMenu({ onRename, onCopy, onDelete, onClose }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -96,6 +105,7 @@ function MoreMenu({ onRename, onDelete, onClose }) {
       }}
     >
       <MoreMenuItem icon={<PencilIcon />} label="重命名" onClick={onRename} />
+      <MoreMenuItem icon={<CopyIcon />} label="复制项目" onClick={onCopy} />
       <MoreMenuItem icon={<TrashIcon />} label="删除" danger onClick={onDelete} />
     </div>
   );
@@ -508,7 +518,7 @@ function NewProjectCard({ onClick }) {
   );
 }
 
-function ProjectCard({ project, onRename, onDelete, onOpen }) {
+function ProjectCard({ project, onRename, onCopy, onDelete, onOpen }) {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -623,6 +633,7 @@ function ProjectCard({ project, onRename, onDelete, onOpen }) {
             {menuOpen && (
               <MoreMenu
                 onRename={() => { setMenuOpen(false); onRename?.(project); }}
+                onCopy={() => { setMenuOpen(false); onCopy?.(project); }}
                 onDelete={() => { setMenuOpen(false); onDelete?.(project); }}
                 onClose={() => setMenuOpen(false)}
               />
@@ -636,7 +647,7 @@ function ProjectCard({ project, onRename, onDelete, onOpen }) {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function ProjectList({ projects = [], onNewProject, onRenameProject, onDeleteProject, onOpenProject }) {
+export default function ProjectList({ projects = [], onNewProject, onRenameProject, onCopyProject, onDeleteProject, onOpenProject }) {
   const [searchValue, setSearchValue] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchHovered, setSearchHovered] = useState(false);
@@ -715,13 +726,14 @@ export default function ProjectList({ projects = [], onNewProject, onRenameProje
         </div>
 
         {/* Card grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(240px, 16vw, 288px), 1fr))', gap: '16px' }}>
           <NewProjectCard onClick={onNewProject} />
           {filtered.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}
               onRename={(p) => setRenameTarget(p)}
+              onCopy={(p) => onCopyProject?.(p)}
               onDelete={(p) => setDeleteTarget(p)}
               onOpen={(p) => onOpenProject?.(p)}
             />

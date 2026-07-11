@@ -1,8 +1,115 @@
+/**
+ * @file CreationPage.jsx
+ * @structure-index
+ *
+ * ─── 全局常量 & 工具函数 ───────────────────────────────────── L17–L98
+ *   FONT / FONT_MEDIUM                                         L17–L18
+ *   ALLOWED_EXTS / ALLOWED_IMAGE_EXTS / ...                   L78–L82
+ *   formatFileSize()                                           L84
+ *   truncateFileName()                                         L90
+ *   downloadImage()                                            L60
+ *
+ * ─── 动画注入函数（运行时往 <head> 写 keyframe）────────────── L100–L235
+ *   ensureRotateKeyframe()   chatbox 边框旋转动画              L202
+ *   ensureThinkingStyle()    thinking 点动画                  L220
+ *
+ * ─── 原子 UI 组件（无业务逻辑）────────────────────────────── L240–L1135
+ *   <Toast>                  全局 Toast 容器                  L241
+ *   <CopyPromptButton>       复制按钮                         L20
+ *   <StarIcon>               收藏星形图标                     L46
+ *   <UploadPlaceholder>      文件上传触发区域（含菜单）        L278
+ *   <UploadMenuItem>         上传菜单项                       L620
+ *   <FrameUploader>          首尾帧上传（视频模式专用）        L约460
+ *   <ImageViewModal>         查看图片/视频的浮层              L654
+ *   <FileCard>               已上传文件卡片（图/视/文本）      L739
+ *   <Dropdown>               通用下拉容器                     L951
+ *   <DropdownItem>           通用下拉菜单项                   L1024
+ *   <GenTypeDropdownItem>    生成类型专用菜单项               L989
+ *
+ * ─── 业务选择器组件 ────────────────────────────────────────── L1063–L2106
+ *   <GenTypeSelector>        生成类型下拉（图片/视频/配音）    L1064
+ *   <RefModeSelector>        参考模式下拉（全能/首尾帧/多帧）  L1490
+ *   <ModelSelector>          模型选择下拉                     L约1600
+ *   <ParamsSelector>         图片参数（比例/分辨率/数量）      L约1700
+ *   <VideoParamsSelector>    视频参数（比例/分辨率/时长）      L约1800
+ *   <DubbingAdjust>          配音参数（语速/情绪）            L约1900
+ *   <SoundToggle>            视频音效开关                     L约2000
+ *   <SendButton>             发送/生成按钮                    L约2050
+ *
+ * ─── 核心输入组件 ──────────────────────────────────────────── L约2100–L3143
+ *   <InputCard>              主输入框（含文件上传/参数控制）   L约2100
+ *     ├ 状态: files / firstFrameFile / lastFrameFile / prompt
+ *     ├ 状态: genType / model / ratio / resolution / count
+ *     ├ Ref: editorRef / mentionFromTagRef / savedCursorRangeRef / savedContentRef(失败回退)
+ *     └ handleSend() → 构建请求 → apiGenerateCreation → 轮询
+ *
+ * ─── 空状态图标 ────────────────────────────────────────────── L3145–L3300
+ *   <EmptyIconShell>         空状态图标外壳（SVG 渐变容器）   L3146
+ *   <CreationEmptyIconImage> 图片空态图标                     L3170
+ *   <CreationEmptyIconVideo> 视频空态图标                     L3190
+ *   <CreationEmptyIconAudio> 配音空态图标                     L约3230
+ *
+ * ─── 结果卡片组件 ──────────────────────────────────────────── L约3300–L4460
+ *   <ImageResultCard>        单张图片结果卡                   L约3300
+ *   <VideoResultCard>        单条视频结果卡                   L约3600
+ *   <AudioResultCard>        单条配音结果卡                   L约3900
+ *   <CreationResultState>    结果列表容器（含无限滚动）        L约4100
+ *   <CreationEmptyState>     空状态容器（含 InputCard 定位）   L约4415
+ *
+ * ─── 顶部 TabBar & 批量操作 ────────────────────────────────── L4460–L4607
+ *   <CreationTabBar>         图片/视频/配音 Tab               L4467
+ *   <BatchButton>            批量操作触发按钮                  L4510
+ *   <CreationGhostBtn>       批量操作幽灵按钮（下载等）        L4569
+ *   <CreationPlainBtn>       批量操作普通按钮（删除/取消）     L4590
+ *   <ClearHistoryButton>     清空创作历史按钮（与批量操作同级） L4798
+ *
+ * ─── 主页面入口 ────────────────────────────────────────────── L4609–L5736
+ *   <CreationLoginEmptyState>  未登录空态                     L4610
+ *
+ *   模块级常量（组件卸载重挂载不重置）                         L4677–L4681
+ *     SESSION_KEY / PENDING_CREATION_TASKS_KEY
+ *     _sessionIdRef / _sessionInitRef / _restoredShotIdsRef
+ *
+ *   export default CreationPage()                              L4856
+ *     ├─ [状态] activeTab / genType / generating              L4856–L4858
+ *     ├─ [状态] activeCountByTab（各类型并发数）               L4859
+ *     ├─ [Store] useCreationStore → generations / favorites   L4861–L4868
+ *     ├─ [状态] toasts + showToast()                          L4873–L4880
+ *     ├─ [状态] videoDetailModal                              L5369
+ *     ├─ [状态] modelOptions / model / creationParams         L5396–L5398
+ *     ├─ [状态] batchMode / batchDeleteConfirm / selected     L5402–L5404
+ *     ├─ [状态] clearHistoryConfirm                           L5471
+ *     │
+ *     ├─ [函数] normalizeHistoryItem()  后端数据适配(+_needsDetail标记) L4890
+ *     ├─ [函数] getHistoryListFromResponse() 历史响应解包     L4988
+ *     ├─ [函数] pickHistoryCacheItem() 瘦身历史缓存字段      L4992
+ *     ├─ [函数] buildHistoryCachePayload() 生成缓存载荷       L5043
+ *     ├─ [函数] hydrateHistoryFromCache() 本地缓存秒开        L5054
+ *     ├─ [函数] syncHistoryFavorites()  同步收藏状态          L5079
+ *     ├─ [函数] loadHistoryPage()       视频首批6条，未满续拉  L5096
+ *     ├─ [函数] handleToggleFavorite()  收藏（乐观更新）       L5372
+ *     ├─ [函数] handleTabChange()       切换 Tab              L5455
+ *     ├─ [函数] handleGenTypeChange()   切换生成类型           L5461
+ *     ├─ [函数] handleDeleteCard()      删除结果卡             L5551
+ *     ├─ [函数] handleGenerate()        发起生成               L5565
+ *     ├─ [函数] handleClearHistory()    清空当前 Tab 创作历史（后端持久隐藏）L5634
+ *     │
+ *     ├─ [副作用] 登录/切 tab 时拉历史首页                    L5209
+ *     ├─ [副作用] session 初始化（登录后）                    L5233
+ *     ├─ [副作用] 页面刷新恢复未完成任务                      L5257
+ *     ├─ [副作用] genType 变化时加载模型列表                  L约5580
+ *     └─ [副作用] model 变化时加载生成参数                    L约5610
+ *
+ * ─── 更新记录 ──────────────────────────────────────────────────────────
+ *   2026-05-28  初始结构索引建立
+ *   2026-07-09  新增「清空创作历史」按钮（与批量操作同级）与后端持久隐藏接口接入
+ */
+
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useModalSize } from '../utils/useModalSize';
 import { createPortal } from 'react-dom';
 import { PulsingBorder } from '@paper-design/shaders-react';
-import { apiGenerateCreation, apiPollVideoTask, apiGetVideoLastFrame, apiDeleteCreationImage, apiDeleteCreationVideo, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiCreateSession, apiGetSession, apiListShots, apiCreateShot, apiUpdateShot, apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../api/creation';
+import { apiGenerateCreation, apiPollCreationTask, apiGetVideoLastFrame, apiGetCreationVideo, apiDeleteCreationImage, apiDeleteCreationVideo, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiCreateSession, apiGetSession, apiListShots, apiCreateShot, apiUpdateShot, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { apiListModels } from '../api/config';
 import { adaptModels, getModelParams } from '../utils/modelAdapter';
@@ -10,57 +117,5662 @@ import { normalizeImageUrl } from '../utils/imageUrl';
 import AssetPickerModal from '../components/AssetPickerModal';
 import DubbingVoiceModal, { DubbingVoiceFileCard } from './DubbingVoiceModal';
 import CreationVideoDetailModal from '../components/CreationVideoDetailModal';
+import { QRCodeSVG } from 'qrcode.react';
+import { apiCreateLiveMaterialAuthSession, apiGetLiveMaterialAuthSessionStatus, apiListLiveMaterialGroups, apiListLiveMaterialAssets, apiUploadLiveMaterialAsset, apiUpdateLiveMaterialGroup, apiDeleteLiveMaterialGroup, apiGetLiveMaterialAsset, apiDeleteLiveMaterialAsset } from '../api/liveMaterials';
+
 import ConfirmDialog from '../components/ConfirmDialog';
-import StarIcon from '../components/StarIcon';
-import RatioIcon from '../components/RatioIcon';
-import DubbingEqIcon from '../components/DubbingEqIcon';
-import EmptyIconShell from './creation/EmptyIconShell';
-import CreationEmptyIconImage from './creation/CreationEmptyIconImage';
-import CreationEmptyIconVideo from './creation/CreationEmptyIconVideo';
-import CreationEmptyIconDubbing from './creation/CreationEmptyIconDubbing';
-import downloadImage from '../utils/downloadImage';
-
-import UploadMenuItem from '../components/UploadMenuItem';
-import GenTypeDropdownItem from '../components/GenTypeDropdownItem';
-import DropdownItem from '../components/DropdownItem';
-import RefModeDropdownItem from '../components/RefModeDropdownItem';
-import CardActionBtn from '../components/CardActionBtn';
-import ModalActionBtn from '../components/ModalActionBtn';
-import CreationGhostBtn from './creation/CreationGhostBtn';
-import CreationPlainBtn from './creation/CreationPlainBtn';
-import CopyPromptButton from '../components/CopyPromptButton';
-import Toast from '../components/Toast';
-import SoundToggle from '../components/SoundToggle';
-import CreationTabBar from './creation/CreationTabBar';
-import BatchButton from '../components/BatchButton';
-import CreationLoginEmptyState from './creation/CreationLoginEmptyState';
-import formatMentionLabel from '../utils/formatMentionLabel';
-import formatCreationDate from '../utils/formatCreationDate';
-
-import Dropdown from '../components/Dropdown';
-import GenTypeSelector from '../components/GenTypeSelector';
-import ModelSelector from '../components/ModelSelector';
-import ParamsSelector from '../components/ParamsSelector';
-import VideoParamsSelector from '../components/VideoParamsSelector';
-import RefModeSelector from '../components/RefModeSelector';
-import DubbingAdjust from '../components/DubbingAdjust';
-import UploadPlaceholder from '../components/UploadPlaceholder';
-import FrameUploader from '../components/FrameUploader';
-import ImageViewModal from '../components/ImageViewModal';
 import FilePreviewTooltip from '../components/FilePreviewTooltip';
-import FileCard from '../components/FileCard';
-import SendButton from '../components/SendButton';
-import isImageFile from '../utils/isImageFile';
-import isVideoFile from '../utils/isVideoFile';
-import { ALLOWED_EXTS, ALLOWED_IMAGE_EXTS, ALLOWED_VIDEO_EXTS, ALLOWED_AUDIO_EXTS, ALLOWED_MEDIA_EXTS } from '../utils/fileTypes';
-import InputCard from '../components/InputCard';
-import CreationResultState from './creation/CreationResultState';
-import CreationEmptyState from './creation/CreationEmptyState';
-
+import DotsLoading from '../components/DotsLoading';
+import { cached, invalidate, peekCacheEntry, setCache } from '../utils/cache';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
+function CopyPromptButton({ text, onCopy }) {
+  const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const color = pressed ? '#FFFFFF99' : hovered ? '#FFFFFFCC' : '#FFFFFF66';
+  return (
+    <button
+      type="button"
+      style={{ padding: 0, margin: 0, border: 0, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color, transition: 'color 120ms ease', flexShrink: 0 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setPressed(false); }}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      onClick={() => {
+        navigator.clipboard.writeText(text || '');
+        onCopy?.();
+      }}
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M4.33337 4.14383V2.60413C4.33337 2.08636 4.75311 1.66663 5.27087 1.66663H13.3959C13.9136 1.66663 14.3334 2.08636 14.3334 2.60413V10.7291C14.3334 11.2469 13.9136 11.6666 13.3959 11.6666H11.8388" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M10.7291 4.33337H2.60413C2.08636 4.33337 1.66663 4.75311 1.66663 5.27087V13.3959C1.66663 13.9136 2.08636 14.3334 2.60413 14.3334H10.7291C11.2469 14.3334 11.6666 13.9136 11.6666 13.3959V5.27087C11.6666 4.75311 11.2469 4.33337 10.7291 4.33337Z" stroke="currentColor" strokeLinejoin="round"/>
+      </svg>
+    </button>
+  );
+}
+
+// Matches AssetsPage StarIcon — golden fill when starred, configurable stroke otherwise
+function StarIcon({ filled = false, strokeColor = '#FFFFFF' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+      <path
+        d="M7 1.5l1.545 3.13 3.455.503-2.5 2.436.59 3.44L7 9.369l-3.09 1.64.59-3.44L2 5.133l3.455-.503L7 1.5z"
+        fill={filled ? '#F0B429' : 'none'}
+        stroke={filled ? '#F0B429' : strokeColor}
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// 取 prompt 前 10 个字符作为文件名，剔除文件名非法字符；为空时回退到默认名
+function filenameFromPrompt(prompt, ext, fallback = 'creation') {
+  const base = (prompt || '')
+    .replace(/[\\/:*?"<>|\r\n\t]/g, '')  // 去掉文件名非法字符
+    .trim()
+    .slice(0, 10)
+    .trim();
+  return `${base || fallback}.${ext}`;
+}
+
+async function downloadImage(url, prompt) {
+  if (!url) return;
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objUrl;
+    a.download = filenameFromPrompt(prompt, 'png');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(objUrl);
+  } catch {
+    window.open(url, '_blank');
+  }
+}
+
+const ALLOWED_EXTS = ['.txt', '.md', '.pdf', '.docx'];
+const ALLOWED_IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.tiff', '.tif', '.heic', '.heif'];
+const ALLOWED_VIDEO_EXTS = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.wmv', '.flv'];
+const ALLOWED_AUDIO_EXTS = ['.mp3', '.wav', '.aac', '.ogg', '.flac', '.m4a', '.wma'];
+const ALLOWED_MEDIA_EXTS = [...ALLOWED_IMAGE_EXTS, ...ALLOWED_VIDEO_EXTS, ...ALLOWED_AUDIO_EXTS];
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function truncateFileName(name) {
+  const dotIndex = name.lastIndexOf('.');
+  if (dotIndex === -1) return name;
+  const base = name.slice(0, dotIndex);
+  const ext = name.slice(dotIndex);
+  const maxBase = 12;
+  if (base.length <= maxBase) return name;
+  return base.slice(0, maxBase) + '… ' + ext;
+}
+
+const ROTATE_STYLE_ID = 'creation-chatbox-rotate-style';
+const THINKING_STYLE_ID = 'creation-thinking-style';
+
+function ensureRotateKeyframe() {
+  if (document.getElementById(ROTATE_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = ROTATE_STYLE_ID;
+  style.textContent = `
+    @property --creation-chatbox-angle {
+      syntax: '<angle>';
+      initial-value: 161.1deg;
+      inherits: false;
+    }
+    @keyframes creation-chatbox-spin {
+      from { --creation-chatbox-angle: 161.1deg; }
+      to { --creation-chatbox-angle: 521.1deg; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function ensureThinkingStyle() {
+
+  const style = document.createElement('style');
+  style.id = THINKING_STYLE_ID;
+  style.textContent = `
+    @keyframes creation-thinking-dot {
+      0%, 60%, 100% { opacity: 0.2; transform: translateY(0px); }
+      30% { opacity: 1; transform: translateY(-4px); }
+    }
+    .creation-thinking-dot { animation: creation-thinking-dot 1.4s ease-in-out infinite; }
+    .creation-thinking-dot:nth-child(1) { animation-delay: 0s; }
+    .creation-thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+    .creation-thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+  `;
+  document.head.appendChild(style);
+}
+
+// ─── Toast Component ──────────────────────────────────────────────────────────
+function Toast({ toasts }) {
+  return (
+    <div style={{ position: 'fixed', top: '25vh', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', pointerEvents: 'none' }}>
+      {toasts.map((toast) => (
+        <div
+          key={toast.id}
+          className="flex items-center gap-[8px] px-[16px] py-[8px] rounded-medium bg-toast-bg backdrop-blur-[20px]"
+          style={{ whiteSpace: 'nowrap', animation: 'slideUpBounce 250ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }}
+        >
+          {toast.type === 'success' && (
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+              <path d="M8 14.667C9.841 14.667 11.508 13.921 12.714 12.714C13.921 11.508 14.667 9.841 14.667 8C14.667 6.159 13.921 4.492 12.714 3.286C11.508 2.08 9.841 1.333 8 1.333C6.159 1.333 4.492 2.08 3.286 3.286C2.08 4.492 1.333 6.159 1.333 8C1.333 9.841 2.08 11.508 3.286 12.714C4.492 13.921 6.159 14.667 8 14.667Z" fill="#52BF92" stroke="#52BF92" strokeWidth="1.333" strokeLinejoin="round" />
+              <path d="M5.333 8L7.333 10L11.333 6" stroke="#FFFFFF" strokeWidth="1.333" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+          {toast.type === 'warning' && (
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+              <path d="M8 14.667C9.841 14.667 11.508 13.921 12.714 12.714C13.921 11.508 14.667 9.841 14.667 8C14.667 6.159 13.921 4.492 12.714 3.286C11.508 2.08 9.841 1.333 8 1.333C6.159 1.333 4.492 2.08 3.286 3.286C2.08 4.492 1.333 6.159 1.333 8C1.333 9.841 2.08 11.508 3.286 12.714C4.492 13.921 6.159 14.667 8 14.667Z" fill="#EB8B14" stroke="#EB8B14" strokeWidth="1.333" strokeLinejoin="round" />
+              <path fillRule="evenodd" clipRule="evenodd" d="M8 12.333C8.46 12.333 8.833 11.96 8.833 11.5C8.833 11.04 8.46 10.667 8 10.667C7.54 10.667 7.167 11.04 7.167 11.5C7.167 11.96 7.54 12.333 8 12.333Z" fill="#FFFFFF" />
+              <path d="M8 4V9.333" stroke="#FFFFFF" strokeWidth="1.333" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+          {toast.type === 'error' && (
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+              <path d="M8 14.667C9.841 14.667 11.508 13.921 12.714 12.714C13.921 11.508 14.667 9.841 14.667 8C14.667 6.159 13.921 4.492 12.714 3.286C11.508 2.08 9.841 1.333 8 1.333C6.159 1.333 4.492 2.08 3.286 3.286C2.08 4.492 1.333 6.159 1.333 8C1.333 9.841 2.08 11.508 3.286 12.714C4.492 13.921 6.159 14.667 8 14.667Z" fill="#F75F5F" stroke="#F75F5F" strokeWidth="1.333" strokeLinejoin="round" />
+              <path d="M5.333 5.333L10.667 10.667M10.667 5.333L5.333 10.667" stroke="#FFFFFF" strokeWidth="1.333" strokeLinecap="round" />
+            </svg>
+          )}
+          <span className="text-text-primary text-font-size-16 font-font-weight-regular" style={{ fontFamily: FONT }}>{toast.message}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Generation type options (backend-driven in production) ───────────────────
+const GEN_TYPE_OPTIONS = [
+  { value: 'image', label: '图片生成',
+    iconSelected: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+        <path d="M3 5V3.188C3 2.891 3.029 2.783 3.083 2.674C3.138 2.566 3.218 2.481 3.32 2.422C3.422 2.364 3.523 2.333 3.801 2.333H12.199C12.477 2.333 12.578 2.364 12.68 2.422C12.782 2.481 12.862 2.566 12.916 2.674C12.971 2.783 13 2.891 13 3.188V5" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M1.667 5H14.333V13.667H1.667V5Z" stroke="#FFFFFF" strokeLinejoin="round" />
+        <path fillRule="evenodd" clipRule="evenodd" d="M4.333 8.667C4.886 8.667 5.333 8.219 5.333 7.667C5.333 7.114 4.886 6.667 4.333 6.667C3.781 6.667 3.333 7.114 3.333 7.667C3.333 8.219 3.781 8.667 4.333 8.667Z" fill="#FFFFFF" />
+        <path d="M1.856 13.463L5 10L6.667 11.333L8.667 9L14.131 13.463" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    iconDefault: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+        <path d="M3 5V3.188C3 2.891 3.029 2.783 3.083 2.674C3.138 2.566 3.218 2.481 3.32 2.422C3.422 2.364 3.523 2.333 3.801 2.333H12.199C12.477 2.333 12.578 2.364 12.68 2.422C12.782 2.481 12.862 2.566 12.916 2.674C12.971 2.783 13 2.891 13 3.188V5" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M1.667 5H14.333V13.667H1.667V5Z" stroke="#FFFFFF99" strokeLinejoin="round" />
+        <path fillRule="evenodd" clipRule="evenodd" d="M4.333 8.667C4.886 8.667 5.333 8.219 5.333 7.667C5.333 7.114 4.886 6.667 4.333 6.667C3.781 6.667 3.333 7.114 3.333 7.667C3.333 8.219 3.781 8.667 4.333 8.667Z" fill="#FFFFFF99" />
+        <path d="M1.856 13.463L5 10L6.667 11.333L8.667 9L14.131 13.463" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    triggerIcon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+        <path d="M3 5V3.188C3 2.891 3.029 2.783 3.083 2.674C3.138 2.566 3.218 2.481 3.32 2.422C3.422 2.364 3.523 2.333 3.801 2.333H12.199C12.477 2.333 12.578 2.364 12.68 2.422C12.782 2.481 12.862 2.566 12.916 2.674C12.971 2.783 13 2.891 13 3.188V5" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M1.667 5H14.333V13.667H1.667V5Z" stroke="#FFFFFFCC" strokeLinejoin="round" />
+        <path fillRule="evenodd" clipRule="evenodd" d="M4.333 8.667C4.886 8.667 5.333 8.219 5.333 7.667C5.333 7.114 4.886 6.667 4.333 6.667C3.781 6.667 3.333 7.114 3.333 7.667C3.333 8.219 3.781 8.667 4.333 8.667Z" fill="#FFFFFFCC" />
+        <path d="M1.856 13.463L5 10L6.667 11.333L8.667 9L14.131 13.463" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  { value: 'video', label: '视频生成',
+    iconSelected: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+        <path d="M13 2H3C2.448 2 2 2.448 2 3V13C2 13.552 2.448 14 3 14H13C13.552 14 14 13.552 14 13V3C14 2.448 13.552 2 13 2Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M6.833 9.333V7.313L8.583 8.323L10.333 9.333L8.583 10.344L6.833 11.354V9.333Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M2 5H14" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M11 2L9 5" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M7 2L5 5" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    iconDefault: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+        <path d="M13 2H3C2.448 2 2 2.448 2 3V13C2 13.552 2.448 14 3 14H13C13.552 14 14 13.552 14 13V3C14 2.448 13.552 2 13 2Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M6.833 9.333V7.313L8.583 8.323L10.333 9.333L8.583 10.344L6.833 11.354V9.333Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M2 5H14" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M11 2L9 5" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M7 2L5 5" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    triggerIcon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+        <path d="M13 2H3C2.448 2 2 2.448 2 3V13C2 13.552 2.448 14 3 14H13C13.552 14 14 13.552 14 13V3C14 2.448 13.552 2 13 2Z" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M6.833 9.333V7.313L8.583 8.323L10.333 9.333L8.583 10.344L6.833 11.354V9.333Z" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M2 5H14" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M11 2L9 5" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M7 2L5 5" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  { value: 'dubbing', label: '配音生成',
+    iconSelected: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+        <path d="M8 2V11.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M3.333 12.013C3.333 11.085 4.086 10.333 5.013 10.333H8V12.32C8 13.248 7.248 14 6.32 14H5.013C4.086 14 3.333 13.248 3.333 12.32V12.013Z" stroke="#FFFFFF" strokeLinejoin="round" />
+        <path fillRule="evenodd" clipRule="evenodd" d="M8 4.689L12.294 5.707V3.004L8 2V4.689Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    iconDefault: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+        <path d="M8 2V11.667" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M3.333 12.013C3.333 11.085 4.086 10.333 5.013 10.333H8V12.32C8 13.248 7.248 14 6.32 14H5.013C4.086 14 3.333 13.248 3.333 12.32V12.013Z" stroke="#FFFFFF99" strokeLinejoin="round" />
+        <path fillRule="evenodd" clipRule="evenodd" d="M8 4.689L12.294 5.707V3.004L8 2V4.689Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    triggerIcon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+        <path d="M8 2V11.667" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M3.333 12.013C3.333 11.085 4.086 10.333 5.013 10.333H8V12.32C8 13.248 7.248 14 6.32 14H5.013C4.086 14 3.333 13.248 3.333 12.32V12.013Z" stroke="#FFFFFFCC" strokeLinejoin="round" />
+        <path fillRule="evenodd" clipRule="evenodd" d="M8 4.689L12.294 5.707V3.004L8 2V4.689Z" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+];
+
+// Model/params options are backend-driven; see apiGetCreationModels / apiGetCreationParams in src/api/creation.js
+
+// ─── Upload placeholder ───────────────────────────────────────────────────────
+function UploadPlaceholder({ onFileSelect, onAssetPick, onDirectClick, disabled = false, allowedExts = ALLOWED_EXTS, acceptAttr = '.txt,.md,.pdf,.docx' }) {
+  const [hovered, setHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const fileInputRef = useRef(null);
+  const wrapperRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
+
+  const defaultBack = { opacity: 0.6, bg: '#FFFFFF14', rotate: '0deg' };
+  const defaultFront = { bg: '#262626', rotate: '345deg', tx: 'calc(-50% - 7.015px)', ty: 'calc(-50% + 6.717px)' };
+  const defaultIcon = { stroke: '#FFFFFF33', tx: 'calc(-50% - 1.349px)', ty: 'calc(-50% + 1.757px)', rotate: '345deg' };
+
+  const hoverBack = { opacity: 0.6, bg: '#FFFFFF3D', rotate: '5deg' };
+  const hoverFront = { bg: '#3D3D3D', rotate: '351deg', tx: 'calc(-50% - 4.422px)', ty: 'calc(-50% + 3.811px)' };
+  const hoverIcon = { stroke: '#FFFFFF80', tx: 'calc(-50% - 0.865px)', ty: 'calc(-50% + 1.012px)', rotate: '351deg' };
+
+  const isActive = hovered || menuOpen;
+  const back = isActive ? hoverBack : defaultBack;
+  const front = isActive ? hoverFront : defaultFront;
+  const icon = isActive ? hoverIcon : defaultIcon;
+  const transition = 'all 0.35s cubic-bezier(0.4, 0, 0.2, 1)';
+
+  const handleChange = (e) => {
+    const selected = Array.from(e.target.files || []);
+    if (!selected.length) return;
+    const invalid = selected.filter((file) => {
+      const ext = '.' + file.name.split('.').pop().toLowerCase();
+      return !allowedExts.includes(ext);
+    });
+    if (invalid.length) {
+      alert(`仅支持 ${allowedExts.join('、')} 格式的文件`);
+      e.target.value = '';
+      return;
+    }
+    const oversizedImg = selected.find((file) => isImageFile(file) && file.size > 20 * 1024 * 1024);
+    if (oversizedImg) {
+      alert('抱歉，平台暂不支持上传20M以上的图片资源！');
+      e.target.value = '';
+      return;
+    }
+    onFileSelect?.(selected);
+    e.target.value = '';
+  };
+
+  return (
+    <div ref={wrapperRef} style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        type="button"
+        onMouseEnter={() => !disabled && setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={() => { if (!disabled) { if (onDirectClick) onDirectClick(); else setMenuOpen((v) => !v); } }}
+        disabled={disabled}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0px',
+          position: 'relative',
+          padding: 0,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          background: 'transparent',
+          border: 'none',
+          opacity: disabled ? 0.45 : 1,
+          outline: 'none',
+          borderRadius: '8px',
+          flexShrink: 0,
+        }}
+      >
+        <input ref={fileInputRef} type="file" multiple accept={acceptAttr} className="hidden" onChange={handleChange} onClick={(e) => e.stopPropagation()} />
+        <div style={{ width: '44px', height: '60px', borderRadius: '4px', flexShrink: 0, boxShadow: '#FFFFFF14 0px 0px 0px 0.5px inset', opacity: back.opacity, background: back.bg, rotate: back.rotate, transition }} />
+        <div style={{ width: '44px', height: '60px', borderRadius: '4px', position: 'absolute', boxShadow: '#FFFFFF14 0px 0px 0px 0.5px inset', transformOrigin: 'top left', background: front.bg, rotate: front.rotate, left: '50%', top: '50%', translate: `${front.tx} ${front.ty}`, transition }} />
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"
+          style={{ position: 'absolute', left: '50%', top: '50%', translate: `${icon.tx} ${icon.ty}`, rotate: icon.rotate, transformOrigin: '0% 0%', transition }}>
+          <path d="M8 3v10M3 8h10" stroke={icon.stroke} strokeWidth="1.5" strokeLinecap="round" style={{ transition }} />
+        </svg>
+      </button>
+
+      {menuOpen && (
+        <div style={{
+          position: 'absolute',
+          zIndex: 50,
+          left: 0,
+          bottom: 'calc(100% + 8px)',
+          borderRadius: '8px',
+          background: '#1D1E1E',
+          border: '1px solid #FFFFFF0D',
+          boxShadow: '0px 4px 16px #00000066',
+          padding: '4px',
+          minWidth: '140px',
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+          <UploadMenuItem
+            label="从资产库选择"
+            icon={
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                <path d="M1.66663 2.66667C1.66663 2.29848 1.9651 2 2.33329 2H6.33329L7.99996 4H13.6666C14.0348 4 14.3333 4.29847 14.3333 4.66667V13.3333C14.3333 13.7015 14.0348 14 13.6666 14H2.33329C1.9651 14 1.66663 13.7015 1.66663 13.3333V2.66667Z" stroke="#FFFFFFCC" strokeLinejoin="round" />
+                <path d="M8.00003 6.66663L8.7477 8.30423L10.5362 8.50926L9.20977 9.72636L9.56747 11.4907L8.00003 10.6053L6.4326 11.4907L6.7903 9.72636L5.46387 8.50926L7.25237 8.30423L8.00003 6.66663Z" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            }
+            onClick={() => { setMenuOpen(false); onAssetPick?.(); }}
+          />
+          <UploadMenuItem
+            label="从本地上传"
+            icon={
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                <path d="M8 10.667V3.333" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M5.333 6L8 3.333L10.667 6" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M2.667 12H13.333" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            }
+            onClick={() => { setMenuOpen(false); fileInputRef.current?.click(); }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Frame uploader (首尾帧) ──────────────────────────────────────────────────
+function FrameUploader({ firstFile, lastFile, onFirstChange, onLastChange, onSwap, onFirstAssetPick, onLastAssetPick, disabled = false }) {
+  const firstInputRef = useRef(null);
+  const lastInputRef = useRef(null);
+  const firstWrapperRef = useRef(null);
+  const lastWrapperRef = useRef(null);
+  const [firstHovered, setFirstHovered] = useState(false);
+  const [lastHovered, setLastHovered] = useState(false);
+  const [swapHovered, setSwapHovered] = useState(false);
+  const [firstMenuOpen, setFirstMenuOpen] = useState(false);
+  const [lastMenuOpen, setLastMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!firstMenuOpen && !lastMenuOpen) return;
+    const handler = (e) => {
+      if (firstWrapperRef.current && !firstWrapperRef.current.contains(e.target)) setFirstMenuOpen(false);
+      if (lastWrapperRef.current && !lastWrapperRef.current.contains(e.target)) setLastMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [firstMenuOpen, lastMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (firstFile?.previewUrl) URL.revokeObjectURL(firstFile.previewUrl);
+      if (lastFile?.previewUrl) URL.revokeObjectURL(lastFile.previewUrl);
+    };
+  }, [firstFile, lastFile]);
+
+  const handleFile = (e, isFirst) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!ALLOWED_IMAGE_EXTS.includes(ext)) {
+      alert(`仅支持 ${ALLOWED_IMAGE_EXTS.join('、')} 格式的图片`);
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      alert('抱歉，平台暂不支持上传20M以上的图片资源！');
+      e.target.value = '';
+      return;
+    }
+    if (isFirst) onFirstChange(file);
+    else onLastChange(file);
+    e.target.value = '';
+  };
+
+  const firstPreview = firstFile ? (firstFile.previewUrl || URL.createObjectURL(firstFile)) : null;
+  const lastPreview = lastFile ? (lastFile.previewUrl || URL.createObjectURL(lastFile)) : null;
+
+  const renderSlot = ({ label, preview, hovered, setHovered, wrapperRef, inputRef, menuOpen, setMenuOpen, onChange, onAssetPick, onDirectClick, isFirst }) => {
+    const hasImg = !!preview;
+    return (
+      <div ref={wrapperRef} style={{ position: 'relative', flexShrink: 0 }}>
+        <input ref={inputRef} type="file" accept={ALLOWED_IMAGE_EXTS.join(',')} className="hidden" onChange={(e) => { handleFile(e, isFirst); setMenuOpen(false); }} />
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => { if (!disabled) { if (onDirectClick) onDirectClick(); else setMenuOpen((v) => !v); } }}
+          onMouseEnter={() => !disabled && setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          style={{
+            width: '44px',
+            height: '60px',
+            borderRadius: '4px',
+            flexShrink: 0,
+            boxShadow: '#FFFFFF14 0px 0px 0px 0.5px inset',
+            background: hasImg ? `url(${preview}) center/cover no-repeat` : hovered ? '#3D3D3D' : '#262626',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            opacity: disabled ? 0.45 : 1,
+            position: 'relative',
+            border: 'none',
+            padding: 0,
+            outline: 'none',
+            overflow: 'visible',
+            transition: 'background 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+          }}
+        >
+          {!hasImg && (
+            <>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none"
+                style={{ position: 'absolute', left: '50%', top: 'calc(50% - 9px)', translate: '-50% -50%' }}>
+                <path d="M8 3v10M3 8h10" stroke={hovered ? '#FFFFFFCC' : '#FFFFFF33'} strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <div style={{
+                position: 'absolute', left: '50%', top: 'calc(50% + 7px)', translate: '-50% -50%',
+                fontFamily: FONT, fontSize: '10px', lineHeight: '12px', color: hovered ? '#FFFFFFCC' : '#FFFFFF66',
+              }}>
+                {label}
+              </div>
+            </>
+          )}
+          {hasImg && hovered && (
+            <>
+              <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', borderRadius: '4px' }} />
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={(e) => { e.stopPropagation(); e.preventDefault(); onChange(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); onChange(null); } }}
+                style={{
+                  position: 'absolute', top: '-7px', right: '-7px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: '16px', height: '16px', borderRadius: '9999px',
+                  background: '#505151', border: 'none', cursor: 'pointer', padding: 0,
+                }}
+              >
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                  <path d="M4.667 4.667L11.333 11.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M4.667 11.333L11.333 4.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            </>
+          )}
+        </button>
+
+        {menuOpen && (
+          <div style={{
+            position: 'absolute',
+            zIndex: 50,
+            left: 0,
+            bottom: 'calc(100% + 8px)',
+            borderRadius: '8px',
+            background: '#1D1E1E',
+            border: '1px solid #FFFFFF0D',
+            boxShadow: '0px 4px 16px #00000066',
+            padding: '4px',
+            minWidth: '140px',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <UploadMenuItem
+              label="从资产库选择"
+              icon={
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                  <path d="M1.66663 2.66667C1.66663 2.29848 1.9651 2 2.33329 2H6.33329L7.99996 4H13.6666C14.0348 4 14.3333 4.29847 14.3333 4.66667V13.3333C14.3333 13.7015 14.0348 14 13.6666 14H2.33329C1.9651 14 1.66663 13.7015 1.66663 13.3333V2.66667Z" stroke="#FFFFFFCC" strokeLinejoin="round" />
+                  <path d="M8.00003 6.66663L8.7477 8.30423L10.5362 8.50926L9.20977 9.72636L9.56747 11.4907L8.00003 10.6053L6.4326 11.4907L6.7903 9.72636L5.46387 8.50926L7.25237 8.30423L8.00003 6.66663Z" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              }
+              onClick={() => { setMenuOpen(false); onAssetPick?.(); }}
+            />
+            <UploadMenuItem
+              label="从本地上传"
+              icon={
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                  <path d="M8 10.667V3.333" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M5.333 6L8 3.333L10.667 6" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M2.667 12H13.333" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              }
+              onClick={() => { setMenuOpen(false); inputRef.current?.click(); }}
+            />
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+      {renderSlot({
+        label: '首帧',
+        preview: firstPreview,
+        hovered: firstHovered,
+        setHovered: setFirstHovered,
+        wrapperRef: firstWrapperRef,
+        inputRef: firstInputRef,
+        menuOpen: firstMenuOpen,
+        setMenuOpen: setFirstMenuOpen,
+        onChange: onFirstChange,
+        onAssetPick: onFirstAssetPick,
+        isFirst: true,
+      })}
+
+      {/* 交换按钮 */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onSwap}
+        onMouseEnter={() => setSwapHovered(true)}
+        onMouseLeave={() => setSwapHovered(false)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: '4px',
+          padding: '2px',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          background: swapHovered ? '#FFFFFF0A' : 'transparent',
+          border: 'none',
+          opacity: disabled ? 0.45 : 1,
+          transition: 'background 0.15s',
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+          <path d="M8.5 5.5a1 1 0 0 0-1.707-.707l-3 3A1 1 0 0 0 4.5 9.5h15a1 1 0 0 0 0-2h-11v-2Zm7 13a1 1 0 0 0 1.707.707l3-3A1 1 0 0 0 19.5 14.5h-15a1 1 0 1 0 0 2h11v2Z" clipRule="evenodd" fillRule="evenodd" fill={swapHovered ? '#FFFFFF99' : '#515151'} />
+        </svg>
+      </button>
+
+      {renderSlot({
+        label: '尾帧',
+        preview: lastPreview,
+        hovered: lastHovered,
+        setHovered: setLastHovered,
+        wrapperRef: lastWrapperRef,
+        inputRef: lastInputRef,
+        menuOpen: lastMenuOpen,
+        setMenuOpen: setLastMenuOpen,
+        onChange: onLastChange,
+        onAssetPick: onLastAssetPick,
+        isFirst: false,
+      })}
+    </div>
+  );
+}
+
+function UploadMenuItem({ label, icon, onClick }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        width: '100%',
+        height: '32px',
+        paddingLeft: '10px',
+        paddingRight: '10px',
+        borderRadius: '6px',
+        cursor: 'pointer',
+        border: 'none',
+        textAlign: 'left',
+        fontFamily: FONT,
+        fontSize: '12px',
+        lineHeight: '16px',
+        color: '#FFFFFFCC',
+        background: hovered ? '#FFFFFF0A' : 'transparent',
+        transition: 'background 0.15s',
+      }}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+// ─── Image view modal ─────────────────────────────────────────────────────────
+function ImageViewModal({ imageUrl, onClose, isVideo = false }) {
+  const [closeHovered, setCloseHovered] = useState(false);
+  const [doneHovered, setDoneHovered] = useState(false);
+  const [donePressed, setDonePressed] = useState(false);
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+      onClick={onClose}
+    >
+      <div
+        style={{ display: 'flex', flexDirection: 'column', width: '800px', borderRadius: '16px', overflow: 'hidden', height: '600px' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', background: '#161616', borderRadius: '16px 16px 0 0', flexShrink: 0 }}>
+          <span style={{ fontFamily: FONT_MEDIUM, fontSize: '16px', lineHeight: '20px', color: '#FFFFFF' }}>查看</span>
+          <div
+            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '6px', background: closeHovered ? '#FFFFFF14' : 'transparent', transition: 'background 120ms' }}
+            onClick={onClose}
+            onMouseEnter={() => setCloseHovered(true)}
+            onMouseLeave={() => setCloseHovered(false)}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M12 4L4 12M4 4l8 8" stroke={closeHovered ? '#FFFFFF' : '#FFFFFFCC'} strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </div>
+        </div>
+        <div style={{ flex: 1, display: 'flex', padding: '8px 24px', overflow: 'hidden', gap: '12px', flexDirection: 'column', background: '#161616', minHeight: 0 }}>
+          {isVideo
+            ? <video src={imageUrl} controls autoPlay muted style={{ width: '100%', flex: 1, borderRadius: '8px', objectFit: 'contain', minHeight: 0 }} />
+            : <img src={imageUrl} alt="" style={{ width: '100%', flex: 1, borderRadius: '8px', objectFit: 'contain', minHeight: 0 }} />}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'flex-end', background: '#161616', borderRadius: '0 0 16px 16px', padding: '16px 24px', flexShrink: 0 }}>
+          <div
+            className="flex flex-col shrink-0 rounded-[8px] cursor-pointer"
+            style={{ height: '36px', padding: '1px', backgroundImage: doneHovered ? 'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 45%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, #FFFFFF1E, #FFFFFF1E)' : 'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 30%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, #FFFFFF14, #FFFFFF14)', boxShadow: '#00000066 3px 3px 8px', outline: '1px solid #00000080', transition: 'background-image 0.15s' }}
+            onClick={onClose}
+            onMouseEnter={() => setDoneHovered(true)}
+            onMouseLeave={() => { setDoneHovered(false); setDonePressed(false); }}
+            onMouseDown={() => setDonePressed(true)}
+            onMouseUp={() => setDonePressed(false)}
+          >
+            <div className="flex items-center flex-1 self-stretch rounded-[7px] gap-[4px] px-[15px]" style={{ backgroundColor: donePressed ? '#222222' : doneHovered ? '#1C1C1C' : '#161616', transition: 'background-color 0.1s' }}>
+              <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF' }}>完成</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── File card ────────────────────────────────────────────────────────────────
+const IMAGE_EXTS_SET = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.tiff', '.tif', '.heic', '.heif']);
+const AUDIO_EXTS_SET = new Set([".mp3", ".wav", ".aac", ".ogg", ".flac", ".m4a", ".wma"]);
+const VIDEO_EXTS_SET = new Set(['.mp4', '.mov', '.avi', '.webm', '.mkv', '.wmv', '.flv']);
+
+function isImageFile(file) {
+  if (file.type && file.type.startsWith('image/')) return true;
+  if (file.isAsset) {
+    // 去掉 URL 查询参数再匹配扩展名，兼容 x-oss-process 等 OSS 处理指令
+    const urls = [file.url, file.previewUrl].filter(Boolean);
+    for (const url of urls) {
+      const cleanUrl = url.split('?')[0];
+      if (/\.(jpg|jpeg|png|webp|gif|bmp|tiff?|heic|heif)$/i.test(cleanUrl)) return true;
+    }
+  }
+  const ext = '.' + (file.name || '').split('.').pop().toLowerCase();
+  return IMAGE_EXTS_SET.has(ext);
+}
+
+function isVideoFile(file) {
+  if (file.type && file.type.startsWith('video/')) return true;
+  if (file.isAsset) {
+    const urls = [file.url, file.previewUrl].filter(Boolean);
+    for (const url of urls) {
+      const cleanUrl = url.split('?')[0];
+      if (/\.(mp4|mov|avi|webm|mkv|wmv|flv)$/i.test(cleanUrl)) return true;
+    }
+  }
+  const ext = '.' + (file.name || '').split('.').pop().toLowerCase();
+  return VIDEO_EXTS_SET.has(ext);
+}
+
+function isAudioFile(file) {
+  if (file.type && file.type.startsWith('audio/')) return true;
+  if (file.isAsset) {
+    const urls = [file.url, file.previewUrl].filter(Boolean);
+    for (const url of urls) {
+      const cleanUrl = url.split('?')[0];
+      if (/\.(mp3|wav|aac|ogg|flac|m4a|wma)$/i.test(cleanUrl)) return true;
+    }
+  }
+  const ext = '.' + (file.name || '').split('.').pop().toLowerCase();
+  return AUDIO_EXTS_SET.has(ext);
+}
+
+function FileCard({ file, onRemove, disabled = false, onInsert }) {
+  const [hovered, setHovered] = useState(false);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [videoSrc, setVideoSrc] = useState(null);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [cardRect, setCardRect] = useState(null);
+  const hoverTimerRef = useRef(null);
+  const cardRef = useRef(null);
+  const isImage = isImageFile(file);
+  const isVideo = isVideoFile(file);
+
+  useEffect(() => {
+    if (isImage) {
+      if (file.isAsset && file.url) {
+        setPreviewUrl(file.url);
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+
+    if (isVideo) {
+      // 保留 src 供 hover 时内联播放
+      // 优先使用 handleFileSelect 中预建的 _objectUrl，避免 React Strict Mode
+      // 双执行 effect 时 revoke 旧 URL 导致 ERR_FILE_NOT_FOUND
+      let objectUrl = null;
+      let videoUrl;
+      if (file.isAsset && file.url) {
+        videoUrl = file.url;
+        setVideoSrc(file.url);
+      } else if (file._objectUrl) {
+        videoUrl = file._objectUrl;
+        setVideoSrc(file._objectUrl);
+      } else {
+        objectUrl = URL.createObjectURL(file);
+        videoUrl = objectUrl;
+        setVideoSrc(objectUrl);
+      }
+      // 提取首帧作为缩略图
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.muted = true;
+      if (videoUrl && !videoUrl.startsWith("blob:")) video.crossOrigin = "anonymous";
+      let cancelled = false;
+      const timeoutId = setTimeout(() => { cancelled = true; }, 5000);
+      const handleLoadedData = () => { if (!cancelled) video.currentTime = 0.1; };
+      const handleSeeked = () => {
+        if (cancelled) return;
+        try {
+          const maxW = 320; const scale = Math.min(1, maxW / video.videoWidth);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(video.videoWidth * scale);
+          canvas.height = Math.round(video.videoHeight * scale);
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          setPreviewUrl(canvas.toDataURL('image/jpeg', 0.7));
+        } catch (_) { /* cross-origin video w/o CORS — keep fallback icon */ }
+        clearTimeout(timeoutId);
+      };
+      const handleError = () => { cancelled = true; };
+      video.addEventListener('loadeddata', handleLoadedData);
+      video.addEventListener('seeked', handleSeeked);
+      video.addEventListener('error', handleError);
+      video.src = videoUrl;
+      return () => {
+        cancelled = true;
+        clearTimeout(timeoutId);
+        video.removeEventListener('loadeddata', handleLoadedData);
+        video.removeEventListener('seeked', handleSeeked);
+        video.removeEventListener('error', handleError);
+        // 仅 revoke 在此 effect 内创建的 URL（_objectUrl 由 handleRemoveFile 统一管理）
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+      };
+    }
+  }, [file, isImage, isVideo]);
+
+  if (isImage || isVideo) {
+    return (
+      <>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            gap: '2px',
+            borderRadius: '8px',
+            width: '100px',
+            height: '100px',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+            position: 'relative',
+            background: '#1D1E1E',
+            border: '1px solid #FFFFFF14',
+            overflow: 'hidden',
+            opacity: disabled ? 0.45 : 1,
+            cursor: disabled ? 'default' : 'pointer',
+          }}
+ref={cardRef}
+          onMouseEnter={() => {
+            if (!disabled) {
+              setHovered(true);
+              hoverTimerRef.current = setTimeout(() => {
+                if (cardRef.current) setCardRect(cardRef.current.getBoundingClientRect());
+                setPreviewVisible(true);
+              }, 500);
+            }
+          }}
+          onMouseLeave={() => {
+            setHovered(false);
+            clearTimeout(hoverTimerRef.current);
+            setPreviewVisible(false);
+          }}
+          onClick={() => {
+            if (!disabled) {
+              if (onInsert) { onInsert(); }
+            }
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              borderRadius: '7px',
+              alignSelf: 'stretch',
+              ...(previewUrl
+                ? { backgroundImage: `url(${previewUrl})`, backgroundSize: 'cover', backgroundPosition: '50%' }
+                : { background: '#FFFFFF14' }),
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {isVideo && !previewUrl && (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, opacity: 0.35 }}>
+                <path d="M5 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5Zm10.7 7.316a1 1 0 0 1 0 1.368l-4.7 4.8a1 1 0 0 1-1.7-.684V7.2a1 1 0 0 1 1.7-.684l4.7 4.8Z" fill="currentColor" />
+              </svg>
+            )}
+          </div>
+          {hovered && !disabled && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onRemove(); }}
+              style={{ position: 'absolute', display: 'flex', alignItems: 'center', justifyContent: 'center', top: '4px', right: '4px', width: '16px', height: '16px', borderRadius: '9999px', background: '#505151', border: 'none', cursor: 'pointer', padding: 0, zIndex: 1 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M4.667 4.667L11.333 11.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M4.667 11.333L11.333 4.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
+        </div>
+        {previewVisible && (previewUrl || videoSrc) && (
+          <FilePreviewTooltip
+            isVideo={isVideo}
+            previewUrl={previewUrl}
+            videoSrc={videoSrc}
+            cardRect={cardRect}
+          />
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: '2px',
+        paddingLeft: '8px',
+        paddingRight: '8px',
+        paddingTop: '6px',
+        paddingBottom: '6px',
+        borderRadius: '8px',
+        width: '100px',
+        height: '100px',
+        justifyContent: 'space-between',
+        flexShrink: 0,
+        position: 'relative',
+        background: '#1D1E1E',
+        border: `1px solid ${hovered ? '#FFFFFF33' : '#FFFFFF14'}`,
+        transition: 'border-color 0.15s',
+        opacity: disabled ? 0.45 : 1,
+      }}
+      onMouseEnter={() => !disabled && setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '150%', alignSelf: 'stretch', flex: 1, overflow: 'hidden', color: '#FFFFFF' }}>
+        {truncateFileName(file.name)}
+      </div>
+      <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '150%', alignSelf: 'stretch', color: '#FFFFFF66' }}>
+        {file.isAsset ? '资产库' : formatFileSize(file.size)}
+      </div>
+      {hovered && !disabled && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          style={{ position: 'absolute', display: 'flex', alignItems: 'center', justifyContent: 'center', top: '-5px', right: '-5px', width: '16px', height: '16px', borderRadius: '9999px', background: '#505151', border: 'none', cursor: 'pointer', padding: 0 }}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M4.667 4.667L11.333 11.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M4.667 11.333L11.333 4.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Dropdown ─────────────────────────────────────────────────────────────────
+function Dropdown({ trigger, children, open, onClose, dropUp = true }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open, onClose]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      {trigger}
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            zIndex: 50,
+            left: 0,
+            [dropUp ? 'bottom' : 'top']: 'calc(100% + 4px)',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            background: '#1D1E1E',
+            border: '1px solid #FFFFFF0D',
+            boxShadow: '0px 4px 16px #00000066',
+            minWidth: '112px',
+            padding: '4px',
+          }}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GenTypeDropdownItem({ label, iconSelected, iconDefault, selected, onClick }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
+        width: '100%',
+        paddingLeft: '12px',
+        paddingRight: '12px',
+        paddingTop: '8px',
+        paddingBottom: '8px',
+        borderRadius: '6px',
+        cursor: 'pointer',
+        border: 'none',
+        textAlign: 'left',
+        fontFamily: FONT,
+        fontSize: '14px',
+        lineHeight: '18px',
+        color: selected ? '#FFFFFF' : '#FFFFFF99',
+        background: selected ? '#FFFFFF0D' : hovered ? '#FFFFFF0A' : 'transparent',
+        transition: 'background 0.15s',
+      }}
+    >
+      {selected ? iconSelected : iconDefault}
+      {label}
+    </button>
+  );
+}
+
+function DropdownItem({ label, selected, onClick, icon }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        width: '100%',
+        height: '32px',
+        paddingLeft: '12px',
+        paddingRight: '12px',
+        cursor: 'pointer',
+        border: 'none',
+        textAlign: 'left',
+        fontFamily: FONT,
+        fontSize: '12px',
+        lineHeight: '16px',
+        color: selected ? '#FFFFFF' : '#FFFFFFCC',
+        background: selected ? '#FFFFFF14' : hovered ? '#FFFFFF0A' : 'transparent',
+        transition: 'background 0.15s',
+      }}
+    >
+      {icon && icon}
+      <span style={{
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}>{label}</span>
+    </button>
+  );
+}
+
+// ─── Generation type selector ─────────────────────────────────────────────────
+function GenTypeSelector({ value, onChange, disabled }) {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const selected = GEN_TYPE_OPTIONS.find((o) => o.value === value) ?? GEN_TYPE_OPTIONS[0];
+  const isActive = open || hovered;
+
+  return (
+    <Dropdown
+      open={open}
+      onClose={() => setOpen(false)}
+      trigger={
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => !disabled && setOpen((v) => !v)}
+          onMouseEnter={() => !disabled && setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            height: '32px',
+            paddingLeft: '12px',
+            paddingRight: '6px',
+            borderRadius: '8px',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+            border: '1px solid',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            background: open ? '#252525' : isActive ? '#222222' : '#1D1E1E',
+            borderColor: open ? '#2DC3E199' : '#FFFFFF14',
+            outline: open ? '1px solid #00000080' : '1px solid #00000080',
+            boxShadow: open ? '#2DC3E11A 0px 0px 10px' : 'none',
+            transition: 'background 0.2s, border-color 0.2s, box-shadow 0.2s',
+            opacity: disabled ? 0.45 : 1,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {selected.triggerIcon}
+            <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>
+              {selected.label}
+            </span>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"
+            style={{ flexShrink: 0, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+            <path d="M12 6.333L8 10.333L4 6.333H12Z" fill="#FFFFFF" stroke="#FFFFFF" strokeWidth="1.333" strokeLinejoin="round" />
+          </svg>
+        </button>
+      }
+    >
+      {GEN_TYPE_OPTIONS.map((opt) => (
+        <GenTypeDropdownItem
+          key={opt.value}
+          label={opt.label}
+          iconSelected={opt.iconSelected}
+          iconDefault={opt.iconDefault}
+          selected={opt.value === value}
+          onClick={() => { onChange(opt.value); setOpen(false); }}
+        />
+      ))}
+    </Dropdown>
+  );
+}
+
+// ─── Model selector ───────────────────────────────────────────────────────────
+function ModelSelector({ value, onChange, options = [], disabled, onBeforeOpen }) {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const isActive = open || hovered;
+
+  const handleClick = () => {
+    if (disabled) return;
+    // 在打开前调用回调，如果返回 false 则不打开
+    if (onBeforeOpen && onBeforeOpen() === false) return;
+    setOpen((v) => !v);
+  };
+
+  return (
+    <Dropdown
+      open={open}
+      onClose={() => setOpen(false)}
+      trigger={
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={handleClick}
+          onMouseEnter={() => !disabled && setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            height: '32px',
+            width: '180px',
+            paddingLeft: '12px',
+            paddingRight: '6px',
+            borderRadius: '8px',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+            border: '1px solid',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            background: open ? '#252525' : isActive ? '#222222' : '#1D1E1E',
+            borderColor: open ? '#FFFFFF33' : '#FFFFFF14',
+            outline: focused || open ? '1px solid #2DC3E180' : '1px solid #00000080',
+            transition: 'background 0.2s, border-color 0.2s, outline 0.2s',
+            opacity: disabled ? 0.45 : 1,
+          }}
+        >
+          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
+              {options.find(o => o.value === value)?.label || value}
+          </span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"
+            style={{ flexShrink: 0, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+            <path d="M12 6.333L8 10.333L4 6.333H12Z" fill="#FFFFFF" stroke="#FFFFFF" strokeWidth="1.333" strokeLinejoin="round" />
+          </svg>
+        </button>
+      }
+    >
+      {options.map((opt) => (
+        <DropdownItem key={opt.value} label={opt.label} selected={opt.value === value} onClick={() => { onChange(opt.value); setOpen(false); }} />
+      ))}
+    </Dropdown>
+  );
+}
+
+// ─── Ratio icon ───────────────────────────────────────────────────────────────
+function RatioIcon({ rw = 16, rh = 9, selected = false }) {
+  const maxW = 16, maxH = 12;
+  // 竖屏比例（宽 < 高）以「横屏等价比例」的宽高置换来绘制：
+  // 先按横屏方向拟合到 16×12，再整体转置，使其与横屏成对一致（如 3:4 即为 4:3 的宽高置换）。
+  const portrait = rh > rw;
+  const baseW = portrait ? rh : rw;
+  const baseH = portrait ? rw : rh;
+  const scale = Math.min(maxW / baseW, maxH / baseH);
+  const wBase = Math.round(baseW * scale);
+  const hBase = Math.round(baseH * scale);
+  const w = portrait ? hBase : wBase;
+  const h = portrait ? wBase : hBase;
+  return (
+    <div style={{
+      width: `${w}px`,
+      height: `${h}px`,
+      borderRadius: '2px',
+      flexShrink: 0,
+      boxShadow: selected ? '#FFFFFF 0px 0px 0px 1px inset' : '#FFFFFF66 0px 0px 0px 1px inset',
+    }} />
+  );
+}
+
+// ─── Params selector (ratio + resolution + count) ─────────────────────────────
+function ParamsSelector({ ratio, resolution, count, onRatioChange, onResolutionChange, onCountChange, disabled,
+  ratioOptions = [], resolutionOptions = [], countOptions = [], resolutionRatios = {} }) {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const isActive = open || hovered;
+
+  const dropdownRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const cellStyle = (selected) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    paddingLeft: '12px',
+    paddingRight: '12px',
+    paddingTop: '8px',
+    paddingBottom: '8px',
+    borderRadius: '4px',
+    width: 'calc(25% - 3px)',
+    cursor: 'pointer',
+    border: 'none',
+    fontFamily: FONT,
+    fontSize: '12px',
+    lineHeight: '16px',
+    color: selected ? '#FFFFFF' : '#FFFFFF66',
+    background: selected ? '#FFFFFF14' : '#FFFFFF0D',
+    boxShadow: selected ? '#FFFFFF33 0px 0px 0px 1px inset' : 'none',
+    transition: 'background 0.15s, box-shadow 0.15s',
+    flexShrink: 0,
+  });
+
+  const simpleCellStyle = (selected) => ({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '4px',
+    paddingLeft: '12px',
+    paddingRight: '12px',
+    paddingTop: '8px',
+    paddingBottom: '8px',
+    borderRadius: '4px',
+    width: 'calc(25% - 3px)',
+    cursor: 'pointer',
+    border: 'none',
+    fontFamily: FONT,
+    fontSize: '12px',
+    lineHeight: '16px',
+    color: selected ? '#FFFFFF' : '#FFFFFF66',
+    background: selected ? '#FFFFFF14' : '#FFFFFF0D',
+    boxShadow: selected ? '#FFFFFF33 0px 0px 0px 1px inset' : 'none',
+    transition: 'background 0.15s, box-shadow 0.15s',
+    flexShrink: 0,
+  });
+
+  // Filter options by resolutionRatios: only show combos that are valid.
+  // 空分辨率映射（resolutionRatios[res] 为 []）表示「该分辨率不限制比例」，放行全部比例，
+  // 否则会把所有比例错误地过滤成空白（新接入模型常为空 resolution_size_map）。
+  const ratioAllowed = (res, value) => {
+    const allowed = resolutionRatios[res];
+    if (!res || !Array.isArray(allowed) || allowed.length === 0) return true;
+    return allowed.includes(value);
+  };
+  const filteredRatioOpts = ratioOptions.filter(opt => ratioAllowed(resolution, opt.value));
+  const filteredResolutionOpts = resolutionOptions.filter(res => ratioAllowed(res, ratio));
+
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((v) => !v)}
+        onMouseEnter={() => !disabled && setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          height: '32px',
+          paddingLeft: '12px',
+          paddingRight: '6px',
+          borderRadius: '8px',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          cursor: 'pointer',
+          background: 'rgb(29, 30, 30)',
+          outline: 'rgba(0, 0, 0, 0.5) solid 1px',
+          boxShadow: 'none',
+          transition: 'background 0.2s, border-color 0.2s, box-shadow 0.2s',
+          opacity: 1,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <RatioIcon rw={ratioOptions.find((r) => r.value === ratio)?.w ?? 16} rh={ratioOptions.find((r) => r.value === ratio)?.h ?? 9} selected />
+          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>{ratio}</span>
+        </div>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>{resolution}</span>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>{count}</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"
+          style={{ flexShrink: 0, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+          <path d="M12 6.333L8 10.333L4 6.333H12Z" fill="#FFFFFF" stroke="#FFFFFF" strokeWidth="1.333" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute',
+          zIndex: 50,
+          left: 0,
+          bottom: 'calc(100% + 4px)',
+          borderRadius: '8px',
+          background: '#1D1E1E',
+          border: '1px solid #FFFFFF0D',
+          boxShadow: '0px 4px 16px #00000066',
+          width: '320px',
+          padding: '8px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+        }}>
+          {/* 比例 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>比例</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              {filteredRatioOpts.map((opt) => {
+                const sel = opt.value === ratio;
+                return (
+                  <button key={opt.value} type="button" style={cellStyle(sel)}
+                    onClick={() => { onRatioChange(opt.value); }}
+                    onMouseEnter={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF14'; }}
+                    onMouseLeave={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF0D'; }}
+                  >
+                    <RatioIcon rw={opt.w} rh={opt.h} selected={sel} />
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 分辨率 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>分辨率</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              {filteredResolutionOpts.map((opt) => {
+                const sel = opt === resolution;
+                return (
+                  <button key={opt} type="button" style={simpleCellStyle(sel)}
+                    onClick={() => { onResolutionChange(opt); }}
+                    onMouseEnter={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF14'; }}
+                    onMouseLeave={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF0D'; }}
+                  >
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 数量 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>数量</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              {countOptions.map((opt) => {
+                const sel = opt === count;
+                return (
+                  <button key={opt} type="button" style={simpleCellStyle(sel)}
+                    onClick={() => { onCountChange(opt); }}
+                    onMouseEnter={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF14'; }}
+                    onMouseLeave={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF0D'; }}
+                  >
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Reference mode options ───────────────────────────────────────────────────
+const REF_MODE_ICON_ALL_SELECTED = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+    <path d="M12.619 6.667V8V9.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9.155 12.667L10.309 12L11.464 11.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M6.845 12.667L5.69 12L4.536 11.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M3.381 6.667V8V9.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4.536 4.667L5.69 4L6.845 3.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9.155 3.333L10.309 4L11.464 4.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M8 14.667C8.736 14.667 9.333 14.07 9.333 13.333C9.333 12.597 8.736 12 8 12C7.264 12 6.667 12.597 6.667 13.333C6.667 14.07 7.264 14.667 8 14.667Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M8 4C8.736 4 9.333 3.403 9.333 2.667C9.333 1.93 8.736 1.333 8 1.333C7.264 1.333 6.667 1.93 6.667 2.667C6.667 3.403 7.264 4 8 4Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M8 9.333C8.736 9.333 9.333 8.736 9.333 8C9.333 7.264 8.736 6.667 8 6.667C7.264 6.667 6.667 7.264 6.667 8C6.667 8.736 7.264 9.333 8 9.333Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M12.667 6.667C13.403 6.667 14 6.07 14 5.333C14 4.597 13.403 4 12.667 4C11.93 4 11.333 4.597 11.333 5.333C11.333 6.07 11.93 6.667 12.667 6.667Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M12.667 12C13.403 12 14 11.403 14 10.667C14 9.93 13.403 9.333 12.667 9.333C11.93 9.333 11.333 9.93 11.333 10.667C11.333 11.403 11.93 12 12.667 12Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M3.333 6.667C4.07 6.667 4.667 6.07 4.667 5.333C4.667 4.597 4.07 4 3.333 4C2.597 4 2 4.597 2 5.333C2 6.07 2.597 6.667 3.333 6.667Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M3.333 12C4.07 12 4.667 11.403 4.667 10.667C4.667 9.93 4.07 9.333 3.333 9.333C2.597 9.333 2 9.93 2 10.667C2 11.403 2.597 12 3.333 12Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+const REF_MODE_ICON_ALL_DEFAULT = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+    <path d="M12.619 6.667V8V9.333" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9.155 12.667L10.309 12L11.464 11.333" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M6.845 12.667L5.69 12L4.536 11.333" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M3.381 6.667V8V9.333" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4.536 4.667L5.69 4L6.845 3.333" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9.155 3.333L10.309 4L11.464 4.667" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M8 14.667C8.736 14.667 9.333 14.07 9.333 13.333C9.333 12.597 8.736 12 8 12C7.264 12 6.667 12.597 6.667 13.333C6.667 14.07 7.264 14.667 8 14.667Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M8 4C8.736 4 9.333 3.403 9.333 2.667C9.333 1.93 8.736 1.333 8 1.333C7.264 1.333 6.667 1.93 6.667 2.667C6.667 3.403 7.264 4 8 4Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M8 9.333C8.736 9.333 9.333 8.736 9.333 8C9.333 7.264 8.736 6.667 8 6.667C7.264 6.667 6.667 7.264 6.667 8C6.667 8.736 7.264 9.333 8 9.333Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M12.667 6.667C13.403 6.667 14 6.07 14 5.333C14 4.597 13.403 4 12.667 4C11.93 4 11.333 4.597 11.333 5.333C11.333 6.07 11.93 6.667 12.667 6.667Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M12.667 12C13.403 12 14 11.403 14 10.667C14 9.93 13.403 9.333 12.667 9.333C11.93 9.333 11.333 9.93 11.333 10.667C11.333 11.403 11.93 12 12.667 12Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M3.333 6.667C4.07 6.667 4.667 6.07 4.667 5.333C4.667 4.597 4.07 4 3.333 4C2.597 4 2 4.597 2 5.333C2 6.07 2.597 6.667 3.333 6.667Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M3.333 12C4.07 12 4.667 11.403 4.667 10.667C4.667 9.93 4.07 9.333 3.333 9.333C2.597 9.333 2 9.93 2 10.667C2 11.403 2.597 12 3.333 12Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+const REF_MODE_ICON_FRAME_DEFAULT = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '16px', height: '16px', flexShrink: 0 }}>
+    <path d="M9.446 1.733C9.888 1.733 10.246 2.092 10.246 2.533V21.855C10.246 22.297 9.888 22.655 9.447 22.655C9.005 22.655 8.646 22.297 8.646 21.855V2.533C8.646 2.092 9.005 1.733 9.447 1.733H9.446Z" fill="#FFFFFF99" />
+    <path d="M9.194 3.483V5.083H4.706C4.411 5.083 4.172 5.322 4.172 5.617V18.946C4.172 19.241 4.411 19.479 4.706 19.479H9.194V21.079H4.706C3.527 21.079 2.572 20.124 2.572 18.946V5.617C2.572 4.438 3.527 3.483 4.706 3.483H9.194Z" fill="#FFFFFF99" />
+    <path d="M3.814 8.787H9.446V7.187H3.814V8.787ZM3.814 17.402H9.446V15.802H3.814V17.402ZM14.706 1.733C14.264 1.733 13.906 2.092 13.906 2.533V21.855C13.906 22.297 14.264 22.655 14.706 22.655C15.148 22.655 15.506 22.297 15.506 21.855V2.533C15.506 2.092 15.148 1.733 14.706 1.733Z" fill="#FFFFFF99" />
+    <path d="M14.957 3.483V5.083H19.446C19.74 5.083 19.979 5.322 19.979 5.617V18.946C19.979 19.241 19.74 19.479 19.446 19.479H14.957V21.079H19.446C20.624 21.079 21.579 20.124 21.579 18.946V5.617C21.579 4.438 20.624 3.483 19.446 3.483H14.957Z" fill="#FFFFFF99" />
+    <path d="M20.339 8.787H14.707V7.187H20.339V8.787ZM20.339 17.402H14.707V15.802H20.339V17.402Z" fill="#FFFFFF99" />
+  </svg>
+);
+const REF_MODE_ICON_FRAME_SELECTED = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '16px', height: '16px', flexShrink: 0 }}>
+    <path d="M9.446 1.733C9.888 1.733 10.246 2.092 10.246 2.533V21.855C10.246 22.297 9.888 22.655 9.447 22.655C9.005 22.655 8.646 22.297 8.646 21.855V2.533C8.646 2.092 9.005 1.733 9.447 1.733H9.446Z" fill="#FFFFFF" />
+    <path d="M9.194 3.483V5.083H4.706C4.411 5.083 4.172 5.322 4.172 5.617V18.946C4.172 19.241 4.411 19.479 4.706 19.479H9.194V21.079H4.706C3.527 21.079 2.572 20.124 2.572 18.946V5.617C2.572 4.438 3.527 3.483 4.706 3.483H9.194Z" fill="#FFFFFF" />
+    <path d="M3.814 8.787H9.446V7.187H3.814V8.787ZM3.814 17.402H9.446V15.802H3.814V17.402ZM14.706 1.733C14.264 1.733 13.906 2.092 13.906 2.533V21.855C13.906 22.297 14.264 22.655 14.706 22.655C15.148 22.655 15.506 22.297 15.506 21.855V2.533C15.506 2.092 15.148 1.733 14.706 1.733Z" fill="#FFFFFF" />
+    <path d="M14.957 3.483V5.083H19.446C19.74 5.083 19.979 5.322 19.979 5.617V18.946C19.979 19.241 19.74 19.479 19.446 19.479H14.957V21.079H19.446C20.624 21.079 21.579 20.124 21.579 18.946V5.617C21.579 4.438 20.624 3.483 19.446 3.483H14.957Z" fill="#FFFFFF" />
+    <path d="M20.339 8.787H14.707V7.187H20.339V8.787ZM20.339 17.402H14.707V15.802H20.339V17.402Z" fill="#FFFFFF" />
+  </svg>
+);
+const REF_MODE_ICON_MULTI_DEFAULT = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+    <path d="M8 8V4M8 8L4.5 10.021M8 8L11.5 10.021" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4.667 5.333C4.667 6.07 4.07 6.667 3.333 6.667C2.597 6.667 2 6.07 2 5.333C2 4.597 2.597 4 3.333 4C4.07 4 4.667 4.597 4.667 5.333Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4.667 10.667C4.667 11.403 4.07 12 3.333 12C2.597 12 2 11.403 2 10.667C2 9.93 2.597 9.333 3.333 9.333C4.07 9.333 4.667 9.93 4.667 10.667Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9.333 13.333C9.333 14.07 8.736 14.667 8 14.667C7.264 14.667 6.667 14.07 6.667 13.333C6.667 12.597 7.264 12 8 12C8.736 12 9.333 12.597 9.333 13.333Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M14 10.667C14 11.403 13.403 12 12.667 12C11.93 12 11.333 11.403 11.333 10.667C11.333 9.93 11.93 9.333 12.667 9.333C13.403 9.333 14 9.93 14 10.667Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M14 5.333C14 6.07 13.403 6.667 12.667 6.667C11.93 6.667 11.333 6.07 11.333 5.333C11.333 4.597 11.93 4 12.667 4C13.403 4 14 4.597 14 5.333Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9.333 2.667C9.333 3.403 8.736 4 8 4C7.264 4 6.667 3.403 6.667 2.667C6.667 1.93 7.264 1.333 8 1.333C8.736 1.333 9.333 1.93 9.333 2.667Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+const REF_MODE_ICON_MULTI_SELECTED = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+    <path d="M8 8V4M8 8L4.5 10.021M8 8L11.5 10.021" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4.667 5.333C4.667 6.07 4.07 6.667 3.333 6.667C2.597 6.667 2 6.07 2 5.333C2 4.597 2.597 4 3.333 4C4.07 4 4.667 4.597 4.667 5.333Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4.667 10.667C4.667 11.403 4.07 12 3.333 12C2.597 12 2 11.403 2 10.667C2 9.93 2.597 9.333 3.333 9.333C4.07 9.333 4.667 9.93 4.667 10.667Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9.333 13.333C9.333 14.07 8.736 14.667 8 14.667C7.264 14.667 6.667 14.07 6.667 13.333C6.667 12.597 7.264 12 8 12C8.736 12 9.333 12.597 9.333 13.333Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M14 10.667C14 11.403 13.403 12 12.667 12C11.93 12 11.333 11.403 11.333 10.667C11.333 9.93 11.93 9.333 12.667 9.333C13.403 9.333 14 9.93 14 10.667Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M14 5.333C14 6.07 13.403 6.667 12.667 6.667C11.93 6.667 11.333 6.07 11.333 5.333C11.333 4.597 11.93 4 12.667 4C13.403 4 14 4.597 14 5.333Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9.333 2.667C9.333 3.403 8.736 4 8 4C7.264 4 6.667 3.403 6.667 2.667C6.667 1.93 7.264 1.333 8 1.333C8.736 1.333 9.333 1.93 9.333 2.667Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+// Icon map for ref modes — icons are static frontend assets, not from backend
+const REF_MODE_ICON_MAP = {
+  all:   { iconSelected: REF_MODE_ICON_ALL_SELECTED,    iconDefault: REF_MODE_ICON_ALL_DEFAULT,    triggerIcon: REF_MODE_ICON_ALL_SELECTED    },
+  frame: { iconSelected: REF_MODE_ICON_FRAME_SELECTED,  iconDefault: REF_MODE_ICON_FRAME_DEFAULT,  triggerIcon: REF_MODE_ICON_FRAME_SELECTED  },
+  multi: { iconSelected: REF_MODE_ICON_MULTI_SELECTED,  iconDefault: REF_MODE_ICON_MULTI_DEFAULT,  triggerIcon: REF_MODE_ICON_MULTI_SELECTED  },
+};
+
+// ─── Reference mode selector ──────────────────────────────────────────────────
+function RefModeSelector({ value, onChange, disabled, options = [] }) {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const dropdownRef = useRef(null);
+  const selectedOpt = options.find((o) => o.value === value) ?? options[0];
+  const selectedIcons = REF_MODE_ICON_MAP[selectedOpt?.value] ?? REF_MODE_ICON_MAP.all;
+  const isActive = open || hovered;
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((v) => !v)}
+        onMouseEnter={() => !disabled && setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          height: '32px',
+          paddingLeft: '12px',
+          paddingRight: '6px',
+          borderRadius: '8px',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+          border: '1px solid',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          background: open ? '#252525' : isActive ? '#222222' : '#1D1E1E',
+          borderColor: open ? '#2DC3E199' : '#FFFFFF14',
+          outline: '1px solid #00000080',
+          boxShadow: open ? '#2DC3E11A 0px 0px 10px' : 'none',
+          transition: 'background 0.2s, border-color 0.2s, box-shadow 0.2s',
+          opacity: disabled ? 0.45 : 1,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {selectedIcons.triggerIcon}
+          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>
+            {selectedOpt?.label}
+          </span>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"
+          style={{ flexShrink: 0, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+          <path d="M12 6.333L8 10.333L4 6.333H12Z" fill="#FFFFFF" stroke="#FFFFFF" strokeWidth="1.333" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute',
+          zIndex: 50,
+          left: 0,
+          bottom: 'calc(100% + 4px)',
+          borderRadius: '8px',
+          background: '#1D1E1E',
+          border: '1px solid #FFFFFF0D',
+          boxShadow: '0px 4px 16px #00000066',
+          width: '112px',
+          padding: '4px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0px',
+        }}>
+          {options.map((opt) => {
+            const sel = opt.value === value;
+            const icons = REF_MODE_ICON_MAP[opt.value] ?? REF_MODE_ICON_MAP.all;
+            return (
+              <RefModeDropdownItem
+                key={opt.value}
+                label={opt.label}
+                icon={sel ? icons.iconSelected : icons.iconDefault}
+                selected={sel}
+                onClick={() => { onChange(opt.value); setOpen(false); }}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RefModeDropdownItem({ label, icon, selected, onClick }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
+        width: '100%',
+        paddingLeft: '12px',
+        paddingRight: '12px',
+        paddingTop: '8px',
+        paddingBottom: '8px',
+        borderRadius: '6px',
+        cursor: 'pointer',
+        border: 'none',
+        textAlign: 'left',
+        fontFamily: FONT,
+        fontSize: '14px',
+        lineHeight: '18px',
+        color: selected ? '#FFFFFFCC' : '#FFFFFF99',
+        background: selected ? '#FFFFFF0D' : hovered ? '#FFFFFF0A' : 'transparent',
+        transition: 'background 0.15s',
+      }}
+    >
+      {icon}
+      <span style={{ flex: 1 }}>{label}</span>
+    </button>
+  );
+}
+
+// ─── Video params selector (ratio + resolution + duration) ────────────────────
+function VideoParamsSelector({ ratio, resolution, duration, onRatioChange, onResolutionChange, onDurationChange, disabled,
+  ratioOptions = [], resolutionOptions = [], durationOptions = [], resolutionRatios = {},
+  soundEnabled = true, onSoundChange }) {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const isActive = open || hovered;
+
+  const dropdownRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const cellStyle = (selected) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    paddingLeft: '12px',
+    paddingRight: '12px',
+    paddingTop: '8px',
+    paddingBottom: '8px',
+    borderRadius: '4px',
+    width: 'calc(25% - 3px)',
+    cursor: 'pointer',
+    border: 'none',
+    fontFamily: FONT,
+    fontSize: '12px',
+    lineHeight: '16px',
+    color: selected ? '#FFFFFF' : '#FFFFFF66',
+    background: selected ? '#FFFFFF14' : '#FFFFFF0D',
+    boxShadow: selected ? '#FFFFFF33 0px 0px 0px 1px inset' : 'none',
+    transition: 'background 0.15s, box-shadow 0.15s',
+    flexShrink: 0,
+  });
+
+  const simpleCellStyle = (selected) => ({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '4px',
+    paddingLeft: '12px',
+    paddingRight: '12px',
+    paddingTop: '8px',
+    paddingBottom: '8px',
+    borderRadius: '4px',
+    width: 'calc(25% - 3px)',
+    cursor: 'pointer',
+    border: 'none',
+    fontFamily: FONT,
+    fontSize: '12px',
+    lineHeight: '16px',
+    color: selected ? '#FFFFFF' : '#FFFFFF66',
+    background: selected ? '#FFFFFF14' : '#FFFFFF0D',
+    boxShadow: selected ? '#FFFFFF33 0px 0px 0px 1px inset' : 'none',
+    transition: 'background 0.15s, box-shadow 0.15s',
+    flexShrink: 0,
+  });
+
+  // Filter options by resolutionRatios: only show combos that are valid.
+  // 空分辨率映射（resolutionRatios[res] 为 []）表示「该分辨率不限制比例」，放行全部比例，
+  // 否则会把所有比例错误地过滤成空白（新接入模型常为空 resolution_size_map）。
+  const ratioAllowed = (res, value) => {
+    const allowed = resolutionRatios[res];
+    if (!res || !Array.isArray(allowed) || allowed.length === 0) return true;
+    return allowed.includes(value);
+  };
+  const filteredRatioOpts = ratioOptions.filter(opt => ratioAllowed(resolution, opt.value));
+  const filteredResolutionOpts = resolutionOptions.filter(res => ratioAllowed(res, ratio));
+
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((v) => !v)}
+        onMouseEnter={() => !disabled && setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          height: '32px',
+          paddingLeft: '12px',
+          paddingRight: '6px',
+          borderRadius: '8px',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+          border: '1px solid',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          background: open ? '#252525' : isActive ? '#222222' : '#1D1E1E',
+          borderColor: open ? '#2DC3E199' : '#FFFFFF14',
+          outline: '1px solid #00000080',
+          boxShadow: open ? '#2DC3E11A 0px 0px 10px' : 'none',
+          transition: 'background 0.2s, border-color 0.2s, box-shadow 0.2s',
+          opacity: disabled ? 0.45 : 1,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <RatioIcon rw={ratioOptions.find((r) => r.value === ratio)?.w ?? 16} rh={ratioOptions.find((r) => r.value === ratio)?.h ?? 9} selected />
+          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>{ratio}</span>
+        </div>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>{resolution}</span>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>{duration}</span>
+        {soundEnabled ? (
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+            <path d="M2 5.5H4.5L8 2.5V13.5L4.5 10.5H2V5.5Z" stroke="#FFFFFFCC" strokeWidth="1.2" strokeLinejoin="round" fill="none"/>
+            <path d="M10.5 5.5C11.5 6.2 12 7 12 8C12 9 11.5 9.8 10.5 10.5" stroke="#FFFFFFCC" strokeWidth="1.2" strokeLinecap="round" fill="none"/>
+            <path d="M12 3.5C13.8 4.8 14.5 6.3 14.5 8C14.5 9.7 13.8 11.2 12 12.5" stroke="#FFFFFFCC" strokeWidth="1.2" strokeLinecap="round" fill="none"/>
+          </svg>
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+            <path d="M2 5.5H4.5L8 2.5V13.5L4.5 10.5H2V5.5Z" stroke="#FFFFFF66" strokeWidth="1.2" strokeLinejoin="round" fill="none"/>
+            <line x1="10" y1="5.5" x2="14.5" y2="10.5" stroke="#FFFFFF66" strokeWidth="1.2" strokeLinecap="round"/>
+            <line x1="14.5" y1="5.5" x2="10" y2="10.5" stroke="#FFFFFF66" strokeWidth="1.2" strokeLinecap="round"/>
+          </svg>
+        )}
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"
+          style={{ flexShrink: 0, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+          <path d="M12 6.333L8 10.333L4 6.333H12Z" fill="#FFFFFF" stroke="#FFFFFF" strokeWidth="1.333" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute',
+          zIndex: 50,
+          left: 0,
+          bottom: 'calc(100% + 4px)',
+          borderRadius: '8px',
+          background: '#1D1E1E',
+          border: '1px solid #FFFFFF0D',
+          boxShadow: '0px 4px 16px #00000066',
+          width: '320px',
+          padding: '8px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+        }}>
+          {/* 比例 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>比例</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              {filteredRatioOpts.map((opt) => {
+                const sel = opt.value === ratio;
+                return (
+                  <button key={opt.value} type="button" style={cellStyle(sel)}
+                    onClick={() => { onRatioChange(opt.value); }}
+                    onMouseEnter={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF14'; }}
+                    onMouseLeave={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF0D'; }}
+                  >
+                    <RatioIcon rw={opt.w} rh={opt.h} selected={sel} />
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 分辨率 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>分辨率</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              {filteredResolutionOpts.map((opt) => {
+                const sel = opt === resolution;
+                return (
+                  <button key={opt} type="button" style={simpleCellStyle(sel)}
+                    onClick={() => { onResolutionChange(opt); }}
+                    onMouseEnter={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF14'; }}
+                    onMouseLeave={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF0D'; }}
+                  >
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 时长 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>时长</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              {durationOptions.map((opt) => {
+                const sel = opt === duration;
+                return (
+                  <button key={opt} type="button" style={simpleCellStyle(sel)}
+                    onClick={() => { onDurationChange(opt); }}
+                    onMouseEnter={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF14'; }}
+                    onMouseLeave={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF0D'; }}
+                  >
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 生成音频 */}
+          {onSoundChange && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>生成音频</div>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {[{ label: '开启', value: true }, { label: '关闭', value: false }].map(({ label, value }) => {
+                  const sel = soundEnabled === value;
+                  return (
+                    <button key={label} type="button"
+                      style={{
+                        ...simpleCellStyle(sel),
+                        width: 'calc(50% - 2px)',
+                      }}
+                      onClick={() => { onSoundChange(value); }}
+                      onMouseEnter={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF14'; }}
+                      onMouseLeave={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF0D'; }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Sound toggle ─────────────────────────────────────────────────────────────
+function SoundToggle({ enabled, onChange, disabled }) {
+  const [hovered, setHovered] = useState(false);
+  const isActive = hovered && !disabled;
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => !disabled && onChange(!enabled)}
+      onMouseEnter={() => !disabled && setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        height: '32px',
+        paddingLeft: '12px',
+        paddingRight: '6px',
+        borderRadius: '8px',
+        justifyContent: 'space-between',
+        flexShrink: 0,
+        border: '1px solid #FFFFFF14',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        background: isActive ? '#222222' : '#1D1E1E',
+        outline: '1px solid #00000080',
+        transition: 'background 0.2s',
+        opacity: disabled ? 0.45 : 1,
+      }}
+    >
+      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>声音</span>
+      <div style={{
+        width: '36px',
+        height: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        borderRadius: '10px',
+        padding: '2px',
+        justifyContent: enabled ? 'flex-end' : 'flex-start',
+        flexShrink: 0,
+        background: enabled ? '#39BA69' : '#FFFFFF33',
+        transition: 'background 0.2s, justify-content 0.2s',
+      }}>
+        <div style={{ flexShrink: 0, borderRadius: '50%', background: 'white', width: '16px', height: '16px' }} />
+      </div>
+    </button>
+  );
+}
+
+// ─── Live Material Modal ──────────────────────────────────────────────────────
+
+function GroupCard({ group, displayName, preview, CELL, CELL_H, FONT, onClick, onSaveName, onDelete }) {
+  const [hovered, setHovered] = useState(false);
+  const [editHov, setEditHov] = useState(false);
+  const [editPress, setEditPress] = useState(false);
+  const [delHov, setDelHov] = useState(false);
+  const [delPress, setDelPress] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const inputRef = useRef(null);
+
+  const startEdit = (e) => {
+    e.stopPropagation();
+    setEditValue(displayName);
+    setEditing(true);
+    setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select(); }, 0);
+  };
+
+  const commitEdit = () => {
+    const name = editValue.trim() || displayName;
+    setEditing(false);
+    if (name !== displayName) onSaveName?.(name);
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+    if (e.key === 'Escape') { setEditing(false); }
+  };
+
+  return (
+    <div
+      onClick={editing ? undefined : onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setEditHov(false); setDelHov(false); }}
+      style={{
+        width: CELL, height: CELL_H, borderRadius: '8px',
+        border: `1px solid ${hovered ? '#FFFFFF1F' : 'transparent'}`,
+        cursor: editing ? 'default' : 'pointer', position: 'relative', overflow: 'hidden', flexShrink: 0,
+        display: 'flex', flexDirection: 'column', padding: '12px 16px',
+        boxSizing: 'border-box', transition: 'border-color 0.15s',
+        background: '#1a1a1a',
+      }}
+    >
+      {/* Preview image */}
+      {preview && (
+        <img src={preview} alt={displayName} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+      )}
+      {/* Gradient overlay */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        backgroundImage: 'linear-gradient(in oklab 180deg, oklab(100% 0 0 / 20%) 0.13%, oklab(0% 0 0 / 40%) 100%)',
+        pointerEvents: 'none',
+      }} />
+      {/* Content row — fills card, name bottom-left, actions bottom-right */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', position: 'relative', zIndex: 1, minWidth: 0 }}>
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={editValue}
+            maxLength={30}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={onKeyDown}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              flex: 1, minWidth: 0, fontFamily: FONT, fontSize: '14px', lineHeight: '18px',
+              color: '#FFFFFFCC', background: 'transparent', border: 'none', borderBottom: '1px solid #FFFFFF4D',
+              outline: 'none', padding: '0 0 1px 0', caretColor: '#FFFFFFCC',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}
+          />
+        ) : (
+          <span style={{
+            fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFFCC',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1,
+          }}>
+            {displayName}
+          </span>
+        )}
+        {hovered && !editing && (
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', flexShrink: 0, marginLeft: '6px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Edit button */}
+            <div
+              onMouseEnter={() => setEditHov(true)}
+              onMouseLeave={() => { setEditHov(false); setEditPress(false); }}
+              onMouseDown={() => setEditPress(true)}
+              onMouseUp={() => setEditPress(false)}
+              onClick={startEdit}
+              style={{
+                width: '24px', height: '24px', borderRadius: '6px', flexShrink: 0,
+                background: editPress ? '#44444499' : editHov ? '#2a2a2a99' : '#00000080',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', transition: 'background 0.12s',
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2.333 14H14.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M3.667 8.907V11.333H6.106L13 4.436L10.565 2L3.667 8.907Z" stroke="#FFFFFF" strokeLinejoin="round" />
+              </svg>
+            </div>
+            {/* Delete button */}
+            <div
+              onMouseEnter={() => setDelHov(true)}
+              onMouseLeave={() => { setDelHov(false); setDelPress(false); }}
+              onMouseDown={() => setDelPress(true)}
+              onMouseUp={() => setDelPress(false)}
+              onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+              style={{
+                width: '24px', height: '24px', borderRadius: '6px', flexShrink: 0,
+                background: '#00000080',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', transition: 'background 0.12s',
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 3.333V14.667H13V3.333H3Z" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+                <path d="M6.667 6.667V11" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+                <path d="M9.333 6.667V11" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+                <path d="M1.333 3.333H14.667" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+                <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+              </svg>
+            </div>
+          </div>
+        )}
+      </div>
+      {confirmDelete && (
+        <ConfirmDialog
+          title="确认删除"
+          description={`删除「${displayName}」后无法恢复，确定要删除吗？`}
+          confirmText="删除"
+          onConfirm={() => { setConfirmDelete(false); onDelete?.(); }}
+          onCancel={() => setConfirmDelete(false)}
+          zIndex={1100}
+        />
+      )}
+    </div>
+  );
+}
+
+function AssetCard({ asset, label, isApproved, isSel, CELL, CELL_H, FONT, onClick, onDelete }) {
+  const [hovered, setHovered] = useState(false);
+  const [delHov, setDelHov] = useState(false);
+  const [fullHov, setFullHov] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const isPending = label === '审核中';
+  const isFailed = label === '审核未通过';
+
+  // 全屏预览尺寸：80vw 或 80vh 取最小值保持正方形
+  const fsSize = 'min(80vw, 80vh)';
+
+  return (
+    <>
+      <div
+        onClick={isApproved ? onClick : undefined}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => { setHovered(false); setDelHov(false); setFullHov(false); }}
+        style={{
+          width: CELL, height: CELL_H, borderRadius: '8px', flexShrink: 0, position: 'relative',
+          overflow: 'hidden', cursor: isApproved ? 'pointer' : 'default', boxSizing: 'border-box',
+          boxShadow: hovered && isApproved ? 'inset 0 0 0 1px #FFFFFF1F' : 'none',
+          transition: 'box-shadow 0.15s',
+          background: '#1a1a1a',
+        }}
+      >
+        {/* Image */}
+        {asset.preview_url ? (
+          <img src={asset.preview_url} alt={asset.name || ''} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <div style={{ position: 'absolute', inset: 0, background: '#FFFFFF0D' }} />
+        )}
+
+        {/* 审核中：半透明遮罩 + 文字居中 */}
+        {isPending && (
+          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(#00000099, #00000099)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF' }}>审核中</span>
+          </div>
+        )}
+
+        {/* 审核未通过：半透明遮罩 + 文字左下 + 删除按钮右下 */}
+        {isFailed && (
+          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(#00000099, #00000099)', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-end', padding: '12px 16px' }}>
+            <div style={{ position: 'absolute', bottom: '12px', left: '16px', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF' }}>审核未通过</div>
+            <div
+              onMouseEnter={() => setDelHov(true)}
+              onMouseLeave={() => { setDelHov(false); }}
+              onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+              style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#00000099', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 3.333V14.667H13V3.333H3Z" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+                <path d="M6.667 6.667V11" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+                <path d="M9.333 6.667V11" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+                <path d="M1.333 3.333H14.667" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+                <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+              </svg>
+            </div>
+          </div>
+        )}
+
+        {/* Checkbox：选中态 = 蓝色实心勾；悬停已审核未选中 = 空心占位 */}
+        {(isSel || (hovered && isApproved)) && (
+          <div style={{ position: 'absolute', top: '6px', left: '6px', padding: '2px', zIndex: 2, display: 'flex', alignItems: 'center' }}>
+            <div style={{
+              width: '16px', height: '16px', borderRadius: '3px', flexShrink: 0,
+              background: isSel ? '#2DC3E1' : '#090909',
+              border: '1px solid #FFFFFF33',
+              outline: '1px solid #00000080',
+              position: 'relative',
+            }}>
+              {isSel && (
+                <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" style={{ position: 'absolute', left: '50%', top: '50%', translate: '-50% -50%', overflow: 'visible' }}>
+                  <path d="M3.333 8L6.667 11.333L13.333 4.667" fill="none" stroke="#090909" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 悬停（已审核，未选中）：右下角全屏 + 删除 */}
+        {hovered && isApproved && !isSel && (
+          <div style={{ position: 'absolute', bottom: '12px', right: '16px', display: 'flex', gap: '6px', alignItems: 'center' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 全屏按钮 */}
+            <div
+              onMouseEnter={() => setFullHov(true)}
+              onMouseLeave={() => setFullHov(false)}
+              onClick={(e) => { e.stopPropagation(); setFullscreen(true); }}
+              style={{ width: '24px', height: '24px', borderRadius: '6px', background: fullHov ? '#2a2a2a99' : '#00000099', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'background 0.12s' }}
+            >
+              <svg viewBox="0 0 81.92 81.92" xmlns="http://www.w3.org/2000/svg" width="16" height="16" style={{ flexShrink: 0 }}>
+                <path d="M36.873 75.264h-25.6l20.992-20.992c1.024-1.024 1.024-3.072 0-4.096-1.024-1.536-3.072-1.536-4.608 0l-20.992 20.992v-27.648c0-1.536-1.536-3.072-3.072-3.072s-3.072 1.536-3.072 3.072v29.184c0 4.096 3.072 9.216 7.68 9.216h28.672c1.536 0 3.072-1.536 3.072-3.072 0-2.048-1.536-3.584-3.072-3.584zM75.273 0.512h-30.208c-1.536 0-3.072 1.536-3.072 3.072s1.536 3.072 3.072 3.072h25.6l-21.504 20.992c-1.024 1.024-1.024 3.072 0 4.608 1.536 1.024 3.584 1.024 4.608 0l20.992-20.992v25.6c0 1.536 1.536 3.072 3.072 3.072s3.072-1.536 3.072-3.072v-28.16c0.512-5.12-2.048-8.192-5.632-8.192z" fill="#FFFFFF" />
+              </svg>
+            </div>
+            {/* 删除按钮 */}
+            <div
+              onMouseEnter={() => setDelHov(true)}
+              onMouseLeave={() => setDelHov(false)}
+              onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+              style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#00000099', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'background 0.12s' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 3.333V14.667H13V3.333H3Z" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+                <path d="M6.667 6.667V11" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+                <path d="M9.333 6.667V11" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+                <path d="M1.333 3.333H14.667" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+                <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
+              </svg>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 删除确认弹窗 */}
+      {confirmDelete && (
+        <ConfirmDialog
+          title="确认删除"
+          description="删除后无法恢复，确定要删除这张素材吗？"
+          confirmText="删除"
+          onConfirm={() => { setConfirmDelete(false); onDelete?.(); }}
+          onCancel={() => setConfirmDelete(false)}
+          zIndex={1100}
+        />
+      )}
+
+      {/* 全屏预览 */}
+      {fullscreen && createPortal(
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 2000, background: '#000000CC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setFullscreen(false)}
+        >
+          <img
+            src={asset.preview_url}
+            alt={asset.name || ''}
+            style={{ width: fsSize, height: fsSize, objectFit: 'contain', borderRadius: '8px', pointerEvents: 'none' }}
+          />
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+function LiveMaterialModal({ open, onClose, onConfirm, initialSelected = [] }) {
+  const [groups, setGroups] = useState([]);
+  const [assetsMap, setAssetsMap] = useState({}); // groupId -> assets[]
+  const [selectedMap, setSelectedMap] = useState({}); // { [assetId]: { groupId, assetId, assetRefUrl, previewUrl, name } }
+  const [loading, setLoading] = useState(false);
+  const [view, setView] = useState('groups'); // 'groups' | 'assets'
+  const [activeGroup, setActiveGroup] = useState(null); // LiveMaterialGroupResponse
+  const [uploading, setUploading] = useState(false);
+  const [uploadToast, setUploadToast] = useState(null); // string | null
+  const [qrState, setQrState] = useState(null); // null | { phase:'scanning', launchUrl, sessionId } | { phase:'success', newGroup }
+  const [pendingGroupName, setPendingGroupName] = useState('');
+  const [groupNameOverrides, setGroupNameOverrides] = useState({}); // groupId -> display name（临时覆盖，后端已持久化）
+  const pollTimerRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const assetPollRef = useRef(null);
+
+  // Load groups when modal opens
+  useEffect(() => {
+    if (!open) return;
+    // 用已选素材初始化 selectedMap，保持跨次打开的选中状态
+    const initMap = Object.fromEntries((initialSelected || []).map(m => [m.assetId, m]));
+    setSelectedMap(initMap);
+    setView('groups');
+    setActiveGroup(null);
+    setQrState(null);
+    setLoading(true);
+    apiListLiveMaterialGroups()
+      .then(async (gs) => {
+        setGroups(gs);
+        const entries = await Promise.all(
+          gs.map(async (g) => {
+            try { return [g.id, await apiListLiveMaterialAssets(g.id, { refresh: true })]; }
+            catch { return [g.id, []]; }
+          })
+        );
+        setAssetsMap(Object.fromEntries(entries));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  // Cleanup polling on unmount / close
+  useEffect(() => {
+    if (!open) { clearInterval(pollTimerRef.current); setQrState(null); }
+    return () => clearInterval(pollTimerRef.current);
+  }, [open]);
+
+  const refreshGroups = async () => {
+    const gs = await apiListLiveMaterialGroups();
+    setGroups(gs);
+    const entries = await Promise.all(
+      gs.map(async (g) => {
+        try { return [g.id, await apiListLiveMaterialAssets(g.id, { refresh: true })]; }
+        catch { return [g.id, []]; }
+      })
+    );
+    setAssetsMap(Object.fromEntries(entries));
+    return gs;
+  };
+
+  const handleAddNew = async () => {
+    try {
+      const session = await apiCreateLiveMaterialAuthSession({ source: 'creation' });
+      const prevIds = new Set(groups.map(g => g.id));
+      setQrState({ phase: 'scanning', launchUrl: session.launch_url, sessionId: session.session_id });
+      pollTimerRef.current = setInterval(async () => {
+        try {
+          const { status, group: statusGroup } = await apiGetLiveMaterialAuthSessionStatus(session.session_id);
+          if (status === 'completed') {
+            clearInterval(pollTimerRef.current);
+            // 刷新 groups 列表
+            const gs = await apiListLiveMaterialGroups();
+            setGroups(gs);
+            const entries = await Promise.all(
+              gs.map(async (g) => {
+                try { return [g.id, await apiListLiveMaterialAssets(g.id, { refresh: true })]; }
+                catch { return [g.id, []]; }
+              })
+            );
+            setAssetsMap(Object.fromEntries(entries));
+            // 优先用 status 接口返回的 group，其次从刷新列表中找新增的
+            const newGroup = statusGroup || gs.find(g => !prevIds.has(g.id)) || null;
+            setPendingGroupName(newGroup?.name || '默认姓名');
+            setQrState({ phase: 'success', newGroup });
+          } else if (status === 'failed') {
+            clearInterval(pollTimerRef.current);
+            setQrState(null);
+          }
+        } catch {}
+      }, 3000);
+    } catch {}
+  };
+
+  const handleSaveName = async () => {
+    const finalName = pendingGroupName.trim() || '默认姓名';
+    if (qrState?.newGroup) {
+      try {
+        const updated = await apiUpdateLiveMaterialGroup(qrState.newGroup.id, { name: finalName });
+        // 用后端返回的最新数据更新 groups 列表
+        setGroups(prev => prev.map(g => g.id === updated.id ? updated : g));
+      } catch {
+        // 接口失败时降级：仅更新本地显示
+        setGroupNameOverrides(prev => ({ ...prev, [qrState.newGroup.id]: finalName }));
+      }
+    }
+    setQrState(null);
+  };
+
+  const handleGroupClick = async (group) => {
+    setActiveGroup(group);
+    setView('assets');
+    // 每次进入都带 refresh=true，从 OneLinkAI 同步最新审核状态
+    try {
+      const assets = await apiListLiveMaterialAssets(group.id, { refresh: true });
+      setAssetsMap(prev => ({ ...prev, [group.id]: assets }));
+    } catch {}
+  };
+
+  const handleGroupSaveName = async (group, newName) => {
+    try {
+      const updated = await apiUpdateLiveMaterialGroup(group.id, { name: newName });
+      setGroups(prev => prev.map(g => g.id === updated.id ? updated : g));
+    } catch {
+      setGroupNameOverrides(prev => ({ ...prev, [group.id]: newName }));
+    }
+  };
+
+  const handleGroupDelete = async (group) => {
+    try {
+      await apiDeleteLiveMaterialGroup(group.id);
+      setGroups(prev => prev.filter(g => g.id !== group.id));
+      setAssetsMap(prev => { const next = { ...prev }; delete next[group.id]; return next; });
+      if (activeGroup?.id === group.id) { setActiveGroup(null); setView('groups'); }
+    } catch (err) {
+      console.error('删除素材组失败', err);
+    }
+  };
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeGroup) return;
+    // 仅允许图片格式
+    if (!file.type.startsWith('image/')) {
+      setUploadToast('仅支持上传图片格式');
+      setTimeout(() => setUploadToast(null), 3000);
+      e.target.value = '';
+      return;
+    }
+    // 30MB 限制
+    if (file.size > 30 * 1024 * 1024) {
+      setUploadToast('图片大小不能超过 30MB');
+      setTimeout(() => setUploadToast(null), 3000);
+      e.target.value = '';
+      return;
+    }
+    setUploading(true);
+    try {
+      const asset = await apiUploadLiveMaterialAsset(activeGroup.id, file, 'image');
+      setAssetsMap(prev => ({ ...prev, [activeGroup.id]: [asset, ...(prev[activeGroup.id] || [])] }));
+      startAssetStatusPolling(activeGroup.id);
+    } catch {
+      setUploadToast('上传失败，请重试');
+      setTimeout(() => setUploadToast(null), 3000);
+    }
+    setUploading(false);
+    e.target.value = '';
+  };
+
+  // 轮询该组内所有 pending/processing 资产的审核状态，直到全部终态
+  const startAssetStatusPolling = (groupId) => {
+    if (assetPollRef.current) return; // 已在轮询
+    assetPollRef.current = setInterval(async () => {
+      try {
+        const assets = await apiListLiveMaterialAssets(groupId, { refresh: true });
+        setAssetsMap(prev => ({ ...prev, [groupId]: assets }));
+        const allDone = assets.every(a => { const s = (a.status || '').toLowerCase(); return s !== 'pending' && s !== 'processing'; });
+        if (allDone) { clearInterval(assetPollRef.current); assetPollRef.current = null; }
+      } catch {}
+    }, 4000);
+  };
+
+  const handleAssetDelete = async (asset) => {
+    try {
+      await apiDeleteLiveMaterialAsset(asset.id);
+      const gid = asset.group_id || activeGroup?.id;
+      setAssetsMap(prev => ({ ...prev, [gid]: (prev[gid] || []).filter(a => a.id !== asset.id) }));
+      if (selectedMap[asset.id]) setSelectedMap(prev => { const next = { ...prev }; delete next[asset.id]; return next; });
+    } catch (err) {
+      console.error('删除素材失败', err);
+    }
+  };
+
+  const handleConfirm = () => {
+    const items = Object.values(selectedMap);
+    if (!items.length) { onClose(); return; }
+    onConfirm?.(items);
+    onClose();
+  };
+
+  if (!open) return null;
+
+  const MODAL_W = 800;
+  const MODAL_H = 600;
+  const CELL = 242;
+  const CELL_H = 160;
+  const GAP = 12;
+
+  const PrimaryBtn = ({ onClick, children }) => (
+    <button type="button" onClick={onClick}
+      className="[font-synthesis:none] flex flex-col h-9 shrink-0 rounded-lg p-px [box-shadow:#00000066_3px_3px_8px] [outline:1px_solid_#00000080] antialiased cursor-pointer group"
+      style={{ backgroundImage: 'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 30%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, #FFFFFF14, #FFFFFF14)' }}
+    >
+      <div className="flex items-center grow shrink basis-[0%] rounded-[7px] px-[15px] gap-1 bg-[#161616] group-hover:bg-[#1e1e1e] group-active:bg-[#111111] transition-colors">
+        <span className="inline-block w-max shrink-0 text-white text-sm/4.5" style={{ fontFamily: FONT }}>{children}</span>
+      </div>
+    </button>
+  );
+
+  const CloseBtn = ({ onClick }) => (
+    <button type="button" onClick={onClick} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: '#FFFFFF66', display: 'flex', alignItems: 'center' }}>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+    </button>
+  );
+
+  const statusLabel = (status) => {
+    const s = (status || '').toLowerCase();
+    if (s === 'pending' || s === 'processing') return '审核中';
+    if (s === 'failed' || s === 'rejected') return '审核未通过';
+    return null;
+  };
+
+  const groupAssets = activeGroup ? (assetsMap[activeGroup.id] || []) : [];
+
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#00000080', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {/* Main modal */}
+      <div style={{ width: MODAL_W, height: MODAL_H, background: '#161616', borderRadius: '16px', border: '1px solid #FFFFFF0D', boxShadow: '0 8px 32px #00000099', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Header — 固定标题 */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', flexShrink: 0 }}>
+          <span style={{ fontFamily: FONT, fontSize: '16px', fontWeight: 500, lineHeight: '20px', color: '#FFFFFF', flex: 1 }}>Seedance2.0真人素材库</span>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" style={{ overflow: 'visible', flexShrink: 0 }}>
+              <path d="M2.667 2.667L13.333 13.333" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M2.667 13.333L13.333 2.667" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: '1 1 0%', overflow: 'auto', padding: '0 24px 8px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* 面包屑 — 仅在 assets 视图显示 */}
+          {view === 'assets' && (
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+              <button type="button" onClick={() => { setView('groups'); setActiveGroup(null); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF66' }}>
+                返回/
+              </button>
+              <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF' }}>
+                {groupNameOverrides[activeGroup?.id] || activeGroup?.name || '素材库'}
+              </span>
+            </div>
+          )}
+          {loading ? (
+            <div style={{ color: '#FFFFFF66', fontFamily: FONT, fontSize: '13px' }}>加载中...</div>
+          ) : view === 'groups' ? (
+            /* Groups view */
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: GAP }}>
+              {/* Add new */}
+              <button type="button" onClick={handleAddNew}
+                style={{ width: CELL, height: CELL_H, borderRadius: '8px', border: '1px dashed #FFFFFF33', background: '#FFFFFF08', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', color: '#FFFFFF66', fontFamily: FONT, fontSize: '12px', flexShrink: 0, transition: 'background 0.15s, border-color 0.15s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#FFFFFF14'; e.currentTarget.style.borderColor = '#FFFFFF55'; e.currentTarget.style.color = '#FFFFFF99'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#FFFFFF08'; e.currentTarget.style.borderColor = '#FFFFFF33'; e.currentTarget.style.color = '#FFFFFF66'; }}
+                onMouseDown={(e) => { e.currentTarget.style.background = '#FFFFFF1F'; e.currentTarget.style.borderColor = '#FFFFFF66'; }}
+                onMouseUp={(e) => { e.currentTarget.style.background = '#FFFFFF14'; e.currentTarget.style.borderColor = '#FFFFFF55'; }}
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <circle cx="10" cy="10" r="8.5" stroke="currentColor" strokeWidth="1.2"/>
+                  <path d="M10 6.5v7M6.5 10h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+                录入新的真人
+              </button>
+              {/* Group cards */}
+              {groups.map((group) => {
+                const displayName = groupNameOverrides[group.id] || group.name || '未命名';
+                const preview = assetsMap[group.id]?.[0]?.preview_url;
+                return (
+                  <GroupCard key={group.id} group={group} displayName={displayName} preview={preview} CELL={CELL} CELL_H={CELL_H} FONT={FONT}
+                    onClick={() => handleGroupClick(group)}
+                    onSaveName={(newName) => handleGroupSaveName(group, newName)}
+                    onDelete={() => handleGroupDelete(group)}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            /* Assets view */
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: GAP }}>
+              {/* Upload card */}
+              <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleUpload} />
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading}
+                style={{ width: CELL, height: CELL_H, borderRadius: '8px', border: '1px dashed #FFFFFF33', background: '#FFFFFF08', cursor: uploading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexShrink: 0, transition: 'background 0.15s' }}
+                onMouseEnter={(e) => { if (!uploading) { e.currentTarget.style.background = '#FFFFFF14'; e.currentTarget.style.borderColor = '#FFFFFF55'; } }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#FFFFFF08'; e.currentTarget.style.borderColor = '#FFFFFF33'; }}
+              >
+                <svg viewBox="0 0 102.4 102.4" xmlns="http://www.w3.org/2000/svg" width="20" height="20" style={{ flexShrink: 0 }}>
+                  <path d="M79.997 76.8H22.397a3.2 3.2 0 0 1-3.2-3.2v-25.6a3.2 3.2 0 0 1 3.2-3.2h6.4a3.2 3.2 0 1 1 0 6.4H25.597v19.2h51.2v-19.2h-3.2a3.2 3.2 0 0 1 0-6.4h6.4a3.2 3.2 0 0 1 3.2 3.2v25.6a3.2 3.2 0 0 1-3.2 3.2z m-25.6-40.272v24.275a3.2 3.2 0 0 1-6.4 0v-24.288l-4.128 4.128a3.2 3.2 0 0 1-4.512-4.512l9.408-9.408a3.194 3.194 0 0 1 1.981-1.088 3.197 3.197 0 0 1 2.723 0.896l9.6 9.6A3.2 3.2 0 0 1 60.797 41.6a3.2 3.2 0 0 1-2.272-0.928L54.397 36.528z" fill="#FFFFFFCC" />
+                </svg>
+                <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFFCC', flexShrink: 0 }}>
+                  {uploading ? '上传中...' : '上传'}
+                </span>
+              </button>
+              {/* Asset cards */}
+              {groupAssets.map((asset) => {
+                const label = statusLabel(asset.status);
+                const isApproved = !label;
+                const isSel = !!selectedMap[asset.id];
+                return (
+                  <AssetCard key={asset.id} asset={asset} label={label} isApproved={isApproved} isSel={isSel} CELL={CELL} CELL_H={CELL_H} FONT={FONT}
+                    onClick={() => {
+                      if (!isApproved) return;
+                      if (isSel) {
+                        setSelectedMap(prev => { const next = { ...prev }; delete next[asset.id]; return next; });
+                      } else {
+                        setSelectedMap(prev => ({ ...prev, [asset.id]: { groupId: asset.group_id, groupType: activeGroup?.group_type, assetId: asset.id, assetRefUrl: asset.asset_ref_url, previewUrl: asset.preview_url, name: asset.name || activeGroup?.name } }));
+                      }
+                    }}
+                    onDelete={() => handleAssetDelete(asset)}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: '#161616', borderTop: '1px solid #FFFFFF0D' }}>
+          <div style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: Object.keys(selectedMap).length > 0 ? '#FFFFFF' : 'transparent', userSelect: 'none' }}>
+            已选 {Object.keys(selectedMap).length}
+          </div>
+          <PrimaryBtn onClick={handleConfirm}>确定</PrimaryBtn>
+        </div>
+      </div>
+
+      {/* QR scanning sub-modal */}
+      {qrState?.phase === 'scanning' && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1001, background: '#00000080', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={(e) => { if (e.target === e.currentTarget) { clearInterval(pollTimerRef.current); setQrState(null); } }}
+        >
+          <div style={{ width: 400, background: '#161616', borderRadius: '12px', border: '1px solid #FFFFFF0D', boxShadow: '0 8px 32px #00000099', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px' }}>
+              <span style={{ fontFamily: FONT, fontSize: '14px', fontWeight: 500, color: '#FFFFFFCC' }}>扫码授权人像资产</span>
+              <CloseBtn onClick={() => { clearInterval(pollTimerRef.current); setQrState(null); }} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 24px 32px', gap: '16px' }}>
+              <div style={{ background: 'white', padding: '12px', borderRadius: '8px' }}>
+                <QRCodeSVG value={qrState.launchUrl} size={200} />
+              </div>
+              <span style={{ fontFamily: FONT, fontSize: '13px', color: '#FFFFFF99' }}>请使用手机扫码进行人脸检测</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success + name editing sub-modal */}
+      {qrState?.phase === 'success' && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1001, background: '#00000080', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 400, background: '#161616', borderRadius: '12px', border: '1px solid #FFFFFF0D', boxShadow: '0 8px 32px #00000099', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px' }}>
+              <span style={{ fontFamily: FONT, fontSize: '14px', fontWeight: 500, color: '#FFFFFFCC' }}>扫码授权人像资产</span>
+              <CloseBtn onClick={handleSaveName} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px', gap: '12px' }}>
+              {/* Success icon */}
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="28" height="22" viewBox="0 0 28 22" fill="none">
+                  <path d="M2 11l8 8L26 2" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <span style={{ fontFamily: FONT, fontSize: '13px', color: '#FFFFFFCC' }}>授权成功</span>
+            </div>
+            {/* Name input */}
+            <div style={{ padding: '0 24px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <input
+                type="text"
+                value={pendingGroupName}
+                onChange={(e) => setPendingGroupName(e.target.value)}
+                placeholder="默认姓名"
+                style={{
+                  width: '100%', height: '40px', boxSizing: 'border-box',
+                  background: 'transparent', border: '1px solid #FFFFFF1F',
+                  borderRadius: '8px', padding: '0 12px',
+                  fontFamily: FONT, fontSize: '14px', color: '#FFFFFFCC',
+                  outline: 'none',
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = '#FFFFFF40'; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = '#FFFFFF1F'; }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <PrimaryBtn onClick={handleSaveName}>保存</PrimaryBtn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload error toast */}
+      {uploadToast && createPortal(
+        <div style={{ position: 'fixed', top: '25vh', left: '50%', transform: 'translateX(-50%)', zIndex: 2100, pointerEvents: 'none' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '8px', background: '#1E1E1ECC', backdropFilter: 'blur(20px)', whiteSpace: 'nowrap', fontFamily: FONT, fontSize: '13px', color: '#FF6B6B', border: '1px solid #FF4444' + '33' }}>
+            {uploadToast}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>,
+    document.body
+  );
+}
+
+// ─── Send button ──────────────────────────────────────────────────────────────
+function SendButton({ onClick, disabled = false, loading = false, disabledTooltip = '' }) {
+  const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [tooltipRect, setTooltipRect] = useState(null);
+  const wrapRef = useRef(null);
+  const scale = pressed ? 'scale(0.9)' : hovered ? 'scale(1.1)' : 'scale(1)';
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0, display: 'inline-flex' }}
+      onMouseEnter={() => {
+        setHovered(true);
+        if (disabled && disabledTooltip && wrapRef.current) {
+          setTooltipRect(wrapRef.current.getBoundingClientRect());
+        }
+      }}
+      onMouseLeave={() => { setHovered(false); setPressed(false); setTooltipRect(null); }}
+    >
+      {disabled && hovered && disabledTooltip && tooltipRect && createPortal(
+        <div style={{
+          position: 'fixed',
+          zIndex: 9999,
+          background: '#2A2B2B',
+          border: '1px solid #FFFFFF14',
+          borderRadius: '8px',
+          padding: '8px 12px',
+          maxWidth: '180px',
+          fontFamily: FONT,
+          fontSize: '12px',
+          lineHeight: '18px',
+          color: '#FFFFFFCC',
+          pointerEvents: 'none',
+          boxShadow: '0 4px 16px #00000066',
+          // position above the button, centered
+          left: Math.min(
+            Math.max(8, tooltipRect.left + tooltipRect.width / 2 - 90),
+            window.innerWidth - 8 - 180
+          ),
+          bottom: window.innerHeight - tooltipRect.top + 8,
+        }}>
+          {disabledTooltip}
+        </div>,
+        document.body
+      )}
+    <button
+      type="button"
+      disabled={disabled}
+      onMouseEnter={() => !disabled && setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setPressed(false); }}
+      onMouseDown={() => !disabled && setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onClick={disabled ? undefined : onClick}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: '9999px',
+        position: 'relative',
+        flexShrink: 0,
+        boxShadow: '#2DC3E133 0px 0px 12px',
+        width: '40px',
+        height: '40px',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        transform: disabled ? 'scale(1)' : scale,
+        transition: 'transform 0.15s cubic-bezier(0.4,0,0.2,1), opacity 0.15s',
+        opacity: disabled ? 0.45 : 1,
+        background: 'transparent',
+        border: 'none',
+        outline: focused ? '1px solid #2DC3E180' : 'none',
+        outlineOffset: '4px',
+        padding: 0,
+      }}
+    >
+      <PulsingBorder
+        speed={loading ? 1.3 : 1}
+        roundness={1}
+        thickness={0.41}
+        softness={1}
+        intensity={0.4}
+        bloom={0.68}
+        spots={4}
+        spotSize={0.42}
+        pulse={0.37}
+        smoke={0.55}
+        smokeSize={0.18}
+        scale={0.94}
+        rotation={0}
+        aspectRatio="square"
+        frame={34362983.25087259}
+        colors={['#0DC1FDB3', '#E1F5FF', '#73FFE1']}
+        colorBack="#00000000"
+        className="rounded-full flex-1 w-full [box-shadow:#34DDFFB3_0px_0px_4px_2px_inset] bg-neutral-300"
+      />
+      {loading ? (
+        <div style={{ position: 'absolute', left: '50%', top: '50%', translate: '-50% -50%', display: 'flex', alignItems: 'center', gap: '3px' }}>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="creation-thinking-dot" style={{ width: '4px', height: '4px', borderRadius: '9999px', background: '#FFFFFF' }} />
+          ))}
+        </div>
+      ) : (
+        <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"
+          style={{ position: 'absolute', left: '50%', top: '50%', translate: '-50% -50%' }}>
+          <path d="M8.003 4.7V14" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M4 8.667L8 4.667L12 8.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M4 2H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </button>
+    </div>
+  );
+}
+
+// ─── InputCard ────────────────────────────────────────────────────────────────
+function formatMentionLabel(name) {
+  const dotIdx = name.lastIndexOf('.');
+  if (dotIdx === -1) return name.length > 9 ? name.slice(0, 9) + '…' : name;
+  const base = name.slice(0, dotIdx);
+  const ext = name.slice(dotIdx);
+  const truncBase = base.length > 9 ? base.slice(0, 9) + '…' : base;
+  return truncBase + ext;
+}
+
+// ─── DubbingAdjust — 配音语速 + 情绪调节 ───────────────────────────────────
+const DEFAULT_EMOTIONS = ['中性', '愤怒', '开心', '悲伤', '恐惧', '冷漠', '惊讶', '温柔'];
+
+/* EQ icon from Paper design YFJ-1 */
+function DubbingEqIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+      <path d="M3.666 5.333V14" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 9.667V14" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 6.333V2" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12.334 2V10.667" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.667 5.333C4.587 5.333 5.333 4.587 5.333 3.667C5.333 2.746 4.587 2 3.667 2C2.746 2 2 2.746 2 3.667C2 4.587 2.746 5.333 3.667 5.333Z" fill="none" stroke="#FFFFFF" strokeLinejoin="round" />
+      <path d="M8.001 9.667C8.921 9.667 9.667 8.921 9.667 8C9.667 7.08 8.921 6.333 8.001 6.333C7.08 6.333 6.334 7.08 6.334 8C6.334 8.921 7.08 9.667 8.001 9.667Z" fill="none" stroke="#FFFFFF" strokeLinejoin="round" />
+      <path d="M12.333 14C13.253 14 13.999 13.254 13.999 12.333C13.999 11.413 13.253 10.667 12.333 10.667C11.412 10.667 10.666 11.413 10.666 12.333C10.666 13.254 11.412 14 12.333 14Z" fill="none" stroke="#FFFFFF" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function DubbingAdjust({ speed, emotion, onSpeedChange, onEmotionChange, emotions, disabled }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const emoList = emotions?.length ? emotions : DEFAULT_EMOTIONS;
+  const speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+  const displaySpeed = speedOptions.reduce((prev, curr) => Math.abs(curr - speed) < Math.abs(prev - speed) ? curr : prev);
+  const emoLabel = emotion || '中性';
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+      {/* Trigger — matched to YFJ-1 open state */}
+      <button type="button" onClick={() => { if (!disabled) setOpen(v => !v); }} disabled={disabled}
+        style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '32px', paddingLeft: '12px', paddingRight: '6px', borderRadius: '8px', background: open ? '#1A1A1A' : '#1D1E1E', border: '1px solid ' + (open ? '#2DC3E199' : '#FFFFFF14'), outline: '1px solid #00000080', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, transition: 'background 0.2s, border-color 0.2s' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <DubbingEqIcon />
+          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF' }}>{displaySpeed}x</span>
+          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF' }}>{emoLabel}</span>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', flexShrink: 0 }}>
+          <path d="M12 6.333L8 10.333L4 6.333H12Z" fill="#FFFFFF" stroke="#FFFFFF" strokeWidth="1.333" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {/* Popup — matched to YFJ-1 design: 400px, left-aligned from trigger */}
+      {open && (
+        <div style={{ position: 'absolute', bottom: 'calc(100% + 2px)', left: '-1px', zIndex: 60, width: '400px', padding: '8px', borderRadius: '8px', background: '#1D1E1E', border: '1px solid #FFFFFF0D', boxShadow: '#00000066 0px 4px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {/* Speed section */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>语速</span>
+              <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '18px', color: '#FFFFFF' }}>{displaySpeed}×</span>
+            </div>
+            <div style={{ borderRadius: '8px', border: '1px solid #FFFFFF14', background: '#1D1E1E', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ position: 'relative', height: '20px', display: 'flex', alignItems: 'center' }}>
+                {/* Empty track */}
+                <div style={{ position: 'absolute', left: 0, right: 0, height: '3px', borderRadius: '2px', background: '#FFFFFF1A' }} />
+                {/* Filled track */}
+                <div style={{ position: 'absolute', left: 0, height: '3px', borderRadius: '2px', background: '#2DC3E1', width: ((speed - 0.5) / 1.5 * 100) + '%' }} />
+                {/* Invisible range input */}
+                <input type="range" min={0.5} max={2.0} step={0.01} value={speed}
+                  className="dubbing-speed-slider"
+                  onChange={(e) => onSpeedChange?.(parseFloat(e.target.value))}
+                  style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+                />
+                {/* Thumb knob */}
+                <div style={{ position: 'absolute', left: ((speed - 0.5) / 1.5 * 100) + '%', top: '50%', transform: 'translate(-50%, -50%)', width: '14px', height: '14px', borderRadius: '50%', background: '#FFFFFF', boxShadow: '#2DC3E1 0px 0px 0px 2px, #00000066 0px 2px 6px', zIndex: 1, pointerEvents: 'none' }} />
+              </div>
+              <style>{`
+                .dubbing-speed-slider { -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; margin: 0; padding: 0; }
+                .dubbing-speed-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; background: transparent; border: none; cursor: pointer; }
+                .dubbing-speed-slider::-moz-range-thumb { width: 18px; height: 18px; background: transparent; border: none; cursor: pointer; }
+              `}</style>
+              {/* Speed labels: 0.5× / 1.0× (Medium) / 2.0× */}
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF99' }}>0.5×</span>
+                <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF99' }}>1.0×</span>
+                <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF99' }}>1.5×</span>
+                <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF99' }}>2.0×</span>
+              </div>
+            </div>
+          </div>
+          {/* Emotion section */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>情绪</span>
+            {[0, 1].map(row => (
+              <div key={row} style={{ display: 'flex', gap: '4px' }}>
+                {emoList.slice(row * 4, row * 4 + 4).map(em => {
+                  const isSelected = em === emotion;
+                  return (
+                    <button key={em} type="button" onClick={() => onEmotionChange?.(isSelected ? '' : em)}
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 12px', borderRadius: '4px', border: 'none', background: isSelected ? '#FFFFFF14' : '#FFFFFF0D', boxShadow: isSelected ? '#FFFFFF33 0px 0px 0px 1px inset' : 'none', color: isSelected ? '#FFFFFF' : '#FFFFFF66', fontFamily: FONT, fontSize: '12px', lineHeight: '16px', cursor: 'pointer', transition: 'background 0.15s, box-shadow 0.15s, color 0.15s' }}>
+                      {em}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InputCard({ onGenerate, width = '800px', disabled = false, genType, onGenTypeChange,
+  model, onModelChange, modelOptions = [], creationParams, prefillVersion = 0, prefillData = null, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {} }) {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [hasContent, setHasContent] = useState(false);
+  const [ratio, setRatio] = useState('');
+  const [resolution, setResolution] = useState('');
+  const [count, setCount] = useState('');
+  const [refMode, setRefMode] = useState('');
+  const [videoRatio, setVideoRatio] = useState('');
+  const [videoResolution, setVideoResolution] = useState('');
+  const [videoDuration, setVideoDuration] = useState('');
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [liveMaterialModalOpen, setLiveMaterialModalOpen] = useState(false);
+  const [selectedVoiceName, setSelectedVoiceName] = useState('');
+  const [selectedVoiceId, setSelectedVoiceId] = useState('');
+  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
+  const [dubbingSpeed, setDubbingSpeed] = useState(1.0);
+  const [dubbingEmotion, setDubbingEmotion] = useState('');
+  const [files, setFiles] = useState([]);
+  const [firstFrameFile, setFirstFrameFile] = useState(null);
+  const [lastFrameFile, setLastFrameFile] = useState(null);
+  const [frameAssetTarget, setFrameAssetTarget] = useState(null);
+  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionPos, setMentionPos] = useState({ top: 0, left: 0 });
+  const [mentionAnchorRange, setMentionAnchorRange] = useState(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const editorRef = useRef(null);
+  const mentionFromTagRef = useRef(false);
+  const savedCursorRangeRef = useRef(null); // 失焦前保存的光标位置
+  const savedContentRef = useRef({ html: "", text: "", voiceId: "", voiceName: "" }); // 用于失败时回退
+
+
+  // Video: filter modelOptions by refMode
+  const dubbingEmotions = useMemo(() => { return creationParams?.emotions ?? DEFAULT_EMOTIONS; }, [creationParams]);
+
+  // 是否显示真人素材入口：仅视频模式 + 当前模型支持
+  const showLiveMaterial = useMemo(() => {
+    if (genType !== 'video') return false;
+    const currentModel = modelOptions.find(m => m.value === model);
+    return !!(currentModel?.supportsLiveMaterial);
+  }, [genType, model, modelOptions]);
+
+  const filteredModelOptions = useMemo(() => {
+    if (genType !== 'video') return modelOptions;
+    if (!refMode) return modelOptions;
+    if (refMode === 'frame') {
+      return modelOptions.filter(m => m.hasFrame);
+    }
+    // 'all' (全能参考): 只显示支持全能参考的模型
+    return modelOptions.filter(m => m.hasFull);
+  }, [genType, refMode, modelOptions]);
+
+  // Video: sync model when refMode changes
+  const handleRefModeChange = useCallback((newRefMode) => {
+    // 切换到首尾帧：将 files 中的图片迁移到帧槽位，其余丢弃
+    if (newRefMode === 'frame') {
+      const imageFiles = files.filter(f => isImageFile(f));
+      setFirstFrameFile(imageFiles[0] || null);
+      setLastFrameFile(imageFiles[1] || null);
+      setFiles([]);
+    }
+    // 离开首尾帧：将帧槽位的图片合并回 files 作为普通参考图
+    if (refMode === 'frame' && newRefMode !== 'frame') {
+      const carried = [firstFrameFile, lastFrameFile].filter(Boolean);
+      if (carried.length > 0) setFiles(carried.map(f => (f instanceof File) ? f : { ...f, isAsset: true }));
+    }
+    setRefMode(newRefMode);
+    const filtered = newRefMode === 'frame'
+      ? modelOptions.filter(m => m.hasFrame)
+      : modelOptions.filter(m => m.hasFull);
+    const inList = filtered.some(m => m.value === model);
+    if (!inList && filtered.length > 0) {
+      onModelChange(filtered[0].value);
+    }
+  }, [files, refMode, firstFrameFile, lastFrameFile, modelOptions, model, onModelChange]);
+  // Reset param selections when creationParams changes (model or genType changed)
+  useEffect(() => {
+    if (!creationParams) return;
+    if (genType === 'image') {
+      let defRatio = creationParams.defaults?.ratio || creationParams.ratios?.[0]?.value || '';
+      let defRes = creationParams.defaults?.resolution || creationParams.resolutions?.[0] || '';
+      // Validate combo: if default ratio not supported at default resolution, find valid pair
+      const imgRR = creationParams.resolutionRatios || {};
+      if (defRatio && defRes && imgRR[defRes] && !imgRR[defRes].includes(defRatio)) {
+        for (const res of creationParams.resolutions || []) {
+          if (imgRR[res] && imgRR[res].includes(defRatio)) { defRes = res; break; }
+        }
+        if (imgRR[defRes] && !imgRR[defRes].includes(defRatio)) {
+          const firstRes = creationParams.resolutions?.[0] || '';
+          const firstRatios = imgRR[firstRes] || [];
+          defRatio = firstRatios[0] || creationParams.ratios?.[0]?.value || '';
+          defRes = firstRes;
+        }
+      }
+      setRatio(defRatio);
+      setResolution(defRes);
+      setCount(creationParams.defaults?.count || creationParams.counts?.[0] || '');
+    } else {
+      let vRatio = creationParams.defaults?.ratio || creationParams.ratios?.[0]?.value || '';
+      let vRes = creationParams.defaults?.resolution || creationParams.resolutions?.[0] || '';
+      const vidRR = creationParams.resolutionRatios || {};
+      if (vRatio && vRes && vidRR[vRes] && !vidRR[vRes].includes(vRatio)) {
+        for (const res of creationParams.resolutions || []) {
+          if (vidRR[res] && vidRR[res].includes(vRatio)) { vRes = res; break; }
+        }
+        if (vidRR[vRes] && !vidRR[vRes].includes(vRatio)) {
+          const firstRes = creationParams.resolutions?.[0] || '';
+          const firstRatios = vidRR[firstRes] || [];
+          vRatio = firstRatios[0] || creationParams.ratios?.[0]?.value || '';
+          vRes = firstRes;
+        }
+      }
+      setVideoRatio(vRatio);
+      setVideoResolution(vRes);
+      setVideoDuration(creationParams.defaults?.duration || creationParams.durations?.[0] || '');
+      // 切换模型时：如果当前 refMode 在新模型中也支持，保留当前选择
+      const newRefModes = creationParams.refModes?.map(m => m.value) || [];
+      const keepRefMode = newRefModes.includes(refMode)
+        ? refMode
+        : (creationParams.defaults?.refMode || creationParams.refModes?.[0]?.value || '');
+      setRefMode(keepRefMode);
+    }
+  }, [creationParams, genType]);
+
+  useEffect(() => {
+    setFiles([]);
+    setFirstFrameFile(null);
+    setLastFrameFile(null);
+  }, [genType]);
+
+  useEffect(() => {
+    if (refMode !== 'frame') {
+      setFirstFrameFile(null);
+      setLastFrameFile(null);
+      setDubbingSpeed(1.0);
+      setDubbingEmotion('中性');
+      setSelectedVoiceId('');
+      setSelectedVoiceName('');
+    }
+  }, [refMode]);
+
+  useEffect(() => {
+    ensureRotateKeyframe();
+    ensureThinkingStyle();
+  }, []);
+
+  // Apply prefill when version bumps (re-edit or use-as-ref or use-as-first-frame)
+  useEffect(() => {
+    if (!prefillVersion || !prefillData) return;
+    if (prefillData.prompt !== undefined && editorRef.current) {
+      editorRef.current.innerHTML = '';
+      if (prefillData.promptHTML) {
+        editorRef.current.innerHTML = prefillData.promptHTML;
+        // innerHTML 恢复后事件监听器丢失，需用 buildTagElement 重建每个标签
+        const filesToUse = prefillData.files ?? [];
+        editorRef.current.querySelectorAll('[data-file-ref]').forEach((oldTag) => {
+          const fileName = oldTag.dataset.fileRef;
+          const file = filesToUse.find((f) => f.name === fileName) || { name: fileName, url: '', size: 0 };
+          const newTag = buildTagElement(file);
+          oldTag.parentNode?.replaceChild(newTag, oldTag);
+        });
+      } else if (prefillData.prompt) {
+        editorRef.current.textContent = prefillData.prompt;
+      }
+      setHasContent((prefillData.prompt || '').trim().length > 0);
+    }
+    if (prefillData.files !== undefined) {
+      // 替换模式（onReEdit 等场景）
+      setFiles(prefillData.files);
+    } else if (prefillData.appendFiles !== undefined) {
+      // 追加模式（onUseAsRef 场景）：追加到已有列表，按 url 去重，最多20个，同时检查模型上限
+      let toastFired = false;
+      safeSetFiles((prev) => {
+        if (prev.length >= MAX_FILES) {
+          showToast('error', '您添加的文件太多了，最多支持20个参考文件');
+          return prev;
+        }
+        const existingUrls = new Set((prev ?? []).map((f) => f.url).filter(Boolean));
+        const toAdd = prefillData.appendFiles.filter((f) => !f.url || !existingUrls.has(f.url));
+
+        const merged = [...(prev ?? []), ...toAdd];
+        if (merged.length > MAX_FILES) {
+          showToast('error', '您添加的文件太多了，最多支持20个参考文件');
+          return merged.slice(0, MAX_FILES);
+        }
+        return merged;
+      });
+    }
+    if (prefillData.ratio !== undefined) setRatio(prefillData.ratio);
+    if (prefillData.resolution !== undefined) setResolution(prefillData.resolution);
+    if (prefillData.count !== undefined) setCount(prefillData.count);
+    if (prefillData.duration !== undefined) setVideoDuration(prefillData.duration);
+    if (prefillData.refMode !== undefined) setRefMode(prefillData.refMode);
+    if (prefillData.firstFrameFile !== undefined) setFirstFrameFile(prefillData.firstFrameFile);
+    if (prefillData.lastFrameFile !== undefined) setLastFrameFile(prefillData.lastFrameFile);
+  }, [prefillVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const mentionMenuRef = useRef(null);
+  useEffect(() => {
+    if (!mentionOpen) return;
+    const handleOutside = (e) => {
+      if (mentionMenuRef.current && mentionMenuRef.current.contains(e.target)) return;
+      if (editorRef.current && editorRef.current.contains(e.target)) return;
+      setMentionOpen(false);
+      setMentionTargetTag(null);
+      mentionFromTagRef.current = false;
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [mentionOpen]);
+
+  const uploadAllowedExts =
+    genType === 'image' ? ALLOWED_IMAGE_EXTS
+    : genType === 'video'
+      ? (creationParams?.supportsAudio
+          ? ALLOWED_MEDIA_EXTS
+          : [...ALLOWED_IMAGE_EXTS, ...ALLOWED_VIDEO_EXTS])
+    : genType === 'dubbing' ? ALLOWED_AUDIO_EXTS
+    : ALLOWED_EXTS;
+  const uploadAcceptAttr = uploadAllowedExts.join(',');
+
+  const MAX_FILES = 20;
+
+  // 根据型号能力计算参考素材上限
+  const currentCap = capabilitiesMap[model] || {};
+
+  // 统一写入入口：按类型检查模型上限，避免各入口重复实现
+  const toastMsgRef = useRef(null);
+  // toastMsgRef 由 updater 写入、由 useEffect 消费，避免 updater 内调用 showToast
+  const safeSetFiles = (updater) => {
+    setFiles((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      if (!Array.isArray(next) || next.length <= prev.length) return next;
+
+      const maxImages = currentCap.max_reference_images;
+      const maxVideos = currentCap.max_reference_videos;
+      const maxAudios = currentCap.max_reference_audios;
+
+      let hasRejected = false;
+      const rejectedLabels = [];
+      for (const f of next) {
+        if (!prev.includes(f)) {
+          if (isImageFile(f)) {
+            if (maxImages != null && next.filter(isImageFile).length > maxImages) {
+              if (!hasRejected) { rejectedLabels.push('参考图'); hasRejected = true; }
+            }
+          } else if (isVideoFile(f)) {
+            if (maxVideos != null && next.filter(isVideoFile).length > maxVideos) {
+              if (!hasRejected) { rejectedLabels.push('参考视频'); hasRejected = true; }
+            }
+          } else if (isAudioFile(f)) {
+            if (maxAudios != null && next.filter(isAudioFile).length > maxAudios) {
+              if (!hasRejected) { rejectedLabels.push('参考音频'); hasRejected = true; }
+            }
+          }
+        }
+      }
+
+      if (rejectedLabels.length > 0) {
+        toastMsgRef.current = 'warning:' + rejectedLabels.join('、') + '已达该模型的上限，无法继续添加';
+        return prev;
+      }
+      return next;
+    });
+  };
+
+  // 切换模型时自动裁剪超出新模型上限的参考素材
+  // 在 setFiles 外部用 setTimeout 弹 toast，避免 updater 内调用 showToast
+  // StrictMode 下 effect 会执行两次，但第一次的 setTimeout 执行时 ref 已被第二次覆盖
+  // 用独立的 trimmedRef 确保最终只弹一次
+  const trimmedToastRef = useRef(null);
+  useEffect(() => {
+    const modelCap = capabilitiesMap[model];
+    if (!modelCap) return;
+    setFiles((prev) => {
+      const images = prev.filter(isImageFile);
+      const videos = prev.filter(isVideoFile);
+      const audios = prev.filter(isAudioFile);
+      const others = prev.filter(f => !isImageFile(f) && !isVideoFile(f) && !isAudioFile(f));
+
+      const maxImages = modelCap.max_reference_images;
+      const maxVideos = modelCap.max_reference_videos;
+      const maxAudios = modelCap.max_reference_audios;
+      const trimmedImages = maxImages != null ? images.slice(0, maxImages) : images;
+      const trimmedVideos = maxVideos != null ? videos.slice(0, maxVideos) : videos;
+      const trimmedAudios = maxAudios != null ? audios.slice(0, maxAudios) : audios;
+
+      const newFiles = [...trimmedImages, ...trimmedVideos, ...trimmedAudios, ...others];
+      if (newFiles.length !== prev.length) {
+        trimmedToastRef.current = '已切换模型，多余的参考素材已自动移除';
+      }
+      return newFiles;
+    });
+    // setTimeout 延迟到 React commit 阶段后执行
+    // StrictMode 下两次 mount 的 setTimeout 都会注册
+    // 但最终 trimmedToastRef.current 被第二次覆盖，所以只弹一次
+    setTimeout(() => {
+      if (trimmedToastRef.current) {
+        showToast('info', trimmedToastRef.current);
+        trimmedToastRef.current = null;
+      }
+    });
+  }, [model]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 统一消费 toastMsgRef：在 setFiles updater 外用 showToast 弹消息
+  // 用 useRef 计数确保 StrictMode 下只弹一次
+  const toastSeqRef = useRef(0);
+  useEffect(() => {
+    if (toastMsgRef.current) {
+      const msg = toastMsgRef.current;
+      const seq = ++toastSeqRef.current;
+      toastMsgRef.current = null;
+      // 微任务排队，第二次 mount 的同理也会排队
+      // 只有 seq === toastSeqRef.current 才弹（即最后注册的那个）
+      queueMicrotask(() => {
+        if (seq === toastSeqRef.current) {
+          const [type, ...rest] = msg.split(':');
+          showToast(type, rest.join(':'));
+        }
+      });
+    }
+  });
+
+  const handleFileSelect = (newFiles) => {
+    const oversized = newFiles.filter((f) => isImageFile(f) && f.size > 20 * 1024 * 1024);
+    if (oversized.length > 0) {
+      alert('抱歉，平台暂不支持上传20M以上的图片资源！');
+      return;
+    }
+    let toastFired = false;
+    safeSetFiles((prev) => {
+      // 筛选可添加的文件，创建预览 URL
+      const enriched = [];
+      for (const f of newFiles) {
+        if (isImageFile(f)) {
+          const previewUrl = URL.createObjectURL(f);
+          Object.defineProperty(f, 'previewUrl', { value: previewUrl, writable: true });
+        } else if (isVideoFile(f)) {
+          const objectUrl = URL.createObjectURL(f);
+          Object.defineProperty(f, '_objectUrl', { value: objectUrl, writable: true });
+        }
+        enriched.push(f);
+      }
+
+      if (prev.length >= MAX_FILES) {
+        return prev;
+      }
+      const merged = [...prev, ...enriched];
+      if (merged.length > MAX_FILES) {
+        return merged.slice(0, MAX_FILES);
+      }
+      return merged;
+    });
+  };
+
+  const handlePaste = useCallback((e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles = [];
+    const mediaFiles = []; // video/audio
+    for (const item of items) {
+      if (item.kind !== 'file') continue;
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      } else if (item.type.startsWith('video/') || item.type.startsWith('audio/')) {
+        const file = item.getAsFile();
+        if (file) mediaFiles.push(file);
+      }
+    }
+    // 有图片时阻止浏览器把 <img> 插入 contentEditable
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      // 首尾帧模式下不允许输入框内粘贴参考图，参考图只能放到首尾帧上传槽中
+      if (refMode === 'frame') {
+        showToast?.('info', '首尾帧模式下不支持粘贴参考图，请使用首尾帧上传槽');
+      } else {
+        handleFileSelect(imageFiles);
+      }
+      return;
+    }
+    // 视频/音频粘贴
+    if (mediaFiles.length > 0) {
+      e.preventDefault();
+      // 首尾帧模式下同样不允许粘贴视频/音频参考素材
+      if (genType === 'image' || refMode === 'frame') {
+        showToast?.('error', '不支持的文件格式！');
+      } else {
+        handleFileSelect(mediaFiles);
+      }
+      return;
+    }
+    // 无文件：只插入纯文本，剥除富文本样式（粗体、颜色等）
+    e.preventDefault();
+    const text = e.clipboardData.getData('text/plain');
+    if (text) {
+      document.execCommand('insertText', false, text);
+    }
+  }, [genType, refMode, showToast]);
+
+  const handleRemoveFile = (index) => {
+    setFiles((prev) => {
+      const file = prev[index];
+      if (file) {
+        // 释放预先创建的 blob URL
+        if (file._objectUrl) URL.revokeObjectURL(file._objectUrl);
+        if (file.previewUrl && file.previewUrl.startsWith('blob:')) URL.revokeObjectURL(file.previewUrl);
+        if (editorRef.current) {
+          const tags = editorRef.current.querySelectorAll('[data-file-ref]');
+          tags.forEach((tag) => {
+            if (tag.dataset.fileRef === file.name) tag.remove();
+          });
+          const content = editorRef.current.innerText ?? '';
+          setHasContent(content.trim().length > 0);
+        }
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const handleAssetConfirm = (selectedAssets) => {
+    setAssetPickerOpen(false);
+    if (frameAssetTarget && selectedAssets.length > 0) {
+      const asset = selectedAssets[0];
+      // fileUrl 是真实文件地址（项目资产 normalize 后），url 可能是缩略图
+      const realUrl = asset.fileUrl || asset.url;
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const rawFrameId = asset.backendId || asset.asset_id;
+      const assetFile = {
+        name: asset.name || asset.id,
+        size: 0,
+        url: realUrl,
+        previewUrl: asset.url || realUrl,
+        assetId: rawFrameId && UUID_RE.test(rawFrameId) ? rawFrameId : undefined,
+        isAsset: true,
+      };
+      if (frameAssetTarget === 'first') setFirstFrameFile(assetFile);
+      else setLastFrameFile(assetFile);
+      setFrameAssetTarget(null);
+      return;
+    }
+    const assetFiles = selectedAssets.map((asset) => {
+      const isVideo = asset.type === 'video';
+      const isAudio = asset.type === 'audio';
+      let fileUrl;
+      if (isVideo) fileUrl = asset.videoUrl || asset.fileUrl || asset.url;
+      else if (isAudio) fileUrl = asset.audioUrl || asset.fileUrl || asset.url;
+      else fileUrl = asset.fileUrl || asset.url;
+      const previewUrl = asset.url || asset.thumbnailUrl || asset.thumbnail_url || fileUrl;
+      // 只传真实后端 UUID：backendId（创作资产回写的 card.id）或 asset_id（项目资产）
+      // 排除 composite id（如 "gen-xxx-0" / "history-xxx-0"），这些不是有效后端 ID
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const rawId = asset.backendId || asset.asset_id;
+      const assetId = rawId && UUID_RE.test(rawId) ? rawId : undefined;
+      return {
+        name: asset.name || asset.id,
+        size: 0,
+        url: fileUrl,
+        previewUrl,
+        assetId,
+        isAsset: true,
+        type: isVideo ? 'video/mp4' : isAudio ? 'audio/mpeg' : 'image/jpeg',
+      };
+    });
+    let toastFired = false;
+    safeSetFiles((prev) => [...prev, ...assetFiles]);
+  };
+
+  const [mentionTargetTag, setMentionTargetTag] = useState(null);
+
+  const buildTagElement = (file) => {
+    const tag = document.createElement('span');
+    tag.contentEditable = 'false';
+    tag.dataset.fileRef = file.name;
+    tag.style.cssText = 'display:inline-flex;align-items:center;background:rgba(45,195,225,0.10);color:#2DC3E1;border-radius:6px;padding:0 4px;font-size:14px;line-height:22px;height:22px;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08);user-select:none;cursor:pointer;white-space:nowrap;font-family:' + FONT + ';';
+
+    const label = document.createElement('span');
+    label.textContent = formatMentionLabel(file.name);
+    label.style.cssText = 'pointer-events:none;';
+    tag.appendChild(label);
+
+    const closeBtn = document.createElement('span');
+    closeBtn.style.cssText = 'display:none;width:12px;height:12px;margin-left:3px;border-radius:50%;background:rgba(255,255,255,0.15);align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;';
+    closeBtn.innerHTML = '<svg width="7" height="7" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 1.5L6.5 6.5M6.5 1.5L1.5 6.5" stroke="#FFFFFFCC" stroke-width="1.2" stroke-linecap="round"/></svg>';
+    closeBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      tag.remove();
+      const content = editorRef.current?.innerText ?? '';
+      setHasContent(content.trim().length > 0);
+    });
+    tag.appendChild(closeBtn);
+
+    tag.addEventListener('mouseenter', () => {
+      closeBtn.style.display = 'inline-flex';
+    });
+    tag.addEventListener('mouseleave', () => {
+      closeBtn.style.display = 'none';
+    });
+
+    return tag;
+  };
+
+
+  // 点击 FileCard 直接插入 @ 标签（无需 @ 触发，插到光标位置或末尾）
+  const insertFromCard = (file) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const sel = window.getSelection();
+    let range;
+
+    // 优先使用当前 selection（输入框处于焦点时）
+    if (sel && sel.rangeCount > 0 && editor.contains(sel.getRangeAt(0).startContainer)) {
+      range = sel.getRangeAt(0);
+    // 其次使用 onBlur 时保存的光标位置
+    } else if (savedCursorRangeRef.current && editor.contains(savedCursorRangeRef.current.startContainer)) {
+      range = savedCursorRangeRef.current;
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      // 没有历史光标位置 — 追加到末尾
+      range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+
+    editor.focus();
+
+    const tag = buildTagElement(file);
+    tag.addEventListener('click', (e) => handleTagClick(e, tag));
+    range.deleteContents();
+    range.insertNode(tag);
+    const afterRange = document.createRange();
+    afterRange.setStartAfter(tag);
+    afterRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(afterRange);
+    savedCursorRangeRef.current = null;
+    setHasContent(true);
+  };
+
+  const insertMention = (file) => {
+    setMentionOpen(false);
+    const targetTag = mentionTargetTag;
+    if (targetTag) {
+      // replacing an existing tag via click
+      const newTag = buildTagElement(file);
+      newTag.addEventListener('click', (e) => handleTagClick(e, newTag));
+      targetTag.replaceWith(newTag);
+      setMentionTargetTag(null);
+      editorRef.current.focus();
+      setHasContent(true);
+      return;
+    }
+    const savedRange = mentionAnchorRange;
+    if (!savedRange) return;
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(savedRange);
+    const range = sel.getRangeAt(0);
+    const textNode = range.startContainer;
+    if (textNode.nodeType !== Node.TEXT_NODE) return;
+    const textBefore = textNode.textContent.slice(0, range.startOffset);
+    const atIdx = textBefore.lastIndexOf('@');
+    if (atIdx === -1) return;
+    const deleteRange = document.createRange();
+    deleteRange.setStart(textNode, atIdx);
+    deleteRange.setEnd(textNode, range.startOffset);
+    deleteRange.deleteContents();
+    const tag = buildTagElement(file);
+    tag.addEventListener('click', (e) => handleTagClick(e, tag));
+    deleteRange.insertNode(tag);
+    const afterRange = document.createRange();
+    afterRange.setStartAfter(tag);
+    afterRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(afterRange);
+    editorRef.current.focus();
+    setHasContent(true);
+  };
+
+  const handleTagClick = (e, tagEl) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (disabled) return;
+    mentionFromTagRef.current = true;
+    setMentionTargetTag(tagEl);
+    setMentionQuery('');
+    setMentionAnchorRange(null);
+    const rect = tagEl.getBoundingClientRect();
+    const editorRect = editorRef.current.getBoundingClientRect();
+    setMentionPos({ top: rect.bottom - editorRect.top + 4, left: Math.max(0, rect.left - editorRect.left) });
+    setMentionOpen(true);
+  };
+
+  const handleInput = () => {
+    const content = editorRef.current?.innerText ?? '';
+    setHasContent(content.trim().length > 0);
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) { setMentionOpen(false); return; }
+    const range = sel.getRangeAt(0);
+    if (range.startContainer.nodeType !== Node.TEXT_NODE) { setMentionOpen(false); return; }
+    const textBefore = range.startContainer.textContent.slice(0, range.startOffset);
+    const atIdx = textBefore.lastIndexOf('@');
+    if (atIdx !== -1) {
+      const query = textBefore.slice(atIdx + 1);
+      if (!query.includes(' ') && !query.includes('\n')) {
+        setMentionQuery(query);
+        setMentionIndex(0);
+        setMentionOpen(true);
+        const rect = range.getBoundingClientRect();
+        const editorRect = editorRef.current.getBoundingClientRect();
+        setMentionPos({ top: rect.bottom - editorRect.top + 4, left: Math.max(0, rect.left - editorRect.left) });
+        setMentionAnchorRange(range.cloneRange());
+        return;
+      }
+    }
+    setMentionOpen(false);
+  };
+
+  const atConcurrentLimit = activeCount >= 5;
+  const canSend = !disabled && !atConcurrentLimit && (hasContent || files.length > 0 || firstFrameFile || lastFrameFile || (genType === 'dubbing' && selectedVoiceId));
+
+  const handleSend = async () => {
+    if (!canSend) return;
+    // 提取纯文字 prompt，剔除 @ 标签节点（data-file-ref），避免把 @文件名 混入发给后端的 prompt
+    let currentText = '';
+    if (editorRef.current) {
+      const clone = editorRef.current.cloneNode(true);
+      clone.querySelectorAll('[data-file-ref]').forEach((el) => el.remove());
+      currentText = clone.innerText?.trim() ?? '';
+    }
+    const savedFiles = files;
+    const savedHTML = editorRef.current?.innerHTML ?? '';
+    savedContentRef.current = { html: savedHTML, text: currentText, voiceId: selectedVoiceId || "", voiceName: selectedVoiceName || "" };
+    // 立即清空输入框和附件
+    if (editorRef.current) editorRef.current.innerHTML = '';
+    setHasContent(false);
+    setFiles([]);
+    setFirstFrameFile(null);
+    setLastFrameFile(null);
+    setDubbingSpeed(1.0);
+    setDubbingEmotion('中性');
+    setSelectedVoiceId('');
+    setSelectedVoiceName('');
+    // 视频模式：把「全能参考」/「首尾帧」映射为当前模型支持的实际 reference_mode
+    let actualRefMode = refMode;
+    if (genType === 'video') {
+      const currentModel = modelOptions.find(m => m.value === model);
+      if (refMode === 'all') {
+        actualRefMode = currentModel?.actualAllRefMode || 'full';
+      } else if (refMode === 'frame') {
+        actualRefMode = currentModel?.actualFrameRefMode || 'first_frame';
+      }
+    }
+    const result = await onGenerate?.({
+      prompt: currentText,
+      promptHTML: savedHTML,
+      genType,
+      model,
+      ...(genType === 'image' ? { ratio, resolution, count } : {}),
+      ...(genType === 'video' ? (() => {
+        const liveMats = savedFiles.filter(f => f.isLiveMaterial);
+        // 按 groupId 分组，构建 provider_params.live_material 数组
+        const groupMap = {};
+        liveMats.forEach(f => {
+          if (!f.groupId) return;
+          if (!groupMap[f.groupId]) groupMap[f.groupId] = { group_id: f.groupId, group_type: f.groupType || 'LivenessFace', asset_ids: [] };
+          groupMap[f.groupId].asset_ids.push(f.assetId);
+        });
+        const liveMaterialParam = Object.values(groupMap);
+        return {
+          refMode: actualRefMode, videoRatio, videoResolution, videoDuration, soundEnabled, firstFrameFile, lastFrameFile,
+          liveMaterialParam: liveMaterialParam.length > 0 ? liveMaterialParam : null,
+          liveMaterialFiles: liveMats,  // 保留预览信息用于详情展示和重新编辑
+        };
+      })() : {}),
+      ...(genType === 'dubbing' ? { speed: dubbingSpeed, emotion: dubbingEmotion, voiceId: selectedVoiceId, voiceName: selectedVoiceName } : {}),
+      files: savedFiles.filter(f => !f.isLiveMaterial),
+      onFail: (fallbackPrompt) => {
+        const backup = savedContentRef.current;
+        // 失败时回退输入框内容（含标签 HTML）和附件
+        if (editorRef.current) {
+          if (backup.html) {
+            editorRef.current.innerHTML = backup.html;
+            setHasContent(true);
+          } else if (backup.text) {
+            editorRef.current.innerText = backup.text;
+            setHasContent(true);
+          } else if (fallbackPrompt) {
+            editorRef.current.innerText = fallbackPrompt;
+            setHasContent(true);
+          }
+        }
+        if (savedFiles.length > 0) {
+          setFiles(savedFiles);
+        }
+        if (backup.voiceId) {
+          setSelectedVoiceId(backup.voiceId);
+          setSelectedVoiceName(backup.voiceName || '');
+        }
+      },
+    });
+  };
+
+  const handleKeyDown = (e) => {
+    if (mentionOpen) {
+      const mentionFiles = files.filter(f =>
+        mentionQuery === '' || f.name.toLowerCase().includes(mentionQuery.toLowerCase())
+      );
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMentionOpen(false);
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionIndex(i => mentionFiles.length ? (i + 1) % mentionFiles.length : 0);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionIndex(i => mentionFiles.length ? (i - 1 + mentionFiles.length) % mentionFiles.length : 0);
+        return;
+      }
+      if (e.key === 'Enter' && mentionFiles.length > 0) {
+        if (e.nativeEvent.isComposing) return;
+        e.preventDefault();
+        insertMention(mentionFiles[mentionIndex] || mentionFiles[0]);
+        return;
+      }
+    }
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      if (!range.collapsed) return; // 有选区时让浏览器默认处理
+      let tagToRemove = null;
+      if (e.key === 'Backspace') {
+        // 光标前一个节点是 tag
+        const { startContainer, startOffset } = range;
+        if (startOffset === 0 && startContainer.previousSibling?.dataset?.fileRef) {
+          tagToRemove = startContainer.previousSibling;
+        } else if (startContainer.nodeType === Node.TEXT_NODE && startOffset === 0) {
+          const prev = startContainer.previousSibling;
+          if (prev?.dataset?.fileRef) tagToRemove = prev;
+        }
+      } else {
+        // Delete：光标后一个节点是 tag
+        const { startContainer, startOffset } = range;
+        if (startContainer.nodeType === Node.TEXT_NODE && startOffset === startContainer.textContent.length) {
+          const next = startContainer.nextSibling;
+          if (next?.dataset?.fileRef) tagToRemove = next;
+        } else if (startContainer.nextSibling?.dataset?.fileRef) {
+          tagToRemove = startContainer.nextSibling;
+        }
+      }
+      if (tagToRemove) {
+        e.preventDefault();
+        tagToRemove.remove();
+        const content = editorRef.current?.innerText ?? '';
+        setHasContent(content.trim().length > 0);
+        return;
+      }
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.nativeEvent.isComposing) return;
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const isTyping = focused;
+  const hoverBg = 'conic-gradient(from var(--creation-chatbox-angle), oklab(86.8% -0.081 -0.057 / 30%) 0%, oklab(75.5% -0.102 -0.072 / 25%) 15%, oklab(75.5% -0.102 -0.072 / 0%) 50%, oklab(100% 0 0 / 5%) 55%, oklab(86.8% -0.081 -0.057 / 30%) 100%)';
+  const idleBg = 'linear-gradient(in oklab 161.1deg, oklab(86.8% -0.081 -0.057 / 30%) 9.06%, oklab(75.5% -0.102 -0.072 / 25%) 15.35%, oklab(75.5% -0.102 -0.072 / 0%) 52.98%, oklab(100% 0 0 / 5%) 56.39%)';
+
+  const wrapperStyle = (() => {
+    if (isTyping) return { background: '#2DC3E1', animation: 'none' };
+    if (hovered) return { backgroundImage: hoverBg, animation: 'creation-chatbox-spin 4s linear infinite' };
+    return { backgroundImage: idleBg, animation: 'none' };
+  })();
+
+  const assetPickerAccept = genType === 'image' ? 'image' : genType === 'video' ? (creationParams?.supportsAudio ? 'all' : 'image') : genType === 'dubbing' ? 'audio' : 'all';
+
+  return (
+    <>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: '0px',
+        borderRadius: '20px',
+        justifyContent: 'flex-end',
+        padding: '1px',
+        width,
+        ...wrapperStyle,
+        boxShadow: '-5px -10px 50px #2DC3E11F',
+        opacity: disabled ? 0.72 : 1,
+        overflow: 'visible',
+      }}
+      onMouseEnter={() => !disabled && setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          gap: '0px',
+          borderRadius: '19px',
+          paddingTop: '16px',
+          paddingBottom: '12px',
+          flex: 1,
+          alignSelf: 'stretch',
+          background: '#131313',
+          paddingLeft: '16px',
+          paddingRight: '16px',
+          overflow: 'visible',
+        }}
+      >
+        {/* Textarea row */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '16px',
+            alignSelf: 'stretch',
+            height: '110px',
+            flexShrink: 0,
+            padding: 0,
+            position: 'relative',
+            overflow: 'visible',
+          }}
+        >
+          {files.length > 0 && (
+            <div style={{ position: 'absolute', left: 0, right: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '8px', bottom: 'calc(100% + 24px)' }}>
+              {files.map((file, index) => (
+                <FileCard key={index} file={file} onRemove={() => handleRemoveFile(index)} disabled={disabled} onInsert={() => insertFromCard(file)} />
+              ))}
+            </div>
+          )}
+          {genType === 'video' && refMode === 'frame' ? (
+            <FrameUploader
+              firstFile={firstFrameFile}
+              lastFile={lastFrameFile}
+              onFirstChange={setFirstFrameFile}
+              onLastChange={setLastFrameFile}
+              onSwap={() => { setFirstFrameFile(lastFrameFile); setLastFrameFile(firstFrameFile); }}
+              onFirstAssetPick={() => { setFrameAssetTarget('first'); setAssetPickerOpen(true); }}
+              onLastAssetPick={() => { setFrameAssetTarget('last'); setAssetPickerOpen(true); }}
+              disabled={disabled}
+            />
+          ) : genType === 'dubbing' ? (
+            selectedVoiceId ? (
+              <DubbingVoiceFileCard voiceName={selectedVoiceName} voiceId={selectedVoiceId} onRemove={() => { setSelectedVoiceId(''); setSelectedVoiceName(''); }} onOpenModal={() => setVoiceModalOpen(true)} />
+            ) : (
+              <UploadPlaceholder onDirectClick={() => setVoiceModalOpen(true)} disabled={disabled} allowedExts={uploadAllowedExts} acceptAttr={uploadAcceptAttr} />
+            )
+          ) : (
+            <UploadPlaceholder onFileSelect={handleFileSelect} onAssetPick={() => setAssetPickerOpen(true)} disabled={disabled} allowedExts={uploadAllowedExts} acceptAttr={uploadAcceptAttr} />
+          )}
+          <div style={{ flex: 1, alignSelf: 'stretch', position: 'relative' }}>
+            {!hasContent && (() => {
+              // 图片分页
+              if (genType === 'image') {
+                return (
+                  <span style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF66', userSelect: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span>上传参考图，输入文字或</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(45,195,225,0.10)', color: '#2DC3E1', borderRadius: '6px', padding: '0 4px', fontSize: '14px', lineHeight: '18px', height: '18px', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08)' }}>@</span>
+                    <span>主体，描述你想生成的图片</span>
+                  </span>
+                );
+              }
+              // 视频分页
+              if (genType === 'video') {
+                // 全能参考
+                if (refMode === 'all') {
+                  return (
+                    <span style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF66', userSelect: 'none', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                      <span>可自由组合图、文、音频、视频等元素，通过</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(45,195,225,0.10)', color: '#2DC3E1', borderRadius: '6px', padding: '0 4px', fontSize: '14px', lineHeight: '18px', height: '18px', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08)' }}>@</span>
+                      <span>绑定参考内容</span>
+                    </span>
+                  );
+                }
+                // 首尾帧
+                if (refMode === 'frame') {
+                  return (
+                    <span style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF66', userSelect: 'none' }}>
+                      输入文字，描述你想创作的画面内容
+                    </span>
+                  );
+                }
+                // 智能多帧
+                if (refMode === 'multi') {
+                  return (
+                    <span style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF66', userSelect: 'none' }}>
+                      请添加智能多帧分镜图
+                    </span>
+
+                  );
+                }
+              }
+              if (genType === 'dubbing') {
+                return (
+                  <span style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF66', userSelect: 'none' }}>
+                    先添加音色，再输入您要创作的内容
+                  </span>
+                );
+              }
+              // 默认提示词
+              return (
+                <span style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF66', userSelect: 'none' }}>
+                  描述你想生成的内容
+                </span>
+              );
+            })()}
+            <div
+              ref={editorRef}
+              contentEditable={!disabled}
+              suppressContentEditableWarning
+              style={{
+                width: '100%',
+                height: '100%',
+                resize: 'none',
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                fontFamily: FONT,
+                fontSize: '14px',
+                lineHeight: '18px',
+                color: '#FFFFFFCC',
+                overflowY: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                cursor: disabled ? 'not-allowed' : 'text',
+              }}
+              onInput={handleInput}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              onFocus={() => setFocused(true)}
+              onBlur={() => {
+                setFocused(false);
+                // 失焦前保存光标位置，供点击图片卡片插入时使用
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount > 0) {
+                  savedCursorRangeRef.current = sel.getRangeAt(0).cloneRange();
+                }
+                if (mentionFromTagRef.current) {
+                  mentionFromTagRef.current = false;
+                } else {
+                  setMentionOpen(false);
+                  setMentionTargetTag(null);
+                }
+              }}
+            />
+            {mentionOpen && files.length > 0 && (() => {
+              const mentionFiles = files.filter(f =>
+                mentionQuery === '' || f.name.toLowerCase().includes(mentionQuery.toLowerCase())
+              );
+              if (mentionFiles.length === 0) return null;
+              return (
+                <div ref={mentionMenuRef} style={{
+                  position: 'absolute',
+                  top: mentionPos.top,
+                  left: mentionPos.left,
+                  zIndex: 100,
+                  width: '200px',
+                  borderRadius: '8px',
+                  boxShadow: '#00000066 0px 4px 16px',
+                  background: '#1D1E1E',
+                  border: '1px solid #FFFFFF0D',
+                  padding: '4px',
+                }}>
+                  {mentionFiles.map((file, i) => (
+                    <div
+                      key={i}
+                      onMouseDown={(e) => { e.preventDefault(); insertMention(file); }}
+                      onMouseEnter={() => setMentionIndex(i)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        background: i === mentionIndex ? '#FFFFFF0D' : 'transparent',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '4px',
+                        flexShrink: 0,
+                        background: (file.previewUrl || file.url) ? 'transparent' : '#FFFFFF14',
+                        backgroundImage: (file.previewUrl || file.url) ? `url(${file.previewUrl || file.url})` : 'none',
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                      }} />
+                      <span style={{
+                        flex: 1,
+                        fontFamily: FONT,
+                        fontSize: '14px',
+                        lineHeight: '18px',
+                        color: i === mentionIndex ? '#FFFFFF' : '#FFFFFF99',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {file.name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+        {/* Bottom controls */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0px', justifyContent: 'space-between', alignSelf: 'stretch' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: 0, flexWrap: 'wrap', flex: 1, marginRight: '8px' }}>
+            <GenTypeSelector value={genType} onChange={onGenTypeChange} disabled={disabled} />
+            <ModelSelector value={model} onChange={onModelChange} options={genType === 'video' ? filteredModelOptions : modelOptions} disabled={disabled} onBeforeOpen={onBeforeModelOpen} />
+            {genType === 'dubbing' && (
+              <DubbingAdjust
+                speed={dubbingSpeed}
+                emotion={dubbingEmotion}
+                onSpeedChange={setDubbingSpeed}
+                onEmotionChange={setDubbingEmotion}
+                emotions={dubbingEmotions}
+                disabled={disabled}
+              />
+            )}
+            {genType === 'image' && (
+              <ParamsSelector
+                ratio={ratio}
+                resolution={resolution}
+                count={count}
+                onRatioChange={setRatio}
+                onResolutionChange={setResolution}
+                onCountChange={setCount}
+                disabled={disabled}
+                ratioOptions={creationParams?.ratios ?? []}
+                resolutionOptions={creationParams?.resolutions ?? []}
+                countOptions={creationParams?.counts ?? []}
+                resolutionRatios={creationParams?.resolutionRatios ?? {}}
+              />
+            )}
+            {genType === 'video' && (
+              <>
+                <RefModeSelector value={refMode} onChange={handleRefModeChange} disabled={disabled} options={creationParams?.refModes ?? []} />
+                <VideoParamsSelector
+                  ratio={videoRatio}
+                  resolution={videoResolution}
+                  duration={videoDuration}
+                  onRatioChange={setVideoRatio}
+                  onResolutionChange={setVideoResolution}
+                  onDurationChange={setVideoDuration}
+                  disabled={disabled}
+                  ratioOptions={creationParams?.ratios ?? []}
+                  resolutionOptions={creationParams?.resolutions ?? []}
+                  durationOptions={creationParams?.durations ?? []}
+                  resolutionRatios={creationParams?.resolutionRatios ?? {}}
+                  soundEnabled={soundEnabled}
+                  onSoundChange={setSoundEnabled}
+                />
+                {showLiveMaterial && (
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => !disabled && setLiveMaterialModalOpen(true)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '4px',
+                      height: '32px', paddingInline: '12px',
+                      borderRadius: '8px', flexShrink: 0,
+                      border: '1px solid #FFFFFF14',
+                      background: '#1D1E1E',
+                      outline: '1px solid #00000080',
+                      cursor: disabled ? 'not-allowed' : 'pointer',
+                      opacity: disabled ? 0.45 : 1,
+                      transition: 'background 0.2s, border-color 0.2s',
+                    }}
+                    onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.background = '#252525'; e.currentTarget.style.borderColor = '#FFFFFF29'; } }}
+                    onMouseLeave={(e) => { if (!disabled) { e.currentTarget.style.background = '#1D1E1E'; e.currentTarget.style.borderColor = '#FFFFFF14'; } }}
+                    onMouseDown={(e) => { if (!disabled) e.currentTarget.style.background = '#161616'; }}
+                    onMouseUp={(e) => { if (!disabled) e.currentTarget.style.background = '#252525'; }}
+                  >
+                    <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>真人素材</span>
+                  </button>
+                )}
+</>
+            )}
+          </div>
+          <SendButton onClick={handleSend} disabled={!canSend} loading={disabled} disabledTooltip={atConcurrentLimit ? '当前有5个任务进行中，为了保证成功率，请稍等一会儿再发送创作请求' : ''} />
+        </div>
+      </div>
+    </div>
+    <AssetPickerModal
+      open={assetPickerOpen}
+      onClose={() => { setAssetPickerOpen(false); setFrameAssetTarget(null); }}
+      onConfirm={handleAssetConfirm}
+      accept={frameAssetTarget ? 'image' : assetPickerAccept}
+    />
+    <DubbingVoiceModal
+      open={voiceModalOpen}
+      onClose={() => setVoiceModalOpen(false)}
+      onConfirm={(voiceId, voiceName) => {
+        setSelectedVoiceId(voiceId);
+        setSelectedVoiceName(voiceName);
+        setVoiceModalOpen(false);
+      }}
+    />
+    <LiveMaterialModal
+      open={liveMaterialModalOpen}
+      onClose={() => setLiveMaterialModalOpen(false)}
+      onConfirm={(items) => {
+        // 把真人素材转成 file-like 对象，合并进 files
+        // isLiveMaterial 标记用于在 handleSend 里分拣为 subjects 字段
+        const liveMats = items.map(m => ({
+          isAsset: true,
+          isLiveMaterial: true,
+          assetId: m.assetId,       // 真实 asset ID，用于回填弹窗选中状态
+          groupId: m.groupId,
+          groupType: m.groupType,
+          assetRefUrl: m.assetRefUrl,
+          url: m.previewUrl,
+          previewUrl: m.previewUrl,
+          name: m.name || '真人素材',
+          type: 'image/jpeg',
+          size: 0,
+        }));
+        // 先移除已有的真人素材，再追加新的，避免重复
+        setFiles(prev => [...prev.filter(f => !f.isLiveMaterial), ...liveMats]);
+      }}
+      initialSelected={files.filter(f => f.isLiveMaterial).map(f => ({
+        assetId: f.assetId,
+        assetRefUrl: f.assetRefUrl,
+        previewUrl: f.previewUrl,
+        name: f.name,
+      }))}
+    />
+    </>
+  );
+}
+
+// ─── Empty state icons ────────────────────────────────────────────────────────
+function EmptyIconShell({ children }) {
+  return (
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="cei-bg" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#FFFFFF" stopOpacity="0.12" />
+          <stop offset="1" stopColor="#FFFFFF" stopOpacity="0.04" />
+        </linearGradient>
+        <linearGradient id="cei-stroke" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#FFFFFF" stopOpacity="0.24" />
+          <stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
+        </linearGradient>
+        <linearGradient id="cei-icon" x1="18" y1="20" x2="46" y2="44" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#FFFFFF" />
+          <stop offset="1" stopColor="#B7C0CC" />
+        </linearGradient>
+      </defs>
+      <rect x="4" y="4" width="56" height="56" rx="28" fill="url(#cei-bg)" />
+      <rect x="4.5" y="4.5" width="55" height="55" rx="27.5" stroke="url(#cei-stroke)" />
+      {children}
+    </svg>
+  );
+}
+
+function CreationEmptyIconImage() {
+  return (
+    <EmptyIconShell>
+      {/* 图片边框 */}
+      <rect x="17" y="21" width="30" height="23" rx="2.5"
+        stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.9" />
+      {/* 太阳 */}
+      <circle cx="23.5" cy="27.5" r="2.5"
+        stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.9" />
+      {/* 山形折线 */}
+      <path d="M17 38 L24 31 L29 36 L34 29 L47 40"
+        stroke="url(#cei-icon)" strokeWidth="1.5"
+        strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.9" />
+      {/* Sparkle */}
+      <path d="M42 20L42.8 22.2L45 23L42.8 23.8L42 26L41.2 23.8L39 23L41.2 22.2L42 20Z"
+        fill="#2DC3E1" fillOpacity="0.85" />
+    </EmptyIconShell>
+  );
+}
+
+function CreationEmptyIconVideo() {
+  return (
+    <EmptyIconShell>
+      {/* 胶片外框 */}
+      <rect x="17" y="22" width="30" height="21" rx="2.5"
+        stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.9" />
+      {/* 顶部胶片孔横线 */}
+      <line x1="17" y1="27" x2="47" y2="27"
+        stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.6" />
+      {/* 底部胶片孔横线 */}
+      <line x1="17" y1="38" x2="47" y2="38"
+        stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.6" />
+      {/* 胶片孔 top */}
+      <line x1="22" y1="22" x2="22" y2="27" stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.6" />
+      <line x1="28" y1="22" x2="28" y2="27" stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.6" />
+      <line x1="36" y1="22" x2="36" y2="27" stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.6" />
+      <line x1="42" y1="22" x2="42" y2="27" stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.6" />
+      {/* 胶片孔 bottom */}
+      <line x1="22" y1="38" x2="22" y2="43" stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.6" />
+      <line x1="28" y1="38" x2="28" y2="43" stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.6" />
+      <line x1="36" y1="38" x2="36" y2="43" stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.6" />
+      <line x1="42" y1="38" x2="42" y2="43" stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.6" />
+      {/* 播放三角 */}
+      <path d="M28.5 29.5 L28.5 35.5 L34.5 32.5 Z"
+        stroke="url(#cei-icon)" strokeWidth="1.5"
+        strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.9" />
+      {/* Sparkle */}
+      <path d="M42 20L42.8 22.2L45 23L42.8 23.8L42 26L41.2 23.8L39 23L41.2 22.2L42 20Z"
+        fill="#2DC3E1" fillOpacity="0.85" />
+    </EmptyIconShell>
+  );
+}
+
+function CreationEmptyIconDubbing() {
+  return (
+    <EmptyIconShell>
+      {/* 麦克风主体 */}
+      <rect x="27" y="18" width="10" height="16" rx="5"
+        stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.9" />
+      {/* 麦克风支架弧线 */}
+      <path d="M22 31 C22 37 42 37 42 31"
+        stroke="url(#cei-icon)" strokeWidth="1.5"
+        strokeLinecap="round" strokeOpacity="0.9" />
+      {/* 支架竖线 */}
+      <line x1="32" y1="37" x2="32" y2="43"
+        stroke="url(#cei-icon)" strokeWidth="1.5"
+        strokeLinecap="round" strokeOpacity="0.9" />
+      {/* 底座横线 */}
+      <line x1="27" y1="43" x2="37" y2="43"
+        stroke="url(#cei-icon)" strokeWidth="1.5"
+        strokeLinecap="round" strokeOpacity="0.9" />
+      {/* Sparkle */}
+      <path d="M42 20L42.8 22.2L45 23L42.8 23.8L42 26L41.2 23.8L39 23L41.2 22.2L42 20Z"
+        fill="#2DC3E1" fillOpacity="0.85" />
+    </EmptyIconShell>
+  );
+}
+
+const EMPTY_ICON_MAP = {
+  image: CreationEmptyIconImage,
+  video: CreationEmptyIconVideo,
+  dubbing: CreationEmptyIconDubbing,
+};
+
+// ─── Confirm delete modal ────────────────────────────────────────────────────
+// ConfirmDeleteModal 已迁移至 ConfirmDialog 共享组件
+
+// ─── Card action button with tooltip ─────────────────────────────────────────
+function CardActionBtn({ icon, tooltip, onClick }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      {hovered && (
+        <div style={{
+          position: 'absolute',
+          bottom: 'calc(100% + 4px)',
+          left: '50%',
+          translate: '-50% 0',
+          backgroundColor: '#111111',
+          borderRadius: '4px',
+          padding: '2px 8px',
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          zIndex: 10,
+        }}>
+          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF' }}>{tooltip}</span>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          width: '24px',
+          height: '24px',
+          borderRadius: '6px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: hovered ? '#000000B3' : '#00000080',
+          border: 'none',
+          cursor: 'pointer',
+          flexShrink: 0,
+          transition: 'background-color 0.15s',
+        }}
+      >
+        {icon}
+      </button>
+    </div>
+  );
+}
+
+// ─── Image detail modal ───────────────────────────────────────────────────────
+function formatCreationDate(isoString) {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function ModalActionBtn({ icon, label, onClick }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        flex: 1,
+        height: '40px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '4px',
+        borderRadius: '8px',
+        border: '1px solid #FFFFFF1F',
+        backgroundColor: hovered ? '#FFFFFF1F' : '#FFFFFF14',
+        cursor: 'pointer',
+        transition: 'background-color 0.15s',
+      }}
+    >
+      {icon}
+      <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>{label}</span>
+    </button>
+  );
+}
+
+const DETAIL_PANEL_DIVIDER = (
+  <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px', flexShrink: 0 }} />
+);
+
+function ImageDetailModal({ card, onClose, onDelete, favorited, onToggleFavorite }) {
+  const { width: modalW, height: modalH } = useModalSize();
+  const [starAnim, setStarAnim] = useState(false);
+  const [closeHovered, setCloseHovered] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
+
+  function handleStarClick() {
+    setStarAnim(true);
+    setTimeout(() => setStarAnim(false), 300);
+    onToggleFavorite?.();
+  }
+
+  function handleCopyPrompt() {
+    setToastVisible(true);
+    setTimeout(() => setToastVisible(false), 2500);
+  }
+
+  return (
+    <>
+      {createPortal(
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+          onClick={onClose}
+        >
+          <div
+            style={{ width: `${modalW}px`, borderRadius: '16px', border: '1px solid #FFFFFF14', backgroundColor: '#161616', boxShadow: '#00000099 -10px 24px 64px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', backgroundColor: '#161616', flexShrink: 0 }}>
+              <span style={{ fontFamily: FONT_MEDIUM, fontSize: '16px', fontWeight: 500, lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFF' }}>查看详情</span>
+              <div
+                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '6px', background: closeHovered ? '#FFFFFF14' : 'transparent', transition: 'background 120ms' }}
+                onClick={onClose}
+                onMouseEnter={() => setCloseHovered(true)}
+                onMouseLeave={() => setCloseHovered(false)}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M12 4L4 12M4 4L12 12" stroke={closeHovered ? '#FFFFFF' : '#FFFFFF99'} strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ display: 'flex', height: `${modalH - 60}px` }}>
+              {/* Left: image viewer */}
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0A0A0A', position: 'relative', overflow: 'hidden' }}>
+                {card.imageUrl && (
+                  <img
+                    src={card.imageUrl}
+                    alt=""
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      objectFit: 'contain',
+                      display: 'block',
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* Right: info panel */}
+              <div style={{ width: '280px', flexShrink: 0, backgroundColor: '#161616', borderLeft: '1px solid #FFFFFF0F', display: 'flex', flexDirection: 'column', height: `${modalH - 60}px`, position: 'relative' }}>
+                {/* Scrollable content area */}
+                <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: '76px' }}>
+                  {DETAIL_PANEL_DIVIDER}
+
+                  {/* 提示词 */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '16px 20px', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                      <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>提示词</div>
+                      <CopyPromptButton text={card.prompt} onCopy={handleCopyPrompt} />
+                    </div>
+                    <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>
+                      {card.promptHTML
+                        ? <span dangerouslySetInnerHTML={{ __html: card.promptHTML }} />
+                        : (card.prompt || '—')
+                      }
+                    </div>
+                  </div>
+
+                  {/* 参考图 */}
+                  {card.refImages && card.refImages.length > 0 && (
+                    <>
+                      {DETAIL_PANEL_DIVIDER}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 20px', flexShrink: 0 }}>
+                        <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>参考图</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                          {card.refImages.map((img, i) => {
+                            const imgUrl = img.url || img.previewUrl || '';
+                            return (
+                              <div key={i} style={{
+                                width: 'calc(50% - 6px)',
+                                height: '84px',
+                                borderRadius: '6px',
+                                border: '1px solid #FFFFFF14',
+                                backgroundColor: '#FFFFFF14',
+                                overflow: 'hidden',
+                                flexShrink: 0,
+                                backgroundImage: imgUrl ? `url(${imgUrl})` : 'none',
+                                backgroundSize: 'cover',
+                                backgroundPosition: 'center',
+                              }} />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {DETAIL_PANEL_DIVIDER}
+
+                  {/* 生成参数 */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 20px', flexShrink: 0 }}>
+                    <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>生成参数</div>
+                    {card.model && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: 'rgba(255,255,255,0.6)' }}>模型</span>
+                        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{card.model}</span>
+                      </div>
+                    )}
+                    {card.ratio && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>画面比例</span>
+                        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{card.ratio}</span>
+                      </div>
+                    )}
+                    {card.resolution && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>分辨率</span>
+                        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{card.resolution}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {DETAIL_PANEL_DIVIDER}
+
+                  {/* AI生成时间 */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '16px 20px', flexShrink: 0 }}>
+                    <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.66px', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>AI 生成时间</div>
+                    <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.12px', color: 'rgba(255,255,255,0.8)' }}>{formatCreationDate(card.createdAt)}</div>
+                  </div>
+
+                  {DETAIL_PANEL_DIVIDER}
+                </div>
+
+                {/* Fixed bottom actions */}
+                <div style={{ position: 'absolute', bottom: 0, left: 0, width: '280px', display: 'flex', gap: '8px', padding: '16px 20px 20px', flexShrink: 0, backgroundColor: '#161616' }}>
+                  <ModalActionBtn
+                    label="收藏"
+                    onClick={handleStarClick}
+                    icon={
+                      <div style={{ transform: starAnim ? 'scale(1.4)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', display: 'flex' }}>
+                        <StarIcon filled={favorited} strokeColor="rgba(255,255,255,0.6)" />
+                      </div>
+                    }
+                  />
+                  <ModalActionBtn
+                    label="下载"
+                    onClick={() => downloadImage(card.imageUrl, card.prompt)}
+                    icon={
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M8.003 11.3V2" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M4 14H12" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    }
+                  />
+                  <ModalActionBtn
+                    label="删除"
+                    onClick={() => setConfirmDelete(true)}
+                    icon={
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M3 3.333V14.667H13V3.333H3Z" stroke="#FFFFFF99" strokeLinejoin="round" />
+                        <path d="M6.667 6.667V11" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M9.333 6.667V11" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M1.333 3.333H14.667" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#FFFFFF99" strokeLinejoin="round" />
+                      </svg>
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+      {confirmDelete && (
+        <ConfirmDialog
+          title="确认删除"
+          description="删除后无法恢复，确定要删除这张图片吗？"
+          confirmText="删除"
+          onConfirm={() => { setConfirmDelete(false); onDelete?.(); }}
+          onCancel={() => setConfirmDelete(false)}
+          zIndex={1100}
+        />
+      )}
+      {toastVisible && createPortal(
+        <div style={{ position: 'fixed', top: '25vh', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, pointerEvents: 'none' }}>
+          <div className="flex items-center gap-[8px] px-[16px] py-[8px] rounded-medium bg-toast-bg backdrop-blur-[20px]" style={{ whiteSpace: 'nowrap', animation: 'slideUpBounce 250ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+              <path d="M8 14.667C9.841 14.667 11.508 13.921 12.714 12.714C13.921 11.508 14.667 9.841 14.667 8C14.667 6.159 13.921 4.492 12.714 3.286C11.508 2.08 9.841 1.333 8 1.333C6.159 1.333 4.492 2.08 3.286 3.286C2.08 4.492 1.333 6.159 1.333 8C1.333 9.841 2.08 11.508 3.286 12.714C4.492 13.921 6.159 14.667 8 14.667Z" fill="#52BF92" stroke="#52BF92" strokeWidth="1.333" strokeLinejoin="round" />
+              <path d="M5.333 8L7.333 10L11.333 6" stroke="#FFFFFF" strokeWidth="1.333" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="text-text-primary text-font-size-16 font-font-weight-regular" style={{ fontFamily: FONT }}>您已复制提示词</span>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+// ─── Result state ─────────────────────────────────────────────────────────────
+function VideoResultCard({ status, videoUrl, prompt, model, ratio, resolution, duration, refImages, createdAt, onReEdit, onUseAsFirstFrame, onDelete, onCardClick, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
+  const [hovered, setHovered] = useState(false);
+  const [starAnim, setStarAnim] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const videoRef = useRef(null);
+  
+
+  const isDone = status === 'done' && videoUrl;
+
+  // 悬停时自动播放视频
+  useEffect(() => {
+    if (!videoRef.current) return;
+    if (hovered && isDone) {
+      videoRef.current.play().catch(() => {});
+    } else {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+  }, [hovered, isDone]);
+
+  function handleStarClick(e) {
+    e.stopPropagation();
+    setStarAnim(true);
+    setTimeout(() => setStarAnim(false), 300);
+    onToggleFavorite?.();
+  }
+
+  async function downloadVideo(url) {
+    if (!url) return;
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = filenameFromPrompt(prompt, 'mp4');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objUrl);
+    } catch {
+      window.open(url, '_blank');
+    }
+  }
+
+  return (
+    <>
+      <div
+        style={{
+          width: '100%',
+          aspectRatio: '16/9',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          backgroundColor: hovered ? '#343434' : '#272727',
+          transition: 'background-color 0.15s',
+          position: 'relative',
+          cursor: isDone ? 'pointer' : 'default',
+          outline: isSelected ? '2px solid #2DC3E1' : 'none',
+          outlineOffset: '-2px',
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={() => {
+          if (batchMode && isDone) { onToggleSelect?.(); return; }
+          if (!batchMode && isDone) { onCardClick?.(); }
+        }}
+      >
+        {status === 'loading' ? (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <DotsLoading size={5} color="#2DC3E1" gap={4} />
+          </div>
+        ) : isDone ? (
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            loop
+            muted
+            playsInline
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ color: '#FFFFFF33', fontSize: '12px', fontFamily: FONT }}>生成失败</span>
+          </div>
+        )}
+
+        {/* Batch mode: checkbox overlay */}
+        {batchMode && isDone && (
+          <div style={{
+            position: 'absolute', top: '8px', right: '8px',
+            width: '18px', height: '18px', borderRadius: '4px', zIndex: 1,
+            border: isSelected ? '1px solid #2DC3E1' : '1px solid rgba(255,255,255,0.5)',
+            backgroundColor: isSelected ? '#2DC3E1' : 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            {isSelected && (
+              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                <path d="M1 4L3.5 6.5L9 1" stroke="#000" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
+        )}
+
+        {/* Hover overlays */}
+        {hovered && isDone && !batchMode && (
+          <>
+            {/* Top-right: favorite */}
+            <button
+              type="button"
+              onClick={handleStarClick}
+              style={{
+                position: 'absolute', top: '8px', right: '8px',
+                width: '24px', height: '24px', borderRadius: '6px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                backgroundColor: '#00000080', border: 'none', cursor: 'pointer',
+                transform: starAnim ? 'scale(1.4)' : 'scale(1)',
+                transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              }}
+            >
+              <StarIcon filled={favorited} />
+            </button>
+
+            {/* Bottom-right: action buttons */}
+            <div
+              style={{ position: 'absolute', bottom: '8px', right: '8px', display: 'flex', gap: '4px' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <CardActionBtn
+                tooltip="重新编辑"
+                onClick={() => onReEdit?.()}
+                icon={
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M2.333 14H14.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M3.667 8.907V11.333H6.106L13 4.436L10.565 2L3.667 8.907Z" stroke="#FFFFFF" strokeLinejoin="round" />
+                  </svg>
+                }
+              />
+             <CardActionBtn
+               tooltip="尾帧用作首帧参考"
+               onClick={() => onUseAsFirstFrame?.()}
+               icon={
+                  <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style={{ width: '16px', height: '16px', overflow: 'visible' }}>
+                    <path d="M9.446 1.733C9.888 1.733 10.246 2.092 10.246 2.533V21.855C10.246 22.297 9.888 22.655 9.447 22.655C9.005 22.655 8.646 22.297 8.646 21.855V2.533C8.646 2.092 9.005 1.733 9.447 1.733H9.446Z" fill="#FFFFFF" />
+                    <path d="M9.194 3.483V5.083H4.706C4.411 5.083 4.172 5.322 4.172 5.617V18.946C4.172 19.241 4.411 19.479 4.706 19.479H9.194V21.079H4.706C3.527 21.079 2.572 20.124 2.572 18.946V5.617C2.572 4.438 3.527 3.483 4.706 3.483H9.194Z" fill="#FFFFFF" />
+                    <path d="M14.957 3.483V5.083H19.446C19.74 5.083 19.979 5.322 19.979 5.617V18.946C19.979 19.241 19.74 19.479 19.446 19.479H14.957V21.079H19.446C20.624 21.079 21.579 20.124 21.579 18.946V5.617C21.579 4.438 20.624 3.483 19.446 3.483H14.957Z" fill="#FFFFFF66" />
+                    <path d="M20.339 8.787H14.707V7.187H20.339V8.787ZM20.339 17.402H14.707V15.802H20.339V17.402Z" fill="#FFFFFF66" />
+                    <path d="M 3 9.1 L 8.632 9.1 L 8.632 7.5 L 3 7.5 L 3 9.1 Z M 3 17.715 L 8.632 17.715 L 8.632 16.115 L 3 16.115 L 3 17.715 Z" fill="#FFFFFF" />
+                    <path d="M 14.3 22.422 C 14.742 22.422 15.1 22.064 15.1 21.622 L 15.1 2.3 C 15.1 1.859 14.742 1.5 14.3 1.5 C 13.858 1.5 13.5 1.859 13.5 2.3 L 13.5 21.622 C 13.5 22.064 13.858 22.422 14.3 22.422 Z" fill="#FFFFFF66" />
+                  </svg>
+               }
+             />
+              <CardActionBtn
+                tooltip="下载"
+                onClick={() => downloadVideo(videoUrl)}
+                icon={
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M8.003 11.3V2" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M4 14H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                }
+              />
+              <CardActionBtn
+                tooltip="删除"
+                onClick={() => setConfirmDelete(true)}
+                icon={
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 3.333V14.667H13V3.333H3Z" stroke="#FFFFFF" strokeLinejoin="round" />
+                    <path d="M6.667 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M9.333 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M1.333 3.333H14.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#FFFFFF" strokeLinejoin="round" />
+                  </svg>
+                }
+              />
+            </div>
+          </>
+        )}
+      </div>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="确认删除"
+          description="删除后无法恢复，确定要删除这张图片吗？"
+          confirmText="删除"
+          onConfirm={() => { setConfirmDelete(false); onDelete?.(); }}
+          onCancel={() => setConfirmDelete(false)}
+          zIndex={1100}
+        />
+      )}
+    </>
+  );
+}
+
+function ImageResultCard({ status, imageUrl, originalUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt, onReEdit, onUseAsRef, onDelete, onSave, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
+  // 下载和详情弹窗使用原图；缩略图仅用于卡片显示
+  const displayUrl = imageUrl;
+  const downloadUrl = originalUrl || imageUrl;
+  const [hovered, setHovered] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [starAnim, setStarAnim] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  
+
+  const isDone = status === 'done' && imageUrl;
+
+  function handleStarClick(e) {
+    e.stopPropagation();
+    setStarAnim(true);
+    setTimeout(() => setStarAnim(false), 300);
+    onToggleFavorite?.();
+  }
+
+  return (
+    <>
+      <div
+        style={{
+          width: '100%',
+          aspectRatio: '16/9',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          backgroundColor: hovered ? '#343434' : '#272727',
+          transition: 'background-color 0.15s',
+          position: 'relative',
+          cursor: isDone ? 'pointer' : 'default',
+          outline: isSelected ? '2px solid #2DC3E1' : 'none',
+          outlineOffset: '-2px',
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={() => {
+          if (batchMode && isDone) { onToggleSelect?.(); return; }
+          if (isDone) setDetailOpen(true);
+        }}
+      >
+        {status === 'loading' ? (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <DotsLoading size={5} color="#2DC3E1" gap={4} />
+          </div>
+        ) : isDone ? (
+          <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ color: '#FFFFFF33', fontSize: '12px', fontFamily: FONT }}>生成失败</span>
+          </div>
+        )}
+
+        {/* Batch mode: checkbox overlay */}
+        {batchMode && isDone && (
+          <div style={{
+            position: 'absolute', top: '8px', right: '8px',
+            width: '18px', height: '18px', borderRadius: '4px', zIndex: 1,
+            border: isSelected ? '1px solid #2DC3E1' : '1px solid rgba(255,255,255,0.5)',
+            backgroundColor: isSelected ? '#2DC3E1' : 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            {isSelected && (
+              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                <path d="M1 4L3.5 6.5L9 1" stroke="#000" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
+        )}
+
+        {/* Hover overlays */}
+        {hovered && isDone && !batchMode && (
+          <>
+            {/* Top-right: favorite */}
+            <button
+              type="button"
+              onClick={handleStarClick}
+              style={{
+                position: 'absolute', top: '8px', right: '8px',
+                width: '24px', height: '24px', borderRadius: '6px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                backgroundColor: '#00000080', border: 'none', cursor: 'pointer',
+                transform: starAnim ? 'scale(1.4)' : 'scale(1)',
+                transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              }}
+            >
+              <StarIcon filled={favorited} />
+            </button>
+
+            {/* Bottom-right: action buttons */}
+            <div
+              style={{ position: 'absolute', bottom: '8px', right: '8px', display: 'flex', gap: '4px' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <CardActionBtn
+                tooltip="重新编辑"
+                onClick={() => onReEdit?.()}
+                icon={
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M2.333 14H14.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M3.667 8.907V11.333H6.106L13 4.436L10.565 2L3.667 8.907Z" stroke="#FFFFFF" strokeLinejoin="round" />
+                  </svg>
+                }
+              />
+              <CardActionBtn
+                tooltip="用作参考图"
+                onClick={() => onUseAsRef?.()}
+                icon={
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M12.667 7V13.333C12.667 13.702 12.368 14 12 14H2.667C2.298 14 2 13.702 2 13.333V4C2 3.632 2.298 3.333 2.667 3.333H8.788" stroke="#FFFFFF" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M4 10.344L6 7.667L7 8.667L8.167 6.833L10.667 10.344H4Z" stroke="#FFFFFF" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M11.334 3.333H14.001" stroke="#FFFFFF" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M12.664 1.932V4.598" stroke="#FFFFFF" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                }
+              />
+              <CardActionBtn
+                tooltip="下载"
+                onClick={() => downloadImage(downloadUrl, prompt)}
+                icon={
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M8.003 11.3V2" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M4 14H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                }
+              />
+              <CardActionBtn
+                tooltip="删除"
+                onClick={() => setConfirmDelete(true)}
+                icon={
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 3.333V14.667H13V3.333H3Z" stroke="#FFFFFF" strokeLinejoin="round" />
+                    <path d="M6.667 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M9.333 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M1.333 3.333H14.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#FFFFFF" strokeLinejoin="round" />
+                  </svg>
+                }
+              />
+            </div>
+          </>
+        )}
+      </div>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="确认删除"
+          description="删除后无法恢复，确定要删除这张图片吗？"
+          confirmText="删除"
+          onConfirm={() => { setConfirmDelete(false); onDelete?.(); }}
+          onCancel={() => setConfirmDelete(false)}
+          zIndex={1100}
+        />
+      )}
+
+      {detailOpen && (
+        <ImageDetailModal
+          card={{
+            imageUrl: downloadUrl,   // 详情弹窗和下载都用原图
+            prompt,
+            promptHTML,
+            model,
+            ratio,
+            resolution,
+            refImages,
+            createdAt,
+          }}
+          onClose={() => setDetailOpen(false)}
+          onDelete={onDelete}
+          favorited={favorited}
+          onToggleFavorite={() => onToggleFavorite?.()}
+        />
+      )}
+    </>
+  );
+}
+
+function AudioResultCard({ status, audioUrl, prompt, model, createdAt, onDelete, batchMode = false, isSelected = false, onToggleSelect }) {
+  const [hovered, setHovered] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const audioRef = useRef(null);
+
+  const isDone = status === 'done' && audioUrl;
+
+  useEffect(() => {
+    if (!audioRef.current) return;
+    if (playing && isDone) {
+      audioRef.current.play().catch(() => {});
+    } else {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+  }, [playing, isDone]);
+
+  async function downloadAudio(url) {
+    if (!url) return;
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = filenameFromPrompt(prompt, 'mp3');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objUrl);
+    } catch {
+      window.open(url, '_blank');
+    }
+  }
+
+  return (
+    <>
+      <div
+        style={{
+          width: '100%',
+          aspectRatio: '16/9',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          backgroundColor: '#1A1A1A',
+          position: 'relative',
+          cursor: isDone ? 'pointer' : 'default',
+          outline: isSelected ? '2px solid #2DC3E1' : 'none',
+          outlineOffset: '-2px',
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={() => {
+          if (batchMode && isDone) { onToggleSelect?.(); return; }
+        }}
+      >
+        {status === 'loading' ? (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <DotsLoading size={5} color="#2DC3E1" gap={4} />
+          </div>
+        ) : isDone ? (
+          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', padding: '16px' }}>
+            {/* Play button */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setPlaying((p) => !p); }}
+              style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '50%',
+                border: 'none',
+                backgroundColor: '#2DC3E1',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'transform 0.15s',
+                transform: hovered ? 'scale(1.1)' : 'scale(1)',
+              }}
+            >
+              {playing ? (
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <rect x="6" y="4" width="3" height="12" rx="1" fill="#FFFFFF" />
+                  <rect x="11" y="4" width="3" height="12" rx="1" fill="#FFFFFF" />
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M7 4L16 10L7 16V4Z" fill="#FFFFFF" />
+                </svg>
+              )}
+            </button>
+            {/* Waveform visualization */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', height: '24px' }}>
+              {[...Array(20)].map((_, i) => (
+                <div
+                  key={i}
+                  style={{
+                    width: '3px',
+                    borderRadius: '2px',
+                    backgroundColor: '#2DC3E1',
+                    opacity: playing ? 0.8 : 0.4,
+                    height: `${Math.random() * 16 + 8}px`,
+                    transition: 'height 0.2s',
+                  }}
+                />
+              ))}
+            </div>
+            <audio ref={audioRef} src={audioUrl} preload="metadata" style={{ display: 'none' }} />
+          </div>
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ color: '#FFFFFF33', fontSize: '12px', fontFamily: FONT }}>生成失败</span>
+          </div>
+        )}
+
+        {/* Batch mode: checkbox overlay */}
+        {batchMode && isDone && (
+          <div style={{
+            position: 'absolute', top: '8px', right: '8px',
+            width: '18px', height: '18px', borderRadius: '4px', zIndex: 1,
+            border: isSelected ? '1px solid #2DC3E1' : '1px solid rgba(255,255,255,0.5)',
+            backgroundColor: isSelected ? '#2DC3E1' : 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            {isSelected && (
+              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                <path d="M1 4L3.5 6.5L9 1" stroke="#000" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
+        )}
+
+        {/* Hover overlays */}
+        {hovered && isDone && !batchMode && (
+          <div
+            style={{ position: 'absolute', bottom: '8px', right: '8px', display: 'flex', gap: '4px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CardActionBtn
+              tooltip="下载"
+              onClick={() => downloadAudio(audioUrl)}
+              icon={
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M8.003 11.3V2" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M4 14H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              }
+            />
+            <CardActionBtn
+              tooltip="删除"
+              onClick={() => setConfirmDelete(true)}
+              icon={
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M3 3.333V14.667H13V3.333H3Z" stroke="#FFFFFF" strokeLinejoin="round" />
+                  <path d="M6.667 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M9.333 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M1.333 3.333H14.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#FFFFFF" strokeLinejoin="round" />
+                </svg>
+              }
+            />
+          </div>
+        )}
+      </div>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="确认删除"
+          description="删除后无法恢复，确定要删除这张图片吗？"
+          confirmText="删除"
+          onConfirm={() => { setConfirmDelete(false); onDelete?.(); }}
+          onCancel={() => setConfirmDelete(false)}
+          zIndex={1100}
+        />
+      )}
+    </>
+  );
+}
+
+function CreationResultState({ generations, onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onDeleteCard, batchMode = false, selected, onToggleSelect, onSwitchToFrameMode, onVideoCardClick, favorites, toggleFavorite, showToast, onBeforeModelOpen, isGenerating = false, historyLoading = false, historyHasMore = false, onLoadMore, autoFillLimit = Infinity, activeCount = 0, capabilitiesMap = {} }) {
+  const scrollRef = useRef(null);
+  const sentinelRef = useRef(null);
+  const autoFillCountRef = useRef(0);
+  const [prefillVersion, setPrefillVersion] = useState(0);
+  const [prefillData, setPrefillData] = useState(null);
+
+  // Newest generation first — index 0 is the most recently generated image/video
+  const allCards = [...generations].reverse().flatMap((gen) =>
+    gen.cards.map((card, i) => ({
+      ...card,
+      key: `${gen.id}-${i}`,
+      genId: gen.id,
+      cardIndex: i,
+      prompt: gen.prompt,
+      promptHTML: gen.promptHTML || '',
+      model: gen.model,
+      ratio: gen.ratio,
+      resolution: gen.resolution,
+      duration: gen.duration,
+      refImages: gen.refImages,
+      refVideos: gen.refVideos,
+      refAudios: gen.refAudios,
+      refMode: gen.refMode,
+      firstFrameUrl: gen.firstFrameUrl,
+      lastFrameUrl: gen.lastFrameUrl,
+      createdAt: gen.createdAt,
+      _needsDetail: gen._needsDetail,
+      backendId: gen.backendId,
+    }))
+  );
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+    autoFillCountRef.current = 0;
+  }, [genType]); // tab 切换时重置，历史追加不重置
+
+  // ── 滚动到底加载更多（IntersectionObserver） ─────────────────────────────────
+  useEffect(() => {
+    if (!sentinelRef.current || !onLoadMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && historyHasMore && !historyLoading) {
+          onLoadMore();
+        }
+      },
+      { root: scrollRef.current, rootMargin: '120px', threshold: 0 }
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [historyHasMore, historyLoading, onLoadMore]);
+
+  // ── 视口未满时自动加载下一页 ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!historyHasMore || historyLoading || !onLoadMore) return;
+    const container = scrollRef.current;
+    if (!container) return;
+    // 等 DOM 更新后再检测
+    const raf = requestAnimationFrame(() => {
+      const underfilled = container.scrollHeight <= container.clientHeight + 1;
+      if (underfilled && autoFillCountRef.current < autoFillLimit) {
+        autoFillCountRef.current += 1;
+        console.log('[CreationPage][history] auto-fill loadMore', {
+          genType,
+          autoFillCount: autoFillCountRef.current,
+          autoFillLimit,
+          scrollHeight: container.scrollHeight,
+          clientHeight: container.clientHeight,
+        });
+        onLoadMore();
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [autoFillLimit, genType, generations.length, historyHasMore, historyLoading, onLoadMore]);
+
+  const isAudio = genType === 'dubbing';
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        flex: 1,
+        minHeight: 0,
+        alignSelf: 'stretch',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Grid: absolutely fills the container, scrolls internally */}
+      <div
+        ref={scrollRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          padding: '8px 24px 220px',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            display: isAudio ? 'flex' : 'grid',
+            gridTemplateColumns: isAudio ? undefined : 'repeat(auto-fill, minmax(240px, 1fr))',
+            flexDirection: isAudio ? 'column' : undefined,
+            width: '100%',
+            rowGap: '16px',
+            columnGap: '16px',
+            alignContent: 'flex-start',
+          }}
+        >
+          {isGenerating && allCards.length === 0 && (
+            <div style={{
+              width: '100%', height: isAudio ? '72px' : undefined, aspectRatio: isAudio ? undefined : '16/9', borderRadius: '8px',
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '32px', height: '32px', borderRadius: '50%',
+                  border: '2.5px solid rgba(255,255,255,0.10)',
+                  borderTopColor: '#2DC3E1',
+                  animation: 'spin 1s linear infinite',
+                }} />
+                <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '18px', color: 'rgba(255,255,255,0.30)' }}>
+                  正在创作…
+                </span>
+              </div>
+            </div>
+          )}
+
+          {allCards.map((card) => {
+            const { key, ...cardProps } = card;
+            if (card.type === 'audio' || isAudio) {
+              return (
+                <AudioResultCard
+                  key={key}
+                  {...cardProps}
+                  batchMode={batchMode}
+                  isSelected={batchMode && selected?.has(key)}
+                  onToggleSelect={() => onToggleSelect?.(key)}
+                  onDelete={() => onDeleteCard?.(card.genId, card.cardIndex)}
+                />
+              );
+            }
+            if (card.type === 'video') {
+              return (
+                <VideoResultCard
+                  key={key}
+                  {...cardProps}
+                  batchMode={batchMode}
+                  isSelected={batchMode && selected?.has(key)}
+                  onToggleSelect={() => onToggleSelect?.(key)}
+                  onCardClick={() => onVideoCardClick?.(card)}
+                  favorited={favorites?.has(key)}
+                  onToggleFavorite={() => toggleFavorite?.(key)}
+                  onReEdit={async () => {
+                    // 轻量列表需要按需拉取完整详情以获取参考素材
+                    let refImages = card.refImages || [];
+                    let refVideos = card.refVideos || [];
+                    let refAudios = card.refAudios || [];
+                    if (card._needsDetail && card.backendId) {
+                      try {
+                        const detail = await apiGetCreationVideo(card.backendId);
+                        const bindings = detail.asset_bindings || detail.assetBindings || [];
+                        refImages = bindings
+                          .filter((b) => b.asset_type === 'image')
+                          .map((b) => ({
+                            name: b.asset_name || 'ref.png',
+                            url: b.url || b.preview_url || b.previewUrl || '',
+                            previewUrl: b.preview_url || b.previewUrl || b.url || '',
+                            type: 'image/png', isAsset: true, size: 0,
+                          }));
+                        refVideos = bindings
+                          .filter((b) => b.asset_type === 'video')
+                          .map((b) => ({
+                            name: b.asset_name || 'ref.mp4',
+                            url: b.url || '',
+                            previewUrl: b.preview_video_url || b.previewVideoUrl || b.preview_url || b.previewUrl || b.url || '',
+                            type: 'video/mp4', isAsset: true, size: 0,
+                          }));
+                        refAudios = bindings
+                          .filter((b) => b.asset_type === 'audio')
+                          .map((b) => ({
+                            name: b.asset_name || 'ref.mp3',
+                            url: b.url || '', size: 0, isAsset: true,
+                          }));
+                      } catch (e) {
+                        console.warn('[CreationPage] re-edit: failed to fetch video detail', e);
+                      }
+                    }
+                    setPrefillData({
+                      prompt: card.prompt,
+                      promptHTML: card.promptHTML || '',
+                      files: card.refMode === 'first_frame' ? [] : [
+                        ...refImages.filter(img => !img.isLiveMaterial).map((img) => ({
+                          name: img.name || 'ref.png',
+                          url: img.url || img.previewUrl || '',
+                          previewUrl: img.url || img.previewUrl || '',
+                          type: 'image/png',
+                          isAsset: true,
+                          size: 0,
+                        })),
+                        ...refImages.filter(img => img.isLiveMaterial).map((img) => ({
+                          isAsset: true,
+                          isLiveMaterial: true,
+                          assetId: img.assetId,
+                          groupId: img.groupId,
+                          groupType: img.groupType,
+                          assetRefUrl: img.assetRefUrl,
+                          url: img.previewUrl || img.url || '',
+                          previewUrl: img.previewUrl || img.url || '',
+                          name: img.name || '真人素材',
+                          type: 'image/jpeg',
+                          size: 0,
+                        })),
+                        ...refVideos.map((vid) => ({
+                          name: vid.name || 'ref.mp4',
+                          url: vid.url || vid.previewUrl || '',
+                          previewUrl: vid.url || vid.previewUrl || '',
+                          type: 'video/mp4',
+                          isAsset: true,
+                          size: 0,
+                        })),
+                      ],
+                      resolution: card.resolution,
+                      duration: card.duration,
+                      refMode: card.refMode === 'first_frame' ? 'frame' : 'all',
+                      firstFrameFile: card.firstFrameUrl ? { url: card.firstFrameUrl, previewUrl: card.firstFrameUrl, name: 'first-frame.png', size: 0 } : undefined,
+                      lastFrameFile: card.lastFrameUrl ? { url: card.lastFrameUrl, previewUrl: card.lastFrameUrl, name: 'last-frame.png', size: 0 } : undefined,
+                    });
+                    setPrefillVersion((v) => v + 1);
+                  }}
+                  onUseAsFirstFrame={async () => {
+                    try {
+                      // 前端抽取视频尾帧（<video> + <canvas>）
+                      const result = await apiGetVideoLastFrame(card.videoUrl);
+                      const lastFrameUrl = result.lastFrameUrl;
+                      const frameBlob = result.blob;
+
+                      if (!lastFrameUrl || !frameBlob) {
+                        showToast("error", "获取尾帧失败，请重试");
+                        return;
+                      }
+
+                      // 切换到首尾帧模式
+                      onSwitchToFrameMode?.();
+
+                      // 构建 File 对象，提交时 apiGenerateCreation 自动上传到 CDN
+                      const frameFile = new File([frameBlob], 'last-frame.png', { type: 'image/png' });
+
+                      // 将尾帧作为首帧参考传入
+                      setPrefillData({
+                        firstFrameFile: frameFile,
+                        refMode: 'frame',
+                      });
+                      setPrefillVersion((v) => v + 1);
+
+                      showToast('success', '尾帧已添加为首帧参考');
+                    } catch (error) {
+                      console.error('Failed to get video last frame:', error);
+                      showToast('error', '获取尾帧失败，请重试');
+                    }
+                  }}
+                  onDelete={() => onDeleteCard?.(card.genId, card.cardIndex)}
+                />
+              );
+            }
+            return (
+              <ImageResultCard
+                key={key}
+                {...cardProps}
+                batchMode={batchMode}
+                isSelected={batchMode && selected?.has(key)}
+                onToggleSelect={() => onToggleSelect?.(key)}
+                onReEdit={() => {
+                  setPrefillData({
+                    prompt: card.prompt,
+                    promptHTML: card.promptHTML || '',
+                    files: (card.refImages || []).map((img) => ({
+                      name: img.name || 'ref.png',
+                      url: img.url || img.previewUrl || '',
+                      previewUrl: img.url || img.previewUrl || '',
+                      type: 'image/png',
+                      isAsset: true,
+                      size: 0,
+                    })),
+                    ratio: card.ratio,
+                    resolution: card.resolution,
+                    count: undefined,
+                  });
+                  setPrefillVersion((v) => v + 1);
+                }}
+                onUseAsRef={() => {
+                  const newFile = { name: 'creation.png', url: card.imageUrl, previewUrl: card.imageUrl, assetId: card.assetId || card.id || undefined, isAsset: true, size: 0 };
+                  setPrefillData({
+                    appendFiles: [newFile],
+                  });
+                  setPrefillVersion((v) => v + 1);
+                }}
+                favorited={favorites?.has(key)}
+                onToggleFavorite={() => toggleFavorite?.(key)}
+                onDelete={() => onDeleteCard?.(card.genId, card.cardIndex)}
+              />
+            );
+          })}
+        </div>
+        {/* 底部 sentinel：滚动到底时触发加载更多 */}
+        <div ref={sentinelRef} style={{ height: '1px', flexShrink: 0 }} />
+        {(historyLoading && allCards.length > 0) && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '24px 0', gap: '8px' }}>
+            <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: '#2DC3E1', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+            <span style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular',system-ui,sans-serif", fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>加载中…</span>
+          </div>
+        )}
+      </div>
+
+      {!isGenerating && allCards.length === 0 && historyLoading && (
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: '12px',
+          zIndex: 0,
+          pointerEvents: 'none',
+        }}>
+          <DotsLoading size={6} color="#2DC3E1" gap={4} />
+          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '18px', color: '#FFFFFF99' }}>
+            正在获取数据，请稍后
+          </span>
+        </div>
+      )}
+
+      {/* Gradient fade: bridges images and InputCard, does not intercept clicks */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: '50%',
+          background: 'linear-gradient(to bottom, transparent, #161616)',
+          pointerEvents: 'none',
+          zIndex: 1,
+        }}
+      />
+
+      {/* InputCard: floating above the gradient */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          display: 'flex',
+          justifyContent: 'center',
+          paddingLeft: '32px',
+          paddingRight: '32px',
+          paddingBottom: '16px',
+          paddingTop: '8px',
+          zIndex: 2,
+        }}
+      >
+        <div style={{ width: 'min(800px, 100%)' }}>
+          <InputCard onGenerate={onGenerate} width="100%" genType={genType} onGenTypeChange={onGenTypeChange}
+            model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams}
+            prefillVersion={prefillVersion} prefillData={prefillData} onBeforeModelOpen={onBeforeModelOpen} showToast={showToast} activeCount={activeCount} capabilitiesMap={capabilitiesMap} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Empty state ──────────────────────────────────────────────────────────────
+function CreationEmptyState({ onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {} }) {
+  const EmptyIcon = EMPTY_ICON_MAP[genType] ?? CreationEmptyIconImage;
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flex: 1,
+        minHeight: 0,
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        alignSelf: 'stretch',
+        gap: '0px',
+        position: 'relative',
+      }}
+    >
+      {/* Center hint — fixed, centered in the space above InputCard */}
+      <div
+        style={{
+          position: 'fixed',
+          top: 'calc(50vh - 58px)',
+          left: '50%',
+          translate: '-50% -50%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          pointerEvents: 'none',
+          zIndex: 0,
+          opacity: 0.5,
+        }}
+      >
+        <EmptyIcon />
+      </div>
+      {/* InputCard: absolute, centered horizontally, 16px from bottom */}
+      <div style={{ position: 'absolute', left: '50%', bottom: '16px', translate: '-50% 0', width: 'min(800px, 100%)' }}>
+        <InputCard onGenerate={onGenerate} width="100%" genType={genType} onGenTypeChange={onGenTypeChange}
+          model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} onBeforeModelOpen={onBeforeModelOpen} showToast={showToast} activeCount={activeCount} capabilitiesMap={capabilitiesMap} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Tab bar ──────────────────────────────────────────────────────────────────
+const CREATION_TABS = [
+  { key: 'image', label: '图片' },
+  { key: 'video', label: '视频' },
+  { key: 'dubbing', label: '配音' },
+];
+
+function CreationTabBar({ activeTab, onChange }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: '24px', paddingTop: '16px', paddingLeft: '24px', flex: 1, alignSelf: 'stretch' }}>
+      {CREATION_TABS.map(({ key, label }) => {
+        const isActive = key === activeTab;
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onChange(key)}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '4px',
+              padding: 0,
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+          >
+            <span
+              style={{
+                fontFamily: isActive ? FONT_MEDIUM : FONT,
+                fontWeight: isActive ? 500 : 400,
+                fontSize: '16px',
+                lineHeight: isActive ? '20px' : '18px',
+                color: isActive ? '#FFFFFF' : '#FFFFFF99',
+                transition: 'color 0.2s, font-weight 0.2s',
+                whiteSpace: 'pre',
+              }}
+            >
+              {label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Batch operation button ───────────────────────────────────────────────────
+function BatchButton({ onClick }) {
+  const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setPressed(false); }}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '36px',
+        flexShrink: 0,
+        borderRadius: '8px',
+        padding: '1px',
+        boxShadow: '#00000066 3px 3px 8px',
+        backgroundImage: pressed
+          ? 'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 50%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, #FFFFFF1E, #FFFFFF1E)'
+          : hovered
+          ? 'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 40%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, #FFFFFF1A, #FFFFFF1A)'
+          : 'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 30%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, #FFFFFF14, #FFFFFF14)',
+        outline: '1px solid #00000080',
+        border: 'none',
+        cursor: 'pointer',
+        transition: 'background-image 0.15s, transform 0.1s',
+        transform: pressed ? 'scale(0.97)' : 'scale(1)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          flex: 1,
+          borderRadius: '7px',
+          paddingLeft: '15px',
+          paddingRight: '15px',
+          gap: '4px',
+          backgroundColor: pressed ? '#1A1A1A' : hovered ? '#1C1C1C' : '#161616',
+          transition: 'background-color 0.15s',
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+          <path d="M11.333 1.667H2.667C2.114 1.667 1.667 2.114 1.667 2.667V11.333C1.667 11.886 2.114 12.333 2.667 12.333H11.333C11.886 12.333 12.333 11.886 12.333 11.333V2.667C12.333 2.114 11.886 1.667 11.333 1.667Z" stroke="#FFFFFF" strokeLinejoin="round" />
+          <path d="M14.667 4.334V14C14.667 14.368 14.368 14.667 14 14.667H4.334" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M4.333 6.829L6.333 8.67L9.667 5.24" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF', whiteSpace: 'nowrap' }}>
+          批量操作
+        </span>
+      </div>
+    </button>
+  );
+}
+
+// ─── Batch action buttons ─────────────────────────────────────────────────────
+function CreationGhostBtn({ children, onClick }) {
+  const [hov, setHov] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      style={{ display: 'flex', flexDirection: 'column', height: '36px', flexShrink: 0, borderRadius: '8px', padding: '1px', boxShadow: '#00000066 3px 3px 8px', backgroundImage: 'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 30%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, #FFFFFF14, #FFFFFF14)', outline: '1px solid #00000080', border: 'none', cursor: 'pointer', opacity: pressed ? 0.75 : 1, transition: 'opacity 0.1s' }}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => { setHov(false); setPressed(false); }}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      onClick={onClick}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', flexGrow: 1, flexShrink: 1, flexBasis: '0%', borderRadius: '7px', paddingLeft: '15px', paddingRight: '15px', gap: '4px', backgroundColor: pressed ? '#252525' : hov ? '#1D1E1E' : '#161616', transition: 'background-color 0.12s' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function CreationPlainBtn({ children, onClick }) {
+  const [hov, setHov] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      style={{ display: 'flex', alignItems: 'center', height: '36px', flexShrink: 0, borderRadius: '8px', paddingLeft: '16px', paddingRight: '16px', gap: '4px', boxShadow: '#00000066 3px 3px 8px', backgroundColor: pressed ? '#252525' : hov ? '#1D1E1E' : '#161616', border: '1px solid #FFFFFF0D', outline: '1px solid #00000080', cursor: 'pointer', transition: 'background-color 0.12s', opacity: pressed ? 0.8 : 1 }}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => { setHov(false); setPressed(false); }}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      onClick={onClick}
+    >
+      {children}
+    </div>
+  );
+}
+
+// ─── 清空创作历史按钮（与 批量操作 同级，正常浏览态）────────────────────────────
+function ClearHistoryButton({ onClick }) {
+  const [hov, setHov] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '36px', flexShrink: 0, borderRadius: '8px', padding: '1px', boxShadow: '#00000066 3px 3px 8px', backgroundImage: 'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 30%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, #FFFFFF14, #FFFFFF14)', outline: '1px solid #00000080', border: 'none', cursor: 'pointer', opacity: pressed ? 0.75 : 1, transition: 'opacity 0.1s' }}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => { setHov(false); setPressed(false); }}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      onClick={onClick}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', flexGrow: 1, flexShrink: 1, flexBasis: '0%', borderRadius: '7px', paddingLeft: '15px', paddingRight: '15px', gap: '4px', backgroundColor: pressed ? '#252525' : hov ? '#1D1E1E' : '#161616', transition: 'background-color 0.12s' }}>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+          <path fillRule="evenodd" clipRule="evenodd" d="M6.66663 1.97144H9.33329V4.63812H14.3333V7.30478H1.66663V4.63812H6.66663V1.97144Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M2.66663 13.3333H13.3333V7.33325H2.66663V13.3333Z" stroke="#FFFFFF" strokeLinejoin="round" />
+          <path d="M5.33337 13.2992V11.3047" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M8 13.2993V11.2993" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M10.6666 13.2992V11.3047" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M4 13.3333H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span style={{ fontFamily: FONT, fontSize: '14px', color: '#FFFFFF', whiteSpace: 'nowrap' }}>清空</span>
+      </div>
+      {hov && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 8px)',
+            right: 0,
+            whiteSpace: 'nowrap',
+            padding: '6px 10px',
+            borderRadius: '8px',
+            backgroundColor: '#262626',
+            border: '1px solid #FFFFFF1A',
+            fontFamily: FONT,
+            fontSize: '12px',
+            lineHeight: '16px',
+            color: '#FFFFFFE6',
+            boxShadow: '#00000066 0px 4px 12px',
+            pointerEvents: 'none',
+            zIndex: 1200,
+          }}
+        >
+          仅清除本页记录，创作资产仍可在资产库找到
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+function CreationLoginEmptyState({ onLoginClick }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flex: 1,
+        minHeight: 0,
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        alignSelf: 'stretch',
+        gap: '12px',
+      }}
+    >
+      <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="cli-bg" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#FFFFFF" stopOpacity="0.12" />
+            <stop offset="1" stopColor="#FFFFFF" stopOpacity="0.04" />
+          </linearGradient>
+          <linearGradient id="cli-stroke" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#FFFFFF" stopOpacity="0.24" />
+            <stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
+          </linearGradient>
+          <linearGradient id="cli-icon" x1="18" y1="20" x2="46" y2="44" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#FFFFFF" />
+            <stop offset="1" stopColor="#B7C0CC" />
+          </linearGradient>
+        </defs>
+        <rect x="4" y="4" width="56" height="56" rx="28" fill="url(#cli-bg)" />
+        <rect x="4.5" y="4.5" width="55" height="55" rx="27.5" stroke="url(#cli-stroke)" />
+        <path d="M32 22C28.686 22 26 24.686 26 28C26 31.314 28.686 34 32 34C35.314 34 38 31.314 38 28C38 24.686 35.314 22 32 22Z" stroke="url(#cli-icon)" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M22 42C22 38.134 26.477 35 32 35C37.523 35 42 38.134 42 42" stroke="url(#cli-icon)" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+      <div
+        style={{
+          fontFamily: FONT,
+          fontSize: '14px',
+          lineHeight: '20px',
+          color: 'rgba(255,255,255,0.4)',
+          textAlign: 'center',
+        }}
+      >
+        请先{' '}
+        <button
+          type="button"
+          onClick={onLoginClick}
+          style={{
+            padding: 0,
+            margin: 0,
+            border: 0,
+            background: 'transparent',
+            cursor: 'pointer',
+            fontFamily: FONT,
+            fontSize: '14px',
+            lineHeight: '20px',
+            color: '#2DC3E1',
+          }}
+        >
+          登录
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// 模块级常量和 ref：组件卸载重挂载不重置，避免 session 重复恢复导致数据叠加
+const SESSION_KEY = 'miioo_creation_session_id';
+const PENDING_CREATION_TASKS_KEY = 'miioo_pending_tasks';
+const _sessionIdRef = { current: localStorage.getItem(SESSION_KEY) };
+const _sessionInitRef = { current: false };
+const _restoredShotIdsRef = { current: new Set() };
 
 export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured = true, onShowNoModelNotice }) {  const [activeTab, setActiveTab] = useState('image');
   const [genType, setGenType] = useState('image');
@@ -75,6 +5787,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     confirmFavoriteToggle: storeConfirmFavoriteToggle,
     rollbackFavoriteToggle: storeRollbackFavoriteToggle,
     historyMeta, mergeHistoryGenerations, updateHistoryMeta,
+    clearHistoryTab,
   } = useCreationStore();
   const generations = generationsByTab[activeTab] ?? [];
 
@@ -121,16 +5834,47 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
             .map((b) => {
               const imgUrl = b.preview_url || b.previewUrl || b.url || '';
               const normalized = normalizeImageUrl(imgUrl) || imgUrl;
-              return { url: normalized, previewUrl: normalized, isAsset: true, name: b.asset_name || 'ref.png', size: 0 };
+              return { url: normalized, previewUrl: normalized, type: 'image/png', isAsset: true, name: b.asset_name || 'ref.png', size: 0, assetId: b.asset_id };
             })
         : (item.reference_images || item.referenceImages || []).map((img) => {
             const imgUrl = typeof img === 'string' ? img : (img?.url || img?.original_url || '');
             const normalized = normalizeImageUrl(imgUrl) || imgUrl;
-            return { url: normalized, previewUrl: normalized, isAsset: true, name: normalized.split('/').pop() || 'ref.png', size: 0 };
+            return { url: normalized, previewUrl: normalized, type: 'image/png', isAsset: true, name: normalized.split('/').pop() || 'ref.png', size: 0, assetId: img?.asset_id };
           });
+    // 从 asset_bindings 提取参考视频（仅视频类型）
+    const refVideos =
+      type === 'video'
+        ? assetBindings
+            .filter((b) => b.asset_type === 'video')
+            .map((b) => {
+              const vidUrl = b.url || '';
+              const previewVidUrl = b.preview_video_url || b.previewVideoUrl || b.preview_url || b.previewUrl || vidUrl;
+              return { url: vidUrl, previewUrl: previewVidUrl, type: 'video/mp4', isAsset: true, name: b.asset_name || 'ref.mp4', size: 0, duration: b.duration, assetId: b.asset_id };
+            })
+        : [];
+    // 从 asset_bindings 提取参考音频（仅视频类型）
+    const refAudios =
+      type === 'video'
+        ? assetBindings
+            .filter((b) => b.asset_type === 'audio')
+            .map((b) => ({
+              url: b.url || '', name: b.asset_name || 'ref.mp3', size: 0, duration: b.duration, assetId: b.asset_id,
+            }))
+        : [];
+
 
     // poster：视频封面图
     const posterUrl = normalizeImageUrl(item.poster_url || item.posterUrl || '') || undefined;
+
+    const refMode = item.reference_mode || item.referenceMode || undefined;
+    const firstFrameUrl = normalizeImageUrl(item.first_frame_url || item.firstFrameUrl || '') || undefined;
+    const lastFrameUrl = normalizeImageUrl(item.last_frame_url || item.lastFrameUrl || '') || undefined;
+
+    // 轻量列表标记：video 类型无 asset_bindings 时需要按需加载详情
+    const needsDetail = type === 'video' && (
+      (item.has_reference_image || item.has_reference_video || item.has_reference_audio) &&
+      refImages.length === 0 && refVideos.length === 0 && refAudios.length === 0
+    );
 
     return {
       id,
@@ -141,7 +5885,13 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       model: item.model || '',
       prompt: item.prompt || '',
       refImages,
+      refMode: type === 'video' ? refMode : undefined,
+      refVideos: type === 'video' ? refVideos : undefined,
+      refAudios: type === 'video' ? refAudios : undefined,
+      firstFrameUrl: type === 'video' ? firstFrameUrl : undefined,
+      lastFrameUrl: type === 'video' ? lastFrameUrl : undefined,
       createdAt: item.created_at || new Date().toISOString(),
+      _needsDetail: needsDetail || undefined,
       cards: [{
         id: item.id,
         type,
@@ -157,49 +5907,223 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     };
   }
 
+  function getHistoryListFromResponse(resp) {
+    return Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
+  }
+
+  function pickHistoryCacheItem(item, tab) {
+    if (!item || typeof item !== 'object') return item;
+
+    const base = {
+      id: item.id,
+      prompt: item.prompt || '',
+      model: item.model || '',
+      ratio: item.ratio || item.aspect_ratio || '16:9',
+      resolution: item.resolution || item.size || '',
+      duration: item.duration || undefined,
+      created_at: item.created_at || item.createdAt || new Date().toISOString(),
+      is_favorite: item.is_favorite ?? item.is_liked ?? item.isLiked ?? false,
+    };
+
+    if (tab === 'image') {
+      return {
+        ...base,
+        original_url: item.original_url || item.file_url || item.url || '',
+        thumbnail_url: item.thumbnail_url || item.thumbnailUrl || item.original_url || item.file_url || item.url || '',
+        reference_images: Array.isArray(item.reference_images)
+          ? item.reference_images.map((img) => (typeof img === 'string'
+            ? img
+            : { url: img?.url || img?.original_url || '', asset_id: img?.asset_id }))
+          : [],
+      };
+    }
+
+    if (tab === 'video') {
+      return {
+        ...base,
+        video_url: item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '',
+        preview_video_url: item.preview_video_url || item.previewVideoUrl || item.video_url || item.videoUrl || '',
+        poster_url: item.poster_url || item.posterUrl || '',
+        reference_mode: item.reference_mode || item.referenceMode || undefined,
+        first_frame_url: item.first_frame_url || item.firstFrameUrl || undefined,
+        last_frame_url: item.last_frame_url || item.lastFrameUrl || undefined,
+        // 轻量列表摘要（不再缓存完整 asset_bindings）
+        asset_binding_count: item.asset_binding_count ?? 0,
+        asset_binding_types: item.asset_binding_types || [],
+        has_reference_image: item.has_reference_image ?? false,
+        has_reference_video: item.has_reference_video ?? false,
+        has_reference_audio: item.has_reference_audio ?? false,
+      };
+    }
+
+    return {
+      ...base,
+      file_url: item.file_url || item.url || item.original_url || '',
+    };
+  }
+
+  function buildHistoryCachePayload(tab, resp) {
+    const list = getHistoryListFromResponse(resp).map((item) => pickHistoryCacheItem(item, tab));
+    if (Array.isArray(resp)) return list;
+    if (resp && typeof resp === 'object') {
+      if (Array.isArray(resp.list)) return { ...resp, list };
+      if (Array.isArray(resp.items)) return { ...resp, items: list };
+      if (Array.isArray(resp.data)) return { ...resp, data: list };
+    }
+    return { list };
+  }
+
+  function hydrateHistoryFromCache(tab) {
+    const cacheKey = `creation_history:${tab}:page1`;
+    const cacheEntry = peekCacheEntry(cacheKey, 'local');
+    if (!cacheEntry?.d) {
+      console.log('[CreationPage][history] cache miss', { tab, cacheKey });
+      return false;
+    }
+
+    const list = getHistoryListFromResponse(cacheEntry.d);
+    const type = tab === 'dubbing' ? 'audio' : tab;
+    const normalized = list.map((item) => normalizeHistoryItem(item, type));
+    mergeHistoryGenerations(tab, normalized);
+
+    const cacheAgeMs = Date.now() - cacheEntry.t;
+    console.log('[CreationPage][history] hydrated from local cache', {
+      tab,
+      cacheKey,
+      itemCount: list.length,
+      cacheAgeMs,
+      isFresh: cacheAgeMs < 5 * 60 * 1000,
+    });
+
+    return true;
+  }
+
+  function syncHistoryFavorites(tab) {
+    const latestGens = useCreationStore.getState().generationsByTab[tab] ?? [];
+    const syncItems = [];
+    for (const gen of latestGens) {
+      for (let i = 0; i < gen.cards.length; i++) {
+        const card = gen.cards[i];
+        if (card.isFavorite !== undefined) {
+          syncItems.push({ key: `${gen.id}-${i}`, isFavorite: card.isFavorite });
+        }
+      }
+    }
+    if (syncItems.length > 0) {
+      storeSyncFavorites(syncItems);
+    }
+  }
+
   // 拉取一页历史数据，自动填满视口逻辑由 CreationResultState 触发
   const loadHistoryPage = useCallback(async (tab) => {
     if (!isLoggedIn) return;
     const meta = useCreationStore.getState().historyMeta[tab];
-    if (meta.loading || !meta.hasMore) return;
+    if (meta.loading || !meta.hasMore) {
+      console.log('[CreationPage][history] skip load', {
+        tab,
+        reason: meta.loading ? 'loading' : 'no-more',
+        meta,
+      });
+      return;
+    }
 
     updateHistoryMeta(tab, { loading: true });
     const nextPage = meta.page + 1;
-    const PAGE_SIZE = 18; // 比默认9大，保证大屏填满
+    const PAGE_SIZE = tab === 'video' ? 6 : 18;
+    console.log('[CreationPage][history] start load', { tab, nextPage, meta });
 
     try {
-      let resp;
-      if (tab === 'image') {
-        resp = await apiListCreationImages({ page: nextPage, page_size: PAGE_SIZE });
-      } else if (tab === 'video') {
-        resp = await apiListCreationVideos({ page: nextPage, page_size: PAGE_SIZE });
+      let list;
+      const apiMap = {
+        image: apiListCreationImages,
+        video: apiListCreationVideos,
+        dubbing: apiListCreationAudios,
+      };
+      if (nextPage === 1) {
+        const cacheKey = `creation_history:${tab}:page1`;
+        const cacheEntry = peekCacheEntry(cacheKey, 'local');
+        const cacheList = cacheEntry?.d ? getHistoryListFromResponse(cacheEntry.d) : [];
+        console.log('[CreationPage][history] page1 cache status before cached()', {
+          tab,
+          cacheKey,
+          hit: Boolean(cacheEntry?.d),
+          cacheAgeMs: cacheEntry?.t ? Date.now() - cacheEntry.t : null,
+        });
+        let resp;
+        if (tab === 'video') {
+          const cacheAgeMs = cacheEntry?.t ? Date.now() - cacheEntry.t : null;
+          const isFresh = Boolean(cacheEntry?.d) && cacheAgeMs < 5 * 60 * 1000;
+          if (cacheEntry?.d) {
+            resp = cacheEntry.d;
+            if (!isFresh) {
+              console.log('[CreationPage][history] video cache stale, revalidating in background', {
+                tab,
+                cacheKey,
+                cacheAgeMs,
+              });
+              apiMap[tab]({ page: 1, page_size: PAGE_SIZE, exclude_hidden: true })
+                .then((networkResp) => {
+                  const slimResp = buildHistoryCachePayload(tab, networkResp);
+                  setCache(cacheKey, slimResp, { medium: 'local' });
+                })
+                .catch((err) => {
+                  console.warn('[CreationPage][history] video cache revalidate failed', { tab, cacheKey, message: err?.message });
+                });
+            }
+          } else {
+            console.log('[CreationPage][history] network request fired', { tab, page: 1, pageSize: PAGE_SIZE });
+            const networkResp = await apiMap[tab]({ page: 1, page_size: PAGE_SIZE, exclude_hidden: true });
+            resp = buildHistoryCachePayload(tab, networkResp);
+            setCache(cacheKey, resp, { medium: 'local' });
+          }
+        } else {
+          resp = await cached(cacheKey, async () => {
+            console.log('[CreationPage][history] network request fired', { tab, page: 1, pageSize: PAGE_SIZE });
+            return apiMap[tab]({ page: 1, page_size: PAGE_SIZE, exclude_hidden: true });
+          }, {
+            medium: 'local',
+            ttl: 5 * 60 * 1000,
+            swr: true,
+          });
+        }
+        list = getHistoryListFromResponse(resp);
+
+        const isSameAsHydratedCache = cacheEntry?.d && JSON.stringify(list) === JSON.stringify(cacheList);
+        if (isSameAsHydratedCache) {
+          const hasMore = list.length >= PAGE_SIZE;
+          syncHistoryFavorites(tab);
+          console.log('[CreationPage][history] reused hydrated cache result', {
+            tab,
+            nextPage,
+            itemCount: list.length,
+            hasMore,
+          });
+          updateHistoryMeta(tab, { page: nextPage, hasMore, loading: false, initialized: true });
+          return;
+        }
       } else {
-        resp = await apiListCreationAudios({ page: nextPage, page_size: PAGE_SIZE });
+        console.log('[CreationPage][history] network request fired', { tab, page: nextPage, pageSize: PAGE_SIZE });
+        const resp = await apiMap[tab]({ page: nextPage, page_size: PAGE_SIZE, exclude_hidden: true });
+        list = getHistoryListFromResponse(resp);
       }
 
       const type = tab === 'dubbing' ? 'audio' : tab;
-      const list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
       const hasMore = list.length >= PAGE_SIZE;
 
-     const normalized = list.map((item) => normalizeHistoryItem(item, type));
-     mergeHistoryGenerations(tab, normalized);
+      const normalized = list.map((item) => normalizeHistoryItem(item, type));
+      mergeHistoryGenerations(tab, normalized);
+      console.log('[CreationPage][history] load success', {
+        tab,
+        nextPage,
+        itemCount: list.length,
+        normalizedCount: normalized.length,
+        hasMore,
+      });
 
       // 同步后端收藏状态到本地 favorites Set
-      const latestGens = useCreationStore.getState().generationsByTab[tab] ?? [];
-      const syncItems = [];
-      for (const gen of latestGens) {
-        for (let i = 0; i < gen.cards.length; i++) {
-          const card = gen.cards[i];
-          if (card.isFavorite !== undefined) {
-            syncItems.push({ key: `${gen.id}-${i}`, isFavorite: card.isFavorite });
-          }
-        }
-      }
-      if (syncItems.length > 0) {
-        storeSyncFavorites(syncItems);
-      }
+      syncHistoryFavorites(tab);
 
-     updateHistoryMeta(tab, { page: nextPage, hasMore, loading: false, initialized: true });
+      updateHistoryMeta(tab, { page: nextPage, hasMore, loading: false, initialized: true });
     } catch (err) {
       console.error('[CreationPage] 历史数据加载失败:', err);
       updateHistoryMeta(tab, { loading: false, initialized: true });
@@ -210,10 +6134,18 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   useEffect(() => {
     if (!isLoggedIn) return;
     const meta = historyMeta[activeTab];
+    console.log('[CreationPage][history] tab effect', {
+      activeTab,
+      initialized: meta.initialized,
+      loading: meta.loading,
+      localGenerationCount: generationsByTab[activeTab]?.length ?? 0,
+    });
     if (!meta.initialized && !meta.loading) {
+      const hydrated = hydrateHistoryFromCache(activeTab);
+      console.log('[CreationPage][history] initial hydrate result', { tab: activeTab, hydrated });
       loadHistoryPage(activeTab);
     }
-  }, [isLoggedIn, activeTab]);
+  }, [isLoggedIn, activeTab, historyMeta, generationsByTab, loadHistoryPage]);
 
   // Video detail modal state
 
@@ -246,26 +6178,28 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     initSession();
   }, [isLoggedIn]);
 
-  // 刷新恢复：检测 localStorage 中未完成的视频任务，重建占位卡片并继续轮询
+  // 刷新恢复：检测 localStorage 中未完成的创作任务，重建占位卡片并继续轮询（支持图片/视频/配音）
   useEffect(() => {
     let pending;
     try {
-      pending = JSON.parse(localStorage.getItem(PENDING_VIDEO_TASKS_KEY) || '[]');
+      pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
     } catch {
       pending = [];
     }
     if (!pending.length) return;
 
     // 清掉已恢复的，避免重复
-    localStorage.setItem(PENDING_VIDEO_TASKS_KEY, JSON.stringify([]));
+    localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify([]));
 
     pending.forEach((task) => {
-      const { taskId, genId, shotId, tab, prompt, promptHTML, model, ratio, resolution, duration, createdAt } = task;
+      const { taskId, genId, shotId, tab, genType, count: taskCount, prompt, promptHTML, model, ratio, resolution, duration, createdAt, refVideos: taskRefVideos = [], refAudios: taskRefAudios = [] } = task;
+      const isVideo = genType === 'video';
+      const isDubbing = genType === 'dubbing';
 
-      // 先删除 store 中可能残留的同 genId 旧条目（Zustand store 是内存单例，页面导航不清空）
+      // 先删除 store 中可能残留的同 genId 旧条目
       storeDeleteGeneration(tab, genId);
 
-      // 重建占位卡片
+      // 重建占位卡片（按类型生成对应数量的占位）
       addGeneration(tab, {
         id: genId,
         shot_id: shotId || undefined,
@@ -275,16 +6209,37 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         model,
         prompt,
         promptHTML: promptHTML || '',
-        refImages: [],
+        refImages: [], refVideos: taskRefVideos, refAudios: taskRefAudios,
         createdAt,
-        cards: [{ id: null, type: 'video', status: 'loading', imageUrl: null, videoUrl: null, audioUrl: null }],
+        cards: Array.from({ length: isVideo || isDubbing ? 1 : (parseInt(taskCount) || 1) }, (_, i) => ({
+          id: null,
+          type: isVideo ? 'video' : isDubbing ? 'audio' : 'image',
+          status: 'loading',
+          imageUrl: null,
+          videoUrl: null,
+          audioUrl: null,
+          placeholderId: 'restored-' + genId + '-' + i,
+        })),
       });
-      incrementActive('video');
+      incrementActive(genType === 'video' ? 'video' : genType === 'dubbing' ? 'dubbing' : 'image');
 
       // 重新轮询
-      apiPollVideoTask(taskId)
-        .then(({ videos, cardIds }) => {
-          const mediaUrls = (videos || []).map((u) => normalizeImageUrl(u) || u);
+      apiPollCreationTask(genType || 'image', taskId)
+        .then((result) => {
+          let mediaUrls = [];
+          let cardIds = [];
+          let refImages = [];
+          if (isVideo) {
+            mediaUrls = (result.videos || []).map((u) => normalizeImageUrl(u) || u);
+            cardIds = result.cardIds || [];
+          } else if (isDubbing) {
+            mediaUrls = (result.audios || []);
+          } else {
+            mediaUrls = (result.images || []).map((u) => normalizeImageUrl(u) || u);
+            cardIds = result.cardIds || [];
+            refImages = result.referenceImages || [];
+          }
+
           if (!mediaUrls.length) {
             showToast('error', '生成失败，请稍后重试');
             storeDeleteGeneration(tab, genId);
@@ -296,27 +6251,42 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
             shot_id: shotId || undefined,
             ratio, resolution, duration, model, prompt,
             promptHTML: promptHTML || '',
-            refImages: [],
+            refImages: refImages.map((url) => ({
+              url: normalizeImageUrl(url) || url,
+              previewUrl: normalizeImageUrl(url) || url,
+              isAsset: true,
+              name: (url || '').split('/').pop() || 'ref.png',
+              size: 0,
+            })),
+        refVideos: taskRefVideos || [],
+        refAudios: taskRefAudios || [],
             createdAt,
             cards: mediaUrls.map((url) => ({
-              id: null, type: 'video', status: 'done',
-              imageUrl: null, videoUrl: url, audioUrl: null,
+              id: null,
+              type: isVideo ? 'video' : isDubbing ? 'audio' : 'image',
+              status: 'done',
+              imageUrl: isDubbing || isVideo ? null : url,
+              videoUrl: isVideo ? url : null,
+              audioUrl: isDubbing ? url : null,
             })),
           });
           if (cardIds?.length) storeUpdateCardIds(tab, genId, cardIds);
-          // 写回 localStorage（此时任务已完成，不需要重新存）
+          // 新创作完成 → 清除历史缓存，下次刷新时能拿到新数据
+          invalidate(`creation_history:${tab}:`, 'local');
         })
         .catch((err) => {
           showToast('error', err?.message || '生成失败，请稍后重试');
           storeDeleteGeneration(tab, genId);
         })
         .finally(() => {
-          decrementActive('video');
+          decrementActive(genType === 'video' ? 'video' : genType === 'dubbing' ? 'dubbing' : 'image');
         });
     });
   // 只在挂载时执行一次
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  
 
   const [videoDetailModal, setVideoDetailModal] = useState(null);
 
@@ -349,9 +6319,11 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   const [model, setModel] = useState('');
   const [creationParams, setCreationParams] = useState(null);
   const capabilitiesMapRef = useRef({});
+  const [capabilitiesMap, setCapabilitiesMap] = useState({});
 
   const [batchMode, setBatchMode] = useState(false);
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
+  const [clearHistoryConfirm, setClearHistoryConfirm] = useState(false);
   const [selected, setSelected] = useState(new Set());
 
   // Load model list from backend (fallback to local config) when genType changes
@@ -363,6 +6335,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         const { modelOptions: opts, capabilitiesMap } = adaptModels(models, genType);
         if (cancelled) return;
         capabilitiesMapRef.current = capabilitiesMap;
+        setCapabilitiesMap(capabilitiesMap);
         setModelOptions(opts);
         // 优先使用用户在 API 配置中设置的默认模型（is_default: true），
         // 若未设置则回退到列表第一个
@@ -374,6 +6347,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         if (cancelled) return;
         const { modelOptions: opts, capabilitiesMap } = adaptModels([], genType);
         capabilitiesMapRef.current = capabilitiesMap;
+        setCapabilitiesMap(capabilitiesMap);
         setModelOptions(opts);
         setModel(opts[0]?.value ?? '');
       }
@@ -450,6 +6424,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     if (videoIds.length > 0) apiBatchDeleteVideos(videoIds).catch(() => {});
     // Update local store
     deleteSelectedCards(activeTab, selected);
+    invalidate(`creation_history:${activeTab}:`, 'local');
     setSelected(new Set());
   }
 
@@ -458,11 +6433,11 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       gen.cards.forEach((card, i) => {
         const key = `${gen.id}-${i}`;
         if (selected.has(key)) {
-          if (card.imageUrl) downloadImage(card.originalUrl || card.imageUrl);
+          if (card.imageUrl) downloadImage(card.originalUrl || card.imageUrl, card.prompt);
           if (card.audioUrl && !card.imageUrl && !card.videoUrl) {
             const a = document.createElement('a');
             a.href = card.audioUrl;
-            a.download = 'dubbing.wav';
+            a.download = filenameFromPrompt(card.prompt, 'wav', 'dubbing');
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -475,7 +6450,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
                 const objUrl = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = objUrl;
-                a.download = 'creation.mp4';
+                a.download = filenameFromPrompt(card.prompt, 'mp4');
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
@@ -507,7 +6482,27 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       }
     }
     storeDeleteCard(activeTab, genId, cardIdx);
+    invalidate(`creation_history:${activeTab}:`, 'local');
   };
+
+  // 清空当前 Tab 的创作历史：调用后端持久隐藏，重置本 Tab 展示与分页，并失效本地缓存
+  async function handleClearHistory() {
+    setClearHistoryConfirm(false);
+    try {
+      const res = await apiHideCreationHistory(activeTab);
+      const hiddenCount = res?.hiddenCount ?? res?.hidden_count ?? 0;
+      clearHistoryTab(activeTab);
+      invalidate(`creation_history:${activeTab}:`, 'local');
+      if (hiddenCount > 0) {
+        showToast('success', `已清空 ${hiddenCount} 条创作历史`);
+      } else {
+        showToast('success', '本页创作历史已清空');
+      }
+    } catch (err) {
+      console.error('[CreationPage] 清空创作历史失败:', err);
+      showToast('error', '清空失败，请重试');
+    }
+  }
 
   const handleGenerate = async (params) => {
     setGenerating(true);
@@ -548,7 +6543,33 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       model: params.model || '',
       prompt: params.prompt || '',
       promptHTML: params.promptHTML || '',
-      refImages: [],
+      refImages: (params.liveMaterialFiles || []).map(f => ({
+        url: f.previewUrl || f.url || '',
+        previewUrl: f.previewUrl || f.url || '',
+        isAsset: true, isLiveMaterial: true,
+        assetId: f.assetId, groupId: f.groupId, groupType: f.groupType, assetRefUrl: f.assetRefUrl,
+        name: f.name || '真人素材', size: 0, type: 'image/jpeg',
+      })),
+      refVideos: (params.files || []).filter(f => isVideoFile(f)).map(f => ({
+        url: f.url || null,
+        previewUrl: f.previewUrl || (f instanceof File ? URL.createObjectURL(f) : (f.url || null)),
+        isAsset: true,
+        name: f.name || 'ref.mp4',
+        size: f.size || 0,
+      })),
+      refAudios: (params.files || []).filter(f => {
+        if (!f || typeof f !== 'object') return false;
+        if (f.type && f.type.startsWith('audio/')) return true;
+        if (f.isAsset && f.url) {
+          if (/\.(mp3|wav|aac|ogg|flac|m4a|wma)$/i.test(f.url)) return true;
+        }
+        const ext = '.' + (f.name || '').split('.').pop().toLowerCase();
+        return AUDIO_EXTS_SET.has(ext);
+      }).map(f => ({
+        url: f.url || null,
+        name: f.name || 'ref.mp3',
+        size: f.size || 0,
+      })),
       createdAt: new Date().toISOString(),
       cards: Array.from({ length: isVideoGen || isDubbingGen ? 1 : countNum }, (_, i) => ({
         id: null,
@@ -564,14 +6585,15 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     try {
       const result = await apiGenerateCreation(params, {
         onTaskCreated: ({ taskId }) => {
-          if (params.genType !== 'video') return;
           try {
-            const pending = JSON.parse(localStorage.getItem(PENDING_VIDEO_TASKS_KEY) || '[]');
+            const pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
             pending.push({
               taskId,
               genId,
               shotId: shotId || null,
               tab: currentTab,
+              genType: params.genType || 'image',
+              count: parseInt(params.count) || 1,
               prompt: params.prompt || '',
               promptHTML: params.promptHTML || '',
               model: params.model || '',
@@ -579,8 +6601,23 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               resolution: params.resolution || params.videoResolution || '',
               duration: params.videoDuration || '5s',
               createdAt: new Date().toISOString(),
+              refVideos: (params.files || []).filter(f => isVideoFile(f)).map(f => ({
+                url: f.url || null,
+                name: f.name || 'ref.mp4',
+                size: f.size || 0,
+              })),
+              refAudios: (params.files || []).filter(f => {
+                if (!f || typeof f !== 'object') return false;
+                if (f.type && f.type.startsWith('audio/')) return true;
+                const ext = '.' + (f.name || '').split('.').pop().toLowerCase();
+                return AUDIO_EXTS_SET.has(ext);
+              }).map(f => ({
+                url: f.url || null,
+                name: f.name || 'ref.mp3',
+                size: f.size || 0,
+              })),
             });
-            localStorage.setItem(PENDING_VIDEO_TASKS_KEY, JSON.stringify(pending));
+            localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(pending));
           } catch {}
         },
       });
@@ -622,13 +6659,37 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         model: genMeta.model,
         prompt: genMeta.prompt,
         promptHTML: params.promptHTML || '',
-        refImages: (result.referenceImages || []).map((url) => ({
-          url: normalizeImageUrl(url) || url,
-          previewUrl: normalizeImageUrl(url) || url,
+        refImages: [
+          ...(result.referenceImages || []).map((url) => ({
+            url: normalizeImageUrl(url) || url,
+            previewUrl: normalizeImageUrl(url) || url,
+            isAsset: true,
+            name: (url || '').split('/').pop() || 'ref.png',
+            size: 0,
+          })),
+          ...(params.liveMaterialFiles || []).map(f => ({
+            url: f.previewUrl || f.url || '',
+            previewUrl: f.previewUrl || f.url || '',
+            isAsset: true, isLiveMaterial: true,
+            assetId: f.assetId, groupId: f.groupId, groupType: f.groupType, assetRefUrl: f.assetRefUrl,
+            name: f.name || '真人素材', size: 0, type: 'image/jpeg',
+          })),
+        ],
+        refVideos: (result.referenceVideos || []).map((url) => ({
+          url: url,
+          previewUrl: url,
           isAsset: true,
-          name: (url || '').split('/').pop() || 'ref.png',
+          name: (url || '').split('/').pop() || 'ref.mp4',
           size: 0,
         })),
+        refAudios: (result.referenceAudios || []).map((url) => ({
+          url: url,
+          name: (url || '').split('/').pop() || 'ref.mp3',
+          size: 0,
+        })),
+        refMode: result.refMode || undefined,
+        firstFrameUrl: result.firstFrameUrl || undefined,
+        lastFrameUrl: result.lastFrameUrl || undefined,
         createdAt: genMeta.createdAt,
         cards: mediaUrls.map((url) => ({
           id: null,  // 后端 ID，待轮询返回后回写
@@ -661,16 +6722,16 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       }
       // 清除 pending task 记录
       try {
-        const pending = JSON.parse(localStorage.getItem(PENDING_VIDEO_TASKS_KEY) || '[]');
+        const pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
         const filtered = pending.filter((t) => t.genId !== genId);
-        localStorage.setItem(PENDING_VIDEO_TASKS_KEY, JSON.stringify(filtered));
+        localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(filtered));
       } catch {}
       return { success: true };
     } catch (error) {
       try {
-        const pending = JSON.parse(localStorage.getItem(PENDING_VIDEO_TASKS_KEY) || '[]');
+        const pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
         const filtered = pending.filter((t) => t.genId !== genId);
-        localStorage.setItem(PENDING_VIDEO_TASKS_KEY, JSON.stringify(filtered));
+        localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(filtered));
       } catch {}
       showToast('error', error?.message || '生成失败，请稍后重试');
       // 删除占位卡片
@@ -728,6 +6789,16 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
           confirmText="删除"
           onConfirm={() => { setBatchDeleteConfirm(false); deleteSelected(); }}
           onCancel={() => setBatchDeleteConfirm(false)}
+          zIndex={1100}
+        />
+      )}
+      {clearHistoryConfirm && (
+        <ConfirmDialog
+          title="清空创作历史"
+          description={`仅清空当前页（${CREATION_TABS.find((t) => t.key === activeTab)?.label ?? activeTab}）的历史记录，创作资产仍可在资产库找到。确定继续吗？`}
+          confirmText="清空"
+          onConfirm={handleClearHistory}
+          onCancel={() => setClearHistoryConfirm(false)}
           zIndex={1100}
         />
       )}
@@ -805,6 +6876,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
 
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1, justifyContent: 'flex-end', paddingRight: '24px', paddingTop: '6px', paddingBottom: '6px' }}>
+                <ClearHistoryButton onClick={() => setClearHistoryConfirm(true)} />
                 <BatchButton onClick={() => setBatchMode(true)} />
               </div>
             )}
@@ -836,18 +6908,57 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               onModelChange={setModel}
               modelOptions={modelOptions}
               creationParams={creationParams}
+              capabilitiesMap={capabilitiesMap}
               onDeleteCard={handleDeleteCard}
               batchMode={batchMode}
               selected={selected}
               onToggleSelect={toggleSelect}
               onSwitchToFrameMode={handleSwitchToFrameMode}
-              onVideoCardClick={(card) => setVideoDetailModal(card)}
+              onVideoCardClick={(card) => {
+                // 先以轻量数据打开弹窗
+                setVideoDetailModal(card);
+                // 轻量列表需要按需拉取完整详情（含参考素材、prompt_raw 等）
+                if (card._needsDetail && card.backendId) {
+                  apiGetCreationVideo(card.backendId).then((detail) => {
+                    const bindings = detail.asset_bindings || detail.assetBindings || [];
+                    const detailRefImages = bindings
+                      .filter((b) => b.asset_type === 'image')
+                      .map((b) => ({
+                        url: b.preview_url || b.previewUrl || b.url || '',
+                        previewUrl: b.preview_url || b.previewUrl || b.url || '',
+                        type: 'image/png', isAsset: true, name: b.asset_name || 'ref.png', size: 0, assetId: b.asset_id,
+                      }));
+                    const detailRefVideos = bindings
+                      .filter((b) => b.asset_type === 'video')
+                      .map((b) => ({
+                        url: b.url || '',
+                        previewUrl: b.preview_video_url || b.previewVideoUrl || b.preview_url || b.previewUrl || b.url || '',
+                        type: 'video/mp4', isAsset: true, name: b.asset_name || 'ref.mp4', size: 0, duration: b.duration, assetId: b.asset_id,
+                      }));
+                    const detailRefAudios = bindings
+                      .filter((b) => b.asset_type === 'audio')
+                      .map((b) => ({
+                        url: b.url || '', name: b.asset_name || 'ref.mp3', size: 0, duration: b.duration, assetId: b.asset_id,
+                      }));
+                    setVideoDetailModal((prev) => prev ? {
+                      ...prev,
+                      refImages: detailRefImages,
+                      refVideos: detailRefVideos,
+                      refAudios: detailRefAudios,
+                      promptHTML: detail.prompt_raw || detail.promptResolved || prev.promptHTML,
+                    } : null);
+                  }).catch((e) => {
+                    console.warn('[CreationPage] detail modal: failed to fetch video detail', e);
+                  });
+                }
+              }}
               favorites={favorites}
               toggleFavorite={handleToggleFavorite}
               showToast={showToast}
               historyLoading={historyMeta[activeTab]?.loading}
               historyHasMore={historyMeta[activeTab]?.hasMore}
               onLoadMore={() => loadHistoryPage(activeTab)}
+              autoFillLimit={activeTab === 'video' ? 2 : Infinity}
               activeCount={activeCountByTab[genType] ?? 0}
               onBeforeModelOpen={() => {
                 if (!apiConfigured) { onShowNoModelNotice?.(); return false; }
@@ -855,7 +6966,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
             />
           ) : (
             <CreationEmptyState onGenerate={handleGenerate} genType={genType} onGenTypeChange={handleGenTypeChange} showToast={showToast} activeCount={activeCountByTab[genType] ?? 0}
-              model={model} onModelChange={setModel} modelOptions={modelOptions} creationParams={creationParams}
+              model={model} onModelChange={setModel} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap}
               onBeforeModelOpen={() => {
                 if (!apiConfigured) { onShowNoModelNotice?.(); return false; }
               }}
@@ -886,7 +6997,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               const objUrl = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = objUrl;
-              a.download = 'creation.mp4';
+              a.download = filenameFromPrompt(videoDetailModal.prompt, 'mp4');
               document.body.appendChild(a);
               a.click();
               document.body.removeChild(a);

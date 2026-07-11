@@ -84,6 +84,7 @@ export async function authFetch(url, options = {}) {
   // 克隆 FormData，防止首次 fetch 消费后 401 重试时 body 为空
   const formClone = options.body instanceof FormData ? cloneFormData(options.body) : null;
   let res;
+  console.log("[DEBUG authFetch] about to fetch:", url);
   try {
     res = await fetch(url, withAuth(options));
   } catch (networkErr) {
@@ -94,6 +95,7 @@ export async function authFetch(url, options = {}) {
     err.cause = networkErr;
     throw err;
   }
+  console.log("[DEBUG authFetch] fetch returned, status:", res.status);
   if (res.status === 401) {
     const ok = await refreshAccessToken();
     if (ok) {
@@ -117,6 +119,7 @@ export async function authFetchForm(url, options = {}) {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
   let res;
+  console.log("[DEBUG authFetch] about to fetch:", url);
   try {
     res = await fetch(url, { ...options, headers });
   } catch (networkErr) {
@@ -125,6 +128,7 @@ export async function authFetchForm(url, options = {}) {
     err.cause = networkErr;
     throw err;
   }
+  console.log("[DEBUG authFetch] fetch returned, status:", res.status);
   if (res.status === 401) {
     const ok = await refreshAccessToken();
     if (ok) {
@@ -148,6 +152,7 @@ export async function authFetchForm(url, options = {}) {
 // 但直接返回 Response 对象，由调用方自行读取流式 body
 export async function authFetchStream(url, options = {}) {
   let res;
+  console.log("[DEBUG authFetch] about to fetch:", url);
   try {
     res = await fetch(url, withAuth(options));
   } catch (networkErr) {
@@ -159,6 +164,7 @@ export async function authFetchStream(url, options = {}) {
     err.cause = networkErr;
     throw err;
   }
+  console.log("[DEBUG authFetch] fetch returned, status:", res.status);
   if (res.status === 401) {
     const ok = await refreshAccessToken();
     if (ok) {

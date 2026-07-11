@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useModalSize } from '../utils/useModalSize';
 import { createPortal } from 'react-dom';
 import Toggle from './Toggle';
-import { apiUpdateShotFinalized } from '../api/storyboard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -78,8 +78,10 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(shot?.duration ?? 0);
   const [volume, setVolume] = useState(0.7);
+  const [muted, setMuted] = useState(false);
   const [finalized, setFinalized] = useState(shot?.finalized ?? false);
   const [downloading, setDownloading] = useState(false);
+  const { width: modalW, height: modalH } = useModalSize();
 
   // 关闭时恢复滚动
   useEffect(() => {
@@ -91,6 +93,22 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
   useEffect(() => {
     if (videoRef.current) videoRef.current.volume = volume;
   }, [volume]);
+
+  // 静音状态同步到 video
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.muted = muted;
+  }, [muted]);
+
+  // 弹窗打开后自动播放视频
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || !shot?.videoUrl) return;
+    const onCanPlay = () => {
+      vid.play().then(() => setPlaying(true)).catch(() => {});
+    };
+    vid.addEventListener('canplay', onCanPlay, { once: true });
+    return () => vid.removeEventListener('canplay', onCanPlay);
+  }, [shot?.videoUrl]);
 
   // 键盘快捷键
   useEffect(() => {
@@ -126,12 +144,19 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     setVolume(ratio);
-    if (videoRef.current) videoRef.current.volume = ratio;
+    setMuted(ratio === 0);
+    if (videoRef.current) {
+      videoRef.current.volume = ratio;
+      videoRef.current.muted = ratio === 0;
+    }
   };
+
+  // 点击音量图标：一键静音 / 恢复声音
+  const toggleMute = () => setMuted((prev) => !prev);
 
   const handleFinalize = (val) => {
     setFinalized(val);
-    apiUpdateShotFinalized(shot?.id, val);
+    // 持久化由父级 onFinalizeChange 负责（更新候选视频列表 + 保存 video_url）
     onFinalizeChange?.(shot?.id, val);
   };
 
@@ -168,7 +193,7 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
     >
       <div style={{
         display: 'flex', flexDirection: 'column',
-        width: '960px',
+        width: `${modalW}px`,
         borderRadius: '16px', overflow: 'hidden',
         backgroundColor: '#161616',
         border: '1px solid rgba(255,255,255,0.08)',
@@ -196,7 +221,7 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
         </div>
 
         {/* ── 主体 ── */}
-        <div style={{ display: 'flex', height: '540px' }}>
+        <div style={{ display: 'flex', height: `${modalH - 60}px` }}>
 
           {/* 左：视频区 */}
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', backgroundColor: '#0D0D0D' }}>
@@ -327,13 +352,20 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
                     className="volume-icon"
-                    style={{ flexShrink: 0 }}
+                    style={{ flexShrink: 0, cursor: 'pointer' }}
+                    onClick={toggleMute}
+                    role="button"
+                    aria-label={muted ? '取消静音' : '静音'}
                   >
                     <style>{'.volume-control-group:hover .volume-icon { opacity: 1 !important; } .volume-icon { opacity: 0.4; }'}</style>
                     <style>{'.volume-control-group:hover .volume-slider-track { background-color: rgba(255,255,255,0.2) !important; }'}</style>
                     <style>{'.volume-control-group:hover .volume-slider-fill { background-color: rgba(255,255,255,1) !important; }'}</style>
                     <path d="M3 6H1V10H3L7 13V3L3 6Z" fill="white" />
-                    <path d="M10 5C11.1 6.1 11.1 9.9 10 11M12.5 3C14.7 5.2 14.7 10.8 12.5 13" stroke="white" strokeWidth="1.2" strokeLinecap="round" />
+                    {muted ? (
+                      <path d="M10 6L14 10M14 6L10 10" stroke="white" strokeWidth="1.2" strokeLinecap="round" />
+                    ) : (
+                      <path d="M10 5C11.1 6.1 11.1 9.9 10 11M12.5 3C14.7 5.2 14.7 10.8 12.5 13" stroke="white" strokeWidth="1.2" strokeLinecap="round" />
+                    )}
                   </svg>
                   <div
                     onClick={handleVolumeSeek}
@@ -342,7 +374,7 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
                   >
                     <div
                       className="volume-slider-fill"
-                      style={{ width: `${volume * 100}%`, height: '100%', backgroundColor: 'rgba(255,255,255,0.4)', borderRadius: '2px' }}
+                      style={{ width: `${muted ? 0 : volume * 100}%`, height: '100%', backgroundColor: 'rgba(255,255,255,0.4)', borderRadius: '2px' }}
                     />
                   </div>
                 </div>

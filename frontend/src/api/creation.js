@@ -1,7 +1,75 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
+// ── 通用任务轮询（供刷新后恢复使用，支持图片/视频/音频）───────────────────
+
+export async function apiPollCreationTask(type, taskId, timeoutMs = 1800000) {
+  const start = Date.now();
+  const pollUrl = type === 'image'
+    ? `${BASE}/api/creation/tasks/${taskId}`
+    : type === 'audio'
+      ? `${BASE}/api/creation/audios/tasks/${taskId}`
+      : `${BASE}/api/creation/videos/tasks/${taskId}`;
+
+  while (Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const pollRes = await authFetch(pollUrl);
+    const pollData = await pollRes.json();
+    const status = pollData.status;
+
+    if (status === 'done' || status === 'completed' || status === 'success' || status === 'partial') {
+      if (status !== 'partial' && pollData.partial === true) continue;
+
+      if (type === 'image') {
+        const imgs = pollData.images || [];
+        return {
+          images: imgs.map((img) => img.original_url || img.originalUrl || img.thumbnail_url || img.thumbnailUrl),
+          cardIds: imgs.map((img) => img.id),
+          referenceImages: pollData.reference_images || pollData.referenceImages || [],
+        };
+      } else if (type === 'audio') {
+        const result = pollData.result;
+        if (!result) return { audios: [] };
+        const audioUrl = result.audio_url || result.audioUrl || pollData.audio_url || pollData.audioUrl;
+        return {
+          audios: audioUrl ? [audioUrl] : [],
+        };
+      } else {
+        const result = pollData.result;
+        if (!result) continue;
+        const videoUrl = result.hlsUrl || result.hls_url
+          || result.previewVideoUrl || result.preview_video_url
+          || result.video_url || result.videoUrl;
+        if (!videoUrl) continue;
+        return {
+          videos: [videoUrl].filter(Boolean),
+          cardIds: [result.id].filter(Boolean),
+          posterUrl: result.posterUrl || result.poster_url || undefined,
+        };
+      }
+    }
+
+    if (status === 'failed' || status === 'error') {
+      const rawMsg = pollData.error_msg || pollData.errorMsg || '';
+      let userMessage;
+      if (rawMsg.includes('copyright')) {
+        userMessage = '生成内容可能涉及版权限制，请修改素材或创作描述后重试';
+      } else if (rawMsg.includes('sensitive') || rawMsg.includes('policy')) {
+        userMessage = '生成内容触发了内容安全限制，请修改素材或创作描述后重试';
+      } else {
+        userMessage = rawMsg || 'Generation failed';
+      }
+      const err = new Error(userMessage);
+      err.rawMessage = rawMsg;
+      throw err;
+    }
+  }
+  throw new Error('Generation timeout');
+}
+
+
 import { authFetch } from './request.js';
 import { toAbsoluteUrl } from '../utils/imageUrl.js';
+import { captureVideoLastFrame } from '../utils/videoUtils';
 
 // ── 创作会话（Session）───────────────────────────────────────────────────────
 
@@ -185,14 +253,117 @@ export async function apiDownloadCreationImage(imageId) {
 
 // ── 创作视频 ──────────────────────────────────────────────────────────────────
 
-export async function apiListCreationVideos({ page, page_size } = {}) {
+function summarizeVideoHistoryPayload(list) {
+  if (!Array.isArray(list) || list.length === 0) return null;
+
+  const fieldSizeOf = (value) => {
+    try {
+      return JSON.stringify(value).length;
+    } catch {
+      return -1;
+    }
+  };
+
+  const entries = list.map((item, index) => {
+    const assetBindings = Array.isArray(item?.asset_bindings || item?.assetBindings)
+      ? (item.asset_bindings || item.assetBindings)
+      : [];
+    const referenceImages = Array.isArray(item?.reference_images || item?.referenceImages)
+      ? (item.reference_images || item.referenceImages)
+      : [];
+    const prompt = item?.prompt || '';
+    const promptHTML = item?.prompt_html || item?.promptHTML || '';
+    const rawSize = (() => {
+      try {
+        return JSON.stringify(item).length;
+      } catch {
+        return -1;
+      }
+    })();
+
+    return {
+      index,
+      id: item?.id,
+      rawSize,
+      promptLength: typeof prompt === 'string' ? prompt.length : 0,
+      promptHtmlLength: typeof promptHTML === 'string' ? promptHTML.length : 0,
+      assetBindingCount: assetBindings.length,
+      referenceImageCount: referenceImages.length,
+      firstFrameUrlLength: (item?.first_frame_url || item?.firstFrameUrl || '').length,
+      lastFrameUrlLength: (item?.last_frame_url || item?.lastFrameUrl || '').length,
+      videoUrlLength: (item?.video_url || item?.videoUrl || item?.preview_video_url || item?.previewVideoUrl || item?.url || '').length,
+      posterUrlLength: (item?.poster_url || item?.posterUrl || '').length,
+      fieldSizes: {
+        asset_bindings: fieldSizeOf(item?.asset_bindings || item?.assetBindings || []),
+        metadata: fieldSizeOf(item?.metadata),
+        result: fieldSizeOf(item?.result),
+        output: fieldSizeOf(item?.output),
+        response: fieldSizeOf(item?.response),
+        extra: fieldSizeOf(item?.extra),
+        detail: fieldSizeOf(item?.detail),
+        data: fieldSizeOf(item?.data),
+        prompt: fieldSizeOf(prompt),
+        prompt_html: fieldSizeOf(promptHTML),
+        video_url: fieldSizeOf(item?.video_url || item?.videoUrl || item?.preview_video_url || item?.previewVideoUrl || item?.url || ''),
+        poster_url: fieldSizeOf(item?.poster_url || item?.posterUrl || ''),
+        first_frame_url: fieldSizeOf(item?.first_frame_url || item?.firstFrameUrl || ''),
+        last_frame_url: fieldSizeOf(item?.last_frame_url || item?.lastFrameUrl || ''),
+      },
+    };
+  });
+
+  const totals = entries.reduce((acc, entry) => ({
+    rawSize: acc.rawSize + Math.max(entry.rawSize, 0),
+    promptLength: acc.promptLength + entry.promptLength,
+    promptHtmlLength: acc.promptHtmlLength + entry.promptHtmlLength,
+    assetBindingCount: acc.assetBindingCount + entry.assetBindingCount,
+    referenceImageCount: acc.referenceImageCount + entry.referenceImageCount,
+  }), {
+    rawSize: 0,
+    promptLength: 0,
+    promptHtmlLength: 0,
+    assetBindingCount: 0,
+    referenceImageCount: 0,
+  });
+
+  const topByRawSize = [...entries]
+    .sort((a, b) => b.rawSize - a.rawSize)
+    .slice(0, 3)
+    .map(({ index, id, rawSize, promptLength, promptHtmlLength, assetBindingCount, referenceImageCount, videoUrlLength, posterUrlLength, fieldSizes }) => ({
+      index,
+      id,
+      rawSize,
+      promptLength,
+      promptHtmlLength,
+      assetBindingCount,
+      referenceImageCount,
+      videoUrlLength,
+      posterUrlLength,
+      fieldSizes,
+    }));
+
+  return {
+    itemCount: list.length,
+    totalApproxChars: totals.rawSize,
+    avgApproxChars: Math.round(totals.rawSize / list.length),
+    totalPromptChars: totals.promptLength,
+    totalPromptHtmlChars: totals.promptHtmlLength,
+    totalAssetBindings: totals.assetBindingCount,
+    totalReferenceImages: totals.referenceImageCount,
+    topHeavyItems: topByRawSize,
+  };
+}
+
+export async function apiListCreationVideos({ page, page_size, exclude_hidden } = {}) {
   const params = new URLSearchParams();
   if (page !== undefined) params.append('page', page);
   if (page_size !== undefined) params.append('page_size', page_size);
+  if (exclude_hidden !== undefined) params.append('exclude_hidden', exclude_hidden);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/videos?${query}` : `${BASE}/api/creation/videos`;
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
-  return res.json();
+  const data = await res.json();
+  return data;
 }
 
 export async function apiGenerateCreationVideo(data) {
@@ -215,6 +386,12 @@ export async function apiGenerateShotVideo(shotId, data) {
 
 export async function apiDeleteCreationVideo(videoId) {
   const res = await authFetch(`${BASE}/api/creation/videos/${videoId}`, { method: 'DELETE' });
+  return res.json();
+}
+
+
+export async function apiGetCreationVideo(videoId) {
+  const res = await authFetch(`${BASE}/api/creation/videos/${videoId}`);
   return res.json();
 }
 
@@ -277,15 +454,28 @@ export async function apiGenerateShotAudio(shotId, data) {
   return res.json();
 }
 
-export async function apiListCreationAudios({ page, page_size, is_favorite, search } = {}) {
+export async function apiListCreationAudios({ page, page_size, is_favorite, search, exclude_hidden } = {}) {
   const params = new URLSearchParams();
   if (page !== undefined) params.append('page', page);
   if (page_size !== undefined) params.append('page_size', page_size);
   if (is_favorite !== undefined) params.append('is_favorite', is_favorite);
   if (search) params.append('search', search);
+  if (exclude_hidden !== undefined) params.append('exclude_hidden', exclude_hidden);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/audios?${query}` : `${BASE}/api/creation/audios`;
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+  return res.json();
+}
+
+// ── 清空创作历史（后端持久隐藏，按 tab）────────────────────────────────────────
+// 标记当前 tab 的全部创作历史为「已隐藏」（仅影响创作页展示，不删除创作资产），
+// 创作页后续以 exclude_hidden=true 读取，资产库仍按 exclude_hidden=false 看到全部。
+export async function apiHideCreationHistory(tab) {
+  const res = await authFetch(`${BASE}/api/creation/history/hide`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tab }),
+  });
   return res.json();
 }
 
@@ -424,13 +614,21 @@ export async function apiUploadCreationAudio({ file, category, asset_name, sessi
   return res.json();
 }
 
-// ── Legacy：apiGetVideoLastFrame（后端无此接口，暂返回 null）──────────────────
+// ── 前端抽取视频尾帧（<video> + <canvas> 方案）─────────────────────────────
+
 
 export async function apiGetVideoLastFrame(videoUrl) {
-  // 后端无 /api/creation/video-last-frame 接口
-  // 如需此功能，可在前端用 ffmpeg.wasm 提取，或等待后端提供
-  console.warn('[api] apiGetVideoLastFrame: 后端无此接口，返回 null');
-  return { lastFrameUrl: null };
+  if (!videoUrl) {
+    console.warn('[api] apiGetVideoLastFrame: 无 videoUrl');
+    return { lastFrameUrl: null, blob: null };
+  }
+  try {
+    const { url, blob } = await captureVideoLastFrame(videoUrl);
+    return { lastFrameUrl: url, blob };
+  } catch (err) {
+    console.error('[api] apiGetVideoLastFrame: 前端抽帧失败', err);
+    return { lastFrameUrl: null, blob: null };
+  }
 }
 
 // ── 视频任务独立轮询（供刷新后恢复使用）──────────────────────────────────────
@@ -570,7 +768,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
   let firstFrameUrl, lastFrameUrl, firstFrameAssetId, lastFrameAssetId;
   if (params.firstFrameFile instanceof File) {
     try {
-      const r = await apiUploadCreationImage({ file: params.firstFrameFile, category: 'first_frame', ...uploadContext });
+      const r = await apiUploadCreationImage({ file: params.firstFrameFile, category: 'reference', ...uploadContext });
       firstFrameUrl = r.uploaded_url || r.uploadedUrl || undefined;
       firstFrameAssetId = r.asset_id || undefined;
     } catch {}
@@ -581,7 +779,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
   }
   if (params.lastFrameFile instanceof File) {
     try {
-      const r = await apiUploadCreationImage({ file: params.lastFrameFile, category: 'last_frame', ...uploadContext });
+      const r = await apiUploadCreationImage({ file: params.lastFrameFile, category: 'reference', ...uploadContext });
       lastFrameUrl = r.uploaded_url || r.uploadedUrl || undefined;
       lastFrameAssetId = r.asset_id || undefined;
     } catch {}
@@ -641,6 +839,8 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       const taskId = asyncData.task_id || asyncData.id;
       if (!taskId) throw new Error('No task_id returned');
 
+      onTaskCreated?.({ taskId, params });
+
       const { audios } = await pollTask(
         `${BASE}/api/creation/audios/tasks/${taskId}`,
         (pollData) => {
@@ -657,6 +857,8 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     const genData = await apiGenerateCreationAudio(dubbingBody);
     const taskId = genData.task_id || genData.id;
     if (!taskId) throw new Error('No task_id returned');
+
+    onTaskCreated?.({ taskId, params });
 
     const { audios } = await pollTask(
       `${BASE}/api/creation/audios/tasks/${taskId}`,
@@ -702,6 +904,8 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       : [genData.task_id || genData.id].filter(Boolean);
     if (taskIds.length === 0) throw new Error('No task_id returned');
 
+    onTaskCreated?.({ taskId: taskIds[0], params });
+
     // 并行轮询所有任务，合并结果
     const pollResults = await Promise.all(
       taskIds.map((tid) =>
@@ -730,7 +934,8 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
 
   // ── 视频生成 ────────────────────────────────────────────────────────────
   // 有参考图/参考视频时强制 generation_mode=full，不让后端自行推断（资产库选图时后端会错误设为 text_to_video）
-  const hasRefMedia = refUrls.length > 0 || refAssetIds.length > 0 || uploadedRefVideoUrl || uploadedRefAudioUrl;
+  const liveMaterialParam = params.liveMaterialParam || null;
+  const hasRefMedia = refUrls.length > 0 || refAssetIds.length > 0 || uploadedRefVideoUrl || uploadedRefAudioUrl || (liveMaterialParam && liveMaterialParam.length > 0);
   const effectiveGenerationMode = hasRefMedia ? 'full' : (params.generation_mode || undefined);
 
   // ── @ 数字资产绑定（attachments）────────────────────────────────────────
@@ -772,6 +977,11 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     reference_mode: params.refMode || undefined,
     generation_mode: effectiveGenerationMode,
     with_audio: params.soundEnabled ?? false,
+    // 真人素材通过 provider_params.live_material 传递（后端 _resolve_creation_live_material_inputs 消费）
+    subjects: undefined,
+    provider_params: liveMaterialParam && liveMaterialParam.length > 0
+      ? { live_material: liveMaterialParam[0] }
+      : undefined,
     // 首尾帧（URL + asset_id 双通道，后端优先看 asset_id）
     first_frame_url: firstFrameUrl || params.firstFrameUrl || undefined,
     last_frame_url: lastFrameUrl || params.lastFrameUrl || undefined,
@@ -789,6 +999,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     shot_id: uploadContext.shot_id,
     project_id: uploadContext.project_id,
   };
+  console.log('[video-generate]', { generation_mode: body.generation_mode, provider_params: body.provider_params, hasRefMedia });
   const genData = await apiGenerateCreationVideo(body);
   const taskId = genData.task_id || genData.id;
   if (!taskId) throw new Error('No task_id returned');
@@ -810,5 +1021,13 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       };
     },
   );
-  return { taskId, videos, cardIds, posterUrl, referenceImages: refUrls };
+  return {
+    taskId, videos, cardIds, posterUrl,
+    referenceImages: refUrls,
+    referenceVideos: uploadedRefVideoUrl ? [uploadedRefVideoUrl] : [],
+    referenceAudios: uploadedRefAudioUrl ? [uploadedRefAudioUrl] : [],
+    refMode: params.refMode || undefined,
+    firstFrameUrl: firstFrameUrl || undefined,
+    lastFrameUrl: lastFrameUrl || undefined,
+  };
 }

@@ -55,6 +55,7 @@
 *     ├─ [函数] showBatchToast(msg, type)            L2856+
 *     ├─ [函数] normalizeSubjectList(items)  主体列表标准化  L2863+
 *     ├─ [函数] handleBatchGenerate(params)  批量生成主体图  L3081+
+*     │   ├─ BATCH_SILENT_ERRORS / isSilentBatchError  静默错误消息过滤（命中不弹 toast、不计失败）  L3209–L3210
 *     │   └─ onSubjectImage 回调中将每个图片 URL 存入 batchGeneratedImagesCache
 *     ├─ [函数] handleAdd()  添加新主体                 L3032+
 *     ├─ [函数] handleDownloadSubjectImage(subjectId)   L3147+
@@ -3204,6 +3205,11 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   }
 
   const handleBatchGenerate = async (params) => {
+
+  // 批量生成中可静默忽略的错误消息：命中后退出 loading，但不弹 toast、不计入失败数
+  const BATCH_SILENT_ERRORS = ['已有主图，跳过生成'];
+  const isSilentBatchError = (msg) => BATCH_SILENT_ERRORS.includes(msg);
+
     // 收集当前 tab 下的主体 ID 列表
     const currentSubjects = activeTab === 'char' ? chars : activeTab === 'scene' ? scenes : props;
     const subjectIds = (currentSubjects || []).map(s => s.id).filter(Boolean);
@@ -3283,6 +3289,15 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           batchGeneratedImagesCache.set(subjectId, [...existingCache, { rawUrl: fullUrl }]);
         },
         onSubjectError: (subjectId, errorMsg) => {
+          // 命中静默错误（如「已有主图，跳过生成」）：仅退出 loading，不弹 toast、不计入失败
+          if (isSilentBatchError(errorMsg)) {
+            setBatchLoadingSubjects(prev => {
+              const next = { ...prev };
+              delete next[subjectId];
+              return next;
+            });
+            return;
+          }
           failCount++;
           console.error(`[SubjectPage] 主体 ${subjectId} 批量生成失败:`, errorMsg);
           // Toast 提示单个失败

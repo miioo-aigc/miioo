@@ -37,6 +37,19 @@ export const useCreationStore = create(
           };
         }),
 
+      // 第 1 页权威覆盖：直接用服务端返回的最新一页替换当前 tab 列表（而非合并）。
+      // 仅用于第 1 页加载完成。因为前面 hydrateHistoryFromCache 已从旧缓存写入旧数据，
+      // 若此处再走 mergeHistoryGenerations，新内容会被前置到旧列表之后，
+      // 经 display 的 reverse 后落到末尾（第二行第一个），排序错乱。
+      // 约定入参 generations 已是 store 顺序（越靠后越新）：调用方传入 normalized.reverse()。
+      setHistoryPage1: (tab, generations) =>
+        set((state) => ({
+          generationsByTab: {
+            ...state.generationsByTab,
+            [tab]: generations,
+          },
+        })),
+
       updateHistoryMeta: (tab, patch) =>
         set((state) => ({
           historyMeta: {

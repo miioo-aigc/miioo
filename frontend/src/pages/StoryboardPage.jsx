@@ -93,6 +93,8 @@
  *   2026-07-06  enrichMainRefs 移除 !ref.url 守卫，始终用最新 chars 数据更新；新增 useEffect 监听 chars/scenes/props 变化重新富化 shots
  *   2026-07-01  初始结构索引建立
  *   2026-07-02  生成任务跨刷新持久化（taskPersistence）
+ *   2026-07-13  修复分镜页破图：ImgItem/MediaCol/生成历史缩略图等渲染点裸用相对路径（media.url/item.url/img.url/shortcutImage.url），
+ *              统一用 normalizeImageUrl 包裹，避免后端返回相对路径跨越 origin 时裂图（幂等，完整 URL 原样返回）
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
@@ -1300,7 +1302,7 @@ function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabel, shor
               onMouseMove={handleMediaMouseMove}
               onMouseLeave={handleMediaMouseLeave}
               style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}>
-              <img src={media.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <img src={normalizeImageUrl(media.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               <div
                 onClick={() => { clearTimeout(hoverTimerRef.current); setPreviewPos(null); onRemove?.(); }}
                 style={{ position: 'absolute', top: '4px', right: '4px', width: '18px', height: '18px', borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
@@ -1376,7 +1378,7 @@ function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabel, shor
                 {shortcutImage ? (
                   <>
                     <div style={{ width: '72px', height: '40px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)', opacity: btn3Hov ? 1 : 0.6, transition: 'opacity 0.12s' }}>
-                      <img src={shortcutImage.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img src={normalizeImageUrl(shortcutImage.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     </div>
                     <span style={{ fontSize: '12px', lineHeight: '16px', color: 'rgba(255,255,255,0.40)', fontFamily: FONT, textAlign: 'center' }}>{shortcutLabel}</span>
                   </>
@@ -1513,13 +1515,13 @@ const hoverTimerRef = useRef(null);
                 onMouseLeave={stopPreview}
                 style={{ position: 'relative', width: `${THUMB}px`, height: `${THUMB}px`, borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}>
                 {item.type?.startsWith('video') ? (
-                  <video src={item.url || null} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline />
+                  <video src={normalizeImageUrl(item.url) || null} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline />
                 ) : item.type?.startsWith('audio') ? (
                   <div style={{ width: '100%', height: '100%', backgroundColor: '#1D1E1E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="rgba(255,255,255,0.50)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6" cy="18" r="3" stroke="rgba(255,255,255,0.50)" strokeWidth="1.5"/><circle cx="18" cy="16" r="3" stroke="rgba(255,255,255,0.50)" strokeWidth="1.5"/></svg>
                   </div>
                 ) : (
-                  <img src={item.url || null} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img src={normalizeImageUrl(item.url) || null} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 )}
                 <div
                   onClick={() => { stopPreview(); onRemoveItem ? onRemoveItem(idx) : onRemove?.(); }}
@@ -1590,14 +1592,14 @@ const hoverTimerRef = useRef(null);
                 onMouseLeave={stopPreview}
                 style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: `1px solid ${onInsert ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.12)'}`, cursor: onInsert ? 'pointer' : 'default' }}>
                 {media.type?.startsWith('video') ? (
-                  <video src={media.url || null} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline />
+                  <video src={normalizeImageUrl(media.url) || null} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline />
                 ) : media.type?.startsWith('audio') ? (
                   <div style={{ width: '100%', height: '100%', backgroundColor: '#1D1E1E', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="rgba(255,255,255,0.50)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6" cy="18" r="3" stroke="rgba(255,255,255,0.50)" strokeWidth="1.5"/><circle cx="18" cy="16" r="3" stroke="rgba(255,255,255,0.50)" strokeWidth="1.5"/></svg>
                     <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.40)', fontFamily: FONT, maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingInline: '4px' }}>{media.name}</span>
                   </div>
                 ) : (
-                  <img src={media.url || null} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img src={normalizeImageUrl(media.url) || null} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 )}
                 <div
                   onClick={() => { stopPreview(); onRemove?.(); }}
@@ -2547,7 +2549,7 @@ function GenerateImagePanel({ shot, projectId, chars = [], scenes = [], props = 
                     onMouseMove={(e) => setRefImgPreview(p => p ? { ...p, x: e.clientX, y: e.clientY } : p)}
                     onMouseLeave={() => { clearTimeout(refImgHoverTimer.current); setRefImgPreview(null); }}
                     style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}>
-                    <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={normalizeImageUrl(img.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     <div
                       onClick={() => { clearTimeout(refImgHoverTimer.current); setRefImgPreview(null); removeRefImage(img.id); }}
                       style={{ position: 'absolute', top: '4px', right: '4px', width: '18px', height: '18px', borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
@@ -4803,7 +4805,7 @@ function MainRefCol({ shot, onChange, chars, projectId }) {
             }}
           >
             {img.url
-              ? <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ? <img src={normalizeImageUrl(img.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               : <div style={{ width: '100%', height: '100%', backgroundColor: img.bgColor ?? '#252525', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.50)', fontFamily: FONT }}>{(img.name ?? '?')[0]}</span>
                 </div>
@@ -4994,7 +4996,7 @@ function MainRefModal({ shot, onChange, onClose }) {
                       transition: 'border-color 150ms',
                     }}
                   >
-                    <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={normalizeImageUrl(img.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     {hoveredIdx === idx && (
                       <div
                         onClick={() => handleDelete(idx)}
@@ -5266,14 +5268,14 @@ function MediaCol({ media, onUpload, accept, isVideo, label, onAIGenerate, shotM
         {!isEmpty && !generating && (
           isVideo ? (
             <video
-              src={media.url}
+              src={normalizeImageUrl(media.url)}
               ref={videoRef}
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
               muted
               playsInline
             />
           ) : (
-            <img src={media.url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img src={normalizeImageUrl(media.url)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
           )
         )}
 

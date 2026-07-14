@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { normalizeImageUrl } from '../utils/imageUrl';
 
 /**
  * 文件悬浮预览提示框
@@ -41,8 +42,8 @@ export default function FilePreviewTooltip({ isVideo, previewUrl, videoSrc, card
       background: '#1D1E1E',
     }}>
       {isVideo && videoSrc
-        ? <video src={videoSrc} autoPlay muted loop playsInline style={{ display: 'block', maxWidth: maxW, maxHeight: maxW }} />
-        : previewUrl && <img src={previewUrl} alt="" style={{ display: 'block', maxWidth: maxW, maxHeight: maxW, objectFit: 'contain' }} />
+        ? <video src={normalizeImageUrl(videoSrc)} autoPlay muted loop playsInline style={{ display: 'block', maxWidth: maxW, maxHeight: maxW }} />
+        : previewUrl && <img src={normalizeImageUrl(previewUrl)} alt="" style={{ display: 'block', maxWidth: maxW, maxHeight: maxW, objectFit: 'contain' }} />
       }
     </div>,
     document.body

@@ -1,5 +1,24 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
+/**
+ * 结构索引（api/creation.js）
+ * ─── 视频生成（apiGenerateCreation）────────────────────────────────────
+ *   [函数] apiGenerateCreation()                      入口：按 genType 分流 图片/视频/配音
+ *   [上传] 参考文件分类循环                            L722  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
+ *                                                        （图片 asset_id 兜底：assetId || backendId || asset_id）
+ *   [上传] 首/尾帧上传                                 L770  仅首尾帧模式使用
+ *   [分支] kling v3 omni 生成模式推断                  L937  hasRefMedia 初值 'full' → 被本分支覆盖
+ *                                                        generation_mode 取自 supported_generation_modes，
+ *                                                        不再发 reference_mode='full'（避免 400），改发 '' 保留键名
+ *                                                        素材映射：图→multi_shot / 视频→video_ref / 首尾帧→first_frame|start_end / 无图有媒→first_frame / 纯文→text_to_video
+ *   [组装] @ 数字资产绑定 attachments                   L969  CreationAssetBinding[]，source:'mention'
+ *   [组装] 视频生成请求体 body                          L998  generation_mode / reference_mode / multi_shot / attachments / reference_image_asset_ids / first_frame_url
+ *   [日志] [video-generate] 调试日志                    L1028  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
+ * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-07-13  video-kling-v3-omni「全能参考」修复：不再发 reference_mode='full'（会触发后端 400），
+ *               改按实际上传素材推断 supported_generation_modes；参考图走 attachments + reference_image_asset_ids（asset_id 兜底到 asset.id）。
+ */
+
 // ── 通用任务轮询（供刷新后恢复使用，支持图片/视频/音频）───────────────────
 
 export async function apiPollCreationTask(type, taskId, timeoutMs = 1800000) {
@@ -736,7 +755,10 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       } else {
         // 图片资产
         refUrls.push(f.url);
-        if (f.assetId) refAssetIds.push(f.assetId);
+        // 兜底取真实资产 UUID：assetId（AssetPicker 已归一化）/ backendId / asset_id 任一命中即可，
+        // 确保不同来源（项目/全局/创作资产、直接上传）的参考图都能正确绑定到后端
+        const aid = f.assetId || f.backendId || f.asset_id;
+        if (aid) refAssetIds.push(aid);
       }
       continue;
     }
@@ -758,7 +780,8 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
         const result = await apiUploadCreationImage({ file: f, category: 'reference', ...uploadContext });
         const url = result.uploaded_url || result.uploadedUrl || '';
         if (url) refUrls.push(url);
-        const assetId = result.asset_id;
+        // 兜底取 asset_id：优先顶层（CreationImageUploadResponse.asset_id），再兜底 image.asset_id
+        const assetId = result?.asset_id || result?.image?.asset_id;
         if (assetId) refAssetIds.push(assetId);
       }
     } catch { /* 单个文件上传失败不阻塞整体 */ }
@@ -936,7 +959,30 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
   // 有参考图/参考视频时强制 generation_mode=full，不让后端自行推断（资产库选图时后端会错误设为 text_to_video）
   const liveMaterialParam = params.liveMaterialParam || null;
   const hasRefMedia = refUrls.length > 0 || refAssetIds.length > 0 || uploadedRefVideoUrl || uploadedRefAudioUrl || (liveMaterialParam && liveMaterialParam.length > 0);
-  const effectiveGenerationMode = hasRefMedia ? 'full' : (params.generation_mode || undefined);
+  let effectiveGenerationMode = hasRefMedia ? 'full' : (params.generation_mode || undefined);
+  // kling v3 omni 没有 full 模式：generation_mode 必须取自 supported_generation_modes，
+  // 且不再发 reference_mode（'full' 会被后端拒绝）。按实际上传的参考素材推断：
+  //   首尾帧（首/尾帧图片）→ first_frame / start_end
+  //   参考视频 → video_ref   参考图片 → multi_shot   有参考但无图无视频 → first_frame
+  let effectiveReferenceMode = params.refMode || undefined;
+  if ((params.model || '') === 'video-kling-v3-omni') {
+    const isFrameMode = params.refMode === 'first_frame' || params.refMode === 'start_end'
+      || !!params.firstFrameFile || !!params.lastFrameFile;
+    if (isFrameMode) {
+      effectiveGenerationMode = (params.firstFrameFile && params.lastFrameFile) ? 'start_end' : 'first_frame';
+    } else if (uploadedRefVideoUrl) {
+      effectiveGenerationMode = 'video_ref';                                   // 3 参考视频
+    } else if (refUrls.length > 0 || refAssetIds.length > 0) {
+      effectiveGenerationMode = 'multi_shot';                                 // 4 参考图片
+    } else if (hasRefMedia) {
+      effectiveGenerationMode = 'first_frame';                                // 1 音频/真人素材但无图
+    } else {
+      effectiveGenerationMode = params.generation_mode || 'text_to_video';    // 0 纯文生视频
+    }
+    // 不能发 reference_mode='full'：会被后端拒绝，且 undefined 会被 JSON 丢键、触发 'full' 默认兜底，
+    // 导致后端把参考图误塞进 first_frame_url（参考图无效）。改用空串保留键名，后端按 generation_mode 路由。
+    effectiveReferenceMode = '';
+  }
 
   // ── @ 数字资产绑定（attachments）────────────────────────────────────────
   // 后端视频生成消费 @ 参考图的真正入口是 attachments（CreationAssetBinding[]），
@@ -974,8 +1020,10 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     ratio: params.ratio || params.videoRatio || '16:9',
     resolution: params.resolution || params.videoResolution || '720P',
     duration: parseInt(params.videoDuration) || 5,
-    reference_mode: params.refMode || undefined,
     generation_mode: effectiveGenerationMode,
+    reference_mode: effectiveReferenceMode,
+    // kling multi_shot 模式下补发 multi_shot=true，明确告知后端走多参考图通道
+    multi_shot: (params.model === 'video-kling-v3-omni' && effectiveGenerationMode === 'multi_shot') ? true : undefined,
     with_audio: params.soundEnabled ?? false,
     // 真人素材通过 provider_params.live_material 传递（后端 _resolve_creation_live_material_inputs 消费）
     subjects: undefined,
@@ -999,7 +1047,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     shot_id: uploadContext.shot_id,
     project_id: uploadContext.project_id,
   };
-  console.log('[video-generate]', { generation_mode: body.generation_mode, provider_params: body.provider_params, hasRefMedia });
+  console.log('[video-generate]', { model: params.model, generation_mode: body.generation_mode, reference_mode: body.reference_mode, multi_shot: body.multi_shot, refUrls, refAssetIds, attachments, firstFrameUrl, uploadedRefVideoUrl, hasRefMedia });
   const genData = await apiGenerateCreationVideo(body);
   const taskId = genData.task_id || genData.id;
   if (!taskId) throw new Error('No task_id returned');

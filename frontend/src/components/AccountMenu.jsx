@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiLogout } from '../api/auth';
+import { normalizeImageUrl } from '../utils/imageUrl';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -108,7 +109,7 @@ function AvatarSvg({ size, avatarUrl }) {
   if (avatarUrl) {
     return (
       <img
-        src={avatarUrl}
+        src={normalizeImageUrl(avatarUrl)}
         alt="avatar"
         width={size}
         height={size}

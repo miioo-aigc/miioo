@@ -4,6 +4,7 @@ import ConfirmDialog from './ConfirmDialog';
 import WechatOfficialQr from './WechatOfficialQr';
 import { createSerialPolling } from '../utils/serialPolling';
 import { apiUpdateProfile, apiUploadAvatar, apiDeleteAccount, apiGetWechatQrCode, apiPollWechatBind, apiUnbindWechat, apiSendPhoneCode, apiVerifyPhoneCode, apiRebindPhone } from '../api/user';
+import { normalizeImageUrl } from '../utils/imageUrl';
 
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_REGULAR = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -43,7 +44,7 @@ function Avatar({ size = 64, src }) {
   if (src) {
     return (
       <img
-        src={src}
+        src={normalizeImageUrl(src)}
         width={size}
         height={size}
         style={{ borderRadius: 'calc(infinity * 1px)', width: size, height: size, objectFit: 'cover', flexShrink: 0, display: 'block' }}

@@ -3806,7 +3806,10 @@ function CreativeAssetsPanel({ isLoggedIn }) {
   // 与 CreationPage 共用同一套 normalizeHistoryItem 逻辑
   function normalizeHistoryItem(item, type) {
     const id = `history-${item.id}`;
-    const rawUrl = item.original_url || item.file_url || item.url || '';
+    // video 类型优先取 video_url/videoUrl，图片/音频沿用 original_url/file_url/url
+    const rawUrl = type === 'video'
+      ? (item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '')
+      : (item.original_url || item.file_url || item.url || '');
     return {
       id,
       backendId: item.id,

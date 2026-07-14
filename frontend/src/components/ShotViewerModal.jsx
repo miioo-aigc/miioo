@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useModalSize } from '../utils/useModalSize';
 import { createPortal } from 'react-dom';
 import Toggle from './Toggle';
+import { normalizeImageUrl } from '../utils/imageUrl';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -448,31 +449,31 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
                       <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: 'rgba(255,255,255,0.6)', letterSpacing: '0.01em' }}>
                         参考图{i > 0 ? ` ${i + 1}` : ''}
                       </span>
-                      <img src={url} alt="" style={{ width: '100%', maxHeight: '120px', objectFit: 'cover', borderRadius: '4px' }} />
+                      <img src={normalizeImageUrl(url)} alt="" style={{ width: '100%', maxHeight: '120px', objectFit: 'cover', borderRadius: '4px' }} />
                     </div>
                   ))}
                   {shot?.firstFrameUrl && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: 'rgba(255,255,255,0.6)', letterSpacing: '0.01em' }}>首帧</span>
-                      <img src={shot.firstFrameUrl} alt="" style={{ width: '100%', maxHeight: '120px', objectFit: 'cover', borderRadius: '4px' }} />
+                      <img src={normalizeImageUrl(shot.firstFrameUrl)} alt="" style={{ width: '100%', maxHeight: '120px', objectFit: 'cover', borderRadius: '4px' }} />
                     </div>
                   )}
                   {shot?.lastFrameUrl && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: 'rgba(255,255,255,0.6)', letterSpacing: '0.01em' }}>尾帧</span>
-                      <img src={shot.lastFrameUrl} alt="" style={{ width: '100%', maxHeight: '120px', objectFit: 'cover', borderRadius: '4px' }} />
+                      <img src={normalizeImageUrl(shot.lastFrameUrl)} alt="" style={{ width: '100%', maxHeight: '120px', objectFit: 'cover', borderRadius: '4px' }} />
                     </div>
                   )}
                   {shot?.referenceVideoUrl && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: 'rgba(255,255,255,0.6)', letterSpacing: '0.01em' }}>参考视频</span>
-                      <video src={shot.referenceVideoUrl} controls style={{ width: '100%', borderRadius: '4px' }} />
+                      <video src={normalizeImageUrl(shot.referenceVideoUrl)} controls style={{ width: '100%', borderRadius: '4px' }} />
                     </div>
                   )}
                   {shot?.referenceAudioUrl && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: 'rgba(255,255,255,0.6)', letterSpacing: '0.01em' }}>参考音频</span>
-                      <audio src={shot.referenceAudioUrl} controls style={{ width: '100%' }} />
+                      <audio src={normalizeImageUrl(shot.referenceAudioUrl)} controls style={{ width: '100%' }} />
                     </div>
                   )}
                 </div>

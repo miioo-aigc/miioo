@@ -76,10 +76,10 @@ function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onM
         {asset.asset_type === 'video' && (asset.posterUrl || asset.url) ? (
           // 视频卡片：优先用封面图显示（清晰、快速），无封面时回退到 video 标签加载首帧
           asset.posterUrl ? (
-            <img src={asset.posterUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }} />
+            <img src={normalizeImageUrl(asset.posterUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }} />
           ) : (
             <video
-              src={asset.url}
+              src={normalizeImageUrl(asset.url)}
               style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }}
               muted
               playsInline
@@ -87,7 +87,7 @@ function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onM
             />
           )
         ) : asset.url ? (
-          <img src={asset.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }} />
+          <img src={normalizeImageUrl(asset.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }} />
         ) : asset.type === 'audio' ? (
           <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
             <path d="M12 26V8l16-3v18" stroke="#FFFFFF26" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>

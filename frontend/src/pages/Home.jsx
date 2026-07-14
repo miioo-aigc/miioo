@@ -1822,7 +1822,7 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
       bubble: (
         <div
           style={{
-            position: 'fixed',
+            position: 'absolute',
             left: '35.5px',
             top: '50%',
             translate: '0 -50%',
@@ -1849,7 +1849,7 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             style={{
-              position: 'fixed',
+              position: 'absolute',
               left: 7,
               top: '50%',
               rotate: '90deg',

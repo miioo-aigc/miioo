@@ -86,7 +86,8 @@
  *     ├─ [函数] buildHistoryCachePayload() 生成缓存载荷       L5043
  *     ├─ [函数] hydrateHistoryFromCache() 本地缓存秒开        L5054
  *     ├─ [函数] syncHistoryFavorites()  同步收藏状态          L5079
- *     ├─ [函数] loadHistoryPage()       视频首批6条，未满续拉  L5096
+ *     ├─ [函数] loadHistoryPage()       历史分页：第1页始终拉服务端最新数据并直接覆盖列表（setHistoryPage1），后续页合并  L5096
+ *     ├─ [Store] setHistoryPage1()     第1页权威覆盖（避免与 hydrate 旧缓存合并后排序错乱） src/stores/creationStore.js
  *     ├─ [函数] handleToggleFavorite()  收藏（乐观更新）       L5372
  *     ├─ [函数] handleTabChange()       切换 Tab              L5455
  *     ├─ [函数] handleGenTypeChange()   切换生成类型           L5461
@@ -103,6 +104,8 @@
  * ─── 更新记录 ──────────────────────────────────────────────────────────
  *   2026-05-28  初始结构索引建立
  *   2026-07-09  新增「清空创作历史」按钮（与批量操作同级）与后端持久隐藏接口接入
+ *   2026-07-13  修复创作历史刷新后新内容丢失：第1页改为始终拉取服务端最新数据，本地缓存仅用于秒开
+ *   2026-07-13  修复创作历史刷新后排序错乱：第1页加载完成改用 setHistoryPage1 直接覆盖列表（替换原 mergeHistoryGenerations 合并），避免新内容被前置到旧列表之后、经 display reverse 后落到末尾
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -123,7 +126,7 @@ import { apiCreateLiveMaterialAuthSession, apiGetLiveMaterialAuthSessionStatus, 
 import ConfirmDialog from '../components/ConfirmDialog';
 import FilePreviewTooltip from '../components/FilePreviewTooltip';
 import DotsLoading from '../components/DotsLoading';
-import { cached, invalidate, peekCacheEntry, setCache } from '../utils/cache';
+import { invalidate, peekCacheEntry, setCache } from '../utils/cache';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -2065,7 +2068,7 @@ function GroupCard({ group, displayName, preview, CELL, CELL_H, FONT, onClick, o
     >
       {/* Preview image */}
       {preview && (
-        <img src={preview} alt={displayName} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+        <img src={normalizeImageUrl(preview)} alt={displayName} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
       )}
       {/* Gradient overlay */}
       <div style={{
@@ -2190,7 +2193,7 @@ function AssetCard({ asset, label, isApproved, isSel, CELL, CELL_H, FONT, onClic
       >
         {/* Image */}
         {asset.preview_url ? (
-          <img src={asset.preview_url} alt={asset.name || ''} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img src={normalizeImageUrl(asset.preview_url)} alt={asset.name || ''} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : (
           <div style={{ position: 'absolute', inset: 0, background: '#FFFFFF0D' }} />
         )}
@@ -2296,7 +2299,7 @@ function AssetCard({ asset, label, isApproved, isSel, CELL, CELL_H, FONT, onClic
           onClick={() => setFullscreen(false)}
         >
           <img
-            src={asset.preview_url}
+            src={normalizeImageUrl(asset.preview_url)}
             alt={asset.name || ''}
             style={{ width: fsSize, height: fsSize, objectFit: 'contain', borderRadius: '8px', pointerEvents: 'none' }}
           />
@@ -3392,7 +3395,9 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       // fileUrl 是真实文件地址（项目资产 normalize 后），url 可能是缩略图
       const realUrl = asset.fileUrl || asset.url;
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const rawFrameId = asset.backendId || asset.asset_id;
+      // 兜底到 asset.id：normalizePickerAsset 已把项目/全局资产的真实后端 id 落到 id 字段，
+      // 否则从资产库选的参考图拿不到 asset_id，导致 reference_image_asset_ids 为空、参考图失效
+      const rawFrameId = asset.backendId || asset.asset_id || asset.id;
       const assetFile = {
         name: asset.name || asset.id,
         size: 0,
@@ -3417,7 +3422,9 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       // 只传真实后端 UUID：backendId（创作资产回写的 card.id）或 asset_id（项目资产）
       // 排除 composite id（如 "gen-xxx-0" / "history-xxx-0"），这些不是有效后端 ID
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const rawId = asset.backendId || asset.asset_id;
+      // 兜底到 asset.id：项目/全局资产经 normalizePickerAsset 后真实后端 id 就在 id 上，
+      // 创作历史 composite id 会因 UUID 校验被过滤，安全
+      const rawId = asset.backendId || asset.asset_id || asset.id;
       const assetId = rawId && UUID_RE.test(rawId) ? rawId : undefined;
       return {
         name: asset.name || asset.id,
@@ -5786,7 +5793,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     favorites, toggleFavorite: storeToggleFavorite,
     confirmFavoriteToggle: storeConfirmFavoriteToggle,
     rollbackFavoriteToggle: storeRollbackFavoriteToggle,
-    historyMeta, mergeHistoryGenerations, updateHistoryMeta,
+    historyMeta, mergeHistoryGenerations, setHistoryPage1, updateHistoryMeta,
     clearHistoryTab,
   } = useCreationStore();
   const generations = generationsByTab[activeTab] ?? [];
@@ -6043,49 +6050,18 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         const cacheKey = `creation_history:${tab}:page1`;
         const cacheEntry = peekCacheEntry(cacheKey, 'local');
         const cacheList = cacheEntry?.d ? getHistoryListFromResponse(cacheEntry.d) : [];
-        console.log('[CreationPage][history] page1 cache status before cached()', {
+        console.log('[CreationPage][history] page1 cache status (cache = instant paint only)', {
           tab,
           cacheKey,
           hit: Boolean(cacheEntry?.d),
           cacheAgeMs: cacheEntry?.t ? Date.now() - cacheEntry.t : null,
         });
-        let resp;
-        if (tab === 'video') {
-          const cacheAgeMs = cacheEntry?.t ? Date.now() - cacheEntry.t : null;
-          const isFresh = Boolean(cacheEntry?.d) && cacheAgeMs < 5 * 60 * 1000;
-          if (cacheEntry?.d) {
-            resp = cacheEntry.d;
-            if (!isFresh) {
-              console.log('[CreationPage][history] video cache stale, revalidating in background', {
-                tab,
-                cacheKey,
-                cacheAgeMs,
-              });
-              apiMap[tab]({ page: 1, page_size: PAGE_SIZE, exclude_hidden: true })
-                .then((networkResp) => {
-                  const slimResp = buildHistoryCachePayload(tab, networkResp);
-                  setCache(cacheKey, slimResp, { medium: 'local' });
-                })
-                .catch((err) => {
-                  console.warn('[CreationPage][history] video cache revalidate failed', { tab, cacheKey, message: err?.message });
-                });
-            }
-          } else {
-            console.log('[CreationPage][history] network request fired', { tab, page: 1, pageSize: PAGE_SIZE });
-            const networkResp = await apiMap[tab]({ page: 1, page_size: PAGE_SIZE, exclude_hidden: true });
-            resp = buildHistoryCachePayload(tab, networkResp);
-            setCache(cacheKey, resp, { medium: 'local' });
-          }
-        } else {
-          resp = await cached(cacheKey, async () => {
-            console.log('[CreationPage][history] network request fired', { tab, page: 1, pageSize: PAGE_SIZE });
-            return apiMap[tab]({ page: 1, page_size: PAGE_SIZE, exclude_hidden: true });
-          }, {
-            medium: 'local',
-            ttl: 5 * 60 * 1000,
-            swr: true,
-          });
-        }
+        // 第 1 页始终向服务端拉取最新数据，再写回本地缓存：
+        // 本地缓存只用于「秒开」(hydrateHistoryFromCache)，不能作为权威数据。
+        // 否则刚创作完成、但缓存尚未包含的新内容会在刷新后被旧缓存覆盖而「凭空消失」。
+        const networkResp = await apiMap[tab]({ page: 1, page_size: PAGE_SIZE, exclude_hidden: true });
+        const resp = tab === 'video' ? buildHistoryCachePayload(tab, networkResp) : networkResp;
+        setCache(cacheKey, resp, { medium: 'local' });
         list = getHistoryListFromResponse(resp);
 
         const isSameAsHydratedCache = cacheEntry?.d && JSON.stringify(list) === JSON.stringify(cacheList);
@@ -6111,7 +6087,14 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       const hasMore = list.length >= PAGE_SIZE;
 
       const normalized = list.map((item) => normalizeHistoryItem(item, type));
-      mergeHistoryGenerations(tab, normalized);
+      if (nextPage === 1) {
+        // 第 1 页为权威最新数据：直接覆盖（而非合并），避免 hydrate 旧缓存后再合并导致排序错乱。
+        // list 来自服务端、最新在前，反转成 store 约定「越靠后越新」，display 再 reverse 展示最新在最前。
+        setHistoryPage1(tab, normalized.reverse());
+      } else {
+        // 后续页（加载更多 / 自动填满视口）只能合并追加，否则会覆盖已加载的第 1 页内容导致整体错乱。
+        mergeHistoryGenerations(tab, normalized);
+      }
       console.log('[CreationPage][history] load success', {
         tab,
         nextPage,

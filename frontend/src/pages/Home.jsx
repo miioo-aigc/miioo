@@ -24,9 +24,9 @@
  *   <StartCreationButton>  开始创作按钮                  L537–L608
  *   <WorkflowHeadbar>      工作流顶栏                    L769–L905
  *
- * ─── 主页面入口 ──────────────────── L910–L2189
- *   export default function Home()                     L910
- *     ├─ [状态] activeKey / bottomActiveKey / 页面模态开关 / 登录与API状态   L911–L966
+ * ─── 主页面入口 ──────────────────── L961–L2316
+ *   export default function Home()                     L961
+ *     ├─ [状态] activeKey / bottomActiveKey / 页面模态开关 / 登录与API状态   L962–L977
  *     ├─ [状态] projects / activeProject / 主体 / 剧本 / 分镜 / 工作流       L927–L962
  *     ├─ [Ref] toastTimerRef / pendingExtractionsRef / currentProjectIdRef / bgVideoRef  L963–L975
  *     ├─ [函数] showToast(msg, type)                  L977
@@ -38,17 +38,19 @@
  *     ├─ [函数] handleExtractSubjects()               L1467
  *     ├─ [函数] handleGenerateStoryboards()           L1532
  *     ├─ [函数] handleScriptFinalized()               L1666
- *     ├─ [函数] handleNavChange(key)                  L1673
- *     ├─ [函数] handleBottomNavChange(key)            L1754
+ *     ├─ [函数] handleNavChange(key)                  L1786
+ *     ├─ [函数] handleBottomNavChange(key)            L1867
  *     ├─ [函数] handleProjectCreated(project)         L1770
  *     ├─ [副作用] 键盘快捷键 "i" 监听 / currentProjectIdRef 同步  L966–L975
  *     ├─ [副作用] 页面初始化 / 登录检查 / 通知轮询 / unlockedSteps 持久化  L1018–L1054
  *     ├─ [副作用] 微信回调 / 项目恢复自动加载 / 提取后跳转 / forceExtract  L1240–L1430
  *     └─ [副作用] 事件监听 (auth:logout / message / project-assets:deleted)  L1387–L1430
+ *   创作页始终挂载，仅通过 display:none 切换，保证输入草稿跨页面保留 L2203–L2211
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-07-06  新增 subject cache 订阅 useEffect，实时同步 sharedChars/sharedScenes/sharedProps
  *   2026-07-01  初始结构索引建立
+ *   2026-07-17  创作页改为始终挂载，通过 display:none 切换以保留输入草稿
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -60,7 +62,7 @@ import { clearTokens, apiLogout, apiCompleteWechatCallback } from '../api/auth';
 import { apiListProviders } from '../api/config';
 import { apiGetCurrentUser, apiGetNotifications } from '../api/user';
 import { apiGetSubjects, apiGetSubjectsPage, apiGetEpisodes, apiGetScriptWorkspace, apiFinalizeScriptWorkspace, apiExtractSubjectsFromScript } from '../api/subject';
-import { apiGetStoryboards, apiGenerateStoryboardsFromFinalScript, apiGetTask } from '../api/storyboard';
+import { apiGenerateStoryboardsFromFinalScript, apiGetTask } from '../api/storyboard';
 import { invalidate } from '../utils/cache';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { subscribe, peekCache } from '../utils/cache';
@@ -1270,19 +1272,8 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
         setEpisodeStatuses(statusMap);
       }
 
-      // 5. 加载分镜数据（需要剧集 ID）并用最新 episodesData 的 ID 写入缓存
-      if (episodesData.length > 0) {
-        // 先清空所有旧的分镜缓存（包含旧 episode ID 的 key），避免 StoryboardPage 用错 ID
-        invalidate(K.storyboardsPrefix(projectId));
-        const storyboardsData = await apiGetStoryboards(projectId, {
-          episode_id: episodesData[0].id
-        }).catch(() => []);
-
-        // 根据分镜数据判断是否解锁分镜步骤
-        if (storyboardsData.length > 0) {
-          setUnlockedSteps(prev => new Set([...prev, 'storyboard']));
-        }
-      }
+      // 分镜页按当前集自行读取真实数据。这里不再预加载项目级分镜，
+      // 避免首页请求与分镜页请求竞态时把其它集或旧列表写回缓存。
 
     } catch (error) {
       console.error('加载项目详情失败:', error);
@@ -1691,7 +1682,6 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
         if (!epId) return;
         invalidate(K.storyboards(activeProject.id, epId));
         invalidate(K.storyboards(activeProject.id));
-        apiGetStoryboards(activeProject.id, { episode_id: epId }).catch(() => {});
       };
 
       while (Date.now() - pollStartTime < TIMEOUT_MS) {
@@ -1740,10 +1730,8 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
       finalEpisodes.forEach(ep => {
         if (!ep.id) return;
         invalidate(K.storyboards(activeProject.id, ep.id));
-        apiGetStoryboards(activeProject.id, { episode_id: ep.id }).catch(() => {});
       });
-      invalidate(K.storyboards(activeProject.id));
-      apiGetStoryboards(activeProject.id).catch(() => {});
+      // 不再额外读取项目级全量分镜；分镜页只订阅当前集的缓存 key。
 
     } catch (err) {
       console.error('智能分镜生成失败:', err);
@@ -2200,14 +2188,15 @@ export default function Home({ onProjectCreated, onGoToAdmin }) {
             {activeKey === 'assets' && (
               <AssetsPage projects={projects} isLoggedIn={isLoggedIn} />
             )}
-            {activeKey === 'create' && (
+            {/* 创作页始终挂载，仅通过 display:none 切换可见性，以保留输入框内容 */}
+            <div style={{ display: activeKey === 'create' ? 'flex' : 'none', flexDirection: 'column', position: 'absolute', inset: 0 }}>
               <CreationPage
                 isLoggedIn={isLoggedIn}
                 onLoginClick={() => setLoginOpen(true)}
                 apiConfigured={apiConfigured}
                 onShowNoModelNotice={() => setNoModelNoticeOpen(true)}
               />
-            )}
+            </div>
           </div>
         </div>
       </div>

@@ -2,81 +2,53 @@
  * @file StoryboardPage.jsx
  * @structure-index
  *
- * ─── 全局常量 & 工具函数 ──────────── L25–L192
-*   normalizeStoryboard(be)      后端→前端数据映射           L25–L95
- *   toBackendStoryboard(shot)    前端→后端数据映射（清空台词时发 gen_params.narration_segments=[]）  L195–L225
-*   urlPathKey(url)              URL 规范化去重             L132
- *   enrichMainRefs(shot, chars)  主体引用补全去重（按 subjectId/type 识别，随定稿图同步）  L235–L279
- *   buildRefFromAsset(a)         资产库选中→mainRefs 条目（带 subject_id 时建主体引用，按 category 还原角色/场景/道具类型）  L282–L298
- *   subjectTypeFromCategory(c)   资产 category → 主体 _type（character/scene/prop，其余 other）
- *   FONT / FONT_MEDIUM           字体家族常量               L191–L192
- *   EPISODE_ITEM_H / EPISODE_MAX_VISIBLE  集数选择器常量    L196–L197
- *   MAX_PROMPT_LEN               提示词最大长度              L1531
- *   PARAM_OPTIONS / PARAM_LABELS 镜头参数枚举                L3347–L3361
- *   MENTION_TYPE_LABEL / MENTION_TYPE_COLOR / MENTION_TABS  L3573–L3581（含 other:「其他」）
- *   SPEED_OPTIONS                语速选项                    L3882
+ * ─── 全局常量 & 工具函数 ──────────── L100–L399
+ *   normalizeStoryboard(be)      后端→前端数据映射           L100
+ *   storyboardIdentityKey(be)    镜头内容/配置身份键         L177
+ *   mergeStoryboardShots()       历史重复镜头合并台词与素材   L206
+ *   narrationSignature()         台词签名，区分主动复制与历史副本 L232
+ *   normalizeStoryboardList()    当前集过滤、按 ID 去重并归并 L240
+ *   toBackendStoryboard()        创建/普通更新数据映射       L269
+ *   urlPathKey() / enrichMainRefs() URL 去重与主体引用补全   L309、L325
+ *   buildRefFromAsset(a)         资产库选中→主体/参考图引用   L379
+ *   FONT / EPISODE / 参数枚举常量                            L393–L399、L3608–L3616、L4151
  *
- * ─── 原子 UI 组件 ────────────────── L211–L5648
- *   <EpisodeSelector>            集数选择器                  L211–L317
- *   <SpinnerIcon> / <GhostBtn> / <PrimaryBtn> / <SecondaryBtn>  按钮  L320–L448
- *   <ModalOverlay> / <ModalGhostBtn> / <ModalPrimaryBtn>       弹窗底座  L450–L524
- *   <ModalSelect> / <ModalSelectItem> / <ModalToggle>          弹窗选择器  L526–L599
- *   <ModalCloseBtn> / <ImgUploadBtn> / <ImgUploadCard>  L894–L975
- *   <ImgItem> / <PanelSelect> / <FrameUploadSlot> / <PanelUploadSlot>  L977–L1529
- *   <PanelPromptInput> (forwardRef)  提示词输入框             L1690–L2107
- *   <RefSlotBtn> / <VideoUploadCard> / <VideoItem>           L2109–L3238
- *   SVG 图标组件 (IconBatchImage ~ IconVideoPlaceholder)      L3240–L3345
- *   <ParamSelect>                 镜头参数下拉选择            L3363–L3432
- *   <EditableText>                可编辑文本                  L3434–L3499
- *   <CharMentionDropdown> / <ReferenceMentionDropdown> L3501–L3719
- *   <SubjectTag> / <CharReplaceDropdown> / <CharTag> / <AddSlotBtn>  L3721–L3879
- *   <VoiceDubModal>               配音弹窗                    L3884–L4154
- *   <NarrationItem> / <AddNarrationBtn> / <NarrationCol>     L4156–L4383
- *   <AddSlotDropdown> / <MainRefCol> / <MediaHoverPreview>  L4385–L4699
- *   <MainRefModal> / <MediaViewModal> / <MediaDetailModal> / <ImgIconBtn> / <MediaIconBtn>  L4701–L4944
- *   <MediaCol> / <CardActionBtn> / <NumberCol> / <ParamTrigger>  L4946–L5327
- *   <DescriptionCol> / <TextEditCol> / <NarrationColWrapper>  L5329–L5414
- *   <MainRefColWrapper> / <MediaColWrapper> / <ShotRow>      L5416–L5648
+ * ─── 原子 UI 组件 ────────────────── L413–L5942
+ *   <EpisodeSelector> / 按钮 / 弹窗选择器                      L413–L805
+ *   <BatchImageModal> / <BatchVideoModal>                   L806、L902
+ *   图片/视频上传与提示词面板组件                            L1096–L3556
+ *   参数、主体标签、配音与台词列组件                         L3608–L4646
+ *   主体参考、媒体列与 <ShotRow>                             L4652–L5942
  *
- * ─── 核心业务组件 ────────────────── L604–L3150
- *   <BatchImageModal>             批量生成分镜图弹窗           L604–L698
- *   <BatchVideoModal>             批量生成分镜视频弹窗         L700–L892
- *   buildPromptFromShot(shot)     从分镜构造提示词             L2073
- *   <GenerateImagePanel>          单个镜头生成分镜图面板        L2134–L2535
+ * ─── 核心业务组件 ────────────────── L2277–L3358
+ *   buildPromptFromShot(shot)     从分镜构造提示词             L2277
+ *   <GenerateImagePanel>          单个镜头生成分镜图面板        L2338
  *     ├─ [状态] model / resolution / prompt / refImages / submitting / historyTab
  *     ├─ [函数] handleGenerate / handleRefImageUpload / handleRefFileChange
  *     └─ [副作用] 生成历史懒加载 / focused 自动回填
- *   <GenerateVideoPanel>          单个镜头生成分镜视频面板      L2537–L3150
+ *   <GenerateVideoPanel>          单个镜头生成分镜视频面板      L2778
  *     ├─ [状态] model / resolution / duration / prompt / refs / tab / submitting
  *     ├─ [函数] handleGenerate / handleRefMediaUpload / handleTabChange
+ *     ├─ [参考素材] 参考主体/参考图/参考视频/参考音频按模型上限管理
  *     └─ [副作用] 生成历史懒加载 / 模型列表 / focused 回填
  *
- * ─── 主页面入口 ──────────────────── L5650–L6753
- *   export default function StoryboardPage()                 L5650
- *     ├─ [状态] shots / episode / dragId / isGenerating / 批量与下载模式开关  L5652–L5663
- *     ├─ [状态] generatingImageShotIds / generatingVideoShotIds / toast       L5663+
- *     ├─ [状态] imagePanel / videoPanel / genImageHistoryMap / genVideoHistoryMap  L5663+
- *     ├─ [Ref] hasManuallyInteracted / batchBtnRef             L5683
- *     ├─ [函数] showToast(msg, type)                          L5800
- *     ├─ [函数] pollTask(taskId)  轮询生成任务                  L5807
- *     ├─ [函数] extractVideoUrlFromTask / extractImageUrlFromTask  L5822+
- *     ├─ [函数] hasImageTaskResult / hasVideoTaskResult        L5870+
- *     ├─ [函数] handleBatchDownload / enterDownloadMode / exitDownloadMode  L5994+
- *     ├─ [函数] toggleSelectAll / toggleShotSelection / triggerDownload      L6025+
- *     ├─ [函数] handleStartEdit / updateShot / addShotAfter    L6077+
- *     ├─ [函数] copyShot / deleteShot / addNewShot             L6112+
- *     ├─ [函数] handleDrop(targetId)  拖拽排序                  L6168
- *     ├─ [副作用] loadingText 轮播                             L5688
- *     ├─ [副作用] 后端 storyboard 数据加载与订阅                L5715+
- *     ├─ [副作用] episode 切换 / 完成度统计 / 鼠标点击关闭       L5770+
- *     ├─ [副作用] 恢复跨刷新生效任务（taskPersistence）            L5876+
- *     ├─ [副作用] 批量生成中持久化任务到 localStorage             L6043+
- *     └─ [副作用] 单镜头生成中持久化任务到 localStorage           L6744+
+ * ─── 主页面入口 ──────────────────── L5984–L7346
+ *   export default function StoryboardPage()                 L5984
+ *     ├─ [状态] shots / episode / 生成、批量与下载模式开关     L5986–L6031
+ *     ├─ [Ref] 台词保存串行队列与版本号                         L6032–L6033
+ *     ├─ [函数] showToast / pollTask / 任务结果解析            L6208–L6285
+ *     ├─ [函数] 批量下载、选择与拖拽排序                        L6410–L6490
+ *     ├─ [函数] updateShot() 普通分镜 PATCH，排除编号字段      L6501
+ *     ├─ [函数] updateNarration() 台词串行 PATCH，不创建分镜  L6509
+ *     ├─ [函数] addShotAfter / copyShot / addNewShot           L6544–L6618
+ *     ├─ [副作用] 分镜按当前集 episode_id 真实加载并归并重复记录 L6035–L6071
+ *     ├─ [副作用] 主体数据同步 / 集数校验                       L6073–L6092
+ *     ├─ [副作用] 恢复跨刷新任务 / 批量与单镜头任务处理         L6104–L6408、L6867–L7048
  *
-* ─── 更新记录 ──────────────────────────────────────────────────────
+ * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-07-08  修复台词分配列：删除所有台词后刷新又出现 → toBackendStoryboard 在 segments 为空时显式发送 gen_params.narration_segments=[]，
  *              后端不再保留旧结构化数据，normalizeStoryboard 不再从 be.narration 恢复旧台词
-*   2026-07-08  修复分镜视频弹窗 @ 主体标签分类错乱（场景/道具都显示成「角色」、本地上传显示「其他」）：
+ *   2026-07-08  修复分镜视频弹窗 @ 主体标签分类错乱（场景/道具都显示成「角色」、本地上传显示「其他」）：
  *              1) 新增 subjectTypeFromCategory + MENTION 常量增加 other:「其他」；
  *              2) videoReferenceItems 兜底改为 other（不再假冒 char）；
  *              3) buildRefFromAsset 按资产 category 还原真实类型（角色/场景/道具），不再硬编码 char；
@@ -95,6 +67,13 @@
  *   2026-07-02  生成任务跨刷新持久化（taskPersistence）
  *   2026-07-13  修复分镜页破图：ImgItem/MediaCol/生成历史缩略图等渲染点裸用相对路径（media.url/item.url/img.url/shortcutImage.url），
  *              统一用 normalizeImageUrl 包裹，避免后端返回相对路径跨越 origin 时裂图（幂等，完整 URL 原样返回）
+ *   2026-07-17  修复分镜视频参考视频/音频上传一项后按钮消失：改为数组管理素材，达到当前模型上限后才隐藏添加入口
+ *   2026-07-17  修复台词保存刷新后分镜重复：当前集加载只接受匹配 episode_id 的数据；不再用项目全量缓存首屏渲染
+ *   2026-07-17  修复台词保存请求：台词单独走 PATCH，只发送 voiceover，不再提交 gen_params 或整行分镜对象；
+ *              按分镜串行保存，PATCH 成功只更新原分镜 ID，不再用整集 GET 回灌可能重复的镜头
+ *   2026-07-17  台词保存严格只走现有分镜 PATCH，不再通过 POST 兜底创建分镜；
+ *              新增开发态请求证据日志；加载时按当前集和镜头内容归并历史重复记录，台词合并回原镜头
+ *   2026-07-17  校正结构索引行号，补充重复归并与台词保存队列的定位信息
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
@@ -106,7 +85,7 @@ import ShotViewerModal from '../components/ShotViewerModal';
 import Toggle from '../components/Toggle';
 import Checkbox from '../components/Checkbox';
 import AssetPickerModal from '../components/AssetPickerModal';
-import { apiUploadFile, apiUploadImage, apiUploadStoryboardVideo, apiGenerateStoryboardImage, apiGenerateStoryboardVideo, apiCreateStoryboard, apiUpdateStoryboard, apiDeleteStoryboard, apiReorderStoryboards, apiGetStoryboards, apiBatchDownloadStoryboardImages, apiBatchDownloadStoryboardVideos, apiGetTask } from '../api/storyboard';
+import { apiUploadFile, apiUploadImage, apiUploadStoryboardVideo, apiGenerateStoryboardImage, apiGenerateStoryboardVideo, apiCreateStoryboard, apiUpdateStoryboard, apiUpdateStoryboardNarration, apiDeleteStoryboard, apiReorderStoryboards, apiGetStoryboards, apiBatchDownloadStoryboardImages, apiBatchDownloadStoryboardVideos, apiGetTask } from '../api/storyboard';
 import { apiUploadCreationImage, apiUploadCreationVideo, apiUploadCreationAudio } from '../api/creation';
 import { apiListModels } from '../api/config';
 import DotsLoading from '../components/DotsLoading';
@@ -114,8 +93,6 @@ import { apiGetEpisodes } from '../api/subject';
 import { getImageModelParams, getVideoModelParams, getVideoModelCapabilities } from '../config';
 import { normalizeImageUrl, toAbsoluteUrl } from '../utils/imageUrl';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { subscribe, peekCache } from '../utils/cache';
-import { K, MEDIUM } from '../utils/cacheKeys';
 import { addPendingTask, removePendingTask, getPendingTasks } from '../utils/taskPersistence';
 
 // ─── 后端/前端数据模型双向映射 ───────────────────────────────────────────────
@@ -125,6 +102,13 @@ import { addPendingTask, removePendingTask, getPendingTasks } from '../utils/tas
  */
 function normalizeStoryboard(be) {
   if (!be || typeof be !== 'object') return be;
+  const voiceoverSegments = typeof be.voiceover === 'string'
+    ? be.voiceover.split('\n').filter(Boolean).map((line) => {
+        const idx = line.indexOf('：');
+        if (idx > 0) return { role: line.slice(0, idx), lines: line.slice(idx + 1) };
+        return { role: '', lines: line };
+      })
+    : null;
   return {
     id: be.id,
     number: be.shot_number ?? be.number ?? 0,
@@ -140,17 +124,10 @@ function normalizeStoryboard(be) {
     },
     lightShadow: be.lighting ?? be.lightShadow ?? '',
     ambientSound: be.ambient_sound ?? be.ambientSound ?? '',
-    narration: be.narration ?? (
-      be.voiceover
-        ? {
-            segments: be.voiceover.split('\n').filter(Boolean).map((line) => {
-              const idx = line.indexOf('：');
-              if (idx > 0) return { role: line.slice(0, idx), lines: line.slice(idx + 1) };
-              return { role: '', lines: line };
-            }),
-          }
-        : { segments: [] }
-    ),
+    // voiceover 是分镜更新接口的标准字段，优先使用它，避免旧 narration 覆盖最新台词。
+    narration: voiceoverSegments
+      ? { segments: voiceoverSegments }
+      : (be.narration ?? { segments: [] }),
     mainRefs: be.mainRefs ?? (
       [
         ...(be.character_ids || []).map(cid =>
@@ -200,12 +177,99 @@ function normalizeStoryboard(be) {
   };
 }
 
+function storyboardIdentityKey(be) {
+  if (!be || typeof be !== 'object') return '';
+  const value = {
+    content: be.content ?? be.description ?? '',
+    shot_type: be.shot_type ?? be.params?.framing ?? '',
+    camera: be.camera ?? be.params?.cameraMotion ?? '',
+    camera_angle: be.camera_angle ?? be.params?.angle ?? '',
+    composition: be.composition ?? be.params?.composition ?? '',
+    duration: be.duration ?? be.params?.duration ?? '',
+    lighting: be.lighting ?? be.lightShadow ?? '',
+    ambient_sound: be.ambient_sound ?? be.ambientSound ?? '',
+    character_ids: Array.isArray(be.character_ids) ? [...be.character_ids].map(String).sort() : [],
+    scene_id: be.scene_id ?? '',
+    prop_ids: Array.isArray(be.prop_ids) ? [...be.prop_ids].map(String).sort() : [],
+    reference_image_urls: Array.isArray(be.reference_image_urls)
+      ? [...be.reference_image_urls].map(String).sort()
+      : Array.isArray(be.reference_images)
+        ? be.reference_images.map((item) => String(typeof item === 'string' ? item : item?.url ?? '')).sort()
+        : [],
+    image_url: be.image_url ?? '',
+    video_url: be.video_url ?? '',
+  };
+  // 没有画面描述时不做跨 ID 归并，避免多个空白新镜头被误合并。
+  if (!String(value.content).trim()) return '';
+  return JSON.stringify(value);
+}
+
+function mergeStoryboardShots(base, duplicate) {
+  const existingSegments = base.narration?.segments ?? [];
+  const duplicateSegments = duplicate.narration?.segments ?? [];
+  const seenSegments = new Set(existingSegments.map((segment) => `${segment.role}\u0000${segment.lines}`));
+  const mergedSegments = [...existingSegments];
+  duplicateSegments.forEach((segment) => {
+    const key = `${segment.role}\u0000${segment.lines}`;
+    if (!seenSegments.has(key)) {
+      seenSegments.add(key);
+      mergedSegments.push(segment);
+    }
+  });
+
+  return {
+    ...base,
+    number: Math.min(Number(base.number) || Infinity, Number(duplicate.number) || Infinity),
+    narration: { segments: mergedSegments },
+    mainRefs: [...(base.mainRefs ?? []), ...(duplicate.mainRefs ?? [])].filter((ref, index, refs) => {
+      const key = ref?.url || ref?.id;
+      return key && refs.findIndex((item) => (item?.url || item?.id) === key) === index;
+    }),
+    storyboardImage: base.storyboardImage ?? duplicate.storyboardImage,
+    storyboardVideo: base.storyboardVideo ?? duplicate.storyboardVideo,
+  };
+}
+
+function narrationSignature(shot) {
+  return JSON.stringify(shot?.narration?.segments ?? []);
+}
+
+/**
+ * 归一化分镜列表：只保留当前集，按后端 ID 去重，并归并历史上由台词保存产生的重复镜头。
+ * 重复判断只使用画面内容和镜头配置，不使用台词或自增编号，确保新增台词能回到同一个镜头。
+ */
+function normalizeStoryboardList(data, episodeId, chars) {
+  if (!Array.isArray(data)) return [];
+
+  const seenIds = new Set();
+  const identityIndexes = new Map();
+  return data.reduce((normalized, be) => {
+    if (!be?.id || seenIds.has(String(be.id))) return normalized;
+    // 当前集接口可能省略 episode_id；明确属于其它集的数据必须排除。
+    if (be.episode_id && String(be.episode_id) !== String(episodeId)) return normalized;
+    seenIds.add(String(be.id));
+    const shot = enrichMainRefs(normalizeStoryboard(be), chars);
+    const identityKey = storyboardIdentityKey(be);
+    const duplicateIndex = identityKey ? identityIndexes.get(identityKey) : undefined;
+    // 只有台词内容发生分裂时才归并，避免把用户主动复制的完全相同镜头误判为历史副本。
+    const isNarrationSplit = duplicateIndex != null
+      && narrationSignature(normalized[duplicateIndex]) !== narrationSignature(shot);
+    if (duplicateIndex == null || !isNarrationSplit) {
+      if (identityKey) identityIndexes.set(identityKey, normalized.length);
+      normalized.push(shot);
+    } else {
+      normalized[duplicateIndex] = mergeStoryboardShots(normalized[duplicateIndex], shot);
+    }
+    return normalized;
+  }, []);
+}
+
 /**
  * 前端 shot 模型 → 后端 StoryboardCreate / StoryboardUpdate (snake_case flat)
  */
-function toBackendStoryboard(shot) {
+function toBackendStoryboard(shot, includeShotNumber = true) {
   return {
-    shot_number: shot.number,
+    ...(includeShotNumber ? { shot_number: shot.number } : {}),
     content: shot.description || undefined,
     shot_type: shot.params?.framing || undefined,
     camera: shot.params?.cameraMotion || undefined,
@@ -214,14 +278,15 @@ function toBackendStoryboard(shot) {
    duration: shot.params?.duration ? parseFloat(shot.params.duration) : undefined,
    lighting: shot.lightShadow || undefined,
    ambient_sound: shot.ambientSound || undefined,
-   voiceover: shot.narration?.segments?.length
-     ? shot.narration.segments.map(s => s.role ? `${s.role}：${s.lines}` : s.lines).join('\n')
-     : '',
-    // 台词全部删除时显式清空后端结构化台词字段（narration_segments），
-    // 否则 PATCH 不包含该字段 → 后端保留旧值 → 刷新后 normalizeStoryboard 从 be.narration 恢复旧数据
-    ...(shot.narration?.segments?.length === 0
-      ? { gen_params: { narration_segments: [] } }
-      : {}),
+   ...(includeShotNumber
+     ? {
+         voiceover: shot.narration?.segments?.length
+           ? shot.narration.segments.map(s => s.role ? `${s.role}：${s.lines}` : s.lines).join('\n')
+           : '',
+       }
+     : {}),
+    // 台词由 updateNarration 单独 PATCH；普通分镜字段更新不携带台词结构，
+    // 避免后端兼容逻辑把 gen_params 误判为创建/克隆输入。
    character_ids: (shot.mainRefs || [])
      .filter(ref => ref?.type === 'char' || ref?.type === 'scene' || ref?.type === 'prop')
      .map(ref => ref?.id).filter(Boolean),
@@ -1510,10 +1575,12 @@ const hoverTimerRef = useRef(null);
             {/* 已上传的缩略图列表 */}
             {mediaList.map((item, idx) => (
               <div key={item.id || idx}
+                onMouseDown={(e) => { if (onInsert) e.preventDefault(); }}
+                onClick={() => onInsert?.(item)}
                 onMouseEnter={(e) => startPreview(e, item)}
                 onMouseMove={movePreview}
                 onMouseLeave={stopPreview}
-                style={{ position: 'relative', width: `${THUMB}px`, height: `${THUMB}px`, borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}>
+                style={{ position: 'relative', width: `${THUMB}px`, height: `${THUMB}px`, borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: `1px solid ${onInsert ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.12)'}`, cursor: onInsert ? 'pointer' : 'default' }}>
                 {item.type?.startsWith('video') ? (
                   <video src={normalizeImageUrl(item.url) || null} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline />
                 ) : item.type?.startsWith('audio') ? (
@@ -1524,7 +1591,7 @@ const hoverTimerRef = useRef(null);
                   <img src={normalizeImageUrl(item.url) || null} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 )}
                 <div
-                  onClick={() => { stopPreview(); onRemoveItem ? onRemoveItem(idx) : onRemove?.(); }}
+                  onClick={(e) => { e.stopPropagation(); stopPreview(); onRemoveItem ? onRemoveItem(idx) : onRemove?.(); }}
                   style={{ position: 'absolute', top: '4px', right: '4px', width: '18px', height: '18px', borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
                 >
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 2L8 8M8 2L2 8" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round"/></svg>
@@ -2810,8 +2877,8 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
     }).filter(ref => ref?.url);
   });
   const [refImages, setRefImages] = useState([]);
-  const [refVideo, setRefVideo] = useState(null);
-  const [refAudio, setRefAudio] = useState(null);
+  const [refVideos, setRefVideos] = useState([]);
+  const [refAudios, setRefAudios] = useState([]);
   const [refFirstFrame, setRefFirstFrame] = useState(null);
   const [refLastFrame, setRefLastFrame] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -2899,8 +2966,10 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
   const imageCount = (showRefSubjects ? refSubjects.length : 0) + refImages.length;
   const canAddImage = maxRefImages === null || imageCount < maxRefImages;
   const imageCountLabel = maxRefImages != null ? `${imageCount}/${maxRefImages}` : null;
-  const videoCountLabel = maxRefVideos != null ? `${refVideo ? 1 : 0}/${maxRefVideos}` : null;
-  const audioCountLabel = maxRefAudios != null ? `${refAudio ? 1 : 0}/${maxRefAudios}` : null;
+  const canAddVideo = maxRefVideos === null || refVideos.length < maxRefVideos;
+  const canAddAudio = maxRefAudios === null || refAudios.length < maxRefAudios;
+  const videoCountLabel = maxRefVideos != null ? `${refVideos.length}/${maxRefVideos}` : null;
+  const audioCountLabel = maxRefAudios != null ? `${refAudios.length}/${maxRefAudios}` : null;
 
   // 模型切换时保留当前分辨率/时长（若新模型支持）
   useEffect(() => {
@@ -2937,15 +3006,15 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
       items.push({ id: img.id, name: img.name || (img.url ? img.url.split('/').pop()?.split('?')[0]?.replace(/\.[^.]+$/, '') || '参考图' : '参考图'), _type: 'image' });
     });
     // 参考视频
-    if (refVideo) {
-      items.push({ id: refVideo.id, name: refVideo.name || '参考视频', _type: 'video' });
-    }
+    refVideos.forEach(video => {
+      items.push({ id: video.id, name: video.name || '参考视频', _type: 'video' });
+    });
     // 参考音频
-    if (refAudio) {
-      items.push({ id: refAudio.id, name: refAudio.name || '参考音频', _type: 'audio' });
-    }
+    refAudios.forEach(audio => {
+      items.push({ id: audio.id, name: audio.name || '参考音频', _type: 'audio' });
+    });
     return items;
-  }, [refSubjects, refImages, refVideo, refAudio]);
+  }, [refSubjects, refImages, refVideos, refAudios]);
 
   async function handleRefMediaUpload(file, type = 'image') {
     try {
@@ -2989,8 +3058,9 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
         reference_images: referenceImages.length > 0 ? referenceImages : undefined,
         first_frame_url: refFirstFrame?.url,
         last_frame_url: refLastFrame?.url,
-        reference_video_url: refVideo?.url,
-        reference_audio_url: refAudio?.url,
+        // 当前分镜生成接口仍使用单 URL 字段，先传首个素材保持接口兼容。
+        reference_video_url: refVideos[0]?.url,
+        reference_audio_url: refAudios[0]?.url,
       });
       onSetGeneratedVideos?.((prev) =>
         prev.map((item) => item.id === placeholder ? { ...item, url: result?.url ?? null, created_at: item.created_at || new Date().toISOString().replace('T', ' ').slice(0, 19) } : item)
@@ -3153,51 +3223,43 @@ function GenerateVideoPanel({ shot, projectId, nextShot = null, chars = [], scen
                   });
                 }} />}
                 {showRefVideo && (
-                <PanelUploadSlot projectId={projectId} label="参考视频" countLabel={videoCountLabel} accept="video/mp4,video/quicktime" media={refVideo} onUpload={async (media) => {
-                  if (media.id?.startsWith('blob:')) {
-                    try {
-                      const response = await fetch(media.url);
-                      const blob = await response.blob();
-                      const file = new File([blob], media.name, { type: media.type });
-                      const uploaded = await handleRefMediaUpload(file, 'video');
-                      setRefVideo(uploaded);
-                    } catch (error) {
-                      // 错误已处理
-                    }
-                  } else {
-                    setRefVideo(media);
-                  }
-                }} onRemove={() => setRefVideo(null)} onAssetConfirm={(assets) => {
-                  const a = assets[0];
-                  if (!a) return;
-                  setRefVideo({ id: a.id, url: a.fileUrl || a.url, name: a.name || '参考视频', type: 'video/mp4' });
+                <PanelUploadSlot projectId={projectId} label="参考视频" countLabel={videoCountLabel} accept="video/mp4,video/quicktime" mediaList={refVideos} canAddMore={canAddVideo} onUpload={(media) => {
+                  setRefVideos(prev => maxRefVideos != null ? [...prev, media].slice(0, maxRefVideos) : [...prev, media]);
+                }} onRemove={() => setRefVideos([])} onRemoveItem={(idx) => setRefVideos(prev => prev.filter((_, i) => i !== idx))} onAssetConfirm={(assets) => {
+                  if (!assets?.length) return;
+                  const newItems = assets.map(a => ({
+                    id: a.id,
+                    assetId: a.id,
+                    url: normalizeImageUrl(a.fileUrl || a.originalUrl || a.original_url || a.url || a.file_url),
+                    name: a.name || a.filename || '参考视频',
+                    type: 'video/mp4',
+                  })).filter(item => item.url);
+                  setRefVideos(prev => {
+                    const merged = [...prev, ...newItems];
+                    return maxRefVideos != null ? merged.slice(0, maxRefVideos) : merged;
+                  });
                 }} onInsert={(media) => {
-                  const name = media.name || '参考视频';
-                  promptRef.current?.insertMention(name, 'video');
+                  promptRef.current?.insertMention(media.name || '参考视频', 'video');
                 }} />
                 )}
                 {showRefAudio && (
-                <PanelUploadSlot projectId={projectId} label="参考音频" countLabel={audioCountLabel} accept="audio/mpeg,audio/wav" media={refAudio} onUpload={async (media) => {
-                  if (media.id?.startsWith('blob:')) {
-                    try {
-                      const response = await fetch(media.url);
-                      const blob = await response.blob();
-                      const file = new File([blob], media.name, { type: media.type });
-                      const uploaded = await handleRefMediaUpload(file, 'audio');
-                      setRefAudio(uploaded);
-                    } catch (error) {
-                      // 错误已处理
-                    }
-                  } else {
-                    setRefAudio(media);
-                  }
-                }} onRemove={() => setRefAudio(null)} onAssetConfirm={(assets) => {
-                  const a = assets[0];
-                  if (!a) return;
-                  setRefAudio({ id: a.id, url: a.fileUrl || a.url, name: a.name || '参考音频', type: 'audio/mpeg' });
+                <PanelUploadSlot projectId={projectId} label="参考音频" countLabel={audioCountLabel} accept="audio/mpeg,audio/wav" mediaList={refAudios} canAddMore={canAddAudio} onUpload={(media) => {
+                  setRefAudios(prev => maxRefAudios != null ? [...prev, media].slice(0, maxRefAudios) : [...prev, media]);
+                }} onRemove={() => setRefAudios([])} onRemoveItem={(idx) => setRefAudios(prev => prev.filter((_, i) => i !== idx))} onAssetConfirm={(assets) => {
+                  if (!assets?.length) return;
+                  const newItems = assets.map(a => ({
+                    id: a.id,
+                    assetId: a.id,
+                    url: normalizeImageUrl(a.fileUrl || a.originalUrl || a.original_url || a.url || a.file_url),
+                    name: a.name || a.filename || '参考音频',
+                    type: 'audio/mpeg',
+                  })).filter(item => item.url);
+                  setRefAudios(prev => {
+                    const merged = [...prev, ...newItems];
+                    return maxRefAudios != null ? merged.slice(0, maxRefAudios) : merged;
+                  });
                 }} onInsert={(media) => {
-                  const name = media.name || '参考音频';
-                  promptRef.current?.insertMention(name, 'audio');
+                  promptRef.current?.insertMention(media.name || '参考音频', 'audio');
                 }} />
                 )}
               </>
@@ -4469,24 +4531,22 @@ function NarrationCol({ segments, onChange, chars, globalVoiceParams = {}, onSav
   const [editingIdx, setEditingIdx] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
 
-  // 初始化：从 segments 同步记录
+  // 从外部分镜数据同步记录，避免刷新或缓存更新后仍显示旧的本地列表。
   useEffect(() => {
-    if (dubList === null && segments.length > 0) {
-      const validSegments = segments.filter((s) => s?.lines?.trim());
-      if (validSegments.length > 0) {
-        const list = validSegments.map((seg) => {
-          const globalForRole = seg.role ? (globalVoiceParams[seg.role] ?? {}) : {};
-          return {
-            role: seg.role ?? '',
-            speed: globalForRole.speed ?? 1.0,
-            volume: globalForRole.volume ?? 70,
-            lines: seg.lines ?? '',
-          };
-        });
-        setDubList(list);
-      }
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const validSegments = Array.isArray(segments)
+      ? segments.filter((s) => s?.lines?.trim())
+      : [];
+    const list = validSegments.map((seg) => {
+      const globalForRole = seg.role ? (globalVoiceParams[seg.role] ?? {}) : {};
+      return {
+        role: seg.role ?? '',
+        speed: globalForRole.speed ?? 1.0,
+        volume: globalForRole.volume ?? 70,
+        lines: seg.lines ?? '',
+      };
+    });
+    setDubList(list);
+  }, [segments, globalVoiceParams]);
 
   const list = dubList ?? [];
   const hasContent = list.length > 0;
@@ -5674,7 +5734,7 @@ function NarrationColWrapper({ shot, onChange, chars, globalVoiceParams, onSaveG
   return (
     <NarrationCol
       segments={shot.narration.segments}
-      onChange={(segs) => onChange({ ...shot, narration: { segments: segs } })}
+      onChange={onChange}
       chars={chars}
       globalVoiceParams={globalVoiceParams}
       onSaveGlobalVoice={onSaveGlobalVoice}
@@ -5743,7 +5803,7 @@ function MediaColWrapper({ label, media, onUpload, accept, isVideo, isLast = fal
 
 // ─── 分镜行 ───────────────────────────────────────────────────────────────────
 
-function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, onDragStart, onDragOver, onDrop, insertBefore, insertAfter, onGenerateImage, onGenerateVideo, globalVoiceParams, onSaveGlobalVoice, projectId, generatingImage, generatingVideo, genImageHistoryMap, genVideoHistoryMap, isSelectMode = false, isSelected = false, onToggleSelect }) {
+function ShotRow({ shot, onChange, onNarrationChange, onAdd, onCopy, onDelete, chars, isDragging, onDragStart, onDragOver, onDrop, insertBefore, insertAfter, onGenerateImage, onGenerateVideo, globalVoiceParams, onSaveGlobalVoice, projectId, generatingImage, generatingVideo, genImageHistoryMap, genVideoHistoryMap, isSelectMode = false, isSelected = false, onToggleSelect }) {
   const [hovered, setHovered] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   // 仅当拖拽动作由「拖拽手柄」按钮发起时才允许排序，鼠标在卡片其他区域拖拽无效。
@@ -5808,7 +5868,7 @@ function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, o
           value={shot.ambientSound}
           onChange={(v) => onChange({ ...shot, ambientSound: v })}
         />
-        <NarrationColWrapper shot={shot} onChange={onChange} chars={chars} globalVoiceParams={globalVoiceParams} onSaveGlobalVoice={onSaveGlobalVoice} />
+        <NarrationColWrapper shot={shot} onChange={onNarrationChange} chars={chars} globalVoiceParams={globalVoiceParams} onSaveGlobalVoice={onSaveGlobalVoice} />
         <MainRefColWrapper shot={shot} onChange={onChange} chars={chars} projectId={projectId} />
         <MediaColWrapper
           label="分镜图"
@@ -5935,24 +5995,9 @@ const EPISODES = ['第一集', '第二集'];
 export default function StoryboardPage({ projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onVideoGenerated, onGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0 }) {
 
   const activeEpisodes = episodes.length > 0 ? episodes : EPISODES;
-  // 用 peekCache 同步读取缓存，第一次渲染直接呈现旧数据，避免空状态闪烁
+  // 分镜列表必须以当前集的真实 GET 为准，首屏不使用可能过期的持久化缓存。
   const [shots, setShots] = useState(() => {
-    if (!projectId) return [];
-    const cachedEpisodes = episodes.length > 0
-      ? episodes
-      : (peekCache(K.episodes(projectId), MEDIUM.CONTENT) ?? []);
-    const targetIdx = (initialEpisodeIndex != null && initialEpisodeIndex >= 0 && initialEpisodeIndex < cachedEpisodes.length)
-      ? initialEpisodeIndex : 0;
-    const initialEpisode = cachedEpisodes[targetIdx];
-    if (!initialEpisode || typeof initialEpisode === 'string') return [];
-    const episodeId = initialEpisode?.id ?? '';
-    if (!episodeId) return [];
-    // 先找 episode 级缓存，找不到 fallback 到 :all（:all 是项目全量分镜，同样可用）
-    const raw =
-      peekCache(K.storyboards(projectId, episodeId), MEDIUM.CONTENT) ??
-      peekCache(K.storyboards(projectId), MEDIUM.CONTENT);
-    if (!raw || !Array.isArray(raw)) return [];
-    return raw.map(be => enrichMainRefs(normalizeStoryboard(be), chars));
+    return [];
   });
   const [globalVoiceParams, setGlobalVoiceParams] = useState({});
   const [episode, setEpisode] = useState(() => {
@@ -5995,6 +6040,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const [videoPanel, setVideoPanel] = useState(null); // { shot }
   const [genImageHistoryMap, setGenImageHistoryMap] = useState({}); // { [shotId]: generatedImages[] }
   const [genVideoHistoryMap, setGenVideoHistoryMap] = useState({}); // { [shotId]: generatedVideos[] }
+  const narrationSaveChainsRef = useRef(new Map());
+  const narrationSaveVersionsRef = useRef(new Map());
 
   // 页面加载时从后端获取剧本数据
   useEffect(() => {
@@ -6004,18 +6051,18 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     const episodeId = getEpisodeId(episode);
     if (!episodeId) return;
 
-    // 优先订阅带 episodeId 的 key，fallback 订阅 :all
-    const cacheKey = K.storyboards(projectId, episodeId);
-    const cacheKeyAll = K.storyboards(projectId);
+    let disposed = false;
 
     const normalizeShots = (data) => {
       if (!Array.isArray(data)) return [];
-      return data.map(be => enrichMainRefs(normalizeStoryboard(be), chars));
+      return normalizeStoryboardList(data, episodeId, chars);
     };
 
-    apiGetStoryboards(projectId, { episode_id: episodeId })
+    apiGetStoryboards(projectId, { episode_id: episodeId, fresh: true })
       .then((data) => {
+        if (disposed) return;
         if (!Array.isArray(data)) return;
+        // 刷新只读后端数据；重复记录只按同集、同镜头身份归并，台词合并回同一镜头。
         const normalized = normalizeShots(data);
         if (normalized.length > 0) {
           // 有数据：直接覆盖（正常加载 / 刷新场景）
@@ -6029,27 +6076,9 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       .catch((err) => {
         console.error('[StoryboardPage] 加载剧本失败:', err);
       });
-
-    const unsub1 = subscribe(cacheKey, (data) => {
-      if (!Array.isArray(data)) return;
-      const normalized = normalizeShots(data);
-      if (normalized.length > 0) {
-        setShots(normalized);
-      } else {
-        setShots((prev) => (prev.length > 0 ? prev : normalized));
-      }
-    });
-    const unsub2 = subscribe(cacheKeyAll, (data) => {
-      if (!Array.isArray(data)) return;
-      const normalized = normalizeShots(data);
-      if (normalized.length > 0) {
-        setShots(normalized);
-      } else {
-        setShots((prev) => (prev.length > 0 ? prev : normalized));
-      }
-    });
-
-    return () => { unsub1(); unsub2(); };
+    return () => {
+      disposed = true;
+    };
   }, [projectId, episode?.id, chars]);
 
   // 当 chars/scenes/props 变化时（如主体页修改了定稿图），直接重新富化已有 shots，无需重新请求后端
@@ -6072,19 +6101,6 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       setEpisode(activeEpisodes[0]);
     }
   }, [activeEpisodes]);
-
-  // episode 还是字符串（episodes prop 尚未到位）时，订阅 :all key
-  // 一旦有数据写入就尝试把 episode 切换到真实对象
-  useEffect(() => {
-    if (typeof episode !== 'string') return;
-    if (!projectId) return;
-    const unsub = subscribe(K.storyboards(projectId), (data) => {
-      if (activeEpisodes.length > 0) {
-        setEpisode(activeEpisodes[0]);
-      }
-    });
-    return unsub;
-  }, [projectId, episode, activeEpisodes]);
 
   useEffect(() => {
     if (!batchExpanded) return;
@@ -6494,10 +6510,46 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   }, [shots.length]);
 
   function updateShot(id, next) {
-    setShots((prev) => prev.map((s) => (s.id === id ? next : s)));
-    apiUpdateStoryboard(projectId, id, toBackendStoryboard(next)).catch((err) => {
+    setShots((prev) => prev.map((s) => (s.id === id ? { ...s, ...next } : s)));
+    // StoryboardUpdate 不包含 shot_number；更新时带上编号会被部分后端实现误判为创建参数。
+    apiUpdateStoryboard(projectId, id, toBackendStoryboard({ ...shots.find((s) => s.id === id), ...next }, false)).catch((err) => {
       console.error('[StoryboardPage] 更新分镜失败:', err);
     });
+  }
+
+  function updateNarration(id, segments) {
+    setShots((prev) => prev.map((s) => (
+      s.id === id ? { ...s, narration: { segments } } : s
+    )));
+
+    const nextVersion = (narrationSaveVersionsRef.current.get(id) || 0) + 1;
+    narrationSaveVersionsRef.current.set(id, nextVersion);
+    const previousSave = narrationSaveChainsRef.current.get(id) || Promise.resolve();
+    const currentSave = previousSave
+      .catch(() => undefined)
+      .then(() => apiUpdateStoryboardNarration(projectId, id, segments))
+      .then((updated) => {
+        // 只有最后一次台词保存负责回填，避免连续编辑时旧响应覆盖最新台词。
+        if (narrationSaveVersionsRef.current.get(id) !== nextVersion) return;
+        // PATCH 必须更新原记录。后端若返回了其他 ID，只记录异常并保留当前本地列表，
+        // 防止把后端误创建的副本灌回页面。
+        if (updated?.id && String(updated.id) !== String(id)) {
+          console.error('[StoryboardPage] 台词 PATCH 返回了不同的分镜 ID:', { requestedId: id, returnedId: updated.id });
+          return;
+        }
+        // PATCH 响应可能只包含部分字段，成功后只确认原分镜的台词，
+        // 不用响应重建整行，也不接受响应里的其它 ID。
+        if (!updated || typeof updated !== 'object' || (updated.id && String(updated.id) !== String(id))) return;
+        setShots((prev) => prev.map((shot) => (
+          String(shot.id) === String(id)
+            ? { ...shot, narration: { segments } }
+            : shot
+        )));
+      })
+      .catch((err) => {
+        console.error('[StoryboardPage] 更新台词失败:', err);
+      });
+    narrationSaveChainsRef.current.set(id, currentSave);
   }
 
   function addShotAfter(id) {
@@ -6829,6 +6881,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
             shot={shot}
             projectId={projectId}
             onChange={(next) => updateShot(shot.id, next)}
+            onNarrationChange={(next) => updateNarration(shot.id, next)}
             onAdd={() => addShotAfter(shot.id)}
             onCopy={() => copyShot(shot.id)}
             onDelete={() => deleteShot(shot.id)}
@@ -6998,7 +7051,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
              toBackendStoryboard({
                ...target,
                storyboardImage: { id: n, url: n, name: '分镜图', type: 'image/jpeg' },
-             }),
+             }, false),
            ).catch(console.error);
          }
        }}

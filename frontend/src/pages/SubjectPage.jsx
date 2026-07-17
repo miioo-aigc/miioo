@@ -2,77 +2,75 @@
  * @file SubjectPage.jsx
  * @structure-index
  *
- * ─── 全局常量 ────────────────────── L19–L42
- *   EMPTY_CHAR_ICON / EMPTY_SCENE_ICON / EMPTY_PROP_ICON  L19–L39
- *   FONT / FONT_MEDIUM           字体家族常量              L41–L42
- *   TABS                        char / scene / prop 标签   L283–L287
- *   GENDER_OPTIONS / AGE_OPTIONS 音色筛选项                L349–L350
- *   INITIAL_CHARS / MOCK_PROPS   初始角色/道具 Mock         L940–L950
+ * ─── 全局常量 ────────────────────── L131–L1066
+ *   EMPTY_CHAR_ICON / EMPTY_SCENE_ICON / EMPTY_PROP_ICON  L131–L151
+ *   FONT / FONT_MEDIUM           字体家族常量              L153–L154
+ *   TABS                        char / scene / prop 标签   L395–L399
+ *   GENDER_OPTIONS / AGE_OPTIONS 音色筛选项                L464–L465
+ *   INITIAL_CHARS / MOCK_PROPS   初始角色/道具 Mock         L1055–L1065
  *
- * ─── 工具函数 ────────────────────── L47–L58
- *   triggerBlobDownload(blob, filename)  触发浏览器下载     L47
- *   sleep(ms) / getPendingGenResult() / saveSubjectPanelState()  恢复辅助  L51–L120
+ * ─── 工具函数 ────────────────────── L157–L1673
+ *   triggerBlobDownload(blob, filename)  触发浏览器下载     L157
+ *   sleep(ms) / getPendingGenResult() / saveSubjectPanelState()  恢复辅助  L1595–L1673
  *
- * ─── 原子 UI 组件 ────────────────── L58–L1453
- *   <GhostButton> / <PrimaryButton>     通用按钮           L58–L137
- *   <ChevronDownIcon> / <HeadphoneIcon> / <PlayingWaveIcon>   L352–L382
- *   <SelectField>                       筛选下拉选择        L384–L450
- *   <VoiceCard>                         音色卡片           L452–L508
- *   <MoreMenu>                          更多操作菜单        L657–L776
- *   <IconBtn> / <UploadBtn>             图标/上传按钮       L953–L998
- *   <ImageItemUpload> / <ImageViewModal> 图片上传/查看弹窗  L1000–L1119
- *   <MediaDetailModal>         媒体详情弹窗（复用资产库结构） L2363+
- *   <ImageItem> / <RadioOption>         图片项/单选项       L1121–L1203
- *   <RefImageItem> / <SubjectRefHoverPreview>  参考图项/悬浮预览  L1205–L1308
- *   <RefImageUploadCard> / <RefImageField>    参考图上传/字段  L1390–L1555
+ * ─── 原子 UI 组件 ────────────────── L170–L1443
+ *   <GhostButton> / <PrimaryButton>     通用按钮           L170–L247
+ *   <ChevronDownIcon> / <HeadphoneIcon> / <PlayingWaveIcon>   L467–L496
+ *   <SelectField>                       筛选下拉选择        L499–L565
+ *   <VoiceCard>                         音色卡片           L567–L623
+ *   <MoreMenu>                          更多操作菜单        L772–L891
+ *   <IconBtn> / <UploadBtn>             图标/上传按钮       L1068–L1111
+ *   <ImageItemUpload> / <ImageViewModal> 图片上传/查看弹窗  L1115–L1234
+ *   <ImageItem> / <RadioOption>         图片项/单选项       L1236–L1318
+ *   <RefImageItem> / <SubjectRefHoverPreview>  参考图项/悬浮预览  L1320–L1423
+ *   <RefImageUploadCard> / <RefImageField>    参考图上传/字段  L1425–L1588
  *
- * ─── 业务组件 ────────────────────── L139–L2370
- *   <ConfirmStoryboardModal>            重新生成二次确认弹窗  L139–L215
- *   <Toolbar>                           顶栏（项目名/按钮）  L217–L281
-*   <TabNav>                            角色/场景/道具标签栏  L289–L347
- *     ├─ [样式] 数量统计气泡：maxWidth 30px + text-overflow ellipsis  L378–L400
-*   <VoiceSelectModal>                  音色选择弹窗         L510–L655
- *   <CharCard>                          主体卡片            L778–L910
- *   <AddCard>                           新增空卡片          L912–L938
-*   <EditSubjectPanel>                  编辑主体侧面板       L1455–L2370
-*     ├─ [状态] isSubmitting / editName / editDesc / editVoices / images / focused / refImagesForModal / promptText  L1455+
+ * ─── 业务组件 ────────────────────── L251–L2895
+ *   <ConfirmStoryboardModal>            重新生成二次确认弹窗  L251–L327
+ *   <Toolbar>                           顶栏（项目名/按钮）  L329–L393
+ *   <TabNav>                            角色/场景/道具标签栏  L401–L462
+ *   <VoiceSelectModal>                  音色选择弹窗         L625–L770
+ *   <CharCard>                          主体卡片            L893–L1025
+ *   <AddCard>                           新增空卡片          L1027–L1053
+ *   <EditSubjectPanel>                  编辑主体侧面板       L1694–L2895
+ *     ├─ [状态] isSubmitting / editName / editDesc / editVoices / images / focused / refImagesForModal / promptText  L1696+
 *     ├─ [Ref] fileInputRef / composingRef / refImageIds / editRefImages
  *     ├─ [缓存] pendingGenerations Map / subjectPanel sessionStorage   L1553+
  *     ├─ [缓存] batchGeneratedImagesCache Map （批量生成图片跨弹窗缓存）  L1626+
-*     ├─ [函数] handleGenerateImage / handleSetPrimary / handleSave / 图片上传/换填 / onSettledChange(定稿切换·取消定稿清封面)
+*     ├─ [函数] handleGenerateImage / handleSetPrimary / handleSave / 资产绑定与图片上传/换填 / onSettledChange(定稿切换·取消定稿清封面)
 *     └─ [副作用] 加载主体详情 / 图片列表 / 参考图 / 键盘事件 / 模型列表
 *       ├─ 加载主体详情时，从 batchGeneratedImagesCache 读取缓存图片，合并到 finalImages
  *       ├─ 缓存读取在 await apiGetSubjectDetail 之前执行，展示不阻塞网络请求
  *       └─ 后端数据到达后用 functional updater 合并到已有缓存图片（URL 去重）
 *
-* ─── 主页面入口 ──────────────────── L2629–L3443
-*   export default function SubjectPage()                 L2629
-*     ├─ [状态] activeTab / batchGenOpen / isExtracting / batchGeneratingByTab  L2631+
-*     ├─ [状态] batchToast / batchLoadingSubjects / confirmStoryboardOpen / selectedChar/Scene/Prop  L2631+
-*     ├─ [状态] subjectDetailRefreshToken / voiceList / charVoices / chars/scenes/props  L2631+
-*     ├─ [Ref] extractingRef / subjectListRef / subjectSentinelRef / batchToastTimerRef  L2631+
-*     ├─ [Ref] prevCoverUrlsRef / batchAbortRef / singleGenRecoveryRunRef  L2705+
-*     ├─ [函数] showBatchToast(msg, type)            L2856+
-*     ├─ [函数] normalizeSubjectList(items)  主体列表标准化  L2863+
-*     ├─ [函数] handleBatchGenerate(params)  批量生成主体图  L3081+
-*     │   ├─ BATCH_SILENT_ERRORS / isSilentBatchError  静默错误消息过滤（命中不弹 toast、不计失败）  L3209–L3210
+ * ─── 主页面入口 ──────────────────── L2899–L4013
+ *   export default function SubjectPage()                 L2899
+ *     ├─ [状态] activeTab / batchGenOpen / isExtracting / batchGeneratingByTab  L2901+
+ *     ├─ [状态] batchToast / batchLoadingSubjects / confirmStoryboardOpen / selectedChar/Scene/Prop  L2934+
+ *     ├─ [状态] subjectDetailRefreshToken / voiceList / charVoices / chars/scenes/props  L2937+
+ *     ├─ [Ref] extractingRef / subjectListRef / subjectSentinelRef / batchToastTimerRef  L2903+
+ *     ├─ [Ref] prevCoverUrlsRef / batchAbortRef / singleGenRecoveryRunRef  L3000+
+ *     ├─ [函数] showBatchToast(msg, type)            L3194+
+ *     ├─ [函数] normalizeSubjectList(items)  主体列表标准化  L3025+
+ *     ├─ [函数] handleBatchGenerate(params)  批量生成主体图  L3216+
+ *     │   ├─ BATCH_SILENT_ERRORS / isSilentBatchError  静默错误消息过滤（命中不弹 toast、不计失败）  L3244+
 *     │   └─ onSubjectImage 回调中将每个图片 URL 存入 batchGeneratedImagesCache
-*     ├─ [函数] handleAdd()  添加新主体                 L3032+
-*     ├─ [函数] handleDownloadSubjectImage(subjectId)   L3147+
-*     ├─ [函数] handleDeleteSubject(subjectId)          L3168+
-*     ├─ [函数] handleStartStoryboardRequest()          L3198+
-*     ├─ [函数] loading / error 态渲染                    L3210–L3268
-*     ├─ [副作用] onExtractSubjects 触发提取              L2638+
-*     ├─ [副作用] 提取中 loadingText 动画轮播              L2662+
-*     ├─ [副作用] 初始同步 external 数据                   L2723+
-*     ├─ [副作用] 订阅主体数据缓存更新                     L2753+
- *     ├─ [副作用] 恢复批量生成任务（cross-refresh poll apiGetTask）  L2883+
- *     ├─ [副作用] 恢复单主体生成任务（subject-single cross-refresh poll apiGetTask）  L2946+
- *     ├─ [副作用] 恢复单主体 pending generations loading（旧同步路径，跳过 task 已覆盖项）  L3032+
-*     ├─ [副作用] 记忆并恢复打开中的主体弹窗               L3101+
-*     ├─ [副作用] 监听 delete 事件刷新详情                 L2993+
-*     ├─ [副作用] 有主体时 unlockStep('subject')           L3185+
-*     └─ [副作用] 滚动触底加载更多主体（IntersectionObserver）  L3188+
+ *     ├─ [函数] handleAdd()  添加新主体                 L3588+
+ *     ├─ [函数] handleDownloadSubjectImage(subjectId)   L3609+
+ *     ├─ [函数] handleDeleteSubject(subjectId)          L3629+
+ *     ├─ [函数] handleStartStoryboardRequest()          L3668+
+ *     ├─ [函数] loading / error 态渲染                    L3700+
+ *     ├─ [副作用] onExtractSubjects 触发提取              L2910+
+ *     ├─ [副作用] 提取中 loadingText 动画轮播              L2925+
+ *     ├─ [副作用] 初始同步 external 数据                   L3533+
+ *     ├─ [副作用] 订阅主体数据缓存更新                     L3541
+ *     ├─ [副作用] 恢复批量生成任务（cross-refresh poll apiGetTask）  L2945
+ *     ├─ [副作用] 恢复单主体生成任务（subject-single cross-refresh poll apiGetTask）  L3008
+ *     ├─ [副作用] 恢复单主体 pending generations loading（旧同步路径，跳过 task 已覆盖项）  L3094
+ *     ├─ [副作用] 记忆并恢复打开中的主体弹窗               L3459
+ *     ├─ [副作用] 监听 delete 事件刷新详情                 L3573
+ *     ├─ [副作用] 有主体时 unlockStep('subject')           L3643
+ *     └─ [副作用] 滚动触底加载更多主体（IntersectionObserver）  L3648
 *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-07-03  修复 MediaDetailModal refImages 数据源：
@@ -103,6 +101,8 @@
  *   2026-07-09  取消定稿改走语义化接口 apiUnsetPrimarySubjectImage
  *               （PATCH .../subjects/{id}/unset-primary，后端同步清空 primary_image_url 与 is_primary），
  *               移除 cancelledPrimaryIds / localStorage / applyCancelledPrimary / primaryCancelled 本地兜底
+ *   2026-07-17  删除主体前同步清理关联项目资产，避免资产库残留主体资产
+ *   2026-07-17  绑定主体参考图增加响应状态校验与失败回滚，统一保留后端纯文本错误，并防止资产选择器重复确认
  */
 
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -1515,7 +1515,6 @@ function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], 
       ...refImages,
       ...selectedAssets.map(a => ({ url: normalizeImageUrl(a.fileUrl || a.originalUrl || a.original_url || a.thumbnailUrl || a.thumbnail_url || a.url || a.file_url), id: a.id, assetId: a.id })),
     ].slice(0, maxImages);
-    setRefImages(newList);
     setAssetPickerOpen(false);
 
     // 调用后端绑定参考图接口
@@ -1523,14 +1522,19 @@ function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], 
       setLoadingRefs(true);
       apiBindSubjectReferenceImages(projectId, subjectId, { asset_ids: assetIds })
         .then(() => {
+          setRefImages(newList);
           if (onRefImagesChange) {
             onRefImagesChange(newList.map(r => r.url || r.id));
           }
         })
         .catch((err) => {
           console.error('[SubjectPage] 绑定参考图失败:', err);
+          // 绑定失败时不保留仅存在于前端的预览，避免下次生成带上无效资产。
+          setRefImages(refImages);
         })
         .finally(() => setLoadingRefs(false));
+    } else {
+      setRefImages(newList);
     }
   };
 
@@ -2534,22 +2538,25 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
           {/* upload card always first */}
           <ImageItemUpload
             projectId={projectId}
-            onUpload={(fileOrId) => {
+            onUpload={async (fileOrId) => {
               // 从资产库选择的资产对象（有 id 和 url 属性）
-              if (fileOrId && typeof fileOrId === 'object' && fileOrId.id) {
+              if (fileOrId && typeof fileOrId === 'object' && (fileOrId.id || fileOrId.asset_id)) {
+                const assetId = fileOrId.id ?? fileOrId.asset_id;
                 const raw = fileOrId.url || fileOrId.file_url || fileOrId.fileUrl;
                 // 从资产库选择的图片一律 settled=false：参考图不参与右侧列表的定稿，
                 // 定稿只由候选（生成）图决定，避免出现多个定稿
-                setGeneratedImages((prev) => {
-                  const newImg = { rawUrl: raw, url: normalizeImageUrl(raw), settled: false, id: fileOrId.id, isReference: true };
-                  return [newImg, ...prev];
-                });
-                // 绑定资产到主体
+                const newImg = { rawUrl: raw, url: normalizeImageUrl(raw), settled: false, id: assetId, isReference: true };
+                // 先完成后端绑定，再写入右侧列表，避免 500 后出现假成功的本地图片。
                 if (projectId && char?.id) {
-                  apiBindSubjectReferenceImages(projectId, char.id, { asset_ids: [fileOrId.id] }).catch((err) => {
+                  try {
+                    await apiBindSubjectReferenceImages(projectId, char.id, { asset_ids: [assetId] });
+                  } catch (err) {
                     console.error('[SubjectPage] 绑定资产到主体失败:', err);
-                  });
+                    showToast(err?.message || '绑定主体参考图失败', 'error');
+                    return;
+                  }
                 }
+                setGeneratedImages((prev) => [newImg, ...prev]);
               } else if (fileOrId instanceof File) {
                 // 本地上传：先用 blob URL 占位，上传完成后替换为真实 asset_id + file_url
                 const blobUrl = URL.createObjectURL(fileOrId);
@@ -3586,13 +3593,18 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     const defaultName = `${labelPrefix}${String(num).padStart(3, '0')}`;
     const defaultDesc = '自定义描述';
 
-    const { id } = await apiCreateSubject(projectId, { type: actualType, name: defaultName, description: defaultDesc });
-    if (activeTab === 'char') {
-      setChars((prev) => [...prev, { id, name: defaultName, desc: defaultDesc, imageUrl: null, voice: null }]);
-    } else if (activeTab === 'scene') {
-      setScenes((prev) => [...prev, { id, name: defaultName, desc: defaultDesc, imageUrl: null }]);
-    } else if (activeTab === 'prop') {
-      setProps((prev) => [...prev, { id, name: defaultName, desc: defaultDesc, imageUrl: null }]);
+    try {
+      const { id } = await apiCreateSubject(projectId, { type: actualType, name: defaultName, description: defaultDesc });
+      if (activeTab === 'char') {
+        setChars((prev) => [...prev, { id, name: defaultName, desc: defaultDesc, imageUrl: null, voice: null }]);
+      } else if (activeTab === 'scene') {
+        setScenes((prev) => [...prev, { id, name: defaultName, desc: defaultDesc, imageUrl: null }]);
+      } else if (activeTab === 'prop') {
+        setProps((prev) => [...prev, { id, name: defaultName, desc: defaultDesc, imageUrl: null }]);
+      }
+    } catch (err) {
+      console.error('[SubjectPage] 创建主体失败:', err);
+      showBatchToast(err?.message || '创建主体失败，请稍后重试', 'error');
     }
   };
 

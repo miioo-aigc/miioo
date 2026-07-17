@@ -85,6 +85,9 @@ export async function apiUpdateAsset(assetId, updates) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
   });
+  if (!res.ok) {
+    throw new Error(`更新资产失败（HTTP ${res.status}）`);
+  }
   return res.json();
 }
 
@@ -94,12 +97,118 @@ export async function apiDeleteAsset(assetId, { projectId, subjectType } = {}) {
 }
 
 export async function apiBatchDeleteAssets(asset_ids, { projectId, subjectType } = {}) {
-  await authFetch(`${BASE}/api/assets/batch-delete`, {
+  const res = await authFetch(`${BASE}/api/assets/batch-delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ asset_ids }),
   });
+  if (!res.ok) {
+    throw new Error(`批量删除资产失败（HTTP ${res.status}）`);
+  }
   invalidateProjectAssetDependents(projectId, subjectType);
+}
+
+function getAssetSource(asset) {
+  const metadata = asset?.metadata_json || asset?.metadataJson || {};
+  return String(
+    asset?.source
+      || asset?.source_type
+      || asset?.sourceType
+      || metadata.source
+      || metadata.source_type
+      || metadata.sourceType
+      || metadata.scope
+      || '',
+  ).toLowerCase();
+}
+
+function isCreationAsset(asset, creationAssetIds) {
+  const source = getAssetSource(asset);
+  if (source === 'creation' || source === 'creative' || source === '创作') return true;
+  // 用创作作用域的资产 ID 做兜底，兼容后端绑定主体后补写 project_id 的情况。
+  return creationAssetIds.has(String(asset?.id));
+}
+
+async function getCreationAssetIds() {
+  const assetIds = new Set();
+  let cursor;
+  let hasMore = true;
+
+  while (hasMore) {
+    const page = await apiGetAssetsPage({
+      scope: 'creation',
+      limit: 200,
+      cursor,
+    });
+    for (const asset of page.list || []) {
+      if (asset?.id) assetIds.add(String(asset.id));
+    }
+    cursor = page.nextCursor;
+    hasMore = Boolean(page.hasMore && cursor);
+  }
+
+  return assetIds;
+}
+
+// 删除资产库中的主体资产：主体自有资产进回收站，创作资产只解除主体引用。
+export async function apiRemoveAssets(assetRecords = [], { projectId, subjectType } = {}) {
+  const recordsById = new Map();
+  for (const record of assetRecords) {
+    const id = typeof record === 'object' ? record?.id : record;
+    if (id) recordsById.set(String(id), typeof record === 'object' ? record : { id, project_id: projectId });
+  }
+  if (recordsById.size === 0) return { deletedAssetIds: [], detachedAssetIds: [] };
+
+  // 资产列表的旧返回结构可能不带 project_id，先查创作作用域确保不会误删创作本体。
+  const creationAssetIds = await getCreationAssetIds();
+  const deletedAssetIds = [];
+  const detachedAssetIds = [];
+  for (const [id, record] of recordsById) {
+    if (isCreationAsset(record, creationAssetIds)) detachedAssetIds.push(id);
+    else deletedAssetIds.push(id);
+  }
+
+  if (deletedAssetIds.length > 0) {
+    await apiBatchDeleteAssets(deletedAssetIds, { projectId, subjectType });
+  }
+  for (const assetId of detachedAssetIds) {
+    await apiUpdateAsset(assetId, { subject_id: null });
+  }
+  if (detachedAssetIds.length > 0) {
+    invalidateProjectAssetDependents(projectId, subjectType);
+  }
+
+  return { deletedAssetIds, detachedAssetIds };
+}
+
+// 删除主体前收集其全部项目资产，避免主体删除后资产库留下孤立卡片。
+export async function apiDeleteSubjectAssets(projectId, subjectId) {
+  const assets = [];
+  let cursor;
+  let hasMore = true;
+
+  while (hasMore) {
+    const page = await apiGetAssetsPage({
+      project_id: projectId,
+      scope: 'project',
+      limit: 200,
+      cursor,
+    });
+
+    for (const asset of page.list || []) {
+      const assetSubjectId = asset.subject_id ?? asset.subjectId;
+      if (assetSubjectId != null && String(assetSubjectId) === String(subjectId) && asset.id) {
+        assets.push(asset);
+      }
+    }
+
+    cursor = page.nextCursor;
+    hasMore = Boolean(page.hasMore && cursor);
+  }
+
+  const result = await apiRemoveAssets(assets, { projectId });
+
+  return result.deletedAssetIds.length + result.detachedAssetIds.length;
 }
 
 export async function apiBatchRestoreAssets(asset_ids) {
@@ -151,6 +260,9 @@ function normalizeAsset(item) {
   const isVideo = item.asset_type === 'video';
   return {
     id: item.id,
+    project_id: item.project_id ?? item.projectId ?? null,
+    source: item.source ?? item.source_type ?? item.sourceType ?? null,
+    metadata_json: item.metadata_json ?? item.metadataJson ?? null,
     name: item.name,
     // 视频资产：url 只用缩略图，不 fallback 到视频地址（避免图片标签加载视频）
     url: isVideo
@@ -225,6 +337,9 @@ function groupBySubject(normalized) {
 
     return {
       id: primaryImage.id,
+      project_id: primaryImage.project_id,
+      source: primaryImage.source,
+      metadata_json: primaryImage.metadata_json,
       subject_id: primaryImage.subject_id ?? (key !== primaryImage.name ? key : null),
       name: primaryImage.name,
       description: primaryImage.description,

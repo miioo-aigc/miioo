@@ -2,16 +2,14 @@
  * @file CreationPage.jsx
  * @structure-index
  *
- * ─── 全局常量 & 工具函数 ───────────────────────────────────── L17–L98
- *   FONT / FONT_MEDIUM                                         L17–L18
- *   ALLOWED_EXTS / ALLOWED_IMAGE_EXTS / ...                   L78–L82
- *   formatFileSize()                                           L84
- *   truncateFileName()                                         L90
- *   downloadImage()                                            L60
+ * ─── 全局常量 & 工具函数 ───────────────────────────────────── L134–L227
+ *   FONT / FONT_MEDIUM                                         L134–L135
+ *   ALLOWED_EXTS / ALLOWED_IMAGE_EXTS / ...                   L205–L209
+ *   formatFileSize() / truncateFileName()                      L211 / L217
+ *   downloadImage()                                            L178
  *
- * ─── 动画注入函数（运行时往 <head> 写 keyframe）────────────── L100–L235
- *   ensureRotateKeyframe()   chatbox 边框旋转动画              L202
- *   ensureThinkingStyle()    thinking 点动画                  L220
+ * ─── 动画注入函数（运行时往 <head> 写 keyframe）────────────── L230–L263
+ *   ensureRotateKeyframe() / ensureThinkingStyle()              L230 / L248
  *
  * ─── 原子 UI 组件（无业务逻辑）────────────────────────────── L240–L1135
  *   <Toast>                  全局 Toast 容器                  L241
@@ -36,18 +34,18 @@
  *   <SoundToggle>            视频音效开关                     L约2000
  *   <SendButton>             发送/生成按钮                    L约2050
  *
- * ─── 核心输入组件 ──────────────────────────────────────────── L约2100–L3143
- *   <InputCard>              主输入框（含文件上传/参数控制）   L约2100
- *     ├ 状态: files / firstFrameFile / lastFrameFile / prompt
- *     ├ 状态: genType / model / ratio / resolution / count
- *     ├ Ref: editorRef / mentionFromTagRef / savedCursorRangeRef / savedContentRef(失败回退)
- *     └ handleSend() → 构建请求 → apiGenerateCreation → 轮询
+ * ─── 核心输入组件 ──────────────────────────────────────────── L2855–L4222
+ *   <InputCard>              主输入框（含文件上传/参数控制）   L2974
+ *     ├ 草稿同步：按 image / video / dubbing 保存 prompt、HTML、附件和首尾帧
+ *     ├ 状态：files / firstFrameFile / lastFrameFile / refMode / promptRevision
+ *     ├ 恢复：按 genType 重挂载并重建富文本 @ 标签
+ *     └ handleSend() → 构建请求 → apiGenerateCreation → 失败回退
  *
- * ─── 空状态图标 ────────────────────────────────────────────── L3145–L3300
- *   <EmptyIconShell>         空状态图标外壳（SVG 渐变容器）   L3146
- *   <CreationEmptyIconImage> 图片空态图标                     L3170
- *   <CreationEmptyIconVideo> 视频空态图标                     L3190
- *   <CreationEmptyIconAudio> 配音空态图标                     L约3230
+ * ─── 空状态图标 ────────────────────────────────────────────── L4224–L4636
+ *   <EmptyIconShell>         空状态图标外壳（SVG 渐变容器）   L4224
+ *   <CreationEmptyIconImage> 图片空态图标                     L4248
+ *   <CreationEmptyIconVideo> 视频空态图标                     L4268
+ *   <CreationEmptyIconAudio> 配音空态图标                     L约4290
  *
  * ─── 结果卡片组件 ──────────────────────────────────────────── L约3300–L4460
  *   <ImageResultCard>        单张图片结果卡                   L约3300
@@ -72,6 +70,7 @@
  *
  *   export default CreationPage()                              L4856
  *     ├─ [状态] activeTab / genType / generating              L4856–L4858
+ *     ├─ [状态] inputDrafts（按生成类型隔离输入草稿）        L约5790
  *     ├─ [状态] activeCountByTab（各类型并发数）               L4859
  *     ├─ [Store] useCreationStore → generations / favorites   L4861–L4868
  *     ├─ [状态] toasts + showToast()                          L4873–L4880
@@ -106,6 +105,8 @@
  *   2026-07-09  新增「清空创作历史」按钮（与批量操作同级）与后端持久隐藏接口接入
  *   2026-07-13  修复创作历史刷新后新内容丢失：第1页改为始终拉取服务端最新数据，本地缓存仅用于秒开
  *   2026-07-13  修复创作历史刷新后排序错乱：第1页加载完成改用 setHistoryPage1 直接覆盖列表（替换原 mergeHistoryGenerations 合并），避免新内容被前置到旧列表之后、经 display reverse 后落到末尾
+ *   2026-07-17  新增按生成类型隔离的输入草稿，切换图片/视频/配音时分别恢复提示词和参考素材；图片/视频并发上限调整为10
+ *   2026-07-17  创作结果卡片同步保存后端 asset_id，确保主体资产绑定使用资产 UUID
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -2848,6 +2849,9 @@ function SendButton({ onClick, disabled = false, loading = false, disabledToolti
 }
 
 // ─── InputCard ────────────────────────────────────────────────────────────────
+// 为每个进入 files 列表的文件生成唯一标识，用于精准匹配 @ 标签
+function makeUid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+
 function formatMentionLabel(name) {
   const dotIdx = name.lastIndexOf('.');
   if (dotIdx === -1) return name.length > 9 ? name.slice(0, 9) + '…' : name;
@@ -2966,7 +2970,8 @@ function DubbingAdjust({ speed, emotion, onSpeedChange, onEmotionChange, emotion
 }
 
 function InputCard({ onGenerate, width = '800px', disabled = false, genType, onGenTypeChange,
-  model, onModelChange, modelOptions = [], creationParams, prefillVersion = 0, prefillData = null, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {} }) {
+  model, onModelChange, modelOptions = [], creationParams, prefillVersion = 0, prefillData = null,
+  draft = null, onDraftChange, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {} }) {
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [hasContent, setHasContent] = useState(false);
@@ -2994,7 +2999,9 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
   const [mentionPos, setMentionPos] = useState({ top: 0, left: 0 });
   const [mentionAnchorRange, setMentionAnchorRange] = useState(null);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [promptRevision, setPromptRevision] = useState(0);
   const editorRef = useRef(null);
+  const restoringDraftRef = useRef(false);
   const mentionFromTagRef = useRef(false);
   const savedCursorRangeRef = useRef(null); // 失焦前保存的光标位置
   const savedContentRef = useRef({ html: "", text: "", voiceId: "", voiceName: "" }); // 用于失败时回退
@@ -3032,7 +3039,11 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     // 离开首尾帧：将帧槽位的图片合并回 files 作为普通参考图
     if (refMode === 'frame' && newRefMode !== 'frame') {
       const carried = [firstFrameFile, lastFrameFile].filter(Boolean);
-      if (carried.length > 0) setFiles(carried.map(f => (f instanceof File) ? f : { ...f, isAsset: true }));
+      if (carried.length > 0) setFiles(carried.map(f => {
+        const base = (f instanceof File) ? f : { ...f, isAsset: true };
+        if (!base._uid) { if (base instanceof File) Object.defineProperty(base, '_uid', { value: makeUid(), writable: true }); else base._uid = makeUid(); }
+        return base;
+      }));
     }
     setRefMode(newRefMode);
     const filtered = newRefMode === 'frame'
@@ -3085,18 +3096,15 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       setVideoDuration(creationParams.defaults?.duration || creationParams.durations?.[0] || '');
       // 切换模型时：如果当前 refMode 在新模型中也支持，保留当前选择
       const newRefModes = creationParams.refModes?.map(m => m.value) || [];
-      const keepRefMode = newRefModes.includes(refMode)
-        ? refMode
+      const preferredRefMode = draft?.refMode || refMode;
+      const keepRefMode = newRefModes.includes(preferredRefMode)
+        ? preferredRefMode
         : (creationParams.defaults?.refMode || creationParams.refModes?.[0]?.value || '');
       setRefMode(keepRefMode);
     }
-  }, [creationParams, genType]);
+  }, [creationParams, draft?.refMode, genType]);
 
-  useEffect(() => {
-    setFiles([]);
-    setFirstFrameFile(null);
-    setLastFrameFile(null);
-  }, [genType]);
+  // genType 切换时不再清空附件，保留用户已上传的参考素材
 
   useEffect(() => {
     if (refMode !== 'frame') {
@@ -3133,10 +3141,11 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         editorRef.current.textContent = prefillData.prompt;
       }
       setHasContent((prefillData.prompt || '').trim().length > 0);
+      setPromptRevision((v) => v + 1);
     }
     if (prefillData.files !== undefined) {
       // 替换模式（onReEdit 等场景）
-      setFiles(prefillData.files);
+      setFiles(prefillData.files.map(f => f._uid ? f : { ...f, _uid: makeUid() }));
     } else if (prefillData.appendFiles !== undefined) {
       // 追加模式（onUseAsRef 场景）：追加到已有列表，按 url 去重，最多20个，同时检查模型上限
       let toastFired = false;
@@ -3164,6 +3173,91 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     if (prefillData.firstFrameFile !== undefined) setFirstFrameFile(prefillData.firstFrameFile);
     if (prefillData.lastFrameFile !== undefined) setLastFrameFile(prefillData.lastFrameFile);
   }, [prefillVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 切换生成类型或 InputCard 重新挂载时，恢复该类型自己的输入草稿。
+  // promptHTML 里的 @ 标签需要重新构造 DOM 节点，才能继续支持点击和删除。
+  function restorePromptHTML(html, filesForTags = []) {
+    if (!editorRef.current) return;
+    editorRef.current.innerHTML = html || '';
+    editorRef.current.querySelectorAll('[data-file-ref]').forEach((oldTag) => {
+      const fileRef = oldTag.dataset.fileRef;
+      const file = filesForTags.find((item) => item._uid === fileRef || item.name === fileRef)
+        || { name: fileRef || '参考素材', size: 0 };
+      const newTag = buildTagElement(file);
+      newTag.addEventListener('click', (e) => handleTagClick(e, newTag));
+      oldTag.parentNode?.replaceChild(newTag, oldTag);
+    });
+  }
+
+  useEffect(() => {
+    const draftFiles = (draft?.files ?? []).map((file) => {
+      if (file?._uid) return file;
+      if (typeof File !== 'undefined' && file instanceof File) {
+        Object.defineProperty(file, '_uid', { value: makeUid(), writable: true });
+        return file;
+      }
+      return { ...file, _uid: makeUid() };
+    });
+
+    restoringDraftRef.current = true;
+    if (editorRef.current) {
+      if (draft?.promptHTML) {
+        restorePromptHTML(draft.promptHTML, draftFiles);
+      } else if (draft?.prompt) {
+        editorRef.current.innerHTML = '';
+        editorRef.current.textContent = draft.prompt;
+      } else {
+        editorRef.current.innerHTML = '';
+      }
+    }
+    setHasContent(Boolean(draft?.prompt?.trim() || editorRef.current?.innerText?.trim()));
+    setFiles(draftFiles);
+    setFirstFrameFile(draft?.firstFrameFile ?? null);
+    setLastFrameFile(draft?.lastFrameFile ?? null);
+    setRefMode(genType === 'video' ? (draft?.refMode || '') : '');
+  }, [genType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 所有输入变更都回写页面级草稿。这样页面切换时无需依赖 InputCard 是否仍然挂载。
+  const readPromptSnapshot = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return { prompt: '', promptHTML: '' };
+    const clone = editor.cloneNode(true);
+    clone.querySelectorAll('[data-file-ref]').forEach((el) => el.remove());
+    return {
+      prompt: clone.innerText?.trim() ?? '',
+      promptHTML: editor.innerHTML ?? '',
+    };
+  }, []);
+
+  const commitDraft = useCallback(() => {
+    if (!onDraftChange) return;
+    const { prompt, promptHTML } = readPromptSnapshot();
+    onDraftChange(genType, {
+      prompt,
+      promptHTML,
+      files,
+      firstFrameFile,
+      lastFrameFile,
+      refMode: genType === 'video' ? refMode : '',
+    });
+  }, [files, firstFrameFile, genType, lastFrameFile, onDraftChange, readPromptSnapshot, refMode]);
+
+  useEffect(() => {
+    if (!onDraftChange) return;
+    if (restoringDraftRef.current) {
+      restoringDraftRef.current = false;
+      return;
+    }
+    const { prompt, promptHTML } = readPromptSnapshot();
+    onDraftChange(genType, {
+      prompt,
+      promptHTML,
+      files,
+      firstFrameFile,
+      lastFrameFile,
+      refMode: genType === 'video' ? refMode : '',
+    });
+  }, [files, firstFrameFile, lastFrameFile, refMode, promptRevision, onDraftChange, readPromptSnapshot]);
 
   const mentionMenuRef = useRef(null);
   useEffect(() => {
@@ -3309,6 +3403,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
           const objectUrl = URL.createObjectURL(f);
           Object.defineProperty(f, '_objectUrl', { value: objectUrl, writable: true });
         }
+        if (!f._uid) Object.defineProperty(f, '_uid', { value: makeUid(), writable: true });
         enriched.push(f);
       }
 
@@ -3369,23 +3464,24 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
   }, [genType, refMode, showToast]);
 
   const handleRemoveFile = (index) => {
-    setFiles((prev) => {
-      const file = prev[index];
-      if (file) {
-        // 释放预先创建的 blob URL
-        if (file._objectUrl) URL.revokeObjectURL(file._objectUrl);
-        if (file.previewUrl && file.previewUrl.startsWith('blob:')) URL.revokeObjectURL(file.previewUrl);
-        if (editorRef.current) {
-          const tags = editorRef.current.querySelectorAll('[data-file-ref]');
-          tags.forEach((tag) => {
-            if (tag.dataset.fileRef === file.name) tag.remove();
-          });
-          const content = editorRef.current.innerText ?? '';
-          setHasContent(content.trim().length > 0);
-        }
+    // 在事件处理函数体内同步读取文件信息并操作 DOM，
+    // 避免将 side effect 放进 setFiles updater（React 18 updater 可能被多次调用）
+    const file = files[index];
+    if (file) {
+      // 释放预先创建的 blob URL
+      if (file._objectUrl) URL.revokeObjectURL(file._objectUrl);
+      if (file.previewUrl && file.previewUrl.startsWith('blob:')) URL.revokeObjectURL(file.previewUrl);
+      // 同步删除编辑器内对应的 @ 标签（用 _uid 精准匹配，避免同名文件误删）
+      if (editorRef.current) {
+        const matchKey = file._uid || file.name;
+        editorRef.current.querySelectorAll('[data-file-ref]').forEach((tag) => {
+          if (tag.dataset.fileRef === matchKey) tag.remove();
+        });
+        const content = editorRef.current.innerText ?? '';
+        setHasContent(content.trim().length > 0);
       }
-      return prev.filter((_, i) => i !== index);
-    });
+    }
+    setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleAssetConfirm = (selectedAssets) => {
@@ -3434,6 +3530,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         assetId,
         isAsset: true,
         type: isVideo ? 'video/mp4' : isAudio ? 'audio/mpeg' : 'image/jpeg',
+        _uid: makeUid(),
       };
     });
     let toastFired = false;
@@ -3445,7 +3542,8 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
   const buildTagElement = (file) => {
     const tag = document.createElement('span');
     tag.contentEditable = 'false';
-    tag.dataset.fileRef = file.name;
+    // 用 _uid 做精准匹配，避免同名文件互相干扰；兜底用 name
+    tag.dataset.fileRef = file._uid || file.name;
     tag.style.cssText = 'display:inline-flex;align-items:center;background:rgba(45,195,225,0.10);color:#2DC3E1;border-radius:6px;padding:0 4px;font-size:14px;line-height:22px;height:22px;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08);user-select:none;cursor:pointer;white-space:nowrap;font-family:' + FONT + ';';
 
     const label = document.createElement('span');
@@ -3462,6 +3560,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       tag.remove();
       const content = editorRef.current?.innerText ?? '';
       setHasContent(content.trim().length > 0);
+      setPromptRevision((v) => v + 1);
     });
     tag.appendChild(closeBtn);
 
@@ -3514,6 +3613,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     sel.addRange(afterRange);
     savedCursorRangeRef.current = null;
     setHasContent(true);
+    setPromptRevision((v) => v + 1);
   };
 
   const insertMention = (file) => {
@@ -3527,6 +3627,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       setMentionTargetTag(null);
       editorRef.current.focus();
       setHasContent(true);
+      setPromptRevision((v) => v + 1);
       return;
     }
     const savedRange = mentionAnchorRange;
@@ -3554,6 +3655,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     sel.addRange(afterRange);
     editorRef.current.focus();
     setHasContent(true);
+    setPromptRevision((v) => v + 1);
   };
 
   const handleTagClick = (e, tagEl) => {
@@ -3573,6 +3675,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
   const handleInput = () => {
     const content = editorRef.current?.innerText ?? '';
     setHasContent(content.trim().length > 0);
+    setPromptRevision((v) => v + 1);
     const sel = window.getSelection();
     if (!sel || !sel.rangeCount) { setMentionOpen(false); return; }
     const range = sel.getRangeAt(0);
@@ -3595,11 +3698,14 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     setMentionOpen(false);
   };
 
-  const atConcurrentLimit = activeCount >= 5;
+  const concurrentLimit = genType === 'dubbing' ? 5 : 10;
+  const atConcurrentLimit = activeCount >= concurrentLimit;
   const canSend = !disabled && !atConcurrentLimit && (hasContent || files.length > 0 || firstFrameFile || lastFrameFile || (genType === 'dubbing' && selectedVoiceId));
 
   const handleSend = async () => {
     if (!canSend) return;
+    // 生成可能立即让输入卡从空态切到结果态，先同步草稿避免重挂载前丢失最新输入
+    commitDraft();
     // 提取纯文字 prompt，剔除 @ 标签节点（data-file-ref），避免把 @文件名 混入发给后端的 prompt
     let currentText = '';
     if (editorRef.current) {
@@ -3610,16 +3716,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     const savedFiles = files;
     const savedHTML = editorRef.current?.innerHTML ?? '';
     savedContentRef.current = { html: savedHTML, text: currentText, voiceId: selectedVoiceId || "", voiceName: selectedVoiceName || "" };
-    // 立即清空输入框和附件
-    if (editorRef.current) editorRef.current.innerHTML = '';
-    setHasContent(false);
-    setFiles([]);
-    setFirstFrameFile(null);
-    setLastFrameFile(null);
-    setDubbingSpeed(1.0);
-    setDubbingEmotion('中性');
-    setSelectedVoiceId('');
-    setSelectedVoiceName('');
+    // 发送后不主动清空输入框和附件，保留内容便于连续创作
     // 视频模式：把「全能参考」/「首尾帧」映射为当前模型支持的实际 reference_mode
     let actualRefMode = refMode;
     if (genType === 'video') {
@@ -3659,8 +3756,8 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         // 失败时回退输入框内容（含标签 HTML）和附件
         if (editorRef.current) {
           if (backup.html) {
-            editorRef.current.innerHTML = backup.html;
-            setHasContent(true);
+            restorePromptHTML(backup.html, savedFiles);
+            setHasContent(Boolean(editorRef.current.innerText?.trim()));
           } else if (backup.text) {
             editorRef.current.innerText = backup.text;
             setHasContent(true);
@@ -3676,6 +3773,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
           setSelectedVoiceId(backup.voiceId);
           setSelectedVoiceName(backup.voiceName || '');
         }
+        setPromptRevision((v) => v + 1);
       },
     });
   };
@@ -3737,6 +3835,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         tagToRemove.remove();
         const content = editorRef.current?.innerText ?? '';
         setHasContent(content.trim().length > 0);
+        setPromptRevision((v) => v + 1);
         return;
       }
     }
@@ -3919,6 +4018,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
               onFocus={() => setFocused(true)}
               onBlur={() => {
                 setFocused(false);
+                commitDraft();
                 // 失焦前保存光标位置，供点击图片卡片插入时使用
                 const sel = window.getSelection();
                 if (sel && sel.rangeCount > 0) {
@@ -3997,7 +4097,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         {/* Bottom controls */}
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0px', justifyContent: 'space-between', alignSelf: 'stretch' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: 0, flexWrap: 'wrap', flex: 1, marginRight: '8px' }}>
-            <GenTypeSelector value={genType} onChange={onGenTypeChange} disabled={disabled} />
+            <GenTypeSelector value={genType} onChange={(nextType) => { commitDraft(); onGenTypeChange(nextType); }} disabled={disabled} />
             <ModelSelector value={model} onChange={onModelChange} options={genType === 'video' ? filteredModelOptions : modelOptions} disabled={disabled} onBeforeOpen={onBeforeModelOpen} />
             {genType === 'dubbing' && (
               <DubbingAdjust
@@ -4069,7 +4169,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
 </>
             )}
           </div>
-          <SendButton onClick={handleSend} disabled={!canSend} loading={disabled} disabledTooltip={atConcurrentLimit ? '当前有5个任务进行中，为了保证成功率，请稍等一会儿再发送创作请求' : ''} />
+          <SendButton onClick={handleSend} disabled={!canSend} loading={disabled} disabledTooltip={atConcurrentLimit ? `当前有${concurrentLimit}个任务进行中，为了保证成功率，请稍等一会儿再发送创作请求` : ''} />
         </div>
       </div>
     </div>
@@ -4106,6 +4206,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
           name: m.name || '真人素材',
           type: 'image/jpeg',
           size: 0,
+          _uid: makeUid(),
         }));
         // 先移除已有的真人素材，再追加新的，避免重复
         setFiles(prev => [...prev.filter(f => !f.isLiveMaterial), ...liveMats]);
@@ -5087,7 +5188,7 @@ function AudioResultCard({ status, audioUrl, prompt, model, createdAt, onDelete,
   );
 }
 
-function CreationResultState({ generations, onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onDeleteCard, batchMode = false, selected, onToggleSelect, onSwitchToFrameMode, onVideoCardClick, favorites, toggleFavorite, showToast, onBeforeModelOpen, isGenerating = false, historyLoading = false, historyHasMore = false, onLoadMore, autoFillLimit = Infinity, activeCount = 0, capabilitiesMap = {} }) {
+function CreationResultState({ generations, onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onDeleteCard, batchMode = false, selected, onToggleSelect, onSwitchToFrameMode, onVideoCardClick, favorites, toggleFavorite, showToast, onBeforeModelOpen, isGenerating = false, historyLoading = false, historyHasMore = false, onLoadMore, autoFillLimit = Infinity, activeCount = 0, capabilitiesMap = {}, draft, onDraftChange }) {
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
   const autoFillCountRef = useRef(0);
@@ -5383,7 +5484,8 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
                   setPrefillVersion((v) => v + 1);
                 }}
                 onUseAsRef={() => {
-                  const newFile = { name: 'creation.png', url: card.imageUrl, previewUrl: card.imageUrl, assetId: card.assetId || card.id || undefined, isAsset: true, size: 0 };
+                  const promptSlug = (card.prompt || '').replace(/[\\/:*?"<>|\s]+/g, '').slice(0, 6) || 'creation';
+                  const newFile = { name: `${promptSlug}.png`, url: card.imageUrl, previewUrl: card.imageUrl, assetId: card.assetId || card.id || undefined, isAsset: true, size: 0, _uid: makeUid() };
                   setPrefillData({
                     appendFiles: [newFile],
                   });
@@ -5453,9 +5555,10 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
         }}
       >
         <div style={{ width: 'min(800px, 100%)' }}>
-          <InputCard onGenerate={onGenerate} width="100%" genType={genType} onGenTypeChange={onGenTypeChange}
+          <InputCard key={genType} onGenerate={onGenerate} width="100%" genType={genType} onGenTypeChange={onGenTypeChange}
             model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams}
-            prefillVersion={prefillVersion} prefillData={prefillData} onBeforeModelOpen={onBeforeModelOpen} showToast={showToast} activeCount={activeCount} capabilitiesMap={capabilitiesMap} />
+            prefillVersion={prefillVersion} prefillData={prefillData} draft={draft} onDraftChange={onDraftChange}
+            onBeforeModelOpen={onBeforeModelOpen} showToast={showToast} activeCount={activeCount} capabilitiesMap={capabilitiesMap} />
         </div>
       </div>
     </div>
@@ -5463,7 +5566,7 @@ function CreationResultState({ generations, onGenerate, genType, onGenTypeChange
 }
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
-function CreationEmptyState({ onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {} }) {
+function CreationEmptyState({ onGenerate, genType, onGenTypeChange, model, onModelChange, modelOptions, creationParams, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {}, draft, onDraftChange }) {
   const EmptyIcon = EMPTY_ICON_MAP[genType] ?? CreationEmptyIconImage;
   return (
     <div
@@ -5498,8 +5601,10 @@ function CreationEmptyState({ onGenerate, genType, onGenTypeChange, model, onMod
       </div>
       {/* InputCard: absolute, centered horizontally, 16px from bottom */}
       <div style={{ position: 'absolute', left: '50%', bottom: '16px', translate: '-50% 0', width: 'min(800px, 100%)' }}>
-        <InputCard onGenerate={onGenerate} width="100%" genType={genType} onGenTypeChange={onGenTypeChange}
-          model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} onBeforeModelOpen={onBeforeModelOpen} showToast={showToast} activeCount={activeCount} capabilitiesMap={capabilitiesMap} />
+        <InputCard key={genType} onGenerate={onGenerate} width="100%" genType={genType} onGenTypeChange={onGenTypeChange}
+          model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams}
+          draft={draft} onDraftChange={onDraftChange} onBeforeModelOpen={onBeforeModelOpen} showToast={showToast}
+          activeCount={activeCount} capabilitiesMap={capabilitiesMap} />
       </div>
     </div>
   );
@@ -5785,6 +5890,14 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   const [genType, setGenType] = useState('image');
   const [generating, setGenerating] = useState(false); // kept for isGenerating prop (skeleton)
   const [activeCountByTab, setActiveCountByTab] = useState({ image: 0, video: 0, dubbing: 0 });
+  const [inputDrafts, setInputDrafts] = useState({
+    image: { prompt: '', promptHTML: '', files: [], firstFrameFile: null, lastFrameFile: null, refMode: '' },
+    video: { prompt: '', promptHTML: '', files: [], firstFrameFile: null, lastFrameFile: null, refMode: '' },
+    dubbing: { prompt: '', promptHTML: '', files: [], firstFrameFile: null, lastFrameFile: null, refMode: '' },
+  });
+  const handleDraftChange = useCallback((type, draft) => {
+    setInputDrafts((prev) => ({ ...prev, [type]: draft }));
+  }, []);
   const incrementActive = (tab) => setActiveCountByTab(prev => ({ ...prev, [tab]: (prev[tab] || 0) + 1 }));
   const decrementActive = (tab) => setActiveCountByTab(prev => ({ ...prev, [tab]: Math.max(0, (prev[tab] || 0) - 1) }));
   const {
@@ -5886,6 +5999,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     return {
       id,
       backendId: item.id,
+      asset_id: item.asset_id || item.assetId || null,
       ratio: item.ratio || item.aspect_ratio || '16:9',
       resolution: item.resolution || item.size || '',
       duration: item.duration || undefined,
@@ -5901,6 +6015,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       _needsDetail: needsDetail || undefined,
       cards: [{
         id: item.id,
+        asset_id: item.asset_id || item.assetId || null,
         type,
         status: 'done',
         imageUrl: type === 'image' ? url : null,
@@ -5923,6 +6038,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
 
     const base = {
       id: item.id,
+      asset_id: item.asset_id || item.assetId || null,
       prompt: item.prompt || '',
       model: item.model || '',
       ratio: item.ratio || item.aspect_ratio || '16:9',
@@ -6241,11 +6357,12 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               name: (url || '').split('/').pop() || 'ref.png',
               size: 0,
             })),
-        refVideos: taskRefVideos || [],
-        refAudios: taskRefAudios || [],
+            refVideos: taskRefVideos || [],
+            refAudios: taskRefAudios || [],
             createdAt,
             cards: mediaUrls.map((url) => ({
               id: null,
+              asset_id: null,
               type: isVideo ? 'video' : isDubbing ? 'audio' : 'image',
               status: 'done',
               imageUrl: isDubbing || isVideo ? null : url,
@@ -6253,7 +6370,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               audioUrl: isDubbing ? url : null,
             })),
           });
-          if (cardIds?.length) storeUpdateCardIds(tab, genId, cardIds);
+          if (cardIds?.length) storeUpdateCardIds(tab, genId, cardIds, result.assetIds);
           // 新创作完成 → 清除历史缓存，下次刷新时能拿到新数据
           invalidate(`creation_history:${tab}:`, 'local');
         })
@@ -6676,17 +6793,18 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         createdAt: genMeta.createdAt,
         cards: mediaUrls.map((url) => ({
           id: null,  // 后端 ID，待轮询返回后回写
+          asset_id: null, // 资产 UUID，供资产选择器绑定主体
           type: isVideoGen ? 'video' : isDubbingGen ? 'audio' : 'image',
           status: 'done',
           imageUrl: isDubbingGen ? null : (isVideoGen ? null : url),
           videoUrl: isVideoGen ? url : null,
           audioUrl: isDubbingGen ? url : null,
-       })),
-     });
+        })),
+      });
 
       // 回写后端卡片 ID，使收藏功能可用
       if (!isDubbingGen && result.cardIds && result.cardIds.length > 0) {
-        storeUpdateCardIds(currentTab, genId, result.cardIds);
+        storeUpdateCardIds(currentTab, genId, result.cardIds, result.assetIds);
       }
 
      // Update backend shot with result URLs
@@ -6891,6 +7009,8 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
               onModelChange={setModel}
               modelOptions={modelOptions}
               creationParams={creationParams}
+              draft={inputDrafts[genType]}
+              onDraftChange={handleDraftChange}
               capabilitiesMap={capabilitiesMap}
               onDeleteCard={handleDeleteCard}
               batchMode={batchMode}
@@ -6949,7 +7069,8 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
             />
           ) : (
             <CreationEmptyState onGenerate={handleGenerate} genType={genType} onGenTypeChange={handleGenTypeChange} showToast={showToast} activeCount={activeCountByTab[genType] ?? 0}
-              model={model} onModelChange={setModel} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap}
+              model={model} onModelChange={setModel} modelOptions={modelOptions} creationParams={creationParams}
+              draft={inputDrafts[genType]} onDraftChange={handleDraftChange} capabilitiesMap={capabilitiesMap}
               onBeforeModelOpen={() => {
                 if (!apiConfigured) { onShowNoModelNotice?.(); return false; }
               }}

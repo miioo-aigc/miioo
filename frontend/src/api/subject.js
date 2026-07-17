@@ -1,6 +1,7 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 import { authFetch, authFetchForm, authFetchStream } from './request.js';
+import { apiDeleteSubjectAssets } from './assets.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 
@@ -12,6 +13,32 @@ function invalidateSubjects(projectId) {
   invalidate(K.subjectsPrefix(projectId));
   invalidate(K.projectOverview(projectId));
   invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
+}
+
+async function readErrorResponse(res) {
+  let detail = '';
+  try {
+    const responseText = (await res.text()).trim();
+    if (responseText) {
+      try {
+        const body = JSON.parse(responseText);
+        detail = body?.detail || body?.message || body?.error || '';
+        if (typeof detail === 'object') detail = JSON.stringify(detail);
+      } catch {
+        detail = responseText;
+      }
+    }
+  } catch {}
+  return detail;
+}
+
+function assertUuid(value, label) {
+  const id = value == null ? '' : String(value).trim();
+  // API 文档只约定 UUID 字符串，不能限制版本，以兼容 UUID v7 等后端生成方式。
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error(`${label}不是有效的 UUID`);
+  }
+  return id;
 }
 
 export async function apiGetSubjects(projectId, { type, episode_id, limit } = {}) {
@@ -90,8 +117,20 @@ export async function apiCreateSubject(projectId, data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    const detail = await readErrorResponse(res);
+    const err = new Error(detail || `创建主体失败（HTTP ${res.status}）`);
+    err.status = res.status;
+    err.responseText = detail;
+    throw err;
+  }
+  const responseData = await res.json();
+  const subject = responseData?.data ?? responseData?.subject ?? responseData;
+  if (!subject?.id) {
+    throw new Error('创建主体失败：服务端未返回有效的主体 ID');
+  }
   invalidateSubjects(projectId);
-  return res.json();
+  return subject;
 }
 
 export async function apiUpdateSubject(projectId, subjectId, data) {
@@ -127,6 +166,8 @@ export async function apiUpdateSubject(projectId, subjectId, data) {
 }
 
 export async function apiDeleteSubject(projectId, subjectId) {
+  // 主体删除后无法再通过主体关系定位资产，因此先清理关联关系；创作资产只解除 subject_id。
+  await apiDeleteSubjectAssets(projectId, subjectId);
   await authFetch(`${BASE}/api/projects/${projectId}/subjects/${subjectId}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
@@ -243,21 +284,44 @@ export async function apiUploadSubjectReferenceImage(projectId, subjectId, file)
   return res.json();
 }
 
-export async function apiBindSubjectReferenceImages(projectId, subjectId, { asset_ids, primary_asset_id }) {
+export async function apiBindSubjectReferenceImages(projectId, subjectId, { asset_ids, primary_asset_id } = {}) {
+  const normalizedAssetIds = Array.isArray(asset_ids)
+    ? asset_ids.map((assetId) => assertUuid(assetId, '资产 ID'))
+    : [];
+  if (normalizedAssetIds.length === 0) {
+    throw new Error('绑定主体参考图失败：至少需要一个有效的资产 ID');
+  }
+
+  const normalizedPrimaryAssetId = primary_asset_id == null || primary_asset_id === ''
+    ? undefined
+    : assertUuid(primary_asset_id, '主参考图资产 ID');
   const res = await authFetch(
     `${BASE}/api/projects/${projectId}/subjects/${subjectId}/reference-images/bind`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ asset_ids, primary_asset_id }),
+      body: JSON.stringify({
+        asset_ids: normalizedAssetIds,
+        ...(normalizedPrimaryAssetId ? { primary_asset_id: normalizedPrimaryAssetId } : {}),
+      }),
     }
   );
+  if (!res.ok) {
+    // 代理可能把纯文本错误标成 application/json，统一读文本后再尝试解析。
+    const detail = await readErrorResponse(res);
+    const err = new Error(detail || `绑定主体参考图失败（HTTP ${res.status}）`);
+    err.status = res.status;
+    err.responseText = detail;
+    throw err;
+  }
   invalidateSubjects(projectId);
   // 重新拉取主体列表以更新缓存，触发订阅者同步最新主图
   apiGetSubjects(projectId, { type: "character" }).catch(() => {});
   apiGetSubjects(projectId, { type: "scene" }).catch(() => {});
   apiGetSubjects(projectId, { type: "prop" }).catch(() => {});
-  return res.json();
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) return [];
+  return res.json().catch(() => []);
 }
 
 export async function apiDownloadSubjectImage(projectId, subjectId, imageId) {

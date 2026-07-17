@@ -30,36 +30,38 @@
  *   <EmptyIconImage> / <EmptyIconVideo> / <EmptyIconAudio>  L2791–L2844
  *   <EmptyAssetState> / <EmptyProjectAssets> / <EmptyCreativeAssets>  L2846–L2878
  *
- * ─── 核心业务组件 ────────────────── L2880–L3993
- *   <ProjectAssetsPanel>       项目资产面板             L2880–L3681
- *     ├─ [状态] activeCategory / assets / selected / page / search keyword  L2880+
- *     ├─ [Store] creationStore                          L2880+
- *     ├─ [函数] 数据加载 / 删除 / 下载 / 分页 / 搜索     L2880+
- *     └─ [副作用] 项目切换 / tab 切换 / 无限滚动         L2880+
- *   <CreativeAssetsPanel>      创作资产面板             L3683–L3993
- *     ├─ [状态] activeType / batchMode / selected / toast / days  L3683+
- *     ├─ [状态] creationGenerationsByTab / creationHistoryMeta（本地，不与创作页共享 store）L3786+
- *     ├─ [Store] creationStore（仅 favorites / toggleFavorite / syncFavorites）    L3786+
- *     ├─ [函数] normalizeHistoryItem / loadHistoryPage / 收藏/删除/批量操作  L3683+
- *     └─ [副作用] 登录后初始化 / tab 切换加载历史          L3683+
+ * ─── 核心业务组件 ────────────────── L2945–L4181
+ *   <ProjectAssetsPanel>       项目资产面板             L2945–L3806
+ *     ├─ [状态] activeCategory / assets / selected / page / search keyword  L2946+
+ *     ├─ [Store] creationStore                          L2946+
+ *     ├─ [函数] loadFirstPage / loadMorePage             L3006 / L3027
+ *     ├─ [函数] deleteAsset / deleteSelected             L3091 / L3170
+ *     └─ [副作用] 项目切换 / tab 切换 / 无限滚动         L3049 / L3056 / L3062
+ *   <CreativeAssetsPanel>      创作资产面板             L3808–L4181
+ *     ├─ [状态] activeType / batchMode / selected / toast / days  L3808+
+ *     ├─ [状态] creationGenerationsByTab / creationHistoryMeta（本地，不与创作页共享 store）L3829+
+ *     ├─ [Store] creationStore（仅 favorites / toggleFavorite / syncFavorites）    L3834+
+ *     ├─ [函数] normalizeHistoryItem / loadHistoryPage / 收藏/删除/批量操作  L3808+
+ *     └─ [副作用] 登录后初始化 / tab 切换加载历史          L3808+
  *
- * ─── 主页面入口 ──────────────────── L3995–L4026
- *   export default function AssetsPage()                L4003
- *     └─ [状态] activeModule (project / creative)         L4003
+ * ─── 主页面入口 ──────────────────── L4183–L4209
+ *   export default function AssetsPage()                L4183
+ *     └─ [状态] activeModule (project / creative)         L4183
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-07-01  初始结构索引建立
- *   2026-07-01  [修复] 删除主体资产后不再调用 apiDeleteSubject，保留主体卡片占位
  *   2026-07-01  项目资产卡片 grid 按屏幕比例缩放，最大 130%（L3336–L3338）
  *   2026-07-09  [解耦] 创作资产历史改本地 state，资产库不再回灌共享创作历史 store
  *               （解决「清空创作历史」后打开资产库又出现已隐藏记录的问题）
+ *   2026-07-16  [修复] 删除主体全部资产后移除卡片及分页原始数据，不再保留可点击占位
+ *   2026-07-17  [修复] 删除主体资产时区分创作资产：仅解除 subject_id 引用，不删除创作资产本体
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
 import placeholderFlowers from '../assets/placeholder-flowers.webp';
-import { apiGetAssetDetail, apiGetShotDetail, apiGetShotVideoDetail, apiGetProjectAssets, apiGetProjectAssetsPage, groupByCategory, calcProjectAssetsLimit, apiDeleteAsset, apiBatchDeleteAssets, apiUpdateAsset, apiDownloadAsset } from '../api/assets';
+import { apiGetAssetDetail, apiGetShotDetail, apiGetShotVideoDetail, apiGetProjectAssets, apiGetProjectAssetsPage, groupByCategory, calcProjectAssetsLimit, apiRemoveAssets, apiUpdateAsset, apiDownloadAsset } from '../api/assets';
 import { apiGetSubjects } from '../api/subject';
 import { apiDeleteCreationImage, apiDeleteCreationVideo, apiBatchDeleteImages, apiBatchDeleteVideos, apiToggleImageFavorite, apiToggleVideoFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
@@ -3093,7 +3095,9 @@ function ProjectAssetsPanel() {
     const subjectType = SUBJECT_TYPE_MAP[activeCategory];
     try {
       if (singleImageId) {
-        await apiDeleteAsset(singleImageId, { projectId: activeProject, subjectType });
+        const card = assetsMap[activeCategory]?.find((a) => a.id === id);
+        const image = card?.images?.find((item) => item.id === singleImageId) ?? { id: singleImageId };
+        await apiRemoveAssets([image], { projectId: activeProject, subjectType });
         setAssetsMap((prev) => ({
           ...prev,
           [activeCategory]: prev[activeCategory].map((asset) => {
@@ -3123,16 +3127,28 @@ function ProjectAssetsPanel() {
         }
       } else {
         const asset = assetsMap[activeCategory]?.find((a) => a.id === id);
-        if (asset && asset.images) {
-          await apiBatchDeleteAssets(asset.images.map((img) => img.id), { projectId: activeProject, subjectType });
-        } else {
-          await apiDeleteAsset(id, { projectId: activeProject, subjectType });
-        }
-        // 删除全部图片后，保留主体卡片占位
+        const imagesToRemove = asset?.images?.length > 0 ? asset.images : [{ id }];
+        await apiRemoveAssets(imagesToRemove, { projectId: activeProject, subjectType });
+        const deletedImageIds = imagesToRemove.map((img) => img.id);
+        // 删除主体全部图片后移除卡片，避免空卡片仍可点击打开详情。
         setAssetsMap((prev) => ({
           ...prev,
-          [activeCategory]: prev[activeCategory].map((a) => a.id === id ? { ...a, images: [], imageCount: 0, url: null } : a),
+          [activeCategory]: prev[activeCategory].filter((a) => a.id !== id),
         }));
+        // 同步清理分页原始数据，避免触底加载时把已删除主体重新聚合出来。
+        setPageMeta((prev) => {
+          const key = pageKey(activeProject, activeCategory);
+          const current = prev[key];
+          if (!current) return prev;
+          const deletedIds = new Set(deletedImageIds);
+          return {
+            ...prev,
+            [key]: {
+              ...current,
+              rawList: (current.rawList || []).filter((item) => !deletedIds.has(item.id)),
+            },
+          };
+        });
         // 清空主体图片后同步更新主体列表
         if (subjectType && activeProject) {
           apiGetSubjects(activeProject, { type: subjectType }).catch(() => {});
@@ -3151,24 +3167,41 @@ function ProjectAssetsPanel() {
     try {
       // 对于主体卡片（chars/scenes/props），需要删除该主体下的所有图片
       if (SUBJECT_CARD_CATEGORIES.has(activeCategory)) {
-        const allImageIds = [];
+        const allImages = [];
         ids.forEach((cardId) => {
           const card = assetsMap[activeCategory]?.find((a) => a.id === cardId);
-          if (card && card.images) {
-            allImageIds.push(...card.images.map((img) => img.id));
+          if (card?.images?.length > 0) {
+            allImages.push(...card.images);
           } else {
-            allImageIds.push(cardId);
+            allImages.push({ id: cardId });
           }
         });
-        await apiBatchDeleteAssets(allImageIds, { projectId: activeProject, subjectType });
+        await apiRemoveAssets(allImages, { projectId: activeProject, subjectType });
       } else {
-        await apiBatchDeleteAssets(ids, { projectId: activeProject, subjectType });
+        await apiRemoveAssets(ids, { projectId: activeProject, subjectType });
       }
 
+      const removedImageIds = ids.flatMap((cardId) => {
+        const card = assetsMap[activeCategory]?.find((a) => a.id === cardId);
+        return card?.images?.map((image) => image.id) ?? [cardId];
+      });
       setAssetsMap((prev) => ({
         ...prev,
-        [activeCategory]: prev[activeCategory].map((a) => selected.has(a.id) ? { ...a, images: [], imageCount: 0, url: null } : a),
+        [activeCategory]: prev[activeCategory].filter((a) => !selected.has(a.id)),
       }));
+      setPageMeta((prev) => {
+        const key = pageKey(activeProject, activeCategory);
+        const current = prev[key];
+        if (!current) return prev;
+        const deletedIds = new Set(removedImageIds);
+        return {
+          ...prev,
+          [key]: {
+            ...current,
+            rawList: (current.rawList || []).filter((item) => !deletedIds.has(item.id)),
+          },
+        };
+      });
       setSelected(new Set());
       notifyProjectAssetsDeleted(activeProject, subjectType);
     } catch (err) {

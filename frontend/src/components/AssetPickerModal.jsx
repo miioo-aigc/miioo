@@ -179,9 +179,15 @@ export default function AssetPickerModal({
     const posterUrl = type === 'video'
       ? (normalizeImageUrl(item.poster_url || item.posterUrl || item.thumbnail_url || item.thumbnailUrl || item.preview_url || item.previewUrl || item.image_url || item.imageUrl || item.thumbnail || '') || null)
       : null;
+    // 创作资产卡片可能使用组合 ID 展示，但绑定主体时必须使用真实资产 ID。
+    const backendId = item.backendId ?? item.id ?? null;
+    const assetId = item.asset_id ?? item.assetId ?? null;
 
     return {
       id: item.id,
+      backendId,
+      asset_id: assetId,
+      source: 'creative',
       name: item.name || item.prompt?.slice(0, 20) || '未命名',
       // AssetCard 渲染视频时优先用 posterUrl（封面图），无封面时 url 传视频地址让 <video> 加载
       url,
@@ -202,19 +208,22 @@ export default function AssetPickerModal({
 
     // 从 store 转换数据格式（store 由 CreationPage 初始化，可能为空）
     return {
-      images: generationsToFlatList(generationsByTab.image || [], favorites).map(item => ({
-        ...item,
-        bgColor: item.bgColor || '#1F2324',
-      })),
-      videos: generationsToFlatList(generationsByTab.video || [], favorites).map(item => ({
-        ...item,
-        // url = 视频地址（给 <video> 标签），posterUrl = 封面图片（给 <img> 标签）
-        url: item.videoUrl || item.video_url || item.posterUrl || item.url || null,
-        // 封面图可能来自 store 卡片本身的缩略图字段，也可能来自 generationsToFlatList 提取的 imageUrl/poster
-        posterUrl: item.thumbnail_url || item.thumbnailUrl || item.thumbnail || item.image_url || item.imageUrl || item.url || item.poster || null,
-        asset_type: 'video',
-        bgColor: item.bgColor || '#1F2324',
-      })),
+      // 过滤掉 url 为空的条目：这类条目是仍在生成中的占位符，真实资产尚未落地
+      images: generationsToFlatList(generationsByTab.image || [], favorites)
+        .map(item => ({ ...item, bgColor: item.bgColor || '#1F2324' }))
+        .filter(item => !!item.url),
+      videos: generationsToFlatList(generationsByTab.video || [], favorites)
+        .map(item => ({
+          ...item,
+          // url = 视频地址（给 <video> 标签），posterUrl = 封面图片（给 <img> 标签）
+          url: item.videoUrl || item.video_url || item.posterUrl || item.url || null,
+          // 封面图可能来自 store 卡片本身的缩略图字段，也可能来自 generationsToFlatList 提取的 imageUrl/poster
+          posterUrl: item.thumbnail_url || item.thumbnailUrl || item.thumbnail || item.image_url || item.imageUrl || item.url || item.poster || null,
+          asset_type: 'video',
+          bgColor: item.bgColor || '#1F2324',
+        }))
+        // 视频需要有 url 或 posterUrl 中至少一个才算落地
+        .filter(item => !!(item.url || item.posterUrl)),
       dubbing: generationsToFlatList(generationsByTab.dubbing || [], favorites).map(item => ({
         ...item,
         bgColor: item.bgColor || '#1F2324',
@@ -233,6 +242,8 @@ export default function AssetPickerModal({
   const [finalOnly, setFinalOnly] = useState(true);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(new Set());
+  // 用同步引用锁住确认事件，避免连续点击在 React 重渲染前重复回调上游。
+  const confirmingRef = useRef(false);
   const preSelectedSet = useMemo(() => new Set(preSelectedIds ?? []), [preSelectedIds]);
   // 主体ID集合（最可靠的跨来源匹配键：主体参考图与资产库为不同记录ID，但同属一个 subject_id）
   const preSelectedSubjectSet = useMemo(
@@ -268,8 +279,10 @@ export default function AssetPickerModal({
   // 每次弹窗打开时用 preSelectedIds 初始化选中状态，关闭时清空
   useEffect(() => {
     if (open) {
+      confirmingRef.current = false;
       setSelected(new Set(preSelectedIds ?? []));
     } else {
+      confirmingRef.current = false;
       setSelected(new Set());
       // 关闭时重置创作资产本地缓存，下次打开重新加载
       setLocalCreativeAssets(null);
@@ -323,7 +336,9 @@ export default function AssetPickerModal({
 
   function normalizePickerAsset(a) {
     return {
-      id: a.id,
+      // 兼容资产列表的两种 ID 字段，绑定接口必须拿资产 UUID 而不是 URL。
+      id: a.id ?? a.asset_id,
+      source: 'project',
       name: a.name || '未命名',
       url: normalizeImageUrl(a.thumbnail_url || a.file_url) || null,
       fullUrl: normalizeImageUrl(a.file_url) || null,
@@ -426,7 +441,10 @@ export default function AssetPickerModal({
           resp = await apiListCreationAudios({ page: 1, page_size: 100 });
         }
         const list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
-        const normalized = list.map(item => normalizeCreativeItem(item, type === 'audio' ? 'audio' : type));
+        // 过滤掉仍在生成中（无 URL）的条目，避免占位符出现在选择器中
+        const normalized = list
+          .map(item => normalizeCreativeItem(item, type === 'audio' ? 'audio' : type))
+          .filter(item => type === 'audio' || !!(item.url || item.posterUrl));
         setLocalCreativeAssets(prev => ({
           images: prev?.images ?? [],
           videos: prev?.videos ?? [],
@@ -477,6 +495,8 @@ export default function AssetPickerModal({
   };
 
   const handleConfirm = () => {
+    if (confirmingRef.current) return;
+    confirmingRef.current = true;
     // 构建全量 id→asset map，供按 ID 查完整对象
     const allAssets = [
       ...Object.values(projectAssetsMap).flatMap(p => Object.values(p).flat()),
@@ -487,6 +507,18 @@ export default function AssetPickerModal({
     const selectedAssets = Array.from(selected)
       .filter(id => !preSelectedSet.has(id))
       .map(id => assetMap[id])
+      .map((asset) => {
+        if (!asset) return null;
+        // 创作记录 ID（包括 generationId-0）只能用于创作详情/收藏，不能用于主体资产绑定。
+        const bindingId = asset.source === 'creative' || asset.genId
+          ? (asset.asset_id ?? asset.assetId)
+          : (asset.id ?? asset.asset_id ?? asset.assetId);
+        if (!bindingId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(bindingId))) {
+          return null;
+        }
+        // 保留 pickerId 供调用方识别原卡片，同时把 id 统一为后端可绑定的资产 ID。
+        return { ...asset, id: bindingId, assetId: bindingId, asset_id: bindingId, pickerId: asset.id };
+      })
       .filter(Boolean);
     onConfirm?.(selectedAssets);
     onClose?.();

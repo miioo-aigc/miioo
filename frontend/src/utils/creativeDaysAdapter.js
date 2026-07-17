@@ -54,10 +54,14 @@ export function generationsToDays(generations) {
     // 将每个 generation 的 cards 展开，使用 composite ID，同时带上 generation 级别字段
     gen.cards.forEach((card, cardIdx) => {
       const compositeId = `${gen.id}-${cardIdx}`;
+      const backendId = card.backendId ?? card.id ?? null;
+      const assetId = card.asset_id ?? card.assetId ?? null;
       groupedByDate[dateLabel].push({
         ...card,
         id: compositeId,
-        backendId: card.id ?? null,   // preserve real backend ID for API calls
+        backendId,
+        asset_id: assetId,
+        source: 'creative',
         genId: gen.id,
         cardIdx,
         name: card.name || `生成_${gen.id.slice(0, 8)}`,
@@ -114,10 +118,14 @@ export function generationsToFlatList(generations, favorites) {
   generations.forEach((gen) => {
     gen.cards.forEach((card, cardIdx) => {
       const compositeId = `${gen.id}-${cardIdx}`;
+      const backendId = card.backendId ?? card.id ?? null;
+      const assetId = card.asset_id ?? card.assetId ?? null;
       list.push({
         ...card,
         id: compositeId,
-        backendId: card.id ?? null,   // preserve real backend ID for API calls
+        backendId,
+        asset_id: assetId,
+        source: 'creative',
         genId: gen.id,
         cardIdx,
         name: card.name || `生成_${gen.id.slice(0, 8)}`,

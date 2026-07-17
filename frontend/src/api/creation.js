@@ -6,6 +6,7 @@ const BASE = import.meta.env.VITE_API_BASE_URL;
  *   [函数] apiGenerateCreation()                      入口：按 genType 分流 图片/视频/配音
  *   [上传] 参考文件分类循环                            L722  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
  *                                                        （图片 asset_id 兜底：assetId || backendId || asset_id）
+ *   [返回] 图片结果提取 assetIds                         L43 / L940 供创作资产选择器绑定主体
  *   [上传] 首/尾帧上传                                 L770  仅首尾帧模式使用
  *   [分支] kling v3 omni 生成模式推断                  L937  hasRefMedia 初值 'full' → 被本分支覆盖
  *                                                        generation_mode 取自 supported_generation_modes，
@@ -17,6 +18,7 @@ const BASE = import.meta.env.VITE_API_BASE_URL;
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-13  video-kling-v3-omni「全能参考」修复：不再发 reference_mode='full'（会触发后端 400），
  *               改按实际上传素材推断 supported_generation_modes；参考图走 attachments + reference_image_asset_ids（asset_id 兜底到 asset.id）。
+ *   2026-07-17  图片任务轮询结果同步返回 assetIds，避免主体绑定误用创作记录 ID
  */
 
 // ── 通用任务轮询（供刷新后恢复使用，支持图片/视频/音频）───────────────────
@@ -43,6 +45,7 @@ export async function apiPollCreationTask(type, taskId, timeoutMs = 1800000) {
         return {
           images: imgs.map((img) => img.original_url || img.originalUrl || img.thumbnail_url || img.thumbnailUrl),
           cardIds: imgs.map((img) => img.id),
+          assetIds: imgs.map((img) => img.asset_id || img.assetId || null),
           referenceImages: pollData.reference_images || pollData.referenceImages || [],
         };
       } else if (type === 'audio') {
@@ -939,6 +942,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
             return {
               images: imgs.map((img) => img.original_url || img.originalUrl || img.thumbnail_url || img.thumbnailUrl),
               cardIds: imgs.map((img) => img.id),
+              assetIds: imgs.map((img) => img.asset_id || img.assetId || null),
               referenceImages: pollData.reference_images || pollData.referenceImages || [],
             };
           },
@@ -948,11 +952,12 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
 
     const allImages = pollResults.flatMap((r) => r.images);
     const allCardIds = pollResults.flatMap((r) => r.cardIds);
+    const allAssetIds = pollResults.flatMap((r) => r.assetIds || []);
     // 优先用后端返回的参考图列表，若为空则以本次实际上传/使用的 refUrls 作为兜底
     const referenceImages = (pollResults[0]?.referenceImages ?? []).length > 0
       ? (pollResults[0]?.referenceImages ?? [])
       : refUrls;
-    return { taskId: taskIds[0], images: allImages, cardIds: allCardIds, referenceImages };
+    return { taskId: taskIds[0], images: allImages, cardIds: allCardIds, assetIds: allAssetIds, referenceImages };
   }
 
   // ── 视频生成 ────────────────────────────────────────────────────────────

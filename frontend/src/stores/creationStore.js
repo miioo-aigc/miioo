@@ -83,7 +83,7 @@ export const useCreationStore = create(
           },
         })),
 
-      updateCardIds: (tab, genId, cardIds) =>
+      updateCardIds: (tab, genId, cardIds, assetIds = []) =>
         set((state) => ({
           generationsByTab: {
             ...state.generationsByTab,
@@ -92,7 +92,13 @@ export const useCreationStore = create(
               return {
                 ...gen,
                 cards: gen.cards.map((c, i) =>
-                  cardIds[i] ? { ...c, id: cardIds[i] } : c
+                  cardIds[i]
+                    ? {
+                        ...c,
+                        id: cardIds[i],
+                        ...(assetIds[i] ? { asset_id: assetIds[i] } : {}),
+                      }
+                    : c
                 ),
               };
             }),

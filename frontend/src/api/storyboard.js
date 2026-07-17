@@ -1,13 +1,29 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 import { authFetch, authFetchForm } from './request.js';
-import { cached, invalidate, setCache, peekCache } from '../utils/cache.js';
+import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 
 // 分镜写操作后统一失效该项目的分镜缓存 + 概览（概览含分镜进度）
 function invalidateStoryboards(projectId) {
   invalidate(K.storyboardsPrefix(projectId));
   invalidate(K.projectOverview(projectId));
+}
+
+function storyboardEvidenceItem(item) {
+  if (!item || typeof item !== 'object') return item;
+  return {
+    id: item.id,
+    episode_id: item.episode_id,
+    shot_number: item.shot_number,
+    voiceover: typeof item.voiceover === 'string' ? item.voiceover.slice(0, 160) : item.voiceover,
+  };
+}
+
+function logStoryboardEvidence(label, detail) {
+  if (import.meta.env.DEV) {
+    console.log(`[Storyboard证据] ${label}`, detail);
+  }
 }
 
 function normalizeStoryboardImageSize(value) {
@@ -33,24 +49,42 @@ function normalizeStoryboardImageSize(value) {
   return aliasMap[trimmed] || trimmed;
 }
 
-export async function apiGetStoryboards(projectId, { episode_id } = {}) {
+export async function apiGetStoryboards(projectId, { episode_id, fresh = false } = {}) {
+  const fetchFn = async () => {
+    const params = new URLSearchParams();
+    if (episode_id) params.append('episode_id', episode_id);
+    // 按接口上限一次取完整当前集，并显式带回结构化参数，避免刷新依赖旧缓存。
+    params.append('limit', '200');
+    params.append('include_gen_params', 'true');
+    const query = params.toString();
+    const url = query
+      ? `${BASE}/api/projects/${projectId}/storyboards?${query}`
+      : `${BASE}/api/projects/${projectId}/storyboards`;
+    const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
+    logStoryboardEvidence('分镜列表 GET 返回', {
+      method: 'GET',
+      url,
+      episode_id,
+      count: Array.isArray(list) ? list.length : 0,
+      records: Array.isArray(list) ? list.map(storyboardEvidenceItem) : list,
+    });
+    // API 文档确认返回直接数组，兼容未来可能改为分页对象的情况
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.list)) return data.list;
+    if (Array.isArray(data?.items)) return data.items;
+    return [];
+  };
+
+  // fresh 用于写入后的确认读取，必须直接请求接口，不能与旧的缓存请求共用 inflight。
+  if (fresh) {
+    return fetchFn();
+  }
+
   const raw = await cached(
     K.storyboards(projectId, episode_id),
-    async () => {
-      const params = new URLSearchParams();
-      if (episode_id) params.append('episode_id', episode_id);
-      const query = params.toString();
-      const url = query
-        ? `${BASE}/api/projects/${projectId}/storyboards?${query}`
-        : `${BASE}/api/projects/${projectId}/storyboards`;
-      const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
-      const data = await res.json();
-      // API 文档确认返回直接数组，兼容未来可能改为分页对象的情况
-      if (Array.isArray(data)) return data;
-      if (Array.isArray(data?.list)) return data.list;
-      if (Array.isArray(data?.items)) return data.items;
-      return [];
-    },
+    fetchFn,
     { medium: MEDIUM.CONTENT, ttl: TTL.CONTENT },
   );
   // 兼容旧缓存可能存的非数组格式
@@ -61,39 +95,78 @@ export async function apiGetStoryboards(projectId, { episode_id } = {}) {
 }
 
 export async function apiCreateStoryboard(projectId, data) {
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards`, {
+  const url = `${BASE}/api/projects/${projectId}/storyboards`;
+  logStoryboardEvidence('分镜创建 POST 请求', {
+    method: 'POST',
+    url,
+    body: data,
+  });
+  const res = await authFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
   invalidateStoryboards(projectId);
-  return res.json();
+  const created = await res.json();
+  logStoryboardEvidence('分镜创建 POST 返回', {
+    method: 'POST',
+    url,
+    returned: storyboardEvidenceItem(created),
+  });
+  return created;
 }
 
 export async function apiUpdateStoryboard(projectId, storyboardId, data) {
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}`, {
+  // 更新接口只接收 StoryboardUpdate，剔除创建字段和 undefined，避免后端兼容层误判请求。
+  const rawUpdateData = Object.fromEntries(
+    Object.entries(data || {}).filter(([key]) => key !== 'shot_number' && key !== 'episode_id'),
+  );
+  const updateData = Object.fromEntries(
+    Object.entries(rawUpdateData).filter(([, value]) => value !== undefined),
+  );
+  const url = `${BASE}/api/projects/${projectId}/storyboards/${storyboardId}`;
+  logStoryboardEvidence('分镜 PATCH 请求', {
+    method: 'PATCH',
+    url,
+    storyboardId,
+    body: updateData,
+  });
+  const res = await authFetch(url, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+    body: JSON.stringify(updateData),
   });
   const updated = await res.json();
-  // 把最新数据回填进所有相关缓存 key，避免刷新时读到旧缓存导致字段丢失
-  if (updated?.id) {
-    const prefix = K.storyboardsPrefix(projectId);
-    for (const m of ['memory', 'local', 'session']) {
-      // 枚举该项目下所有已缓存的 storyboards key
-      for (const episodeId of [undefined, updated.episode_id]) {
-        const key = K.storyboards(projectId, episodeId);
-        const cached = peekCache(key, m);
-        if (Array.isArray(cached)) {
-          const next = cached.map(s => s.id === updated.id ? updated : s);
-          setCache(key, next, { medium: m });
-        }
-      }
-    }
-  }
+  logStoryboardEvidence('分镜 PATCH 返回', {
+    method: 'PATCH',
+    url,
+    requestedId: storyboardId,
+    returned: storyboardEvidenceItem(updated),
+  });
+  // PATCH 返回的是单条记录，不能直接回填全量/分集列表缓存；统一失效后由 GET 重建列表。
+  // 这样可避免响应缺少 episode_id 时被写入错误集，也避免旧列表和新响应混用。
+  invalidate(K.storyboardsPrefix(projectId));
   invalidate(K.projectOverview(projectId));
   return updated;
+}
+
+export async function apiUpdateStoryboardNarration(projectId, storyboardId, segments) {
+  const narrationSegments = Array.isArray(segments)
+    ? segments
+        .filter((segment) => segment && (segment.role?.trim() || segment.lines?.trim()))
+        .map((segment) => ({
+          role: segment.role?.trim() || '',
+          lines: segment.lines?.trim() || '',
+        }))
+    : [];
+  const voiceover = narrationSegments
+    .map((segment) => segment.role ? `${segment.role}：${segment.lines}` : segment.lines)
+    .join('\n');
+
+  // 台词列只更新 StoryboardUpdate 中的 voiceover 字段。
+  // 不把 gen_params 带入台词保存，避免后端旧兼容逻辑把结构化参数当成创建输入。
+  // 台词保存严格禁止调用创建接口；即使旧服务端返回异常 ID，也只把异常交给页面处理。
+  return apiUpdateStoryboard(projectId, storyboardId, { voiceover });
 }
 
 export async function apiDeleteStoryboard(projectId, storyboardId) {

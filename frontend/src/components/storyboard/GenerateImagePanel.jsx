@@ -51,7 +51,6 @@ export default function GenerateImagePanel({
   buildStoryboardPrompt,
   ModalCloseBtn,
   PanelPromptInput,
-  RefSlotBtn,
 }) {
   const [modelList, setModelList] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
@@ -299,7 +298,6 @@ export default function GenerateImagePanel({
               onFilesSelected={handleRefFileChange}
               onRemove={removeRefImage}
               onOpenAssetPicker={() => setRefImgPickerOpen(true)}
-              RefSlotBtn={RefSlotBtn}
             />
             <AssetPickerModal accept="image" open={refImgPickerOpen} onClose={() => setRefImgPickerOpen(false)} projectId={projectId} preSelectedIds={refImages.map(img => img.assetId).filter(Boolean)} preSelectedUrls={refImages.map(img => img.url).filter(Boolean)} onConfirm={handleRefImageAssetConfirm} />
 

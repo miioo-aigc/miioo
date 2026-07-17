@@ -13,7 +13,7 @@
 
 import { useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
-import { ImgUploadBtn } from './StoryboardImageUpload';
+import FileUploadButton from '../ui/FileUploadButton';
 
 export default function VideoUploadCard({
   projectId,
@@ -55,8 +55,8 @@ export default function VideoUploadCard({
           style={{ display: 'none' }}
           onChange={handleFileChange}
         />
-        <ImgUploadBtn label="本地上传" onClick={() => fileInputRef.current?.click()} />
-        <ImgUploadBtn label="从资产库选择" onClick={() => setAssetPickerOpen(true)} />
+        <FileUploadButton onClick={() => fileInputRef.current?.click()}>本地上传</FileUploadButton>
+        <FileUploadButton onClick={() => setAssetPickerOpen(true)}>从资产库选择</FileUploadButton>
       </div>
       <AssetPickerModal
         accept="video"

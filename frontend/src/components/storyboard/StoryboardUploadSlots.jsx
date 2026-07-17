@@ -26,13 +26,11 @@ import AssetPickerModal from '../AssetPickerModal';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { MediaContent, MediaRemoveButton, ShortcutMediaCard } from './StoryboardMediaPrimitives';
 import { MediaHoverPreview as StoryboardMediaHoverPreview } from './MainRefCol';
-import { ImgUploadBtn } from './StoryboardImageUpload';
+import FileUploadButton from '../ui/FileUploadButton';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-function UploadSlotButton({ children, onClick }) {
-  return <ImgUploadBtn label={children} onClick={onClick} />;
-}
+
 
 function getUploadFn(file) {
   if (file.type.startsWith('video/')) return apiUploadCreationVideo;
@@ -114,8 +112,8 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
               onMouseLeave={() => setHov(false)}
               style={{ width: '120px', height: '120px', borderRadius: '6px', flexShrink: 0, border: `1px dashed ${hov ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.08)'}`, backgroundColor: '#1D1E1E', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'border-color 0.12s' }}
             >
-              <UploadSlotButton onClick={() => fileRef.current?.click()}>本地上传</UploadSlotButton>
-              <UploadSlotButton onClick={() => setAssetPickerOpen(true)}>从资产库选择</UploadSlotButton>
+              <FileUploadButton onClick={() => fileRef.current?.click()}>本地上传</FileUploadButton>
+              <FileUploadButton onClick={() => setAssetPickerOpen(true)}>从资产库选择</FileUploadButton>
             </div>
           )}
           {!media && (
@@ -199,8 +197,8 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
   function renderUploadButtons() {
     return (
       <>
-        <UploadSlotButton onClick={() => fileRef.current?.click()}>本地上传</UploadSlotButton>
-        <UploadSlotButton onClick={() => setAssetPickerOpen(true)}>从资产库选择</UploadSlotButton>
+        <FileUploadButton onClick={() => fileRef.current?.click()}>本地上传</FileUploadButton>
+        <FileUploadButton onClick={() => setAssetPickerOpen(true)}>从资产库选择</FileUploadButton>
       </>
     );
   }

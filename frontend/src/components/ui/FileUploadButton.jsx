@@ -7,22 +7,43 @@
  *
  * ─── 依赖边界 ───────────────────────────────────────────────────────
  *   通过 onClick 将点击行为交给调用方，不依赖业务域、页面或 Store
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-07-17  统一主体页面与分镜页面的上传入口视觉实现
  */
-import Button from './Button';
+import { useState } from 'react';
 
-export default function FileUploadButton({ children, onClick, disabled = false, className = '', ...props }) {
+const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
+
+export default function FileUploadButton({ children, onClick, disabled = false, className = '', style, ...props }) {
+  const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const isDisabled = disabled || !onClick;
+
   return (
-    <Button
+    <button
       type="button"
-      variant="secondary"
-      size="small"
-      disabled={disabled}
-      className={`!h-6 !px-[6px] !rounded-[6px] !border-white/10 !bg-[#161616] !shadow-none hover:!border-white/20 hover:!bg-[#1A1A1A] active:!bg-[#222222] ${className}`}
-      contentClassName="!text-[12px] !leading-4 !font-normal !text-white/40 group-hover:!text-white/80"
+      disabled={isDisabled}
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setPressed(false); }}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      className={className}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '22px', paddingInline: '6px', borderRadius: '6px',
+        backgroundColor: pressed ? '#1a1a1a' : hovered ? '#222323' : '#161616',
+        border: '1px solid rgba(255,255,255,0.08)', outline: '1px solid #00000080',
+        cursor: isDisabled ? 'not-allowed' : 'pointer', fontSize: '12px', lineHeight: '14px',
+        color: isDisabled ? 'rgba(255,255,255,0.24)' : hovered ? 'rgba(255,255,255,0.70)' : 'rgba(255,255,255,0.40)',
+        fontFamily: FONT, whiteSpace: 'nowrap', transition: 'background-color 0.10s, color 0.10s',
+        opacity: isDisabled ? 0.65 : 1,
+        ...style,
+      }}
       {...props}
     >
       {children}
-    </Button>
+    </button>
   );
 }

@@ -11,6 +11,7 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MediaHoverPreview } from './MainRefCol';
+import FileUploadButton from '../ui/FileUploadButton';
 
 export default function ReferenceImageField({
   images = [],
@@ -19,7 +20,6 @@ export default function ReferenceImageField({
   onFilesSelected,
   onRemove,
   onOpenAssetPicker,
-  RefSlotBtn,
 }) {
   const fileRef = useRef(null);
   const [preview, setPreview] = useState(null);
@@ -66,8 +66,8 @@ export default function ReferenceImageField({
           ))}
           {canAdd && (
             <div style={{ width: '120px', height: '120px', borderRadius: '6px', flexShrink: 0, border: '1px dashed rgba(255,255,255,0.08)', backgroundColor: '#1D1E1E', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-              <RefSlotBtn onClick={() => fileRef.current?.click()}>本地上传</RefSlotBtn>
-              <RefSlotBtn onClick={onOpenAssetPicker}>从资产库选择</RefSlotBtn>
+              <FileUploadButton onClick={() => fileRef.current?.click()}>本地上传</FileUploadButton>
+              <FileUploadButton onClick={onOpenAssetPicker}>从资产库选择</FileUploadButton>
             </div>
           )}
         </div>

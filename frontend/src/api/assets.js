@@ -33,6 +33,7 @@ export async function apiGetAssets(filters = {}) {
   const query = params.toString();
   const url = query ? `${BASE}/api/assets?${query}` : `${BASE}/api/assets`;
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+  if (!res.ok) throw new Error(`获取资产列表失败（${res.status}）`);
   const data = await res.json();
   // 后端返回 AssetListResponse: { list: [...], total, has_more, limit, offset, next_cursor }
   // 统一提取 list 字段，兼容旧版直接返回数组的情况
@@ -52,6 +53,7 @@ export async function apiGetAssetsPage(filters = {}) {
   const query = params.toString();
   const url = query ? `${BASE}/api/assets?${query}` : `${BASE}/api/assets`;
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+  if (!res.ok) throw new Error(`获取资产分页失败（${res.status}）`);
   const data = await res.json();
   if (Array.isArray(data)) return { list: data, nextCursor: null, hasMore: false, total: data.length };
   const list = data?.list ?? data?.items ?? data?.data ?? [];
@@ -85,21 +87,181 @@ export async function apiUpdateAsset(assetId, updates) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
   });
-  return res.json();
+  if (!res.ok) throw new Error(`更新资产失败（${res.status}）`);
+  return res.json().catch(() => ({}));
 }
 
 export async function apiDeleteAsset(assetId, { projectId, subjectType } = {}) {
-  await authFetch(`${BASE}/api/assets/${assetId}`, { method: 'DELETE' });
+  const res = await authFetch(`${BASE}/api/assets/${assetId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`删除资产失败（${res.status}）`);
   invalidateProjectAssetDependents(projectId, subjectType);
 }
 
 export async function apiBatchDeleteAssets(asset_ids, { projectId, subjectType } = {}) {
-  await authFetch(`${BASE}/api/assets/batch-delete`, {
+  const res = await authFetch(`${BASE}/api/assets/batch-delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ asset_ids }),
   });
+  if (!res.ok) throw new Error(`批量删除资产失败（${res.status}）`);
   invalidateProjectAssetDependents(projectId, subjectType);
+}
+
+const CREATION_SOURCE_VALUES = new Set([
+  'creation',
+  'created',
+  'generated',
+  'ai-generated',
+  'aigenerated',
+  'workbench',
+]);
+
+function getAssetMetadata(asset) {
+  const metadata = asset?.metadata_json;
+  if (!metadata) return {};
+  if (typeof metadata === 'object') return metadata;
+  try { return JSON.parse(metadata) || {}; } catch { return {}; }
+}
+
+function isCreationSource(value) {
+  if (value == null) return false;
+  const normalized = String(value).trim().toLowerCase().replace(/[_\s]/g, '-');
+  return CREATION_SOURCE_VALUES.has(normalized)
+    || normalized.includes('creation')
+    || normalized.includes('generated');
+}
+
+function hasKnownAssetSource(asset) {
+  const metadata = getAssetMetadata(asset);
+  return [
+    asset?.source,
+    asset?.source_type,
+    asset?.sourceType,
+    metadata.source,
+    metadata.source_type,
+    metadata.sourceType,
+    metadata.origin,
+    metadata.origin_type,
+    metadata.originType,
+  ].some((value) => value != null && String(value).trim() !== '');
+}
+
+function getAssetId(asset) {
+  return typeof asset === 'string' ? asset : asset?.id ?? asset?.asset_id ?? null;
+}
+
+async function getCreationAssetIds() {
+  const ids = new Set();
+  let cursor = null;
+  let offset = 0;
+  let previousCursor = null;
+
+  for (let pageIndex = 0; pageIndex < 100; pageIndex += 1) {
+    const page = await apiGetAssetsPage({
+      scope: 'creation',
+      limit: 200,
+      ...(cursor ? { cursor } : offset > 0 ? { offset } : {}),
+    });
+    page.list.forEach((asset) => {
+      const id = getAssetId(asset);
+      if (id != null) ids.add(String(id));
+    });
+
+    const nextCursor = page.nextCursor || null;
+    if (!page.hasMore || (nextCursor && nextCursor === previousCursor)) break;
+    if (nextCursor) {
+      previousCursor = nextCursor;
+      cursor = nextCursor;
+      continue;
+    }
+    if (page.list.length === 0) break;
+    offset += page.list.length;
+  }
+  return ids;
+}
+
+function classifyAsset(asset, creationIds) {
+  const metadata = getAssetMetadata(asset);
+  const sourceValues = [
+    asset?.source,
+    asset?.source_type,
+    asset?.sourceType,
+    metadata.source,
+    metadata.source_type,
+    metadata.sourceType,
+    metadata.origin,
+    metadata.origin_type,
+    metadata.originType,
+  ];
+  if (sourceValues.some(isCreationSource)) return 'creation';
+  const id = getAssetId(asset);
+  if (!hasKnownAssetSource(asset) && id != null && creationIds.has(String(id))) return 'creation';
+  return 'owned';
+}
+
+/**
+ * 按来源移除资产：主体资产进回收站，创作资产只解除主体引用。
+ * assetRecords 必须尽量传入完整资产记录，来源缺失时再查询创作资产集合兜底。
+ */
+export async function apiRemoveAssets(assetRecords = [], { projectId, subjectType } = {}) {
+  const recordsById = new Map();
+  assetRecords.forEach((asset) => {
+    const id = getAssetId(asset);
+    if (id != null && !recordsById.has(String(id))) recordsById.set(String(id), asset);
+  });
+  if (recordsById.size === 0) return { ownedIds: [], creationIds: [] };
+
+  const records = [...recordsById.values()];
+  const needsFallback = records.some((asset) => !hasKnownAssetSource(asset));
+  const creationAssetIds = needsFallback ? await getCreationAssetIds() : new Set();
+  const ownedIds = [];
+  const creationIds = [];
+  records.forEach((asset) => {
+    const id = String(getAssetId(asset));
+    if (classifyAsset(asset, creationAssetIds) === 'creation') creationIds.push(id);
+    else ownedIds.push(id);
+  });
+
+  if (ownedIds.length > 0) {
+    await apiBatchDeleteAssets(ownedIds, { projectId, subjectType });
+  }
+  if (creationIds.length > 0) {
+    await Promise.all(creationIds.map((id) => apiUpdateAsset(id, { subject_id: null })));
+  }
+  invalidateProjectAssetDependents(projectId, subjectType);
+  return { ownedIds, creationIds };
+}
+
+/** 删除主体记录前，先处理项目中仍绑定该主体的全部资产。 */
+export async function apiDeleteSubjectAssets(projectId, subjectId) {
+  if (!projectId || subjectId == null) return { ownedIds: [], creationIds: [] };
+  const records = [];
+  let cursor = null;
+  let offset = 0;
+  let previousCursor = null;
+
+  for (let pageIndex = 0; pageIndex < 100; pageIndex += 1) {
+    const page = await apiGetAssetsPage({
+      project_id: projectId,
+      scope: 'project',
+      limit: 200,
+      ...(cursor ? { cursor } : offset > 0 ? { offset } : {}),
+    });
+    records.push(...page.list.filter((asset) => String(asset.subject_id) === String(subjectId)));
+
+    const nextCursor = page.nextCursor || null;
+    if (!page.hasMore || (nextCursor && nextCursor === previousCursor)) break;
+    if (nextCursor) {
+      previousCursor = nextCursor;
+      cursor = nextCursor;
+      continue;
+    }
+    if (page.list.length === 0) break;
+    offset += page.list.length;
+  }
+
+  if (records.length === 0) return { ownedIds: [], creationIds: [] };
+  return apiRemoveAssets(records, { projectId });
 }
 
 export async function apiBatchRestoreAssets(asset_ids) {
@@ -147,7 +309,12 @@ const CATEGORY_TO_TAB = {
 };
 
 function normalizeAsset(item) {
-  const meta = (item.metadata_json) || {};
+  const metadata = item.metadata_json;
+  const meta = typeof metadata === 'string'
+    ? (() => {
+      try { return JSON.parse(metadata) || {}; } catch { return {}; }
+    })()
+    : (metadata || {});
   const isVideo = item.asset_type === 'video';
   return {
     id: item.id,
@@ -180,6 +347,10 @@ function normalizeAsset(item) {
     created_at: item.created_at ?? '',
     is_primary: item.is_primary ?? false,
     subject_id: item.subject_id ?? null,
+    project_id: item.project_id ?? item.projectId ?? null,
+    source: item.source ?? null,
+    source_type: item.source_type ?? item.sourceType ?? null,
+    metadata_json: metadata ?? null,
     // 分镜专用字段
     shot_number: meta.shot_number ?? null,
     storyboard_id: meta.storyboard_id ?? null,
@@ -239,6 +410,10 @@ function groupBySubject(normalized) {
       ratio: primaryImage.ratio,
       resolution: primaryImage.resolution,
       created_at: primaryImage.created_at,
+      project_id: primaryImage.project_id,
+      source: primaryImage.source,
+      source_type: primaryImage.source_type,
+      metadata_json: primaryImage.metadata_json,
     };
   });
 }
@@ -299,6 +474,10 @@ function groupByShot(normalized) {
       storyboard_id: primaryImage.storyboard_id,
       episode_number: primaryImage.episode_number,
       episodeLabel: primaryImage.episodeLabel,
+      project_id: primaryImage.project_id,
+      source: primaryImage.source,
+      source_type: primaryImage.source_type,
+      metadata_json: primaryImage.metadata_json,
     };
   }).sort((a, b) => {
     // 先按集数排序，再按 shot_number 排序，无编号的排最后

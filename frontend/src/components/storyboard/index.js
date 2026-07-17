@@ -14,7 +14,6 @@ export { default as VideoUploadCard } from './VideoUploadCard';
 export { default as VideoResultCard } from './VideoResultCard';
 export { default as ReferenceMediaEditor } from './ReferenceMediaEditor';
 export {
-  ImgUploadBtn,
   ImgUploadCard,
   ImgIconBtn,
 } from './StoryboardImageUpload';
@@ -31,7 +30,7 @@ export { NarrationCol, NarrationColWrapper } from './NarrationCol';
 export { default as VoiceDubModal } from './VoiceDubModal';
 export { default as DescriptionCol } from './DescriptionCol';
 export { default as ShotNumberColumn, CardActionBtn } from './ShotNumberColumn';
-export { RefSlotButton, StoryboardIconPlus } from './StoryboardActionPrimitives';
+export { StoryboardIconPlus } from './StoryboardActionPrimitives';
 export { default as StoryboardToast } from './StoryboardToast';
 export { default as StoryboardHeader } from './StoryboardHeader';
 

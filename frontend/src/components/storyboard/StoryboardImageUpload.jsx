@@ -3,7 +3,7 @@
  * @structure-index
  *
  * ─── 组件职责 ───────────────────────────────────────────────
- *   ImgUploadBtn       生成面板中的本地上传/资产库选择入口，复用通用 FileUploadButton
+ *   FileUploadButton   生成面板中的本地上传/资产库选择入口
  *   ImgUploadCard      图片结果列表的上传占位卡
  *   ImgIconBtn         图片/视频结果卡共用的悬浮图标按钮
  *
@@ -14,10 +14,10 @@
 
 import { useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
-import { RefSlotButton } from './StoryboardActionPrimitives';
+import FileUploadButton from '../ui/FileUploadButton';
 
 // 分镜内所有“本地上传/从资产库选择”入口统一使用同一视觉原子；业务文件选择仍由调用方负责。
-export const ImgUploadBtn = ({ label, onClick }) => <RefSlotButton onClick={onClick}>{label}</RefSlotButton>;
+
 export function ImgUploadCard({ onUpload, projectId, onAssetSelect }) {
   const [hovered, setHovered] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
@@ -56,8 +56,8 @@ export function ImgUploadCard({ onUpload, projectId, onAssetSelect }) {
           style={{ display: 'none' }}
           onChange={handleFileChange}
         />
-        <ImgUploadBtn label="本地上传" onClick={() => fileInputRef.current?.click()} />
-        <ImgUploadBtn label="从资产库选择" onClick={() => setAssetPickerOpen(true)} />
+        <FileUploadButton onClick={() => fileInputRef.current?.click()}>本地上传</FileUploadButton>
+        <FileUploadButton onClick={() => setAssetPickerOpen(true)}>从资产库选择</FileUploadButton>
       </div>
       <AssetPickerModal
         accept="image"

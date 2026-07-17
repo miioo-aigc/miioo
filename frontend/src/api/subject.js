@@ -1,6 +1,7 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 import { authFetch, authFetchForm, authFetchStream } from './request.js';
+import { apiDeleteSubjectAssets } from './assets.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 
@@ -127,10 +128,12 @@ export async function apiUpdateSubject(projectId, subjectId, data) {
 }
 
 export async function apiDeleteSubject(projectId, subjectId) {
-  await authFetch(`${BASE}/api/projects/${projectId}/subjects/${subjectId}`, {
+  await apiDeleteSubjectAssets(projectId, subjectId);
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/subjects/${subjectId}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });
+  if (!res.ok) throw new Error(`删除主体失败（${res.status}）`);
   invalidateSubjects(projectId);
 }
 

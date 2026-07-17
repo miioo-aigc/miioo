@@ -6,22 +6,23 @@
  * 通过显式 props 组合展示组件，不把页面入口或目录入口作为隐式依赖。
  *
  * ─── 状态与数据流 ───────────────────────────────────
- *   项目、当前分类、资产数据、批量选择和弹窗状态                  L38–L76
- *   首屏/追加分页、主体元数据覆盖和项目列表加载                    L84–L189
+ *   项目、当前分类、资产数据、批量选择和弹窗状态                  L61–L96
+ *   首屏/追加分页、主体元数据覆盖和项目列表加载                    L118–L213
  *
  * ─── 业务动作 ───────────────────────────────────────
- *   单项/批量删除、项目重命名/删除/复制/下载、资产下载               L193–L356
+ *   单项/批量删除、项目重命名/删除/复制/下载、资产下载               L226–L356
  *
  * ─── 页面组合 ───────────────────────────────────────
- *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L357–L520
+ *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L357–L486
  *
  * ─── 更新记录 ───────────────────────────────────────
  *   2026-07-16  页面入口收敛；补充资产选择引用；抽离项目重命名/删除弹窗和资产卡片网格
+ *   2026-07-17  统一按来源移除资产，并同步清理主体卡片与分页原始数据
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { apiGetProjectAssetsPage, groupByCategory, calcProjectAssetsLimit, apiDeleteAsset, apiBatchDeleteAssets, apiUpdateAsset, apiDownloadAsset } from '../../api/assets';
+import { apiGetProjectAssetsPage, groupByCategory, calcProjectAssetsLimit, apiRemoveAssets, apiUpdateAsset, apiDownloadAsset } from '../../api/assets';
 import { apiGetSubjects } from '../../api/subject';
 import { apiGetProjects, apiDeleteProject, apiUpdateProject, apiCopyProject, apiDownloadProjectAssets } from '../../api/project';
 import { invalidate } from '../../utils/cache';
@@ -85,6 +86,7 @@ export default function AssetsProjectPanel() {
     completeMorePage,
     failFirstPage,
     failMorePage,
+    removeFromRawList,
   } = useAssetPagination();
   const sentinelRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -222,54 +224,35 @@ export default function AssetsProjectPanel() {
   }
 
   async function deleteAsset(id, singleImageId = null) {
-    // singleImageId 存在时表示删除单张图，否则删除整个主体
     const subjectType = getAssetSubjectType(activeCategory);
+    const currentAssets = assetsMap[activeCategory] || [];
+    const card = currentAssets.find((asset) => asset.id === id);
+    const records = singleImageId
+      ? [card?.images?.find((image) => image.id === singleImageId) || { id: singleImageId }]
+      : (card?.images?.length ? card.images : [card || { id }]);
+    const removedIds = records.map((asset) => asset.id);
+    const pageKey = getAssetPageKey(activeProject, activeCategory);
     try {
-      if (singleImageId) {
-        await apiDeleteAsset(singleImageId, { projectId: activeProject, subjectType });
-        setAssetsMap((prev) => ({
-          ...prev,
-          [activeCategory]: prev[activeCategory].map((asset) => {
-            if (asset.id === id && asset.images) {
-              const filtered = asset.images.filter((img) => img.id !== singleImageId);
-              if (filtered.length === 0) {
-                return {
-                  ...asset,
-                  images: [],
-                  imageCount: 0,
-                  url: null,
-                };
-              }
-              return {
-                ...asset,
-                images: filtered,
-                imageCount: filtered.length,
-                url: filtered[0]?.url || asset.url,
-              };
-            }
-            return asset;
-          }),
-        }));
-        // 触发主体页面更新：删除图后重新拉取该类型主体，notify 会推给 SubjectPage 的 subscribe
-        if (subjectType && activeProject) {
-          apiGetSubjects(activeProject, { type: subjectType }).catch(() => {});
-        }
-      } else {
-        const asset = assetsMap[activeCategory]?.find((a) => a.id === id);
-        if (asset && asset.images) {
-          await apiBatchDeleteAssets(asset.images.map((img) => img.id), { projectId: activeProject, subjectType });
-        } else {
-          await apiDeleteAsset(id, { projectId: activeProject, subjectType });
-        }
-        // 删除全部图片后，保留主体卡片占位
-        setAssetsMap((prev) => ({
-          ...prev,
-          [activeCategory]: prev[activeCategory].map((a) => a.id === id ? { ...a, images: [], imageCount: 0, url: null } : a),
-        }));
-        // 清空主体图片后同步更新主体列表
-        if (subjectType && activeProject) {
-          apiGetSubjects(activeProject, { type: subjectType }).catch(() => {});
-        }
+      await apiRemoveAssets(records, { projectId: activeProject, subjectType });
+      removeFromRawList(pageKey, removedIds);
+      setAssetsMap((prev) => {
+        const nextAssets = (prev[activeCategory] || []).flatMap((asset) => {
+          if (asset.id !== id) return [asset];
+          const remaining = (asset.images || []).filter((image) => !removedIds.includes(image.id));
+          if (!singleImageId || remaining.length === 0) return [];
+          return [{
+            ...asset,
+            id: remaining[0]?.id || asset.id,
+            images: remaining,
+            imageCount: remaining.length,
+            url: remaining[0]?.url || null,
+            fileUrl: remaining[0]?.fileUrl || null,
+          }];
+        });
+        return { ...prev, [activeCategory]: nextAssets };
+      });
+      if (subjectType && activeProject) {
+        apiGetSubjects(activeProject, { type: subjectType }).catch(() => {});
       }
       notifyProjectAssetsDeleted(activeProject, subjectType);
     } catch (err) {
@@ -278,17 +261,20 @@ export default function AssetsProjectPanel() {
   }
 
   async function deleteSelected() {
-    const { ids, subjectType } = getProjectBatchDeleteRequest({
+    const { records, subjectType } = getProjectBatchDeleteRequest({
       selectedIds: selected,
       category: activeCategory,
       assets: assetsMap[activeCategory] || [],
     });
+    const removedIds = records.map((asset) => asset.id);
+    const pageKey = getAssetPageKey(activeProject, activeCategory);
     try {
-      await apiBatchDeleteAssets(ids, { projectId: activeProject, subjectType });
-
+      await apiRemoveAssets(records, { projectId: activeProject, subjectType });
+      removeFromRawList(pageKey, removedIds);
+      const selectedIds = new Set(selected);
       setAssetsMap((prev) => ({
         ...prev,
-        [activeCategory]: prev[activeCategory].map((a) => selected.has(a.id) ? { ...a, images: [], imageCount: 0, url: null } : a),
+        [activeCategory]: (prev[activeCategory] || []).filter((asset) => !selectedIds.has(asset.id)),
       }));
       exitBatch();
       notifyProjectAssetsDeleted(activeProject, subjectType);
@@ -472,7 +458,6 @@ export default function AssetsProjectPanel() {
           onConfirm={() => {
             setBatchDeleteConfirm(false);
             deleteSelected();
-            exitBatch();
           }}
           zIndex={100}
         />

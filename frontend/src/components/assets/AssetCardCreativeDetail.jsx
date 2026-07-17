@@ -3,9 +3,9 @@ import CreationVideoDetailModal from '../CreationVideoDetailModal';
 
 /**
  * 创作资产卡片的详情弹窗组合。
- * 只接收卡片数据和业务回调，不负责请求、收藏状态存储或删除 API。
+ * 只接收卡片数据和业务回调，不负责请求、下载命名、收藏状态存储或删除 API。
  */
-export default function AssetCardCreativeDetail({ asset = {}, url, starred = false, onClose, onDelete, onFavorite }) {
+export default function AssetCardCreativeDetail({ asset = {}, url, starred = false, onClose, onDownload, onDelete, onFavorite }) {
   if (asset.type === 'video') {
     return (
       <CreationVideoDetailModal
@@ -20,6 +20,7 @@ export default function AssetCardCreativeDetail({ asset = {}, url, starred = fal
         lastFrame={asset.lastFrame}
         sound={asset.sound}
         createdAt={asset.createdAt}
+        onDownload={onDownload}
         refImages={asset.refImages || []}
         onClose={onClose}
         onDelete={onDelete}
@@ -42,6 +43,7 @@ export default function AssetCardCreativeDetail({ asset = {}, url, starred = fal
           createdAt: asset.createdAt,
         }}
         onClose={onClose}
+        onDownload={onDownload}
         onDelete={onDelete}
         favorited={starred}
         onToggleFavorite={onFavorite}

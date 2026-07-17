@@ -78,7 +78,7 @@ const DETAIL_PANEL_DIVIDER = (
   <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px', flexShrink: 0 }} />
 );
 
-export default function ImageDetailModal({ card, onClose, onDelete, favorited, onToggleFavorite }) {
+export default function ImageDetailModal({ card, onClose, onDelete, onDownload, favorited, onToggleFavorite }) {
   const [starAnim, setStarAnim] = useState(false);
   const [closeHovered, setCloseHovered] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -224,7 +224,7 @@ export default function ImageDetailModal({ card, onClose, onDelete, favorited, o
                   />
                   <ModalActionBtn
                     label="下载"
-                    onClick={() => downloadImage(card.imageUrl)}
+                    onClick={() => (onDownload ? onDownload() : downloadImage(card.imageUrl))}
                     icon={
                       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                         <path d="M8.003 11.3V2" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />

@@ -1,10 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { apiDeleteCreationImage, apiDeleteCreationVideo, apiBatchDeleteImages, apiBatchDeleteVideos, apiToggleImageFavorite, apiToggleVideoFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../../api/creation';
+import { apiDeleteCreationImage, apiDeleteCreationVideo, apiBatchDeleteImages, apiBatchDeleteVideos, apiToggleImageFavorite, apiToggleVideoFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../../api/creation';
 import { useCreationStore } from '../../stores/creationStore';
 import { useAssetSelection } from '../../hooks/useAssetSelection';
 import { generationsToDays } from '../../utils/creativeDaysAdapter';
+import { normalizeImageUrl } from '../../utils/imageUrl';
 import { getCreativeBatchDeleteRequest } from '../../utils/assetsBatchAdapter';
+import { downloadMediaUrl } from '../../utils/downloadMediaUrl';
+import { downloadBlob } from '../../utils/downloadBlob';
+import { getCreativeAssetDownloadInfo } from '../../utils/creativeAssetDownload';
 import ConfirmDialog from '../ConfirmDialog';
 import { AssetsTabBar } from './AssetsTabs';
 import AssetsBatchToolbar from './AssetsBatchToolbar';
@@ -54,13 +58,16 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   const storeToggleFavorite = useCreationStore((s) => s.toggleFavorite);
   const storeSyncFavorites = useCreationStore((s) => s.syncFavorites);
 
-  // 与 CreationPage 共用同一套 normalizeHistoryItem 逻辑
+  // 与 CreationPage 共用同一套历史字段口径；下载命名另由纯适配工具统一处理。
   function normalizeHistoryItem(item, type) {
     const id = `history-${item.id}`;
-    // video 类型优先取 video_url/videoUrl，图片/音频沿用 original_url/file_url/url
+    // 视频、音频接口字段与图片接口字段不完全一致，统一成卡片可消费的媒体地址。
     const rawUrl = type === 'video'
       ? (item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '')
-      : (item.original_url || item.file_url || item.url || '');
+      : type === 'audio'
+        ? (item.audio_url || item.audioUrl || item.original_url || item.file_url || item.url || '')
+        : (item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || '');
+    const url = normalizeImageUrl(rawUrl) || rawUrl;
     return {
       id,
       backendId: item.id,
@@ -68,8 +75,8 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
      resolution: item.resolution || item.size || '',
      duration: item.duration || undefined,
      model: item.model || '',
-      input_prompt: item.input_prompt || '',
-     prompt: item.prompt || '',
+     input_prompt: item.input_prompt || item.inputPrompt || '',
+     prompt: item.prompt || item.input_prompt || item.inputPrompt || '',
      refImages: (item.reference_images || item.referenceImages || []).map((img) => {
         const imgUrl = typeof img === 'string' ? img : (img?.url || img?.original_url || '');
         return { url: imgUrl, previewUrl: imgUrl, isAsset: true, name: imgUrl.split('/').pop() || 'ref.png', size: 0 };
@@ -79,9 +86,10 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         id: item.id,
         type,
         status: 'done',
-        imageUrl: type === 'image' ? rawUrl : null,
-        videoUrl: type === 'video' ? rawUrl : null,
-        audioUrl: type === 'audio' ? rawUrl : null,
+        imageUrl: type === 'image' ? url : null,
+        originalUrl: type === 'image' ? url : null,
+        videoUrl: type === 'video' ? url : null,
+        audioUrl: type === 'audio' ? url : null,
         isFavorite: item.is_favorite ?? item.is_liked ?? item.isLiked ?? false,
       }],
     };
@@ -249,6 +257,44 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     else if (activeType === 'video') apiDeleteCreationVideo(card.id);
   }
 
+  function downloadCreativeAsset(card, options) {
+    const downloadInfo = getCreativeAssetDownloadInfo(card, options);
+    if (!downloadInfo) return Promise.resolve(false);
+
+    const downloadApi = card.type === 'image'
+      ? apiDownloadCreationImage
+      : card.type === 'video'
+        ? apiDownloadCreationVideo
+        : apiDownloadCreationAudio;
+
+    // 优先走鉴权下载接口，媒体地址下载作为兼容旧数据的回退路径。
+    if (card.backendId) {
+      return downloadApi(card.backendId)
+        .then((blob) => {
+          downloadBlob(blob, downloadInfo.filename);
+          return true;
+        })
+        .catch(() => downloadMediaUrl(downloadInfo.url, downloadInfo.filename));
+    }
+    return downloadInfo.url
+      ? downloadMediaUrl(downloadInfo.url, downloadInfo.filename)
+      : Promise.resolve(false);
+  }
+
+  async function downloadSelected() {
+    const selectedCards = days
+      .flatMap((day) => day.cards)
+      .filter((card) => selected.has(card.id));
+
+    for (const card of selectedCards) {
+      try {
+        await downloadCreativeAsset(card, { batch: true });
+      } catch {
+        // 单项下载失败时继续处理剩余选中项。
+      }
+    }
+  }
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -258,6 +304,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
           selectedCount={selectedCount}
           onEnterBatch={enterBatch}
           onSelectAll={selectAll}
+          onDownload={downloadSelected}
           onDelete={() => setBatchDeleteConfirm(true)}
           onCancel={exitBatch}
         />
@@ -296,7 +343,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
                     batchMode={batchMode}
                     onSelect={() => toggleSelect(card.id)}
                     onStar={() => toggleStar(card.id, card.backendId, card.type)}
-                    onDownload={() => {}}
+                    onDownload={() => downloadCreativeAsset(card)}
                     onDelete={() => deleteSingle(card)}
                   />
                 ) : (
@@ -310,7 +357,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
                     showStar
                     onSelect={() => toggleSelect(card.id)}
                     onStar={() => toggleStar(card.id, card.backendId, card.type)}
-                    onDownload={() => {}}
+                    onDownload={() => downloadCreativeAsset(card)}
                     onDelete={() => deleteSingle(card)}
                     asset={card}
                   />

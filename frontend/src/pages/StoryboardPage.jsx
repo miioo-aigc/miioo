@@ -13,7 +13,7 @@
  *   EpisodeSelector / ModalCloseBtn             components/storyboard/StoryboardControls.jsx
  *   ParamSelect / ParamTrigger / DescriptionCol  components/storyboard/DescriptionCol.jsx
  *   CharTag / AddSlotBtn                       components/storyboard/NarrationAtoms.jsx
- *   RefSlotButton / StoryboardIconPlus          components/storyboard/StoryboardActionPrimitives.jsx
+ *   StoryboardIconPlus                           components/storyboard/StoryboardActionPrimitives.jsx
  *   VoiceDubModal                             components/storyboard/VoiceDubModal.jsx
  *   NarrationItem / AddNarrationBtn            components/storyboard/NarrationItems.jsx
  *   NarrationColWrapper                         components/storyboard/NarrationCol.jsx
@@ -45,7 +45,6 @@
  *   2026-07-16  迁移 ShotNumberColumn、CardActionBtn、NUMBER_BTNS 和镜头编号列图标至 components/storyboard/ShotNumberColumn.jsx；页面继续通过显式回调接入镜头新增、复制和选择
  *   2026-07-16  迁移 ParamSelect、ParamTrigger、DescriptionCol 至 components/storyboard/DescriptionCol.jsx；镜头字段仍通过显式 onChange 写回
  *   2026-07-16  迁移 VoiceDubModal、NarrationItem、AddNarrationBtn 至 components/storyboard；旁白列保留状态和保存副作用
- *   2026-07-16  迁移 RefSlotButton / StoryboardIconPlus 至 components/storyboard/StoryboardActionPrimitives.jsx；页面和生成面板通过显式 props 复用
  *   2026-07-16  迁移 NarrationCol / NarrationColWrapper 至 components/storyboard/NarrationCol.jsx；页面仅保留镜头写回接线
  *   2026-07-16  迁移 CharTag / AddSlotBtn 至 components/storyboard/NarrationAtoms.jsx；旁白列仍通过显式点击回调接入
  *   2026-07-16  迁移 EpisodeSelector、ModalCloseBtn 及选集工具函数至 components/storyboard/StoryboardControls.jsx；页面保留当前集数和业务回调
@@ -140,7 +139,6 @@ import {
   ShotNumberColumn,
   NarrationColWrapper,
   DescriptionCol,
-  RefSlotButton,
   StoryboardIconPlus,
 } from '../components/storyboard';
 
@@ -1113,7 +1111,6 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         buildStoryboardPrompt={buildStoryboardPrompt}
         ModalCloseBtn={ModalCloseBtn}
         PanelPromptInput={PanelPromptInput}
-        RefSlotBtn={RefSlotButton}
         generatedImages={genImageHistoryMap[imagePanel.shot?.id] ?? []}
         onSetGeneratedImages={(updater) => {
           const shotId = imagePanel.shot?.id;

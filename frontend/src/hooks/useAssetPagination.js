@@ -61,6 +61,21 @@ export function useAssetPagination() {
     }));
   }, []);
 
+  const removeFromRawList = useCallback((key, ids = []) => {
+    const removedIds = new Set(ids.map((id) => String(id)));
+    setPageMeta((prev) => {
+      const current = prev[key];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [key]: {
+          ...current,
+          rawList: (current.rawList || []).filter((asset) => !removedIds.has(String(asset.id))),
+        },
+      };
+    });
+  }, []);
+
   return {
     pageMeta,
     startPage,
@@ -69,5 +84,6 @@ export function useAssetPagination() {
     completeMorePage,
     failFirstPage,
     failMorePage,
+    removeFromRawList,
   };
 }

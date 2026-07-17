@@ -40,15 +40,16 @@ export function getAssetSubjectType(category) {
 
 export function getProjectBatchDeleteRequest({ selectedIds = [], category, assets = [] }) {
   const normalizedSelectedIds = [...selectedIds];
-  const ids = SUBJECT_CARD_CATEGORIES.has(category)
+  const records = SUBJECT_CARD_CATEGORIES.has(category)
     ? normalizedSelectedIds.flatMap((cardId) => {
         const card = assets.find((asset) => asset.id === cardId);
-        return card?.images?.length ? card.images.map((image) => image.id) : [cardId];
+        return card?.images?.length ? card.images : card ? [card] : [{ id: cardId }];
       })
-    : normalizedSelectedIds;
+    : normalizedSelectedIds.map((id) => assets.find((asset) => asset.id === id) || { id });
 
   return {
-    ids,
+    ids: records.map((asset) => asset.id),
+    records,
     selectedIds: normalizedSelectedIds,
     subjectType: getAssetSubjectType(category),
   };

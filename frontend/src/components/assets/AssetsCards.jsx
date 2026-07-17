@@ -97,6 +97,7 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
         url={url}
         starred={starred}
         onClose={() => setDetailOpen(false)}
+        onDownload={onDownload}
         onDelete={() => { setDetailOpen(false); onDelete?.(); }}
         onFavorite={() => onStar?.()}
       />

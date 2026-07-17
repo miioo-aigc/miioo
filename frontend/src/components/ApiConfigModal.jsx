@@ -1,27 +1,23 @@
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Toggle from './Toggle';
 import ConfirmDialog from './ConfirmDialog';
-import { apiOneClickSetup, apiCreateModel, apiListModels, apiUpdateModel, apiDeleteModel, apiGetBanner, apiListProviders, apiTestConnection, apiUpdateProvider, apiGetCardVisibility } from '../api/config';
+import { apiOneClickSetup, apiCreateModel, apiCreateProvider, apiListModels, apiUpdateModel, apiDeleteModel, apiGetBanner, apiListProviders, apiTestConnection, apiUpdateProvider, apiGetCardVisibility } from '../api/config';
 // 全局 API 卡片背景图（本地打包，保证离线可用）
 import globalApiBg from '../assets/api-global-bg.png';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
-const INSET_BORDER_CLASS = 'shadow-[inset_0px_0px_0px_1px_var(--color-white-8)]';
 const BUTTON_SHADOW_CLASS = 'shadow-[3px_3px_8px_var(--color-black-40)]';
 const ACCENT_BUTTON_GRADIENT =
   'linear-gradient(in oklab 107.50999999999999deg, oklab(84.6% -0.114 0.031 / 30%) 8.14%, oklab(84.6% -0.114 0.031 / 0%) 54.48%)';
 const PRIMARY_BUTTON_GRADIENT =
   'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 30%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, #FFFFFF14, #FFFFFF14)';
-const RECOMMENDATION_GRADIENT =
-  'linear-gradient(in oklab 180deg, oklab(75.5% -0.102 -0.072 / 10%) 0%, oklab(23.4% -0.001 -.0004) 100%)';
 // OneLinkAI 高亮卡片主按钮渐变（白底青绿）
 const CARD_ACCENT_BUTTON_GRADIENT =
   'linear-gradient(in oklab 108.35000000000002deg, oklab(63.1% 0.005 -0.180 / 40%) 24.34%, oklab(84.6% -0.114 0.031 / 0%) 86.04%)';
 // 教程按钮跳转链接（创作手册，与 Home.jsx 中 CREATION_MANUAL_URL 保持一致）
 const CREATION_MANUAL_URL = 'https://gcn0je6sgrhe.feishu.cn/wiki/QaKLwOx0ii2qWakn4cXcybbMnrf?from=from_copylink';
 const MODEL_DESCRIPTION = 'GPT-5.2 是 GPT-5 系列最新一代旗舰级智能模型，在架构设计、推理能力和应用性能上实现重大突破。相比 GPT-5.1…';
-const DEFAULT_PROVIDER_NAME = 'API服务商';
 const MODEL_TABS = ['对话模型', '图片模型', '视频模型', '配音模型'];
 const TAB_SLIDE_DURATION = 220;
 
@@ -137,14 +133,6 @@ function PlusIcon({ className = 'h-[16px] w-[16px] text-white-80' }) {
   );
 }
 
-function ChevronDownIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 text-text-primary">
-      <path d="M12 6.333L8 10.333L4 6.333H12Z" fill="currentColor" stroke="currentColor" strokeWidth="1.333" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function TrashIcon({ stroke = '#D13A3B' }) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: '0' }}>
@@ -192,21 +180,6 @@ function BoltIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: '0' }}>
       <path d="M6.333 1.333H12.333L8.667 6H13.667L5.667 14.667L7.333 8.333H2.667L6.333 1.333Z" stroke="#FFFFFF" strokeLinejoin="round" />
     </svg>
-  );
-}
-
-function SecondaryButton({ children, className = '', onClick, type = 'button', icon = null, textClassName = '' }) {
-  return (
-    <button
-      type={type}
-      onClick={onClick}
-      className={`flex shrink-0 items-center justify-center gap-[4px] rounded-lg border border-solid border-btn-primary-border bg-btn-primary-bg-normal px-[16px] outline outline-1 outline-stroke-outline transition-colors hover:bg-btn-primary-bg-hover active:bg-btn-primary-bg-active ${BUTTON_SHADOW_CLASS} ${className}`}
-    >
-      {icon}
-      <div className={`shrink-0 text-sm/4.5 text-text-secondary ${textClassName}`} style={{ fontFamily: FONT }}>
-        {children}
-      </div>
-    </button>
   );
 }
 
@@ -325,16 +298,6 @@ function StatusSwitch({ on, onClick }) {
   return <Toggle value={on} onChange={onClick} />;
 }
 
-function Tag({ children, roundedClassName = 'rounded-sm' }) {
-  return (
-    <div className={`flex items-start bg-tag-bg-blue px-[4px] py-[0px] ${roundedClassName} ${INSET_BORDER_CLASS}`}>
-      <div className="w-fit text-sm/4.5 text-tag-text-blue" style={{ fontFamily: FONT }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
 function InfoRow({ label, value }) {
   return (
     <div className="flex items-center justify-between gap-[8px] self-stretch">
@@ -376,26 +339,6 @@ function Field({ label, children }) {
       </div>
       {children}
     </div>
-  );
-}
-
-function SelectOption({ option, selected, onSelect }) {
-  const stateClassName = option.disabled
-    ? 'bg-select-item-bg-disabled text-select-item-text-disabled cursor-not-allowed'
-    : selected
-      ? 'bg-select-item-bg-active text-select-item-text-active'
-      : 'bg-select-item-bg-normal text-select-item-text-normal hover:bg-select-item-bg-hover hover:text-select-item-text-hover active:bg-select-item-bg-active active:text-select-item-text-active cursor-pointer';
-
-  return (
-    <button
-      type="button"
-      disabled={option.disabled}
-      onClick={() => onSelect(option.value)}
-      className={`flex w-full items-center rounded-md px-[12px] py-[8px] text-left text-sm/4.5 transition-colors ${stateClassName}`}
-      style={{ fontFamily: FONT }}
-    >
-      {option.label}
-    </button>
   );
 }
 
@@ -585,7 +528,6 @@ function MainModal({
   onEditOneLink,
   onToggleOneLink,
   onTestOneLink,
-  availableModelCount = 23,
   bannerData,
   otherProviders = [],
   onEditOtherProvider,
@@ -778,7 +720,7 @@ function ConfigModelModal({
   const pendingFlip = useRef(false);
   const prevPositions = useRef({});
 
-  const activeModels = modelsByTab[activeTab] ?? [];
+  const activeModels = useMemo(() => modelsByTab[activeTab] ?? [], [modelsByTab, activeTab]);
 
   const snapshotPositions = useCallback(() => {
     prevPositions.current = {};
@@ -993,7 +935,6 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   const [state, setState] = useState(createDefaultState);
   const [toasts, setToasts] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [availableModelCount, setAvailableModelCount] = useState(23);
   const [bannerData, setBannerData] = useState(null);
 
   const showToast = useCallback((type, message) => {
@@ -1027,7 +968,6 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
           ),
         };
       });
-      setAvailableModelCount(models.length);
     }).catch((err) => {
       console.error('加载模型列表失败:', err);
     });
@@ -1131,7 +1071,6 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
         visibleCardKeys,
       }));
 
-      setAvailableModelCount((allModels || []).length);
     }).catch(err => {
       console.warn('初始化配置失败:', err);
     });
@@ -1161,7 +1100,6 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
       if (result.test_success || (result.models && result.models.length > 0)) {
         loadModelsFromBackend();
         setState((current) => ({ ...current, apiTested: true }));
-        setAvailableModelCount(result.models?.length ?? 0);
       }
 
       if (result.test_success) {
@@ -1375,7 +1313,6 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             await apiUpdateProvider(providerId, { api_key: state.editProviderApiKeyActual.trim() });
           } else {
             // 未配置的服务商需要先创建，再测试
-            const { apiCreateProvider } = await import('../api/config');
             const created = await apiCreateProvider({
               name: provider?.name || providerId,
               provider_type: providerId,
@@ -1610,20 +1547,6 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   //       ],
   //     };
   //   });
-
-  const addOnelinkModel = () =>
-    setState((current) => {
-      const draft = current.onelinkModelDraft;
-      const tab = current.activeModelTab;
-      const newModel = { id: `onelinkModels-${Date.now()}`, name: draft.name || 'GPT5.1', description: draft.note || MODEL_DESCRIPTION, enabled: true, isNew: true };
-      const sorted = sortModels([...(current.onelinkModelsByTab[tab] ?? []), newModel]);
-      return {
-        ...current,
-        onelinkModelsByTab: { ...current.onelinkModelsByTab, [tab]: sorted },
-        onelinkModelDraft: createEmptyModelDraft(),
-        childView: 'onelink-config',
-      };
-    });
 
   const addOnelinkModelWithValidation = async () => {
     try {
@@ -1959,7 +1882,6 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
                 });
             }}
             onTestOneLink={testConnection}
-            availableModelCount={availableModelCount}
             bannerData={bannerData}
           otherProviders={state.otherProviders}
             onEditOtherProvider={openOtherProviderConfig}

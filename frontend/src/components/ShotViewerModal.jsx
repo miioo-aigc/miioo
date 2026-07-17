@@ -84,6 +84,13 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
   const [downloading, setDownloading] = useState(false);
   const { width: modalW, height: modalH } = useModalSize();
 
+  const togglePlay = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) { v.play(); setPlaying(true); }
+    else { v.pause(); setPlaying(false); }
+  }, []);
+
   // 关闭时恢复滚动
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -119,14 +126,7 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [playing]);
-
-  const togglePlay = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (v.paused) { v.play(); setPlaying(true); }
-    else { v.pause(); setPlaying(false); }
-  };
+  }, [onClose, togglePlay]);
 
   const handleSeek = useCallback((t) => {
     setCurrentTime(t);

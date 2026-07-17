@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 /**
  * 根据当前视口尺寸计算弹窗尺寸。
@@ -10,18 +10,18 @@ import { useState, useEffect } from 'react';
  * @returns {{ width: number, height: number }}
  */
 export function useModalSize(baseWidth = 1200, baseHeight = 800) {
-  const calc = () => {
+  const calc = useCallback(() => {
     const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080, 1.0);
     return {
       width: Math.max(Math.round(baseWidth * scale), 800),
       height: Math.max(Math.round(baseHeight * scale), 600),
     };
-  };
+  }, [baseHeight, baseWidth]);
   const [size, setSize] = useState(calc);
   useEffect(() => {
     const handler = () => setSize(calc());
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
-  }, []);
+  }, [calc]);
   return size;
 }

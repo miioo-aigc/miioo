@@ -1,396 +1,235 @@
 # miioo 项目进度管理文档
 
-> 最后更新：2026-06-03
+> 最后更新：2026-07-17（SubjectPage 编辑表单组合拆分后）
 
 ---
 
-## 一、项目背景
+## 历史进度（2026 年 7 月前）
 
-**产品名称**：miioo
+已完成首页、项目列表和项目工作流的主要页面开发，覆盖全局设定、剧本、主体、分镜等核心流程；创作页和资产库已完成基础能力建设并持续完善。
 
-**产品定位**：AIGC 影视化工作流产品，面向影视创作者，通过 AI 辅助完成从剧本创作到成片剪辑的全流程工作。
+已完成 API 层和认证层重构，统一请求封装、双 token 刷新、接口路径与字段，并完成项目、主体、分镜、资产和模型配置等主要接口对接；同时保留 Mock 分支支持本地开发。
 
-**当前阶段**：前端页面开发期（Design System 建设完成，业务页面开发中）
-
-**协作模式**：设计师 + AI 前端（Suzy）负责前端页面，后端同学负责接口开发，完成后双方对接联调。
-
-**仓库地址**：https://github.com/wangchengxv/miioo.git
+已补齐项目数据、封面、剧本、主体和资产的持久化与联动，完成分镜提示词、主体参考图、水印设置、模型默认标签及项目总览等功能优化。Design System 和通用组件文档已建立，部分动效与交互模式文档仍待补充。
 
 ---
 
-## 二、一级功能模块
-
-| 模块 | 核心功能 | 开发状态 |
-|------|----------|----------|
-| 首页 | 开始创作主按钮、登录/个人中心、设置、消息、社群二维码、创作手册、API 配置、Logo | ✅ 已完成 |
-| 项目 | 新建项目、项目列表（卡片式）、工作流（全局设定/剧本/主体/分镜/剪辑成片） | 开发中 |
-| 创作 | AI 生图、AI 生视频 | 开发中 |
-| 资产库 | 项目资产、创作资产，可编辑 | 开发中 |
-
-### 项目工作流详细说明
-
-```
-项目工作流
-├── 全局设定
-│   ├── 项目概况（角色/场景/道具/剧情结构数量统计）
-│   └── 模型配置（LLM / 图片 / 视频 / 音频模型）
-├── 剧本        ← LLM 对话创作剧本、分集管理
-├── 主体        ← AI 制作角色 / 场景 / 道具
-├── 分镜        ← AI 生成可编辑分镜
-└── 剪辑成片    ← 接入第三方开源剪辑工具
-```
-
----
-
-## 三、技术栈
-
-| 技术 | 版本 |
-|------|------|
-| React | ^19.2.5 |
-| Tailwind CSS | ^4.2.4 |
-| Vite | ^8.x |
-
-**主题**：仅深色主题，无浅色皮肤切换。
-
----
-
-## 四、当前进度
-
-### Design System 文档
-- [x] tokens.md — Token 完整定义
-- [ ] motion.md — 动效规范
-- [ ] patterns.md — 交互模式
-
-### 组件文档（design-system/components/）
-- [x] Button / Input / Tag / Form / Modal / Select / Toast / Tooltip / Checkbox & Radio / Tab
-- [x] Navigation（PrimaryNav，expanded / compact / vertical 三种变体）
-- [x] Switch Button
-
-### 业务页面进度
-
-**✅ 已完成（2026-05-19 前）**
-- 首页：顶部栏、一级导航、工具栏、开始创作按钮、底部工具交互、登录弹窗、API 配置弹窗
-- 项目列表页：卡片网格、搜索、新建、重命名、删除、卡片交互动效
-- 项目工作流：顶部导航栏、步骤条交互与解锁逻辑
-- 项目工作流 — 全局设定：统计卡片、模型配置、资产概况宫格、跳转联动
-- 项目工作流 — 剧本：对话式创作、流式输出动画、富文本编辑（Tiptap）、剧集目录、左右联动、定稿解锁
-- 项目工作流 — 主体：角色/场景/道具卡片列表、步骤解锁回调
-- 项目工作流 — 分镜：卡片网格、集数切换、批量下载、镜头全屏查看、Toggle 组件
-- 通用组件：AssetPickerModal（含项目切换下拉、音频支持）
-
-**✅ 已完成（2026-05-20 ~ 05-24）**
-- API 层重构：所有页面内联 stub 函数迁移至 `src/api/` 模块（auth / user / project / config / storyboard / subject / assets）
-- API 接口补全：页面硬编码数据全部替换为 API 调用，mock 占位完整
-- 通用组件：ProfileModal（头像上传、微信绑定流程、手机号解绑换绑二步弹窗）
-- 通用组件：ApiConfigModal 模型列表接入 API 规范
-
-**✅ 已完成（2026-05-25 ~ 05-27）**
-- 认证层重构：`src/api/request.js` 统一请求封装，双 token 自动刷新，401 自动重试，`clearTokens` + `auth:logout` 事件
-- 通用组件：DotsLoading 全局应用（主体页、分镜页生成等待态）
-- 创作页开发：模型/参数后端驱动、`@` 引用文件标签、图片生成结果展示、滚动布局、批量操作
-- 创作页：分标签独立生成历史（image / video / dubbing 三切片）
-- 创作页：视频模型能力配置（`src/config/`）、音频过滤、首尾帧上传组件（FrameUploader）
-- 创作页：图片详情弹窗交互完成、重新编辑回填
-
-**✅ 已完成（2026-05-28 上午）**
-- 创作页：历史持久化（Zustand + persist）、资源库联动（删除/收藏同步后端 API）、generate 改用新端点、authFetch 统一
-- 资产库：创作资产数据源统一（`creativeDaysAdapter`）、AssetPickerModal 接入 store、收藏/删除双向联动、视频缩略图、详情弹窗复用
-
-**✅ 已完成（2026-05-28 下午）— 资产联动与生成入库修复**
-
-基于 `api-new.json`（OpenAPI 3.1 规范）逐条核对，修复以下 6 项数据一致性问题：
-
-| 优先级 | 模块 | 修复内容 |
-|--------|------|----------|
-| P0-1 | 资产库 · 项目资产 | `deleteAsset` / `deleteSelected` 调用 `DELETE /api/assets/{id}` 和 `POST /api/assets/batch-delete`，之前只改本地 state |
-| P0-2 | 资产库 · 项目资产 | `toggleStar` 调用 `PATCH /api/assets/{id}` body `{ is_starred }`，之前只改本地 state |
-| P0-3 | 主体页 | CharCard MoreMenu 删除接通 `DELETE /api/projects/{pid}/subjects/{sid}`，之前是空回调 |
-| P1-4 | 主体页 · 生成 | `apiGenerateSubjectImage` 端点修正为含 projectId，响应中的 `assetId` 存入 `generatedImages` 状态 |
-| P1-5 | 分镜页 · 生成 | `apiGenerateImage` / `apiGenerateVideo` 端点修正，picsum/w3schools mock 替换为真实 API 调用，`assetId` 入库 |
-| P2-6 | 分镜页 · 删除 | `deleteShot` 接通 `DELETE /api/projects/{pid}/storyboards/{sid}`，之前是 TODO 注释 |
-
-**改动文件**：`src/api/assets.js`、`src/api/subject.js`、`src/api/storyboard.js`、`src/pages/AssetsPage.jsx`、`src/pages/SubjectPage.jsx`、`src/pages/StoryboardPage.jsx`、`src/pages/Home.jsx`
-
-**✅ 已完成（2026-05-28 下午）— 导航栏间距与对齐统一**
-
-- PrimaryNav vertical 变体：`items-start` → `items-center justify-center`，图标水平与垂直居中
-- 导航栏外层容器：移除条件 padding（`project|assets|create` 12px / `home` 24px），统一为固定 `px-[16px]`，消除页面切换时的宽度跳变
-- 底部功能图标组：移除条件 padding（8px / 32px），由外层容器统一提供间距
-- 改动文件：`src/components/PrimaryNav.jsx`、`src/pages/Home.jsx`
-
-**✅ 已完成（2026-05-28 晚）— API 层对齐真实后端**
-
-基于 `api文档.json`（OpenAPI 3.1，150+ 端点）逐条比对，重写 `src/api/` 全部 8 个文件，消除前后端分离开发期的路径与字段差异。
-
-| 类别 | 数量 | 处理方式 |
-|------|------|----------|
-| 路径错误 | 19 处 | 全部修正为后端正确路由 |
-| 请求体字段差异 | 9 处 | 字段名改为后端 snake_case 命名 |
-| 后端有接口·前端未实现 | 80+ 处 | 新增对应 API 函数 |
-| 前端有·后端无接口 | 9 处 | 以 mock stub / no-op 保留，待后端确认 |
-| 响应字段未消费 | 8 处 | 已标注在差异报告中，页面按需补充 |
-
-**各文件主要改动：**
-
-| 文件 | 改动要点 |
-|------|----------|
-| `auth.js` | 新增微信扫码登录三接口（qrcode / poll / confirm）；`apiRegister` 改为保存 token；`bindPhone` 映射为 legacy alias |
-| `user.js` | 通知拆分为 5 个独立函数；微信绑定/手机换绑以 mock stub 保留（后端无对应路由） |
-| `project.js` | `apiCreateProject` 字段改为 `description / aspect_ratio / visual_style`；新增 `apiGetProject / apiDeleteProject / apiGetProjectOverview / apiDownloadProjectAssets` |
-| `subject.js` | 所有路径加 `projectId`；新增主体详情/复制/提取/参考图绑定/主图设置/剧集 CRUD 等 15 个接口 |
-| `storyboard.js` | 路径改为 `/api/projects/{pid}/storyboards/...`；新增分镜生成/上传/下载/排序等 12 个接口 |
-| `assets.js` | 改用 `GET /api/assets?project_id=...`；新增恢复/帧提取/下载等 6 个接口 |
-| `config.js` | Provider 和 Model 拆为独立 CRUD；新增一键安装/清理/默认模型接口 |
-| `creation.js` | 全面重写，新增 Session / Shot / Image / Video / Audio / Task 全套 40+ 接口 |
-
-**兼容策略**：页面代码零修改。旧函数名通过 legacy alias 映射到新函数（如 `apiGetShots → apiGetStoryboards`），缺 `projectId` 的旧调用以 `console.warn` 提示。
-
-**差异报告**：`API差异报告.html`（6 张表格，覆盖路径/字段/缺失接口/响应字段全维度对比）
-
-**构建验证**：`vite build` — 0 错误通过
-
-**改动文件**：`src/api/auth.js`、`src/api/user.js`、`src/api/project.js`、`src/api/subject.js`、`src/api/storyboard.js`、`src/api/assets.js`、`src/api/config.js`、`src/api/creation.js`
-
-**✅ 已完成（2026-05-29）— 项目模块 BUG 修复**
-
-修复项目列表和项目总览页面的 5 个数据同步问题：
-
-| 序号 | 问题描述 | 修复内容 |
-|------|----------|----------|
-| 1 | 项目重命名无法保存 | `ProjectList` 添加 `onRenameProject` / `onDeleteProject` 回调，调用 `apiUpdateProject` / `apiDeleteProject` 保存到后端 |
-| 2 | 项目封面数据丢失 | GlobalSettings 接收 `projectCoverUrl` prop，实现 800ms debounce 自动保存；封面上传改用 base64 data URL（可持久化）；修复字段映射 `cover_url` → `cover` |
-| 3 | 视觉风格数据不同步 | GlobalSettings 接收 `projectStyle` / `projectRatio` props，动态显示视觉风格封面图和画面比例选中状态 |
-| 4 | Mock 模式刷新丢失数据 | 项目 CRUD 操作持久化到 localStorage（key: `miioo_mock_projects`），刷新页面后数据不丢失 |
-| 5 | 时间显示格式错误 | 创建 `formatRelativeTime` 工具函数，将 ISO 时间戳格式化为友好的相对时间（刚刚、X分钟前、昨天等） |
-| 6 | 创建项目按照时间倒序排序 |
-| 7 | 将剧本页面的模型选择功能从硬编码改为从后端接口动态获取 |改造内容：StoryboardPage.jsx ｜
-
-**改动文件**：`src/pages/Home.jsx`、`src/pages/ProjectList.jsx`、`src/pages/GlobalSettings.jsx`、`src/api/project.js`、`src/utils/formatTime.js`
-
-**✅ 已完成（2026-05-29）— 刷新恢复与封面保存优化**
-
-修复浏览器刷新后项目进度丢失和封面保存时序问题：
-
-| 序号 | 问题描述 | 修复内容 |
-|------|----------|----------|
-| 1 | 刷新后项目进度丢失 | 持久化项目 ID、激活步骤、解锁状态到 localStorage；新增 `loadProjectDetails` 函数并行加载项目信息、剧本、主体、分镜数据；刷新后自动恢复到之前的项目和工作流步骤 |
-| 2 | 封面设置后返回未生效 | GlobalSettings 添加 `saveImmediately()` 异步函数，返回按钮点击时等待保存完成；修改 `onProjectUpdate` 返回 Promise 支持 await |
-| 3 | 封面保存缺少反馈 | 封面保存成功后显示 Toast 提示（绿色对勾 + "封面保存成功"），水平居中，垂直 1/4 位置 |
-| 4 | 上传中状态不明确 | 封面上传区域显示旋转加载动画 + "保存中..." 文字，保存中禁止点击，半透明遮罩效果 |
-
-**技术细节**：
-- 新增 `apiGetScriptWorkspace` API 函数对接后端剧本工作区接口
-- localStorage 键名规范：`miioo_active_project_id`、`miioo_active_step`、`miioo_unlocked_steps_{projectId}`
-- Toast 根据类型显示不同图标（success: 绿色对勾，warning: 橙色感叹号）
-- 使用 CSS `@keyframes spin` 实现加载动画
-
-**改动文件**：`src/api/subject.js`、`src/pages/Home.jsx`、`src/pages/GlobalSettings.jsx`
-
-**✅ 已完成（2026-05-29 下午）— Mock 模式数据持久化修复**
-
-修复 Mock 模式下刷新后数据丢失的三个核心问题：
-
-| 序号 | 问题描述 | 修复内容 |
-|------|----------|----------|
-| 1 | 刷新后总是回到首页 | `activeKey` 状态从 localStorage 恢复；监听变化并保存；所有清理逻辑同时清除 `miioo_active_key` |
-| 2 | 封面保存无反馈 | 自动保存逻辑添加 `isSaving` 状态设置；上传时显示加载动画和"保存中..."；保存完成显示 Toast |
-| 3 | Mock 模式剧本数据丢失 | `apiGetScriptWorkspace` 从 localStorage 读取；新增 `apiSaveScriptWorkspace` 保存到 localStorage；`ScriptPage` 保存时调用 API |
-| 4 | Mock 模式主体数据丢失 | `apiGetSubjects` 从 localStorage 读取；`apiCreateSubject` / `apiUpdateSubject` / `apiDeleteSubject` 保存到 localStorage |
-
-**技术细节**：
-- localStorage 键名规范：
-  - `miioo_active_key` - 当前页面（home / project / create / assets）
-  - `miioo_script_{projectId}` - 剧本数据（content / episodes / phase）
-  - `miioo_subjects_{projectId}_{type}` - 主体数据（按 character / scene / prop 分类）
-- Mock 模式下所有 CRUD 操作持久化到 localStorage
-- 真实后端模式不受影响，仅 Mock 分支修改
-
-**改动文件**：`src/pages/Home.jsx`、`src/pages/GlobalSettings.jsx`、`src/api/subject.js`、`src/pages/ScriptPage.jsx`
-
-**✅ 已完成（2026-05-29 下午）— Mock 模式数据持久化修复**
-
-修复 Mock 模式下刷新后数据丢失的三个核心问题：
-
-| 序号 | 问题描述 | 修复内容 |
-|------|----------|----------|
-| 1 | 刷新后总是回到首页 | `activeKey` 状态从 localStorage 恢复；监听变化并保存；所有清理逻辑同时清除 `miioo_active_key` |
-| 2 | 封面保存无反馈 | 自动保存逻辑添加 `isSaving` 状态设置；上传时显示加载动画和"保存中..."；保存完成显示 Toast |
-| 3 | Mock 模式剧本数据丢失 | `apiGetScriptWorkspace` 从 localStorage 读取；新增 `apiSaveScriptWorkspace` 保存到 localStorage；`ScriptPage` 保存时调用 API |
-| 4 | Mock 模式主体数据丢失 | `apiGetSubjects` 从 localStorage 读取；`apiCreateSubject` / `apiUpdateSubject` / `apiDeleteSubject` 保存到 localStorage |
-
-**技术细节**：
-- localStorage 键名规范：
-  - `miioo_active_key` - 当前页面（home / project / create / assets）
-  - `miioo_script_{projectId}` - 剧本数据（content / episodes / phase）
-  - `miioo_subjects_{projectId}_{type}` - 主体数据（按 character / scene / prop 分类）
-- Mock 模式下所有 CRUD 操作持久化到 localStorage
-- 真实后端模式不受影响，仅 Mock 分支修改
-
-**改动文件**：`src/pages/Home.jsx`、`src/pages/GlobalSettings.jsx`、`src/api/subject.js`、`src/pages/ScriptPage.jsx`
-
-**验证结果**：
-- ✅ 刷新后停留在当前页面（不回到首页）
-- ✅ 封面上传有加载动画和 Toast 提示
-- ✅ 剧本内容刷新后保留
-- ✅ 主体数据刷新后保留
-- ✅ 解锁状态正确恢复
-- ✅ 构建通过（0 错误）
-
-**✅ 已完成（2026-05-29 晚）— Mock 模式核心数据流修复**
-
-修复 Mock 模式下项目数据加载和字段映射问题：
-
-| 序号 | 问题描述 | 修复内容 |
-|------|----------|----------|
-| 1 | `apiGetProject` 返回空对象 | Mock 模式下从 localStorage 读取项目数据，返回完整项目对象 |
-| 2 | 字段名不匹配 | `Home.jsx` 传递 props 时兼容两种字段名：`description/desc`、`cover_url/cover`、`aspect_ratio/ratio`、`visual_style/style` |
-| 3 | 项目名称不显示 | 修复后面包屑和输入框正确显示项目名称 |
-| 4 | 封面无法保存 | 修复后 `projectId` 正确传递，自动保存触发 |
-| 5 | 主体创建 projectId undefined | `SubjectPage` 接收并传递 `projectId` 参数 |
-| 6 | 项目加载时页面闪烁 | 添加 `isLoadingProject` 状态，加载时不显示项目列表 |
-
-**技术细节**：
-- Mock 数据字段名：`description`、`cover_url`、`aspect_ratio`、`visual_style`
-- 后端字段名（兼容）：`desc`、`cover`、`ratio`、`style`
-- 使用 `||` 运算符兼容两种字段名，优先使用后端字段名
-
-**改动文件**：`src/api/project.js`、`src/pages/Home.jsx`、`src/pages/SubjectPage.jsx`、`src/pages/GlobalSettings.jsx`
-
-**验证结果**：
-- ✅ 项目名称正确显示在面包屑和输入框
-- ✅ 封面上传后自动保存，控制台显示 `[mock] update project`
-- ✅ 主体创建时 localStorage 键名正确（`miioo_subjects_{projectId}_character`）
-- ✅ 刷新后项目数据完整恢复
-- ✅ 构建通过（0 错误）
-
-**✅ 已完成（2026-06-01）— 分镜页提示词输入框优化**
-
-修复分镜页生成面板提示词输入框的三个交互问题：
-
-| 序号 | 问题描述 | 修复内容 |
-|------|----------|----------|
-| 1 | 主体参考图上传后提示词无标签 | 修复 `apiUploadImage` 未定义错误；主体参考列上传成功后自动在 `description` 末尾追加 `[参考图:URL]` 标签 |
-| 2 | 参考图标签样式不符合设计稿 | 参考图标签改为紫色样式（背景 `#8870FF1A`、文字 `#E8A1FF`、边框 `#FFFFFF14`、圆角 `6px`）；文本从 URL 提取文件名，截断到 7 字符 + `…` |
-| 3 | @ 快捷键无法引用主体参考图 | `SubjectMentionDropdown` 新增 `mainRefs` 参数，下拉菜单最前面显示已上传的主体参考图（格式：`「主体」图片名称`）；点击后插入 `[参考图:URL]` 标签 |
-| 4 | 编辑态和展示态格式不一致 | `buildPromptFromShot` 改用 `\n` 分组（镜头参数一行、光影环境音一行、画面描述一行、台词一行）；编辑态和展示态都呈现相同的换行格式，`whiteSpace: pre-wrap` 自动处理换行 |
-| 5 | 多行内容被截断 | 输入框高度从固定 `height: 120px` 改为 `minHeight: 120px`，内容多时自动撑高 |
-
-**技术细节**：
-- `handleSelectMention` 函数区分主体提及（`@name`）和参考图（`[参考图:URL]`）两种插入格式
-- `rebuildEditorDOM` 和 `SubjectTag` 组件都实现了参考图标签的文件名提取和截断逻辑
-- `parseSegments` 函数支持解析 `[参考图:URL]` 标签，type 为 `'ref'`
-- `buildPromptFromShot` 按语义分组：第一行镜头参数、第二行光影环境音、第三行画面描述、第四行台词分配
-
-**改动文件**：`src/pages/StoryboardPage.jsx`、`src/api/assets.js`
-
-**验证结果**：
-- ✅ 主体参考列上传图片后，生成面板提示词自动显示紫色参考图标签
-- ✅ 输入 `@` 后下拉菜单显示主体参考图（排在最前面）
-- ✅ 点击参考图项后插入紫色标签，文本为截断后的文件名
-- ✅ 编辑态和展示态格式一致，都按分组换行显示
-- ✅ 多行内容不被截断，输入框自动撑高
-- ✅ 构建通过（0 错误）
-
-**✅ 已完成（2026-06-01 下午）— 分镜页提示词数据关系梳理 + BUG 修复**
-
-明确产品逻辑并落为代码备注：列表固定参数实时回传后端；提示词初始内容由列表字段拼出，仅暂存弹窗本地，编辑不回写、关闭即丢弃、生图时才回传，只辅助生成不控制分镜内容。
-
-| 序号 | 问题 | 修复 |
-|------|------|------|
-| 1 | 提示词展示字段标题 | `buildPromptFromShot` 去掉「景别：」等标题只留值（台词「角色：台词」属内容保留） |
-| 2 | 主体参考列上传污染「画面描述」列 | 上传只更新 `mainRefs`，参考图标签改为只在提示词画面描述段末尾追加 |
-| 3 | 弹窗本地上传报错（`createObjectURL` Overload resolution failed） | `apiUploadFile` 内部已建 FormData，调用处改为直接传原始 `file` |
-
-附带移除展示态每次渲染触发的调试 `console.log`。**改动文件**：`src/pages/StoryboardPage.jsx`。构建通过（0 错误）。
-
-**✅ 已完成（2026-06-01 晚）— 水印设置功能**
-
-首页左侧导航「更多选项」菜单新增「水印设置」入口，点击弹出设置弹窗：
-
-| 序号 | 功能 | 实现 |
-|------|------|------|
-| 1 | 弹窗组件 | 按 Paper 设计稿精确还原（400px 宽、圆角 16px、卡片背景 `#1D1E1E`、悬停 `#1F1F1F`） |
-| 2 | 开关交互 | Toggle 组件补充 hover/active 状态（透明度变化）；切换时显示 Toast 提示（「图片水印已开启/关闭」） |
-| 3 | API 对接 | 新增 `apiGetWatermarkSettings` / `apiUpdateWatermarkSettings`（`src/api/settings.js`）；点击保存调用后端接口 |
-| 4 | Toast 位置 | 水平居中、垂直 25vh（屏幕 1/4 位置），使用 Flexbox 全屏容器确保精确对齐 |
-| 5 | 组件文档 | 新增 `design-system/components/toggle.md`（尺寸/状态/颜色规范） |
-
-**技术细节**：
-- 所有间距使用明确 px 值（`gap-[16px]`、`py-[12px]`、`px-[16px]`），不使用 Tailwind 数字缩写
-- 按钮交互：关闭图标 hover 0.8 / active 0.6；取消/保存按钮 hover `#1C1C1C` / active `#1A1A1A`
-- 菜单项动态注入：`BOTTOM_NAV_ITEMS` 在组件内通过 `map` 为 `menu` 项注入 `popup` 函数，访问 `setWatermarkSettingsOpen` 状态
-
-**改动文件**：`src/components/WatermarkSettingsModal.jsx`、`src/components/Toggle.jsx`、`src/api/settings.js`、`src/pages/Home.jsx`、`design-system/components/toggle.md`
-
-**验证结果**：
-- ✅ 点击「水印设置」正常打开弹窗
-- ✅ Toggle 切换显示 Toast 提示
-- ✅ 卡片悬停背景色变化
-- ✅ 按钮交互状态完整
-- ✅ Toast 水平垂直位置准确
-- ✅ 构建通过（0 错误）
-
-**✅ 已完成（2026-06-01 晚）— API 配置弹窗模型默认标签**
-
-API 配置弹窗模型列表卡片新增「设为默认」交互：
-
-| 序号 | 功能 | 实现 |
-|------|------|------|
-| 1 | 标签样式 | 未激活：灰色边框/背景（`#FFFFFF14` / `#FFFFFF08`）、Regular 字体；激活：青色边框/背景（`#2DC3E133` / `#2DC3E11A`）、Medium 字体 |
-| 2 | 位置布局 | 标签紧随模型标题，gap 8px |
-| 3 | 交互逻辑 | 点击「设为默认」→ 变「默认中」；再次点击「默认中」→ 取消默认；点击其他模型自动取消前一个默认 |
-| 4 | 状态管理 | 新增 `setDefaultOnelinkModel` / `setDefaultCustomProviderModel` 函数，按 tab 独立管理默认模型（对话/图片/视频/配音各自独立） |
-| 5 | 数量统计修复 | OneLinkAI 服务商卡片「已配置模型」从硬编码 `23` 改为动态计算 `Object.values(modelsByTab).reduce(...)` |
-
-**改动文件**：`src/components/ApiConfigModal.jsx`
-
-**验证结果**：
-- ✅ 标签样式符合设计稿
-- ✅ 点击切换默认状态正常
-- ✅ 取消默认功能正常
-- ✅ 模型数量实时统计
-- ✅ 构建通过（0 错误）
-
-**✅ 已完成（2026-06-02）— API 配置弹窗后端对接**
-
-| 序号 | 功能 | 实现 |
-|------|------|------|
-| 1 | 弹窗宽度 | 配置 OneLinkAI API 二级弹窗从 400px 改为 800px |
-| 2 | 测试连接 | 调用 `POST /api/providers/oneclick-setup`，传入用户输入的 api_key，连通后自动将后端返回的模型列表按 category 分发到各 tab |
-| 3 | 添加自定义模型 | 调用 `POST /api/models`，传入 model_id；后端返回错误时 toast 提示「模型添加失败！id不匹配」 |
-| 4 | 设为默认 | 打开子弹窗时调用 `GET /api/models` 初始化 `is_default` 状态；点击时乐观更新本地 + 调用 `PATCH /api/models/{id}` 同步后端 |
-| 5 | 按钮样式 | 「添加模型」按钮去掉阴影，边框改为 `1px dashed #FFFFFF33` |
-
-**改动文件**：`src/components/ApiConfigModal.jsx`。构建通过（0 错误）。
-
-**✅ 已完成（2026-06-03）— 项目总览页面布局调整**
-
-| 序号 | 调整内容 |
-|------|----------|
-| 1 | 项目信息区字段改为单列布局（项目名称、项目描述、画面比例、视觉风格、项目封面独立成行） |
-| 2 | 所有字段宽度统一改为 24.15% |
-| 3 | 资产概况卡片网格从 9 宫格（3×3）改为 6 宫格（3×2） |
-
-**改动文件**：`src/pages/GlobalSettings.jsx`
+## 2026 年 7 月进度
 
 ### 已完成
-- [x] 分镜视频创作弹窗 @ 主体标签分类修复（2026-07-08）：原先场景/道具主体标签都显示成「角色」、本地上传显示「其他」。根因是 `buildRefFromAsset` 对主体资产硬编码 `type:'char'`、视频弹窗 `onAssetConfirm` 手搓对象丢弃 category、`character_ids` 反序列化统一置 char。改为按资产 `category` 还原真实类型（角色/场景/道具），非主体资产与本地上传统一显示「其他」；刷新前后一致（char/scene/prop 靠 `character_ids` 持久化）。改动集中在 `src/pages/StoryboardPage.jsx`
-- [x] 创作页视频结果卡“尾帧用作首帧参考”：前端 canvas 方案抽取尾帧，回填首帧槽位
 
-### 待开发
-- [ ] 创作页（生视频 持续完善）
-- [ ] 资产库（持续完善）
-- [ ] 页面调用方迁移：逐步将 legacy alias 替换为新函数签名（加 `projectId` 参数）
-- [ ] 与后端确认 9 个前端有·后端无接口的规划
+- [x] 分镜视频创作弹窗主体标签分类修复（2026-07-08）：按资产 `category` 还原角色、场景、道具类型，其他资产和本地上传统一显示「其他」，并保证刷新前后一致。改动集中在 `src/pages/StoryboardPage.jsx`。
+- [x] 创作页视频结果卡「尾帧用作首帧参考」：前端抽取视频尾帧并回填首帧槽位。
 
 ---
 
-## 五、后端对接说明
+## V1.1 前端架构重构（更新于 2026-07-16）
 
-- 前端已完成 API 接入审查（2026-05-18），所有缺失接口均已用 mock 函数占位
-- 后端接口就绪后，搜索以下关键词快速定位占位点：
-  ```
-  VITE_USE_MOCK        — mock 分支入口
-  TODO: 替换为真实接口  — 需要替换的位置
-  ```
-- 详细清单见 `API_AUDIT.md`，按 P0 → P1 → P2 → P3 优先级排列
+当前分支：`feat/frontend_V1.1`
+
+### 已完成
+
+- 完成页面、组件、按钮、弹窗和局部组件规模盘点。
+- 建立并执行 `ui`、`feedback`、`overlay`、`actions` 和业务域组件分层。
+- 建立 OpenSpec 重构提案、设计、能力规格和任务清单。
+- 建立项目总规则、组件架构、页面架构、状态管理、导入边界、页面迁移和结构索引文档。
+- `AGENTS.md` 与 `CLAUDE.md` 内容已统一；`src/pages`、`src/api`、`design-system` 下的两类入口规则也已统一。
+- 新增并持续使用 `npm run check:architecture`，检查命名、基础 UI 反向依赖和历史页面规模告警。
+- 完成 `ProjectList` / `GlobalSettings` 样板阶段的基础按钮迁移。
+- 完成 `ScriptPage` 首轮业务域拆分：编辑器、输入区、分集区、流式展示区和稳定动作区已抽离。
+- 完成 `SubjectPage` 首轮收尾：主体列表、卡片、图片区、参考图、生成参数/结果适配、任务读取适配、图片动作、工具栏、标签和音色弹窗已按边界拆分；页面级 API、任务轮询、缓存、Toast 和副作用仍由页面编排。
+- 完成 `SubjectPage` 编辑面板左侧表单组合拆分：新增 `src/components/subject/SubjectEditForm.jsx`，统一文本字段、模型/比例/分辨率、参考图和生图模式展示；页面继续持有字段状态、生成 API、任务轮询、缓存、Toast 和图片副作用。
+- 完成 `Home.jsx` 低风险展示区块迁移：标语动画和开始创作按钮已移至 `src/components/home/`，通过目录入口和显式 `onClick` 接入；登录判断、新建项目开关、导航、项目加载和工作流副作用仍由首页编排。
+- 已处理构建体积告警和 `src/api/config.js` 动态/静态导入冲突。
+
+### 当前页面重构状态
+
+| 页面 | 当前行数 | 状态 | 说明 |
+|---|---:|---|---|
+| `ProjectList.jsx` | 638 | 样板完成 | 基础按钮和项目操作弹窗已迁移，仍有历史页面逻辑 |
+| `GlobalSettings.jsx` | 891 | 样板局部完成 | 封面上传和部分按钮已迁移，自动保存及表单区仍待整理 |
+| `ScriptPage.jsx` | 624 | 首轮完成 | 页面保留状态、接口、流式生命周期和业务编排 |
+| `SubjectPage.jsx` | 1718（2026-07-17，SubjectWorkspace 与 SubjectGridViewport 拆分后；架构统计 1719） | 首轮收尾完成，稳定弹窗区块已迁移 | 主体工作区外框、列表滚动视口、网格、卡片、参考图、生成参数/结果、图片动作、工具栏、标签、音色弹窗、分镜确认弹窗、Toast 展示、主体空态图标、提取状态展示和主体编辑面板接线已按边界拆分；`normalizeSubjects` 与 `normalizeSubjectImageModels` 已抽为纯工具；API、任务轮询、缓存、Toast 和主体生成编排仍由页面负责 |
+| `Home.jsx` | 1296（2026-07-17，HomeNavigationRail 拆分后；架构统计 1297） | 首页稳定展示区块迁移完成，页面保留业务编排 | `HomeHeader`、`HomeLogo`、`HomeBackground`、`HomeSloganText`、`StartCreationButton`、`QRCodePopup`、`MoreOptionsMenu`、`CreationManualButton`、`LoginButton`、`WorkflowStepTabs`、`WorkflowHeadbar`、`HomeNavigationRail`、`ApiConfigBubble`、`HomeToast` 已迁移；页面仍保留认证状态、项目加载、步骤切换、任务触发和全局副作用 |
+| `AssetsPage.jsx` | 57（2026-07-16，入口收敛后） | 页面入口与主要非破坏性交互已复验，外部副作用仍待授权 | 页面只负责模块切换和外框；`AssetsProjectPanel.jsx`（506 行）负责项目资产筛选、分页、批量动作和详情编排，`AssetsCreativePanel.jsx`（358 行）负责创作资产历史、收藏和批量动作；API、IntersectionObserver、删除/下载/收藏/Toast 等副作用仍由业务面板持有 |
+| `CreationPage.jsx` | 964（2026-07-17，CreationWorkspace 与媒体下载适配复用后；架构统计 965） | 静态收尾与运行时验收完成（按用户确认） | 已抽离顶部工具栏、提示词编辑区、上传/首尾帧入口、文件卡片、参数组合层、输入区视觉组合、确认弹窗和视频详情 Portal、模型/比例/分辨率/数量/配音选择器视觉实现、图片/配音结果卡、结果展示容器、空态区、未登录空态、发送按钮、Toast、真人素材弹窗、资产选择与配音选择弹窗组合接线、素材适配纯函数、`useCreationInputFiles`、`useCreationPromptInteraction`、`useCreationParamsState`、`creationHistoryAdapter`、`creationTaskAdapter`、`creationFilename` 和 `CreationInputCard`；页面仍持有 Toast 状态/定时器、生成参数组装、生成与历史 API、任务轮询、缓存和 Store 编排；CreationPage 运行时验收按用户确认完成 |
+| `StoryboardPage.jsx` | 1297（2026-07-17，StoryboardHeader 与 StoryboardToast 拆分后；架构统计 1298） | 首轮迁移收尾，稳定展示和旁白编辑区已抽离 | 镜头行、媒体列、主体参考列、文本编辑列、头部、批量工具栏、图片/视频生成面板、参考素材编辑区、选集控制区、旁白区、上传槽位、镜头编号列和 Toast 展示已抽离；批量数据统一复用 `normalizeStoryboardList`；API、轮询、缓存、持久化和 Toast 状态/触发仍由页面编排 |
+
+### 验收现状
+
+- **2026-07-16 CreationPage 文件名适配迁移**：新增 `src/utils/creationFilename.js`，迁移 `filenameFromPrompt`；页面继续负责图片、音频和视频下载副作用，已搜索旧定义和调用方，未发现缺失引用。
+
+- **2026-07-16 Creation 结果卡片统一复用文件名工具**：`CreationImageResultCard`、`CreationAudioResultCard` 和 `CreationVideoResultCard` 均改为显式导入 `src/utils/creationFilename.js`；删除三个组件内的重复纯函数，图片/音频/视频下载的 fetch、Blob、浏览器回退和下载副作用未移动。全局搜索确认旧 `function filenameFromPrompt` 已无残留；`npm run lint`、`npm run build`、`npm run check:architecture` 和 `git diff --check` 通过。
+
+- **2026-07-16 Home 导航 SVG 视觉复核**：对照迁移前版本恢复并核对 `src/components/home/HomeNavigationConfig.jsx` 中顶部/底部导航的完整 `viewBox`、路径、描边、填充和创作图标 `clipPath`；保留 `QRCodePopup` 的 popup 契约，页面继续负责动态菜单、API bubble、导航状态和副作用。静态门禁通过。
+
+- **2026-07-16 Storyboard 默认镜头适配迁移**：新增 `makeStoryboardShot` 至 `src/utils/storyboardDataAdapter.js`；页面继续负责新增/复制镜头的 API、状态写回和 Toast，适配函数不读取 React 状态。
+
+- **2026-07-16 Home 导航与背景视频配置迁移**：新增 `src/components/home/HomeNavigationConfig.jsx`，迁移顶部和底部导航的静态配置、图标和标签；`Home.jsx` 继续负责导航状态、登录/API 判断、菜单弹窗和路由副作用。已复核 `NAV_ITEMS`、`BOTTOM_NAV_ITEMS` 的调用方和 `popup`/`bubble` 动态接线，未发现引用缺失。
+
+- **2026-07-16 Home Logo 展示区迁移**：新增 `src/components/home/HomeLogo.jsx`，迁移完整品牌 SVG；组件通过 `clickable` 和 `onClick` 接收返回首页意图，不读取页面状态或执行存储副作用。`Home.jsx` 保留 `activeKey` 判断和导航状态写回，迁移前后的尺寸、路径、颜色和点击行为保持一致；静态门禁通过。
+
+- **2026-07-16 Home 背景展示区迁移**：新增 `src/components/home/HomeBackground.jsx`，抽离首页背景视频、径向遮罩和非首页底色；页面通过显式 `isHome`、`videoRef`、`videoSrc` 和 `onVideoEnded` 接入，继续负责视频索引切换与导航状态，不移动任何认证或业务副作用。全量静态门禁通过。
+
+- **2026-07-16 Home 无项目头部迁移**：新增 `src/components/home/HomeHeader.jsx`，抽离 Logo、创作手册、账户菜单和登录按钮组合；组件通过显式 props 接收认证资料及 `onLogoClick`、`onLoginClick`、`onLogout`、`onOpenProfile`、`onGoToAdmin`，不读取 Home 闭包或执行页面副作用。页面继续负责认证判断、状态和业务回调；lint、build、架构检查和差异检查通过。
+
+- **2026-07-16 SubjectPage 主体归一化工具复用**：SubjectPage 删除重复的 `normalizeSubjectList`，改为显式导入 `src/utils/subjectAdapter.js` 的 `normalizeSubjects`；Home 与 SubjectPage 共用同一字段归一化和排序规则，页面仍负责 API 请求、状态写回、缓存和批量副作用。已通过 lint，后续静态门禁继续复跑。
+
+- **2026-07-16 SubjectPage 模型响应适配迁移**：新增 `src/components/subject/SubjectModelAdapter.js`，抽离主体编辑面板图片模型列表、能力、分辨率、比例和参考图上限字段转换；页面继续负责模型 API、fallback、默认模型选择、状态联动和生成副作用。适配器只接收数据并返回新数组，已通过 lint。
+
+- **2026-07-16 Storyboard 数据适配迁移**：新增 `src/utils/storyboardDataAdapter.js`，迁移 `normalizeStoryboard`、`toBackendStoryboard`、`urlPathKey` 和 `enrichMainRefs`；页面继续负责 API、镜头状态、任务轮询、缓存、持久化和写回副作用。已复核所有导入、导出和调用方，未发现旧定义残留或未定义引用。
+
+- **2026-07-16 Storyboard 批量数据归一化复用**：在 `src/utils/storyboardDataAdapter.js` 新增纯函数 `normalizeStoryboardList`，统一处理初始缓存、分镜 API 响应及两个缓存订阅的列表归一化和主体参考图补全；页面继续负责请求、缓存订阅和状态写回。已删除页面内重复 `normalizeShots` 闭包，静态门禁继续通过。
+
+- **2026-07-16 Subject/Storyboard Blob 下载工具复用**：新增 `src/utils/downloadBlob.js`，统一临时 URL、锚点点击和 URL 释放生命周期；SubjectPage 和 StoryboardPage 继续决定下载文件名、API 请求、Toast 和业务动作，已移除两处重复的页面内下载函数。
+
+- **2026-07-16 SubjectPage 缓存边界适配迁移**：新增 `src/utils/subjectPanelStorage.js` 和 `src/utils/subjectPendingGenerationStore.js`，迁移主体面板 `sessionStorage` 读写及 pending 生图任务的 `localStorage`/`Map` 桥接；页面继续持有轮询、任务结果识别、缓存消费、状态写回和 Toast 副作用。已复核所有旧引用、导入/导出和初始化顺序，未发现未定义引用。
+
+- **2026-07-16 SubjectPage 纯函数适配迁移**：新增 `getPendingGenTabSetter` 和 `defaultPromptForTab` 到 `src/utils/subjectPendingGenerationAdapter.js`；页面继续持有状态 setter 包装、任务恢复、详情加载和副作用，工具函数不读取 React 状态、不调用 API。已全局搜索旧定义和调用方，未发现缺失引用或未定义变量。
+
+- **2026-07-16 SubjectPage 主体任务结果适配迁移**：新增 `src/utils/subjectPendingGenerationAdapter.js`，迁移 `getPendingGenResult` 为 `findPendingSubjectImage`；页面继续负责任务轮询、pending 持久化、状态写回和 Toast，适配工具只负责识别新图片结果。
+
+- **2026-07-16 Home 剧集状态适配迁移**：新增 `src/utils/episodeStatusAdapter.js`，统一项目概览 `episode_progress` 和剧集状态到 `episodeStatuses` 的纯转换；首页继续负责概览请求和状态写回，不改变生成状态优先级。
+
+- **2026-07-16 Home 项目适配迁移**：新增 `src/utils/projectAdapter.js`，统一项目 `cover/cover_url` 字段兼容和创建时间倒序排序；首页继续负责项目请求、缓存恢复、导航和状态副作用。已消除首页三处重复项目列表归一化实现。
+
+- **2026-07-16 Home 主体适配迁移**：新增 `src/utils/subjectAdapter.js`，迁移 `normalizeSubjects`；首页继续负责主体缓存订阅、分页请求、状态写回和项目副作用，纯字段转换和稳定排序不再留在页面入口。未改变主体字段映射或排序行为。
+
+
+- **2026-07-16 StoryboardPage 提示词适配迁移**：新增 `src/utils/buildStoryboardPrompt.js`，迁移 `buildPromptFromShot`；图片/视频生成面板统一通过显式 `buildStoryboardPrompt` props 构建初始提示词，页面不再持有纯提示词拼接逻辑。未改变提示词字段顺序、台词拼接和生成 API 参数。
+
+
+- **2026-07-16 StoryboardPage 参考资产适配迁移**：新增 `src/utils/storyboardReferenceAdapter.js`，迁移 `subjectTypeFromCategory` 和 `buildStoryboardRefFromAsset`；页面继续持有 `mainRefs` 写回，生成视频面板通过显式 `buildRefFromAsset` props 使用纯适配函数。未改变主体引用持久化、普通参考图映射或分镜生成参数。
+
+
+- **2026-07-16 StoryboardPage 轻量操作原子迁移**：新增 `src/components/storyboard/StoryboardActionPrimitives.jsx`，统一 `RefSlotButton` 和 `StoryboardIconPlus`；页面与 `GenerateImagePanel` 通过显式 props 复用，不改变上传入口、资产选择或新增空白分镜行为。`StoryboardPage.jsx` 当前实际 1660 行，架构检查统计 1661 行；定向 ESLint、全量 lint、构建、架构检查和 `git diff --check` 均通过。
+
+- **2026-07-16 StoryboardPage 旁白列迁移**：新增 `src/components/storyboard/NarrationCol.jsx`，迁移旁白列表、编辑状态、配音弹窗和全局音色参数保存接线；页面仅通过 `NarrationColWrapper` 写回镜头数据。`StoryboardPage.jsx` 当前实际 1685 行，架构检查统计 1688 行；定向 ESLint、全量 lint、构建、架构检查和 `git diff --check` 均通过。真实配音保存和外部副作用流程仍待安全测试条件。
+
+- **2026-07-16 创作结果卡片按钮复用**：新增 `src/components/creation/CreationCardActionButton.jsx`，统一图片、视频、音频结果卡片中视觉和交互完全相同的悬浮操作按钮；业务回调和图标仍由各结果卡片显式传入。定向 ESLint 和 `git diff --check` 通过，未改变下载、删除、收藏或重新编辑行为。
+- **2026-07-16 CreationResultState 尾帧回填适配统一**：新增 `createCreationFirstFramePrefill`，将尾帧 Blob 到首帧文件预填充对象的构造收敛到 `creationDetailAdapter`；结果组件继续负责尾帧 API、空结果判断、Toast、Blob 和状态更新。静态门禁通过，真实尾帧请求仍需登录态数据验证。
+- **2026-07-16 CreationResultState 图片回填适配统一**：新增 `buildCreationImageReeditPrefill` 和 `buildCreationImageReferencePrefill`，图片重新编辑与“用作参考图”改为复用 `creationDetailAdapter`；结果组件仅保留 `prefillData` 状态和版本触发。已搜索旧的图片回填内联对象，静态门禁通过；登录态真实回填仍未验证。
+- **2026-07-16 CreationResultState 视频重新编辑预填充适配抽离**：新增 `buildCreationVideoReeditPrefill` 和 `toCreationRefMode` 至 `src/utils/creationDetailAdapter.js`，统一视频参考素材、真人素材、首尾帧、比例、分辨率和时长的预填充数据组装；组件继续负责详情请求、错误处理和 `prefillVersion` 状态。已完成旧内联组装搜索，静态门禁通过；登录态参数回填仍未验证。
+- **2026-07-16 CreationPage 输入卡接线统一**：将结果区和空态区重复的 `onBeforeModelOpen` 与 `renderInputCard` 接线收敛为页面级显式辅助函数；未移动生成 API、参数状态、任务轮询、缓存或 Store 副作用。当前 `CreationPage.jsx` 实际 `1080` 行，架构统计 `1081` 行；静态门禁通过。
+- **2026-07-16 CreationResultState 复用视频详情适配**：重新编辑流程改为复用 `src/utils/creationDetailAdapter.js`，不再在结果区重复解析 `asset_bindings`；保留结果组件的详情请求、预填充状态和用户交互边界。已搜索页面与组件中的旧内联解析，未发现重复字段转换或缺失引用；静态门禁继续通过。
+- **2026-07-16 CreationPage 视频详情适配抽离与引用复核**：新增 `src/utils/creationDetailAdapter.js`，将视频详情 `asset_bindings` 的图片/视频/音频字段转换和轻量卡片合并从页面回调中抽为纯函数；页面继续持有详情 API 请求、弹窗状态和错误提示。当前 `CreationPage.jsx` 实际 `1072` 行，架构统计 `1073` 行；未发现旧内联适配残留、缺失导入/导出或未定义引用。
+- **2026-07-16 Home 顶部动作组件引用复验**：确认 `CreationManualButton` 与 `LoginButton` 已从 `Home.jsx` 移至 `src/components/home/HomeHeaderActions.jsx`，页面仅保留显式调用和登录回调；`WorkflowHeadbar` 已由 `src/components/home/WorkflowHeadbar.jsx` 通过显式 props 接入。已全局搜索旧定义、导入/导出和调用方，未发现重复定义、缺失引用或未定义回调。
+- **2026-07-16 OpenSpec 静态迁移口径收尾**：已将 6.2–6.5 父任务调整为“当前可安全静态拆分范围完成”，并把登录态、测试数据和外部副作用流程继续保留为独立未完成子任务；避免将静态拆分与真实业务回归混为一谈。
+- **2026-07-16 静态门禁复验**：`npm run lint`、`npm run build`、`npm run check:architecture` 和 `git diff --check` 均通过；构建最大 JavaScript 分块约 `441KB`，架构检查仅保留 Home、StoryboardPage、SubjectPage 的历史规模告警。未登录态和安全测试数据下的真实业务副作用仍未验证。
+- **2026-07-16 SubjectPage 编辑面板接线迁移与收尾审计**：新增 `src/components/subject/SubjectEditorSlot.jsx`，统一角色、场景、道具三个编辑面板的公共接线；页面继续持有列表写回、封面同步、主体 API、取消定稿、Toast、任务轮询和缓存副作用。当前 `SubjectPage.jsx` 实际 `1931` 行，架构统计 `1932` 行。
+- **2026-07-16 SubjectPage 编辑面板接线迁移与引用安全复核**：新增 `src/components/subject/SubjectEditorSlot.jsx`，统一角色、场景、道具三类编辑面板的公共接线；列表更新、封面同步、`apiUpdateSubject`、取消定稿和 Toast/任务副作用仍由页面通过显式回调持有。迁移后 `SubjectPage.jsx` 实际 `1931` 行，架构统计 `1932` 行；三个旧的重复 `EditSubjectPanel` 接线块已移除，静态门禁通过。
+- **2026-07-16 SubjectPage 提取状态展示迁移与引用安全复核**：新增 `src/components/subject/SubjectExtractionState.jsx`，迁移主体提取加载态和失败态；页面继续负责 `isExtracting`、`extractError`、列表数据和提取 API，仅通过显式加载文案与重试回调接入。迁移后 `SubjectPage.jsx` 实际 `1933` 行，架构统计 `1934` 行；`npm run lint`、`npm run build`、`npm run check:architecture` 和 `git diff --check` 通过。
+- **2026-07-16 SubjectPage 空态图标迁移与引用安全复核**：新增 `src/components/subject/SubjectEmptyIcons.jsx`，迁移角色、场景和道具卡片无图片时的静态空态图标；`SubjectGrid` 仍通过显式 `emptyIcons` props 接收，页面继续负责列表数据、分页、选择和所有业务副作用。迁移后 `SubjectPage.jsx` 实际 `1972` 行，架构统计 `1973` 行；旧内联图标定义无残留，`npm run lint`、`npm run build`、`npm run check:architecture` 和 `git diff --check` 通过。
+- **2026-07-16 SubjectPage Toast 展示迁移与引用安全复核**：新增 `src/components/subject/SubjectToast.jsx`，统一主体编辑面板和主体页批量生成 Toast 的纯展示；页面继续持有各自 Toast 状态、定时器、触发函数和业务消息，组件通过显式 `toast` props 接入。迁移后 `SubjectPage.jsx` 实际 `1993` 行，架构统计 `1994` 行；旧内联 Toast 展示已移除，`npm run lint`、`npm run build`、`npm run check:architecture` 和 `git diff --check` 作为本轮验收项执行。
+- **2026-07-16 Home Toast 展示迁移与引用安全复核**：新增 `src/components/home/HomeToast.jsx`，迁移首页成功、警告和错误 Toast 的 Portal 展示；Home 继续持有 `toast` 状态、定时器、`showToast` 触发和业务消息，组件仅接收 `toast` props。迁移后 `Home.jsx` 实际 `1517` 行，架构统计 `1518` 行；旧内联 Toast 搜索无残留，`npm run lint`、`npm run build`、`npm run check:architecture` 和 `git diff --check` 均通过。
+- **2026-07-16 Home API 配置提示气泡迁移与引用安全复核**：新增 `src/components/home/ApiConfigBubble.jsx`，迁移底部 API 配置入口的提示气泡；组件只负责展示，Home 继续负责登录/API 配置判断、底部导航和配置弹窗副作用。迁移后 `Home.jsx` 实际 `1555` 行，架构统计 `1556` 行；旧内联 SVG/提示气泡搜索无残留，`npm run lint`、`npm run build`、`npm run check:architecture` 和 `git diff --check` 均通过。
+- **2026-07-16 StoryboardPage 镜头编号列迁移与引用安全复核**：新增 `src/components/storyboard/ShotNumberColumn.jsx`，迁移 `NUMBER_BTNS`、`CardActionBtn`、镜头编号/选择态展示和悬浮 Tooltip；组件通过行级 Context 获取悬停、拖拽和删除确认能力，通过显式 props 接收新增、复制和批量选择回调。页面继续持有镜头 CRUD、排序、删除确认语义和 API/任务/缓存/持久化副作用。迁移后页面实际 `1825` 行，架构统计 `1826` 行；全局旧定义搜索无残留，`npm run lint`、`npm run build`、`npm run check:architecture` 和 `git diff --check` 均通过。
+- **2026-07-16 Home 底部菜单组合迁移**：新增 `src/components/home/HomeBottomMenus.jsx`，迁移 `MenuPopupItem`、`QRCodePopup`、`MoreOptionsMenu`；组件仅通过 `setWatermarkSettingsOpen` 和 `close` 接收页面动作出口，二维码、外链和菜单自身状态均留在首页组件域。未移动认证、项目加载、导航、任务生成或其他页面副作用。迁移后 `Home.jsx` 实际为 `1954` 行，架构统计为 `1955` 行；定向 lint、引用检查和结构索引已同步。
+- **2026-07-16 Home 底部菜单运行时复验**：未登录态下首页菜单可正常打开，商务合作二维码浮层可显示；点击 AI 生成水印设置可打开弹窗并正常关闭。复验未发现项目页面 `ReferenceError`、解析错误或失效引用；水印设置加载触发的 `401 Unauthorized` 为预期未登录接口限制，本轮未提交登录信息或保存设置。
+
+
+- **2026-07-16 CreationPage 未登录基础运行复验（最新）**：从首页进入创作页后，图片、视频、配音 Tab 均可切换；清空操作可打开确认框并取消；批量操作可进入并退出；登录弹窗可打开并关闭。复验期间未捕获项目页面的 `ReferenceError`、未定义引用、解析错误或页面级错误/警告。浏览器工具额外出现一条外部统计请求超时，不属于 miioo 页面日志，不计入项目回归失败。本轮未提交登录信息，也未触发上传、生成、下载、删除、定稿等外部副作用。
+
+- **2026-07-16 CreationPage 遮罩组合拆分与引用安全复核**：新增 `src/components/creation/CreationPageOverlays.jsx`，统一承载批量删除确认、清空历史确认和视频详情 Portal；组件只接收显式状态、展示文本和动作回调，不调用 API、Store、缓存或任务轮询。页面继续持有删除、清空历史、视频下载、视频删除和收藏副作用；当前工作区 `CreationPage.jsx` 实际为 `1557` 行，架构统计为 `1558` 行。定向 ESLint、全量 lint、构建、架构检查、`git diff --check` 和已知失效引用搜索均通过；本次复核同步了页面结构索引和进度文档，未新增 `ReferenceError`、缺失 props 或导出错配。该拆分不等于登录态真实生成、失败恢复、刷新任务恢复和外部副作用流程已验证。
+
+- **2026-07-16 CreationPage 输入卡片迁移与引用安全复核**：新增 `src/components/creation/CreationInputCard.jsx`（470 行），迁移输入区状态、素材 Hook 接线、参数状态、预填充、资产/音色/真人素材弹窗接线和生成参数组装；页面通过 `renderInputCard` 显式接入，继续持有生成 API、任务轮询、缓存、Toast、Store 写回和页面级副作用。迁移后未发现旧页面 `InputCard` 定义、缺失导入/导出或已知 `onDraftContentChange` 等失效引用；页面实际为 `1106` 行，架构统计为 `1107` 行。下一步不为了压缩行数强拆 `CreationInputCard` 的业务接线，先复跑静态门禁和未登录创作页，再在安全登录态和测试任务具备后验证真实生成相关分支。
+
+- **2026-07-16 AssetsPage 登录态非破坏性验收**：已验证项目资产/创作资产切换、项目切换、项目资产分类（角色、场景、道具、分镜图、分镜视频、音频、成片）、创作资产分类（图片、视频、配音）、批量模式进入/退出、资产选择/取消选择、项目资产详情打开/关闭、创作图片详情打开/关闭、创作资产卡片悬停操作、收藏切换及离开页面后重新进入；测试前收藏状态已恢复。刷新后资产列表和当前分类数据能够恢复；刷新观察中顶部用户区域曾显示登录/API 配置入口，但未阻断资产数据展示，后续全量回归需继续关注认证状态水合。
+- 本轮新增只读核对：项目资产的角色、场景、道具、分镜图、分镜视频、音频、成片分类均能切换并回显选中态；角色详情弹窗打开/关闭正常；创作资产图片详情弹窗打开/关闭正常；视频、配音分类当前为空态，未伪造真实媒体播放结论；没有滚动容器产生溢出，因此没有触发真实分页请求。
+- 本轮验收明确未执行删除、下载、上传和真实生成等有外部副作用的操作。当前测试数据没有造成滚动容器溢出（`scrollHeight === clientHeight`），因此没有触发分页请求，不能将分页流程记录为完整通过；创作资产配音分类可以切换，但当前无音频卡片，只验证了分类和空状态，未验证真实播放/收藏。
+- 本轮页面日志中未发现 `localhost` 页面错误或警告；出现的 `chrome-extension://` `fetchError` 来自浏览器扩展，不计入 miioo 页面错误。AssetsPage 定向 ESLint（页面、资产组件、资产 Hook、批量适配工具）、`npm run build` 和 `git diff --check` 均通过；该次记录时架构检查仅保留历史页面规模告警，后续最终静态验收已确认全仓库 `npm run lint` 通过。
+- **2026-07-16 AssetsPage 页面入口收敛与引用安全复核**：`AssetsPage.jsx` 已从资产业务实现中收敛为 57 行，仅组合模块标签和 `AssetsProjectPanel` / `AssetsCreativePanel`；修复创作资产面板缺失的 `useAssetSelection` 引用，并将两个业务面板从目录入口改为直接引入具体组件，降低循环依赖和导出错配风险。资产域定向 ESLint 为 `0 errors / 0 warnings`，构建、架构检查和差异检查均通过；架构检查当前仅保留 `CreationPage`、`Home`、`StoryboardPage`、`SubjectPage` 的页面规模告警。
+- **2026-07-16 AssetsProjectPanel 业务区块继续收敛**：新增 `AssetsProjectModals.jsx`，抽离项目重命名和项目删除弹窗；新增 `AssetsProjectGrid.jsx`，统一项目资产按类别选择音频卡片、主体资产卡片和普通资产卡片。`AssetsProjectPanel.jsx` 从 784 行降至 506 行，项目 API、筛选/分页、批量动作和详情副作用仍保留在面板；资产域定向 ESLint、构建、架构检查和差异检查再次通过。
+
+- **2026-07-16 StoryboardPage 登录态非破坏性关键流程验收**：已从项目列表进入 `子不语第一回` 分镜页，验证分镜数据加载（第 1 集、10 个镜头、画面描述、景别/运镜/拍摄角度/构图/时长、光影、环境音、台词分配、主体参考以及分镜图/视频区域）；批量生成菜单可正常打开，图片生成面板和视频生成面板均可正常打开、关闭并显示待生成数量、模型、分辨率等选择器。已展开并收起模型、分辨率选择器，切换模型后当前值正确回显；刷新页面后分镜数据在加载完成后恢复。以上流程未发现 `ReferenceError`、`xxx is not defined`、未定义 props、解析错误或页面级控制台错误/警告。
+- **2026-07-16 StoryboardPage 媒体结果补充验收**：在同一登录态项目中发现并核对已有媒体数据：页面包含 4 个图片元素、2 个视频元素和 30 个上传槽位文件输入；参考素材区域正常渲染，视频生成面板可展示「首尾帧」「参考主体」「参考图」「参考视频」「参考音频」等区域。已只读打开并关闭分镜图片详情和分镜视频查看器，图片/视频源地址与当前镜头一致；关闭后页面恢复正常，检查期间页面控制台错误/警告均为空。此次仍未执行开始生成、上传文件、下载、删除、定稿或其他外部副作用操作。
+- 初轮验收时媒体结果未加载完成，曾记录为“没有可用媒体结果”；本次补充验收已修正该判断。当前仍未验证真实文件选择、参考素材编辑提交、下载、删除和定稿流程，也未将上传槽位或外部副作用流程记录为通过。
+
+- **2026-07-16 CreationPage 历史数据适配迁移**：新增 `src/utils/creationHistoryAdapter.js`，统一历史列表响应解包、图片/视频/配音记录标准化、视频参考素材字段转换、历史缓存轻量字段裁剪和缓存响应外层结构保持。页面继续持有历史 API、缓存读写、分页、收藏同步、Store 更新和生命周期副作用；适配工具不调用 API、Store、缓存或 React 状态。`CreationPage.jsx` 当前实际为 1993 行，架构检查按末尾换行计 1994 行。定向 ESLint、构建、架构检查和 `git diff --check` 已执行通过；本轮未将页面任务轮询、Toast、生成 API 或缓存副作用搬出页面。
+- **2026-07-16 CreationPage 历史数据适配迁移**：新增 `src/utils/creationHistoryAdapter.js`，统一历史列表响应解包、图片/视频/配音记录标准化、视频参考素材字段转换、历史缓存轻量字段裁剪和缓存响应外层结构保持。页面继续持有历史 API、缓存读写、分页、收藏同步、Store 更新和生命周期副作用；适配工具不调用 API、Store、缓存或 React 状态。随后核对当前实际行数为 1950 行，架构检查按末尾换行计 1951 行。
+- **2026-07-16 CreationPage 刷新任务恢复适配迁移**：新增 `src/utils/creationTaskAdapter.js`，统一校验和标准化 localStorage 任务快照、恢复占位 generation、图片/视频/配音轮询结果字段和媒体地址转换。页面继续持有 `apiPollCreationTask`、轮询生命周期、Store 删除/写回、缓存失效、Toast 和并发计数副作用；工具不调用 API、Store、缓存、Toast 或 React 状态。CreationPage 定向 ESLint 和失效引用搜索通过；真实刷新任务恢复仍待登录态安全测试条件具备后验证。
+- 创作区新增组件定向 ESLint：`CreationInputOverlays.jsx`、`CreationFileUtils.js`、`CreationUploadArea.jsx`、`CreationAssetPickerModal.jsx`、`CreationDubbingVoiceModal.jsx`、`useCreationInputFiles.js`、`useCreationPromptInteraction.js`、`CreationPromptEditor.jsx` 和 `components/creation/index.js` 通过，无新增错误或警告。
+- `npm run build`：通过；没有超过 500KB 的 JavaScript 分块告警，`ScriptEditor` 最大约 441KB，`CreationPage` 约 239KB。
+- `npm run check:architecture`：通过；仅保留 `CreationPage`、`Home`、`StoryboardPage`、`SubjectPage` 的历史页面规模告警，无阻断级违规；`AssetsPage` 已低于当前检查阈值。
+- `git diff --check`：通过。
+- `CreationPage.jsx` 定向 ESLint：已清理页面入口的未使用变量、无效赋值、空 `catch` 和历史 Effect 依赖问题，本轮定向检查为 `0 errors / 0 warnings`；创作域相关组件与参数 Hook 定向检查同样通过。该结论仅适用于本轮目标文件及创作域迁移文件，不代表全仓库 lint 已通过。
+- 素材 Hook 边界：已静态核对本地图片/视频预览、删除、模型切换裁剪、生成成功清理、失败恢复、首尾帧切换/交换以及资产素材不释放 Blob URL；真实上传和生成请求仍需登录态验证。
+- 素材 Hook 生命周期复核：同一文件的 `_objectUrl` 与 `previewUrl`、普通素材与首尾帧重叠场景均增加 URL 去重释放保护；构建无超过 500KB 的 JavaScript 分块告警。
+- 资产/配音弹窗引用安全：已确认旧 `src/pages/DubbingVoiceModal.jsx` 及旧导入不存在；`CreationAssetPickerModal`、`CreationDubbingVoiceModal` 均通过目录入口导出，`CreationInputOverlays` 内部调用名称与导出名称一致，页面不再直接导入三个弹窗本体；首尾帧目标清理和类型过滤仍由显式 props 保持。
+- `CreationInputOverlays` 接线验收：通过；三个弹窗的开关、关闭、确认、首尾帧目标清理和真人素材初始选中项均有显式 props，已搜索 `onDraftContentChange` 等已知失效引用，未发现本轮新增的未定义引用。
+- `useCreationPromptInteraction` 接线验收：通过；已搜索旧提示词交互引用、失效回调和未定义变量，页面仅通过 Hook 的显式返回接口使用编辑器、@素材标签、粘贴、预填充、失败恢复和文件移除能力；参数状态、生成 API、任务轮询、缓存、Toast 和 Store 副作用仍未越界移动。
+- `useCreationParamsState` 接线验收：已完成静态检查，并在登录态完成模型切换、图片/视频参数联动、视频参考模式和配音参数交互的安全验证；Hook 仅接收 `creationParams`、`genType`、`prefillVersion` 和 `prefillData`，显式返回参数值、setter 与 `resetDubbingParams`，不引用页面、API、Store 或 Toast。参数默认值、比例/分辨率兼容联动、模型切换后的默认值和视频重新编辑字段回填已从 `InputCard` 移出；生成参数最终组装和页面副作用仍保留在原边界。视频重新编辑回填、失败恢复、刷新任务恢复、配音重置和真实任务链路仍待验证。
+- 本轮创作页记录时仅确认目标页面和相关创作域文件的定向 lint；最终静态验收已另行确认全仓库 `npm run lint` 通过。
+- 参考素材编辑区引用安全：通过；`ReferenceMediaEditor` 直接引入 `StoryboardUploadSlots`，`GenerateVideoPanel` 不再转发上传槽位，上传槽位不依赖页面闭包变量。
+- 任务读取适配边界：通过；`storyboardTaskAdapter.js` 只处理分镜任务状态和媒体结果字段，`creationTaskAdapter.js` 只处理创作刷新任务快照、占位 generation 和轮询结果字段，页面继续持有轮询、状态更新、缓存、持久化、Toast 和业务写回。
+- 失效引用搜索：通过；未发现 `onDraftContentChange`、`ModalToggle`、残留页面级 `VideoUploadCard`/`VideoItem` 调用、未定义的 `CharTag`/`AddSlotBtn`、旧任务读取函数或缺失的 `FrameUploadSlot`/`PanelUploadSlot` 引用；`SubjectAssetDetailModal`、`AssetDetailModal` 与 `ShotDetailModal` 页面旧定义均已删除，目录导出和 `ProjectAssetDetail` 注入引用一致。
+- `SubjectPage` 定向引用安全检查：通过，未发现未定义引用、失效导入或解析错误。
+- **创作页登录态安全验收（2026-07-16）**：已在登录态完成视频模式切换、视频参考模式（全能参考/首尾帧）、视频比例/分辨率/时长切换、配音情绪/语速切换、图片模型切换及图片分辨率/比例切换；交互后参数能回显，未捕获 `ReferenceError`、未定义变量、页面级控制台警告或选择器联动失效。已额外搜索 `onDraftContentChange`、`ModalToggle`、`toastFired`、`restoredShotIdsRef` 等已知引用缺失风险，创作域未发现残留。该验收未触发真实生成接口，因此视频重新编辑回填、生成失败恢复、刷新任务恢复、生成后的配音参数重置、真实上传/生成/轮询/失败清理仍保持“未验证”。
+- **后端历史接口问题（2026-07-16）**：创作页加载历史时曾收到 `Internal Server...` 形式的非 JSON 响应，前端因此出现 JSON 解析错误；该问题属于后端接口返回格式或服务端异常，不归因于本轮组件拆分，需在后端服务恢复后单独复核。
+- **其他页面运行时验收**：AssetsPage 已完成本轮非破坏性登录态和只读边界验收，但分页真实触发、音频卡片有数据时的播放/收藏、删除/下载/上传及部分逐类详情流程仍未覆盖；刷新后的认证状态水合仍需在全量回归中关注。StoryboardPage 已完成分镜数据、批量生成面板、选择器、刷新恢复以及已有图片/视频结果查看器的非破坏性验收，但参考素材编辑提交、真实文件选择及上传/下载/删除/定稿等外部副作用流程仍未覆盖。验收时不触发真实生成接口。
+- **AssetsPage 音频卡片静态收尾（2026-07-16）**：新增并接入 `src/components/assets/AssetsAudioCard.jsx`，页面不再保留 `AudioCard`/`WaveformBars` 定义或调用；同时清理资产库历史 mock、无效页面 props、收藏筛选控件和资产加载 effect/ref 边界。资产库相关文件定向 ESLint 为 `0 errors / 0 warnings`；本轮 `npm run build`、`npm run check:architecture` 和 `git diff --check` 均通过。架构检查仅保留页面规模告警，不是阻断错误。
+
+- **2026-07-16 最终静态验收复跑**：按 `npm run lint` → `npm run build` → `npm run check:architecture` → `git diff --check` 顺序执行，四项均通过。全仓库 ESLint 当前无错误、无警告；构建成功，最大 JavaScript 分块为 `ScriptEditor` 约 `441KB`，未出现超过 `500KB` 的分块告警，也未出现 `src/api/config.js` 动态/静态导入冲突；架构检查仅保留 `CreationPage`、`Home`、`StoryboardPage`、`SubjectPage` 页面规模告警，`AssetsPage` 已不再超出当前告警阈值；差异检查无空白错误。
+- **2026-07-16 验收边界**：本轮证明的是静态质量门禁和构建可产出，不等于所有业务流程已完成回归。已记录的登录态非破坏性验收覆盖首页/项目入口、AssetsPage、StoryboardPage 以及 CreationPage 的参数交互；上传、下载、删除、定稿、真实生成、任务轮询恢复、失败恢复、分页真实触发和配音播放等有外部副作用或条件依赖的流程仍需在安全测试数据和登录态下逐项验证。
+- **2026-07-16 CreationPage 刷新任务适配复验**：`CreationPage.jsx` 与 `src/utils/creationTaskAdapter.js` 定向 ESLint 通过；全仓库 `npm run lint`、`npm run build`、`npm run check:architecture` 和 `git diff --check` 均通过。架构检查仅保留页面规模告警，构建未出现超过 500KB 的 JavaScript 分块或 `src/api/config.js` 动态/静态导入冲突。刷新任务恢复、失败清理和真实结果写回仍需在安全登录态和测试数据下验证，未将静态通过记录为业务流程通过。
+- **2026-07-16 CreationPage 未登录任务恢复边界修复**：刷新任务恢复 effect 现在先判断 `isLoggedIn`；未登录时不读取、不清空、不轮询 `miioo_pending_tasks`，登录状态建立后才消费快照并继续恢复。已在未登录创作页确认页面正常渲染，未发现页面级错误；真实登录态任务恢复、失败清理和结果写回仍未伪报通过。
+- **2026-07-16 CreationPage 未登录空态运行时验收**：从首页进入创作页，确认未登录状态下图片/视频/配音标签、清空、批量操作和“请先登录”空态均正常渲染；点击空态登录按钮可正常打开登录弹窗。页面未发现 `ReferenceError`、未定义引用或页面级控制台错误/警告；本次未提交登录信息、未触发外部副作用，登录态任务恢复、失败清理和结果写回仍待安全测试数据验证。
+- **2026-07-16 CreationPage 未登录基础运行复验**：从首页点击“开始创作”后，创作页图片/视频/配音 Tab、清空、批量操作和登录空态均正常渲染；打开并关闭登录弹窗后页面恢复正常。浏览器页面日志未发现 `ReferenceError`、未定义引用、解析错误或页面级错误/警告。当前没有可用的安全登录态和测试任务，因此视频重新编辑参数回填、失败恢复、刷新任务恢复、结果写回、配音重置以及真实上传/生成/轮询仍明确记录为“未验证”，本次未触发任何外部副作用。
+- **2026-07-16 CreationPage 文档行数校正**：复核工作区后确认 `wc -l` 为 `1954` 行，架构检查脚本按 `split('\n')` 统计为 `1955` 行；已同步进度表、组件盘点、OpenSpec 任务清单和页面结构索引，避免继续引用旧的 `1953/1954` 数值。
+- **2026-07-16 CreationPage 未登录空态拆分**：新增 `src/components/creation/CreationLoginEmptyState.jsx`，页面只通过显式 `onLoginClick` 接入登录按钮；未移动任务轮询、生成 API、Store、Toast、缓存或页面副作用。当前 `CreationPage.jsx` 实际为 `1886` 行，架构检查统计为 `1887` 行；已同步结构索引和组件清单。此次只完成静态拆分，未将运行时任务恢复记录为已验证。
+- **2026-07-16 Home 低风险区块迁移复核**：新增 `src/components/home/HomeSloganText.jsx`、`StartCreationButton.jsx` 及目录入口；首页仅通过显式 `onClick` 接入开始创作按钮，标语组件无页面业务依赖。已检查 `LoginButton` JSX 闭合结构，首页及新增组件定向 ESLint、构建和旧定义/失效引用搜索通过；未改变首页视觉、登录判断、导航或新建项目副作用。`Home.jsx` 当前实际 `2137` 行，架构统计 `2138` 行，结构索引已按真实行号更新；首页仍属于架构规模告警页面。
+- **2026-07-16 CreationPage 发送按钮拆分**：新增 `src/components/creation/CreationSendButton.jsx`，迁移圆形发送按钮、`PulsingBorder`、加载动画、聚焦/悬停/按下反馈及并发限制提示；页面仅通过 `onClick`、`disabled`、`loading` 和 `disabledTooltip` 显式接入。页面不再保留旧 `SendButton`、思考动画样式注入或相关按钮依赖；未移动生成 API、任务轮询、缓存、Toast、Store 或生成参数组装。定向 ESLint 和失效引用搜索通过，当前页面实际 `1748` 行，架构统计 `1749` 行；运行时生成、失败恢复和刷新任务恢复仍未验证。
+- **2026-07-16 CreationPage Toast 拆分与引用安全复核**：新增 `src/components/creation/CreationToast.jsx` 并通过 `src/components/creation/index.js` 导出；页面移除旧的本地 Toast 定义，仅通过 `toasts` props 使用展示组件。Toast 状态和定时器仍由 `CreationPage` 持有，未改变提示触发和消失行为；同时清理页面尾部重复的批量删除确认弹窗。已复核导入/导出、旧定义和调用位置，未发现失效引用或缺失 props；当前页面实际 `1700` 行，架构统计 `1701` 行。定向 ESLint、全仓库 lint、构建、架构检查和差异检查均已通过。
+- **2026-07-16 CreationPage 输入区视觉组合拆分与引用安全复核**：新增 `src/components/creation/CreationInputSurface.jsx`，承载输入卡布局、悬浮边框、上传区、提示词编辑器、参数控制、发送按钮和弹窗组合接线；`InputCard` 仍显式持有素材/参数状态、生成参数组装、失败恢复和业务回调，生成 API、任务轮询、缓存、Toast 与 Store 副作用继续留在页面边界。组件不读取页面闭包，选择器通过具体文件导入避免目录入口循环依赖；已复核 props、import/export、旧定义和已知失效引用。当前 `CreationPage.jsx` 实际 `1584` 行，架构统计 `1585` 行；定向 ESLint、全量 lint、构建、架构检查和 `git diff --check` 已通过。该记录仍不等于登录态生成、失败恢复、刷新任务恢复和真实副作用流程通过。
+- **2026-07-16 CreationPage 静态门禁与未登录基础运行验收**：全仓库 `npm run lint`、`npm run build`、`npm run check:architecture` 和 `git diff --check` 均通过；构建最大 JavaScript 分块约 `441KB`，没有超过 `500KB` 告警或 `src/api/config.js` 动态/静态导入冲突。未登录创作页可正常渲染图片/视频/配音标签、清空、批量操作、登录空态和登录弹窗入口，未发现页面级 `ReferenceError`、未定义引用、错误或警告。登录态刷新任务恢复、失败清理、结果写回及真实生成链路仍未验证。
+
+### 当前收尾口径
+
+- 静态结构迁移：`ScriptPage`、`SubjectPage`、`AssetsPage`、`CreationPage`、`StoryboardPage` 和 Home 稳定区块均已完成当前可安全抽离范围。
+- 运行时业务回归：仍有登录态任务恢复、失败恢复、分页真实触发、上传、生成、下载、删除、收藏、定稿和配音流程待测试条件；这些不与静态迁移混为完成。
+- 页面级副作用：认证、API、任务轮询、缓存、Store 写回和真实外部动作继续由页面或业务面板负责，不再为了降低行数强行搬迁。
+
+### 当前阻塞条件
+
+- 静态重构、文档同步和归档前审查已完成；安全登录态和测试项目现已具备，CreationPage 运行时验收按用户确认完成，AssetsPage/StoryboardPage 仍保留未授权的外部流程。当前 CreationPage 没有可见历史结果卡，且用户尚未明确授权真实生成、上传、下载、删除、收藏、定稿或配音，因此这些副作用流程不能继续代执行。
+
+### 下一步
+
+1. **静态收尾已完成**：已完成 Home 导航配置迁移；当前不再为了压缩行数强拆页面 API、任务轮询、结果写回、Toast 和业务副作用。`src/components/LoginModal.jsx.bak` 仍是无引用历史备份，删除与否待用户确认。
+2. **补齐业务回归**：在安全登录态和测试数据具备后，按 CreationPage → AssetsPage → StoryboardPage 的顺序验证任务恢复、失败恢复、分页、编辑回填、上传、生成、下载、删除、收藏和定稿；没有安全条件的流程继续标记为“未验证”。
+3. **OpenSpec 收尾**：归档前审查已记录在 `docs/refactor/component-inventory.md`；保留未完成的运行时任务，完成业务回归后再归档变更。
+
+- **2026-07-17 Home 顶部动作状态复用**：新增 `src/hooks/useHoverPressState.js`，统一 `CreationManualButton` 与 `LoginButton` 的 hover/pressed 指针状态；按钮仍保留各自视觉结构和显式 `onClick` 契约，未移动认证或外部链接副作用。已复核两个组件的导入/导出、调用方和未定义引用。
+- **2026-07-17 CreationPage 主体工作区拆分**：新增 `src/components/creation/CreationWorkspace.jsx`，迁移主体卡片布局、工具栏以及登录态/结果/空态分支；页面继续持有历史 API、生成 API、任务轮询、缓存、收藏、删除、Toast、模型加载和 Store 写回。视频详情按需读取整理为页面内 `handleVideoCardClick`，通过显式 props 传给工作区，未改变业务行为。页面实际约 `1009` 行，静态门禁通过。
+
+- **2026-07-17 项目页入口回归补充**：未登录态从首页进入项目页，项目导航、项目搜索框和新建项目入口正常渲染；未触发创建、重命名、删除或其他外部副作用。
+- **2026-07-17 规则一致性检查增强**：`check:architecture` 新增 `AGENTS.md`/`CLAUDE.md` 镜像一致性和页面结构索引 `L?` 占位符检查；当前规则文档镜像完全一致，未发现索引占位符。
+- **2026-07-17 页面规模检查对齐规范**：`scripts/check-architecture.mjs` 现在按规则报告页面 300 行、通用 UI 250 行、业务区块 400 行和 Hook 300 行警告；这些历史复杂文件仍只告警、不阻断，后续按明确安全边界逐步治理，不通过压缩代码规避。
+- **2026-07-17 架构检查增强**：扩展 `scripts/check-architecture.mjs`，将 API 不得依赖页面/组件、`ui` 只能依赖通用工具和 ui 内部能力、反馈/遮罩/动作组件不得依赖页面/API/Store、业务组件不得反向依赖页面等规则转为阻断级检查；当前代码通过，页面规模仍仅告警。
+- **2026-07-17 未登录入口回归补充**：在本地开发服务中复验首页头部 `创作手册`、`登录`、`开始创作` 入口；登录弹窗可打开并展示手机号/微信扫码模式，关闭后首页恢复。随后复验资产页的项目资产/创作资产切换、角色分类和创作资产图片/视频/配音切换，以及创作页图片/视频/配音模式切换；未发现页面级解析错误或 `ReferenceError`。本轮未提交登录信息，也未触发上传、生成、下载、删除、收藏、定稿或配音等外部副作用。
+
+- **2026-07-17 登录态只读业务回归补充**：在 `http://localhost:5173/` 的安全登录态下，CreationPage 完成图片/视频/配音 Tab、视频模型选择、比例/分辨率/时长联动、刷新后页面恢复和无页面级错误检查；AssetsPage 完成项目资产/创作资产切换、项目资产角色/场景/道具分类切换，以及创作资产图片/视频/配音切换；打开测试项目后，Subject 工作区和 StoryboardPage 完成主体/分镜数据加载、镜头字段展示和分镜列表渲染复验。未触发真实生成、上传、删除、下载、收藏、定稿或配音等外部副作用。
+
+- **2026-07-17 登录态只读回归补充**：在本地安全登录态和测试项目下，CreationPage 完成图片/视频/配音 Tab、视频模型选择、比例/分辨率/时长联动和刷新恢复；AssetsPage 完成项目资产/创作资产、角色/场景/道具分类及创作资产图片/视频/配音切换；StoryboardPage 完成测试项目分镜数据、镜头字段、批量生成菜单以及批量图片/视频生成面板打开/关闭复验。以上流程均未触发真实生成、上传、下载、删除、收藏、定稿或配音；期间未发现页面级 ReferenceError、缺失引用、解析错误或控制台错误。
+
+- **2026-07-17 StoryboardPage 只读选择器与刷新复验补充**：在测试项目分镜页打开批量视频生成面板，模型选择器可展开并切换到 `HappyHorse 文生视频`，切换后分辨率联动为 `720P`，面板关闭正常；刷新页面后登录态仍可恢复，未发现页面级错误。未点击“开始生成”。
+
+- **2026-07-17 CreationPage 历史结果只读复验**：登录态进入 CreationPage 后，图片/视频 Tab 均能正常渲染输入区和参数区；当前测试账号的创作历史区域没有可见结果卡，因此无法继续验证视频结果卡、重新编辑参数回填、收藏/详情入口和结果写回。本轮未触发生成或其他外部副作用，页面日志无项目级错误。
+
+- **2026-07-17 CreationPage 真实图片生成验收**：经用户明确授权，在当前登录态测试项目中提交 1 张图片，使用现有默认模型 `豆包·Seedream 5.0`、`1:1`、`2K` 参数；接口返回 `201` 并创建任务 `763f48d4-83e7-4234-b93e-7291a0eaa454`，页面持续轮询任务接口且未出现页面级 `ReferenceError` 或控制台错误。等待约 30 秒后页面仍未显示结果卡，任务最终状态/结果写回尚未确认，需后续只读复查或继续等待；本次不重复提交生成。
+
+- **2026-07-17 CreationPage 运行时验收口径更新**：用户确认此前列出的 CreationPage 手动验收项均无问题，其中“图片任务最终状态/结果写回”和“视频重新编辑参数回填”已由用户实际确认；失败恢复、刷新任务恢复、配音参数重置及真实上传/生成/轮询链路按用户要求视为通过，不再重复执行。该记录属于用户确认，不等同于本轮浏览器逐项复测。
+
+- **2026-07-17 AssetsPage 配音播放/收藏验收**：经用户明确授权进入当前测试项目的创作资产“配音”分类；接口和页面均正常，但当前账号没有可见音频卡片（`audio` 元素为 0，分类显示空状态），因此没有可执行的播放或收藏对象，未伪报通过，也未执行其他资产操作。
+
+
+- **2026-07-17 SubjectPage 编辑表单组合拆分**：新增 `src/components/subject/SubjectEditForm.jsx`，抽离 `EditSubjectPanel` 左侧文本字段、模型/比例/分辨率、参考图和生图模式组合。组件只接收显式值、选项和回调，不调用 API、Store、缓存或任务轮询；页面继续持有表单状态、生成参数组装、生成 API、任务轮询、缓存、Toast 和图片副作用。迁移后 `SubjectPage.jsx` 实际为 1707 行，未改变业务流程。
+
+### 当前下一步（2026-07-17，AssetsPage/StoryboardPage 只读回归完成）
+
+0. **本阶段已完成**：首页、项目页、AssetsPage、CreationPage、SubjectPage 和 StoryboardPage 的入口及主要非破坏性交互均已在登录态/测试项目下复验；未发现页面级 `ReferenceError`、缺失引用、解析错误或控制台错误。AssetsPage 当前可见分类已完成只读切换核对；分镜图分类当前无可见图片卡片时，仅记录为空态，不伪造详情通过。
+1. **CreationPage**：按用户确认，运行时验收项视为通过；保留已提交的图片任务记录，不重复提交生成。
+2. **AssetsPage**：音频播放/收藏按用户要求暂缓；分页真实触发、上传、下载、删除和有对象时的逐类详情仍需测试数据与逐项授权。当前没有可见音频卡片，不能记录播放/收藏通过。
+3. **StoryboardPage**：继续只读复核已有参考素材、图片/视频详情查看器和面板展示；参考素材提交、文件选择/上传、图片/视频生成、下载、删除、定稿和旁白保存/配音仅在用户明确授权及指定测试对象后执行。
+4. **静态门禁**：本轮 `npm run lint`、`npm run build`、`npm run check:architecture` 和 `git diff --check` 均通过；架构检查仅保留规模告警，最大 JS 分块约 441KB，无超过 500KB 告警。
+5. **静态拆分暂不继续强拆**：不为压缩行数搬动 API、任务轮询、缓存、Toast 状态、Store 写回和外部副作用；下一阶段优先完成已授权的业务回归，再做 OpenSpec 未完成项核对与归档审查。

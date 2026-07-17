@@ -261,7 +261,7 @@ function groupByShot(normalized) {
     shotMap[key].push(asset);
   });
 
-  return Object.entries(shotMap).map(([key, images]) => {
+  return Object.entries(shotMap).map(([, images]) => {
     const primaryIdx = images.findIndex((img) => img.is_primary);
     const primaryImage = primaryIdx >= 0 ? images[primaryIdx] : images[0];
     const sorted = [
@@ -384,7 +384,6 @@ export function calcProjectAssetsLimit(category, {
   extraH = 0,         // 额外减去的高度（如顶栏）
 } = {}) {
   const isSubject = ['chars', 'scenes', 'props'].includes(category);
-  const isStoryboard = ['storyboard_img', 'storyboard_video'].includes(category);
   const isAudio = category === 'audio';
 
   if (isAudio) return 50; // 音频是列表布局，直接给个足够大的数
@@ -505,9 +504,8 @@ export async function apiGetShotDetail(shotId) {
 
   // 提取生成结果图片列表（metadata_json.outputs / variants / variations）
   const rawOutputs = meta.outputs || meta.variants || meta.variations;
-  let images = [];
-  if (Array.isArray(rawOutputs) && rawOutputs.length > 0) {
-    images = rawOutputs.map((out, idx) => ({
+  const images = Array.isArray(rawOutputs) && rawOutputs.length > 0
+    ? rawOutputs.map((out, idx) => ({
       id: out.id || out.asset_id || `img_${idx}`,
       src: normalizeImageUrl(out.url || out.file_url || out.image_url || ''),
       finalized: !!(out.is_finalized != null ? out.is_finalized : (out.finalized ?? false)),
@@ -515,10 +513,9 @@ export async function apiGetShotDetail(shotId) {
       model: out.model || '',
       resolution: out.resolution || out.size || '',
       generatedAt: out.created_at || '',
-    }));
-  } else {
+    }))
+    : [{
     // 无量产结果时用主文件作为唯一图片
-    images = [{
       id: `${data?.id || shotId}_0`,
       src: normalizeImageUrl(data?.file_url || data?.thumbnail_url || ''),
       finalized: true,
@@ -527,7 +524,6 @@ export async function apiGetShotDetail(shotId) {
       resolution: data?.size || '',
       generatedAt: data?.created_at || '',
     }];
-  }
 
   return {
     shotNumber: meta.shot_number ?? meta.shotNumber ?? data?.name ?? '',

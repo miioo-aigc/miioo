@@ -142,6 +142,58 @@ function EmptyState() {
   );
 }
 
+function AssetHoverPreview({ url, mouseX, mouseY }) {
+  const [imgSize, setImgSize] = useState(null);
+  const GAP = 16;
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
+    img.src = url;
+  }, [url]);
+
+  if (!imgSize) return null;
+
+  const maxW = window.innerWidth * 0.35;
+  const maxH = window.innerHeight * 0.35;
+  const ratio = imgSize.w / imgSize.h;
+
+  let previewW;
+  let previewH;
+  if (ratio >= 1) {
+    previewW = maxW;
+    previewH = previewW / ratio;
+    if (previewH > maxH) { previewH = maxH; previewW = previewH * ratio; }
+  } else {
+    previewH = maxH;
+    previewW = previewH * ratio;
+    if (previewW > maxW) { previewW = maxW; previewH = previewW / ratio; }
+  }
+
+  let left = mouseX + GAP;
+  let top = mouseY + GAP;
+  if (left + previewW > window.innerWidth - GAP) left = mouseX - previewW - GAP;
+  if (top + previewH > window.innerHeight - GAP) top = mouseY - previewH - GAP;
+  left = Math.max(GAP, left);
+  top = Math.max(GAP, top);
+
+  return (
+    <div
+      style={{
+        position: 'fixed', left, top,
+        width: previewW, height: previewH,
+        zIndex: 99999, pointerEvents: 'none',
+        borderRadius: '8px', overflow: 'hidden',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+        border: '1px solid rgba(255,255,255,0.12)',
+        backgroundColor: '#111',
+      }}
+    >
+      <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+    </div>
+  );
+}
+
 export default function AssetPickerModal({
   open,
   onClose,
@@ -165,7 +217,6 @@ export default function AssetPickerModal({
   // 创作资产本地缓存（弹窗内懒加载，避免依赖 CreationPage 初始化）
   const [localCreativeAssets, setLocalCreativeAssets] = useState(null);
   const [creativeLoadedTabs, setCreativeLoadedTabs] = useState(new Set());
-  const [creativeLoading, setCreativeLoading] = useState(false);
 
   // 将后端历史记录条目归一化为 picker 卡片格式
   function normalizeCreativeItem(item, type) {
@@ -223,8 +274,14 @@ export default function AssetPickerModal({
     };
   }, [creativeAssetsProp, localCreativeAssets, generationsByTab, favorites]);
 
-  const projectSubTabsAvail = accept === 'video' ? PROJECT_SUB_TABS_VIDEO : accept === 'image' ? PROJECT_SUB_TABS_IMAGE : accept === 'audio' ? PROJECT_SUB_TABS_AUDIO : PROJECT_SUB_TABS_ALL;
-  const creativeSubTabsAvail = accept === 'video' ? CREATIVE_SUB_TABS_VIDEO : accept === 'image' ? CREATIVE_SUB_TABS_IMAGE : accept === 'audio' ? CREATIVE_SUB_TABS_AUDIO : CREATIVE_SUB_TABS_ALL;
+  const projectSubTabsAvail = useMemo(
+    () => accept === 'video' ? PROJECT_SUB_TABS_VIDEO : accept === 'image' ? PROJECT_SUB_TABS_IMAGE : accept === 'audio' ? PROJECT_SUB_TABS_AUDIO : PROJECT_SUB_TABS_ALL,
+    [accept],
+  );
+  const creativeSubTabsAvail = useMemo(
+    () => accept === 'video' ? CREATIVE_SUB_TABS_VIDEO : accept === 'image' ? CREATIVE_SUB_TABS_IMAGE : accept === 'audio' ? CREATIVE_SUB_TABS_AUDIO : CREATIVE_SUB_TABS_ALL,
+    [accept],
+  );
 
   const [activeTab, setActiveTab] = useState('project');
   const [projectSubTab, setProjectSubTab] = useState(projectSubTabsAvail[0]);
@@ -268,14 +325,17 @@ export default function AssetPickerModal({
   // 每次弹窗打开时用 preSelectedIds 初始化选中状态，关闭时清空
   useEffect(() => {
     if (open) {
+      // 弹窗打开时从外部预选数据恢复本地选择；这里不是派生渲染状态。
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 弹窗会话开始时同步外部预选项
       setSelected(new Set(preSelectedIds ?? []));
     } else {
+      // 关闭弹窗时清理临时选择和懒加载缓存，避免下次打开复用旧会话。
       setSelected(new Set());
       // 关闭时重置创作资产本地缓存，下次打开重新加载
       setLocalCreativeAssets(null);
       setCreativeLoadedTabs(new Set());
     }
-  }, [open]);
+  }, [open, preSelectedIds]);
   const [searchFocused, setSearchFocused] = useState(false);
   const [hoveredCard, setHoveredCard] = useState(null);
   const [closeHovered, setCloseHovered] = useState(false);
@@ -291,13 +351,12 @@ export default function AssetPickerModal({
   const [projectOpen, setProjectOpen] = useState(false);
   const [projectHovIdx, setProjectHovIdx] = useState(null);
   const [activeProjectId, setActiveProjectId] = useState(projectId || null);
+  const [projectMenuRect, setProjectMenuRect] = useState(null);
   const projectBtnRef = useRef(null);
 
   // ── 从后端拉取真实数据 ──────────────────────────────────────────────────
   const [apiProjects, setApiProjects] = useState(null);
   const [apiAssetsMap, setApiAssetsMap] = useState(null);
-  const [assetsLoading, setAssetsLoading] = useState(false);
-  const [projectsLoading, setProjectsLoading] = useState(false);
   // 已加载完成的 tab key 集合：key = `${projectId}__${tabKey}`
   const [loadedTabKeys, setLoadedTabKeys] = useState(new Set());
 
@@ -305,7 +364,6 @@ export default function AssetPickerModal({
     if (!open) return;
     (async () => {
       try {
-        setProjectsLoading(true);
         // 拉取所有项目列表
         const projList = await apiGetProjects();
         const projs = Array.isArray(projList) ? [...projList].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)).map(p => ({ id: p.id, name: p.name })) : [];
@@ -313,8 +371,6 @@ export default function AssetPickerModal({
       } catch (err) {
         console.error('[AssetPickerModal] 拉取项目列表失败:', err);
         setApiProjects([]);
-      } finally {
-        setProjectsLoading(false);
       }
     })();
   }, [open]);
@@ -356,7 +412,6 @@ export default function AssetPickerModal({
 
     (async () => {
       try {
-        setAssetsLoading(true);
         const categories = Array.isArray(categoryFilter.category) ? categoryFilter.category : [categoryFilter.category];
         const allItems = [];
 
@@ -391,11 +446,9 @@ export default function AssetPickerModal({
         setLoadedTabKeys(prev => new Set([...prev, pKey]));
       } catch (err) {
         console.error('[AssetPickerModal] 拉取项目资产失败:', err);
-      } finally {
-        setAssetsLoading(false);
       }
     })();
-  }, [open, activeTab, projectId, activeProjectId, projectSubTab]);
+  }, [open, activeTab, projectId, activeProjectId, projectSubTab, loadedTabKeys]);
 
   // 切换到创作资产 tab 时，若 store 中对应数据未初始化则从后端拉取
   useEffect(() => {
@@ -410,13 +463,14 @@ export default function AssetPickerModal({
     const storeKey = type === 'audio' ? 'dubbing' : type;
     const storeData = generationsByTab[storeKey];
     if (storeData && storeData.length > 0) {
+      // Store 已有创作资产时只记录该 Tab 已完成初始化，避免重复请求。
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 将外部 Store 已有数据标记为已加载
       setCreativeLoadedTabs(prev => new Set([...prev, type]));
       return;
     }
 
     (async () => {
       try {
-        setCreativeLoading(true);
         let resp;
         if (type === 'image') {
           resp = await apiListCreationImages({ page: 1, page_size: 100 });
@@ -436,32 +490,35 @@ export default function AssetPickerModal({
         setCreativeLoadedTabs(prev => new Set([...prev, type]));
       } catch (err) {
         console.error('[AssetPickerModal] 拉取创作资产失败:', err);
-      } finally {
-        setCreativeLoading(false);
       }
     })();
-  }, [open, activeTab, creativeSubTab, creativeAssetsProp]);
+  }, [open, activeTab, creativeSubTab, creativeAssetsProp, creativeLoadedTabs, generationsByTab]);
 
-  const projects = apiProjects ?? [];
+  const projects = useMemo(() => apiProjects ?? [], [apiProjects]);
   const projectAssetsMap = apiAssetsMap ?? {};
   // 从 store 读取创作资产数据（当 prop 未传入时）
 
   // 当 projects 列表变化时，同步 activeProjectId（优先使用 projectId）
   useEffect(() => {
     if (projectId) {
+      // projectId 是父页面传入的外部上下文，需要同步到弹窗本地选择状态。
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 同步父页面指定的项目
       setActiveProjectId(projectId);
       return;
     }
     if (projects.length > 0 && !projects.find(p => p.id === activeProjectId)) {
+      // 项目列表首次加载后选择第一个可用项目。
       setActiveProjectId(projects[0].id);
     }
-  }, [projects, projectId]);
+  }, [projects, projectId, activeProjectId]);
 
   // 当 accept 变化时，重置子 Tab 到第一个可用项
   useEffect(() => {
+    // accept 改变了可用 Tab 集合，需同步清理当前不可用的本地选择。
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- accept 变化时重置受限 Tab
     setProjectSubTab(projectSubTabsAvail[0]);
     setCreativeSubTab(creativeSubTabsAvail[0]);
-  }, [accept]);
+  }, [accept, projectSubTabsAvail, creativeSubTabsAvail]);
 
   if (!open) return null;
 
@@ -496,9 +553,19 @@ export default function AssetPickerModal({
     setActiveProjectId(p.id);
     setProjectOpen(false);
     setProjectHovIdx(null);
+    setProjectMenuRect(null);
   };
 
-  const getProjectBtnRect = () => projectBtnRef.current?.getBoundingClientRect() ?? null;
+  const toggleProjectMenu = () => {
+    const nextOpen = !projectOpen;
+    if (nextOpen) {
+      const rect = projectBtnRef.current?.getBoundingClientRect();
+      setProjectMenuRect(rect ? { top: rect.bottom + 4, left: rect.left, width: rect.width } : null);
+    } else {
+      setProjectMenuRect(null);
+    }
+    setProjectOpen(nextOpen);
+  };
   const isCompactCard = (activeTab === 'creative' && (creativeSubTab === '图片' || creativeSubTab === '视频')) || (activeTab === 'project' && (projectSubTab === '分镜图' || projectSubTab === '分镜视频'));
 
   // 获取当前内容区资产列表
@@ -541,58 +608,6 @@ export default function AssetPickerModal({
     setPreviewImage(null);
   }
 
-// ── 悬浮预览 ───────────────────────────────────────────────────────────────
-  function AssetHoverPreview({ url, mouseX, mouseY }) {
-    const [imgSize, setImgSize] = useState(null);
-    const GAP = 16;
-
-    useEffect(() => {
-      setImgSize(null);
-      const img = new Image();
-      img.onload = () => setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
-      img.src = url;
-    }, [url]);
-
-    if (!imgSize) return null;
-
-    const maxW = window.innerWidth * 0.35;
-    const maxH = window.innerHeight * 0.35;
-    const ratio = imgSize.w / imgSize.h;
-
-    let previewW, previewH;
-    if (ratio >= 1) {
-      previewW = maxW;
-      previewH = previewW / ratio;
-      if (previewH > maxH) { previewH = maxH; previewW = previewH * ratio; }
-    } else {
-      previewH = maxH;
-      previewW = previewH * ratio;
-      if (previewW > maxW) { previewW = maxW; previewH = previewW / ratio; }
-    }
-
-    let left = mouseX + GAP;
-    let top = mouseY + GAP;
-    if (left + previewW > window.innerWidth - GAP) left = mouseX - previewW - GAP;
-    if (top + previewH > window.innerHeight - GAP) top = mouseY - previewH - GAP;
-    left = Math.max(GAP, left);
-    top = Math.max(GAP, top);
-
-    return (
-      <div
-        style={{
-          position: 'fixed', left, top,
-          width: previewW, height: previewH,
-          zIndex: 99999, pointerEvents: 'none',
-          borderRadius: '8px', overflow: 'hidden',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
-          border: '1px solid rgba(255,255,255,0.12)',
-          backgroundColor: '#111',
-        }}
-      >
-        <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-      </div>
-    );
-  }
   return createPortal(
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
@@ -694,7 +709,7 @@ export default function AssetPickerModal({
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 <div
                   ref={projectBtnRef}
-                  onClick={() => setProjectOpen(v => !v)}
+                  onClick={toggleProjectMenu}
                   style={{ display: 'flex', alignItems: 'center', gap: '0', height: '32px', paddingLeft: '16px', paddingRight: '8px', borderRadius: '8px', background: projectOpen ? '#FFFFFF1A' : '#FFFFFF0D', cursor: 'pointer', flexShrink: 0, transition: 'background 100ms' }}
                 >
                   <span style={{ fontFamily: FONT_MEDIUM, fontWeight: 500, fontSize: '14px', lineHeight: '18px', color: '#FFFFFFCC', whiteSpace: 'nowrap' }}>{activeProjectName}</span>
@@ -702,18 +717,16 @@ export default function AssetPickerModal({
                     <path d="M12 6.333L8 10.333L4 6.333H12Z" fill="#FFFFFFCC" stroke="#FFFFFFCC" strokeWidth="1.333" strokeLinejoin="round" />
                   </svg>
                 </div>
-                {projectOpen && projects.length > 0 && (() => {
-                  const rect = getProjectBtnRect();
-                  return createPortal(
+                {projectOpen && projects.length > 0 && createPortal(
                     <>
                       <div style={{ position: 'fixed', inset: 0, zIndex: 1200 }} onClick={() => { setProjectOpen(false); setProjectHovIdx(null); }} />
                       <div
                         style={{
                           position: 'fixed',
-                          top: rect ? rect.bottom + 4 : 0,
-                          left: rect ? rect.left : 0,
+                          top: projectMenuRect?.top ?? 0,
+                          left: projectMenuRect?.left ?? 0,
                           zIndex: 1201,
-                          minWidth: rect ? rect.width : 120,
+                          minWidth: projectMenuRect?.width ?? 120,
                           background: '#1C1C1C',
                           border: '1px solid #FFFFFF14',
                           borderRadius: '10px',
@@ -749,8 +762,7 @@ export default function AssetPickerModal({
                       </div>
                     </>,
                     document.body
-                  );
-                })()}
+                  )}
               </div>
               {/* 子 Tab */}
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '24px' }}>
@@ -856,7 +868,7 @@ export default function AssetPickerModal({
         </div>
       </div>
       {previewImage && createPortal(
-        <AssetHoverPreview url={previewImage.url} mouseX={mousePos.x} mouseY={mousePos.y} />,
+        <AssetHoverPreview key={previewImage.url} url={previewImage.url} mouseX={mousePos.x} mouseY={mousePos.y} />,
         document.body
       )}
     </div>,

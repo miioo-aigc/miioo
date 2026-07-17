@@ -15,7 +15,7 @@ export async function apiListProviders() {
     try {
       const err = await res.json();
       if (err?.detail) message = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
-    } catch {}
+    } catch { /* 忽略非 JSON 错误响应 */ }
     throw new Error(message);
   }
   return res.json();
@@ -32,7 +32,7 @@ export async function apiCreateProvider({ name, provider_type, base_url, api_key
     try {
       const err = await res.json();
       if (err?.detail) message = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
-    } catch {}
+    } catch { /* 忽略非 JSON 错误响应 */ }
     throw new Error(message);
   }
   invalidate('models:'); // provider 变化会影响可用模型列表
@@ -50,7 +50,7 @@ export async function apiUpdateProvider(providerId, data) {
     try {
       const err = await res.json();
       if (err?.detail) message = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
-    } catch {}
+    } catch { /* 忽略非 JSON 错误响应 */ }
     throw new Error(message);
   }
   invalidate('models:');
@@ -75,7 +75,7 @@ export async function apiTestConnection(providerId) {
     try {
       const err = await res.json();
       if (err?.detail) message = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
-    } catch {}
+    } catch { /* 忽略非 JSON 错误响应 */ }
     throw new Error(message);
   }
   return res.json();
@@ -92,7 +92,7 @@ export async function apiOneClickSetup({ api_key }) {
     try {
       const err = await res.json();
       if (err?.detail) message = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
-    } catch {}
+    } catch { /* 忽略非 JSON 错误响应 */ }
     throw new Error(message);
   }
   invalidate('models:'); // 一键配置会批量创建 provider/model

@@ -198,6 +198,7 @@ font-family: 'AlibabaPuHuiTi 2_55 Regular', 'Alibaba PuHuiTi 2.0', system-ui, sa
 
 - **必须使用明确 px 值**，如 `gap-[12px]`、`px-[24px]`、`py-[16px]`
 - **禁止使用 Tailwind 数字缩写**，如 `gap-3`、`px-4`、`py-2`（与自定义 token 类名冲突）
+- 复制设计稿代码时，必须先把其中的 Tailwind 数字缩写转换为设计稿对应的具体 px 数值，再写入项目；不得原样复制 `gap-3`、`px-4`、`py-2` 等缩写
 - 有设计稿代码时，直接复刻设计稿中的间距数值
 - 无设计稿代码时，调用 frontend-design 插件制定间距规则，拿到具体数值后再写代码
 

@@ -41,7 +41,7 @@ backgroundImage: 'linear-gradient(157.78deg, #7AE5B94D 2.88%, #7AE5B900 56.77%)'
 ```
 
 ### Primary 按钮渐变
-双层结构，外层容器用渐变背景 + `p-px` 间距模拟渐变 border 效果，内层容器用纯色背景遮住外层，只露出 1px 边缘形成渐变描边视觉。
+双层结构，外层容器用渐变背景 + `padding: 1px` 模拟渐变 border 效果，内层容器用纯色背景遮住外层，只露出 1px 边缘形成渐变描边视觉。
 hover / active 状态只改变内层 `bg-btn-primary-bg-*` 纯色背景值，外层渐变不变。
 
 ```
@@ -159,7 +159,7 @@ function PrimaryButton({ children, icon: Icon, disabled, onClick }) {
   };
 
   return (
-    /* 外层容器：渐变背景模拟渐变 border，p-px 露出 1px 边缘 */
+    /* 外层容器：渐变背景模拟渐变 border，padding: 1px 露出 1px 边缘 */
     <button
       onClick={handleClick}
       disabled={disabled || loading}
@@ -169,10 +169,11 @@ function PrimaryButton({ children, icon: Icon, disabled, onClick }) {
         bg-btn-primary-bg-normal
         [outline:1px_solid_var(--color-stroke-outline)] outline-offset-0
         [box-shadow:var(--color-shadow)_3px_3px_8px]
-        shrink-0 antialiased p-px disabled:cursor-not-allowed
+        shrink-0 antialiased disabled:cursor-not-allowed
         disabled:[background-image:none]
       "
       style={{
+        padding: '1px',
         backgroundImage:
           "linear-gradient(148.76deg, #ABFFFF4D 3.64%, #2DC3E100 42.81%), linear-gradient(#FFFFFF14)",
       }}

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global process */
 /**
  * 对比两个 OpenAPI JSON 文档，输出精简变更摘要。
  * 用法：node diff-api.js <旧文档> <新文档>

@@ -53,19 +53,6 @@ function Divider() {
   return <div className="self-stretch h-px bg-stroke-normal mx-[4px] flex-shrink-0" />;
 }
 
-function InfoRow({ label, value }) {
-  return (
-    <div className="flex items-baseline gap-[6px] w-full">
-      <span style={{ fontFamily: FONT_REGULAR, fontSize: '12px', lineHeight: '18px', color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>
-        {label}
-      </span>
-      <span className="truncate" style={{ fontFamily: FONT_REGULAR, fontSize: '12px', lineHeight: '18px', color: 'rgba(255,255,255,0.5)' }}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
 function AvatarTrigger({ size, onOpenProfile, avatarUrl }) {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);

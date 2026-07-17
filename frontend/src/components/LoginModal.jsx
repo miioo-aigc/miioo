@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { sendVerificationCode, loginWithPhone, apiGetWechatQrCode, apiPollWechatQrCodeStatus, apiConfirmWechatLogin } from '../api/auth';
 import { createSerialPolling } from '../utils/serialPolling';
 import WechatOfficialQr from './WechatOfficialQr';
@@ -389,7 +389,6 @@ function PhoneLoginView({ onLogin, onChangeTab, onShowToast }) {
   const [codeError, setCodeError] = useState(false);
 
   const validatePhone = (value) => /^1\d{10}$/.test(value);
-  const validateCode = (value) => value.trim().length > 0 && /^\d+$/.test(value);
 
   const handlePhoneChange = (e) => {
     const value = e.target.value;
@@ -493,7 +492,7 @@ function WechatView({ onBackToPhone, onLoginSuccess, onNeedBind, onShowToast, on
   // 保持 agreedRef 与 agreed state 同步，供轮询回调读取最新值
   useEffect(() => { agreedRef.current = agreed; }, [agreed]);
 
-  const startPolling = (qrcodeId) => {
+  const startPolling = useCallback((qrcodeId) => {
     if (pollingRef.current) { pollingRef.current.stop(); pollingRef.current = null; }
     pollingRef.current = createSerialPolling({
       task: async () => apiPollWechatQrCodeStatus(qrcodeId),
@@ -532,9 +531,9 @@ function WechatView({ onBackToPhone, onLoginSuccess, onNeedBind, onShowToast, on
       pauseWhenHidden: true,
     });
     pollingRef.current.start();
-  };
+  }, [onLoginSuccess, onNeedBind, onShowToast]);
 
-  const loadQrCode = async () => {
+  const loadQrCode = useCallback(async () => {
     setQrStatus('loading');
     setAuthUrl('');
     try {
@@ -549,20 +548,14 @@ function WechatView({ onBackToPhone, onLoginSuccess, onNeedBind, onShowToast, on
       setQrStatus('error');
       onShowToast('error', '获取二维码失败，请重试');
     }
-  };
+  }, [onSessionId, onShowToast, startPolling]);
 
   useEffect(() => {
+    // 二维码组件挂载时启动一次外部轮询；loadQrCode 内部负责请求和状态更新。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadQrCode();
     return () => { pollingRef.current?.stop(); pollingRef.current = null; };
-  }, []);
-
-  const qrLabel = {
-    loading: '正在获取二维码…',
-    ready: '请使用微信扫码',
-    scanned: '扫码成功，请在手机上确认',
-    expired: '二维码已过期，点击刷新',
-    error: '加载失败，点击重试',
-  }[qrStatus] ?? '请使用微信扫码';
+  }, [loadQrCode]);
 
   const isExpiredOrError = qrStatus === 'expired' || qrStatus === 'error';
 
@@ -693,7 +686,9 @@ function BindPhoneView({ onBind, onBack, onShowToast, bindToken, sessionId }) {
         try {
           const pollData = await apiPollWechatQrCodeStatus(sessionId);
           hasToken = !!pollData.access_token;
-        } catch (_) {}
+          } catch (error) {
+            console.error('[BindPhoneView] 补充轮询获取登录凭证失败:', error);
+          }
       }
       if (!hasToken) {
         // 服务端未返回 token，走不了静默登录，给出明确提示
@@ -824,6 +819,7 @@ export default function LoginModal({ open, onClose, onSuccess }) {
   const [bindToken, setBindToken] = useState('');
   const [toasts, setToasts] = useState([]);
   const wechatSessionIdRef = useRef('');
+  const [wechatSessionId, setWechatSessionId] = useState('');
 
   const showToast = (type, message) => {
     const id = Date.now();
@@ -831,14 +827,16 @@ export default function LoginModal({ open, onClose, onSuccess }) {
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
   };
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     onClose();
     setTimeout(() => {
       setTab('phone');
       setStep('login');
       setBindToken('');
+      setWechatSessionId('');
+      wechatSessionIdRef.current = '';
     }, 0);
-  };
+  }, [onClose]);
 
   const handleLoginSuccess = () => {
     onSuccess?.();
@@ -882,7 +880,7 @@ export default function LoginModal({ open, onClose, onSuccess }) {
 
     window.addEventListener('message', handleWechatCallbackMessage);
     return () => window.removeEventListener('message', handleWechatCallbackMessage);
-  }, [onSuccess]);
+  }, [handleClose, onSuccess]);
 
   if (!open) return <Toast toasts={toasts} />;
 
@@ -917,11 +915,11 @@ export default function LoginModal({ open, onClose, onSuccess }) {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: 1, alignSelf: 'stretch', padding: 0, backgroundColor: '#161616' }}>
           <ModalHeader onClose={handleClose} />
           {step === 'bind' ? (
-            <BindPhoneView onBind={handleLoginSuccess} onBack={() => setStep('login')} onShowToast={showToast} bindToken={bindToken} sessionId={wechatSessionIdRef.current} />
+            <BindPhoneView onBind={handleLoginSuccess} onBack={() => setStep('login')} onShowToast={showToast} bindToken={bindToken} sessionId={wechatSessionId} />
           ) : tab === 'phone' ? (
             <PhoneLoginView onLogin={handleLoginSuccess} onChangeTab={setTab} onShowToast={showToast} />
           ) : (
-            <WechatView onBackToPhone={() => setTab('phone')} onLoginSuccess={handleLoginSuccess} onNeedBind={handleNeedBind} onShowToast={showToast} onSessionId={(id) => { wechatSessionIdRef.current = id; }} />
+            <WechatView onBackToPhone={() => setTab('phone')} onLoginSuccess={handleLoginSuccess} onNeedBind={handleNeedBind} onShowToast={showToast} onSessionId={(id) => { wechatSessionIdRef.current = id; setWechatSessionId(id); }} />
           )}
         </div>
       </div>

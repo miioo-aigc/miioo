@@ -272,107 +272,6 @@ export async function apiDownloadCreationImage(imageId) {
 
 // ── 创作视频 ──────────────────────────────────────────────────────────────────
 
-function summarizeVideoHistoryPayload(list) {
-  if (!Array.isArray(list) || list.length === 0) return null;
-
-  const fieldSizeOf = (value) => {
-    try {
-      return JSON.stringify(value).length;
-    } catch {
-      return -1;
-    }
-  };
-
-  const entries = list.map((item, index) => {
-    const assetBindings = Array.isArray(item?.asset_bindings || item?.assetBindings)
-      ? (item.asset_bindings || item.assetBindings)
-      : [];
-    const referenceImages = Array.isArray(item?.reference_images || item?.referenceImages)
-      ? (item.reference_images || item.referenceImages)
-      : [];
-    const prompt = item?.prompt || '';
-    const promptHTML = item?.prompt_html || item?.promptHTML || '';
-    const rawSize = (() => {
-      try {
-        return JSON.stringify(item).length;
-      } catch {
-        return -1;
-      }
-    })();
-
-    return {
-      index,
-      id: item?.id,
-      rawSize,
-      promptLength: typeof prompt === 'string' ? prompt.length : 0,
-      promptHtmlLength: typeof promptHTML === 'string' ? promptHTML.length : 0,
-      assetBindingCount: assetBindings.length,
-      referenceImageCount: referenceImages.length,
-      firstFrameUrlLength: (item?.first_frame_url || item?.firstFrameUrl || '').length,
-      lastFrameUrlLength: (item?.last_frame_url || item?.lastFrameUrl || '').length,
-      videoUrlLength: (item?.video_url || item?.videoUrl || item?.preview_video_url || item?.previewVideoUrl || item?.url || '').length,
-      posterUrlLength: (item?.poster_url || item?.posterUrl || '').length,
-      fieldSizes: {
-        asset_bindings: fieldSizeOf(item?.asset_bindings || item?.assetBindings || []),
-        metadata: fieldSizeOf(item?.metadata),
-        result: fieldSizeOf(item?.result),
-        output: fieldSizeOf(item?.output),
-        response: fieldSizeOf(item?.response),
-        extra: fieldSizeOf(item?.extra),
-        detail: fieldSizeOf(item?.detail),
-        data: fieldSizeOf(item?.data),
-        prompt: fieldSizeOf(prompt),
-        prompt_html: fieldSizeOf(promptHTML),
-        video_url: fieldSizeOf(item?.video_url || item?.videoUrl || item?.preview_video_url || item?.previewVideoUrl || item?.url || ''),
-        poster_url: fieldSizeOf(item?.poster_url || item?.posterUrl || ''),
-        first_frame_url: fieldSizeOf(item?.first_frame_url || item?.firstFrameUrl || ''),
-        last_frame_url: fieldSizeOf(item?.last_frame_url || item?.lastFrameUrl || ''),
-      },
-    };
-  });
-
-  const totals = entries.reduce((acc, entry) => ({
-    rawSize: acc.rawSize + Math.max(entry.rawSize, 0),
-    promptLength: acc.promptLength + entry.promptLength,
-    promptHtmlLength: acc.promptHtmlLength + entry.promptHtmlLength,
-    assetBindingCount: acc.assetBindingCount + entry.assetBindingCount,
-    referenceImageCount: acc.referenceImageCount + entry.referenceImageCount,
-  }), {
-    rawSize: 0,
-    promptLength: 0,
-    promptHtmlLength: 0,
-    assetBindingCount: 0,
-    referenceImageCount: 0,
-  });
-
-  const topByRawSize = [...entries]
-    .sort((a, b) => b.rawSize - a.rawSize)
-    .slice(0, 3)
-    .map(({ index, id, rawSize, promptLength, promptHtmlLength, assetBindingCount, referenceImageCount, videoUrlLength, posterUrlLength, fieldSizes }) => ({
-      index,
-      id,
-      rawSize,
-      promptLength,
-      promptHtmlLength,
-      assetBindingCount,
-      referenceImageCount,
-      videoUrlLength,
-      posterUrlLength,
-      fieldSizes,
-    }));
-
-  return {
-    itemCount: list.length,
-    totalApproxChars: totals.rawSize,
-    avgApproxChars: Math.round(totals.rawSize / list.length),
-    totalPromptChars: totals.promptLength,
-    totalPromptHtmlChars: totals.promptHtmlLength,
-    totalAssetBindings: totals.assetBindingCount,
-    totalReferenceImages: totals.referenceImageCount,
-    topHeavyItems: topByRawSize,
-  };
-}
-
 export async function apiListCreationVideos({ page, page_size, exclude_hidden } = {}) {
   const params = new URLSearchParams();
   if (page !== undefined) params.append('page', page);
@@ -581,7 +480,7 @@ export async function apiGetCreationAudioTask(taskId) {
 function safeFileName(file) {
   const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '';
   const base = file.name.slice(0, file.name.length - ext.length);
-  const safeBase = base.replace(/[^\x00-\x7F]/g, '_') || 'upload';
+  const safeBase = Array.from(base, (char) => char.codePointAt(0) < 128 ? char : '_').join('') || 'upload';
   return safeBase + ext;
 }
 
@@ -794,7 +693,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       const r = await apiUploadCreationImage({ file: params.firstFrameFile, category: 'reference', ...uploadContext });
       firstFrameUrl = r.uploaded_url || r.uploadedUrl || undefined;
       firstFrameAssetId = r.asset_id || undefined;
-    } catch {}
+    } catch { /* 单个首帧上传失败时保留后续生成流程 */ }
   } else if (params.firstFrameFile && params.firstFrameFile.url) {
     // 资产库选择的首帧：已有 URL，无需上传
     firstFrameUrl = params.firstFrameFile.url;
@@ -805,7 +704,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       const r = await apiUploadCreationImage({ file: params.lastFrameFile, category: 'reference', ...uploadContext });
       lastFrameUrl = r.uploaded_url || r.uploadedUrl || undefined;
       lastFrameAssetId = r.asset_id || undefined;
-    } catch {}
+    } catch { /* 单个尾帧上传失败时保留后续生成流程 */ }
   } else if (params.lastFrameFile && params.lastFrameFile.url) {
     // 资产库选择的尾帧：已有 URL，无需上传
     lastFrameUrl = params.lastFrameFile.url;

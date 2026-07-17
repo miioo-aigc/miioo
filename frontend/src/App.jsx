@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { lazy, Suspense, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import Home from './pages/Home'
-import AdminConsolePage from './pages/AdminConsolePage'
+const Home = lazy(() => import('./pages/Home'))
+const AdminConsolePage = lazy(() => import('./pages/AdminConsolePage'))
 import LiquidGlassDefs from './components/LiquidGlassDefs'
 import { apiGetCurrentUser } from './api/user'
 
@@ -35,11 +35,13 @@ function App() {
     return (
       <>
         <LiquidGlassDefs />
-        <AdminConsolePage
-          currentUser={adminUser}
-          onBackHome={handleBackHome}
-          showToast={showToast}
-        />
+        <Suspense fallback={null}>
+          <AdminConsolePage
+            currentUser={adminUser}
+            onBackHome={handleBackHome}
+            showToast={showToast}
+          />
+        </Suspense>
         {toast && createPortal(
           <div style={{
             position: 'fixed', bottom: '32px', left: '50%', transform: 'translateX(-50%)',
@@ -69,7 +71,9 @@ function App() {
   return (
     <>
       <LiquidGlassDefs />
-      <Home onProjectCreated={() => {}} onGoToAdmin={handleGoToAdmin} />
+      <Suspense fallback={null}>
+        <Home onProjectCreated={() => {}} onGoToAdmin={handleGoToAdmin} />
+      </Suspense>
     </>
   )
 }

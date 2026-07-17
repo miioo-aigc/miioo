@@ -1,3 +1,14 @@
+/**
+ * @file AdminConsolePage.jsx
+ * @structure-index
+ *
+ * ─── 页面结构 ───────────────────────────────────────────────────────
+ *   EmptyAdminState / 管理员权限提示                                  L19
+ *   AdminConsolePage / 分区导航、刷新信号和业务面板编排                 L38
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-07-16  字体常量改从管理员工具函数模块导入，避免组件模块导出非组件能力
+ */
 import { useMemo, useState } from 'react';
 import AdminAccountManagementPage from '../components/admin/AdminAccountManagementPage';
 import AdminConsoleSidebar from '../components/admin/AdminConsoleSidebar';
@@ -5,7 +16,8 @@ import AdminDisplaySettingsPage from '../components/admin/AdminDisplaySettingsPa
 import AdminModelVisibilityPage from '../components/admin/AdminModelVisibilityPage';
 import AdminOverviewPanel from '../components/admin/AdminOverviewPanel';
 import AdminVoiceLibraryPage from '../components/admin/AdminVoiceLibraryPage';
-import { ActionButton, FONT_MEDIUM, FONT_REGULAR } from '../components/admin/adminShared';
+import { ActionButton } from '../components/admin/adminShared';
+import { FONT_MEDIUM, FONT_REGULAR } from '../components/admin/adminSharedUtils';
 
 const SECTIONS = [
   { key: 'overview', label: '总览', description: '先查看整体状态，再进入对应模块处理。' },

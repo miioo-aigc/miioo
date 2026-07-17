@@ -113,7 +113,7 @@ export async function apiUpdateSubject(projectId, subjectId, data) {
       } else {
         detail = await res.text();
       }
-    } catch {}
+    } catch { /* 忽略非 JSON 错误响应 */ }
     const err = new Error(detail || `更新主体失败（${res.status}）`);
     err.status = res.status;
     throw err;
@@ -219,7 +219,7 @@ export async function apiUnsetPrimarySubjectImage(projectId, subjectId) {
       const body = await res.json();
       detail = body?.detail || body?.message || '';
       if (typeof detail === 'object') detail = JSON.stringify(detail);
-    } catch {}
+    } catch { /* 忽略非 JSON 错误响应 */ }
     const err = new Error(detail || `取消定稿失败（${res.status}）`);
     err.status = res.status;
     throw err;
@@ -882,7 +882,7 @@ export async function apiExtractSubjectsFromScript(projectId) {
     try {
       const body = await res.json();
       detail = body?.detail || body?.message || '';
-    } catch {}
+    } catch { /* 忽略非 JSON 错误响应 */ }
     const statusMessages = {
       524: 'AI 角色提取超时，剧本内容可能过长，请缩短后重试',
       502: 'AI 提取服务暂时不可用，请稍后重试',

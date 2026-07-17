@@ -74,7 +74,7 @@ function removeRaw(medium, key) {
 
 function notify(key, data) {
   const subs = subscribers.get(key);
-  if (subs) subs.forEach((fn) => { try { fn(data); } catch (e) { /* ignore */ } });
+  if (subs) subs.forEach((fn) => { try { fn(data); } catch { /* ignore subscriber errors */ } });
 }
 
 /**

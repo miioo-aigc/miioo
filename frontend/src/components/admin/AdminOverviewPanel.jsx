@@ -7,7 +7,8 @@ import {
   apiGetAdminUserAccounts,
 } from '../../api/admin';
 import { apiGetVoiceLibrary } from '../../api/voices';
-import { ActionButton, FONT_MEDIUM, FONT_REGULAR, getErrorMessage } from './adminShared';
+import { ActionButton } from './adminShared';
+import { FONT_MEDIUM, FONT_REGULAR, getErrorMessage } from './adminSharedUtils';
 
 function SummaryCard({ label, value }) {
   return (
@@ -83,6 +84,8 @@ export default function AdminOverviewPanel({
   }, [showToast]);
 
   useEffect(() => {
+    // refreshSignal 表示管理员外部数据刷新；此处必须重新请求概览数据。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadSummary();
   }, [loadSummary, refreshSignal]);
 

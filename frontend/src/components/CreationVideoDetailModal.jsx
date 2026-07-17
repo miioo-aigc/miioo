@@ -5,7 +5,6 @@ import ConfirmDialog from './ConfirmDialog';
 import FilePreviewTooltip from './FilePreviewTooltip';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
-const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 // ConfirmDeleteModal 已迁移至 ConfirmDialog 共享组件
 
@@ -38,7 +37,7 @@ function ReferenceVideoCard({ vidUrl }) {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         setPreviewUrl(canvas.toDataURL('image/jpeg', 0.7));
-      } catch (_) { /* CORS — use fallback */ }
+      } catch { /* CORS — use fallback */ }
       clearTimeout(timeoutId);
     };
     const handleError = () => { cancelled = true; };
@@ -219,7 +218,7 @@ export default function CreationVideoDetailModal({
       vid.removeEventListener('ended', onEnded);
       vid.removeEventListener('error', onError);
     };
-  }, [volume, videoUrl]);
+  }, [volume, muted, videoUrl]);
 
   // 弹窗打开后自动播放视频
   useEffect(() => {
@@ -230,7 +229,7 @@ export default function CreationVideoDetailModal({
     };
     vid.addEventListener('canplay', onCanPlay, { once: true });
     return () => vid.removeEventListener('canplay', onCanPlay);
-  }, [videoUrl]);
+  }, [videoUrl, muted]);
 
   function togglePlay() {
     const vid = videoRef.current;

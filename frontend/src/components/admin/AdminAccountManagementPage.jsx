@@ -12,7 +12,7 @@ import {
   formatDateTime,
   getErrorMessage,
   mapAccountFilterValue,
-} from './adminShared';
+} from './adminSharedUtils';
 
 const ACCOUNT_PAGE_SIZE = 20;
 
@@ -88,6 +88,8 @@ export default function AdminAccountManagementPage({
   }, [query.activeFilter, query.adminFilter, query.keyword, query.page, showToast]);
 
   useEffect(() => {
+    // refreshSignal 表示管理员外部数据刷新；此处必须重新请求列表。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadAccounts({ force: true });
   }, [loadAccounts, refreshSignal]);
 

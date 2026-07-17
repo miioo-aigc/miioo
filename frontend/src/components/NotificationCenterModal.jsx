@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiGetNotifications, apiMarkAllNotificationsRead } from '../api/user';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -195,12 +195,7 @@ export default function NotificationCenterModal({ open, onClose, showToast }) {
   const [detailItem, setDetailItem] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    loadNotifications();
-  }, [open, activeTab]);
-
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     setLoading(true);
     try {
       // type: 'creation_log' / 'system_notice' / 'team_collab'
@@ -217,7 +212,14 @@ export default function NotificationCenterModal({ open, onClose, showToast }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!open) return;
+    // 打开弹窗时主动触发外部通知请求；请求内部负责异步状态更新。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadNotifications();
+  }, [open, loadNotifications]);
 
   const handleMarkAllRead = async () => {
     try {

@@ -17,14 +17,12 @@ import AdminVoiceLibraryTable from './AdminVoiceLibraryTable';
 import {
   ActionButton,
   FieldLabel,
-  FONT_MEDIUM,
-  FONT_REGULAR,
   SelectInput,
   TextArea,
   TextInput,
   Toggle,
-  getErrorMessage,
 } from './adminShared';
+import { FONT_MEDIUM, FONT_REGULAR, getErrorMessage } from './adminSharedUtils';
 
 const GENDER_OPTIONS = [
   { value: '', label: '未设置' },
@@ -247,7 +245,6 @@ export default function AdminVoiceLibraryPage({
 
   useEffect(() => {
     const unsubscribe = subscribeVoicePreview(setPlayingPreviewKey);
-    setPlayingPreviewKey(getActiveVoicePreviewKey());
     return () => {
       unsubscribe();
       stopVoicePreview();
@@ -298,6 +295,8 @@ export default function AdminVoiceLibraryPage({
   }, [query.keyword, query.page, query.statusFilter, showToast]);
 
   useEffect(() => {
+    // 页面首次加载或外部刷新时必须同步音色库数据。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPage({ silent: false });
   }, [loadPage, refreshSignal]);
 

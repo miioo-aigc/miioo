@@ -222,7 +222,7 @@ export const useCreationStore = create(
         favorites: state.favorites,
       }),
       version: 2, // 升版本清除旧 localStorage 缓存（旧版持久化了 generationsByTab 导致数据叠加）
-      migrate: (persistedState, version) => {
+      migrate: (persistedState) => {
         // 版本不一致时直接返回初始值（旧 generationsByTab 缓存全部丢弃）
         return { favorites: persistedState?.favorites ?? [] };
       },

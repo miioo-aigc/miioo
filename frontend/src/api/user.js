@@ -101,7 +101,7 @@ export async function apiGetWechatQrCode() {
   const res = await authFetch(`${BASE}/api/users/me/wechat/qrcode`);
   if (!res.ok) {
     let detail = res.statusText;
-    try { const body = await res.json(); detail = body?.detail || body?.message || detail; } catch {}
+    try { const body = await res.json(); detail = body?.detail || body?.message || detail; } catch { /* 忽略非 JSON 错误响应 */ }
     throw new Error(`获取微信绑定二维码失败（${res.status}）：${detail}`);
   }
   const data = await res.json();
@@ -116,7 +116,7 @@ export async function apiPollWechatBind(ticket) {
   const res = await authFetch(`${BASE}/api/users/me/wechat/poll/${encodeURIComponent(ticket)}`);
   if (!res.ok) {
     let detail = res.statusText;
-    try { const body = await res.json(); detail = body?.detail || body?.message || detail; } catch {}
+    try { const body = await res.json(); detail = body?.detail || body?.message || detail; } catch { /* 忽略非 JSON 错误响应 */ }
     const err = new Error(`轮询微信绑定状态失败（${res.status}）：${detail}`);
     err.status = res.status;
     throw err;

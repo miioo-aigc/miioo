@@ -1,7 +1,45 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
-import ScriptPage from './ScriptPage';
-import { apiUpdateProject, apiUploadProjectCover } from '../api/project';
+/**
+ * @file GlobalSettings.jsx
+ * @structure-index
+ *
+ * ─── 全局常量 & 配置 ───────────────────────────────────────────────
+ *   ScriptPage 懒加载定义                                        L40
+ *   FONT / FONT_MEDIUM                                           L58–L59
+ *   VISUAL_STYLES                                                L62
+ *
+ * ─── 结果/状态展示组件 ───────────────────────────────────────────
+ *   <StatCard>                                                   L79
+ *   EPISODE_STATUS / <EpisodeCard> / <EpisodeGrid>               L165 / L171 / L229
+ *
+ * ─── 表单与业务交互组件 ─────────────────────────────────────────
+ *   <TextInput> / <TextArea>                                     L289 / L354
+ *   <CoverUpload>                                                L403
+ *   <ProjectNameHeading>                                         L518
+ *
+ * ─── 主页面入口 ─────────────────────────────────────────────────
+ *   export default function GlobalSettings()                      L577
+ *     ├─ [状态] name / description / coverUrl / isSaving          L609–L612
+ *     ├─ [Ref] saveTimerRef / onProjectUpdateRef                   L613–L614
+ *     ├─ [函数] saveImmediately()                                  L618
+ *     ├─ [副作用] onProjectUpdate 引用同步                         L615
+ *     ├─ [副作用] 表单变更 debounce 自动保存                           L646
+ *     └─ [渲染] ScriptPage 通过 Suspense 按需加载                    L717
+ *
+ * ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-07-15  修复 ScriptPage 草稿回调引用缺失，统一使用 onScriptDraftContentChange
+ *   2026-07-15  修正懒加载、Suspense、主入口副作用与各定义的实际结构索引行号
+ *   2026-07-15  将封面上传按钮迁移到 Button 基础能力
+ *   2026-07-15  将文件选择器移出按钮内容树
+ *   2026-07-15  校正 props 同步副作用的结构索引行号
+ *   2026-07-16  由 Home 按项目 ID 重建页面实例，移除同步草稿的级联 effect
+ */
+
+import { lazy, Suspense, useState, useRef, useCallback, useEffect } from 'react';
+
+const ScriptPage = lazy(() => import('./ScriptPage'));
+import { apiUploadProjectCover } from '../api/project';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import { Button } from '../components/ui';
 import styleXianxia from '../assets/styles/xianxia-3d.png';
 import styleSuspenseAnime from '../assets/styles/suspense-anime-2d.avif';
 import styleCyberpunk from '../assets/styles/cyberpunk-3d.avif';
@@ -386,10 +424,18 @@ function CoverUpload({ coverUrl, onUpload, isSaving }) {
   const busy = isUploading || isSaving;
 
   return (
-    <div
-      onClick={() => !busy && fileInputRef.current?.click()}
+    <>
+      <Button
+      type="button"
+      variant="secondary"
+      size="large"
+      disabled={busy}
+      onClick={() => fileInputRef.current?.click()}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      aria-label={coverUrl ? '更换项目封面' : '上传项目封面'}
+      className="!h-[200px] !w-full !rounded-[8px] !border-0 !bg-transparent !p-0 !shadow-none !text-white"
+      contentClassName="!h-full !w-full !flex-col"
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -408,8 +454,7 @@ function CoverUpload({ coverUrl, onUpload, isSaving }) {
         transition: 'border-color 0.2s',
         opacity: busy ? 0.6 : 1,
       }}
-    >
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleChange} />
+      >
       {coverUrl ? (
         <>
           <img src={normalizeImageUrl(coverUrl)} alt="项目封面" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -461,7 +506,9 @@ function CoverUpload({ coverUrl, onUpload, isSaving }) {
           </div>
         </>
       )}
-    </div>
+      </Button>
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleChange} />
+    </>
   );
 }
 
@@ -535,9 +582,7 @@ export default function GlobalSettings({
   projectStyle = 'xianxia-3d',
   onProjectUpdate,
   onBack,
-  showToast,
   activeStep,
-  onStepChange,
   onGoToSubject,
   isSubjectUnlocked = false,
   scriptFinalizedSinceExtraction = false,
@@ -595,19 +640,6 @@ export default function GlobalSettings({
     }
   };
 
-  // 同步 props 变化
-  useEffect(() => {
-    setName(projectName);
-  }, [projectName]);
-
-  useEffect(() => {
-    setDescription(projectDescription);
-  }, [projectDescription]);
-
-  useEffect(() => {
-    setCoverUrl(projectCoverUrl);
-  }, [projectCoverUrl]);
-
   // 自动保存：name, description, coverUrl 变化时 debounce 调用 onProjectUpdate
   useEffect(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -651,6 +683,8 @@ export default function GlobalSettings({
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
+  // 回调通过 ref 保持最新身份，避免父页面每次渲染都重启 debounce 定时器。
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- onProjectUpdate 已由 onProjectUpdateRef 同步
   }, [name, description, coverUrl, projectId, projectName, projectDescription, projectCoverUrl]);
 
   if (activeStep === 'script') {
@@ -666,22 +700,24 @@ export default function GlobalSettings({
           display: 'flex',
         }}
       >
-        <ScriptPage
-          projectId={projectId}
-          onGoToSubject={onGoToSubject}
-          isSubjectUnlocked={isSubjectUnlocked}
-          scriptFinalizedSinceExtraction={scriptFinalizedSinceExtraction}
-          onScriptFinalized={onScriptFinalized}
-          onEpisodesChange={onEpisodesChange}
-          phase={scriptPhase}
-          onPhaseChange={onScriptPhaseChange}
-          hasStarted={scriptHasStarted}
-          onHasStartedChange={onScriptHasStartedChange}
-          scriptContent={scriptContent}
-          onScriptContentChange={onScriptContentChange}
-          draftContent={scriptDraftContent}
-          onDraftContentChange={onScriptDraftContentChange}
-        />
+        <Suspense fallback={<div style={{ flex: '1 1 0%', minHeight: 0 }} />}>
+          <ScriptPage
+            projectId={projectId}
+            onGoToSubject={onGoToSubject}
+            isSubjectUnlocked={isSubjectUnlocked}
+            scriptFinalizedSinceExtraction={scriptFinalizedSinceExtraction}
+            onScriptFinalized={onScriptFinalized}
+            onEpisodesChange={onEpisodesChange}
+            phase={scriptPhase}
+            onPhaseChange={onScriptPhaseChange}
+            hasStarted={scriptHasStarted}
+            onHasStartedChange={onScriptHasStartedChange}
+            scriptContent={scriptContent}
+            onScriptContentChange={onScriptContentChange}
+            draftContent={scriptDraftContent}
+            onDraftContentChange={onScriptDraftContentChange}
+          />
+        </Suspense>
       </div>
     );
   }

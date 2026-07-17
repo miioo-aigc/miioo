@@ -79,7 +79,6 @@ export async function apiUpdateStoryboard(projectId, storyboardId, data) {
   const updated = await res.json();
   // 把最新数据回填进所有相关缓存 key，避免刷新时读到旧缓存导致字段丢失
   if (updated?.id) {
-    const prefix = K.storyboardsPrefix(projectId);
     for (const m of ['memory', 'local', 'session']) {
       // 枚举该项目下所有已缓存的 storyboards key
       for (const episodeId of [undefined, updated.episode_id]) {
@@ -172,7 +171,7 @@ export async function apiGenerateStoryboardImage(projectId, storyboardId, params
       const body = await res.json();
       detail = body?.detail || body?.message || '';
       if (typeof detail === 'object') detail = JSON.stringify(detail);
-    } catch {}
+    } catch { /* 忽略非 JSON 错误响应 */ }
     const err = new Error(detail || `生成失败（${res.status}）`);
     err.status = res.status;
     throw err;
@@ -195,7 +194,7 @@ export async function apiGenerateStoryboardVideo(projectId, storyboardId, params
       const body = await res.json();
       detail = body?.detail || body?.message || '';
       if (typeof detail === 'object') detail = JSON.stringify(detail);
-    } catch {}
+    } catch { /* 忽略非 JSON 错误响应 */ }
     const err = new Error(detail || `生成失败（${res.status}）`);
     err.status = res.status;
     throw err;
@@ -212,7 +211,7 @@ export async function apiGenerateStoryboardVideo(projectId, storyboardId, params
 function safeFileName(file) {
   const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '';
   const base = file.name.slice(0, file.name.length - ext.length);
-  const safeBase = base.replace(/[^\x00-\x7F]/g, '_') || 'upload';
+  const safeBase = Array.from(base, (char) => char.codePointAt(0) < 128 ? char : '_').join('') || 'upload';
   return safeBase + ext;
 }
 
@@ -293,7 +292,9 @@ export async function apiUpdateShotFinalized(shotId, finalized) {
   return { id: shotId, finalized };
 }
 
-export async function apiReorderShots(episodeId, orderedIds) {
+export async function apiReorderShots(_episodeId, _orderedIds) {
+  void _episodeId;
+  void _orderedIds;
   console.warn('[api] apiReorderShots 缺少 projectId，调用方应改用 apiReorderStoryboards(projectId, ordered_ids)');
 }
 
@@ -312,7 +313,7 @@ export async function apiGetTask(taskId) {
       const body = await res.json();
       detail = body?.detail || body?.message || '';
       if (typeof detail === 'object') detail = JSON.stringify(detail);
-    } catch {}
+    } catch { /* 忽略非 JSON 错误响应 */ }
     const err = new Error(detail || `获取任务状态失败（${res.status}）`);
     err.status = res.status;
     throw err;

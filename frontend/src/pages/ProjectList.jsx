@@ -1,7 +1,39 @@
+/**
+ * @file ProjectList.jsx
+ * @structure-index
+ *
+ * ─── 全局常量 & 工具函数 ────────────────────────────────────────────
+ *   FONT / FONT_MEDIUM              页面字体常量                         L36
+ *
+ * ─── 图标组件 ───────────────────────────────────────────────────────
+ *   SearchIcon / PlusIcon / MoreIcon / PencilIcon / CopyIcon / TrashIcon / CloseIcon
+ *                                                                        L41–L98
+ *
+ * ─── 菜单与弹窗组件 ────────────────────────────────────────────────
+ *   MoreMenu / MoreMenuItem          项目操作菜单                         L109 / L144
+ *   RenameModal                      项目重命名弹窗                       L161
+ *   DeleteProjectDialog              删除确认弹窗                         L292
+ *
+ * ─── 结果/状态展示组件 ─────────────────────────────────────────────
+ *   NewProjectCard                   新建项目卡片                         L350
+ *   ProjectCard                      项目卡片与更多操作                   L390
+ *
+ * ─── 主页面入口 ─────────────────────────────────────────────────────
+ *   export default ProjectList()     搜索、项目筛选和弹窗编排             L519
+ *     ├─ [状态] searchValue / searchFocused / searchHovered              L520–L522
+ *     ├─ [状态] renameTarget / deleteTarget                               L523–L524
+ *     └─ [函数] filtered             根据项目名称过滤列表                  L526
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-07-15  抽离通用按钮组件并迁移弹窗操作按钮
+ *   2026-07-15  将项目操作菜单项迁移到 Button 基础能力
+ *   2026-07-15  按当前代码补齐结构索引行号
+ */
 import { useState, useRef, useEffect } from 'react';
 import defaultCover from '../assets/project-default-cover.png';
 import { formatRelativeTime } from '../utils/formatTime';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import { Button, ButtonGroup, IconButton, TextButton } from '../components/ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -112,37 +144,17 @@ function MoreMenu({ onRename, onCopy, onDelete, onClose }) {
 }
 
 function MoreMenuItem({ icon, label, danger, onClick }) {
-  const [hovered, setHovered] = useState(false);
   return (
-    <button
-      type="button"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+    <Button
+      variant="secondary"
+      size="small"
+      icon={icon}
       onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        width: '100%',
-        padding: '8px 12px',
-        borderRadius: '6px',
-        border: 'none',
-        background: hovered
-          ? 'rgba(255,255,255,0.05)'
-          : 'transparent',
-        cursor: 'pointer',
-        fontFamily: FONT,
-        fontSize: '13px',
-        lineHeight: '18px',
-        color: danger
-          ? '#F75F5F'
-          : 'rgba(255,255,255,0.8)',
-        transition: 'background 120ms',
-      }}
+      contentClassName={danger ? '!text-text-danger' : '!text-white-80'}
+      className="!h-8 !w-full !justify-start !rounded-[6px] !border-0 !bg-transparent !px-[8px] !shadow-none hover:!bg-white-5 active:!bg-white-10"
     >
-      <span style={{ color: 'inherit', display: 'flex', alignItems: 'center' }}>{icon}</span>
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -208,24 +220,14 @@ function RenameModal({ initialName, onConfirm, onCancel }) {
           <span style={{ fontFamily: FONT_MEDIUM, fontWeight: 500, fontSize: '16px', lineHeight: '20px', color: '#FFFFFF' }}>
             重命名
           </span>
-          <button
-            type="button"
+          <IconButton
+            icon={<CloseIcon />}
+            aria-label="关闭重命名弹窗"
+            variant="secondary"
+            size="small"
             onClick={onCancel}
-            style={{
-              width: '28px',
-              height: '28px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              borderRadius: '6px',
-              padding: 0,
-            }}
-          >
-            <CloseIcon />
-          </button>
+            className="size-7 rounded-[6px] border-0 bg-transparent p-0 shadow-none hover:bg-white-5 active:bg-white-10"
+          />
         </div>
 
         {/* Input area */}
@@ -275,95 +277,13 @@ function RenameModal({ initialName, onConfirm, onCancel }) {
         </div>
 
         {/* Footer */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            gap: '16px',
-            padding: '16px 24px',
-            background: '#161616',
-          }}
+        <ButtonGroup
+          className="gap-[16px] px-[24px] py-[16px]"
+          style={{ background: '#161616' }}
         >
-          <CancelButton onClick={onCancel} />
-          <ConfirmButton onClick={handleConfirm} disabled={!value.trim()} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CancelButton({ onClick }) {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        height: '36px',
-        flexShrink: 0,
-        borderRadius: '8px',
-        padding: '0 16px',
-        gap: '4px',
-        boxShadow: 'rgba(0,0,0,0.4) 3px 3px 8px',
-        background: hovered ? 'rgba(255,255,255,0.05)' : '#161616',
-        border: '1px solid rgba(255,255,255,0.05)',
-        outline: '1px solid #00000080',
-        cursor: 'pointer',
-        fontFamily: FONT,
-        fontSize: '14px',
-        lineHeight: '18px',
-        color: 'rgba(255,255,255,0.6)',
-        transition: 'background 120ms',
-      }}
-    >
-      取消
-    </button>
-  );
-}
-
-function ConfirmButton({ onClick, disabled }) {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '36px',
-        flexShrink: 0,
-        borderRadius: '8px',
-        boxShadow: 'rgba(0,0,0,0.4) 3px 3px 8px',
-        outline: '1px solid #00000080',
-        padding: '1px',
-        backgroundImage: disabled
-          ? 'linear-gradient(in oklab 180deg, #FFFFFF14, #FFFFFF14)'
-          : 'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 30%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, #FFFFFF14, #FFFFFF14)',
-        opacity: disabled ? 0.5 : 1,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-      }}
-      onClick={disabled ? undefined : onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          flexGrow: 1,
-          borderRadius: '7px',
-          padding: '0 15px',
-          gap: '4px',
-          background: hovered && !disabled ? '#252626' : '#161616',
-          transition: 'background 120ms',
-        }}
-      >
-        <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF', whiteSpace: 'nowrap' }}>
-          确认
-        </span>
+          <TextButton onClick={onCancel}>取消</TextButton>
+          <Button variant="primary" onClick={handleConfirm} disabled={!value.trim()}>确认</Button>
+        </ButtonGroup>
       </div>
     </div>
   );
@@ -409,67 +329,18 @@ function DeleteProjectDialog({ projectName, onConfirm, onCancel }) {
               「{projectName}」将被永久删除，无法恢复。
             </span>
           </div>
-          <button
-            type="button"
+          <IconButton
+            icon={<CloseIcon />}
+            aria-label="关闭删除项目弹窗"
+            variant="secondary"
+            size="small"
             onClick={onCancel}
-            style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '8px', padding: 0, flexShrink: 0 }}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-              <path d="M2.667 2.667L13.333 13.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M2.667 13.333L13.333 2.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+            className="size-7 rounded-[8px] border-0 bg-transparent p-0 shadow-none hover:bg-white-5 active:bg-white-10"
+          />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '36px',
-              flexShrink: 0,
-              borderRadius: '8px',
-              paddingLeft: '16px',
-              paddingRight: '16px',
-              boxShadow: '#00000066 3px 3px 8px',
-              backgroundColor: '#161616',
-              border: '1px solid #FFFFFF14',
-              outline: '1px solid #00000080',
-              cursor: 'pointer',
-              fontFamily: FONT,
-              fontSize: '14px',
-              lineHeight: '18px',
-              color: 'rgba(255,255,255,0.6)',
-            }}
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '36px',
-              flexShrink: 0,
-              borderRadius: '8px',
-              paddingLeft: '16px',
-              paddingRight: '16px',
-              backgroundColor: '#D13B3B',
-              border: '1px solid rgba(255,255,255,0.2)',
-              cursor: 'pointer',
-              fontFamily: FONT_MEDIUM,
-              fontWeight: 500,
-              fontSize: '14px',
-              lineHeight: '18px',
-              color: '#FFFFFF',
-            }}
-          >
-            删除
-          </button>
+          <TextButton onClick={onCancel}>取消</TextButton>
+          <Button variant="danger" onClick={onConfirm}>删除</Button>
         </div>
       </div>
     </div>

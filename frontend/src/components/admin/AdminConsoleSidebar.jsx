@@ -1,4 +1,4 @@
-import { FONT_MEDIUM, FONT_REGULAR } from './adminShared';
+import { FONT_MEDIUM, FONT_REGULAR } from './adminSharedUtils';
 
 export default function AdminConsoleSidebar({
   sections,

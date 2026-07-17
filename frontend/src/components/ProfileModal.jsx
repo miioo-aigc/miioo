@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import ConfirmDialog from './ConfirmDialog';
 import WechatOfficialQr from './WechatOfficialQr';
@@ -223,15 +223,13 @@ function PhoneRow({ phone, onUnbind }) {
 }
 
 function WechatUnboundRow({ onBind }) {
-  const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
   return (
     <button
       type="button"
       className="flex items-center w-full border-0 cursor-pointer"
       style={{ padding: '0 24px', height: '52px', justifyContent: 'space-between', background: 'transparent' }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setPressed(false); }}
+      onMouseLeave={() => setPressed(false)}
       onMouseDown={() => setPressed(true)}
       onMouseUp={() => setPressed(false)}
       onClick={onBind}
@@ -607,7 +605,7 @@ function WechatBindView({ onBack, onClose, onBindSuccess }) {
   const pollingRef = useRef(null);
   const ticketRef = useRef(null);
 
-  const startPolling = (ticket) => {
+  const startPolling = useCallback((ticket) => {
     if (pollingRef.current) { pollingRef.current.stop(); pollingRef.current = null; }
     pollingRef.current = createSerialPolling({
       task: async () => apiPollWechatBind(ticket),
@@ -634,9 +632,9 @@ function WechatBindView({ onBack, onClose, onBindSuccess }) {
       pauseWhenHidden: true,
     });
     pollingRef.current.start();
-  };
+  }, [onBindSuccess]);
 
-  const loadQrCode = async () => {
+  const loadQrCode = useCallback(async () => {
     setQrStatus('loading');
     setAuthUrl('');
     try {
@@ -648,12 +646,14 @@ function WechatBindView({ onBack, onClose, onBindSuccess }) {
     } catch {
       setQrStatus('error');
     }
-  };
+  }, [startPolling]);
 
   useEffect(() => {
+    // 挂载绑定视图时主动发起二维码请求；请求内部负责异步状态更新。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadQrCode();
     return () => { pollingRef.current?.stop(); pollingRef.current = null; };
-  }, []);
+  }, [loadQrCode]);
 
   const isExpiredOrError = qrStatus === 'expired' || qrStatus === 'error';
   const qrLabel = {
@@ -761,7 +761,9 @@ export default function ProfileModal({
   };
 
   useEffect(() => {
+    // 打开个人资料时从 currentUser 恢复本地编辑态，避免关闭后残留上次会话。
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 打开弹窗时恢复外部用户资料
     setNameVal(currentUser.nickname ?? '');
     setAvatarUrl(currentUser.avatar_url ?? null);
     setBoundPhone(currentUser.phone_bound ? (currentUser.phone ?? '已绑定') : null);
@@ -769,15 +771,15 @@ export default function ProfileModal({
     setWechatView('profile');
     setDeleteStep(null);
     setPhoneUnbindStep(null);
-  }, [open]);
+  }, [open, currentUser.avatar_url, currentUser.nickname, currentUser.phone, currentUser.phone_bound, currentUser.wechat, currentUser.wechat_bound]);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (wechatView !== 'profile') {
       setWechatView('profile');
       return;
     }
     onClose?.();
-  };
+  }, [onClose, wechatView]);
 
   const handleLocalPreview = (localUrl) => setAvatarUrl(localUrl);
 

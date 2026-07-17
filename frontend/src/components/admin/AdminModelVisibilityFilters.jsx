@@ -1,4 +1,5 @@
-import { ActionButton, FONT_MEDIUM, FONT_REGULAR, SelectInput, TextInput } from './adminShared';
+import { ActionButton, SelectInput, TextInput } from './adminShared';
+import { FONT_REGULAR } from './adminSharedUtils';
 
 const CATEGORY_OPTIONS = [
   { value: 'all', label: '全部分类' },

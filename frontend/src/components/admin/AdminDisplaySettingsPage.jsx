@@ -8,15 +8,8 @@ import {
   apiUpdateAdminCardVisibility,
   apiUpdateAdminCommunityQrConfig,
 } from '../../api/admin';
-import {
-  ActionButton,
-  FONT_MEDIUM,
-  FONT_REGULAR,
-  TextInput,
-  Toggle,
-  formatTime,
-  getErrorMessage,
-} from './adminShared';
+import { ActionButton, TextInput, Toggle } from './adminShared';
+import { FONT_MEDIUM, FONT_REGULAR, formatTime, getErrorMessage } from './adminSharedUtils';
 
 const CARD_META = {
   onelink: { label: 'OneLinkAI', description: '控制 API 配置弹窗中的 OneLinkAI 卡片显示。' },
@@ -175,6 +168,8 @@ export default function AdminDisplaySettingsPage({
   }, [showToast]);
 
   useEffect(() => {
+    // refreshSignal 表示管理员外部数据刷新；此处必须重新请求配置。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [loadData, refreshSignal]);
 

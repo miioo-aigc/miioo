@@ -1,10 +1,8 @@
 import {
-  FONT_MEDIUM,
-  FONT_REGULAR,
   PaginationControls,
   Toggle,
-  formatTime,
 } from './adminShared';
+import { FONT_MEDIUM, FONT_REGULAR, formatTime } from './adminSharedUtils';
 
 const MODEL_CATEGORY_LABELS = {
   chat: '对话',

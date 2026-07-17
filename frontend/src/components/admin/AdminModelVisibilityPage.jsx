@@ -5,7 +5,7 @@ import {
 } from '../../api/admin';
 import AdminModelVisibilityFilters from './AdminModelVisibilityFilters';
 import AdminModelVisibilityTable from './AdminModelVisibilityTable';
-import { FONT_MEDIUM, FONT_REGULAR, getErrorMessage } from './adminShared';
+import { FONT_MEDIUM, FONT_REGULAR, getErrorMessage } from './adminSharedUtils';
 
 function buildProviderOptions(items = []) {
   const map = new Map();
@@ -100,6 +100,8 @@ export default function AdminModelVisibilityPage({
   }, []);
 
   useEffect(() => {
+    // refreshSignal 表示管理员外部数据刷新；此处必须重新请求列表和筛选项。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPage({ force: true });
     loadProviderOptions();
   }, [loadPage, loadProviderOptions, refreshSignal]);

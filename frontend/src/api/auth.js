@@ -1,6 +1,6 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
-import { setTokens, clearTokens as _clearTokens, authHeaders, authFetch } from './request.js';
+import { setTokens, clearTokens as _clearTokens, authFetch } from './request.js';
 export { clearTokens } from './request.js';
 
 export async function apiSendCode(phone) {
@@ -11,7 +11,7 @@ export async function apiSendCode(phone) {
   });
   if (!res.ok) {
     let detail = res.statusText;
-    try { const body = await res.json(); detail = body?.detail || body?.message || detail; } catch {}
+    try { const body = await res.json(); detail = body?.detail || body?.message || detail; } catch { /* 忽略非 JSON 错误响应 */ }
     const err = new Error(`发送验证码失败（${res.status}）：${detail}`);
     err.status = res.status;
     throw err;
@@ -55,7 +55,7 @@ export async function apiRegister({ phone, password, nickname }) {
 export async function apiLogout() {
   try {
     await authFetch(`${BASE}/api/auth/logout`, { method: 'POST' });
-  } catch {}
+  } catch { /* 登出接口失败时仍清理本地令牌 */ }
   _clearTokens(); // clearTokens 内部已清空业务缓存
 }
 
@@ -105,7 +105,7 @@ export async function apiPollWechatQrCodeStatus(qrcodeId) {
   const res = await fetch(`${BASE}/api/auth/wechat/poll/${encodeURIComponent(qrcodeId)}`);
   if (!res.ok) {
     let detail = res.statusText;
-    try { const body = await res.json(); detail = body?.detail || body?.message || detail; } catch {}
+    try { const body = await res.json(); detail = body?.detail || body?.message || detail; } catch { /* 忽略非 JSON 错误响应 */ }
     const err = new Error(`轮询状态接口请求失败（${res.status}）：${detail}`);
     err.status = res.status;
     throw err;
@@ -134,7 +134,7 @@ export async function apiCompleteWechatCallback({ code, state }) {
     try {
       const body = await res.json();
       detail = body?.detail || body?.message || detail;
-    } catch {}
+    } catch { /* 忽略非 JSON 错误响应 */ }
     const err = new Error(`微信回调接口请求失败（${res.status}）：${detail}`);
     err.status = res.status;
     throw err;
@@ -156,7 +156,7 @@ export async function apiConfirmWechatLogin({ session_id, phone, sms_code }) {
   });
   if (!res.ok) {
     let detail = res.statusText;
-    try { const body = await res.json(); detail = body?.detail || body?.message || detail; } catch {}
+    try { const body = await res.json(); detail = body?.detail || body?.message || detail; } catch { /* 忽略非 JSON 错误响应 */ }
     const err = new Error(`绑定手机号失败（${res.status}）：${detail}`);
     err.status = res.status;
     throw err;

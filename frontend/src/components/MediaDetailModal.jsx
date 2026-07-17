@@ -60,7 +60,6 @@ export default function MediaDetailModal({
   const [hovDownload, setHovDownload] = useState(false);
   const [hovDelete, setHovDelete] = useState(false);
   const [pressDelete, setPressDelete] = useState(false);
-  const [hovThumb, setHovThumb] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [copyToast, setCopyToast] = useState(false);
   const copyToastTimer = useRef(null);
@@ -179,7 +178,6 @@ export default function MediaDetailModal({
                       const thumbUrl = img.fileUrl ?? img.url ?? null;
                       if (!thumbUrl) return null;
                       const isActive = idx === activeImg;
-                      const isHov = idx === hovThumb;
                       return (
                         <div
                           key={img.id ?? idx}
@@ -196,8 +194,6 @@ export default function MediaDetailModal({
                             transition: 'border-color 0.15s, box-shadow 0.15s',
                           }}
                           onClick={() => setActiveImg(idx)}
-                          onMouseEnter={() => setHovThumb(idx)}
-                          onMouseLeave={() => setHovThumb(null)}
                         >
                           <div style={{ width: '100%', height: '100%', backgroundImage: `url(${thumbUrl})`, backgroundSize: 'cover', backgroundPosition: '50%' }} />
                             {img.is_primary && (

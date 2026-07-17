@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react';
 import Toggle from './Toggle';
 import { apiGetWatermarkSettings, apiUpdateWatermarkSettings } from '../api/settings';
 
-const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
-
 function CloseIcon({ hovered, pressed }) {
   return (
     <svg

@@ -1,11 +1,9 @@
 import {
   ActionButton,
-  FONT_MEDIUM,
-  FONT_REGULAR,
   PaginationControls,
   StatusPill,
-  formatTime,
 } from './adminShared';
+import { FONT_MEDIUM, FONT_REGULAR, formatTime } from './adminSharedUtils';
 
 export default function AdminVoiceLibraryTable({
   items,

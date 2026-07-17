@@ -1,6 +1,34 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+/**
+ * @file BatchGenerateModal.jsx
+ * @structure-index
+ *
+ * ─── 常量与局部组件 ─────────────────────────────────────────────────
+ *   FALLBACK_MODELS / GENERATION_MODES  模型兜底数据和批量生成方式
+ *   CloseIcon                         弹窗关闭图标
+ *   RadioGroup                        生成方式单选组
+ *   BatchGenerateModal                模型、比例、分辨率和批量生成参数编排
+ *
+ * ─── 状态与数据流 ───────────────────────────────────────────────────
+ *   modelList / modelsLoading         模型能力请求及加载状态
+ *   model / ratio / resolution        当前模型和生成选项
+ *   mode / onlyUndrafted              生成方式及未定稿筛选状态
+ *   ratioOptions / resolutionOptions  按模型能力派生的选择项
+ *
+ * ─── 副作用与业务回调 ───────────────────────────────────────────────
+ *   模型列表请求                     打开弹窗时读取 image 模型能力
+ *   弹窗重置                         打开弹窗时恢复默认模型和项目比例
+ *   ESC 关闭                         弹窗打开时监听 Escape
+ *   handleModelChange                切换模型并校正分辨率和比例
+ *   handleResolutionChange           切换分辨率并校正比例
+ *   handleConfirm                    保持批量生成确认参数结构不变
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-07-15  复用 components/ui/Select，移除批量生成弹窗内重复选择器
+ */
+import { useState, useEffect, useMemo, useCallback } from 'react';
 // 模型能力直接从后端 capabilities 获取
 import { apiListModels } from '../api/config';
+import { Select } from './ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -25,81 +53,6 @@ function CloseIcon() {
       <path d="M2.667 2.667L13.333 13.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M2.667 13.333L13.333 2.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
-      <path d="M12 6.333L8 10.333L4 6.333H12Z" fill="#FFFFFF" stroke="#FFFFFF" strokeWidth="1.333" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function SelectField({ label, value, options, onChange, loading = false }) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef(null);
-  const selected = options.find((o) => o.value === value);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const handlePointerDown = (e) => {
-      if (!containerRef.current?.contains(e.target)) setOpen(false);
-    };
-    window.addEventListener('pointerdown', handlePointerDown);
-    return () => window.removeEventListener('pointerdown', handlePointerDown);
-  }, [open]);
-
-  const triggerStyle = open
-    ? { borderColor: '#2DC3E1', backgroundColor: '#1D1E1E', boxShadow: '0px 0px 10px rgba(45,195,225,0.3)', mixBlendMode: 'lighten' }
-    : {};
-
-  return (
-    <div className="flex flex-col gap-[8px] self-stretch">
-      <div className="text-sm/[18px] text-[#FFFFFF99]" style={{ fontFamily: FONT }}>
-        {label}
-      </div>
-      <div ref={containerRef} className="relative self-stretch">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="flex items-center h-[36px] w-full rounded-lg px-[12px] gap-[8px] shrink-0 bg-[#1D1E1E] border border-solid border-[#FFFFFF14] outline outline-1 outline-[#00000080] transition-[border-color,background-color] hover:border-[#FFFFFF33] hover:bg-[#222323] active:bg-[#1A1B1B]"
-          style={triggerStyle}
-          aria-expanded={open}
-        >
-          <div className="flex-1 text-left text-sm/[18px] text-white" style={{ fontFamily: FONT }}>
-            {loading ? '加载模型中…' : (selected?.label ?? '请选择')}
-          </div>
-          <ChevronDownIcon />
-        </button>
-
-        {open && (
-          <div
-           className="absolute top-[calc(100%+4px)] left-0 z-10 w-full flex flex-col rounded-lg border border-solid border-[#FFFFFF14] bg-[#1D1E1E] p-[4px]"
-            style={{ boxShadow: '0px 4px 16px rgba(0,0,0,0.6)', maxHeight: '240px', overflowY: 'auto' }}
-          >
-            {options.map((opt) => {
-              const isSelected = opt.value === value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => { onChange(opt.value); setOpen(false); }}
-                  className={`flex w-full items-center rounded-md px-[12px] py-[8px] text-left text-sm/[18px] transition-colors ${
-                    isSelected
-                      ? 'bg-[#FFFFFF14] text-white'
-                      : 'text-[#FFFFFFCC] hover:bg-[#FFFFFF0D] hover:text-white active:bg-[#FFFFFF14]'
-                  }`}
-                  style={{ fontFamily: FONT }}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -252,9 +205,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
     }
   }, [model, ratio, modelList]);
 
-  // 每次打开弹窗时，重置为第一个模型的默认值（比例优先用项目比例）
-  useEffect(() => {
-    if (!open) return;
+  const resetForm = useCallback(() => {
     const first = modelList.find(m => m.is_default) || modelList[0];
     if (!first) return;
     setModel(first.value);
@@ -273,7 +224,15 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
     }
     setMode('single');
     setOnlyUndrafted(false);
-  }, [open, modelList]);
+  }, [modelList, projectRatio]);
+
+  // 每次打开弹窗时，重置为第一个模型的默认值（比例优先用项目比例）
+  useEffect(() => {
+    if (!open) return;
+    // 弹窗打开和模型异步加载完成时，必须同步恢复原有受控表单初始值。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    resetForm();
+  }, [open, resetForm]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -318,9 +277,45 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
 
         {/* Body */}
         <div className="flex flex-col items-start gap-[16px] py-[8px] w-full px-[24px] bg-[#161616]">
-          <SelectField label="选择模型" value={model} options={modelList} onChange={handleModelChange} loading={modelsLoading} />
-          <SelectField label="比例" value={ratio} options={ratioOptions} onChange={setRatio} />
-          <SelectField label="分辨率" value={resolution} options={resolutionOptions} onChange={handleResolutionChange} />
+          <Select
+            label="选择模型"
+            value={model}
+            displayValue={modelList.find((item) => item.value === model)?.label || model}
+            options={modelList}
+            loading={modelsLoading}
+            loadingText="加载模型中…"
+            selectedOptionColor="#FFFFFF"
+            selectedOptionBackground="rgba(255,255,255,0.08)"
+            optionHoverBackground="rgba(255,255,255,0.05)"
+            menuMaxHeight="240px"
+            openBoxShadow="0px 0px 10px rgba(45,195,225,0.3)"
+            openMixBlendMode="lighten"
+            onChange={handleModelChange}
+          />
+          <Select
+            label="比例"
+            value={ratio}
+            options={ratioOptions}
+            selectedOptionColor="#FFFFFF"
+            selectedOptionBackground="rgba(255,255,255,0.08)"
+            optionHoverBackground="rgba(255,255,255,0.05)"
+            menuMaxHeight="240px"
+            openBoxShadow="0px 0px 10px rgba(45,195,225,0.3)"
+            openMixBlendMode="lighten"
+            onChange={setRatio}
+          />
+          <Select
+            label="分辨率"
+            value={resolution}
+            options={resolutionOptions}
+            selectedOptionColor="#FFFFFF"
+            selectedOptionBackground="rgba(255,255,255,0.08)"
+            optionHoverBackground="rgba(255,255,255,0.05)"
+            menuMaxHeight="240px"
+            openBoxShadow="0px 0px 10px rgba(45,195,225,0.3)"
+            openMixBlendMode="lighten"
+            onChange={handleResolutionChange}
+          />
           {activeTab === 'char' && (
             <RadioGroup label="生成方式" value={mode} options={GENERATION_MODES} onChange={setMode} />
           )}

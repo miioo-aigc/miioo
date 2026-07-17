@@ -1,4 +1,5 @@
-import { ActionButton, FONT_REGULAR, TextInput } from './adminShared';
+import { ActionButton, TextInput } from './adminShared';
+import { FONT_REGULAR } from './adminSharedUtils';
 
 const STATUS_FILTERS = [
   { key: 'all', label: '全部音色' },

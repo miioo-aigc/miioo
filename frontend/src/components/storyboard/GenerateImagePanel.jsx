@@ -5,6 +5,9 @@
  * ─── 组件职责 ───────────────────────────────────────────────
  *   生成面板容器       负责图片生成表单、参考图编辑区和结果列表布局
  *   模型与分辨率状态   负责模型能力加载及当前分辨率联动
+ *   GenerationModelField / GenerationOptionFields  参数选择纯展示组合
+ *   ReferenceImageField  参考图展示、上传入口和删除回调组合
+ *   GenerationSubmitButton  底部生成动作纯展示按钮
  *   参考图状态         负责本地上传、资产库选择、预览和删除
  *   生成结果状态       通过显式回调接收结果列表更新和定稿写回
  *   媒体详情弹窗       负责生成图片详情查看和下载交互
@@ -15,25 +18,22 @@
  *   不引用页面入口、页面 Store 或页面闭包变量。
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AssetPickerModal from '../AssetPickerModal';
 import MediaDetailModal from '../MediaDetailModal';
-import DotsLoading from '../DotsLoading';
 import { apiListModels } from '../../api/config';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter';
-import { MediaHoverPreview as StoryboardMediaHoverPreview } from './MainRefCol';
-import PanelSelect from './PanelSelect';
-import { ImgUploadCard, ImgItem } from './StoryboardImageUpload';
+import { GenerationModelField, GenerationOptionFields } from './GenerationParamsFields';
+import GenerationSubmitButton from './GenerationSubmitButton';
+import ReferenceImageField from './ReferenceImageField';
+import { ImgUploadCard } from './StoryboardImageUpload';
+import ImageResultCard from './ImageResultCard';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
-
-function SpinnerIcon({ color = '#090909' }) {
-  return <DotsLoading size={3} color={color} gap={2} />;
-}
 
 export default function GenerateImagePanel({
   shot,
@@ -106,13 +106,8 @@ export default function GenerateImagePanel({
   });
   const [refImgPickerOpen, setRefImgPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [btnHov, setBtnHov] = useState(false);
-  const [btnPressed, setBtnPressed] = useState(false);
   const [mediaDetailOpen, setMediaDetailOpen] = useState(false);
   const [mediaDetailActiveIdx, setMediaDetailActiveIdx] = useState(0);
-  const [refImgPreview, setRefImgPreview] = useState(null); // { url, x, y }
-  const refImgHoverTimer = useRef(null);
-  const refFileRef = useRef(null);
 
   // 获取当前模型支持的分辨率（从后端 capabilities 派生）
   const currentModel = useMemo(() => modelList.find(m => m.value === model), [model, modelList]);
@@ -189,11 +184,12 @@ export default function GenerateImagePanel({
     setRefImgPickerOpen(false);
   }
 
-  async function handleRefFileChange(e) {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
+  async function handleRefFileChange(files) {
+    // ReferenceImageField 已将原生 change 事件转换为文件数组；这里不要再读取 target.files。
+    const selectedFiles = Array.from(files || []);
+    if (!selectedFiles.length) return;
 
-    for (const file of files) {
+    for (const file of selectedFiles) {
       if (file.size > 20 * 1024 * 1024) { onShowToast?.('抱歉，平台暂不支持上传20M以上的图片资源！', 'error'); continue; }
       try {
         await handleRefImageUpload(file);
@@ -202,8 +198,6 @@ export default function GenerateImagePanel({
         // 继续处理下一个文件
       }
     }
-
-    e.target.value = '';
   }
 
   function removeRefImage(id) {
@@ -255,7 +249,6 @@ export default function GenerateImagePanel({
     }));
   }, [refImages]);
 
-  const btnBg = loading ? 'rgba(45,195,225,0.60)' : btnPressed ? '#28b0cc' : btnHov ? '#32cde8' : '#2DC3E1';
 
   return createPortal(
     <>
@@ -292,63 +285,25 @@ export default function GenerateImagePanel({
             <span style={{ fontSize: "14px", lineHeight: "18px", color: "rgba(255,255,255,0.80)", fontFamily: FONT }}>分镜{String(shot?.number ?? 1).padStart(2, "0")}</span>
 
             <PanelPromptInput value={prompt} onChange={setPrompt} referenceItems={imageReferenceItems} />
-            <PanelSelect
-              label="选择模型"
+            <GenerationModelField
               value={modelsLoading ? '加载中...' : (modelList.find(m => m.value === model)?.label || '请选择')}
               options={modelList.map(m => m.label)}
               onChange={handleModelChange}
+              disabled={modelsLoading}
             />
 
-            {/* 参考图 — 多张 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignSelf: 'stretch' }}>
-              <div style={{ display: "flex", justifyContent: "flex-start", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "14px", lineHeight: "18px", color: "rgba(255,255,255,0.60)", fontFamily: FONT }}>参考图</span>
-                {refCountText && <span style={{ fontSize: "14px", lineHeight: "18px", color: "rgba(255,255,255,0.40)", fontFamily: FONT }}>{refCountText}</span>}
-              </div>
-              {canAddRef && <input ref={refFileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={handleRefFileChange} />}
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                {refImages.map((img) => (
-                  <div
-                    key={img.id}
-                    onMouseEnter={(e) => {
-                      const { clientX, clientY } = e;
-                      clearTimeout(refImgHoverTimer.current);
-                      refImgHoverTimer.current = setTimeout(() => {
-                        if (img.url) setRefImgPreview({ url: img.url, x: clientX, y: clientY });
-                      }, 500);
-                    }}
-                    onMouseMove={(e) => setRefImgPreview(p => p ? { ...p, x: e.clientX, y: e.clientY } : p)}
-                    onMouseLeave={() => { clearTimeout(refImgHoverTimer.current); setRefImgPreview(null); }}
-                    style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}>
-                    <img src={normalizeImageUrl(img.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    <div
-                      onClick={() => { clearTimeout(refImgHoverTimer.current); setRefImgPreview(null); removeRefImage(img.id); }}
-                      style={{ position: 'absolute', top: '4px', right: '4px', width: '18px', height: '18px', borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                    >
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 2L8 8M8 2L2 8" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round"/></svg>
-                    </div>
-                  </div>
-                ))}
-                {canAddRef && (
-                <div
-                  style={{
-                    width: '120px', height: '120px', borderRadius: '6px', flexShrink: 0,
-                    border: '1px dashed rgba(255,255,255,0.08)',
-                    backgroundColor: '#1D1E1E',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.28)'}
-                  onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}
-                >
-                  <RefSlotBtn onClick={() => refFileRef.current?.click()}>本地上传</RefSlotBtn>
-                  <RefSlotBtn onClick={() => setRefImgPickerOpen(true)}>从资产库选择</RefSlotBtn>
-                </div>
-                )}
-              </div>
-            </div>
+            <ReferenceImageField
+              images={refImages}
+              countLabel={refCountText}
+              canAdd={canAddRef}
+              onFilesSelected={handleRefFileChange}
+              onRemove={removeRefImage}
+              onOpenAssetPicker={() => setRefImgPickerOpen(true)}
+              RefSlotBtn={RefSlotBtn}
+            />
             <AssetPickerModal accept="image" open={refImgPickerOpen} onClose={() => setRefImgPickerOpen(false)} projectId={projectId} preSelectedIds={refImages.map(img => img.assetId).filter(Boolean)} preSelectedUrls={refImages.map(img => img.url).filter(Boolean)} onConfirm={handleRefImageAssetConfirm} />
 
-            <PanelSelect label="分辨率" value={resolution} options={availableResolutions} onChange={setResolution} />
+            <GenerationOptionFields resolution={resolution} resolutionOptions={availableResolutions} onResolutionChange={setResolution} />
 
           </div>
 
@@ -381,7 +336,7 @@ export default function GenerateImagePanel({
               }}
             />
             {generatedImages.map((img, i) => (
-              <ImgItem
+              <ImageResultCard
                 key={img.id ?? img.url + i}
                 imageUrl={img.url}
                 settled={img.settled}
@@ -393,6 +348,13 @@ export default function GenerateImagePanel({
                     )
                   );
                   if (newSettled && img.url) onSettleImage?.(img.url);
+                }}
+                onDownload={(imageUrl) => {
+                  if (!imageUrl) return;
+                  const link = document.createElement('a');
+                  link.href = imageUrl;
+                  link.download = imageUrl.split('/').pop() || 'image.jpg';
+                  link.click();
                 }}
               />
             ))}
@@ -413,37 +375,12 @@ export default function GenerateImagePanel({
             alignItems: 'center',
           }}
         >
-          <div
-            onClick={loading ? undefined : handleGenerate}
-            onMouseEnter={() => !loading && setBtnHov(true)}
-            onMouseLeave={() => { setBtnHov(false); setBtnPressed(false); }}
-            onMouseDown={() => !loading && setBtnPressed(true)}
-            onMouseUp={() => setBtnPressed(false)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', height: '36px', borderRadius: '8px', paddingInline: '16px', gap: '4px',
-              backgroundColor: btnBg,
-              backgroundImage: 'linear-gradient(in oklab 107.5deg, oklab(84.6% -0.114 0.031 / 30%) 8.14%, oklab(84.6% -0.114 0.031 / 0%) 54.48%)',
-              backgroundOrigin: 'border-box',
-              border: '1px solid #FFFFFF33', outline: '1px solid #00000080',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              transition: 'background-color 0.10s',
-              flexShrink: 0,
-            }}
-          >
-            {loading ? (
-              <SpinnerIcon color="#090909" />
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-                <path d="M3 5V3.188C3 2.891 3.029 2.783 3.083 2.674C3.138 2.566 3.218 2.481 3.32 2.422C3.422 2.364 3.523 2.333 3.801 2.333H12.199C12.477 2.333 12.578 2.364 12.68 2.422C12.782 2.481 12.862 2.566 12.916 2.674C12.971 2.783 13 2.891 13 3.188V5" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M1.667 5H14.333V13.667H1.667V5Z" stroke="#090909" strokeLinejoin="round" />
-                <path fillRule="evenodd" clipRule="evenodd" d="M4.333 8.667C4.886 8.667 5.333 8.219 5.333 7.667C5.333 7.114 4.886 6.667 4.333 6.667C3.781 6.667 3.333 7.114 3.333 7.667C3.333 8.219 3.781 8.667 4.333 8.667Z" fill="#090909" />
-                <path d="M1.856 13.463L5 10L6.667 11.333L8.667 9L14.131 13.463" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )}
-            <span style={{ fontSize: '14px', lineHeight: '18px', color: '#090909', fontFamily: FONT_MEDIUM, fontWeight: 500, whiteSpace: 'nowrap' }}>
-              {loading ? '生成中…' : '生成分镜图'}
-            </span>
-          </div>
+          <GenerationSubmitButton
+            loading={loading}
+            label="生成分镜图"
+            type="image"
+            onClick={handleGenerate}
+          />
         </div>
       </div>
       {mediaDetailOpen && (
@@ -481,10 +418,7 @@ export default function GenerateImagePanel({
           }}
         />
       )}
-      {refImgPreview && createPortal(
-        <StoryboardMediaHoverPreview url={refImgPreview.url} isVideo={false} mouseX={refImgPreview.x} mouseY={refImgPreview.y} />,
-        document.body
-      )}
+
     </>,
     document.body
   );

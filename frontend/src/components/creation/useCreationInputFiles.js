@@ -11,6 +11,10 @@ import {
   trimFilesToModelReferenceLimits,
 } from './CreationFileUtils';
 
+function makeFileUid() {
+  return `file-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function releaseBlobUrls(file, releasedUrls = new Set()) {
   [file?._objectUrl, file?.previewUrl]
     .filter((url) => typeof url === 'string' && url.startsWith('blob:'))
@@ -40,7 +44,6 @@ function enrichLocalFile(file) {
  */
 export function useCreationInputFiles({
   model,
-  genType,
   refMode,
   capabilitiesMap = {},
   onToast,
@@ -67,8 +70,9 @@ export function useCreationInputFiles({
   );
 
   const normalizeFiles = useCallback((nextFiles) => nextFiles.map((file) => {
-    if (typeof File !== 'undefined' && file instanceof File) return enrichLocalFile(file);
-    return file;
+    const nextFile = typeof File !== 'undefined' && file instanceof File ? enrichLocalFile(file) : file;
+    if (nextFile && !nextFile._uid) return { ...nextFile, _uid: makeFileUid() };
+    return nextFile;
   }), []);
 
   const setFiles = useCallback((updater) => {
@@ -246,14 +250,6 @@ export function useCreationInputFiles({
     const timer = setTimeout(() => onToastRef.current?.('info', message), 0);
     return () => clearTimeout(timer);
   });
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      clearFiles();
-      clearFrameFiles();
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [clearFiles, clearFrameFiles, genType]);
 
   useEffect(() => {
     if (refMode === 'frame') return undefined;

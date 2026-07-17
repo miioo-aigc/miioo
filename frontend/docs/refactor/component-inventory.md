@@ -1,6 +1,6 @@
 # 组件重构盘点基线
 
-> 盘点日期：2026-07-17
+> 盘点日期：2026-07-17（最终手动验收与 OpenSpec 收尾审查）
 > 分支：`feat/frontend_V1.1`
 > 目的：为组件抽离和页面迁移提供可复查基线，不代表本文件中的数量永久不变。
 
@@ -28,6 +28,11 @@
 - 当前账号没有可见音频卡片，页面没有可播放对象（`audio` 元素数量为 0），因此未执行播放或收藏，也未将该项记录为通过。
 - 后续需要具备至少一条可见音频资产后再验证播放和收藏；本轮未执行上传、下载、删除或其他资产操作。
 
+## 2026-07-17 AssetsPage 前端功能验收口径更新
+
+- 用户确认 AssetsPage 除音频播放/收藏外的前端功能均已验证通过，未发现页面级错误。
+- 音频播放/收藏明确视为尚未开发完成，本次前端重构不纳入该功能；不再把它作为 AssetsPage 重构收尾阻塞项。
+
 ## 2026-07-17 CreationPage 手动验收确认
 
 - 用户确认此前列出的 CreationPage 手动验收项均无问题；其中图片任务最终状态/结果写回、视频重新编辑参数回填两项已由用户实际验证。
@@ -40,6 +45,11 @@
 - 用户已明确授权在当前测试项目中生成 1 张图片；使用默认模型 `豆包·Seedream 5.0`、`1:1`、`2K`，接口返回 `201` 并创建任务 `763f48d4-83e7-4234-b93e-7291a0eaa454`。
 - 页面持续请求任务状态接口，期间没有发现页面级 `ReferenceError`、解析错误或项目控制台错误；等待约 30 秒后仍未显示结果卡，因此暂不能记录任务成功、失败清理或结果写回通过。
 - 本轮只提交了一次生成，未执行其他上传、下载、删除、收藏、定稿或配音操作；后续先只读复查该任务状态，不重复提交。
+
+## 2026-07-17 CreationPage 图片生成结果确认
+
+- 用户确认上述图片生成任务已成功返回结果，CreationPage 的图片结果写回流程通过。
+- 上一节中“任务最终状态/结果写回尚未确认”属于当时的临时观察记录，现已由用户确认结果覆盖；本次不重复提交生成。
 
 
 - 安全登录态和测试项目已具备，主要非破坏性回归已经完成；此前“当前没有安全登录态和测试项目”的描述已过时并校正。
@@ -121,33 +131,33 @@
 
 ## 当前阻塞条件（运行时回归）
 
-- AssetsPage、CreationPage、StoryboardPage 的登录态生成、上传、下载、删除、定稿、配音、失败恢复和刷新任务恢复，必须在安全账号与测试数据下执行。静态门禁不能替代这些验证。
+- 用户已确认本次前端重构纳入范围的运行时验收全部通过，CreationPage、AssetsPage（音频除外）和 StoryboardPage 不再存在本次重构阻塞项。音频播放/收藏按要求排除，不纳入本次任务。
 
-## OpenSpec 归档前审查（2026-07-16）
+## OpenSpec 归档前审查（2026-07-17）
 
 - 静态迁移任务已按当前代码完成并记录；最新完成项包括 SubjectPage 缓存边界适配和 Storyboard 数据适配。
-- 不能归档的原因已明确：`6.3.e.4`、`6.4.j`、`6.5.g`、`7.4.b` 仍依赖安全登录态、测试数据或真实外部副作用，未以静态检查替代运行时验证。
-- `5.3` 保留为“样板页关键流程仍需补充”的未完成父任务；`7.5` 本次完成归档前审查记录，但不关闭变更目录，待运行时回归完成后再归档。
+- `7.4` 已由用户确认本次纳入范围的运行时验收全部完成；`6.3.e.4`、`6.4.j` 和 `6.5.g` 的纳入范围均已完成，音频播放/收藏明确排除。
+- `5.3` 已完成样板页静态门禁与关键入口回归记录；`7.5` 已完成归档前审查，OpenSpec 变更目录可作为本次重构完成后的审计记录保留。
 
 ## 当前收尾口径
 
-- OpenSpec 父任务现与当前代码状态一致：静态拆分范围已完成，运行时业务回归仍单独列为未完成；历史迁移记录保留，不机械改写历史行数。
+- OpenSpec 父任务现与当前代码状态一致：静态拆分范围和本次纳入范围的运行时业务回归均已完成；音频播放/收藏是明确范围外功能，历史迁移记录保留，不机械改写历史行数。
 
 - `ScriptPage`、`SubjectPage`、`AssetsPage`、`CreationPage`、`StoryboardPage` 和 Home 的当前可安全静态拆分范围已完成。
-- 仍未完成的是登录态和测试数据依赖的业务回归：任务恢复、失败恢复、分页真实触发、上传、生成、下载、删除、收藏、定稿和配音流程。
+- 本次前端重构没有剩余的纳入范围工作；音频播放/收藏属于明确排除的后续产品功能，不计入本次完成度。页面级 API、任务轮询、缓存、Store 写回和外部副作用继续保留在原业务边界。
 - 页面级 API、任务轮询、缓存、Store 写回和外部副作用不作为继续压缩页面行数的对象。
 
 ## 文件规模
 
-> 当前工作区复核（2026-07-17）：`SubjectPage.jsx` 1718 行、`Home.jsx` 1296 行、`StoryboardPage.jsx` 1297 行、`CreationPage.jsx` 964 行；历史条目保留为迁移记录，最新结果以 PROJECT.md 和文末最新迁移记录为准。
+> 当前工作区复核（2026-07-17）：`SubjectPage.jsx` 1708 行、`Home.jsx` 1296 行、`StoryboardPage.jsx` 1297 行、`CreationPage.jsx` 964 行；生成面板结果卡片已完成安全拆分。历史条目保留为迁移记录，最新结果以 PROJECT.md 和文末最新迁移记录为准。
 
 
 | 文件 | 行数 | 优先级 |
 |---|---:|---|
-| `src/pages/StoryboardPage.jsx` | 1297（2026-07-17，StoryboardHeader 与 StoryboardToast 拆分后；架构统计 1298） | 首轮迁移收尾 |
+| `src/pages/StoryboardPage.jsx` | 1297（2026-07-17，生成面板结果卡片、StoryboardHeader 与 StoryboardToast 拆分后；架构统计 1298） | 首轮迁移收尾 |
 | `src/pages/CreationPage.jsx` | 964（2026-07-17，CreationWorkspace 与媒体下载适配复用后；架构统计 965） | 静态收尾与运行时验收完成（按用户确认） |
 | `src/pages/AssetsPage.jsx` | 57（2026-07-16，页面入口收敛后） | 页面入口收敛完成，业务面板和登录态副作用回归待完成 |
-| `src/pages/SubjectPage.jsx` | 1718（2026-07-17，SubjectWorkspace 与 SubjectGridViewport 拆分后；架构统计 1719） | 首轮收尾，静态验收通过 |
+| `src/pages/SubjectPage.jsx` | 1708（2026-07-17，主体工作区与编辑表单拆分后；架构统计 1709） | 首轮收尾，静态验收通过 |
 | `src/pages/ScriptPage.jsx` | 624（2026-07-16，当前工作区实际行数） | 首轮完成 |
 | `src/pages/Home.jsx` | 1296（2026-07-17，HomeNavigationRail 与顶部动作状态复用后；架构统计 1297） | 稳定展示区块迁移完成，页面入口保留业务编排 |
 | `src/pages/GlobalSettings.jsx` | 891（2026-07-16，当前工作区实际行数） | 样板候选 |
@@ -209,7 +219,7 @@
 
 ## 全局计数
 
-> 当前验收顺序（2026-07-17）：静态门禁和 CreationPage 验收已完成（其中部分运行时项按用户确认记录） → 继续处理 AssetsPage、StoryboardPage 的已授权业务回归 → 完成全量业务回归与 OpenSpec 收尾；未授权外部副作用仍单独记录，不自动执行。
+> 当前验收顺序（2026-07-17）：静态门禁、CreationPage 验收、AssetsPage（音频除外）用户确认和 StoryboardPage 最终手动验收均已完成；后续仅保留范围外、缺少测试对象或未单独授权的业务流程，不自动执行外部副作用。
 
 ## 2026-07-16 CreationPage 输入卡片迁移记录
 
@@ -1150,7 +1160,7 @@
 - AssetsPage：复核项目资产的角色、场景、道具、分镜图、分镜视频、音频、成片分类切换，以及创作资产的图片、视频、配音分类切换；当前分镜图和音频分类在复核时没有可见对象，因此只记录分类/空态，不记录详情、播放或收藏通过。
 - StoryboardPage：继续复核测试项目分镜数据、镜头字段、批量生成菜单、图片/视频生成面板、模型/分辨率选择器和刷新恢复；没有执行真实生成、上传、下载、删除、定稿或配音。
 - 本轮静态门禁结果：`npm run lint`、`npm run build`、`npm run check:architecture`、`git diff --check` 均通过；架构检查仅保留规模告警，构建最大 JavaScript 分块约 `441KB`，无超过 `500KB` 告警。
-- 当前下一步：音频播放/收藏按用户要求延期；等待具体测试对象和逐项授权后，处理 AssetsPage 分页/上传/下载/删除及 StoryboardPage 参考素材提交、生成、下载、删除、定稿、旁白保存/配音；未授权副作用不自动执行。
+- 当前下一步：音频播放/收藏按用户要求排除；StoryboardPage 已完成最终手动验收。仅对后续具备具体测试对象并获得单独授权的外部流程进行验证，未授权副作用不自动执行。
 
 
 ## 2026-07-17 SubjectPage 编辑表单组合拆分
@@ -1158,3 +1168,124 @@
 - 新增 `src/components/subject/SubjectEditForm.jsx`，抽离 `EditSubjectPanel` 左侧文本字段、模型/比例/分辨率、参考图和生图模式的稳定展示组合。
 - 组件只接收显式值、选项和回调，不调用 API、Store、缓存或任务轮询；页面继续持有字段状态、生成参数组装、生成 API、任务轮询、缓存、Toast 和图片副作用。
 - `SubjectPage.jsx` 当前实际 `1707` 行；本次未改变业务流程，后续只继续处理有明确边界的展示/业务区块。
+
+
+## 2026-07-17 主体编辑基础组件复用
+
+- 新增 `src/components/ui/TextField.jsx`，主体名称、描述、提示词通过 `SubjectTextFields` 复用同一套无业务受控输入视觉；字段标签和保存回调仍由主体域组合组件传入。
+- 新增 `src/components/ui/FileUploadButton.jsx`，`RefImageField` 的本地上传和资产库选择入口复用该无业务按钮；参考图 API、资产选择、绑定、删除和状态同步仍由 `RefImageField` 保留。
+- 主体模型、画面比例和分辨率继续复用 `src/components/ui/Select.jsx`，本轮未改变其参数联动和页面状态边界。
+
+
+## 2026-07-17 参考图卡片拆分
+
+- 新增 `src/components/subject/RefImageItem.jsx`，负责参考图展示、延迟悬浮预览和删除回调。
+- 新增 `src/components/subject/RefImageUploadCard.jsx`，负责参考图区域上传/资产选择入口的视觉卡片，并复用无业务 `FileUploadButton`。
+- `RefImageField.jsx` 仅保留参考图状态同步、文件上传 API、资产选择绑定 API、删除和外部回调；未移动业务逻辑。
+
+
+## 2026-07-17 上传按钮与 PanelPromptInput 展示区块复用
+
+- `SubjectImageList` 和 `StoryboardImageUpload` 的重复上传按钮改为复用无业务 `FileUploadButton`；`StoryboardUploadSlots` 继续通过 `ImgUploadBtn` 间接复用同一视觉基础，文件校验、上传 API 和资产选择逻辑未移动。
+- 新增 `src/components/storyboard/PanelPromptConstants.js` 与 `PanelPromptPrimitives.jsx`，抽离提示词提及类型配置、`SubjectTag` 和字符计数展示。`PanelPromptInput` 继续保留 contentEditable、光标、提及插入、粘贴和同步逻辑。
+
+
+## 2026-07-17 ReferenceMentionDropdown 拆分
+
+- 新增 `src/components/storyboard/ReferenceMentionDropdown.jsx`，负责 @ 提及列表、类型筛选 Tab、Portal 定位和外部点击关闭。
+- `PanelPromptInput.jsx` 继续负责 contentEditable、光标处理、查询词、提及插入、粘贴、组合输入和 value 同步；本轮未移动编辑器业务状态。
+
+
+## 2026-07-17 Storyboard 生成面板参数组合复用
+
+- 新增 `src/components/storyboard/GenerationParamsFields.jsx`，提供 `GenerationModelField` 和 `GenerationOptionFields`，统一图片/视频面板的模型、时长、分辨率选择器展示组合。
+- `GenerateImagePanel`、`GenerateVideoPanel` 继续持有模型 API、能力过滤、参数联动、生成 API、任务轮询和 Toast；本轮只迁移选择器组合和显式 props。
+
+
+## 2026-07-17 图片生成面板参考图展示拆分
+
+- 新增 `src/components/storyboard/ReferenceImageField.jsx`，负责参考图展示、数量标签、悬浮预览、上传入口和删除回调。
+- `GenerateImagePanel.jsx` 继续保留参考图状态、文件校验、上传/资产选择处理、`AssetPickerModal`、模型状态、生成 API 和结果写回；本轮只迁移纯展示组合。
+
+
+## 2026-07-17 视频生成面板展示拆分
+
+- 新增 `src/components/storyboard/VideoGenerationControls.jsx`，抽离全能参考/首尾帧 Tab 和音效开关展示。
+- `GenerateVideoPanel` 继续保留 Tab 切换后的模型列表、分辨率/时长联动、参考素材、生成 API、任务轮询、结果查看和 Toast 状态；本轮只迁移展示组合。
+
+
+## 2026-07-17 Storyboard 上传槽位媒体展示拆分
+
+- 新增 `src/components/storyboard/StoryboardMediaPrimitives.jsx`，抽离 `MediaContent`、`MediaRemoveButton` 和 `ShortcutMediaCard`。
+- `StoryboardUploadSlots.jsx` 继续负责文件校验、上传 API、资产选择、预选、预览定位状态和业务回调；本轮只复用媒体展示结构。
+
+
+## 2026-07-17 生成面板提交按钮复用
+
+- 新增 `src/components/storyboard/GenerationSubmitButton.jsx`，统一图片/视频生成面板底部提交按钮、hover/pressed 状态、加载态和媒体图标。
+- `GenerateImagePanel` 与 `GenerateVideoPanel` 继续传入各自 `handleGenerate`，生成 API、任务轮询、Toast 和结果状态未移动。
+
+## 2026-07-17 VideoResultsPanel 视频上传入口拆分
+
+- 新增 `src/components/storyboard/VideoUploadCard.jsx`，负责视频上传占位卡的布局、悬浮状态、本地文件选择和资产库选择弹窗。
+- `VideoUploadCard` 只通过 `onUpload` 与 `onAssetsSelected` 透传选择结果；不调用 `apiUploadStoryboardVideo`，不转换资产字段，不维护生成视频列表、定稿状态或 Toast。
+- `VideoResultsPanel.jsx` 继续负责视频上传 API、资产 URL 归一化、结果列表写回、定稿和结果卡操作；未执行真实视频上传。
+- 下一步：评估 `VideoResultsPanel` 结果卡和生成面板剩余纯展示边界；若无明确安全边界，则进入静态收尾和剩余页面规模告警审查。
+
+## 2026-07-17 VideoResultsPanel 视频结果卡片拆分
+
+- 新增 `src/components/storyboard/VideoResultCard.jsx`，负责视频预览、加载态、定稿控件和悬浮查看/下载入口展示。
+- `VideoResultCard` 不调用 API、不写入视频列表、不创建下载链接；查看、定稿和下载均通过显式回调透传。
+- `VideoResultsPanel.jsx` 继续负责结果列表状态写回、定稿回调、查看回调和浏览器下载副作用；未执行真实下载或定稿。
+- 下一步：继续评估生成面板剩余纯展示边界；若无明确安全边界，则进入静态收尾与 OpenSpec 未完成项审查。
+
+## 2026-07-17 GenerateImagePanel 图片结果卡片拆分
+
+- 新增 `src/components/storyboard/ImageResultCard.jsx`，负责图片预览、加载态、定稿控件和悬浮查看/下载入口。
+- `ImageResultCard` 只接收图片 URL、定稿状态和显式回调，不调用 API、不写入结果列表、不创建下载链接。
+- `GenerateImagePanel.jsx` 继续负责生成结果状态、定稿写回、详情弹窗和浏览器下载副作用；`StoryboardImageUpload.jsx` 不再包含图片结果卡片。
+- 下一步：评估生成面板是否还存在明确的纯展示边界；若没有，则进入静态收尾与 OpenSpec 未完成项审查。
+
+## 2026-07-17 生成面板结果展示静态收尾
+
+- `GenerateImagePanel` 已将图片结果展示迁移至 `ImageResultCard`；`GenerateVideoPanel` 通过 `VideoResultsPanel` 使用 `VideoUploadCard` 与 `VideoResultCard`。
+- 结果卡片只负责媒体预览、加载态、定稿控件和回调出口；生成/上传 API、结果列表写回、详情弹窗、下载、定稿、任务状态和 Toast 副作用仍保留在业务面板或页面。
+- 全局搜索确认旧 `ImgItem`、`VideoItem` 和页面级 `VideoUploadCard` 实现无残留调用；`onDraftContentChange` 仅存在于受控 `ScriptPage` props 与 `GlobalSettings` 的显式传递链路中。
+- 本阶段可安全抽离的生成面板展示边界已完成；剩余规模告警不作为强拆 API、轮询、缓存、Store 或外部副作用的理由。
+
+## 2026-07-17 StoryboardPage 上传入口错误与样式统一修复
+
+- 修复 `GenerateImagePanel.jsx` 本地参考图上传报错：`ReferenceImageField` 已将原生事件转换为文件数组，面板此前仍读取 `e.target.files`，导致 `Cannot read properties of undefined (reading 'files')`；现改为直接消费文件数组，业务上传 API 和结果写回边界不变。
+- 统一分镜页上传入口视觉：`StoryboardImageUpload.jsx` 的 `ImgUploadBtn` 改为复用 `StoryboardActionPrimitives.jsx` 的 `RefSlotButton`。因此分镜图候选图、分镜视频候选视频，以及视频面板参考图/视频/音频入口统一使用同一上传按钮样式；文件选择、资产选择和上传 API 仍由各业务组件负责。
+- 分镜相关定向 ESLint、`npm run build`、`npm run check:architecture` 和 `git diff --check` 通过；架构检查仅保留历史规模告警。
+- 已由用户完成分镜图/视频弹窗最终手动验证，所有分镜功能正常；音频播放/收藏不在本次重构范围。
+
+## 2026-07-17 Storyboard 参考视频/音频数量限制修复
+
+- 修复历史问题：模型允许最多 3 个参考视频或参考音频时，旧状态使用单个 `refVideo`/`refAudio`，上传第 1 个后即被视为已满，上传入口错误消失。
+- `GenerateVideoPanel` 与 `ReferenceMediaEditor` 现改用 `refVideos`/`refAudios` 数组，并根据模型能力以 `length < max_reference_*` 控制入口；本地上传、资产库选择、删除单项和计数显示均支持最多 3 个。
+- 当前生成接口仍使用单个 `reference_video_url`/`reference_audio_url` 字段，因此提交时保持既有接口契约，使用列表首项；本次只修复前端素材槽位数量和入口显示，不擅自修改后端参数协议。
+- 分镜相关定向 ESLint、`npm run build`、`npm run check:architecture` 和 `git diff --check` 通过。
+
+## 2026-07-17 StoryboardPage 最终手动验收通过
+
+- 用户确认 StoryboardPage 所有功能正常可用：弹窗打开/关闭、分镜图/视频参考素材本地上传、资产库选择、上传入口样式、候选媒体入口、模型/分辨率等选择器以及其他分镜交互均通过验证。
+- 参考视频/参考音频最多 3 个的入口显示修复已纳入验收结论：上传第 1、2 个后入口继续显示，达到第 3 个后隐藏，删除后可重新出现。
+- 本条为用户手动验证结果，不将其扩大解释为音频播放/收藏通过；音频播放/收藏按用户要求排除在本次前端重构范围之外。
+- StoryboardPage 不再作为当前前端重构阻塞项；后续只保留静态门禁复验、OpenSpec 记录整理和明确范围外功能的后续产品任务。
+
+## 2026-07-17 前端重构最终验收完成
+
+- 用户确认本次前端重构纳入范围的运行时验收全部通过，包含 CreationPage、AssetsPage（音频播放/收藏除外）和 StoryboardPage 的相关业务流程。
+- OpenSpec 7.4 及其本次纳入范围的运行时子任务已同步为完成；音频播放/收藏是明确排除项，不影响本次前端重构完成结论。
+- 当前没有剩余的纳入范围重构工作。页面规模告警继续作为非阻断治理项，不通过强拆 API、任务轮询、缓存、Store 写回或外部副作用来压缩行数。
+
+> 本节为当前有效结论；文档前部 2026-07-16 及更早记录中的“待验证/未完成”仅保留历史审计上下文，不代表当前状态。
+
+## 2026-07-17 旧版 Bug 修复经验迁移
+
+- 参考 `/Users/suzylee/Desktop/miioo-project/frontend/解决方案.md`，将旧版已确认的创作页 Bug 修复迁移到当前重构结构。
+- `AssetPickerModal` 现在同时过滤 Store/API 来源中没有有效 URL 的图片占位卡；视频保留 `url` 或 `posterUrl` 任一有效即可，音频不因没有预览图被误过滤。
+- `Home` 常驻 `CreationPage`，切换页面不再卸载创作输入；发送成功不主动清空提示词和素材，Tab 切换不再清空文件；按生成类型保存草稿，切换图片/视频/配音时恢复各自内容。
+- 参考素材文件统一补充前端 `_uid`，`@` 标签按 `_uid` 删除，避免同名素材误删；历史图片用作参考图时文件名由提示词生成，重复添加也保持独立引用。
+- 图片/视频并发上限调整为 10，配音保持 5，按钮提示同步显示对应上限。

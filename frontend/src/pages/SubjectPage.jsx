@@ -39,7 +39,7 @@
  *   SubjectGenerationOptions  主体生图选项组合                       src/components/subject/SubjectGenerationOptions.jsx
  *   SubjectGenerationMode     主体生图方式选择                       src/components/subject/SubjectGenerationMode.jsx
  *   SubjectGenerationAction   主体编辑面板底部生成动作区             src/components/subject/SubjectGenerationAction.jsx
- *   SubjectTextFields         主体名称、描述、提示词字段组合         src/components/subject/SubjectTextFields.jsx
+ *   SubjectTextFields         主体字段组合，内部复用 ui/TextField       src/components/subject/SubjectTextFields.jsx
  *   SubjectEditForm           编辑面板左侧表单组合                         src/components/subject/SubjectEditForm.jsx
  *   SubjectPanelHeader        主体编辑面板标题和关闭动作             src/components/subject/SubjectPanelHeader.jsx
  *   SubjectVoiceSelectModal   主体音色选择、筛选和试听弹窗           src/components/subject/SubjectVoiceSelectModal.jsx

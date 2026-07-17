@@ -67,8 +67,6 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     removeFile,
     replaceFiles,
     clearFiles,
-    clearFrameFiles,
-    releaseFiles,
     swapFrameFiles,
   } = useCreationInputFiles({
     model,
@@ -107,7 +105,6 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     insertFromCard,
     insertMention,
     getPromptSnapshot,
-    clearContent,
     restoreContent,
     setMentionIndex,
   } = useCreationPromptInteraction({
@@ -121,6 +118,53 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     prefillVersion,
     prefillData,
   });
+
+  // 保留图片/视频/配音各自的输入草稿，避免切换模式时互相覆盖。
+  const draftsRef = useRef({});
+  const previousGenTypeRef = useRef(genType);
+  const captureDraft = useCallback(() => {
+    const snapshot = getPromptSnapshot();
+    draftsRef.current[previousGenTypeRef.current] = {
+      ...snapshot,
+      files,
+      firstFrameFile,
+      lastFrameFile,
+      refMode,
+      selectedVoiceId,
+      selectedVoiceName,
+      dubbingSpeed,
+      dubbingEmotion,
+    };
+  }, [dubbingEmotion, dubbingSpeed, files, firstFrameFile, getPromptSnapshot, lastFrameFile, refMode, selectedVoiceId, selectedVoiceName]);
+
+  const handleLocalGenTypeChange = useCallback((nextType) => {
+    captureDraft();
+    onGenTypeChange?.(nextType);
+  }, [captureDraft, onGenTypeChange]);
+
+  useEffect(() => {
+    if (previousGenTypeRef.current === genType) return;
+    previousGenTypeRef.current = genType;
+    const draft = draftsRef.current[genType];
+    if (draft) {
+      restoreContent({ html: draft.html, text: draft.text });
+      replaceFiles(draft.files || []);
+      setFirstFrameFile(draft.firstFrameFile || null);
+      setLastFrameFile(draft.lastFrameFile || null);
+      if (draft.refMode && genType === 'video') setRefMode(draft.refMode);
+      setSelectedVoiceId(draft.selectedVoiceId || '');
+      setSelectedVoiceName(draft.selectedVoiceName || '');
+      if (draft.dubbingSpeed !== undefined) setDubbingSpeed(draft.dubbingSpeed);
+      if (draft.dubbingEmotion !== undefined) setDubbingEmotion(draft.dubbingEmotion);
+    } else {
+      restoreContent({ html: '', text: '' });
+      replaceFiles([]);
+      setFirstFrameFile(null);
+      setLastFrameFile(null);
+      setSelectedVoiceId('');
+      setSelectedVoiceName('');
+    }
+  }, [genType, replaceFiles, restoreContent, setDubbingEmotion, setDubbingSpeed, setFirstFrameFile, setLastFrameFile, setRefMode]);
 
 
   // Video: filter modelOptions by refMode
@@ -173,14 +217,13 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       // 替换模式（onReEdit 等场景）
       replaceFiles(prefillData.files);
     } else if (prefillData.appendFiles !== undefined) {
-      // 追加模式（onUseAsRef 场景）：追加到已有列表，按 url 去重，最多20个，同时检查模型上限
+      // 追加模式（onUseAsRef 场景）：每次点击都生成独立引用，最多20个，同时检查模型上限
       safeSetFiles((prev) => {
         if (prev.length >= MAX_CREATION_FILES) {
           showToast('error', '您添加的文件太多了，最多支持20个参考文件');
           return prev;
         }
-        const existingUrls = new Set((prev ?? []).map((f) => f.url).filter(Boolean));
-        const toAdd = prefillData.appendFiles.filter((f) => !f.url || !existingUrls.has(f.url));
+        const toAdd = prefillData.appendFiles;
 
         const merged = [...(prev ?? []), ...toAdd];
         if (merged.length > MAX_CREATION_FILES) {
@@ -250,7 +293,8 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     safeSetFiles((prev) => [...prev, ...assetFiles]);
   };
 
-  const atConcurrentLimit = activeCount >= 5;
+  const concurrentLimit = genType === 'dubbing' ? 5 : 10;
+  const atConcurrentLimit = activeCount >= concurrentLimit;
   const canSend = !disabled && !atConcurrentLimit && (hasContent || files.length > 0 || firstFrameFile || lastFrameFile || (genType === 'dubbing' && selectedVoiceId));
 
   const handleSend = async () => {
@@ -266,12 +310,8 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       dubbingSpeed,
       dubbingEmotion,
     };
-    // 立即清空输入框和附件
-    clearContent();
     const savedFirstFrameFile = firstFrameFile;
     const savedLastFrameFile = lastFrameFile;
-    clearFiles({ preserveFiles: savedFiles });
-    clearFrameFiles({ preserveFiles: [savedFirstFrameFile, savedLastFrameFile].filter(Boolean) });
     resetDubbingParams();
     setSelectedVoiceId('');
     setSelectedVoiceName('');
@@ -285,7 +325,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         actualRefMode = currentModel?.actualFrameRefMode || 'first_frame';
       }
     }
-    const result = await onGenerate?.({
+    await onGenerate?.({
       prompt: currentText,
       promptHTML: savedHTML,
       genType,
@@ -329,9 +369,6 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         }
       },
     });
-    if (result?.success !== false) {
-      releaseFiles([...savedFiles, savedFirstFrameFile, savedLastFrameFile]);
-    }
   };
 
   const handleKeyDown = (event) => {
@@ -391,7 +428,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         modelOptions,
         filteredModelOptions,
         creationParams,
-        onGenTypeChange,
+        onGenTypeChange: handleLocalGenTypeChange,
         onModelChange,
         onBeforeModelOpen,
         dubbingSpeed,
@@ -422,7 +459,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         onClick: handleSend,
         disabled: !canSend,
         loading: disabled,
-        disabledTooltip: atConcurrentLimit ? '当前有5个任务进行中，为了保证成功率，请稍等一会儿再发送创作请求' : '',
+        disabledTooltip: atConcurrentLimit ? `当前有${concurrentLimit}个任务进行中，为了保证成功率，请稍等一会儿再发送创作请求` : '',
       }}
       overlays={{
         assetPickerOpen,

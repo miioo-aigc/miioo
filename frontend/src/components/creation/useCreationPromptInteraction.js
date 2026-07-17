@@ -85,7 +85,7 @@ export function useCreationPromptInteraction({
   const buildTagElement = useCallback((file) => {
     const tag = document.createElement('span');
     tag.contentEditable = 'false';
-    tag.dataset.fileRef = file.name;
+    tag.dataset.fileRef = file._uid || file.name;
     tag.style.cssText = 'display:inline-flex;align-items:center;background:rgba(45,195,225,0.10);color:#2DC3E1;border-radius:6px;padding:0 4px;font-size:14px;line-height:22px;height:22px;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08);user-select:none;cursor:pointer;white-space:nowrap;font-family:' + FONT + ';';
 
     const label = document.createElement('span');
@@ -124,9 +124,9 @@ export function useCreationPromptInteraction({
         editorRef.current.innerHTML = prefillData.promptHTML;
         const filesToUse = prefillData.files ?? [];
         editorRef.current.querySelectorAll('[data-file-ref]').forEach((oldTag) => {
-          const fileName = oldTag.dataset.fileRef;
-          const file = filesToUse.find((item) => item.name === fileName)
-            || { name: fileName, url: '', size: 0 };
+          const fileRef = oldTag.dataset.fileRef;
+          const file = filesToUse.find((item) => (item._uid || item.name) === fileRef)
+            || { name: fileRef, url: '', size: 0, _uid: fileRef };
           const newTag = buildTagElement(file);
           oldTag.parentNode?.replaceChild(newTag, oldTag);
         });
@@ -197,7 +197,7 @@ export function useCreationPromptInteraction({
     removeFile(index);
     if (file && editorRef.current) {
       editorRef.current.querySelectorAll('[data-file-ref]').forEach((tag) => {
-        if (tag.dataset.fileRef === file.name) tag.remove();
+        if (tag.dataset.fileRef === (file._uid || file.name)) tag.remove();
       });
       const content = editorRef.current.innerText ?? '';
       setHasContent(content.trim().length > 0);
@@ -406,9 +406,9 @@ export function useCreationPromptInteraction({
     if (html) {
       editorRef.current.innerHTML = html;
       Array.from(editorRef.current.querySelectorAll('[data-file-ref]')).forEach((oldTag) => {
-        const fileName = oldTag.dataset.fileRef;
-        const file = restoreFiles.find((item) => item.name === fileName)
-          || { name: fileName, url: '', size: 0 };
+        const fileRef = oldTag.dataset.fileRef;
+        const file = restoreFiles.find((item) => (item._uid || item.name) === fileRef)
+          || { name: fileRef, url: '', size: 0, _uid: fileRef };
         oldTag.parentNode?.replaceChild(buildTagElement(file), oldTag);
       });
       setHasContent(true);

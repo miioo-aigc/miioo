@@ -156,9 +156,14 @@ export function buildCreationImageReeditPrefill(card) {
 }
 
 export function buildCreationImageReferencePrefill(card) {
+  const promptName = (card.prompt || '')
+    .replace(/[\\/:*?"<>|\r\n\t]/g, '')
+    .trim()
+    .slice(0, 10)
+    .trim() || 'creation';
   return {
     appendFiles: [{
-      name: 'creation.png',
+      name: `${promptName}.png`,
       url: card.imageUrl,
       previewUrl: card.imageUrl,
       assetId: card.assetId || card.id || undefined,

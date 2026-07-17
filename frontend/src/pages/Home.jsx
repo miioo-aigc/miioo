@@ -1222,14 +1222,14 @@ export default function Home({ onGoToAdmin }) {
             {activeKey === 'assets' && (
               <AssetsPage projects={projects} isLoggedIn={isLoggedIn} />
             )}
-            {activeKey === 'create' && (
+            <div style={{ display: activeKey === 'create' ? 'flex' : 'none', flexDirection: 'column', position: 'absolute', inset: 0 }}>
               <CreationPage
                 isLoggedIn={isLoggedIn}
                 onLoginClick={() => setLoginOpen(true)}
                 apiConfigured={apiConfigured}
                 onShowNoModelNotice={() => setNoModelNoticeOpen(true)}
               />
-            )}
+            </div>
             </div>
           </Suspense>
         </div>

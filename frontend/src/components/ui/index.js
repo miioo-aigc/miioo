@@ -3,3 +3,5 @@ export { default as IconButton } from './IconButton';
 export { default as TextButton } from './TextButton';
 export { default as ButtonGroup } from './ButtonGroup';
 export { default as Select } from './Select';
+export { default as TextField } from './TextField';
+export { default as FileUploadButton } from './FileUploadButton';

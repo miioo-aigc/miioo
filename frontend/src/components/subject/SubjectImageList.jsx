@@ -4,7 +4,7 @@
  *
  * ─── 组件职责 ───────────────────────────────────────────────────────
  *   SubjectImageList       主体编辑区右侧图片列表与详情弹窗组合
- *   ImageItemUpload        本地上传 / 资产库选择入口
+ *   ImageItemUpload        本地上传 / 资产库选择入口，复用通用 FileUploadButton
  *   ImageItem              生成图 / 参考图卡片、定稿和快捷操作
  *   ImageActionButton      图片卡片悬浮操作按钮
  *   SubjectImageList       负责图片数据映射与回调透传
@@ -22,25 +22,11 @@ import AssetPickerModal from '../AssetPickerModal';
 import Checkbox from '../Checkbox';
 import DotsLoading from '../DotsLoading';
 import MediaDetailModal from '../MediaDetailModal';
-import { Button, IconButton } from '../ui';
+import { IconButton, FileUploadButton } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-function UploadButton({ label, onClick }) {
-  return (
-    <Button
-      type="button"
-      variant="secondary"
-      size="small"
-      className="!h-6 !px-[6px] !rounded-[6px] !border-white/10 !bg-[#161616] !shadow-none hover:!border-white/20 hover:!bg-[#1A1A1A] active:!bg-[#222222]"
-      contentClassName="!text-[12px] !leading-4 !font-normal !text-white/40 group-hover:!text-white/80"
-      onClick={onClick}
-    >
-      {label}
-    </Button>
-  );
-}
-
+const UploadButton = ({ label, onClick }) => <FileUploadButton onClick={onClick}>{label}</FileUploadButton>;
 function ImageItemUpload({ onUpload, projectId }) {
   const [hovered, setHovered] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);

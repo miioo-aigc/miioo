@@ -5,7 +5,7 @@
  * ─── 提示词编辑器 ───────────────────────────────────────────────
  *   PanelPromptInput       contentEditable 提示词编辑、计数和展示态切换
  *   原子提及编辑           主体/参考素材提及插入、删除、光标和粘贴处理
- *   ReferenceMentionDropdown  @ 提及筛选、分类标签和资产选择
+ *   ReferenceMentionDropdown  已拆分至独立组件，页面只保留编辑器状态与选择回调
  *   SubjectTag             展示态提及标签
  *
  * ─── 依赖边界 ─────────────────────────────────────────────────────
@@ -15,185 +15,18 @@
  *
  * ─── 更新记录 ─────────────────────────────────────────────────────
  *   2026-07-15  从 StoryboardPage 抽离提示词编辑、原子提及和提及下拉，保持原交互与回调签名
+ *   2026-07-17  抽离提示词类型常量、SubjectTag 和字符计数展示，编辑器状态与光标逻辑保持不变
+ *   2026-07-17  拆分 ReferenceMentionDropdown，保留编辑器提及插入与光标逻辑
  */
 
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
-import { createPortal } from 'react-dom';
+import { MENTION_TYPE_COLOR } from './PanelPromptConstants';
+import ReferenceMentionDropdown from './ReferenceMentionDropdown';
+import { PromptCharacterCount, SubjectTag } from './PanelPromptPrimitives';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 // ─── 主体 @ 下拉（角色/场景/道具，用于提示词输入框）─────────────────────────────
-
-const MENTION_TYPE_LABEL = {
-  char: '角色', scene: '场景', prop: '道具', other: '其他',
-  image: '参考图', video: '参考视频', audio: '参考音频',
-};
-const MENTION_TYPE_COLOR = {
-  char: '#E2E24B', scene: '#4BE2C3', prop: '#4B9EE2', other: '#9E9E9E',
-  image: '#E8A1FF', video: '#FF8A65', audio: '#66BB6A',
-};
-
-const MENTION_TABS = [
-  { key: 'all', label: '全部' },
-  { key: 'image', label: '参考图' },
-  { key: 'char', label: '参考主体' },
-  { key: 'video', label: '参考视频' },
-  { key: 'audio', label: '参考音频' },
-];
-
-function ReferenceMentionDropdown({ referenceItems = [], query, onSelect, onClose, triggerRef }) {
-  const ref = useRef(null);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0, visibility: 'hidden' });
-  const [selectedTab, setSelectedTab] = useState('all');
-
-  const allItems = referenceItems.filter((item) => {
-    return item.name && item.name.includes(query);
-  });
-
-  useEffect(() => {
-    if (!triggerRef?.current || !ref.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    const top = rect.bottom + 4;
-    setPos((prev) => {
-      const next = { top, left: rect.left, width: rect.width, visibility: 'visible' };
-      if (prev.top === next.top && prev.left === next.left && prev.visibility === 'visible') return prev;
-      return next;
-    });
-  }, [triggerRef]);
-
-  useEffect(() => {
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [onClose]);
-
-  const filteredItems = selectedTab === 'all'
-    ? allItems
-    : selectedTab === 'char'
-      ? allItems.filter(item => ['char', 'scene', 'prop', 'other'].includes(item._type))
-      : allItems.filter(item => item._type === selectedTab);
-
-  // 只显示当前有匹配项的 tab
-  const visibleTabs = MENTION_TABS.filter(tab => {
-    if (tab.key === 'all') return true;
-    if (tab.key === 'char') return allItems.some(item => ['char', 'scene', 'prop', 'other'].includes(item._type));
-    return allItems.some(item => item._type === tab.key);
-  });
-
-  if (filteredItems.length === 0) return null;
-
-  return createPortal(
-    <div
-      ref={ref}
-      style={{
-        position: 'fixed',
-        top: pos.top,
-        left: pos.left,
-        minWidth: Math.max(pos.width, 160),
-        visibility: pos.visibility,
-        zIndex: 9999,
-        backgroundColor: '#1D1E1E',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: '8px',
-        padding: '4px',
-        boxShadow: '0px 4px 16px rgba(0,0,0,0.40)',
-        maxHeight: '240px',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      <div style={{ display: 'flex', gap: '2px', padding: '2px 4px 6px', flexShrink: 0 }}>
-        {visibleTabs.map(tab => (
-          <div
-            key={tab.key}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setSelectedTab(tab.key)}
-            style={{
-              padding: '3px 8px', borderRadius: '4px', fontSize: '12px', lineHeight: '16px',
-              cursor: 'pointer', fontFamily: '"Alibaba PuHuiTi 2.0", system-ui, sans-serif',
-              color: selectedTab === tab.key ? '#FFFFFF' : 'rgba(255,255,255,0.50)',
-              backgroundColor: selectedTab === tab.key ? 'rgba(255,255,255,0.08)' : 'transparent',
-              transition: 'background-color 0.1s, color 0.1s',
-            }}
-            onMouseEnter={(e) => { if (selectedTab !== tab.key) e.currentTarget.style.color = 'rgba(255,255,255,0.80)'; }}
-            onMouseLeave={(e) => { if (selectedTab !== tab.key) e.currentTarget.style.color = 'rgba(255,255,255,0.50)'; }}
-          >
-            {tab.label}
-          </div>
-        ))}
-      </div>
-      <div style={{ flex: 1, overflowY: 'auto', maxHeight: '180px' }}>
-      {filteredItems.map((item) => (
-        <div
-          key={`${item._type}-${item.id}`}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            onSelect(item.name, item._type);
-          }}
-          style={{
-            padding: '7px 12px',
-            borderRadius: '6px',
-            fontSize: '14px',
-            lineHeight: '18px',
-            color: 'rgba(255,255,255,0.60)',
-            cursor: 'pointer',
-            fontFamily: '"Alibaba PuHuiTi 2.0", system-ui, sans-serif',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-        >
-          <span style={{
-            fontSize: '11px',
-            lineHeight: '16px',
-            padding: '0 5px',
-            borderRadius: '3px',
-            backgroundColor: `${MENTION_TYPE_COLOR[item._type] ?? MENTION_TYPE_COLOR.char}22`,
-            color: MENTION_TYPE_COLOR[item._type] ?? MENTION_TYPE_COLOR.char,
-            flexShrink: 0,
-            fontFamily: '"Alibaba PuHuiTi 2.0", system-ui, sans-serif',
-          }}>
-            {MENTION_TYPE_LABEL[item._type] || '其他'}
-          </span>
-          {item.name}
-        </div>
-      ))}
-      </div>
-    </div>,
-    document.body
-  );
-}
-
-// ─── 主体 Tag（提示词展示用）─────────────────────────────────────────────────────
-
-function SubjectTag({ name, type }) {
-  const color = MENTION_TYPE_COLOR[type] ?? '#E2E24B';
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        paddingInline: '4px',
-        borderRadius: '4px',
-        fontSize: '14px',
-        lineHeight: '21px',
-        backgroundColor: `${color}26`,
-        color,
-        boxShadow: `inset 0 0 0 1px ${color}33`,
-        fontFamily: '"Alibaba PuHuiTi 2.0", system-ui, sans-serif',
-        flexShrink: 0,
-        verticalAlign: 'middle',
-      }}
-    >
-      @{name}
-    </span>
-  );
-}
-
 
 const MAX_PROMPT_LEN = 1000;
 
@@ -711,9 +544,7 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
             )}
           </div>
         )}
-        <div style={{ alignSelf: 'stretch', textAlign: 'right', fontSize: '12px', lineHeight: '18px', color: 'rgba(255,255,255,0.40)', fontFamily: FONT, flexShrink: 0 }}>
-          {value.length}/{MAX_PROMPT_LEN}
-        </div>
+<PromptCharacterCount value={value} maxLength={MAX_PROMPT_LEN} />
       </div>
       {mentionQuery !== null && (
         <ReferenceMentionDropdown

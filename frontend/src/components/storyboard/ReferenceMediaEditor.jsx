@@ -30,20 +30,22 @@ export default function ReferenceMediaEditor({
   showRefVideo,
   showRefAudio,
   maxRefImages,
+  maxRefVideos,
+  maxRefAudios,
   imageCountLabel,
   videoCountLabel,
   audioCountLabel,
   canAddImage,
   refSubjects = [],
   refImages = [],
-  refVideo = null,
-  refAudio = null,
+  refVideos = [],
+  refAudios = [],
   refFirstFrame = null,
   refLastFrame = null,
   onRefSubjectsChange,
   onRefImagesChange,
-  onRefVideoChange,
-  onRefAudioChange,
+  onRefVideosChange,
+  onRefAudiosChange,
   onRefFirstFrameChange,
   onRefLastFrameChange,
   onReferenceMediaUpload,
@@ -80,12 +82,16 @@ export default function ReferenceMediaEditor({
   }, [onRefImagesChange, uploadBlobMedia]);
 
   const appendVideo = useCallback((media) => {
-    uploadBlobMedia(media, 'video', onRefVideoChange);
-  }, [onRefVideoChange, uploadBlobMedia]);
+    uploadBlobMedia(media, 'video', (uploaded) => {
+      onRefVideosChange?.((prev) => [...prev, uploaded]);
+    });
+  }, [onRefVideosChange, uploadBlobMedia]);
 
   const appendAudio = useCallback((media) => {
-    uploadBlobMedia(media, 'audio', onRefAudioChange);
-  }, [onRefAudioChange, uploadBlobMedia]);
+    uploadBlobMedia(media, 'audio', (uploaded) => {
+      onRefAudiosChange?.((prev) => [...prev, uploaded]);
+    });
+  }, [onRefAudiosChange, uploadBlobMedia]);
 
   return (
     <>
@@ -146,13 +152,14 @@ export default function ReferenceMediaEditor({
               label="参考视频"
               countLabel={videoCountLabel}
               accept="video/mp4,video/quicktime"
-              media={refVideo}
+              mediaList={refVideos}
+              canAddMore={maxRefVideos == null || refVideos.length < maxRefVideos}
               onUpload={appendVideo}
-              onRemove={() => onRefVideoChange?.(null)}
+              onRemove={() => onRefVideosChange?.([])}
+              onRemoveItem={(index) => onRefVideosChange?.((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
               onAssetConfirm={(assets) => {
-                const asset = assets?.[0];
-                if (!asset) return;
-                onRefVideoChange?.({ id: asset.id, url: asset.fileUrl || asset.url, name: asset.name || '参考视频', type: 'video/mp4' });
+                const items = (assets || []).map((asset) => ({ id: asset.id, url: asset.fileUrl || asset.url, name: asset.name || '参考视频', type: 'video/mp4' }));
+                onRefVideosChange?.((prev) => [...prev, ...items].slice(0, maxRefVideos ?? 99));
               }}
               onInsert={(media) => onInsertReference?.(media, 'video')}
             />
@@ -164,13 +171,14 @@ export default function ReferenceMediaEditor({
               label="参考音频"
               countLabel={audioCountLabel}
               accept="audio/mpeg,audio/wav"
-              media={refAudio}
+              mediaList={refAudios}
+              canAddMore={maxRefAudios == null || refAudios.length < maxRefAudios}
               onUpload={appendAudio}
-              onRemove={() => onRefAudioChange?.(null)}
+              onRemove={() => onRefAudiosChange?.([])}
+              onRemoveItem={(index) => onRefAudiosChange?.((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
               onAssetConfirm={(assets) => {
-                const asset = assets?.[0];
-                if (!asset) return;
-                onRefAudioChange?.({ id: asset.id, url: asset.fileUrl || asset.url, name: asset.name || '参考音频', type: 'audio/mpeg' });
+                const items = (assets || []).map((asset) => ({ id: asset.id, url: asset.fileUrl || asset.url, name: asset.name || '参考音频', type: 'audio/mpeg' }));
+                onRefAudiosChange?.((prev) => [...prev, ...items].slice(0, maxRefAudios ?? 99));
               }}
               onInsert={(media) => onInsertReference?.(media, 'audio')}
             />

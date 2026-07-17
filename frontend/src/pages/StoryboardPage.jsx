@@ -35,7 +35,7 @@
  * ─── 主页面入口 ──────────────────────────────────────────── L287–L1400
  *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化 L300–L1140
  *   [镜头 CRUD] 上传、编辑、复制、删除、排序          L1141–L1230
- *   [渲染] 状态结果、表格、头部、生成面板和 Toast       L930–L1296
+ *   [渲染] 状态结果、表格、头部、生成面板和 Toast       L930–L1297
  *   [边界] 页面保留轮询循环、状态写回、缓存、持久化、Toast 和 API 副作用
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
@@ -84,8 +84,8 @@
  *   2026-07-15  抽离 GenerateImagePanel 到 components/storyboard/GenerateImagePanel.jsx，
  *              页面继续持有图片生成 API、任务轮询、持久化、状态写回和 Toast；图片面板通过显式 props 接收页面 UI 与业务回调
  *              同步修复迁移遗留的图片时长引用和视频面板 ModalToggle 未定义引用，改用已有 Toggle 组件
- *   2026-07-15  抽离 GenerateVideoPanel、VideoUploadCard 和 VideoItem 到 components/storyboard/GenerateVideoPanel.jsx，
- *              页面继续持有视频生成任务、轮询、持久化、定稿写回和 Toast；视频面板通过显式 props 接收页面 UI、资产映射和业务回调
+ *   2026-07-15  抽离 GenerateVideoPanel 到 components/storyboard/GenerateVideoPanel.jsx；
+ *              后续 VideoUploadCard、VideoResultCard 也归入 components/storyboard/，页面继续持有视频生成任务、轮询、持久化、定稿写回和 Toast
  *   2026-07-16  将 FrameUploadSlot / PanelUploadSlot 迁移至 components/storyboard/StoryboardUploadSlots.jsx，
  *              ReferenceMediaEditor 通过业务域入口直接引入，页面不再持有上传槽位实现或向下转发组件
  *   2026-07-16  新增 utils/storyboardTaskAdapter.js，统一任务状态、图片结果和视频结果字段读取；

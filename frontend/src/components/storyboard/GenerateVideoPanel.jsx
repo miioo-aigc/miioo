@@ -4,6 +4,9 @@
  *
  * ─── 组件职责 ───────────────────────────────────────────────
  *   视频生成面板       管理模型、生成模式、提示词和参考素材表单
+ *   GenerationModelField / GenerationOptionFields  参数选择纯展示组合
+ *   VideoGenerationTabs / VideoSoundToggle  视频模式和音效纯展示组合
+ *   GenerationSubmitButton  底部生成动作纯展示按钮
  *   参考素材编辑       管理主体、图片、视频、音频及首尾帧输入
  *   生成结果编排       连接 VideoResultsPanel 与页面回调，维护查看弹窗状态
  *   媒体查看弹窗       负责视频详情查看和定稿状态同步
@@ -26,22 +29,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ShotViewerModal from '../ShotViewerModal';
-import Toggle from '../Toggle';
-import DotsLoading from '../DotsLoading';
 import { apiListModels } from '../../api/config';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter';
 import ReferenceMediaEditor from './ReferenceMediaEditor';
 import VideoResultsPanel from './VideoResultsPanel';
-import PanelSelect from './PanelSelect';
+import { GenerationModelField, GenerationOptionFields } from './GenerationParamsFields';
+import { VideoGenerationTabs, VideoSoundToggle } from './VideoGenerationControls';
+import GenerationSubmitButton from './GenerationSubmitButton';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
-
-function SpinnerIcon({ color = '#090909' }) {
-  return <DotsLoading size={3} color={color} gap={2} />;
-}
 
 export default function GenerateVideoPanel({
   shot,
@@ -149,13 +148,11 @@ export default function GenerateVideoPanel({
     }).filter(ref => ref?.url);
   });
   const [refImages, setRefImages] = useState([]);
-  const [refVideo, setRefVideo] = useState(null);
-  const [refAudio, setRefAudio] = useState(null);
+  const [refVideos, setRefVideos] = useState([]);
+  const [refAudios, setRefAudios] = useState([]);
   const [refFirstFrame, setRefFirstFrame] = useState(null);
   const [refLastFrame, setRefLastFrame] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [btnHov, setBtnHov] = useState(false);
-  const [btnPressed, setBtnPressed] = useState(false);
   const [viewerShot, setViewerShot] = useState(null);
 
   // 获取当前模型支持的参数（优先从后端 capabilities 派生）
@@ -236,8 +233,8 @@ export default function GenerateVideoPanel({
   const imageCount = (showRefSubjects ? refSubjects.length : 0) + refImages.length;
   const canAddImage = maxRefImages === null || imageCount < maxRefImages;
   const imageCountLabel = maxRefImages != null ? `${imageCount}/${maxRefImages}` : null;
-  const videoCountLabel = maxRefVideos != null ? `${refVideo ? 1 : 0}/${maxRefVideos}` : null;
-  const audioCountLabel = maxRefAudios != null ? `${refAudio ? 1 : 0}/${maxRefAudios}` : null;
+  const videoCountLabel = maxRefVideos != null ? `${refVideos.length}/${maxRefVideos}` : null;
+  const audioCountLabel = maxRefAudios != null ? `${refAudios.length}/${maxRefAudios}` : null;
 
   // 模型切换时保留当前分辨率/时长（若新模型支持）
   useEffect(() => {
@@ -277,15 +274,11 @@ export default function GenerateVideoPanel({
       items.push({ id: img.id, name: img.name || (img.url ? img.url.split('/').pop()?.split('?')[0]?.replace(/\.[^.]+$/, '') || '参考图' : '参考图'), _type: 'image' });
     });
     // 参考视频
-    if (refVideo) {
-      items.push({ id: refVideo.id, name: refVideo.name || '参考视频', _type: 'video' });
-    }
+    refVideos.forEach((video) => items.push({ id: video.id, name: video.name || '参考视频', _type: 'video' }));
     // 参考音频
-    if (refAudio) {
-      items.push({ id: refAudio.id, name: refAudio.name || '参考音频', _type: 'audio' });
-    }
+    refAudios.forEach((audio) => items.push({ id: audio.id, name: audio.name || '参考音频', _type: 'audio' }));
     return items;
-  }, [refSubjects, refImages, refVideo, refAudio]);
+  }, [refSubjects, refImages, refVideos, refAudios]);
 
   async function handleRefMediaUpload(file, type = 'image') {
     try {
@@ -329,8 +322,9 @@ export default function GenerateVideoPanel({
         reference_images: referenceImages.length > 0 ? referenceImages : undefined,
         first_frame_url: refFirstFrame?.url,
         last_frame_url: refLastFrame?.url,
-        reference_video_url: refVideo?.url,
-        reference_audio_url: refAudio?.url,
+        // 当前分镜生成接口仍接收单个 URL；UI 可按模型能力收集多个素材，提交时保持既有接口契约。
+        reference_video_url: refVideos[0]?.url,
+        reference_audio_url: refAudios[0]?.url,
       });
       onSetGeneratedVideos?.((prev) =>
         prev.map((item) => item.id === placeholder ? { ...item, url: result?.url ?? null, created_at: item.created_at || new Date().toISOString().replace('T', ' ').slice(0, 19) } : item)
@@ -358,7 +352,6 @@ export default function GenerateVideoPanel({
     }
   }
 
-  const btnBg = loading ? 'rgba(45,195,225,0.60)' : btnPressed ? '#28b0cc' : btnHov ? '#32cde8' : '#2DC3E1';
 
   return createPortal(
     <>
@@ -393,50 +386,19 @@ export default function GenerateVideoPanel({
           <div style={{ display: 'flex', flexDirection: 'column', width: '419px', flexShrink: 0, padding: '8px 12px 80px 24px', gap: '20px', overflowY: 'auto' }}>
             <span style={{ fontSize: "14px", lineHeight: "18px", color: "rgba(255,255,255,0.80)", fontFamily: FONT }}>分镜{String(shot?.number ?? 1).padStart(2, "0")}</span>
 
-            {/* Tab：全能参考 / 首尾帧 */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '24px', alignSelf: 'stretch' }}>
-              <div
-                onClick={() => handleTabChange('all')}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
-              >
-                <span style={{
-                  fontSize: '14px', lineHeight: '18px',
-                  color: tab === 'all' ? '#FFFFFF' : 'rgba(255,255,255,0.60)',
-                  fontFamily: tab === 'all' ? FONT_MEDIUM : FONT,
-                  fontWeight: tab === 'all' ? 500 : 400,
-                  transition: 'color 0.12s',
-                }}>
-                  全能参考
-                </span>
-                {tab === 'all' && (
-                  <div style={{ height: '2px', alignSelf: 'stretch', backgroundColor: '#DDDDDD', flexShrink: 0 }} />
-                )}
-              </div>
-              <div
-                onClick={() => handleTabChange('frame')}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
-              >
-                <span style={{
-                  fontSize: '14px', lineHeight: '18px',
-                  color: tab === 'frame' ? '#FFFFFF' : 'rgba(255,255,255,0.60)',
-                  fontFamily: tab === 'frame' ? FONT_MEDIUM : FONT,
-                  fontWeight: tab === 'frame' ? 500 : 400,
-                  transition: 'color 0.12s',
-                }}>
-                  首尾帧
-                </span>
-                {tab === 'frame' && (
-                  <div style={{ height: '2px', alignSelf: 'stretch', backgroundColor: '#DDDDDD', flexShrink: 0 }} />
-                )}
-              </div>
-            </div>
+            <VideoGenerationTabs value={tab} onChange={handleTabChange} />
 
             <PanelPromptInput ref={promptRef} value={prompt} onChange={setPrompt} referenceItems={videoReferenceItems} />
 
-            <PanelSelect label="选择模型" value={modelsLoading ? '加载中...' : (tabModels.find(m => m.value === model)?.label || '请选择')} options={tabModels.map(m => m.label)} onChange={(label) => {
-              const selected = tabModels.find(m => m.label === label);
-              if (selected) setModel(selected.value);
-            }} />
+            <GenerationModelField
+              value={modelsLoading ? '加载中...' : (tabModels.find(m => m.value === model)?.label || '请选择')}
+              options={tabModels.map(m => m.label)}
+              onChange={(label) => {
+                const selected = tabModels.find(m => m.label === label);
+                if (selected) setModel(selected.value);
+              }}
+              disabled={modelsLoading}
+            />
 
             <ReferenceMediaEditor
               tab={tab}
@@ -448,20 +410,22 @@ export default function GenerateVideoPanel({
               showRefVideo={showRefVideo}
               showRefAudio={showRefAudio}
               maxRefImages={maxRefImages}
+              maxRefVideos={maxRefVideos}
+              maxRefAudios={maxRefAudios}
               imageCountLabel={imageCountLabel}
               videoCountLabel={videoCountLabel}
               audioCountLabel={audioCountLabel}
               canAddImage={canAddImage}
               refSubjects={refSubjects}
               refImages={refImages}
-              refVideo={refVideo}
-              refAudio={refAudio}
+              refVideos={refVideos}
+              refAudios={refAudios}
               refFirstFrame={refFirstFrame}
               refLastFrame={refLastFrame}
               onRefSubjectsChange={setRefSubjects}
               onRefImagesChange={setRefImages}
-              onRefVideoChange={setRefVideo}
-              onRefAudioChange={setRefAudio}
+              onRefVideosChange={setRefVideos}
+              onRefAudiosChange={setRefAudios}
               onRefFirstFrameChange={setRefFirstFrame}
               onRefLastFrameChange={setRefLastFrame}
               onReferenceMediaUpload={handleRefMediaUpload}
@@ -469,14 +433,17 @@ export default function GenerateVideoPanel({
               onInsertReference={(media, type) => promptRef.current?.insertMention(media.name || (type === 'video' ? '参考视频' : '参考音频'), type)}
             />
 
-            <PanelSelect label="时长" value={duration} options={availableDurations.length > 0 ? availableDurations : ['5s']} onChange={setDuration} />
-            <PanelSelect label="分辨率" value={resolution} options={availableResolutions} onChange={setResolution} />
+            <GenerationOptionFields
+              duration={duration}
+              durationOptions={availableDurations.length > 0 ? availableDurations : ['5s']}
+              resolution={resolution}
+              resolutionOptions={availableResolutions}
+              onDurationChange={setDuration}
+              onResolutionChange={setResolution}
+              showDuration
+            />
 
-            {/* 音效 toggle */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-              <span style={{ fontSize: '14px', lineHeight: '18px', color: 'rgba(255,255,255,0.60)', fontFamily: FONT, flexShrink: 0 }}>音效</span>
-              <Toggle value={sound} onChange={setSound} />
-            </div>
+            <VideoSoundToggle value={sound} onChange={setSound} />
 
           </div>
 
@@ -517,37 +484,12 @@ export default function GenerateVideoPanel({
             alignItems: 'center',
           }}
         >
-          <div
-            onClick={loading ? undefined : handleGenerate}
-            onMouseEnter={() => !loading && setBtnHov(true)}
-            onMouseLeave={() => { setBtnHov(false); setBtnPressed(false); }}
-            onMouseDown={() => !loading && setBtnPressed(true)}
-            onMouseUp={() => setBtnPressed(false)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', height: '36px', borderRadius: '8px', paddingInline: '16px', gap: '4px',
-              backgroundColor: btnBg,
-              backgroundImage: 'linear-gradient(in oklab 107.5deg, oklab(84.6% -0.114 0.031 / 30%) 8.14%, oklab(84.6% -0.114 0.031 / 0%) 54.48%)',
-              backgroundOrigin: 'border-box',
-              border: '1px solid #FFFFFF33', outline: '1px solid #00000080',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              transition: 'background-color 0.10s',
-              flexShrink: 0,
-            }}
-          >
-            {loading ? (
-              <SpinnerIcon color="#090909" />
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-                <path d="M12.333 2.333H3.667V13.667H12.333V2.333Z" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M3.667 3.667H1.333V12.333H3.667V3.667Z" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M14.667 3.667H12.333V12.333H14.667V3.667Z" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M7.333 6.667L9.333 8L7.333 9.333V6.667Z" fill="#090909" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )}
-            <span style={{ fontSize: '14px', lineHeight: '18px', color: '#090909', fontFamily: FONT_MEDIUM, fontWeight: 500, whiteSpace: 'nowrap' }}>
-              {loading ? '生成中…' : '生成分镜视频'}
-            </span>
-          </div>
+          <GenerationSubmitButton
+            loading={loading}
+            label="生成分镜视频"
+            type="video"
+            onClick={handleGenerate}
+          />
         </div>
       </div>
       {viewerShot && (

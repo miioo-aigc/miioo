@@ -1,4 +1,6 @@
 export { default as RefImageField } from './RefImageField';
+export { default as RefImageItem } from './RefImageItem';
+export { default as RefImageUploadCard } from './RefImageUploadCard';
 export { default as SubjectGenerationOptions } from './SubjectGenerationOptions';
 export { default as SubjectGenerationMode } from './SubjectGenerationMode';
 export { default as SubjectGenerationAction } from './SubjectGenerationAction';

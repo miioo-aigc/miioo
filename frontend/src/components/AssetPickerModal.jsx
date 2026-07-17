@@ -256,7 +256,7 @@ export default function AssetPickerModal({
       images: generationsToFlatList(generationsByTab.image || [], favorites).map(item => ({
         ...item,
         bgColor: item.bgColor || '#1F2324',
-      })),
+      })).filter((item) => !!item.url),
       videos: generationsToFlatList(generationsByTab.video || [], favorites).map(item => ({
         ...item,
         // url = 视频地址（给 <video> 标签），posterUrl = 封面图片（给 <img> 标签）
@@ -265,7 +265,7 @@ export default function AssetPickerModal({
         posterUrl: item.thumbnail_url || item.thumbnailUrl || item.thumbnail || item.image_url || item.imageUrl || item.url || item.poster || null,
         asset_type: 'video',
         bgColor: item.bgColor || '#1F2324',
-      })),
+      })).filter((item) => !!(item.url || item.posterUrl)),
       dubbing: generationsToFlatList(generationsByTab.dubbing || [], favorites).map(item => ({
         ...item,
         bgColor: item.bgColor || '#1F2324',
@@ -290,6 +290,8 @@ export default function AssetPickerModal({
   const [finalOnly, setFinalOnly] = useState(true);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(new Set());
+  // 调用方常以内联 map 传入预选 ID；用值签名作为依赖，避免每次渲染都重置选择并形成更新循环。
+  const preSelectedIdsKey = JSON.stringify(preSelectedIds ?? []);
   const preSelectedSet = useMemo(() => new Set(preSelectedIds ?? []), [preSelectedIds]);
   // 主体ID集合（最可靠的跨来源匹配键：主体参考图与资产库为不同记录ID，但同属一个 subject_id）
   const preSelectedSubjectSet = useMemo(
@@ -327,7 +329,7 @@ export default function AssetPickerModal({
     if (open) {
       // 弹窗打开时从外部预选数据恢复本地选择；这里不是派生渲染状态。
       // eslint-disable-next-line react-hooks/set-state-in-effect -- 弹窗会话开始时同步外部预选项
-      setSelected(new Set(preSelectedIds ?? []));
+      setSelected(new Set(JSON.parse(preSelectedIdsKey)));
     } else {
       // 关闭弹窗时清理临时选择和懒加载缓存，避免下次打开复用旧会话。
       setSelected(new Set());
@@ -335,7 +337,7 @@ export default function AssetPickerModal({
       setLocalCreativeAssets(null);
       setCreativeLoadedTabs(new Set());
     }
-  }, [open, preSelectedIds]);
+  }, [open, preSelectedIdsKey]);
   const [searchFocused, setSearchFocused] = useState(false);
   const [hoveredCard, setHoveredCard] = useState(null);
   const [closeHovered, setCloseHovered] = useState(false);
@@ -480,7 +482,9 @@ export default function AssetPickerModal({
           resp = await apiListCreationAudios({ page: 1, page_size: 100 });
         }
         const list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
-        const normalized = list.map(item => normalizeCreativeItem(item, type === 'audio' ? 'audio' : type));
+        const normalized = list
+          .map(item => normalizeCreativeItem(item, type === 'audio' ? 'audio' : type))
+          .filter(item => type === 'audio' || !!(item.url || item.posterUrl));
         setLocalCreativeAssets(prev => ({
           images: prev?.images ?? [],
           videos: prev?.videos ?? [],
@@ -582,6 +586,7 @@ export default function AssetPickerModal({
 
   const rawAssets = getCurrentAssets();
   const filteredAssets = rawAssets.filter(a => {
+    if (activeTab === 'creative' && creativeSubTab !== '配音' && !(a.url || a.posterUrl)) return false;
     if (activeTab === 'project' && finalOnly && !a.is_primary) return false;
     if (favOnly && !a.starred) return false;
     if (search && !(a.name || '').includes(search)) return false;

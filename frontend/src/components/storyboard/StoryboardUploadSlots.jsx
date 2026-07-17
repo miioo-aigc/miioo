@@ -5,7 +5,7 @@
  * ─── 组件职责 ───────────────────────────────────────────────
  *   FrameUploadSlot  首帧/尾帧图片上传、资产选择和当前/下一分镜快捷入口
  *   PanelUploadSlot  参考主体、参考图、参考视频和参考音频的单/多媒体槽位
- *   上传与预览      负责文件校验、业务域上传 API、资产预选和悬浮预览
+ *   上传与预览      负责文件校验、业务域上传 API 和资产预选；媒体展示复用 StoryboardMediaPrimitives
  *
  * ─── 依赖边界 ───────────────────────────────────────────────
  *   组件只依赖明确的素材 props、业务域上传 API 和通用资产/预览组件；
@@ -17,13 +17,14 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-07-16  从生成面板上传区迁移完成；由 ReferenceMediaEditor 直接引入并复用
+ *   2026-07-17  抽离媒体内容、删除按钮和首尾帧快捷卡片展示，上传与资产逻辑保持不变
  */
 
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AssetPickerModal from '../AssetPickerModal';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
-import { normalizeImageUrl } from '../../utils/imageUrl';
+import { MediaContent, MediaRemoveButton, ShortcutMediaCard } from './StoryboardMediaPrimitives';
 import { MediaHoverPreview as StoryboardMediaHoverPreview } from './MainRefCol';
 import { ImgUploadBtn } from './StoryboardImageUpload';
 
@@ -31,17 +32,6 @@ const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans
 
 function UploadSlotButton({ children, onClick }) {
   return <ImgUploadBtn label={children} onClick={onClick} />;
-}
-
-function MediaRemoveButton({ onClick }) {
-  return (
-    <div
-      onClick={onClick}
-      style={{ position: 'absolute', top: '4px', right: '4px', width: '18px', height: '18px', borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-    >
-      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 2L8 8M8 2L2 8" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" /></svg>
-    </div>
-  );
 }
 
 function getUploadFn(file) {
@@ -65,7 +55,6 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
   const fileRef = useRef(null);
   const hoverTimerRef = useRef(null);
   const [hov, setHov] = useState(false);
-  const [shortcutHov, setShortcutHov] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [previewPos, setPreviewPos] = useState(null);
 
@@ -116,7 +105,7 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
               onMouseLeave={stopPreview}
               style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}
             >
-              <img src={normalizeImageUrl(media.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <MediaContent media={media} />
               <MediaRemoveButton onClick={() => { stopPreview(); onRemove?.(); }} />
             </div>
           ) : (
@@ -130,34 +119,12 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
             </div>
           )}
           {!media && (
-            <div style={{ position: 'relative' }}>
-              <div
-                onClick={() => shortcutImage && onUpload?.(shortcutImage)}
-                onMouseEnter={() => setShortcutHov(true)}
-                onMouseLeave={() => setShortcutHov(false)}
-                style={{ width: '120px', height: '120px', borderRadius: '6px', flexShrink: 0, border: `1px dashed ${shortcutHov && shortcutImage ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.08)'}`, backgroundColor: '#1D1E1E', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: shortcutImage ? 'pointer' : 'default', transition: 'border-color 0.12s', padding: '8px' }}
-              >
-                {shortcutImage ? (
-                  <>
-                    <div style={{ width: '72px', height: '40px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)', opacity: shortcutHov ? 1 : 0.6, transition: 'opacity 0.12s' }}>
-                      <img src={normalizeImageUrl(shortcutImage.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    </div>
-                    <span style={{ fontSize: '12px', lineHeight: '16px', color: 'rgba(255,255,255,0.40)', fontFamily: FONT, textAlign: 'center' }}>{shortcutLabel}</span>
-                  </>
-                ) : (
-                  <>
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="12" rx="2" stroke="rgba(255,255,255,0.15)" strokeWidth="1.2" /><circle cx="7" cy="8.5" r="1.5" stroke="rgba(255,255,255,0.15)" strokeWidth="1.2" /><path d="M2 13l4-3 3 2.5 3-4 4 4.5" stroke="rgba(255,255,255,0.15)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    <span style={{ fontSize: '11px', lineHeight: '14px', color: 'rgba(255,255,255,0.20)', fontFamily: FONT, textAlign: 'center' }}>{shortcutLabel}</span>
-                  </>
-                )}
-              </div>
-              {!shortcutImage && shortcutTooltip && shortcutHov && (
-                <div style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#2A2B2B', border: '1px solid rgba(255,255,255,0.10)', borderRadius: '6px', padding: '6px 10px', whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 9999, fontSize: '12px', lineHeight: '18px', color: 'rgba(255,255,255,0.60)', fontFamily: FONT, boxShadow: '0 4px 12px rgba(0,0,0,0.40)' }}>
-                  {shortcutTooltip}
-                  <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: '5px solid #2A2B2B' }} />
-                </div>
-              )}
-            </div>
+            <ShortcutMediaCard
+              image={shortcutImage}
+              label={shortcutLabel}
+              tooltip={shortcutTooltip}
+              onSelect={onUpload}
+            />
           )}
         </div>
       </div>
@@ -226,9 +193,7 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
   }
 
   function renderMedia(item) {
-    if (item.type?.startsWith('video')) return <video src={normalizeImageUrl(item.url) || null} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline />;
-    if (item.type?.startsWith('audio')) return <div style={{ width: '100%', height: '100%', backgroundColor: '#1D1E1E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M9 18V5l12-2v13" stroke="rgba(255,255,255,0.50)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="rgba(255,255,255,0.50)" strokeWidth="1.5" /><circle cx="18" cy="16" r="3" stroke="rgba(255,255,255,0.50)" strokeWidth="1.5" /></svg></div>;
-    return <img src={normalizeImageUrl(item.url) || null} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+    return <MediaContent media={item} />;
   }
 
   function renderUploadButtons() {

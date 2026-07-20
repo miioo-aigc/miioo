@@ -355,5 +355,62 @@ function Textarea({ placeholder = "hint", value = "", disabled = false, state = 
 - 禁用态输入框不可加描边，视觉上应明显弱于正常态
 - 错误态必须同时显示错误提示文字，不可仅靠红色描边传递信息
 - 小尺寸输入框不可内嵌按钮，按钮必须放在外部
-- 多行输入框不支持后缀插槽，如需字数统计放在输入框下方右对齐
+- 多行输入框不支持后缀插槽，字数统计默认放在输入框内右下角（绝对定位），多行框底部预留 `pb-[26px]` 避免文字被计数遮挡
 - `mix-blend-mode: lighten` 仅用于激活态阴影，如测试后发现文字渲染异常，删除该属性即可，不影响其他样式
+
+## 七、TextField 组件契约
+
+> 源码：`src/components/ui/TextField.jsx`（已通过 `src/components/ui/index.js` 导出，页面/业务域统一 `import TextField from '.../components/ui'`）
+> 该组件是项目内唯一的通用文本输入组件；新增输入框前优先复用或扩展它，不得在页面内联原生 `<input>`/`<textarea>` 复刻输入视觉。
+
+### 7.1 受支持的 Props
+
+| Prop | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `label` | `string` | — | 字段标签，传空则不渲染 |
+| `value` | `string` | `''` | 受控值 |
+| `multiline` | `boolean` | `false` | `true` 渲染 `textarea`，否则渲染单行 `input` |
+| `height` | `string` | 多行 `120px` | 仅多行生效，覆盖文本框高度（如 `72px`） |
+| `maxLength` | `number` | — | 传入后显示字数统计 `当前/最大`；单行计数在框内右侧，多行计数在框内右下角 |
+| `error` | `boolean` | `false` | 错误态，描边切到 `border-input-border-wrong` |
+| `errorMsg` | `string` | — | `error` 为 `true` 时显示的错误提示文字（红色，位于框下方） |
+| `suffix` | `ReactNode` | — | 单行专属后缀插槽（内嵌按钮、下拉箭头、计数等），多行忽略 |
+| `sanitize` | `(raw: string) => string` | — | 字符过滤函数，在 `onChange` 中先清洗再回传，回传事件 `e.target.value` 为过滤后的值 |
+| `onChange` | `(e) => void` | — | 值变化回调，入参为已写入过滤值的事件对象 |
+| `onBlur` | `() => void` | — | 失焦回调（组件内部已处理 focused 状态复位） |
+| `...inputProps` | — | — | 透传给原生 `input`/`textarea`（如 `placeholder`、`disabled`、原生 `maxLength` 由 `maxLength` prop 统一控制） |
+
+### 7.2 状态与视觉口径
+
+- 默认/悬停/激活/禁用/错误五态描边、背景、发光（`box-shadow: 0 0 10px var(--color-glow); mix-blend-mode: lighten`）全部使用 `tokens.md` 的 `border-input-*`、`bg-input-*`、`--color-glow`，不硬编码色值。
+- 多行 `textarea` 高度默认 `120px`，通过 `height` prop 覆盖（如新建项目弹窗的描述框 `72px`）。
+- 计数与错误提示位置遵循上文"多行输入框不支持后缀插槽，字数统计默认放在输入框内右下角"与"错误态必须同时显示错误提示文字"。
+
+### 7.3 使用示例
+
+```jsx
+// 单行 + 字数统计 + 错误态 + 字符过滤
+<TextField
+  label="项目名称"
+  value={name}
+  placeholder="请输入项目名称"
+  maxLength={50}
+  error={nameError}
+  errorMsg="项目名称不可为空"
+  sanitize={sanitizeInput}
+  onChange={(e) => setName(e.target.value)}
+  onBlur={handleNameBlur}
+/>
+
+// 多行 + 选填占位符 + 自定义高度 + 字数统计
+<TextField
+  label="项目描述"
+  value={desc}
+  placeholder="选填"
+  multiline
+  height="72px"
+  maxLength={300}
+  sanitize={sanitizeInput}
+  onChange={(e) => setDesc(e.target.value)}
+/>
+```

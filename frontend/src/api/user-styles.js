@@ -5,17 +5,30 @@ import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 const MOCK_BUILTIN = [
-  { id: 'b1', value: 'xianxia-3d', label: '3D东方仙侠', prompt: '3D东方仙侠风格', color: '#1C1A2E', description: null, badge: null, is_builtin: true, is_custom: false },
-  { id: 'b2', value: 'suspense-anime-2d', label: '2D悬疑动漫', prompt: '2D悬疑动漫风格', color: '#141824', description: null, badge: null, is_builtin: true, is_custom: false },
-  { id: 'b3', value: 'cyberpunk-3d', label: '3D赛博朋克', prompt: '3D赛博朋克风格', color: '#0D1020', description: null, badge: null, is_builtin: true, is_custom: false },
-  { id: 'b4', value: 'pixar-style', label: '皮克斯风格', prompt: '皮克斯风格', color: '#12112A', description: null, badge: null, is_builtin: true, is_custom: false },
-  { id: 'b5', value: 'wuxia-cg', label: 'CG武侠', prompt: 'CG武侠风格', color: '#12112A', description: null, badge: null, is_builtin: true, is_custom: false },
-  { id: 'b6', value: 'ghibli-style', label: '宫崎骏风格', prompt: '宫崎骏动画风格', color: '#12112A', description: null, badge: null, is_builtin: true, is_custom: false },
-  { id: 'b7', value: 'shinkai-style', label: '新海诚风格', prompt: '新海诚动画风格', color: '#1A1529', description: null, badge: null, is_builtin: true, is_custom: false },
-  { id: 'b8', value: 'ancient-chinese-live-action', label: '真人古风写实', prompt: '真人古风写实风格', color: '#16120A', description: null, badge: null, is_builtin: true, is_custom: false },
-  { id: 'b9', value: 'urban-workplace', label: '都市职场', prompt: '都市职场真人风格', color: '#111820', description: null, badge: null, is_builtin: true, is_custom: false },
-  { id: 'b10', value: 'post-apocalyptic-modern', label: '末日废土', prompt: '末日废土风格', color: '#1A120A', description: null, badge: null, is_builtin: true, is_custom: false },
-  { id: 'b11', value: 'live-action-suspense', label: '真人悬疑', prompt: '真人悬疑惊悚风格', color: '#0F0F18', description: null, badge: null, is_builtin: true, is_custom: false },
+  // 动漫风格
+  { id: 'b1',  value: 'xianxia-3d',                 label: '3D国漫仙侠',   prompt: '3D国漫仙侠风格',   color: '#1C1A2E', description: null, badge: null, category: '动漫风格', sort_order: 1,  is_builtin: true, is_custom: false },
+  { id: 'b2',  value: 'suspense-anime-2d',           label: '2D悬疑恐怖',   prompt: '2D悬疑恐怖动漫风格', color: '#141824', description: null, badge: null, category: '动漫风格', sort_order: 2,  is_builtin: true, is_custom: false },
+  { id: 'b3',  value: 'cyberpunk-3d',                label: '3D赛博朋克',   prompt: '3D赛博朋克风格',   color: '#0D1020', description: null, badge: null, category: '动漫风格', sort_order: 3,  is_builtin: true, is_custom: false },
+  { id: 'b4',  value: 'ghibli-style',                label: '宫崎骏风格',   prompt: '宫崎骏动画风格',   color: '#12112A', description: null, badge: null, category: '动漫风格', sort_order: 4,  is_builtin: true, is_custom: false },
+  { id: 'b5',  value: 'shinkai-style',               label: '新海诚风格',   prompt: '新海诚动画风格',   color: '#1A1529', description: null, badge: null, category: '动漫风格', sort_order: 5,  is_builtin: true, is_custom: false },
+  { id: 'b6',  value: 'ancient-chinese-live-action', label: '3D国风正剧',   prompt: '3D国风正剧风格',   color: '#16120A', description: null, badge: null, category: '动漫风格', sort_order: 6,  is_builtin: true, is_custom: false },
+  { id: 'b7',  value: 'magic-epic-3d',               label: '3D魔幻史诗',   prompt: '3D魔幻史诗风格',   color: '#12112A', description: null, badge: null, category: '动漫风格', sort_order: 7,  is_builtin: true, is_custom: false },
+  { id: 'b8',  value: 'pixar-style',                 label: '3D Q版',      prompt: '皮克斯Q版风格',    color: '#12112A', description: null, badge: null, category: '动漫风格', sort_order: 8,  is_builtin: true, is_custom: false },
+  { id: 'b9',  value: 'wuxia-cg',                    label: '武侠CG',       prompt: 'CG武侠风格',       color: '#12112A', description: null, badge: null, category: '动漫风格', sort_order: 9,  is_builtin: true, is_custom: false },
+  { id: 'b10', value: 'jpkr-2d',                     label: '日韩二次元',   prompt: '日韩二次元动漫风格', color: '#141824', description: null, badge: null, category: '动漫风格', sort_order: 10, is_builtin: true, is_custom: false },
+  { id: 'b11', value: 'ink-guofeng-2d',              label: '2D写意古风',   prompt: '2D写意古风风格',   color: '#16120A', description: null, badge: null, category: '动漫风格', sort_order: 11, is_builtin: true, is_custom: false },
+  { id: 'b12', value: 'dark-gothic-2d',              label: '暗黑哥特',     prompt: '暗黑哥特风格',     color: '#0F0F18', description: null, badge: null, category: '动漫风格', sort_order: 12, is_builtin: true, is_custom: false },
+  // 真人写实
+  { id: 'b13', value: 'live-action-gufeng',          label: '古风写实',     prompt: '古风写实真人风格',   color: '#16120A', description: null, badge: null, category: '真人写实', sort_order: 1,  is_builtin: true, is_custom: false },
+  { id: 'b14', value: 'urban-emotion',               label: '都市情感',     prompt: '都市情感真人风格',   color: '#111820', description: null, badge: null, category: '真人写实', sort_order: 2,  is_builtin: true, is_custom: false },
+  { id: 'b15', value: 'xianxia-fantasy',             label: '仙侠玄幻',     prompt: '仙侠玄幻真人风格',   color: '#1C1A2E', description: null, badge: null, category: '真人写实', sort_order: 3,  is_builtin: true, is_custom: false },
+  { id: 'b16', value: 'live-action-horror',          label: '悬疑恐怖',     prompt: '真人悬疑恐怖风格',   color: '#0F0F18', description: null, badge: null, category: '真人写实', sort_order: 4,  is_builtin: true, is_custom: false },
+  { id: 'b17', value: 'post-apocalyptic-modern',     label: '末日废土',     prompt: '末日废土真人风格',   color: '#1A120A', description: null, badge: null, category: '真人写实', sort_order: 5,  is_builtin: true, is_custom: false },
+  { id: 'b18', value: 'realistic-era',               label: '写实年代剧',   prompt: '写实年代剧风格',     color: '#16120A', description: null, badge: null, category: '真人写实', sort_order: 6,  is_builtin: true, is_custom: false },
+  { id: 'b19', value: 'future-scifi',                label: '未来科幻',     prompt: '未来科幻真人风格',   color: '#0D1020', description: null, badge: null, category: '真人写实', sort_order: 7,  is_builtin: true, is_custom: false },
+  { id: 'b20', value: 'workplace-drama',             label: '职场商战',     prompt: '职场商战真人风格',   color: '#111820', description: null, badge: null, category: '真人写实', sort_order: 8,  is_builtin: true, is_custom: false },
+  { id: 'b21', value: 'wuxia-war',                   label: '武侠战争',     prompt: '武侠战争真人风格',   color: '#12112A', description: null, badge: null, category: '真人写实', sort_order: 9,  is_builtin: true, is_custom: false },
+  { id: 'b22', value: 'rural-style',                 label: '乡土风格',     prompt: '乡土风格真人风格',   color: '#16120A', description: null, badge: null, category: '真人写实', sort_order: 10, is_builtin: true, is_custom: false },
 ];
 
 let mockCustomStyles = [];

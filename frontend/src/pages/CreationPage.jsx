@@ -155,7 +155,6 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     const cacheKey = `creation_history:${tab}:page1`;
     const cacheEntry = peekCacheEntry(cacheKey, 'local');
     if (!cacheEntry?.d) {
-      console.log('[CreationPage][history] cache miss', { tab, cacheKey });
       return false;
     }
 
@@ -163,15 +162,6 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     const type = tab === 'dubbing' ? 'audio' : tab;
     const normalized = list.map((item) => normalizeCreationHistoryItem(item, type));
     mergeHistoryGenerations(tab, normalized);
-
-    const cacheAgeMs = Date.now() - cacheEntry.t;
-    console.log('[CreationPage][history] hydrated from local cache', {
-      tab,
-      cacheKey,
-      itemCount: list.length,
-      cacheAgeMs,
-      isFresh: cacheAgeMs < 5 * 60 * 1000,
-    });
 
     return true;
   }, [mergeHistoryGenerations]);
@@ -197,18 +187,12 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     if (!isLoggedIn) return;
     const meta = useCreationStore.getState().historyMeta[tab];
     if (meta.loading || !meta.hasMore) {
-      console.log('[CreationPage][history] skip load', {
-        tab,
-        reason: meta.loading ? 'loading' : 'no-more',
-        meta,
-      });
       return;
     }
 
     updateHistoryMeta(tab, { loading: true });
     const nextPage = meta.page + 1;
     const PAGE_SIZE = tab === 'video' ? 6 : 18;
-    console.log('[CreationPage][history] start load', { tab, nextPage, meta });
 
     try {
       let list;
@@ -221,12 +205,6 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         const cacheKey = `creation_history:${tab}:page1`;
         const cacheEntry = peekCacheEntry(cacheKey, 'local');
         const cacheList = cacheEntry?.d ? getCreationHistoryList(cacheEntry.d) : [];
-        console.log('[CreationPage][history] page1 cache status (cache = instant paint only)', {
-          tab,
-          cacheKey,
-          hit: Boolean(cacheEntry?.d),
-          cacheAgeMs: cacheEntry?.t ? Date.now() - cacheEntry.t : null,
-        });
         // 第 1 页始终向服务端拉取最新数据，再写回本地缓存：
         // 本地缓存只用于「秒开」(hydrateHistoryFromCache)，不能作为权威数据。
         // 否则刚创作完成、但缓存尚未包含的新内容会在刷新后被旧缓存覆盖而「凭空消失」。
@@ -239,17 +217,10 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         if (isSameAsHydratedCache) {
           const hasMore = list.length >= PAGE_SIZE;
           syncHistoryFavorites(tab);
-          console.log('[CreationPage][history] reused hydrated cache result', {
-            tab,
-            nextPage,
-            itemCount: list.length,
-            hasMore,
-          });
           updateHistoryMeta(tab, { page: nextPage, hasMore, loading: false, initialized: true });
           return;
         }
       } else {
-        console.log('[CreationPage][history] network request fired', { tab, page: nextPage, pageSize: PAGE_SIZE });
         const resp = await apiMap[tab]({ page: nextPage, page_size: PAGE_SIZE, exclude_hidden: true });
         list = getCreationHistoryList(resp);
       }
@@ -266,13 +237,6 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         // 后续页（加载更多 / 自动填满视口）只能合并追加，否则会覆盖已加载的第 1 页内容导致整体错乱。
         mergeHistoryGenerations(tab, normalized);
       }
-      console.log('[CreationPage][history] load success', {
-        tab,
-        nextPage,
-        itemCount: list.length,
-        normalizedCount: normalized.length,
-        hasMore,
-      });
 
       // 同步后端收藏状态到本地 favorites Set
       syncHistoryFavorites(tab);
@@ -294,15 +258,8 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   useEffect(() => {
     if (!isLoggedIn) return;
     const meta = historyMeta[activeTab];
-    console.log('[CreationPage][history] tab effect', {
-      activeTab,
-      initialized: meta.initialized,
-      loading: meta.loading,
-      localGenerationCount: generationsByTab[activeTab]?.length ?? 0,
-    });
     if (!meta.initialized && !meta.loading) {
-      const hydrated = hydrateHistoryFromCache(activeTab);
-      console.log('[CreationPage][history] initial hydrate result', { tab: activeTab, hydrated });
+      hydrateHistoryFromCache(activeTab);
       loadHistoryPage(activeTab);
     }
   }, [isLoggedIn, activeTab, historyMeta, generationsByTab, hydrateHistoryFromCache, loadHistoryPage]);

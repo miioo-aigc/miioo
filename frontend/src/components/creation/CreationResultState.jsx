@@ -132,13 +132,6 @@ export default function CreationResultState({
       const underfilled = container.scrollHeight <= container.clientHeight + 1;
       if (underfilled && autoFillCountRef.current < autoFillLimit) {
         autoFillCountRef.current += 1;
-        console.log('[CreationPage][history] auto-fill loadMore', {
-          genType,
-          autoFillCount: autoFillCountRef.current,
-          autoFillLimit,
-          scrollHeight: container.scrollHeight,
-          clientHeight: container.clientHeight,
-        });
         onLoadMore();
       }
     });

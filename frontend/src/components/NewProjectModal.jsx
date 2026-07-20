@@ -1,94 +1,74 @@
 import { useRef, useState } from 'react';
 import { apiCreateProject, apiUploadProjectCover } from '../api/project.js';
 import { apiCreateUserStyle } from '../api/user-styles.js';
-import styleXianxia from '../assets/styles/xianxia-3d.png';
+import TextField from '../components/ui/TextField';
+import OptionTabs from '../components/ui/OptionTabs';
+import Button from '../components/ui/Button';
+import styleXianxia from '../assets/styles/xianxia-3d.avif';
 import styleSuspenseAnime from '../assets/styles/suspense-anime-2d.avif';
 import styleCyberpunk from '../assets/styles/cyberpunk-3d.avif';
 import stylePixar from '../assets/styles/pixar-style.avif';
-import styleWuxia from '../assets/styles/wuxia-cg.png';
+import styleWuxia from '../assets/styles/wuxia-cg.avif';
 import styleGhibli from '../assets/styles/ghibli-style.avif';
 import styleShinkai from '../assets/styles/shinkai-style.avif';
 import styleAncientChinese from '../assets/styles/ancient-chinese.avif';
 import styleUrbanWorkplace from '../assets/styles/urban-workplace.avif';
 import stylePostApocalyptic from '../assets/styles/post-apocalyptic.avif';
 import styleLiveActionSuspense from '../assets/styles/live-action-suspense.avif';
+// 以下封面来自 paper 设计稿「从风格库选择」，待本机脚本下载压缩 avif 落盘后生效
+import styleMagicEpic from '../assets/styles/magic-epic-3d.avif';
+import styleJpkr2d from '../assets/styles/jpkr-2d.avif';
+import styleInkGuofeng from '../assets/styles/ink-guofeng-2d.avif';
+import styleDarkGothic from '../assets/styles/dark-gothic-2d.avif';
+import styleLiveActionGufeng from '../assets/styles/live-action-gufeng.avif';
+import styleUrbanEmotion from '../assets/styles/urban-emotion.avif';
+import styleXianxiaFantasy from '../assets/styles/xianxia-fantasy.avif';
+import styleLiveActionHorror from '../assets/styles/live-action-horror.avif';
+import styleRealisticEra from '../assets/styles/realistic-era.avif';
+import styleFutureScifi from '../assets/styles/future-scifi.avif';
+import styleWorkplaceDrama from '../assets/styles/workplace-drama.avif';
+import styleWuxiaWar from '../assets/styles/wuxia-war.avif';
+import styleRural from '../assets/styles/rural-style.avif';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
-const VISUAL_STYLES = [
+
+// 风格库二级弹窗数据：来自 paper 设计稿「从风格库选择」
+// coverImg 优先复用本地已有 avif；设计稿剧照类封面本地无对应资源时用渐变占位（待联网补图）
+const LIBRARY_GRADIENT = 'linear-gradient(in oklab 135deg, oklab(34.8% 0 0) 0%, oklab(21.8% 0 0) 100%)';
+const LIBRARY_GROUPS = [
   {
-    value: 'custom',
-    label: '自定义',
-    coverImg: null,
-    gradient: null,
-    prompt: null,
+    category: '动漫风格',
+    styles: [
+      { value: 'xianxia-3d', label: '3D国漫仙侠', coverImg: styleXianxia, gradient: LIBRARY_GRADIENT },
+      { value: 'suspense-anime-2d', label: '2D悬疑恐怖', coverImg: styleSuspenseAnime, gradient: LIBRARY_GRADIENT },
+      { value: 'cyberpunk-3d', label: '3D赛博朋克', coverImg: styleCyberpunk, gradient: LIBRARY_GRADIENT },
+      { value: 'ghibli-style', label: '宫崎骏风格', coverImg: styleGhibli, gradient: LIBRARY_GRADIENT },
+      { value: 'shinkai-style', label: '新海诚风格', coverImg: styleShinkai, gradient: LIBRARY_GRADIENT },
+      { value: 'ancient-chinese-live-action', label: '3D国风正剧', coverImg: styleAncientChinese, gradient: LIBRARY_GRADIENT },
+      { value: 'magic-epic-3d', label: '3D魔幻史诗', coverImg: styleMagicEpic, gradient: LIBRARY_GRADIENT },
+      { value: 'pixar-style', label: '3D Q版', coverImg: stylePixar, gradient: LIBRARY_GRADIENT },
+      { value: 'wuxia-cg', label: '武侠CG', coverImg: styleWuxia, gradient: LIBRARY_GRADIENT },
+      { value: 'jpkr-2d', label: '日韩二次元', coverImg: styleJpkr2d, gradient: LIBRARY_GRADIENT },
+      { value: 'ink-guofeng-2d', label: '2D写意古风', coverImg: styleInkGuofeng, gradient: LIBRARY_GRADIENT },
+      { value: 'dark-gothic-2d', label: '暗黑哥特', coverImg: styleDarkGothic, gradient: LIBRARY_GRADIENT },
+    ],
   },
   {
-    value: 'xianxia-3d',
-    label: '3D东方仙侠',
-    coverImg: styleXianxia,
-    gradient: 'linear-gradient(in oklab 135deg, oklab(34.8% 0 0) 0%, oklab(21.8% 0 0) 100%)',
-  },
-  {
-    value: 'suspense-anime-2d',
-    label: '2D悬疑动漫',
-    coverImg: styleSuspenseAnime,
-    gradient: 'linear-gradient(in oklab 135deg, oklab(34.4% -0.009 -0.032) 0%, oklab(24.6% -0.001 -0.032) 100%)',
-  },
-  {
-    value: 'cyberpunk-3d',
-    label: '3D赛博朋克',
-    coverImg: styleCyberpunk,
-    gradient: 'linear-gradient(in oklab 135deg, oklab(26.4% 0 0) 0%, oklab(17.8% 0 0) 100%)',
-  },
-  {
-    value: 'pixar-style',
-    label: '皮克斯风格',
-    coverImg: stylePixar,
-    gradient: 'linear-gradient(in oklab 135deg, oklab(22.8% 0.009 -0.037) 0%, oklab(16.6% 0.006 -0.026) 100%)',
-  },
-  {
-    value: 'wuxia-cg',
-    label: 'CG武侠',
-    coverImg: styleWuxia,
-    gradient: 'linear-gradient(in oklab 135deg, oklab(22.8% 0.009 -0.037) 0%, oklab(16.6% 0.006 -0.026) 100%)',
-  },
-  {
-    value: 'ghibli-style',
-    label: '宫崎骏风格',
-    coverImg: styleGhibli,
-    gradient: 'linear-gradient(in oklab 135deg, oklab(22.8% 0.009 -0.037) 0%, oklab(16.6% 0.006 -0.026) 100%)',
-  },
-  {
-    value: 'shinkai-style',
-    label: '新海诚风格',
-    coverImg: styleShinkai,
-    gradient: 'linear-gradient(in oklab 135deg, oklab(26.8% 0.007 0.027) 0%, oklab(18.9% 0.007 0.022) 100%)',
-  },
-  {
-    value: 'ancient-chinese-live-action',
-    label: '真人古风写实',
-    coverImg: styleAncientChinese,
-    gradient: 'linear-gradient(in oklab 135deg, oklab(22.8% 0.009 -0.037) 0%, oklab(16.6% 0.006 -0.026) 100%)',
-  },
-  {
-    value: 'urban-workplace',
-    label: '都市职场',
-    coverImg: styleUrbanWorkplace,
-    gradient: 'linear-gradient(in oklab 135deg, oklab(26.8% 0.007 0.027) 0%, oklab(18.9% 0.007 0.022) 100%)',
-  },
-  {
-    value: 'post-apocalyptic-modern',
-    label: '末日废土',
-    coverImg: stylePostApocalyptic,
-    gradient: 'linear-gradient(in oklab 135deg, oklab(26.8% 0.007 0.027) 0%, oklab(18.9% 0.007 0.022) 100%)',
-  },
-  {
-    value: 'live-action-suspense',
-    label: '真人悬疑',
-    coverImg: styleLiveActionSuspense,
-    gradient: 'linear-gradient(in oklab 135deg, oklab(22.8% 0.009 -0.037) 0%, oklab(16.6% 0.006 -0.026) 100%)',
+    category: '真人写实',
+    styles: [
+      { value: 'live-action-gufeng', label: '古风写实', coverImg: styleLiveActionGufeng, gradient: LIBRARY_GRADIENT },
+      { value: 'urban-emotion', label: '都市情感', coverImg: styleUrbanEmotion, gradient: LIBRARY_GRADIENT },
+      { value: 'xianxia-fantasy', label: '仙侠玄幻', coverImg: styleXianxiaFantasy, gradient: LIBRARY_GRADIENT },
+      { value: 'live-action-horror', label: '悬疑恐怖', coverImg: styleLiveActionHorror, gradient: LIBRARY_GRADIENT },
+      { value: 'post-apocalyptic-modern', label: '末日废土', coverImg: stylePostApocalyptic, gradient: LIBRARY_GRADIENT },
+      { value: 'realistic-era', label: '写实年代剧', coverImg: styleRealisticEra, gradient: LIBRARY_GRADIENT },
+      { value: 'future-scifi', label: '未来科幻', coverImg: styleFutureScifi, gradient: LIBRARY_GRADIENT },
+      { value: 'workplace-drama', label: '职场商战', coverImg: styleWorkplaceDrama, gradient: LIBRARY_GRADIENT },
+      { value: 'wuxia-war', label: '武侠战争', coverImg: styleWuxiaWar, gradient: LIBRARY_GRADIENT },
+      { value: 'rural-style', label: '乡土风格', coverImg: styleRural, gradient: LIBRARY_GRADIENT },
+    ],
   },
 ];
 
@@ -114,97 +94,19 @@ function UploadIcon() {
   );
 }
 
-function PlusIcon() {
+// 视觉风格入口图标：调整/自定义
+function AdjustIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <line x1="10" y1="4" x2="10" y2="16" stroke="#FFFFFF33" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="4" y1="10" x2="16" y2="10" stroke="#FFFFFF33" strokeWidth="1.5" strokeLinecap="round" />
+    <svg viewBox="0 0 102.4 102.4" version="1.1" xmlns="http://www.w3.org/2000/svg" width="20" height="20" style={{ flexShrink: '0' }}>
+      <path d="M71.015 37.529l16.844-16.845-6.144-6.143-16.845 16.844 6.145 6.144zM96.768 20.684c0 1.024-0.358 1.895-1.024 2.612L21.709 97.28c-0.665 0.665-1.638 1.075-2.612 1.023-0.973 0.051-1.895-0.358-2.611-1.023L5.12 85.862c-0.665-0.665-1.075-1.638-1.025-2.611 0-1.024 0.358-1.895 1.025-2.611L79.155 6.656c0.665-0.665 1.638-1.075 2.611-1.024 1.024 0 1.895 0.358 2.611 1.024L95.744 18.073c0.665 0.665 1.024 1.536 1.024 2.611zM18.995 9.728l5.632 1.741-5.632 1.74-1.74 5.633-1.741-5.633-5.632-1.74 5.632-1.741 1.741-5.632 1.74 5.632z m20.173 9.318l11.264 3.43-11.264 3.431-3.431 11.264-3.43-11.264-11.264-3.431 11.264-3.43 3.43-11.264 3.431 11.264zM92.672 46.541l5.632 1.741-5.632 1.74-1.741 5.632-1.741-5.632-5.632-1.74 5.632-1.741 1.741-5.632 1.741 5.632zM55.859 9.728l5.632 1.741-5.632 1.74-1.741 5.633-1.741-5.633-5.632-1.74 5.632-1.741 1.741-5.632 1.741 5.632z m0 0" fill="#FFFFFFCC" />
     </svg>
   );
 }
 
-function StyleCard({ item, selected, customDesc, onClick }) {
-  const [hovered, setHovered] = useState(false);
-  const [pressed, setPressed] = useState(false);
 
-  const isCustom = item.value === 'custom';
-
-  let borderColor;
-  if (selected) borderColor = '#2DC3E1';
-  else if (hovered) borderColor = '#FFFFFF33';
-  else borderColor = '#FFFFFF14';
-
-  const labelColor = selected ? '#2DC3E1' : isCustom && !customDesc ? '#FFFFFF33' : '#FFFFFF66';
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setPressed(false); }}
-      onMouseDown={() => setPressed(true)}
-      onMouseUp={() => setPressed(false)}
-      className="flex flex-col items-center gap-[6px] flex-1 bg-transparent border-0 p-0 cursor-pointer"
-      style={{
-        transform: pressed ? 'scale(0.96)' : hovered && !selected ? 'scale(1.02)' : 'scale(1)',
-        transition: 'transform 150ms cubic-bezier(0.34,1.56,0.64,1)',
-      }}
-    >
-      <div
-        className="w-full h-[88px] rounded-md overflow-hidden relative shrink-0 bg-[#2A2A2A]"
-        style={{
-          borderWidth: '1.5px',
-          borderStyle: isCustom && !customDesc ? 'dashed' : 'solid',
-          borderColor: isCustom ? (selected ? '#2DC3E1' : '#FFFFFF33') : borderColor,
-          transition: 'border-color 150ms ease',
-          boxShadow: selected ? '0 0 8px rgba(45,195,225,0.25)' : hovered ? '0 0 6px rgba(255,255,255,0.06)' : 'none',
-        }}
-      >
-        {isCustom ? (
-          customDesc ? (
-            <div className="absolute inset-0 bg-[#1D1E1E] flex items-center justify-center p-[8px]">
-              <span className="text-[#FFFFFF99] text-[12px] leading-[16px] text-center line-clamp-3" style={{ fontFamily: FONT }}>
-                {customDesc}
-              </span>
-            </div>
-          ) : (
-            <div className="absolute inset-0 bg-[#1D1E1E] flex items-center justify-center">
-              <PlusIcon />
-            </div>
-          )
-        ) : (
-          <>
-            {item.gradient && (
-              <div className="absolute inset-0" style={{ backgroundImage: item.gradient }} />
-            )}
-            {item.coverImg && (
-              <div
-                className="absolute inset-0 bg-cover"
-                style={{ backgroundImage: `url(${item.coverImg})`, backgroundPosition: '50%' }}
-              />
-            )}
-          </>
-        )}
-
-        {hovered && !selected && !isCustom && (
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{ background: 'rgba(255,255,255,0.06)' }}
-          />
-        )}
-      </div>
-      <span className="text-[12px] leading-[16px]" style={{ fontFamily: FONT, color: labelColor }}>
-        {item.label}
-      </span>
-    </button>
-  );
-}
-
-// 自定义风格二级弹窗
+// 自定义风格二级弹窗：复用 ui 长文本输入框，高度 160px
 function CustomStyleModal({ open, onClose, onConfirm, initialDesc = '' }) {
   const [styleDesc, setStyleDesc] = useState(initialDesc);
-  const [focused, setFocused] = useState(false);
-  const [hovered, setHovered] = useState(false);
 
   if (!open) return null;
 
@@ -218,22 +120,13 @@ function CustomStyleModal({ open, onClose, onConfirm, initialDesc = '' }) {
     onClose();
   };
 
-  const borderClass = focused
-    ? 'border-input-border-focus'
-    : hovered
-    ? 'border-input-border-hover'
-    : 'border-input-border-normal';
-  const glowStyle = focused
-    ? { boxShadow: '0px 0px 10px var(--color-glow)', mixBlendMode: 'lighten' }
-    : {};
-
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-surface-overlay backdrop-blur-[20px]"
       onClick={handleClose}
     >
       <div
-        className="w-[400px] flex flex-col rounded-large bg-surface-modal overflow-hidden [font-synthesis:none] antialiased"
+        className="w-[400px] h-[600px] flex flex-col rounded-large bg-surface-modal overflow-hidden [font-synthesis:none] antialiased"
         style={{ boxShadow: '0px 24px 64px rgba(0,0,0,0.6)' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -248,26 +141,15 @@ function CustomStyleModal({ open, onClose, onConfirm, initialDesc = '' }) {
         </div>
 
         {/* Body */}
-        <div className="flex flex-col gap-[8px] px-[24px] py-[8px] bg-surface-modal">
-          <div className="flex items-center justify-between">
-            <span className="text-text-secondary text-font-size-14" style={{ fontFamily: FONT }}>
-              风格描述
-            </span>
-            <span className="text-text-disabled text-font-size-12" style={{ fontFamily: FONT }}>
-              {styleDesc.length}/300
-            </span>
-          </div>
-          <textarea
+        <div className="flex flex-1 flex-col gap-[8px] px-[24px] py-[8px] bg-surface-modal min-h-0 overflow-y-auto">
+          <TextField
+            label="风格描述"
             value={styleDesc}
             placeholder="描述你想要的视觉风格，例如：赛博朋克风格，霓虹灯光，雨夜街道…"
+            multiline
+            height="160px"
             maxLength={300}
             onChange={(e) => setStyleDesc(e.target.value)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            className={`h-[120px] w-full px-[12px] py-[9px] rounded-medium resize-none bg-input-bg-normal border border-solid ${borderClass} [outline:1px_solid_var(--color-stroke-outline)] outline-offset-0 text-font-size-14 text-input-text-content placeholder:text-input-text-hint antialiased transition-[border-color] duration-150`}
-            style={{ fontFamily: FONT, ...glowStyle }}
           />
         </div>
 
@@ -296,6 +178,117 @@ function CustomStyleModal({ open, onClose, onConfirm, initialDesc = '' }) {
   );
 }
 
+// 风格库二级弹窗：固定 400×600，内容超出上下滚动查看
+// 风格库二级弹窗：复用设计稿分类 Tab + 封面网格（来自 paper「从风格库选择」）
+// 风格库二级弹窗：固定 400×600，内容超出上下滚动查看
+function StyleLibraryModal({ open, onClose, selectedValue, onSelect }) {
+  const [activeCategory, setActiveCategory] = useState(LIBRARY_GROUPS[0].category);
+  if (!open) return null;
+
+  const group = LIBRARY_GROUPS.find((g) => g.category === activeCategory) || LIBRARY_GROUPS[0];
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-surface-overlay backdrop-blur-[20px]"
+      onClick={onClose}
+    >
+      <div
+        className="w-[400px] h-[600px] flex flex-col rounded-large bg-surface-modal overflow-hidden relative [font-synthesis:none] antialiased"
+        style={{ boxShadow: '0px 24px 64px rgba(0,0,0,0.6)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-[24px] py-[20px] bg-surface-modal shrink-0">
+          <span className="text-text-primary text-font-size-16 font-font-weight-medium" style={{ fontFamily: FONT_MEDIUM }}>
+            从风格库选择
+          </span>
+          <button type="button" onClick={onClose} className="cursor-pointer bg-transparent border-0 p-0">
+            <CloseIcon />
+          </button>
+        </div>
+
+        {/* 分类 Tab：固定不滚动 */}
+        <div className="px-[24px] pt-[8px] shrink-0 bg-surface-modal">
+          <div className="flex items-baseline gap-[24px] pb-[10px] relative">
+            {LIBRARY_GROUPS.map((g) => {
+              const active = g.category === activeCategory;
+              return (
+                <button
+                  key={g.category}
+                  type="button"
+                  onClick={() => setActiveCategory(g.category)}
+                  className={active ? 'flex items-center gap-[4px] pb-[6px] border-b-2 border-b-solid border-b-[#2DC3E1] bg-transparent border-0 p-0 cursor-pointer' : 'bg-transparent border-0 p-0 cursor-pointer'}
+                >
+                  <span
+                    className={active ? 'text-[14px] leading-[20px]' : 'text-[14px] leading-[18px]'}
+                    style={{ fontFamily: active ? FONT_MEDIUM : FONT, color: active ? '#2DC3E1' : '#FFFFFF99' }}
+                  >
+                    {g.category}
+                  </span>
+                </button>
+              );
+            })}
+            <span className="h-px absolute left-0 right-0 top-[27px] bg-[#FFFFFF14]" />
+          </div>
+        </div>
+
+        {/* 封面网格：独立滚动区 */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-[24px] pt-[8px] pb-[68px]">
+          <div className="grid grid-cols-3 gap-[8px]">
+            {group.styles.map((s) => {
+              const selected = selectedValue === s.value;
+              return (
+                <div key={s.value} className="flex flex-col items-center gap-[8px]">
+                  <button
+                    type="button"
+                    onClick={() => onSelect(s.value)}
+                    className="w-full aspect-square rounded-md overflow-hidden relative shrink-0 bg-[#2A2A2A] border border-solid transition-[border-color,box-shadow] duration-150 cursor-pointer p-0"
+                    style={{
+                      borderColor: selected ? '#2DC3E1' : '#FFFFFF1F',
+                      boxShadow: selected ? '0 0 8px rgba(45,195,225,0.25)' : 'none',
+                    }}
+                  >
+                    {s.gradient && (
+                      <div className="absolute inset-0" style={{ backgroundImage: s.gradient }} />
+                    )}
+                    {s.coverImg && (
+                      <div
+                        className="absolute inset-0 bg-cover"
+                        style={{ backgroundImage: `url(${s.coverImg})`, backgroundPosition: '50%' }}
+                      />
+                    )}
+                    {/* 选中态：右上角蓝色对勾角标 */}
+                    {selected && (
+                      <div className="absolute right-0 top-0 w-[22px] h-[22px] flex items-center justify-center bg-[#2DC3E1] rounded-bl-sm">
+                        <svg viewBox="0 0 82 81.92" version="1.1" xmlns="http://www.w3.org/2000/svg" width="14" height="14">
+                          <path d="M76.8 25.466l-6.466-6.466L33.479 55.854l-21.899-21.899-6.469 6.47 28.363 28.36 6.197-6.202 0.008 0.008L76.8 25.466zM76.8 25.466" fill="#FFFFFF" />
+                        </svg>
+                      </div>
+                    )}
+                  </button>
+                  <span
+                    className="text-[14px] leading-[16px]"
+                    style={{ fontFamily: FONT, color: selected ? '#2DC3E1' : '#FFFFFFB3' }}
+                  >
+                    {s.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {/* /封面网格滚动区 */}
+
+        {/* 底部绝对定位 footer：取消 / 确定 */}
+        <div className="absolute left-0 right-0 bottom-0 flex items-center justify-end gap-[12px] px-[24px] py-[16px] bg-surface-modal rounded-b-large">
+          <Button variant="secondary" size="large" onClick={onClose}>取消</Button>
+          <Button variant="primary" size="large" onClick={onClose}>确定</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function sanitizeInput(val) {
   val = val.replace(/[^a-zA-Z0-9一-龥_.  -]/g, '');
   val = val.replace(/^[_. -]+/, '');
@@ -311,15 +304,17 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
   const [ratio, setRatio] = useState('16:9');
-  const [style, setStyle] = useState('xianxia-3d');
+  const [creationType, setCreationType] = useState('dialogue');
+  // 视觉风格入口：none=未选 / custom=自定义 / library=从风格库选择
+  const [styleMode, setStyleMode] = useState('none');
   const [customStyleDesc, setCustomStyleDesc] = useState('');
+  const [libraryStyleValue, setLibraryStyleValue] = useState('');
   const [customStyleOpen, setCustomStyleOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [coverFile, setCoverFile] = useState(null);
   const [coverPreview, setCoverPreview] = useState(null);
-  const [nameFocused, setNameFocused] = useState(false);
-  const [nameHovered, setNameHovered] = useState(false);
-  const [descFocused, setDescFocused] = useState(false);
-  const [descHovered, setDescHovered] = useState(false);
+  const [styleCustomHovered, setStyleCustomHovered] = useState(false);
+  const [styleLibraryHovered, setStyleLibraryHovered] = useState(false);
   const [coverHovered, setCoverHovered] = useState(false);
   const [coverPressed, setCoverPressed] = useState(false);
   const [nameError, setNameError] = useState(false);
@@ -347,9 +342,10 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
       if (coverFile) {
         cover_url = await apiUploadProjectCover(coverFile);
       }
-      // 自定义风格：先创建 user-style，再用 custom:{id} 引用
-      let visual_style = style;
-      if (style === 'custom' && customStyleDesc.trim()) {
+      // 视觉风格：自定义走 custom:{id}，风格库走原 value
+      let visual_style = '';
+      let visual_style_prompt = null;
+      if (styleMode === 'custom' && customStyleDesc.trim()) {
         const styleName = customStyleDesc.replace(/\n/g, ' ').slice(0, 30);
         try {
           const userStyle = await apiCreateUserStyle({
@@ -357,15 +353,20 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
             prompt: customStyleDesc,
           });
           visual_style = `custom:${userStyle.id || userStyle.value}`;
+          visual_style_prompt = customStyleDesc;
         } catch (err) {
           console.error('创建自定义风格失败', err);
         }
+      } else if (styleMode === 'library' && libraryStyleValue) {
+        visual_style = libraryStyleValue;
       }
       const result = await apiCreateProject({
         name: name.trim(),
         description: desc,
         aspect_ratio: ratio,
         visual_style,
+        visual_style_prompt,
+        creation_mode: creationType,
         project_type: 'video',
         cover_url,
       });
@@ -382,8 +383,10 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
     setName('');
     setDesc('');
     setRatio('16:9');
-    setStyle('xianxia-3d');
+    setCreationType('dialogue');
+    setStyleMode('none');
     setCustomStyleDesc('');
+    setLibraryStyleValue('');
     setCoverFile(null);
     setCoverPreview(null);
     setNameError(false);
@@ -391,42 +394,15 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
     onClose?.();
   };
 
-  const handleStyleClick = (s) => {
-    if (s.value === 'custom') {
-      setCustomStyleOpen(true);
-    } else {
-      setStyle(s.value);
-    }
+  const handleStyleClick = () => {
+    setCustomStyleOpen(true);
   };
 
-  const nameBorderClass = nameError
-    ? 'border-input-border-wrong'
-    : nameFocused
-    ? 'border-input-border-focus'
-    : nameHovered
-    ? 'border-input-border-hover'
-    : 'border-input-border-normal';
-
-  const nameGlowStyle = nameFocused && !nameError
-    ? { boxShadow: '0px 0px 10px var(--color-glow)', mixBlendMode: 'lighten' }
-    : {};
-
-  const descBorderClass = descFocused
-    ? 'border-input-border-focus'
-    : descHovered
-    ? 'border-input-border-hover'
-    : 'border-input-border-normal';
-
-  const descGlowStyle = descFocused
-    ? { boxShadow: '0px 0px 10px var(--color-glow)', mixBlendMode: 'lighten' }
-    : {};
-
-  const styleRows = [
-    VISUAL_STYLES.slice(0, 3),
-    VISUAL_STYLES.slice(3, 6),
-    VISUAL_STYLES.slice(6, 9),
-    VISUAL_STYLES.slice(9, 12),
-  ];
+  const handleLibrarySelect = (value) => {
+    setLibraryStyleValue(value);
+    setStyleMode('library');
+    setLibraryOpen(false);
+  };
 
   return (
     <>
@@ -434,11 +410,11 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
         className="fixed inset-0 z-50 flex items-center justify-center bg-surface-overlay backdrop-blur-[20px]"
         onClick={handleClose}
       >
-        <div
-          className="w-[400px] h-[600px] flex flex-col rounded-large bg-surface-modal overflow-hidden relative [font-synthesis:none] antialiased"
-          style={{ boxShadow: '0px 24px 64px rgba(0,0,0,0.6)' }}
-          onClick={(e) => e.stopPropagation()}
-        >
+      <div
+        className="w-[400px] h-[600px] flex flex-col rounded-large bg-surface-modal overflow-hidden relative [font-synthesis:none] antialiased"
+        style={{ boxShadow: '0px 24px 64px rgba(0,0,0,0.6)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
           {/* Header */}
           <div className="flex items-center justify-between px-[24px] py-[20px] bg-surface-modal shrink-0">
             <span className="text-text-primary text-font-size-16 font-font-weight-medium" style={{ fontFamily: FONT_MEDIUM }}>
@@ -455,137 +431,172 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
             style={{ paddingBottom: '84px' }}
           >
             {/* 项目名称 */}
-            <div className="flex flex-col gap-[8px]">
-              <span className="text-text-secondary text-font-size-14" style={{ fontFamily: FONT }}>项目名称</span>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={name}
-                  placeholder="请输入项目名称"
-                  maxLength={50}
-                  onChange={(e) => {
-                    const sanitized = sanitizeInput(e.target.value);
-                    setName(sanitized);
-                    if (sanitized.trim()) setNameError(false);
-                  }}
-                  onFocus={() => setNameFocused(true)}
-                  onBlur={() => {
-                    setNameFocused(false);
-                    const trimmed = trimTrailingSpecials(name);
-                    const finalName = trimmed !== name ? (setName(trimmed), trimmed) : name;
-                    if (!finalName.trim()) setNameError(true);
-                  }}
-                  onMouseEnter={() => setNameHovered(true)}
-                  onMouseLeave={() => setNameHovered(false)}
-                  className={`h-[36px] w-full pl-[12px] pr-[60px] rounded-medium bg-input-bg-normal border border-solid ${nameBorderClass} [outline:1px_solid_var(--color-stroke-outline)] outline-offset-0 text-font-size-14 text-input-text-content placeholder:text-input-text-hint antialiased transition-[border-color] duration-150`}
-                  style={{ fontFamily: FONT, ...nameGlowStyle }}
-                />
-                <span
-                  className="absolute right-[12px] top-1/2 -translate-y-1/2 text-font-size-12 text-text-disabled pointer-events-none select-none"
-                  style={{ fontFamily: FONT }}
-                >
-                  {name.length}/50
-                </span>
-              </div>
-              {nameError && (
-                <span className="text-status-wrong text-font-size-12 px-[12px]" style={{ fontFamily: FONT }}>
-                  项目名称不可为空
-                </span>
-              )}
-            </div>
+            <TextField
+              label="项目名称"
+              value={name}
+              placeholder="请输入项目名称"
+              maxLength={50}
+              error={nameError}
+              errorMsg="项目名称不可为空"
+              sanitize={sanitizeInput}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (e.target.value.trim()) setNameError(false);
+              }}
+              onBlur={() => {
+                const trimmed = trimTrailingSpecials(name);
+                if (trimmed !== name) setName(trimmed);
+                if (!trimmed.trim()) setNameError(true);
+              }}
+            />
 
             {/* 项目描述 */}
+            <TextField
+              label="项目描述"
+              value={desc}
+              placeholder="选填"
+              multiline
+              height="72px"
+              maxLength={300}
+              sanitize={sanitizeInput}
+              onChange={(e) => setDesc(e.target.value)}
+              onBlur={() => {
+                const trimmed = trimTrailingSpecials(desc);
+                if (trimmed !== desc) setDesc(trimmed);
+              }}
+            />
+
+            {/* 画面比例 */}
             <div className="flex flex-col gap-[8px]">
-              <div className="flex items-center gap-[4px]">
-                <span className="text-text-secondary text-font-size-14" style={{ fontFamily: FONT }}>项目描述</span>
-                <span className="text-text-disabled text-font-size-12" style={{ fontFamily: FONT }}>选填</span>
-              </div>
-              <div className="relative">
-                <textarea
-                  value={desc}
-                  placeholder="简单描述一下这个项目…"
-                  maxLength={300}
-                  onChange={(e) => setDesc(sanitizeInput(e.target.value))}
-                  onFocus={() => setDescFocused(true)}
-                  onBlur={() => {
-                    setDescFocused(false);
-                    const trimmed = trimTrailingSpecials(desc);
-                    if (trimmed !== desc) setDesc(trimmed);
-                  }}
-                  onMouseEnter={() => setDescHovered(true)}
-                  onMouseLeave={() => setDescHovered(false)}
-                  className={`h-[72px] w-full px-[12px] pt-[9px] pb-[26px] rounded-medium resize-none bg-input-bg-normal border border-solid ${descBorderClass} [outline:1px_solid_var(--color-stroke-outline)] outline-offset-0 text-font-size-14 text-input-text-content placeholder:text-input-text-hint antialiased transition-[border-color] duration-150`}
-                  style={{ fontFamily: FONT, ...descGlowStyle }}
-                />
-                <span
-                  className="absolute right-[12px] bottom-[8px] text-font-size-12 text-text-disabled pointer-events-none select-none"
-                  style={{ fontFamily: FONT }}
-                >
-                  {desc.length}/300
-                </span>
-              </div>
+              <span className="text-text-secondary text-font-size-14" style={{ fontFamily: FONT }}>画面比例</span>
+              <OptionTabs
+                layout="fixed"
+                showRatioIcon
+                value={ratio}
+                onChange={setRatio}
+                options={[
+                  { value: '16:9', label: '16:9' },
+                  { value: '9:16', label: '9:16' },
+                ]}
+              />
             </div>
 
-            {/* 选择画面比例 */}
-            <div className="[font-synthesis:none] flex flex-col gap-[8px] antialiased">
-              <div className="inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[14px] leading-[18px]">
-                选择画面比例
-              </div>
-              <div className="flex gap-[24px] self-stretch items-center">
-                {/* 16:9 */}
-                <button
-                  type="button"
-                  onClick={() => setRatio('16:9')}
-                  className="flex items-start gap-[8px] p-0 bg-transparent border-0 cursor-pointer"
-                >
-                  <div className="shrink-0 relative w-[16px] h-[16px]">
-                    <div className={`rounded-[50%] border border-solid [outline:1px_solid_#00000080] w-[16px] h-[16px] ${ratio === '16:9' ? 'bg-[#2DC3E1] border-[#FFFFFF33]' : 'bg-[#090909] border-[#FFFFFF33]'}`} />
-                    {ratio === '16:9' && (
-                      <div className="absolute left-[50%] top-[50%] rounded-[50%] bg-[#0A0A0A] w-[6px] h-[6px]" style={{ translate: '-50% -50%' }} />
-                    )}
-                  </div>
-                  <div className={`inline-block h-fit font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[14px] leading-[18px] ${ratio === '16:9' ? 'text-white' : 'text-[#FFFFFF99]'}`}>
-                    16:9
-                  </div>
-                  <div className="ml-auto w-[28px] h-[18px] rounded-[3px] shrink-0 [border-width:1.5px] border-solid border-[#FFFFFF33]" />
-                </button>
-                {/* 9:16 */}
-                <button
-                  type="button"
-                  onClick={() => setRatio('9:16')}
-                  className="flex items-center gap-[8px] p-0 bg-transparent border-0 cursor-pointer"
-                >
-                  <div className="shrink-0 relative w-[16px] h-[16px]">
-                    <div className={`rounded-[50%] border border-solid [outline:1px_solid_#00000080] w-[16px] h-[16px] ${ratio === '9:16' ? 'bg-[#2DC3E1] border-[#FFFFFF33]' : 'bg-[#090909] border-[#FFFFFF33]'}`} />
-                    {ratio === '9:16' && (
-                      <div className="absolute left-[50%] top-[50%] rounded-[50%] bg-[#0A0A0A] w-[6px] h-[6px]" style={{ translate: '-50% -50%' }} />
-                    )}
-                  </div>
-                  <div className={`inline-block h-fit font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[14px] leading-[18px] ${ratio === '9:16' ? 'text-white' : 'text-[#FFFFFF99]'}`}>
-                    9:16
-                  </div>
-                  <div className="ml-auto w-[18px] h-[28px] rounded-[3px] shrink-0 [border-width:1.5px] border-solid border-[#FFFFFF33]" />
-                </button>
-              </div>
+            {/* 创作类型 */}
+            <div className="flex flex-col gap-[8px]">
+              <span className="text-[#FFFFFFB3] text-[14px] leading-[18px]" style={{ fontFamily: FONT }}>创作类型</span>
+              <OptionTabs
+                layout="flex"
+                value={creationType}
+                onChange={setCreationType}
+                options={[
+                  { value: 'dialogue', label: '剧情对白' },
+                  { value: 'narration', label: '旁白解说' },
+                ]}
+              />
             </div>
 
-            {/* 视觉风格 */}
+            {/* 视觉风格：两个入口（自定义 / 从风格库选择） */}
             <div className="flex flex-col gap-[8px]">
               <span className="text-text-secondary text-font-size-14" style={{ fontFamily: FONT }}>视觉风格</span>
-              <div className="flex flex-col gap-[8px]">
-                {styleRows.map((row, ri) => (
-                  <div key={ri} className="flex gap-[8px]">
-                    {row.map((s) => (
-                      <StyleCard
-                        key={s.value}
-                        item={s}
-                        selected={style === s.value}
-                        customDesc={s.value === 'custom' ? customStyleDesc : ''}
-                        onClick={() => handleStyleClick(s)}
-                      />
-                    ))}
+              <div className="flex items-start gap-[16px] self-stretch pb-[2px]">
+                {/* 入口一：自定义（选中后原位替换为自定义风格卡片） */}
+                {styleMode === 'custom' && customStyleDesc ? (
+                  <button
+                    type="button"
+                    onClick={handleStyleClick}
+                    className="flex flex-col items-center gap-[6px] flex-1 self-stretch bg-transparent border-0 p-0 cursor-pointer"
+                  >
+                    <div
+                      className="w-full h-[110px] flex flex-col items-center justify-center gap-[6px] rounded-md self-stretch shrink-0 bg-origin-border border border-solid px-[12px] transition-[box-shadow] duration-150"
+                      style={{
+                        borderColor: '#2DC3E1',
+                        backgroundImage: 'linear-gradient(in oklab 134.47deg, oklab(20% 0 0) 0.09%, oklab(27.4% -0.039 -0.028) 101.55%)',
+                        boxShadow: '0 0 8px rgba(45,195,225,0.25)',
+                      }}
+                    >
+                      <AdjustIcon />
+                      <div
+                        className="w-[124px] text-[10px] leading-[14px] text-center"
+                        style={{ fontFamily: FONT, color: '#FFFFFF66' }}
+                      >
+                        {customStyleDesc}
+                      </div>
+                    </div>
+                    <span className="text-[14px] leading-[18px]" style={{ fontFamily: FONT, color: '#2DC3E1' }}>
+                      自定义
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleStyleClick}
+                    onMouseEnter={() => setStyleCustomHovered(true)}
+                    onMouseLeave={() => setStyleCustomHovered(false)}
+                    className="flex flex-col items-center gap-[6px] flex-1 self-stretch bg-transparent border-0 p-0 cursor-pointer"
+                  >
+                    <div
+                      className="h-[110px] flex items-center justify-center rounded-md self-stretch shrink-0 bg-origin-border border border-solid transition-[border-color,box-shadow] duration-150"
+                      style={{
+                        borderColor: styleMode === 'custom' ? '#2DC3E1' : styleCustomHovered ? '#FFFFFF33' : '#FFFFFF14',
+                        backgroundImage: 'linear-gradient(in oklab 134.47deg, oklab(20% 0 0) 0.23%, oklab(27.3% -0.039 -0.027) 101.55%)',
+                        boxShadow: styleMode === 'custom' ? '0 0 8px rgba(45,195,225,0.25)' : styleCustomHovered ? '0 0 8px rgba(255,255,255,0.08)' : 'none',
+                      }}
+                    >
+                      <AdjustIcon />
+                    </div>
+                    <span
+                      className="text-[14px] leading-[18px]"
+                      style={{ fontFamily: FONT, color: styleMode === 'custom' ? '#2DC3E1' : '#FFFFFFCC' }}
+                    >
+                      自定义
+                    </span>
+                  </button>
+                )}
+
+                {/* 入口二：从风格库选择（复刻设计稿最新结构） */}
+                <button
+                  type="button"
+                  onClick={() => setLibraryOpen(true)}
+                  onMouseEnter={() => setStyleLibraryHovered(true)}
+                  onMouseLeave={() => setStyleLibraryHovered(false)}
+                  className="[font-synthesis:none] flex flex-col items-center gap-1.5 flex-1 self-stretch relative antialiased text-xs/4 bg-transparent border-0 p-0 cursor-pointer"
+                >
+                  {/* 背景渐变层 */}
+                  <div
+                    className="rounded-md self-stretch flex-1 bg-origin-border border border-solid origin-center transition-[border-color,box-shadow] duration-150"
+                    style={{
+                      borderColor: styleMode === 'library' ? '#2DC3E1' : styleLibraryHovered ? '#FFFFFF33' : '#FFFFFF14',
+                      backgroundImage: 'linear-gradient(in oklab 305.55deg, oklab(20% 0 0) 0%, oklab(27.4% -0.039 -0.028) 99.72%)',
+                      boxShadow: styleMode === 'library' ? '0 0 8px rgba(45,195,225,0.25)' : styleLibraryHovered ? '0 0 8px rgba(255,255,255,0.08)' : 'none',
+                      rotate: '180deg',
+                    }}
+                  />
+                  {/* 背景配图叠加层 */}
+                  <div
+                    className="w-[157px] h-[65px] absolute left-[5px] top-[22px] bg-cover bg-[center_50%]"
+                    style={{
+                      backgroundImage: 'linear-gradient(in oklab 90deg, oklab(20.5% -0.005 -0.004) 0%, oklab(19% 0.007 -0.029 / 50%) 50%, oklab(26.1% -0.032 -0.024) 100%), url(https://app.paper.design/file-assets/01KQYRKV5GAPKWF7X9K33912CS/01KTJEZVHEVP5MPM1DW2VA9SV2.png)',
+                    }}
+                  />
+                  {/* 标签文字 */}
+                  <div
+                    className="inline-block text-[#FFFFFFCC] text-sm/4"
+                    style={{ fontFamily: FONT }}
+                  >
+                    从风格库选择
                   </div>
-                ))}
+                  {/* 光标图标 */}
+                  <svg
+                    viewBox="0 0 102.4 102.4"
+                    version="1.1"
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    style={{ position: 'absolute', left: 74, top: 45 }}
+                  >
+                    <path d="M17.463 7.898c0.003-1.261 1.641-1.991 2.581-1.15l32.872 29.398 31.827 28.463c1.051 0.94 0.04 2.675-1.425 2.446L43.57 60.843c-0.623-0.097-1.272 0.192-1.616 0.72L19.996 95.272c-0.809 1.242-2.776 0.834-2.772-0.576l0.117-42.697 0.122-44.101z" fill="#FFFFFFCC" />
+                  </svg>
+                </button>
               </div>
             </div>
 
@@ -661,9 +672,16 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
         onClose={() => setCustomStyleOpen(false)}
         onConfirm={(desc) => {
           setCustomStyleDesc(desc);
-          setStyle('custom');
+          setStyleMode('custom');
         }}
         initialDesc={customStyleDesc}
+      />
+
+      <StyleLibraryModal
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        selectedValue={libraryStyleValue}
+        onSelect={handleLibrarySelect}
       />
     </>
   );

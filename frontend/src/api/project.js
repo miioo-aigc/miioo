@@ -45,11 +45,11 @@ export async function apiGetProject(projectId) {
   );
 }
 
-export async function apiCreateProject({ name, description, aspect_ratio, visual_style, project_type, cover_url }) {
+export async function apiCreateProject({ name, description, aspect_ratio, visual_style, visual_style_prompt, creation_mode, project_type, cover_url }) {
   const res = await authFetch(`${BASE}/api/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, description, aspect_ratio, visual_style, project_type, cover_url }),
+    body: JSON.stringify({ name, description, aspect_ratio, visual_style, visual_style_prompt, creation_mode, project_type, cover_url }),
   });
   invalidate(K.projectsPrefix()); // 项目列表已变
   return res.json();

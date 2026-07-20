@@ -554,49 +554,69 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
                 )}
 
                 {/* 入口二：从风格库选择（复刻设计稿最新结构） */}
-                <button
-                  type="button"
-                  onClick={() => setLibraryOpen(true)}
-                  onMouseEnter={() => setStyleLibraryHovered(true)}
-                  onMouseLeave={() => setStyleLibraryHovered(false)}
-                  className="[font-synthesis:none] flex flex-col items-center gap-1.5 flex-1 self-stretch relative antialiased text-xs/4 bg-transparent border-0 p-0 cursor-pointer"
-                >
-                  {/* 背景渐变层 */}
-                  <div
-                    className="rounded-md self-stretch flex-1 bg-origin-border border border-solid origin-center transition-[border-color,box-shadow] duration-150"
-                    style={{
-                      borderColor: styleMode === 'library' ? '#2DC3E1' : styleLibraryHovered ? '#FFFFFF33' : '#FFFFFF14',
-                      backgroundImage: 'linear-gradient(in oklab 305.55deg, oklab(20% 0 0) 0%, oklab(27.4% -0.039 -0.028) 99.72%)',
-                      boxShadow: styleMode === 'library' ? '0 0 8px rgba(45,195,225,0.25)' : styleLibraryHovered ? '0 0 8px rgba(255,255,255,0.08)' : 'none',
-                      rotate: '180deg',
-                    }}
-                  />
-                  {/* 背景配图叠加层 */}
-                  <div
-                    className="w-[157px] h-[65px] absolute left-[5px] top-[22px] bg-cover bg-[center_50%]"
-                    style={{
-                      backgroundImage: 'linear-gradient(in oklab 90deg, oklab(20.5% -0.005 -0.004) 0%, oklab(19% 0.007 -0.029 / 50%) 50%, oklab(26.1% -0.032 -0.024) 100%), url(https://app.paper.design/file-assets/01KQYRKV5GAPKWF7X9K33912CS/01KTJEZVHEVP5MPM1DW2VA9SV2.png)',
-                    }}
-                  />
-                  {/* 标签文字 */}
-                  <div
-                    className="inline-block text-[#FFFFFFCC] text-sm/4"
-                    style={{ fontFamily: FONT }}
-                  >
-                    从风格库选择
-                  </div>
-                  {/* 光标图标 */}
-                  <svg
-                    viewBox="0 0 102.4 102.4"
-                    version="1.1"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    style={{ position: 'absolute', left: 74, top: 45 }}
-                  >
-                    <path d="M17.463 7.898c0.003-1.261 1.641-1.991 2.581-1.15l32.872 29.398 31.827 28.463c1.051 0.94 0.04 2.675-1.425 2.446L43.57 60.843c-0.623-0.097-1.272 0.192-1.616 0.72L19.996 95.272c-0.809 1.242-2.776 0.834-2.772-0.576l0.117-42.697 0.122-44.101z" fill="#FFFFFFCC" />
-                  </svg>
-                </button>
+                {(() => {
+                  const selectedLibraryStyle = styleMode === 'library'
+                    ? LIBRARY_GROUPS.flatMap((g) => g.styles).find((s) => s.value === libraryStyleValue)
+                    : null;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setLibraryOpen(true)}
+                      onMouseEnter={() => setStyleLibraryHovered(true)}
+                      onMouseLeave={() => setStyleLibraryHovered(false)}
+                      className="[font-synthesis:none] flex flex-col items-center gap-1.5 flex-1 self-stretch relative antialiased text-xs/4 bg-transparent border-0 p-0 cursor-pointer"
+                    >
+                      {/* 卡片容器：统一管理圆角、边框、overflow裁切 */}
+                      <div
+                        className="relative rounded-md self-stretch flex-1 overflow-hidden border border-solid transition-[border-color,box-shadow] duration-150"
+                        style={{
+                          borderColor: styleMode === 'library' ? '#2DC3E1' : styleLibraryHovered ? '#FFFFFF33' : '#FFFFFF14',
+                          boxShadow: styleMode === 'library' ? '0 0 8px rgba(45,195,225,0.25)' : styleLibraryHovered ? '0 0 8px rgba(255,255,255,0.08)' : 'none',
+                        }}
+                      >
+                        {/* 背景渐变层 */}
+                        <div
+                          className="absolute inset-0"
+                          style={{
+                            backgroundImage: 'linear-gradient(in oklab 305.55deg, oklab(20% 0 0) 0%, oklab(27.4% -0.039 -0.028) 99.72%)',
+                          }}
+                        />
+                        {/* 封面图层：选中后替换为风格封面（60%透明度），未选中显示占位渐变 */}
+                        {selectedLibraryStyle ? (
+                          <div
+                            className="absolute inset-0 opacity-60 bg-cover bg-center"
+                            style={{ backgroundImage: `url(${selectedLibraryStyle.coverImg})` }}
+                          />
+                        ) : (
+                          <div
+                            className="absolute inset-0 bg-cover bg-[center_50%]"
+                            style={{
+                              backgroundImage: 'linear-gradient(in oklab 90deg, oklab(20.5% -0.005 -0.004) 0%, oklab(19% 0.007 -0.029 / 50%) 50%, oklab(26.1% -0.032 -0.024) 100%), url(https://app.paper.design/file-assets/01KQYRKV5GAPKWF7X9K33912CS/01KTJEZVHEVP5MPM1DW2VA9SV2.png)',
+                            }}
+                          />
+                        )}
+                      </div>
+                      {/* 标签文字：选中后显示风格名称 */}
+                      <div
+                        className="inline-block relative text-[#FFFFFFCC] text-sm/4"
+                        style={{ fontFamily: FONT }}
+                      >
+                        {selectedLibraryStyle ? selectedLibraryStyle.label : '从风格库选择'}
+                      </div>
+                      {/* 光标图标 */}
+                      <svg
+                        viewBox="0 0 102.4 102.4"
+                        version="1.1"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        style={{ position: 'absolute', left: 74, top: 45 }}
+                      >
+                        <path d="M17.463 7.898c0.003-1.261 1.641-1.991 2.581-1.15l32.872 29.398 31.827 28.463c1.051 0.94 0.04 2.675-1.425 2.446L43.57 60.843c-0.623-0.097-1.272 0.192-1.616 0.72L19.996 95.272c-0.809 1.242-2.776 0.834-2.772-0.576l0.117-42.697 0.122-44.101z" fill="#FFFFFFCC" />
+                      </svg>
+                    </button>
+                  );
+                })()}
               </div>
             </div>
 

@@ -3,6 +3,7 @@ import { apiCreateProject, apiUploadProjectCover } from '../api/project.js';
 import { apiCreateUserStyle } from '../api/user-styles.js';
 import TextField from '../components/ui/TextField';
 import OptionTabs from '../components/ui/OptionTabs';
+import Tabs from '../components/ui/Tabs';
 import Button from '../components/ui/Button';
 import styleXianxia from '../assets/styles/xianxia-3d.avif';
 import styleSuspenseAnime from '../assets/styles/suspense-anime-2d.avif';
@@ -209,27 +210,11 @@ function StyleLibraryModal({ open, onClose, selectedValue, onSelect }) {
 
         {/* 分类 Tab：固定不滚动 */}
         <div className="px-[24px] pt-[8px] shrink-0 bg-surface-modal">
-          <div className="flex items-baseline gap-[24px] pb-[10px] relative">
-            {LIBRARY_GROUPS.map((g) => {
-              const active = g.category === activeCategory;
-              return (
-                <button
-                  key={g.category}
-                  type="button"
-                  onClick={() => setActiveCategory(g.category)}
-                  className={active ? 'flex items-center gap-[4px] pb-[6px] border-b-2 border-b-solid border-b-[#2DC3E1] bg-transparent border-0 p-0 cursor-pointer' : 'bg-transparent border-0 p-0 cursor-pointer'}
-                >
-                  <span
-                    className={active ? 'text-[14px] leading-[20px]' : 'text-[14px] leading-[18px]'}
-                    style={{ fontFamily: active ? FONT_MEDIUM : FONT, color: active ? '#2DC3E1' : '#FFFFFF99' }}
-                  >
-                    {g.category}
-                  </span>
-                </button>
-              );
-            })}
-            <span className="h-px absolute left-0 right-0 top-[27px] bg-[#FFFFFF14]" />
-          </div>
+          <Tabs
+            options={LIBRARY_GROUPS.map((g) => ({ value: g.category, label: g.category }))}
+            value={activeCategory}
+            onChange={setActiveCategory}
+          />
         </div>
 
         {/* 封面网格：独立滚动区 */}

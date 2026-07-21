@@ -4,6 +4,15 @@
 > 分支：`feat/frontend_V1.1`
 > 目的：为组件抽离和页面迁移提供可复查基线，不代表本文件中的数量永久不变。
 
+## 2026-07-21 GlobalSettings 剧本进度区块
+
+- 新增 `src/components/project/ScriptProgress.jsx`，负责项目总览“资产概况”中的剧本进度容器、集数标题和空态展示。
+- 新增 `src/components/project/ScriptProgressCard.jsx`，负责单集卡片和四种状态视觉：未分镜、已分镜、剪辑中、完成。
+- `GlobalSettings.jsx` 仅通过 `ScriptProgress` 传入 `episodes` 与 `episodeStatuses`；现有 `pending`、`generated`、`edited` 数据契约保持不变，并兼容 `storyboarded` 状态。
+- 页面未新增 API、Store 或副作用；状态来源仍由 Home 的 `buildEpisodeStatusMap` 提供。
+- 已同步 `src/components/project/index.js` 目录出口，后续项目域页面可复用卡片和容器。
+- 剧本进度和三类主体概览内容区均固定展示两行，超出后在各自容器内纵向滚动；主体右上角跳转图标继续沿用 `char`、`scene`、`prop` 分类回调，并补充了无障碍名称。
+
 ## 历史状态复核（2026-07-16）
 
 - 当日记录中的 `Home.jsx` 为 `1355` 行、架构统计 `1356` 行；该数字仅保留为历史迁移记录，当前数字以文末“文件规模”和 `PROJECT.md` 为准。

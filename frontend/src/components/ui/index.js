@@ -6,3 +6,4 @@ export { default as Select } from './Select';
 export { default as TextField } from './TextField';
 export { default as FileUploadButton } from './FileUploadButton';
 export { default as OptionTabs } from './OptionTabs';
+export { default as Tabs } from './Tabs';

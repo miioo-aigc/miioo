@@ -3,24 +3,23 @@
  * @structure-index
  *
  * ─── 状态层 ─────────────────────────────────────────────────────────
- *   输入文本、模型列表、单集时长、焦点/悬停态和缓存导航游标
+ *   输入文本、模型列表、单集时长、焦点/悬停态
  *
  * ─── 数据流 ─────────────────────────────────────────────────────────
- *   模型 API、草稿缓存；通过 onSend/onStop 和选择回调通知页面
+ *   模型 API；通过 onSend/onStop 和选择回调通知页面
  *
  * ─── 组件结构 ───────────────────────────────────────────────────────
  *   Select / EpisodeCountSelector / EpisodeDurationSelector / SendButton
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
- *   2026-07-15  从 ScriptPage 抽离会话输入区，保持输入、缓存导航和发送行为不变
+ *   2026-07-15  从 ScriptPage 抽离会话输入区，保持输入和发送行为不变
  *   2026-07-21  移除输入卡上传能力，增加单集时长选择
  *   2026-07-21  模型、时长和集数统一复用 Select UI 组件
  *   2026-07-21  集数选择保留数字输入和加减按钮的自定义菜单
- *   2026-07-16  补齐模型加载和草稿缓存导航回调依赖，避免迁移后闭包引用失效
+ *   2026-07-21  删除本地创作指令历史缓存与方向键回溯
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiListModels } from '../../api/config';
-import { getCacheCount, getDraft } from '../../utils/scriptDraftCache';
 import { Select } from '../ui';
 import { ensureScriptInputStyle } from './ScriptInputStyles';
 import EpisodeCountSelector from './EpisodeCountSelector';
@@ -28,13 +27,12 @@ import EpisodeDurationSelector from './EpisodeDurationSelector';
 import SendButton from './SendButton';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
-function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelChange, episodeCount, onEpisodeCountChange, episodeDuration = 60, onEpisodeDurationChange, width = '700px', disabled = false, projectId = '', showToast }) {
+function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelChange, episodeCount, onEpisodeCountChange, episodeDuration = 60, onEpisodeDurationChange, width = '700px', disabled = false }) {
   const [text, setText] = useState(restoreText); // 挂载时使用 restoreText 作为初始值（超时回到空状态时预填充）
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [models, setModels] = useState([]);
   const prevDisabledRef = useRef(false);
-  const cacheNavIndex = useRef(-1);
 
   useEffect(() => {
     ensureScriptInputStyle();
@@ -61,7 +59,6 @@ function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelCha
 
   const handleSend = () => {
     if (!canSend) return;
-    cacheNavIndex.current = -1;
     onSend(text.trim(), selectedModel, episodeCount, episodeDuration);
     setText('');
   };
@@ -70,69 +67,7 @@ function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelCha
     onStop?.();
   };
 
-  // 方向键上 + Shift：回退到历史暂存输入
-  const handleNavigateCache = useCallback(async () => {
-    const count = await getCacheCount(projectId);
-    if (count === 0) {
-      showToast?.('请先创作剧本', 'warning');
-      return;
-    }
-
-    const newIndex = cacheNavIndex.current + 1;
-    if (newIndex >= 10) {
-      showToast?.('没有更多了！最多为您保存近10次剧本创作指令', 'warning');
-      return;
-    }
-    if (newIndex >= count) {
-      showToast?.('没有更多了', 'warning');
-      return;
-    }
-
-    const draft = await getDraft(projectId, newIndex);
-    if (draft) {
-      setText(draft.text);
-      if (draft.modelId) onModelChange(draft.modelId);
-      if (draft.episodeCount != null) onEpisodeCountChange(draft.episodeCount);
-      if (draft.episodeDuration != null) onEpisodeDurationChange?.(draft.episodeDuration);
-      cacheNavIndex.current = newIndex;
-    }
-  }, [onEpisodeCountChange, onEpisodeDurationChange, onModelChange, projectId, showToast]);
-
-  // Shift+Down: 向前切换到更新的暂存输入
-  const handleNavigateCacheBack = useCallback(async () => {
-    const count = await getCacheCount(projectId);
-    if (count === 0) {
-      showToast?.('请先创作剧本', 'warning');
-      return;
-    }
-
-    const newIndex = cacheNavIndex.current - 1;
-    if (newIndex < 0) {
-      showToast?.('已经是最近的一条了', 'warning');
-      return;
-    }
-
-    const draft = await getDraft(projectId, newIndex);
-    if (draft) {
-      setText(draft.text);
-      if (draft.modelId) onModelChange(draft.modelId);
-      if (draft.episodeCount != null) onEpisodeCountChange(draft.episodeCount);
-      if (draft.episodeDuration != null) onEpisodeDurationChange?.(draft.episodeDuration);
-      cacheNavIndex.current = newIndex;
-    }
-  }, [onEpisodeCountChange, onEpisodeDurationChange, onModelChange, projectId, showToast]);
-
   const handleKeyDown = (e) => {
-    if (e.key === 'ArrowDown' && e.shiftKey) {
-      e.preventDefault();
-      handleNavigateCacheBack();
-      return;
-    }
-    if (e.key === 'ArrowUp' && e.shiftKey) {
-      e.preventDefault();
-      handleNavigateCache();
-      return;
-    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();

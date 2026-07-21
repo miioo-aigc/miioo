@@ -289,18 +289,20 @@
   --color-btn-primary-bg-hover: #1D1E1E;
   --color-btn-primary-bg-active: #161616;
   --color-btn-primary-bg-disabled: rgba(0, 0, 0, 0.10);
-  --color-btn-primary-border: rgba(255, 255, 255, 0.08);
-  --color-btn-primary-text: rgba(255, 255, 255, 0.60);    /* 文字色 → text-secondary，Secondary 按钮用 */
+  --color-btn-primary-border: rgba(255, 255, 255, 0.05);
+  --color-btn-primary-text: rgba(255, 255, 255, 0.80);    /* Secondary 按钮默认文字色 */
 
   /* ----------------------------------------------------------
      按钮 Button - Danger（危险操作按钮）
      ---------------------------------------------------------- */
-  --color-btn-danger-bg-normal: #D13B3B;
-  --color-btn-danger-bg-hover: #F75F5F;
-  --color-btn-danger-bg-active: #D13B3B;
-  --color-btn-danger-bg-disabled: rgba(247, 95, 95, 0.20);
-  --color-btn-danger-border: rgba(255, 255, 255, 0.20);
-  --color-btn-danger-text: rgba(255, 255, 255, 1.00);
+  --color-btn-danger-bg-normal: #161616;
+  --color-btn-danger-bg-hover: #1D1E1E;
+  --color-btn-danger-bg-active: #161616;
+  --color-btn-danger-bg-disabled: rgba(0, 0, 0, 0.10);
+  --color-btn-danger-border: rgba(255, 255, 255, 0.05);
+  --color-btn-danger-text: #F75F5F;
+  --color-btn-danger-text-hover: #F75F5F;
+  --color-btn-danger-text-disabled: rgba(247, 95, 95, 0.20);
 
   /* ----------------------------------------------------------
      标签 Label-Tag

@@ -10,6 +10,10 @@
  *   2026-07-15  修正仅图标尺寸、按钮字重和 Accent 渐变表现
  *   2026-07-15  修正 Primary 双层结构，确保内层完整铺满并正确显示渐变描边
  *   2026-07-15  固定 Primary 外层仅使用 1px 描边内距，避免尺寸类覆盖外层结构
+ *   2026-07-21  增加纯文本 Link 变体，仅通过文字颜色表达悬停和按下状态
+ *   2026-07-21  Link 变体改为内容自适应高度并移除默认内边距
+ *   2026-07-21  按设计稿完善 Secondary 的默认、悬停、按下、禁用和加载状态
+ *   2026-07-21  将 Danger 统一为深色容器配红色图标和文字
  */
 import { forwardRef } from 'react';
 
@@ -30,12 +34,16 @@ const VARIANT_STYLES = {
     content: 'w-full min-w-0 flex-1 rounded-[7px] px-[15px] bg-btn-primary-bg-normal text-text-primary group-hover:bg-btn-primary-bg-hover group-active:bg-btn-primary-bg-active group-disabled:bg-btn-primary-bg-disabled',
   },
   secondary: {
-    button: 'border border-btn-primary-border bg-btn-primary-bg-normal hover:bg-btn-primary-bg-hover active:bg-btn-primary-bg-active',
-    content: 'text-btn-primary-text',
+    button: 'h-9 min-w-0 rounded-[8px] px-[16px] border border-btn-primary-border bg-btn-primary-bg-normal hover:bg-btn-primary-bg-hover active:bg-btn-primary-bg-active disabled:border-0 disabled:bg-btn-primary-bg-disabled',
+    content: 'text-btn-primary-text group-hover:text-white group-active:text-white group-disabled:text-[#FFFFFF33]',
+  },
+  link: {
+    button: 'border-0 bg-transparent shadow-none px-0 cursor-pointer',
+    content: 'text-brand-main transition-colors duration-[180ms] ease-out group-hover:text-[#73E6F5] group-active:text-[#73E6F5]',
   },
   danger: {
-    button: 'border border-btn-danger-border bg-btn-danger-bg-normal hover:bg-btn-danger-bg-hover active:bg-btn-danger-bg-active disabled:bg-btn-danger-bg-disabled',
-    content: 'text-btn-danger-text',
+    button: 'h-9 min-w-0 rounded-[8px] px-[16px] border border-btn-danger-border bg-btn-danger-bg-normal hover:bg-btn-danger-bg-hover active:bg-btn-danger-bg-active disabled:border-0 disabled:bg-btn-danger-bg-disabled',
+    content: 'text-btn-danger-text group-hover:text-btn-danger-text-hover group-active:text-btn-danger-text-hover group-disabled:text-btn-danger-text-disabled',
   },
 };
 
@@ -91,6 +99,7 @@ export const Button = forwardRef(function Button(
   const variantStyle = VARIANT_STYLES[variant] || VARIANT_STYLES.primary;
   const sizeStyle = SIZE_STYLES[size] || SIZE_STYLES.large;
   const isDisabled = disabled || loading;
+  const isLink = variant === 'link';
   const iconClassName = sizeStyle.icon;
   const content = loading ? <LoadingIcon className={iconClassName} /> : icon;
   const leadingContent = iconPosition === 'right' ? children : content;
@@ -111,9 +120,11 @@ export const Button = forwardRef(function Button(
           backgroundImage: 'linear-gradient(157.78deg, rgba(122,229,185,0.30) 2.88%, rgba(122,229,185,0) 56.77%)',
         } : {}),
         ...style,
+        ...((variant === 'secondary' || variant === 'danger') && isDisabled ? { opacity: 1 } : {}),
+        ...(variant === 'link' ? { boxShadow: 'none', outline: 'none' } : {}),
         ...(isPrimary ? { padding: '1px', backgroundImage: isDisabled ? 'none' : PRIMARY_BACKGROUND_IMAGE } : {}),
       }}
-      className={`group inline-flex items-center justify-center gap-[4px] shrink-0 antialiased [font-synthesis:none] font-font-weight-medium [box-shadow:var(--color-shadow)_3px_3px_8px] transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand-main ${isPrimary ? sizeStyle.primaryButton : sizeStyle.button} ${variantStyle.button} ${iconOnly ? sizeStyle.iconOnly : ''} ${className}`}
+      className={`group inline-flex items-center justify-center gap-[4px] shrink-0 antialiased [font-synthesis:none] font-font-weight-medium [box-shadow:var(--color-shadow)_3px_3px_8px] transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand-main ${isPrimary ? sizeStyle.primaryButton : isLink ? 'h-auto min-h-0 px-0' : sizeStyle.button} ${variantStyle.button} ${iconOnly ? sizeStyle.iconOnly : ''} ${className}`}
       {...props}
     >
       {isPrimary ? (

@@ -953,6 +953,9 @@ export default function GlobalSettings({
         <Suspense fallback={<div style={{ flex: '1 1 0%', minHeight: 0 }} />}>
           <ScriptPage
             projectId={projectId}
+            projectVisualStyle={projectStyle}
+            projectAspectRatio={projectRatio}
+            projectCreationType={projectCreationType}
             onGoToSubject={onGoToSubject}
             isSubjectUnlocked={isSubjectUnlocked}
             scriptFinalizedSinceExtraction={scriptFinalizedSinceExtraction}

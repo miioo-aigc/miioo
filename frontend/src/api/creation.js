@@ -115,6 +115,11 @@ export async function apiGetSession(sessionId) {
   const res = await authFetch(`${BASE}/api/creation/sessions/${sessionId}`, {
     headers: { 'Content-Type': 'application/json' },
   });
+  if (!res.ok) {
+    const error = new Error(`创作会话不存在（HTTP ${res.status}）`);
+    error.status = res.status;
+    throw error;
+  }
   return res.json();
 }
 

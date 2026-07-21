@@ -1,6 +1,10 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
+// 确认接口当前由后端 script_structure_service 支持的结构协议版本。
+export const SCRIPT_SCHEMA_VERSION = 'script_structure.v1';
+
 import { authFetch, authFetchForm, authFetchStream } from './request.js';
+import { getDisplayErrorMessage, readResponsePayload } from './error.js';
 import { apiDeleteSubjectAssets } from './assets.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
@@ -624,18 +628,271 @@ export async function apiUploadEpisodeScript(projectId, episodeId, file) {
 
 // ── 剧本工作区 ────────────────────────────────────────────────────────────────
 
-export async function apiGetScriptWorkspace(projectId) {
+export async function apiGetScriptWorkspace(projectId, { fresh = false } = {}) {
+  const fetchWorkspace = async () => {
+    const res = await authFetch(
+      `${BASE}/api/projects/${projectId}/script-workspace`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return res.json();
+  };
+
+  if (fresh) return fetchWorkspace();
   return cached(
     K.script(projectId),
-    async () => {
-      const res = await authFetch(
-        `${BASE}/api/projects/${projectId}/script-workspace`,
-        { headers: { 'Content-Type': 'application/json' } }
-      );
-      return res.json();
-    },
+    fetchWorkspace,
     { medium: MEDIUM.CONTENT, ttl: TTL.CONTENT },
   );
+}
+
+export async function apiConfirmScriptWorkspace(projectId, { expected_draft_revision, schema_version, client_request_id, idempotency_key } = {}) {
+  const body = { expected_draft_revision, schema_version };
+  if (client_request_id) body.client_request_id = client_request_id;
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/confirm`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(idempotency_key ? { 'Idempotency-Key': idempotency_key } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  invalidate(K.script(projectId));
+  return readScriptWorkspaceResponse(res);
+}
+
+export async function apiGetScriptStructure(projectId) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/structure`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (res.status === 404) {
+    let payload;
+    try {
+      payload = await res.json();
+    } catch {
+      payload = undefined;
+    }
+    const detail = payload?.detail;
+    const code = typeof detail === 'object' ? detail?.code : payload?.code;
+    if (code === 'STRUCTURE_NOT_FOUND') return { _notFound: true, payload: {} };
+    const error = new Error(getDisplayErrorMessage(payload, `读取剧本结构失败（${res.status}）`));
+    error.status = res.status;
+    error.code = typeof detail === 'object' ? detail?.code : payload?.code;
+    error.rawPayload = payload;
+    throw error;
+  }
+  return readScriptWorkspaceResponse(res);
+}
+
+/** 保留脚本工作区错误响应，便于页面从 409 冲突中恢复已有任务。 */
+async function readScriptWorkspaceResponse(res) {
+  let payload;
+  try {
+    payload = await res.json();
+  } catch {
+    payload = undefined;
+  }
+  if (res.ok) return payload;
+
+  const error = new Error(getDisplayErrorMessage(payload, `请求失败（${res.status}）`));
+  const detail = payload?.detail;
+  error.status = res.status;
+  error.code = typeof detail === 'object' ? detail?.code : payload?.code;
+  error.validationErrors = Array.isArray(detail)
+    ? detail
+    : Array.isArray(payload?.errors) ? payload.errors : null;
+  error.rawPayload = payload;
+  error.payload = payload;
+  return Promise.reject(error);
+}
+
+function scriptClientRequestId(prefix) {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${prefix}-${Date.now()}`;
+}
+
+async function scriptStructureWrite(projectId, path, body) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/structure${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  invalidate(K.script(projectId));
+  return res.json();
+}
+
+export async function apiResplitScriptStructure(projectId, { base_revision, episode_count, instruction = '', model } = {}) {
+  return scriptStructureWrite(projectId, '/resplit', {
+    base_revision,
+    episode_count: episode_count ?? null,
+    instruction,
+    model: model || null,
+    client_request_id: scriptClientRequestId('script-resplit'),
+  });
+}
+
+export async function apiRegenerateScriptEpisode(projectId, itemId, { base_revision, instruction = '', model } = {}) {
+  return scriptStructureWrite(projectId, `/episodes/${encodeURIComponent(itemId)}/regenerate`, {
+    base_revision,
+    instruction,
+    model: model || null,
+    client_request_id: scriptClientRequestId('script-episode-rewrite'),
+  });
+}
+
+export async function apiPatchScriptStructure(projectId, { expected_revision, operations, client_request_id } = {}) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/structure`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      expected_revision: expected_revision ?? null,
+      operations: Array.isArray(operations) ? operations : [],
+      client_request_id: client_request_id || scriptClientRequestId('script-structure-patch'),
+    }),
+  });
+  invalidate(K.script(projectId));
+  return res.json();
+}
+
+export async function apiGetScriptTask(projectId, taskId) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/tasks/${taskId}`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return res.json();
+}
+
+function firstValue(source, keys) {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return '';
+}
+
+function firstTextValue(source, keys) {
+  const value = firstValue(source, keys);
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return firstValue(value, ['value', 'content', 'text', 'label', 'name', 'title']);
+  }
+  return value;
+}
+
+function firstTextValueFromSources(sources, keys) {
+  for (const source of sources) {
+    const value = firstTextValue(source, keys);
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return '';
+}
+
+function normalizeStructureItem(item) {
+  if (typeof item === 'string') return { id: null, name: item, description: '' };
+  if (!item || typeof item !== 'object') return null;
+  return {
+    id: firstValue(item, ['item_id', 'id']) || null,
+    name: firstValue(item, ['name', 'title', 'label', 'key']),
+    description: firstValue(item, ['description', 'content', 'summary', 'value']),
+  };
+}
+
+function normalizeEpisode(item, index) {
+  if (typeof item === 'string') {
+    return { id: null, name: `第${index + 1}集`, title: `第${index + 1}集`, description: '', content: item, synopsis: '', storyPoints: [], subjects: {}, hook: '' };
+  }
+  if (!item || typeof item !== 'object') return null;
+  return {
+    id: firstValue(item, ['item_id', 'id']) || null,
+    name: firstValue(item, ['name', 'title', 'episode_name', 'episode_title']) || `第${index + 1}集`,
+    title: firstValue(item, ['title', 'name', 'episode_name', 'episode_title']) || `第${index + 1}集`,
+    description: firstValue(item, ['description', 'summary', 'synopsis', 'plot', 'content']),
+    content: firstValue(item, ['content', 'script', 'full_script', 'description', 'plot']),
+    synopsis: firstValue(item, ['synopsis', 'summary', 'description']),
+    storyPoints: firstValue(item, ['story_points', 'storyPoints', 'plot_points']) || [],
+    subjects: firstValue(item, ['subjects', 'cast']) || {},
+    hook: firstValue(item, ['hook', 'ending_hook', 'cliffhanger']),
+  };
+}
+
+function normalizeStructureFields(source, keys) {
+  const value = firstValue(source, keys);
+  return typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function normalizeStructureList(source, keys) {
+  const value = firstValue(source, keys);
+  return Array.isArray(value) ? value.map(normalizeStructureItem).filter(Boolean) : [];
+}
+
+export function normalizeScriptStructure(structure) {
+  const payload = structure?.payload || structure?.data || structure || {};
+  const overall = normalizeStructureFields(payload, ['overall_settings', 'overallSettings', 'overall', 'overall_setting', 'overallSetting']);
+  const overallSources = [
+    overall,
+    normalizeStructureFields(payload, ['settings', 'project_settings', 'projectSettings']),
+    payload,
+  ];
+  const design = normalizeStructureFields(payload, ['script_design', 'scriptDesign', 'design']);
+  const subjects = normalizeStructureFields(payload, ['subjects', 'subject']);
+  const rawEpisodes = firstValue(payload, ['episodes', 'episode_plots', 'episodePlots']);
+  const episodes = Array.isArray(rawEpisodes) ? rawEpisodes.map(normalizeEpisode).filter(Boolean) : [];
+
+  return {
+    revision: structure?.revision ?? payload?.revision ?? 0,
+    schemaVersion: structure?.schema_version || payload?.schema_version || '',
+    overallSettings: {
+      visualStyle: firstTextValueFromSources(overallSources, ['visual_style', 'visualStyle', 'style']),
+      aspectRatio: firstTextValueFromSources(overallSources, ['aspect_ratio', 'aspectRatio', 'ratio']),
+      creationType: firstTextValueFromSources(overallSources, ['creation_type', 'creationType', 'type']),
+    },
+    scriptDesign: {
+      synopsis: firstValue(design, ['synopsis', 'story_summary', 'storySummary', 'summary']),
+      background: firstValue(design, ['background', 'story_background', 'storyBackground']),
+      world: firstTextValue(design, [
+        'world',
+        'world_setting',
+        'worldSetting',
+        'worldview',
+        'world_view',
+        'worldView',
+        'worldview_setting',
+        'worldviewSetting',
+        'world_building',
+        'worldBuilding',
+      ]),
+      conflict: firstValue(design, ['conflict', 'core_conflict', 'coreConflict']),
+    },
+    subjects: {
+      characters: normalizeStructureList(subjects, ['characters', 'character', 'roles']),
+      scenes: normalizeStructureList(subjects, ['scenes', 'scene', 'locations']),
+      props: normalizeStructureList(subjects, ['props', 'prop', 'objects']),
+    },
+    episodes,
+  };
+}
+
+export function normalizeScriptMessage(message, index = 0) {
+  if (!message) return null;
+  return {
+    id: message.id || `script-message-${index}`,
+    role: message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user',
+    content: typeof message.content === 'string' ? message.content : '',
+    status: message.status || 'completed',
+    messageType: message.message_type || 'chat',
+    turnId: message.turn_id || null,
+    replyToMessageId: message.reply_to_message_id || null,
+    sequenceNo: message.sequence_no ?? index,
+    modelId: message.model_id || null,
+    createdAt: message.created_at || null,
+    updatedAt: message.updated_at || null,
+    errorCode: message.error_code || null,
+    errorMessage: message.error_message || null,
+  };
+}
+
+export function normalizeScriptMessages(messages) {
+  return Array.isArray(messages)
+    ? messages.map(normalizeScriptMessage).filter(Boolean)
+    : [];
 }
 
 export async function apiSaveScriptWorkspace(projectId, data) {
@@ -680,9 +937,12 @@ export async function apiSaveScriptWorkspace(projectId, data) {
   }
 }
 
-export async function apiChatScriptWorkspace(projectId, { message, model } = {}) {
-  const body = { message, apply_to_script: true };
+export async function apiChatScriptWorkspace(projectId, { message, model, episode_count, episode_duration_seconds, apply_to_script = true, client_request_id } = {}) {
+  const body = { message, apply_to_script };
   if (model) body.model = model;
+  if (episode_count != null) body.episode_count = episode_count;
+  if (episode_duration_seconds != null) body.episode_duration_seconds = episode_duration_seconds;
+  if (client_request_id) body.client_request_id = client_request_id;
   const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -697,12 +957,14 @@ export async function apiChatScriptWorkspace(projectId, { message, model } = {})
 // signal 用于 AbortController 取消
 export async function apiChatScriptWorkspaceStream(
   projectId,
-  { message, model, episode_count } = {},
-  { onChunk, signal } = {}
+  { message, model, episode_count, episode_duration_seconds, apply_to_script = true, client_request_id } = {},
+  { onChunk, onEvent, signal } = {}
 ) {
-  const body = { message, apply_to_script: true };
+  const body = { message, apply_to_script };
   if (model) body.model = model;
   if (episode_count != null) body.episode_count = episode_count;
+  if (episode_duration_seconds != null) body.episode_duration_seconds = episode_duration_seconds;
+  if (client_request_id) body.client_request_id = client_request_id;
 
   const res = await authFetchStream(
     `${BASE}/api/projects/${projectId}/script-workspace/chat/stream`,
@@ -727,68 +989,106 @@ export async function apiChatScriptWorkspaceStream(
 
   // 非 2xx 响应 → 读取错误体并抛出，避免静默吞错
   if (!res.ok) {
-    let errorDetail = `HTTP ${res.status}`;
-    try {
-      const errBody = await res.json();
-      errorDetail = errBody?.message || errBody?.detail || errBody?.error || JSON.stringify(errBody);
-    } catch {
-      try {
-        errorDetail = await res.text();
-      } catch { /* keep HTTP status as fallback */ }
-    }
+    const payload = await readResponsePayload(res);
+    const errorDetail = getDisplayErrorMessage(payload, `请求失败（HTTP ${res.status}）`);
     const err = new Error(errorDetail);
     err.status = res.status;
+    err.rawPayload = payload;
     throw err;
   }
 
-  const contentType = res.headers.get('content-type') || '';
-
-  // ── 非流式 fallback：后端返回普通 JSON ───────────────────────────────────────
-  if (!contentType.includes('text/event-stream')) {
-    const data = await res.json();
-    const content = data?.script?.content || data?.content || '';
-    if (content) onChunk?.(content);
-    return content;
-  }
-
-  // ── SSE 流式读取 ─────────────────────────────────────────────────────────────
+  // 后端当前 OpenAPI 将该接口声明为 application/json，但运行时可能仍返回
+  // SSE。不能只依赖 Content-Type，否则会把整段响应当成 JSON 一次性展示。
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let rawResponse = '';
   let accumulated = '';
+  let sawSseLine = false;
+
+  const appendChunk = (value, payload = null) => {
+    const chunk = typeof value === 'string' ? value : '';
+    if (!chunk) return;
+    accumulated += chunk;
+    onChunk?.(accumulated);
+    onEvent?.({ type: 'chunk', content: chunk, accumulated, payload });
+  };
+
+  const processSsePayload = (payload) => {
+    const trimmed = payload.trim();
+    if (!trimmed) return false;
+    if (trimmed === '[DONE]') {
+      onEvent?.({ type: 'done' });
+      return true;
+    }
+
+    let parsed = null;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      // SSE 允许直接传输纯文本内容。
+    }
+
+    if (parsed?.error || parsed?.type === 'error' || parsed?.event === 'error') {
+      const error = parsed.error || parsed;
+      const eventError = new Error(error?.message || error?.detail || '剧本生成失败');
+      eventError.code = error?.code || null;
+      onEvent?.({ type: 'error', error: eventError, payload: parsed });
+      throw eventError;
+    }
+    if (parsed?.type === 'done' || parsed?.event === 'done') {
+      onEvent?.({ type: 'done', payload: parsed });
+      return true;
+    }
+
+    const chunk = parsed
+      ? parsed?.choices?.[0]?.delta?.content
+        ?? parsed?.delta
+        ?? parsed?.content
+        ?? parsed?.chunk
+        ?? ''
+      : trimmed;
+    appendChunk(chunk, parsed);
+    return false;
+  };
+
+  const processLine = (line) => {
+    const normalized = line.endsWith('\r') ? line.slice(0, -1) : line;
+    if (!normalized.startsWith('data:')) return false;
+    sawSseLine = true;
+    return processSsePayload(normalized.slice(5).replace(/^ /, ''));
+  };
 
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
+      const decoded = decoder.decode(value, { stream: true });
+      buffer += decoded;
+      rawResponse += decoded;
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? ''; // 保留最后一段不完整行
 
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const payload = line.slice(6).trim();
-        if (payload === '[DONE]') return accumulated;
+      for (const line of lines) processLine(line);
+    }
 
-        let chunk = '';
-        try {
-          const parsed = JSON.parse(payload);
-          // 兼容多种格式：OpenAI delta / 自定义 delta / content / chunk
-          chunk =
-            parsed?.choices?.[0]?.delta?.content ??
-            parsed?.delta ??
-            parsed?.content ??
-            parsed?.chunk ??
-            '';
-        } catch {
-          chunk = payload; // 纯文本 chunk
-        }
+    const tail = decoder.decode();
+    buffer += tail;
+    rawResponse += tail;
 
-        if (chunk) {
-          accumulated += chunk;
-          onChunk?.(accumulated);
-        }
+    // 处理没有以换行结尾的最后一条 SSE data 行。
+    if (buffer) processLine(buffer);
+
+    // 如果后端确实返回的是完整 JSON，这里保留兼容性；这种情况下网络层
+    // 本身没有增量数据，前端无法凭空制造真正的流式接收。
+    if (!sawSseLine && !accumulated && rawResponse.trim()) {
+      try {
+        const data = JSON.parse(rawResponse);
+        const content = data?.script?.content || data?.content || '';
+        appendChunk(content, data);
+      } catch {
+        // 非 SSE、非 JSON 的响应交给页面层按空响应处理。
       }
     }
   } finally {
@@ -810,8 +1110,8 @@ export async function apiUploadScriptWorkspace(projectId, file) {
   return res.json();
 }
 
-export async function apiFinalizeScriptWorkspace(projectId, { episode_count, model } = {}) {
-  const body = { split_mode: 'rule_first' };
+export async function apiFinalizeScriptWorkspace(projectId, { episode_count, model, split_mode = 'rule_first', apply_split = true, auto_extract_subjects = true } = {}) {
+  const body = { split_mode, apply_split, auto_extract_subjects };
   if (model) body.model = model;
   if (episode_count != null) body.episode_count = episode_count;
 
@@ -864,7 +1164,10 @@ export async function apiFinalizeScriptWorkspace(projectId, { episode_count, mod
     invalidate(K.script(projectId));
     invalidate(K.episodes(projectId));
     invalidate(K.projectOverview(projectId));
-    return res.json();
+    const data = await res.json();
+    return res.status === 202
+      ? { ...data, _async: true, _status: res.status }
+      : { ...data, _async: false, _status: res.status };
   }
 }
 

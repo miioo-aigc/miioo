@@ -1306,7 +1306,27 @@
 
 ## 2026-07-21 剧本页新创作入口
 
+- 剧本创作阶段新增 `ScriptMessageArea` 和 `ScriptMessageLoading`，消息列表由 `ScriptPage` 持有并按后端工作区消息恢复；流式助手消息在当前消息位置增量更新。
+- `InputCard` 不再维护本地最多 10 条输入历史，已删除旧 `scriptDraftCache.js` 及其回溯入口；保留超时后的当前文本恢复。
+- 消息区替代创作阶段的 `ScriptPanel` 主展示区，进入编辑态时仍通过“查看剧本”恢复原剧本编辑工作区。
+- 剧本聊天请求新增集数和单集时长参数适配，自动适应时不发送 `episode_duration_seconds`。
 - `ScriptPage` 初始空态改为三种入口：剧本模式上传自有剧本、分镜脚本本地选择 `.xlsx`、输入指令直接生成剧本。
 - 新增 `ScriptCreationEntry` 和 `ScriptUploadCard`，上传卡片支持整卡点击、键盘触发、文件校验、文件移除、悬停阴影和弹簧放大；分镜模板使用 `public/分镜模板.xlsx` 静态下载。
 - `InputCard` 移除上传入口和文件恢复职责，仅保留指令、模型、单集时长、集数和发送/停止；草稿缓存同步移除文件 Blob 序列化，增加 `episodeDuration`。
 - 分镜 `.xlsx` 本阶段只保留本地文件状态，不调用剧本上传接口、不解析、不跳转分镜页；剧本模式继续复用 `apiUploadScriptWorkspace`。
+
+## 2026-07-21 剧本页结构化编排态
+
+- `ScriptPage` 新增确认初稿后的不可返回编排态：调用确认接口创建异步任务，轮询任务终态，并从结构接口读取最终数据。
+- 新增 `ScriptOutlineLoading`，负责整体设定、剧本设计、主体和分集剧本骨架，以及从左向右的光带加载反馈。
+- 新增 `ScriptOutlineWorkspace`，只渲染 API 适配后的结构化数据；字段为空时显示空值，不使用设计稿示例文本。
+- 刷新时若工作区已有结构或活跃编排任务，直接恢复编排态并继续轮询；进入编排态后不再渲染消息区、InputCard 或返回入口。
+- 确认接口使用 `script.draft_revision`，`STRUCTURE_NOT_FOUND` 作为“尚无结构草稿”处理，其他 404 与真实版本冲突均保留错误信息，不自动无限重试。
+- 新增 `ScriptEpisodeOutline`，负责后端分集胶囊、AI 重新分集、当前集 AI 重写/删除和剧情编辑；富文本 `ScriptEditor` 只在当前集编辑态挂载。
+
+## 2026-07-21 剧本页移除左侧剧集结构
+
+- 删除 `src/components/script/EpisodeItem.jsx` 与 `EpisodeList.jsx`，并移除目录导出和 `ScriptPage` 中的左侧导航渲染。
+- `ScriptPage` 已改为单列剧本工作区，不再持有左侧导航的选中索引、骨架加载状态和标题滚动定位回调。
+- `ScriptPanel` / `ScriptRendered` 移除仅服务分集导航的 `onActiveIndexChange` 与当前分集侦测；剧本内容滚动和最后一集底部占位仍保留。
+- `backendEpisodes`、`apiGetEpisodes`、定稿刷新和 `onEpisodesChange` 不删除，继续承担项目级剧集数据同步职责。

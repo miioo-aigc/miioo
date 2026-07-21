@@ -1045,7 +1045,10 @@ export default function Home({ onGoToAdmin }) {
               </div>
             )}
           >
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative">
+            <div
+              className="flex-1 min-h-0 overflow-auto relative"
+              style={{ overflow: activeKey === 'project' && activeProject && activeStep === 'script' ? 'visible' : undefined }}
+            >
             {activeKey === 'home' && (
               <>
                 <HomeSloganText />
@@ -1100,6 +1103,7 @@ export default function Home({ onGoToAdmin }) {
                 projectCoverUrl={activeProject.cover_url || activeProject.cover}
                 projectRatio={activeProject.aspect_ratio || activeProject.ratio}
                 projectStyle={activeProject.visual_style || activeProject.style}
+                projectCreationType={activeProject.creation_type || activeProject.creation_mode || activeProject.project_type}
                 onProjectUpdate={(updates) => {
                   return apiUpdateProject(activeProject.id, updates).then(() => {
                     // 字段映射：cover_url -> cover

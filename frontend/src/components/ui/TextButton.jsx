@@ -11,7 +11,7 @@
 import { Button } from './Button';
 
 /**
- * 文字按钮：默认使用低视觉权重的 Secondary 变体。
+ * 文字按钮：默认使用低视觉权重的 Secondary 变体；link 变体用于无容器文字动作。
  */
 export function TextButton({ children, variant = 'secondary', ...props }) {
   return (

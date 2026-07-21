@@ -133,20 +133,22 @@ style={{ boxShadow: '0 0 16px var(--color-glow)' }}
 | `bg-btn-primary-bg-hover` | neutral-100 → #1D1E1E | 悬停态背景，比默认更浅 |
 | `bg-btn-primary-bg-active` | neutral-200 → #161616 | 按压态背景 |
 | `bg-btn-primary-bg-disabled` | black-10 → rgba(0,0,0,0.10) | 禁用态背景 |
-| `border-btn-primary-border` | white-8 → rgba(255,255,255,0.08) | 描边 |
-| `text-btn-primary-text` | white-60 → rgba(255,255,255,0.60) | 文字色（text-secondary，用于 Secondary 按钮） |
+| `border-btn-primary-border` | white-5 → rgba(255,255,255,0.05) | Secondary 按钮描边 |
+| `text-btn-primary-text` | white-80 → rgba(255,255,255,0.80) | Secondary 按钮默认文字色 |
 
 #### Danger 危险按钮
 > 红色填充，用于删除、清空等不可逆的危险操作。
 
 | Token 类名 | 引用梯度值 → 最终色值 | 用途 |
 |---|---|---|
-| `bg-btn-danger-bg-normal` | red-400 → #D13B3B | 默认态背景 |
-| `bg-btn-danger-bg-hover` | red-300 → #F75F5F | 悬停态背景，比默认更浅 |
-| `bg-btn-danger-bg-active` | red-400 → #D13B3B | 按压态背景 |
-| `bg-btn-danger-bg-disabled` | red-alpha-20 → rgba(247,95,95,0.20) | 禁用态背景，无边框 |
-| `border-btn-danger-border` | white-20 → rgba(255,255,255,0.20) | 描边 |
-| `text-btn-danger-text` | white-100 → #FFFFFF | 文字色（白色） |
+| `bg-btn-danger-bg-normal` | neutral-200 → #161616 | 默认态背景，与 Secondary 容器一致 |
+| `bg-btn-danger-bg-hover` | neutral-100 → #1D1E1E | 悬停态背景 |
+| `bg-btn-danger-bg-active` | neutral-200 → #161616 | 按压态背景 |
+| `bg-btn-danger-bg-disabled` | black-10 → rgba(0,0,0,0.10) | 禁用态背景，无边框 |
+| `border-btn-danger-border` | white-5 → rgba(255,255,255,0.05) | 描边 |
+| `text-btn-danger-text` | red-300 → #F75F5F | 默认图标和文字色 |
+| `text-btn-danger-text-hover` | red-300 → #F75F5F | 悬停和按压图标、文字色 |
+| `text-btn-danger-text-disabled` | red-alpha-20 → rgba(247,95,95,0.20) | 禁用图标和文字色 |
 
 ---
 

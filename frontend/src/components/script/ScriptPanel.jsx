@@ -17,7 +17,6 @@ import { lazy, Suspense } from 'react';
 import { Button } from '../ui';
 import AiThinkingMessage from './AiThinkingMessage';
 
-const ScriptEditor = lazy(() => import('./ScriptEditor'));
 const AiStreamingContent = lazy(() => import('./AiStreamingContent'));
 const ScriptRendered = lazy(() => import('./ScriptRendered'));
 
@@ -28,7 +27,6 @@ export default function ScriptPanel({
   phase,
   scriptContent,
   draftContent,
-  onDraftChange,
   onEdit,
   onSave,
   onCancelEdit,
@@ -39,9 +37,7 @@ export default function ScriptPanel({
   isSseActive,
   onStreamingPause,
   streamingPaused,
-  onActiveIndexChange,
   renderedContentRef,
-  editorContentRef,
   isSaving,
 }) {
   // 兼容页面层既有 props 契约；主体解锁判断仍由页面的提取请求回调负责。
@@ -89,10 +85,8 @@ export default function ScriptPanel({
           >
             {isStreaming ? (
               <AiStreamingContent content={scriptContent} onDone={onStreamingDone} paused={streamingPaused} onPause={onStreamingPause} sseActive={isSseActive} />
-            ) : isEditing ? (
-              <ScriptEditor initialContent={draftContent} onContentChange={onDraftChange} containerRef={editorContentRef} />
             ) : (
-              <ScriptRendered content={displayContent} contentRef={renderedContentRef} onActiveIndexChange={onActiveIndexChange} />
+              <ScriptRendered content={displayContent} contentRef={renderedContentRef} />
             )}
           </Suspense>
         )}

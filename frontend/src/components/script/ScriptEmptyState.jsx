@@ -11,7 +11,7 @@
  */
 import ScriptCreationEntry from './ScriptCreationEntry';
 
-function ScriptEmptyState({ onSend, onScriptFileSelect, scriptFile, onRemoveScriptFile, onStoryboardFileSelect, storyboardFile, onRemoveStoryboardFile, onDownloadTemplate, selectedModel, onModelChange, episodeCount, onEpisodeCountChange, episodeDuration, onEpisodeDurationChange, restoreText = '', projectId = '', showToast }) {
+function ScriptEmptyState({ onSend, onScriptFileSelect, scriptFile, onRemoveScriptFile, onStoryboardFileSelect, storyboardFile, onRemoveStoryboardFile, onDownloadTemplate, selectedModel, onModelChange, episodeCount, onEpisodeCountChange, episodeDuration, onEpisodeDurationChange, restoreText = '' }) {
   return (
     <div
       style={{
@@ -34,8 +34,6 @@ function ScriptEmptyState({ onSend, onScriptFileSelect, scriptFile, onRemoveScri
         storyboardFile={storyboardFile}
         onRemoveStoryboardFile={onRemoveStoryboardFile}
         onDownloadTemplate={onDownloadTemplate}
-        projectId={projectId}
-        showToast={showToast}
         selectedModel={selectedModel}
         onModelChange={onModelChange}
         episodeCount={episodeCount}

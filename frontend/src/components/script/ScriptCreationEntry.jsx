@@ -11,7 +11,7 @@
 import InputCard from './InputCard';
 import ScriptUploadCard from './ScriptUploadCard';
 
-function ScriptCreationEntry({ onSend, onScriptFileSelect, scriptFile, onRemoveScriptFile, onStoryboardFileSelect, storyboardFile, onRemoveStoryboardFile, onDownloadTemplate, selectedModel, onModelChange, episodeCount, onEpisodeCountChange, episodeDuration, onEpisodeDurationChange, restoreText = '', projectId = '', showToast }) {
+function ScriptCreationEntry({ onSend, onScriptFileSelect, scriptFile, onRemoveScriptFile, onStoryboardFileSelect, storyboardFile, onRemoveStoryboardFile, onDownloadTemplate, selectedModel, onModelChange, episodeCount, onEpisodeCountChange, episodeDuration, onEpisodeDurationChange, restoreText = '' }) {
   return (
     <div style={{ position: 'relative', display: 'flex', flex: 1, minHeight: 0, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
       <div className="script-creation-upload-cards" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '24px', width: '100%', minHeight: '280px', position: 'relative', top: '-40px' }}>
@@ -34,11 +34,9 @@ function ScriptCreationEntry({ onSend, onScriptFileSelect, scriptFile, onRemoveS
           extraAction={{ label: '查看分镜模板.xlsx', onClick: onDownloadTemplate }}
         />
       </div>
-      <div style={{ position: 'absolute', left: '50%', bottom: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: 'min(700px, 100%)', transform: 'translateX(-50%)' }}>
+      <div style={{ position: 'absolute', left: '50%', bottom: '0px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: 'min(700px, 100%)', transform: 'translateX(-50%)' }}>
         <InputCard
           onSend={onSend}
-          projectId={projectId}
-          showToast={showToast}
           width="700px"
           selectedModel={selectedModel}
           onModelChange={onModelChange}

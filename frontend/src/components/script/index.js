@@ -1,6 +1,4 @@
 export { default as EditorToolbar } from './EditorToolbar';
-export { default as EpisodeItem } from './EpisodeItem';
-export { default as EpisodeList } from './EpisodeList';
 export { default as InputCard } from './InputCard';
 export { default as ScriptEmptyState } from './ScriptEmptyState';
 export { default as ScriptCreationEntry } from './ScriptCreationEntry';
@@ -9,6 +7,11 @@ export { default as ModelSelector } from './ModelSelector';
 export { default as EpisodeCountSelector } from './EpisodeCountSelector';
 export { default as EpisodeDurationSelector } from './EpisodeDurationSelector';
 export { default as SendButton } from './SendButton';
+export { default as ScriptMessageArea } from './ScriptMessageArea';
+export { default as ScriptMessageLoading } from './ScriptMessageLoading';
+export { default as ScriptOutlineLoading } from './ScriptOutlineLoading';
+export { default as ScriptOutlineWorkspace } from './ScriptOutlineWorkspace';
+export { default as ScriptEpisodeOutline } from './ScriptEpisodeOutline';
 export { ensureScriptInputStyle } from './ScriptInputStyles';
 
 export { default as AiThinkingMessage } from './AiThinkingMessage';

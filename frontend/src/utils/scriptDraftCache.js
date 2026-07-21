@@ -3,7 +3,7 @@
  *
  * 用法：
  *   import { saveDraft, getDraft, getCacheCount } from '../utils/scriptDraftCache';
- *   saveDraft(projectId, { text, modelId, episodeCount, files });
+ *   saveDraft(projectId, { text, modelId, episodeCount, episodeDuration });
  *   const draft = await getDraft(projectId, 0);
  *   const count = await getCacheCount(projectId);
  */
@@ -31,8 +31,6 @@ function openDB() {
 
     request.onsuccess = (event) => {
       const db = event.target.result;
-      // 清理孤立 file blob（entry 已被删除但 blob 还残留的场景）
-      cleanupOrphanFiles(db);
       resolve(db);
     };
 
@@ -42,47 +40,14 @@ function openDB() {
   return dbPromise;
 }
 
-function cleanupOrphanFiles(db) {
-  try {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const index = store.index('project_timestamp');
-    const cursorReq = index.openCursor();
-
-    cursorReq.onsuccess = (event) => {
-      const cursor = event.target.result;
-      if (!cursor) return;
-      const entry = cursor.value;
-      if (!entry || !entry.id) {
-        cursor.delete();
-      }
-      cursor.continue();
-    };
-  } catch { /* 忽略清理异常 */ }
-}
-
 /**
  * 保存草稿。fire-and-forget，不阻塞调用方。
  * @param {string} projectId
- * @param {{ text: string, modelId: string|null, episodeCount: number|null, files: File[] }} draft
+ * @param {{ text: string, modelId: string|null, episodeCount: number|null, episodeDuration: number|null }} draft
  */
-export async function saveDraft(projectId, { text, modelId, episodeCount, files }) {
+export async function saveDraft(projectId, { text, modelId, episodeCount, episodeDuration }) {
   try {
     const db = await openDB();
-
-    // 读取文件内容为 ArrayBuffer
-    const fileEntries = await Promise.all(
-      (files || []).map(async (file) => {
-        const buffer = await file.arrayBuffer();
-        return {
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          lastModified: file.lastModified,
-          data: buffer,
-        };
-      })
-    );
 
     const entry = {
       id: `${projectId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -91,7 +56,7 @@ export async function saveDraft(projectId, { text, modelId, episodeCount, files 
       text: text || '',
       modelId: modelId || null,
       episodeCount: episodeCount != null ? episodeCount : null,
-      files: fileEntries,
+      episodeDuration: episodeDuration != null ? episodeDuration : 60,
     };
 
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -153,7 +118,7 @@ async function trimProject(projectId) {
  * 获取某个项目的第 index 条草稿（0 = 最新）。
  * @param {string} projectId
  * @param {number} index
- * @returns {Promise<{ text: string, modelId: string|null, episodeCount: number|null, files: File[] }|null>}
+ * @returns {Promise<{ text: string, modelId: string|null, episodeCount: number|null, episodeDuration: number|null }|null>}
  */
 export async function getDraft(projectId, index) {
   try {
@@ -181,14 +146,11 @@ export async function getDraft(projectId, index) {
 
     const entry = all[index];
 
-    // 从 ArrayBuffer 重建 File 对象
-    const files = (entry.files || []).map((f) => new File([f.data], f.name, { type: f.type, lastModified: f.lastModified }));
-
     return {
       text: entry.text,
       modelId: entry.modelId,
       episodeCount: entry.episodeCount,
-      files,
+      episodeDuration: entry.episodeDuration ?? 60,
     };
   } catch (err) {
     console.warn('[scriptDraftCache] 读取草稿失败:', err?.message);

@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@media (max-width: 560px) {
+  .script-creation-upload-cards {
+    flex-direction: column;
+    gap: 18px !important;
+    min-height: 500px !important;
+  }
+}
+
 /* ============================================================
    全局隐藏原生滚动条（保留滚动功能）
    自定义滚动条通过各组件的类选择器覆盖此规则
@@ -29,6 +37,7 @@
   --color-neutral-300: #131313; /* 卡片、大输入框 */
   --color-neutral-400: #111111; /* 导航栏 */
   --color-neutral-500: #090909; /* 工具栏 */
+  --color-dark-bg: #060606; /* 剧本创作入口内容区 */
 
   /* ----------------------------------------------------------
      白色透明度 White Alpha

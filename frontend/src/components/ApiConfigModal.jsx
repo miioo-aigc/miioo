@@ -816,11 +816,6 @@ function ConfigModelModal({
             </div>
           </button>
         </div>
-        {apiTested && apiValue.includes('*') && (
-          <div className="text-xs/4 text-[#FFFFFFCC]" style={{ fontFamily: FONT }}>
-            API已配置，出于安全考虑仅显示部分字符。可重新输入完整 API 进行更新
-          </div>
-        )}
       </div>
 
       <div className="flex flex-1 flex-col items-start self-stretch overflow-hidden min-h-0">

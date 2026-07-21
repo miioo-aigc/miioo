@@ -1303,3 +1303,10 @@
 - 主体编辑弹窗参考图和候选图、分镜图/视频的参考素材与候选媒体入口统一直接复用 `src/components/ui/FileUploadButton.jsx`。
 - `FileUploadButton` 仅负责按钮视觉和点击出口，不处理文件、资产库、API 或业务状态；各业务组件继续保留原有上传逻辑。
 - 移除分镜上传入口对 `RefSlotButton`/`ImgUploadBtn` 的重复视觉包装，未改变回调参数和上传流程。
+
+## 2026-07-21 剧本页新创作入口
+
+- `ScriptPage` 初始空态改为三种入口：剧本模式上传自有剧本、分镜脚本本地选择 `.xlsx`、输入指令直接生成剧本。
+- 新增 `ScriptCreationEntry` 和 `ScriptUploadCard`，上传卡片支持整卡点击、键盘触发、文件校验、文件移除、悬停阴影和弹簧放大；分镜模板使用 `public/分镜模板.xlsx` 静态下载。
+- `InputCard` 移除上传入口和文件恢复职责，仅保留指令、模型、单集时长、集数和发送/停止；草稿缓存同步移除文件 Blob 序列化，增加 `episodeDuration`。
+- 分镜 `.xlsx` 本阶段只保留本地文件状态，不调用剧本上传接口、不解析、不跳转分镜页；剧本模式继续复用 `apiUploadScriptWorkspace`。

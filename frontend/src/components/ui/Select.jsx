@@ -14,8 +14,12 @@
  *   2026-07-15  从主体生图选择器提升为全局基础组件
  *   2026-07-15  增加选中项颜色、背景和菜单高度的可选视觉参数
  *   2026-07-15  增加展开态阴影和混合模式的可选视觉参数
+ *   2026-07-21  增加向上展开配置，适配底部输入区
+ *   2026-07-21  增加自定义菜单内容插槽，支持业务特殊选项交互
+ *   2026-07-21  增加触发器和选项文本的单行省略显示
+ *   2026-07-21  为被省略的长文本增加延迟 Tooltip 和自动换行
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -36,10 +40,107 @@ function getOptionLabel(option) {
   return typeof option === 'object' ? option.label : option;
 }
 
+function EllipsisTooltipText({ text, style }) {
+  const textRef = useRef(null);
+  const timerRef = useRef(null);
+  const [truncated, setTruncated] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState(null);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+
+  const measure = () => {
+    if (!textRef.current) return;
+    setTruncated(textRef.current.scrollWidth > textRef.current.clientWidth);
+  };
+
+  useLayoutEffect(() => {
+    measure();
+  }, [text]);
+
+  useEffect(() => {
+    const element = textRef.current;
+    if (!element) return undefined;
+
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    resizeObserver?.observe(element);
+    window.addEventListener('resize', measure);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', measure);
+      window.clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const handleMouseEnter = () => {
+    if (!truncated || !text) return;
+    window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => {
+      if (!textRef.current) return;
+      const rect = textRef.current.getBoundingClientRect();
+      setTooltipPosition({
+        left: Math.max(108, Math.min(window.innerWidth - 108, rect.left + rect.width / 2)),
+        top: rect.top - 8,
+      });
+      setTooltipVisible(true);
+    }, 500);
+  };
+
+  const handleMouseLeave = () => {
+    window.clearTimeout(timerRef.current);
+    setTooltipVisible(false);
+    setTooltipPosition(null);
+  };
+
+  return (
+    <>
+      <span
+        ref={textRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        style={style}
+      >
+        {text}
+      </span>
+      {tooltipVisible && tooltipPosition && createPortal(
+        <div
+          role="tooltip"
+          style={{
+            position: 'fixed',
+            left: `${tooltipPosition.left}px`,
+            top: `${tooltipPosition.top}px`,
+            transform: 'translate(-50%, -100%)',
+            zIndex: 10000,
+            pointerEvents: 'none',
+            boxSizing: 'border-box',
+            maxWidth: '200px',
+            padding: '4px 8px',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '2px',
+            background: '#090909',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            color: '#FFFFFF',
+            fontFamily: FONT,
+            fontSize: '12px',
+            lineHeight: '16px',
+            whiteSpace: 'normal',
+            overflowWrap: 'anywhere',
+            wordBreak: 'break-word',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          }}
+        >
+          {text}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 export default function Select({
   label,
   value = '',
   options = [],
+  width = '200px',
   displayValue = value,
   loading = false,
   loadingText = '加载中…',
@@ -48,6 +149,8 @@ export default function Select({
   selectedOptionBackground = 'rgba(45,195,225,0.08)',
   optionHoverBackground = 'rgba(255,255,255,0.06)',
   menuMaxHeight = '300px',
+  menuPlacement = 'down',
+  menuContent,
   openBoxShadow,
   openMixBlendMode,
   onChange,
@@ -79,7 +182,7 @@ export default function Select({
   }, [open]);
 
   const selectStyle = {
-    display: 'flex', alignItems: 'center', height: '36px', borderRadius: '8px', padding: '0 12px', gap: '8px',
+    display: 'flex', alignItems: 'center', height: '36px', width, borderRadius: '8px', padding: '0 12px', gap: '8px',
     background: hovered || open ? '#222222' : '#1D1E1E',
     border: `1px solid ${open ? 'rgba(45,195,225,0.6)' : hovered ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`,
     outline: '1px solid #00000080',
@@ -96,7 +199,9 @@ export default function Select({
     const nextOpen = !open;
     if (nextOpen && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
-      setMenuPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+      setMenuPosition(menuPlacement === 'up'
+        ? { bottom: window.innerHeight - rect.top + 4, left: rect.left, width: rect.width }
+        : { top: rect.bottom + 4, left: rect.left, width: rect.width });
     }
     setOpen(nextOpen);
   }
@@ -107,7 +212,9 @@ export default function Select({
     function updateMenuPosition() {
       if (!triggerRef.current) return;
       const rect = triggerRef.current.getBoundingClientRect();
-      setMenuPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+      setMenuPosition(menuPlacement === 'up'
+        ? { bottom: window.innerHeight - rect.top + 4, left: rect.left, width: rect.width }
+        : { top: rect.bottom + 4, left: rect.left, width: rect.width });
     }
 
     window.addEventListener('resize', updateMenuPosition);
@@ -116,10 +223,10 @@ export default function Select({
       window.removeEventListener('resize', updateMenuPosition);
       window.removeEventListener('scroll', updateMenuPosition, true);
     };
-  }, [open]);
+  }, [menuPlacement, open]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', width }}>
       {label && <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF99' }}>{label}</span>}
       <div
         ref={triggerRef}
@@ -139,9 +246,10 @@ export default function Select({
           if (event.key === 'Escape') setOpen(false);
         }}
       >
-        <span style={{ flex: 1, fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: loading ? '#FFFFFF66' : '#FFFFFF' }}>
-          {loading ? loadingText : displayValue}
-        </span>
+        <EllipsisTooltipText
+          text={String(loading ? loadingText : displayValue ?? '')}
+          style={{ display: 'block', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: loading ? '#FFFFFF66' : '#FFFFFF' }}
+        />
         <ChevronDownIcon />
       </div>
       {open && !isDisabled && menuPosition && createPortal(
@@ -150,7 +258,8 @@ export default function Select({
           role="listbox"
           style={{
             position: 'fixed',
-            top: `${menuPosition.top}px`,
+            ...(menuPosition.top != null ? { top: `${menuPosition.top}px` } : {}),
+            ...(menuPosition.bottom != null ? { bottom: `${menuPosition.bottom}px` } : {}),
             left: `${menuPosition.left}px`,
             width: `${menuPosition.width || 200}px`,
             zIndex: 9999,
@@ -163,14 +272,14 @@ export default function Select({
             overflowY: 'auto',
           }}
         >
-          {options.map((option) => {
+          {menuContent ? menuContent({ close: () => setOpen(false) }) : options.map((option) => {
             const optionValue = getOptionValue(option);
             const optionLabel = getOptionLabel(option);
             const selected = value === optionValue;
 
             return (
               <div
-                key={optionValue}
+                key={String(optionValue)}
                 role="option"
                 aria-selected={selected}
                 onClick={() => {
@@ -178,7 +287,7 @@ export default function Select({
                   setOpen(false);
                 }}
                 style={{
-                  padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontFamily: FONT, fontSize: '14px', lineHeight: '18px',
+                  padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: FONT, fontSize: '14px', lineHeight: '18px',
                   color: selected ? selectedOptionColor : '#FFFFFFCC',
                   background: selected ? selectedOptionBackground : 'transparent',
                   transition: 'background 80ms',
@@ -186,7 +295,10 @@ export default function Select({
                 onMouseEnter={(event) => { if (!selected) event.currentTarget.style.background = optionHoverBackground; }}
                 onMouseLeave={(event) => { event.currentTarget.style.background = selected ? selectedOptionBackground : 'transparent'; }}
               >
-                {optionLabel}
+                <EllipsisTooltipText
+                  text={String(optionLabel ?? '')}
+                  style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                />
               </div>
             );
           })}

@@ -1,49 +1,72 @@
 /**
- * @file EpisodeCountSelector.jsx
+ * @file EpisodeDurationSelector.jsx
  * @structure-index
  *
  * ─── 组件职责 ───────────────────────────────────────────────────────
- *   基于 Select 的剧本集数自动适应/固定数量选择，保留数字输入和加减按钮
+ *   基于 Select 的单集时长自动适应/手动输入选择
+ *
+ * ─── 数据约定 ───────────────────────────────────────────────────────
+ *   null 表示自动适应，正数表示手动输入的秒数
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
- *   2026-07-15  从 ScriptPage 抽离，保持集数选择行为不变
- *   2026-07-21  复用 Select 触发器和 Portal 菜单容器，保留自定义集数编辑
+ *   2026-07-21  将单集时长改为与集数一致的自定义下拉菜单
  */
 import { useState } from 'react';
 import { Button, Select } from '../ui';
 
-const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
+const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi 2.0',system-ui,sans-serif";
 
-function EpisodeCountSelector({ value, onChange, disabled = false }) {
-  const [inputVal, setInputVal] = useState(typeof value === 'number' ? value : 1);
-  const label = value == null ? '集数：自动适应' : `集数：${value} 集`;
+function EpisodeDurationSelector({ value, onChange, disabled = false }) {
+  const [inputVal, setInputVal] = useState(typeof value === 'number' ? value : 60);
+  const label = value == null ? '单集：自动适应' : `单集：${value}s`;
 
-  const handleAutoSelect = (close) => { onChange(null); close(); };
-
-  const adjustCount = (delta) => {
-    const base = typeof inputVal === 'number' ? inputVal : 1;
-    const next = Math.max(1, base + delta);
-    setInputVal(next);
-    onChange(next);
+  const handleAutoSelect = (close) => {
+    onChange?.(null);
+    close();
   };
 
-  const handleInputChange = (e) => {
-    const raw = e.target.value;
-    if (raw === '') { setInputVal(''); return; }
-    const n = parseInt(raw, 10);
-    if (!isNaN(n) && n >= 1) { setInputVal(n); onChange(n); }
+  const handleManualSelect = (close) => {
+    const next = Number.parseInt(inputVal, 10);
+    const duration = Number.isInteger(next) && next > 0 ? next : 60;
+    setInputVal(duration);
+    onChange?.(duration);
+    close();
+  };
+
+  const adjustDuration = (delta) => {
+    const base = typeof inputVal === 'number' ? inputVal : 60;
+    const next = Math.max(1, base + delta);
+    setInputVal(next);
+    onChange?.(next);
+  };
+
+  const handleInputChange = (event) => {
+    const raw = event.target.value;
+    if (raw === '') {
+      setInputVal('');
+      return;
+    }
+
+    const next = Number.parseInt(raw, 10);
+    if (Number.isInteger(next) && next > 0) {
+      setInputVal(next);
+      onChange?.(next);
+    }
   };
 
   const handleInputBlur = () => {
-    const n = parseInt(inputVal, 10);
-    if (isNaN(n) || n < 1) { setInputVal(1); onChange(1); }
+    const next = Number.parseInt(inputVal, 10);
+    if (!Number.isInteger(next) || next < 1) {
+      setInputVal(60);
+      onChange?.(60);
+    }
   };
 
   return (
     <Select
       value={value}
       displayValue={label}
-      options={[{ value: '__custom_episode_count__', label: label }]}
+      options={[{ value: '__custom_episode_duration__', label }]}
       width="160px"
       menuPlacement="up"
       disabled={disabled}
@@ -61,7 +84,7 @@ function EpisodeCountSelector({ value, onChange, disabled = false }) {
             contentClassName="!w-auto !justify-start !text-left !text-font-size-14"
             style={{ fontFamily: FONT, outline: 'none' }}
           >
-            集数：自动适应
+            单集：自动适应
           </Button>
 
           <div
@@ -70,13 +93,16 @@ function EpisodeCountSelector({ value, onChange, disabled = false }) {
                 ? 'bg-select-item-bg-active'
                 : 'bg-select-item-bg-normal hover:bg-select-item-bg-hover'
             }`}
+            role="option"
+            aria-selected={value != null}
+            onClick={() => handleManualSelect(close)}
           >
             <Button
               variant="secondary"
               size="small"
               type="button"
-              aria-label="减少集数"
-              onClick={(e) => { e.stopPropagation(); adjustCount(-1); }}
+              aria-label="减少单集时长"
+              onClick={(event) => { event.stopPropagation(); adjustDuration(-1); }}
               className="!h-[24px] !w-[20px] !rounded-[4px] !border-0 !bg-transparent !p-0 !shadow-none !text-select-item-text-normal hover:!bg-white-8 hover:!text-white"
               contentClassName="!text-[16px]"
               style={{ outline: 'none' }}
@@ -84,12 +110,21 @@ function EpisodeCountSelector({ value, onChange, disabled = false }) {
               −
             </Button>
             <input
+              aria-label="单集时长，单位秒"
               type="number"
               min="1"
               value={inputVal}
               onChange={handleInputChange}
               onBlur={handleInputBlur}
-              onClick={(e) => { e.stopPropagation(); if (value == null) { setInputVal(1); onChange(1); } }}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (value == null) {
+                  const next = Number.parseInt(inputVal, 10);
+                  const duration = Number.isInteger(next) && next > 0 ? next : 60;
+                  setInputVal(duration);
+                  onChange?.(duration);
+                }
+              }}
               className="[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none text-select-item-text-normal bg-white-5 border border-stroke-normal rounded-[4px] text-center outline-none text-font-size-14 flex-1 min-w-0"
               style={{ height: '28px', fontFamily: FONT, MozAppearance: 'textfield' }}
             />
@@ -97,8 +132,8 @@ function EpisodeCountSelector({ value, onChange, disabled = false }) {
               variant="secondary"
               size="small"
               type="button"
-              aria-label="增加集数"
-              onClick={(e) => { e.stopPropagation(); adjustCount(1); }}
+              aria-label="增加单集时长"
+              onClick={(event) => { event.stopPropagation(); adjustDuration(1); }}
               className="!h-[24px] !w-[20px] !rounded-[4px] !border-0 !bg-transparent !p-0 !shadow-none !text-select-item-text-normal hover:!bg-white-8 hover:!text-white"
               contentClassName="!text-[16px]"
               style={{ outline: 'none' }}
@@ -112,4 +147,4 @@ function EpisodeCountSelector({ value, onChange, disabled = false }) {
   );
 }
 
-export default EpisodeCountSelector;
+export default EpisodeDurationSelector;

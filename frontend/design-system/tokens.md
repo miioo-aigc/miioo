@@ -28,6 +28,7 @@
 | Token 类名 | 引用梯度值 → 最终色值 | 用途 |
 |---|---|---|
 | `bg-surface-base` | neutral-400 → #111111 | 最底层背景，同时作为导航栏背景色（导航栏透明叠加其上） |
+| `bg-dark-bg` | #060606 | 剧本页初始创作入口内容区背景 |
 | `bg-surface-content-area` | neutral-200 → #161616 | 主内容区背景，页面最主要的背景色 |
 | `bg-surface-modal` | neutral-200 → #161616 | 弹窗背景，与内容区相同色，层次感靠阴影体现 |
 | `bg-surface-card` | neutral-300 → #131313 | 卡片背景，比内容区略深 |

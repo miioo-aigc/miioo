@@ -17,9 +17,9 @@
  *   ScriptPanel                                                          src/components/script/ScriptPanel.jsx
  *
  * ─── 主页面入口 ───────────────────────────────────────────────────────
- *   export default ScriptPage()                                         L124
- *     ├─ [状态] 受控/非受控 phase、剧本内容、选中分集、模型、保存和流式状态
- *     ├─ [函数] handleSend / handleStop / handleSave / handleExtractRequest
+ *   export default ScriptPage()                                         L126
+ *     ├─ [状态] 受控/非受控 phase、剧本内容、入口文件、模型、集数/时长和流式状态
+ *     ├─ [函数] handleSend / handleScriptFileSelect / handleStop / handleSave / handleExtractRequest
  *     └─ [副作用] 工作区加载、草稿恢复、流式请求、剧本和分集同步
  *
  * ─── 更新记录 ────────────────────────────────────────────────────────
@@ -30,6 +30,7 @@
  *   2026-07-15  抽离 InputCard、ScriptEmptyState 及输入区子组件，页面仅保留输入区编排
  *   2026-07-15  为 ScriptPanel 显式传入 hasScript，修复编辑动作禁用判断
  *   2026-07-16  补齐流式暂停回调的 setPhase 依赖，避免闭包使用旧阶段更新函数
+ *   2026-07-21  重做初始创作入口，输入卡移除上传并增加单集时长，分镜文件仅保留本地状态
  */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { apiSaveScriptWorkspace, apiGetScriptWorkspace, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiFinalizeScriptWorkspace, apiGetEpisodes } from '../api/subject';
@@ -141,9 +142,11 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
   const [selectedEpisode, setSelectedEpisode] = useState(0);
   // 仅在超时时设为已发送的内容，触发输入框恢复；成功/用户主动停止保持 '' 不恢复
   const [inputRestoreText, setInputRestoreText] = useState('');
-  const [inputRestoreFiles, setInputRestoreFiles] = useState([]);
+  const [scriptInputFile, setScriptInputFile] = useState(null);
+  const [storyboardInputFile, setStoryboardInputFile] = useState(null);
   const [selectedModel, setSelectedModel] = useState(null);
   const [episodeCount, setEpisodeCount] = useState(null);
+  const [episodeDuration, setEpisodeDuration] = useState(60);
   const [backendEpisodes, setBackendEpisodes] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -231,18 +234,54 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [phase, handleStop]);
 
-  const handleSend = async (text, files, model, epCount) => {
-    if (!text && files.length === 0) return;
+  const handleScriptFileSelect = async (file) => {
+    setScriptInputFile(file);
+    setHasStarted(true);
+    setPhase('thinking');
+    setScriptContent('');
+    setDraftContent('');
+    setSelectedEpisode(0);
+    setBackendEpisodes(null);
+
+    try {
+      const uploadResult = await apiUploadScriptWorkspace(projectId, file);
+      const uploadContent = uploadResult?.script?.content ?? uploadResult?.script?.parsed_content ?? uploadResult?.content;
+      if (!uploadContent) throw new Error('后端未返回剧本内容');
+
+      const formattedContent = formatEpisodeHeaders(uploadContent);
+      setScriptContent(formattedContent);
+      setPhase('view');
+      await apiFinalizeScriptWorkspace(projectId, { split_mode: 'rule_first' });
+      const episodes = await apiGetEpisodes(projectId);
+      if (Array.isArray(episodes) && episodes.length > 0) setBackendEpisodes(episodes);
+    } catch (error) {
+      console.error('[ScriptPage] 上传剧本失败:', error);
+      setScriptInputFile(null);
+      setScriptContent('');
+      setPhase('initial');
+      setHasStarted(false);
+      showToast(error?.message || '剧本上传失败，请稍后重试');
+    }
+  };
+
+  const handleDownloadTemplate = () => {
+    const anchor = document.createElement('a');
+    anchor.href = '/分镜模板.xlsx';
+    anchor.download = '分镜模板.xlsx';
+    anchor.click();
+  };
+
+  const handleSend = async (text, model, epCount, duration) => {
+    if (!text) return;
 
     // 暂存输入到本地缓存（fire-and-forget）
-    saveDraft(projectId, { text, modelId: model, episodeCount: epCount, files });
+    saveDraft(projectId, { text, modelId: model, episodeCount: epCount, episodeDuration: duration });
 
     // 发送前保存当前内容，超时时可恢复（避免丢失已有剧本）
     const prevContent = scriptContent;
 
     // 每次发送前清除上次的恢复内容（成功时不恢复）
     setInputRestoreText('');
-    setInputRestoreFiles([]);
     setStreamingPaused(false);
 
     // 取消上一次未完成的请求
@@ -272,7 +311,6 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
     const handleTimeout = () => {
       showToast('请求超时，请稍后重试');
       setInputRestoreText(text);
-      setInputRestoreFiles(files);
       if (receivedContent) {
         // 流式已收到部分内容则保留
         setScriptContent(receivedContent);
@@ -285,24 +323,8 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
     };
 
     try {
-      // 1. 先上传文件（逐个上传，最后一个生效）
-      //    上传内容仅在后端存储为上下文，不在前端展示为剧本
-      if (files.length > 0) {
-        for (const file of files) {
-          const uploadResult = await apiUploadScriptWorkspace(projectId, file);
-          const uploadContent = uploadResult?.script?.content ?? uploadResult?.script?.parsed_content ?? uploadResult?.content;
-          if (uploadContent) {
-            receivedContent = formatEpisodeHeaders(uploadContent);
-            // 仅在纯上传路径（无提示词）时直接展示内容
-            if (!text) {
-              setScriptContent(formatEpisodeHeaders(uploadContent));
-            }
-          }
-        }
-      }
-
-      // 2. 有文字消息时走流式 chat 接口
-      if (text) {
+      // 纯文本入口走流式 chat 接口。
+      {
         const chatMessage = epCount != null
           ? `${text}（集数要求：${epCount} 集）`
           : text;
@@ -333,20 +355,6 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
         );
         // SSE 完成后不立即切 view，由 AiStreamingContent 的打字动画播完后
         // 通过 onDone → handleStreamingDone 来切换到 view 阶段
-      } else {
-        // 无文字消息 → 纯上传路径，直接展示内容，无打字动画
-        if (!receivedContent) {
-          throw new Error('后端未返回剧本内容');
-        }
-        setPhase('view');
-        apiFinalizeScriptWorkspace(projectId, { split_mode: "rule_first" })
-          .then(() => apiGetEpisodes(projectId))
-          .then((episodes) => {
-            if (Array.isArray(episodes) && episodes.length > 0) {
-              setBackendEpisodes(episodes);
-            }
-          })
-          .catch((err) => console.error('[ScriptPage] 定稿失败:', err));
       }
     } catch (err) {
       // 504 网关超时
@@ -365,7 +373,6 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
           setPhase(prevContent ? 'view' : 'initial');
         }
         setInputRestoreText(text);
-        setInputRestoreFiles(files);
         showToast('网络连接失败，请检查网络后重试');
         return;
       }
@@ -382,7 +389,6 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
           // thinking 阶段用户主动暂停：尚未收到任何内容，恢复输入框并清空后端剧本
           stopReasonRef.current = null;
           setInputRestoreText(text);
-          setInputRestoreFiles(files);
           setScriptContent(prevContent);
           setPhase(prevContent ? 'view' : 'initial');
           setHasStarted(!!prevContent);
@@ -395,7 +401,6 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
 
       console.error('[ScriptPage] 生成剧本失败:', err);
       setInputRestoreText(text);
-      setInputRestoreFiles(files);
       setPhase('initial');
       setHasStarted(false);
       (() => {
@@ -552,7 +557,7 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
         paddingBottom: '16px',
         paddingLeft: '24px',
         paddingRight: '24px',
-        background: '#161616',
+        background: 'var(--color-dark-bg)',
         border: '1px solid #FFFFFF14',
         overflow: 'hidden',
       }}
@@ -560,14 +565,22 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
       {!hasStarted ? (
         <ScriptEmptyState
           onSend={handleSend}
+          onScriptFileSelect={handleScriptFileSelect}
+          scriptFile={scriptInputFile}
+          onRemoveScriptFile={() => setScriptInputFile(null)}
+          onStoryboardFileSelect={setStoryboardInputFile}
+          storyboardFile={storyboardInputFile}
+          onRemoveStoryboardFile={() => setStoryboardInputFile(null)}
+          onDownloadTemplate={handleDownloadTemplate}
           projectId={projectId}
           showToast={showToast}
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
           episodeCount={episodeCount}
           onEpisodeCountChange={setEpisodeCount}
+          episodeDuration={episodeDuration}
+          onEpisodeDurationChange={setEpisodeDuration}
           restoreText={inputRestoreText}
-          restoreFiles={inputRestoreFiles}
         />
       ) : (
         <div style={{ display: 'flex', minHeight: 0, flex: 1, alignItems: 'stretch', gap: '24px', alignSelf: 'stretch' }}>
@@ -605,11 +618,12 @@ export default function ScriptPage({ projectId, onGoToSubject, onScriptFinalized
                 showToast={showToast}
                 onStop={handleStop}
                 restoreText={inputRestoreText}
-                restoreFiles={inputRestoreFiles}
                 selectedModel={selectedModel}
                 onModelChange={setSelectedModel}
                 episodeCount={episodeCount}
                 onEpisodeCountChange={setEpisodeCount}
+                episodeDuration={episodeDuration}
+                onEpisodeDurationChange={setEpisodeDuration}
                 width="min(700px, 100%)"
                 disabled={phase === 'thinking' || phase === 'streaming'}
               />

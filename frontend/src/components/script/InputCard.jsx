@@ -3,35 +3,35 @@
  * @structure-index
  *
  * ─── 状态层 ─────────────────────────────────────────────────────────
- *   输入文本、文件列表、模型列表、焦点/悬停态和缓存导航游标
+ *   输入文本、模型列表、单集时长、焦点/悬停态和缓存导航游标
  *
  * ─── 数据流 ─────────────────────────────────────────────────────────
- *   模型 API、草稿缓存、文件校验；通过 onSend/onStop 和选择回调通知页面
+ *   模型 API、草稿缓存；通过 onSend/onStop 和选择回调通知页面
  *
  * ─── 组件结构 ───────────────────────────────────────────────────────
- *   UploadPlaceholder / FileCard / ModelSelector / EpisodeCountSelector / SendButton
+ *   Select / EpisodeCountSelector / EpisodeDurationSelector / SendButton
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 ScriptPage 抽离会话输入区，保持输入、缓存导航和发送行为不变
+ *   2026-07-21  移除输入卡上传能力，增加单集时长选择
+ *   2026-07-21  模型、时长和集数统一复用 Select UI 组件
+ *   2026-07-21  集数选择保留数字输入和加减按钮的自定义菜单
  *   2026-07-16  补齐模型加载和草稿缓存导航回调依赖，避免迁移后闭包引用失效
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiListModels } from '../../api/config';
 import { getCacheCount, getDraft } from '../../utils/scriptDraftCache';
+import { Select } from '../ui';
 import { ensureScriptInputStyle } from './ScriptInputStyles';
 import EpisodeCountSelector from './EpisodeCountSelector';
-import FileCard from './FileCard';
-import ModelSelector from './ModelSelector';
+import EpisodeDurationSelector from './EpisodeDurationSelector';
 import SendButton from './SendButton';
-import UploadPlaceholder from './UploadPlaceholder';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
-
-function InputCard({ onSend, onStop, restoreText = '', restoreFiles = [], selectedModel, onModelChange, episodeCount, onEpisodeCountChange, width = '700px', disabled = false, projectId = '', showToast }) {
+function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelChange, episodeCount, onEpisodeCountChange, episodeDuration = 60, onEpisodeDurationChange, width = '700px', disabled = false, projectId = '', showToast }) {
   const [text, setText] = useState(restoreText); // 挂载时使用 restoreText 作为初始值（超时回到空状态时预填充）
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [files, setFiles] = useState(restoreFiles);
   const [models, setModels] = useState([]);
   const prevDisabledRef = useRef(false);
   const cacheNavIndex = useRef(-1);
@@ -53,22 +53,17 @@ function InputCard({ onSend, onStop, restoreText = '', restoreFiles = [], select
   useEffect(() => {
     if (prevDisabledRef.current && !disabled) {
       setText(restoreText);
-      setFiles(restoreFiles);
     }
     prevDisabledRef.current = disabled;
-  }, [disabled, restoreText, restoreFiles]);
+  }, [disabled, restoreText]);
 
-  const handleFileSelect = (newFiles) => setFiles((prev) => [...prev, ...newFiles]);
-  const handleRemoveFile = (index) => setFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
-
-  const canSend = !disabled && (text.trim() || files.length > 0);
+  const canSend = !disabled && Boolean(text.trim());
 
   const handleSend = () => {
     if (!canSend) return;
     cacheNavIndex.current = -1;
-    onSend(text.trim(), files, selectedModel, episodeCount);
+    onSend(text.trim(), selectedModel, episodeCount, episodeDuration);
     setText('');
-    setFiles([]);
   };
 
   const handleStop = () => {
@@ -96,12 +91,12 @@ function InputCard({ onSend, onStop, restoreText = '', restoreFiles = [], select
     const draft = await getDraft(projectId, newIndex);
     if (draft) {
       setText(draft.text);
-      if (draft.files?.length) setFiles(draft.files);
       if (draft.modelId) onModelChange(draft.modelId);
       if (draft.episodeCount != null) onEpisodeCountChange(draft.episodeCount);
+      if (draft.episodeDuration != null) onEpisodeDurationChange?.(draft.episodeDuration);
       cacheNavIndex.current = newIndex;
     }
-  }, [onEpisodeCountChange, onModelChange, projectId, showToast]);
+  }, [onEpisodeCountChange, onEpisodeDurationChange, onModelChange, projectId, showToast]);
 
   // Shift+Down: 向前切换到更新的暂存输入
   const handleNavigateCacheBack = useCallback(async () => {
@@ -120,12 +115,12 @@ function InputCard({ onSend, onStop, restoreText = '', restoreFiles = [], select
     const draft = await getDraft(projectId, newIndex);
     if (draft) {
       setText(draft.text);
-      if (draft.files?.length) setFiles(draft.files);
       if (draft.modelId) onModelChange(draft.modelId);
       if (draft.episodeCount != null) onEpisodeCountChange(draft.episodeCount);
+      if (draft.episodeDuration != null) onEpisodeDurationChange?.(draft.episodeDuration);
       cacheNavIndex.current = newIndex;
     }
-  }, [onEpisodeCountChange, onModelChange, projectId, showToast]);
+  }, [onEpisodeCountChange, onEpisodeDurationChange, onModelChange, projectId, showToast]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'ArrowDown' && e.shiftKey) {
@@ -203,14 +198,6 @@ function InputCard({ onSend, onStop, restoreText = '', restoreFiles = [], select
             overflow: 'visible',
           }}
         >
-          {files.length > 0 && (
-            <div style={{ position: 'absolute', left: 0, display: 'flex', alignItems: 'flex-start', gap: '8px', bottom: 'calc(100% + 24px)' }}>
-              {files.map((file, index) => (
-                <FileCard key={index} file={file} onRemove={() => handleRemoveFile(index)} disabled={disabled} />
-              ))}
-            </div>
-          )}
-          <UploadPlaceholder onFileSelect={handleFileSelect} disabled={disabled} />
           <textarea
             disabled={disabled}
             className="placeholder:text-[#FFFFFF66]"
@@ -226,7 +213,7 @@ function InputCard({ onSend, onStop, restoreText = '', restoreFiles = [], select
               lineHeight: '18px',
               color: text ? '#FFFFFFCC' : '#FFFFFF66',
             }}
-            placeholder="支持.txt/.docx/.pdf/.md/.doc格式，最大 10MB，剧本不超过10w字符"
+            placeholder="在此输入你构想的故事内容，AI自动生成剧本"
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -236,19 +223,20 @@ function InputCard({ onSend, onStop, restoreText = '', restoreFiles = [], select
         </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0px', justifyContent: 'space-between', alignSelf: 'stretch' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: 0 }}>
-            <ModelSelector
-              label={selectedModel ? (models.find(m => m.model_id === selectedModel)?.name ?? selectedModel) : (models[0]?.name ?? '加载中…')}
-              options={models.map(m => m.name)}
+            <Select
+              value={selectedModel ?? ''}
+              displayValue={selectedModel ? (models.find(m => m.model_id === selectedModel)?.name ?? selectedModel) : (models[0]?.name ?? '加载中…')}
+              options={models.map(m => ({ value: m.model_id, label: m.name }))}
               width="200px"
               disabled={disabled}
-              onSelect={(name) => {
-                const m = models.find(m => m.name === name);
-                if (m) onModelChange?.(m.model_id);
-              }}
+              loading={models.length === 0}
+              onChange={onModelChange}
+              menuPlacement="up"
             />
-            <EpisodeCountSelector value={episodeCount} onChange={(v) => onEpisodeCountChange?.(v)} disabled={disabled} />
+            <EpisodeDurationSelector value={episodeDuration} onChange={onEpisodeDurationChange} disabled={disabled} />
+            <EpisodeCountSelector value={episodeCount} onChange={onEpisodeCountChange} disabled={disabled} />
           </div>
-          <SendButton onClick={disabled ? handleStop : handleSend} disabled={!canSend && !disabled} loading={disabled && !onStop} isGenerating={disabled && !!onStop} />
+          <SendButton onClick={disabled ? handleStop : handleSend} disabled={!canSend && !disabled} loading={disabled && !onStop} paused={disabled && !!onStop} />
         </div>
       </div>
     </div>

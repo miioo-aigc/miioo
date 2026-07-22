@@ -35,6 +35,7 @@
  *   2026-07-16  由 Home 按项目 ID 重建页面实例，移除同步草稿的级联 effect
  *   2026-07-21  抽离资产概况中的 ScriptProgress 与 ScriptProgressCard
  *   2026-07-21  资产概况剧本、角色、场景、道具内容区限制为两行并支持区域内滚动
+ *   2026-07-22  资产概况四类卡片统一为四列固定占比，数量不足四张时保留空列
  */
 
 import { lazy, Suspense, useState, useRef, useCallback, useEffect } from 'react';
@@ -659,7 +660,7 @@ function SubjectImageCard({ subject, type = 'char', selected = false, onClick })
       onMouseUp={() => setPressed(false)}
       onClick={onClick}
       style={{
-        flex: '1 1 180px',
+        width: '100%',
         height: '140px',
         borderRadius: '8px',
         overflow: 'hidden',
@@ -786,9 +787,9 @@ function SubjectOverviewCard({ label, type = 'char', subjects = [], emptyLabel, 
       ) : (
         /* gap-2 = 8px，对应 Paper 设计稿 */
         <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignContent: 'flex-start',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          alignContent: 'start',
           gap: '8px',
           maxHeight: '288px',
           overflowY: 'auto',

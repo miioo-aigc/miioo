@@ -73,7 +73,7 @@ export default function ScriptProgressCard({ title, status = 'pending' }) {
       style={{
         height: '80px',
         minWidth: 0,
-        flex: '1 1 200px',
+        width: '100%',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'flex-start',

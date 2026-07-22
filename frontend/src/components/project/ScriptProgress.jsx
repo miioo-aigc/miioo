@@ -43,9 +43,9 @@ export default function ScriptProgress({ episodes = [], episodeStatuses = {} }) 
         <EmptyScriptProgress />
       ) : (
         <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignContent: 'flex-start',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          alignContent: 'start',
           gap: '12px',
           maxHeight: '172px',
           overflowY: 'auto',

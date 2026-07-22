@@ -19,7 +19,7 @@
 - `GlobalSettings.jsx` 仅通过 `ScriptProgress` 传入 `episodes` 与 `episodeStatuses`；现有 `pending`、`generated`、`edited` 数据契约保持不变，并兼容 `storyboarded` 状态。
 - 页面未新增 API、Store 或副作用；状态来源仍由 Home 的 `buildEpisodeStatusMap` 提供。
 - 已同步 `src/components/project/index.js` 目录出口，后续项目域页面可复用卡片和容器。
-- 剧本进度和三类主体概览内容区最多展示两行；只有一行内容时按内容自适应高度，超出两行后在各自容器内纵向滚动。主体右上角跳转图标继续沿用 `char`、`scene`、`prop` 分类回调，并补充了无障碍名称。
+- 剧本进度和三类主体概览内容区最多展示两行；卡片按每行四列固定占比排列，少于四张时保持相同宽度，只有一行内容时按内容自适应高度，超出两行后在各自容器内纵向滚动。主体右上角跳转图标继续沿用 `char`、`scene`、`prop` 分类回调，并补充了无障碍名称。
 - 2026-07-22 修正剧本进度空态图标，改为项目设计稿指定的文档/星标 SVG，尺寸保持 `32px`，颜色保持 `#FFFFFF33`。
 - 2026-07-22 补充剧本解析后的分集同步：`ScriptPage` 从 `script-workspace/structure` 得到结构化分集后，通过已有 `onEpisodesChange` 回传 `Home`，项目总览无需新增接口即可即时展示剧集卡片；正式剧集接口仍为 `GET /api/projects/{projectId}/episodes`。
 - 2026-07-22 结构化分集适配补充保留 `episode_number` 和 `status`，总览卡片优先使用后端结构字段，缺失时回退到顺序编号和“未分镜”状态。

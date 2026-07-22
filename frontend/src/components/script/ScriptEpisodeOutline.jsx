@@ -15,6 +15,7 @@
  *   2026-07-21  分集操作按钮统一使用通用 Button 的 secondary/danger 变体
  *   2026-07-21  按设计反馈将剧集标签内边距调整为 6px 16px
  *   2026-07-21  将分集剧情展示和编辑区域固定为 600px 高度
+ *   2026-07-22  将分集剧情展示和编辑区域高度调整为 800px
  *   2026-07-21  增加剧集标签悬停、新增分集和双击重命名交互
  *   2026-07-21  将剧集标签间距调整为 16px，并为新增按钮动态扩展间隔槽
  *   2026-07-21  新增分集标签从插入间隔中间向两侧展开显示
@@ -214,7 +215,7 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
         </TextButton></div>}
       </div>
 
-      <div style={{ display: 'flex', height: '600px', minHeight: '600px', flexDirection: 'column', gap: '12px', padding: '12px', border: `1px solid ${isEditing ? '#2DC3E1' : '#3E3D3D'}`, borderRadius: '12px', boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', height: '800px', minHeight: '800px', flexDirection: 'column', gap: '12px', padding: '12px', border: `1px solid ${isEditing ? '#2DC3E1' : '#3E3D3D'}`, borderRadius: '12px', boxSizing: 'border-box' }}>
         {selectedEpisode ? (isEditing ? (
           <div style={{ display: 'flex', minHeight: 0, flex: 1 }}><ScriptEditor initialContent={draft} onContentChange={setDraft} /></div>
         ) : <div className="script-md" style={{ flex: 1, minHeight: 0, overflowY: 'auto', whiteSpace: 'pre-wrap', color: '#FFFFFF', fontSize: '14px', lineHeight: '20px' }}>{getEpisodeContent(selectedEpisode) ? <EpisodeMarkdown content={getEpisodeContent(selectedEpisode)} /> : '暂无剧情内容'}</div>) : <div style={{ color: '#FFFFFF66', fontSize: '14px' }}>暂无可编辑的分集剧情</div>}

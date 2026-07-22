@@ -20,7 +20,7 @@
 
 - [x] 项目总览“资产概况”中的剧本进度已组件化：新增 `src/components/project/ScriptProgress.jsx` 与 `src/components/project/ScriptProgressCard.jsx`，并通过 `src/components/project/index.js` 统一导出；`GlobalSettings.jsx` 只负责传入剧集数据和状态映射。
 - [x] 剧本进度卡片支持四种状态：未分镜、已分镜、剪辑中、完成；兼容现有 `pending`、`generated`、`edited` 数据契约，并支持 `storyboarded` 状态，不修改 API、Store 或状态来源。
-- [x] 剧本进度、角色、场景、道具容器最多展示两行卡片；只有一行内容时按内容自适应高度，超过两行后分别在各自容器内部纵向滚动。
+- [x] 剧本进度、角色、场景、道具容器最多展示两行卡片；卡片按每行四列固定占比排列，少于四张时保持相同宽度，只有一行内容时按内容自适应高度，超过两行后分别在各自容器内部纵向滚动。
 - [x] 角色、场景、道具右上角跳转图标保持可用，分别通过 `char`、`scene`、`prop` 跳转到主体页对应分类 Tab；已补充中文 `title` 与 `aria-label`，未改变原有跳转链路。
 - [x] 剧本解析得到结构化分集后，通过 `ScriptPage` 现有 `onEpisodesChange` 回传项目级剧集状态，项目总览“剧本进度”会即时展示分集卡片；正式剧集仍由 `/api/projects/{projectId}/episodes` 提供持久化数据。
 - [x] 结构化分集适配保留后端返回的 `episode_number` 与 `status`，解析阶段卡片优先显示后端编号和状态，缺失时再使用前端默认值。

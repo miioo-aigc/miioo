@@ -73,7 +73,7 @@ export default function ScriptOutlineLoading({ finalSectionTitle = '分集剧情
   return (
     <>
       <style>{SHIMMER_STYLE}</style>
-      <div aria-label="正在解析剧本" role="status" style={{ position: 'relative', display: 'flex', width: 'min(960px, 100%)', height: '100%', minHeight: 0, flexDirection: 'column', gap: '12px', overflow: 'auto', padding: '16px 24px', border: '1px solid #FFFFFF14', borderRadius: '16px', background: '#060606', color: '#FFFFFF', boxSizing: 'border-box' }}>
+      <div aria-label="正在解析剧本" role="status" style={{ position: 'relative', display: 'flex', width: 'min(960px, 100%)', minHeight: '100%', flexDirection: 'column', gap: '12px', overflow: 'visible', padding: '16px 24px', border: '1px solid #FFFFFF14', borderRadius: '16px', background: '#060606', color: '#FFFFFF', boxSizing: 'border-box' }}>
         <SkeletonSection title="整体设定" labels={sectionRows['整体设定']} />
         <SkeletonSection title="剧本设计" labels={sectionRows['剧本设计']} />
         <SkeletonSubjectSection />

@@ -33,6 +33,9 @@
  *   2026-07-22  下载改为读取最新结构化分集，确认修改后留在编排页并恢复分集编辑操作
  *   2026-07-22  初始创作流程统一使用消息区，移除整稿富文本编辑模式
  *   2026-07-22  上传普通剧本直接进入结构化编排；分镜脚本接入 Excel 异步导入和任务轮询
+ *   2026-07-22  将编排页整块内容区设为滚动容器，内部结构继续保持 960px 居中
+ *   2026-07-22  保持编排定位器脱离滚动层并绝对垂直居中
+ *   2026-07-22  将编排页外层设为非滚动视口，避免定位器随页面滚动
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
@@ -898,11 +901,11 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         paddingRight: '24px',
         background: 'var(--color-dark-bg)',
         border: '1px solid #FFFFFF14',
-        overflow: scriptOutlineMode ? 'visible' : 'hidden',
+        overflow: 'hidden',
       }}
     >
       {scriptOutlineMode ? (
-        <div style={{ position: 'relative', display: 'flex', minHeight: 0, flex: 1, justifyContent: 'center', alignItems: 'stretch', overflow: 'visible' }}>
+        <div style={{ position: 'relative', display: 'flex', minHeight: '100%', flex: 1, justifyContent: 'center', alignItems: 'stretch', overflow: 'visible' }}>
           {scriptOutlineLoading ? (
             <ScriptOutlineLoading finalSectionTitle={scriptOutlineType === 'storyboard' ? '分镜脚本' : '分集剧情'} />
           ) : scriptOutlineError ? (

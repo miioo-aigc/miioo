@@ -22,6 +22,10 @@
  *   2026-07-21  修复表单外轮廓描边被内部边框覆盖导致的缺角
  *   2026-07-21  修复整体设定和剧本设计表单底部描边显示不完整
  *   2026-07-21  将表单外轮廓改为内嵌描边，避免底边被内容层覆盖
+ *   2026-07-22  将整块编排内容区作为滚动容器，保留 960px 内容居中
+ *   2026-07-22  将定位器移出滚动层，保持编排区域内绝对垂直居中
+ *   2026-07-22  恢复 960px 外层定位基准，避免定位器被宽屏滚动视口裁掉
+ *   2026-07-22  将滚动视口扩展到整个内容区，定位器改由父级独立定位
  */
 import { useEffect, useRef, useState } from 'react';
 import { getCreationTypeLabel, getVisualStyleLabel } from '../../config/projectDisplayNames';
@@ -139,16 +143,20 @@ export default function ScriptOutlineWorkspace({ data, projectSettings, onRespli
   }, [episodes.length]);
 
   return (
-    <div style={{ position: 'relative', display: 'flex', width: 'min(960px, 100%)', height: '100%', minHeight: 0, flexDirection: 'column', overflow: 'visible', padding: 0, border: 0, borderRadius: '16px', background: '#060606', color: '#FFFFFF', fontFamily: FONT, boxSizing: 'border-box' }}>
-      <div ref={scrollContainerRef} style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
-        <div style={{ display: 'flex', width: '100%', maxWidth: '960px', margin: '0 auto', flexDirection: 'column', gap: '16px', paddingBottom: '16px' }}>
+    <div style={{ position: 'relative', display: 'block', width: '100%', height: '100%', minHeight: 0, overflow: 'visible', borderRadius: '16px', background: '#060606', color: '#FFFFFF', fontFamily: FONT, boxSizing: 'border-box' }}>
+      <div ref={scrollContainerRef} style={{ position: 'absolute', inset: 0, display: 'block', overflow: 'auto', padding: 0, boxSizing: 'border-box' }}>
+        <div style={{ position: 'relative', display: 'flex', width: 'min(960px, 100%)', minHeight: '100%', margin: '0 auto', flexDirection: 'column', gap: '16px', paddingBottom: '16px', boxSizing: 'border-box' }}>
           <section ref={(node) => { sectionRefs.current[0] = node; }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><SectionTitle>整体设定</SectionTitle><KeyValueTable rows={[['视觉风格', getVisualStyleLabel(settings.visualStyle)], ['画面比例', settings.aspectRatio], ['创作类型', getCreationTypeLabel(settings.creationType)]]} /></section>
           <section ref={(node) => { sectionRefs.current[1] = node; }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><SectionTitle>剧本设计</SectionTitle><KeyValueTable rows={[['故事梗概', design.synopsis], ['故事背景', design.background], ['世界观设定', design.world], ['核心冲突', design.conflict]]} /></section>
           <section ref={(node) => { sectionRefs.current[2] = node; }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><SectionTitle compactBottom>主体</SectionTitle><SubjectGroup title="角色" items={subjects.characters} /><SubjectGroup title="场景" items={subjects.scenes} /><SubjectGroup title="道具" items={subjects.props} /></section>
           {outlineType === 'storyboard' ? <ScriptStoryboardDocument fileName={storyboardFileName} downloadUrl={storyboardDownloadUrl} onDownload={onDownloadStoryboard} /> : <ScriptEpisodeOutline sectionRef={(node) => { sectionRefs.current[3] = node; }} episodes={episodes} revision={data?.revision || 0} selectedModel={selectedModel} onResplit={onResplit} onRegenerate={onRegenerateEpisode} onAdd={onAddEpisode} onPatch={onPatchStructure} onDelete={onDeleteEpisode} actionLoading={episodeActionLoading} actionError={episodeActionError} hideEpisodeActions={hideEpisodeActions} />}
         </div>
       </div>
-      <OutlineLocator activeIndex={activeSection} onSelect={scrollToSection} outlineType={outlineType} />
+      <div style={{ position: 'absolute', top: 0, left: 'calc(50% + min(480px, 50%))', height: '100%', pointerEvents: 'none', zIndex: 2 }}>
+        <div style={{ position: 'relative', width: 0, height: '100%', pointerEvents: 'auto' }}>
+          <OutlineLocator activeIndex={activeSection} onSelect={scrollToSection} outlineType={outlineType} />
+        </div>
+      </div>
     </div>
   );
 }

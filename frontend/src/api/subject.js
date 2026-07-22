@@ -69,15 +69,19 @@ export async function apiGetSubjectsPage(projectId, { type, episode_id, limit = 
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
   const data = await res.json();
   if (Array.isArray(data)) return { list: data, nextOffset: null, hasMore: false, total: data.length };
-  const list = data?.list ?? data?.items ?? data?.data ?? [];
+  // 兼容网关或统一响应包装：{ data: { list: [...] } } / { result: { list: [...] } }。
+  const payload = data?.data && typeof data.data === 'object' ? data.data
+    : data?.result && typeof data.result === 'object' ? data.result
+      : data;
+  const list = Array.isArray(payload) ? payload : payload?.list ?? payload?.items ?? (Array.isArray(payload?.data) ? payload.data : []);
   const currentOffset = offset ?? 0;
-  const hasMore = data?.has_more ?? data?.hasMore ?? false;
+  const hasMore = payload?.has_more ?? payload?.hasMore ?? false;
   const nextOffset = hasMore ? currentOffset + limit : null;
   return {
     list,
     nextOffset,
     hasMore,
-    total: data?.total ?? list.length,
+    total: payload?.total ?? list.length,
   };
 }
 
@@ -795,6 +799,37 @@ export async function apiPublishScriptStructure(projectId, {
   return { ...data, _async: res.status === 202, _status: res.status };
 }
 
+/** 按正式分集异步提取角色、场景和道具主体。 */
+export async function apiExtractSubjectsByEpisodes(projectId, {
+  episode_ids = [],
+  source_revision = null,
+  model = null,
+  force_retry = true,
+  client_request_id,
+} = {}) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/extract-subjects/episodes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      episode_ids: Array.isArray(episode_ids) ? episode_ids : [],
+      source_revision,
+      model,
+      force_retry,
+      client_request_id: client_request_id || scriptClientRequestId('script-subject-extraction'),
+    }),
+  });
+  if (!res.ok) {
+    let payload;
+    try { payload = await res.json(); } catch { payload = undefined; }
+    const error = new Error(getDisplayErrorMessage(payload, `提交主体抽取任务失败（${res.status}）`));
+    error.status = res.status;
+    error.rawPayload = payload;
+    throw error;
+  }
+  const data = await res.json();
+  return { ...data, _async: res.status === 202, _status: res.status };
+}
+
 function firstValue(source, keys) {
   for (const key of keys) {
     const value = source?.[key];
@@ -1177,23 +1212,46 @@ function firstDefined(source, keys) {
 export function normalizeStoryboardFileInfo(source) {
   const payload = source?.data || source?.result || source || {};
   const script = payload?.script && typeof payload.script === 'object' ? payload.script : {};
-  const nested = firstDefined(payload, ['storyboard_file', 'storyboardFile', 'storyboard_attachment', 'storyboardAttachment', 'attachment', 'file'])
-    || firstDefined(script, ['storyboard_file', 'storyboardFile', 'storyboard_attachment', 'storyboardAttachment', 'attachment', 'file']);
+  const structure = payload?.structure && typeof payload.structure === 'object' ? payload.structure : {};
+  const structurePayload = structure?.payload && typeof structure.payload === 'object' ? structure.payload : {};
+  const candidates = [payload, script, structure, structurePayload, payload?.task, payload?.active_task, payload?.active_operation]
+    .filter((value) => value && typeof value === 'object');
+  const nested = candidates.reduce((found, candidate) => found || firstDefined(candidate, ['storyboard_file', 'storyboardFile', 'storyboard_attachment', 'storyboardAttachment', 'attachment', 'file']), undefined);
   const file = nested && typeof nested === 'object' ? nested : {};
   return {
     fileName: firstDefined(file, ['file_name', 'fileName', 'filename', 'name'])
-      || firstDefined(payload, ['file_name', 'fileName', 'filename', 'name'])
-      || firstDefined(script, ['file_name', 'fileName', 'filename', 'name'])
+      || candidates.reduce((found, candidate) => found || firstDefined(candidate, ['file_name', 'fileName', 'filename']), '')
       || '',
     downloadUrl: firstDefined(file, ['download_url', 'downloadUrl', 'file_url', 'fileUrl', 'url'])
-      || firstDefined(payload, ['download_url', 'downloadUrl', 'file_url', 'fileUrl', 'url'])
-      || firstDefined(script, ['download_url', 'downloadUrl', 'file_url', 'fileUrl', 'url'])
+      || candidates.reduce((found, candidate) => found || firstDefined(candidate, ['download_url', 'downloadUrl', 'file_url', 'fileUrl']), '')
       || '',
     fileId: firstDefined(file, ['file_id', 'fileId', 'resource_id', 'resourceId', 'id'])
-      || firstDefined(payload, ['file_id', 'fileId', 'resource_id', 'resourceId'])
-      || firstDefined(script, ['file_id', 'fileId', 'resource_id', 'resourceId'])
+      || candidates.reduce((found, candidate) => found || firstDefined(candidate, ['file_id', 'fileId', 'resource_id', 'resourceId']), '')
       || '',
   };
+}
+
+/**
+ * 判断工作区或任务是否来自分镜脚本导入。
+ * 导入任务完成后，工作区不一定继续返回 source_type，因此同时兼容任务 operation。
+ */
+export function isStoryboardScriptSource(source) {
+  if (!source || typeof source !== 'object') return false;
+  const storyboardOperations = new Set(['storyboard_upload', 'storyboard_import', 'import_storyboard_xlsx']);
+  const storyboardSourceTypes = new Set(['storyboard_upload', 'storyboard_import', 'storyboard_xlsx', 'storyboard_script']);
+  const visited = new Set();
+  const inspect = (value) => {
+    if (!value || typeof value !== 'object' || visited.has(value)) return false;
+    visited.add(value);
+    if (Array.isArray(value)) return value.some(inspect);
+    const operation = String(value.operation || value.operation_type || value.operationType || '').toLowerCase();
+    if (storyboardOperations.has(operation)) return true;
+    const sourceType = String(value.source_type || value.sourceType || '').toLowerCase();
+    if (storyboardSourceTypes.has(sourceType)) return true;
+    if (value.storyboard_file || value.storyboardFile || value.storyboard_attachment || value.storyboardAttachment) return true;
+    return Object.values(value).some(inspect);
+  };
+  return inspect(source);
 }
 
 export function normalizeStoryboardImportResult(payload) {
@@ -1214,6 +1272,7 @@ export function normalizeStoryboardImportResult(payload) {
     status: payload?.status || payload?.task?.status || 'pending',
     workflowStage: payload?.workflow_stage || payload?.workflowStage || payload?.task?.workflow_stage || payload?.task?.workflowStage || '',
     sourceDraftRevision: payload?.source_draft_revision ?? payload?.sourceDraftRevision ?? null,
+    isStoryboardImport: true,
     ...normalizeStoryboardFileInfo(payload),
   };
 }

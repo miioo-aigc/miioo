@@ -38,7 +38,7 @@ import AssetsBatchToolbar from './AssetsBatchToolbar';
 import AssetsProjectListItem from './AssetsProjectListItem';
 import AssetsScrollableContent from './AssetsScrollableContent';
 import { EmptyProjectAssets } from './AssetsEmptyState';
-import { AssetsProjectDeleteModal, AssetsProjectRenameModal } from './AssetsProjectModals';
+import { AssetsProjectRenameModal } from './AssetsProjectModals';
 import AssetsProjectGrid from './AssetsProjectGrid';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -441,9 +441,11 @@ export default function AssetsProjectPanel() {
       )}
 
       {deleteTarget && (
-        <AssetsProjectDeleteModal
-          projectName={deleteTarget.name}
-          onClose={() => setDeleteTarget(null)}
+        <ConfirmDialog
+          title="确定要删除吗？"
+          description={`「${deleteTarget.name}」将被永久删除，无法恢复。`}
+          confirmText="删除"
+          onCancel={() => setDeleteTarget(null)}
           onConfirm={confirmDeleteProject}
         />
       )}

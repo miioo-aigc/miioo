@@ -10,21 +10,25 @@
  *                                                                        L41–L98
  *
  * ─── 菜单与弹窗组件 ────────────────────────────────────────────────
- *   MoreMenu / MoreMenuItem          项目操作菜单                         L109 / L144
- *   RenameModal                      项目重命名弹窗                       L161
- *   DeleteProjectDialog              删除确认弹窗                         L292
+ *   MoreMenu                         项目操作菜单                         L115
+ *   RenameModal                      项目重命名弹窗                       L130
+ *   ConfirmDialog                    删除确认弹窗                         页面底部组合
  *
  * ─── 结果/状态展示组件 ─────────────────────────────────────────────
- *   NewProjectCard                   新建项目卡片                         L350
- *   ProjectCard                      项目卡片与更多操作                   L390
+ *   NewProjectCard                   新建项目卡片                         L319
+ *   ProjectCard                      项目卡片与更多操作                   L359
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────────
- *   export default ProjectList()     搜索、项目筛选和弹窗编排             L519
- *     ├─ [状态] searchValue / searchFocused / searchHovered              L520–L522
- *     ├─ [状态] renameTarget / deleteTarget                               L523–L524
- *     └─ [函数] filtered             根据项目名称过滤列表                  L526
+ *   export default ProjectList()     搜索、项目筛选和弹窗编排             L488
+ *     ├─ [状态] searchValue / searchFocused / searchHovered              L489–L491
+ *     ├─ [状态] renameTarget / deleteTarget                               L492–L493
+ *     └─ [函数] filtered             根据项目名称过滤列表                  L495
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-07-22  项目删除二次确认改用标准 ConfirmDialog
+ *   2026-07-22  移除更多操作下拉菜单选项的黑色描边
+ *   2026-07-22  按标准元素修正更多操作菜单项内边距和高度
+ *   2026-07-22  按反馈将项目卡片标题信息列间距调整为 4px
  *   2026-07-15  抽离通用按钮组件并迁移弹窗操作按钮
  *   2026-07-15  将项目操作菜单项迁移到 Button 基础能力
  *   2026-07-15  按当前代码补齐结构索引行号
@@ -33,7 +37,8 @@ import { useState, useRef, useEffect } from 'react';
 import defaultCover from '../assets/project-default-cover.png';
 import { formatRelativeTime } from '../utils/formatTime';
 import { normalizeImageUrl } from '../utils/imageUrl';
-import { Button, ButtonGroup, IconButton, TextButton } from '../components/ui';
+import { Button, ButtonGroup, DropdownMenu, IconButton, TextButton } from '../components/ui';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -109,52 +114,16 @@ function CloseIcon() {
 // ── More Menu Dropdown ─────────────────────────────────────────────────────
 
 function MoreMenu({ onRename, onCopy, onDelete, onClose }) {
-  const ref = useRef(null);
-
-  useEffect(() => {
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [onClose]);
-
   return (
-    <div
-      ref={ref}
-      style={{
-        position: 'absolute',
-        bottom: '100%',
-        right: 0,
-        marginBottom: '4px',
-        width: '140px',
-        background: '#1D1E1E',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: '8px',
-        padding: '4px',
-        zIndex: 10,
-        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-      }}
-    >
-      <MoreMenuItem icon={<PencilIcon />} label="重命名" onClick={onRename} />
-      <MoreMenuItem icon={<CopyIcon />} label="复制项目" onClick={onCopy} />
-      <MoreMenuItem icon={<TrashIcon />} label="删除" danger onClick={onDelete} />
-    </div>
-  );
-}
-
-function MoreMenuItem({ icon, label, danger, onClick }) {
-  return (
-    <Button
-      variant="secondary"
-      size="small"
-      icon={icon}
-      onClick={onClick}
-      contentClassName={danger ? '!text-text-danger' : '!text-white-80'}
-      className="!h-8 !w-full !justify-start !rounded-[6px] !border-0 !bg-transparent !px-[8px] !shadow-none hover:!bg-white-5 active:!bg-white-10"
-    >
-      {label}
-    </Button>
+    <DropdownMenu
+      width="178px"
+      onClose={onClose}
+      items={[
+        { key: 'rename', icon: <PencilIcon />, label: '重命名', onClick: onRename },
+        { key: 'copy', icon: <CopyIcon />, label: '复制项目', onClick: onCopy },
+        { key: 'delete', icon: <TrashIcon />, label: '删除', danger: true, onClick: onDelete },
+      ]}
+    />
   );
 }
 
@@ -289,64 +258,6 @@ function RenameModal({ initialName, onConfirm, onCancel }) {
   );
 }
 
-// ── Delete Confirm Dialog ──────────────────────────────────────────────────
-
-function DeleteProjectDialog({ projectName, onConfirm, onCancel }) {
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 50,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-      }}
-      onClick={onCancel}
-    >
-      <div
-        style={{
-          width: '360px',
-          background: '#161616',
-          borderRadius: '16px',
-          padding: '24px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '24px',
-          boxShadow: '#00000099 0px 8px 32px',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <span style={{ fontFamily: FONT_MEDIUM, fontWeight: 500, fontSize: '16px', lineHeight: '20px', color: '#FFFFFF' }}>
-              确定要删除吗？
-            </span>
-            <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: 'rgba(255,255,255,0.6)' }}>
-              「{projectName}」将被永久删除，无法恢复。
-            </span>
-          </div>
-          <IconButton
-            icon={<CloseIcon />}
-            aria-label="关闭删除项目弹窗"
-            variant="secondary"
-            size="small"
-            onClick={onCancel}
-            className="size-7 rounded-[8px] border-0 bg-transparent p-0 shadow-none hover:bg-white-5 active:bg-white-10"
-          />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
-          <TextButton onClick={onCancel}>取消</TextButton>
-          <Button variant="danger" onClick={onConfirm}>删除</Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Project Card ───────────────────────────────────────────────────────────
 
 function NewProjectCard({ onClick }) {
@@ -473,7 +384,7 @@ function ProjectCard({ project, onRename, onCopy, onDelete, onOpen }) {
           padding: '12px',
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, flex: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 }}>
           <span style={{ fontFamily: FONT_MEDIUM, fontSize: '14px', color: '#FFFFFF', lineHeight: '1.2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {project.name}
           </span>
@@ -624,8 +535,10 @@ export default function ProjectList({ projects = [], onNewProject, onRenameProje
       )}
 
       {deleteTarget && (
-        <DeleteProjectDialog
-          projectName={deleteTarget.name}
+        <ConfirmDialog
+          title="确定要删除吗？"
+          description={`「${deleteTarget.name}」将被永久删除，无法恢复。`}
+          confirmText="删除"
           onConfirm={() => {
             onDeleteProject?.(deleteTarget.id);
             setDeleteTarget(null);

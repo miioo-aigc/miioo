@@ -15,5 +15,5 @@ export { default as AssetsAudioCard } from './AssetsAudioCard';
 export { default as AssetsProjectPanel } from './AssetsProjectPanel';
 export { default as AssetsCreativePanel } from './AssetsCreativePanel';
 export { AssetCard, ProjectAssetCard } from './AssetsCards';
-export { AssetsProjectDeleteModal, AssetsProjectRenameModal } from './AssetsProjectModals';
+export { AssetsProjectRenameModal } from './AssetsProjectModals';
 export { default as AssetsProjectGrid } from './AssetsProjectGrid';

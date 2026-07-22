@@ -55,7 +55,7 @@
  *   2026-07-16  迁移 API 配置提示气泡至 components/home/ApiConfigBubble.jsx；页面仅负责显示条件和底部导航动作
  *   2026-07-16  迁移首页 Toast 展示至 components/home/HomeToast.jsx；页面继续持有提示状态、定时器和 showToast
  *   2026-07-17  迁移首页主导航与底部快捷导航布局至 components/home/HomeNavigationRail.jsx；页面继续负责导航状态和回调
- *   2026-07-22  主体生成改为发布结构、检查存储用量并轮询剧本任务
+ *   2026-07-22  主体生成改为发布结构、检查存储用量并轮询剧本任务；完成后强制刷新主体列表并兼容嵌套响应
  *   2026-07-06  新增 subject cache 订阅 useEffect，实时同步 sharedChars/sharedScenes/sharedProps
  *   2026-07-01  初始结构索引建立
  */
@@ -66,7 +66,7 @@ import { getToken, getRefreshToken, refreshAccessToken } from '../api/request';
 import { clearTokens, apiLogout, apiCompleteWechatCallback } from '../api/auth';
 import { apiListProviders } from '../api/config';
 import { apiGetCurrentUser, apiGetNotifications, apiGetStorageUsage } from '../api/user';
-import { apiGetSubjects, apiGetSubjectsPage, apiGetEpisodes, apiGetScriptWorkspace, apiGetScriptStructure, apiFinalizeScriptWorkspace, apiPublishScriptStructure, apiGetScriptTask } from '../api/subject';
+import { apiGetSubjects, apiGetSubjectsPage, apiGetEpisodes, apiGetScriptWorkspace, apiGetScriptStructure, apiFinalizeScriptWorkspace, apiPublishScriptStructure, apiExtractSubjectsByEpisodes, apiGetScriptTask } from '../api/subject';
 import { apiGetStoryboards, apiGenerateStoryboardsFromFinalScript, apiGetTask } from '../api/storyboard';
 import { invalidate } from '../utils/cache';
 import { normalizeImageUrl } from '../utils/imageUrl';
@@ -701,7 +701,7 @@ export default function Home({ onGoToAdmin }) {
     }
   };
 
-  // 提取主体回调（由 SubjectPage 在挂载时调用）：发布结构、检查存储并轮询异步任务
+  // 提取主体回调（由 SubjectPage 在挂载时调用）：发布结构、提交主体抽取并轮询任务
   const handleExtractSubjects = useCallback(async () => {
     if (extractingSubjectsRef.current) return;
     extractingSubjectsRef.current = true;
@@ -732,22 +732,30 @@ export default function Home({ onGoToAdmin }) {
         throw new Error('当前存储空间不足，无法生成主体，请先清理项目资产');
       }
 
-      const deadline = Date.now() + 10 * 60 * 1000;
-      let task = taskResponse;
-      while (Date.now() < deadline) {
-        const status = String(task?.status || '').toLowerCase();
-        if (['completed', 'succeeded', 'success'].includes(status)) break;
-        if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
-          throw new Error(task?.error?.message || task?.error?.detail || task?.status_message || '主体提取任务失败');
+      const pollScriptTask = async (initialTask, timeoutMessage) => {
+        const deadline = Date.now() + 10 * 60 * 1000;
+        let task = initialTask;
+        while (Date.now() < deadline) {
+          const status = String(task?.status || '').toLowerCase();
+          if (['completed', 'succeeded', 'success'].includes(status)) return task;
+          if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
+            throw new Error(task?.error?.message || task?.error?.detail || task?.status_message || '主体提取任务失败');
+          }
+          await new Promise(resolve => setTimeout(resolve, 2500));
+          task = await apiGetScriptTask(projectId, task?.task_id || taskId);
         }
-        await new Promise(resolve => setTimeout(resolve, 2500));
-        task = await apiGetScriptTask(projectId, taskId);
-      }
+        throw new Error(timeoutMessage);
+      };
 
-      const finalStatus = String(task?.status || '').toLowerCase();
-      if (!['completed', 'succeeded', 'success'].includes(finalStatus)) {
-        throw new Error('剧本发布任务超时，请稍后刷新主体列表');
-      }
+      // structure/publish 只把结构草稿物化为正式分集；它不会创建主体。
+      await pollScriptTask(taskResponse, '剧本发布任务超时，请稍后重试');
+
+      const subjectTaskResponse = await apiExtractSubjectsByEpisodes(projectId, {
+        episode_ids: [],
+        source_revision: structureRevision,
+        force_retry: true,
+      });
+      await pollScriptTask(subjectTaskResponse, '主体抽取任务超时，请稍后刷新主体列表');
 
       if (currentProjectIdRef.current !== projectId) {
         showToast(`「${projectName}」主体抽取完成`, 'success');
@@ -757,11 +765,25 @@ export default function Home({ onGoToAdmin }) {
       invalidate(K.subjectsPrefix(projectId));
       invalidate(K.projectOverview(projectId));
       const SUBJECT_LIMIT = 20;
-      const [charsPage, scenesPage, propsPage] = await Promise.all([
-        apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }),
-        apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }),
-        apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }),
-      ]);
+      // 发布任务完成后主体写入可能还在同一条异步链路的收尾阶段。
+      // 强制重新读取，短暂读到空列表时再重试，避免成功任务把主体页留在空态。
+      const loadPublishedSubjects = async () => {
+        let pages;
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          pages = await Promise.all([
+            apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }),
+            apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }),
+            apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }),
+          ]);
+          if (pages.some(page => page.list.length > 0) || attempt === 4) return pages;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        return pages;
+      };
+      const [charsPage, scenesPage, propsPage] = await loadPublishedSubjects();
+      if (![charsPage, scenesPage, propsPage].some(page => page.list.length > 0)) {
+        throw new Error('主体抽取任务已完成，但暂未读取到主体数据，请稍后重试');
+      }
       setSharedChars(normalizeSubjects(charsPage.list));
       setSharedScenes(normalizeSubjects(scenesPage.list));
       setSharedProps(normalizeSubjects(propsPage.list));

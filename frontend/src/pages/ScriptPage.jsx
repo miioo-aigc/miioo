@@ -36,9 +36,10 @@
  *   2026-07-22  将编排页整块内容区设为滚动容器，内部结构继续保持 960px 居中
  *   2026-07-22  保持编排定位器脱离滚动层并绝对垂直居中
  *   2026-07-22  将编排页外层设为非滚动视口，避免定位器随页面滚动
+ *   2026-07-22  统一从分镜导入任务和工作区恢复编排类型，避免误渲染分集剧情
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
+import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
 import { Button } from '../components/ui';
 import { InputCard, ScriptEmptyState, ScriptMessageArea, ScriptOutlineLoading, ScriptOutlineWorkspace, ScriptModifyConfirmModal } from '../components/script';
 
@@ -47,6 +48,7 @@ const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans
 const CHAT_TIMEOUT_MS = 120_000; // 2 分钟客户端超时兜底（后端通常先返回 504）
 const SCRIPT_OUTLINE_POLL_INTERVAL_MS = 1_500;
 const SCRIPT_OUTLINE_TIMEOUT_MS = 5 * 60 * 1_000;
+const SCRIPT_OUTLINE_TYPE_STORAGE_PREFIX = 'miioo:script-outline-type:';
 
 function getScriptTaskId(task) {
   if (!task || typeof task !== 'object') return null;
@@ -74,6 +76,33 @@ function formatEpisodeHeaders(content) {
 function sanitizeDownloadName(name, fallback = '剧本') {
   const normalized = String(name || '').trim().replace(/[\\/:*?"<>|]/g, '_');
   return normalized || fallback;
+}
+
+function scriptOutlineTypeStorageKey(projectId) {
+  return projectId ? `${SCRIPT_OUTLINE_TYPE_STORAGE_PREFIX}${projectId}` : '';
+}
+
+function readStoredScriptOutlineType(projectId) {
+  if (typeof window === 'undefined') return '';
+  const key = scriptOutlineTypeStorageKey(projectId);
+  if (!key) return '';
+  try {
+    return window.sessionStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+}
+
+function storeScriptOutlineType(projectId, type) {
+  if (typeof window === 'undefined') return;
+  const key = scriptOutlineTypeStorageKey(projectId);
+  if (!key) return;
+  try {
+    if (type) window.sessionStorage.setItem(key, type);
+    else window.sessionStorage.removeItem(key);
+  } catch {
+    // 存储不可用时仍以当前页面状态为准。
+  }
 }
 
 function Toast({ toasts }) {
@@ -156,6 +185,11 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   const stopReasonRef = useRef(null); // 'user-thinking' | 'user-streaming' | null
   const abortControllerRef = useRef(null); // 用于取消进行中的流式请求
   const outlinePollStartedAtRef = useRef(null);
+
+  const setOutlineType = useCallback((type) => {
+    setScriptOutlineType(type);
+    storeScriptOutlineType(projectId, type);
+  }, [projectId]);
 
   const scriptContentRef = useRef(scriptContent);
   scriptContentRef.current = scriptContent;
@@ -396,8 +430,10 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       .then((data) => {
         const content = data?.script?.content || data?.content;
         const sourceType = data?.script?.source_type || data?.script?.sourceType || data?.source_type || data?.sourceType || '';
-        const isStoryboardUpload = ['storyboard_upload', 'storyboard_import'].includes(String(sourceType).toLowerCase())
-          || Boolean(data?.storyboard_file || data?.storyboardFile || data?.storyboard_attachment);
+        const isStoryboardUpload = isStoryboardScriptSource(data)
+          || isStoryboardScriptSource(data?.active_task)
+          || isStoryboardScriptSource(data?.active_operation)
+          || isStoryboardScriptSource(data?.structure);
         const isUploadedScript = isStoryboardUpload || String(sourceType).toLowerCase() === 'script_upload';
         const restoredStoryboard = normalizeStoryboardFileInfo(data);
         if (restoredStoryboard.fileName) setStoryboardFileName(restoredStoryboard.fileName);
@@ -420,7 +456,8 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         const hasStoryboardFile = Boolean(restoredStoryboard.fileName || restoredStoryboard.downloadUrl || restoredStoryboard.fileId);
         if (data?.structure || activeTaskId || hasStoryboardFile) {
           setScriptOutlineMode(true);
-          setScriptOutlineType(isStoryboardUpload ? 'storyboard' : 'script');
+          const storedOutlineType = readStoredScriptOutlineType(projectId);
+          setOutlineType(isStoryboardUpload || storedOutlineType === 'storyboard' ? 'storyboard' : 'script');
           setScriptOutlineError('');
           if (data?.structure) {
             setScriptOutlineData(normalizeScriptStructure(data.structure));
@@ -430,6 +467,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
             setScriptOutlineLoading(false);
           }
           if (activeTaskId) {
+            if (isStoryboardScriptSource(activeTask)) setOutlineType('storyboard');
             setScriptOutlineTaskId(activeTaskId);
             setScriptOutlineLoading(true);
             outlinePollStartedAtRef.current = Date.now();
@@ -457,7 +495,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       // 这里不能再自动调用旧 finalize，否则会在用户点击确认前改写
       // script.draft_revision，导致 confirm 使用旧版本号返回 409。
       ;
-  }, [projectId, isControlled, setScriptContent, setPhase, setHasStarted]);
+  }, [projectId, isControlled, setScriptContent, setPhase, setHasStarted, setOutlineType]);
 
   // 编排确认任务轮询：页面卸载、任务终态或超过最大等待时间时立即清理。
   useEffect(() => {
@@ -476,11 +514,13 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       try {
         const task = await apiGetScriptTask(projectId, scriptOutlineTaskId);
         if (disposed) return;
+        if (isStoryboardScriptSource(task)) setOutlineType('storyboard');
         const status = String(task?.status || '').toLowerCase();
         if (['completed', 'success', 'succeeded'].includes(status)) {
           const structure = await apiGetScriptStructure(projectId);
           if (disposed) return;
-          if (scriptOutlineType === 'storyboard') {
+          if (scriptOutlineType === 'storyboard' || isStoryboardScriptSource(task)) {
+            setOutlineType('storyboard');
             const workspace = await apiGetScriptWorkspace(projectId, { fresh: true });
             const fileInfo = normalizeStoryboardFileInfo(workspace);
             if (fileInfo.fileName) setStoryboardFileName(fileInfo.fileName);
@@ -495,6 +535,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
           const structure = await apiGetScriptStructure(projectId);
           if (disposed) return;
           const normalized = normalizeScriptStructure(structure);
+          if (isStoryboardScriptSource(task)) setOutlineType('storyboard');
           const hasUsableStructure = Boolean(
             normalized.episodes.length
             || normalized.subjects.characters.length
@@ -537,7 +578,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       disposed = true;
       window.clearTimeout(timerId);
     };
-  }, [projectId, scriptOutlineMode, scriptOutlineTaskId, scriptOutlineType]);
+  }, [projectId, scriptOutlineMode, scriptOutlineTaskId, scriptOutlineType, setOutlineType]);
 
   // 剧本解析先写入结构工作区，正式 episodes 物化前也要让项目总览即时显示分集卡片。
   // 解析完成、部分完成或刷新恢复结构时都通过同一个回调同步到 Home。
@@ -577,7 +618,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     setHasStarted(true);
     setPhase('thinking');
     setScriptContent('');
-    setScriptOutlineType('script');
+    setOutlineType('script');
     setScriptOutlineMode(true);
     setScriptOutlineLoading(true);
     setScriptOutlineError('');
@@ -603,7 +644,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     setPhase('thinking');
     setScriptContent('');
     setMessages([]);
-    setScriptOutlineType('storyboard');
+    setOutlineType('storyboard');
     setScriptOutlineMode(true);
     setScriptOutlineLoading(true);
     setScriptOutlineError('');
@@ -620,6 +661,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       if (fileInfo.downloadUrl) setStoryboardDownloadUrl(fileInfo.downloadUrl);
       const taskId = result?.taskId || getScriptTaskId(result);
       if (taskId) {
+        setOutlineType('storyboard');
         setScriptOutlineTaskId(taskId);
         return;
       }
@@ -629,10 +671,12 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       if (workspaceFile.downloadUrl) setStoryboardDownloadUrl(workspaceFile.downloadUrl);
       const activeTaskId = getScriptTaskId(workspace?.active_task || workspace?.active_operation || workspace);
       if (activeTaskId) {
+        setOutlineType('storyboard');
         setScriptOutlineTaskId(activeTaskId);
         return;
       }
       if (workspace?.structure) {
+        setOutlineType('storyboard');
         setScriptOutlineData(normalizeScriptStructure(workspace.structure));
         setScriptOutlineLoading(false);
         return;

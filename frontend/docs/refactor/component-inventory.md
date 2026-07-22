@@ -1,5 +1,18 @@
 # 组件重构盘点基线
 
+## 2026-07-22 项目删除二次确认统一
+
+- `src/pages/ProjectList.jsx` 的项目删除确认改为直接复用标准 `src/components/ConfirmDialog.jsx`，页面只负责传入项目名称、确认文案和删除回调。
+- `src/components/assets/AssetsProjectPanel.jsx` 的项目删除确认同步改用标准 `ConfirmDialog`；资产页仍由页面组件持有删除 API 和关闭状态。
+- 移除 `AssetsProjectModals.jsx` 中重复的 `AssetsProjectDeleteModal` 及目录出口，保留项目重命名弹窗。
+- `ConfirmDialog` 的标准宽度、布局和接口保持不变；本次只调整调用方，项目删除行为和业务回调保持不变。
+
+## 2026-07-22 通用 DropdownMenu
+
+- 新增 `src/components/ui/DropdownMenu.jsx`，统一操作菜单面板、菜单项尺寸、纯文本/图标/右侧图标/二级菜单变体、悬停/按下状态、菜单外点击关闭和无障碍角色。
+- 面板按标准元素使用 `178px` 宽度、`4px` 内边距、`8px` 圆角、`1px rgba(255,255,255,0.05)` 描边和 `0 4px 16px` 阴影；菜单项使用 `8px 12px` 内边距和 `14px/18px` 文本规格。
+- `ProjectList` 的项目更多操作菜单已接入通用组件，业务回调和项目状态仍由页面保留。
+
 > 盘点日期：2026-07-17（最终手动验收与 OpenSpec 收尾审查）
 > 分支：`feat/frontend_V1.1`
 > 目的：为组件抽离和页面迁移提供可复查基线，不代表本文件中的数量永久不变。
@@ -1344,6 +1357,7 @@
 - `ScriptStoryboardDocument` 不调用 API、不解析 Excel、不创建临时下载 URL；下载地址为空时下载入口禁用。
 - 分镜导入 `202` 响应按接口契约区分 `task_id` 与 `operation_id`：前者进入任务轮询，后者仅保留为操作标识；`422` 响应的后端校验明细由 API 适配层透传给页面错误态。
 - 分镜导入路径来自后端工作流记录，当前本地 OpenAPI 尚未同步，待后端接口文档完善后复核任务字段、失败状态和文件恢复字段。
+- 分镜导入完成后，页面统一根据任务、工作区和结构响应中的来源字段恢复 `storyboard` 模式；在后端暂未持久化来源字段的过渡期，按项目保留会话级类型，避免结构响应中的 `episodes` 触发错误的“分集剧情”展示。后端契约稳定后需再次收紧该兜底。
 
 - 新增 `src/components/script/ScriptModifyConfirmModal.jsx`，负责主体已解锁后进入剧本修改态前的二次确认，页面只负责打开、确认和关闭状态。
 - 主体已解锁且未确认修改时，`ScriptEpisodeOutline` 隐藏 AI 重新分集、AI 重写本集、编辑和删除本集操作；确认修改后重新进入编排态时恢复这些操作。

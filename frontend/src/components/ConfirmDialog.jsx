@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { Button } from './ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -145,14 +146,9 @@ export default function ConfirmDialog({
           }}
         >
           {/* 取消按钮 */}
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex h-9 shrink-0 items-center justify-center rounded-lg border border-btn-primary-border bg-btn-primary-bg-normal px-[16px] text-sm/[18px] text-text-secondary outline outline-1 outline-stroke-outline [box-shadow:3px_3px_8px_var(--color-black-40)] transition-colors hover:bg-btn-primary-bg-hover active:bg-btn-primary-bg-active cursor-pointer"
-            style={{ fontFamily: FONT }}
-          >
+          <Button variant="secondary" onClick={onCancel}>
             {cancelText}
-          </button>
+          </Button>
 
           {/* 确认按钮 */}
           {isOrange ? (
@@ -169,14 +165,9 @@ export default function ConfirmDialog({
               {confirmText}
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={onConfirm}
-              className="flex h-9 shrink-0 items-center justify-center rounded-lg border border-btn-danger-border bg-btn-danger-bg-normal px-[16px] text-sm/[18px] font-medium text-white transition-colors hover:bg-btn-danger-bg-hover active:bg-btn-danger-bg-active cursor-pointer"
-              style={{ fontFamily: FONT_MEDIUM }}
-            >
+            <Button variant="danger" onClick={onConfirm}>
               {confirmText}
-            </button>
+            </Button>
           )}
         </div>
       </div>

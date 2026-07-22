@@ -4,7 +4,13 @@
  *
  * ─── 组件职责 ───────────────────────────────────────────────────────
  *   只读展示分镜脚本文稿信息和下载动作，不调用 API。
+ *   下载动作复用 UI TextButton 的 link 变体。
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-07-22  下载入口改用 TextButton link 变体，保留后端地址和禁用态
  */
+import { TextButton } from '../ui';
+
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
 function ExcelIcon() {
@@ -28,10 +34,16 @@ export default function ScriptStoryboardDocument({ fileName = '', downloadUrl = 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', minHeight: '72px', padding: '12px 24px 12px 12px', border: '1px solid #3E3D3D', borderRadius: '12px', boxSizing: 'border-box' }}>
         <ExcelIcon />
         <span title={fileName} style={{ minWidth: 0, overflow: 'hidden', color: '#FFFFFF', fontSize: '14px', lineHeight: '20px', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fileName || '未获取到分镜脚本文稿'}</span>
-        <button type="button" disabled={!canDownload} onClick={() => { if (downloadUrl) window.open(downloadUrl, '_blank', 'noopener,noreferrer'); else onDownload?.(); }} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto', padding: 0, border: 0, background: 'transparent', color: canDownload ? '#2DC3E1' : '#FFFFFF66', fontFamily: FONT, fontSize: '14px', lineHeight: '20px', cursor: canDownload ? 'pointer' : 'not-allowed' }}>
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg"><path d="M7 2V9M7 9L4 6.5M7 9L10 6.5M2 11H12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          下载
-        </button>
+        <TextButton
+          type="button"
+          variant="link"
+          disabled={!canDownload}
+          onClick={() => { if (downloadUrl) window.open(downloadUrl, '_blank', 'noopener,noreferrer'); else onDownload?.(); }}
+          style={{ marginLeft: 'auto', fontFamily: FONT, fontSize: '14px', lineHeight: '20px' }}
+          icon={(
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg"><path d="M7 2V9M7 9L4 6.5M7 9L10 6.5M2 11H12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          )}
+        >下载</TextButton>
       </div>
     </section>
   );

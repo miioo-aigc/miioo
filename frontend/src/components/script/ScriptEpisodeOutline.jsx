@@ -50,6 +50,7 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
   const [editingEpisodeId, setEditingEpisodeId] = useState(null);
   const [episodeNameDraft, setEpisodeNameDraft] = useState('');
   const [revealingEpisodeId, setRevealingEpisodeId] = useState(null);
+  const [pendingInsertIndex, setPendingInsertIndex] = useState(null);
   const revealTimerRef = useRef(null);
   const episodeListRef = useRef(null);
 
@@ -57,7 +58,14 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
     if (revealTimerRef.current) window.clearTimeout(revealTimerRef.current);
   }, []);
 
-  const selectedEpisode = useMemo(() => episodes.find((episode) => episode.id === selectedId) || episodes[0] || null, [episodes, selectedId]);
+  const selectedEpisode = useMemo(() => {
+    const directMatch = episodes.find((episode) => episode.id === selectedId);
+    if (directMatch) return directMatch;
+    if (selectedId && pendingInsertIndex !== null) {
+      return episodes[pendingInsertIndex] || null;
+    }
+    return episodes[0] || null;
+  }, [episodes, pendingInsertIndex, selectedId]);
 
   useEffect(() => {
     const list = episodeListRef.current;
@@ -79,6 +87,7 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
 
   const selectEpisode = (episode) => {
     if (actionLoading) return;
+    setPendingInsertIndex(null);
     setSelectedId(episode.id);
     setIsEditing(false);
     setDraft(getEpisodeContent(episode));
@@ -106,18 +115,24 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
     });
   };
 
-  const addEpisode = async (afterEpisodeId) => {
+  const addEpisode = (afterEpisodeId) => {
     if (actionLoading) return;
-    const addedEpisodeId = await onAdd?.(afterEpisodeId);
-    if (addedEpisodeId) {
-      setSelectedId(addedEpisodeId);
-      setRevealingEpisodeId(addedEpisodeId);
+    const anchorIndex = episodes.findIndex((episode) => episode.id === afterEpisodeId);
+    setPendingInsertIndex(afterEpisodeId && anchorIndex >= 0 ? anchorIndex + 1 : episodes.length);
+    // onAdd 会同步返回临时 ID，先锁定临时标签，避免接口刷新期间回退到第一集。
+    const addResult = onAdd?.(afterEpisodeId);
+    const activateEpisode = (episodeId) => {
+      if (!episodeId) return;
+      setSelectedId(episodeId);
+      setRevealingEpisodeId(episodeId);
       if (revealTimerRef.current) window.clearTimeout(revealTimerRef.current);
       revealTimerRef.current = window.setTimeout(() => {
         setRevealingEpisodeId(null);
         revealTimerRef.current = null;
       }, 420);
-    }
+    };
+    if (typeof addResult?.then === 'function') addResult.then(activateEpisode);
+    else activateEpisode(addResult);
   };
 
   return (

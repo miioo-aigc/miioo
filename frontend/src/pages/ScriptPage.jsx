@@ -298,7 +298,7 @@ export default function ScriptPage({ projectId, projectVisualStyle, projectAspec
     }
   }, [episodeActionLoading, projectId, refreshScriptOutline, waitForScriptOperation]);
 
-  const runStructurePatch = useCallback(async (operation, { refresh = true } = {}) => {
+  const runStructurePatch = useCallback(async (operation, { refresh = true, throwOnError = false } = {}) => {
     if (!projectId || episodeActionLoading) return;
     setEpisodeActionLoading(true);
     setEpisodeActionError('');
@@ -309,6 +309,7 @@ export default function ScriptPage({ projectId, projectVisualStyle, projectAspec
     } catch (error) {
       console.error('[ScriptPage] 保存分集剧情失败:', error);
       setEpisodeActionError(error?.message || '保存分集剧情失败，请重试');
+      if (throwOnError) throw error;
     } finally {
       setEpisodeActionLoading(false);
     }
@@ -317,52 +318,69 @@ export default function ScriptPage({ projectId, projectVisualStyle, projectAspec
   const handleResplitEpisodes = useCallback((params) => runEpisodeOperation(() => apiResplitScriptStructure(projectId, params)), [projectId, runEpisodeOperation]);
   const handleRegenerateEpisode = useCallback((itemId, params) => runEpisodeOperation(() => apiRegenerateScriptEpisode(projectId, itemId, params)), [projectId, runEpisodeOperation]);
   const handlePatchEpisodeStructure = useCallback((params) => runStructurePatch(() => apiPatchScriptStructure(projectId, params)), [projectId, runStructurePatch]);
-  const handleAddEpisode = useCallback(async (afterEpisodeId) => {
+  const handleAddEpisode = useCallback((afterEpisodeId) => {
     const clientTempId = `episode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const existingEpisodeIds = new Set((scriptOutlineData?.episodes || []).map((episode) => episode.id).filter(Boolean));
+    const previousStructure = scriptOutlineData;
+    const previousEpisodes = scriptOutlineData?.episodes || [];
+    const optimisticEpisode = { id: clientTempId, title: '未命名', name: '未命名', content: '', summary: '' };
+    const insertIndex = afterEpisodeId
+      ? Math.max(0, previousEpisodes.findIndex((episode) => episode.id === afterEpisodeId) + 1)
+      : previousEpisodes.length;
+    const optimisticEpisodes = [...previousEpisodes];
+    optimisticEpisodes.splice(insertIndex, 0, optimisticEpisode);
 
-    // 新增和重排放在同一个页面级操作里。第一次 add_item 后只读取数据用于计算顺序，
-    // 不提交到 state，避免后端暂时按末尾返回时出现“末尾闪现”再移动到插入点。
-    const outcome = await runStructurePatch(async () => {
-      const result = await apiPatchScriptStructure(projectId, {
-        expected_revision: scriptOutlineData?.revision || 0,
-        operations: [{
-          type: 'add_item',
-          target: 'episode_plots',
-          value: { title: '未命名', name: '未命名', content: '', summary: '' },
-          client_temp_id: clientTempId,
-        }],
-        after_item_id: afterEpisodeId || null,
-      });
+    // 先在点击的间隔位置显示临时分集，接口返回前不让后端的暂时顺序覆盖它。
+    setScriptOutlineData((current) => current ? { ...current, episodes: optimisticEpisodes } : current);
 
-      const refreshedStructure = normalizeScriptStructure(await apiGetScriptStructure(projectId));
-      const addedEpisodeId = result?.temp_id_map?.[clientTempId]
-        || refreshedStructure?.episodes?.find((episode) => episode.id && !existingEpisodeIds.has(episode.id))?.id;
+    void (async () => {
+      try {
+      const existingEpisodeIds = new Set(previousEpisodes.map((episode) => episode.id).filter(Boolean));
+      await runStructurePatch(async () => {
+        const result = await apiPatchScriptStructure(projectId, {
+          expected_revision: previousStructure?.revision || 0,
+          operations: [{
+            type: 'add_item',
+            target: 'episode_plots',
+            value: { title: '未命名', name: '未命名', content: '', summary: '' },
+            client_temp_id: clientTempId,
+          }],
+          after_item_id: afterEpisodeId || null,
+        });
 
-      if (addedEpisodeId && afterEpisodeId) {
-        const currentIds = (refreshedStructure?.episodes || [])
-          .map((episode) => episode.id)
-          .filter((id) => id && id !== addedEpisodeId);
-        const anchorIndex = currentIds.indexOf(afterEpisodeId);
-        if (anchorIndex >= 0) {
-          const orderedItemIds = [
-            ...currentIds.slice(0, anchorIndex + 1),
-            addedEpisodeId,
-            ...currentIds.slice(anchorIndex + 1),
-          ];
-          await apiPatchScriptStructure(projectId, {
-            expected_revision: refreshedStructure.revision,
-            operations: [{ type: 'reorder_items', target: 'episode_plots', ordered_item_ids: orderedItemIds }],
-          });
+        const refreshedStructure = normalizeScriptStructure(await apiGetScriptStructure(projectId));
+        const addedEpisodeId = result?.temp_id_map?.[clientTempId]
+          || refreshedStructure?.episodes?.find((episode) => episode.id && !existingEpisodeIds.has(episode.id))?.id;
+        if (!addedEpisodeId) throw new Error('新增分集未返回有效的分集编号');
+
+        if (afterEpisodeId) {
+          const currentIds = refreshedStructure.episodes
+            .map((episode) => episode.id)
+            .filter((id) => id && id !== addedEpisodeId);
+          const anchorIndex = currentIds.indexOf(afterEpisodeId);
+          if (anchorIndex >= 0) {
+            const orderedItemIds = [
+              ...currentIds.slice(0, anchorIndex + 1),
+              addedEpisodeId,
+              ...currentIds.slice(anchorIndex + 1),
+            ];
+            await apiPatchScriptStructure(projectId, {
+              expected_revision: refreshedStructure.revision,
+              operations: [{ type: 'reorder_items', target: 'episode_plots', ordered_item_ids: orderedItemIds }],
+            });
+          }
         }
-      }
 
-      return { addedEpisodeId };
-    }, { refresh: false });
-    if (!outcome?.result?.addedEpisodeId) return null;
-    await refreshScriptOutline();
-    return outcome.result.addedEpisodeId;
-  }, [projectId, refreshScriptOutline, runStructurePatch, scriptOutlineData?.episodes, scriptOutlineData?.revision]);
+        return { addedEpisodeId };
+      }, { refresh: false, throwOnError: true });
+
+      await refreshScriptOutline();
+      } catch {
+        setScriptOutlineData(previousStructure);
+      }
+    })();
+
+    return clientTempId;
+  }, [projectId, refreshScriptOutline, runStructurePatch, scriptOutlineData]);
   const handleDeleteEpisode = useCallback((itemId, revision) => runStructurePatch(() => apiPatchScriptStructure(projectId, {
     expected_revision: revision,
     operations: [{ type: 'delete_item', target: 'episode_plots', item_id: itemId, impact_policy: 'cascade' }],

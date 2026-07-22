@@ -26,6 +26,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCreationTypeLabel, getVisualStyleLabel } from '../../config/projectDisplayNames';
 import ScriptEpisodeOutline from './ScriptEpisodeOutline';
+import ScriptStoryboardDocument from './ScriptStoryboardDocument';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -63,9 +64,9 @@ function SubjectGroup({ title, items }) {
   );
 }
 
-function OutlineLocator({ activeIndex, onSelect }) {
+function OutlineLocator({ activeIndex, onSelect, outlineType = 'script' }) {
   const [hovered, setHovered] = useState(false);
-  const labels = ['整体设定', '剧本设计', '主体', '分集剧情'];
+  const labels = ['整体设定', '剧本设计', '主体', outlineType === 'storyboard' ? '分镜脚本' : '分集剧情'];
 
   return (
     <div
@@ -90,7 +91,7 @@ function OutlineLocator({ activeIndex, onSelect }) {
   );
 }
 
-export default function ScriptOutlineWorkspace({ data, projectSettings, onResplit, onRegenerateEpisode, onAddEpisode, onPatchStructure, onDeleteEpisode, episodeActionLoading, episodeActionError, selectedModel, hideEpisodeActions = false }) {
+export default function ScriptOutlineWorkspace({ data, projectSettings, onResplit, onRegenerateEpisode, onAddEpisode, onPatchStructure, onDeleteEpisode, episodeActionLoading, episodeActionError, selectedModel, hideEpisodeActions = false, outlineType = 'script', storyboardFileName = '', storyboardDownloadUrl = '', onDownloadStoryboard }) {
   const scrollContainerRef = useRef(null);
   const sectionRefs = useRef([]);
   const [activeSection, setActiveSection] = useState(0);
@@ -144,10 +145,10 @@ export default function ScriptOutlineWorkspace({ data, projectSettings, onRespli
           <section ref={(node) => { sectionRefs.current[0] = node; }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><SectionTitle>整体设定</SectionTitle><KeyValueTable rows={[['视觉风格', getVisualStyleLabel(settings.visualStyle)], ['画面比例', settings.aspectRatio], ['创作类型', getCreationTypeLabel(settings.creationType)]]} /></section>
           <section ref={(node) => { sectionRefs.current[1] = node; }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><SectionTitle>剧本设计</SectionTitle><KeyValueTable rows={[['故事梗概', design.synopsis], ['故事背景', design.background], ['世界观设定', design.world], ['核心冲突', design.conflict]]} /></section>
           <section ref={(node) => { sectionRefs.current[2] = node; }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><SectionTitle compactBottom>主体</SectionTitle><SubjectGroup title="角色" items={subjects.characters} /><SubjectGroup title="场景" items={subjects.scenes} /><SubjectGroup title="道具" items={subjects.props} /></section>
-          <ScriptEpisodeOutline sectionRef={(node) => { sectionRefs.current[3] = node; }} episodes={episodes} revision={data?.revision || 0} selectedModel={selectedModel} onResplit={onResplit} onRegenerate={onRegenerateEpisode} onAdd={onAddEpisode} onPatch={onPatchStructure} onDelete={onDeleteEpisode} actionLoading={episodeActionLoading} actionError={episodeActionError} hideEpisodeActions={hideEpisodeActions} />
+          {outlineType === 'storyboard' ? <ScriptStoryboardDocument fileName={storyboardFileName} downloadUrl={storyboardDownloadUrl} onDownload={onDownloadStoryboard} /> : <ScriptEpisodeOutline sectionRef={(node) => { sectionRefs.current[3] = node; }} episodes={episodes} revision={data?.revision || 0} selectedModel={selectedModel} onResplit={onResplit} onRegenerate={onRegenerateEpisode} onAdd={onAddEpisode} onPatch={onPatchStructure} onDelete={onDeleteEpisode} actionLoading={episodeActionLoading} actionError={episodeActionError} hideEpisodeActions={hideEpisodeActions} />}
         </div>
       </div>
-      <OutlineLocator activeIndex={activeSection} onSelect={scrollToSection} />
+      <OutlineLocator activeIndex={activeSection} onSelect={scrollToSection} outlineType={outlineType} />
     </div>
   );
 }

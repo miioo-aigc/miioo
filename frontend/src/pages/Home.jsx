@@ -25,14 +25,14 @@
  *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L106–L160
  *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L172 / L179 / L190
  *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L252 / L649 / L659
- *     │           handleExtractSubjects / handleGenerateStoryboards        L701 / L766
+ *     │           handleExtractSubjects / handleGenerateStoryboards        L704 / L796
  *     │           handleScriptFinalized / handleNavChange / handleBottomNavChange / handleProjectCreated
  *                                                               L900 / L907 / L942 / L958
  *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L161 / L213 / L227 / L234 / L244
  *     │           微信回调与鉴权初始化                                   L559 / L570
  *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L590 / L753
  *     ├─ [底部导航配置] bottomNavItems / ApiConfigBubble           L926–L940
- *     └─ [渲染] 页面业务模块统一通过 Suspense 按需加载              L984–L1296
+ *     └─ [渲染] 页面业务模块统一通过 Suspense 按需加载              L984–L1325
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-07-16  修复商务合作二维码定位、无 token 初始化和微信回调错误引用；GlobalSettings 按项目 ID 重建草稿
@@ -55,17 +55,18 @@
  *   2026-07-16  迁移 API 配置提示气泡至 components/home/ApiConfigBubble.jsx；页面仅负责显示条件和底部导航动作
  *   2026-07-16  迁移首页 Toast 展示至 components/home/HomeToast.jsx；页面继续持有提示状态、定时器和 showToast
  *   2026-07-17  迁移首页主导航与底部快捷导航布局至 components/home/HomeNavigationRail.jsx；页面继续负责导航状态和回调
+ *   2026-07-22  主体生成改为发布结构、检查存储用量并轮询剧本任务
  *   2026-07-06  新增 subject cache 订阅 useEffect，实时同步 sharedChars/sharedScenes/sharedProps
  *   2026-07-01  初始结构索引建立
  */
 
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiGetProjects, apiUpdateProject, apiCopyProject, apiDeleteProject, apiGetProject, apiGetProjectOverview } from '../api/project';
 import { getToken, getRefreshToken, refreshAccessToken } from '../api/request';
 import { clearTokens, apiLogout, apiCompleteWechatCallback } from '../api/auth';
 import { apiListProviders } from '../api/config';
-import { apiGetCurrentUser, apiGetNotifications } from '../api/user';
-import { apiGetSubjects, apiGetSubjectsPage, apiGetEpisodes, apiGetScriptWorkspace, apiFinalizeScriptWorkspace, apiExtractSubjectsFromScript } from '../api/subject';
+import { apiGetCurrentUser, apiGetNotifications, apiGetStorageUsage } from '../api/user';
+import { apiGetSubjects, apiGetSubjectsPage, apiGetEpisodes, apiGetScriptWorkspace, apiGetScriptStructure, apiFinalizeScriptWorkspace, apiPublishScriptStructure, apiGetScriptTask } from '../api/subject';
 import { apiGetStoryboards, apiGenerateStoryboardsFromFinalScript, apiGetTask } from '../api/storyboard';
 import { invalidate } from '../utils/cache';
 import { normalizeImageUrl } from '../utils/imageUrl';
@@ -142,6 +143,7 @@ export default function Home({ onGoToAdmin }) {
   const [isGeneratingStoryboards, setIsGeneratingStoryboards] = useState(false);
   const [completedEpisodesCount, setCompletedEpisodesCount] = useState(0);
   const generatingStoryboardsRef = useRef(false); // 同步锁，防止并发调用
+  const extractingSubjectsRef = useRef(false); // 同步锁，防止主体页重复发布结构
   // 自上次提取主体后，剧本是否又重新定稿过（用于控制"开始提取主体"按钮行为）
   const [scriptFinalizedSinceExtraction, setScriptFinalizedSinceExtraction] = useState(false);
   const [scriptEpisodes, setScriptEpisodes] = useState([]);
@@ -168,12 +170,14 @@ export default function Home({ onGoToAdmin }) {
   const currentProjectIdRef = useRef(null);  // 同步跟踪当前项目
   const bgVideoRef = useRef(null);
   const currentVideoIndexRef = useRef(0);
+  const activeProjectIdForExtraction = activeProject?.id;
+  const activeProjectNameForExtraction = activeProject?.name;
 
-  const showToast = (msg, type = 'warning') => {
+  const showToast = useCallback((msg, type = 'warning') => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ msg, type });
     toastTimerRef.current = setTimeout(() => setToast(null), 2500);
-  };
+  }, []);
 
   // 背景视频循环：播完当前视频后切换到下一个（纯 ref 操作，不触发 React 重渲染）
   const handleVideoEnded = () => {
@@ -697,57 +701,89 @@ export default function Home({ onGoToAdmin }) {
     }
   };
 
-  // 提取主体回调（由 SubjectPage 在挂载时调用）
-  const handleExtractSubjects = async () => {
-    const projectId = activeProject.id;
-    const projectName = activeProject.name || projectId;
+  // 提取主体回调（由 SubjectPage 在挂载时调用）：发布结构、检查存储并轮询异步任务
+  const handleExtractSubjects = useCallback(async () => {
+    if (extractingSubjectsRef.current) return;
+    extractingSubjectsRef.current = true;
+    const projectId = activeProjectIdForExtraction;
+    const projectName = activeProjectNameForExtraction || projectId;
     setExtractError(null);
     try {
-      // 调用主动提取接口（POST）而非仅查询已有主体
-      const result = await apiExtractSubjectsFromScript(projectId);
-      const allSubjects = [...(result.created || []), ...(result.updated || [])];
-
-      const charsData = allSubjects.filter(s => s.type === 'character');
-      const scenesData = allSubjects.filter(s => s.type === 'scene');
-      const propsData = allSubjects.filter(s => s.type === 'prop');
-
-      const normalizedChars = normalizeSubjects(charsData);
-      const normalizedScenes = normalizeSubjects(scenesData);
-      const normalizedProps = normalizeSubjects(propsData);
-
-      if (normalizedChars.length === 0 && normalizedScenes.length === 0 && normalizedProps.length === 0) {
-        if (currentProjectIdRef.current === projectId) {
-          setExtractError('提取主体失败，请稍后重试');
-          setExtractErrorProjectId(projectId);
-          showToast('提取主体失败，请稍后重试', 'error');
-        }
-        return;
+      // 发布接口要求并发校验当前结构版本；主体页可能在剧本页打开后才进入，
+      // 因此这里必须绕过缓存读取最新 revision，不能使用 null。
+      const latestStructure = await apiGetScriptStructure(projectId);
+      const structureRevision = latestStructure?.revision
+        ?? latestStructure?.data?.revision
+        ?? latestStructure?.payload?.revision;
+      if (structureRevision === undefined || structureRevision === null) {
+        throw new Error('未读取到剧本结构版本，请先返回剧本页刷新后重试');
       }
 
-      // 项目已切换：暂存结果 + toast 通知
+      const taskResponse = await apiPublishScriptStructure(projectId, {
+        expected_revision: structureRevision,
+        base_revision: structureRevision,
+        publish_target: ['episodes'],
+      });
+      const taskId = taskResponse?.task_id;
+      if (!taskId) throw new Error('发布剧本结构接口未返回任务 ID');
+
+      const storageUsage = await apiGetStorageUsage();
+      if (storageUsage?.write_blocked) {
+        throw new Error('当前存储空间不足，无法生成主体，请先清理项目资产');
+      }
+
+      const deadline = Date.now() + 10 * 60 * 1000;
+      let task = taskResponse;
+      while (Date.now() < deadline) {
+        const status = String(task?.status || '').toLowerCase();
+        if (['completed', 'succeeded', 'success'].includes(status)) break;
+        if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
+          throw new Error(task?.error?.message || task?.error?.detail || task?.status_message || '主体提取任务失败');
+        }
+        await new Promise(resolve => setTimeout(resolve, 2500));
+        task = await apiGetScriptTask(projectId, taskId);
+      }
+
+      const finalStatus = String(task?.status || '').toLowerCase();
+      if (!['completed', 'succeeded', 'success'].includes(finalStatus)) {
+        throw new Error('剧本发布任务超时，请稍后刷新主体列表');
+      }
+
       if (currentProjectIdRef.current !== projectId) {
-        pendingExtractionsRef.current[projectId] = {
-          chars: normalizedChars,
-          scenes: normalizedScenes,
-          props: normalizedProps,
-        };
         showToast(`「${projectName}」主体抽取完成`, 'success');
         return;
       }
 
-      setSharedChars(normalizedChars);
-      setSharedScenes(normalizedScenes);
-      setSharedProps(normalizedProps);
+      invalidate(K.subjectsPrefix(projectId));
+      invalidate(K.projectOverview(projectId));
+      const SUBJECT_LIMIT = 20;
+      const [charsPage, scenesPage, propsPage] = await Promise.all([
+        apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }),
+        apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }),
+        apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }),
+      ]);
+      setSharedChars(normalizeSubjects(charsPage.list));
+      setSharedScenes(normalizeSubjects(scenesPage.list));
+      setSharedProps(normalizeSubjects(propsPage.list));
+      setSubjectPageMeta(prev => ({
+        ...prev,
+        chars: { nextOffset: charsPage.nextOffset, hasMore: charsPage.hasMore, loading: false, rawList: charsPage.list, error: false },
+        scenes: { nextOffset: scenesPage.nextOffset, hasMore: scenesPage.hasMore, loading: false, rawList: scenesPage.list, error: false },
+        props: { nextOffset: propsPage.nextOffset, hasMore: propsPage.hasMore, loading: false, rawList: propsPage.list, error: false },
+      }));
       setForceExtract(false);
+      showToast(`「${projectName}」主体抽取完成`, 'success');
     } catch (err) {
       console.error('提取主体失败:', err);
       if (currentProjectIdRef.current === projectId) {
-        setExtractError('提取主体失败，请重试');
+        setExtractError(err?.message || '提取主体失败，请重试');
         setExtractErrorProjectId(projectId);
-        showToast('提取主体失败，请重试', 'error');
+        showToast(err?.message || '提取主体失败，请重试', 'error');
       }
+    } finally {
+      extractingSubjectsRef.current = false;
     }
-  };
+  }, [activeProjectIdForExtraction, activeProjectNameForExtraction, showToast]);
 
   // 切回项目时，检查是否有暂存的提取结果等待应用
   useEffect(() => {

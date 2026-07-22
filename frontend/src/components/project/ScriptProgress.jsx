@@ -11,10 +11,8 @@ const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-u
 function EmptyScriptProgress() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '24px 0' }}>
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <rect x="4" y="6" width="24" height="20" rx="3" stroke="#FFFFFF26" strokeWidth="1.5" />
-        <path d="M4 12H28M11 6V12M21 6V12" stroke="#FFFFFF26" strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M8 17H24M8 21H18" stroke="#FFFFFF26" strokeWidth="1.5" strokeLinecap="round" />
+      <svg viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="32" height="32" aria-hidden="true">
+        <path d="M535.289 181.853A227.043 220.806 90 0 0 817.074 471.599V900.824a37.841 36.801 90 0 1-36.801 37.841H283.46A132.441 128.803 90 0 1 154.657 806.223V295.376a113.522 110.403 90 0 1 110.403-113.523h270.229zM283.46 749.462a56.761 55.201 90 0 0 0 113.522H743.472v-113.522H283.46zM726.175 118.66a19.185 18.659 90 0 1 34.593 0l9.347 23.084a165.249 160.709 90 0 0 82.803 88.054l26.423 12.109a20.055 19.504 90 0 1 0 36.402l-27.969 12.79a165.098 160.563 90 0 0-81.625 85.141l-9.09 21.417a19.147 18.621 90 0 1-34.372 0l-9.053-21.38a165.136 160.599 90 0 0-81.698-85.179l-27.969-12.79a20.055 19.504 90 0 1 0-36.44l26.423-12.109A165.212 160.673 90 0 0 716.828 141.819l9.311-23.159z" fill="#FFFFFF33" />
       </svg>
       <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>暂无剧集</span>
     </div>
@@ -49,7 +47,6 @@ export default function ScriptProgress({ episodes = [], episodeStatuses = {} }) 
           flexWrap: 'wrap',
           alignContent: 'flex-start',
           gap: '12px',
-          height: '172px',
           maxHeight: '172px',
           overflowY: 'auto',
           overflowX: 'hidden',

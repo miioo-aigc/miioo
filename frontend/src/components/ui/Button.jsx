@@ -38,7 +38,7 @@ const VARIANT_STYLES = {
     content: 'text-btn-primary-text group-hover:text-white group-active:text-white group-disabled:text-[#FFFFFF33]',
   },
   link: {
-    button: 'border-0 bg-transparent shadow-none px-0 cursor-pointer',
+    button: 'border-0 bg-transparent shadow-none p-0 cursor-pointer',
     content: 'text-brand-main transition-colors duration-[180ms] ease-out group-hover:text-[#73E6F5] group-active:text-[#73E6F5]',
   },
   danger: {

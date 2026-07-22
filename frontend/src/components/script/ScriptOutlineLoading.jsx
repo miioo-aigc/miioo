@@ -7,6 +7,7 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-21  新增编排页结构化内容加载态
+ *   2026-07-22  调整解析加载态主体分组标题的水平内边距为 0
  */
 const SHIMMER_STYLE = `
   @keyframes script-outline-shimmer {
@@ -60,7 +61,7 @@ function SkeletonSubjectSection() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 0', color: '#FFFFFF', fontSize: '18px', lineHeight: '22px', fontWeight: 600 }}><span style={{ width: '2px', height: '18px', background: '#FFFFFF' }} />主体</div>
       {['角色（0）', '场景（0）', '道具（0）'].map((label) => (
         <div key={label} style={{ marginBottom: '8px' }}>
-          <div style={{ padding: '4px 8px', color: '#FFFFFFCC', fontSize: '16px', lineHeight: '20px' }}>{label}</div>
+          <div style={{ padding: '4px 0', color: '#FFFFFFCC', fontSize: '16px', lineHeight: '20px' }}>{label}</div>
           <SkeletonTable labels={['']} />
         </div>
       ))}
@@ -68,7 +69,7 @@ function SkeletonSubjectSection() {
   );
 }
 
-export default function ScriptOutlineLoading() {
+export default function ScriptOutlineLoading({ finalSectionTitle = '分集剧情' }) {
   return (
     <>
       <style>{SHIMMER_STYLE}</style>
@@ -77,7 +78,7 @@ export default function ScriptOutlineLoading() {
         <SkeletonSection title="剧本设计" labels={sectionRows['剧本设计']} />
         <SkeletonSubjectSection />
         <section style={{ width: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 0', color: '#FFFFFF', fontSize: '18px', lineHeight: '22px', fontWeight: 600 }}><span style={{ width: '2px', height: '18px', background: '#FFFFFF' }} />分集剧本（0）</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 0', color: '#FFFFFF', fontSize: '18px', lineHeight: '22px', fontWeight: 600 }}><span style={{ width: '2px', height: '18px', background: '#FFFFFF' }} />{finalSectionTitle}（0）</div>
           <div style={{ height: '60px', overflow: 'hidden', padding: '12px', border: '1px solid #3E3D3D', background: '#080808', boxSizing: 'border-box' }}><div style={{ height: '20px', background: 'linear-gradient(270deg, #222222, #454545, #3F3F3F)', animation: 'script-outline-sweep 2.2s ease-in-out infinite' }} /></div>
         </section>
         <div aria-hidden="true" style={{ position: 'absolute', top: '50%', left: '50%', width: '52%', height: '2px', transform: 'translate(-50%, -50%)', background: 'linear-gradient(90deg, transparent, rgba(218,250,255,.7), transparent)', filter: 'blur(10px)', animation: 'script-outline-shimmer 2.6s ease-in-out infinite' }} />

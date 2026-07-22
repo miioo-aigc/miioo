@@ -25,6 +25,23 @@ export async function apiGetCurrentUser() {
   return res.json();
 }
 
+export async function apiGetStorageUsage() {
+  const res = await authFetch(`${BASE}/api/users/me/storage-usage`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body?.detail || body?.message || '';
+    } catch { /* 忽略非 JSON 错误响应 */ }
+    const error = new Error(detail || `获取存储用量失败（${res.status}）`);
+    error.status = res.status;
+    throw error;
+  }
+  return res.json();
+}
+
 export async function apiGetNotifications({ is_read, type } = {}) {
   const params = new URLSearchParams();
   if (is_read !== undefined) params.append('is_read', is_read);

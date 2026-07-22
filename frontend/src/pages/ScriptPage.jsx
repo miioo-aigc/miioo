@@ -10,23 +10,16 @@
  *   Toast                                                                  L80
  *
  * ─── 剧本展示与编辑组件 ───────────────────────────────────────────────
- *   AiThinkingMessage / AiStreamingContent / ScriptRendered              src/components/script/
- *   ScriptEditor（编辑器域组件）                                         src/components/script/ScriptEditor.jsx
- *   EditorToolbar（编辑器域组件）                                        src/components/script/EditorToolbar.jsx
- *   ScriptPanel / ScriptOutlineLoading / ScriptOutlineWorkspace / ScriptEpisodeOutline / ScriptModifyConfirmModal src/components/script/
+ *   ScriptOutlineLoading / ScriptOutlineWorkspace / ScriptEpisodeOutline / ScriptStoryboardDocument / ScriptModifyConfirmModal src/components/script/
  *
  * ─── 主页面入口 ───────────────────────────────────────────────────────
  *   export default ScriptPage()                                         L126
  *     ├─ [状态] 受控/非受控 phase、剧本内容、入口文件、模型、集数/时长、消息和编排任务
- *     ├─ [函数] handleSend / handleScriptFileSelect / handleOpenScriptOutline / handleStop / handleSave
+ *     ├─ [函数] handleSend / handleScriptFileSelect / handleOpenScriptOutline / handleStop
  *     └─ [副作用] 工作区加载、编排任务恢复与轮询、流式请求、剧本和分集同步
  *
  * ─── 更新记录 ────────────────────────────────────────────────────────
- *   2026-07-15  抽离 ScriptPanel、流式展示组件和展示区域样式，页面仅保留状态、数据流与区块编排
- *   2026-07-15  ScriptPanel 动作区、上传入口、文件删除、模型/集数选择器、发送按钮和编辑器工具栏迁移到基础 Button 能力
- *   2026-07-15  抽离 ScriptEditor、EditorToolbar 及编辑器样式，页面入口仅保留编辑器编排和回调
  *   2026-07-15  抽离 InputCard、ScriptEmptyState 及输入区子组件，页面仅保留输入区编排
- *   2026-07-15  为 ScriptPanel 显式传入 hasScript，修复编辑动作禁用判断
  *   2026-07-16  补齐流式暂停回调的 setPhase 依赖，避免闭包使用旧阶段更新函数
  *   2026-07-21  重做初始创作入口，输入卡移除上传并增加单集时长，分镜文件仅保留本地状态
  *   2026-07-21  接入持久化对话消息区，移除本地输入历史缓存
@@ -38,12 +31,13 @@
  *   2026-07-22  补充编排页下一步箭头，并在主体解锁后提供下载与修改剧本动作
  *   2026-07-22  增加修改剧本二次确认及主体解锁后的分集操作隐藏规则
  *   2026-07-22  下载改为读取最新结构化分集，确认修改后留在编排页并恢复分集编辑操作
+ *   2026-07-22  初始创作流程统一使用消息区，移除整稿富文本编辑模式
+ *   2026-07-22  上传普通剧本直接进入结构化编排；分镜脚本接入 Excel 异步导入和任务轮询
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { apiSaveScriptWorkspace, apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiFinalizeScriptWorkspace, apiGetEpisodes, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
-import ConfirmDialog from '../components/ConfirmDialog';
+import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
 import { Button } from '../components/ui';
-import { InputCard, ScriptEmptyState, ScriptPanel, ScriptMessageArea, ScriptOutlineLoading, ScriptOutlineWorkspace, ScriptModifyConfirmModal } from '../components/script';
+import { InputCard, ScriptEmptyState, ScriptMessageArea, ScriptOutlineLoading, ScriptOutlineWorkspace, ScriptModifyConfirmModal } from '../components/script';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -55,8 +49,6 @@ function getScriptTaskId(task) {
   if (!task || typeof task !== 'object') return null;
   return task.task_id
     || task.taskId
-    || task.operation_id
-    || task.operationId
     || task.task?.task_id
     || task.task?.taskId
     || task.active_task?.task_id
@@ -123,24 +115,19 @@ function Toast({ toasts }) {
   );
 }
 
-// ConfirmExtractModal 已迁移至 ConfirmDialog 共享组件（confirmVariant='orange'）
-
-export default function ScriptPage({ projectId, projectName = '', projectVisualStyle, projectAspectRatio, projectCreationType, onGoToSubject, onScriptFinalized, onEpisodesChange, phase: phaseProp, onPhaseChange, hasStarted: hasStartedProp, onHasStartedChange, scriptContent: scriptContentProp, onScriptContentChange, draftContent: draftContentProp, onDraftContentChange, isSubjectUnlocked = false }) {
+export default function ScriptPage({ projectId, projectName = '', projectVisualStyle, projectAspectRatio, projectCreationType, onGoToSubject, onEpisodesChange, phase: phaseProp, onPhaseChange, hasStarted: hasStartedProp, onHasStartedChange, scriptContent: scriptContentProp, onScriptContentChange, isSubjectUnlocked = false }) {
   const [phaseLocal, setPhaseLocalRaw] = useState('initial');
   const [hasStartedLocal, setHasStartedLocalRaw] = useState(false);
   const [scriptContentLocal, setScriptContentLocalRaw] = useState('');
-  const [draftContentLocal, setDraftContentLocalRaw] = useState('');
 
   const isControlled = phaseProp !== undefined;
   const phase = isControlled ? phaseProp : phaseLocal;
   const hasStarted = isControlled ? hasStartedProp : hasStartedLocal;
   const scriptContent = isControlled ? scriptContentProp : scriptContentLocal;
-  const draftContent = isControlled ? draftContentProp : draftContentLocal;
 
   const setPhase = isControlled ? onPhaseChange : setPhaseLocalRaw;
   const setHasStarted = isControlled ? onHasStartedChange : setHasStartedLocalRaw;
   const setScriptContent = isControlled ? onScriptContentChange : setScriptContentLocalRaw;
-  const setDraftContent = isControlled ? onDraftContentChange : setDraftContentLocalRaw;
   // 仅在超时时设为已发送的内容，触发输入框恢复；成功/用户主动停止保持 '' 不恢复
   const [inputRestoreText, setInputRestoreText] = useState('');
   const [scriptInputFile, setScriptInputFile] = useState(null);
@@ -148,11 +135,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   const [selectedModel, setSelectedModel] = useState(null);
   const [episodeCount, setEpisodeCount] = useState(null);
   const [episodeDuration, setEpisodeDuration] = useState(null);
-  const [backendEpisodes, setBackendEpisodes] = useState(null);
   const [toasts, setToasts] = useState([]);
-  const [isSaving, setIsSaving] = useState(false);
-  const [streamingPaused, setStreamingPaused] = useState(false);
-  const [isSseRunning, setIsSseRunning] = useState(false);
   const [messages, setMessages] = useState([]);
   const [activeMessageId, setActiveMessageId] = useState(null);
   const [scriptOutlineMode, setScriptOutlineMode] = useState(false);
@@ -160,12 +143,14 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   const [scriptOutlineError, setScriptOutlineError] = useState('');
   const [scriptOutlineData, setScriptOutlineData] = useState(null);
   const [scriptOutlineTaskId, setScriptOutlineTaskId] = useState(null);
+  const [scriptOutlineType, setScriptOutlineType] = useState('script');
+  const [storyboardFileName, setStoryboardFileName] = useState('');
+  const [storyboardDownloadUrl, setStoryboardDownloadUrl] = useState('');
   const [modifyConfirmOpen, setModifyConfirmOpen] = useState(false);
   const [scriptModificationMode, setScriptModificationMode] = useState(false);
   const [episodeActionLoading, setEpisodeActionLoading] = useState(false);
   const [episodeActionError, setEpisodeActionError] = useState('');
   const stopReasonRef = useRef(null); // 'user-thinking' | 'user-streaming' | null
-  const renderedContentRef = useRef(null);
   const abortControllerRef = useRef(null); // 用于取消进行中的流式请求
   const outlinePollStartedAtRef = useRef(null);
 
@@ -177,9 +162,9 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
   };
 
-  const handleOpenScriptOutline = useCallback(async () => {
-    if (!projectId || scriptOutlineLoading) return;
-    if (!scriptContentRef.current) {
+  const handleOpenScriptOutline = useCallback(async ({ skipContentCheck = false, force = false } = {}) => {
+    if (!projectId || (scriptOutlineLoading && !force)) return;
+    if (!skipContentCheck && !scriptContentRef.current) {
       showToast('当前没有可确认的剧本内容', 'warning');
       return;
     }
@@ -407,15 +392,38 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     apiGetScriptWorkspace(projectId)
       .then((data) => {
         const content = data?.script?.content || data?.content;
+        const sourceType = data?.script?.source_type || data?.script?.sourceType || data?.source_type || data?.sourceType || '';
+        const isStoryboardUpload = ['storyboard_upload', 'storyboard_import'].includes(String(sourceType).toLowerCase())
+          || Boolean(data?.storyboard_file || data?.storyboardFile || data?.storyboard_attachment);
+        const isUploadedScript = isStoryboardUpload || String(sourceType).toLowerCase() === 'script_upload';
+        const restoredStoryboard = normalizeStoryboardFileInfo(data);
+        if (restoredStoryboard.fileName) setStoryboardFileName(restoredStoryboard.fileName);
+        if (restoredStoryboard.downloadUrl) setStoryboardDownloadUrl(restoredStoryboard.downloadUrl);
         const restoredMessages = normalizeScriptMessages(data?.messages);
-        if (restoredMessages.length > 0) setMessages(restoredMessages);
+        if (restoredMessages.length > 0) {
+          setMessages(restoredMessages);
+        } else if (content && !isUploadedScript) {
+          // 兼容早期只保存整稿、尚未持久化消息列表的工作区，统一转为消息区展示。
+          setMessages([{
+            id: `assistant-restored-${Date.now()}`,
+            role: 'assistant',
+            content,
+            status: 'completed',
+            createdAt: new Date().toISOString(),
+          }]);
+        }
         const activeTask = data?.active_task || data?.active_operation;
         const activeTaskId = getScriptTaskId(activeTask);
-        if (data?.structure || activeTaskId) {
+        const hasStoryboardFile = Boolean(restoredStoryboard.fileName || restoredStoryboard.downloadUrl || restoredStoryboard.fileId);
+        if (data?.structure || activeTaskId || hasStoryboardFile) {
           setScriptOutlineMode(true);
+          setScriptOutlineType(isStoryboardUpload ? 'storyboard' : 'script');
           setScriptOutlineError('');
           if (data?.structure) {
             setScriptOutlineData(normalizeScriptStructure(data.structure));
+            setScriptOutlineLoading(false);
+          } else if (hasStoryboardFile && !activeTaskId) {
+            setScriptOutlineData(normalizeScriptStructure({}));
             setScriptOutlineLoading(false);
           }
           if (activeTaskId) {
@@ -424,19 +432,19 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
             outlinePollStartedAtRef.current = Date.now();
           }
         }
-        if (content) {
+        if (content && !isUploadedScript) {
           setScriptContent(content);
           if (!isControlled) {
             setPhase('view');
             setHasStarted(true);
           }
-          return { content, hasOutline: Boolean(data?.structure || activeTaskId) };
+          return { content, hasOutline: Boolean(data?.structure || activeTaskId || hasStoryboardFile) };
         }
         if (restoredMessages.length > 0 && !isControlled) {
           setHasStarted(true);
           setPhase('view');
         }
-        return { content: '', hasOutline: Boolean(data?.structure || activeTaskId) };
+        return { content: '', hasOutline: Boolean(data?.structure || activeTaskId || hasStoryboardFile) };
       })
       .catch((err) => {
         console.error('[ScriptPage] 加载剧本失败:', err);
@@ -469,9 +477,39 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         if (['completed', 'success', 'succeeded'].includes(status)) {
           const structure = await apiGetScriptStructure(projectId);
           if (disposed) return;
+          if (scriptOutlineType === 'storyboard') {
+            const workspace = await apiGetScriptWorkspace(projectId, { fresh: true });
+            const fileInfo = normalizeStoryboardFileInfo(workspace);
+            if (fileInfo.fileName) setStoryboardFileName(fileInfo.fileName);
+            if (fileInfo.downloadUrl) setStoryboardDownloadUrl(fileInfo.downloadUrl);
+          }
           setScriptOutlineData(normalizeScriptStructure(structure));
           setScriptOutlineLoading(false);
           setScriptOutlineTaskId(null);
+          return;
+        }
+        if (status === 'partial') {
+          const structure = await apiGetScriptStructure(projectId);
+          if (disposed) return;
+          const normalized = normalizeScriptStructure(structure);
+          const hasUsableStructure = Boolean(
+            normalized.episodes.length
+            || normalized.subjects.characters.length
+            || normalized.subjects.scenes.length
+            || normalized.subjects.props.length
+            || normalized.scriptDesign.synopsis
+            || normalized.overallSettings.visualStyle,
+          );
+          if (hasUsableStructure) {
+            setScriptOutlineData(normalized);
+            setScriptOutlineLoading(false);
+            setScriptOutlineTaskId(null);
+            return;
+          }
+          setScriptOutlineLoading(false);
+          setScriptOutlineTaskId(null);
+          const partialError = task?.error;
+          setScriptOutlineError(typeof partialError === 'string' ? partialError : partialError?.message || partialError?.detail || '分镜脚本导入部分失败，暂时没有可展示的结构');
           return;
         }
         if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
@@ -496,18 +534,25 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       disposed = true;
       window.clearTimeout(timerId);
     };
-  }, [projectId, scriptOutlineMode, scriptOutlineTaskId]);
+  }, [projectId, scriptOutlineMode, scriptOutlineTaskId, scriptOutlineType]);
 
+  // 剧本解析先写入结构工作区，正式 episodes 物化前也要让项目总览即时显示分集卡片。
+  // 解析完成、部分完成或刷新恢复结构时都通过同一个回调同步到 Home。
   useEffect(() => {
-    if (backendEpisodes) {
-      onEpisodesChange?.(backendEpisodes.map((ep) => ({ id: ep.id, title: ep.title, episode_number: ep.episode_number })));
-    }
-  }, [backendEpisodes, onEpisodesChange]);
+    const structureEpisodes = scriptOutlineData?.episodes;
+    if (!Array.isArray(structureEpisodes) || structureEpisodes.length === 0) return;
+
+    onEpisodesChange?.(structureEpisodes.map((episode, index) => ({
+      id: episode.id || `parsed-episode-${index + 1}`,
+      title: episode.title || episode.name || `第${index + 1}集`,
+      episode_number: episode.episode_number ?? index + 1,
+      status: episode.status || 'pending',
+    })));
+  }, [scriptOutlineData, onEpisodesChange]);
   const handleStop = useCallback(() => {
     // 用 ref 记录停止原因，避免 handleSend 闭包里 phase 是旧快照的问题
     if (phase === 'streaming') {
       stopReasonRef.current = 'user-streaming';
-      setStreamingPaused(true);
     } else {
       stopReasonRef.current = 'user-thinking';
     }
@@ -529,27 +574,71 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     setHasStarted(true);
     setPhase('thinking');
     setScriptContent('');
-    setDraftContent('');
-    setBackendEpisodes(null);
+    setScriptOutlineType('script');
+    setScriptOutlineMode(true);
+    setScriptOutlineLoading(true);
+    setScriptOutlineError('');
+    setMessages([]);
 
     try {
       const uploadResult = await apiUploadScriptWorkspace(projectId, file);
       const uploadContent = uploadResult?.script?.content ?? uploadResult?.script?.parsed_content ?? uploadResult?.content;
-      if (!uploadContent) throw new Error('后端未返回剧本内容');
-
-      const formattedContent = formatEpisodeHeaders(uploadContent);
-      setScriptContent(formattedContent);
+      if (uploadContent) setScriptContent(formatEpisodeHeaders(uploadContent));
       setPhase('view');
-      await apiFinalizeScriptWorkspace(projectId, { split_mode: 'rule_first' });
-      const episodes = await apiGetEpisodes(projectId);
-      if (Array.isArray(episodes) && episodes.length > 0) setBackendEpisodes(episodes);
+      // 上传接口只负责写入主剧本工作区，结构化仍通过 confirm 任务完成。
+      await handleOpenScriptOutline({ skipContentCheck: true, force: true });
     } catch (error) {
       console.error('[ScriptPage] 上传剧本失败:', error);
-      setScriptInputFile(null);
-      setScriptContent('');
-      setPhase('initial');
-      setHasStarted(false);
-      showToast(error?.message || '剧本上传失败，请稍后重试');
+      setScriptOutlineLoading(false);
+      setScriptOutlineError(error?.message || '剧本上传或解析失败，请重试');
+    }
+  };
+
+  const handleStoryboardFileSelect = async (file) => {
+    setStoryboardInputFile(file);
+    setHasStarted(true);
+    setPhase('thinking');
+    setScriptContent('');
+    setMessages([]);
+    setScriptOutlineType('storyboard');
+    setScriptOutlineMode(true);
+    setScriptOutlineLoading(true);
+    setScriptOutlineError('');
+    setScriptOutlineData(null);
+    setStoryboardFileName(file?.name || '');
+    setStoryboardDownloadUrl('');
+    setScriptOutlineTaskId(null);
+    outlinePollStartedAtRef.current = Date.now();
+
+    try {
+      const result = await apiImportStoryboardXlsx(projectId, file);
+      const fileInfo = normalizeStoryboardFileInfo(result);
+      if (fileInfo.fileName) setStoryboardFileName(fileInfo.fileName);
+      if (fileInfo.downloadUrl) setStoryboardDownloadUrl(fileInfo.downloadUrl);
+      const taskId = result?.taskId || getScriptTaskId(result);
+      if (taskId) {
+        setScriptOutlineTaskId(taskId);
+        return;
+      }
+      const workspace = await apiGetScriptWorkspace(projectId, { fresh: true });
+      const workspaceFile = normalizeStoryboardFileInfo(workspace);
+      if (workspaceFile.fileName) setStoryboardFileName(workspaceFile.fileName);
+      if (workspaceFile.downloadUrl) setStoryboardDownloadUrl(workspaceFile.downloadUrl);
+      const activeTaskId = getScriptTaskId(workspace?.active_task || workspace?.active_operation || workspace);
+      if (activeTaskId) {
+        setScriptOutlineTaskId(activeTaskId);
+        return;
+      }
+      if (workspace?.structure) {
+        setScriptOutlineData(normalizeScriptStructure(workspace.structure));
+        setScriptOutlineLoading(false);
+        return;
+      }
+      throw new Error('分镜脚本导入未返回任务编号，请稍后重试');
+    } catch (error) {
+      console.error('[ScriptPage] 导入分镜脚本失败:', error);
+      setScriptOutlineLoading(false);
+      setScriptOutlineError(error?.message || '分镜脚本上传或解析失败，请重试');
     }
   };
 
@@ -568,7 +657,6 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
 
     // 每次发送前清除上次的恢复内容（成功时不恢复）
     setInputRestoreText('');
-    setStreamingPaused(false);
 
     // 取消上一次未完成的请求
     abortControllerRef.current?.abort();
@@ -597,8 +685,6 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     setHasStarted(true);
     setPhase('thinking');
     setScriptContent('');
-    setDraftContent('');
-    setBackendEpisodes(null);
 
     let receivedContent = '';
 
@@ -631,7 +717,6 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
 
         let hasStartedStreaming = false;
 
-        setIsSseRunning(true);
         await apiChatScriptWorkspaceStream(
           projectId,
           { message: chatMessage, model, episode_count: epCount, episode_duration_seconds: duration === 'auto' ? null : duration },
@@ -659,8 +744,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
           message.id === assistantMessageId ? { ...message, content: receivedContent, status: 'completed' } : message
         )));
         setActiveMessageId(null);
-        // 消息区不再挂载 ScriptPanel，因此不能等待 AiStreamingContent.onDone
-        // 来切换阶段。网络流读取完成后立即恢复输入卡，允许继续发送下一条消息。
+        // 网络流读取完成后立即恢复输入卡，允许继续发送下一条消息。
         setPhase('view');
         const latestWorkspace = await apiGetScriptWorkspace(projectId);
         const latestMessages = normalizeScriptMessages(latestWorkspace?.messages);
@@ -738,46 +822,8 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         showToast(toastMsg);
       })();
     } finally {
-      clearTimeout(timeoutId); setIsSseRunning(false);
+      clearTimeout(timeoutId);
     }
-  };
-
-  const handleStreamingDone = useCallback(() => {
-    setStreamingPaused(false);
-    setPhase('view');
-    if (projectId && scriptContentRef.current) {
-      apiSaveScriptWorkspace(projectId, { content: scriptContentRef.current })
-        .catch(() => {});
-    }
-  }, [projectId, setPhase]);
-  // 打字动画暂停回调：用已渲染的文字作为最终内容，切到 view 阶段
-  const handleStreamingPause = useCallback((displayedText) => {
-    setStreamingPaused(false);
-    if (displayedText) {
-      setScriptContent(displayedText);
-      setPhase('view');
-      // 把已渲染的部分内容同步到后端，刷新后显示实际播放到的位置
-      apiSaveScriptWorkspace(projectId, { content: displayedText }).catch(() => {});
-      apiFinalizeScriptWorkspace(projectId, { split_mode: "rule_first" })
-        .then(() => apiGetEpisodes(projectId))
-        .then((episodes) => {
-          if (Array.isArray(episodes) && episodes.length > 0) {
-            setBackendEpisodes(episodes);
-          }
-        })
-        .catch((err) => console.error('[ScriptPage] 定稿失败:', err));
-    } else {
-      // 动画还没开始播放，退回到发送前的状态，清空后端内容
-      setScriptContent('');
-      setPhase('initial');
-      setHasStarted(false);
-      apiSaveScriptWorkspace(projectId, { content: '' }).catch(() => {});
-    }
-  }, [projectId, setScriptContent, setPhase, setHasStarted]);
-
-  const handleEdit = () => {
-    setDraftContent(scriptContent);
-    setPhase('edit');
   };
 
   const handleRequestModifyScript = useCallback(() => {
@@ -836,62 +882,6 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     }
   }, [projectId, projectName]);
 
-  const handleSave = async () => {
-    if (!draftContent) return;
-
-    setIsSaving(true);
-    try {
-      if (projectId) {
-        await apiSaveScriptWorkspace(projectId, { content: draftContent });
-      }
-      setScriptContent(draftContent);
-      setPhase('view');
-      onScriptFinalized?.();
-      showToast('保存定稿成功！', 'success');
-    } catch (err) {
-      console.error('[ScriptPage] 定稿失败:', err);
-      showToast('保存定稿失败，请重试', 'error');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setDraftContent(scriptContent);
-    setPhase('view');
-  };
-
-// 提取主体按钮点击：已提取过主体 → 弹窗二次确认（覆盖风险）；首次 → 直接跳转
-  const [extractConfirmOpen, setExtractConfirmOpen] = useState(false);
-
-  const handleExtractSubjects = useCallback(() => {
-    onGoToSubject?.('char');
-  }, [onGoToSubject]);
-
-  const handleExtractRequest = () => {
-    if (isSubjectUnlocked) {
-      setExtractConfirmOpen(true);
-      return;
-    }
-    handleExtractSubjects();
-  };
-
-  if (extractConfirmOpen) {
-    return (
-      <ConfirmDialog
-        title="确定要提取主体吗？"
-        description="本次提取主体会覆盖之前的主体内容，一旦提取不可撤销，请谨慎操作！"
-        confirmText="确认提取主体"
-        confirmVariant="orange"
-        onConfirm={() => {
-          setExtractConfirmOpen(false);
-          handleExtractSubjects();
-        }}
-        onCancel={() => setExtractConfirmOpen(false)}
-      />
-    );
-  }
-
   return (
     <>
     <div
@@ -914,7 +904,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       {scriptOutlineMode ? (
         <div style={{ position: 'relative', display: 'flex', minHeight: 0, flex: 1, justifyContent: 'center', alignItems: 'stretch', overflow: 'visible' }}>
           {scriptOutlineLoading ? (
-            <ScriptOutlineLoading />
+            <ScriptOutlineLoading finalSectionTitle={scriptOutlineType === 'storyboard' ? '分镜脚本' : '分集剧情'} />
           ) : scriptOutlineError ? (
             <div role="alert" style={{ display: 'flex', width: 'min(960px, 100%)', height: '100%', minHeight: 0, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', border: '1px solid #FFFFFF14', borderRadius: '16px', background: '#060606', color: '#FFFFFF', fontFamily: FONT }}>
               <div style={{ color: '#F75F5F', fontSize: '16px', lineHeight: '24px' }}>{scriptOutlineError}</div>
@@ -933,6 +923,9 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
               episodeActionLoading={episodeActionLoading}
               episodeActionError={episodeActionError}
               hideEpisodeActions={isSubjectUnlocked && !scriptModificationMode}
+              outlineType={scriptOutlineType}
+              storyboardFileName={storyboardFileName || storyboardInputFile?.name || ''}
+              storyboardDownloadUrl={storyboardDownloadUrl}
             />
           )}
           {!scriptOutlineLoading && !scriptOutlineError && (
@@ -967,7 +960,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
           onScriptFileSelect={handleScriptFileSelect}
           scriptFile={scriptInputFile}
           onRemoveScriptFile={() => setScriptInputFile(null)}
-          onStoryboardFileSelect={setStoryboardInputFile}
+          onStoryboardFileSelect={handleStoryboardFileSelect}
           storyboardFile={storyboardInputFile}
           onRemoveStoryboardFile={() => setStoryboardInputFile(null)}
           onDownloadTemplate={handleDownloadTemplate}
@@ -983,31 +976,12 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         <div style={{ display: 'flex', minHeight: 0, flex: 1, flexDirection: 'column', alignItems: 'stretch', justifyContent: 'space-between', gap: '24px', alignSelf: 'stretch', overflow: 'hidden' }}>
             <div style={{ display: 'flex', flex: 1, minHeight: 0, justifyContent: 'center', alignItems: 'stretch', overflow: 'hidden' }}>
               <div style={{ display: 'flex', width: '100%', maxWidth: '100%', minWidth: '420px', minHeight: 0, flexDirection: 'column', alignSelf: 'stretch', alignItems: 'center' }}>
-                {messages.length > 0 && phase !== 'edit' ? (
-                  <ScriptMessageArea
-                    messages={messages}
-                    activeMessageId={activeMessageId}
-                    hasScript={Boolean(scriptContent)}
-                    onOpenScript={handleOpenScriptOutline}
-                  />
-                ) : (
-                  <ScriptPanel
-                    phase={phase}
-                    hasScript={Boolean(scriptContent)}
-                    scriptContent={scriptContent}
-                    draftContent={draftContent}
-                    onEdit={handleEdit}
-                    onSave={handleSave}
-                    onCancelEdit={handleCancelEdit}
-                    onExtractRequest={handleExtractRequest}
-                    onStreamingDone={handleStreamingDone}
-                    onStreamingPause={handleStreamingPause}
-                    streamingPaused={streamingPaused}
-                    isSseActive={isSseRunning}
-                    renderedContentRef={renderedContentRef}
-                    isSaving={isSaving}
-                  />
-                )}
+                <ScriptMessageArea
+                  messages={messages}
+                  activeMessageId={activeMessageId}
+                  hasScript={Boolean(scriptContent)}
+                  onOpenScript={handleOpenScriptOutline}
+                />
               </div>
             </div>
 

@@ -759,7 +759,40 @@ export async function apiGetScriptTask(projectId, taskId) {
   const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/tasks/${taskId}`, {
     headers: { 'Content-Type': 'application/json' },
   });
-  return res.json();
+  return readScriptWorkspaceResponse(res);
+}
+
+/** 发布结构化剧本，后端异步把结构草稿物化为正式分集。 */
+export async function apiPublishScriptStructure(projectId, {
+  expected_revision = null,
+  impact_policy = 'reject',
+  base_revision = null,
+  publish_target = ['episodes'],
+  client_request_id,
+} = {}) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/structure/publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      expected_revision,
+      impact_policy,
+      base_revision,
+      publish_target: Array.isArray(publish_target) && publish_target.length > 0 ? publish_target : ['episodes'],
+      client_request_id: client_request_id || scriptClientRequestId('script-structure-publish'),
+    }),
+  });
+  if (!res.ok) {
+    let payload;
+    try { payload = await res.json(); } catch { payload = undefined; }
+    const error = new Error(getDisplayErrorMessage(payload, `发布剧本结构失败（${res.status}）`));
+    error.status = res.status;
+    error.rawPayload = payload;
+    throw error;
+  }
+  invalidate(K.episodes(projectId));
+  invalidate(K.script(projectId));
+  const data = await res.json();
+  return { ...data, _async: res.status === 202, _status: res.status };
 }
 
 function firstValue(source, keys) {
@@ -798,13 +831,15 @@ function normalizeStructureItem(item) {
 
 function normalizeEpisode(item, index) {
   if (typeof item === 'string') {
-    return { id: null, name: `第${index + 1}集`, title: `第${index + 1}集`, description: '', content: item, synopsis: '', storyPoints: [], subjects: {}, hook: '' };
+    return { id: null, name: `第${index + 1}集`, title: `第${index + 1}集`, episode_number: index + 1, status: 'pending', description: '', content: item, synopsis: '', storyPoints: [], subjects: {}, hook: '' };
   }
   if (!item || typeof item !== 'object') return null;
   return {
     id: firstValue(item, ['item_id', 'id']) || null,
     name: firstValue(item, ['name', 'title', 'episode_name', 'episode_title']) || `第${index + 1}集`,
     title: firstValue(item, ['title', 'name', 'episode_name', 'episode_title']) || `第${index + 1}集`,
+    episode_number: firstValue(item, ['episode_number', 'episodeNumber', 'number', 'index']) ?? index + 1,
+    status: firstValue(item, ['status', 'episode_status', 'episodeStatus']) || 'pending',
     description: firstValue(item, ['description', 'summary', 'synopsis', 'plot', 'content']),
     content: firstValue(item, ['content', 'script', 'full_script', 'description', 'plot']),
     synopsis: firstValue(item, ['synopsis', 'summary', 'description']),
@@ -1111,6 +1146,78 @@ export async function apiUploadScriptWorkspace(projectId, file) {
   return res.json();
 }
 
+/**
+ * 导入分镜脚本 Excel。该接口创建后台导入任务，页面需要继续轮询任务状态。
+ * 后端文档尚未同步到本地 OpenAPI，本函数按后端工作流记录接入正式路径。
+ */
+export async function apiImportStoryboardXlsx(projectId, file, idempotencyKey) {
+  const form = new FormData();
+  form.append('file', file);
+  const key = idempotencyKey || scriptClientRequestId('storyboard-xlsx-import');
+  const res = await authFetchForm(
+    `${BASE}/api/projects/${projectId}/script-workspace/import-storyboard-xlsx`,
+    { method: 'POST', headers: { 'Idempotency-Key': key }, body: form },
+  );
+  const payload = await readScriptWorkspaceResponse(res);
+  invalidate(K.script(projectId));
+  invalidate(K.episodes(projectId));
+  invalidate(K.projectOverview(projectId));
+  invalidate(K.storyboardsPrefix(projectId));
+  return normalizeStoryboardImportResult(payload);
+}
+
+function firstDefined(source, keys) {
+  if (!source || typeof source !== 'object') return undefined;
+  for (const key of keys) {
+    if (source[key] !== undefined && source[key] !== null && source[key] !== '') return source[key];
+  }
+  return undefined;
+}
+
+export function normalizeStoryboardFileInfo(source) {
+  const payload = source?.data || source?.result || source || {};
+  const script = payload?.script && typeof payload.script === 'object' ? payload.script : {};
+  const nested = firstDefined(payload, ['storyboard_file', 'storyboardFile', 'storyboard_attachment', 'storyboardAttachment', 'attachment', 'file'])
+    || firstDefined(script, ['storyboard_file', 'storyboardFile', 'storyboard_attachment', 'storyboardAttachment', 'attachment', 'file']);
+  const file = nested && typeof nested === 'object' ? nested : {};
+  return {
+    fileName: firstDefined(file, ['file_name', 'fileName', 'filename', 'name'])
+      || firstDefined(payload, ['file_name', 'fileName', 'filename', 'name'])
+      || firstDefined(script, ['file_name', 'fileName', 'filename', 'name'])
+      || '',
+    downloadUrl: firstDefined(file, ['download_url', 'downloadUrl', 'file_url', 'fileUrl', 'url'])
+      || firstDefined(payload, ['download_url', 'downloadUrl', 'file_url', 'fileUrl', 'url'])
+      || firstDefined(script, ['download_url', 'downloadUrl', 'file_url', 'fileUrl', 'url'])
+      || '',
+    fileId: firstDefined(file, ['file_id', 'fileId', 'resource_id', 'resourceId', 'id'])
+      || firstDefined(payload, ['file_id', 'fileId', 'resource_id', 'resourceId'])
+      || firstDefined(script, ['file_id', 'fileId', 'resource_id', 'resourceId'])
+      || '',
+  };
+}
+
+export function normalizeStoryboardImportResult(payload) {
+  const taskId = payload?.task_id
+    || payload?.taskId
+    || payload?.task?.task_id
+    || payload?.task?.taskId
+    || null;
+  const operationId = payload?.operation_id
+    || payload?.operationId
+    || payload?.operation?.operation_id
+    || payload?.operation?.operationId
+    || null;
+  return {
+    ...payload,
+    taskId,
+    operationId,
+    status: payload?.status || payload?.task?.status || 'pending',
+    workflowStage: payload?.workflow_stage || payload?.workflowStage || payload?.task?.workflow_stage || payload?.task?.workflowStage || '',
+    sourceDraftRevision: payload?.source_draft_revision ?? payload?.sourceDraftRevision ?? null,
+    ...normalizeStoryboardFileInfo(payload),
+  };
+}
+
 export async function apiFinalizeScriptWorkspace(projectId, { episode_count, model, split_mode = 'rule_first', apply_split = true, auto_extract_subjects = true } = {}) {
   const body = { split_mode, apply_split, auto_extract_subjects };
   if (model) body.model = model;
@@ -1170,38 +1277,4 @@ export async function apiFinalizeScriptWorkspace(projectId, { episode_count, mod
       ? { ...data, _async: true, _status: res.status }
       : { ...data, _async: false, _status: res.status };
   }
-}
-
-
-export async function apiExtractSubjectsFromScript(projectId) {
-  const res = await authFetch(
-    `${BASE}/api/projects/${projectId}/script-workspace/extract-subjects`,
-    {
-      method: 'POST',
-    }
-  );
-  if (!res.ok) {
-    let detail = '';
-    try {
-      const body = await res.json();
-      detail = body?.detail || body?.message || body?.error || '';
-    } catch { /* 忽略非 JSON 错误响应 */ }
-    const statusMessages = {
-      524: 'AI 角色提取超时，剧本内容可能过长，请缩短后重试',
-      502: 'AI 提取服务暂时不可用，请稍后重试',
-      504: 'AI 提取服务响应超时，请稍后重试',
-    };
-    const msg = detail || statusMessages[res.status] || `主体提取失败（${res.status}）`;
-    const err = new Error(msg);
-    err.status = res.status;
-    throw err;
-  }
-  // 抽取主体会新增主体数据；仅成功后失效缓存，避免失败请求清掉已有列表。
-  invalidate(K.subjectsPrefix(projectId));
-  invalidate(K.projectOverview(projectId));
-  const data = await res.json();
-  return {
-    created: Array.isArray(data?.created) ? data.created : [],
-    updated: Array.isArray(data?.updated) ? data.updated : [],
-  };
 }

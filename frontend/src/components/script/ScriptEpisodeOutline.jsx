@@ -23,10 +23,14 @@
  *   2026-07-22  增加分集剧情编辑态，使用结构草稿 PATCH 保存内容
  *   2026-07-22  编辑态与展示态共用剧情容器，并使用 Markdown 渲染分集正文
  *   2026-07-22  支持主体解锁后的只读分集操作状态
+ *   2026-07-22  修正单行剧集标签被误判为溢出的问题
+ *   2026-07-22  调整展开按钮与首行剧集标签垂直居中对齐
+ *   2026-07-22  展开态最多显示四行，超出后在标签区域内滚动
+ *   2026-07-22  移除展开按钮造成的无效右侧占位，避免标签被误挤换行
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Button } from '../ui';
+import { Button, TextButton } from '../ui';
 import ScriptEditor from './ScriptEditor';
 import ScriptResplitModal from './ScriptResplitModal';
 import ScriptRewriteModal from './ScriptRewriteModal';
@@ -96,14 +100,15 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
     return episodes[0] || null;
   }, [episodes, pendingInsertIndex, selectedId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const list = episodeListRef.current;
     if (!list) return undefined;
 
     const measureOverflow = () => {
-      const firstItem = list.firstElementChild;
-      const rowHeight = firstItem?.getBoundingClientRect().height || 38;
-      const overflowing = list.scrollHeight > rowHeight + 1;
+      const items = Array.from(list.querySelectorAll('[data-episode-tag-item="true"]'));
+      const firstTop = items[0]?.offsetTop;
+      const overflowing = firstTop !== undefined
+        && items.some((item) => item.offsetTop > firstTop);
       setHasOverflowingEpisodes(overflowing);
       if (!overflowing) setIsEpisodeListExpanded(false);
     };
@@ -111,8 +116,11 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
     measureOverflow();
     const observer = new ResizeObserver(measureOverflow);
     observer.observe(list);
-    return () => observer.disconnect();
-  }, [episodes]);
+    if (list.parentElement) observer.observe(list.parentElement);
+    return () => {
+      observer.disconnect();
+    };
+  }, [episodes, hasOverflowingEpisodes]);
 
   const selectEpisode = (episode) => {
     if (actionLoading) return;
@@ -172,28 +180,38 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
         {!hideEpisodeActions && <Button type="button" variant="secondary" icon={<SparkleIcon />} onClick={() => setResplitOpen(true)} disabled={actionLoading} contentClassName="!whitespace-nowrap">AI重新分集</Button>}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', alignSelf: 'stretch', padding: '12px', border: '1px solid #3E3D3D', borderRadius: '12px', boxSizing: 'border-box' }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '6px', alignSelf: 'stretch', padding: '12px', border: '1px solid #3E3D3D', borderRadius: '12px', boxSizing: 'border-box' }}>
         <div
           ref={episodeListRef}
-          style={{ display: 'flex', flex: 1, minWidth: 0, flexWrap: 'wrap', alignItems: 'flex-start', alignContent: 'flex-start', gap: '8px 0', maxHeight: hasOverflowingEpisodes && !isEpisodeListExpanded ? '38px' : 'none', overflow: hasOverflowingEpisodes && !isEpisodeListExpanded ? 'hidden' : 'visible' }}
+          style={{ display: 'flex', flex: '1 1 auto', width: 'auto', minWidth: 0, flexWrap: 'wrap', alignItems: 'flex-start', alignContent: 'flex-start', gap: '8px 0', boxSizing: 'border-box', maxHeight: hasOverflowingEpisodes ? (isEpisodeListExpanded ? '160px' : '34px') : 'none', overflow: hasOverflowingEpisodes ? (isEpisodeListExpanded ? 'auto' : 'hidden') : 'visible' }}
         >
           {episodes.map((episode, index) => {
             const active = episode.id === selectedEpisode?.id;
             const episodeName = episode.title || episode.name || '未命名';
-            return <div key={episode.id || `${episode.name}-${index}`} className={revealingEpisodeId === episode.id ? 'episode-tag-reveal' : ''} style={{ display: 'flex', flex: '0 0 auto', alignItems: 'center', maxWidth: '100%' }}>
+            const episodeKey = episode.id || `${episode.name}-${index}`;
+            return <Fragment key={episodeKey}>
+              <div data-episode-tag-item="true" className={revealingEpisodeId === episode.id ? 'episode-tag-reveal' : ''} style={{ display: 'flex', flex: '0 0 auto', alignItems: 'center', maxWidth: '100%' }}>
               {editingEpisodeId === episode.id ? <div style={{ display: 'flex', flex: '0 0 auto', alignItems: 'center', maxWidth: '100%', padding: '5px 15px', border: '1px solid #2DC3E180', borderRadius: '999px', background: '#2DC3E133' }}>
                 <span style={{ flexShrink: 0, color: '#FFFFFF', fontFamily: FONT, fontSize: '14px', lineHeight: '20px' }}>{String(index + 1).padStart(2, '0')}.</span>
                 <input autoFocus value={episodeNameDraft} onChange={(event) => setEpisodeNameDraft(event.target.value)} onBlur={commitEpisodeName} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') setEditingEpisodeId(null); }} aria-label={`编辑第${index + 1}集名称`} style={{ width: '120px', minWidth: 0, padding: 0, border: 0, outline: 0, background: 'transparent', color: '#FFFFFF', fontFamily: FONT, fontSize: '14px', lineHeight: '20px' }} />
               </div> : <button className="episode-tag" data-active={active ? 'true' : 'false'} type="button" onClick={() => selectEpisode(episode)} onDoubleClick={() => { setEditingEpisodeId(episode.id); setEpisodeNameDraft(episodeName); }} disabled={actionLoading} style={{ flex: '0 0 auto', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '6px 16px', borderRadius: '999px', border: active ? '1px solid #2DC3E180' : 0, background: active ? '#2DC3E133' : '#FFFFFF0D', color: active ? '#FFFFFF' : '#FFFFFFCC', fontFamily: FONT, fontSize: '14px', lineHeight: '20px', cursor: actionLoading ? 'not-allowed' : 'pointer' }} title={`${String(index + 1).padStart(2, '0')}.${episodeName}`}>{String(index + 1).padStart(2, '0')}.{episodeName}</button>}
-              {<div className="episode-insert-slot"><button type="button" aria-label={`在第${index + 1}集后新增一集`} onClick={() => addEpisode(episode.id)} disabled={actionLoading} style={{ display: 'flex', width: '16px', height: '16px', flexShrink: 0, alignItems: 'center', justifyContent: 'center', margin: 0, padding: 0, border: 0, borderRadius: '50%', background: 'transparent', color: '#2DC3E1', opacity: 0, cursor: actionLoading ? 'not-allowed' : 'pointer', transition: 'opacity 180ms ease' }} className="episode-insert-button"><svg viewBox="0 0 82 82" width="16" height="16" aria-hidden="true"><path d="M76.271 40.956C76.271 21.454 60.462 5.645 40.961 5.645 21.46 5.645 5.651 21.454 5.651 40.956 5.651 60.457 21.46 76.266 40.961 76.266 60.462 76.266 76.271 60.457 76.271 40.956ZM43.786 38.131V21.184C43.786 19.613 42.521 18.357 40.961 18.357 39.39 18.357 38.136 19.623 38.136 21.184V38.131H21.19C19.618 38.131 18.362 39.396 18.362 40.956 18.362 42.527 19.628 43.781 21.19 43.781H38.136V60.727C38.136 62.298 39.401 63.554 40.961 63.554 42.532 63.554 43.786 62.289 43.786 60.727V43.781H60.732C62.304 43.781 63.56 42.516 63.56 40.956 63.56 39.385 62.294 38.131 60.732 38.131H43.786ZM0.001 40.956C0.001 18.334 18.339-0.004 40.961-0.004 63.583-0.004 81.921 18.334 81.921 40.956 81.921 63.577 63.583 81.916 63.583 81.916 18.339 81.916 0.001 63.577 0.001 40.956Z" fill="currentColor" /></svg></button></div>}
-            </div>;
+              </div>
+              {index < episodes.length - 1 && <div className="episode-insert-slot"><button type="button" aria-label={`在第${index + 1}集后新增一集`} onClick={() => addEpisode(episode.id)} disabled={actionLoading} style={{ display: 'flex', width: '16px', height: '16px', flexShrink: 0, alignItems: 'center', justifyContent: 'center', margin: 0, padding: 0, border: 0, borderRadius: '50%', background: 'transparent', color: '#2DC3E1', opacity: 0, cursor: actionLoading ? 'not-allowed' : 'pointer', transition: 'opacity 180ms ease' }} className="episode-insert-button"><svg viewBox="0 0 82 82" width="16" height="16" aria-hidden="true"><path d="M76.271 40.956C76.271 21.454 60.462 5.645 40.961 5.645 21.46 5.645 5.651 21.454 5.651 40.956 5.651 60.457 21.46 76.266 40.961 76.266 60.462 76.266 76.271 60.457 76.271 40.956ZM43.786 38.131V21.184C43.786 19.613 42.521 18.357 40.961 18.357 39.39 18.357 38.136 19.623 38.136 21.184V38.131H21.19C19.618 38.131 18.362 39.396 18.362 40.956 18.362 42.527 19.628 43.781 21.19 43.781H38.136V60.727C38.136 62.298 39.401 63.554 40.961 63.554 42.532 63.554 43.786 62.289 43.786 60.727V43.781H60.732C62.304 43.781 63.56 42.516 63.56 40.956 63.56 39.385 62.294 38.131 60.732 38.131H43.786ZM0.001 40.956C0.001 18.334 18.339-0.004 40.961-0.004 63.583-0.004 81.921 18.334 81.921 40.956 81.921 63.577 63.583 81.916 40.961 81.916 18.339 81.916 0.001 63.577 0.001 40.956Z" fill="currentColor" /></svg></button></div>}
+            </Fragment>;
           })}
+          {episodes.length > 0 && <div className="episode-insert-slot episode-last-insert-slot"><button type="button" aria-label="在最后一集后新增一集" onClick={() => addEpisode(episodes[episodes.length - 1].id)} disabled={actionLoading} style={{ display: 'flex', width: '16px', height: '16px', flexShrink: 0, alignItems: 'center', justifyContent: 'center', margin: 0, padding: 0, border: 0, borderRadius: '50%', background: 'transparent', color: '#2DC3E1', opacity: 0, cursor: actionLoading ? 'not-allowed' : 'pointer', transition: 'opacity 180ms ease' }} className="episode-insert-button"><svg viewBox="0 0 82 82" width="16" height="16" aria-hidden="true"><path d="M76.271 40.956C76.271 21.454 60.462 5.645 40.961 5.645 21.46 5.645 5.651 21.454 5.651 40.956 5.651 60.457 21.46 76.266 40.961 76.266 60.462 76.266 76.271 60.457 76.271 40.956ZM43.786 38.131V21.184C43.786 19.613 42.521 18.357 40.961 18.357 39.39 18.357 38.136 19.623 38.136 21.184V38.131H21.19C19.618 38.131 18.362 39.396 18.362 40.956 18.362 42.527 19.628 43.781 21.19 43.781H38.136V60.727C38.136 62.298 39.401 63.554 40.961 63.554 42.532 63.554 43.786 62.289 43.786 60.727V43.781H60.732C62.304 43.781 63.56 42.516 63.56 40.956 63.56 39.385 62.294 38.131 60.732 38.131H43.786ZM0.001 40.956C0.001 18.334 18.339-0.004 40.961-0.004 63.583-0.004 81.921 18.334 81.921 40.956 81.921 63.577 63.583 81.916 40.961 81.916 18.339 81.916 0.001 63.577 0.001 40.956Z" fill="currentColor" /></svg></button></div>}
           {episodes.length === 0 && <div style={{ color: '#FFFFFF66', fontSize: '14px', lineHeight: '20px' }}>暂无分集剧本</div>}
         </div>
-        {hasOverflowingEpisodes && <button type="button" onClick={() => setIsEpisodeListExpanded((expanded) => !expanded)} style={{ display: 'flex', flexShrink: 0, alignItems: 'center', gap: '4px', padding: '8px 16px', border: 0, borderRadius: '999px', background: 'transparent', color: '#2DC3E1', fontFamily: FONT, fontSize: '16px', lineHeight: '20px', cursor: 'pointer' }}>
-          <svg viewBox="0 0 109.9 71.68" width="14" height="14" aria-hidden="true" style={{ flexShrink: 0, transform: isEpisodeListExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 180ms ease' }}><path d="M106.882 11.725c0 1.3-0.435 2.614-1.3 3.707L59.444 72.786a5.92 5.92 90 0 1-9.213 0L4.337 15.676A5.912 5.912 0 0 1 13.555 8.269l41.287 51.375L96.364 8.015a5.912 5.912 0 0 1 10.513 3.71z" fill="currentColor" /></svg>
+        {hasOverflowingEpisodes && <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', height: '34px', alignItems: 'center' }}><TextButton
+          type="button"
+          variant="link"
+          icon={<svg viewBox="0 0 109.9 71.68" width="14" height="14" aria-hidden="true" style={{ flexShrink: 0, transform: isEpisodeListExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 180ms ease' }}><path d="M106.882 11.725c0 1.3-0.435 2.614-1.3 3.707L59.444 72.786a5.92 5.92 90 0 1-9.213 0L4.337 15.676A5.912 5.912 90 0 1 13.555 8.269l41.287 51.375L96.364 8.015a5.912 5.912 90 0 1 10.513 3.71z" fill="currentColor" /></svg>}
+          onClick={() => setIsEpisodeListExpanded((expanded) => !expanded)}
+          className="!h-auto !min-h-0 !p-0"
+          contentClassName="!text-[16px] !leading-[20px]"
+        >
           {isEpisodeListExpanded ? '收起' : '展开'}
-        </button>}
+        </TextButton></div>}
       </div>
 
       <div style={{ display: 'flex', height: '600px', minHeight: '600px', flexDirection: 'column', gap: '12px', padding: '12px', border: `1px solid ${isEditing ? '#2DC3E1' : '#3E3D3D'}`, borderRadius: '12px', boxSizing: 'border-box' }}>

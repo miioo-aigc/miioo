@@ -10,6 +10,7 @@ export { default as SendButton } from './SendButton';
 export { default as ScriptMessageArea } from './ScriptMessageArea';
 export { default as ScriptMessageLoading } from './ScriptMessageLoading';
 export { default as ScriptOutlineLoading } from './ScriptOutlineLoading';
+export { default as ScriptStoryboardDocument } from './ScriptStoryboardDocument';
 export { default as ScriptOutlineWorkspace } from './ScriptOutlineWorkspace';
 export { default as ScriptEpisodeOutline } from './ScriptEpisodeOutline';
 export { default as ScriptResplitModal } from './ScriptResplitModal';

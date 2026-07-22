@@ -19,7 +19,10 @@
 - `GlobalSettings.jsx` 仅通过 `ScriptProgress` 传入 `episodes` 与 `episodeStatuses`；现有 `pending`、`generated`、`edited` 数据契约保持不变，并兼容 `storyboarded` 状态。
 - 页面未新增 API、Store 或副作用；状态来源仍由 Home 的 `buildEpisodeStatusMap` 提供。
 - 已同步 `src/components/project/index.js` 目录出口，后续项目域页面可复用卡片和容器。
-- 剧本进度和三类主体概览内容区均固定展示两行，超出后在各自容器内纵向滚动；主体右上角跳转图标继续沿用 `char`、`scene`、`prop` 分类回调，并补充了无障碍名称。
+- 剧本进度和三类主体概览内容区最多展示两行；只有一行内容时按内容自适应高度，超出两行后在各自容器内纵向滚动。主体右上角跳转图标继续沿用 `char`、`scene`、`prop` 分类回调，并补充了无障碍名称。
+- 2026-07-22 修正剧本进度空态图标，改为项目设计稿指定的文档/星标 SVG，尺寸保持 `32px`，颜色保持 `#FFFFFF33`。
+- 2026-07-22 补充剧本解析后的分集同步：`ScriptPage` 从 `script-workspace/structure` 得到结构化分集后，通过已有 `onEpisodesChange` 回传 `Home`，项目总览无需新增接口即可即时展示剧集卡片；正式剧集接口仍为 `GET /api/projects/{projectId}/episodes`。
+- 2026-07-22 结构化分集适配补充保留 `episode_number` 和 `status`，总览卡片优先使用后端结构字段，缺失时回退到顺序编号和“未分镜”状态。
 
 ## 历史状态复核（2026-07-16）
 
@@ -1333,6 +1336,14 @@
 - 新增 `ScriptEpisodeOutline`，负责后端分集胶囊、AI 重新分集、当前集 AI 重写/删除和剧情编辑；富文本 `ScriptEditor` 只在当前集编辑态挂载。
 
 ## 2026-07-22 剧本主体解锁后的修改确认
+
+## 2026-07-22 剧本与分镜脚本上传导入
+
+- `ScriptPage` 将普通剧本上传与 AI 对话创作分开：上传文件不写入消息区，直接进入结构化编排加载态。
+- 分镜 `.xlsx` 使用 `apiImportStoryboardXlsx` 接入后端异步导入任务；任务完成后读取结构接口，前三个模块展示真实结构，第四个模块使用只读 `ScriptStoryboardDocument` 展示后端文件名和持久化下载地址。
+- `ScriptStoryboardDocument` 不调用 API、不解析 Excel、不创建临时下载 URL；下载地址为空时下载入口禁用。
+- 分镜导入 `202` 响应按接口契约区分 `task_id` 与 `operation_id`：前者进入任务轮询，后者仅保留为操作标识；`422` 响应的后端校验明细由 API 适配层透传给页面错误态。
+- 分镜导入路径来自后端工作流记录，当前本地 OpenAPI 尚未同步，待后端接口文档完善后复核任务字段、失败状态和文件恢复字段。
 
 - 新增 `src/components/script/ScriptModifyConfirmModal.jsx`，负责主体已解锁后进入剧本修改态前的二次确认，页面只负责打开、确认和关闭状态。
 - 主体已解锁且未确认修改时，`ScriptEpisodeOutline` 隐藏 AI 重新分集、AI 重写本集、编辑和删除本集操作；确认修改后重新进入编排态时恢复这些操作。

@@ -752,7 +752,7 @@ export async function apiPatchScriptStructure(projectId, { expected_revision, op
     }),
   });
   invalidate(K.script(projectId));
-  return res.json();
+  return readScriptWorkspaceResponse(res);
 }
 
 export async function apiGetScriptTask(projectId, taskId) {

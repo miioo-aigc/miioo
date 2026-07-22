@@ -4,6 +4,14 @@
 > 分支：`feat/frontend_V1.1`
 > 目的：为组件抽离和页面迁移提供可复查基线，不代表本文件中的数量永久不变。
 
+## 2026-07-22 剧本页 AI 重新分集弹窗
+
+- 新增 `src/components/script/ScriptResplitModal.jsx`，独立承载 AI 重新分集弹窗，不把弹窗结构写入 `ScriptPage.jsx`。
+- 当前集数和分集逻辑复用 `TextField`，目标集数复用 `Tabs` 的 `resplit` 变体，操作按钮复用通用 `Button`。
+- `ScriptPage` 继续负责 `apiResplitScriptStructure`、异步任务轮询和结构刷新；弹窗只提交 `episode_count`、`instruction` 与 `model`，自适应集数传 `null`。
+- 分集操作失败时弹窗保持打开并展示页面回传错误，成功完成任务并刷新结构后才关闭。
+- 弹窗隐藏当前集数展示；目标集数的固定集数项使用输入框并展示“集”单位，默认继承当前剧集数量，自适应项仍传 `null`；分集逻辑不设置前端字数上限，输入框高度为 `160px`，弹窗遮罩使用背景模糊。
+
 ## 2026-07-21 GlobalSettings 剧本进度区块
 
 - 新增 `src/components/project/ScriptProgress.jsx`，负责项目总览“资产概况”中的剧本进度容器、集数标题和空态展示。

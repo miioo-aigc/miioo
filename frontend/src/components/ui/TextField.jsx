@@ -15,8 +15,9 @@ const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 // 边框/背景 Token 口径对齐 design-system/components/input.md
-function resolveBorderClass({ focused, hovered, error }) {
+function resolveBorderClass({ focused, hovered, error, disabled }) {
   if (error) return 'border-input-border-wrong';
+  if (disabled) return 'border-input-border-normal';
   if (focused) return 'border-input-border-focus';
   if (hovered) return 'border-input-border-hover';
   return 'border-input-border-normal';
@@ -43,7 +44,7 @@ export default function TextField({
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
 
-  const borderClass = resolveBorderClass({ focused, hovered, error });
+  const borderClass = resolveBorderClass({ focused, hovered, error, disabled: !!inputProps.disabled });
   const bgClass = resolveBgClass({ disabled: !!inputProps.disabled });
   const glowStyle = focused && !inputProps.disabled
     ? { boxShadow: '0px 0px 10px var(--color-glow)', mixBlendMode: 'lighten' }
@@ -135,7 +136,7 @@ export default function TextField({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         className={`${fieldBaseClass} ${fieldLayoutClass} ${fieldSizeClass} ${bgClass} ${borderClass}`}
-        style={glowStyle}
+        style={{ ...glowStyle, ...(multiline ? { height: multilineHeight, boxSizing: 'border-box' } : {}) }}
       >
         {renderControl()}
         {!multiline && renderSuffixOrCounter()}

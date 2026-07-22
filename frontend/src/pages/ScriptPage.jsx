@@ -283,16 +283,18 @@ export default function ScriptPage({ projectId, projectVisualStyle, projectAspec
   }, [projectId]);
 
   const runEpisodeOperation = useCallback(async (operation) => {
-    if (!projectId || episodeActionLoading) return;
+    if (!projectId || episodeActionLoading) return false;
     setEpisodeActionLoading(true);
     setEpisodeActionError('');
     try {
       const accepted = await operation();
       await waitForScriptOperation(getScriptTaskId(accepted));
       await refreshScriptOutline();
+      return true;
     } catch (error) {
       console.error('[ScriptPage] 分集剧情操作失败:', error);
       setEpisodeActionError(error?.message || '分集剧情操作失败，请重试');
+      return false;
     } finally {
       setEpisodeActionLoading(false);
     }

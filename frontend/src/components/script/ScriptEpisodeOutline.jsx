@@ -18,10 +18,17 @@
  *   2026-07-21  增加剧集标签悬停、新增分集和双击重命名交互
  *   2026-07-21  将剧集标签间距调整为 16px，并为新增按钮动态扩展间隔槽
  *   2026-07-21  新增分集标签从插入间隔中间向两侧展开显示
+ *   2026-07-22  将 AI 重新分集改为独立弹窗，复用通用输入框、选项卡和按钮
+ *   2026-07-22  将 AI 重写本集改为独立弹窗，接入重写要求输入和异步操作
+ *   2026-07-22  增加分集剧情编辑态，使用结构草稿 PATCH 保存内容
+ *   2026-07-22  编辑态与展示态共用剧情容器，并使用 Markdown 渲染分集正文
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Button } from '../ui';
 import ScriptEditor from './ScriptEditor';
+import ScriptResplitModal from './ScriptResplitModal';
+import ScriptRewriteModal from './ScriptRewriteModal';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -41,6 +48,19 @@ function getEpisodeContent(episode) {
   return episode?.content || episode?.description || episode?.synopsis || '';
 }
 
+function EpisodeMarkdown({ content }) {
+  return (
+    <ReactMarkdown
+      components={{
+        h1: ({ children, ...props }) => <h1 {...props}>{children}</h1>,
+        h2: ({ children, ...props }) => <h2 {...props}>{children}</h2>,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
+
 export default function ScriptEpisodeOutline({ episodes = [], revision = 0, selectedModel, onResplit, onRegenerate, onPatch, onAdd, onDelete, actionLoading = false, actionError = '', sectionRef }) {
   const [selectedId, setSelectedId] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -51,6 +71,8 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
   const [episodeNameDraft, setEpisodeNameDraft] = useState('');
   const [revealingEpisodeId, setRevealingEpisodeId] = useState(null);
   const [pendingInsertIndex, setPendingInsertIndex] = useState(null);
+  const [resplitOpen, setResplitOpen] = useState(false);
+  const [rewriteOpen, setRewriteOpen] = useState(false);
   const revealTimerRef = useRef(null);
   const episodeListRef = useRef(null);
 
@@ -95,11 +117,11 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
 
   const saveDraft = async () => {
     if (!selectedEpisode?.id) return;
-    await onPatch?.({
+    const result = await onPatch?.({
       expected_revision: revision,
       operations: [{ type: 'replace_field', target: 'episode_plots', field: 'content', value: draft, item_id: selectedEpisode.id }],
     });
-    setIsEditing(false);
+    if (result) setIsEditing(false);
   };
 
   const commitEpisodeName = async () => {
@@ -140,7 +162,7 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 0 0' }}>
         <span style={{ width: '2px', height: '18px', flexShrink: 0, background: '#FFFFFF' }} />
         <h3 style={{ flex: 1, margin: 0, color: '#FFFFFF', fontSize: '18px', lineHeight: '22px', fontWeight: 600 }}>分集剧情（{episodes.length}）</h3>
-        <Button type="button" variant="secondary" icon={<SparkleIcon />} onClick={() => onResplit?.({ base_revision: revision, model: selectedModel })} disabled={actionLoading} contentClassName="!whitespace-nowrap">AI重新分集</Button>
+        <Button type="button" variant="secondary" icon={<SparkleIcon />} onClick={() => setResplitOpen(true)} disabled={actionLoading} contentClassName="!whitespace-nowrap">AI重新分集</Button>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', alignSelf: 'stretch', padding: '12px', border: '1px solid #3E3D3D', borderRadius: '12px', boxSizing: 'border-box' }}>
@@ -167,17 +189,47 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
         </button>}
       </div>
 
-      <div style={{ display: 'flex', height: '600px', minHeight: '600px', flexDirection: 'column', gap: '12px', padding: '12px', border: '1px solid #3E3D3D', borderRadius: '12px', boxSizing: 'border-box' }}>
-        {selectedEpisode ? (isEditing ? <div style={{ display: 'flex', minHeight: 0, flex: 1 }}><ScriptEditor initialContent={draft} onContentChange={setDraft} /></div> : <div className="script-md" style={{ flex: 1, minHeight: 0, overflowY: 'auto', whiteSpace: 'pre-wrap', color: '#FFFFFF', fontSize: '14px', lineHeight: '20px' }}>{getEpisodeContent(selectedEpisode) || '暂无剧情内容'}</div>) : <div style={{ color: '#FFFFFF66', fontSize: '14px' }}>暂无可编辑的分集剧情</div>}
+      <div style={{ display: 'flex', height: '600px', minHeight: '600px', flexDirection: 'column', gap: '12px', padding: '12px', border: `1px solid ${isEditing ? '#2DC3E1' : '#3E3D3D'}`, borderRadius: '12px', boxSizing: 'border-box' }}>
+        {selectedEpisode ? (isEditing ? (
+          <div style={{ display: 'flex', minHeight: 0, flex: 1 }}><ScriptEditor initialContent={draft} onContentChange={setDraft} /></div>
+        ) : <div className="script-md" style={{ flex: 1, minHeight: 0, overflowY: 'auto', whiteSpace: 'pre-wrap', color: '#FFFFFF', fontSize: '14px', lineHeight: '20px' }}>{getEpisodeContent(selectedEpisode) ? <EpisodeMarkdown content={getEpisodeContent(selectedEpisode)} /> : '暂无剧情内容'}</div>) : <div style={{ color: '#FFFFFF66', fontSize: '14px' }}>暂无可编辑的分集剧情</div>}
         {actionError && <div role="alert" style={{ color: '#F75F5F', fontSize: '12px', lineHeight: '18px' }}>{actionError}</div>}
         {selectedEpisode && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexShrink: 0 }}>
-          {isEditing ? <><Button type="button" variant="secondary" onClick={saveDraft} disabled={actionLoading}>保存</Button><Button type="button" variant="secondary" onClick={() => { setIsEditing(false); setDraft(getEpisodeContent(selectedEpisode)); }} disabled={actionLoading}>取消</Button></> : <>
-            <Button type="button" variant="secondary" icon={<SparkleIcon />} onClick={() => onRegenerate?.(selectedEpisode.id, { base_revision: revision, model: selectedModel })} disabled={actionLoading} contentClassName="!whitespace-nowrap">AI重写本集</Button>
+          {isEditing ? <><Button type="button" variant="secondary" onClick={() => { setIsEditing(false); setDraft(getEpisodeContent(selectedEpisode)); }} disabled={actionLoading}>取消</Button><Button type="button" variant="primary" loading={actionLoading} onClick={saveDraft}>保存</Button></> : <>
+            <Button type="button" variant="secondary" icon={<SparkleIcon />} onClick={() => setRewriteOpen(true)} disabled={actionLoading} contentClassName="!whitespace-nowrap">AI重写本集</Button>
             <Button type="button" variant="secondary" icon={<EditIcon />} onClick={() => { setDraft(getEpisodeContent(selectedEpisode)); setIsEditing(true); }} disabled={actionLoading} contentClassName="!whitespace-nowrap">编辑</Button>
             <Button type="button" variant="danger" icon={<DeleteIcon />} onClick={() => onDelete?.(selectedEpisode.id, revision)} disabled={actionLoading} contentClassName="!whitespace-nowrap">删除本集</Button>
           </>}
         </div>}
       </div>
+      <ScriptResplitModal
+        key={`resplit-${episodes.length}`}
+        open={resplitOpen}
+        currentEpisodeCount={episodes.length}
+        selectedModel={selectedModel}
+        submitting={actionLoading}
+        error={actionError}
+        onClose={() => setResplitOpen(false)}
+        onSubmit={async (params) => {
+          const succeeded = await onResplit?.({ base_revision: revision, ...params });
+          if (succeeded) setResplitOpen(false);
+        }}
+      />
+      <ScriptRewriteModal
+        key={`rewrite-${selectedEpisode?.id || 'none'}-${rewriteOpen ? 'open' : 'closed'}`}
+        open={rewriteOpen}
+        submitting={actionLoading}
+        error={actionError}
+        onClose={() => setRewriteOpen(false)}
+        onSubmit={async ({ instruction }) => {
+          const succeeded = await onRegenerate?.(selectedEpisode.id, {
+            base_revision: revision,
+            model: selectedModel,
+            instruction,
+          });
+          if (succeeded) setRewriteOpen(false);
+        }}
+      />
     </section>
   );
 }

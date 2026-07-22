@@ -293,7 +293,9 @@ export default function ScriptPage({ projectId, projectVisualStyle, projectAspec
       return true;
     } catch (error) {
       console.error('[ScriptPage] 分集剧情操作失败:', error);
-      setEpisodeActionError(error?.message || '分集剧情操作失败，请重试');
+      const message = error?.message || '分集剧情操作失败，请重试';
+      setEpisodeActionError(message);
+      showToast(message, 'error');
       return false;
     } finally {
       setEpisodeActionLoading(false);

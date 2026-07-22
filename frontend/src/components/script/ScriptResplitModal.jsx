@@ -12,10 +12,12 @@
  *   2026-07-22  当前集数恢复禁用态，目标集数支持输入框与单位，遮罩增加背景模糊
  *   2026-07-22  分集逻辑输入框高度固定为 160px，并移除禁用态悬停反馈
  *   2026-07-22  隐藏当前集数展示，目标集数默认继承当前剧集数量
+ *   2026-07-22  提交后保留遮罩并展示 200px 加载动画，失败时恢复弹窗
  */
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button, Tabs, TextField } from '../ui';
+import ScriptActionLoadingOverlay from './ScriptActionLoadingOverlay';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -28,27 +30,38 @@ export default function ScriptResplitModal({ open, currentEpisodeCount = 0, sele
   const [targetMode, setTargetMode] = useState('count');
   const [targetCount, setTargetCount] = useState(String(currentEpisodeCount));
   const [instruction, setInstruction] = useState('');
+  const [submitted, setSubmitted] = useState(false);
 
   if (!open) return null;
 
   const handleSubmit = async () => {
-    await onSubmit?.({
-      episode_count: targetMode === 'auto' ? null : Number(targetCount),
-      instruction: instruction.trim(),
-      model: selectedModel || null,
-    });
+    setSubmitted(true);
+    try {
+      const succeeded = await onSubmit?.({
+        episode_count: targetMode === 'auto' ? null : Number(targetCount),
+        instruction: instruction.trim(),
+        model: selectedModel || null,
+      });
+      setSubmitted(false);
+      if (succeeded) onClose?.();
+    } catch (submitError) {
+      setSubmitted(false);
+      throw submitError;
+    }
   };
+
+  const isProcessing = submitted || submitting;
 
   return createPortal(
     <div
       role="presentation"
-      onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) onClose?.(); }}
+      onMouseDown={(event) => { if (event.target === event.currentTarget && !isProcessing) { setSubmitted(false); onClose?.(); } }}
       style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
     >
-      <div role="dialog" aria-modal="true" aria-labelledby="script-resplit-title" style={{ display: 'flex', width: '400px', maxWidth: 'calc(100vw - 32px)', flexDirection: 'column', overflow: 'hidden', borderRadius: '16px', background: '#161616', boxShadow: '0 8px 32px rgba(0,0,0,0.6)', fontFamily: FONT, color: '#FFFFFF' }}>
+      {!isProcessing && <div role="dialog" aria-modal="true" aria-labelledby="script-resplit-title" style={{ display: 'flex', width: '400px', maxWidth: 'calc(100vw - 32px)', flexDirection: 'column', overflow: 'hidden', borderRadius: '16px', background: '#161616', boxShadow: '0 8px 32px rgba(0,0,0,0.6)', fontFamily: FONT, color: '#FFFFFF' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '16px 24px' }}>
           <h2 id="script-resplit-title" style={{ flex: 1, margin: 0, fontFamily: FONT_MEDIUM, fontSize: '16px', lineHeight: '20px', fontWeight: 500 }}>AI重新分集</h2>
-          <button type="button" aria-label="关闭" onClick={onClose} disabled={submitting} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', padding: 0, border: 0, borderRadius: '6px', background: 'transparent', color: '#FFFFFF', cursor: submitting ? 'not-allowed' : 'pointer' }}><CloseIcon /></button>
+          <button type="button" aria-label="关闭" onClick={() => { setSubmitted(false); onClose?.(); }} disabled={isProcessing} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', padding: 0, border: 0, borderRadius: '6px', background: 'transparent', color: '#FFFFFF', cursor: isProcessing ? 'not-allowed' : 'pointer' }}><CloseIcon /></button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px 24px' }}>
@@ -76,10 +89,11 @@ export default function ScriptResplitModal({ open, currentEpisodeCount = 0, sele
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '16px 24px' }}>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={submitting}>取消</Button>
-          <Button type="button" variant="primary" loading={submitting} onClick={handleSubmit}>开始拆分</Button>
+          <Button type="button" variant="secondary" onClick={() => { setSubmitted(false); onClose?.(); }} disabled={isProcessing}>取消</Button>
+          <Button type="button" variant="primary" onClick={handleSubmit} disabled={isProcessing}>开始拆分</Button>
         </div>
-      </div>
+      </div>}
+      {isProcessing && <ScriptActionLoadingOverlay />}
     </div>,
     document.body,
   );

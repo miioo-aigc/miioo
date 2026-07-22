@@ -14,6 +14,7 @@ export { default as ScriptOutlineWorkspace } from './ScriptOutlineWorkspace';
 export { default as ScriptEpisodeOutline } from './ScriptEpisodeOutline';
 export { default as ScriptResplitModal } from './ScriptResplitModal';
 export { default as ScriptRewriteModal } from './ScriptRewriteModal';
+export { default as ScriptActionLoadingOverlay } from './ScriptActionLoadingOverlay';
 export { ensureScriptInputStyle } from './ScriptInputStyles';
 
 export { default as AiThinkingMessage } from './AiThinkingMessage';

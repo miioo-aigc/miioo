@@ -740,7 +740,7 @@ export async function apiRegenerateScriptEpisode(projectId, itemId, { base_revis
   });
 }
 
-export async function apiPatchScriptStructure(projectId, { expected_revision, operations, client_request_id } = {}) {
+export async function apiPatchScriptStructure(projectId, { expected_revision, operations, client_request_id, after_item_id } = {}) {
   const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/structure`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -748,6 +748,7 @@ export async function apiPatchScriptStructure(projectId, { expected_revision, op
       expected_revision: expected_revision ?? null,
       operations: Array.isArray(operations) ? operations : [],
       client_request_id: client_request_id || scriptClientRequestId('script-structure-patch'),
+      after_item_id: after_item_id || null,
     }),
   });
   invalidate(K.script(projectId));

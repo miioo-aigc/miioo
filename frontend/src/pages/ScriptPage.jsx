@@ -33,6 +33,7 @@
  *   2026-07-21  移除左侧剧集结构导航，保留剧集数据同步和定稿流程
  *   2026-07-21  接入确认初稿后的结构化编排页、异步任务轮询和刷新恢复
  *   2026-07-21  分集剧情接入后端重排、重写、编辑保存和删除操作
+ *   2026-07-21  修复新增分集重排时重复插入 ID 导致中间插入失效
  *   2026-07-21  将项目详情中的后端设定回填到编排页整体设定
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -276,7 +277,9 @@ export default function ScriptPage({ projectId, projectVisualStyle, projectAspec
 
   const refreshScriptOutline = useCallback(async () => {
     const structure = await apiGetScriptStructure(projectId);
-    setScriptOutlineData(normalizeScriptStructure(structure));
+    const normalizedStructure = normalizeScriptStructure(structure);
+    setScriptOutlineData(normalizedStructure);
+    return normalizedStructure;
   }, [projectId]);
 
   const runEpisodeOperation = useCallback(async (operation) => {
@@ -295,13 +298,14 @@ export default function ScriptPage({ projectId, projectVisualStyle, projectAspec
     }
   }, [episodeActionLoading, projectId, refreshScriptOutline, waitForScriptOperation]);
 
-  const runStructurePatch = useCallback(async (operation) => {
+  const runStructurePatch = useCallback(async (operation, { refresh = true } = {}) => {
     if (!projectId || episodeActionLoading) return;
     setEpisodeActionLoading(true);
     setEpisodeActionError('');
     try {
-      await operation();
-      await refreshScriptOutline();
+      const result = await operation();
+      const refreshedStructure = refresh ? await refreshScriptOutline() : null;
+      return { result, refreshedStructure };
     } catch (error) {
       console.error('[ScriptPage] 保存分集剧情失败:', error);
       setEpisodeActionError(error?.message || '保存分集剧情失败，请重试');
@@ -313,6 +317,52 @@ export default function ScriptPage({ projectId, projectVisualStyle, projectAspec
   const handleResplitEpisodes = useCallback((params) => runEpisodeOperation(() => apiResplitScriptStructure(projectId, params)), [projectId, runEpisodeOperation]);
   const handleRegenerateEpisode = useCallback((itemId, params) => runEpisodeOperation(() => apiRegenerateScriptEpisode(projectId, itemId, params)), [projectId, runEpisodeOperation]);
   const handlePatchEpisodeStructure = useCallback((params) => runStructurePatch(() => apiPatchScriptStructure(projectId, params)), [projectId, runStructurePatch]);
+  const handleAddEpisode = useCallback(async (afterEpisodeId) => {
+    const clientTempId = `episode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const existingEpisodeIds = new Set((scriptOutlineData?.episodes || []).map((episode) => episode.id).filter(Boolean));
+
+    // 新增和重排放在同一个页面级操作里。第一次 add_item 后只读取数据用于计算顺序，
+    // 不提交到 state，避免后端暂时按末尾返回时出现“末尾闪现”再移动到插入点。
+    const outcome = await runStructurePatch(async () => {
+      const result = await apiPatchScriptStructure(projectId, {
+        expected_revision: scriptOutlineData?.revision || 0,
+        operations: [{
+          type: 'add_item',
+          target: 'episode_plots',
+          value: { title: '未命名', name: '未命名', content: '', summary: '' },
+          client_temp_id: clientTempId,
+        }],
+        after_item_id: afterEpisodeId || null,
+      });
+
+      const refreshedStructure = normalizeScriptStructure(await apiGetScriptStructure(projectId));
+      const addedEpisodeId = result?.temp_id_map?.[clientTempId]
+        || refreshedStructure?.episodes?.find((episode) => episode.id && !existingEpisodeIds.has(episode.id))?.id;
+
+      if (addedEpisodeId && afterEpisodeId) {
+        const currentIds = (refreshedStructure?.episodes || [])
+          .map((episode) => episode.id)
+          .filter((id) => id && id !== addedEpisodeId);
+        const anchorIndex = currentIds.indexOf(afterEpisodeId);
+        if (anchorIndex >= 0) {
+          const orderedItemIds = [
+            ...currentIds.slice(0, anchorIndex + 1),
+            addedEpisodeId,
+            ...currentIds.slice(anchorIndex + 1),
+          ];
+          await apiPatchScriptStructure(projectId, {
+            expected_revision: refreshedStructure.revision,
+            operations: [{ type: 'reorder_items', target: 'episode_plots', ordered_item_ids: orderedItemIds }],
+          });
+        }
+      }
+
+      return { addedEpisodeId };
+    }, { refresh: false });
+    if (!outcome?.result?.addedEpisodeId) return null;
+    await refreshScriptOutline();
+    return outcome.result.addedEpisodeId;
+  }, [projectId, refreshScriptOutline, runStructurePatch, scriptOutlineData?.episodes, scriptOutlineData?.revision]);
   const handleDeleteEpisode = useCallback((itemId, revision) => runStructurePatch(() => apiPatchScriptStructure(projectId, {
     expected_revision: revision,
     operations: [{ type: 'delete_item', target: 'episode_plots', item_id: itemId, impact_policy: 'cascade' }],
@@ -788,6 +838,7 @@ export default function ScriptPage({ projectId, projectVisualStyle, projectAspec
               projectSettings={{ visualStyle: projectVisualStyle, aspectRatio: projectAspectRatio, creationType: projectCreationType }}
               selectedModel={selectedModel}
               onResplit={handleResplitEpisodes}
+              onAddEpisode={handleAddEpisode}
               onRegenerateEpisode={handleRegenerateEpisode}
               onPatchStructure={handlePatchEpisodeStructure}
               onDeleteEpisode={handleDeleteEpisode}

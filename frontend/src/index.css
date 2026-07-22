@@ -863,6 +863,57 @@ body {
   to   { transform: translateY(0);    opacity: 1; }
 }
 
+/* 分集标签之间的插入入口仅在对应间隙悬停时显示。 */
+.episode-insert-slot {
+  display: flex;
+  width: 16px;
+  height: 20px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  transition: width 180ms ease, flex-basis 180ms ease;
+}
+
+.episode-insert-slot:hover,
+.episode-insert-slot:focus-within {
+  width: 24px;
+  flex-basis: 24px;
+}
+
+.episode-insert-slot:hover .episode-insert-button,
+.episode-insert-slot:focus-within .episode-insert-button {
+  opacity: 1 !important;
+}
+
+.episode-tag:not(:disabled):not([data-active="true"]):hover {
+  background: #2DC3E133 !important;
+  border-color: #FFFFFF26 !important;
+  color: #FFFFFF !important;
+}
+
+@keyframes episode-tag-reveal {
+  0% {
+    opacity: 0;
+    transform: scaleX(0);
+    transform-origin: center;
+  }
+  65% {
+    opacity: 1;
+    transform: scaleX(1.04);
+    transform-origin: center;
+  }
+  100% {
+    opacity: 1;
+    transform: scaleX(1);
+    transform-origin: center;
+  }
+}
+
+.episode-tag-reveal {
+  animation: episode-tag-reveal 420ms cubic-bezier(0.22, 1.2, 0.36, 1) both;
+  transform-origin: center;
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }

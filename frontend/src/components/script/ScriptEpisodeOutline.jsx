@@ -22,6 +22,7 @@
  *   2026-07-22  将 AI 重写本集改为独立弹窗，接入重写要求输入和异步操作
  *   2026-07-22  增加分集剧情编辑态，使用结构草稿 PATCH 保存内容
  *   2026-07-22  编辑态与展示态共用剧情容器，并使用 Markdown 渲染分集正文
+ *   2026-07-22  支持主体解锁后的只读分集操作状态
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -67,7 +68,7 @@ function EpisodeMarkdown({ content }) {
   );
 }
 
-export default function ScriptEpisodeOutline({ episodes = [], revision = 0, selectedModel, onResplit, onRegenerate, onPatch, onAdd, onDelete, actionLoading = false, actionError = '', sectionRef }) {
+export default function ScriptEpisodeOutline({ episodes = [], revision = 0, selectedModel, onResplit, onRegenerate, onPatch, onAdd, onDelete, actionLoading = false, actionError = '', sectionRef, hideEpisodeActions = false }) {
   const [selectedId, setSelectedId] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -168,7 +169,7 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 0 0' }}>
         <span style={{ width: '2px', height: '18px', flexShrink: 0, background: '#FFFFFF' }} />
         <h3 style={{ flex: 1, margin: 0, color: '#FFFFFF', fontSize: '18px', lineHeight: '22px', fontWeight: 600 }}>分集剧情（{episodes.length}）</h3>
-        <Button type="button" variant="secondary" icon={<SparkleIcon />} onClick={() => setResplitOpen(true)} disabled={actionLoading} contentClassName="!whitespace-nowrap">AI重新分集</Button>
+        {!hideEpisodeActions && <Button type="button" variant="secondary" icon={<SparkleIcon />} onClick={() => setResplitOpen(true)} disabled={actionLoading} contentClassName="!whitespace-nowrap">AI重新分集</Button>}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', alignSelf: 'stretch', padding: '12px', border: '1px solid #3E3D3D', borderRadius: '12px', boxSizing: 'border-box' }}>
@@ -200,7 +201,7 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
           <div style={{ display: 'flex', minHeight: 0, flex: 1 }}><ScriptEditor initialContent={draft} onContentChange={setDraft} /></div>
         ) : <div className="script-md" style={{ flex: 1, minHeight: 0, overflowY: 'auto', whiteSpace: 'pre-wrap', color: '#FFFFFF', fontSize: '14px', lineHeight: '20px' }}>{getEpisodeContent(selectedEpisode) ? <EpisodeMarkdown content={getEpisodeContent(selectedEpisode)} /> : '暂无剧情内容'}</div>) : <div style={{ color: '#FFFFFF66', fontSize: '14px' }}>暂无可编辑的分集剧情</div>}
         {actionError && <div role="alert" style={{ color: '#F75F5F', fontSize: '12px', lineHeight: '18px' }}>{actionError}</div>}
-        {selectedEpisode && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexShrink: 0 }}>
+        {selectedEpisode && !hideEpisodeActions && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexShrink: 0 }}>
           {isEditing ? <><Button type="button" variant="secondary" onClick={() => { setIsEditing(false); setDraft(getEpisodeContent(selectedEpisode)); }} disabled={actionLoading}>取消</Button><Button type="button" variant="primary" loading={actionLoading} onClick={saveDraft}>保存</Button></> : <>
             <Button type="button" variant="secondary" icon={<SparkleIcon />} onClick={() => setRewriteOpen(true)} disabled={actionLoading} contentClassName="!whitespace-nowrap">AI重写本集</Button>
             <Button type="button" variant="secondary" icon={<EditIcon />} onClick={() => { setDraft(getEpisodeContent(selectedEpisode)); setIsEditing(true); }} disabled={actionLoading} contentClassName="!whitespace-nowrap">编辑</Button>

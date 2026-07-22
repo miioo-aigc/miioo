@@ -1332,6 +1332,13 @@
 - 确认接口使用 `script.draft_revision`，`STRUCTURE_NOT_FOUND` 作为“尚无结构草稿”处理，其他 404 与真实版本冲突均保留错误信息，不自动无限重试。
 - 新增 `ScriptEpisodeOutline`，负责后端分集胶囊、AI 重新分集、当前集 AI 重写/删除和剧情编辑；富文本 `ScriptEditor` 只在当前集编辑态挂载。
 
+## 2026-07-22 剧本主体解锁后的修改确认
+
+- 新增 `src/components/script/ScriptModifyConfirmModal.jsx`，负责主体已解锁后进入剧本修改态前的二次确认，页面只负责打开、确认和关闭状态。
+- 主体已解锁且未确认修改时，`ScriptEpisodeOutline` 隐藏 AI 重新分集、AI 重写本集、编辑和删除本集操作；确认修改后重新进入编排态时恢复这些操作。
+- 编排页右上角在主体已解锁状态提供下载和修改动作；下载会重新读取最新结构化分集，按后端顺序合并为一个 Markdown 文件，本地 OpenAPI 未提供剧本专用下载接口。
+- 确认修改后继续停留在剧本编排页，恢复分集剧情的编辑操作，不再切换到旧的单一整稿富文本编辑页。
+
 ## 2026-07-21 剧本页移除左侧剧集结构
 
 - 删除 `src/components/script/EpisodeItem.jsx` 与 `EpisodeList.jsx`，并移除目录导出和 `ScriptPage` 中的左侧导航渲染。

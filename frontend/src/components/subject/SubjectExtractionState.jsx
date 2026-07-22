@@ -2,15 +2,15 @@
  * 主体提取过程的加载态和失败态。
  * 组件只负责展示和重试回调，不持有提取状态、API 或主体列表副作用。
  */
-import DotsLoading from '../DotsLoading';
+import LoadingAnimation from '../LoadingAnimation';
 import { Button } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 export function SubjectExtractionLoading({ message }) {
   return (
-    <div style={{ position: 'absolute', inset: 0, marginBottom: '24px', marginRight: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', backgroundColor: '#161616', borderRadius: '16px', border: '1px solid #FFFFFF14' }}>
-      <DotsLoading size={4} color="#2DC3E1" gap={4} />
+    <div role="status" aria-label="正在提取主体" style={{ position: 'absolute', inset: 0, marginBottom: '24px', marginRight: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', backgroundColor: '#161616', borderRadius: '16px', border: '1px solid #FFFFFF14' }}>
+      <LoadingAnimation width={200} />
       <span style={{ fontFamily: FONT, fontSize: '12px', color: '#FFFFFF99' }}>{message}</span>
     </div>
   );

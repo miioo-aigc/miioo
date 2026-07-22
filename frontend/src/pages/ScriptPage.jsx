@@ -13,7 +13,7 @@
  *   AiThinkingMessage / AiStreamingContent / ScriptRendered              src/components/script/
  *   ScriptEditor（编辑器域组件）                                         src/components/script/ScriptEditor.jsx
  *   EditorToolbar（编辑器域组件）                                        src/components/script/EditorToolbar.jsx
- *   ScriptPanel / ScriptOutlineLoading / ScriptOutlineWorkspace / ScriptEpisodeOutline src/components/script/
+ *   ScriptPanel / ScriptOutlineLoading / ScriptOutlineWorkspace / ScriptEpisodeOutline / ScriptModifyConfirmModal src/components/script/
  *
  * ─── 主页面入口 ───────────────────────────────────────────────────────
  *   export default ScriptPage()                                         L126
@@ -35,12 +35,15 @@
  *   2026-07-21  分集剧情接入后端重排、重写、编辑保存和删除操作
  *   2026-07-21  修复新增分集重排时重复插入 ID 导致中间插入失效
  *   2026-07-21  将项目详情中的后端设定回填到编排页整体设定
+ *   2026-07-22  补充编排页下一步箭头，并在主体解锁后提供下载与修改剧本动作
+ *   2026-07-22  增加修改剧本二次确认及主体解锁后的分集操作隐藏规则
+ *   2026-07-22  下载改为读取最新结构化分集，确认修改后留在编排页并恢复分集编辑操作
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiSaveScriptWorkspace, apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiFinalizeScriptWorkspace, apiGetEpisodes, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { Button } from '../components/ui';
-import { InputCard, ScriptEmptyState, ScriptPanel, ScriptMessageArea, ScriptOutlineLoading, ScriptOutlineWorkspace } from '../components/script';
+import { InputCard, ScriptEmptyState, ScriptPanel, ScriptMessageArea, ScriptOutlineLoading, ScriptOutlineWorkspace, ScriptModifyConfirmModal } from '../components/script';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -71,6 +74,11 @@ function getScriptTaskId(task) {
 function formatEpisodeHeaders(content) {
   if (!content) return '';
   return content.replace(/^(?:#\s*)?第(\d+)集/gm, '## 第$1集');
+}
+
+function sanitizeDownloadName(name, fallback = '剧本') {
+  const normalized = String(name || '').trim().replace(/[\\/:*?"<>|]/g, '_');
+  return normalized || fallback;
 }
 
 function Toast({ toasts }) {
@@ -117,7 +125,7 @@ function Toast({ toasts }) {
 
 // ConfirmExtractModal 已迁移至 ConfirmDialog 共享组件（confirmVariant='orange'）
 
-export default function ScriptPage({ projectId, projectVisualStyle, projectAspectRatio, projectCreationType, onGoToSubject, onScriptFinalized, onEpisodesChange, phase: phaseProp, onPhaseChange, hasStarted: hasStartedProp, onHasStartedChange, scriptContent: scriptContentProp, onScriptContentChange, draftContent: draftContentProp, onDraftContentChange, isSubjectUnlocked = false }) {
+export default function ScriptPage({ projectId, projectName = '', projectVisualStyle, projectAspectRatio, projectCreationType, onGoToSubject, onScriptFinalized, onEpisodesChange, phase: phaseProp, onPhaseChange, hasStarted: hasStartedProp, onHasStartedChange, scriptContent: scriptContentProp, onScriptContentChange, draftContent: draftContentProp, onDraftContentChange, isSubjectUnlocked = false }) {
   const [phaseLocal, setPhaseLocalRaw] = useState('initial');
   const [hasStartedLocal, setHasStartedLocalRaw] = useState(false);
   const [scriptContentLocal, setScriptContentLocalRaw] = useState('');
@@ -152,6 +160,8 @@ export default function ScriptPage({ projectId, projectVisualStyle, projectAspec
   const [scriptOutlineError, setScriptOutlineError] = useState('');
   const [scriptOutlineData, setScriptOutlineData] = useState(null);
   const [scriptOutlineTaskId, setScriptOutlineTaskId] = useState(null);
+  const [modifyConfirmOpen, setModifyConfirmOpen] = useState(false);
+  const [scriptModificationMode, setScriptModificationMode] = useState(false);
   const [episodeActionLoading, setEpisodeActionLoading] = useState(false);
   const [episodeActionError, setEpisodeActionError] = useState('');
   const stopReasonRef = useRef(null); // 'user-thinking' | 'user-streaming' | null
@@ -770,6 +780,62 @@ export default function ScriptPage({ projectId, projectVisualStyle, projectAspec
     setPhase('edit');
   };
 
+  const handleRequestModifyScript = useCallback(() => {
+    setModifyConfirmOpen(true);
+  }, []);
+
+  const handleConfirmModifyScript = useCallback(async () => {
+    setModifyConfirmOpen(false);
+    setScriptModificationMode(true);
+    setScriptOutlineMode(true);
+    setScriptOutlineError('');
+    setScriptOutlineLoading(true);
+    try {
+      const latestStructure = normalizeScriptStructure(await apiGetScriptStructure(projectId));
+      setScriptOutlineData(latestStructure);
+    } catch (error) {
+      console.error('[ScriptPage] 刷新可编辑剧本结构失败:', error);
+      setScriptOutlineError(error?.message || '读取剧本结构失败，请重试');
+    } finally {
+      setScriptOutlineLoading(false);
+    }
+  }, [projectId]);
+
+  const handleDownloadScript = useCallback(async () => {
+    if (!projectId) {
+      showToast('当前没有可下载的剧本内容', 'warning');
+      return;
+    }
+
+    try {
+      const latestStructure = normalizeScriptStructure(await apiGetScriptStructure(projectId));
+      const episodes = latestStructure?.episodes || [];
+      if (episodes.length === 0) {
+        showToast('当前没有可下载的分集剧本', 'warning');
+        return;
+      }
+
+      setScriptOutlineData(latestStructure);
+      const content = episodes.map((episode, index) => {
+        const title = episode.title || episode.name || '未命名';
+        const episodeContent = episode.content || episode.description || episode.synopsis || '';
+        return `## 第${String(index + 1).padStart(2, '0')}集 ${title}\n\n${episodeContent}`.trim();
+      }).join('\n\n---\n\n');
+      const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${sanitizeDownloadName(projectName, projectId || '剧本')}.md`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('[ScriptPage] 下载分集剧本失败:', error);
+      showToast(error?.message || '下载剧本失败，请重试', 'error');
+    }
+  }, [projectId, projectName]);
+
   const handleSave = async () => {
     if (!draftContent) return;
 
@@ -866,10 +932,33 @@ export default function ScriptPage({ projectId, projectVisualStyle, projectAspec
               onDeleteEpisode={handleDeleteEpisode}
               episodeActionLoading={episodeActionLoading}
               episodeActionError={episodeActionError}
+              hideEpisodeActions={isSubjectUnlocked && !scriptModificationMode}
             />
           )}
           {!scriptOutlineLoading && !scriptOutlineError && (
-            <Button type="button" variant="accent" size="large" onClick={() => onGoToSubject?.('char')} style={{ position: 'absolute', top: 0, right: 0, zIndex: 3 }}>下一步：生成主体</Button>
+            isSubjectUnlocked && !scriptModificationMode ? (
+              <div style={{ position: 'absolute', top: 0, right: 0, zIndex: 3, display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+                <Button type="button" variant="secondary" size="large" style={{ height: '32px' }} onClick={handleDownloadScript}>下载剧本</Button>
+                <Button type="button" variant="accent" size="large" style={{ height: '32px' }} onClick={handleRequestModifyScript}>修改剧本</Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="accent"
+                size="large"
+                icon={(
+                  <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" style={{ overflow: 'visible', flexShrink: 0 }} aria-hidden="true">
+                    <path d="M14 8H2" fill="none" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M10 4L14 8L10 12" fill="none" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+                iconPosition="right"
+                onClick={() => onGoToSubject?.('char')}
+                style={{ position: 'absolute', top: 0, right: 0, zIndex: 3 }}
+              >
+                下一步：生成主体
+              </Button>
+            )
           )}
         </div>
       ) : !hasStarted ? (
@@ -941,6 +1030,11 @@ export default function ScriptPage({ projectId, projectVisualStyle, projectAspec
       )}
     </div>
     <Toast toasts={toasts} />
+    <ScriptModifyConfirmModal
+      open={modifyConfirmOpen}
+      onConfirm={handleConfirmModifyScript}
+      onCancel={() => setModifyConfirmOpen(false)}
+    />
 
     </>  );
 }

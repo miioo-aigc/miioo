@@ -1178,17 +1178,13 @@ export async function apiExtractSubjectsFromScript(projectId) {
     `${BASE}/api/projects/${projectId}/script-workspace/extract-subjects`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
     }
   );
-  // 抽取主体会新增主体数据
-  invalidate(K.subjectsPrefix(projectId));
-  invalidate(K.projectOverview(projectId));
   if (!res.ok) {
     let detail = '';
     try {
       const body = await res.json();
-      detail = body?.detail || body?.message || '';
+      detail = body?.detail || body?.message || body?.error || '';
     } catch { /* 忽略非 JSON 错误响应 */ }
     const statusMessages = {
       524: 'AI 角色提取超时，剧本内容可能过长，请缩短后重试',
@@ -1200,5 +1196,12 @@ export async function apiExtractSubjectsFromScript(projectId) {
     err.status = res.status;
     throw err;
   }
-  return res.json();
+  // 抽取主体会新增主体数据；仅成功后失效缓存，避免失败请求清掉已有列表。
+  invalidate(K.subjectsPrefix(projectId));
+  invalidate(K.projectOverview(projectId));
+  const data = await res.json();
+  return {
+    created: Array.isArray(data?.created) ? data.created : [],
+    updated: Array.isArray(data?.updated) ? data.updated : [],
+  };
 }

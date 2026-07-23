@@ -37,14 +37,30 @@ export async function apiGetStoryboards(projectId, { episode_id } = {}) {
   const raw = await cached(
     K.storyboards(projectId, episode_id),
     async () => {
-      const params = new URLSearchParams();
-      if (episode_id) params.append('episode_id', episode_id);
-      const query = params.toString();
-      const url = query
-        ? `${BASE}/api/projects/${projectId}/storyboards?${query}`
-        : `${BASE}/api/projects/${projectId}/storyboards`;
-      const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+      // 当前后端对 episode_id 查询会返回纯文本 500；取项目列表后在前端按集过滤，
+      // 避免成功抽取后额外产生失败请求，也兼容旧版列表接口。
+      const res = await authFetch(
+        `${BASE}/api/projects/${projectId}/storyboards?limit=200`,
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+      if (!res.ok) {
+        const responseText = await res.text().catch(() => '');
+        let detail = responseText;
+        try {
+          const body = responseText ? JSON.parse(responseText) : null;
+          detail = body?.detail || body?.message || body?.error || responseText;
+        } catch {
+          // 后端异常页可能直接返回纯文本，保留原始内容用于诊断。
+        }
+        const error = new Error(detail || `获取分镜列表失败（HTTP ${res.status}）`);
+        error.status = res.status;
+        throw error;
+      }
       const data = await res.json();
+      if (episode_id) {
+        const allItems = Array.isArray(data) ? data : data?.list || data?.items || [];
+        return allItems.filter((item) => (item.episode_id ?? item.episodeId) === episode_id);
+      }
       // API 文档确认返回直接数组，兼容未来可能改为分页对象的情况
       if (Array.isArray(data)) return data;
       if (Array.isArray(data?.list)) return data.list;
@@ -124,10 +140,22 @@ export async function apiGenerateStoryboardsFromEpisode(projectId, { episode_id,
   return res.json();
 }
 
-export async function apiGenerateStoryboardsFromFinalScript(projectId) {
+export async function apiGenerateStoryboardsFromFinalScript(projectId, options = {}) {
+  const payload = {
+    model: null,
+    episode_count: null,
+    split_mode: 'rule_first',
+    continue_in_background: true,
+    first_episode_only: true,
+    ...options,
+  };
   const res = await authFetch(
     `${BASE}/api/projects/${projectId}/storyboards/generate-from-final-script`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' } }
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }
   );
   if (!res.ok) {
     let detail = '';

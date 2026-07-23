@@ -15,6 +15,7 @@
  *   2026-07-15  使用 reducer 同步外部参考图，降低拆分后的状态链路风险
  *   2026-07-17  上传入口改为复用无业务 FileUploadButton，API 和绑定编排保持不变
  *   2026-07-17  拆分 RefImageItem 与 RefImageUploadCard，页面继续持有参考图业务编排
+ *   2026-07-22  明确参考图仅写入主体 reference_images，不参与右侧候选图列表
  */
 import { useEffect, useReducer, useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
@@ -96,7 +97,9 @@ export default function RefImageField({ maxImages = 3, projectId, subjectId, ref
           const realUrl = normalizeImageUrl(rawUrl) || rawUrl;
           if (realId && realUrl) {
             dispatchRefImages({ type: 'replaceById', id: tempId, patch: { id: realId, url: realUrl, assetId: realId } });
-            onRefImagesChange?.(newList.map((image) => image.id === tempId ? realUrl : (image.url || image.id)));
+            onRefImagesChange?.(newList.map((image) => image.id === tempId
+              ? { id: realId, assetId: realId, url: realUrl }
+              : image));
           }
         })
         .catch((error) => {
@@ -122,7 +125,7 @@ export default function RefImageField({ maxImages = 3, projectId, subjectId, ref
     if (projectId && subjectId && assetIds.length > 0) {
       setLoadingRefs(true);
       apiBindSubjectReferenceImages(projectId, subjectId, { asset_ids: assetIds })
-        .then(() => onRefImagesChange?.(newList.map((image) => image.url || image.id)))
+        .then(() => onRefImagesChange?.(newList))
         .catch((error) => console.error('[RefImageField] 绑定参考图失败:', error))
         .finally(() => setLoadingRefs(false));
     }
@@ -131,7 +134,13 @@ export default function RefImageField({ maxImages = 3, projectId, subjectId, ref
   function handleRemove(index) {
     const newList = refImages.filter((_, itemIndex) => itemIndex !== index);
     dispatchRefImages({ type: 'replace', items: newList });
-    onRefImagesChange?.(newList.map((image) => image.url || image.id));
+    onRefImagesChange?.(newList);
+    if (projectId && subjectId) {
+      const assetIds = newList.map((image) => image.assetId || image.id)
+        .filter((id) => id && !String(id).startsWith('upload-') && !String(id).startsWith('blob:') && !String(id).startsWith('/') && !String(id).startsWith('http'));
+      apiBindSubjectReferenceImages(projectId, subjectId, { asset_ids: assetIds })
+        .catch((error) => console.error('[RefImageField] 删除参考图绑定失败:', error));
+    }
   }
 
   return (

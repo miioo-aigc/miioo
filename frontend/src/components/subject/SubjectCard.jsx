@@ -102,7 +102,7 @@ function SubjectMoreMenu({ onDownload, onDelete }) {
           variant="secondary"
           icon={<MoreIcon />}
           aria-label="主体更多操作"
-          className="!h-6 !w-6 !rounded-md !border-0 !p-0 !shadow-none"
+          className="!h-[24px] !w-[24px] !rounded-[6px] !border-0 !p-[0px] !shadow-none"
           style={{ backgroundColor: open ? 'rgba(0,0,0,0.75)' : '#00000080', transition: 'background-color 0.12s' }}
           onMouseEnter={(event) => { if (!open) event.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.65)'; }}
           onMouseLeave={(event) => { if (!open) event.currentTarget.style.backgroundColor = '#00000080'; }}

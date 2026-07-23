@@ -93,7 +93,17 @@ export async function apiUpdateAsset(assetId, updates) {
 
 export async function apiDeleteAsset(assetId, { projectId, subjectType } = {}) {
   const res = await authFetch(`${BASE}/api/assets/${assetId}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`删除资产失败（${res.status}）`);
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const payload = await res.json();
+      detail = payload?.detail || payload?.message || '';
+      if (typeof detail === 'object') detail = JSON.stringify(detail);
+    } catch {
+      // 非 JSON 错误响应不影响统一错误抛出
+    }
+    throw new Error(detail || `删除资产失败（${res.status}）`);
+  }
   invalidateProjectAssetDependents(projectId, subjectType);
 }
 
@@ -103,7 +113,17 @@ export async function apiBatchDeleteAssets(asset_ids, { projectId, subjectType }
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ asset_ids }),
   });
-  if (!res.ok) throw new Error(`批量删除资产失败（${res.status}）`);
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const payload = await res.json();
+      detail = payload?.detail || payload?.message || '';
+      if (typeof detail === 'object') detail = JSON.stringify(detail);
+    } catch {
+      // 非 JSON 错误响应不影响统一错误抛出
+    }
+    throw new Error(detail || `批量删除资产失败（${res.status}）`);
+  }
   invalidateProjectAssetDependents(projectId, subjectType);
 }
 
@@ -203,7 +223,7 @@ function classifyAsset(asset, creationIds) {
  * 按来源移除资产：主体资产进回收站，创作资产只解除主体引用。
  * assetRecords 必须尽量传入完整资产记录，来源缺失时再查询创作资产集合兜底。
  */
-export async function apiRemoveAssets(assetRecords = [], { projectId, subjectType } = {}) {
+export async function apiRemoveAssets(assetRecords = [], { projectId, subjectType, deleteMode = 'batch' } = {}) {
   const recordsById = new Map();
   assetRecords.forEach((asset) => {
     const id = getAssetId(asset);
@@ -223,7 +243,15 @@ export async function apiRemoveAssets(assetRecords = [], { projectId, subjectTyp
   });
 
   if (ownedIds.length > 0) {
-    await apiBatchDeleteAssets(ownedIds, { projectId, subjectType });
+    if (deleteMode === 'single') {
+      // 主体删除走逐条接口。批量接口是资产中心的聚合能力，部分主体生成资产
+      // 在批量处理时会触发后端关联校验并返回 500；逐条删除与资产详情接口契约一致。
+      for (const id of ownedIds) {
+        await apiDeleteAsset(id, { projectId, subjectType });
+      }
+    } else {
+      await apiBatchDeleteAssets(ownedIds, { projectId, subjectType });
+    }
   }
   if (creationIds.length > 0) {
     await Promise.all(creationIds.map((id) => apiUpdateAsset(id, { subject_id: null })));
@@ -261,7 +289,7 @@ export async function apiDeleteSubjectAssets(projectId, subjectId) {
   }
 
   if (records.length === 0) return { ownedIds: [], creationIds: [] };
-  return apiRemoveAssets(records, { projectId });
+  return apiRemoveAssets(records, { projectId, deleteMode: 'single' });
 }
 
 export async function apiBatchRestoreAssets(asset_ids) {

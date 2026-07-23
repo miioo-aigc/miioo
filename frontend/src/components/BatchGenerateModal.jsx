@@ -24,6 +24,11 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  复用 components/ui/Select，移除批量生成弹窗内重复选择器
+ *   2026-07-22  批量生成弹窗内模型、比例和分辨率选择器改为填满父级宽度
+ *   2026-07-22  批量生成角色弹窗的多视图生成方式调整为首位
+ *   2026-07-22  批量生成角色弹窗默认生成方式改为多视图
+ *   2026-07-22  批量生成进行中允许通过关闭和取消按钮退出弹窗
+ *   2026-07-23  批量生成弹窗默认选中“仅生成未定稿”
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 // 模型能力直接从后端 capabilities 获取
@@ -43,8 +48,8 @@ const FALLBACK_MODELS = [
 ];
 
 const GENERATION_MODES = [
-  { label: '主视图', value: 'single' },
   { label: '多视图', value: 'three_view' },
+  { label: '主视图', value: 'single' },
 ];
 
 function CloseIcon() {
@@ -137,8 +142,8 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
   const [model, setModel] = useState(defaultModel?.value || '');
   const [ratio, setRatio] = useState(projectRatio || '16:9');
   const [resolution, setResolution] = useState('2K');
-  const [mode, setMode] = useState('single');
-  const [onlyUndrafted, setOnlyUndrafted] = useState(false);
+  const [mode, setMode] = useState('three_view');
+  const [onlyUndrafted, setOnlyUndrafted] = useState(true);
 
   // 根据当前选中的模型 + 分辨率，动态计算可用的比例列表
  const ratioOptions = useMemo(() => {
@@ -222,8 +227,8 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
         }
       }
     }
-    setMode('single');
-    setOnlyUndrafted(false);
+    setMode('three_view');
+    setOnlyUndrafted(true);
   }, [modelList, projectRatio]);
 
   // 每次打开弹窗时，重置为第一个模型的默认值（比例优先用项目比例）
@@ -279,6 +284,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
         <div className="flex flex-col items-start gap-[16px] py-[8px] w-full px-[24px] bg-[#161616]">
           <Select
             label="选择模型"
+            width="100%"
             value={model}
             displayValue={modelList.find((item) => item.value === model)?.label || model}
             options={modelList}
@@ -294,6 +300,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
           />
           <Select
             label="比例"
+            width="100%"
             value={ratio}
             options={ratioOptions}
             selectedOptionColor="#FFFFFF"
@@ -306,6 +313,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
           />
           <Select
             label="分辨率"
+            width="100%"
             value={resolution}
             options={resolutionOptions}
             selectedOptionColor="#FFFFFF"
@@ -355,8 +363,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
           <button
             type="button"
             onClick={onClose}
-            disabled={generating}
-            className="flex items-center h-[36px] shrink-0 rounded-lg px-[16px] gap-[4px] bg-[#161616] border border-solid border-[#FFFFFF0D] outline outline-1 outline-[#00000080] transition-colors hover:bg-[#1D1E1E] active:bg-[#111111] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center h-[36px] shrink-0 rounded-lg px-[16px] gap-[4px] bg-[#161616] border border-solid border-[#FFFFFF0D] outline outline-1 outline-[#00000080] transition-colors hover:bg-[#1D1E1E] active:bg-[#111111]"
             style={{ boxShadow: '#00000066 3px 3px 8px' }}
           >
             <span className="text-sm/[18px] text-[#FFFFFF99]" style={{ fontFamily: FONT }}>取消</span>

@@ -14,6 +14,7 @@
  *   2026-07-21  Link 变体改为内容自适应高度并移除默认内边距
  *   2026-07-21  按设计稿完善 Secondary 的默认、悬停、按下、禁用和加载状态
  *   2026-07-21  将 Danger 统一为深色容器配红色图标和文字
+ *   2026-07-22  仅图标按钮默认移除黑色 outline，保留键盘聚焦描边
  */
 import { forwardRef } from 'react';
 
@@ -115,7 +116,7 @@ export const Button = forwardRef(function Button(
       aria-busy={loading || undefined}
       style={{
         fontFamily,
-        outline: '1px solid var(--color-stroke-outline)',
+        outline: iconOnly ? 'none' : '1px solid var(--color-stroke-outline)',
         ...(variant === 'accent' ? {
           backgroundImage: 'linear-gradient(157.78deg, rgba(122,229,185,0.30) 2.88%, rgba(122,229,185,0) 56.77%)',
         } : {}),

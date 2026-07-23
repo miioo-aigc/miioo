@@ -32,10 +32,11 @@
  *   GenerateImagePanel                         components/storyboard/GenerateImagePanel.jsx
  *   GenerateVideoPanel / ReferenceMediaEditor  components/storyboard/
  *
- * ─── 主页面入口 ──────────────────────────────────────────── L287–L1400
- *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化 L300–L1140
- *   [镜头 CRUD] 上传、编辑、复制、删除、排序          L1141–L1230
- *   [渲染] 状态结果、表格、头部、生成面板和 Toast       L930–L1297
+ * ─── 主页面入口 ──────────────────────────────────────────── L274–L1304
+ *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化 L286–L870
+ *   [加载与错误态] LoadingAnimation、失败操作和统计    L871–L934
+ *   [镜头 CRUD] 上传、编辑、复制、删除、排序          L735–L860
+ *   [渲染] 状态结果、表格、头部、生成面板和 Toast       L934–L1303
  *   [边界] 页面保留轮询循环、状态写回、缓存、持久化、Toast 和 API 副作用
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
@@ -91,6 +92,9 @@
  *              页面继续持有 pollTask、状态更新、缓存、持久化、Toast 和分镜写回
  *   2026-07-17  迁移 Toast Portal 展示至 components/storyboard/StoryboardToast.jsx；页面继续持有 toast 状态和触发逻辑
  *   2026-07-17  迁移分镜头部、选集提示和批量工具栏组合至 components/storyboard/StoryboardHeader.jsx；页面继续持有状态和动作回调
+ *   2026-07-23  接入 LoadingAnimation、任务提示文案和新版面包屑统计
+ *   2026-07-23  分集选择器改用剧本分集全量；切换到未生成分集时按集生成并轮询
+ *   2026-07-23  重新分镜时先清空旧列表并进入 LoadingAnimation 加载态，避免旧数据覆盖重新生成状态
  *   2026-07-15  抽离 PanelPromptInput、ReferenceMentionDropdown 和 SubjectTag 到 components/storyboard/PanelPromptInput.jsx，
  *              页面只负责把提示词组件注入生成面板；提示词编辑、原子提及、光标处理和展示态标签由组件内部维护
  *   2026-07-15  抽离 PanelSelect / ModalSelectItem 到 components/storyboard/PanelSelect.jsx，
@@ -106,9 +110,10 @@ import { ModalCloseBtn } from '../components/storyboard/StoryboardControls';
 import StoryboardToast from '../components/storyboard/StoryboardToast';
 import StoryboardHeader from '../components/storyboard/StoryboardHeader';
 import { getEpisodeId } from '../components/storyboard/storyboardControlUtils';
-import { apiUploadStoryboardImage, apiUploadStoryboardVideo, apiGenerateStoryboardImage, apiGenerateStoryboardVideo, apiCreateStoryboard, apiUpdateStoryboard, apiDeleteStoryboard, apiReorderStoryboards, apiGetStoryboards, apiBatchDownloadStoryboardImages, apiBatchDownloadStoryboardVideos, apiGetTask } from '../api/storyboard';
+import { apiUploadStoryboardImage, apiUploadStoryboardVideo, apiGenerateStoryboardImage, apiGenerateStoryboardVideo, apiGenerateStoryboardsFromEpisode, apiCreateStoryboard, apiUpdateStoryboard, apiDeleteStoryboard, apiReorderStoryboards, apiGetStoryboards, apiBatchDownloadStoryboardImages, apiBatchDownloadStoryboardVideos, apiGetTask } from '../api/storyboard';
+import { apiGetEpisodes } from '../api/subject';
 import { apiUploadCreationImage } from '../api/creation';
-import DotsLoading from '../components/DotsLoading';
+import LoadingAnimation from '../components/LoadingAnimation';
 import { normalizeImageUrl, toAbsoluteUrl } from '../utils/imageUrl';
 import {
   extractStoryboardImageUrl,
@@ -119,7 +124,7 @@ import {
   isStoryboardTaskInProgress,
 } from '../utils/storyboardTaskAdapter';
 import { Button } from '../components/ui';
-import { subscribe, peekCache } from '../utils/cache';
+import { subscribe, peekCache, invalidate } from '../utils/cache';
 import { K, MEDIUM } from '../utils/cacheKeys';
 import { buildStoryboardRefFromAsset, toSafeStoryboardReferenceUrls } from '../utils/storyboardReferenceAdapter';
 import { enrichMainRefs, makeStoryboardShot, normalizeStoryboard, normalizeStoryboardList, toBackendStoryboard } from '../utils/storyboardDataAdapter';
@@ -269,9 +274,11 @@ function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, o
 
 const EPISODES = ['第一集', '第二集'];
 
-export default function StoryboardPage({ projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onVideoGenerated, onGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0 }) {
+export default function StoryboardPage({ projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onVideoGenerated, onGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0, statusMessage = '' }) {
 
-  const activeEpisodes = episodes.length > 0 ? episodes : EPISODES;
+  // 选择器的唯一数据源是剧本分集，不根据当前分镜接口返回结果裁剪列表。
+  const [scriptEpisodes, setScriptEpisodes] = useState(() => episodes.length > 0 ? episodes : []);
+  const activeEpisodes = scriptEpisodes.length > 0 ? scriptEpisodes : EPISODES;
   // 用 peekCache 同步读取缓存，第一次渲染直接呈现旧数据，避免空状态闪烁
   const [shots, setShots] = useState(() => {
     if (!projectId) return [];
@@ -289,7 +296,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       peekCache(K.storyboards(projectId, episodeId), MEDIUM.CONTENT) ??
       peekCache(K.storyboards(projectId), MEDIUM.CONTENT);
     if (!raw || !Array.isArray(raw)) return [];
-    return normalizeStoryboardList(raw, chars);
+    const currentEpisodeRaw = raw.filter((item) => (item.episode_id ?? item.episodeId) === episodeId);
+    return normalizeStoryboardList(currentEpisodeRaw, chars);
   });
   const [globalVoiceParams, setGlobalVoiceParams] = useState({});
   const [episode, setEpisode] = useState(() => {
@@ -300,6 +308,9 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const [dragId, setDragId] = useState(null);
   const [overId, setOverId] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const generatingEpisodeRef = useRef(null);
+  const generatedEpisodeIdsRef = useRef(new Set());
+  const loadedEpisodeRef = useRef(null);
 
   // 用户是否手动操作过（添加/删除分镜），如果操作过就不再展示智能分镜失败的错误态
   const hasManuallyInteracted = useRef(false);
@@ -330,6 +341,18 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const [genImageHistoryMap, setGenImageHistoryMap] = useState({}); // { [shotId]: generatedImages[] }
   const [genVideoHistoryMap, setGenVideoHistoryMap] = useState({}); // { [shotId]: generatedVideos[] }
 
+  // 从剧本分集接口兜底同步列表。分镜接口只用于读取镜头，不负责提供分集选择项。
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    apiGetEpisodes(projectId).then((data) => {
+      if (!cancelled && Array.isArray(data) && data.length > 0) setScriptEpisodes(data);
+    }).catch((err) => {
+      console.warn('[StoryboardPage] 同步剧本分集失败，继续使用页面传入分集:', err);
+    });
+    return () => { cancelled = true; };
+  }, [projectId]);
+
   // 页面加载时从后端获取剧本数据
   useEffect(() => {
     if (!projectId) return;
@@ -338,13 +361,28 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     const episodeId = getEpisodeId(episode);
     if (!episodeId) return;
 
+    // 切换分集时先清空上一集镜头，避免第二集尚未返回时继续显示第一集内容。
+    if (loadedEpisodeRef.current !== episodeId) {
+      loadedEpisodeRef.current = episodeId;
+      setShots([]);
+    }
+
     // 优先订阅带 episodeId 的 key，fallback 订阅 :all
     const cacheKey = K.storyboards(projectId, episodeId);
     const cacheKeyAll = K.storyboards(projectId);
 
+    let cancelled = false;
+    const onlyCurrentEpisode = (data) => {
+      if (!Array.isArray(data)) return [];
+      return data.filter((item) => (item.episode_id ?? item.episodeId) === episodeId);
+    };
+
     apiGetStoryboards(projectId, { episode_id: episodeId })
       .then((data) => {
-        if (!Array.isArray(data)) return;
+        if (cancelled || !Array.isArray(data)) return;
+        // 重新分镜期间保持加载态，避免请求完成后把旧缓存再次显示出来。
+        // 任务结束后 homeIsGenerating 变化会重新触发本 effect，再读取最新结果。
+        if (isGenerating || homeIsGenerating) return;
         const normalized = normalizeStoryboardList(data, chars);
         if (normalized.length > 0) {
           // 有数据：直接覆盖（正常加载 / 刷新场景）
@@ -353,14 +391,58 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
           // 空数组：只有在当前 shots 也为空时才清空，避免剧本定稿后
           // episode ID 变更导致 API 用新 ID 查不到数据而误清已有分镜
           setShots((prev) => (prev.length > 0 ? prev : normalized));
+          if (!homeIsGenerating
+            && !isGenerating
+            && generatingEpisodeRef.current !== episodeId
+            && !generatedEpisodeIdsRef.current.has(episodeId)) {
+            generatingEpisodeRef.current = episodeId;
+            setIsGenerating(true);
+            apiGenerateStoryboardsFromEpisode(projectId, { episode_id: episodeId, model: null })
+              .then((taskResponse) => {
+                if (Array.isArray(taskResponse)) {
+                  return { status: 'completed', storyboards: taskResponse };
+                }
+                const taskId = taskResponse?.task_id || taskResponse?.taskId || taskResponse?.id;
+                if (!taskId) {
+                  if (['completed', 'success', 'succeeded', 'done'].includes(taskResponse?.status)) return taskResponse;
+                  throw new Error('按集生成分镜未返回任务 ID');
+                }
+                return pollTask(taskId);
+              })
+              .then((taskResult) => {
+                if (['failed', 'error', 'cancelled', 'canceled'].includes(taskResult?.status)) {
+                  throw new Error(taskResult?.status_message || taskResult?.params?.error || '分镜生成失败');
+                }
+                return taskResult;
+              })
+              .then((taskResult) => {
+                if (taskResult?.storyboards) return taskResult.storyboards;
+                return apiGetStoryboards(projectId, { episode_id: episodeId });
+              })
+              .then((latest) => {
+                if (!cancelled && Array.isArray(latest)) {
+                  setShots(normalizeStoryboardList(latest, chars));
+                  generatedEpisodeIdsRef.current.add(episodeId);
+                }
+              })
+              .catch((err) => {
+                console.error('[StoryboardPage] 按集生成分镜失败:', err);
+                showToast(err?.message || '分镜生成失败，请稍后重试', 'error');
+              })
+              .finally(() => {
+                generatingEpisodeRef.current = null;
+                setIsGenerating(false);
+              });
+          }
         }
       })
       .catch((err) => {
-        console.error('[StoryboardPage] 加载剧本失败:', err);
+        if (!cancelled) console.error('[StoryboardPage] 加载分镜失败:', err);
       });
 
     const unsub1 = subscribe(cacheKey, (data) => {
       if (!Array.isArray(data)) return;
+      if (isGenerating || homeIsGenerating) return;
       const normalized = normalizeStoryboardList(data, chars);
       if (normalized.length > 0) {
         setShots(normalized);
@@ -370,7 +452,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     });
     const unsub2 = subscribe(cacheKeyAll, (data) => {
       if (!Array.isArray(data)) return;
-      const normalized = normalizeStoryboardList(data, chars);
+      if (isGenerating || homeIsGenerating) return;
+      const normalized = normalizeStoryboardList(onlyCurrentEpisode(data), chars);
       if (normalized.length > 0) {
         setShots(normalized);
       } else {
@@ -378,8 +461,12 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       }
     });
 
-    return () => { unsub1(); unsub2(); };
-  }, [projectId, episode, chars]);
+    return () => {
+      cancelled = true;
+      unsub1();
+      unsub2();
+    };
+  }, [projectId, episode, chars, homeIsGenerating, isGenerating]);
 
   // 当 chars/scenes/props 变化时（如主体页修改了定稿图），直接重新富化已有 shots，无需重新请求后端
   useEffect(() => {
@@ -408,6 +495,11 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   useEffect(() => {
     if (activeEpisodes.length > 0 && !activeEpisodes.some(ep => getEpisodeId(ep) === getEpisodeId(episode))) {
       const frameId = requestAnimationFrame(() => setEpisode(activeEpisodes[0]));
+      return () => cancelAnimationFrame(frameId);
+    }
+    const currentEpisode = activeEpisodes.find(ep => getEpisodeId(ep) === getEpisodeId(episode));
+    if (currentEpisode && currentEpisode !== episode) {
+      const frameId = requestAnimationFrame(() => setEpisode(currentEpisode));
       return () => cancelAnimationFrame(frameId);
     }
   }, [activeEpisodes, episode]);
@@ -729,6 +821,55 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     showToast('剪辑功能即将上线', 'warning');
   }
 
+  function handleRegenerate() {
+    if (isGenerating || homeIsGenerating) return;
+    const episodeId = getEpisodeId(episode);
+    if (!episodeId) {
+      showToast('当前分集信息不完整，无法重新分镜', 'error');
+      return;
+    }
+
+    // 只有重新分镜需要主动清空旧结果；首次进入时由任务状态决定是否展示加载态。
+    setShots([]);
+    setSelectedShotIds(new Set());
+    setDownloadMode(false);
+    setIsGenerating(true);
+
+    apiGenerateStoryboardsFromEpisode(projectId, { episode_id: episodeId, model: null })
+      .then((taskResponse) => {
+        if (Array.isArray(taskResponse)) {
+          return { status: 'completed', storyboards: taskResponse };
+        }
+
+        const taskId = taskResponse?.task_id || taskResponse?.taskId || taskResponse?.id;
+        if (!taskId) {
+          if (['completed', 'success', 'succeeded', 'done'].includes(taskResponse?.status)) {
+            return taskResponse;
+          }
+          throw new Error('重新分镜接口未返回任务 ID');
+        }
+        return pollTask(taskId);
+      })
+      .then((taskResult) => {
+        if (['failed', 'error', 'cancelled', 'canceled'].includes(taskResult?.status)) {
+          throw new Error(taskResult?.status_message || taskResult?.params?.error || '分镜生成失败');
+        }
+        if (Array.isArray(taskResult?.storyboards)) return taskResult.storyboards;
+        invalidate(K.storyboards(projectId, episodeId));
+        invalidate(K.storyboards(projectId));
+        return apiGetStoryboards(projectId, { episode_id: episodeId });
+      })
+      .then((latest) => {
+        setShots(normalizeStoryboardList(latest, chars));
+        generatedEpisodeIdsRef.current.add(episodeId);
+      })
+      .catch((err) => {
+        console.error('[StoryboardPage] 重新分镜失败:', err);
+        showToast(err?.message || '重新分镜失败，请稍后重试', 'error');
+      })
+      .finally(() => setIsGenerating(false));
+  }
+
   useEffect(() => {
     if (shots.length > 0) onUnlockStep?.('storyboard');
   }, [shots.length, onUnlockStep]);
@@ -870,19 +1011,24 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   // homeIsGenerating 期间如果已有分镜数据，直接展示数据，不再显示全屏 loading
   const showGeneratingLoading = (isGenerating || homeIsGenerating) && shots.length === 0;
   const showGeneratingError = !!generateError && shots.length === 0 && !hasManuallyInteracted.current;
+  const displayLoadingText = statusMessage || loadingTexts[loadingTextIndex];
+  const totalDuration = shots.reduce((sum, shot) => {
+    const value = Number.parseFloat(shot.params?.duration ?? shot.duration ?? 0);
+    return Number.isFinite(value) ? sum + value : sum;
+  }, 0);
 
   if (showGeneratingLoading) {
     return (
       <div style={{
         position: 'absolute', inset: 0, marginBottom: '24px', marginRight: '32px',
         display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', gap: '16px',
+        alignItems: 'center', justifyContent: 'center', gap: '8px',
         backgroundColor: '#161616', borderRadius: '16px',
         border: '1px solid rgba(255,255,255,0.08)',
       }}>
-        <DotsLoading size={4} color="#2DC3E1" gap={4} />
-        <span style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif", fontSize: '12px', color: '#FFFFFF99' }}>
-          {loadingTexts[loadingTextIndex]}
+        <LoadingAnimation width={200} />
+        <span style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif", fontSize: '14px', lineHeight: '20px', color: '#FFFFFF99', whiteSpace: 'nowrap' }}>
+          {displayLoadingText}
         </span>
       </div>
     );
@@ -948,6 +1094,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         onEpisodeChange={setEpisode}
         homeIsGenerating={homeIsGenerating && shots.length > 0}
         shotsCount={shots.length}
+        totalDuration={totalDuration}
         completedEpisodesCount={completedEpisodesCount}
         downloadMode={downloadMode}
         selectedCount={selectedShotIds.size}
@@ -960,6 +1107,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         onDownloadVideos={handleDownloadVideos}
         onExitDownloadMode={exitDownloadMode}
         onStartEdit={handleStartEdit}
+        onRegenerate={handleRegenerate}
       />
 
       {/* 分镜列表 */}

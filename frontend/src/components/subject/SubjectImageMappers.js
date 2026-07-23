@@ -4,7 +4,7 @@
  *
  * ─── 纯数据转换 ─────────────────────────────────────────────────────
  *   mapCandidateImages       将后端候选图转换为右侧图片列表数据
- *   mapReferenceImages       将后端参考图转换为右侧图片列表数据
+ *   mapReferenceImages       将后端参考图转换为详情/预览数据（不进入候选列表）
  *   mapReferenceImageIdsForModal  将参考图 ID/URL 转为详情弹窗快照
  *   mergeSubjectImages       去重、限制定稿图数量并插入任务占位/结果
  *
@@ -13,6 +13,7 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 SubjectPage 抽离主体详情图片的纯数据转换逻辑
+ *   2026-07-22  参考图与候选图彻底分流，主体右侧列表只展示候选结果
  */
 import { normalizeImageUrl } from '../../utils/imageUrl';
 
@@ -108,18 +109,17 @@ function mapPendingImage(pending, refImages) {
 }
 
 /**
- * 合并主体详情里的候选图、参考图和跨弹窗任务缓存。
+ * 合并主体详情里的候选图和跨弹窗任务缓存。
+ * 参考图是生成输入素材，不属于右侧候选结果，因此不能参与合并、定稿或下载。
  * 返回值不修改输入，也不会消费 pending；消费缓存由页面根据 pending 状态负责。
  */
 export function mergeSubjectImages({
   candidateImages,
-  referenceImages,
   refImages = [],
   pending = null,
 }) {
   const mappedCandidates = mapCandidateImages(candidateImages, refImages);
-  const mappedReferences = mapReferenceImages(referenceImages, refImages);
-  const images = keepOnlyFirstSettled(dedupeById([...mappedCandidates, ...mappedReferences]));
+  const images = keepOnlyFirstSettled(dedupeById(mappedCandidates));
   const pendingImage = mapPendingImage(pending, refImages);
 
   return pendingImage ? [pendingImage, ...images] : images;

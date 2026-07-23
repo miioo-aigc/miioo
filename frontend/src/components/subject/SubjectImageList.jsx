@@ -16,6 +16,7 @@
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 SubjectPage 抽离主体编辑区右侧图片列表及图片卡片
  *   2026-07-15  保持页面负责上传、下载、定稿 API 和 Toast 行为
+ *   2026-07-22  移除候选图悬停放大和下载按钮的黑色外描边
  */
 import { useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
@@ -114,7 +115,7 @@ function ImageActionButton({ children, ariaLabel, onClick }) {
       variant="secondary"
       icon={children}
       aria-label={ariaLabel}
-      className="!h-7 !w-7 !rounded-md !border-0 !p-0 !shadow-none"
+      className="!h-[28px] !w-[28px] !rounded-[6px] !border-0 !p-[0px] !shadow-none !outline-0"
       style={{
         backgroundColor: pressed ? 'rgba(255,255,255,0.18)' : hovered ? 'rgba(255,255,255,0.12)' : 'transparent',
         transition: 'background 100ms',
@@ -227,4 +228,3 @@ export default function SubjectImageList({
     </div>
   );
 }
-

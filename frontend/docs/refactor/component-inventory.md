@@ -1350,6 +1350,21 @@
 
 ## 2026-07-22 剧本主体解锁后的修改确认
 
+## 2026-07-22 剧本主体生成接口链路修复
+
+- 修复 `Home.jsx` 中主体生成任务的调用顺序：结构草稿发布任务完成后，继续调用 `/script-workspace/extract-subjects/episodes`，再轮询主体抽取任务；结构发布任务的 `published_counts.episodes` 不再被误认为主体抽取结果。
+- `src/api/subject.js` 集中承载主体抽取接口和主体列表响应适配，兼容顶层及嵌套 `list`/`items`/`data`/`result` 结构；`Home.jsx` 继续负责页面级 API 编排、任务轮询、主体缓存刷新和错误反馈。
+- `SubjectPage` 的主体展示、主体 CRUD、编辑和生图边界未改变；主体任务完成但列表暂时为空时会进行读取重试，最终仍为空才提示失败，避免静默显示成功。
+- 用户已通过实际流程确认主体抽取成功；本次定向 ESLint、构建、架构检查和 `git diff --check` 均通过。
+
+## 2026-07-22 主体编辑弹窗实时保存
+
+- `SubjectPage` 的主体编辑弹窗现在对名称、描述、提示词、模型、画面比例、分辨率和生成方式执行 400ms 防抖保存，统一通过主体 PATCH 接口写入基础字段和 `gen_config`。
+- 关闭遮罩或右上角关闭按钮前会清理防抖定时器，并将最新草稿加入串行保存队列；连续编辑时旧请求不会覆盖较新的草稿，刷新前已完成的请求可从主体详情恢复。
+- 主体详情恢复 `latest_generate_config` 的模型、比例、分辨率和生成方式；参考图由独立上传/绑定接口持久化，删除时用剩余 `asset_ids` 覆盖绑定关系并同步恢复到弹窗。
+- 组件边界保持不变：`SubjectEditForm` 和 `RefImageField` 只通过显式 props/回调接入，页面继续负责主体 PATCH、列表写回和错误日志。
+- 定向 ESLint、`npm run build`、`npm run check:architecture` 和 `git diff --check` 已通过；架构检查仅报告既有页面规模告警。
+
 ## 2026-07-22 剧本与分镜脚本上传导入
 
 - `ScriptPage` 将普通剧本上传与 AI 对话创作分开：上传文件不写入消息区，直接进入结构化编排加载态。
@@ -1370,3 +1385,22 @@
 - `ScriptPage` 已改为单列剧本工作区，不再持有左侧导航的选中索引、骨架加载状态和标题滚动定位回调。
 - `ScriptPanel` / `ScriptRendered` 移除仅服务分集导航的 `onActiveIndexChange` 与当前分集侦测；剧本内容滚动和最后一集底部占位仍保留。
 - `backendEpisodes`、`apiGetEpisodes`、定稿刷新和 `onEpisodesChange` 不删除，继续承担项目级剧集数据同步职责。
+## 2026-07-22 主体参考图与候选图边界修复
+
+- `src/components/subject/SubjectImageMappers.js` 的主体详情合并逻辑只读取 `candidate_images` 和生成任务结果；后端 `reference_images` 仅转换为编辑弹窗的生图输入快照，不再进入右侧候选图、定稿或下载列表。
+- `src/components/subject/SubjectImageActions.js` 的右侧候选图资产选择只更新候选列表；本地候选图使用通用创作图片上传接口，分类为 `reference`，不调用主体 `reference-images/upload` 或 `reference-images/bind`。主体参考图上传/资产绑定仍由 `RefImageField` 独立负责。
+- 分镜页专项复核结论：`GenerateImagePanel` 的 `refImages` 与 `generatedImages`、`MainRefCol` 的 `mainRefs` 与分镜结果、`GenerateVideoPanel`/`ReferenceMediaEditor` 的各类参考媒体均通过独立状态和回调维护，未发现参考素材上传后自动写入候选结果列表的同类问题。
+- 本轮完成静态代码和接口契约核对；主体候选图上传及分镜外部写操作仍需在安全测试数据下进行实际上传/刷新回归。
+
+## 2026-07-23 主体卡片删除资产清理修复
+
+- `src/api/subject.js` 删除主体改为直接调用主体专用 `DELETE /api/projects/{project_id}/subjects/{subject_id}`，不再前置删除主体关联资产；这是 OpenAPI 明确定义的主体删除入口，避免资产删除接口对主体关联资产返回 500。
+- 删除主体失败时优先读取后端 `detail`/`message` 或文本响应，并保留 HTTP 状态码，便于定位真实接口错误。
+- `SubjectPage` 主体卡片下载文件名改为 `项目名称_主体类型_主体名称.jpg`，项目名、主体类型和主体名均经过文件名字符清理。
+- 资产中心的单项/批量删除行为保持原有资产接口；主体删除是否由后端级联处理仍需在测试项目中实际回归确认。
+
+## 2026-07-23 主体候选图首次展示去重修复
+
+- `SubjectPage` 的批量生成结果缓存统一通过图片地址适配函数写入，按归一化后的图片 URL 去重，覆盖实时流回调、跨刷新任务恢复和批量任务恢复三条写入路径。
+- 编辑主体弹窗首次消费批量缓存，以及批量结束替换占位图时均再次按图片 URL 去重，避免同一张结果图因重复回调或缓存累加而展示两次。
+- 参考图与候选图的数据边界保持不变；本次只修复批量候选结果缓存的重复展示，不改变后端候选图接口和生成参数。

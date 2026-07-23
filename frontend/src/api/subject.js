@@ -5,7 +5,6 @@ export const SCRIPT_SCHEMA_VERSION = 'script_structure.v1';
 
 import { authFetch, authFetchForm, authFetchStream } from './request.js';
 import { getDisplayErrorMessage, readResponsePayload } from './error.js';
-import { apiDeleteSubjectAssets } from './assets.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 
@@ -136,12 +135,26 @@ export async function apiUpdateSubject(projectId, subjectId, data) {
 }
 
 export async function apiDeleteSubject(projectId, subjectId) {
-  await apiDeleteSubjectAssets(projectId, subjectId);
   const res = await authFetch(`${BASE}/api/projects/${projectId}/subjects/${subjectId}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });
-  if (!res.ok) throw new Error(`删除主体失败（${res.status}）`);
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const payload = await res.json();
+        detail = payload?.detail || payload?.message || '';
+        if (typeof detail === 'object') detail = JSON.stringify(detail);
+      } else {
+        detail = await res.text();
+      }
+    } catch { /* 忽略无法读取的错误响应 */ }
+    const error = new Error(detail || `删除主体失败（${res.status}）`);
+    error.status = res.status;
+    throw error;
+  }
   invalidateSubjects(projectId);
 }
 

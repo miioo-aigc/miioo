@@ -12,14 +12,15 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 SubjectPage 的 EditSubjectPanel 抽离生成方式选择区
+ *   2026-07-22  多视图选项调整为首位并作为默认生成方式
  */
 import { useState } from 'react';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 const DEFAULT_OPTIONS = [
-  { value: 'single', label: '单视图' },
   { value: 'three_view', label: '多视图' },
+  { value: 'single', label: '单视图' },
 ];
 
 function RadioOption({ label, checked, onChange }) {
@@ -60,7 +61,7 @@ function RadioOption({ label, checked, onChange }) {
 }
 
 export default function SubjectGenerationMode({
-  value = 'single',
+  value = 'three_view',
   options = DEFAULT_OPTIONS,
   onChange,
 }) {

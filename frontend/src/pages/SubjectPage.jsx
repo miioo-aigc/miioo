@@ -11,6 +11,7 @@
  *   batchGeneratedImagesCache                                      L145
  *   主体面板会话缓存 / pending 任务存储                               utils/subjectPanelStorage.js / subjectPendingGenerationStore.js
  *   normalizeSubjectList                                           utils/subjectAdapter.js
+ *   getSubjectDownloadName                                          主体下载文件名适配
  *
  * ─── 原子 UI 组件 ────────────────────────────────────────────────
  *   SubjectCard / SubjectMoreMenu / AddSubjectCard                  src/components/subject/SubjectCard.jsx
@@ -31,9 +32,9 @@
  *
  * ─── 业务组件 ────────────────────────────────────────────────────
  *   ConfirmStoryboardModal                                          components/subject/ConfirmStoryboardModal.jsx
- *   <EditSubjectPanel>                                              L147–L881
- *     ├─ [状态/Ref] 模型、字段、图片、弹窗、Toast 与任务恢复状态     L160–L210
- *     ├─ [函数] 生成、定稿、保存及图片动作句柄                      L520–L820
+ *   <EditSubjectPanel>                                              L157–L896
+ *     ├─ [状态/Ref] 模型、字段、图片、弹窗、Toast 与保存队列状态     L160–L178 / L495–L553
+ *     ├─ [函数] 生成、定稿、保存及图片动作句柄                      L521–L835
  *     ├─ [纯数据] 详情图片映射、参考图快照和生成参数由域工具完成    L278 / L672
  *     └─ [副作用] 模型/详情加载、批量占位、模型能力和选项联动      L211–L519
  *   SubjectGenerationOptions  主体生图选项组合                       src/components/subject/SubjectGenerationOptions.jsx
@@ -47,12 +48,12 @@
  *   SubjectGridViewport / SubjectWorkspace 主体列表和工作区组合    src/components/subject/
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
- *   export default function SubjectPage()                           L759
- *     ├─ [状态] activeTab / 批量状态 / 选中主体与列表数据            L761–L1008
- *     ├─ [Ref] extractingRef / 列表哨兵 / 批量任务控制器              L764–L800
- *     ├─ [函数] 批量生成、添加、下载、删除、进入分镜                 L1010–L1500
- *     ├─ [副作用] 提取、任务恢复、缓存订阅、资产删除和滚动加载       L789–L1525
- *     └─ [渲染] loading/error、SubjectWorkspace 和弹窗组合          L1552–L1707
+ *   export default function SubjectPage()                           L775
+ *     ├─ [状态] activeTab / 批量状态 / 选中主体与列表数据            L777–L1024
+ *     ├─ [Ref] extractingRef / 列表哨兵 / 批量任务控制器              L780–L816
+ *     ├─ [函数] 批量生成、添加、下载、删除、进入分镜                 L1026–L1516
+ *     ├─ [副作用] 提取、任务恢复、缓存订阅、资产删除和滚动加载       L805–L1541
+ *     └─ [渲染] loading/error、SubjectWorkspace 和弹窗组合          L1568–L1765
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-07-16  迁移 SubjectExtractionState 至 components/subject/SubjectExtractionState.jsx；页面仅传入加载文案和重试回调
@@ -80,6 +81,11 @@
  *   2026-07-15  稳定主体图片动作句柄并移除已迁移的页面 API 导入
  *   2026-07-15  SubjectPage 收尾：核对动作链路、清理失效引用并同步结构索引
  *   2026-07-17  复用模型 fallback 与 createSubjectImageItem，页面继续持有恢复轮询和状态写回
+ *   2026-07-22  批量生成进行中允许关闭批量生成弹窗，后台任务继续执行
+ *   2026-07-22  主体编辑草稿改为防抖实时保存，关闭前刷新并恢复生成配置与参考图
+ *   2026-07-22  主体参考图与右侧候选图分流；候选上传不再调用主体参考图接口，分镜页同类状态链路已复核
+ *   2026-07-23  主体删除改走主体专用删除接口；下载文件名统一为项目名_主体类型_主体名称
+ *   2026-07-23  批量生成候选图缓存按图片地址去重，修复首次打开编辑弹窗重复展示
  *   2026-07-16  迁移主体任务恢复标签 setter 和默认提示词纯函数；页面保留状态与副作用
  *   2026-07-16  抽离主体面板会话缓存和 pending 任务持久化桥接；页面保留轮询与写回
  *   2026-07-16  依据当前代码重新核对主体页结构索引、状态边界和渲染终点
@@ -114,6 +120,19 @@ import { normalizeSubjectImageModels } from '../components/subject/SubjectModelA
 
 const SUBJECT_LOADING_TEXTS = ['正在抽取剧本灵魂', '正在抽取剧本主角', '正在抽取剧本配角', '正在抽取场景', '正在抽取道具'];
 
+function sanitizeDownloadPart(value, fallback) {
+  const normalized = Array.from(String(value ?? '').trim())
+    .filter((character) => character.charCodeAt(0) >= 32)
+    .join('')
+    .replace(/[\\/:*?"<>|]/g, '_');
+  return normalized || fallback;
+}
+
+function getSubjectDownloadName(projectName, subject, subjectType) {
+  const typeLabel = { character: '角色', scene: '场景', prop: '道具' }[subjectType] || '主体';
+  return `${sanitizeDownloadPart(projectName, '项目')}_${typeLabel}_${sanitizeDownloadPart(subject?.name, '未命名主体')}.jpg`;
+}
+
 // ── 工具：触发浏览器下载 Blob ──────────────────────────────────────────
 // ── Confirm storyboard modal (二次确认弹窗) ────────────────────────────────
 
@@ -145,6 +164,24 @@ function sleep(ms) {
 // key: subjectId, value: { rawUrl }[]
 const batchGeneratedImagesCache = new Map();
 
+function appendBatchGeneratedImage(subjectId, rawUrl) {
+  if (!subjectId || !rawUrl) return;
+  const normalizedUrl = normalizeImageUrl(rawUrl) || rawUrl;
+  const existing = batchGeneratedImagesCache.get(subjectId) || [];
+  if (existing.some((image) => (normalizeImageUrl(image.rawUrl) || image.rawUrl) === normalizedUrl)) return;
+  batchGeneratedImagesCache.set(subjectId, [...existing, { rawUrl: normalizedUrl }]);
+}
+
+function dedupeBatchGeneratedImages(images) {
+  const seen = new Set();
+  return images.filter((image) => {
+    const url = normalizeImageUrl(image?.rawUrl) || image?.rawUrl;
+    if (!url || seen.has(url)) return false;
+    seen.add(url);
+    return true;
+  });
+}
+
 function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, onClose, onCommit, onCoverChange, refreshToken, setBatchLoadingSubjects, isBatchLoading = false }) {
   // ── 从后端拉取模型列表，直接使用后端 capabilities ──────────────
   const [imageModels, setImageModels] = useState([]);
@@ -155,7 +192,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   const [selectedModel, setSelectedModel] = useState(char?.model || char?.default_image_model || imageModels[0]?.value || 'doubao-seedream-5.0-lite');
   const [selectedRatio, setSelectedRatio] = useState(char?.ratio || projectRatio || '16:9');
   const [selectedResolution, setSelectedResolution] = useState(char?.resolution || '2K');
-  const [genMode, setGenMode] = useState('single');
+  const [genMode, setGenMode] = useState('three_view');
   const [generatedImages, setGeneratedImages] = useState([]);
   const [refImageIds, setRefImageIds] = useState(Array.isArray(char?.reference_image_ids) ? char.reference_image_ids : []);
   const [mediaDetailOpen, setMediaDetailOpen] = useState(false);
@@ -165,6 +202,10 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   const isMountedRef = useRef(true); // 跟踪组件是否已挂载，关闭弹窗后仍让请求跑完
   const cacheConsumedRef = useRef(false); // 标记 pendingGenerations 缓存已被本挂载消费
   const [detailLoaded, setDetailLoaded] = useState(false);
+  const saveTimerRef = useRef(null);
+  const draftRef = useRef(null);
+  const draftDirtyRef = useRef(false);
+  const saveChainRef = useRef(Promise.resolve());
 
   const [, setPrimaryImageUrl] = useState(null);
   const [, setPrimaryImageId] = useState(null);
@@ -204,12 +245,12 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
     let cancelled = false;
 
     // ── 优先从批量生成缓存读取图片，立即展示（不等待后端） ─────────
-    const batchCached = batchGeneratedImagesCache.get(char.id);
-    if (batchCached && batchCached.length > 0) {
+    const uniqueBatchCached = dedupeBatchGeneratedImages(batchGeneratedImagesCache.get(char.id) || []);
+    if (uniqueBatchCached.length > 0) {
       // 缓存是弹窗外部任务完成后的结果，挂载时必须恢复到本地展示状态。
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setGeneratedImages(
-        batchCached.map((img, i) => ({
+        uniqueBatchCached.map((img, i) => ({
           ...createSubjectImageItem({ id: `batch-${char.id}-${Date.now()}-${i}`, rawUrl: img.rawUrl, refImages: refImagesForModal }),
         }))
       );
@@ -297,12 +338,20 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       if (genCfg.resolution || genCfg.size || subject.resolution) {
         setSelectedResolution(genCfg.resolution || genCfg.size || subject.resolution);
       }
+      if (genCfg.generation_mode) setGenMode(genCfg.generation_mode);
+      if (Array.isArray(detailRes.reference_images)) {
+        setRefImageIds(detailRes.reference_images.map((image) => ({
+          id: image.asset_id,
+          assetId: image.asset_id,
+          url: image.file_url || image.preview_url || image.large_url || null,
+        })));
+      }
 
       // 检查是否有进行中/已完成的跨弹窗生成
       const pending = pendingGenerations.get(char.id);
+      // 参考图只用于生成输入，右侧列表只展示候选图/生成结果。
       const finalImages = mergeSubjectImages({
         candidateImages: detailRes.candidate_images,
-        referenceImages: detailRes.reference_images,
         refImages: refImagesForModal,
         pending,
       });
@@ -357,8 +406,8 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       });
     } else if (!isBatchLoading && wasLoading) {
       // 批量生成结束：消费缓存，用真实图片替换占位槽
-      const cached = batchGeneratedImagesCache.get(char.id);
-      if (cached && cached.length > 0) {
+      const cached = dedupeBatchGeneratedImages(batchGeneratedImagesCache.get(char.id) || []);
+      if (cached.length > 0) {
         const newImgs = cached.map((img, i) => createSubjectImageItem({ id: `batch-${char.id}-${Date.now()}-${i}`, rawUrl: img.rawUrl, refImages: refImagesForModal }));
         batchGeneratedImagesCache.delete(char.id);
         // 批量流结束后，用外部缓存结果替换占位槽。
@@ -480,6 +529,59 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   }, []);
   const [charName, setCharName] = useState(char?.name ?? '');
   const [charDesc, setCharDesc] = useState(char?.desc ?? '');
+  useEffect(() => {
+    draftRef.current = {
+      name: charName,
+      description: charDesc,
+      prompt: promptText,
+      genConfig: {
+        model: selectedModel,
+        ratio: selectedRatio,
+        resolution: selectedResolution,
+        generation_mode: genMode,
+      },
+    };
+  }, [charName, charDesc, promptText, selectedModel, selectedRatio, selectedResolution, genMode]);
+  const scheduleDraftSave = useCallback(() => {
+    if (!draftDirtyRef.current || !detailLoaded) return;
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const draft = draftRef.current;
+      if (draft) {
+        draftDirtyRef.current = false;
+        saveChainRef.current = saveChainRef.current
+          .catch(() => {})
+          .then(() => onCommit?.(draft.name, draft.description, draft.prompt, draft.genConfig));
+      }
+    }, 400);
+  }, [detailLoaded, onCommit]);
+  const flushDraftSave = useCallback(() => {
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    if (!draftDirtyRef.current || !draftRef.current) return saveChainRef.current;
+    const draft = draftRef.current;
+    saveChainRef.current = saveChainRef.current
+      .catch(() => {})
+      .then(() => onCommit?.(draft.name, draft.description, draft.prompt, draft.genConfig));
+    draftDirtyRef.current = false;
+    return saveChainRef.current;
+  }, [onCommit]);
+  useEffect(() => () => clearTimeout(saveTimerRef.current), []);
+  const markDraftDirty = useCallback(() => {
+    draftDirtyRef.current = true;
+    scheduleDraftSave();
+  }, [scheduleDraftSave]);
+  const updateDraftField = useCallback((field, value) => {
+    draftRef.current = {
+      ...(draftRef.current || {}),
+      [field]: value,
+    };
+    markDraftDirty();
+  }, [markDraftDirty]);
+  const handlePanelClose = useCallback(async () => {
+    await flushDraftSave();
+    onClose?.();
+  }, [flushDraftSave, onClose]);
   const getImageActionHandlers = useCallback(
     () => createSubjectImageActionHandlers({
       projectId,
@@ -512,7 +614,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
     <>
     {/* 点击遮罩层关闭弹窗 */}
     <div
-      onClick={onClose}
+      onClick={handlePanelClose}
       style={{
         position: 'fixed', inset: 0, zIndex: 49,
         background: 'transparent',
@@ -529,7 +631,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      <SubjectPanelHeader tabLabel={tabLabel} onClose={onClose} />
+      <SubjectPanelHeader tabLabel={tabLabel} onClose={handlePanelClose} />
 
       {/* two-column body */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', overflow: 'hidden' }}>
@@ -550,17 +652,17 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
           refImageIds={refImageIds}
           maxRefImages={maxRefImages}
           genMode={genMode}
-          onNameChange={(event) => setCharName(event.target.value)}
-          onDescriptionChange={(event) => setCharDesc(event.target.value)}
-          onPromptChange={(event) => setPromptText(event.target.value)}
-          onNameBlur={() => onCommit?.(charName, charDesc)}
-          onDescriptionBlur={() => onCommit?.(charName, charDesc)}
-          onPromptBlur={() => onCommit?.(charName, charDesc, promptText)}
-          onModelChange={setSelectedModel}
-          onRatioChange={setSelectedRatio}
-          onResolutionChange={setSelectedResolution}
-          onRefImagesChange={setRefImageIds}
-          onGenModeChange={setGenMode}
+          onNameChange={(event) => { const value = event.target.value; setCharName(value); updateDraftField('name', value); }}
+          onDescriptionChange={(event) => { const value = event.target.value; setCharDesc(value); updateDraftField('description', value); }}
+          onPromptChange={(event) => { const value = event.target.value; setPromptText(value); updateDraftField('prompt', value); }}
+          onNameBlur={scheduleDraftSave}
+          onDescriptionBlur={scheduleDraftSave}
+          onPromptBlur={scheduleDraftSave}
+          onModelChange={(value) => { setSelectedModel(value); updateDraftField('genConfig', { ...draftRef.current?.genConfig, model: value }); }}
+          onRatioChange={(value) => { setSelectedRatio(value); updateDraftField('genConfig', { ...draftRef.current?.genConfig, ratio: value }); }}
+          onResolutionChange={(value) => { setSelectedResolution(value); updateDraftField('genConfig', { ...draftRef.current?.genConfig, resolution: value }); }}
+          onRefImagesChange={(value) => { setRefImageIds(value); markDraftDirty(); }}
+          onGenModeChange={(value) => { setGenMode(value); updateDraftField('genConfig', { ...draftRef.current?.genConfig, generation_mode: value }); }}
         />
 
         <SubjectImageList
@@ -844,8 +946,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
                 const fullUrl = normalizeImageUrl(imgUrl);
                 targetSetter(prev => prev.map(s => s.id === sid ? { ...s, imageUrl: fullUrl } : s));
                 setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[sid]; return n; });
-                const existingCache = batchGeneratedImagesCache.get(sid) || [];
-                batchGeneratedImagesCache.set(sid, [...existingCache, { rawUrl: fullUrl }]);
+                appendBatchGeneratedImage(sid, fullUrl);
               } else if (errMsg) {
                 processedIds.add(sid);
                 setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[sid]; return n; });
@@ -903,8 +1004,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
                   setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[task.subjectId]; return n; });
                   setSubjectDetailRefreshToken(prev => prev + 1);
                   // 同步写入缓存供 EditSubjectPanel 读取
-                  const existingCache = batchGeneratedImagesCache.get(task.subjectId) || [];
-                  batchGeneratedImagesCache.set(task.subjectId, [...existingCache, { rawUrl: fullUrl }]);
+                  appendBatchGeneratedImage(task.subjectId, fullUrl);
                   // 清理旧 pendingGenerations 路径的 pending 状态，避免残留 loading
                   pendingGenerations.delete(task.subjectId);
                   removePendingTask(projectId, task.taskId);
@@ -1146,8 +1246,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           return next;
           });
           // 存入批量生成缓存，EditSubjectPanel 打开时优先从缓存读取
-          const existingCache = batchGeneratedImagesCache.get(subjectId) || [];
-          batchGeneratedImagesCache.set(subjectId, [...existingCache, { rawUrl: fullUrl }]);
+          appendBatchGeneratedImage(subjectId, fullUrl);
         },
         onSubjectError: (subjectId, errorMsg) => {
           // 命中静默错误（如「已有主图，跳过生成」）：仅退出 loading，不弹 toast、不计入失败
@@ -1466,6 +1565,15 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   // ── 下载主体封面图 ────────────────────────────────────────────
   const handleDownloadSubjectImage = async (subjectId) => {
     try {
+      const subjectSources = [
+        { list: chars, type: 'character' },
+        { list: scenes, type: 'scene' },
+        { list: props, type: 'prop' },
+      ];
+      const subjectEntry = subjectSources
+        .map(({ list, type }) => ({ subject: list.find((item) => String(item.id) === String(subjectId)), type }))
+        .find(({ subject }) => subject);
+
       // 获取主体图片列表，找到主图
       const imgRes = await apiGetSubjectImages(projectId, subjectId);
       const imgs = Array.isArray(imgRes) ? imgRes : (imgRes?.images || imgRes?.items || []);
@@ -1477,7 +1585,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       }
       // 调用下载 API
       const blob = await apiDownloadSubjectImage(projectId, subjectId, targetImg.id);
-      downloadBlob(blob, `subject-${subjectId}.jpg`);
+      downloadBlob(blob, getSubjectDownloadName(projectName, subjectEntry?.subject, subjectEntry?.type));
     } catch (err) {
       console.error('[SubjectPage] 下载图片失败:', err);
     }
@@ -1591,11 +1699,11 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         setBatchLoadingSubjects={setBatchLoadingSubjects}
         isBatchLoading={!!batchLoadingSubjects[selectedChar?.id]}
         onClose={() => setSelectedChar(null)}
-        onCommit={(name, desc, prompt) => {
+        onCommit={(name, desc, prompt, genConfig) => {
           if (!selectedChar) return;
           setChars((prev) => prev.map((c) => c.id === selectedChar.id ? { ...c, name, desc, prompt } : c));
           setSelectedChar((prev) => ({ ...prev, name, desc, prompt }));
-          apiUpdateSubject(projectId, selectedChar.id, { name, description: desc, prompt });
+          return apiUpdateSubject(projectId, selectedChar.id, { name, description: desc, prompt, gen_config: genConfig }).catch((error) => { console.error('[SubjectPage] 保存主体编辑内容失败:', error); throw error; });
         }}
         onCoverChange={(imageUrl) => {
           if (!selectedChar) return;
@@ -1615,11 +1723,11 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         setBatchLoadingSubjects={setBatchLoadingSubjects}
         isBatchLoading={!!batchLoadingSubjects[selectedScene?.id]}
         onClose={() => setSelectedScene(null)}
-        onCommit={(name, desc, prompt) => {
+        onCommit={(name, desc, prompt, genConfig) => {
           if (!selectedScene) return;
           setScenes((prev) => prev.map((s) => s.id === selectedScene.id ? { ...s, name, desc, prompt } : s));
           setSelectedScene((prev) => ({ ...prev, name, desc, prompt }));
-          apiUpdateSubject(projectId, selectedScene.id, { name, description: desc, prompt });
+          return apiUpdateSubject(projectId, selectedScene.id, { name, description: desc, prompt, gen_config: genConfig }).catch((error) => { console.error('[SubjectPage] 保存主体编辑内容失败:', error); throw error; });
         }}
         onCoverChange={(imageUrl) => {
           if (!selectedScene) return;
@@ -1639,11 +1747,11 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         setBatchLoadingSubjects={setBatchLoadingSubjects}
         isBatchLoading={!!batchLoadingSubjects[selectedProp?.id]}
         onClose={() => setSelectedProp(null)}
-        onCommit={(name, desc, prompt) => {
+        onCommit={(name, desc, prompt, genConfig) => {
           if (!selectedProp) return;
           setProps((prev) => prev.map((p) => p.id === selectedProp.id ? { ...p, name, desc, prompt } : p));
           setSelectedProp((prev) => ({ ...prev, name, desc, prompt }));
-          apiUpdateSubject(projectId, selectedProp.id, { name, description: desc, prompt });
+          return apiUpdateSubject(projectId, selectedProp.id, { name, description: desc, prompt, gen_config: genConfig }).catch((error) => { console.error('[SubjectPage] 保存主体编辑内容失败:', error); throw error; });
         }}
         onCoverChange={(imageUrl) => {
           if (!selectedProp) return;
@@ -1684,7 +1792,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       <BatchGenerateModal
         projectRatio={projectRatio}
         open={batchGenOpen}
-        onClose={() => { if (!batchGeneratingByTab[activeTab]) setBatchGenOpen(false); }}
+        onClose={() => setBatchGenOpen(false)}
         onConfirm={handleBatchGenerate}
         generating={!!batchGeneratingByTab[activeTab]}
         activeTab={activeTab}

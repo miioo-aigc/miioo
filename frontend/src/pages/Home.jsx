@@ -142,6 +142,7 @@ export default function Home({ onGoToAdmin }) {
   const [generateErrorProjectId, setGenerateErrorProjectId] = useState(null);
   const [isGeneratingStoryboards, setIsGeneratingStoryboards] = useState(false);
   const [completedEpisodesCount, setCompletedEpisodesCount] = useState(0);
+  const [storyboardStatusMessage, setStoryboardStatusMessage] = useState('');
   const generatingStoryboardsRef = useRef(false); // 同步锁，防止并发调用
   const extractingSubjectsRef = useRef(false); // 同步锁，防止主体页重复发布结构
   // 自上次提取主体后，剧本是否又重新定稿过（用于控制"开始提取主体"按钮行为）
@@ -826,6 +827,7 @@ export default function Home({ onGoToAdmin }) {
     generatingStoryboardsRef.current = true;
     setIsGeneratingStoryboards(true);
     setCompletedEpisodesCount(0);
+    setStoryboardStatusMessage('');
     setGenerateError(null);
     setGenerateErrorProjectId(null);
     try {
@@ -850,9 +852,12 @@ export default function Home({ onGoToAdmin }) {
       });
 
       // 1. 启动任务，拿到 taskId
-      const taskResp = await apiGenerateStoryboardsFromFinalScript(activeProject.id);
-      const taskId = taskResp?.id;
+      const taskResp = await apiGenerateStoryboardsFromFinalScript(activeProject.id, {
+        first_episode_only: true,
+      });
+      const taskId = taskResp?.task_id || taskResp?.taskId || taskResp?.id;
       if (!taskId) throw new Error('未获取到任务 ID');
+      setStoryboardStatusMessage(taskResp?.status_message || taskResp?.params?.status_message || '');
 
       // 2. 轮询任务，每完成一集立即失效对应缓存，让 StoryboardPage 实时看到结果
       const TIMEOUT_MS = 500 * 1000; // 500 秒超时
@@ -878,16 +883,17 @@ export default function Home({ onGoToAdmin }) {
         if (Date.now() - pollStartTime >= TIMEOUT_MS) break;
         const t = await apiGetTask(taskId).catch(() => null);
         if (!t) continue;
+        setStoryboardStatusMessage(t.status_message || t.params?.status_message || '');
         console.log('[poll] task status:', t.status, 'params:', JSON.stringify(t.params));
 
         // 路径1：completed_episode_numbers 字段（后端明确告知哪些集已完成）
-        const completedNums = t.params?.completed_episode_numbers;
+        const completedNums = t.completed_episode_numbers || t.params?.completed_episode_numbers;
         if (Array.isArray(completedNums)) {
           completedNums.forEach(num => flushEpisode(num));
         }
 
         // 路径2：current_episode_number 变化 → 说明上一集已完成
-        const currentNum = t.params?.current_episode_number;
+        const currentNum = t.current_episode_number ?? t.params?.current_episode_number;
         if (currentNum != null && prevCurrentEpisodeNumber != null && currentNum !== prevCurrentEpisodeNumber) {
           flushEpisode(prevCurrentEpisodeNumber);
         }
@@ -903,7 +909,11 @@ export default function Home({ onGoToAdmin }) {
 
       if (!finalTask) throw new Error('POLL_TIMEOUT');
       if (finalTask.status === 'failed') {
-        const msg = finalTask.params?.status_message || finalTask.params?.error || '分镜生成失败';
+        const msg = finalTask.status_message
+          || finalTask.params?.status_message
+          || finalTask.error?.message
+          || finalTask.params?.error
+          || '分镜生成失败';
         throw new Error(msg);
       }
 
@@ -951,6 +961,7 @@ export default function Home({ onGoToAdmin }) {
       showToast(errorMsg, 'error');
     }
     setIsGeneratingStoryboards(false);
+    setStoryboardStatusMessage('');
     generatingStoryboardsRef.current = false;
   };
 
@@ -1271,6 +1282,7 @@ export default function Home({ onGoToAdmin }) {
                 onUnlockStep={handleUnlockStep}
                 onGenerateStoryboards={handleGenerateStoryboards}
                 isGenerating={isGeneratingStoryboards}
+                statusMessage={storyboardStatusMessage}
                 completedEpisodesCount={completedEpisodesCount}
                 generateError={generateError}
                 onVideoGenerated={(episodeIndex) => {

@@ -34,6 +34,7 @@ export default function SubjectGenerationOptions({
     <>
       <Select
         label="选择模型"
+        width="100%"
         value={selectedModel}
         displayValue={selectedModelLabel}
         options={imageModels}
@@ -43,12 +44,14 @@ export default function SubjectGenerationOptions({
       />
       <Select
         label="选择画面比例"
+        width="100%"
         value={selectedRatio}
         options={availableRatios}
         onChange={onRatioChange}
       />
       <Select
         label="分辨率"
+        width="100%"
         value={selectedResolution}
         options={availableResolutions}
         onChange={onResolutionChange}

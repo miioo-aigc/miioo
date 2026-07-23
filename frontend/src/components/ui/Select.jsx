@@ -18,6 +18,7 @@
  *   2026-07-21  增加自定义菜单内容插槽，支持业务特殊选项交互
  *   2026-07-21  增加触发器和选项文本的单行省略显示
  *   2026-07-21  为被省略的长文本增加延迟 Tooltip 和自动换行
+ *   2026-07-23  增加实例级隐藏触发器描边配置
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -153,6 +154,8 @@ export default function Select({
   menuContent,
   openBoxShadow,
   openMixBlendMode,
+  hideTriggerBorder = false,
+  triggerStyle,
   onChange,
 }) {
   const [hovered, setHovered] = useState(false);
@@ -184,12 +187,13 @@ export default function Select({
   const selectStyle = {
     display: 'flex', alignItems: 'center', height: '36px', width, borderRadius: '8px', padding: '0 12px', gap: '8px',
     background: hovered || open ? '#222222' : '#1D1E1E',
-    border: `1px solid ${open ? 'rgba(45,195,225,0.6)' : hovered ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`,
-    outline: '1px solid #00000080',
     cursor: isDisabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.55 : 1,
     ...(open && openBoxShadow ? { boxShadow: openBoxShadow } : {}),
     ...(open && openMixBlendMode ? { mixBlendMode: openMixBlendMode } : {}),
+    ...triggerStyle,
+    border: hideTriggerBorder ? 'none' : `1px solid ${open ? 'rgba(45,195,225,0.6)' : hovered ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`,
+    outline: hideTriggerBorder ? 'none' : '1px solid #00000080',
     transition: 'background 100ms, border-color 100ms, opacity 100ms',
   };
 

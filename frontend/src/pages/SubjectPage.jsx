@@ -62,6 +62,7 @@
  *   2026-07-16  迁移 SubjectToast 至 components/subject/SubjectToast.jsx；主体页和编辑面板继续持有 Toast 状态、定时器与业务触发
  *   2026-07-16  迁移 ConfirmStoryboardModal 至 components/subject；页面保留确认状态和重新生成副作用
  *   2026-07-17  迁移 SubjectEditForm，页面保留编辑状态、生成 API、任务轮询和图片副作用
+ *   2026-07-24  主体编辑自动保存按变更字段增量提交，收口 PATCH 异常，避免提示词保存连带提交整套生图配置
  *   2026-07-15  抽离主体卡片、更多菜单和新增卡片到主体业务域组件
  *   2026-07-15  抽离主体编辑区右侧图片列表、上传卡片和图片卡片
  *   2026-07-15  抽离主体编辑区参考图字段、上传卡片和悬浮预览
@@ -206,6 +207,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   const saveTimerRef = useRef(null);
   const draftRef = useRef(null);
   const draftDirtyRef = useRef(false);
+  const draftFieldsRef = useRef(new Set());
   const saveChainRef = useRef(Promise.resolve());
 
   const [, setPrimaryImageUrl] = useState(null);
@@ -549,10 +551,17 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
     saveTimerRef.current = setTimeout(() => {
       const draft = draftRef.current;
       if (draft) {
+        const fields = new Set(draftFieldsRef.current);
         draftDirtyRef.current = false;
+        draftFieldsRef.current.clear();
         saveChainRef.current = saveChainRef.current
           .catch(() => {})
-          .then(() => onCommit?.(draft.name, draft.description, draft.prompt, draft.genConfig));
+          .then(() => onCommit?.(draft, fields))
+          .catch((error) => {
+            draftDirtyRef.current = true;
+            fields.forEach((field) => draftFieldsRef.current.add(field));
+            console.error('[SubjectPage] 自动保存主体编辑内容失败:', error);
+          });
       }
     }, 400);
   }, [detailLoaded, onCommit]);
@@ -561,10 +570,17 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
     saveTimerRef.current = null;
     if (!draftDirtyRef.current || !draftRef.current) return saveChainRef.current;
     const draft = draftRef.current;
+    const fields = new Set(draftFieldsRef.current);
     saveChainRef.current = saveChainRef.current
       .catch(() => {})
-      .then(() => onCommit?.(draft.name, draft.description, draft.prompt, draft.genConfig));
+      .then(() => onCommit?.(draft, fields))
+      .catch((error) => {
+        draftDirtyRef.current = true;
+        fields.forEach((field) => draftFieldsRef.current.add(field));
+        console.error('[SubjectPage] 关闭弹窗前保存主体编辑内容失败:', error);
+      });
     draftDirtyRef.current = false;
+    draftFieldsRef.current.clear();
     return saveChainRef.current;
   }, [onCommit]);
   useEffect(() => () => clearTimeout(saveTimerRef.current), []);
@@ -577,6 +593,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       ...(draftRef.current || {}),
       [field]: value,
     };
+    draftFieldsRef.current.add(field);
     markDraftDirty();
   }, [markDraftDirty]);
   const handlePanelClose = useCallback(async () => {
@@ -1702,11 +1719,17 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         setBatchLoadingSubjects={setBatchLoadingSubjects}
         isBatchLoading={!!batchLoadingSubjects[selectedChar?.id]}
         onClose={() => setSelectedChar(null)}
-        onCommit={(name, desc, prompt, genConfig) => {
+        onCommit={(draft, fields) => {
           if (!selectedChar) return;
-          setChars((prev) => prev.map((c) => c.id === selectedChar.id ? { ...c, name, desc, prompt } : c));
-          setSelectedChar((prev) => ({ ...prev, name, desc, prompt }));
-          return apiUpdateSubject(projectId, selectedChar.id, { name, description: desc, prompt, gen_config: genConfig }).catch((error) => { console.error('[SubjectPage] 保存主体编辑内容失败:', error); throw error; });
+          const payload = {};
+          if (fields.has('name')) payload.name = draft.name;
+          if (fields.has('description')) payload.description = draft.description;
+          if (fields.has('prompt')) payload.prompt = draft.prompt;
+          if (fields.has('genConfig')) payload.gen_config = draft.genConfig;
+          if (Object.keys(payload).length === 0) return;
+          setChars((prev) => prev.map((c) => c.id === selectedChar.id ? { ...c, name: draft.name, desc: draft.description, prompt: draft.prompt } : c));
+          setSelectedChar((prev) => ({ ...prev, name: draft.name, desc: draft.description, prompt: draft.prompt }));
+          return apiUpdateSubject(projectId, selectedChar.id, payload);
         }}
         onCoverChange={(imageUrl) => {
           if (!selectedChar) return;
@@ -1726,11 +1749,17 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         setBatchLoadingSubjects={setBatchLoadingSubjects}
         isBatchLoading={!!batchLoadingSubjects[selectedScene?.id]}
         onClose={() => setSelectedScene(null)}
-        onCommit={(name, desc, prompt, genConfig) => {
+        onCommit={(draft, fields) => {
           if (!selectedScene) return;
-          setScenes((prev) => prev.map((s) => s.id === selectedScene.id ? { ...s, name, desc, prompt } : s));
-          setSelectedScene((prev) => ({ ...prev, name, desc, prompt }));
-          return apiUpdateSubject(projectId, selectedScene.id, { name, description: desc, prompt, gen_config: genConfig }).catch((error) => { console.error('[SubjectPage] 保存主体编辑内容失败:', error); throw error; });
+          const payload = {};
+          if (fields.has('name')) payload.name = draft.name;
+          if (fields.has('description')) payload.description = draft.description;
+          if (fields.has('prompt')) payload.prompt = draft.prompt;
+          if (fields.has('genConfig')) payload.gen_config = draft.genConfig;
+          if (Object.keys(payload).length === 0) return;
+          setScenes((prev) => prev.map((s) => s.id === selectedScene.id ? { ...s, name: draft.name, desc: draft.description, prompt: draft.prompt } : s));
+          setSelectedScene((prev) => ({ ...prev, name: draft.name, desc: draft.description, prompt: draft.prompt }));
+          return apiUpdateSubject(projectId, selectedScene.id, payload);
         }}
         onCoverChange={(imageUrl) => {
           if (!selectedScene) return;
@@ -1750,11 +1779,17 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         setBatchLoadingSubjects={setBatchLoadingSubjects}
         isBatchLoading={!!batchLoadingSubjects[selectedProp?.id]}
         onClose={() => setSelectedProp(null)}
-        onCommit={(name, desc, prompt, genConfig) => {
+        onCommit={(draft, fields) => {
           if (!selectedProp) return;
-          setProps((prev) => prev.map((p) => p.id === selectedProp.id ? { ...p, name, desc, prompt } : p));
-          setSelectedProp((prev) => ({ ...prev, name, desc, prompt }));
-          return apiUpdateSubject(projectId, selectedProp.id, { name, description: desc, prompt, gen_config: genConfig }).catch((error) => { console.error('[SubjectPage] 保存主体编辑内容失败:', error); throw error; });
+          const payload = {};
+          if (fields.has('name')) payload.name = draft.name;
+          if (fields.has('description')) payload.description = draft.description;
+          if (fields.has('prompt')) payload.prompt = draft.prompt;
+          if (fields.has('genConfig')) payload.gen_config = draft.genConfig;
+          if (Object.keys(payload).length === 0) return;
+          setProps((prev) => prev.map((p) => p.id === selectedProp.id ? { ...p, name: draft.name, desc: draft.description, prompt: draft.prompt } : p));
+          setSelectedProp((prev) => ({ ...prev, name: draft.name, desc: draft.description, prompt: draft.prompt }));
+          return apiUpdateSubject(projectId, selectedProp.id, payload);
         }}
         onCoverChange={(imageUrl) => {
           if (!selectedProp) return;

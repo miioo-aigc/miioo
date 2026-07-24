@@ -122,7 +122,11 @@ export async function apiUpdateSubject(projectId, subjectId, data) {
         detail = await res.text();
       }
     } catch { /* 忽略非 JSON 错误响应 */ }
-    const err = new Error(detail || `更新主体失败（${res.status}）`);
+    const statusMessages = {
+      502: '主体保存服务暂时不可用，请稍后重试',
+      504: '主体保存服务响应超时，请稍后重试',
+    };
+    const err = new Error(statusMessages[res.status] || detail || `更新主体失败（${res.status}）`);
     err.status = res.status;
     throw err;
   }

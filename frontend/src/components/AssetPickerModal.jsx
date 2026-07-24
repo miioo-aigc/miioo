@@ -731,7 +731,7 @@ export default function AssetPickerModal({
         {/* ── 顶部大 Tab + 搜索框 ── */}
         <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '24px', paddingRight: '24px', gap: '24px', flexShrink: 0 }}>
           {['project', 'creative', ...(showSeedanceTab ? ['seedance'] : [])].map((tab) => {
-            const label = tab === 'project' ? '项目资产' : tab === 'creative' ? '创作资产' : 'Seedance2.0素材库';
+            const label = tab === 'project' ? '项目资产' : tab === 'creative' ? '创作资产' : 'seedance素材库';
             const isActive = activeTab === tab;
             return (
               <div

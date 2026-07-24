@@ -265,7 +265,7 @@ export default function SeedanceAssetLibraryPanel() {
   }, []);
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden" aria-label="Seedance2.0素材库">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden" aria-label="seedance素材库">
       <div className="flex h-[48px] shrink-0 items-start justify-between px-[24px]">
         <Tabs options={SUB_TABS} value={activeTab} onChange={handleTabChange} variant="plain-ghost" gap="24px" />
       </div>

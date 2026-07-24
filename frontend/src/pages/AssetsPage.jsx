@@ -27,7 +27,7 @@ import { AssetsModuleTabBar, AssetsProjectPanel, AssetsCreativePanel, SeedanceAs
 const MODULE_TABS = [
   { key: 'project', label: '项目资产' },
   { key: 'creative', label: '创作资产' },
-  { key: 'seedance', label: 'Seedance2.0素材库' },
+  { key: 'seedance', label: 'seedance素材库' },
 ];
 
 export default function AssetsPage({ isLoggedIn }) {

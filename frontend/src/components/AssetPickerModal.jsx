@@ -7,6 +7,9 @@ import { apiGetProjects } from '../api/project';
 import { apiGetAssetsPage, enrichWithStoryboards } from '../api/assets';
 import { apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../api/creation';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import { apiListLiveMaterialAssets, apiListLiveMaterialGroups } from '../api/liveMaterials';
+import SeedanceFolderCard from './assets/SeedanceFolderCard';
+import { isSeedanceModel } from '../utils/seedanceModel';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -210,6 +213,7 @@ export default function AssetPickerModal({
   preSelectedUrls = [],
   // preSelectedSubjectIds: string[]  已存在资产对应的主体ID，打开时默认选中且不可取消（最可靠的跨来源匹配键）
   preSelectedSubjectIds = [],
+  model = '',
 }) {
   const generationsByTab = useCreationStore((s) => s.generationsByTab);
   const favorites = useCreationStore((s) => s.favorites);
@@ -217,6 +221,12 @@ export default function AssetPickerModal({
   // 创作资产本地缓存（弹窗内懒加载，避免依赖 CreationPage 初始化）
   const [localCreativeAssets, setLocalCreativeAssets] = useState(null);
   const [creativeLoadedTabs, setCreativeLoadedTabs] = useState(new Set());
+  const [seedanceGroups, setSeedanceGroups] = useState([]);
+  const [seedanceAssets, setSeedanceAssets] = useState([]);
+  const [seedanceLoading, setSeedanceLoading] = useState(false);
+  const [activeSeedanceGroup, setActiveSeedanceGroup] = useState(null);
+  const [seedanceSubTab, setSeedanceSubTab] = useState('real');
+  const showSeedanceTab = isSeedanceModel(model);
 
   // 将后端历史记录条目归一化为 picker 卡片格式
   function normalizeCreativeItem(item, type) {
@@ -290,6 +300,16 @@ export default function AssetPickerModal({
   const [finalOnly, setFinalOnly] = useState(true);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(new Set());
+
+  useEffect(() => {
+    if (!showSeedanceTab && activeTab === 'seedance') {
+      // 模型切换到非 Seedance 时清理当前不可用的业务 Tab。
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setActiveTab('project');
+      setActiveSeedanceGroup(null);
+      setSeedanceSubTab('real');
+    }
+  }, [showSeedanceTab, activeTab]);
   // 调用方常以内联 map 传入预选 ID；用值签名作为依赖，避免每次渲染都重置选择并形成更新循环。
   const preSelectedIdsKey = JSON.stringify(preSelectedIds ?? []);
   const preSelectedSet = useMemo(() => new Set(preSelectedIds ?? []), [preSelectedIds]);
@@ -336,6 +356,9 @@ export default function AssetPickerModal({
       // 关闭时重置创作资产本地缓存，下次打开重新加载
       setLocalCreativeAssets(null);
       setCreativeLoadedTabs(new Set());
+      setSeedanceGroups([]);
+      setSeedanceAssets([]);
+      setActiveSeedanceGroup(null);
     }
   }, [open, preSelectedIdsKey]);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -355,6 +378,71 @@ export default function AssetPickerModal({
   const [activeProjectId, setActiveProjectId] = useState(projectId || null);
   const [projectMenuRect, setProjectMenuRect] = useState(null);
   const projectBtnRef = useRef(null);
+
+  useEffect(() => {
+    if (!open || !showSeedanceTab || activeTab !== 'seedance') return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSeedanceLoading(true);
+    apiListLiveMaterialGroups()
+      .then(async (groups) => {
+        if (cancelled) return;
+        const normalizedGroups = Array.isArray(groups) ? groups : [];
+        const groupsWithPreviews = await Promise.all(normalizedGroups.map(async (group) => {
+          try {
+            const assets = await apiListLiveMaterialAssets(group.id);
+            return { ...group, images: (Array.isArray(assets) ? assets : []).slice(0, 2).map((asset) => asset.preview_url || asset.asset_ref_url).filter(Boolean) };
+          } catch {
+            return { ...group, images: [] };
+          }
+        }));
+        if (!cancelled) setSeedanceGroups(groupsWithPreviews);
+      })
+      .catch((error) => {
+        if (!cancelled) console.error('[AssetPickerModal] 拉取Seedance素材组失败:', error);
+      })
+      .finally(() => {
+        if (!cancelled) setSeedanceLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [open, activeTab, showSeedanceTab]);
+
+  useEffect(() => {
+    if (!activeSeedanceGroup) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSeedanceAssets([]);
+      return undefined;
+    }
+    let cancelled = false;
+    setSeedanceLoading(true);
+    apiListLiveMaterialAssets(activeSeedanceGroup.id)
+      .then((assets) => {
+        if (cancelled) return;
+        setSeedanceAssets((Array.isArray(assets) ? assets : []).map((asset) => ({
+          id: asset.id,
+          name: asset.name || activeSeedanceGroup.name || '未命名',
+          url: normalizeImageUrl(asset.preview_url || asset.asset_ref_url) || null,
+          fullUrl: normalizeImageUrl(asset.asset_ref_url || asset.preview_url) || null,
+          fileUrl: normalizeImageUrl(asset.asset_ref_url || asset.preview_url) || null,
+          asset_type: 'image',
+          // 只有真人组进入真人素材参数；AIGC 组按普通参考图片返回。
+          isLiveMaterial: String(activeSeedanceGroup.group_type || '').toUpperCase() !== 'AIGC',
+          isAigcMaterial: String(activeSeedanceGroup.group_type || '').toUpperCase() === 'AIGC',
+          groupId: asset.group_id || activeSeedanceGroup.id,
+          groupType: activeSeedanceGroup.group_type || 'LivenessFace',
+          assetRefUrl: asset.asset_ref_url,
+          previewUrl: asset.preview_url,
+          bgColor: '#252525',
+        })));
+      })
+      .catch((error) => {
+        if (!cancelled) console.error('[AssetPickerModal] 拉取Seedance素材失败:', error);
+      })
+      .finally(() => {
+        if (!cancelled) setSeedanceLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeSeedanceGroup]);
 
   // ── 从后端拉取真实数据 ──────────────────────────────────────────────────
   const [apiProjects, setApiProjects] = useState(null);
@@ -542,6 +630,7 @@ export default function AssetPickerModal({
     const allAssets = [
       ...Object.values(projectAssetsMap).flatMap(p => Object.values(p).flat()),
       ...Object.values(creativeAssets).flat(),
+      ...seedanceAssets,
     ];
     const assetMap = Object.fromEntries(allAssets.map(a => [a.id, a]));
     // 只返回本次新增选择的资产，排除上轮已存在的预选项（preSelectedIds），避免上游重复输入
@@ -578,10 +667,11 @@ export default function AssetPickerModal({
       const projectData = projectAssetsMap[activeProjectId] ?? {};
       const key = SUB_TAB_KEY_MAP[projectSubTab];
       return projectData[key] ?? [];
-    } else {
+    } else if (activeTab === 'creative') {
       const key = SUB_TAB_KEY_MAP[creativeSubTab];
       return creativeAssets[key] ?? [];
     }
+    return seedanceAssets;
   };
 
   const rawAssets = getCurrentAssets();
@@ -640,8 +730,8 @@ export default function AssetPickerModal({
 
         {/* ── 顶部大 Tab + 搜索框 ── */}
         <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '24px', paddingRight: '24px', gap: '24px', flexShrink: 0 }}>
-          {['project', 'creative'].map((tab) => {
-            const label = tab === 'project' ? '项目资产' : '创作资产';
+          {['project', 'creative', ...(showSeedanceTab ? ['seedance'] : [])].map((tab) => {
+            const label = tab === 'project' ? '项目资产' : tab === 'creative' ? '创作资产' : 'Seedance2.0素材库';
             const isActive = activeTab === tab;
             return (
               <div
@@ -802,11 +892,43 @@ export default function AssetPickerModal({
               })}
             </div>
           )}
+          {activeTab === 'seedance' && (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '24px' }}>
+              {activeSeedanceGroup ? (
+                <button type="button" onClick={() => setActiveSeedanceGroup(null)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF66' }}>
+                  返回/
+                </button>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '24px' }}>
+                  {['real', 'virtual'].map((tab) => (
+                    <button key={tab} type="button" onClick={() => setSeedanceSubTab(tab)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: seedanceSubTab === tab ? FONT_MEDIUM : FONT, fontSize: '14px', lineHeight: '18px', color: seedanceSubTab === tab ? '#FFFFFF' : '#FFFFFF99' }}>
+                      {tab === 'real' ? '真人人像' : '虚拟人像'}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {activeSeedanceGroup && <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF' }}>{activeSeedanceGroup.name}</span>}
+            </div>
+          )}
         </div>
 
         {/* ── 内容区（可滚动） ── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 24px', display: 'flex', flexDirection: 'column' }}>
-          {filteredAssets.length === 0 ? (
+          {activeTab === 'seedance' && !activeSeedanceGroup ? (
+            seedanceLoading ? <EmptyState /> : seedanceGroups.filter((group) => seedanceSubTab === 'virtual' ? String(group.group_type || '').toUpperCase() === 'AIGC' : String(group.group_type || '').toUpperCase() !== 'AIGC').length === 0 ? <EmptyState /> : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px', paddingTop: '8px', paddingBottom: '8px', alignContent: 'flex-start' }}>
+                {seedanceGroups.filter((group) => seedanceSubTab === 'virtual' ? String(group.group_type || '').toUpperCase() === 'AIGC' : String(group.group_type || '').toUpperCase() !== 'AIGC').map((group) => (
+                  <SeedanceFolderCard
+                    key={group.id}
+                    name={group.name || '未命名素材组'}
+                    count={group.asset_count ?? 0}
+                    images={group.images || []}
+                    onOpen={() => setActiveSeedanceGroup(group)}
+                  />
+                ))}
+              </div>
+            )
+          ) : filteredAssets.length === 0 ? (
             <EmptyState />
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', paddingTop: '8px', paddingBottom: '8px', alignContent: 'flex-start' }}>

@@ -6,9 +6,9 @@
  * 页面继续负责生成请求、任务轮询、缓存和全局状态写回。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   InputCard 状态与 Hook 接线                         L27–L124
- *   输入预填充、素材选择和失败恢复                     L126–L292
- *   CreationInputSurface 组合                           L294–L416
+ *   InputCard 状态与 Hook 接线                         L28–L179
+ *   输入预填充、素材选择和失败恢复                     L181–L430
+ *   CreationInputSurface 组合                           L432–L525
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -18,6 +18,7 @@ import { DEFAULT_EMOTIONS } from './CreationSelectorConstants';
 import { useCreationInputFiles } from './useCreationInputFiles';
 import { useCreationPromptInteraction } from './useCreationPromptInteraction';
 import { useCreationParamsState } from './useCreationParamsState';
+import { isSeedanceModel } from '../../utils/seedanceModel';
 import {
   MAX_CREATION_FILES,
   getCreationUploadExtensions,
@@ -170,11 +171,11 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
   // Video: filter modelOptions by refMode
   const dubbingEmotions = useMemo(() => { return creationParams?.emotions ?? DEFAULT_EMOTIONS; }, [creationParams]);
 
-  // 是否显示真人素材入口：仅视频模式 + 当前模型支持
+  // 是否显示真人素材入口：仅视频模式、当前模型支持，且不属于 Seedance 系列。
   const showLiveMaterial = useMemo(() => {
     if (genType !== 'video') return false;
     const currentModel = modelOptions.find(m => m.value === model);
-    return !!(currentModel?.supportsLiveMaterial);
+    return !!(currentModel?.supportsLiveMaterial) && !isSeedanceModel(currentModel);
   }, [genType, model, modelOptions]);
 
   const filteredModelOptions = useMemo(() => {
@@ -265,7 +266,21 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       setFrameAssetTarget(null);
       return;
     }
-    const assetFiles = selectedAssets.map((asset) => {
+    const liveMaterialAssets = selectedAssets.filter((asset) => asset.isLiveMaterial);
+    const liveMats = liveMaterialAssets.map((asset) => ({
+        isAsset: true,
+        isLiveMaterial: true,
+        assetId: asset.id,
+        groupId: asset.groupId,
+        groupType: asset.groupType,
+        assetRefUrl: asset.assetRefUrl,
+        url: asset.previewUrl || asset.url,
+        previewUrl: asset.previewUrl || asset.url,
+        name: asset.name || '真人素材',
+        type: 'image/jpeg',
+        size: 0,
+      }));
+    const assetFiles = selectedAssets.filter((asset) => !asset.isLiveMaterial).map((asset) => {
       const isVideo = asset.type === 'video';
       const isAudio = asset.type === 'audio';
       let fileUrl;
@@ -278,7 +293,8 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       // 兜底到 asset.id：项目/全局资产经 normalizePickerAsset 后真实后端 id 就在 id 上，
       // 创作历史 composite id 会因 UUID 校验被过滤，安全
-      const rawId = asset.backendId || asset.asset_id || asset.id;
+      // AIGC 素材属于 live-materials 资源，不一定存在统一资产表记录；仅通过 URL 作为参考图传递。
+      const rawId = asset.isAigcMaterial ? undefined : (asset.backendId || asset.asset_id || asset.id);
       const assetId = rawId && UUID_RE.test(rawId) ? rawId : undefined;
       return {
         name: asset.name || asset.id,
@@ -290,7 +306,13 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         type: isVideo ? 'video/mp4' : isAudio ? 'audio/mpeg' : 'image/jpeg',
       };
     });
-    safeSetFiles((prev) => [...prev, ...assetFiles]);
+    if (liveMats.length > 0 || assetFiles.length > 0) {
+      safeSetFiles((prev) => [
+        ...prev.filter((file) => !file.isLiveMaterial),
+        ...liveMats,
+        ...assetFiles,
+      ]);
+    }
   };
 
   const concurrentLimit = genType === 'dubbing' ? 5 : 10;
@@ -467,6 +489,7 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         onFrameAssetTargetClear: () => setFrameAssetTarget(null),
         onAssetConfirm: handleAssetConfirm,
         assetPickerAccept,
+        model,
         voiceModalOpen,
         onVoiceModalClose: () => setVoiceModalOpen(false),
         onVoiceConfirm: (voiceId, voiceName) => {

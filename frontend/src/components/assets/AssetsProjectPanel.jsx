@@ -18,6 +18,7 @@
  * ─── 更新记录 ───────────────────────────────────────
  *   2026-07-16  页面入口收敛；补充资产选择引用；抽离项目重命名/删除弹窗和资产卡片网格
  *   2026-07-17  统一按来源移除资产，并同步清理主体卡片与分页原始数据
+ *   2026-07-24 项目列表按创建时间正序，与资产选择弹窗保持一致
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -181,8 +182,11 @@ export default function AssetsProjectPanel() {
 
   useEffect(() => {
     apiGetProjects().then((list) => {
-      setProjects(list);
-      setActiveProject((prev) => prev ?? list[0]?.id ?? null);
+      const sortedProjects = Array.isArray(list)
+        ? [...list].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+        : [];
+      setProjects(sortedProjects);
+      setActiveProject((prev) => prev ?? sortedProjects[0]?.id ?? null);
     });
   }, []);
 

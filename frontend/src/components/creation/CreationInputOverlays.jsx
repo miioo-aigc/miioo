@@ -29,6 +29,7 @@ export default function CreationInputOverlays({
   onLiveMaterialModalClose,
   onLiveMaterialConfirm,
   liveMaterialInitialSelected = [],
+  model = '',
 }) {
   return (
     <>
@@ -38,6 +39,7 @@ export default function CreationInputOverlays({
         onFrameAssetTargetClear={onFrameAssetTargetClear}
         onConfirm={onAssetConfirm}
         accept={assetPickerAccept}
+        model={model}
       />
       <DubbingVoiceModal
         open={voiceModalOpen}

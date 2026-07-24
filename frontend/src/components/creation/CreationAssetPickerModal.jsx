@@ -31,6 +31,7 @@ export default function CreationAssetPickerModal({
   preSelectedIds = [],
   preSelectedUrls = [],
   preSelectedSubjectIds = [],
+  model = '',
 }) {
   const handleClose = () => {
     onClose?.();
@@ -48,6 +49,7 @@ export default function CreationAssetPickerModal({
       preSelectedIds={preSelectedIds}
       preSelectedUrls={preSelectedUrls}
       preSelectedSubjectIds={preSelectedSubjectIds}
+      model={model}
     />
   );
 }

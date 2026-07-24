@@ -860,7 +860,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
 
 // ── Main export ────────────────────────────────────────────────────────────
 
-export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onExtractSubjects, extractError = null, isExtractingSubjects = false, isStoryboardGenerated = false, initialTab = 'char', projectRatio, chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps }) {
+export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onExtractSubjects, onRetryExtractSubjects, extractError = null, isExtractingSubjects = false, isStoryboardGenerated = false, initialTab = 'char', projectRatio, chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps }) {
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [batchGenOpen, setBatchGenOpen] = useState(false);
@@ -1655,7 +1655,8 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       loading={isExtracting}
       onRetry={() => {
         setIsRetryingExtraction(true);
-        onExtractSubjects?.().finally(() => setIsRetryingExtraction(false));
+        const retry = onRetryExtractSubjects || onExtractSubjects;
+        Promise.resolve(retry?.()).finally(() => setIsRetryingExtraction(false));
       }}
     />;
   }

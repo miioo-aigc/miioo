@@ -9,6 +9,7 @@
  * ─── 数据流与副作用 ─────────────────────────────────────────────
  *   open / initialSelected → 加载素材组并恢复已选素材
  *   onConfirm → 向 InputCard 返回可用于生成请求的真人素材元数据
+ *   qrOnly / onCreated → 为资产库复用仅扫码录入流程，不展示素材库管理页
  *   API、认证轮询、上传审核轮询和删除操作均封装在本业务域组件内
  *
  * ─── 引用边界 ─────────────────────────────────────────────────────
@@ -339,7 +340,7 @@ function AssetCard({ asset, label, isApproved, isSel, CELL, CELL_H, FONT, onClic
   );
 }
 
-export default function CreationLiveMaterialModal({ open, onClose, onConfirm, initialSelected = [] }) {
+export default function CreationLiveMaterialModal({ open, onClose, onConfirm, initialSelected = [], qrOnly = false, onCreated }) {
   const [groups, setGroups] = useState([]);
   const [assetsMap, setAssetsMap] = useState({}); // groupId -> assets[]
   const [selectedMap, setSelectedMap] = useState({}); // { [assetId]: { groupId, assetId, assetRefUrl, previewUrl, name } }
@@ -358,6 +359,10 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
   // Load groups when modal opens
   useEffect(() => {
     if (!open) return;
+    if (qrOnly) {
+      // 资产库只复用扫码录入流程，不加载或展示创作模块的素材库管理页。
+      return;
+    }
     // 用已选素材初始化 selectedMap，保持跨次打开的选中状态
     const initMap = Object.fromEntries((initialSelected || []).map(m => [m.assetId, m]));
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 打开弹窗时恢复上次选中的素材
@@ -376,12 +381,12 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
           })
         );
         setAssetsMap(Object.fromEntries(entries));
-      })
+    })
       .catch((error) => { console.warn('[CreationLiveMaterialModal] 加载真人素材组失败', error); })
       .finally(() => setLoading(false));
   // 仅在弹窗从关闭变为打开时加载；initialSelected 在 InputCard 中按渲染生成新数组。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, qrOnly]);
 
   // Cleanup polling on unmount / close
   useEffect(() => {
@@ -396,7 +401,7 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
 
   const handleAddNew = async () => {
     try {
-      const session = await apiCreateLiveMaterialAuthSession({ source: 'creation' });
+      const session = await apiCreateLiveMaterialAuthSession({ source: qrOnly ? 'assets' : 'creation' });
       const prevIds = new Set(groups.map(g => g.id));
       setQrState({ phase: 'scanning', launchUrl: session.launch_url, sessionId: session.session_id });
       pollTimerRef.current = setInterval(async () => {
@@ -434,14 +439,28 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
         const updated = await apiUpdateLiveMaterialGroup(qrState.newGroup.id, { name: finalName });
         // 用后端返回的最新数据更新 groups 列表
         setGroups(prev => prev.map(g => g.id === updated.id ? updated : g));
+        onCreated?.(updated);
       } catch (error) {
         console.warn('[CreationLiveMaterialModal] 保存素材组名称失败', error);
         // 接口失败时降级：仅更新本地显示
         setGroupNameOverrides(prev => ({ ...prev, [qrState.newGroup.id]: finalName }));
+        onCreated?.({ ...qrState.newGroup, name: finalName });
       }
     }
     setQrState(null);
+    if (qrOnly) onClose?.();
   };
+
+  useEffect(() => {
+    if (!open || !qrOnly) return undefined;
+    const startTimer = setTimeout(() => handleAddNew(), 0);
+    return () => {
+      clearTimeout(startTimer);
+      clearInterval(pollTimerRef.current);
+    };
+  // 仅在扫码模式打开时创建一次认证会话。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, qrOnly]);
 
   const handleGroupClick = async (group) => {
     setActiveGroup(group);
@@ -549,8 +568,8 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#00000080', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      {/* Main modal */}
-      <div style={{ width: MODAL_W, height: MODAL_H, background: '#161616', borderRadius: '16px', border: '1px solid #FFFFFF0D', boxShadow: '0 8px 32px #00000099', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Main modal：资产库的 qrOnly 模式只显示下面的扫码弹窗。 */}
+      {!qrOnly && <div style={{ width: MODAL_W, height: MODAL_H, background: '#161616', borderRadius: '16px', border: '1px solid #FFFFFF0D', boxShadow: '0 8px 32px #00000099', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* Header — 固定标题 */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', flexShrink: 0 }}>
           <span style={{ fontFamily: FONT, fontSize: '16px', fontWeight: 500, lineHeight: '20px', color: '#FFFFFF', flex: 1 }}>Seedance2.0真人素材库</span>
@@ -655,17 +674,17 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
           </div>
           <Button variant="primary" size="large" onClick={handleConfirm}>确定</Button>
         </div>
-      </div>
+      </div>}
 
       {/* QR scanning sub-modal */}
       {qrState?.phase === 'scanning' && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1001, background: '#00000080', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={(e) => { if (e.target === e.currentTarget) { clearInterval(pollTimerRef.current); setQrState(null); } }}
+          onClick={(e) => { if (e.target === e.currentTarget) { clearInterval(pollTimerRef.current); setQrState(null); if (qrOnly) onClose?.(); } }}
         >
           <div style={{ width: 400, background: '#161616', borderRadius: '12px', border: '1px solid #FFFFFF0D', boxShadow: '0 8px 32px #00000099', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px' }}>
               <span style={{ fontFamily: FONT, fontSize: '14px', fontWeight: 500, color: '#FFFFFFCC' }}>扫码授权人像资产</span>
-              <CloseBtn onClick={() => { clearInterval(pollTimerRef.current); setQrState(null); }} />
+              <CloseBtn onClick={() => { clearInterval(pollTimerRef.current); setQrState(null); if (qrOnly) onClose?.(); }} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 24px 32px', gap: '16px' }}>
               <div style={{ background: 'white', padding: '12px', borderRadius: '8px' }}>

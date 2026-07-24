@@ -56,6 +56,7 @@ export default function StoryboardHeader({
   onStartEdit,
   onRegenerate,
   showStoryboardSummary = true,
+  showBatchToolbar = true,
 }) {
   const shotText = String(shotsCount || 0).padStart(2, '0');
   const durationText = Number.isInteger(totalDuration) ? String(totalDuration) : totalDuration.toFixed(1);
@@ -82,20 +83,22 @@ export default function StoryboardHeader({
           后台还在抽取分镜，已完成 {completedEpisodesCount}/{activeEpisodes.length} 集
         </span>
       )}
-      <StoryboardBatchToolbar
-        downloadMode={downloadMode}
-        selectedCount={selectedCount}
-        totalCount={shotsCount}
-        generationDisabled={generationDisabled}
-        onOpenImageModal={onOpenImageModal}
-        onOpenVideoModal={onOpenVideoModal}
-        onEnterDownloadMode={onEnterDownloadMode}
-        onSelectAll={onSelectAll}
-        onDownloadImages={onDownloadImages}
-        onDownloadVideos={onDownloadVideos}
-        onExitDownloadMode={onExitDownloadMode}
-        onStartEdit={onStartEdit}
-      />
+      {showBatchToolbar && (
+        <StoryboardBatchToolbar
+          downloadMode={downloadMode}
+          selectedCount={selectedCount}
+          totalCount={shotsCount}
+          generationDisabled={generationDisabled}
+          onOpenImageModal={onOpenImageModal}
+          onOpenVideoModal={onOpenVideoModal}
+          onEnterDownloadMode={onEnterDownloadMode}
+          onSelectAll={onSelectAll}
+          onDownloadImages={onDownloadImages}
+          onDownloadVideos={onDownloadVideos}
+          onExitDownloadMode={onExitDownloadMode}
+          onStartEdit={onStartEdit}
+        />
+      )}
     </div>
   );
 }

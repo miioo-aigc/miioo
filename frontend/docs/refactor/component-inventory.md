@@ -1,5 +1,13 @@
 # 组件重构盘点基线
 
+## 2026-07-24 Seedance2.0素材库首版 UI
+
+- `AssetsPage.jsx` 新增与项目资产、创作资产平级的 `Seedance2.0素材库` 模块 Tab，页面入口继续只负责模块状态和业务区块组合。
+- 新增 `src/components/assets/SeedanceAssetLibraryPanel.jsx`，承载「真人人像」「虚拟人像」子 Tab、真实真人素材组文件夹网格、「录入新的真人」入口以及文件夹详情页的数据编排；素材组、图片、重命名、删除和上传均接入真人素材接口。
+- 新增 `src/components/assets/SeedanceFolderCard.jsx`，独立承载素材库文件夹样式；图片预览最多取前两张，名称使用单行省略号，悬停或聚焦时显示编辑/删除图标按钮，并通过 `onOpen`、`onEdit`、`onDelete` 暴露动作回调。
+- 新增 `src/components/assets/SeedanceFolderDetail.jsx`，复用文件夹详情页的面包屑、上传卡片和 `242×160` 图片卡片 UI；进入空文件夹时不展示任何写死的图片。
+- 新增组件已通过资产域定向 ESLint；项目构建和架构检查通过，完整 lint 仍被 `NewProjectModal.jsx`、`GlobalSettings.jsx` 中既有未使用变量错误阻塞。
+
 ## 2026-07-22 项目删除二次确认统一
 
 - `src/pages/ProjectList.jsx` 的项目删除确认改为直接复用标准 `src/components/ConfirmDialog.jsx`，页面只负责传入项目名称、确认文案和删除回调。

@@ -37,6 +37,9 @@ export default function TextField({
   errorMsg,
   suffix,
   sanitize,
+  wrapperClassName = '',
+  wrapperStyle,
+  inputClassName = '',
   onChange,
   onBlur,
   ...inputProps
@@ -88,7 +91,7 @@ export default function TextField({
       onChange: handleChange,
       onFocus: () => setFocused(true),
       onBlur: handleBlur,
-      className: inputClass,
+      className: `${inputClass} ${inputClassName}`,
       style: inputStyle,
       ...inputProps,
     };
@@ -128,7 +131,7 @@ export default function TextField({
     ) : null;
 
   return (
-    <label className="flex flex-col gap-[8px]">
+    <label className={`flex flex-col gap-[8px] ${wrapperClassName}`} style={wrapperStyle}>
       {label && (
         <span className="text-text-secondary text-font-size-14" style={{ fontFamily: FONT }}>{label}</span>
       )}

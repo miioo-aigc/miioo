@@ -1,4 +1,7 @@
 export { AssetsTabBar, AssetsModuleTabBar } from './AssetsTabs';
+export { default as SeedanceAssetLibraryPanel } from './SeedanceAssetLibraryPanel';
+export { default as SeedanceFolderCard } from './SeedanceFolderCard';
+export { default as SeedanceFolderDetail } from './SeedanceFolderDetail';
 export { EmptyProjectAssets, EmptyCreativeAssets } from './AssetsEmptyState';
 export { default as AssetsBatchToolbar } from './AssetsBatchToolbar';
 export { default as AssetsProjectListItem } from './AssetsProjectListItem';

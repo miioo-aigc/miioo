@@ -9,6 +9,7 @@
  *   AssetsPage：模块切换（项目资产 / 创作资产）与页面外框
  *   AssetsProjectPanel：项目资产筛选、分页、批量操作和详情回调编排
  *   AssetsCreativePanel：创作资产历史分页、收藏和批量操作编排
+ *   SeedanceAssetLibraryPanel：Seedance2.0素材库子 Tab 和文件夹组合
  *
  * ─── 页面级边界 ───────────────────────────────────
  *   页面入口不直接调用资产 API；业务面板继续持有各自 API、Store、副作用和回调。
@@ -17,14 +18,16 @@
  * ─── 更新记录 ─────────────────────────────────────
  *   2026-07-16  抽离 AssetsProjectPanel、AssetsCreativePanel 和资产卡片组合，
  *               页面入口收敛为模块切换与面板组合；同步真实行号和引用边界
+ *   2026-07-24  接入 Seedance2.0素材库模块，由业务组件承载子 Tab 与文件夹展示
  */
 
 import { useState } from 'react';
-import { AssetsModuleTabBar, AssetsProjectPanel, AssetsCreativePanel } from '../components/assets';
+import { AssetsModuleTabBar, AssetsProjectPanel, AssetsCreativePanel, SeedanceAssetLibraryPanel } from '../components/assets';
 
 const MODULE_TABS = [
   { key: 'project', label: '项目资产' },
   { key: 'creative', label: '创作资产' },
+  { key: 'seedance', label: 'Seedance2.0素材库' },
 ];
 
 export default function AssetsPage({ isLoggedIn }) {
@@ -50,7 +53,9 @@ export default function AssetsPage({ isLoggedIn }) {
         overflow: 'hidden',
       }}>
         <AssetsModuleTabBar tabs={MODULE_TABS} active={activeModule} onChange={setActiveModule} />
-        {activeModule === 'project' ? <AssetsProjectPanel /> : <AssetsCreativePanel isLoggedIn={isLoggedIn} />}
+        {activeModule === 'project' && <AssetsProjectPanel />}
+        {activeModule === 'creative' && <AssetsCreativePanel isLoggedIn={isLoggedIn} />}
+        {activeModule === 'seedance' && <SeedanceAssetLibraryPanel />}
       </div>
     </div>
   );

@@ -99,6 +99,7 @@
  *   2026-07-23  面包屑重新分镜改为打开独立 AIRegenerateStoryboardModal，提交后复用当前分集任务轮询
  *   2026-07-23  重组分镜列表与定稿时间轴为上下两个独立面板，保留镜头行和时间轴卡片业务交互
  *   2026-07-23  未生成分集改为展示手动启动按钮，不再切换分集后自动抽取；空状态容器背景按页面反馈使用透明底色叠加 #060606
+ *   2026-07-24  分镜生成失败态支持清除失败快照后重新发起任务
  *   2026-07-15  抽离 PanelPromptInput、ReferenceMentionDropdown 和 SubjectTag 到 components/storyboard/PanelPromptInput.jsx，
  *              页面只负责把提示词组件注入生成面板；提示词编辑、原子提及、光标处理和展示态标签由组件内部维护
  *   2026-07-15  抽离 PanelSelect / ModalSelectItem 到 components/storyboard/PanelSelect.jsx，
@@ -268,7 +269,7 @@ function StartStoryboardIcon() {
   );
 }
 
-export default function StoryboardPage({ projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onVideoGenerated, onGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0, statusMessage = '' }) {
+export default function StoryboardPage({ projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onVideoGenerated, onGenerateStoryboards, onRetryGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0, statusMessage = '' }) {
 
   // 选择器的唯一数据源是剧本分集，不根据当前分镜接口返回结果裁剪列表。
   const [scriptEpisodes, setScriptEpisodes] = useState(() => episodes.length > 0 ? episodes : []);
@@ -1284,13 +1285,15 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       onStartEdit={handleStartEdit}
       onRegenerate={openRegenerateModal}
       showStoryboardSummary={shots.length > 0}
+      showBatchToolbar={shots.length > 0}
     />
   );
 
   const handleEmptyEpisodeStart = showGeneratingError ? () => {
     setEpisodeGenerationError(false);
     setIsGenerating(true);
-    Promise.resolve(onGenerateStoryboards?.()).finally(() => setIsGenerating(false));
+    const start = onRetryGenerateStoryboards || onGenerateStoryboards;
+    Promise.resolve(start?.()).finally(() => setIsGenerating(false));
   } : handleStartEpisodeGeneration;
 
   if (showGeneratingLoading) {
@@ -1485,6 +1488,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
             justifyContent: 'center',
             height: '40px',
             minWidth: '1160px',
+            marginBottom: '80px',
             borderRadius: '12px',
             border: '1px dashed rgba(255,255,255,0.12)',
             cursor: 'pointer',

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AssetPickerModal from '../AssetPickerModal';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import NarrationAddButton from './NarrationAddButton';
 
 /**
  * @file MainRefCol.jsx
@@ -204,14 +205,14 @@ function MainRefCol({ shot, onChange, projectId, onUploadFile, onAssetConfirm })
     setAssetPickerOpen(false);
   }
 
-  function handleAddButtonClick() {
+  function handleAddButtonClick(event) {
     if (dropdownOpen) {
       setDropdownOpen(false);
       setDropdownAnchor(null);
       return;
     }
 
-    setDropdownAnchor(addButtonRef.current?.getBoundingClientRect() ?? null);
+    setDropdownAnchor(event?.currentTarget?.getBoundingClientRect() ?? addButtonRef.current?.getBoundingClientRect() ?? null);
     setDropdownOpen(true);
   }
 
@@ -220,8 +221,10 @@ function MainRefCol({ shot, onChange, projectId, onUploadFile, onAssetConfirm })
     setDropdownAnchor(null);
   }
 
+  const hasContent = shot.mainRefs.length > 0;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '92px', flexShrink: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', flexShrink: 0 }}>
       <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileSelect} />
       <AssetPickerModal
         open={assetPickerOpen}
@@ -241,10 +244,16 @@ function MainRefCol({ shot, onChange, projectId, onUploadFile, onAssetConfirm })
         />
       )}
 
-      <div style={{ width: '92px', maxHeight: '92px', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexWrap: 'wrap', gap: '4px', scrollbarWidth: 'none' }}>
-        <div ref={addButtonRef} style={{ display: 'inline-flex', flexShrink: 0 }}>
-          <StoryboardAddSlotButton onClick={handleAddButtonClick} />
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.60)', fontFamily: FONT }}>主体参考</span>
+        {hasContent && <NarrationAddButton tooltip="新增参考主体" onClick={handleAddButtonClick} />}
+      </div>
+      <div style={{ width: '100%', maxHeight: '92px', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexWrap: 'wrap', gap: '4px', scrollbarWidth: 'none' }}>
+        {!hasContent && (
+          <div ref={addButtonRef} style={{ display: 'inline-flex', flexShrink: 0 }}>
+            <StoryboardAddSlotButton onClick={handleAddButtonClick} />
+          </div>
+        )}
         {shot.mainRefs.map((image, index) => (
           <div
             key={image.id ?? index}
@@ -357,8 +366,7 @@ export function MediaHoverPreview({ url, isVideo, mouseX, mouseY }) {
 
 export default function MainRefColWrapper({ shot, onChange, projectId, onUploadFile, onAssetConfirm }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', borderRight: '1px solid rgba(255,255,255,0.08)', alignItems: 'flex-start', flexShrink: 0 }}>
-      <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.60)', fontFamily: FONT }}>主体参考</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '165px', minWidth: '165px', boxSizing: 'border-box', padding: '12px', borderRight: '1px solid rgba(255,255,255,0.08)', alignItems: 'stretch', flexShrink: 0 }}>
       <MainRefCol
         shot={shot}
         onChange={onChange}

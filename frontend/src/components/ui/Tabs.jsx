@@ -46,9 +46,10 @@ export default function Tabs({
               key={opt.value}
               type="button"
               onClick={() => onChange?.(opt.value)}
-              className="relative flex h-[40px] min-w-0 flex-1 items-center justify-center rounded-[6px] border-0 px-[12px] text-[14px] leading-[18px] transition-[background-color,outline-color] duration-150"
-              style={{ background: active ? '#2DC3E114' : '#FFFFFF0D', outline: active ? '1px solid #2DC3E1' : 'none', color: '#FFFFFF', fontFamily: FONT }}
+              className="relative flex h-[40px] min-w-0 flex-1 items-center justify-center gap-[8px] rounded-[6px] border-0 px-[12px] text-[14px] leading-[18px] transition-[background-color,outline-color] duration-150"
+              style={{ background: active ? '#2DC3E133' : '#FFFFFF14', outline: active ? '1px solid #2DC3E1' : 'none', color: '#FFFFFF', fontFamily: FONT }}
             >
+              {opt.icon && <span style={{ display: 'inline-flex', width: '16px', height: '16px', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{opt.icon}</span>}
               {opt.input ? (
                 <span className="flex min-w-0 flex-1 items-center justify-center gap-[4px]">
                   <input

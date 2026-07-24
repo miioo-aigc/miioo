@@ -55,6 +55,7 @@ export default function StoryboardHeader({
   onExitDownloadMode,
   onStartEdit,
   onRegenerate,
+  showStoryboardSummary = true,
 }) {
   const shotText = String(shotsCount || 0).padStart(2, '0');
   const durationText = Number.isInteger(totalDuration) ? String(totalDuration) : totalDuration.toFixed(1);
@@ -67,10 +68,14 @@ export default function StoryboardHeader({
           <DownArrow />
           <EpisodeSelector episodes={activeEpisodes} value={episode} onChange={onEpisodeChange} />
         </div>
-        <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '20px', color: '#FFFFFFCC' }}>分镜数{shotText}，总时长{durationText}秒</span>
-        <TextButton variant="link" icon={<RegenerateIcon />} disabled={homeIsGenerating} onClick={onRegenerate} contentClassName="text-[14px] leading-[20px]">
-          重新分镜
-        </TextButton>
+        {showStoryboardSummary && (
+          <>
+            <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '20px', color: '#FFFFFFCC' }}>分镜数{shotText}，总时长{durationText}秒</span>
+            <TextButton variant="link" icon={<RegenerateIcon />} disabled={homeIsGenerating} onClick={onRegenerate} contentClassName="text-[14px] leading-[20px]">
+              重新分镜
+            </TextButton>
+          </>
+        )}
       </div>
       {homeIsGenerating && (
         <span style={{ flex: '1 1 100%', order: 3, textAlign: 'center', fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#2DC3E1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>

@@ -7,7 +7,8 @@
 
 import { useState } from 'react';
 import { AddSlotBtn } from './NarrationAtoms';
-import { AddNarrationBtn, NarrationItem } from './NarrationItems';
+import NarrationAddButton from './NarrationAddButton';
+import { NarrationItem } from './NarrationItems';
 import VoiceDubModal from './VoiceDubModal';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -107,7 +108,7 @@ function NarrationCol({ segments, onChange, chars, globalVoiceParams = {}, onSav
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.60)', fontFamily: FONT }}>台词分配</span>
         {hasContent && (
-          <AddNarrationBtn onClick={openAdd} />
+          <NarrationAddButton onClick={openAdd} />
         )}
       </div>
 

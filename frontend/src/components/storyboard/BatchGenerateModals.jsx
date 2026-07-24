@@ -75,6 +75,7 @@ function ModelSelect({ modelList, model, loading, onChange }) {
   return (
     <Select
       label="选择模型"
+      width="100%"
       value={model}
       displayValue={loading ? '加载中...' : (modelList.find((item) => item.value === model)?.label || '请选择')}
       options={modelList}
@@ -91,6 +92,7 @@ function CapabilitySelect({ label, value, options, onChange }) {
   return (
     <Select
       label={label}
+      width="100%"
       value={value}
       options={options}
       selectedOptionColor="#FFFFFF"

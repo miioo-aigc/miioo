@@ -39,7 +39,6 @@ import { GenerationModelField, GenerationOptionFields } from './GenerationParams
 import { VideoGenerationTabs, VideoSoundToggle } from './VideoGenerationControls';
 import GenerationSubmitButton from './GenerationSubmitButton';
 
-const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 export default function GenerateVideoPanel({
@@ -60,15 +59,19 @@ export default function GenerateVideoPanel({
   buildRefFromAsset,
   ModalCloseBtn,
   PanelPromptInput,
+  embedded = false,
+  onCandidateMedia,
+  formState,
+  onFormStateChange,
 }) {
   // 生成方式 Tab：'all' 全能参考 | 'frame' 首尾帧
-  const [tab, setTab] = useState('all');
+  const [tab, setTab] = useState(() => formState?.tab || 'all');
   const [modelsLoading, setModelsLoading] = useState(true);
-  const [model, setModel] = useState('');
+  const [model, setModel] = useState(() => formState?.model || '');
   const [frameModels, setFrameModels] = useState([]);
   const [allModels, setAllModels] = useState([]);
-  const [resolution, setResolution] = useState('');
-  const [duration, setDuration] = useState(null);
+  const [resolution, setResolution] = useState(() => formState?.resolution || '');
+  const [duration, setDuration] = useState(() => formState?.duration ?? null);
 
   useEffect(() => {
     (async () => {
@@ -97,18 +100,22 @@ export default function GenerateVideoPanel({
         // 默认选中全能参考
         if (allModels.length > 0) {
           const first = allModels.find(m => m.is_default) || allModels[0];
-          setModel(first.value);
-          const caps = first.capabilities;
+          const restoredModel = formState?.model && allModels.some((item) => item.value === formState.model)
+            ? formState.model
+            : first.value;
+          setModel(restoredModel);
+          const selectedModel = allModels.find((item) => item.value === restoredModel) || first;
+          const caps = selectedModel.capabilities;
           {
             const resList = (caps?.supported_resolutions?.length ? caps.supported_resolutions : caps?.supported_sizes) || [];
-            if (resList.length > 0) setResolution(resList[0]);
+            if (resList.length > 0 && !formState?.resolution) setResolution(resList[0]);
           }
           {
             const durList = caps?.supported_durations;
             if (durList?.length > 0) {
               const shotDur = shot?.params?.duration;
               const matched = shotDur && durList.some(d => (String(d).endsWith('s') ? String(d) : String(d) + 's') === shotDur);
-              setDuration(matched ? shotDur : (String(durList[0]).endsWith("s") ? String(durList[0]) : String(durList[0]) + "s"));
+              if (!formState?.duration) setDuration(matched ? shotDur : (String(durList[0]).endsWith("s") ? String(durList[0]) : String(durList[0]) + "s"));
             }
           }
         }
@@ -121,14 +128,15 @@ export default function GenerateVideoPanel({
     })();
   // 模型列表只在面板挂载时读取；shot 时长仅用于首次默认值。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const [sound, setSound] = useState(true);
+  }, [formState?.duration, formState?.model, formState?.resolution]);
+  const [sound, setSound] = useState(() => formState?.sound ?? true);
   // 提示词：仅暂存在当前弹窗的本地 state，编辑不回写分镜列表字段。
   // 关闭面板时组件卸载、本地态丢弃，下次打开按 shot 当前字段重新生成初始内容。
   // 点击「生成分镜视频」时才把 prompt 随 onGenerate 传回后端。
-  const [prompt, setPrompt] = useState(() => buildStoryboardPrompt(shot));
+  const [prompt, setPrompt] = useState(() => formState?.prompt ?? buildStoryboardPrompt(shot));
   const promptRef = useRef(null);
   const [refSubjects, setRefSubjects] = useState(() => {
+    if (formState?.refSubjects) return formState.refSubjects;
     // 从 shot.mainRefs 初始化主体列表，补全 url/name
     if (!shot?.mainRefs?.length) return [];
     return shot.mainRefs.map(ref => {
@@ -147,13 +155,17 @@ export default function GenerateVideoPanel({
       return ref;
     }).filter(ref => ref?.url);
   });
-  const [refImages, setRefImages] = useState([]);
-  const [refVideos, setRefVideos] = useState([]);
-  const [refAudios, setRefAudios] = useState([]);
-  const [refFirstFrame, setRefFirstFrame] = useState(null);
-  const [refLastFrame, setRefLastFrame] = useState(null);
+  const [refImages, setRefImages] = useState(() => formState?.refImages || []);
+  const [refVideos, setRefVideos] = useState(() => formState?.refVideos || []);
+  const [refAudios, setRefAudios] = useState(() => formState?.refAudios || []);
+  const [refFirstFrame, setRefFirstFrame] = useState(() => formState?.refFirstFrame || null);
+  const [refLastFrame, setRefLastFrame] = useState(() => formState?.refLastFrame || null);
   const [loading, setLoading] = useState(false);
   const [viewerShot, setViewerShot] = useState(null);
+
+  useEffect(() => {
+    onFormStateChange?.({ tab, model, resolution, duration, sound, prompt, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame });
+  }, [tab, model, resolution, duration, sound, prompt, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame, onFormStateChange]);
 
   // 获取当前模型支持的参数（优先从后端 capabilities 派生）
   // 当前 Tab 对应的模型列表
@@ -353,39 +365,36 @@ export default function GenerateVideoPanel({
   }
 
 
-  return createPortal(
+  const content = (
     <>
-      <div
+      {!embedded && <div
         style={{ position: 'fixed', inset: 0, zIndex: 900, pointerEvents: 'auto' }}
         onMouseDown={onClose}
-      />
+      />}
       <div
         style={{
-          position: 'fixed', right: '24px', top: '60px', bottom: '24px',
-          width: '600px', zIndex: 901,
+          position: embedded ? 'relative' : 'fixed', right: embedded ? undefined : '24px', top: embedded ? undefined : '60px', bottom: embedded ? undefined : '24px',
+          width: embedded ? '100%' : '600px', height: embedded ? '100%' : undefined, zIndex: embedded ? undefined : 901,
           display: 'flex', flexDirection: 'column',
           backgroundColor: '#161616',
-          borderRadius: '12px',
-          border: '1px solid rgba(255,255,255,0.08)',
-          boxShadow: '-10px 24px 64px rgba(0,0,0,0.60)',
-          animation: 'slideInRight 220ms cubic-bezier(0.22,1,0.36,1) forwards',
+          borderRadius: embedded ? 0 : '12px',
+          border: embedded ? 0 : '1px solid rgba(255,255,255,0.08)',
+          boxShadow: embedded ? 'none' : '-10px 24px 64px rgba(0,0,0,0.60)',
+          animation: embedded ? 'none' : 'slideInRight 220ms cubic-bezier(0.22,1,0.36,1) forwards',
           overflow: 'hidden',
           pointerEvents: 'auto',
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* 标题栏 */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', flexShrink: 0 }}>
+        {!embedded && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', flexShrink: 0 }}>
           <span style={{ fontSize: '16px', lineHeight: '20px', color: '#FFFFFF', fontFamily: FONT_MEDIUM, fontWeight: 500 }}>生成分镜视频</span>
           <ModalCloseBtn onClick={onClose} />
-        </div>
+        </div>}
 
         {/* 内容区 */}
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           {/* 左侧表单 */}
-          <div style={{ display: 'flex', flexDirection: 'column', width: '419px', flexShrink: 0, padding: '8px 12px 80px 24px', gap: '20px', overflowY: 'auto' }}>
-            <span style={{ fontSize: "14px", lineHeight: "18px", color: "rgba(255,255,255,0.80)", fontFamily: FONT }}>分镜{String(shot?.number ?? 1).padStart(2, "0")}</span>
-
+          <div style={{ display: 'flex', flexDirection: 'column', width: embedded ? '457px' : '419px', flexShrink: 0, padding: embedded ? '12px 16px 80px 24px' : '8px 12px 80px 24px', gap: '20px', overflowY: 'auto', boxSizing: 'border-box' }}>
             <VideoGenerationTabs value={tab} onChange={handleTabChange} />
 
             <PanelPromptInput ref={promptRef} value={prompt} onChange={setPrompt} referenceItems={videoReferenceItems} />
@@ -448,13 +457,14 @@ export default function GenerateVideoPanel({
           </div>
 
           {/* 右侧视频列表 */}
-          <VideoResultsPanel
+          {!embedded && <VideoResultsPanel
             shot={shot}
             projectId={projectId}
             generatedVideos={generatedVideos}
             onSetGeneratedVideos={onSetGeneratedVideos}
             onSettleVideo={onSettleVideo}
             onShowToast={onShowToast}
+            onCandidateMedia={onCandidateMedia}
             onViewVideo={(video, index) => setViewerShot({
               videoIndex: index,
               videoUrl: video.url,
@@ -467,7 +477,7 @@ export default function GenerateVideoPanel({
               aspectRatio: '16:9',
               finalized: video.settled,
             })}
-          />
+          />}
         </div>
 
         {/* footer: 生成按钮 — 绝对定位于底部 */}
@@ -476,7 +486,7 @@ export default function GenerateVideoPanel({
             position: 'absolute',
             left: 0,
             bottom: 0,
-            width: '419px',
+            width: embedded ? '457px' : '419px',
             padding: '16px 24px',
             background: '#161616',
             borderBottomLeftRadius: '16px',
@@ -508,7 +518,7 @@ export default function GenerateVideoPanel({
           }}
         />
       )}
-    </>,
-    document.body
+    </>
   );
+  return embedded ? content : createPortal(content, document.body);
 }

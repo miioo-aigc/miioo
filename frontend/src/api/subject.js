@@ -561,6 +561,23 @@ export async function apiUpdateSubjectCompat(subjectId, data) {
 
 // ── 剧集 ──────────────────────────────────────────────────────────────────────
 
+export function normalizeEpisodeListResponse(payload) {
+  if (Array.isArray(payload)) return payload;
+
+  // 兼容网关统一响应包装和旧版接口返回结构；剧集列表的唯一来源仍是 episodes 接口。
+  const data = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
+  const list = Array.isArray(data)
+    ? data
+    : data?.items || data?.list || data?.episodes || data?.result;
+
+  if (!Array.isArray(list)) return [];
+
+  return [...list].sort((a, b) => {
+    const numberOf = (item) => Number(item?.episode_number ?? item?.episodeNumber ?? item?.number ?? 0);
+    return numberOf(a) - numberOf(b);
+  });
+}
+
 export async function apiGetEpisodes(projectId) {
   // TODO: 后端需要在 episodes 接口返回中添加 status 字段
   // 期望字段：status（可选值：pending/generated/edited）
@@ -572,7 +589,7 @@ export async function apiGetEpisodes(projectId) {
       { id: 3, title: '第三集', episode_number: 3, status: 'pending' },
     ];
   }
-  return cached(
+  const payload = await cached(
     K.episodes(projectId),
     async () => {
       const res = await authFetch(`${BASE}/api/projects/${projectId}/episodes`, {
@@ -582,6 +599,7 @@ export async function apiGetEpisodes(projectId) {
     },
     { medium: MEDIUM.CONTENT, ttl: TTL.CONTENT },
   );
+  return normalizeEpisodeListResponse(payload);
 }
 
 export async function apiCreateEpisode(projectId, { title, episode_number, content, summary }) {

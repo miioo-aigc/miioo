@@ -15,7 +15,8 @@
  *   CharTag / AddSlotBtn                       components/storyboard/NarrationAtoms.jsx
  *   StoryboardIconPlus                           components/storyboard/StoryboardActionPrimitives.jsx
  *   VoiceDubModal                             components/storyboard/VoiceDubModal.jsx
- *   NarrationItem / AddNarrationBtn            components/storyboard/NarrationItems.jsx
+ *   NarrationItem                              components/storyboard/NarrationItems.jsx
+ *   NarrationAddButton                         components/storyboard/NarrationAddButton.jsx
  *   NarrationColWrapper                         components/storyboard/NarrationCol.jsx
  *   ShotRow                                      页面业务桥接 L196–L265
  *   ShotNumberColumn                            components/storyboard/ShotNumberColumn.jsx
@@ -36,7 +37,7 @@
  *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化 L286–L870
  *   [加载与错误态] LoadingAnimation、失败操作和统计    L871–L934
  *   [镜头 CRUD] 上传、编辑、复制、删除、排序          L735–L860
- *   [渲染] 状态结果、表格、头部、生成面板和 Toast       L934–L1303
+ *   [渲染] 状态结果、内容区（列表/时间轴）、生成面板和 Toast L934–L1303
  *   [边界] 页面保留轮询循环、状态写回、缓存、持久化、Toast 和 API 副作用
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
@@ -45,7 +46,7 @@
  *   2026-07-16  迁移 normalizeStoryboard、toBackendStoryboard、urlPathKey 和 enrichMainRefs 至 utils/storyboardDataAdapter.js；页面保留数据请求、写回和副作用
  *   2026-07-16  迁移 ShotNumberColumn、CardActionBtn、NUMBER_BTNS 和镜头编号列图标至 components/storyboard/ShotNumberColumn.jsx；页面继续通过显式回调接入镜头新增、复制和选择
  *   2026-07-16  迁移 ParamSelect、ParamTrigger、DescriptionCol 至 components/storyboard/DescriptionCol.jsx；镜头字段仍通过显式 onChange 写回
- *   2026-07-16  迁移 VoiceDubModal、NarrationItem、AddNarrationBtn 至 components/storyboard；旁白列保留状态和保存副作用
+ *   2026-07-16  迁移 VoiceDubModal、NarrationItem、NarrationAddButton 至 components/storyboard；旁白列保留状态和保存副作用
  *   2026-07-16  迁移 NarrationCol / NarrationColWrapper 至 components/storyboard/NarrationCol.jsx；页面仅保留镜头写回接线
  *   2026-07-16  迁移 CharTag / AddSlotBtn 至 components/storyboard/NarrationAtoms.jsx；旁白列仍通过显式点击回调接入
  *   2026-07-16  迁移 EpisodeSelector、ModalCloseBtn 及选集工具函数至 components/storyboard/StoryboardControls.jsx；页面保留当前集数和业务回调
@@ -95,6 +96,9 @@
  *   2026-07-23  接入 LoadingAnimation、任务提示文案和新版面包屑统计
  *   2026-07-23  分集选择器改用剧本分集全量；切换到未生成分集时按集生成并轮询
  *   2026-07-23  重新分镜时先清空旧列表并进入 LoadingAnimation 加载态，避免旧数据覆盖重新生成状态
+ *   2026-07-23  面包屑重新分镜改为打开独立 AIRegenerateStoryboardModal，提交后复用当前分集任务轮询
+ *   2026-07-23  重组分镜列表与定稿时间轴为上下两个独立面板，保留镜头行和时间轴卡片业务交互
+ *   2026-07-23  未生成分集改为展示手动启动按钮，不再切换分集后自动抽取；空状态容器背景按页面反馈使用透明底色叠加 #060606
  *   2026-07-15  抽离 PanelPromptInput、ReferenceMentionDropdown 和 SubjectTag 到 components/storyboard/PanelPromptInput.jsx，
  *              页面只负责把提示词组件注入生成面板；提示词编辑、原子提及、光标处理和展示态标签由组件内部维护
  *   2026-07-15  抽离 PanelSelect / ModalSelectItem 到 components/storyboard/PanelSelect.jsx，
@@ -105,13 +109,13 @@
  *              不改变 API、任务轮询、缓存、持久化和用户交互边界
 */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { ModalCloseBtn } from '../components/storyboard/StoryboardControls';
 import StoryboardToast from '../components/storyboard/StoryboardToast';
 import StoryboardHeader from '../components/storyboard/StoryboardHeader';
 import { getEpisodeId } from '../components/storyboard/storyboardControlUtils';
-import { apiUploadStoryboardImage, apiUploadStoryboardVideo, apiGenerateStoryboardImage, apiGenerateStoryboardVideo, apiGenerateStoryboardsFromEpisode, apiCreateStoryboard, apiUpdateStoryboard, apiDeleteStoryboard, apiReorderStoryboards, apiGetStoryboards, apiBatchDownloadStoryboardImages, apiBatchDownloadStoryboardVideos, apiGetTask } from '../api/storyboard';
-import { apiGetEpisodes } from '../api/subject';
+import { apiUploadStoryboardImage, apiUploadStoryboardVideo, apiGenerateStoryboardImage, apiGenerateStoryboardVideo, apiGenerateStoryboardsFromEpisode, apiCreateStoryboard, apiUpdateStoryboard, apiUpdateStoryboardCreationForm, apiDeleteStoryboard, apiReorderStoryboards, apiGetStoryboards, apiBatchDownloadStoryboardImages, apiBatchDownloadStoryboardVideos, apiGetTask, apiListStoryboardMediaCandidates, apiCreateStoryboardMediaCandidate, apiUpdateStoryboardMediaCandidate } from '../api/storyboard';
+import { apiGetEpisodes, normalizeEpisodeListResponse } from '../api/subject';
 import { apiUploadCreationImage } from '../api/creation';
 import LoadingAnimation from '../components/LoadingAnimation';
 import { normalizeImageUrl, toAbsoluteUrl } from '../utils/imageUrl';
@@ -132,7 +136,6 @@ import buildStoryboardPrompt from '../utils/buildStoryboardPrompt';
 import { addPendingTask, removePendingTask, getPendingTasks } from '../utils/taskPersistence';
 import { downloadBlob } from '../utils/downloadBlob';
 import {
-  MediaColWrapper as StoryboardMediaColWrapper,
   MainRefColWrapper as StoryboardMainRefColWrapper,
   TextEditCol as StoryboardTextEditCol,
   BatchImageModal,
@@ -145,6 +148,11 @@ import {
   NarrationColWrapper,
   DescriptionCol,
   StoryboardIconPlus,
+  StoryboardContentArea,
+  StoryboardShotMediaColumn,
+  StoryboardFinalizedTimeline,
+  StoryboardCreationPanel,
+  AIRegenerateStoryboardModal,
 } from '../components/storyboard';
 
 // ─── 后端/前端数据模型双向映射 ───────────────────────────────────────────────
@@ -178,7 +186,7 @@ import {
 
 // ─── 分镜行 ───────────────────────────────────────────────────────────────────
 
-function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, onDragStart, onDragOver, onDrop, insertBefore, insertAfter, onGenerateImage, onGenerateVideo, globalVoiceParams, onSaveGlobalVoice, projectId, generatingImage, generatingVideo, genImageHistoryMap, genVideoHistoryMap, isSelectMode = false, isSelected = false, onToggleSelect, onUploadImage, onUploadVideo }) {
+function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, onDragStart, onDragOver, onDrop, insertBefore, insertAfter, globalVoiceParams, onSaveGlobalVoice, projectId, generatingImage, generatingVideo, candidates = [], onOpenCreation, onFinalizeToggle, onSelectShot, isSelectMode = false, isSelected = false, isActive = false, onSelect, onToggleSelect, onUploadImage, onUploadVideo }) {
   async function handleMainRefFileUpload({ file, tempRef, nextRefs }) {
     const result = await apiUploadCreationImage({ file, category: 'reference', project_id: projectId });
     const uploadedUrl = normalizeImageUrl(result.uploaded_url || result.uploadedUrl || result.url || result.file_url || '');
@@ -207,6 +215,8 @@ function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, o
       insertAfter={insertAfter}
       isSelectMode={isSelectMode}
       isSelected={isSelected}
+      isActive={isActive}
+      onSelect={onSelect}
     >
           <ShotNumberColumn
             number={shot.number}
@@ -227,44 +237,19 @@ function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, o
             onUploadFile={handleMainRefFileUpload}
             onAssetConfirm={handleMainRefAssetConfirm}
           />
-          <StoryboardMediaColWrapper
-            label="分镜图"
-            media={shot.storyboardImage}
-            onUpload={(media) => onUploadImage?.(shot, media)}
-            accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,.svg"
-            isVideo={false}
-            onAIGenerate={onGenerateImage}
-            generating={generatingImage}
-            shotMeta={{
-              label: `镜头 ${String(shot.number).padStart(2, '0')}`,
-              prompt: shot.description,
-              model: shot.storyboardImage?.model ?? '-',
-              resolution: shot.storyboardImage?.resolution ?? '-',
-              refImages: (shot.mainRefs || []).filter(r => r.url && r.type !== 'char' && r.type !== 'scene' && r.type !== 'prop').map(r => ({ url: r.url, fileUrl: r.url })),
+          <StoryboardShotMediaColumn
+            image={shot.storyboardImage}
+            video={shot.storyboardVideo}
+            candidates={candidates}
+            generating={generatingImage || generatingVideo}
+            onOpenCreation={onOpenCreation}
+            onFinalizeToggle={onFinalizeToggle}
+            onSelectShot={onSelectShot}
+            onUpload={(file) => {
+              if (file.type.startsWith('video/')) onUploadVideo?.(shot, { id: URL.createObjectURL(file), url: URL.createObjectURL(file), name: file.name, type: file.type, file });
+              else onUploadImage?.(shot, { id: URL.createObjectURL(file), url: URL.createObjectURL(file), name: file.name, type: file.type, file });
             }}
-            generatedImages={(genImageHistoryMap?.[shot.id] || []).filter(img => img.url)}
-            genRefImages={(shot.mainRefs || []).filter(r => r.url && r.type !== 'char' && r.type !== 'scene' && r.type !== 'prop').map(r => ({ url: r.url, fileUrl: r.url }))}
-          />
-          <StoryboardMediaColWrapper
-            label="分镜视频"
-            media={shot.storyboardVideo}
-            onUpload={(media) => onUploadVideo?.(shot, media)}
-            accept=".mp4,.webm,.mov,.avi,.mkv"
-            isVideo
-            isLast
-            onAIGenerate={onGenerateVideo}
-            generating={generatingVideo}
-            shotMeta={{
-              label: `镜头 ${String(shot.number).padStart(2, '0')}`,
-              prompt: shot.description,
-              model: shot.storyboardVideo?.model ?? '—',
-              resolution: shot.storyboardVideo?.resolution ?? '—',
-              duration: shot.params?.duration ? parseFloat(shot.params.duration) : undefined,
-              aspectRatio: '16:9',
-              finalized: shot.storyboardVideo?.finalized ?? false,
-            }}
-            generatedImages={(genVideoHistoryMap?.[shot.id] || []).filter(video => video.url)}
-            genRefImages={[]}
+            shotLabel={`镜头 ${String(shot.number).padStart(2, '0')}`}
           />
     </StoryboardShotRow>
   );
@@ -273,6 +258,15 @@ function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, o
 // 新增分镜默认数据由纯适配工具提供，页面只负责调用和提交。
 
 const EPISODES = ['第一集', '第二集'];
+
+function StartStoryboardIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M14.333 5.667V3H11.333M14.333 5.667V10.333M14.333 5.667H11.333M11.333 3V5.667M11.333 3H10M14.333 10.333V13H11.333M14.333 10.333H11.333M11.333 5.667H10M1.667 5.667V3H4.667M1.667 5.667V10.333M1.667 5.667H4.667M4.667 3V5.667M4.667 3H6M1.667 10.333V13H4.667M1.667 10.333H4.667M4.667 5.667H6M4.667 13V10.333M4.667 13H6M4.667 10.333H6M11.333 13V10.333M11.333 13H10M11.333 10.333H10" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 2.333V3.667M8 5.667V7M8 9V10.333M8 12.333V13.667" stroke="currentColor" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export default function StoryboardPage({ projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onVideoGenerated, onGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0, statusMessage = '' }) {
 
@@ -308,6 +302,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const [dragId, setDragId] = useState(null);
   const [overId, setOverId] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [episodeGenerationError, setEpisodeGenerationError] = useState(false);
+  const [isLoadingEpisode, setIsLoadingEpisode] = useState(false);
   const generatingEpisodeRef = useRef(null);
   const generatedEpisodeIdsRef = useRef(new Set());
   const loadedEpisodeRef = useRef(null);
@@ -337,9 +333,111 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const [selectedShotIds, setSelectedShotIds] = useState(new Set());
   // 单镜头生成面板
   const [imagePanel, setImagePanel] = useState(null); // { shot }
-  const [videoPanel, setVideoPanel] = useState(null); // { shot }
+  const [videoPanel, setVideoPanel] = useState(null); // { shot, nextShot }
   const [genImageHistoryMap, setGenImageHistoryMap] = useState({}); // { [shotId]: generatedImages[] }
   const [genVideoHistoryMap, setGenVideoHistoryMap] = useState({}); // { [shotId]: generatedVideos[] }
+  const [imageFormStateMap, setImageFormStateMap] = useState({}); // { [shotId]: image creation form state }
+  const [videoFormStateMap, setVideoFormStateMap] = useState({}); // { [shotId]: video creation form state }
+  const imageFormStateRef = useRef({});
+  const videoFormStateRef = useRef({});
+  const creationFormSaveTimersRef = useRef(new Map());
+  const shotsRef = useRef(shots);
+  shotsRef.current = shots;
+  const [candidateMediaMap, setCandidateMediaMap] = useState({});
+  const [finalizedMediaMap, setFinalizedMediaMap] = useState({});
+  const [creationPanel, setCreationPanel] = useState(null); // { shot, tab }
+  const [activeShotId, setActiveShotId] = useState(null);
+  const [regenerateModalOpen, setRegenerateModalOpen] = useState(false);
+  const [regenerateModalKey, setRegenerateModalKey] = useState(0);
+  const [regenerateModalError, setRegenerateModalError] = useState('');
+
+  function hydrateCreationForms(nextShots) {
+    const backendImages = {};
+    const backendVideos = {};
+    (nextShots || []).forEach((shot) => {
+      if (shot.creationForm?.image) backendImages[shot.id] = shot.creationForm.image;
+      if (shot.creationForm?.video) backendVideos[shot.id] = shot.creationForm.video;
+    });
+    imageFormStateRef.current = { ...backendImages, ...imageFormStateRef.current };
+    videoFormStateRef.current = { ...backendVideos, ...videoFormStateRef.current };
+    setImageFormStateMap(imageFormStateRef.current);
+    setVideoFormStateMap(videoFormStateRef.current);
+  }
+
+  const scheduleCreationFormSave = useCallback((shotId, image, video) => {
+    const timer = creationFormSaveTimersRef.current.get(shotId);
+    if (timer) clearTimeout(timer);
+    const nextTimer = setTimeout(() => {
+      const shot = shotsRef.current.find((item) => item.id === shotId);
+      apiUpdateStoryboardCreationForm(projectId, shotId, {
+        image,
+        video,
+        genParams: shot?.genParams,
+      }).catch((error) => {
+        console.error('[StoryboardPage] 保存创作面板状态失败:', error);
+      }).finally(() => {
+        creationFormSaveTimersRef.current.delete(shotId);
+      });
+    }, 450);
+    creationFormSaveTimersRef.current.set(shotId, nextTimer);
+  }, [projectId]);
+
+  useEffect(() => () => {
+    creationFormSaveTimersRef.current.forEach((timer) => clearTimeout(timer));
+    creationFormSaveTimersRef.current.clear();
+  }, []);
+
+  function fallbackCandidates(shot) {
+    const fallbackMedia = [shot.storyboardImage, shot.storyboardVideo].filter(Boolean);
+    const finalizedId = fallbackMedia[0]?.id || fallbackMedia[0]?.url;
+    return fallbackMedia.map((media) => ({
+      ...media,
+      id: media.id || media.url,
+      url: media.url,
+      media_type: media.type?.startsWith('video') ? 'video' : 'image',
+      is_finalized: (media.id || media.url) === finalizedId,
+      source: media.source || 'storyboard-existing',
+    }));
+  }
+
+  const loadShotCandidates = useCallback(async (currentShots) => {
+    const entries = await Promise.all(currentShots.map(async (shot) => {
+      try {
+        const items = await apiListStoryboardMediaCandidates(projectId, shot.id);
+        return [shot.id, items];
+      } catch {
+        return [shot.id, fallbackCandidates(shot)];
+      }
+    }));
+    const nextCandidates = Object.fromEntries(entries);
+    const nextFinalized = Object.fromEntries(entries.map(([id, items]) => [id, items.find((item) => item.is_finalized) || null]));
+    setCandidateMediaMap(nextCandidates);
+    setFinalizedMediaMap(nextFinalized);
+  }, [projectId]);
+
+  async function saveCandidateMedia(shotId, media) {
+    const payload = {
+      media_type: media.media_type || (media.type?.startsWith('video') ? 'video' : 'image'),
+      url: media.url,
+      thumbnail_url: media.thumbnail_url || media.poster_url || media.url,
+      poster_url: media.poster_url || media.thumbnail_url || media.url,
+      source: media.source || 'ai-generated',
+      is_finalized: false,
+    };
+    if (!payload.url) return null;
+    try {
+      const saved = await apiCreateStoryboardMediaCandidate(projectId, shotId, payload);
+      const candidate = { ...payload, ...saved, id: saved?.id || payload.url };
+      setCandidateMediaMap((prev) => ({
+        ...prev,
+        [shotId]: [...(prev[shotId] || []).filter((item) => item.id !== candidate.id && item.url !== candidate.url), candidate],
+      }));
+      return candidate;
+    } catch (error) {
+      console.warn('[StoryboardPage] 候选媒体接口暂不可用，保留兼容媒体字段:', error);
+      return null;
+    }
+  }
 
   // 从剧本分集接口兜底同步列表。分镜接口只用于读取镜头，不负责提供分集选择项。
   useEffect(() => {
@@ -351,6 +449,15 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       console.warn('[StoryboardPage] 同步剧本分集失败，继续使用页面传入分集:', err);
     });
     return () => { cancelled = true; };
+  }, [projectId]);
+
+  // apiGetEpisodes 使用 SWR 时可能先返回旧缓存，订阅缓存更新后立即替换下拉列表。
+  useEffect(() => {
+    if (!projectId) return undefined;
+    return subscribe(K.episodes(projectId), (data) => {
+      const nextEpisodes = normalizeEpisodeListResponse(data);
+      if (nextEpisodes.length > 0) setScriptEpisodes(nextEpisodes);
+    });
   }, [projectId]);
 
   // 页面加载时从后端获取剧本数据
@@ -365,6 +472,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     if (loadedEpisodeRef.current !== episodeId) {
       loadedEpisodeRef.current = episodeId;
       setShots([]);
+      setIsLoadingEpisode(true);
+      requestAnimationFrame(() => setEpisodeGenerationError(false));
     }
 
     // 优先订阅带 episodeId 的 key，fallback 订阅 :all
@@ -387,57 +496,20 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         if (normalized.length > 0) {
           // 有数据：直接覆盖（正常加载 / 刷新场景）
           setShots(normalized);
+          hydrateCreationForms(normalized);
+          loadShotCandidates(normalized);
         } else {
           // 空数组：只有在当前 shots 也为空时才清空，避免剧本定稿后
           // episode ID 变更导致 API 用新 ID 查不到数据而误清已有分镜
           setShots((prev) => (prev.length > 0 ? prev : normalized));
-          if (!homeIsGenerating
-            && !isGenerating
-            && generatingEpisodeRef.current !== episodeId
-            && !generatedEpisodeIdsRef.current.has(episodeId)) {
-            generatingEpisodeRef.current = episodeId;
-            setIsGenerating(true);
-            apiGenerateStoryboardsFromEpisode(projectId, { episode_id: episodeId, model: null })
-              .then((taskResponse) => {
-                if (Array.isArray(taskResponse)) {
-                  return { status: 'completed', storyboards: taskResponse };
-                }
-                const taskId = taskResponse?.task_id || taskResponse?.taskId || taskResponse?.id;
-                if (!taskId) {
-                  if (['completed', 'success', 'succeeded', 'done'].includes(taskResponse?.status)) return taskResponse;
-                  throw new Error('按集生成分镜未返回任务 ID');
-                }
-                return pollTask(taskId);
-              })
-              .then((taskResult) => {
-                if (['failed', 'error', 'cancelled', 'canceled'].includes(taskResult?.status)) {
-                  throw new Error(taskResult?.status_message || taskResult?.params?.error || '分镜生成失败');
-                }
-                return taskResult;
-              })
-              .then((taskResult) => {
-                if (taskResult?.storyboards) return taskResult.storyboards;
-                return apiGetStoryboards(projectId, { episode_id: episodeId });
-              })
-              .then((latest) => {
-                if (!cancelled && Array.isArray(latest)) {
-                  setShots(normalizeStoryboardList(latest, chars));
-                  generatedEpisodeIdsRef.current.add(episodeId);
-                }
-              })
-              .catch((err) => {
-                console.error('[StoryboardPage] 按集生成分镜失败:', err);
-                showToast(err?.message || '分镜生成失败，请稍后重试', 'error');
-              })
-              .finally(() => {
-                generatingEpisodeRef.current = null;
-                setIsGenerating(false);
-              });
-          }
         }
+        if (!cancelled) setIsLoadingEpisode(false);
       })
       .catch((err) => {
-        if (!cancelled) console.error('[StoryboardPage] 加载分镜失败:', err);
+        if (!cancelled) {
+          console.error('[StoryboardPage] 加载分镜失败:', err);
+          setIsLoadingEpisode(false);
+        }
       });
 
     const unsub1 = subscribe(cacheKey, (data) => {
@@ -446,8 +518,11 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       const normalized = normalizeStoryboardList(data, chars);
       if (normalized.length > 0) {
         setShots(normalized);
+        hydrateCreationForms(normalized);
+        setIsLoadingEpisode(false);
       } else {
         setShots((prev) => (prev.length > 0 ? prev : normalized));
+        setIsLoadingEpisode(false);
       }
     });
     const unsub2 = subscribe(cacheKeyAll, (data) => {
@@ -456,8 +531,10 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       const normalized = normalizeStoryboardList(onlyCurrentEpisode(data), chars);
       if (normalized.length > 0) {
         setShots(normalized);
+        setIsLoadingEpisode(false);
       } else {
         setShots((prev) => (prev.length > 0 ? prev : normalized));
+        setIsLoadingEpisode(false);
       }
     });
 
@@ -466,7 +543,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       unsub1();
       unsub2();
     };
-  }, [projectId, episode, chars, homeIsGenerating, isGenerating]);
+  }, [projectId, episode, chars, homeIsGenerating, isGenerating, generateError, episodeGenerationError, loadShotCandidates]);
 
   // 当 chars/scenes/props 变化时（如主体页修改了定稿图），直接重新富化已有 shots，无需重新请求后端
   useEffect(() => {
@@ -821,13 +898,26 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     showToast('剪辑功能即将上线', 'warning');
   }
 
-  function handleRegenerate() {
+  function openRegenerateModal() {
     if (isGenerating || homeIsGenerating) return;
+    setRegenerateModalError('');
+    setRegenerateModalKey((key) => key + 1);
+    setRegenerateModalOpen(true);
+  }
+
+  async function handleRegenerate({ instruction = '' } = {}) {
+    if (isGenerating || homeIsGenerating) return false;
     const episodeId = getEpisodeId(episode);
     if (!episodeId) {
-      showToast('当前分集信息不完整，无法重新分镜', 'error');
-      return;
+      const message = '当前分集信息不完整，无法重新分镜';
+      setRegenerateModalError(message);
+      showToast(message, 'error');
+      return false;
     }
+
+    // 当前按集生成接口尚未声明 instruction 字段，先保留表单值，避免发送未约定参数。
+    void instruction;
+    setRegenerateModalError('');
 
     // 只有重新分镜需要主动清空旧结果；首次进入时由任务状态决定是否展示加载态。
     setShots([]);
@@ -835,7 +925,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     setDownloadMode(false);
     setIsGenerating(true);
 
-    apiGenerateStoryboardsFromEpisode(projectId, { episode_id: episodeId, model: null })
+    const generationPromise = apiGenerateStoryboardsFromEpisode(projectId, { episode_id: episodeId, model: null })
       .then((taskResponse) => {
         if (Array.isArray(taskResponse)) {
           return { status: 'completed', storyboards: taskResponse };
@@ -860,14 +950,71 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         return apiGetStoryboards(projectId, { episode_id: episodeId });
       })
       .then((latest) => {
-        setShots(normalizeStoryboardList(latest, chars));
+        const normalizedLatest = normalizeStoryboardList(latest, chars);
+        setShots(normalizedLatest);
+        loadShotCandidates(normalizedLatest);
         generatedEpisodeIdsRef.current.add(episodeId);
       })
       .catch((err) => {
         console.error('[StoryboardPage] 重新分镜失败:', err);
-        showToast(err?.message || '重新分镜失败，请稍后重试', 'error');
+        const message = err?.message || '重新分镜失败，请稍后重试';
+        setRegenerateModalError(message);
+        showToast(message, 'error');
+        return false;
       })
       .finally(() => setIsGenerating(false));
+
+    const result = await generationPromise;
+    return result !== false;
+  }
+
+  async function handleStartEpisodeGeneration() {
+    if (isGenerating || homeIsGenerating || isLoadingEpisode) return;
+    const episodeId = getEpisodeId(episode);
+    if (!episodeId) {
+      showToast('当前分集信息不完整，无法开始智能分镜', 'error');
+      return;
+    }
+
+    setEpisodeGenerationError(false);
+    setIsGenerating(true);
+    generatingEpisodeRef.current = episodeId;
+
+    try {
+      const taskResponse = await apiGenerateStoryboardsFromEpisode(projectId, {
+        episode_id: episodeId,
+        model: null,
+      });
+      let taskResult = taskResponse;
+      if (!Array.isArray(taskResponse)) {
+        const taskId = taskResponse?.task_id || taskResponse?.taskId || taskResponse?.id;
+        if (!taskId) {
+          if (!['completed', 'success', 'succeeded', 'done'].includes(taskResponse?.status)) {
+            throw new Error('按集生成分镜未返回任务 ID');
+          }
+        } else {
+          taskResult = await pollTask(taskId);
+        }
+      }
+      if (['failed', 'error', 'cancelled', 'canceled'].includes(taskResult?.status)) {
+        throw new Error(taskResult?.status_message || taskResult?.params?.error || '分镜生成失败');
+      }
+
+      const latest = Array.isArray(taskResult)
+        ? taskResult
+        : taskResult?.storyboards || await apiGetStoryboards(projectId, { episode_id: episodeId });
+      const normalizedLatest = normalizeStoryboardList(latest, chars);
+      setShots(normalizedLatest);
+      loadShotCandidates(normalizedLatest);
+      generatedEpisodeIdsRef.current.add(episodeId);
+    } catch (error) {
+      console.error('[StoryboardPage] 按集生成分镜失败:', error);
+      setEpisodeGenerationError(true);
+      showToast(error?.message || '分镜生成失败，请稍后重试', 'error');
+    } finally {
+      generatingEpisodeRef.current = null;
+      setIsGenerating(false);
+    }
   }
 
   useEffect(() => {
@@ -881,6 +1028,94 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     });
   }
 
+  async function handleFinalizeToggle(shot, media) {
+    const current = finalizedMediaMap[shot.id];
+    const nextFinalized = current?.id === media.id ? null : media;
+    setFinalizedMediaMap((prev) => ({ ...prev, [shot.id]: nextFinalized }));
+    setCandidateMediaMap((prev) => ({
+      ...prev,
+      [shot.id]: (prev[shot.id] || []).map((item) => ({ ...item, is_finalized: nextFinalized?.id === item.id })),
+    }));
+    try {
+      if (media.id && !String(media.id).startsWith('blob:')) {
+        await apiUpdateStoryboardMediaCandidate(projectId, shot.id, media.id, { is_finalized: !!nextFinalized });
+      }
+      if (nextFinalized) {
+        const isVideo = nextFinalized.media_type === 'video';
+        updateShot(shot.id, {
+          ...shot,
+          storyboardImage: isVideo ? null : { ...nextFinalized, type: 'image/jpeg' },
+          storyboardVideo: isVideo ? { ...nextFinalized, type: 'video/mp4' } : null,
+        });
+      } else {
+        updateShot(shot.id, {
+          ...shot,
+          storyboardImage: current?.media_type === 'image' ? null : shot.storyboardImage,
+          storyboardVideo: current?.media_type === 'video' ? null : shot.storyboardVideo,
+        });
+      }
+    } catch (error) {
+      showToast(error.message || '保存定稿失败', 'error');
+      setFinalizedMediaMap((prev) => ({ ...prev, [shot.id]: current || null }));
+    }
+  }
+
+  function openCreationPanel(shot) {
+    setActiveShotId(shot.id);
+    const tab = creationPanel?.tab || 'video';
+    setCreationPanel({ shot, tab });
+    if (tab === 'image') {
+      setVideoPanel(null);
+      setImagePanel({ shot });
+    } else {
+      setImagePanel(null);
+      setVideoPanel({ shot, nextShot: shots[shots.findIndex((item) => item.id === shot.id) + 1] ?? null });
+    }
+  }
+
+  function handleCreationTabChange(tab) {
+    if (!creationPanel) return;
+    const shot = creationPanel.shot;
+    setCreationPanel((prev) => ({ ...prev, tab }));
+    if (tab === 'image') {
+      setVideoPanel(null);
+      setImagePanel({ shot });
+    } else {
+      setImagePanel(null);
+      setVideoPanel({ shot, nextShot: shots[shots.findIndex((item) => item.id === shot.id) + 1] ?? null });
+    }
+  }
+
+  const handleImageFormStateChange = useCallback((nextState) => {
+    const shotId = imagePanel?.shot?.id;
+    if (!shotId) return;
+    imageFormStateRef.current = { ...imageFormStateRef.current, [shotId]: nextState };
+    setImageFormStateMap(imageFormStateRef.current);
+    setShots((prev) => prev.map((shot) => shot.id === shotId
+      ? { ...shot, creationForm: { ...(shot.creationForm || {}), image: nextState } }
+      : shot));
+    scheduleCreationFormSave(shotId, nextState, videoFormStateRef.current[shotId]);
+  }, [imagePanel?.shot?.id, scheduleCreationFormSave]);
+
+  const handleVideoFormStateChange = useCallback((nextState) => {
+    const shotId = videoPanel?.shot?.id;
+    if (!shotId) return;
+    videoFormStateRef.current = { ...videoFormStateRef.current, [shotId]: nextState };
+    setVideoFormStateMap(videoFormStateRef.current);
+    setShots((prev) => prev.map((shot) => shot.id === shotId
+      ? { ...shot, creationForm: { ...(shot.creationForm || {}), video: nextState } }
+      : shot));
+    scheduleCreationFormSave(shotId, imageFormStateRef.current[shotId], nextState);
+  }, [scheduleCreationFormSave, videoPanel?.shot?.id]);
+
+  function selectActiveShot(shotId) {
+    if (shotId === activeShotId) return;
+    setImagePanel(null);
+    setVideoPanel(null);
+    setCreationPanel(null);
+    setActiveShotId(shotId);
+  }
+
   // 媒体上传属于页面级 API 副作用，显式传给行组件，避免分镜行组件依赖页面闭包。
   function handleShotImageUpload(shot, media) {
     const source = media.file ? 'local-upload' : 'asset-library';
@@ -890,7 +1125,11 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     apiUploadStoryboardImage(projectId, shot.id, media.file)
       .then((result) => {
         const url = normalizeImageUrl(result.url || result.image_url || result.imageUrl);
-        if (url) updateShot(shot.id, { ...shot, storyboardImage: { id: url, url, name: media.name, type: media.type, source } });
+        if (url) {
+          const next = { id: url, url, name: media.name, type: media.type, source };
+          updateShot(shot.id, { ...shot, storyboardImage: next });
+          return saveCandidateMedia(shot.id, { ...next, media_type: 'image', source });
+        }
       })
       .catch((err) => console.error('[StoryboardPage] 图片上传失败:', err));
   }
@@ -902,7 +1141,11 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     apiUploadStoryboardVideo(projectId, shot.id, media.file)
       .then((result) => {
         const url = normalizeImageUrl(result.video_url || result.videoUrl || result.url);
-        if (url) updateShot(shot.id, { ...shot, storyboardVideo: { id: url, url, name: media.name, type: media.type } });
+        if (url) {
+          const next = { id: url, url, name: media.name, type: media.type, source: 'local-upload' };
+          updateShot(shot.id, { ...shot, storyboardVideo: next });
+          return saveCandidateMedia(shot.id, { ...next, media_type: 'video', source: 'local-upload' });
+        }
       })
       .catch((err) => console.error('[StoryboardPage] 视频上传失败:', err));
   }
@@ -1010,12 +1253,45 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   // 判断是否显示 loading / 错误态
   // homeIsGenerating 期间如果已有分镜数据，直接展示数据，不再显示全屏 loading
   const showGeneratingLoading = (isGenerating || homeIsGenerating) && shots.length === 0;
-  const showGeneratingError = !!generateError && shots.length === 0 && !hasManuallyInteracted.current;
+  const showGeneratingError = (!!generateError || episodeGenerationError) && shots.length === 0 && !hasManuallyInteracted.current;
+  const showEpisodeStart = !isLoadingEpisode && !showGeneratingLoading && shots.length === 0 && !hasManuallyInteracted.current;
   const displayLoadingText = statusMessage || loadingTexts[loadingTextIndex];
   const totalDuration = shots.reduce((sum, shot) => {
     const value = Number.parseFloat(shot.params?.duration ?? shot.duration ?? 0);
     return Number.isFinite(value) ? sum + value : sum;
   }, 0);
+
+  const storyboardHeader = (
+    <StoryboardHeader
+      projectName={projectName}
+      activeEpisodes={activeEpisodes}
+      episode={episode}
+      onEpisodeChange={setEpisode}
+      homeIsGenerating={homeIsGenerating && shots.length > 0}
+      shotsCount={shots.length}
+      totalDuration={totalDuration}
+      completedEpisodesCount={completedEpisodesCount}
+      downloadMode={downloadMode}
+      selectedCount={selectedShotIds.size}
+      generationDisabled={generatingImages || generatingVideos}
+      onOpenImageModal={() => setShowImageModal(true)}
+      onOpenVideoModal={() => setShowVideoModal(true)}
+      onEnterDownloadMode={enterDownloadMode}
+      onSelectAll={toggleSelectAll}
+      onDownloadImages={handleDownloadImages}
+      onDownloadVideos={handleDownloadVideos}
+      onExitDownloadMode={exitDownloadMode}
+      onStartEdit={handleStartEdit}
+      onRegenerate={openRegenerateModal}
+      showStoryboardSummary={shots.length > 0}
+    />
+  );
+
+  const handleEmptyEpisodeStart = showGeneratingError ? () => {
+    setEpisodeGenerationError(false);
+    setIsGenerating(true);
+    Promise.resolve(onGenerateStoryboards?.()).finally(() => setIsGenerating(false));
+  } : handleStartEpisodeGeneration;
 
   if (showGeneratingLoading) {
     return (
@@ -1034,38 +1310,34 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     );
   }
 
-  if (showGeneratingError) {
+  if (showGeneratingError || showEpisodeStart) {
     return (
       <div style={{
         position: 'absolute', inset: 0, marginBottom: '24px', marginRight: '32px',
         display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', gap: '24px',
-        backgroundColor: '#161616', borderRadius: '16px',
-        border: '1px solid rgba(255,255,255,0.08)',
+        backgroundColor: 'var(--color-dark-bg)',
+        overflow: 'hidden', boxSizing: 'border-box',
       }}>
-        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style={{ flexShrink: 0 }}>
-          <circle cx="16" cy="16" r="15" stroke="#FFFFFF66" strokeWidth="1.5" />
-          <circle cx="10" cy="13" r="2" fill="#FFFFFF66" />
-          <circle cx="22" cy="13" r="2" fill="#FFFFFF66" />
-          <path d="M10 23 Q16 19 22 23" stroke="#FFFFFF66" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-        <span style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif", fontSize: '14px', color: '#FFFFFF99' }}>
-          糟糕，智能分镜失败了，待会儿再试试吧！
-        </span>
-        <Button
-          type="button"
-          variant="accent"
-          size="large"
-          onClick={() => {
-            setIsGenerating(true);
-            onGenerateStoryboards?.().finally(() => setIsGenerating(false));
-          }}
+        <StoryboardContentArea
+          header={storyboardHeader}
+          timeline={<StoryboardFinalizedTimeline shots={[]} finalizedMap={{}} />}
         >
-          重新提取分镜
-        </Button>
-        <Button type="button" variant="primary" size="large" onClick={addNewShot}>
-          手动添加分镜
-        </Button>
+          <div style={{
+            flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backgroundColor: 'transparent',
+            backgroundImage: 'linear-gradient(rgb(6, 6, 6), rgb(6, 6, 6))',
+          }}>
+            <Button
+              type="button"
+              variant="accent"
+              size="large"
+              icon={<StartStoryboardIcon />}
+              onClick={handleEmptyEpisodeStart}
+            >
+              开始智能分镜
+            </Button>
+          </div>
+        </StoryboardContentArea>
       </div>
     );
   }
@@ -1080,39 +1352,38 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       display: 'flex',
       flexDirection: 'column',
       gap: '12px',
-      backgroundColor: '#161616',
-      borderRadius: '16px',
-      border: '1px solid rgba(255,255,255,0.08)',
-      padding: '16px 24px 24px',
+      backgroundColor: 'var(--color-dark-bg)',
+      backgroundImage: 'none',
+      borderRadius: 0,
+      border: 0,
+      padding: 0,
       overflow: 'hidden',
       boxSizing: 'border-box',
     }}>
-      <StoryboardHeader
-        projectName={projectName}
-        activeEpisodes={activeEpisodes}
-        episode={episode}
-        onEpisodeChange={setEpisode}
-        homeIsGenerating={homeIsGenerating && shots.length > 0}
-        shotsCount={shots.length}
-        totalDuration={totalDuration}
-        completedEpisodesCount={completedEpisodesCount}
-        downloadMode={downloadMode}
-        selectedCount={selectedShotIds.size}
-        generationDisabled={generatingImages || generatingVideos}
-        onOpenImageModal={() => setShowImageModal(true)}
-        onOpenVideoModal={() => setShowVideoModal(true)}
-        onEnterDownloadMode={enterDownloadMode}
-        onSelectAll={toggleSelectAll}
-        onDownloadImages={handleDownloadImages}
-        onDownloadVideos={handleDownloadVideos}
-        onExitDownloadMode={exitDownloadMode}
-        onStartEdit={handleStartEdit}
-        onRegenerate={handleRegenerate}
-      />
-
-      {/* 分镜列表 */}
+      <StoryboardContentArea
+        header={storyboardHeader}
+        timeline={<StoryboardFinalizedTimeline
+          shots={shots}
+          finalizedMap={finalizedMediaMap}
+          selectedShotId={activeShotId}
+          onSelectShot={selectActiveShot}
+          onCreate={openCreationPanel}
+          onPreview={(media) => media && window.open(normalizeImageUrl(media.url), '_blank', 'noopener,noreferrer')}
+          onDownload={(media) => {
+            const link = document.createElement('a');
+            link.href = normalizeImageUrl(media.download_url || media.url);
+            link.download = media.name || `storyboard-${media.id || 'media'}`;
+            link.click();
+          }}
+        />}
+      >
       <div
-        style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}
+        style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}
+        onClick={(event) => {
+          if (event.target.closest('[data-storyboard-shot-row="true"]')) return;
+          if (event.target.closest('button, input, textarea, select, [role="button"]')) return;
+          setActiveShotId(null);
+        }}
         onDragEnd={() => { setDragId(null); setOverId(null); }}
       >
         {/* top sentinel — drop zone for placing before the first card */}
@@ -1185,8 +1456,14 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
             generatingVideo={generatingVideoShotIds.has(shot.id)}
             genImageHistoryMap={genImageHistoryMap}
             genVideoHistoryMap={genVideoHistoryMap}
+            candidates={candidateMediaMap[shot.id] || []}
+            onOpenCreation={() => openCreationPanel(shot)}
+            onFinalizeToggle={(media) => handleFinalizeToggle(shot, media)}
+            onSelectShot={() => selectActiveShot(shot.id)}
             isSelectMode={downloadMode}
             isSelected={selectedShotIds.has(shot.id)}
+            isActive={activeShotId === shot.id}
+            onSelect={() => selectActiveShot(shot.id)}
             onToggleSelect={() => toggleShotSelection(shot.id)}
           />
         ))}
@@ -1231,6 +1508,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
           添加空白分镜
         </div>
       </div>
+      </StoryboardContentArea>
     </div>
     {showImageModal && (
       <BatchImageModal
@@ -1248,7 +1526,19 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         projectRatio={projectRatio}
       />
     )}
-    {imagePanel && (
+    <AIRegenerateStoryboardModal
+      key={regenerateModalKey}
+      open={regenerateModalOpen}
+      error={regenerateModalError}
+      onSubmit={handleRegenerate}
+      onClose={() => {
+        setRegenerateModalOpen(false);
+        setRegenerateModalError('');
+      }}
+    />
+    {creationPanel && (
+      <StoryboardCreationPanel projectId={projectId} storyboardId={creationPanel.shot?.id} initialTab={creationPanel.tab} onTabChange={handleCreationTabChange} candidates={candidateMediaMap[creationPanel.shot?.id] || []} onCandidateMedia={(media) => saveCandidateMedia(creationPanel.shot?.id, media)} onClose={() => { setImagePanel(null); setVideoPanel(null); setCreationPanel(null); }}>
+    {imagePanel && creationPanel.tab === 'image' && (
       <GenerateImagePanel
         shot={imagePanel.shot}
         chars={chars}
@@ -1259,6 +1549,10 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         buildStoryboardPrompt={buildStoryboardPrompt}
         ModalCloseBtn={ModalCloseBtn}
         PanelPromptInput={PanelPromptInput}
+        embedded
+        formState={imageFormStateMap[imagePanel.shot?.id]}
+        onFormStateChange={handleImageFormStateChange}
+        onCandidateMedia={(media) => saveCandidateMedia(imagePanel.shot?.id, media)}
         generatedImages={genImageHistoryMap[imagePanel.shot?.id] ?? []}
         onSetGeneratedImages={(updater) => {
           const shotId = imagePanel.shot?.id;
@@ -1267,7 +1561,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
             [shotId]: typeof updater === 'function' ? updater(prev[shotId] ?? []) : updater,
           }));
         }}
-        onClose={() => setImagePanel(null)}
+        onClose={() => { setImagePanel(null); setCreationPanel(null); }}
         onShowToast={showToast}
        onSettleImage={(imageUrl) => {
          const n = normalizeImageUrl(imageUrl);
@@ -1278,6 +1572,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
              ? { ...s, storyboardImage: { id: n, url: n, name: '分镜图', type: 'image/jpeg' } }
              : s
          ));
+         saveCandidateMedia(shotId, { id: n, url: n, name: '分镜图', type: 'image/jpeg', media_type: 'image', source: 'ai-generated' });
          if (target) {
            apiUpdateStoryboard(
              projectId,
@@ -1306,6 +1601,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
                  ? { ...s, storyboardImage: { id: normalizedUrl, url: normalizedUrl, name: 'generated.jpg', type: 'image/jpeg' } }
                  : s
                ));
+               await saveCandidateMedia(shot.id, { id: normalizedUrl, url: normalizedUrl, name: 'generated.jpg', type: 'image/jpeg', media_type: 'image', source: 'ai-generated' });
                return { url: normalizedUrl };
              }
            }
@@ -1323,7 +1619,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       }}
       />
     )}
-    {videoPanel && (
+    {videoPanel && creationPanel.tab === 'video' && (
       <GenerateVideoPanel
         shot={videoPanel.shot}
         projectId={projectId}
@@ -1336,6 +1632,10 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         buildRefFromAsset={buildStoryboardRefFromAsset}
         ModalCloseBtn={ModalCloseBtn}
         PanelPromptInput={PanelPromptInput}
+        embedded
+        formState={videoFormStateMap[videoPanel.shot?.id]}
+        onFormStateChange={handleVideoFormStateChange}
+        onCandidateMedia={(media) => saveCandidateMedia(videoPanel.shot?.id, media)}
         generatedVideos={genVideoHistoryMap[videoPanel.shot?.id] ?? []}
         onSetGeneratedVideos={(updater) => {
           const shotId = videoPanel.shot?.id;
@@ -1344,7 +1644,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
             [shotId]: typeof updater === 'function' ? updater(prev[shotId] ?? []) : updater,
           }));
         }}
-        onClose={() => setVideoPanel(null)}
+        onClose={() => { setVideoPanel(null); setCreationPanel(null); }}
         onShowToast={showToast}
         onSettleVideo={(videoUrl) => {
           const n = normalizeImageUrl(videoUrl);
@@ -1356,6 +1656,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
             );
             return updated;
           });
+          saveCandidateMedia(shotId, { id: n, url: n, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated' });
           // API 调用放在 setShots 外面，避免在 state updater 内产生副作用
           apiUpdateStoryboard(projectId, shotId, { video_url: n })
             .then((res) => console.log('[onSettleVideo] video_url 保存成功，后端返回:', JSON.stringify(res)))
@@ -1411,6 +1712,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
                 }
                 return updated;
               });
+              await saveCandidateMedia(shot.id, { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated' });
               onVideoGenerated?.(activeEpisodes.findIndex(ep => getEpisodeId(ep) === getEpisodeId(episode)));
               return { url: normalizedUrl };
             }
@@ -1435,6 +1737,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
          }
        }}
       />
+    )}
+      </StoryboardCreationPanel>
     )}
     <StoryboardToast toast={toast} />
   </>

@@ -49,7 +49,7 @@
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
  *   export default function SubjectPage()                           L775
- *     ├─ [状态] activeTab / 批量状态 / 选中主体与列表数据            L777–L1024
+ *     ├─ [状态] activeTab / 提取状态 / 批量状态 / 选中主体与列表数据   L777–L1024
  *     ├─ [Ref] extractingRef / 列表哨兵 / 批量任务控制器              L780–L816
  *     ├─ [函数] 批量生成、添加、下载、删除、进入分镜                 L1026–L1516
  *     ├─ [副作用] 提取、任务恢复、缓存订阅、资产删除和滚动加载       L805–L1541
@@ -85,6 +85,7 @@
  *   2026-07-22  主体编辑草稿改为防抖实时保存，关闭前刷新并恢复生成配置与参考图
  *   2026-07-22  主体参考图与右侧候选图分流；候选上传不再调用主体参考图接口，分镜页同类状态链路已复核
  *   2026-07-23  主体删除改走主体专用删除接口；下载文件名统一为项目名_主体类型_主体名称
+ *   2026-07-23  接收 Home 的主体抽取活动状态，刷新恢复期间持续显示加载动画
  *   2026-07-23  批量生成候选图缓存按图片地址去重，修复首次打开编辑弹窗重复展示
  *   2026-07-16  迁移主体任务恢复标签 setter 和默认提示词纯函数；页面保留状态与副作用
  *   2026-07-16  抽离主体面板会话缓存和 pending 任务持久化桥接；页面保留轮询与写回
@@ -859,11 +860,12 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
 
 // ── Main export ────────────────────────────────────────────────────────────
 
-export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onExtractSubjects, extractError = null, isStoryboardGenerated = false, initialTab = 'char', projectRatio, chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps }) {
+export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onExtractSubjects, extractError = null, isExtractingSubjects = false, isStoryboardGenerated = false, initialTab = 'char', projectRatio, chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps }) {
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [batchGenOpen, setBatchGenOpen] = useState(false);
-  const [isExtracting, setIsExtracting] = useState(false);
+  const [isRetryingExtraction, setIsRetryingExtraction] = useState(false);
+  const isExtracting = isExtractingSubjects || isRetryingExtraction;
   const extractingRef = useRef(false);
   const subjectListRef = useRef(null);
   const subjectSentinelRef = useRef(null);
@@ -874,9 +876,9 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     if (!onExtractSubjects) return;
     if (extractingRef.current) return;
     extractingRef.current = true;
-    setIsExtracting(true);
+    setIsRetryingExtraction(true);
     onExtractSubjects().finally(() => {
-      setIsExtracting(false);
+      setIsRetryingExtraction(false);
       extractingRef.current = false;
     });
   }, [onExtractSubjects]);
@@ -1652,8 +1654,8 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     return <SubjectExtractionError
       loading={isExtracting}
       onRetry={() => {
-        setIsExtracting(true);
-        onExtractSubjects?.().finally(() => setIsExtracting(false));
+        setIsRetryingExtraction(true);
+        onExtractSubjects?.().finally(() => setIsRetryingExtraction(false));
       }}
     />;
   }

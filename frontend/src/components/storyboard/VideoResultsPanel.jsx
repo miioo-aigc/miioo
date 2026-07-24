@@ -25,6 +25,7 @@ export default function VideoResultsPanel({
   onSettleVideo,
   onShowToast,
   onViewVideo,
+  onCandidateMedia,
 }) {
   return (
     <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '12px', paddingRight: '24px', paddingTop: '8px', paddingBottom: '8px', background: '#161616', height: '100%', boxSizing: 'border-box' }}>
@@ -36,8 +37,9 @@ export default function VideoResultsPanel({
           onSetGeneratedVideos,
           onSettleVideo,
           onShowToast,
+          onCandidateMedia,
         })}
-        onAssetsSelected={(assets) => handleVideoAssetsSelected(assets, onSetGeneratedVideos)}
+        onAssetsSelected={(assets) => handleVideoAssetsSelected(assets, onSetGeneratedVideos, onCandidateMedia)}
       />
       {generatedVideos.map((video, index) => (
         <VideoResultCard
@@ -70,13 +72,15 @@ function handleVideoDownload(videoUrl) {
 }
 
 // 上传 API、资产格式转换和结果写回仍由结果面板负责。
-async function handleVideoUpload(file, { projectId, shotId, onSetGeneratedVideos, onSettleVideo, onShowToast }) {
+async function handleVideoUpload(file, { projectId, shotId, onSetGeneratedVideos, onSettleVideo, onShowToast, onCandidateMedia }) {
   try {
     const result = await apiUploadStoryboardVideo(projectId, shotId, file);
     const videoUrl = result.video_url || result.videoUrl;
     if (videoUrl) {
       const normalizedUrl = normalizeImageUrl(videoUrl);
-      onSetGeneratedVideos?.((prev) => [{ url: normalizedUrl, settled: false, id: result.id || normalizedUrl }, ...prev]);
+      const candidate = { url: normalizedUrl, settled: false, id: result.id || normalizedUrl, media_type: 'video', source: 'local-upload' };
+      onSetGeneratedVideos?.((prev) => [candidate, ...prev]);
+      onCandidateMedia?.(candidate);
       onSettleVideo?.(normalizedUrl, null);
     }
   } catch {
@@ -84,10 +88,11 @@ async function handleVideoUpload(file, { projectId, shotId, onSetGeneratedVideos
   }
 }
 
-function handleVideoAssetsSelected(assets, onSetGeneratedVideos) {
+function handleVideoAssetsSelected(assets, onSetGeneratedVideos, onCandidateMedia) {
   const newItems = (assets || []).map((asset) => {
     const url = normalizeImageUrl(asset.fileUrl || asset.originalUrl || asset.original_url || asset.thumbnailUrl || asset.thumbnail_url || asset.file_url || asset.url);
-    return url ? { url, settled: false, id: asset.id || asset.asset_id || url } : null;
+    return url ? { url, settled: false, id: asset.id || asset.asset_id || url, media_type: 'video', source: 'asset-library' } : null;
   }).filter(Boolean);
   onSetGeneratedVideos?.((prev) => [...newItems, ...prev]);
+  newItems.forEach((item) => onCandidateMedia?.(item));
 }

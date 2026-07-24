@@ -26,6 +26,17 @@ export function makeStoryboardShot(number, overrides = {}) {
  */
 export function normalizeStoryboard(be) {
   if (!be || typeof be !== 'object') return be;
+  const genParams = be.gen_params && typeof be.gen_params === 'object' ? be.gen_params : {};
+  const persistedCreationForm = genParams.creation_form || genParams.creationForm;
+  const creationForm = {
+    image: persistedCreationForm?.image && typeof persistedCreationForm.image === 'object'
+      ? persistedCreationForm.image
+      : (be.image_prompt != null ? { prompt: be.image_prompt } : undefined),
+    video: persistedCreationForm?.video && typeof persistedCreationForm.video === 'object'
+      ? persistedCreationForm.video
+      : (be.video_prompt != null ? { prompt: be.video_prompt } : undefined),
+  };
+  const hasCreationForm = Boolean(creationForm.image || creationForm.video);
   return {
     id: be.id,
     number: be.shot_number ?? be.number ?? 0,
@@ -41,6 +52,8 @@ export function normalizeStoryboard(be) {
     },
     lightShadow: be.lighting ?? be.lightShadow ?? '',
     ambientSound: be.ambient_sound ?? be.ambientSound ?? '',
+    genParams,
+    creationForm: hasCreationForm ? creationForm : null,
     narration: be.narration ?? (
       be.voiceover
         ? {
@@ -113,6 +126,7 @@ export function normalizeStoryboardList(data, chars = []) {
  * 前端 shot 模型 → 后端 StoryboardCreate / StoryboardUpdate (snake_case flat)
  */
 export function toBackendStoryboard(shot) {
+  const genParams = shot.genParams && typeof shot.genParams === 'object' ? shot.genParams : {};
   return {
     shot_number: shot.number,
     content: shot.description || undefined,
@@ -128,9 +142,11 @@ export function toBackendStoryboard(shot) {
      : '',
     // 台词全部删除时显式清空后端结构化台词字段（narration_segments），
     // 否则 PATCH 不包含该字段 → 后端保留旧值 → 刷新后 normalizeStoryboard 从 be.narration 恢复旧数据
-    ...(shot.narration?.segments?.length === 0
-      ? { gen_params: { narration_segments: [] } }
-      : {}),
+    gen_params: {
+      ...genParams,
+      ...(shot.narration?.segments?.length === 0 ? { narration_segments: [] } : {}),
+      ...(shot.creationForm ? { creation_form: shot.creationForm } : {}),
+    },
    character_ids: (shot.mainRefs || [])
      .filter(ref => ref?.type === 'char' || ref?.type === 'scene' || ref?.type === 'prop')
      .map(ref => ref?.id).filter(Boolean),

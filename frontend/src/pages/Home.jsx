@@ -56,6 +56,7 @@
  *   2026-07-16  迁移首页 Toast 展示至 components/home/HomeToast.jsx；页面继续持有提示状态、定时器和 showToast
  *   2026-07-17  迁移首页主导航与底部快捷导航布局至 components/home/HomeNavigationRail.jsx；页面继续负责导航状态和回调
  *   2026-07-22  主体生成改为发布结构、检查存储用量并轮询剧本任务；完成后强制刷新主体列表并兼容嵌套响应
+ *   2026-07-23  持久化主体抽取两阶段任务，刷新浏览器后恢复轮询和加载动画
  *   2026-07-06  新增 subject cache 订阅 useEffect，实时同步 sharedChars/sharedScenes/sharedProps
  *   2026-07-01  初始结构索引建立
  */
@@ -103,6 +104,32 @@ const StoryboardPage = lazy(() => import('./StoryboardPage'));
 const AssetsPage = lazy(() => import('./AssetsPage'));
 const CreationPage = lazy(() => import('./CreationPage'));
 
+const SUBJECT_EXTRACTION_TASK_KEY_PREFIX = 'miioo:pending_subject_extraction:';
+
+function getSubjectExtractionTaskKey(projectId) {
+  return `${SUBJECT_EXTRACTION_TASK_KEY_PREFIX}${projectId}`;
+}
+
+function readPendingSubjectExtraction(projectId) {
+  if (!projectId) return null;
+  try {
+    const raw = localStorage.getItem(getSubjectExtractionTaskKey(projectId));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingSubjectExtraction(projectId, value) {
+  if (!projectId || !value) return;
+  localStorage.setItem(getSubjectExtractionTaskKey(projectId), JSON.stringify(value));
+}
+
+function clearPendingSubjectExtraction(projectId) {
+  if (!projectId) return;
+  localStorage.removeItem(getSubjectExtractionTaskKey(projectId));
+}
+
 export default function Home({ onGoToAdmin }) {
   const [activeKey, setActiveKey] = useState(() => {
     // 只有明确保存了非 home 的 activeKey 才恢复，否则默认 home
@@ -138,6 +165,7 @@ export default function Home({ onGoToAdmin }) {
   });
   const [extractError, setExtractError] = useState(null);
   const [extractErrorProjectId, setExtractErrorProjectId] = useState(null);
+  const [isExtractingSubjects, setIsExtractingSubjects] = useState(false);
   const [generateError, setGenerateError] = useState(null);
   const [generateErrorProjectId, setGenerateErrorProjectId] = useState(null);
   const [isGeneratingStoryboards, setIsGeneratingStoryboards] = useState(false);
@@ -706,34 +734,13 @@ export default function Home({ onGoToAdmin }) {
   const handleExtractSubjects = useCallback(async () => {
     if (extractingSubjectsRef.current) return;
     extractingSubjectsRef.current = true;
+    setIsExtractingSubjects(true);
     const projectId = activeProjectIdForExtraction;
     const projectName = activeProjectNameForExtraction || projectId;
     setExtractError(null);
     try {
-      // 发布接口要求并发校验当前结构版本；主体页可能在剧本页打开后才进入，
-      // 因此这里必须绕过缓存读取最新 revision，不能使用 null。
-      const latestStructure = await apiGetScriptStructure(projectId);
-      const structureRevision = latestStructure?.revision
-        ?? latestStructure?.data?.revision
-        ?? latestStructure?.payload?.revision;
-      if (structureRevision === undefined || structureRevision === null) {
-        throw new Error('未读取到剧本结构版本，请先返回剧本页刷新后重试');
-      }
-
-      const taskResponse = await apiPublishScriptStructure(projectId, {
-        expected_revision: structureRevision,
-        base_revision: structureRevision,
-        publish_target: ['episodes'],
-      });
-      const taskId = taskResponse?.task_id;
-      if (!taskId) throw new Error('发布剧本结构接口未返回任务 ID');
-
-      const storageUsage = await apiGetStorageUsage();
-      if (storageUsage?.write_blocked) {
-        throw new Error('当前存储空间不足，无法生成主体，请先清理项目资产');
-      }
-
-      const pollScriptTask = async (initialTask, timeoutMessage) => {
+      const pendingExtraction = readPendingSubjectExtraction(projectId);
+      const pollScriptTask = async (initialTask, taskId, timeoutMessage) => {
         const deadline = Date.now() + 10 * 60 * 1000;
         let task = initialTask;
         while (Date.now() < deadline) {
@@ -743,22 +750,55 @@ export default function Home({ onGoToAdmin }) {
             throw new Error(task?.error?.message || task?.error?.detail || task?.status_message || '主体提取任务失败');
           }
           await new Promise(resolve => setTimeout(resolve, 2500));
-          task = await apiGetScriptTask(projectId, task?.task_id || taskId);
+          task = await apiGetScriptTask(projectId, task?.task_id || task?.taskId || taskId);
         }
         throw new Error(timeoutMessage);
       };
 
-      // structure/publish 只把结构草稿物化为正式分集；它不会创建主体。
-      await pollScriptTask(taskResponse, '剧本发布任务超时，请稍后重试');
+      // 发布接口要求并发校验当前结构版本；主体页可能在剧本页打开后才进入，
+      // 因此这里必须绕过缓存读取最新 revision，不能使用 null。
+      let structureRevision = pendingExtraction?.sourceRevision;
+      if (!pendingExtraction || pendingExtraction.phase === 'publish') {
+        const latestStructure = await apiGetScriptStructure(projectId);
+        structureRevision = latestStructure?.revision
+          ?? latestStructure?.data?.revision
+          ?? latestStructure?.payload?.revision;
+        if (structureRevision === undefined || structureRevision === null) {
+          throw new Error('未读取到剧本结构版本，请先返回剧本页刷新后重试');
+        }
 
-      const subjectTaskResponse = await apiExtractSubjectsByEpisodes(projectId, {
-        episode_ids: [],
-        source_revision: structureRevision,
-        force_retry: true,
-      });
-      await pollScriptTask(subjectTaskResponse, '主体抽取任务超时，请稍后刷新主体列表');
+        const taskResponse = pendingExtraction?.taskId
+          ? await apiGetScriptTask(projectId, pendingExtraction.taskId)
+          : await apiPublishScriptStructure(projectId, {
+            expected_revision: structureRevision,
+            base_revision: structureRevision,
+            publish_target: ['episodes'],
+          });
+        const taskId = taskResponse?.task_id || taskResponse?.taskId || pendingExtraction?.taskId;
+        if (!taskId) throw new Error('发布剧本结构接口未返回任务 ID');
+        writePendingSubjectExtraction(projectId, { phase: 'publish', taskId, sourceRevision: structureRevision, createdAt: Date.now() });
+
+        const storageUsage = await apiGetStorageUsage();
+        if (storageUsage?.write_blocked) {
+          throw new Error('当前存储空间不足，无法生成主体，请先清理项目资产');
+        }
+        await pollScriptTask(taskResponse, taskId, '剧本发布任务超时，请稍后重试');
+      }
+
+      const subjectTaskResponse = pendingExtraction?.phase === 'subject'
+        ? await apiGetScriptTask(projectId, pendingExtraction.taskId)
+        : await apiExtractSubjectsByEpisodes(projectId, {
+          episode_ids: [],
+          source_revision: structureRevision,
+          force_retry: true,
+        });
+      const subjectTaskId = subjectTaskResponse?.task_id || subjectTaskResponse?.taskId || pendingExtraction?.taskId;
+      if (!subjectTaskId) throw new Error('主体抽取接口未返回任务 ID');
+      writePendingSubjectExtraction(projectId, { phase: 'subject', taskId: subjectTaskId, sourceRevision: structureRevision, createdAt: Date.now() });
+      await pollScriptTask(subjectTaskResponse, subjectTaskId, '主体抽取任务超时，请稍后刷新主体列表');
 
       if (currentProjectIdRef.current !== projectId) {
+        clearPendingSubjectExtraction(projectId);
         showToast(`「${projectName}」主体抽取完成`, 'success');
         return;
       }
@@ -795,9 +835,11 @@ export default function Home({ onGoToAdmin }) {
         props: { nextOffset: propsPage.nextOffset, hasMore: propsPage.hasMore, loading: false, rawList: propsPage.list, error: false },
       }));
       setForceExtract(false);
+      clearPendingSubjectExtraction(projectId);
       showToast(`「${projectName}」主体抽取完成`, 'success');
     } catch (err) {
       console.error('提取主体失败:', err);
+      clearPendingSubjectExtraction(projectId);
       if (currentProjectIdRef.current === projectId) {
         setExtractError(err?.message || '提取主体失败，请重试');
         setExtractErrorProjectId(projectId);
@@ -805,6 +847,7 @@ export default function Home({ onGoToAdmin }) {
       }
     } finally {
       extractingSubjectsRef.current = false;
+      setIsExtractingSubjects(false);
     }
   }, [activeProjectIdForExtraction, activeProjectNameForExtraction, showToast]);
 
@@ -1247,13 +1290,16 @@ export default function Home({ onGoToAdmin }) {
                 onScenesChange={setSharedScenes}
                 props={sharedProps}
                 onPropsChange={setSharedProps}
+                isExtractingSubjects={isExtractingSubjects || !!readPendingSubjectExtraction(activeProject.id)?.taskId}
                 isStoryboardGenerated={unlockedSteps.has('storyboard')}
                 onStartStoryboard={() => {
                   handleUnlockStep('storyboard');
                   handleGenerateStoryboards();
                   setActiveStep('storyboard');
                 }}
-                onExtractSubjects={forceExtract ? handleExtractSubjects : undefined}
+                onExtractSubjects={(forceExtract || !!readPendingSubjectExtraction(activeProject.id)?.taskId)
+                  ? handleExtractSubjects
+                  : undefined}
                 extractError={extractError}
                 onLoadMoreChars={() => loadMoreSubjects('character')}
                 onLoadMoreScenes={() => loadMoreSubjects('scene')}

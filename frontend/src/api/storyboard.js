@@ -111,6 +111,66 @@ export async function apiUpdateStoryboard(projectId, storyboardId, data) {
   return updated;
 }
 
+/**
+ * 持久化分镜创作面板的编辑状态。
+ * 结构化表单放在 gen_params.creation_form，提示词同步写入分镜已有字段，
+ * 这样既能完整恢复前端表单，也兼容后端已有的提示词读取逻辑。
+ */
+export async function apiUpdateStoryboardCreationForm(projectId, storyboardId, { image, video, genParams }) {
+  const imageState = image && typeof image === 'object' ? image : {};
+  const videoState = video && typeof video === 'object' ? video : {};
+  return apiUpdateStoryboard(projectId, storyboardId, {
+    image_prompt: imageState.prompt ?? null,
+    video_prompt: videoState.prompt ?? null,
+    gen_params: {
+      ...(genParams && typeof genParams === 'object' ? genParams : {}),
+      creation_form: {
+        image: imageState,
+        video: videoState,
+      },
+    },
+  });
+}
+
+// ── 分镜候选媒体 ─────────────────────────────────────────────────────────────
+
+export async function apiListStoryboardMediaCandidates(projectId, storyboardId) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}/media-candidates`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error(`获取分镜候选媒体失败（HTTP ${res.status}）`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : data?.items || data?.media || data?.candidates || [];
+}
+
+export async function apiCreateStoryboardMediaCandidate(projectId, storyboardId, data) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}/media-candidates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`保存分镜候选媒体失败（HTTP ${res.status}）`);
+  return res.json();
+}
+
+export async function apiUpdateStoryboardMediaCandidate(projectId, storyboardId, mediaId, data) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}/media-candidates/${mediaId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`更新分镜候选媒体失败（HTTP ${res.status}）`);
+  return res.json();
+}
+
+export async function apiDeleteStoryboardMediaCandidate(projectId, storyboardId, mediaId) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}/media-candidates/${mediaId}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error(`删除分镜候选媒体失败（HTTP ${res.status}）`);
+}
+
 export async function apiDeleteStoryboard(projectId, storyboardId) {
   await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}`, {
     method: 'DELETE',

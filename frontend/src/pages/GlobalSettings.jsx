@@ -36,6 +36,9 @@
  *   2026-07-21  抽离资产概况中的 ScriptProgress 与 ScriptProgressCard
  *   2026-07-21  资产概况剧本、角色、场景、道具内容区限制为两行并支持区域内滚动
  *   2026-07-22  资产概况四类卡片统一为四列固定占比，数量不足四张时保留空列
+ *   2026-07-23  资产概况外层容器补齐 100% 高度，匹配总览页容器布局反馈
+ *   2026-07-23  收敛资产概况滚动边界，避免内容撑出总览外层容器
+ *   2026-07-23  按页面反馈将资产概况外层底部内边距调整为 0px
  */
 
 import { lazy, Suspense, useState, useRef, useCallback, useEffect } from 'react';
@@ -978,7 +981,7 @@ export default function GlobalSettings({
 
   return (
     <div style={{ flex: '1 1 0%', overflow: 'auto', padding: '0px 24px 24px 0px', height: '100%', boxSizing: 'border-box' }}>
-      <div style={{ borderRadius: '16px', padding: '16px 24px', background: '#161616', border: '1px solid #FFFFFF14', minHeight: '100%', display: 'flex', flexDirection: 'column', gap: 0 }}>
+      <div style={{ borderRadius: '16px', padding: '16px 24px 0px', background: '#161616', border: '1px solid #FFFFFF14', minHeight: 0, height: '100%', boxSizing: 'border-box', overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 0 }}>
 
         {/* 面包屑：返回箭头 + 项目名称 + 分割线 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px', alignSelf: 'stretch', paddingBottom: '12px', paddingTop: '6px', borderBottom: '1px solid #FFFFFF14' }}>
@@ -997,7 +1000,7 @@ export default function GlobalSettings({
 
         {/* 资产概况 Tab */}
         {activeTab === 'overview' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', paddingTop: '16px', paddingBottom: '0px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', paddingTop: '16px', paddingBottom: '0px', alignSelf: 'stretch', flex: '1 1 0%', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box' }}>
             <ScriptProgress episodes={episodes} episodeStatuses={episodeStatuses} />
             <SubjectOverviewCard label="角色" type="char" subjects={chars} onNavigate={isSubjectUnlocked || chars.length > 0 ? () => onGoToSubject?.('char') : undefined} />
             <SubjectOverviewCard label="场景" type="scene" subjects={scenes} onNavigate={isSubjectUnlocked || scenes.length > 0 ? () => onGoToSubject?.('scene') : undefined} />

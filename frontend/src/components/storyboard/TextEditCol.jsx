@@ -91,8 +91,8 @@ export { EditableText };
 export default function TextEditCol({ label, value, onChange, isLast = false }) {
   return (
     <div style={{
-      width: 'calc(5.695% - 1px)',
-      minWidth: '120px',
+      width: '10%',
+      minWidth: '180px',
       display: 'flex',
       flexDirection: 'column',
       gap: '8px',

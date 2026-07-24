@@ -32,7 +32,6 @@ import ReferenceImageField from './ReferenceImageField';
 import { ImgUploadCard } from './StoryboardImageUpload';
 import ImageResultCard from './ImageResultCard';
 
-const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 export default function GenerateImagePanel({
@@ -51,11 +50,15 @@ export default function GenerateImagePanel({
   buildStoryboardPrompt,
   ModalCloseBtn,
   PanelPromptInput,
+  embedded = false,
+  onCandidateMedia,
+  formState,
+  onFormStateChange,
 }) {
   const [modelList, setModelList] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
-  const [model, setModel] = useState('');
-  const [resolution, setResolution] = useState('');
+  const [model, setModel] = useState(() => formState?.model || '');
+  const [resolution, setResolution] = useState(() => formState?.resolution || '');
 
   useEffect(() => {
     (async () => {
@@ -65,11 +68,14 @@ export default function GenerateImagePanel({
         setModelList(merged);
         if (merged.length > 0) {
           const first = merged.find(m => m.is_default) || merged[0];
-          setModel(first.value);
+          const restoredModel = formState?.model && merged.some((item) => item.value === formState.model)
+            ? formState.model
+            : first.value;
+          setModel(restoredModel);
           const caps = first.capabilities;
           {
             const resList = (caps?.supported_resolutions?.length ? caps.supported_resolutions : caps?.supported_sizes) || [];
-            if (resList.length > 0) setResolution(resList[0]);
+            if (resList.length > 0 && !formState?.resolution) setResolution(resList[0]);
           }
         }
       } catch {
@@ -78,12 +84,13 @@ export default function GenerateImagePanel({
         setModelsLoading(false);
       }
     })();
-  }, []);
+  }, [formState?.model, formState?.resolution]);
   // 提示词：仅暂存在当前弹窗的本地 state，编辑不回写分镜列表字段。
   // 关闭面板时组件卸载、本地态丢弃，下次打开按 shot 当前字段重新生成初始内容。
   // 点击「生成分镜图」时才把 prompt 随 onGenerate 传回后端。
-  const [prompt, setPrompt] = useState(() => buildStoryboardPrompt(shot));
+  const [prompt, setPrompt] = useState(() => formState?.prompt ?? buildStoryboardPrompt(shot));
   const [refImages, setRefImages] = useState(() => {
+    if (formState?.refImages) return formState.refImages;
     const images = [];
     // 添加主体参考图——为项目主体补全 url/name（否则标签丢失 type 会变紫色）
     if (shot?.mainRefs?.length > 0) {
@@ -107,6 +114,10 @@ export default function GenerateImagePanel({
   const [loading, setLoading] = useState(false);
   const [mediaDetailOpen, setMediaDetailOpen] = useState(false);
   const [mediaDetailActiveIdx, setMediaDetailActiveIdx] = useState(0);
+
+  useEffect(() => {
+    onFormStateChange?.({ model, resolution, prompt, refImages });
+  }, [model, resolution, prompt, refImages, onFormStateChange]);
 
   // 获取当前模型支持的分辨率（从后端 capabilities 派生）
   const currentModel = useMemo(() => modelList.find(m => m.value === model), [model, modelList]);
@@ -249,40 +260,37 @@ export default function GenerateImagePanel({
   }, [refImages]);
 
 
-  return createPortal(
+  const content = (
     <>
       {/* 点击空白关闭 */}
-      <div
+      {!embedded && <div
         style={{ position: 'fixed', inset: 0, zIndex: 900, pointerEvents: 'auto' }}
         onMouseDown={onClose}
-      />
+      />}
       <div
         style={{
-          position: 'fixed', right: '24px', top: '60px', bottom: '24px',
-          width: '600px', zIndex: 901,
+          position: embedded ? 'relative' : 'fixed', right: embedded ? undefined : '24px', top: embedded ? undefined : '60px', bottom: embedded ? undefined : '24px',
+          width: embedded ? '100%' : '600px', height: embedded ? '100%' : undefined, zIndex: embedded ? undefined : 901,
           display: 'flex', flexDirection: 'column',
           backgroundColor: '#161616',
-          borderRadius: '12px',
-          border: '1px solid rgba(255,255,255,0.08)',
-          boxShadow: '-10px 24px 64px rgba(0,0,0,0.60)',
-          animation: 'slideInRight 220ms cubic-bezier(0.22,1,0.36,1) forwards',
+          borderRadius: embedded ? 0 : '12px',
+          border: embedded ? 0 : '1px solid rgba(255,255,255,0.08)',
+          boxShadow: embedded ? 'none' : '-10px 24px 64px rgba(0,0,0,0.60)',
+          animation: embedded ? 'none' : 'slideInRight 220ms cubic-bezier(0.22,1,0.36,1) forwards',
           overflow: 'hidden',
           pointerEvents: 'auto',
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* 标题栏 */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', flexShrink: 0 }}>
+        {!embedded && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', flexShrink: 0 }}>
           <span style={{ fontSize: '16px', lineHeight: '20px', color: '#FFFFFF', fontFamily: FONT_MEDIUM, fontWeight: 500 }}>生成分镜图</span>
           <ModalCloseBtn onClick={onClose} />
-        </div>
+        </div>}
 
         {/* 内容区：左表单 + 右预览 */}
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           {/* 左侧表单 */}
-          <div style={{ display: 'flex', flexDirection: 'column', width: '419px', flexShrink: 0, padding: '8px 12px 80px 24px', gap: '20px', overflowY: 'auto' }}>
-            <span style={{ fontSize: "14px", lineHeight: "18px", color: "rgba(255,255,255,0.80)", fontFamily: FONT }}>分镜{String(shot?.number ?? 1).padStart(2, "0")}</span>
-
+          <div style={{ display: 'flex', flexDirection: 'column', width: embedded ? '457px' : '419px', flexShrink: 0, padding: embedded ? '12px 16px 80px 24px' : '8px 12px 80px 24px', gap: '20px', overflowY: 'auto', boxSizing: 'border-box' }}>
             <PanelPromptInput value={prompt} onChange={setPrompt} referenceItems={imageReferenceItems} />
             <GenerationModelField
               value={modelsLoading ? '加载中...' : (modelList.find(m => m.value === model)?.label || '请选择')}
@@ -306,7 +314,7 @@ export default function GenerateImagePanel({
           </div>
 
           {/* 右侧图片列表 */}
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '12px', paddingRight: '24px', paddingTop: '8px', paddingBottom: '8px', background: '#161616', height: '100%', boxSizing: 'border-box' }}>
+          <div style={{ display: embedded ? 'none' : 'flex', flex: 1, overflowY: 'auto', flexDirection: 'column', gap: '12px', paddingLeft: '12px', paddingRight: '24px', paddingTop: '8px', paddingBottom: '8px', background: '#161616', height: '100%', boxSizing: 'border-box' }}>
             <ImgUploadCard
               projectId={projectId}
               onUpload={async (file) => {
@@ -320,7 +328,9 @@ export default function GenerateImagePanel({
                   const result = await uploadFn({ file, category: 'reference', project_id: projectId });
                   const uploadedUrl = result.uploaded_url || result.uploadedUrl || result.url || result.file_url || '';
                   // 仅加入候选列表，不自动定稿；只有勾选「定稿」才会传入封面
-                  onSetGeneratedImages((prev) => [{ url: uploadedUrl, settled: false, id: result.asset_id || result.id || uploadedUrl }, ...prev]);
+                  const candidate = { url: normalizeImageUrl(uploadedUrl), settled: false, id: result.asset_id || result.id || uploadedUrl, media_type: 'image', source: 'local-upload' };
+                  onSetGeneratedImages((prev) => [candidate, ...prev]);
+                  onCandidateMedia?.(candidate);
                 } catch {
                   onShowToast?.('上传失败，请重试', 'error');
                 }
@@ -329,7 +339,11 @@ export default function GenerateImagePanel({
                 assets.forEach(a => {
                   const url = normalizeImageUrl(a.fileUrl || a.originalUrl || a.original_url || a.thumbnailUrl || a.thumbnail_url || a.url || a.file_url);
                   // 仅加入候选列表，不自动定稿；只有勾选「定稿」才会传入封面
-                  if (url) { onSetGeneratedImages((prev) => [{ url, settled: false, id: a.id || url }, ...prev]); }
+                  if (url) {
+                    const candidate = { url, settled: false, id: a.id || url, media_type: 'image', source: 'asset-library' };
+                    onSetGeneratedImages((prev) => [candidate, ...prev]);
+                    onCandidateMedia?.(candidate);
+                  }
                 });
               }}
             />
@@ -365,7 +379,7 @@ export default function GenerateImagePanel({
             position: 'absolute',
             left: 0,
             bottom: 0,
-            width: '419px',
+            width: embedded ? '457px' : '419px',
             padding: '16px 24px',
             background: '#161616',
             borderBottomLeftRadius: '16px',
@@ -417,7 +431,7 @@ export default function GenerateImagePanel({
         />
       )}
 
-    </>,
-    document.body
+    </>
   );
+  return embedded ? content : createPortal(content, document.body);
 }

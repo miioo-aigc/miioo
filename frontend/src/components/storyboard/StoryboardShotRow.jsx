@@ -21,6 +21,8 @@ export default function StoryboardShotRow({
   insertAfter = false,
   isSelectMode = false,
   isSelected = false,
+  isActive = false,
+  onSelect,
 }) {
   const [hovered, setHovered] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -39,6 +41,8 @@ export default function StoryboardShotRow({
         <div style={{ height: '2px', borderRadius: '1px', backgroundColor: '#2DC3E1', flexShrink: 0, marginBlock: '-4px', zIndex: 10 }} />
       )}
       <div
+        data-storyboard-shot-row="true"
+        onClick={onSelect}
         draggable={!isSelectMode}
         onDragStart={(event) => {
           if (isSelectMode || !dragFromHandle.current) {
@@ -65,8 +69,8 @@ export default function StoryboardShotRow({
           minWidth: '1160px',
           borderRadius: '12px',
           backgroundColor: '#1D1E1E',
-          border: `1px solid ${isSelected ? 'rgba(45,195,225,0.60)' : hovered ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.08)'}`,
-          boxShadow: hovered ? 'rgba(0,0,0,0.50) 0px 0px 30px' : 'none',
+          border: `1px solid ${isSelected || isActive ? 'rgba(45,195,225,0.60)' : hovered ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.08)'}`,
+          boxShadow: isActive ? '0 0 0 1px rgba(45,195,225,0.30)' : hovered ? 'rgba(0,0,0,0.50) 0px 0px 30px' : 'none',
           flexShrink: 0,
           transition: 'border-color 150ms, box-shadow 150ms, opacity 150ms',
           overflow: 'hidden',

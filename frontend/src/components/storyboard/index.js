@@ -25,7 +25,8 @@ export {
 export { EpisodeSelector, ModalCloseBtn } from './StoryboardControls';
 export { getEpisodeLabel, getEpisodeId } from './storyboardControlUtils';
 export { CharTag, AddSlotBtn } from './NarrationAtoms';
-export { NarrationItem, AddNarrationBtn } from './NarrationItems';
+export { NarrationItem } from './NarrationItems';
+export { default as NarrationAddButton } from './NarrationAddButton';
 export { NarrationCol, NarrationColWrapper } from './NarrationCol';
 export { default as VoiceDubModal } from './VoiceDubModal';
 export { default as DescriptionCol } from './DescriptionCol';
@@ -33,6 +34,12 @@ export { default as ShotNumberColumn, CardActionBtn } from './ShotNumberColumn';
 export { StoryboardIconPlus } from './StoryboardActionPrimitives';
 export { default as StoryboardToast } from './StoryboardToast';
 export { default as StoryboardHeader } from './StoryboardHeader';
+export { default as StoryboardContentArea } from './StoryboardContentArea';
+export { default as StoryboardShotMediaColumn } from './StoryboardShotMediaColumn';
+export { default as StoryboardFinalizedTimeline } from './StoryboardFinalizedTimeline';
+export { default as StoryboardFinalizedCard } from './StoryboardFinalizedCard';
+export { default as StoryboardCreationPanel } from './StoryboardCreationPanel';
+export { default as AIRegenerateStoryboardModal } from './AIRegenerateStoryboardModal';
 
 export { MENTION_TYPE_LABEL, MENTION_TYPE_COLOR, MENTION_TABS } from './PanelPromptConstants';
 export { SubjectTag, PromptCharacterCount } from './PanelPromptPrimitives';

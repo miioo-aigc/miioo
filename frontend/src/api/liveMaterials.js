@@ -20,6 +20,17 @@ export async function apiGetLiveMaterialAuthSessionStatus(sessionId) {
   return res.json();
 }
 
+/** 创建无需真人认证的 AIGC 素材组，返回 LiveMaterialGroupResponse */
+export async function apiCreateAigcMaterialGroup({ name, description } = {}) {
+  const res = await authFetch(`${BASE}/api/live-materials/groups`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, description, group_type: 'AIGC' }),
+  });
+  if (!res.ok) throw new Error(`创建AIGC素材组失败: ${res.status}`);
+  return res.json();
+}
+
 /** 更新素材组名称/描述，返回更新后的 LiveMaterialGroupResponse */
 export async function apiUpdateLiveMaterialGroup(groupId, { name, description } = {}) {
   const res = await authFetch(`${BASE}/api/live-materials/groups/${groupId}`, {

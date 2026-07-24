@@ -73,7 +73,10 @@ export function AssetsProjectRenameModal({ value, onChange, onClose, onConfirm }
           <TextField
             autoFocus
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(nextValue) => {
+              const nextName = typeof nextValue === 'string' ? nextValue : nextValue?.target?.value || '';
+              onChange(nextName);
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter') onConfirm();
               if (event.key === 'Escape') onClose();

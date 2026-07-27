@@ -7,6 +7,10 @@
  *
  * ─── 数据边界 ───────────────────────────────────────────────────────
  *   只接收归一化消息和当前流式状态，不调用接口、不持有页面请求状态
+ *
+ * ─── 更新记录 ────────────────────────────────────────────────────────
+ *   2026-07-27  将用户消息气泡的三个圆角固定为 16px，保留右下角直角
+ *   2026-07-27  流式输出期间允许用户上滑查看上下文，离开底部后暂停自动滚动
  */
 import { useEffect, useRef } from 'react';
 import { TextButton } from '../ui';
@@ -63,7 +67,7 @@ function MessageBubble({ message, isActive }) {
         style={{
           maxWidth: '100%',
           padding: '8px 12px',
-          borderRadius: '999px 999px 999px 0px',
+          borderRadius: '16px 16px 0px 16px',
           background: '#343435',
           color: isError ? '#F75F5F' : '#FFFFFF',
           fontFamily: FONT,
@@ -81,15 +85,23 @@ function MessageBubble({ message, isActive }) {
 
 export default function ScriptMessageArea({ messages = [], activeMessageId = null, hasScript = false, onOpenScript }) {
   const scrollRef = useRef(null);
+  const shouldFollowLatestRef = useRef(true);
 
   useEffect(() => {
     const container = scrollRef.current;
-    if (container) container.scrollTop = container.scrollHeight;
+    if (container && shouldFollowLatestRef.current) container.scrollTop = container.scrollHeight;
   }, [messages, activeMessageId]);
+
+  const handleScroll = (event) => {
+    const container = event.currentTarget;
+    const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldFollowLatestRef.current = distanceToBottom <= 24;
+  };
 
   return (
     <div
       ref={scrollRef}
+      onScroll={handleScroll}
       style={{
         width: 'min(800px, 100%)',
         maxWidth: '100%',

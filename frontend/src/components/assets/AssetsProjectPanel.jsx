@@ -330,9 +330,20 @@ export default function AssetsProjectPanel() {
 
   async function handleDownloadProject(project) {
     try {
-      const blob = await apiDownloadProjectAssets(project.id);
       const filename = `${(project.name || '项目').replace(/[\\/:*?"<>|]/g, '_')}.zip`;
-      downloadBlob(blob, filename);
+      const result = await apiDownloadProjectAssets(project.id);
+      if (result?.type === 'url') {
+        const anchor = document.createElement('a');
+        anchor.href = result.value;
+        anchor.download = filename;
+        anchor.target = '_blank';
+        anchor.rel = 'noopener';
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+      } else {
+        downloadBlob(result?.value, filename);
+      }
       showToast('项目下载成功', 'success');
     } catch (err) {
       console.error('[ProjectAssetsPanel] 下载项目失败:', err);

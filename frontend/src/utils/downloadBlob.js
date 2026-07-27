@@ -10,5 +10,6 @@ export function downloadBlob(blob, filename) {
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
-  URL.revokeObjectURL(url);
+  // 延迟释放，避免部分浏览器在 click 事件结束前还未开始读取 Blob。
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

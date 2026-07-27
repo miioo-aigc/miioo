@@ -99,7 +99,25 @@ export async function apiDownloadProjectAssets(projectId) {
     headers: { 'Content-Type': 'application/json' },
   });
   if (!res.ok) throw new Error(`下载项目资产失败（HTTP ${res.status}）`);
-  return res.blob();
+
+  const blob = await res.blob();
+  if (blob.size === 0) throw new Error('下载接口返回了空文件');
+
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  if (contentType.includes('json') || contentType.includes('text/plain')) {
+    const text = await blob.text();
+    try {
+      const data = JSON.parse(text);
+      const downloadUrl = data?.download_url || data?.downloadUrl || data?.url || data?.file_url || data?.fileUrl;
+      if (!downloadUrl) throw new Error('下载接口未返回下载地址');
+      return { type: 'url', value: downloadUrl };
+    } catch (error) {
+      if (error.message === '下载接口未返回下载地址') throw error;
+      // 后端可能错误地将压缩包标记为 JSON，解析失败时仍按文件流下载。
+    }
+  }
+
+  return { type: 'blob', value: blob };
 }
 
 export async function apiGetProjectOverview(projectId) {

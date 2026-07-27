@@ -37,6 +37,7 @@
  *   2026-07-22  保持编排定位器脱离滚动层并绝对垂直居中
  *   2026-07-22  将编排页外层设为非滚动视口，避免定位器随页面滚动
  *   2026-07-22  统一从分镜导入任务和工作区恢复编排类型，避免误渲染分集剧情
+ *   2026-07-27  将 OneLinkAI 结构字段提取异常转换为可执行的模型切换提示
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
@@ -76,6 +77,26 @@ function formatEpisodeHeaders(content) {
 function sanitizeDownloadName(name, fallback = '剧本') {
   const normalized = String(name || '').trim().replace(/[\\/:*?"<>|]/g, '_');
   return normalized || fallback;
+}
+
+function getScriptOutlineTaskErrorMessage(error) {
+  const message = typeof error === 'string'
+    ? error
+    : error?.message || error?.detail || '';
+  const detailMessage = typeof error?.details === 'string'
+    ? error.details
+    : error?.details?.error || error?.details?.message || '';
+  const combinedMessage = `${message} ${detailMessage}`;
+  const isModelStructureExtractionError = error?.code === 'SCRIPT_TASK_FAILED'
+    && combinedMessage.includes('剧本结构字段提取失败')
+    && combinedMessage.includes('OneLinkAI')
+    && combinedMessage.includes('暂时无法识别');
+
+  if (isModelStructureExtractionError) {
+    return '当前模型报错，请尝试切换默认对话模型后重试';
+  }
+
+  return message || '剧本解析失败，请重试';
 }
 
 function scriptOutlineTypeStorageKey(projectId) {
@@ -558,10 +579,10 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         }
         if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
           const error = task?.error;
-          const message = typeof error === 'string' ? error : error?.message || error?.detail;
+          const message = getScriptOutlineTaskErrorMessage(error);
           setScriptOutlineLoading(false);
           setScriptOutlineTaskId(null);
-          setScriptOutlineError(message || '剧本解析失败，请重试');
+          setScriptOutlineError(message);
           return;
         }
         timerId = window.setTimeout(poll, SCRIPT_OUTLINE_POLL_INTERVAL_MS);

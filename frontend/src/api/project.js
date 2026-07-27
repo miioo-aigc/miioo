@@ -94,10 +94,12 @@ export async function apiDeleteProject(projectId) {
 }
 
 export async function apiDownloadProjectAssets(projectId) {
-  await authFetch(`${BASE}/api/projects/${projectId}/assets/download`, {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/assets/download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
+  if (!res.ok) throw new Error(`下载项目资产失败（HTTP ${res.status}）`);
+  return res.blob();
 }
 
 export async function apiGetProjectOverview(projectId) {

@@ -42,7 +42,10 @@ export default function StoryboardShotRow({
       )}
       <div
         data-storyboard-shot-row="true"
-        onClick={onSelect}
+        onClick={(event) => {
+          if (event.target.closest('button, input, textarea, select, [role="button"], [contenteditable="true"]')) return;
+          onSelect?.();
+        }}
         draggable={!isSelectMode}
         onDragStart={(event) => {
           if (isSelectMode || !dragFromHandle.current) {

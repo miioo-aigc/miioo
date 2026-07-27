@@ -312,6 +312,18 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const generatedEpisodeIdsRef = useRef(new Set());
   const loadedEpisodeRef = useRef(null);
   const shotListRef = useRef(null);
+  const storyboardPageRef = useRef(null);
+
+  useEffect(() => {
+    function handleOutsideStoryboardClick(event) {
+      if (storyboardPageRef.current?.contains(event.target)) return;
+      if (event.target.closest('[role="dialog"], [data-storyboard-overlay="true"]')) return;
+      setActiveShotId(null);
+    }
+
+    document.addEventListener('mousedown', handleOutsideStoryboardClick);
+    return () => document.removeEventListener('mousedown', handleOutsideStoryboardClick);
+  }, []);
 
   // 用户是否手动操作过（添加/删除分镜），如果操作过就不再展示智能分镜失败的错误态
   const hasManuallyInteracted = useRef(false);
@@ -1188,7 +1200,13 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   }, [scheduleCreationFormSave, videoPanel?.shot?.id]);
 
   function selectActiveShot(shotId) {
-    if (shotId === activeShotId) return;
+    if (shotId === activeShotId) {
+      setImagePanel(null);
+      setVideoPanel(null);
+      setCreationPanel(null);
+      setActiveShotId(null);
+      return;
+    }
     setImagePanel(null);
     setVideoPanel(null);
     setCreationPanel(null);
@@ -1398,9 +1416,13 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         display: 'flex', flexDirection: 'column',
         backgroundColor: 'var(--color-dark-bg)',
         overflow: 'hidden', boxSizing: 'border-box',
+      }} ref={storyboardPageRef} onClick={(event) => {
+        if (event.target.closest('[data-storyboard-shot-row="true"], [data-storyboard-finalized-card="true"], [data-storyboard-header="true"], button, input, textarea, select, [role="button"]')) return;
+        setActiveShotId(null);
       }}>
         <StoryboardContentArea
           header={storyboardHeader}
+          onContentBlankClick={() => setActiveShotId(null)}
           timeline={<StoryboardFinalizedTimeline shots={[]} finalizedMap={{}} />}
         >
           <div style={{
@@ -1440,9 +1462,13 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       padding: 0,
       overflow: 'hidden',
       boxSizing: 'border-box',
+    }} ref={storyboardPageRef} onClick={(event) => {
+      if (event.target.closest('[data-storyboard-shot-row="true"], [data-storyboard-finalized-card="true"], [data-storyboard-header="true"], button, input, textarea, select, [role="button"]')) return;
+      setActiveShotId(null);
     }}>
       <StoryboardContentArea
         header={storyboardHeader}
+        onContentBlankClick={() => setActiveShotId(null)}
         timeline={<StoryboardFinalizedTimeline
           shots={shots}
           finalizedMap={finalizedMediaMap}
@@ -1473,11 +1499,6 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         onScroll={(event) => {
           const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
           if (scrollHeight - scrollTop - clientHeight <= 120) loadMoreShots();
-        }}
-        onClick={(event) => {
-          if (event.target.closest('[data-storyboard-shot-row="true"]')) return;
-          if (event.target.closest('button, input, textarea, select, [role="button"]')) return;
-          setActiveShotId(null);
         }}
         onDragEnd={() => { setDragId(null); setOverId(null); }}
       >

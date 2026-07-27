@@ -1341,9 +1341,9 @@ export default function Home({ onGoToAdmin }) {
                 onScriptContentChange={setScriptContent}
                 scriptDraftContent={scriptDraftContent}
                 onScriptDraftContentChange={setScriptDraftContent}
-                onGoToSubject={(tab) => {
+                onGoToSubject={(tab, options = {}) => {
                   setSubjectInitialTab(tab ?? 'char');
-                  setForceExtract(true);
+                  setForceExtract(!options.fromOverview);
                   handleUnlockStep('subject');
                   setActiveStep('subject');
                 }}

@@ -328,8 +328,16 @@ export default function AssetsProjectPanel() {
     }).catch(console.error);
   }
 
-  function handleDownloadProject(project) {
-    apiDownloadProjectAssets(project.id).catch(console.error);
+  async function handleDownloadProject(project) {
+    try {
+      const blob = await apiDownloadProjectAssets(project.id);
+      const filename = `${(project.name || '项目').replace(/[\\/:*?"<>|]/g, '_')}.zip`;
+      downloadBlob(blob, filename);
+      showToast('项目下载成功', 'success');
+    } catch (err) {
+      console.error('[ProjectAssetsPanel] 下载项目失败:', err);
+      showToast('项目下载失败，请重试', 'error');
+    }
   }
 
   async function downloadAsset(assetId, assetName) {

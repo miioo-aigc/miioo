@@ -52,6 +52,49 @@ const SUB_TAB_CATEGORY_MAP = {
 };
 
 function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onMouseMove, onMouseLeave, onClick, compact = false }) {
+  const [generatedPoster, setGeneratedPoster] = useState(null);
+  const assetType = String(asset.asset_type || asset.type || '').toLowerCase();
+  const isVideo = assetType === 'video';
+
+  useEffect(() => {
+    if (!isVideo || asset.posterUrl || !asset.url) return undefined;
+
+    let cancelled = false;
+    const video = document.createElement('video');
+    let captured = false;
+    const captureFrame = () => {
+      if (cancelled || captured || !video.videoWidth || !video.videoHeight) return;
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        const poster = canvas.toDataURL('image/jpeg', 0.86);
+        captured = true;
+        setGeneratedPoster({ assetId: asset.id, url: poster });
+      } catch {
+        // 远程媒体未提供 CORS 头时无法读取 Canvas，下面的视频元素仍可显示首帧。
+      }
+    };
+    const seekToFirstFrame = () => {
+      try { video.currentTime = 0; } catch { captureFrame(); }
+    };
+    video.addEventListener('loadeddata', captureFrame, { once: true });
+    video.addEventListener('loadedmetadata', seekToFirstFrame, { once: true });
+    video.addEventListener('seeked', captureFrame, { once: true });
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    video.src = normalizeImageUrl(asset.url);
+
+    return () => {
+      cancelled = true;
+      video.removeAttribute('src');
+      video.load();
+    };
+  }, [asset.id, asset.posterUrl, asset.url, isVideo]);
+
+  const posterUrl = asset.posterUrl || (generatedPoster?.assetId === asset.id ? generatedPoster.url : null);
   return (
     <div
       onClick={isDisabled ? undefined : onClick}
@@ -76,7 +119,7 @@ function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onM
         background: asset.url ? 'transparent' : (asset.bgColor || '#252525'),
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        {asset.isSeedanceMaterial && asset.url ? (
+        {asset.isSeedanceMaterial && asset.url && !isVideo ? (
           <div
             aria-label={asset.name || 'Seedance素材'}
             role="img"
@@ -90,10 +133,10 @@ function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onM
               transition: 'opacity 100ms',
             }}
           />
-        ) : asset.asset_type === 'video' && (asset.posterUrl || asset.url) ? (
+        ) : isVideo && (posterUrl || asset.url) ? (
           // 视频卡片：优先用封面图显示（清晰、快速），无封面时回退到 video 标签加载首帧
-          asset.posterUrl ? (
-            <img src={normalizeImageUrl(asset.posterUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }} />
+          posterUrl ? (
+            <img src={normalizeImageUrl(posterUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }} />
           ) : (
             <video
               src={normalizeImageUrl(asset.url)}
@@ -435,10 +478,15 @@ export default function AssetPickerModal({
         setSeedanceAssets((Array.isArray(assets) ? assets : []).map((asset) => ({
           id: asset.id,
           name: asset.name || activeSeedanceGroup.name || '未命名',
-          url: normalizeImageUrl(asset.preview_url || asset.asset_ref_url) || null,
-          fullUrl: normalizeImageUrl(asset.asset_ref_url || asset.preview_url) || null,
-          fileUrl: normalizeImageUrl(asset.asset_ref_url || asset.preview_url) || null,
-          asset_type: 'image',
+          url: normalizeImageUrl(
+            String(asset.asset_type || '').toLowerCase() === 'video'
+              ? (asset.source_url || asset.file_url || asset.preview_url || asset.asset_ref_url)
+              : (asset.preview_url || asset.asset_ref_url)
+          ) || null,
+          fullUrl: normalizeImageUrl(asset.asset_ref_url || asset.preview_url || asset.file_url || asset.source_url) || null,
+          fileUrl: normalizeImageUrl(asset.asset_ref_url || asset.preview_url || asset.file_url || asset.source_url) || null,
+          asset_type: String(asset.asset_type || 'image').toLowerCase(),
+          posterUrl: normalizeImageUrl(asset.poster_url || asset.posterUrl || asset.thumbnail_url || asset.thumbnailUrl || '') || null,
           // 只有真人组进入真人素材参数；AIGC 组按普通参考图片返回。
           isLiveMaterial: String(activeSeedanceGroup.group_type || '').toUpperCase() !== 'AIGC',
           isAigcMaterial: String(activeSeedanceGroup.group_type || '').toUpperCase() === 'AIGC',

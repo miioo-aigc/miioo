@@ -57,6 +57,7 @@
  *   2026-07-17  迁移首页主导航与底部快捷导航布局至 components/home/HomeNavigationRail.jsx；页面继续负责导航状态和回调
  *   2026-07-22  主体生成改为发布结构、检查存储用量并轮询剧本任务；完成后强制刷新主体列表并兼容嵌套响应
  *   2026-07-23  持久化主体抽取两阶段任务，刷新浏览器后恢复轮询和加载动画
+ *   2026-07-27  主体抽取加载文案优先读取任务轮询 status_message，固定文案作为兜底
  *   2026-07-24  持久化分镜生成任务，支持刷新/返回后恢复轮询及失败重试
  *   2026-07-06  新增 subject cache 订阅 useEffect，实时同步 sharedChars/sharedScenes/sharedProps
  *   2026-07-01  初始结构索引建立
@@ -192,6 +193,7 @@ export default function Home({ onGoToAdmin }) {
   const [extractError, setExtractError] = useState(null);
   const [extractErrorProjectId, setExtractErrorProjectId] = useState(null);
   const [isExtractingSubjects, setIsExtractingSubjects] = useState(false);
+  const [subjectExtractionStatusMessage, setSubjectExtractionStatusMessage] = useState('');
   const [generateError, setGenerateError] = useState(null);
   const [generateErrorProjectId, setGenerateErrorProjectId] = useState(null);
   const [isGeneratingStoryboards, setIsGeneratingStoryboards] = useState(false);
@@ -767,9 +769,14 @@ export default function Home({ onGoToAdmin }) {
     try {
       const storedPendingExtraction = readPendingSubjectExtraction(projectId);
       const pendingExtraction = storedPendingExtraction?.status === 'failed' ? null : storedPendingExtraction;
+      const getTaskStatusMessage = (task) => (
+        task?.status_message || task?.statusMessage || task?.params?.status_message || ''
+      );
       const pollScriptTask = async (initialTask, taskId, timeoutMessage) => {
         const deadline = Date.now() + 10 * 60 * 1000;
         let task = initialTask;
+        let statusMessage = getTaskStatusMessage(task) || pendingExtraction?.statusMessage || '';
+        setSubjectExtractionStatusMessage(statusMessage);
         while (Date.now() < deadline) {
           const status = String(task?.status || '').toLowerCase();
           if (['completed', 'succeeded', 'success'].includes(status)) return task;
@@ -778,6 +785,17 @@ export default function Home({ onGoToAdmin }) {
           }
           await new Promise(resolve => setTimeout(resolve, 2500));
           task = await apiGetScriptTask(projectId, task?.task_id || task?.taskId || taskId);
+          const nextStatusMessage = getTaskStatusMessage(task);
+          if (nextStatusMessage) {
+            statusMessage = nextStatusMessage;
+            setSubjectExtractionStatusMessage(statusMessage);
+          }
+          if (statusMessage) {
+            writePendingSubjectExtraction(projectId, {
+              ...(readPendingSubjectExtraction(projectId) || {}),
+              statusMessage,
+            });
+          }
         }
         throw new Error(timeoutMessage);
       };
@@ -803,7 +821,13 @@ export default function Home({ onGoToAdmin }) {
           });
         const taskId = taskResponse?.task_id || taskResponse?.taskId || pendingExtraction?.taskId;
         if (!taskId) throw new Error('发布剧本结构接口未返回任务 ID');
-        writePendingSubjectExtraction(projectId, { phase: 'publish', taskId, sourceRevision: structureRevision, createdAt: Date.now() });
+        writePendingSubjectExtraction(projectId, {
+          phase: 'publish',
+          taskId,
+          sourceRevision: structureRevision,
+          statusMessage: getTaskStatusMessage(taskResponse),
+          createdAt: Date.now(),
+        });
 
         const storageUsage = await apiGetStorageUsage();
         if (storageUsage?.write_blocked) {
@@ -821,7 +845,13 @@ export default function Home({ onGoToAdmin }) {
         });
       const subjectTaskId = subjectTaskResponse?.task_id || subjectTaskResponse?.taskId || pendingExtraction?.taskId;
       if (!subjectTaskId) throw new Error('主体抽取接口未返回任务 ID');
-      writePendingSubjectExtraction(projectId, { phase: 'subject', taskId: subjectTaskId, sourceRevision: structureRevision, createdAt: Date.now() });
+      writePendingSubjectExtraction(projectId, {
+        phase: 'subject',
+        taskId: subjectTaskId,
+        sourceRevision: structureRevision,
+        statusMessage: getTaskStatusMessage(subjectTaskResponse),
+        createdAt: Date.now(),
+      });
       await pollScriptTask(subjectTaskResponse, subjectTaskId, '主体抽取任务超时，请稍后刷新主体列表');
 
       if (currentProjectIdRef.current !== projectId) {
@@ -879,6 +909,7 @@ export default function Home({ onGoToAdmin }) {
     } finally {
       extractingSubjectsRef.current = false;
       setIsExtractingSubjects(false);
+      setSubjectExtractionStatusMessage('');
     }
   }, [activeProjectIdForExtraction, activeProjectNameForExtraction, showToast]);
 
@@ -1088,10 +1119,17 @@ export default function Home({ onGoToAdmin }) {
   useEffect(() => {
     const projectId = activeProject?.id;
     const pending = readPendingSubjectExtraction(projectId);
-    if (pending?.status !== 'failed') return;
+    if (!projectId) return;
+    if (pending?.status !== 'failed') {
+      const frameId = requestAnimationFrame(() => {
+        setSubjectExtractionStatusMessage(pending?.statusMessage || '');
+      });
+      return () => cancelAnimationFrame(frameId);
+    }
     const frameId = requestAnimationFrame(() => {
       setExtractError(pending.error || '主体抽取失败，请重试');
       setExtractErrorProjectId(projectId);
+      setSubjectExtractionStatusMessage('');
     });
     return () => cancelAnimationFrame(frameId);
   }, [activeProject?.id]);
@@ -1379,6 +1417,7 @@ export default function Home({ onGoToAdmin }) {
                 props={sharedProps}
                 onPropsChange={setSharedProps}
                 isExtractingSubjects={isExtractingSubjects || (readPendingSubjectExtraction(activeProject.id)?.status !== 'failed' && !!readPendingSubjectExtraction(activeProject.id)?.taskId)}
+                subjectExtractionStatusMessage={subjectExtractionStatusMessage}
                 isStoryboardGenerated={unlockedSteps.has('storyboard')}
                 onStartStoryboard={() => {
                   handleUnlockStep('storyboard');

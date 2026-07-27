@@ -38,6 +38,7 @@
  *   2026-07-22  将编排页外层设为非滚动视口，避免定位器随页面滚动
  *   2026-07-22  统一从分镜导入任务和工作区恢复编排类型，避免误渲染分集剧情
  *   2026-07-27  将 OneLinkAI 结构字段提取异常转换为可执行的模型切换提示
+ *   2026-07-27  AI 分集与重写处理中仅遮罩剧本内容区，保留导航可见
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
@@ -206,6 +207,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   const stopReasonRef = useRef(null); // 'user-thinking' | 'user-streaming' | null
   const abortControllerRef = useRef(null); // 用于取消进行中的流式请求
   const outlinePollStartedAtRef = useRef(null);
+  const scriptContentContainerRef = useRef(null);
 
   const setOutlineType = useCallback((type) => {
     setScriptOutlineType(type);
@@ -953,6 +955,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   return (
     <>
     <div
+      ref={scriptContentContainerRef}
       style={{
         display: 'flex',
         minHeight: 0,
@@ -994,6 +997,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
               outlineType={scriptOutlineType}
               storyboardFileName={storyboardFileName || storyboardInputFile?.name || ''}
               storyboardDownloadUrl={storyboardDownloadUrl}
+              loadingContainerRef={scriptContentContainerRef}
             />
           )}
           {!scriptOutlineLoading && !scriptOutlineError && (

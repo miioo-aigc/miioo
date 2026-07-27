@@ -13,6 +13,7 @@
  *   2026-07-22  分集逻辑输入框高度固定为 160px，并移除禁用态悬停反馈
  *   2026-07-22  隐藏当前集数展示，目标集数默认继承当前剧集数量
  *   2026-07-22  提交后保留遮罩并展示 200px 加载动画，失败时恢复弹窗
+ *   2026-07-27  处理中将加载遮罩限制在剧本内容区，弹窗打开态仍保持全屏遮罩
  */
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -26,7 +27,7 @@ function CloseIcon() {
   return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.667 2.667L13.333 13.333M13.333 2.667L2.667 13.333" stroke="currentColor" strokeLinecap="round" /></svg>;
 }
 
-export default function ScriptResplitModal({ open, currentEpisodeCount = 0, selectedModel, submitting = false, error = '', onSubmit, onClose }) {
+export default function ScriptResplitModal({ open, currentEpisodeCount = 0, selectedModel, submitting = false, error = '', onSubmit, onClose, loadingContainerRef }) {
   const [targetMode, setTargetMode] = useState('count');
   const [targetCount, setTargetCount] = useState(String(currentEpisodeCount));
   const [instruction, setInstruction] = useState('');
@@ -56,7 +57,7 @@ export default function ScriptResplitModal({ open, currentEpisodeCount = 0, sele
     <div
       role="presentation"
       onMouseDown={(event) => { if (event.target === event.currentTarget && !isProcessing) { setSubmitted(false); onClose?.(); } }}
-      style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isProcessing ? 'transparent' : 'rgba(0,0,0,0.62)', backdropFilter: isProcessing ? 'none' : 'blur(8px)', WebkitBackdropFilter: isProcessing ? 'none' : 'blur(8px)', pointerEvents: isProcessing ? 'none' : 'auto' }}
     >
       {!isProcessing && <div role="dialog" aria-modal="true" aria-labelledby="script-resplit-title" style={{ display: 'flex', width: '400px', maxWidth: 'calc(100vw - 32px)', flexDirection: 'column', overflow: 'hidden', borderRadius: '16px', background: '#161616', boxShadow: '0 8px 32px rgba(0,0,0,0.6)', fontFamily: FONT, color: '#FFFFFF' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '16px 24px' }}>
@@ -93,7 +94,7 @@ export default function ScriptResplitModal({ open, currentEpisodeCount = 0, sele
           <Button type="button" variant="primary" onClick={handleSubmit} disabled={isProcessing}>开始拆分</Button>
         </div>
       </div>}
-      {isProcessing && <ScriptActionLoadingOverlay />}
+      {isProcessing && <ScriptActionLoadingOverlay containerRef={loadingContainerRef} />}
     </div>,
     document.body,
   );

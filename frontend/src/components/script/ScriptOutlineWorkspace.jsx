@@ -26,6 +26,7 @@
  *   2026-07-22  将定位器移出滚动层，保持编排区域内绝对垂直居中
  *   2026-07-22  恢复 960px 外层定位基准，避免定位器被宽屏滚动视口裁掉
  *   2026-07-22  将滚动视口扩展到整个内容区，定位器改由父级独立定位
+ *   2026-07-27  向 AI 操作传递剧本内容区边界
  */
 import { useEffect, useRef, useState } from 'react';
 import { getCreationTypeLabel, getVisualStyleLabel } from '../../config/projectDisplayNames';
@@ -95,7 +96,7 @@ function OutlineLocator({ activeIndex, onSelect, outlineType = 'script' }) {
   );
 }
 
-export default function ScriptOutlineWorkspace({ data, projectSettings, onResplit, onRegenerateEpisode, onAddEpisode, onPatchStructure, onDeleteEpisode, episodeActionLoading, episodeActionError, selectedModel, hideEpisodeActions = false, outlineType = 'script', storyboardFileName = '', storyboardDownloadUrl = '', onDownloadStoryboard }) {
+export default function ScriptOutlineWorkspace({ data, projectSettings, onResplit, onRegenerateEpisode, onAddEpisode, onPatchStructure, onDeleteEpisode, episodeActionLoading, episodeActionError, selectedModel, hideEpisodeActions = false, outlineType = 'script', storyboardFileName = '', storyboardDownloadUrl = '', onDownloadStoryboard, loadingContainerRef }) {
   const scrollContainerRef = useRef(null);
   const sectionRefs = useRef([]);
   const [activeSection, setActiveSection] = useState(0);
@@ -149,7 +150,7 @@ export default function ScriptOutlineWorkspace({ data, projectSettings, onRespli
           <section ref={(node) => { sectionRefs.current[0] = node; }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><SectionTitle>整体设定</SectionTitle><KeyValueTable rows={[['视觉风格', getVisualStyleLabel(settings.visualStyle)], ['画面比例', settings.aspectRatio], ['创作类型', getCreationTypeLabel(settings.creationType)]]} /></section>
           <section ref={(node) => { sectionRefs.current[1] = node; }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><SectionTitle>剧本设计</SectionTitle><KeyValueTable rows={[['故事梗概', design.synopsis], ['故事背景', design.background], ['世界观设定', design.world], ['核心冲突', design.conflict]]} /></section>
           <section ref={(node) => { sectionRefs.current[2] = node; }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><SectionTitle compactBottom>主体</SectionTitle><SubjectGroup title="角色" items={subjects.characters} /><SubjectGroup title="场景" items={subjects.scenes} /><SubjectGroup title="道具" items={subjects.props} /></section>
-          {outlineType === 'storyboard' ? <ScriptStoryboardDocument fileName={storyboardFileName} downloadUrl={storyboardDownloadUrl} onDownload={onDownloadStoryboard} /> : <ScriptEpisodeOutline sectionRef={(node) => { sectionRefs.current[3] = node; }} episodes={episodes} revision={data?.revision || 0} selectedModel={selectedModel} onResplit={onResplit} onRegenerate={onRegenerateEpisode} onAdd={onAddEpisode} onPatch={onPatchStructure} onDelete={onDeleteEpisode} actionLoading={episodeActionLoading} actionError={episodeActionError} hideEpisodeActions={hideEpisodeActions} />}
+          {outlineType === 'storyboard' ? <ScriptStoryboardDocument fileName={storyboardFileName} downloadUrl={storyboardDownloadUrl} onDownload={onDownloadStoryboard} /> : <ScriptEpisodeOutline sectionRef={(node) => { sectionRefs.current[3] = node; }} episodes={episodes} revision={data?.revision || 0} selectedModel={selectedModel} onResplit={onResplit} onRegenerate={onRegenerateEpisode} onAdd={onAddEpisode} onPatch={onPatchStructure} onDelete={onDeleteEpisode} actionLoading={episodeActionLoading} actionError={episodeActionError} hideEpisodeActions={hideEpisodeActions} loadingContainerRef={loadingContainerRef} />}
         </div>
       </div>
       <div style={{ position: 'absolute', top: 0, left: 'calc(50% + min(480px, 50%))', height: '100%', pointerEvents: 'none', zIndex: 2 }}>

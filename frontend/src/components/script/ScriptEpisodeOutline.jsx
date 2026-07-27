@@ -28,10 +28,13 @@
  *   2026-07-22  调整展开按钮与首行剧集标签垂直居中对齐
  *   2026-07-22  展开态最多显示四行，超出后在标签区域内滚动
  *   2026-07-22  移除展开按钮造成的无效右侧占位，避免标签被误挤换行
+ *   2026-07-27  将 AI 操作加载层绑定到剧本内容区
+ *   2026-07-27  删除本集增加二次确认，确认后才提交后端删除
  */
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Button, TextButton } from '../ui';
+import ConfirmDialog from '../ConfirmDialog';
 import ScriptEditor from './ScriptEditor';
 import ScriptResplitModal from './ScriptResplitModal';
 import ScriptRewriteModal from './ScriptRewriteModal';
@@ -73,7 +76,7 @@ function EpisodeMarkdown({ content }) {
   );
 }
 
-export default function ScriptEpisodeOutline({ episodes = [], revision = 0, selectedModel, onResplit, onRegenerate, onPatch, onAdd, onDelete, actionLoading = false, actionError = '', sectionRef, hideEpisodeActions = false }) {
+export default function ScriptEpisodeOutline({ episodes = [], revision = 0, selectedModel, onResplit, onRegenerate, onPatch, onAdd, onDelete, actionLoading = false, actionError = '', sectionRef, hideEpisodeActions = false, loadingContainerRef }) {
   const [selectedId, setSelectedId] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -85,6 +88,7 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
   const [pendingInsertIndex, setPendingInsertIndex] = useState(null);
   const [resplitOpen, setResplitOpen] = useState(false);
   const [rewriteOpen, setRewriteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const revealTimerRef = useRef(null);
   const episodeListRef = useRef(null);
 
@@ -173,6 +177,22 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
     else activateEpisode(addResult);
   };
 
+  const requestDeleteEpisode = (episode) => {
+    if (!episode?.id || actionLoading) return;
+    setDeleteTarget({
+      id: episode.id,
+      revision,
+      title: episode.title || episode.name || '未命名',
+    });
+  };
+
+  const confirmDeleteEpisode = async () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    setDeleteTarget(null);
+    await onDelete?.(target.id, target.revision);
+  };
+
   return (
     <section ref={sectionRef} style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', fontFamily: FONT }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 0 0' }}>
@@ -224,10 +244,17 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
           {isEditing ? <><Button type="button" variant="secondary" onClick={() => { setIsEditing(false); setDraft(getEpisodeContent(selectedEpisode)); }} disabled={actionLoading}>取消</Button><Button type="button" variant="primary" loading={actionLoading} onClick={saveDraft}>保存</Button></> : <>
             <Button type="button" variant="secondary" icon={<SparkleIcon />} onClick={() => setRewriteOpen(true)} disabled={actionLoading} contentClassName="!whitespace-nowrap">AI重写本集</Button>
             <Button type="button" variant="secondary" icon={<EditIcon />} onClick={() => { setDraft(getEpisodeContent(selectedEpisode)); setIsEditing(true); }} disabled={actionLoading} contentClassName="!whitespace-nowrap">编辑</Button>
-            <Button type="button" variant="danger" icon={<DeleteIcon />} onClick={() => onDelete?.(selectedEpisode.id, revision)} disabled={actionLoading} contentClassName="!whitespace-nowrap">删除本集</Button>
+            <Button type="button" variant="danger" icon={<DeleteIcon />} onClick={() => requestDeleteEpisode(selectedEpisode)} disabled={actionLoading} contentClassName="!whitespace-nowrap">删除本集</Button>
           </>}
         </div>}
       </div>
+      {deleteTarget && <ConfirmDialog
+        title="确定要删除本集吗？"
+        description={`「${deleteTarget.title}」删除后无法恢复，确定要继续吗？`}
+        confirmText="删除本集"
+        onConfirm={confirmDeleteEpisode}
+        onCancel={() => setDeleteTarget(null)}
+      />}
       <ScriptResplitModal
         key={`resplit-${episodes.length}`}
         open={resplitOpen}
@@ -236,6 +263,7 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
         submitting={actionLoading}
         error={actionError}
         onClose={() => setResplitOpen(false)}
+        loadingContainerRef={loadingContainerRef}
         onSubmit={async (params) => {
           const succeeded = await onResplit?.({ base_revision: revision, ...params });
           if (succeeded) setResplitOpen(false);
@@ -247,6 +275,7 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
         submitting={actionLoading}
         error={actionError}
         onClose={() => setRewriteOpen(false)}
+        loadingContainerRef={loadingContainerRef}
         onSubmit={async ({ instruction }) => {
           const succeeded = await onRegenerate?.(selectedEpisode.id, {
             base_revision: revision,

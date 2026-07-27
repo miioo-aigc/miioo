@@ -328,7 +328,7 @@ export default function GenerateImagePanel({
                   const result = await uploadFn({ file, category: 'reference', project_id: projectId });
                   const uploadedUrl = result.uploaded_url || result.uploadedUrl || result.url || result.file_url || '';
                   // 仅加入候选列表，不自动定稿；只有勾选「定稿」才会传入封面
-                  const candidate = { url: normalizeImageUrl(uploadedUrl), settled: false, id: result.asset_id || result.id || uploadedUrl, media_type: 'image', source: 'local-upload' };
+                  const candidate = { url: normalizeImageUrl(uploadedUrl), settled: false, id: result.asset_id || result.id || uploadedUrl, asset_id: result.asset_id || result.assetId || null, media_type: 'image', source: 'local-upload' };
                   onSetGeneratedImages((prev) => [candidate, ...prev]);
                   onCandidateMedia?.(candidate);
                 } catch {
@@ -340,7 +340,7 @@ export default function GenerateImagePanel({
                   const url = normalizeImageUrl(a.fileUrl || a.originalUrl || a.original_url || a.thumbnailUrl || a.thumbnail_url || a.url || a.file_url);
                   // 仅加入候选列表，不自动定稿；只有勾选「定稿」才会传入封面
                   if (url) {
-                    const candidate = { url, settled: false, id: a.id || url, media_type: 'image', source: 'asset-library' };
+                    const candidate = { url, settled: false, id: a.id || url, asset_id: a.asset_id || a.assetId || a.id || null, media_type: 'image', source: 'asset-library' };
                     onSetGeneratedImages((prev) => [candidate, ...prev]);
                     onCandidateMedia?.(candidate);
                   }

@@ -67,7 +67,7 @@ export default function StoryboardCreationPanel({ initialTab = 'image', onTabCha
   function handleAssets(assets) {
     (assets || []).forEach((asset) => {
       const url = normalizeImageUrl(asset.fileUrl || asset.originalUrl || asset.original_url || asset.thumbnailUrl || asset.thumbnail_url || asset.url || asset.file_url);
-      if (url) onCandidateMedia?.({ id: asset.id || url, url, media_type: uploadType, source: 'asset-library' });
+      if (url) onCandidateMedia?.({ id: asset.id || url, asset_id: asset.asset_id || asset.assetId || asset.id || null, url, media_type: uploadType, source: 'asset-library' });
     });
     setAssetPickerOpen(false);
   }

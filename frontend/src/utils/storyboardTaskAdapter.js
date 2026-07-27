@@ -18,8 +18,16 @@ export function getStoryboardTaskStatus(task) {
 }
 
 export function isStoryboardTaskInProgress(task) {
-  const status = getStoryboardTaskStatus(task);
-  return status === 'pending' || status === 'running';
+  const status = String(getStoryboardTaskStatus(task) || '').toLowerCase();
+  return [
+    'pending',
+    'queued',
+    'created',
+    'running',
+    'processing',
+    'in_progress',
+    'in-progress',
+  ].includes(status);
 }
 
 export function extractStoryboardVideoUrl(task) {

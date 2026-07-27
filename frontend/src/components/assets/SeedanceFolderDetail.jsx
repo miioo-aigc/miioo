@@ -1,10 +1,11 @@
 /**
- * Seedance 真人素材库文件夹详情。
- * 只负责详情页的展示和上传入口，数据请求与页面状态由父面板编排。
+ * Seedance 素材库文件夹详情。
+ * 负责图片/视频展示和上传入口，数据请求与页面状态由父面板编排。
  */
 
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { createVideoFirstFrame } from './seedanceUploadValidation';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -16,8 +17,62 @@ function UploadIcon() {
   );
 }
 
-function AssetImageCard({ asset }) {
-  const imageUrl = asset.preview_url || asset.asset_ref_url;
+function PreviewIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M6.667 2.667H3.333a.666.666 0 0 0-.666.666v3.334M9.333 13.333h3.334a.666.666 0 0 0 .666-.666V9.333M3 3l4 4M13 13l-4-4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.333 2.667h3.334a.666.666 0 0 1 .666.666v3.334M6.667 13.333H3.333a.666.666 0 0 1-.666-.666V9.333M13 3 9 7M3 13l4-4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function DeleteIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M3 3.333V14.667H13V3.333H3Z" stroke="currentColor" strokeLinejoin="round" />
+      <path d="M6.667 6.667V11M9.333 6.667V11M1.333 3.333H14.667M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AssetImageCard({ asset, onPreview, onDelete }) {
+  const [generatedPoster, setGeneratedPoster] = useState(null);
+  const [isHovered, setIsHovered] = useState(false);
+  const videoRef = useRef(null);
+  const assetType = String(asset.asset_type || '').toLowerCase();
+  const isVideo = assetType === 'video';
+  const isAudio = assetType === 'audio';
+  const imageUrl = isVideo
+    ? (asset.posterUrl || asset.poster_url || asset.thumbnailUrl || asset.thumbnail_url || null)
+    : (asset.preview_url || asset.asset_ref_url);
+  const videoUrl = isVideo ? (asset.source_url || asset.file_url || asset.preview_url || null) : null;
+
+  useEffect(() => {
+    if (!isVideo || imageUrl || !videoUrl || asset.localFile) return undefined;
+    let cancelled = false;
+    fetch(videoUrl, { mode: 'cors' })
+      .then((response) => response.blob())
+      .then((blob) => createVideoFirstFrame(new File([blob], asset.name || 'video.mp4', { type: blob.type || 'video/mp4' })))
+      .then((poster) => { if (!cancelled) setGeneratedPoster(poster); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [asset.localFile, asset.name, imageUrl, isVideo, videoUrl]);
+
+  const posterUrl = imageUrl || generatedPoster;
+  const canPreview = Boolean(imageUrl || videoUrl || isAudio);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isVideo || !videoUrl) return undefined;
+    if (isHovered) {
+      video.currentTime = 0;
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+      video.currentTime = 0;
+    }
+    return undefined;
+  }, [isHovered, isVideo, videoUrl]);
   return (
     <div
       style={{
@@ -27,24 +82,76 @@ function AssetImageCard({ asset }) {
         flexShrink: 0,
         position: 'relative',
         overflow: 'hidden',
-        cursor: imageUrl ? 'pointer' : 'default',
+        cursor: imageUrl || videoUrl || isAudio ? 'pointer' : 'default',
         boxSizing: 'border-box',
         background: '#1A1A1A',
       }}
       title={asset.name || undefined}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      {imageUrl ? (
-        <img
-          alt={asset.name || ''}
-          src={normalizeImageUrl(imageUrl)}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+      {isVideo && videoUrl ? (
+        <video
+          ref={videoRef}
+          src={normalizeImageUrl(videoUrl)}
+          poster={posterUrl ? (posterUrl.startsWith('data:') ? posterUrl : normalizeImageUrl(posterUrl)) : undefined}
+          muted
+          playsInline
+          preload="metadata"
+          aria-label={asset.name || '视频素材'}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', background: '#1A1A1A', pointerEvents: 'none' }}
         />
+      ) : isAudio ? (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', background: '#1A1A1A' }}>
+          <audio src={normalizeImageUrl(asset.source_url || asset.preview_url)} controls preload="metadata" aria-label={asset.name || '音频素材'} style={{ width: '100%' }} />
+        </div>
+      ) : imageUrl ? (
+        <div
+          role="img"
+          aria-label={asset.name || '图片素材'}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: `url(${normalizeImageUrl(imageUrl)})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        />
+      ) : null}
+      {isHovered ? (
+        <div
+          style={{ position: 'absolute', right: '12px', bottom: '12px', zIndex: 3, display: 'flex', alignItems: 'center', gap: '6px' }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {canPreview ? (
+            <button
+              type="button"
+              aria-label={`放大查看${asset.name ? ` ${asset.name}` : ''}`}
+              onClick={(event) => { event.stopPropagation(); onPreview?.(asset); }}
+              style={{ width: '24px', height: '24px', padding: 0, border: 0, borderRadius: '6px', background: '#00000099', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'background 0.12s' }}
+              onMouseEnter={(event) => { event.currentTarget.style.background = '#2A2A2A99'; }}
+              onMouseLeave={(event) => { event.currentTarget.style.background = '#00000099'; }}
+            >
+              <PreviewIcon />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            aria-label={`删除${asset.name ? ` ${asset.name}` : ''}`}
+            onClick={(event) => { event.stopPropagation(); onDelete?.(asset); }}
+            style={{ width: '24px', height: '24px', padding: 0, border: 0, borderRadius: '6px', background: '#00000099', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'color 0.12s, background 0.12s' }}
+            onMouseEnter={(event) => { event.currentTarget.style.background = '#2A2A2A99'; event.currentTarget.style.color = '#FF4444'; }}
+            onMouseLeave={(event) => { event.currentTarget.style.background = '#00000099'; event.currentTarget.style.color = '#FFFFFF'; }}
+          >
+            <DeleteIcon />
+          </button>
+        </div>
       ) : null}
     </div>
   );
 }
 
-export default function SeedanceFolderDetail({ folder, assets = [], loading = false, uploading = false, onBack, onUpload }) {
+export default function SeedanceFolderDetail({ folder, assets = [], loading = false, uploading = false, onBack, onUpload, onPreview, onDelete }) {
   const inputRef = useRef(null);
 
   const handleFileChange = (event) => {
@@ -78,7 +185,13 @@ export default function SeedanceFolderDetail({ folder, assets = [], loading = fa
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignContent: 'flex-start' }}>
-        <input ref={inputRef} accept="image/*" type="file" style={{ display: 'none' }} onChange={handleFileChange} />
+        <input
+          ref={inputRef}
+          accept=".jpeg,.jpg,.png,.webp,.gif,.heic,.mp4,.mov,.mp3,.wav,image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,audio/mpeg,audio/wav"
+          type="file"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
         <button
           type="button"
           disabled={uploading}
@@ -91,7 +204,7 @@ export default function SeedanceFolderDetail({ folder, assets = [], loading = fa
           <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFFCC', flexShrink: 0 }}>{uploading ? '上传中...' : '上传'}</span>
         </button>
         {loading ? <span style={{ alignSelf: 'center', fontFamily: FONT, fontSize: '13px', lineHeight: '18px', color: '#FFFFFF66' }}>加载中...</span> : null}
-        {!loading && assets.map((asset) => <AssetImageCard key={asset.id} asset={asset} />)}
+        {!loading && assets.map((asset) => <AssetImageCard key={asset.id} asset={asset} onPreview={onPreview} onDelete={onDelete} />)}
       </div>
     </div>
   );

@@ -39,7 +39,7 @@ export default function StoryboardFinalizedCard({ shot, media, selected = false,
       {hovered && hasMedia && <>
         <div style={{ position: 'absolute', right: '8px', bottom: '6px', display: 'flex', gap: '4px' }}>
           <button type="button" aria-label="放大" onClick={(event) => { event.stopPropagation(); onPreview?.(media); }} style={{ width: '24px', height: '24px', border: 0, borderRadius: '4px', background: '#00000080', color: '#FFF', cursor: 'pointer' }}>⌗</button>
-          <button type="button" aria-label="下载" onClick={(event) => { event.stopPropagation(); onDownload?.(media); }} style={{ width: '24px', height: '24px', border: 0, borderRadius: '4px', background: '#00000080', color: '#FFF', cursor: 'pointer' }}>↓</button>
+          <button type="button" aria-label="下载" onClick={(event) => { event.stopPropagation(); onDownload?.(media, shot); }} style={{ width: '24px', height: '24px', border: 0, borderRadius: '4px', background: '#00000080', color: '#FFF', cursor: 'pointer' }}>↓</button>
         </div>
       </>}
     </div>

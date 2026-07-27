@@ -5,7 +5,7 @@
  * ─── 页面区块 ───────────────────────────────────────
  *   SeedanceAssetLibraryPanel：Seedance2.0素材库子 Tab 和文件夹网格
  *   真人素材组：从真人素材接口读取，空数据时仅展示录入入口
- *   SeedanceFolderDetail：打开文件夹后的真实图片列表与上传入口
+ *   SeedanceFolderDetail：打开文件夹后的图片/视频列表与上传入口
  *   AddVirtualGroupCard：虚拟人像素材库的新建素材组入口
  *   ConfirmDialog / AssetsProjectRenameModal：删除确认与素材库重命名
  *   CreationLiveMaterialModal：复用创作模块的真人素材录入流程
@@ -18,8 +18,11 @@
  *   2026-07-24  增加素材库重命名和删除二次确认交互
  *   2026-07-24  复用创作模块真人素材弹窗，接入扫码录入和认证流程
  *   2026-07-24  增加文件夹详情页，接入真人素材图片上传与真实列表
+ *   2026-07-27  支持文件夹上传图片和视频素材，并按媒体类型展示
+ *   2026-07-27  按官方规则增加图片、视频和音频上传前校验
  *   2026-07-24  增加虚拟人像素材库卡片网格和新建素材组入口
  *   2026-07-24  接入 AIGC 素材组真实接口，真人与虚拟素材组按类型隔离
+ *   2026-07-27  详情页素材卡片增加悬停预览、删除确认和删除后列表同步
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -30,6 +33,7 @@ import CreationToast from '../creation/CreationToast';
 import { AssetsProjectRenameModal } from './AssetsProjectModals';
 import {
   apiDeleteLiveMaterialGroup,
+  apiDeleteLiveMaterialAsset,
   apiCreateAigcMaterialGroup,
   apiListLiveMaterialAssets,
   apiListLiveMaterialGroups,
@@ -39,6 +43,9 @@ import {
 import SeedanceFolderCard from './SeedanceFolderCard';
 import SeedanceFolderDetail from './SeedanceFolderDetail';
 import AddVirtualGroupCard from './AddVirtualGroupCard';
+import { createVideoFirstFrame, validateSeedanceUpload } from './seedanceUploadValidation';
+import SeedanceResolutionDialog from './SeedanceResolutionDialog';
+import SeedanceAssetPreviewModal from './SeedanceAssetPreviewModal';
 
 const SUB_TABS = [
   { value: 'real', label: '真人人像' },
@@ -79,13 +86,19 @@ export default function SeedanceAssetLibraryPanel() {
   const [folderAssetsLoading, setFolderAssetsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState(null);
+  const [resolutionDialogOpen, setResolutionDialogOpen] = useState(false);
+  const [previewAsset, setPreviewAsset] = useState(null);
+  const [assetDeleteTarget, setAssetDeleteTarget] = useState(null);
+  const [deletingAsset, setDeletingAsset] = useState(false);
   const toastTimerRef = useRef(null);
   const assetPollRef = useRef(null);
+  const uploadedAssetNamesRef = useRef(new Map());
+  const uploadedAssetPostersRef = useRef(new Map());
 
-  const showToast = useCallback((message, type = 'error') => {
+  const showToast = useCallback((message, type = 'error', duration = 3000) => {
     clearTimeout(toastTimerRef.current);
     setToast({ id: Date.now(), message, type });
-    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+    toastTimerRef.current = setTimeout(() => setToast(null), duration);
   }, []);
 
   const handleTabChange = (value) => {
@@ -105,7 +118,18 @@ export default function SeedanceAssetLibraryPanel() {
       id: group.id,
       name: group.name || '未命名素材组',
       count: group.asset_count ?? assets.length,
-      images: assets.slice(0, 2).map((asset) => asset.preview_url || asset.asset_ref_url).filter(Boolean),
+      images: assets.slice(0, 2).map((asset) => (
+        uploadedAssetPostersRef.current.get(asset.id)
+          || asset.poster_url
+          || asset.posterUrl
+          || asset.thumbnail_url
+          || asset.thumbnailUrl
+          || asset.preview_url || (
+          ['video', 'audio'].includes(String(asset.asset_type || '').toLowerCase())
+            ? null
+            : asset.asset_ref_url
+        )
+      )).filter(Boolean),
       groupType: group.group_type,
     };
   }, []);
@@ -139,7 +163,15 @@ export default function SeedanceAssetLibraryPanel() {
     setFolderAssetsLoading(true);
     try {
       const assets = await apiListLiveMaterialAssets(folder.id, { refresh: true });
-      setFolderAssets(assets);
+      setFolderAssets(assets.map((asset) => ({
+        ...asset,
+        name: uploadedAssetNamesRef.current.get(asset.id) || asset.name,
+        posterUrl: uploadedAssetPostersRef.current.get(asset.id)
+          || asset.poster_url
+          || asset.posterUrl
+          || asset.thumbnail_url
+          || asset.thumbnailUrl,
+      })));
     } catch (error) {
       console.warn('[SeedanceAssetLibraryPanel] 获取文件夹素材失败', error);
       showToast('素材加载失败，请返回后重试');
@@ -153,7 +185,15 @@ export default function SeedanceAssetLibraryPanel() {
     assetPollRef.current = setInterval(async () => {
       try {
         const assets = await apiListLiveMaterialAssets(groupId, { refresh: true });
-        setFolderAssets(assets);
+        setFolderAssets(assets.map((asset) => ({
+          ...asset,
+          name: uploadedAssetNamesRef.current.get(asset.id) || asset.name,
+          posterUrl: uploadedAssetPostersRef.current.get(asset.id)
+            || asset.poster_url
+            || asset.posterUrl
+            || asset.thumbnail_url
+            || asset.thumbnailUrl,
+        })));
         const allDone = assets.every((asset) => {
           const status = (asset.status || '').toLowerCase();
           return status !== 'pending' && status !== 'processing';
@@ -171,18 +211,40 @@ export default function SeedanceAssetLibraryPanel() {
 
   const handleUploadAsset = async (file) => {
     if (!activeFolder) return;
-    if (!file.type.startsWith('image/')) {
-      showToast('仅支持上传图片格式');
-      return;
-    }
-    if (file.size > 30 * 1024 * 1024) {
-      showToast('图片大小不能超过 30MB');
+    const validation = await validateSeedanceUpload(file);
+    if (validation.error || !validation.type) {
+      if (validation.errorCode === 'resolution') {
+        setResolutionDialogOpen(true);
+        return;
+      }
+      showToast(validation.error || '当前素材类型暂不支持上传', 'error', 5000);
       return;
     }
     setUploading(true);
     try {
-      const asset = await apiUploadLiveMaterialAsset(activeFolder.id, file, 'image');
-      setFolderAssets((current) => [asset, ...current]);
+      let firstFrameUrl = null;
+      if (validation.type === 'video') {
+        try {
+          firstFrameUrl = await createVideoFirstFrame(file);
+        } catch (error) {
+          console.warn('[SeedanceAssetLibraryPanel] 生成视频首帧失败，将使用视频预览', error);
+        }
+      }
+      const asset = await apiUploadLiveMaterialAsset(activeFolder.id, file, validation.type, file.name);
+      if (asset?.id) {
+        uploadedAssetNamesRef.current.set(asset.id, file.name);
+        if (firstFrameUrl) uploadedAssetPostersRef.current.set(asset.id, firstFrameUrl);
+      }
+      setFolderAssets((current) => [{
+        ...asset,
+        name: file.name,
+        localFile: validation.type === 'video' ? file : null,
+        posterUrl: firstFrameUrl
+          || asset?.poster_url
+          || asset?.posterUrl
+          || asset?.thumbnail_url
+          || asset?.thumbnailUrl,
+      }, ...current]);
       await refreshFolders();
       startAssetStatusPolling(activeFolder.id);
     } catch (error) {
@@ -190,6 +252,24 @@ export default function SeedanceAssetLibraryPanel() {
       showToast('上传失败，请重试');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleConfirmDeleteAsset = async () => {
+    if (!assetDeleteTarget || deletingAsset) return;
+    setDeletingAsset(true);
+    try {
+      await apiDeleteLiveMaterialAsset(assetDeleteTarget.id);
+      setFolderAssets((current) => current.filter((asset) => asset.id !== assetDeleteTarget.id));
+      setPreviewAsset((current) => current?.id === assetDeleteTarget.id ? null : current);
+      setAssetDeleteTarget(null);
+      await refreshFolders();
+      showToast('素材已删除', 'success');
+    } catch (error) {
+      console.warn('[SeedanceAssetLibraryPanel] 删除素材失败', error);
+      showToast('删除失败，请重试');
+    } finally {
+      setDeletingAsset(false);
     }
   };
 
@@ -262,6 +342,8 @@ export default function SeedanceAssetLibraryPanel() {
   useEffect(() => () => {
     clearTimeout(toastTimerRef.current);
     clearInterval(assetPollRef.current);
+    uploadedAssetNamesRef.current.clear();
+    uploadedAssetPostersRef.current.clear();
   }, []);
 
   return (
@@ -278,6 +360,8 @@ export default function SeedanceAssetLibraryPanel() {
             uploading={uploading}
             onBack={handleBackToFolders}
             onUpload={handleUploadAsset}
+            onPreview={setPreviewAsset}
+            onDelete={setAssetDeleteTarget}
           />
         </>
       ) : activeTab === 'real' ? (
@@ -330,12 +414,25 @@ export default function SeedanceAssetLibraryPanel() {
         />
       )}
 
+      {assetDeleteTarget && (
+        <ConfirmDialog
+          title="确认删除"
+          description={`「${assetDeleteTarget.name || '该素材'}」删除后无法恢复，确定要删除吗？`}
+          confirmText={deletingAsset ? '删除中...' : '删除'}
+          onConfirm={handleConfirmDeleteAsset}
+          onCancel={() => { if (!deletingAsset) setAssetDeleteTarget(null); }}
+          zIndex={2100}
+        />
+      )}
+
       <CreationLiveMaterialModal
         open={liveMaterialModalOpen}
         qrOnly
         onClose={handleCloseLiveMaterialModal}
         onCreated={handleCloseLiveMaterialModal}
       />
+      <SeedanceResolutionDialog open={resolutionDialogOpen} onClose={() => setResolutionDialogOpen(false)} />
+      <SeedanceAssetPreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />
       <CreationToast toasts={toast ? [toast] : []} />
     </section>
   );

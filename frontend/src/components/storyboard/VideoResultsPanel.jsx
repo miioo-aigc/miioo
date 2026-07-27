@@ -78,7 +78,7 @@ async function handleVideoUpload(file, { projectId, shotId, onSetGeneratedVideos
     const videoUrl = result.video_url || result.videoUrl;
     if (videoUrl) {
       const normalizedUrl = normalizeImageUrl(videoUrl);
-      const candidate = { url: normalizedUrl, settled: false, id: result.id || normalizedUrl, media_type: 'video', source: 'local-upload' };
+      const candidate = { url: normalizedUrl, settled: false, id: result.id || normalizedUrl, asset_id: result.asset_id || result.assetId || null, media_type: 'video', source: 'local-upload' };
       onSetGeneratedVideos?.((prev) => [candidate, ...prev]);
       onCandidateMedia?.(candidate);
       onSettleVideo?.(normalizedUrl, null);

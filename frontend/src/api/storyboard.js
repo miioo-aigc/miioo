@@ -33,40 +33,44 @@ function normalizeStoryboardImageSize(value) {
   return aliasMap[trimmed] || trimmed;
 }
 
-export async function apiGetStoryboards(projectId, { episode_id } = {}) {
+export async function apiGetStoryboards(projectId, { episode_id, limit, offset = 0, include_gen_params = false } = {}) {
+  const isPagedRequest = Number.isFinite(limit);
+  const fetchPage = async () => {
+    const query = new URLSearchParams();
+    if (episode_id) query.set('episode_id', episode_id);
+    query.set('limit', String(isPagedRequest ? limit : 200));
+    if (isPagedRequest && offset > 0) query.set('offset', String(offset));
+    if (include_gen_params) query.set('include_gen_params', 'true');
+    const res = await authFetch(
+      `${BASE}/api/projects/${projectId}/storyboards?${query.toString()}`,
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+    if (!res.ok) {
+      const responseText = await res.text().catch(() => '');
+      let detail = responseText;
+      try {
+        const body = responseText ? JSON.parse(responseText) : null;
+        detail = body?.detail || body?.message || body?.error || responseText;
+      } catch {
+        // 后端异常页可能直接返回纯文本，保留原始内容用于诊断。
+      }
+      const error = new Error(detail || `获取分镜列表失败（HTTP ${res.status}）`);
+      error.status = res.status;
+      throw error;
+    }
+    const data = await res.json();
+    const items = Array.isArray(data) ? data : data?.list || data?.items || [];
+    return episode_id
+      ? items.filter((item) => (item.episode_id ?? item.episodeId) === episode_id)
+      : items;
+  };
+
+  // 分页请求不能复用“整集列表”缓存，否则翻页会读到错误的第一页或旧的 200 条数据。
+  if (isPagedRequest) return fetchPage();
+
   const raw = await cached(
     K.storyboards(projectId, episode_id),
-    async () => {
-      // 当前后端对 episode_id 查询会返回纯文本 500；取项目列表后在前端按集过滤，
-      // 避免成功抽取后额外产生失败请求，也兼容旧版列表接口。
-      const res = await authFetch(
-        `${BASE}/api/projects/${projectId}/storyboards?limit=200`,
-        { headers: { 'Content-Type': 'application/json' } },
-      );
-      if (!res.ok) {
-        const responseText = await res.text().catch(() => '');
-        let detail = responseText;
-        try {
-          const body = responseText ? JSON.parse(responseText) : null;
-          detail = body?.detail || body?.message || body?.error || responseText;
-        } catch {
-          // 后端异常页可能直接返回纯文本，保留原始内容用于诊断。
-        }
-        const error = new Error(detail || `获取分镜列表失败（HTTP ${res.status}）`);
-        error.status = res.status;
-        throw error;
-      }
-      const data = await res.json();
-      if (episode_id) {
-        const allItems = Array.isArray(data) ? data : data?.list || data?.items || [];
-        return allItems.filter((item) => (item.episode_id ?? item.episodeId) === episode_id);
-      }
-      // API 文档确认返回直接数组，兼容未来可能改为分页对象的情况
-      if (Array.isArray(data)) return data;
-      if (Array.isArray(data?.list)) return data.list;
-      if (Array.isArray(data?.items)) return data.items;
-      return [];
-    },
+    fetchPage,
     { medium: MEDIUM.CONTENT, ttl: TTL.CONTENT },
   );
   // 兼容旧缓存可能存的非数组格式
@@ -140,7 +144,39 @@ export async function apiListStoryboardMediaCandidates(projectId, storyboardId) 
   });
   if (!res.ok) throw new Error(`获取分镜候选媒体失败（HTTP ${res.status}）`);
   const data = await res.json();
-  return Array.isArray(data) ? data : data?.items || data?.media || data?.candidates || [];
+  const items = Array.isArray(data) ? data : data?.items || data?.media || data?.candidates || [];
+  return items.map(normalizeStoryboardMediaCandidate);
+}
+
+// 候选媒体接口同时兼容后端 snake_case 和旧前端 camelCase，页面统一消费 camelCase。
+export function normalizeStoryboardMediaCandidate(item = {}) {
+  const metadata = item.metadata ?? item.metadata_json ?? item.metadataJson ?? {};
+  const normalized = {
+    ...item,
+    id: item.id,
+    storyboardId: item.storyboardId ?? item.storyboard_id,
+    mediaType: item.mediaType ?? item.media_type,
+    url: item.url ?? item.file_url ?? item.fileUrl,
+    thumbnailUrl: item.thumbnailUrl ?? item.thumbnail_url,
+    posterUrl: item.posterUrl ?? item.poster_url,
+    downloadUrl: item.downloadUrl ?? item.download_url,
+    isFinalized: item.isFinalized ?? item.is_finalized ?? false,
+    source: item.source,
+    createdAt: item.createdAt ?? item.created_at,
+    metadata,
+    assetId: item.assetId ?? item.asset_id ?? metadata?.asset_id ?? metadata?.assetId,
+  };
+  // 保留 snake_case 别名，兼容当前尚未迁移的展示组件和历史缓存。
+  return {
+    ...normalized,
+    storyboard_id: normalized.storyboardId,
+    media_type: normalized.mediaType,
+    thumbnail_url: normalized.thumbnailUrl,
+    poster_url: normalized.posterUrl,
+    download_url: normalized.downloadUrl,
+    is_finalized: Boolean(normalized.isFinalized),
+    created_at: normalized.createdAt,
+  };
 }
 
 export async function apiCreateStoryboardMediaCandidate(projectId, storyboardId, data) {
@@ -150,7 +186,7 @@ export async function apiCreateStoryboardMediaCandidate(projectId, storyboardId,
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`保存分镜候选媒体失败（HTTP ${res.status}）`);
-  return res.json();
+  return normalizeStoryboardMediaCandidate(await res.json());
 }
 
 export async function apiUpdateStoryboardMediaCandidate(projectId, storyboardId, mediaId, data) {
@@ -160,7 +196,7 @@ export async function apiUpdateStoryboardMediaCandidate(projectId, storyboardId,
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`更新分镜候选媒体失败（HTTP ${res.status}）`);
-  return res.json();
+  return normalizeStoryboardMediaCandidate(await res.json());
 }
 
 export async function apiDeleteStoryboardMediaCandidate(projectId, storyboardId, mediaId) {
@@ -169,6 +205,14 @@ export async function apiDeleteStoryboardMediaCandidate(projectId, storyboardId,
     headers: { 'Content-Type': 'application/json' },
   });
   if (!res.ok) throw new Error(`删除分镜候选媒体失败（HTTP ${res.status}）`);
+}
+
+export async function apiDownloadStoryboardMediaCandidate(projectId, storyboardId, mediaId) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}/media-candidates/${mediaId}/download`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error(`下载分镜候选媒体失败（HTTP ${res.status}）`);
+  return res.blob();
 }
 
 export async function apiDeleteStoryboard(projectId, storyboardId) {
@@ -190,14 +234,36 @@ export async function apiReorderStoryboards(projectId, ordered_ids) {
 
 // ── 分镜生成 ──────────────────────────────────────────────────────────────────
 
-export async function apiGenerateStoryboardsFromEpisode(projectId, { episode_id, model }) {
+export async function apiGenerateStoryboardsFromEpisode(projectId, { episode_id, model = null, overwrite_existing = true } = {}) {
   const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ episode_id, model }),
+    body: JSON.stringify({ episode_id, model, overwrite_existing }),
   });
+  if (!res.ok) {
+    const responseText = await res.text().catch(() => '');
+    let detail;
+    try {
+      const body = responseText ? JSON.parse(responseText) : null;
+      detail = body?.detail || body?.message || body?.error || body?.status_message || '';
+    } catch {
+      // 网关错误可能返回纯文本或 HTML，保留可读的原始响应用于联调。
+      detail = responseText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    const error = new Error(detail || `分镜生成失败（HTTP ${res.status}）`);
+    error.status = res.status;
+    throw error;
+  }
   invalidateStoryboards(projectId);
-  return res.json();
+  const data = await res.json();
+  // OpenAPI 当前声明该接口直接返回分镜数组；兼容后端联调期间出现的统一响应包装。
+  // 包装对象必须在 API 层解开，否则页面会把 { data: ... } 误判为“没有任务 ID”。
+  const payload = data?.data ?? data?.result ?? data?.payload ?? data;
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.storyboards)) return payload.storyboards;
+  if (Array.isArray(payload?.list)) return payload.list;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return payload;
 }
 
 export async function apiGenerateStoryboardsFromFinalScript(projectId, options = {}) {

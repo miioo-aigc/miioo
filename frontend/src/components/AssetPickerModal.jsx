@@ -76,7 +76,21 @@ function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onM
         background: asset.url ? 'transparent' : (asset.bgColor || '#252525'),
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        {asset.asset_type === 'video' && (asset.posterUrl || asset.url) ? (
+        {asset.isSeedanceMaterial && asset.url ? (
+          <div
+            aria-label={asset.name || 'Seedance素材'}
+            role="img"
+            style={{
+              width: '100%',
+              height: '100%',
+              backgroundImage: `url(${normalizeImageUrl(asset.url)})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              opacity: isHovered && !isSelected ? 0.85 : 1,
+              transition: 'opacity 100ms',
+            }}
+          />
+        ) : asset.asset_type === 'video' && (asset.posterUrl || asset.url) ? (
           // 视频卡片：优先用封面图显示（清晰、快速），无封面时回退到 video 标签加载首帧
           asset.posterUrl ? (
             <img src={normalizeImageUrl(asset.posterUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }} />
@@ -432,6 +446,7 @@ export default function AssetPickerModal({
           groupType: activeSeedanceGroup.group_type || 'LivenessFace',
           assetRefUrl: asset.asset_ref_url,
           previewUrl: asset.preview_url,
+          isSeedanceMaterial: true,
           bgColor: '#252525',
         })));
       })
@@ -941,9 +956,15 @@ export default function AssetPickerModal({
                   isSelected={selected.has(asset.id) || disabled}
                   isHovered={hoveredCard === asset.id}
                   isDisabled={disabled}
-                  onMouseEnter={(e) => { setHoveredCard(asset.id); handlePreviewEnter(e, asset); }}
-                  onMouseMove={handlePreviewMove}
-                  onMouseLeave={() => { setHoveredCard(null); handlePreviewLeave(); }}
+                  onMouseEnter={(e) => {
+                    setHoveredCard(asset.id);
+                    if (!asset.isSeedanceMaterial) handlePreviewEnter(e, asset);
+                  }}
+                  onMouseMove={asset.isSeedanceMaterial ? undefined : handlePreviewMove}
+                  onMouseLeave={() => {
+                    setHoveredCard(null);
+                    if (!asset.isSeedanceMaterial) handlePreviewLeave();
+                  }}
                   onClick={() => toggle(asset)}
                   compact={isCompactCard}
                 />

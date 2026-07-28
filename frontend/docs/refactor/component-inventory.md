@@ -1440,6 +1440,11 @@
 - `SubjectImageMappers` 读取资产自身字段，并兼容从 `metadata_json` 补齐提示词、模型、比例和分辨率；`SubjectImageList` 不再把当前编辑表单参数无条件灌入本地上传或资产库图片。
 - 候选区本地上传完成绑定时，通过契约允许的 `metadata_json` 写入 `source_type: local-upload` 与 `origin: local-upload`，保证新上传图片刷新后仍能识别来源。历史资产若未保存来源字段，前端无法可靠区分其原始上传方式。
 
+## 2026-07-28 主体资产库选择真实资产 ID 修复
+
+- 修复 `AssetPickerModal` 选择创作历史图片时把 `history-{id}-{index}` 作为资产编号返回的问题；创作历史适配器和选择器均保留后端真实 `asset_id`，确认时优先使用真实资产编号。
+- `SubjectImageActions` 绑定候选图前校验资产编号，遇到没有真实资产 ID 的历史记录只提示用户，不再调用 `/api/assets/history-*`，避免后端 500。
+
 ## 2026-07-23 主体卡片删除资产清理修复
 
 - `src/api/subject.js` 删除主体改为直接调用主体专用 `DELETE /api/projects/{project_id}/subjects/{subject_id}`，不再前置删除主体关联资产；这是 OpenAPI 明确定义的主体删除入口，避免资产删除接口对主体关联资产返回 500。

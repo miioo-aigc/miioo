@@ -41,7 +41,13 @@ export function createSubjectImageActionHandlers({
   triggerBlobDownload,
 }) {
   function handleUpload(fileOrAsset) {
-    if (fileOrAsset && typeof fileOrAsset === 'object' && fileOrAsset.id) {
+    const selectedAssetId = fileOrAsset?.assetId || fileOrAsset?.asset_id || fileOrAsset?.id;
+    if (fileOrAsset && typeof fileOrAsset === 'object' && selectedAssetId) {
+      // 创作历史卡片的展示 ID 可能是 history-{id}-{index}，绑定主体必须使用真实资产 UUID。
+      if (String(selectedAssetId).startsWith('history-')) {
+        showToast('该创作历史图片没有可绑定的资产编号，请先保存到资产库', 'error');
+        return;
+      }
       const rawUrl = fileOrAsset.url
         || fileOrAsset.file_url
         || fileOrAsset.fileUrl
@@ -55,8 +61,8 @@ export function createSubjectImageActionHandlers({
         rawUrl,
         url: normalizeImageUrl(rawUrl),
         settled: false,
-        id: fileOrAsset.id,
-        assetId: fileOrAsset.id,
+        id: selectedAssetId,
+        assetId: selectedAssetId,
         source: 'creation-asset',
         detailSource: 'asset-library',
         prompt: fileOrAsset.prompt,
@@ -66,11 +72,11 @@ export function createSubjectImageActionHandlers({
         resolution: fileOrAsset.resolution,
         created_at: fileOrAsset.created_at,
       }, ...prev]);
-      apiUpdateAsset(fileOrAsset.id, { subject_id: subjectId, category: subjectType })
+      apiUpdateAsset(selectedAssetId, { subject_id: subjectId, category: subjectType })
         .then(() => invalidate(K.projectAssets(projectId), MEDIUM.CONTENT))
         .catch((error) => {
           console.error('[SubjectPage] 绑定候选图资产失败:', error);
-          setGeneratedImages((prev) => prev.filter((image) => image.assetId !== fileOrAsset.id));
+          setGeneratedImages((prev) => prev.filter((image) => image.assetId !== selectedAssetId));
           showToast(error.message || '保存候选图失败', 'error');
         });
       return;

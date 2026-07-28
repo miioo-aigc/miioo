@@ -300,6 +300,8 @@ export default function AssetPickerModal({
 
     return {
       id: item.id,
+      assetId: item.assetId || item.asset_id || item.image?.asset_id || item.image?.assetId || null,
+      backendId: item.backendId || null,
       name: item.name || item.prompt?.slice(0, 20) || '未命名',
       // AssetCard 渲染视频时优先用 posterUrl（封面图），无封面时 url 传视频地址让 <video> 加载
       url,
@@ -629,7 +631,8 @@ export default function AssetPickerModal({
     })();
   }, [open, activeTab, projectId, activeProjectId, projectSubTab, loadedTabKeys]);
 
-  // 切换到创作资产 tab 时，若 store 中对应数据未初始化则从后端拉取
+  // 切换到创作资产 tab 时，从后端补齐全部分页。
+  // CreationPage 的 store 只保证当前创作页已加载的分页，不能作为资产库弹窗的完整数据源。
   useEffect(() => {
     if (!open || activeTab !== 'creative' || creativeAssetsProp) return;
 
@@ -638,28 +641,35 @@ export default function AssetPickerModal({
     const type = subTabTypeMap[creativeSubTab];
     if (!type || creativeLoadedTabs.has(type)) return;
 
-    // 如果 store 里已有数据（由 CreationPage 初始化），直接跳过
-    const storeKey = type === 'audio' ? 'dubbing' : type;
-    const storeData = generationsByTab[storeKey];
-    if (storeData && storeData.length > 0) {
-      // Store 已有创作资产时只记录该 Tab 已完成初始化，避免重复请求。
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- 将外部 Store 已有数据标记为已加载
-      setCreativeLoadedTabs(prev => new Set([...prev, type]));
-      return;
-    }
-
     (async () => {
       try {
-        let resp;
-        if (type === 'image') {
-          resp = await apiListCreationImages({ page: 1, page_size: 100 });
-        } else if (type === 'video') {
-          resp = await apiListCreationVideos({ page: 1, page_size: 100 });
-        } else {
-          resp = await apiListCreationAudios({ page: 1, page_size: 100 });
+        const listApi = type === 'image'
+          ? apiListCreationImages
+          : type === 'video'
+            ? apiListCreationVideos
+            : apiListCreationAudios;
+        const pageSize = 100;
+        const allItems = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore) {
+          const resp = await listApi({ page, page_size: pageSize });
+          const list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
+          allItems.push(...list);
+
+          const total = Number(resp?.total ?? resp?.count);
+          const explicitHasMore = resp?.has_more ?? resp?.hasMore;
+          hasMore = explicitHasMore !== undefined
+            ? Boolean(explicitHasMore)
+            : Number.isFinite(total) && total > allItems.length
+              ? true
+              : list.length >= pageSize;
+          if (!hasMore || list.length === 0) break;
+          page += 1;
         }
-        const list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
-        const normalized = list
+
+        const normalized = allItems
           .map(item => normalizeCreativeItem(item, type === 'audio' ? 'audio' : type))
           .filter(item => type === 'audio' || !!(item.url || item.posterUrl));
         setLocalCreativeAssets(prev => ({
@@ -726,6 +736,11 @@ export default function AssetPickerModal({
     const selectedAssets = Array.from(selected)
       .filter(id => !preSelectedSet.has(id))
       .map(id => assetMap[id])
+      .map((asset) => {
+        if (!asset) return null;
+        const assetId = asset.assetId || asset.asset_id || asset.id;
+        return assetId && assetId !== asset.id ? { ...asset, id: assetId, pickerId: asset.id } : asset;
+      })
       .filter(Boolean);
     onConfirm?.(selectedAssets);
     onClose?.();

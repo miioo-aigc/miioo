@@ -123,6 +123,7 @@ export function normalizeCreationHistoryItem(item, type) {
     _needsDetail: needsDetail || undefined,
     cards: [{
       id: item.id,
+      assetId: item.asset_id || item.assetId || item.image?.asset_id || item.image?.assetId || null,
       type,
       status: 'done',
       imageUrl: type === 'image' ? url : null,

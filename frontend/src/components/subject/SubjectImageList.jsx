@@ -18,6 +18,7 @@
  *   2026-07-15  保持页面负责上传、下载、定稿 API 和 Toast 行为
  *   2026-07-22  移除候选图悬停放大和下载按钮的黑色外描边
  *   2026-07-28  详情弹窗按候选图来源展示提示词和生成参数
+ *   2026-07-28  详情弹窗定稿状态改用 Toggle，移除缩略图定稿文字标签
  */
 import { useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
@@ -217,6 +218,10 @@ export default function SubjectImageList({
           activeIndex={mediaDetailActiveIdx}
           onClose={onCloseDetail}
           onDownload={onDownload}
+          onPrimaryChange={(image, nextValue) => {
+            const target = generatedImages.find((item) => String(item.id) === String(image?.id));
+            if (target) onSettledChange?.(target, generatedImages.indexOf(target), nextValue);
+          }}
         />
       )}
       <ImageItemUpload projectId={projectId} onUpload={onUpload} />

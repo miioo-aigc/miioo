@@ -20,18 +20,21 @@
  *     onClose: () => void              关闭回调
  *     onDownload?: (imageId?, fileUrl?) => void  下载回调
  *     onDeleteImage?: (imageId) => void 删除回调
+ *     onPrimaryChange?: (image, nextValue) => void 定稿开关回调
  *     shotNumber?: string              分镜名称
  *     generatedAt?: string            AI 生成时间
  *   2026-07-03  删除左侧底部 refImages 条（已在右侧信息区展示）；缩略图列表始终显示
  *   2026-07-06  右侧信息区字段对齐 AssetsPage ShotDetailModal：分镜编号横向布局、分镜模式隐藏名称描述、生成参数仅模型+分辨率、时间标签统一"AI 生成时间"
  *   2026-07-06  新增 source prop：区分 AI 生成 / 本地上传 / 资产库，非 AI 图片右侧显示「来源」字段；生成参数和 AI 生成时间仅 AI 生成时展示
  *   2026-07-28  主体候选图按当前图片来源展示创作信息：本地上传隐藏，资产库图片使用资产自身字段
+ *   2026-07-28  主体详情图定稿状态改用 Toggle，定稿唯一性由主体页动作链路保证
  */
 
 import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
 import ConfirmDialog from './ConfirmDialog';
+import Toggle from './Toggle';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -52,6 +55,7 @@ export default function MediaDetailModal({
   onClose,
   onDownload,
   onDeleteImage,
+  onPrimaryChange,
 }) {
   const { width: modalW, height: modalH } = useModalSize();
   const imgs = images ?? [];
@@ -199,19 +203,6 @@ export default function MediaDetailModal({
                           onClick={() => setActiveImg(idx)}
                         >
                           <div style={{ width: '100%', height: '100%', backgroundImage: `url(${thumbUrl})`, backgroundSize: 'cover', backgroundPosition: '50%' }} />
-                            {img.is_primary && (
-                              <div style={{
-                                position: 'absolute', top: '4px', left: '4px',
-                                paddingLeft: '4px', paddingRight: '4px', paddingTop: '2px', paddingBottom: '2px',
-                                borderRadius: '2px', backgroundColor: '#4AC981',
-                                boxShadow: '#FFFFFF14 0px 0px 0px 1px inset',
-                                height: '18px',
-                                display: 'flex',
-                                alignItems: 'center',
-                              }}>
-                                <span style={{ fontFamily: FONT, fontSize: '10px', lineHeight: '14px', color: '#0A0A0A', fontWeight: 500 }}>定稿</span>
-                              </div>
-                            )}
                         </div>
                       );
                     })}
@@ -230,7 +221,12 @@ export default function MediaDetailModal({
                 {/* Primary status */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px' }}>
                   <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>是否定稿</span>
-                  {isPrimary ? (
+                  {onPrimaryChange ? (
+                    <Toggle
+                      value={isPrimary}
+                      onChange={(nextValue) => onPrimaryChange?.(currentImg, nextValue)}
+                    />
+                  ) : isPrimary ? (
                     <div style={{
                       paddingLeft: '4px', paddingRight: '4px', paddingTop: '2px', paddingBottom: '2px',
                       borderRadius: '2px', backgroundColor: '#4AC981',

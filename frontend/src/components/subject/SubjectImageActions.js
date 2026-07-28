@@ -193,6 +193,7 @@ export function createSubjectImageActionHandlers({
       const assetId = image.source === 'creation-asset' ? (image.assetId || image.id) : null;
       const unsetRequest = assetId
         ? apiUpdateAsset(assetId, { is_primary: false })
+          .then(() => apiUnsetPrimarySubjectImage(projectId, subjectId))
         : apiUnsetPrimarySubjectImage(projectId, subjectId);
       unsetRequest.catch((error) => {
         console.error('[SubjectPage] 取消定稿失败:', error);

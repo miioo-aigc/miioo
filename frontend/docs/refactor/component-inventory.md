@@ -16,6 +16,13 @@
 - `src/pages/SubjectPage.jsx`：监听资产库删除事件，立即从当前主体候选图列表移除对应图片；主体详情重新加载并合并候选图时过滤已删除资产，保持资产库与项目主体页面一致。
 - 已完成定向 ESLint、`npm run build` 和 `git diff --check`。`npm run check:architecture` 仍被既有的 `src/components/assets/seedanceUploadValidation.js` 文件名规则问题及历史文件规模告警阻断，本次未新增架构阻断。
 
+## 2026-07-28 主体资产详情单图删除弹窗保持打开修复
+
+- `src/components/assets/AssetsProjectPanel.jsx` 删除主体资产的单张图片时保持主体资产卡片的稳定 `id`，不再把卡片 `id` 改成剩余图片的 `id`。
+- 修复后删除非最后一张图片只更新 `images`、图片数量和卡片封面，详情弹窗组件继续保持挂载，左侧下方缩略图列表移除已删除图片，当前预览切换到相邻图片。
+- 删除该主体最后一张图片时仍按原有边界关闭详情弹窗，并从项目资产列表移除主体卡片。
+- 定向 ESLint、`npm run build` 和 `git diff --check` 通过；架构检查仍仅受既有 `seedanceUploadValidation.js` 文件命名阻断及历史规模告警影响。
+
 ## 2026-07-24 创作页 Seedance 真人素材入口调整
 
 - `CreationInputCard` 继续以模型能力字段控制视频创作输入卡的「真人素材」入口，并复用 `isSeedanceModel` 识别模型 ID 与名称；选择任意 Seedance 系列模型时隐藏该入口，其他支持真人素材的模型保持原有展示与弹窗接线。

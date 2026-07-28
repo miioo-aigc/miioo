@@ -87,6 +87,7 @@
  *   2026-07-22  主体参考图与右侧候选图分流；候选上传不再调用主体参考图接口，分镜页同类状态链路已复核
  *   2026-07-28  候选区本地上传/资产库选择写入项目资产并绑定 subject_id；初始化合并绑定资产，刷新后恢复候选图
  *   2026-07-28  候选图所有来源统一支持定稿；普通项目资产走 assets is_primary，主体生成图走候选图 set-primary
+ *   2026-07-28  主体候选图按生成/上传时间倒序，最新进入候选列表的图片置顶
  *   2026-07-23  主体删除改走主体专用删除接口；下载文件名统一为项目名_主体类型_主体名称
  *   2026-07-23  接收 Home 的主体抽取活动状态，刷新恢复期间持续显示加载动画
  *   2026-07-27  主体抽取加载文案优先展示 Home 传入的任务 status_message，接口缺失时沿用轮换兜底文案
@@ -272,7 +273,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setGeneratedImages(
         uniqueBatchCached.map((img, i) => ({
-          ...createSubjectImageItem({ id: `batch-${char.id}-${Date.now()}-${i}`, rawUrl: img.rawUrl, refImages: refImagesForModal }),
+          ...createSubjectImageItem({ id: `batch-${char.id}-${Date.now()}-${i}`, rawUrl: img.rawUrl, refImages: refImagesForModal, createdAt: img.createdAt || img.created_at || Date.now() - i }),
         }))
       );
       batchGeneratedImagesCache.delete(char.id);
@@ -287,7 +288,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       const pending = pendingGenerations.get(char.id);
       if (pending?.status === 'done') {
         // 跨弹窗任务已完成，挂载时将结果追加到详情图片列表。
-        setGeneratedImages(prev => [...prev, createSubjectImageItem({ rawUrl: pending.rawUrl, id: pending.realId || pending.placeholderId, refImages: pending.refImages || refImagesForModal })]);
+        setGeneratedImages(prev => [...prev, createSubjectImageItem({ rawUrl: pending.rawUrl, id: pending.realId || pending.placeholderId, refImages: pending.refImages || refImagesForModal, createdAt: pending.createdAt || Date.now() })]);
         pendingGenerations.delete(char.id);
       }
       return; // 不发起后端请求
@@ -301,7 +302,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
     }
     const pendingPreflight = pendingGenerations.get(char.id);
     if (pendingPreflight?.status === 'done') {
-      setGeneratedImages([createSubjectImageItem({ rawUrl: pendingPreflight.rawUrl, id: pendingPreflight.realId || pendingPreflight.placeholderId, refImages: pendingPreflight.refImages || refImagesForModal })]);
+      setGeneratedImages([createSubjectImageItem({ rawUrl: pendingPreflight.rawUrl, id: pendingPreflight.realId || pendingPreflight.placeholderId, refImages: pendingPreflight.refImages || refImagesForModal, createdAt: pendingPreflight.createdAt || Date.now() })]);
       // 恢复生成参数，避免跳过 API 后字段为空
       if (pendingPreflight.genParams) {
         setPromptText(pendingPreflight.genParams.prompt || '');
@@ -444,7 +445,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       // 批量生成结束：消费缓存，用真实图片替换占位槽
       const cached = dedupeBatchGeneratedImages(batchGeneratedImagesCache.get(char.id) || []);
       if (cached.length > 0) {
-        const newImgs = cached.map((img, i) => createSubjectImageItem({ id: `batch-${char.id}-${Date.now()}-${i}`, rawUrl: img.rawUrl, refImages: refImagesForModal }));
+        const newImgs = cached.map((img, i) => createSubjectImageItem({ id: `batch-${char.id}-${Date.now()}-${i}`, rawUrl: img.rawUrl, refImages: refImagesForModal, createdAt: img.createdAt || img.created_at || Date.now() - i }));
         batchGeneratedImagesCache.delete(char.id);
         // 批量流结束后，用外部缓存结果替换占位槽。
         // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -764,7 +765,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
               knownImageUrls: existingImages.flatMap((img) => [img.rawUrl, img.url]).filter(Boolean),
             });
             setBatchLoadingSubjects((prev) => ({ ...prev, [char.id]: true }));
-            setGeneratedImages((prev) => [{ url: null, settled: false, id: placeholder }, ...prev]);
+            setGeneratedImages((prev) => [{ url: null, settled: false, id: placeholder, created_at: Date.now() }, ...prev]);
 
             const genParams = buildSubjectGenerationParams({
               model: selectedModel,
@@ -787,7 +788,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                 setGeneratedImages((prev) => {
                   const updated = prev.map((img) =>
                     img.id === placeholder
-                      ? { ...img, id: realImageId || placeholder, rawUrl, url: imageUrl, settled: false, refImages: refImagesSnapshot }
+                      ? { ...img, id: realImageId || placeholder, rawUrl, url: imageUrl, settled: false, refImages: refImagesSnapshot, created_at: img.created_at || Date.now() }
                       : img
                   );
                   const hasSettled = updated.some((img) => img.settled && img.rawUrl);
@@ -809,6 +810,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
                   rawUrl,
                   imageUrl: rawUrl,
                   realId: realImageId,
+                  createdAt: currentPending?.createdAt || Date.now(),
                   genParams: currentPending?.genParams,
                   refImages: refImagesSnapshot,
                 });

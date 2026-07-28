@@ -17,6 +17,7 @@
  *   2026-07-22  右侧候选图上传改走通用图片资产接口，不再写入主体参考图关系
  *   2026-07-28  普通项目资产通过 assets PATCH 支持设置/取消定稿，生成图仍走主体候选图接口
  *   2026-07-27  上传中的本地图片禁止提前定稿，避免临时 ID 触发无效请求
+ *   2026-07-28  候选图新增时间字段，支持本地上传和资产库选择后的统一排序
  */
 import {
   apiDownloadSubjectImage,
@@ -70,7 +71,8 @@ export function createSubjectImageActionHandlers({
         model: fileOrAsset.model,
         ratio: fileOrAsset.ratio,
         resolution: fileOrAsset.resolution,
-        created_at: fileOrAsset.created_at,
+        // 资产库返回的时间优先；缺失时记录本次绑定时间，保证即时排序稳定。
+        created_at: fileOrAsset.created_at || fileOrAsset.createdAt || Date.now(),
       }, ...prev]);
       apiUpdateAsset(selectedAssetId, { subject_id: subjectId, category: subjectType })
         .then(() => invalidate(K.projectAssets(projectId), MEDIUM.CONTENT))
@@ -93,6 +95,7 @@ export function createSubjectImageActionHandlers({
       id: tempId,
       source: 'local-upload',
       detailSource: 'local-upload',
+      created_at: Date.now(),
     }, ...prev]);
 
     if (projectId) {

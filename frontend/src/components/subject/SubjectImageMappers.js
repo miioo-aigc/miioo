@@ -7,6 +7,7 @@
  *   mapSubjectAssets          将绑定主体的项目资产转换为右侧候选图
  *   mapReferenceImages       将后端参考图转换为详情/预览数据（不进入候选列表）
  *   mapReferenceImageIdsForModal  将参考图 ID/URL 转为详情弹窗快照
+ *   sortSubjectImages        按进入候选列表时间倒序排列
  *   mergeSubjectImages       去重、限制定稿图数量并插入任务占位/结果
  *
  * ─── 依赖边界 ───────────────────────────────────────────────────────
@@ -17,6 +18,7 @@
  *   2026-07-22  参考图与候选图彻底分流，主体右侧列表只展示候选结果
  *   2026-07-28  合并读取绑定主体的项目资产，支持候选区上传和资产库选择刷新恢复
  *   2026-07-28  保留候选图来源及资产创作元数据，供详情弹窗按来源展示
+ *   2026-07-28  候选图统一按创建/上传时间倒序排列，最新进入列表的图片置顶
  */
 import { normalizeImageUrl } from '../../utils/imageUrl';
 
@@ -43,8 +45,8 @@ function toImageItem({ id, rawUrl, settled = false, isReference = false, refImag
 /**
  * 创建生成结果的前端图片条目，统一保留原始 URL 和展示 URL。
  */
-export function createSubjectImageItem({ id, rawUrl, settled = false, refImages = [] }) {
-  return toImageItem({ id, rawUrl, settled, refImages });
+export function createSubjectImageItem({ id, rawUrl, settled = false, refImages = [], createdAt = null }) {
+  return toImageItem({ id, rawUrl, settled, refImages, createdAt });
 }
 
 export function mapCandidateImages(images, refImages = []) {
@@ -169,6 +171,7 @@ function mapPendingImage(pending, refImages) {
       settled: false,
       id: pending.placeholderId,
       isReference: false,
+      created_at: pending.createdAt || Date.now(),
     };
   }
   if (pending.status === 'done') {
@@ -176,6 +179,7 @@ function mapPendingImage(pending, refImages) {
       id: pending.realId || pending.placeholderId,
       rawUrl: pending.rawUrl,
       refImages: pending.refImages || refImages,
+      createdAt: pending.createdAt || Date.now(),
     });
   }
   return null;
@@ -186,6 +190,34 @@ function mapPendingImage(pending, refImages) {
  * 参考图是生成输入素材，不属于右侧候选结果，因此不能参与合并、定稿或下载。
  * 返回值不修改输入，也不会消费 pending；消费缓存由页面根据 pending 状态负责。
  */
+function getImageTimestamp(image) {
+  const value = image?.created_at ?? image?.createdAt ?? image?.uploaded_at ?? image?.uploadedAt;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const timestamp = Date.parse(value);
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  return null;
+}
+
+/**
+ * 按图片进入候选列表的时间倒序排列。
+ * 没有时间字段的历史数据保持原顺序，避免用 id 或 URL 猜测先后关系。
+ */
+export function sortSubjectImages(images = []) {
+  return (Array.isArray(images) ? images : [])
+    .map((image, index) => ({ image, index, timestamp: getImageTimestamp(image) }))
+    .sort((a, b) => {
+      if (a.timestamp == null && b.timestamp == null) {
+        return a.index - b.index;
+      }
+      if (a.timestamp == null) return 1;
+      if (b.timestamp == null) return -1;
+      return b.timestamp - a.timestamp || a.index - b.index;
+    })
+    .map(({ image }) => image);
+}
+
 export function mergeSubjectImages({
   candidateImages,
   subjectAssets = [],
@@ -194,7 +226,7 @@ export function mergeSubjectImages({
 }) {
   const mappedCandidates = mapCandidateImages(candidateImages, refImages);
   const mappedAssets = mapSubjectAssets(subjectAssets, refImages);
-  const images = keepOnlyFirstSettled(dedupeByUrl(dedupeById([...mappedCandidates, ...mappedAssets])));
+  const images = sortSubjectImages(keepOnlyFirstSettled(dedupeByUrl(dedupeById([...mappedCandidates, ...mappedAssets]))));
   const pendingImage = mapPendingImage(pending, refImages);
 
   return pendingImage ? [pendingImage, ...images] : images;

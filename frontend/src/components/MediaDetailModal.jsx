@@ -21,6 +21,7 @@
  *     onDownload?: (imageId?, fileUrl?) => void  下载回调
  *     onDeleteImage?: (imageId) => void 删除回调
  *     onPrimaryChange?: (image, nextValue) => void 定稿开关回调
+ *     showPrimaryBadge?: boolean              是否显示缩略图定稿标签（默认显示）
  *     shotNumber?: string              分镜名称
  *     generatedAt?: string            AI 生成时间
  *   2026-07-03  删除左侧底部 refImages 条（已在右侧信息区展示）；缩略图列表始终显示
@@ -28,6 +29,7 @@
  *   2026-07-06  新增 source prop：区分 AI 生成 / 本地上传 / 资产库，非 AI 图片右侧显示「来源」字段；生成参数和 AI 生成时间仅 AI 生成时展示
  *   2026-07-28  主体候选图按当前图片来源展示创作信息：本地上传隐藏，资产库图片使用资产自身字段
  *   2026-07-28  主体详情图定稿状态改用 Toggle，定稿唯一性由主体页动作链路保证
+ *   2026-07-28  主体详情图隐藏缩略图定稿标签，保留其他页面默认展示
  */
 
 import { useState, useRef } from 'react';
@@ -56,6 +58,7 @@ export default function MediaDetailModal({
   onDownload,
   onDeleteImage,
   onPrimaryChange,
+  showPrimaryBadge = true,
 }) {
   const { width: modalW, height: modalH } = useModalSize();
   const imgs = images ?? [];
@@ -202,7 +205,12 @@ export default function MediaDetailModal({
                           }}
                           onClick={() => setActiveImg(idx)}
                         >
-                          <div style={{ width: '100%', height: '100%', backgroundImage: `url(${thumbUrl})`, backgroundSize: 'cover', backgroundPosition: '50%' }} />
+                          <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                            <div style={{ width: '100%', height: '100%', backgroundImage: `url(${thumbUrl})`, backgroundSize: 'cover', backgroundPosition: '50%' }} />
+                            {showPrimaryBadge && img.is_primary && (
+                              <span style={{ position: 'absolute', left: '6px', bottom: '6px', padding: '2px 4px', borderRadius: '2px', backgroundColor: '#4AC981', color: '#0A0A0A', fontFamily: FONT, fontSize: '10px', lineHeight: '12px', fontWeight: 500 }}>定稿</span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}

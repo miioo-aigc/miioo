@@ -18,6 +18,7 @@
  *   2026-07-28  普通项目资产通过 assets PATCH 支持设置/取消定稿，生成图仍走主体候选图接口
  *   2026-07-27  上传中的本地图片禁止提前定稿，避免临时 ID 触发无效请求
  *   2026-07-28  候选图新增时间字段，支持本地上传和资产库选择后的统一排序
+ *   2026-07-28  本地候选图落库前使用加载占位，定稿成功后立即同步主体封面
  */
 import {
   apiDownloadSubjectImage,
@@ -86,15 +87,16 @@ export function createSubjectImageActionHandlers({
 
     if (!(fileOrAsset instanceof File)) return;
 
-    const blobUrl = URL.createObjectURL(fileOrAsset);
-    const tempId = `upload-${Date.now()}`;
-    setGeneratedImages((prev) => [{
-      rawUrl: blobUrl,
-      url: blobUrl,
+      const tempId = `upload-${Date.now()}`;
+      setGeneratedImages((prev) => [{
+      // 上传接口返回真实资产 URL 前不展示 blob 预览，避免后续接口刷新时出现黑色闪烁。
+      rawUrl: null,
+      url: null,
       settled: false,
       id: tempId,
       source: 'local-upload',
       detailSource: 'local-upload',
+      uploading: true,
       created_at: Date.now(),
     }, ...prev]);
 
@@ -133,8 +135,9 @@ export function createSubjectImageActionHandlers({
                   assetId: realId,
                   source: 'creation-asset',
                   detailSource: 'local-upload',
-                  rawUrl: realUrl || blobUrl,
-                  url: normalizeImageUrl(realUrl || blobUrl),
+                  rawUrl: realUrl || null,
+                  url: normalizeImageUrl(realUrl) || null,
+                  uploading: false,
                   settled: false,
                 }
                 : image
@@ -161,7 +164,8 @@ export function createSubjectImageActionHandlers({
 
   function handleSettledChange(image, index, newSettled) {
     if (newSettled) {
-      onCoverChange?.(image?.rawUrl ?? image?.url ?? null);
+      const nextCoverUrl = image?.rawUrl ?? image?.url ?? null;
+      onCoverChange?.(nextCoverUrl);
       // 主体候选图可能同时带有生成资产编号，但它仍应使用主体候选图定稿接口；
       // 只有候选区本地上传/资产库选择产生的 creation-asset 才走资产接口。
       const assetId = image.source === 'creation-asset' ? (image.assetId || image.id) : null;
@@ -185,6 +189,21 @@ export function createSubjectImageActionHandlers({
           itemIndex === index ? { ...item, settled: false } : item
         )));
       });
+      // 先乐观更新卡片封面，接口完成后再次写回，覆盖上传/资产接口返回的最终地址。
+      setPrimaryRequest.then((result) => {
+        const persistedUrl = result?.file_url || result?.fileUrl || result?.url || result?.image_url;
+        if (persistedUrl) {
+          const normalizedUrl = normalizeImageUrl(persistedUrl);
+          setGeneratedImages((prev) => prev.map((item) => (
+            String(item.id) === String(image.id)
+              ? { ...item, rawUrl: persistedUrl, url: normalizedUrl, uploading: false }
+              : item
+          )));
+          onCoverChange?.(persistedUrl);
+          setPrimaryImageUrl?.(normalizedUrl);
+          setPrimaryImageId?.(image.id);
+        }
+      }).catch(() => {});
       if (assetId) invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
     } else {
       onCoverChange?.(null);

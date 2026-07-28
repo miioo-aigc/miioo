@@ -19,6 +19,7 @@
  *   2026-07-22  移除候选图悬停放大和下载按钮的黑色外描边
  *   2026-07-28  详情弹窗按候选图来源展示提示词和生成参数
  *   2026-07-28  详情弹窗定稿状态改用 Toggle，移除缩略图定稿文字标签
+ *   2026-07-28  上传中的候选图保持加载占位，资产落库后再显示图片
  */
 import { useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
@@ -131,7 +132,7 @@ function ImageActionButton({ children, ariaLabel, onClick }) {
   );
 }
 
-function ImageItem({ settled, imageUrl, onView, onSettledChange, onDownload }) {
+function ImageItem({ settled, imageUrl, uploading = false, onView, onSettledChange, onDownload }) {
   const [hovered, setHovered] = useState(false);
   const borderColor = settled ? '#2DC3E1' : hovered ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)';
 
@@ -139,7 +140,7 @@ function ImageItem({ settled, imageUrl, onView, onSettledChange, onDownload }) {
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={() => onSettledChange?.(!settled)}
+      onClick={() => { if (!uploading) onSettledChange?.(!settled); }}
       style={{
         height: '144px', borderRadius: '6px', flexShrink: 0,
         border: `1px solid ${borderColor}`,
@@ -148,17 +149,19 @@ function ImageItem({ settled, imageUrl, onView, onSettledChange, onDownload }) {
       }}
     >
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {imageUrl
+        {imageUrl && !uploading
           ? <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           : <DotsLoading size={4} color="#2DC3E1" gap={3} />}
       </div>
 
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '8px 10px', backgroundImage: 'linear-gradient(in oklab 180deg, oklab(0% 0 0 / 60%) 0%, oklab(0% 0 0 / 0%) 100%)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-        <Checkbox checked={settled} onChange={(event) => { event.stopPropagation(); onSettledChange?.(!settled); }} />
-        <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '16px', color: '#FFFFFF', fontWeight: settled ? 600 : 500 }}>定稿</span>
-      </div>
+      {!uploading && (
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '8px 10px', backgroundImage: 'linear-gradient(in oklab 180deg, oklab(0% 0 0 / 60%) 0%, oklab(0% 0 0 / 0%) 100%)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <Checkbox checked={settled} onChange={(event) => { event.stopPropagation(); onSettledChange?.(!settled); }} />
+          <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '16px', color: '#FFFFFF', fontWeight: settled ? 600 : 500 }}>定稿</span>
+        </div>
+      )}
 
-      {hovered && (
+      {hovered && !uploading && (
         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '6px 8px', backgroundImage: 'linear-gradient(in oklab 0deg, oklab(0% 0 0 / 60%) 0%, oklab(0% 0 0 / 0%) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
           <ImageActionButton ariaLabel="查看图片" onClick={(event) => { event.stopPropagation(); onView?.(imageUrl); }}>
             <FullscreenIcon />
@@ -218,6 +221,7 @@ export default function SubjectImageList({
           activeIndex={mediaDetailActiveIdx}
           onClose={onCloseDetail}
           onDownload={onDownload}
+          showPrimaryBadge={false}
           onPrimaryChange={(image, nextValue) => {
             const target = generatedImages.find((item) => String(item.id) === String(image?.id));
             if (target) onSettledChange?.(target, generatedImages.indexOf(target), nextValue);
@@ -230,6 +234,7 @@ export default function SubjectImageList({
           key={image.id ?? image.url + index}
           imageUrl={image.url}
           settled={image.settled}
+          uploading={image.uploading}
           onView={() => onOpenDetail?.(index)}
           onDownload={() => onDownload?.(image.id)}
           onSettledChange={(newSettled) => onSettledChange?.(image, index, newSettled)}

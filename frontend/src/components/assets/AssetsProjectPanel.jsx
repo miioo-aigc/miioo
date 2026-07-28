@@ -19,6 +19,7 @@
  *   2026-07-16  页面入口收敛；补充资产选择引用；抽离项目重命名/删除弹窗和资产卡片网格
  *   2026-07-17  统一按来源移除资产，并同步清理主体卡片与分页原始数据
  *   2026-07-24 项目列表按创建时间正序，与资产选择弹窗保持一致
+ *   2026-07-28 删除主体单张资产时保持主体卡片标识稳定，详情弹窗仅移除缩略图
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -248,7 +249,6 @@ export default function AssetsProjectPanel() {
           if (!singleImageId || remaining.length === 0) return [];
           return [{
             ...asset,
-            id: remaining[0]?.id || asset.id,
             images: remaining,
             imageCount: remaining.length,
             url: remaining[0]?.url || null,

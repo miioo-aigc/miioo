@@ -182,6 +182,7 @@ export function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownl
         <div
           style={{
             flex: 1,
+            minHeight: 0,
             position: 'relative',
             backgroundColor: '#1A1A1A',
             transition: 'background-color 0.15s',
@@ -245,26 +246,24 @@ export function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownl
 
         </div>
 
-        {/* info overlay */}
+        {/* info area */}
         <div style={{
-          position: 'absolute', left: 0, bottom: 0, right: 0,
-          backgroundColor: '#161616F2',
+          flexShrink: 0,
+          backgroundColor: '#1A1A1A',
           padding: '12px',
           display: 'flex',
           flexDirection: 'column',
           gap: '6px',
         }}>
-          <span style={{ fontFamily: FONT_MEDIUM, fontWeight: 500, fontSize: '14px', lineHeight: '20px', color: '#FFFFFFE6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontFamily: FONT_MEDIUM, fontWeight: 500, fontSize: '14px', lineHeight: '20px', height: '20px', color: '#FFFFFFE6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {name}
           </span>
-          {desc ? (
-            <span style={{
-              fontFamily: FONT, fontSize: '12px', lineHeight: '17px', color: '#FFFFFF66',
-              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-            }}>
-              {desc}
-            </span>
-          ) : null}
+          <span style={{
+            fontFamily: FONT, fontSize: '12px', lineHeight: '17px', height: '34px', color: '#FFFFFF66',
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          }}>
+            {desc || ''}
+          </span>
         </div>
       </div>
 

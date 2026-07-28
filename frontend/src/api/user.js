@@ -39,7 +39,26 @@ export async function apiGetStorageUsage() {
     error.status = res.status;
     throw error;
   }
-  return res.json();
+  const data = await res.json();
+  return {
+    ...data,
+    quotaBytes: data?.quota_bytes ?? data?.quotaBytes ?? 0,
+    usedBytes: data?.used_bytes ?? data?.usedBytes ?? 0,
+    availableBytes: data?.available_bytes ?? data?.availableBytes ?? 0,
+    usageRatio: data?.usage_ratio ?? data?.usageRatio ?? 0,
+    usagePercent: data?.usage_percent ?? data?.usagePercent ?? 0,
+    reminderVersion: data?.reminder_version ?? data?.reminderVersion ?? 0,
+    thresholdReminderPending: data?.threshold_reminder_pending ?? data?.thresholdReminderPending ?? false,
+    writeBlocked: data?.write_blocked ?? data?.writeBlocked ?? false,
+  };
+}
+
+export async function apiAcknowledgeStorageReminder(reminderVersion) {
+  await authFetch(`${BASE}/api/users/me/storage-usage/reminders/ack`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reminder_version: reminderVersion }),
+  });
 }
 
 export async function apiGetNotifications({ is_read, type } = {}) {

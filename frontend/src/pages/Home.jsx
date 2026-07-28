@@ -61,6 +61,7 @@
  *   2026-07-24  持久化分镜生成任务，支持刷新/返回后恢复轮询及失败重试
  *   2026-07-06  新增 subject cache 订阅 useEffect，实时同步 sharedChars/sharedScenes/sharedProps
  *   2026-07-28  剧集进度改按工作流解锁状态展示，视频生成数量不再等同于“剪辑中”
+ *   2026-07-28  接入存储空间展示、容量提醒、资产库跳转及写入后的全满警告
  *   2026-07-01  初始结构索引建立
  */
 
@@ -69,7 +70,7 @@ import { apiGetProjects, apiUpdateProject, apiCopyProject, apiDeleteProject, api
 import { getToken, getRefreshToken, refreshAccessToken } from '../api/request';
 import { clearTokens, apiLogout, apiCompleteWechatCallback } from '../api/auth';
 import { apiListProviders } from '../api/config';
-import { apiGetCurrentUser, apiGetNotifications, apiGetStorageUsage } from '../api/user';
+import { apiAcknowledgeStorageReminder, apiGetCurrentUser, apiGetNotifications, apiGetStorageUsage } from '../api/user';
 import { apiGetSubjects, apiGetSubjectsPage, apiGetEpisodes, apiGetScriptWorkspace, apiGetScriptStructure, apiFinalizeScriptWorkspace, apiPublishScriptStructure, apiExtractSubjectsByEpisodes, apiGetScriptTask } from '../api/subject';
 import { apiGetStoryboards, apiGenerateStoryboardsFromFinalScript, apiGetTask } from '../api/storyboard';
 import { invalidate } from '../utils/cache';
@@ -83,6 +84,7 @@ import LoginModal from '../components/LoginModal';
 import ApiConfigModal from '../components/ApiConfigModal';
 import NoModelNotice from '../components/NoModelNotice';
 import ProfileModal from '../components/ProfileModal';
+import StorageUsageReminderModal from '../components/StorageUsageReminderModal';
 import NewProjectModal from '../components/NewProjectModal';
 import WatermarkSettingsModal from '../components/WatermarkSettingsModal';
 import NotificationCenterModal from '../components/NotificationCenterModal';
@@ -214,6 +216,9 @@ export default function Home({ onGoToAdmin }) {
   // Tracks which non-alwaysEnabled steps have ever had content — once unlocked, stays unlocked
   const [unlockedSteps, setUnlockedSteps] = useState(new Set());
   const [currentUser, setCurrentUser] = useState({});
+  const [storageUsage, setStorageUsage] = useState(null);
+  const [storageReminder, setStorageReminder] = useState(null);
+  const acknowledgedStorageReminderRef = useRef(null);
   const [forceExtract, setForceExtract] = useState(false);
   const [, setNotifications] = useState([]);
 
@@ -236,6 +241,58 @@ export default function Home({ onGoToAdmin }) {
     setToast({ msg, type });
     toastTimerRef.current = setTimeout(() => setToast(null), 2500);
   }, []);
+
+  const refreshStorageUsage = useCallback(async () => {
+    if (!getToken()) return null;
+    try {
+      const usage = await apiGetStorageUsage();
+      setStorageUsage(usage);
+      return usage;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const getStorageReminderType = useCallback((usage) => {
+    if (!usage) return null;
+    if (usage.status === 'full' || usage.writeBlocked) return 'full';
+    if (Number(usage.availableBytes) < 1024 ** 3) return 'threshold';
+    return null;
+  }, []);
+
+  const closeStorageReminder = useCallback(async () => {
+    setStorageReminder(null);
+  }, []);
+
+  const manageStorageAssets = useCallback(() => {
+    setStorageReminder(null);
+    setActiveKey('assets');
+    setActiveProject(null);
+    setActiveProjectId(null);
+    localStorage.removeItem('miioo_active_project_id');
+    localStorage.removeItem('miioo_active_step');
+    localStorage.removeItem('miioo_active_key');
+  }, []);
+
+  useEffect(() => {
+    const type = getStorageReminderType(storageUsage);
+    const version = storageUsage?.reminderVersion;
+    if (!type || !storageUsage?.thresholdReminderPending || !version || acknowledgedStorageReminderRef.current === version) return;
+    setStorageReminder(type);
+    acknowledgedStorageReminderRef.current = version;
+    apiAcknowledgeStorageReminder(version).catch(() => {
+      acknowledgedStorageReminderRef.current = null;
+    });
+  }, [getStorageReminderType, storageUsage]);
+
+  useEffect(() => {
+    const handleStorageWrite = async () => {
+      const usage = await refreshStorageUsage();
+      if (usage?.status === 'full' || usage?.writeBlocked) setStorageReminder('full');
+    };
+    window.addEventListener('storage:write-success', handleStorageWrite);
+    return () => window.removeEventListener('storage:write-success', handleStorageWrite);
+  }, [refreshStorageUsage]);
 
   // 背景视频循环：播完当前视频后切换到下一个（纯 ref 操作，不触发 React 重渲染）
   const handleVideoEnded = () => {
@@ -573,6 +630,7 @@ export default function Home({ onGoToAdmin }) {
         const user = await apiGetCurrentUser();
         setIsLoggedIn(true);
         setCurrentUser({ ...user, avatar_url: normalizeImageUrl(user.avatar_url) ?? '' });
+        refreshStorageUsage();
       } catch {
         // 401 / 其他鉴权错误 → authFetch 已清 token + 触发 logout 事件
         setProjectsLoaded(true);
@@ -845,7 +903,7 @@ export default function Home({ onGoToAdmin }) {
         });
 
         const storageUsage = await apiGetStorageUsage();
-        if (storageUsage?.write_blocked) {
+        if (storageUsage?.writeBlocked) {
           throw new Error('当前存储空间不足，无法生成主体，请先清理项目资产');
         }
         await pollScriptTask(taskResponse, taskId, '剧本发布任务超时，请稍后重试');
@@ -1256,6 +1314,8 @@ export default function Home({ onGoToAdmin }) {
           onLogout={handleLogout}
           onOpenProfile={() => setProfileOpen(true)}
           onGoToAdmin={onGoToAdmin}
+          storageUsage={storageUsage}
+          onGoToAssets={() => handleNavChange('assets')}
         />
         ) : (
         <WorkflowHeadbar
@@ -1268,6 +1328,8 @@ export default function Home({ onGoToAdmin }) {
           onLogout={handleLogout}
           onOpenProfile={() => setProfileOpen(true)}
           onGoToAdmin={onGoToAdmin}
+          storageUsage={storageUsage}
+          onGoToAssets={() => handleNavChange('assets')}
           onLogoClick={() => {
             setActiveProject(null);
             setActiveProjectId(null);
@@ -1505,6 +1567,7 @@ export default function Home({ onGoToAdmin }) {
         try {
           const user = await apiGetCurrentUser();
           setCurrentUser({ ...user, avatar_url: normalizeImageUrl(user.avatar_url) ?? '' });
+          await refreshStorageUsage();
         } catch (error) {
           console.warn('[Home] 登录后拉取用户信息失败:', error);
         }
@@ -1553,6 +1616,11 @@ export default function Home({ onGoToAdmin }) {
           showToast={showToast}
         />
       )}
+      <StorageUsageReminderModal
+        type={storageReminder}
+        onClose={closeStorageReminder}
+        onManageAssets={manageStorageAssets}
+      />
       <HomeToast toast={toast} />
     </div>
   );

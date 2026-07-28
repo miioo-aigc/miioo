@@ -53,6 +53,42 @@ function Divider() {
   return <div className="self-stretch h-px bg-stroke-normal mx-[4px] flex-shrink-0" />;
 }
 
+function formatStorage(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(2).replace(/\.00$/, '')}M`;
+  return `${(value / 1024 ** 3).toFixed(2).replace(/0$/, '').replace(/\.0$/, '')}G`;
+}
+
+function StorageUsage({ usage, onGoToAssets }) {
+  if (!usage) return null;
+  const quota = Math.max(Number(usage.quotaBytes) || 0, 1);
+  const used = Math.max(Number(usage.usedBytes) || 0, 0);
+  const percent = Math.min(Math.max((used / quota) * 100, 0), 100);
+  const isDangerous = used > 4 * 1024 ** 3;
+  const color = isDangerous ? '#F75F5F' : '#2DC3E1';
+
+  return (
+    <div className="[font-synthesis:none] antialiased" style={{ alignItems: 'flex-start', display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'space-between', marginTop: '2px', paddingTop: '8px', position: 'relative', width: '100%' }}>
+      <div style={{ alignSelf: 'stretch', backgroundColor: '#FFFFFF1A', borderRadius: '20px', height: '4px', flexShrink: 0 }} />
+      <div style={{ alignItems: 'center', alignSelf: 'stretch', display: 'flex', gap: '4px', justifyContent: 'space-between' }}>
+        <div style={{ color: '#FFFFFF80', flexShrink: 0, fontFamily: FONT_REGULAR, fontSize: '12px', lineHeight: '18px' }}>
+          存储空间
+        </div>
+        {isDangerous && (
+          <button type="button" onClick={() => onGoToAssets?.()} style={{ background: 'transparent', border: 0, color: '#2DC3E1', cursor: 'pointer', fontFamily: FONT_REGULAR, fontSize: '12px', lineHeight: '18px', padding: 0 }}>
+            管理资产库
+          </button>
+        )}
+        <div style={{ alignItems: 'flex-start', display: 'flex', fontFamily: FONT_REGULAR, fontSize: '12px', lineHeight: '18px', whiteSpace: 'nowrap' }}>
+          <span style={{ color }}>{formatStorage(used)}</span>
+          <span style={{ color: '#FFFFFF80' }}>/{formatStorage(quota)}</span>
+        </div>
+      </div>
+      <div style={{ backgroundColor: color, borderRadius: '20px', height: '4px', left: 0, position: 'absolute', top: '8px', width: `${percent}%`, transition: 'width 180ms ease' }} />
+    </div>
+  );
+}
+
 function AvatarTrigger({ size, onOpenProfile, avatarUrl }) {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -125,6 +161,8 @@ export default function AccountMenu({
   onOpenProfile,
   isAdmin = false,
   onGoToAdmin,
+  storageUsage = null,
+  onGoToAssets,
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -191,6 +229,7 @@ className="[font-synthesis:none] flex items-center gap-[8px] rounded-full pl-[4p
                 <span style={{ fontFamily: FONT_REGULAR, fontSize: '12px', lineHeight: '18px', color: '#FFFFFF99', flexShrink: 0 }}>微信</span>
                 <span className="truncate" style={{ fontFamily: FONT_REGULAR, fontSize: '12px', lineHeight: '18px', color: '#FFFFFF66' }}>{wechat}</span>
               </div>
+              <StorageUsage usage={storageUsage} onGoToAssets={() => { setOpen(false); onGoToAssets?.(); }} />
             </div>
           </div>
 

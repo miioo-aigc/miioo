@@ -104,6 +104,10 @@ export async function authFetch(url, options = {}) {
     window.dispatchEvent(new CustomEvent('auth:logout'));
     throw new Error('Unauthorized');
   }
+  const isStorageReminderAck = url.includes('/storage-usage/reminders/ack');
+  if (res.ok && !isStorageReminderAck && !['GET', 'HEAD', 'OPTIONS'].includes((options.method || 'GET').toUpperCase())) {
+    window.dispatchEvent(new CustomEvent('storage:write-success'));
+  }
   return res;
 }
 
@@ -140,6 +144,10 @@ export async function authFetchForm(url, options = {}) {
     clearTokens();
     window.dispatchEvent(new CustomEvent('auth:logout'));
     throw new Error('Unauthorized');
+  }
+  const isStorageReminderAck = url.includes('/storage-usage/reminders/ack');
+  if (res.ok && !isStorageReminderAck && !['GET', 'HEAD', 'OPTIONS'].includes((options.method || 'GET').toUpperCase())) {
+    window.dispatchEvent(new CustomEvent('storage:write-success'));
   }
   return res;
 }

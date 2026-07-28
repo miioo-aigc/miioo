@@ -25,6 +25,8 @@ export default function HomeHeader({
   onLogout,
   onOpenProfile,
   onGoToAdmin,
+  storageUsage,
+  onGoToAssets,
 }) {
   return (
     <div className="flex items-center px-24 py-12 justify-between gap-[37px] self-stretch">
@@ -41,6 +43,8 @@ export default function HomeHeader({
             onOpenProfile={onOpenProfile}
             isAdmin={currentUser.is_admin ?? false}
             onGoToAdmin={onGoToAdmin}
+            storageUsage={storageUsage}
+            onGoToAssets={onGoToAssets}
           />
         ) : (
           <LoginButton onClick={onLoginClick} />

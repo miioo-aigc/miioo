@@ -270,7 +270,7 @@ function StartStoryboardIcon() {
   );
 }
 
-export default function StoryboardPage({ projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onVideoGenerated, onGenerateStoryboards, onRetryGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0, statusMessage = '' }) {
+export default function StoryboardPage({ projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onGenerateStoryboards, onRetryGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0, statusMessage = '' }) {
 
   // 选择器的唯一数据源是剧本分集，不根据当前分镜接口返回结果裁剪列表。
   const [scriptEpisodes, setScriptEpisodes] = useState(() => episodes.length > 0 ? episodes : []);
@@ -907,7 +907,6 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       }
     }
     setGeneratingVideos(false);
-    onVideoGenerated?.(activeEpisodes.findIndex(ep => getEpisodeId(ep) === getEpisodeId(episode)));
     if (failCount > 0) {
       showToast(`分镜视频生成完成，成功 ${successCount} 个，失败 ${failCount} 个`, 'warning');
     } else {
@@ -968,7 +967,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   }
 
   function handleStartEdit() {
-    showToast('剪辑功能即将上线', 'warning');
+    onUnlockStep?.('edit');
+    showToast('已进入剪辑流程', 'success');
   }
 
   function openRegenerateModal() {
@@ -1835,7 +1835,6 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
                 return updated;
               });
               await saveCandidateMedia(shot.id, { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated' });
-              onVideoGenerated?.(activeEpisodes.findIndex(ep => getEpisodeId(ep) === getEpisodeId(episode)));
               return { url: normalizedUrl };
             }
             // 终态但没有视频 — 发送 toast 提示失败

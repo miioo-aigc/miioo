@@ -72,6 +72,7 @@
 - 新增 `src/components/project/ScriptProgress.jsx`，负责项目总览“资产概况”中的剧本进度容器、集数标题和空态展示。
 - 新增 `src/components/project/ScriptProgressCard.jsx`，负责单集卡片和四种状态视觉：未分镜、已分镜、剪辑中、完成。
 - `GlobalSettings.jsx` 仅通过 `ScriptProgress` 传入 `episodes` 与 `episodeStatuses`；现有 `pending`、`generated`、`edited` 数据契约保持不变，并兼容 `storyboarded` 状态。
+- 2026-07-28 `episodeStatusAdapter` 按概览接口的分镜流程状态适配标签：有分镜但无视频时返回 `storyboarded`，仅有视频生成结果时返回 `generated`，避免把已分镜剧集误显示为“剪辑中”。
 - 页面未新增 API、Store 或副作用；状态来源仍由 Home 的 `buildEpisodeStatusMap` 提供。
 - 已同步 `src/components/project/index.js` 目录出口，后续项目域页面可复用卡片和容器。
 - 剧本进度和三类主体概览内容区最多展示两行；卡片按每行四列固定占比排列，少于四张时保持相同宽度，只有一行内容时按内容自适应高度，超出两行后在各自容器内纵向滚动。主体右上角跳转图标继续沿用 `char`、`scene`、`prop` 分类回调，并补充了无障碍名称。
@@ -1063,6 +1064,11 @@
 - Home 继续负责项目概览请求、状态写回和后续分镜加载；适配工具不持有副作用。
 - 已完成旧状态映射搜索、定向 ESLint 和 `git diff --check`。
 
+## 2026-07-28 Home 剧集进度工作流状态修复
+
+- `ScriptProgress` 的剧集卡片状态由 Home 的项目级 `unlockedSteps` 和每集分镜数据共同计算，优先级为每集 `edited`、该集已有分镜且解锁 `edit`、该集已有分镜且解锁 `storyboard`、未分镜。
+- `video_generated_count`、`videos_ready` 和分镜视频生成回调不再直接触发“剪辑中”；分镜页的“开始剪辑”动作会解锁 `edit`，确保只有进入剪辑流程后才展示剪辑状态。
+
 ## 2026-07-16 Home 项目适配迁移
 
 - 新增 `src/utils/projectAdapter.js`，统一项目列表 `cover/cover_url` 兼容和创建时间倒序排序。
@@ -1240,6 +1246,12 @@
 - StoryboardPage：继续复核测试项目分镜数据、镜头字段、批量生成菜单、图片/视频生成面板、模型/分辨率选择器和刷新恢复；没有执行真实生成、上传、下载、删除、定稿或配音。
 - 本轮静态门禁结果：`npm run lint`、`npm run build`、`npm run check:architecture`、`git diff --check` 均通过；架构检查仅保留规模告警，构建最大 JavaScript 分块约 `441KB`，无超过 `500KB` 告警。
 - 当前下一步：音频播放/收藏按用户要求排除；StoryboardPage 已完成最终手动验收。仅对后续具备具体测试对象并获得单独授权的外部流程进行验证，未授权副作用不自动执行。
+
+## 2026-07-28 项目资产卡片结构修复
+
+- `ProjectAssetCard` 仅对角色、场景、道具使用图片在上、名称和描述在下的独立信息区；名称固定单行，描述保留两行高度。
+- 分镜图、分镜视频继续使用原有图片全铺和底部覆盖层信息结构，不继承主体卡片的固定下方高度。
+- 卡片的悬浮菜单、批量选择、详情打开、下载和删除回调保持不变；已完成 `AssetsCards.jsx` 定向 ESLint、构建和 `git diff --check`。
 
 
 ## 2026-07-17 SubjectPage 编辑表单组合拆分

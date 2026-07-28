@@ -33,8 +33,9 @@
 ### 2026-07-21 至 2026-07-22 最新进度
 
 - [x] 项目总览“资产概况”中的剧本进度已组件化：新增 `src/components/project/ScriptProgress.jsx` 与 `src/components/project/ScriptProgressCard.jsx`，并通过 `src/components/project/index.js` 统一导出；`GlobalSettings.jsx` 只负责传入剧集数据和状态映射。
-- [x] 剧本进度卡片支持四种状态：未分镜、已分镜、剪辑中、完成；兼容现有 `pending`、`generated`、`edited` 数据契约，并支持 `storyboarded` 状态，不修改 API、Store 或状态来源。
+- [x] 剧本进度卡片支持四种状态：未分镜、已分镜、剪辑中、完成；展示严格跟随项目工作流解锁：未解锁分镜为 `未分镜`，解锁分镜为 `已分镜`，解锁剪辑为 `已分镜`（弱化）+ `剪辑中`，每集明确完成后为 `完成`。
 - [x] 剧本进度、角色、场景、道具容器最多展示两行卡片；卡片按每行四列固定占比排列，少于四张时保持相同宽度，只有一行内容时按内容自适应高度，超过两行后分别在各自容器内部纵向滚动。
+- [x] 剧本进度卡片不再依据视频生成数量判断“剪辑中”；项目步骤只决定状态上限，单集必须有自己的分镜数据后才显示“已分镜”或“剪辑中”，每集 `edited` 状态才显示“完成”。
 - [x] 角色、场景、道具右上角跳转图标保持可用，分别通过 `char`、`scene`、`prop` 跳转到主体页对应分类 Tab；已补充中文 `title` 与 `aria-label`，未改变原有跳转链路。
 - [x] 剧本解析得到结构化分集后，通过 `ScriptPage` 现有 `onEpisodesChange` 回传项目级剧集状态，项目总览“剧本进度”会即时展示分集卡片；正式剧集仍由 `/api/projects/{projectId}/episodes` 提供持久化数据。
 - [x] 结构化分集适配保留后端返回的 `episode_number` 与 `status`，解析阶段卡片优先显示后端编号和状态，缺失时再使用前端默认值。
@@ -125,6 +126,7 @@
 - **2026-07-16 SubjectPage 主体任务结果适配迁移**：新增 `src/utils/subjectPendingGenerationAdapter.js`，迁移 `getPendingGenResult` 为 `findPendingSubjectImage`；页面继续负责任务轮询、pending 持久化、状态写回和 Toast，适配工具只负责识别新图片结果。
 
 - **2026-07-16 Home 剧集状态适配迁移**：新增 `src/utils/episodeStatusAdapter.js`，统一项目概览 `episode_progress` 和剧集状态到 `episodeStatuses` 的纯转换；首页继续负责概览请求和状态写回，不改变生成状态优先级。
+- **2026-07-28 剧集进度状态语义修复**：剧集卡片改按“项目工作流解锁状态 + 单集分镜数据”计算展示优先级：`完成` > 已有该集分镜且解锁剪辑（`已分镜`弱化 + `剪辑中`）> 已有该集分镜且解锁分镜（`已分镜`）> `未分镜`。`video_generated_count` 不再被当作进入剪辑页的依据；概览接口中的 `edited` 仅用于恢复每集完成状态。
 
 - **2026-07-16 Home 项目适配迁移**：新增 `src/utils/projectAdapter.js`，统一项目 `cover/cover_url` 字段兼容和创建时间倒序排序；首页继续负责项目请求、缓存恢复、导航和状态副作用。已消除首页三处重复项目列表归一化实现。
 

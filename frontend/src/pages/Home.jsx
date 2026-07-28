@@ -17,7 +17,7 @@
  * ─── 工具函数 ───────────────────────────────────────────────────
  *   normalizeSubjects(items) 主体列表标准化                      utils/subjectAdapter.js
  *   normalizeProjectList(data) 项目字段兼容与排序                 utils/projectAdapter.js
- *   buildEpisodeStatusMap(overview, episodes) 剧集状态适配         utils/episodeStatusAdapter.js
+ *   buildEpisodeStatusMap(overview, episodes) 剧集完成状态适配     utils/episodeStatusAdapter.js
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
  *   export default function Home()                               L105
@@ -60,6 +60,7 @@
  *   2026-07-27  主体抽取加载文案优先读取任务轮询 status_message，固定文案作为兜底
  *   2026-07-24  持久化分镜生成任务，支持刷新/返回后恢复轮询及失败重试
  *   2026-07-06  新增 subject cache 订阅 useEffect，实时同步 sharedChars/sharedScenes/sharedProps
+ *   2026-07-28  剧集进度改按工作流解锁状态展示，视频生成数量不再等同于“剪辑中”
  *   2026-07-01  初始结构索引建立
  */
 
@@ -715,6 +716,20 @@ export default function Home({ onGoToAdmin }) {
       return next;
     });
   };
+
+  // 项目步骤只决定状态上限，单集是否已有分镜数据决定该集能否进入下一状态。
+  const displayEpisodeStatuses = useMemo(() => Object.fromEntries(
+    scriptEpisodes.map((episode, index) => {
+      const completed = episodeStatuses[index] === 'edited' || String(episode?.status || '').toLowerCase() === 'edited';
+      if (completed) return [index, 'edited'];
+      const hasStoryboard = ['storyboarded', 'generated'].includes(episodeStatuses[index])
+        || Number(episode?.storyboard_count ?? episode?.storyboardCount) > 0
+        || ['storyboarded', 'generated', 'videos_ready', 'no_image', 'images_ready'].includes(String(episode?.status || '').toLowerCase());
+      if (hasStoryboard && unlockedSteps.has('edit')) return [index, 'generated'];
+      if (hasStoryboard && unlockedSteps.has('storyboard')) return [index, 'storyboarded'];
+      return [index, 'pending'];
+    }),
+  ), [episodeStatuses, scriptEpisodes, unlockedSteps]);
 
   // 加载更多主体（滚动触底时调用）
   const loadMoreSubjects = async (type) => {
@@ -1387,7 +1402,7 @@ export default function Home({ onGoToAdmin }) {
                 }}
                 scriptFinalizedSinceExtraction={scriptFinalizedSinceExtraction}
                 onScriptFinalized={handleScriptFinalized}
-                episodeStatuses={episodeStatuses}
+                episodeStatuses={displayEpisodeStatuses}
                 onGoToStoryboard={(episodeIndex) => {
                   setStoryboardInitialEpisodeIndex(episodeIndex);
                   handleUnlockStep('storyboard');
@@ -1465,12 +1480,6 @@ export default function Home({ onGoToAdmin }) {
                 statusMessage={storyboardStatusMessage}
                 completedEpisodesCount={completedEpisodesCount}
                 generateError={generateError}
-                onVideoGenerated={(episodeIndex) => {
-                  setEpisodeStatuses((prev) => {
-                    if (prev[episodeIndex] === 'generated' || prev[episodeIndex] === 'edited') return prev;
-                    return { ...prev, [episodeIndex]: 'generated' };
-                  });
-                }}
               />
             )}
             {activeKey === 'assets' && (

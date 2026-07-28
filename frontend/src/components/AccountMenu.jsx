@@ -71,13 +71,14 @@ function StorageUsage({ usage, onGoToAssets }) {
     <div className="[font-synthesis:none] antialiased" style={{ alignItems: 'flex-start', display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'space-between', marginTop: '2px', paddingTop: '8px', position: 'relative', width: '100%' }}>
       <div style={{ alignSelf: 'stretch', backgroundColor: '#FFFFFF1A', borderRadius: '20px', height: '4px', flexShrink: 0 }} />
       <div style={{ alignItems: 'center', alignSelf: 'stretch', display: 'flex', gap: '4px', justifyContent: 'space-between' }}>
-        <div style={{ color: '#FFFFFF80', flexShrink: 0, fontFamily: FONT_REGULAR, fontSize: '12px', lineHeight: '18px' }}>
-          存储空间
-        </div>
-        {isDangerous && (
+        {isDangerous ? (
           <button type="button" onClick={() => onGoToAssets?.()} style={{ background: 'transparent', border: 0, color: '#2DC3E1', cursor: 'pointer', fontFamily: FONT_REGULAR, fontSize: '12px', lineHeight: '18px', padding: 0 }}>
             管理资产库
           </button>
+        ) : (
+          <div style={{ color: '#FFFFFF80', flexShrink: 0, fontFamily: FONT_REGULAR, fontSize: '12px', lineHeight: '18px' }}>
+            存储空间
+          </div>
         )}
         <div style={{ alignItems: 'flex-start', display: 'flex', fontFamily: FONT_REGULAR, fontSize: '12px', lineHeight: '18px', whiteSpace: 'nowrap' }}>
           <span style={{ color }}>{formatStorage(used)}</span>

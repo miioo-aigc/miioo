@@ -20,7 +20,7 @@ export default function StorageUsageReminderModal({ type, onClose, onManageAsset
   const color = isFull ? '#D13B3B' : '#F7A33B';
   return (
     <div style={{ alignItems: 'center', background: 'rgba(0,0,0,0.45)', display: 'flex', inset: 0, justifyContent: 'center', position: 'fixed', zIndex: 10000 }}>
-      <div role="alertdialog" aria-modal="true" style={{ backgroundColor: isFull ? '#D13B3B1A' : '#EB8B141A', border: `1px solid ${color}`, borderRadius: '16px', color: '#FFFFFF', fontFamily: FONT_REGULAR, width: '400px', maxWidth: 'calc(100vw - 32px)', overflow: 'hidden' }}>
+      <div role="alertdialog" aria-modal="true" style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', backgroundColor: isFull ? '#D13B3B1A' : '#EB8B141A', border: `1px solid ${color}`, borderRadius: '16px', color: '#FFFFFF', fontFamily: FONT_REGULAR, width: '400px', maxWidth: 'calc(100vw - 32px)', overflow: 'hidden' }}>
         <div style={{ alignItems: 'center', display: 'flex', gap: '8px', justifyContent: 'space-between', padding: '16px 24px' }}>
           <div style={{ alignItems: 'center', display: 'flex', gap: '8px' }}><AlertIcon color={color} /><span style={{ color, fontFamily: FONT_MEDIUM, fontSize: '16px', lineHeight: '20px' }}>{isFull ? '存储空间已满' : '存储空间不足'}</span></div>
           <button type="button" aria-label="关闭" onClick={onClose} style={{ background: 'transparent', border: 0, cursor: 'pointer', padding: 0, height: '16px', width: '16px' }}><CloseIcon /></button>

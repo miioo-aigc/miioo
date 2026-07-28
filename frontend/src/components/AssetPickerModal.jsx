@@ -545,6 +545,9 @@ export default function AssetPickerModal({
   const pickerTabKey = (pid, tabKey) => `${pid}__${tabKey}`;
 
   function normalizePickerAsset(a) {
+    const metadata = typeof a.metadata_json === 'string'
+      ? (() => { try { return JSON.parse(a.metadata_json) || {}; } catch { return {}; } })()
+      : (a.metadata_json || a.metadata || {});
     return {
       id: a.id,
       name: a.name || '未命名',
@@ -560,6 +563,15 @@ export default function AssetPickerModal({
       bgColor: '#252525',
       category: a.category,
       asset_type: a.asset_type,
+      prompt: a.prompt ?? metadata.prompt ?? '',
+      input_prompt: a.input_prompt ?? metadata.input_prompt ?? '',
+      model: a.model ?? metadata.model ?? '',
+      ratio: a.ratio ?? metadata.ratio ?? '',
+      resolution: a.resolution ?? metadata.resolution ?? a.size ?? '',
+      created_at: a.created_at ?? '',
+      source: a.source ?? null,
+      source_type: a.source_type ?? null,
+      metadata_json: a.metadata_json ?? null,
     };
   }
 

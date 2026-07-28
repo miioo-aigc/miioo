@@ -25,6 +25,7 @@
  *   2026-07-03  删除左侧底部 refImages 条（已在右侧信息区展示）；缩略图列表始终显示
  *   2026-07-06  右侧信息区字段对齐 AssetsPage ShotDetailModal：分镜编号横向布局、分镜模式隐藏名称描述、生成参数仅模型+分辨率、时间标签统一"AI 生成时间"
  *   2026-07-06  新增 source prop：区分 AI 生成 / 本地上传 / 资产库，非 AI 图片右侧显示「来源」字段；生成参数和 AI 生成时间仅 AI 生成时展示
+ *   2026-07-28  主体候选图按当前图片来源展示创作信息：本地上传隐藏，资产库图片使用资产自身字段
  */
 
 import { useState, useRef } from 'react';
@@ -81,9 +82,11 @@ export default function MediaDetailModal({
   const genResolution = currentImg?.resolution || null;
   const genRatio = currentImg?.ratio || null;
   // 是否 AI 生成
-  const isAiGenerated = !source || source === 'ai-generated';
+  const currentSource = currentImg?.detailSource || currentImg?.source || source;
+  const isAiGenerated = !currentSource || currentSource === 'ai-generated' || currentSource === 'subject-image';
+  const canShowGenerationInfo = isAiGenerated || currentSource === 'asset-library';
   // 来源标签
-  const sourceLabel = source === 'local-upload' ? '本地上传' : source === 'asset-library' ? '资产库' : '';
+  const sourceLabel = currentSource === 'local-upload' ? '本地上传' : currentSource === 'asset-library' ? '资产库' : '';
 
   return (
     <>
@@ -270,7 +273,7 @@ export default function MediaDetailModal({
                 )}
 
                 {/* Prompt */}
-                {currentImg?.prompt && (
+                {canShowGenerationInfo && (currentImg?.input_prompt || currentImg?.prompt) && (
                   <>
                     <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
                     <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
@@ -287,7 +290,7 @@ export default function MediaDetailModal({
                           onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                           onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
                           onClick={() => {
-                            navigator.clipboard.writeText(currentImg.prompt);
+                            navigator.clipboard.writeText(currentImg.input_prompt ?? currentImg.prompt);
                             showCopyToast();
                           }}
                           title="复制提示词"
@@ -298,7 +301,7 @@ export default function MediaDetailModal({
                           </svg>
                         </button>
                       </div>
-                      <p style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC', margin: 0 }}>{currentImg.prompt}</p>
+                      <p style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC', margin: 0 }}>{currentImg.input_prompt ?? currentImg.prompt}</p>
                     </div>
                   </>
                 )}
@@ -330,7 +333,7 @@ export default function MediaDetailModal({
                 )}
 
                 {/* Generation params — 分镜模式仅模型+分辨率，非分镜含画面比例 */}
-                {isAiGenerated && (genModel || genRatio || genResolution) && (
+                {canShowGenerationInfo && (genModel || genRatio || genResolution) && (
                   <>
                     <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
                     <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '12px' }}>

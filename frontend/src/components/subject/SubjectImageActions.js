@@ -58,6 +58,13 @@ export function createSubjectImageActionHandlers({
         id: fileOrAsset.id,
         assetId: fileOrAsset.id,
         source: 'creation-asset',
+        detailSource: 'asset-library',
+        prompt: fileOrAsset.prompt,
+        input_prompt: fileOrAsset.input_prompt,
+        model: fileOrAsset.model,
+        ratio: fileOrAsset.ratio,
+        resolution: fileOrAsset.resolution,
+        created_at: fileOrAsset.created_at,
       }, ...prev]);
       apiUpdateAsset(fileOrAsset.id, { subject_id: subjectId, category: subjectType })
         .then(() => invalidate(K.projectAssets(projectId), MEDIUM.CONTENT))
@@ -79,6 +86,7 @@ export function createSubjectImageActionHandlers({
       settled: false,
       id: tempId,
       source: 'local-upload',
+      detailSource: 'local-upload',
     }, ...prev]);
 
     if (projectId) {
@@ -97,7 +105,15 @@ export function createSubjectImageActionHandlers({
             || uploadedImage.file_url
             || uploadedImage.url;
           if (!realId) throw new Error('上传候选图后未返回资产编号');
-          return apiUpdateAsset(realId, { subject_id: subjectId, category: subjectType }).then(() => {
+          const uploadedMetadata = typeof uploadedImage?.metadata_json === 'object'
+            ? uploadedImage.metadata_json
+            : {};
+          return apiUpdateAsset(realId, {
+            subject_id: subjectId,
+            category: subjectType,
+            // 资产 PATCH 不支持顶层 source_type，来源写入契约允许的扩展元数据，保证刷新后仍可区分本地上传。
+            metadata_json: { ...uploadedMetadata, source_type: 'local-upload', origin: 'local-upload' },
+          }).then(() => {
             // 主体页上传的本地图片属于项目主体资产，上传成功后必须让资产库重新读取。
             invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
             setGeneratedImages((prev) => prev.map((image) => (
@@ -107,6 +123,7 @@ export function createSubjectImageActionHandlers({
                   id: realId,
                   assetId: realId,
                   source: 'creation-asset',
+                  detailSource: 'local-upload',
                   rawUrl: realUrl || blobUrl,
                   url: normalizeImageUrl(realUrl || blobUrl),
                   settled: false,

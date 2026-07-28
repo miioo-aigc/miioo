@@ -17,6 +17,7 @@
  *   2026-07-15  从 SubjectPage 抽离主体编辑区右侧图片列表及图片卡片
  *   2026-07-15  保持页面负责上传、下载、定稿 API 和 Toast 行为
  *   2026-07-22  移除候选图悬停放大和下载按钮的黑色外描边
+ *   2026-07-28  详情弹窗按候选图来源展示提示词和生成参数
  */
 import { useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
@@ -192,10 +193,14 @@ export default function SubjectImageList({
     url: image.url,
     fileUrl: image.rawUrl ?? image.url,
     is_primary: image.settled ?? false,
-    prompt: promptText,
-    model: selectedModel,
-    ratio: selectedRatio,
-    resolution: selectedResolution,
+    // AI 生成图使用当前弹窗参数；资产库图使用资产自身字段；本地上传图不补齐创作信息。
+    prompt: image.prompt ?? (image.detailSource === 'ai-generated' || !image.detailSource ? promptText : null),
+    input_prompt: image.input_prompt,
+    model: image.model ?? (image.detailSource === 'ai-generated' || !image.detailSource ? selectedModel : null),
+    ratio: image.ratio ?? (image.detailSource === 'ai-generated' || !image.detailSource ? selectedRatio : null),
+    resolution: image.resolution ?? (image.detailSource === 'ai-generated' || !image.detailSource ? selectedResolution : null),
+    detailSource: image.detailSource || (image.source === 'local-upload' ? 'local-upload' : image.source === 'creation-asset' ? 'asset-library' : 'ai-generated'),
+    created_at: image.created_at,
     refImages: image.refImages?.length > 0 ? image.refImages : refImagesForModal,
   }));
 

@@ -16,10 +16,11 @@
  *   2026-07-15  从 SubjectPage 抽离主体详情图片的纯数据转换逻辑
  *   2026-07-22  参考图与候选图彻底分流，主体右侧列表只展示候选结果
  *   2026-07-28  合并读取绑定主体的项目资产，支持候选区上传和资产库选择刷新恢复
+ *   2026-07-28  保留候选图来源及资产创作元数据，供详情弹窗按来源展示
  */
 import { normalizeImageUrl } from '../../utils/imageUrl';
 
-function toImageItem({ id, rawUrl, settled = false, isReference = false, refImages = [], assetId = null, source = null }) {
+function toImageItem({ id, rawUrl, settled = false, isReference = false, refImages = [], assetId = null, source = null, detailSource = null, prompt = null, inputPrompt = null, model = null, ratio = null, resolution = null, createdAt = null }) {
   return {
     id,
     rawUrl,
@@ -29,6 +30,13 @@ function toImageItem({ id, rawUrl, settled = false, isReference = false, refImag
     refImages,
     ...(assetId ? { assetId } : {}),
     ...(source ? { source } : {}),
+    ...(detailSource ? { detailSource } : {}),
+    ...(prompt != null ? { prompt } : {}),
+    ...(inputPrompt != null ? { input_prompt: inputPrompt } : {}),
+    ...(model != null ? { model } : {}),
+    ...(ratio != null ? { ratio } : {}),
+    ...(resolution != null ? { resolution } : {}),
+    ...(createdAt != null ? { created_at: createdAt } : {}),
   };
 }
 
@@ -47,18 +55,55 @@ export function mapCandidateImages(images, refImages = []) {
     refImages,
     assetId: image.asset_id,
     source: 'subject-image',
+    detailSource: 'ai-generated',
+    prompt: image.prompt,
+    inputPrompt: image.input_prompt,
+    model: image.model,
+    ratio: image.ratio,
+    resolution: image.resolution,
+    createdAt: image.created_at,
   }));
 }
 
+function getAssetDetailSource(asset) {
+  const metadata = typeof asset?.metadata_json === 'string'
+    ? (() => { try { return JSON.parse(asset.metadata_json) || {}; } catch { return {}; } })()
+    : (asset?.metadata_json || asset?.metadata || {});
+  const source = [asset?.source, asset?.source_type, asset?.sourceType, metadata.source, metadata.source_type, metadata.sourceType, metadata.origin, metadata.origin_type, metadata.originType]
+    .find((value) => value != null && String(value).trim() !== '');
+  const normalized = String(source || '').toLowerCase().replace(/[_\s]/g, '-');
+  return normalized.includes('upload') || normalized === 'local' || normalized === 'local-file'
+    ? 'local-upload'
+    : 'asset-library';
+}
+
+function getAssetMetadata(asset) {
+  if (typeof asset?.metadata_json === 'object') return asset.metadata_json || {};
+  if (typeof asset?.metadata_json === 'string') {
+    try { return JSON.parse(asset.metadata_json) || {}; } catch { return {}; }
+  }
+  return asset?.metadata || {};
+}
+
 export function mapSubjectAssets(assets, refImages = []) {
-  return (Array.isArray(assets) ? assets : []).map((asset) => toImageItem({
-    id: asset.id || asset.asset_id,
-    rawUrl: asset.file_url || asset.original_url || asset.originalUrl || asset.url || asset.thumbnail_url || asset.thumbnailUrl,
-    settled: asset.is_primary ?? false,
-    refImages,
-    assetId: asset.id || asset.asset_id,
-    source: 'creation-asset',
-  }));
+  return (Array.isArray(assets) ? assets : []).map((asset) => {
+    const metadata = getAssetMetadata(asset);
+    return toImageItem({
+      id: asset.id || asset.asset_id,
+      rawUrl: asset.file_url || asset.original_url || asset.originalUrl || asset.url || asset.thumbnail_url || asset.thumbnailUrl,
+      settled: asset.is_primary ?? false,
+      refImages,
+      assetId: asset.id || asset.asset_id,
+      source: 'creation-asset',
+      detailSource: getAssetDetailSource(asset),
+      prompt: asset.prompt ?? metadata.prompt,
+      inputPrompt: asset.input_prompt ?? metadata.input_prompt,
+      model: asset.model ?? metadata.model,
+      ratio: asset.ratio ?? metadata.ratio,
+      resolution: asset.resolution ?? metadata.resolution ?? asset.size,
+      createdAt: asset.created_at,
+    });
+  });
 }
 
 export function mapReferenceImages(images, refImages = []) {

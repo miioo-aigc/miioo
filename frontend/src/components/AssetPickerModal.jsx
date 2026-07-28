@@ -448,7 +448,21 @@ export default function AssetPickerModal({
         const groupsWithPreviews = await Promise.all(normalizedGroups.map(async (group) => {
           try {
             const assets = await apiListLiveMaterialAssets(group.id);
-            return { ...group, images: (Array.isArray(assets) ? assets : []).slice(0, 2).map((asset) => asset.preview_url || asset.asset_ref_url).filter(Boolean) };
+            return {
+              ...group,
+              images: (Array.isArray(assets) ? assets : []).slice(0, 2).map((asset) => {
+                const rawAssetType = String(asset.asset_type || asset.assetType || asset.type || 'image').toLowerCase();
+                const assetType = rawAssetType.startsWith('video/') ? 'video' : rawAssetType;
+                const posterUrl = normalizeImageUrl(asset.poster_url || asset.posterUrl || asset.thumbnail_url || asset.thumbnailUrl || asset.cover_url || asset.coverUrl || asset.first_frame_url || asset.firstFrameUrl || '') || null;
+                const mediaUrl = normalizeImageUrl(assetType === 'video'
+                  ? (asset.source_url || asset.sourceUrl || asset.file_url || asset.fileUrl || asset.preview_url || asset.previewUrl || '')
+                  : (asset.source_url || asset.sourceUrl || asset.file_url || asset.fileUrl || asset.preview_url || asset.previewUrl || asset.asset_ref_url || asset.assetRefUrl || '')) || null;
+                if (!mediaUrl && !posterUrl) return null;
+                return assetType === 'video'
+                  ? { url: mediaUrl, type: 'video', posterUrl }
+                  : { url: posterUrl || mediaUrl, type: assetType, posterUrl };
+              }).filter(Boolean),
+            };
           } catch {
             return { ...group, images: [] };
           }
@@ -479,14 +493,14 @@ export default function AssetPickerModal({
           id: asset.id,
           name: asset.name || activeSeedanceGroup.name || '未命名',
           url: normalizeImageUrl(
-            String(asset.asset_type || '').toLowerCase() === 'video'
-              ? (asset.source_url || asset.file_url || asset.preview_url || asset.asset_ref_url)
-              : (asset.preview_url || asset.asset_ref_url)
+            String(asset.asset_type || asset.assetType || asset.type || '').toLowerCase().startsWith('video')
+              ? (asset.source_url || asset.sourceUrl || asset.file_url || asset.fileUrl || asset.preview_url || asset.previewUrl)
+              : (asset.preview_url || asset.previewUrl || asset.asset_ref_url || asset.assetRefUrl || asset.file_url || asset.fileUrl)
           ) || null,
-          fullUrl: normalizeImageUrl(asset.asset_ref_url || asset.preview_url || asset.file_url || asset.source_url) || null,
-          fileUrl: normalizeImageUrl(asset.asset_ref_url || asset.preview_url || asset.file_url || asset.source_url) || null,
-          asset_type: String(asset.asset_type || 'image').toLowerCase(),
-          posterUrl: normalizeImageUrl(asset.poster_url || asset.posterUrl || asset.thumbnail_url || asset.thumbnailUrl || '') || null,
+          fullUrl: normalizeImageUrl(asset.asset_ref_url || asset.assetRefUrl || asset.preview_url || asset.previewUrl || asset.file_url || asset.fileUrl || asset.source_url || asset.sourceUrl) || null,
+          fileUrl: normalizeImageUrl(asset.asset_ref_url || asset.assetRefUrl || asset.preview_url || asset.previewUrl || asset.file_url || asset.fileUrl || asset.source_url || asset.sourceUrl) || null,
+          asset_type: String(asset.asset_type || asset.assetType || asset.type || 'image').toLowerCase().startsWith('video') ? 'video' : String(asset.asset_type || asset.assetType || asset.type || 'image').toLowerCase(),
+          posterUrl: normalizeImageUrl(asset.poster_url || asset.posterUrl || asset.thumbnail_url || asset.thumbnailUrl || asset.cover_url || asset.coverUrl || asset.first_frame_url || asset.firstFrameUrl || '') || null,
           // 只有真人组进入真人素材参数；AIGC 组按普通参考图片返回。
           isLiveMaterial: String(activeSeedanceGroup.group_type || '').toUpperCase() !== 'AIGC',
           isAigcMaterial: String(activeSeedanceGroup.group_type || '').toUpperCase() === 'AIGC',

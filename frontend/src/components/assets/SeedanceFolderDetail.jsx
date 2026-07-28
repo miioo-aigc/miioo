@@ -39,13 +39,14 @@ function AssetImageCard({ asset, onPreview, onDelete }) {
   const [generatedPoster, setGeneratedPoster] = useState(null);
   const [isHovered, setIsHovered] = useState(false);
   const videoRef = useRef(null);
-  const assetType = String(asset.asset_type || '').toLowerCase();
+  const rawAssetType = String(asset.asset_type || asset.assetType || asset.type || '').toLowerCase();
+  const assetType = rawAssetType.startsWith('video/') ? 'video' : rawAssetType;
   const isVideo = assetType === 'video';
   const isAudio = assetType === 'audio';
   const imageUrl = isVideo
     ? (asset.posterUrl || asset.poster_url || asset.thumbnailUrl || asset.thumbnail_url || null)
-    : (asset.preview_url || asset.asset_ref_url);
-  const videoUrl = isVideo ? (asset.source_url || asset.file_url || asset.preview_url || null) : null;
+    : (asset.preview_url || asset.previewUrl || asset.asset_ref_url || asset.assetRefUrl);
+  const videoUrl = isVideo ? (asset.source_url || asset.sourceUrl || asset.file_url || asset.fileUrl || asset.preview_url || asset.previewUrl || null) : null;
 
   useEffect(() => {
     if (!isVideo || imageUrl || !videoUrl || asset.localFile) return undefined;

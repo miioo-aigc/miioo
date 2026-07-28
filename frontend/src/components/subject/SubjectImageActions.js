@@ -15,17 +15,24 @@
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  抽离主体图片上传、下载和定稿动作适配，页面保留状态与反馈副作用
  *   2026-07-22  右侧候选图上传改走通用图片资产接口，不再写入主体参考图关系
+ *   2026-07-28  普通项目资产通过 assets PATCH 支持设置/取消定稿，生成图仍走主体候选图接口
+ *   2026-07-27  上传中的本地图片禁止提前定稿，避免临时 ID 触发无效请求
  */
 import {
   apiDownloadSubjectImage,
   apiSetPrimarySubjectImage,
+  apiUnsetPrimarySubjectImage,
 } from '../../api/subject';
 import { apiUploadCreationImage } from '../../api/creation';
+import { apiGetSubjectAssets, apiSetPrimarySubjectAsset, apiUpdateAsset } from '../../api/assets';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { invalidate } from '../../utils/cache';
+import { K, MEDIUM } from '../../utils/cacheKeys';
 
 export function createSubjectImageActionHandlers({
   projectId,
   subjectId,
+  subjectType = 'character',
   setGeneratedImages,
   onCoverChange,
   setPrimaryImageUrl,
@@ -38,6 +45,7 @@ export function createSubjectImageActionHandlers({
       const rawUrl = fileOrAsset.url
         || fileOrAsset.file_url
         || fileOrAsset.fileUrl
+        || fileOrAsset.fullUrl
         || fileOrAsset.originalUrl
         || fileOrAsset.original_url
         || fileOrAsset.thumbnailUrl
@@ -48,7 +56,16 @@ export function createSubjectImageActionHandlers({
         url: normalizeImageUrl(rawUrl),
         settled: false,
         id: fileOrAsset.id,
+        assetId: fileOrAsset.id,
+        source: 'creation-asset',
       }, ...prev]);
+      apiUpdateAsset(fileOrAsset.id, { subject_id: subjectId, category: subjectType })
+        .then(() => invalidate(K.projectAssets(projectId), MEDIUM.CONTENT))
+        .catch((error) => {
+          console.error('[SubjectPage] 绑定候选图资产失败:', error);
+          setGeneratedImages((prev) => prev.filter((image) => image.assetId !== fileOrAsset.id));
+          showToast(error.message || '保存候选图失败', 'error');
+        });
       return;
     }
 
@@ -61,12 +78,13 @@ export function createSubjectImageActionHandlers({
       url: blobUrl,
       settled: false,
       id: tempId,
+      source: 'local-upload',
     }, ...prev]);
 
     if (projectId) {
       // 主体接口只提供参考图上传，没有候选图上传接口。
       // 右侧自定义图片必须走通用创作上传，不能写入主体 reference_images。
-      apiUploadCreationImage({ file: fileOrAsset, category: 'reference', project_id: projectId })
+      apiUploadCreationImage({ file: fileOrAsset, category: subjectType, project_id: projectId })
         .then((response) => {
           const uploadedImage = response?.image || response?.asset || {};
           const realId = response?.asset_id || response?.id || uploadedImage.asset_id || uploadedImage.id;
@@ -78,17 +96,24 @@ export function createSubjectImageActionHandlers({
             || uploadedImage.originalUrl
             || uploadedImage.file_url
             || uploadedImage.url;
-          setGeneratedImages((prev) => prev.map((image) => (
-            image.id === tempId
-              ? {
-                ...image,
-                id: realId || tempId,
-                rawUrl: realUrl || blobUrl,
-                url: normalizeImageUrl(realUrl || blobUrl),
-                settled: false,
-              }
-              : image
-          )));
+          if (!realId) throw new Error('上传候选图后未返回资产编号');
+          return apiUpdateAsset(realId, { subject_id: subjectId, category: subjectType }).then(() => {
+            // 主体页上传的本地图片属于项目主体资产，上传成功后必须让资产库重新读取。
+            invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
+            setGeneratedImages((prev) => prev.map((image) => (
+              image.id === tempId
+                ? {
+                  ...image,
+                  id: realId,
+                  assetId: realId,
+                  source: 'creation-asset',
+                  rawUrl: realUrl || blobUrl,
+                  url: normalizeImageUrl(realUrl || blobUrl),
+                  settled: false,
+                }
+                : image
+            )));
+          });
         })
         .catch((error) => {
           console.error('[SubjectPage] 上传候选图失败:', error);
@@ -111,15 +136,43 @@ export function createSubjectImageActionHandlers({
   function handleSettledChange(image, index, newSettled) {
     if (newSettled) {
       onCoverChange?.(image?.rawUrl ?? image?.url ?? null);
-      if (image.id && !String(image.id).startsWith('generated-')) {
-        apiSetPrimarySubjectImage(projectId, subjectId, image.id).catch((error) => {
-          console.error('[SubjectPage] 设置定稿图失败:', error);
-        });
-      }
+      // 主体候选图可能同时带有生成资产编号，但它仍应使用主体候选图定稿接口；
+      // 只有候选区本地上传/资产库选择产生的 creation-asset 才走资产接口。
+      const assetId = image.source === 'creation-asset' ? (image.assetId || image.id) : null;
+      const setPrimaryRequest = assetId
+        ? apiUnsetPrimarySubjectImage(projectId, subjectId)
+          .then(() => apiSetPrimarySubjectAsset(projectId, subjectId, assetId, { category: subjectType }))
+        : image.id && !String(image.id).startsWith('generated-')
+          ? apiGetSubjectAssets(projectId, subjectId, { category: subjectType })
+            .then((assets) => Promise.all(
+              (assets || [])
+                .filter((asset) => asset.is_primary)
+                .map((asset) => apiUpdateAsset(asset.id || asset.asset_id, { is_primary: false }))
+            ))
+            .then(() => apiSetPrimarySubjectImage(projectId, subjectId, image.id))
+          : Promise.resolve();
+
+      setPrimaryRequest.catch((error) => {
+        console.error('[SubjectPage] 设置定稿图失败:', error);
+        showToast(error.message || '设置定稿图失败', 'error');
+        setGeneratedImages((prev) => prev.map((item, itemIndex) => (
+          itemIndex === index ? { ...item, settled: false } : item
+        )));
+      });
+      if (assetId) invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
     } else {
       onCoverChange?.(null);
       setPrimaryImageUrl(null);
       setPrimaryImageId(null);
+      const assetId = image.source === 'creation-asset' ? (image.assetId || image.id) : null;
+      const unsetRequest = assetId
+        ? apiUpdateAsset(assetId, { is_primary: false })
+        : apiUnsetPrimarySubjectImage(projectId, subjectId);
+      unsetRequest.catch((error) => {
+        console.error('[SubjectPage] 取消定稿失败:', error);
+        showToast(error.message || '取消定稿失败', 'error');
+      });
+      if (assetId) invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
     }
 
     setGeneratedImages((prev) => prev.map((item, itemIndex) => (

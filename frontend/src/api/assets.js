@@ -91,6 +91,40 @@ export async function apiUpdateAsset(assetId, updates) {
   return res.json().catch(() => ({}));
 }
 
+/**
+ * 获取绑定到指定主体的项目图片资产。
+ * 主体候选图接口只覆盖 AI 主体生图记录，用户从候选区上传或选择的图片
+ * 以普通项目资产保存，并通过 subject_id 关联主体，因此详情页需要合并读取。
+ */
+export async function apiGetSubjectAssets(projectId, subjectId, { category, limit = 200 } = {}) {
+  if (!projectId || !subjectId) return [];
+  const assets = await apiGetAssets({
+    project_id: projectId,
+    scope: 'project',
+    asset_type: 'image',
+    category,
+    limit,
+  });
+  return (Array.isArray(assets) ? assets : []).filter((asset) => (
+    String(asset?.subject_id ?? asset?.subjectId ?? '') === String(subjectId)
+  ));
+}
+
+/**
+ * 设置项目资产主体定稿图：先清理同一主体下其他定稿资产，再设置目标资产。
+ * 资产接口目前不会自动保证 subject_id 范围内的 is_primary 唯一性，前端在写入前补齐该约束。
+ */
+export async function apiSetPrimarySubjectAsset(projectId, subjectId, assetId, { category } = {}) {
+  const subjectAssets = await apiGetSubjectAssets(projectId, subjectId, { category });
+  const otherPrimaryIds = subjectAssets
+    .filter((asset) => String(asset?.id ?? asset?.asset_id) !== String(assetId) && asset?.is_primary)
+    .map((asset) => asset.id ?? asset.asset_id)
+    .filter(Boolean);
+
+  await Promise.all(otherPrimaryIds.map((id) => apiUpdateAsset(id, { is_primary: false })));
+  return apiUpdateAsset(assetId, { subject_id: subjectId, category, is_primary: true });
+}
+
 export async function apiDeleteAsset(assetId, { projectId, subjectType } = {}) {
   const res = await authFetch(`${BASE}/api/assets/${assetId}`, { method: 'DELETE' });
   if (!res.ok) {
@@ -232,13 +266,13 @@ export async function apiRemoveAssets(assetRecords = [], { projectId, subjectTyp
   if (recordsById.size === 0) return { ownedIds: [], creationIds: [] };
 
   const records = [...recordsById.values()];
-  const needsFallback = records.some((asset) => !hasKnownAssetSource(asset));
+  const needsFallback = deleteMode !== 'project' && records.some((asset) => !hasKnownAssetSource(asset));
   const creationAssetIds = needsFallback ? await getCreationAssetIds() : new Set();
   const ownedIds = [];
   const creationIds = [];
   records.forEach((asset) => {
     const id = String(getAssetId(asset));
-    if (classifyAsset(asset, creationAssetIds) === 'creation') creationIds.push(id);
+    if (deleteMode !== 'project' && classifyAsset(asset, creationAssetIds) === 'creation') creationIds.push(id);
     else ownedIds.push(id);
   });
 

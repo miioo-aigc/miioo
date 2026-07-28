@@ -55,9 +55,11 @@ const PROJECT_CATEGORY_TABS = [
 
 // subjectType：本次删除影响的主体类别（'character'|'scene'|'prop'），
 // 让 Home 只刷新对应类别的主体，避免误刷/覆盖其它类别的卡片。
-function notifyProjectAssetsDeleted(projectId, subjectType) {
+function notifyProjectAssetsDeleted(projectId, subjectType, assetIds = []) {
   if (!projectId) return;
-  window.dispatchEvent(new CustomEvent('project-assets:deleted', { detail: { projectId, subjectType } }));
+  window.dispatchEvent(new CustomEvent('project-assets:deleted', {
+    detail: { projectId, subjectType, assetIds },
+  }));
 }
 
 export default function AssetsProjectPanel() {
@@ -237,7 +239,7 @@ export default function AssetsProjectPanel() {
     const removedIds = records.map((asset) => asset.id);
     const pageKey = getAssetPageKey(activeProject, activeCategory);
     try {
-      await apiRemoveAssets(records, { projectId: activeProject, subjectType });
+      await apiRemoveAssets(records, { projectId: activeProject, subjectType, deleteMode: 'project' });
       removeFromRawList(pageKey, removedIds);
       setAssetsMap((prev) => {
         const nextAssets = (prev[activeCategory] || []).flatMap((asset) => {
@@ -258,7 +260,7 @@ export default function AssetsProjectPanel() {
       if (subjectType && activeProject) {
         apiGetSubjects(activeProject, { type: subjectType }).catch(() => {});
       }
-      notifyProjectAssetsDeleted(activeProject, subjectType);
+      notifyProjectAssetsDeleted(activeProject, subjectType, removedIds);
     } catch (err) {
       console.error('删除资产失败', err);
     }
@@ -273,7 +275,7 @@ export default function AssetsProjectPanel() {
     const removedIds = records.map((asset) => asset.id);
     const pageKey = getAssetPageKey(activeProject, activeCategory);
     try {
-      await apiRemoveAssets(records, { projectId: activeProject, subjectType });
+      await apiRemoveAssets(records, { projectId: activeProject, subjectType, deleteMode: 'project' });
       removeFromRawList(pageKey, removedIds);
       const selectedIds = new Set(selected);
       setAssetsMap((prev) => ({
@@ -281,7 +283,7 @@ export default function AssetsProjectPanel() {
         [activeCategory]: (prev[activeCategory] || []).filter((asset) => !selectedIds.has(asset.id)),
       }));
       exitBatch();
-      notifyProjectAssetsDeleted(activeProject, subjectType);
+      notifyProjectAssetsDeleted(activeProject, subjectType, removedIds);
     } catch (err) {
       console.error('批量删除资产失败', err);
     }

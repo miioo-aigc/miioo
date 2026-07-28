@@ -4,6 +4,7 @@
  *
  * ─── 纯数据转换 ─────────────────────────────────────────────────────
  *   mapCandidateImages       将后端候选图转换为右侧图片列表数据
+ *   mapSubjectAssets          将绑定主体的项目资产转换为右侧候选图
  *   mapReferenceImages       将后端参考图转换为详情/预览数据（不进入候选列表）
  *   mapReferenceImageIdsForModal  将参考图 ID/URL 转为详情弹窗快照
  *   mergeSubjectImages       去重、限制定稿图数量并插入任务占位/结果
@@ -14,10 +15,11 @@
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 SubjectPage 抽离主体详情图片的纯数据转换逻辑
  *   2026-07-22  参考图与候选图彻底分流，主体右侧列表只展示候选结果
+ *   2026-07-28  合并读取绑定主体的项目资产，支持候选区上传和资产库选择刷新恢复
  */
 import { normalizeImageUrl } from '../../utils/imageUrl';
 
-function toImageItem({ id, rawUrl, settled = false, isReference = false, refImages = [] }) {
+function toImageItem({ id, rawUrl, settled = false, isReference = false, refImages = [], assetId = null, source = null }) {
   return {
     id,
     rawUrl,
@@ -25,6 +27,8 @@ function toImageItem({ id, rawUrl, settled = false, isReference = false, refImag
     settled,
     isReference,
     refImages,
+    ...(assetId ? { assetId } : {}),
+    ...(source ? { source } : {}),
   };
 }
 
@@ -41,6 +45,19 @@ export function mapCandidateImages(images, refImages = []) {
     rawUrl: image.image_url,
     settled: image.is_primary ?? false,
     refImages,
+    assetId: image.asset_id,
+    source: 'subject-image',
+  }));
+}
+
+export function mapSubjectAssets(assets, refImages = []) {
+  return (Array.isArray(assets) ? assets : []).map((asset) => toImageItem({
+    id: asset.id || asset.asset_id,
+    rawUrl: asset.file_url || asset.original_url || asset.originalUrl || asset.url || asset.thumbnail_url || asset.thumbnailUrl,
+    settled: asset.is_primary ?? false,
+    refImages,
+    assetId: asset.id || asset.asset_id,
+    source: 'creation-asset',
   }));
 }
 
@@ -72,6 +89,17 @@ function dedupeById(images) {
     if (image.id == null) return true;
     if (seenIds.has(image.id)) return false;
     seenIds.add(image.id);
+    return true;
+  });
+}
+
+function dedupeByUrl(images) {
+  const seenUrls = new Set();
+  return images.filter((image) => {
+    const url = normalizeImageUrl(image?.rawUrl) || image?.rawUrl;
+    if (!url) return true;
+    if (seenUrls.has(url)) return false;
+    seenUrls.add(url);
     return true;
   });
 }
@@ -115,11 +143,13 @@ function mapPendingImage(pending, refImages) {
  */
 export function mergeSubjectImages({
   candidateImages,
+  subjectAssets = [],
   refImages = [],
   pending = null,
 }) {
   const mappedCandidates = mapCandidateImages(candidateImages, refImages);
-  const images = keepOnlyFirstSettled(dedupeById(mappedCandidates));
+  const mappedAssets = mapSubjectAssets(subjectAssets, refImages);
+  const images = keepOnlyFirstSettled(dedupeByUrl(dedupeById([...mappedCandidates, ...mappedAssets])));
   const pendingImage = mapPendingImage(pending, refImages);
 
   return pendingImage ? [pendingImage, ...images] : images;

@@ -85,6 +85,8 @@
  *   2026-07-22  批量生成进行中允许关闭批量生成弹窗，后台任务继续执行
  *   2026-07-22  主体编辑草稿改为防抖实时保存，关闭前刷新并恢复生成配置与参考图
  *   2026-07-22  主体参考图与右侧候选图分流；候选上传不再调用主体参考图接口，分镜页同类状态链路已复核
+ *   2026-07-28  候选区本地上传/资产库选择写入项目资产并绑定 subject_id；初始化合并绑定资产，刷新后恢复候选图
+ *   2026-07-28  候选图所有来源统一支持定稿；普通项目资产走 assets is_primary，主体生成图走候选图 set-primary
  *   2026-07-23  主体删除改走主体专用删除接口；下载文件名统一为项目名_主体类型_主体名称
  *   2026-07-23  接收 Home 的主体抽取活动状态，刷新恢复期间持续显示加载动画
  *   2026-07-27  主体抽取加载文案优先展示 Home 传入的任务 status_message，接口缺失时沿用轮换兜底文案
@@ -107,6 +109,7 @@ import BatchGenerateModal from '../components/BatchGenerateModal';
 import { SubjectGenerationAction, SubjectPanelHeader, SubjectVoiceSelectModal, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, getFallbackSubjectImageModels } from '../components/subject';
 import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiDownloadSubjectImage, apiUnsetPrimarySubjectImage } from '../api/subject';
 import { apiGetTask } from '../api/storyboard';
+import { apiGetSubjectAssets } from '../api/assets';
 // 模型能力直接从后端 capabilities 获取
 import { apiListModels } from '../api/config';
 import { apiGetVoices } from '../api/voices';
@@ -204,6 +207,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   const toastTimerRef = useRef(null);
   const isMountedRef = useRef(true); // 跟踪组件是否已挂载，关闭弹窗后仍让请求跑完
   const cacheConsumedRef = useRef(false); // 标记 pendingGenerations 缓存已被本挂载消费
+  const deletedAssetIdsRef = useRef(new Set());
   const [detailLoaded, setDetailLoaded] = useState(false);
   const saveTimerRef = useRef(null);
   const draftRef = useRef(null);
@@ -242,6 +246,19 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
   }, []);
+
+  useEffect(() => {
+    function handleAssetsDeleted(event) {
+      if (event.detail?.projectId && event.detail.projectId !== projectId) return;
+      (event.detail?.assetIds || []).forEach((id) => deletedAssetIdsRef.current.add(String(id)));
+      setGeneratedImages((prev) => prev.filter((image) => {
+        const imageId = image.assetId || image.id;
+        return !deletedAssetIdsRef.current.has(String(imageId));
+      }));
+    }
+    window.addEventListener('project-assets:deleted', handleAssetsDeleted);
+    return () => window.removeEventListener('project-assets:deleted', handleAssetsDeleted);
+  }, [projectId]);
 
   // ── 从后端拉取主体详情和已生成图片 ─────────────────────────────
   useEffect(() => {
@@ -323,7 +340,12 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       //   reference_images (SubjectReferenceImage[])
       //   latest_generate_config (SubjectGenerateConfig | null)
       console.log('[SubjectPage] preflight MISS: calling apiGetSubjectDetail for', char.id);
-      const detailRes = await apiGetSubjectDetail(projectId, char.id).catch(() => null);
+      const [detailRes, subjectAssets] = await Promise.all([
+        apiGetSubjectDetail(projectId, char.id).catch(() => null),
+        apiGetSubjectAssets(projectId, char.id, {
+          category: tabLabel === '场景' ? 'scene' : tabLabel === '道具' ? 'prop' : 'character',
+        }).catch(() => []),
+      ]);
       if (cancelled) return;
 
       if (!detailRes) {
@@ -356,8 +378,12 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       // 参考图只用于生成输入，右侧列表只展示候选图/生成结果。
       const finalImages = mergeSubjectImages({
         candidateImages: detailRes.candidate_images,
+        subjectAssets,
         refImages: refImagesForModal,
         pending,
+      }).filter((image) => {
+        const imageId = image.assetId || image.id;
+        return !deletedAssetIdsRef.current.has(String(imageId));
       });
       if (pending?.status === 'done') {
         pendingGenerations.delete(char.id);
@@ -365,11 +391,17 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
 
       if (finalImages.length > 0) {
         setGeneratedImages(prev => {
+          if (refreshToken > 0) return finalImages;
           if (prev.length === 0) return finalImages;
           const seenUrls = new Set(prev.map(img => img.rawUrl));
           const toAdd = finalImages.filter(img => !seenUrls.has(img.rawUrl));
           return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
         });
+      } else if (refreshToken > 0) {
+        setGeneratedImages([]);
+        setPrimaryImageUrl(null);
+        setPrimaryImageId(null);
+        onCoverChange?.(null);
       } else if (char?.imageUrl) {
         // 兜底用 char 的封面图（不覆盖已展示的缓存图片）
         setGeneratedImages(prev => prev.length > 0 ? prev : [createSubjectImageItem({ rawUrl: char.imageUrl, settled: true, id: char.imageUrl, refImages: refImagesForModal })]);
@@ -605,6 +637,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
     () => createSubjectImageActionHandlers({
       projectId,
       subjectId: char?.id,
+      subjectType: tabLabel === '场景' ? 'scene' : tabLabel === '道具' ? 'prop' : 'character',
       setGeneratedImages,
       onCoverChange,
       setPrimaryImageUrl,
@@ -612,7 +645,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       showToast,
       triggerBlobDownload: downloadBlob,
     }),
-    [projectId, char?.id, onCoverChange, showToast]
+    [projectId, char?.id, tabLabel, onCoverChange, showToast]
   );
   const handleImageUpload = useCallback(
     (fileOrAsset) => getImageActionHandlers().handleUpload(fileOrAsset),

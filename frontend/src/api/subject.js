@@ -225,6 +225,22 @@ export async function apiSetPrimarySubjectImage(projectId, subjectId, imageId) {
     `${BASE}/api/projects/${projectId}/subjects/${subjectId}/images/${imageId}/set-primary`,
     { method: 'PATCH', headers: { 'Content-Type': 'application/json' } }
   );
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const body = await res.json();
+        detail = body?.detail || body?.message || '';
+        if (typeof detail === 'object') detail = JSON.stringify(detail);
+      } else {
+        detail = await res.text();
+      }
+    } catch { /* 忽略无法读取的错误响应 */ }
+    const err = new Error(detail || `设置定稿图失败（${res.status}）`);
+    err.status = res.status;
+    throw err;
+  }
   invalidateSubjects(projectId); // 主图变化影响列表展示
   // 重新拉取主体列表以更新缓存，触发订阅者（如 StoryboardPage）同步最新主图
   apiGetSubjects(projectId, { type: "character" }).catch(() => {});

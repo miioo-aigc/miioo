@@ -1406,9 +1406,17 @@
 ## 2026-07-22 主体参考图与候选图边界修复
 
 - `src/components/subject/SubjectImageMappers.js` 的主体详情合并逻辑只读取 `candidate_images` 和生成任务结果；后端 `reference_images` 仅转换为编辑弹窗的生图输入快照，不再进入右侧候选图、定稿或下载列表。
-- `src/components/subject/SubjectImageActions.js` 的右侧候选图资产选择只更新候选列表；本地候选图使用通用创作图片上传接口，分类为 `reference`，不调用主体 `reference-images/upload` 或 `reference-images/bind`。主体参考图上传/资产绑定仍由 `RefImageField` 独立负责。
+- `src/components/subject/SubjectImageActions.js` 的右侧候选图资产选择会绑定当前主体；本地候选图使用通用创作图片上传接口，分类沿用当前主体类型，并通过资产更新接口写入 `subject_id`，不调用主体 `reference-images/upload` 或 `reference-images/bind`。主体参考图上传/资产绑定仍由 `RefImageField` 独立负责。
 - 分镜页专项复核结论：`GenerateImagePanel` 的 `refImages` 与 `generatedImages`、`MainRefCol` 的 `mainRefs` 与分镜结果、`GenerateVideoPanel`/`ReferenceMediaEditor` 的各类参考媒体均通过独立状态和回调维护，未发现参考素材上传后自动写入候选结果列表的同类问题。
 - 本轮完成静态代码和接口契约核对；主体候选图上传及分镜外部写操作仍需在安全测试数据下进行实际上传/刷新回归。
+
+## 2026-07-28 主体候选图资产持久化修复
+
+- `SubjectImageActions` 将候选区本地上传改为“创建通用项目图片资产后绑定 `subject_id`”，资产库选择直接调用资产更新接口绑定当前主体；参考图入口仍不调用候选图或资产库接口。
+- `SubjectPage` 初始化编辑主体弹窗时并行读取主体详情和 `subject_id` 绑定的项目图片资产，将普通项目资产映射为候选图并与主体 `candidate_images` 合并去重，因此本地上传和资产库选择可在刷新后恢复。
+- `AssetPickerModal` 的确认回调已核对为完整资产对象数组，主体候选区使用对象中的资产编号和图片地址进行绑定。
+- 分镜页专项检查确认候选媒体已有 `POST media-candidates` 持久化及重新打开时的 `GET media-candidates` 恢复链路，未发现同类缺口；本轮未修改分镜业务逻辑。
+- 后端 `AssetUpdate` 已明确支持 `is_primary`，因此候选区本地上传和资产库选择可以通过资产接口正式设置/取消定稿；主体生成图仍使用主体候选图专用定稿接口，三类来源均可在界面操作定稿。
 
 ## 2026-07-23 主体卡片删除资产清理修复
 

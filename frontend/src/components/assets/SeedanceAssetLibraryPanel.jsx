@@ -52,6 +52,37 @@ const SUB_TABS = [
   { value: 'virtual', label: '虚拟人像' },
 ];
 
+function getLiveAssetType(asset) {
+  const type = String(asset?.asset_type || asset?.assetType || asset?.type || 'image').toLowerCase();
+  return type.startsWith('video/') ? 'video' : type;
+}
+
+function getLiveAssetUrl(asset) {
+  const assetType = getLiveAssetType(asset);
+  const mediaUrl = asset?.source_url
+    || asset?.sourceUrl
+    || asset?.file_url
+    || asset?.fileUrl
+    || asset?.preview_url
+    || asset?.previewUrl;
+  if (mediaUrl) return mediaUrl;
+  return assetType === 'video' || assetType === 'audio'
+    ? null
+    : asset?.asset_ref_url || asset?.assetRefUrl || null;
+}
+
+function getLiveAssetPoster(asset) {
+  return asset?.poster_url
+    || asset?.posterUrl
+    || asset?.thumbnail_url
+    || asset?.thumbnailUrl
+    || asset?.cover_url
+    || asset?.coverUrl
+    || asset?.first_frame_url
+    || asset?.firstFrameUrl
+    || null;
+}
+
 function AddRealPersonCard({ onClick }) {
   return (
     <button
@@ -118,18 +149,15 @@ export default function SeedanceAssetLibraryPanel() {
       id: group.id,
       name: group.name || '未命名素材组',
       count: group.asset_count ?? assets.length,
-      images: assets.slice(0, 2).map((asset) => (
-        uploadedAssetPostersRef.current.get(asset.id)
-          || asset.poster_url
-          || asset.posterUrl
-          || asset.thumbnail_url
-          || asset.thumbnailUrl
-          || asset.preview_url || (
-          ['video', 'audio'].includes(String(asset.asset_type || '').toLowerCase())
-            ? null
-            : asset.asset_ref_url
-        )
-      )).filter(Boolean),
+      images: assets.slice(0, 2).map((asset) => {
+        const assetType = getLiveAssetType(asset);
+        const posterUrl = uploadedAssetPostersRef.current.get(asset.id) || getLiveAssetPoster(asset);
+        const mediaUrl = getLiveAssetUrl(asset);
+        if (!mediaUrl && !posterUrl) return null;
+        return assetType === 'video'
+          ? { url: mediaUrl, type: 'video', posterUrl }
+          : { url: posterUrl || mediaUrl, type: assetType, posterUrl };
+      }).filter((preview) => preview?.url),
       groupType: group.group_type,
     };
   }, []);
@@ -166,11 +194,7 @@ export default function SeedanceAssetLibraryPanel() {
       setFolderAssets(assets.map((asset) => ({
         ...asset,
         name: uploadedAssetNamesRef.current.get(asset.id) || asset.name,
-        posterUrl: uploadedAssetPostersRef.current.get(asset.id)
-          || asset.poster_url
-          || asset.posterUrl
-          || asset.thumbnail_url
-          || asset.thumbnailUrl,
+        posterUrl: uploadedAssetPostersRef.current.get(asset.id) || getLiveAssetPoster(asset),
       })));
     } catch (error) {
       console.warn('[SeedanceAssetLibraryPanel] 获取文件夹素材失败', error);
@@ -188,11 +212,7 @@ export default function SeedanceAssetLibraryPanel() {
         setFolderAssets(assets.map((asset) => ({
           ...asset,
           name: uploadedAssetNamesRef.current.get(asset.id) || asset.name,
-          posterUrl: uploadedAssetPostersRef.current.get(asset.id)
-            || asset.poster_url
-            || asset.posterUrl
-            || asset.thumbnail_url
-            || asset.thumbnailUrl,
+          posterUrl: uploadedAssetPostersRef.current.get(asset.id) || getLiveAssetPoster(asset),
         })));
         const allDone = assets.every((asset) => {
           const status = (asset.status || '').toLowerCase();
@@ -239,11 +259,7 @@ export default function SeedanceAssetLibraryPanel() {
         ...asset,
         name: file.name,
         localFile: validation.type === 'video' ? file : null,
-        posterUrl: firstFrameUrl
-          || asset?.poster_url
-          || asset?.posterUrl
-          || asset?.thumbnail_url
-          || asset?.thumbnailUrl,
+        posterUrl: firstFrameUrl || getLiveAssetPoster(asset),
       }, ...current]);
       await refreshFolders();
       startAssetStatusPolling(activeFolder.id);

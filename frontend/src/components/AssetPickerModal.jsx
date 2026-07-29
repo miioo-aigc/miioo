@@ -14,14 +14,17 @@ import { isSeedanceModel } from '../utils/seedanceModel';
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-// accept='image' → 只允许图片类资产；'video' → 只允许视频类资产；'audio' → 只允许音频类资产；'all' → 不限制
+// accept='image' → 只允许图片类资产；'video' → 只允许视频类资产；
+// accept='media' → 只允许图片和视频类资产；'audio' → 只允许音频类资产；'all' → 不限制
 const PROJECT_SUB_TABS_ALL = ['角色', '场景', '道具', '分镜图', '分镜视频', '音频', '成片'];
 const PROJECT_SUB_TABS_IMAGE = ['角色', '场景', '道具', '分镜图'];
 const PROJECT_SUB_TABS_VIDEO = ['分镜视频'];
+const PROJECT_SUB_TABS_MEDIA = ['分镜图', '分镜视频'];
 const PROJECT_SUB_TABS_AUDIO = ['音频'];
 const CREATIVE_SUB_TABS_ALL = ['图片', '视频', '配音'];
 const CREATIVE_SUB_TABS_IMAGE = ['图片'];
 const CREATIVE_SUB_TABS_VIDEO = ['视频'];
+const CREATIVE_SUB_TABS_MEDIA = ['图片', '视频'];
 const CREATIVE_SUB_TABS_AUDIO = ['配音'];
 
 
@@ -344,11 +347,11 @@ export default function AssetPickerModal({
   }, [creativeAssetsProp, localCreativeAssets, generationsByTab, favorites]);
 
   const projectSubTabsAvail = useMemo(
-    () => accept === 'video' ? PROJECT_SUB_TABS_VIDEO : accept === 'image' ? PROJECT_SUB_TABS_IMAGE : accept === 'audio' ? PROJECT_SUB_TABS_AUDIO : PROJECT_SUB_TABS_ALL,
+    () => accept === 'video' ? PROJECT_SUB_TABS_VIDEO : accept === 'image' ? PROJECT_SUB_TABS_IMAGE : accept === 'media' ? PROJECT_SUB_TABS_MEDIA : accept === 'audio' ? PROJECT_SUB_TABS_AUDIO : PROJECT_SUB_TABS_ALL,
     [accept],
   );
   const creativeSubTabsAvail = useMemo(
-    () => accept === 'video' ? CREATIVE_SUB_TABS_VIDEO : accept === 'image' ? CREATIVE_SUB_TABS_IMAGE : accept === 'audio' ? CREATIVE_SUB_TABS_AUDIO : CREATIVE_SUB_TABS_ALL,
+    () => accept === 'video' ? CREATIVE_SUB_TABS_VIDEO : accept === 'image' ? CREATIVE_SUB_TABS_IMAGE : accept === 'media' ? CREATIVE_SUB_TABS_MEDIA : accept === 'audio' ? CREATIVE_SUB_TABS_AUDIO : CREATIVE_SUB_TABS_ALL,
     [accept],
   );
 

@@ -1,8 +1,44 @@
 # miioo 项目进度管理文档
 
-> 最后更新：2026-07-28（主体候选图上传占位与定稿封面实时同步修复）
+> 最后更新：2026-07-29（分镜候选媒体详情弹窗与图片/视频混合上传）
 
 ---
+
+## 2026-07-29 分镜候选媒体、统一详情弹窗与混合上传
+
+### 已完成能力
+
+- 分镜候选媒体已经统一接入 `src/api/storyboard.js`：支持按镜头读取、创建、更新、删除候选媒体，以及通过受控接口下载候选媒体。前端统一归一化后端的 snake_case 和旧前端 camelCase 字段，页面消费 `mediaType`、`thumbnailUrl`、`posterUrl`、`downloadUrl`、`isFinalized` 等字段。
+- 分镜候选列表支持图片和视频混合展示，来源包括 AI 创作、本地上传、资产库选择和已有分镜媒体。分镜列、创作分镜弹窗右侧候选区、媒体详情弹窗读取同一份 `candidateMediaMap[storyboardId]`，避免三个位置出现数量或状态不一致。
+- 同一镜头的定稿状态由后端候选媒体接口持久化，图片和视频互斥；分镜列和创作弹窗使用右上角 Checkbox 展示定稿状态，点击候选卡片可以设置或取消定稿，定稿后保持候选原始顺序，不自动置顶或重排。
+- 新增 `src/components/storyboard/StoryboardMediaDetailModal.jsx`，统一替代图片详情和视频详情的分裂展示。弹窗左侧上方展示当前媒体详情，左侧下方展示当前镜头的混合候选列表，点击缩略图即可切换图片或视频；右侧展示定稿状态、镜头编号、媒体类型、来源、提示词和生成时间，并提供定稿切换和下载。
+- 详情弹窗通过 Portal 挂载到 `document.body`，不受分镜页面滚动容器、内容区 `overflow` 或侧栏层级影响；图片使用可用的大图/预览地址，视频使用视频地址和首帧/缩略图，支持视频控件播放。
+- 分镜内容列候选卡片支持悬停预览，悬浮窗定位在卡片附近并展示完整内容与右上角媒体类型标签；时间轴卡片悬停时支持放大查看和下载，放大入口打开统一详情弹窗。
+- 创作分镜弹窗右侧候选区的本地上传已从仅支持视频改为 `accept="image/*,video/*"`，并依据真实 MIME 类型分别调用图片或视频上传接口；资产库入口新增 `media` 类型，同时允许选择分镜图片和分镜视频。上传或资产库选择成功后写入候选媒体接口，不自动定稿。
+
+### 主要数据流
+
+1. `StoryboardPage` 加载当前分集镜头后，按镜头读取候选媒体并写入 `candidateMediaMap`。
+2. `StoryboardShotMediaColumn`、`StoryboardCreationPanel` 和 `StoryboardMediaDetailModal` 均从该映射读取同一镜头的候选数组。
+3. 生成、上传或资产库选择成功后，通过 `apiCreateStoryboardMediaCandidate` 创建候选，并用候选接口返回值合并到原数组；合并逻辑按媒体 ID/地址去重并保留原始顺序。
+4. 点击定稿后调用候选媒体 `PATCH` 接口，使用后端返回的候选状态同步分镜列、创作弹窗、详情弹窗和下方定稿时间轴。
+5. 点击详情下载时优先调用候选媒体受控下载接口，失败后回退到 `downloadUrl`、`url` 等直链地址。
+
+### 相关文件
+
+- `src/components/storyboard/StoryboardMediaDetailModal.jsx`：统一图片/视频详情弹窗。
+- `src/components/storyboard/StoryboardShotMediaColumn.jsx`：分镜内容列候选卡片、混合列表、定稿 Checkbox 和悬浮预览。
+- `src/components/storyboard/StoryboardCreationPanel.jsx`：创作/上传/资产库选择及右侧混合候选列表。
+- `src/components/AssetPickerModal.jsx`：新增 `media` 筛选类型。
+- `src/pages/StoryboardPage.jsx`：候选映射、定稿状态、弹窗打开状态、下载和接口回调编排。
+- `src/api/storyboard.js`：候选媒体接口、字段归一化、创作表单持久化和生成接口适配。
+- `docs/backend-storyboard-media-candidates-requirements.md`：候选媒体后端接口契约。
+
+### 验收与遗留风险
+
+- 已通过目标文件定向 ESLint、`npm run build` 和 `git diff --check`。
+- `npm run check:architecture` 仍受既有 `src/components/assets/seedanceUploadValidation.js` 文件名不符合大驼峰规则及历史规模告警影响；本次没有新增架构阻断。
+- 本次保留工作区中尚未提交的混合上传改动，不执行提交、推送或回滚。真实生产环境下的上传、资产库选择、定稿切换和受控下载仍应结合后端测试数据做一次完整联调。
 
 ## 历史进度（2026 年 7 月前）
 

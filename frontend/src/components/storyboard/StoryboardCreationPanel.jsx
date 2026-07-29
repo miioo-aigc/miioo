@@ -23,6 +23,12 @@ import FileUploadButton from '../ui/FileUploadButton';
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
+function getUploadMediaType(file) {
+  if (file?.type?.startsWith('video/')) return 'video';
+  if (file?.type?.startsWith('image/')) return 'image';
+  return null;
+}
+
 function CandidateItem({ item, onSelect, onPreview, onDownload }) {
   const [hovered, setHovered] = useState(false);
   const isVideo = item.media_type === 'video' || item.type?.startsWith('video');
@@ -73,11 +79,11 @@ function CandidateItem({ item, onSelect, onPreview, onDownload }) {
   );
 }
 
-function UploadEntry({ type, onUpload, onOpenAssets }) {
+function UploadEntry({ onUpload, onOpenAssets }) {
   const inputRef = useRef(null);
   return (
     <div style={{ width: '100px', height: '100px', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '6px', border: '1px dashed rgba(255,255,255,0.08)', background: '#1D1E1E' }}>
-      <input ref={inputRef} type="file" accept={type === 'video' ? 'video/*' : 'image/*'} style={{ display: 'none' }} onChange={(event) => { const file = event.target.files?.[0]; if (file) onUpload(file); event.target.value = ''; }} />
+      <input ref={inputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={(event) => { const file = event.target.files?.[0]; if (file) onUpload(file); event.target.value = ''; }} />
       <FileUploadButton onClick={() => inputRef.current?.click()}>本地上传</FileUploadButton>
       <FileUploadButton onClick={onOpenAssets}>从资产库选择</FileUploadButton>
     </div>
@@ -87,17 +93,17 @@ function UploadEntry({ type, onUpload, onOpenAssets }) {
 export default function StoryboardCreationPanel({ initialTab = 'image', onTabChange, onClose, candidates = [], projectId, storyboardId, onCandidateMedia, onFinalizeToggle, onPreview, onDownload, children }) {
   const [tab, setTab] = useState(initialTab);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
-  const [uploadType, setUploadType] = useState(initialTab === 'video' ? 'video' : 'image');
-  const changeTab = (next) => { setTab(next); setUploadType(next); onTabChange?.(next); };
+  const changeTab = (next) => { setTab(next); onTabChange?.(next); };
 
   async function handleUpload(file) {
+    const mediaType = getUploadMediaType(file);
+    if (!mediaType) return;
     try {
-      const isVideo = uploadType === 'video';
-      const result = isVideo
+      const result = mediaType === 'video'
         ? await apiUploadStoryboardVideo(projectId, storyboardId, file)
         : await apiUploadCreationImage({ file, category: 'storyboard', project_id: projectId });
       const url = normalizeImageUrl(result?.uploaded_url || result?.uploadedUrl || result?.video_url || result?.videoUrl || result?.url || result?.file_url || '');
-      if (url) onCandidateMedia?.({ id: result?.id || result?.asset_id || url, url, media_type: isVideo ? 'video' : 'image', source: 'local-upload' });
+      if (url) onCandidateMedia?.({ id: result?.id || result?.asset_id || url, url, media_type: mediaType, source: 'local-upload' });
     } catch {
       // 具体错误由页面统一提示；上传入口不能阻塞弹窗布局。
     }
@@ -106,7 +112,9 @@ export default function StoryboardCreationPanel({ initialTab = 'image', onTabCha
   function handleAssets(assets) {
     (assets || []).forEach((asset) => {
       const url = normalizeImageUrl(asset.fileUrl || asset.originalUrl || asset.original_url || asset.thumbnailUrl || asset.thumbnail_url || asset.url || asset.file_url);
-      if (url) onCandidateMedia?.({ id: asset.id || url, asset_id: asset.asset_id || asset.assetId || asset.id || null, url, media_type: uploadType, source: 'asset-library' });
+      const rawType = String(asset.asset_type || asset.assetType || asset.media_type || asset.mediaType || asset.type || '').toLowerCase();
+      const mediaType = rawType.startsWith('video') ? 'video' : rawType.startsWith('image') ? 'image' : null;
+      if (url && mediaType) onCandidateMedia?.({ id: asset.id || url, asset_id: asset.asset_id || asset.assetId || asset.id || null, url, media_type: mediaType, source: 'asset-library' });
     });
     setAssetPickerOpen(false);
   }
@@ -122,10 +130,10 @@ export default function StoryboardCreationPanel({ initialTab = 'image', onTabCha
       <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
         <section style={{ width: '457px', minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#161616' }}>{children}</section>
         <aside style={{ width: '141px', flex: '0 0 141px', minHeight: 0, display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px 24px 8px 16px', boxSizing: 'border-box', overflowY: 'auto', background: '#161616', borderLeft: '1px solid #FFFFFF14' }}>
-          <UploadEntry type={uploadType} onUpload={handleUpload} onOpenAssets={() => setAssetPickerOpen(true)} />
+          <UploadEntry onUpload={handleUpload} onOpenAssets={() => setAssetPickerOpen(true)} />
           {candidates.map((item, index) => <CandidateItem key={item.id || item.url || index} item={item} onSelect={() => onFinalizeToggle?.(item)} onPreview={onPreview} onDownload={onDownload} />)}
         </aside>
-        <AssetPickerModal accept={uploadType} open={assetPickerOpen} onClose={() => setAssetPickerOpen(false)} projectId={projectId} onConfirm={handleAssets} />
+        <AssetPickerModal accept="media" open={assetPickerOpen} onClose={() => setAssetPickerOpen(false)} projectId={projectId} onConfirm={handleAssets} />
       </div>
       <footer aria-hidden="true" style={{ position: 'absolute', left: 0, bottom: 0, width: '457px', height: '68px', pointerEvents: 'none', boxSizing: 'border-box' }} />
     </div>

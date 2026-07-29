@@ -101,7 +101,7 @@ export default function TextEditCol({ label, value, onChange, isLast = false }) 
       overflow: 'hidden',
       alignSelf: 'stretch',
     }}>
-      <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.60)', fontFamily: '"Alibaba PuHuiTi 2.0", system-ui, sans-serif', flexShrink: 0 }}>
+      <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.60)', fontFamily: '"Alibaba PuHuiTi 2.0", system-ui, sans-serif', flex: '0 1 auto', height: '20px', display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
         {label}
       </span>
       <EditableText value={value} onChange={onChange} placeholder="点击编辑…" />

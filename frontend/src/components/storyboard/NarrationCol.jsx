@@ -105,7 +105,7 @@ function NarrationCol({ segments, onChange, chars, globalVoiceParams = {}, onSav
       alignSelf: 'stretch',
     }}>
       {/* 标题行 */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: '0 1 auto', height: '20px' }}>
         <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.60)', fontFamily: FONT }}>台词分配</span>
         {hasContent && (
           <NarrationAddButton onClick={openAdd} />

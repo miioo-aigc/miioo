@@ -244,7 +244,7 @@ function MainRefCol({ shot, onChange, projectId, onUploadFile, onAssetConfirm })
         />
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: '0 1 auto', height: '20px' }}>
         <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.60)', fontFamily: FONT }}>主体参考</span>
         {hasContent && <NarrationAddButton tooltip="新增参考主体" onClick={handleAddButtonClick} />}
       </div>

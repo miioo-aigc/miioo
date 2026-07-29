@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import NarrationAddButton from './NarrationAddButton';
 
@@ -49,8 +50,8 @@ function CandidateCard({ item, finalized, onSelect, onPreview }) {
   const isVideo = item.media_type === 'video' || item.type?.startsWith('video');
   const url = normalizeImageUrl(item.thumbnail_url || item.poster_url || item.url);
   return (
-    <button type="button" onClick={() => onSelect?.(item)} onMouseEnter={() => onPreview?.(item)} onMouseLeave={() => onPreview?.(null)} style={{
-      width: '80px', height: '60px', position: 'relative', padding: 0, overflow: 'hidden', flexShrink: 0, cursor: 'pointer',
+    <button type="button" onClick={() => onSelect?.(item)} onMouseEnter={(event) => onPreview?.(item, event.currentTarget)} onMouseLeave={() => onPreview?.(null)} style={{
+      width: '66px', height: '66px', position: 'relative', padding: 0, overflow: 'hidden', flexShrink: 0, cursor: 'pointer',
       borderRadius: '4px', border: `1px solid ${finalized ? '#2DC3E1' : 'rgba(255,255,255,0.10)'}`, background: '#101111',
     }}>
       {isVideo ? <video src={url} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
@@ -78,6 +79,31 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
     onOpenCreation?.();
   }
 
+  function handlePreview(item, cardElement) {
+    if (!item || !cardElement) {
+      setPreview(null);
+      return;
+    }
+
+    const rect = cardElement.getBoundingClientRect();
+    const viewportPadding = 12;
+    const gap = 8;
+    const width = Math.min(320, Math.max(1, window.innerWidth - viewportPadding * 2));
+    const height = Math.min(220, Math.max(1, window.innerHeight - viewportPadding * 2));
+    const rightPosition = rect.right + gap;
+    const leftPosition = rect.left - width - gap;
+    const left = rightPosition + width <= window.innerWidth - viewportPadding
+      ? rightPosition
+      : leftPosition >= viewportPadding
+        ? leftPosition
+        : Math.max(viewportPadding, Math.min(rect.left, window.innerWidth - width - viewportPadding));
+    const top = rect.top + height <= window.innerHeight - viewportPadding
+      ? rect.top
+      : Math.max(viewportPadding, Math.min(rect.bottom - height, window.innerHeight - height - viewportPadding));
+
+    setPreview({ item, left, top, width, height });
+  }
+
   return (
     <div style={{ width: '105px', minWidth: '105px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', borderRight: '1px solid rgba(255,255,255,0.08)', alignSelf: 'stretch', position: 'relative' }}>
       <input ref={inputRef} type="file" accept="image/*,video/*" hidden onChange={handleFile} />
@@ -89,12 +115,18 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
       {!generating && media.length === 0 && <PlusButton tooltip="创作" onClick={handleOpenCreation} />}
       {!generating && media.length > 0 && <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', overflow: 'auto' }}>
         {media.slice(0, 6).map((item, index) => (
-          <CandidateCard key={item.id || item.url || index} item={item} finalized={item.is_finalized} onSelect={() => { onSelectShot?.(); onFinalizeToggle?.(item); }} onPreview={setPreview} />
+          <CandidateCard key={item.id || item.url || index} item={item} finalized={item.is_finalized} onSelect={() => { onSelectShot?.(); onFinalizeToggle?.(item); }} onPreview={handlePreview} />
         ))}
       </div>}
-      {preview?.url && <div style={{ position: 'fixed', zIndex: 10010, left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: '320px', height: '220px', padding: '6px', borderRadius: '8px', background: '#090909', border: '1px solid rgba(255,255,255,0.16)', pointerEvents: 'none' }}>
-        {preview.media_type === 'video' ? <video autoPlay muted loop src={normalizeImageUrl(preview.url)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <img src={normalizeImageUrl(preview.url)} alt={shotLabel || ''} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
-      </div>}
+      {preview?.item && createPortal(
+        <div style={{ position: 'fixed', zIndex: 10010, left: preview.left, top: preview.top, width: preview.width, height: preview.height, boxSizing: 'border-box', padding: '6px', borderRadius: '8px', background: '#090909', border: '1px solid rgba(255,255,255,0.16)', pointerEvents: 'none', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.70)' }}>
+          <span style={{ position: 'absolute', top: 0, right: 0, zIndex: 1, padding: '0 8px', background: '#000000CC', color: '#FFFFFFCC', font: `12px/22px ${FONT}` }}>
+            {preview.item.media_type === 'video' || preview.item.type?.startsWith('video') ? '视频' : '图片'}
+          </span>
+          {preview.item.media_type === 'video' ? <video autoPlay muted loop playsInline src={normalizeImageUrl(preview.item.preview_video_url || preview.item.url)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <img src={normalizeImageUrl(preview.item.large_url || preview.item.preview_url || preview.item.url)} alt={shotLabel || ''} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

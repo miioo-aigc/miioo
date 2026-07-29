@@ -129,6 +129,8 @@ import {
   isStoryboardTaskInProgress,
 } from '../utils/storyboardTaskAdapter';
 import { Button } from '../components/ui';
+import MediaDetailModal from '../components/MediaDetailModal';
+import ShotViewerModal from '../components/ShotViewerModal';
 import { subscribe, peekCache, invalidate } from '../utils/cache';
 import { K, MEDIUM } from '../utils/cacheKeys';
 import { buildStoryboardRefFromAsset, toSafeStoryboardReferenceUrls } from '../utils/storyboardReferenceAdapter';
@@ -362,6 +364,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   shotsRef.current = shots;
   const [candidateMediaMap, setCandidateMediaMap] = useState({});
   const [finalizedMediaMap, setFinalizedMediaMap] = useState({});
+  const [timelinePreviewMedia, setTimelinePreviewMedia] = useState(null);
   const [creationPanel, setCreationPanel] = useState(null); // { shot, tab }
   const [activeShotId, setActiveShotId] = useState(null);
   const [regenerateModalOpen, setRegenerateModalOpen] = useState(false);
@@ -978,6 +981,28 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     setRegenerateModalOpen(true);
   }
 
+  function openTimelinePreview(media, shot) {
+    if (!media?.url) return;
+    const isVideo = media.media_type === 'video' || media.type?.startsWith('video');
+    setTimelinePreviewMedia({
+      media,
+      shot,
+      isVideo,
+      finalized: media.is_finalized === true || finalizedMediaMap[shot?.id]?.id === media.id,
+      url: normalizeImageUrl(media.url),
+    });
+  }
+
+  async function handleTimelineFinalizeChange(nextValue) {
+    if (!timelinePreviewMedia?.shot || !timelinePreviewMedia?.media) return;
+    await handleFinalizeToggle(timelinePreviewMedia.shot, timelinePreviewMedia.media, nextValue);
+    setTimelinePreviewMedia((prev) => prev ? {
+      ...prev,
+      finalized: nextValue,
+      media: { ...prev.media, is_finalized: nextValue },
+    } : prev);
+  }
+
   async function handleRegenerate({ instruction = '' } = {}) {
     if (isGenerating || homeIsGenerating) return false;
     const episodeId = getEpisodeId(episode);
@@ -1117,9 +1142,12 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     });
   }
 
-  async function handleFinalizeToggle(shot, media) {
+  async function handleFinalizeToggle(shot, media, requestedFinalized) {
     const current = finalizedMediaMap[shot.id];
-    const nextFinalized = current?.id === media.id ? null : media;
+    const shouldFinalize = typeof requestedFinalized === 'boolean'
+      ? requestedFinalized
+      : current?.id !== media.id;
+    const nextFinalized = shouldFinalize ? media : null;
     setFinalizedMediaMap((prev) => ({ ...prev, [shot.id]: nextFinalized }));
     setCandidateMediaMap((prev) => ({
       ...prev,
@@ -1475,7 +1503,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
           selectedShotId={activeShotId}
           onSelectShot={selectActiveShot}
           onCreate={openCreationPanel}
-          onPreview={(media) => media && window.open(normalizeImageUrl(media.url), '_blank', 'noopener,noreferrer')}
+          onPreview={(media, shot) => openTimelinePreview(media, shot)}
           onDownload={async (media, shot) => {
             try {
               if (media?.id && !String(media.id).startsWith('blob:')) {
@@ -1658,6 +1686,38 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         setRegenerateModalError('');
       }}
     />
+    {timelinePreviewMedia?.isVideo ? (
+      <ShotViewerModal
+        shot={{
+          id: timelinePreviewMedia.shot?.id,
+          label: `分镜${String(timelinePreviewMedia.shot?.number ?? '').padStart(2, '0')}`,
+          videoUrl: timelinePreviewMedia.url,
+          duration: timelinePreviewMedia.media?.video_duration || timelinePreviewMedia.shot?.duration || 0,
+          filename: timelinePreviewMedia.media?.name,
+          finalized: timelinePreviewMedia.finalized,
+        }}
+        onClose={() => setTimelinePreviewMedia(null)}
+        onFinalizeChange={(_shotId, nextValue) => handleTimelineFinalizeChange(nextValue)}
+      />
+    ) : timelinePreviewMedia ? (
+      <MediaDetailModal
+        mode="image"
+        images={[{
+          id: timelinePreviewMedia.media.id || timelinePreviewMedia.media.url,
+          url: normalizeImageUrl(timelinePreviewMedia.media.large_url || timelinePreviewMedia.media.preview_url || timelinePreviewMedia.media.url),
+          fileUrl: normalizeImageUrl(timelinePreviewMedia.media.large_url || timelinePreviewMedia.media.preview_url || timelinePreviewMedia.media.url),
+          source: timelinePreviewMedia.media.source,
+          detailSource: timelinePreviewMedia.media.source,
+          is_primary: timelinePreviewMedia.finalized,
+        }]}
+        name={`分镜${String(timelinePreviewMedia.shot?.number ?? '').padStart(2, '0')}`}
+        shotNumber={`分镜${String(timelinePreviewMedia.shot?.number ?? '').padStart(2, '0')}`}
+        showDelete={false}
+        showDownload={false}
+        onClose={() => setTimelinePreviewMedia(null)}
+        onPrimaryChange={(_image, nextValue) => handleTimelineFinalizeChange(nextValue)}
+      />
+    ) : null}
     {creationPanel && (
       <StoryboardCreationPanel projectId={projectId} storyboardId={creationPanel.shot?.id} initialTab={creationPanel.tab} onTabChange={handleCreationTabChange} candidates={candidateMediaMap[creationPanel.shot?.id] || []} onCandidateMedia={(media) => saveCandidateMedia(creationPanel.shot?.id, media)} onClose={() => { setImagePanel(null); setVideoPanel(null); setCreationPanel(null); }}>
     {imagePanel && creationPanel.tab === 'image' && (

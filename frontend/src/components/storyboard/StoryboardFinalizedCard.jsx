@@ -38,8 +38,21 @@ export default function StoryboardFinalizedCard({ shot, media, selected = false,
       </Button>
       {hovered && hasMedia && <>
         <div style={{ position: 'absolute', right: '8px', bottom: '6px', display: 'flex', gap: '4px' }}>
-          <button type="button" aria-label="放大" onClick={(event) => { event.stopPropagation(); onPreview?.(media); }} style={{ width: '24px', height: '24px', border: 0, borderRadius: '4px', background: '#00000080', color: '#FFF', cursor: 'pointer' }}>⌗</button>
-          <button type="button" aria-label="下载" onClick={(event) => { event.stopPropagation(); onDownload?.(media, shot); }} style={{ width: '24px', height: '24px', border: 0, borderRadius: '4px', background: '#00000080', color: '#FFF', cursor: 'pointer' }}>↓</button>
+          <button type="button" aria-label="放大" onClick={(event) => { event.stopPropagation(); onPreview?.(media, shot); }} style={{ width: '24px', height: '24px', border: 0, borderRadius: '4px', background: '#00000080', color: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" style={{ overflow: 'visible', flexShrink: 0 }} aria-hidden="true">
+              <path d="M5.333 2H2.667C2.298 2 2 2.298 2 2.667V5.333" fill="none" stroke="#FFFFFF" strokeLinejoin="round" />
+              <path d="M5.333 14H2.667C2.298 14 2 13.701 2 13.333V10.667" fill="none" stroke="#FFFFFF" strokeLinejoin="round" />
+              <path d="M10.667 14H13.333C13.701 14 14 13.701 14 13.333V10.667" fill="none" stroke="#FFFFFF" strokeLinejoin="round" />
+              <path d="M10.667 2H13.333C13.701 2 14 2.298 14 2.667V5.333" fill="none" stroke="#FFFFFF" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button type="button" aria-label="下载" onClick={(event) => { event.stopPropagation(); onDownload?.(media, shot); }} style={{ width: '24px', height: '24px', border: 0, borderRadius: '4px', background: '#00000080', color: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" style={{ width: '16px', height: '16px', rotate: '180deg', overflow: 'visible', flexShrink: 0, transformOrigin: '50% 50%' }} aria-hidden="true">
+              <path d="M8.003 4.7V14" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 8.667L8 4.667L12 8.667" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 2H12" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         </div>
       </>}
     </div>

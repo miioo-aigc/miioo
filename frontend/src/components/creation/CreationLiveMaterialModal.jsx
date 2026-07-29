@@ -25,6 +25,7 @@ import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '../ui';
 import ConfirmDialog from '../ConfirmDialog';
+import DotsLoading from '../DotsLoading';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import {
   apiCreateLiveMaterialAuthSession,
@@ -49,9 +50,10 @@ function CloseBtn({ onClick }) {
 
 function statusLabel(status) {
   const value = (status || '').toLowerCase();
-  if (value === 'pending' || value === 'processing') return '审核中';
-  if (value === 'failed' || value === 'rejected') return '审核未通过';
-  return null;
+  if (['failed', 'rejected', 'reject', 'invalid', 'error'].includes(value)) return '审核未通过';
+  if (['active', 'approved', 'success', 'succeeded', 'completed', 'complete', 'ready', 'done'].includes(value)) return null;
+  // 未知或空状态不能默认放行，必须等后端明确返回通过状态。
+  return '审核中';
 }
 
 // ─── Live Material Modal ──────────────────────────────────────────────────────
@@ -231,7 +233,10 @@ function AssetCard({ asset, label, isApproved, isSel, CELL, CELL_H, FONT, onClic
         {/* 审核中：半透明遮罩 + 文字居中 */}
         {isPending && (
           <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(#00000099, #00000099)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF' }}>审核中</span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', textAlign: 'center' }}>
+              <DotsLoading size={4} color="#2DC3E1" gap={3} />
+              <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF' }}>审核中</span>
+            </div>
           </div>
         )}
 
@@ -529,7 +534,21 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
     assetPollRef.current = setInterval(async () => {
       try {
         const assets = await apiListLiveMaterialAssets(groupId, { refresh: true });
-        setAssetsMap(prev => ({ ...prev, [groupId]: assets }));
+        setAssetsMap(prev => {
+          const previousAssets = prev[groupId] || [];
+          const previousById = new Map(previousAssets.map(asset => [asset.id, asset]));
+          const nextAssets = assets.map(asset => {
+            const previous = previousById.get(asset.id);
+            const currentStatus = (asset.status || '').toLowerCase();
+            const previousStatus = (previous?.status || '').toLowerCase();
+            if (previous && !['active', 'approved', 'success', 'succeeded', 'completed', 'complete', 'ready', 'done', 'failed', 'rejected', 'reject', 'invalid', 'error'].includes(currentStatus)
+              && !['active', 'approved', 'success', 'succeeded', 'completed', 'complete', 'ready', 'done', 'failed', 'rejected', 'reject', 'invalid', 'error'].includes(previousStatus)) {
+              return { ...previous, status: asset.status || previous.status, error_message: asset.error_message || previous.error_message, updated_at: asset.updated_at || previous.updated_at };
+            }
+            return asset;
+          });
+          return { ...prev, [groupId]: nextAssets };
+        });
         const allDone = assets.every(a => { const s = (a.status || '').toLowerCase(); return s !== 'pending' && s !== 'processing'; });
         if (allDone) { clearInterval(assetPollRef.current); assetPollRef.current = null; }
       } catch (error) { console.warn('[CreationLiveMaterialModal] operation failed', error); }

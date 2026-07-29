@@ -3,9 +3,10 @@
  * 负责图片/视频展示和上传入口，数据请求与页面状态由父面板编排。
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { createVideoFirstFrame } from './seedanceUploadValidation';
+import DotsLoading from '../DotsLoading';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -35,7 +36,14 @@ function DeleteIcon() {
   );
 }
 
-function AssetImageCard({ asset, onPreview, onDelete }) {
+function getAssetReviewState(asset) {
+  const status = String(asset?.status || '').trim().toLowerCase();
+  if (['active', 'approved', 'success', 'succeeded', 'completed', 'complete', 'ready', 'done'].includes(status)) return 'approved';
+  if (['failed', 'rejected', 'reject', 'invalid', 'error'].includes(status)) return 'rejected';
+  return 'pending';
+}
+
+const AssetImageCard = memo(function AssetImageCard({ asset, onPreview, onDelete }) {
   const [generatedPoster, setGeneratedPoster] = useState(null);
   const [isHovered, setIsHovered] = useState(false);
   const videoRef = useRef(null);
@@ -61,6 +69,8 @@ function AssetImageCard({ asset, onPreview, onDelete }) {
 
   const posterUrl = imageUrl || generatedPoster;
   const canPreview = Boolean(imageUrl || videoUrl || isAudio);
+  const reviewState = getAssetReviewState(asset);
+  const isUploading = asset.uploadState === 'uploading';
 
   useEffect(() => {
     const video = videoRef.current;
@@ -74,6 +84,29 @@ function AssetImageCard({ asset, onPreview, onDelete }) {
     }
     return undefined;
   }, [isHovered, isVideo, videoUrl]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isVideo || !videoUrl || isHovered || posterUrl) return undefined;
+    let cancelled = false;
+    const showFirstFrame = async () => {
+      try {
+        await video.play();
+        window.setTimeout(() => {
+          if (!cancelled) {
+            video.pause();
+            video.currentTime = 0;
+          }
+        }, 160);
+      } catch {
+        // 视频源不允许自动播放时，悬停播放仍作为兜底交互。
+      }
+    };
+    showFirstFrame();
+    return () => {
+      cancelled = true;
+    };
+  }, [isHovered, isVideo, posterUrl, videoUrl]);
   return (
     <div
       style={{
@@ -98,9 +131,19 @@ function AssetImageCard({ asset, onPreview, onDelete }) {
           poster={posterUrl ? (posterUrl.startsWith('data:') ? posterUrl : normalizeImageUrl(posterUrl)) : undefined}
           muted
           playsInline
-          preload="metadata"
+          preload="auto"
           aria-label={asset.name || '视频素材'}
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', background: '#1A1A1A', pointerEvents: 'none' }}
+          onLoadedData={(event) => {
+            if (posterUrl) return;
+            const video = event.currentTarget;
+            try {
+              video.currentTime = 0;
+              video.pause();
+            } catch {
+              // 视频尚未准备好定位时，保留浏览器当前已加载的首帧。
+            }
+          }}
         />
       ) : isAudio ? (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', background: '#1A1A1A' }}>
@@ -119,12 +162,31 @@ function AssetImageCard({ asset, onPreview, onDelete }) {
           }}
         />
       ) : null}
+      {isUploading || reviewState !== 'approved' ? (
+        <div
+          style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#00000099', pointerEvents: 'none' }}
+        >
+          {isUploading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', textAlign: 'center' }}>
+              <DotsLoading size={4} color="#2DC3E1" gap={3} />
+              <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF' }}>上传中，请勿离开</span>
+            </div>
+          ) : reviewState === 'rejected' ? (
+            <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF' }}>审核未通过</span>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', textAlign: 'center' }}>
+              <DotsLoading size={4} color="#2DC3E1" gap={3} />
+              <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF' }}>审核中</span>
+            </div>
+          )}
+        </div>
+      ) : null}
       {isHovered ? (
         <div
           style={{ position: 'absolute', right: '12px', bottom: '12px', zIndex: 3, display: 'flex', alignItems: 'center', gap: '6px' }}
           onClick={(event) => event.stopPropagation()}
         >
-          {canPreview ? (
+          {canPreview && reviewState === 'approved' ? (
             <button
               type="button"
               aria-label={`放大查看${asset.name ? ` ${asset.name}` : ''}`}
@@ -150,7 +212,7 @@ function AssetImageCard({ asset, onPreview, onDelete }) {
       ) : null}
     </div>
   );
-}
+});
 
 export default function SeedanceFolderDetail({ folder, assets = [], loading = false, uploading = false, onBack, onUpload, onPreview, onDelete }) {
   const inputRef = useRef(null);
@@ -185,7 +247,8 @@ export default function SeedanceFolderDetail({ folder, assets = [], loading = fa
         <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF' }}>{folder.name}</span>
       </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignContent: 'flex-start' }}>
+      <div style={{ position: 'relative', flex: '1 1 0%', minHeight: '200px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignContent: 'flex-start' }}>
         <input
           ref={inputRef}
           accept=".jpeg,.jpg,.png,.webp,.gif,.heic,.mp4,.mov,.mp3,.wav,image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,audio/mpeg,audio/wav"
@@ -202,10 +265,10 @@ export default function SeedanceFolderDetail({ folder, assets = [], loading = fa
           onMouseLeave={(event) => { event.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
         >
           <UploadIcon />
-          <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFFCC', flexShrink: 0 }}>{uploading ? '上传中...' : '上传'}</span>
+          <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFFCC', flexShrink: 0 }}>上传</span>
         </button>
-        {loading ? <span style={{ alignSelf: 'center', fontFamily: FONT, fontSize: '13px', lineHeight: '18px', color: '#FFFFFF66' }}>加载中...</span> : null}
         {!loading && assets.map((asset) => <AssetImageCard key={asset.id} asset={asset} onPreview={onPreview} onDelete={onDelete} />)}
+        </div>
       </div>
     </div>
   );

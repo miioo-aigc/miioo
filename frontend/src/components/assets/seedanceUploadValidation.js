@@ -35,7 +35,12 @@ function loadMediaMetadata(file, kind) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const media = document.createElement(kind);
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`无法读取${kind === 'video' ? '视频' : '音频'}信息`));
+    }, 15000);
     const cleanup = () => {
+      window.clearTimeout(timeoutId);
       media.removeAttribute('src');
       media.load();
       URL.revokeObjectURL(url);
@@ -67,8 +72,8 @@ export function createVideoFirstFrame(file) {
 
     const cleanup = () => {
       video.removeEventListener('loadedmetadata', handleMetadata);
-      video.removeEventListener('loadeddata', handleFrameReady);
       video.removeEventListener('seeked', handleFrameReady);
+      video.removeEventListener('loadeddata', handleLoadedData);
       video.removeEventListener('error', handleError);
       video.removeAttribute('src');
       video.load();
@@ -82,27 +87,49 @@ export function createVideoFirstFrame(file) {
     };
     const handleError = () => finish(reject, new Error('无法生成视频首帧'));
     const handleFrameReady = () => {
+      // seeked 只表示时间轴已定位，必须等浏览器提交一帧后再读取画面。
+      if (typeof video.requestVideoFrameCallback === 'function') {
+        video.requestVideoFrameCallback(() => { if (!settled) captureFrame(); });
+        return;
+      }
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => { if (!settled) captureFrame(); });
+      });
+    };
+    const captureFrame = () => {
       try {
         const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        const scale = Math.min(1, 640 / video.videoWidth, 640 / video.videoHeight);
+        canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+        canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
         if (!canvas.width || !canvas.height) throw new Error('视频没有有效画面');
-        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('无法创建视频封面');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
         finish(resolve, canvas.toDataURL('image/jpeg', 0.86));
       } catch (error) {
         finish(reject, error);
       }
+    };
+    const handleLoadedData = () => {
+      // 某些浏览器在当前时间已经是 0 时不会触发 seeked，主动播放一帧后再截取。
+      if (video.currentTime !== 0) return;
+      video.play()
+        .then(() => {
+          video.pause();
+          handleFrameReady();
+        })
+        .catch(() => handleFrameReady());
     };
     const handleMetadata = () => {
       video.currentTime = 0;
     };
 
     video.addEventListener('loadedmetadata', handleMetadata, { once: true });
-    // loadeddata 覆盖视频本来就停在第 0 秒的情况，避免仅监听 seeked 时无法生成封面。
-    video.addEventListener('loadeddata', handleFrameReady, { once: true });
+    video.addEventListener('loadeddata', handleLoadedData, { once: true });
     video.addEventListener('seeked', handleFrameReady, { once: true });
     video.addEventListener('error', handleError, { once: true });
-    video.preload = 'metadata';
+    video.preload = 'auto';
     video.muted = true;
     video.playsInline = true;
     video.src = url;

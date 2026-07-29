@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import Checkbox from '../Checkbox';
 import NarrationAddButton from './NarrationAddButton';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -51,11 +52,15 @@ function CandidateCard({ item, finalized, onSelect, onPreview }) {
   const url = normalizeImageUrl(item.thumbnail_url || item.poster_url || item.url);
   return (
     <button type="button" onClick={() => onSelect?.(item)} onMouseEnter={(event) => onPreview?.(item, event.currentTarget)} onMouseLeave={() => onPreview?.(null)} style={{
-      width: '66px', height: '66px', position: 'relative', padding: 0, overflow: 'hidden', flexShrink: 0, cursor: 'pointer',
+      width: '60px', height: '60px', position: 'relative', padding: 0, overflow: 'hidden', flexShrink: 0, cursor: 'pointer',
       borderRadius: '4px', border: `1px solid ${finalized ? '#2DC3E1' : 'rgba(255,255,255,0.10)'}`, background: '#101111',
     }}>
       {isVideo ? <video src={url} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-      {finalized && <span style={{ position: 'absolute', left: '4px', top: '4px', color: '#090909', background: '#2DC3E1', font: `10px ${FONT}`, padding: '1px 3px', borderRadius: '2px' }}>定稿</span>}
+      <Checkbox
+        checked={finalized}
+        aria-label={finalized ? '已定稿' : '未定稿'}
+        style={{ position: 'absolute', right: '4px', top: '4px', width: '14px', height: '14px', pointerEvents: 'none' }}
+      />
     </button>
   );
 }
@@ -105,16 +110,16 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
   }
 
   return (
-    <div style={{ width: '91px', minWidth: '91px', boxSizing: 'border-box', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', borderRight: '1px solid rgba(255,255,255,0.08)', alignSelf: 'stretch', position: 'relative' }}>
+    <div style={{ width: 'fit-content', minWidth: 'fit-content', boxSizing: 'border-box', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', borderRight: '1px solid rgba(255,255,255,0.08)', alignSelf: 'stretch', position: 'relative' }}>
       <input ref={inputRef} type="file" accept="image/*,video/*" hidden onChange={handleFile} />
-      <div style={{ width: '66px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <div style={{ width: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <span style={{ font: `12px ${FONT}`, color: '#FFFFFF99', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>分镜</span>
         {media.length > 0 && <NarrationAddButton tooltip="创作" onClick={handleOpenCreation} />}
       </div>
       {generating && <div style={{ height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2DC3E1', font: `12px ${FONT}` }}>生成中</div>}
       {!generating && media.length === 0 && <PlusButton tooltip="创作" onClick={handleOpenCreation} />}
-      {!generating && media.length > 0 && <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', overflow: 'auto' }}>
-        {media.slice(0, 6).map((item, index) => (
+      {!generating && media.length > 0 && <div style={{ minHeight: 0, flex: 1, display: 'flex', gap: '4px', flexFlow: 'column nowrap', overflowY: 'auto', overflowX: 'hidden', width: 'fit-content' }}>
+        {media.map((item, index) => (
           <CandidateCard key={item.id || item.url || index} item={item} finalized={item.is_finalized} onSelect={() => { onSelectShot?.(); onFinalizeToggle?.(item); }} onPreview={handlePreview} />
         ))}
       </div>}

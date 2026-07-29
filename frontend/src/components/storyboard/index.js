@@ -39,6 +39,7 @@ export { default as StoryboardShotMediaColumn } from './StoryboardShotMediaColum
 export { default as StoryboardFinalizedTimeline } from './StoryboardFinalizedTimeline';
 export { default as StoryboardFinalizedCard } from './StoryboardFinalizedCard';
 export { default as StoryboardCreationPanel } from './StoryboardCreationPanel';
+export { default as StoryboardMediaDetailModal } from './StoryboardMediaDetailModal';
 export { default as AIRegenerateStoryboardModal } from './AIRegenerateStoryboardModal';
 
 export { MENTION_TYPE_LABEL, MENTION_TYPE_COLOR, MENTION_TABS } from './PanelPromptConstants';

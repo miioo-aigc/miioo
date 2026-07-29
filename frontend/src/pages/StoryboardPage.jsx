@@ -108,6 +108,7 @@
  *              恢复并修正仍被旁白/新增分镜流程使用的 CharTag、AddSlotBtn、makeStoryboardShot 等引用；
  *              补全 Hook 依赖并将页面同步副作用延后到 requestAnimationFrame；定向 ESLint 达到 0 errors / 0 warnings，
  *              不改变 API、任务轮询、缓存、持久化和用户交互边界
+ *   2026-07-29  分镜详情查看统一使用 StoryboardMediaDetailModal，图片/视频候选共用列表和定稿状态
 */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -128,9 +129,24 @@ import {
   hasStoryboardVideoTaskResult,
   isStoryboardTaskInProgress,
 } from '../utils/storyboardTaskAdapter';
+
+function getCandidateKey(media) {
+  return media?.id || media?.url || media?.download_url || media?.downloadUrl || null;
+}
+
+function mergeCandidateOrder(previous = [], incoming = []) {
+  const incomingByKey = new Map(incoming.map((item) => [getCandidateKey(item), item]).filter(([key]) => key));
+  const ordered = previous
+    .map((item) => incomingByKey.get(getCandidateKey(item)))
+    .filter(Boolean);
+  const existingKeys = new Set(ordered.map(getCandidateKey));
+  const additions = incoming.filter((item) => {
+    const key = getCandidateKey(item);
+    return key && !existingKeys.has(key);
+  });
+  return [...ordered, ...additions];
+}
 import { Button } from '../components/ui';
-import MediaDetailModal from '../components/MediaDetailModal';
-import ShotViewerModal from '../components/ShotViewerModal';
 import { subscribe, peekCache, invalidate } from '../utils/cache';
 import { K, MEDIUM } from '../utils/cacheKeys';
 import { buildStoryboardRefFromAsset, toSafeStoryboardReferenceUrls } from '../utils/storyboardReferenceAdapter';
@@ -155,6 +171,7 @@ import {
   StoryboardShotMediaColumn,
   StoryboardFinalizedTimeline,
   StoryboardCreationPanel,
+  StoryboardMediaDetailModal,
   AIRegenerateStoryboardModal,
 } from '../components/storyboard';
 
@@ -407,7 +424,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     creationFormSaveTimersRef.current.clear();
   }, []);
 
-  function fallbackCandidates(shot) {
+function fallbackCandidates(shot) {
     const fallbackMedia = [shot.storyboardImage, shot.storyboardVideo].filter(Boolean);
     const finalizedId = fallbackMedia[0]?.id || fallbackMedia[0]?.url;
     return fallbackMedia.map((media) => ({
@@ -431,7 +448,13 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     }));
     const nextCandidates = Object.fromEntries(entries);
     const nextFinalized = Object.fromEntries(entries.map(([id, items]) => [id, items.find((item) => item.is_finalized) || null]));
-    setCandidateMediaMap(nextCandidates);
+    setCandidateMediaMap((prev) => {
+      const merged = { ...prev };
+      Object.entries(nextCandidates).forEach(([shotId, items]) => {
+        merged[shotId] = mergeCandidateOrder(prev[shotId] || [], items);
+      });
+      return merged;
+    });
     setFinalizedMediaMap(nextFinalized);
   }, [projectId]);
 
@@ -468,7 +491,10 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     if (!shot?.id) return;
     try {
       const items = await apiListStoryboardMediaCandidates(projectId, shot.id);
-      setCandidateMediaMap((prev) => ({ ...prev, [shot.id]: items }));
+      setCandidateMediaMap((prev) => ({
+        ...prev,
+        [shot.id]: mergeCandidateOrder(prev[shot.id] || [], items),
+      }));
       setFinalizedMediaMap((prev) => ({ ...prev, [shot.id]: items.find((item) => item.is_finalized) || null }));
     } catch (error) {
       console.warn('[StoryboardPage] 刷新分镜候选媒体失败:', error);
@@ -492,10 +518,15 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     try {
       const saved = await apiCreateStoryboardMediaCandidate(projectId, shotId, payload);
       const candidate = { ...payload, ...saved, id: saved?.id || payload.url };
-      setCandidateMediaMap((prev) => ({
-        ...prev,
-        [shotId]: [...(prev[shotId] || []).filter((item) => item.id !== candidate.id && item.url !== candidate.url), candidate],
-      }));
+      setCandidateMediaMap((prev) => {
+        const current = prev[shotId] || [];
+        const candidateKey = getCandidateKey(candidate);
+        const withoutDuplicate = current.filter((item) => getCandidateKey(item) !== candidateKey);
+        return {
+          ...prev,
+          [shotId]: [...withoutDuplicate, candidate],
+        };
+      });
       setFinalizedMediaMap((prev) => ({ ...prev, [shotId]: candidate.is_finalized ? candidate : (prev[shotId] || null) }));
       return candidate;
     } catch (error) {
@@ -990,16 +1021,21 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       isVideo,
       finalized: media.is_finalized === true || finalizedMediaMap[shot?.id]?.id === media.id,
       url: normalizeImageUrl(media.url),
+      candidates: candidateMediaMap[shot?.id] || [],
     });
   }
 
-  async function handleTimelineFinalizeChange(nextValue) {
-    if (!timelinePreviewMedia?.shot || !timelinePreviewMedia?.media) return;
-    await handleFinalizeToggle(timelinePreviewMedia.shot, timelinePreviewMedia.media, nextValue);
+  async function handleTimelineFinalizeChange(media, nextValue) {
+    if (!timelinePreviewMedia?.shot || !media) return;
+    await handleFinalizeToggle(timelinePreviewMedia.shot, media, nextValue);
     setTimelinePreviewMedia((prev) => prev ? {
       ...prev,
       finalized: nextValue,
-      media: { ...prev.media, is_finalized: nextValue },
+      media: prev.media?.id === media.id ? { ...prev.media, is_finalized: nextValue } : prev.media,
+      candidates: (prev.candidates || []).map((item) => ({
+        ...item,
+        is_finalized: item.id === media.id ? nextValue : false,
+      })),
     } : prev);
   }
 
@@ -1686,37 +1722,29 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
         setRegenerateModalError('');
       }}
     />
-    {timelinePreviewMedia?.isVideo ? (
-      <ShotViewerModal
-        shot={{
-          id: timelinePreviewMedia.shot?.id,
-          label: `分镜${String(timelinePreviewMedia.shot?.number ?? '').padStart(2, '0')}`,
-          videoUrl: timelinePreviewMedia.url,
-          duration: timelinePreviewMedia.media?.video_duration || timelinePreviewMedia.shot?.duration || 0,
-          filename: timelinePreviewMedia.media?.name,
-          finalized: timelinePreviewMedia.finalized,
+    {timelinePreviewMedia ? (
+      <StoryboardMediaDetailModal
+        key={`${timelinePreviewMedia.shot?.id || 'shot'}-${timelinePreviewMedia.media?.id || timelinePreviewMedia.media?.url || 'media'}`}
+        shot={timelinePreviewMedia.shot}
+        media={timelinePreviewMedia.media}
+        candidates={timelinePreviewMedia.candidates}
+        onClose={() => setTimelinePreviewMedia(null)}
+        onFinalizeChange={handleTimelineFinalizeChange}
+        onDownload={async (media) => {
+          try {
+            if (media?.id && !String(media.id).startsWith('blob:')) {
+              const blob = await apiDownloadStoryboardMediaCandidate(projectId, timelinePreviewMedia.shot.id, media.id);
+              downloadBlob(blob, media.name || `storyboard-${media.id}`);
+              return;
+            }
+          } catch (error) {
+            console.warn('[StoryboardPage] 详情媒体受控下载失败，回退直链:', error);
+          }
+          const link = document.createElement('a');
+          link.href = normalizeImageUrl(media?.downloadUrl || media?.download_url || media?.url);
+          link.download = media?.name || `storyboard-${media?.id || 'media'}`;
+          link.click();
         }}
-        onClose={() => setTimelinePreviewMedia(null)}
-        onFinalizeChange={(_shotId, nextValue) => handleTimelineFinalizeChange(nextValue)}
-      />
-    ) : timelinePreviewMedia ? (
-      <MediaDetailModal
-        mode="image"
-        zIndex={1100}
-        images={[{
-          id: timelinePreviewMedia.media.id || timelinePreviewMedia.media.url,
-          url: normalizeImageUrl(timelinePreviewMedia.media.large_url || timelinePreviewMedia.media.preview_url || timelinePreviewMedia.media.url),
-          fileUrl: normalizeImageUrl(timelinePreviewMedia.media.large_url || timelinePreviewMedia.media.preview_url || timelinePreviewMedia.media.url),
-          source: timelinePreviewMedia.media.source,
-          detailSource: timelinePreviewMedia.media.source,
-          is_primary: timelinePreviewMedia.finalized,
-        }]}
-        name={`分镜${String(timelinePreviewMedia.shot?.number ?? '').padStart(2, '0')}`}
-        shotNumber={`分镜${String(timelinePreviewMedia.shot?.number ?? '').padStart(2, '0')}`}
-        showDelete={false}
-        showDownload={false}
-        onClose={() => setTimelinePreviewMedia(null)}
-        onPrimaryChange={(_image, nextValue) => handleTimelineFinalizeChange(nextValue)}
       />
     ) : null}
     {creationPanel && (

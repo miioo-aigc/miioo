@@ -13,6 +13,7 @@
 
 import { useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
+import Checkbox from '../Checkbox';
 import { apiUploadCreationImage } from '../../api/creation';
 import { apiUploadStoryboardVideo } from '../../api/storyboard';
 import { normalizeImageUrl } from '../../utils/imageUrl';
@@ -43,8 +44,12 @@ function CandidateItem({ item, onSelect, onPreview, onDownload }) {
       style={{ width: '100px', height: '100px', position: 'relative', overflow: 'hidden', flexShrink: 0, borderRadius: '6px', border: `1px solid ${item.is_finalized ? '#2DC3E1' : hovered ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.12)'}`, background: '#1D1E1E', padding: 0, cursor: 'pointer', display: 'block', transition: 'border-color 120ms, box-shadow 120ms', boxShadow: hovered ? '0 4px 16px rgba(0,0,0,0.35)' : 'none' }}
     >
       {isVideo ? <video src={normalizeImageUrl(item.url)} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <img src={source} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-      <span style={{ position: 'absolute', right: '4px', top: '4px', padding: '1px 4px', borderRadius: '2px', background: '#00000099', color: '#FFFFFFCC', fontFamily: FONT, fontSize: '10px', lineHeight: '14px' }}>{isVideo ? '视频' : '图片'}</span>
-      {item.is_finalized && <span style={{ position: 'absolute', left: '4px', top: '4px', padding: '1px 4px', borderRadius: '2px', background: '#2DC3E1', color: '#090909', fontFamily: FONT, fontSize: '10px', lineHeight: '14px' }}>定稿</span>}
+      <span style={{ position: 'absolute', left: '4px', top: '4px', padding: '1px 4px', borderRadius: '2px', background: '#00000099', color: '#FFFFFFCC', fontFamily: FONT, fontSize: '10px', lineHeight: '14px' }}>{isVideo ? '视频' : '图片'}</span>
+      <Checkbox
+        checked={item.is_finalized}
+        aria-label={item.is_finalized ? '已定稿' : '未定稿'}
+        style={{ position: 'absolute', right: '4px', top: '4px', width: '14px', height: '14px', pointerEvents: 'none' }}
+      />
       {hovered && (
         <div style={{ position: 'absolute', right: '4px', bottom: '4px', display: 'flex', gap: '4px' }}>
           <button type="button" aria-label="放大" onClick={(event) => { event.stopPropagation(); onPreview?.(item); }} style={{ width: '24px', height: '24px', padding: 0, border: 0, borderRadius: '4px', background: '#00000099', color: '#FFFFFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

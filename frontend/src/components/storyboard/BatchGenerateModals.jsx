@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Toggle from '../Toggle';
+import Checkbox from '../Checkbox';
 import { Button, Select } from '../ui';
 import { apiListModels } from '../../api/config';
 import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter';
@@ -20,6 +21,7 @@ import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter
  *
  * ─── 更新记录 ─────────────────────────────────────────────────────
  *   2026-07-15  从 StoryboardPage 抽离批量生成图片/视频弹窗，选择器复用 ui/Select
+ *   2026-07-29  批量生成图/视频增加“仅生成未定稿”筛选，状态随确认参数返回页面
  */
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -62,11 +64,22 @@ function ModalCloseButton({ onClick }) {
   );
 }
 
-function ModalActions({ onClose, onConfirm }) {
+function ModalActions({ onClose, onConfirm, onlyUndrafted, onOnlyUndraftedChange }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '16px', padding: '16px 24px' }}>
-      <Button variant="secondary" size="large" onClick={onClose}>取消</Button>
-      <Button variant="accent" size="large" onClick={onConfirm}>开始生成</Button>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '16px 24px' }}>
+      <label
+        style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', userSelect: 'none', minWidth: 0 }}
+        onClick={() => onOnlyUndraftedChange?.(!onlyUndrafted)}
+      >
+        <Checkbox checked={onlyUndrafted} style={{ pointerEvents: 'none' }} />
+        <span style={{ fontSize: '14px', lineHeight: '18px', color: 'rgba(255,255,255,0.80)', fontFamily: FONT, whiteSpace: 'nowrap' }}>
+          仅生成未定稿
+        </span>
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
+        <Button variant="secondary" size="large" onClick={onClose}>取消</Button>
+        <Button variant="accent" size="large" onClick={onConfirm}>开始生成</Button>
+      </div>
     </div>
   );
 }
@@ -157,11 +170,21 @@ function durationOptionsFor(modelList, model) {
   return Array.isArray(range) ? range : [];
 }
 
-export function BatchImageModal({ shotCount, onClose, onConfirm, projectRatio }) {
+function isShotFinalized(shot, finalizedMediaMap) {
+  if (finalizedMediaMap?.[shot?.id]) return true;
+  return Boolean(shot?.storyboardImage || shot?.storyboardVideo);
+}
+
+export function BatchImageModal({ shots = [], shotCount, finalizedMediaMap = {}, onClose, onConfirm, projectRatio }) {
   const [modelList, setModelList] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [model, setModel] = useState('');
   const [resolution, setResolution] = useState('');
+  const [onlyUndrafted, setOnlyUndrafted] = useState(true);
+
+  const undraftedCount = shots.length > 0
+    ? shots.filter((shot) => !isShotFinalized(shot, finalizedMediaMap)).length
+    : shotCount || 0;
 
   useEffect(() => {
     let active = true;
@@ -189,24 +212,27 @@ export function BatchImageModal({ shotCount, onClose, onConfirm, projectRatio })
     setResolution(selected.resolutions.includes(resolution) ? resolution : (selected.resolutions[0] || ''));
   }, [modelList, resolution]);
 
-  function confirm() { onConfirm?.({ model, resolution }); onClose?.(); }
+  function confirm() { onConfirm?.({ model, resolution, only_undrafted: onlyUndrafted }); onClose?.(); }
 
   return (
-    <ModalShell title="批量生成分镜图" onClose={onClose} actions={<ModalActions onClose={onClose} onConfirm={confirm} />}>
-      <CountRow label="待生成的分镜图数量" count={shotCount} />
+    <ModalShell title="批量生成分镜图" onClose={onClose} actions={<ModalActions onClose={onClose} onConfirm={confirm} onlyUndrafted={onlyUndrafted} onOnlyUndraftedChange={setOnlyUndrafted} />}>
+      <CountRow label="待生成的分镜图数量" count={onlyUndrafted ? undraftedCount : (shots.length || shotCount || 0)} />
       <ModelSelect modelList={modelList} model={model} loading={modelsLoading} onChange={handleModelChange} />
       <CapabilitySelect label="分辨率" value={resolution} options={resolutionOptions} onChange={setResolution} />
     </ModalShell>
   );
 }
 
-export function BatchVideoModal({ shots, onClose, onConfirm, projectRatio }) {
+export function BatchVideoModal({ shots, finalizedMediaMap = {}, onClose, onConfirm, projectRatio }) {
   const [modelList, setModelList] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [model, setModel] = useState('');
   const [resolution, setResolution] = useState('');
   const [duration, setDuration] = useState('');
   const [sound, setSound] = useState(true);
+  const [onlyUndrafted, setOnlyUndrafted] = useState(true);
+
+  const undraftedCount = (shots || []).filter((shot) => !isShotFinalized(shot, finalizedMediaMap)).length;
 
   useEffect(() => {
     let active = true;
@@ -246,11 +272,11 @@ export function BatchVideoModal({ shots, onClose, onConfirm, projectRatio }) {
     setDuration(durationForModel(selected, duration));
   }, [duration, modelList, resolution]);
 
-  function confirm() { onConfirm?.({ model, resolution, duration, sound }); onClose?.(); }
+  function confirm() { onConfirm?.({ model, resolution, duration, sound, only_undrafted: onlyUndrafted }); onClose?.(); }
 
   return (
-    <ModalShell title="批量生成分镜视频" onClose={onClose} actions={<ModalActions onClose={onClose} onConfirm={confirm} />}>
-      <CountRow label="待生成的分镜视频数量" count={shots?.length || 0} />
+    <ModalShell title="批量生成分镜视频" onClose={onClose} actions={<ModalActions onClose={onClose} onConfirm={confirm} onlyUndrafted={onlyUndrafted} onOnlyUndraftedChange={setOnlyUndrafted} />}>
+      <CountRow label="待生成的分镜视频数量" count={onlyUndrafted ? undraftedCount : (shots?.length || 0)} />
       <ModelSelect modelList={modelList} model={model} loading={modelsLoading} onChange={handleModelChange} />
       <CapabilitySelect label="分辨率" value={resolution} options={resolutionOptions} onChange={setResolution} />
       <CapabilitySelect label="时长" value={duration} options={durationOptions} onChange={setDuration} />

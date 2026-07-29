@@ -504,6 +504,87 @@ function fallbackCandidates(shot) {
   async function saveCandidateMedia(shotId, media) {
     const mediaType = media.mediaType || media.media_type || (media.type?.startsWith('video') ? 'video' : 'image');
     const mediaUrl = media.url || media.fileUrl || media.file_url;
+    const rawMetadata = media.metadata || media.metadata_json || media.metadataJson || {};
+    const parseObject = (value) => {
+      if (!value) return {};
+      if (typeof value === 'object' && !Array.isArray(value)) return value;
+      if (typeof value !== 'string') return {};
+      try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch {
+        return {};
+      }
+    };
+    const metadata = typeof rawMetadata === 'string'
+      ? (() => { try { return JSON.parse(rawMetadata) || {}; } catch { return {}; } })()
+      : (rawMetadata && typeof rawMetadata === 'object' ? rawMetadata : {});
+    const parameterContainers = [
+      media.params, media.parameters, media.generation, media.options,
+      media.genParams, media.gen_params, media.generation_params, media.generationParams,
+      media.provider_params, media.providerParams,
+      metadata.params, metadata.parameters, metadata.generation, metadata.options,
+      metadata.gen_params, metadata.genParams, metadata.generation_params, metadata.generationParams,
+      metadata.provider_params, metadata.providerParams,
+    ].map(parseObject).filter((value) => Object.keys(value).length > 0);
+    const mergedGenerationParams = Object.assign({}, ...parameterContainers);
+    const isAssetLibraryMedia = ['asset-library', 'asset', 'library'].includes(String(media.source || '').toLowerCase());
+    const generationKeys = new Set([
+      'model', 'resolution', 'size', 'duration', 'ratio', 'aspect_ratio', 'aspectRatio',
+      'sound_effect', 'soundEffect', 'generate_audio', 'generateAudio', 'audio_setting', 'audioSetting',
+      'reference_images', 'referenceImages', 'first_frame_url', 'firstFrameUrl',
+      'reference_image_urls', 'referenceImageUrls',
+      'last_frame_url', 'lastFrameUrl', 'reference_video_url', 'referenceVideoUrl',
+      'reference_audio_url', 'referenceAudioUrl', 'reference_mode', 'referenceMode',
+      'generation_mode', 'generationMode', 'generate_mode', 'generateMode',
+      'watermark', 'multi_shot', 'multiShot', 'expand_options', 'expandOptions',
+      'subject_completion_options', 'subjectCompletionOptions', 'optimize_prompt', 'optimizePrompt',
+      'sequential_image_generation', 'sequentialImageGeneration', 'provider_params', 'providerParams',
+    ]);
+    const filterGenerationParams = (value) => Object.fromEntries(
+      Object.entries(value && typeof value === 'object' ? value : {})
+        .filter(([key, value]) => generationKeys.has(key) && value !== undefined && value !== null && value !== ''),
+    );
+    const rawGenerationParams = mergedGenerationParams;
+    const prompt = media.prompt || media.input_prompt || media.inputPrompt || media.prompt_raw || media.promptRaw
+      || media.prompt_resolved || media.promptResolved
+      || metadata.prompt || metadata.input_prompt || metadata.inputPrompt || metadata.prompt_raw || metadata.promptRaw
+      || metadata.prompt_resolved || metadata.promptResolved
+      || mergedGenerationParams.prompt || mergedGenerationParams.input_prompt || mergedGenerationParams.inputPrompt;
+    const mediaMetadata = isAssetLibraryMedia
+      ? {
+        ...metadata,
+        ...(prompt ? { prompt, input_prompt: prompt } : {}),
+        ...(media.prompt_raw || media.promptRaw || metadata.prompt_raw || metadata.promptRaw ? { prompt_raw: media.prompt_raw || media.promptRaw || metadata.prompt_raw || metadata.promptRaw } : {}),
+        ...(media.prompt_resolved || media.promptResolved || metadata.prompt_resolved || metadata.promptResolved ? { prompt_resolved: media.prompt_resolved || media.promptResolved || metadata.prompt_resolved || metadata.promptResolved } : {}),
+        ...(filterGenerationParams({
+          model: media.model ?? metadata.model,
+          resolution: media.resolution ?? metadata.resolution,
+          size: media.size ?? metadata.size,
+          duration: media.duration ?? metadata.duration,
+          ratio: media.ratio ?? media.aspect_ratio ?? media.aspectRatio ?? metadata.ratio ?? metadata.aspect_ratio ?? metadata.aspectRatio,
+          reference_images: media.referenceImages ?? media.reference_images ?? metadata.reference_images ?? metadata.referenceImages,
+          reference_image_urls: media.referenceImageUrls ?? media.reference_image_urls ?? metadata.reference_image_urls ?? metadata.referenceImageUrls,
+          provider_params: media.providerParams ?? media.provider_params ?? metadata.provider_params ?? metadata.providerParams,
+        })),
+        ...(Object.keys(filterGenerationParams(rawGenerationParams)).length > 0 ? { gen_params: filterGenerationParams(rawGenerationParams) } : {}),
+      }
+      : {
+        ...metadata,
+        ...(prompt ? { prompt, input_prompt: prompt } : {}),
+        ...(media.prompt_raw || media.promptRaw || metadata.prompt_raw || metadata.promptRaw ? { prompt_raw: media.prompt_raw || media.promptRaw || metadata.prompt_raw || metadata.promptRaw } : {}),
+        ...(media.prompt_resolved || media.promptResolved || metadata.prompt_resolved || metadata.promptResolved ? { prompt_resolved: media.prompt_resolved || media.promptResolved || metadata.prompt_resolved || metadata.promptResolved } : {}),
+        ...(media.model ? { model: media.model } : {}),
+        ...(media.resolution ? { resolution: media.resolution } : {}),
+        ...(media.duration != null ? { duration: media.duration } : {}),
+        ...(media.ratio || media.aspect_ratio || media.aspectRatio ? { ratio: media.ratio || media.aspect_ratio || media.aspectRatio } : {}),
+        ...(media.referenceImages || media.reference_images ? { reference_images: media.referenceImages || media.reference_images } : {}),
+        ...(Object.keys(rawGenerationParams).length > 0 ? { gen_params: rawGenerationParams } : {}),
+      };
+    if (isAssetLibraryMedia && Object.keys(mergedGenerationParams).length > 0) {
+      mediaMetadata.params = mergedGenerationParams;
+      mediaMetadata.generation_params = mergedGenerationParams;
+    }
     const payload = {
       media_type: mediaType,
       url: mediaUrl,
@@ -512,12 +593,28 @@ function fallbackCandidates(shot) {
       download_url: media.download_url || media.downloadUrl || null,
       source: media.source || 'ai-generated',
       asset_id: media.asset_id || media.assetId || null,
-      metadata: media.metadata || media.metadata_json || media.metadataJson || {},
+      metadata: mediaMetadata,
     };
+    if (media.created_at || media.createdAt) payload.created_at = media.created_at || media.createdAt;
     if (!payload.url) return null;
     try {
       const saved = await apiCreateStoryboardMediaCandidate(projectId, shotId, payload);
-      const candidate = { ...payload, ...saved, id: saved?.id || payload.url };
+      const candidate = {
+        ...payload,
+        ...saved,
+        // 后端响应可能只返回媒体基础字段，不能覆盖刚从创作资产带来的详情。
+        metadata: { ...(payload.metadata || {}), ...(saved?.metadata || {}) },
+        prompt: saved?.prompt || saved?.inputPrompt || saved?.input_prompt || payload.metadata?.prompt || payload.metadata?.input_prompt || payload.metadata?.params?.prompt || '',
+        input_prompt: saved?.input_prompt || saved?.inputPrompt || saved?.prompt || payload.metadata?.input_prompt || payload.metadata?.prompt || payload.metadata?.params?.input_prompt || '',
+        model: saved?.model || payload.metadata?.model || payload.metadata?.params?.model || '',
+        resolution: saved?.resolution || payload.metadata?.resolution || payload.metadata?.params?.resolution || '',
+        ratio: saved?.ratio || payload.metadata?.ratio || payload.metadata?.params?.ratio || '',
+        duration: saved?.duration ?? payload.metadata?.duration ?? payload.metadata?.params?.duration ?? null,
+        reference_images: saved?.reference_images || saved?.referenceImages || payload.metadata?.reference_images || payload.metadata?.referenceImages || payload.metadata?.params?.reference_images || null,
+        genParams: saved?.genParams || saved?.gen_params || saved?.generation_params || payload.metadata?.gen_params || payload.metadata?.params || {},
+        gen_params: saved?.gen_params || saved?.genParams || saved?.generation_params || payload.metadata?.gen_params || payload.metadata?.params || {},
+        id: saved?.id || payload.url,
+      };
       setCandidateMediaMap((prev) => {
         const current = prev[shotId] || [];
         const candidateKey = getCandidateKey(candidate);
@@ -830,10 +927,13 @@ function fallbackCandidates(shot) {
     if (generatingImages) return;
     setGeneratingImages(true);
     const episodeId = getEpisodeId(episode);
+    const targetShots = params?.only_undrafted
+      ? shots.filter((shot) => !finalizedMediaMap[shot.id] && !shot.storyboardImage && !shot.storyboardVideo)
+      : shots;
     let successCount = 0;
     let failCount = 0;
 
-    for (const shot of shots) {
+    for (const shot of targetShots) {
       setGeneratingImageShotIds(prev => new Set([...prev, shot.id]));
       let taskId = null;
       try {
@@ -855,6 +955,25 @@ function fallbackCandidates(shot) {
               ? { ...s, storyboardImage: { id: normalizedUrl, url: normalizedUrl, name: 'generated.jpg', type: 'image/jpeg' } }
               : s
             ));
+            await saveCandidateMedia(shot.id, {
+              id: normalizedUrl,
+              url: normalizedUrl,
+              name: 'generated.jpg',
+              type: 'image/jpeg',
+              media_type: 'image',
+              source: 'ai-generated',
+              prompt: params.prompt,
+              model: params.model,
+              resolution: params.resolution,
+              ratio: projectRatio,
+              referenceImages: toSafeStoryboardReferenceUrls(params.refImages),
+              genParams: {
+                model: params.model,
+                resolution: params.resolution,
+                ratio: projectRatio,
+                reference_images: toSafeStoryboardReferenceUrls(params.refImages),
+              },
+            });
             successCount++;
           } else {
             failCount++;
@@ -886,10 +1005,13 @@ function fallbackCandidates(shot) {
     if (generatingVideos) return;
     setGeneratingVideos(true);
     const episodeId = getEpisodeId(episode);
+    const targetShots = params?.only_undrafted
+      ? shots.filter((shot) => !finalizedMediaMap[shot.id] && !shot.storyboardImage && !shot.storyboardVideo)
+      : shots;
     let successCount = 0;
     let failCount = 0;
 
-    for (const shot of shots) {
+    for (const shot of targetShots) {
       setGeneratingVideoShotIds(prev => new Set([...prev, shot.id]));
       let taskId = null;
       try {
@@ -921,6 +1043,28 @@ function fallbackCandidates(shot) {
             ));
             // 持久化到后端，避免刷新后视频列消失
             apiUpdateStoryboard(projectId, shot.id, { video_url: normalizedUrl }).catch(console.error);
+            await saveCandidateMedia(shot.id, {
+              id: `vid-${shot.id}`,
+              url: normalizedUrl,
+              name: 'generated.mp4',
+              type: 'video/mp4',
+              media_type: 'video',
+              source: 'ai-generated',
+              prompt: params.prompt,
+              model: params.model,
+              resolution: params.resolution,
+              duration: durationValue,
+              ratio: projectRatio,
+              referenceImages: toSafeStoryboardReferenceUrls(params.refImages),
+              genParams: {
+                model: params.model,
+                resolution: params.resolution,
+                duration: durationValue,
+                sound_effect: params.sound,
+                ratio: projectRatio,
+                reference_images: toSafeStoryboardReferenceUrls(params.refImages),
+              },
+            });
             successCount++;
           } else {
             failCount++;
@@ -974,29 +1118,63 @@ function fallbackCandidates(shot) {
     });
   }
 
-  async function handleDownloadImages() {
+  async function handleDownload() {
     const ids = [...selectedShotIds];
-    if (ids.length === 0) { showToast('暂无可下载的分镜图', 'warning'); return; }
-    try {
-      const blob = await apiBatchDownloadStoryboardImages(projectId, ids);
-      downloadBlob(blob, 'storyboard-images.zip');
-      showToast(`已下载 ${ids.length} 个分镜图`, 'success');
-    } catch (err) {
-      console.error('批量下载图片失败:', err);
-      showToast('批量下载图片失败', 'error');
+    if (ids.length === 0) {
+      showToast('暂无可下载的分镜素材', 'warning');
+      return;
     }
-  }
 
-  async function handleDownloadVideos() {
-    const ids = [...selectedShotIds];
-    if (ids.length === 0) { showToast('暂无可下载的分镜视频', 'warning'); return; }
-    try {
-      const blob = await apiBatchDownloadStoryboardVideos(projectId, ids);
-      downloadBlob(blob, 'storyboard-videos.zip');
-      showToast(`已下载 ${ids.length} 个分镜视频`, 'success');
-    } catch (err) {
-      console.error('批量下载视频失败:', err);
-      showToast('批量下载视频失败', 'error');
+    const selectedShots = shots.filter((shot) => selectedShotIds.has(shot.id));
+    const hasImages = selectedShots.some((shot) => (
+      Boolean(shot.storyboardImage)
+      || candidateMediaMap[shot.id]?.some((media) => media.media_type === 'image')
+      || finalizedMediaMap[shot.id]?.media_type === 'image'
+    ));
+    const hasVideos = selectedShots.some((shot) => (
+      Boolean(shot.storyboardVideo)
+      || candidateMediaMap[shot.id]?.some((media) => media.media_type === 'video')
+      || finalizedMediaMap[shot.id]?.media_type === 'video'
+    ));
+
+    if (!hasImages && !hasVideos) {
+      showToast('暂无可下载的分镜素材', 'warning');
+      return;
+    }
+
+    const downloads = [];
+    if (hasImages) {
+      downloads.push({
+        filename: 'storyboard-images.zip',
+        promise: apiBatchDownloadStoryboardImages(projectId, ids),
+        label: '图片',
+      });
+    }
+    if (hasVideos) {
+      downloads.push({
+        filename: 'storyboard-videos.zip',
+        promise: apiBatchDownloadStoryboardVideos(projectId, ids),
+        label: '视频',
+      });
+    }
+
+    const results = await Promise.allSettled(downloads.map((item) => item.promise));
+    let successCount = 0;
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        downloadBlob(result.value, downloads[index].filename);
+        successCount += 1;
+      } else {
+        console.error(`批量下载${downloads[index].label}失败:`, result.reason);
+      }
+    });
+
+    if (successCount === downloads.length) {
+      showToast('分镜素材下载成功', 'success');
+    } else if (successCount > 0) {
+      showToast('部分分镜素材下载成功', 'warning');
+    } else {
+      showToast('批量下载分镜素材失败', 'error');
     }
   }
 
@@ -1439,8 +1617,7 @@ function fallbackCandidates(shot) {
       onOpenVideoModal={() => setShowVideoModal(true)}
       onEnterDownloadMode={enterDownloadMode}
       onSelectAll={toggleSelectAll}
-      onDownloadImages={handleDownloadImages}
-      onDownloadVideos={handleDownloadVideos}
+      onDownload={handleDownload}
       onExitDownloadMode={exitDownloadMode}
       onStartEdit={handleStartEdit}
       onRegenerate={openRegenerateModal}
@@ -1487,7 +1664,8 @@ function fallbackCandidates(shot) {
         <StoryboardContentArea
           header={storyboardHeader}
           onContentBlankClick={() => setActiveShotId(null)}
-          timeline={<StoryboardFinalizedTimeline shots={[]} finalizedMap={{}} />}
+          projectRatio={projectRatio}
+          timeline={<StoryboardFinalizedTimeline projectRatio={projectRatio} shots={[]} finalizedMap={{}} />}
         >
           <div style={{
             flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1533,7 +1711,9 @@ function fallbackCandidates(shot) {
       <StoryboardContentArea
         header={storyboardHeader}
         onContentBlankClick={() => setActiveShotId(null)}
+        projectRatio={projectRatio}
         timeline={<StoryboardFinalizedTimeline
+          projectRatio={projectRatio}
           shots={shots}
           finalizedMap={finalizedMediaMap}
           selectedShotId={activeShotId}
@@ -1698,7 +1878,9 @@ function fallbackCandidates(shot) {
     </div>
     {showImageModal && (
       <BatchImageModal
+        shots={shots}
         shotCount={shots.length}
+        finalizedMediaMap={finalizedMediaMap}
         onClose={() => setShowImageModal(false)}
         onConfirm={(params) => startBatchGenImages(params)}
         projectRatio={projectRatio}
@@ -1707,6 +1889,7 @@ function fallbackCandidates(shot) {
     {showVideoModal && (
       <BatchVideoModal
         shots={shots}
+        finalizedMediaMap={finalizedMediaMap}
         onClose={() => setShowVideoModal(false)}
         onConfirm={(params) => startBatchGenVideos(params)}
         projectRatio={projectRatio}
@@ -1803,12 +1986,32 @@ function fallbackCandidates(shot) {
          const n = normalizeImageUrl(imageUrl);
          const shotId = imagePanel.shot?.id;
          const target = shots.find((s) => s.id === shotId);
+         const form = imageFormStateMap[shotId] || {};
+         const referenceImages = toSafeStoryboardReferenceUrls(form.refImages);
          setShots((prev) => prev.map((s) =>
            s.id === shotId
              ? { ...s, storyboardImage: { id: n, url: n, name: '分镜图', type: 'image/jpeg' } }
              : s
          ));
-         saveCandidateMedia(shotId, { id: n, url: n, name: '分镜图', type: 'image/jpeg', media_type: 'image', source: 'ai-generated' });
+         saveCandidateMedia(shotId, {
+           id: n,
+           url: n,
+           name: '分镜图',
+           type: 'image/jpeg',
+           media_type: 'image',
+           source: 'ai-generated',
+           prompt: form.prompt,
+           model: form.model,
+           resolution: form.resolution,
+           ratio: projectRatio,
+           referenceImages,
+           genParams: {
+             model: form.model,
+             resolution: form.resolution,
+             ratio: projectRatio,
+             reference_images: referenceImages,
+           },
+         });
          if (target) {
            apiUpdateStoryboard(
              projectId,
@@ -1837,7 +2040,7 @@ function fallbackCandidates(shot) {
                  ? { ...s, storyboardImage: { id: normalizedUrl, url: normalizedUrl, name: 'generated.jpg', type: 'image/jpeg' } }
                  : s
                ));
-               await saveCandidateMedia(shot.id, { id: normalizedUrl, url: normalizedUrl, name: 'generated.jpg', type: 'image/jpeg', media_type: 'image', source: 'ai-generated' });
+               await saveCandidateMedia(shot.id, { id: normalizedUrl, url: normalizedUrl, name: 'generated.jpg', type: 'image/jpeg', media_type: 'image', source: 'ai-generated', prompt: params.prompt, model: params.model, resolution: params.resolution, ratio: projectRatio, referenceImages: toSafeStoryboardReferenceUrls(params.refImages), genParams: { model: params.model, resolution: params.resolution, ratio: projectRatio, reference_images: toSafeStoryboardReferenceUrls(params.refImages) } });
                return { url: normalizedUrl };
              }
            }
@@ -1885,6 +2088,13 @@ function fallbackCandidates(shot) {
         onSettleVideo={(videoUrl) => {
           const n = normalizeImageUrl(videoUrl);
           const shotId = videoPanel.shot.id;
+          const form = videoFormStateMap[shotId] || {};
+          const referenceImages = form.refImages?.length
+            ? toSafeStoryboardReferenceUrls(form.refImages)
+            : undefined;
+          const durationValue = form.duration == null || form.duration === ''
+            ? undefined
+            : Number.parseFloat(form.duration);
           setShots((prev) => {
             const updated = prev.map((s) => s.id === shotId
               ? { ...s, storyboardVideo: { id: n, url: n, name: 'generated.mp4', type: 'video/mp4' } }
@@ -1892,7 +2102,32 @@ function fallbackCandidates(shot) {
             );
             return updated;
           });
-          saveCandidateMedia(shotId, { id: n, url: n, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated' });
+          saveCandidateMedia(shotId, {
+            id: n,
+            url: n,
+            name: 'generated.mp4',
+            type: 'video/mp4',
+            media_type: 'video',
+            source: 'ai-generated',
+            prompt: form.prompt,
+            model: form.model,
+            resolution: form.resolution,
+            duration: Number.isNaN(durationValue) ? undefined : durationValue,
+            ratio: projectRatio,
+            referenceImages,
+            genParams: {
+              model: form.model,
+              resolution: form.resolution,
+              duration: Number.isNaN(durationValue) ? undefined : durationValue,
+              sound_effect: form.sound,
+              ratio: projectRatio,
+              reference_images: referenceImages,
+              first_frame_url: form.refFirstFrame?.url,
+              last_frame_url: form.refLastFrame?.url,
+              reference_video_url: form.refVideos?.[0]?.url,
+              reference_audio_url: form.refAudios?.[0]?.url,
+            },
+          });
           // API 调用放在 setShots 外面，避免在 state updater 内产生副作用
           apiUpdateStoryboard(projectId, shotId, { video_url: n })
             .then((res) => console.log('[onSettleVideo] video_url 保存成功，后端返回:', JSON.stringify(res)))
@@ -1948,7 +2183,7 @@ function fallbackCandidates(shot) {
                 }
                 return updated;
               });
-              await saveCandidateMedia(shot.id, { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated' });
+              await saveCandidateMedia(shot.id, { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated', prompt: params.prompt, model: params.model, resolution: params.resolution, duration: durationValue, ratio: projectRatio, referenceImages: params.reference_images || toSafeStoryboardReferenceUrls(params.refImages), genParams: { model: params.model, resolution: params.resolution, duration: durationValue, sound_effect: params.sound, ratio: projectRatio, reference_images: params.reference_images || toSafeStoryboardReferenceUrls(params.refImages), first_frame_url: params.first_frame_url, last_frame_url: params.last_frame_url, reference_video_url: params.reference_video_url, reference_audio_url: params.reference_audio_url } });
               return { url: normalizedUrl };
             }
             // 终态但没有视频 — 发送 toast 提示失败

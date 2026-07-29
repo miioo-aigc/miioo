@@ -380,6 +380,7 @@ function normalizeAsset(item) {
   const isVideo = item.asset_type === 'video';
   return {
     id: item.id,
+    assetType: item.asset_type ?? null,
     name: item.name,
     // 视频资产：url 只用缩略图，不 fallback 到视频地址（避免图片标签加载视频）
     url: isVideo
@@ -492,7 +493,7 @@ function groupByShot(normalized) {
     // episode_number 存在于 metadata_json，后端未必写入；episodeLabel 是 AssetResponse 顶层字段，更可靠
     const epKey = asset.episode_number ?? asset.episodeLabel ?? 'x';
     const key = asset.shot_number != null
-      ? `ep${epKey}_${asset.storyboard_id ?? 'local'}_shot_${asset.shot_number}`
+      ? `ep${epKey}_${asset.storyboard_id ?? 'local'}_shot_${asset.shot_number}_${asset.assetType ?? 'asset'}`
       : asset.name;
     if (!shotMap[key]) shotMap[key] = [];
     shotMap[key].push(asset);
@@ -523,6 +524,7 @@ function groupByShot(normalized) {
       url: primaryImage.url,
       fileUrl: primaryImage.fileUrl,
       videoUrl: primaryImage.videoUrl ?? null,
+      assetType: primaryImage.assetType,
       images: sorted,
       imageCount: images.length,
       prompt: primaryImage.prompt,
@@ -572,13 +574,13 @@ function groupByShot(normalized) {
 }
 
 function groupByCategory(list) {
-  const grouped = { chars: [], scenes: [], props: [], storyboard_img: [], storyboard_video: [], audio: [], final: [] };
+  const grouped = { chars: [], scenes: [], props: [], storyboard: [], audio: [], final: [] };
 
   // 先按 category 初步分类
   const byCategory = {};
   list.forEach((item) => {
     if (item.category === 'storyboard') {
-      const tab = item.asset_type === 'video' ? 'storyboard_video' : 'storyboard_img';
+      const tab = 'storyboard';
       if (!byCategory[tab]) byCategory[tab] = [];
       byCategory[tab].push(item);
     } else {
@@ -590,9 +592,9 @@ function groupByCategory(list) {
     }
   });
 
-  // 对 chars/scenes/props 进行主体分组，对 storyboard_img/storyboard_video 按镜头编号分组
+  // 对 chars/scenes/props 进行主体分组，对 storyboard 按镜头编号和媒体类型分组
   const SUBJECT_CATEGORIES = new Set(['chars', 'scenes', 'props']);
-  const STORYBOARD_CATEGORIES = new Set(['storyboard_img', 'storyboard_video']);
+  const STORYBOARD_CATEGORIES = new Set(['storyboard']);
 
   Object.entries(byCategory).forEach(([tab, items]) => {
     if (SUBJECT_CATEGORIES.has(tab)) {
@@ -648,8 +650,7 @@ const TAB_CATEGORY_FILTER = {
   chars:             { category: 'character' },
   scenes:            { category: 'scene' },
   props:             { category: 'prop' },
-  storyboard_img:    { category: 'storyboard', asset_type: 'image' },
-  storyboard_video:  { category: 'storyboard', asset_type: 'video' },
+  storyboard:        { category: 'storyboard' },
   audio:             { category: 'audio' },
   final:             { category: 'film' },
 };
@@ -703,7 +704,7 @@ export async function apiGetProjectAssets(projectId, { limit, category } = {}) {
   const fetchFn = async () => {
     const categoryFilter = category ? (TAB_CATEGORY_FILTER[category] ?? {}) : {};
     const effectiveLimit = limit || 200;
-    const needsStoryboards = category === 'storyboard_img' || category === 'storyboard_video' || !category;
+    const needsStoryboards = category === 'storyboard' || !category;
     const rawList = await apiGetAssets({ project_id: projectId, scope: 'project', limit: effectiveLimit, ...categoryFilter });
     const enriched = await enrichWithStoryboards(projectId, Array.isArray(rawList) ? rawList : [], needsStoryboards);
     return groupByCategory(enriched);
@@ -721,7 +722,7 @@ export async function apiGetProjectAssets(projectId, { limit, category } = {}) {
  */
 export async function apiGetProjectAssetsPage(projectId, { category, limit = 20, cursor } = {}) {
   const categoryFilter = category ? (TAB_CATEGORY_FILTER[category] ?? {}) : {};
-  const needsStoryboards = category === 'storyboard_img' || category === 'storyboard_video' || !category;
+  const needsStoryboards = category === 'storyboard' || !category;
   const page = await apiGetAssetsPage({
     project_id: projectId,
     scope: 'project',

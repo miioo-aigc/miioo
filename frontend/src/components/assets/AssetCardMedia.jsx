@@ -42,6 +42,7 @@ export default function AssetCardMedia({
   onStar,
   onDownload,
   onDelete,
+  videoObjectFit = 'cover',
 }) {
   const videoRef = useRef(null);
 
@@ -69,9 +70,9 @@ export default function AssetCardMedia({
       onMouseLeave={() => onHoverChange?.(false)}
     >
       {asset.videoUrl ? (
-        <video ref={videoRef} src={asset.videoUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} muted playsInline loop preload="metadata" />
+        <video ref={videoRef} src={asset.videoUrl} style={{ width: '100%', height: '100%', objectFit: videoObjectFit, display: 'block' }} muted playsInline loop preload="metadata" />
       ) : asset.type === 'video' && asset.videoUrl ? (
-        <video src={asset.videoUrl} poster={url} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} muted playsInline preload="metadata" />
+        <video src={asset.videoUrl} poster={url} style={{ width: '100%', height: '100%', objectFit: videoObjectFit, display: 'block' }} muted playsInline preload="metadata" />
       ) : url ? (
         <img src={url} alt={name} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
       ) : null}

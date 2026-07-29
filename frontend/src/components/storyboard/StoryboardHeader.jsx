@@ -50,8 +50,7 @@ export default function StoryboardHeader({
   onOpenVideoModal,
   onEnterDownloadMode,
   onSelectAll,
-  onDownloadImages,
-  onDownloadVideos,
+  onDownload,
   onExitDownloadMode,
   onStartEdit,
   onRegenerate,
@@ -93,8 +92,7 @@ export default function StoryboardHeader({
           onOpenVideoModal={onOpenVideoModal}
           onEnterDownloadMode={onEnterDownloadMode}
           onSelectAll={onSelectAll}
-          onDownloadImages={onDownloadImages}
-          onDownloadVideos={onDownloadVideos}
+          onDownload={onDownload}
           onExitDownloadMode={onExitDownloadMode}
           onStartEdit={onStartEdit}
         />

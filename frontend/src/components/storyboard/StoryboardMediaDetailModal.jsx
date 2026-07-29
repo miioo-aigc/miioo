@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Toggle from '../Toggle';
 import { useModalSize } from '../../utils/useModalSize';
@@ -12,7 +12,22 @@ function isVideoMedia(media) {
 }
 
 function mediaPreviewUrl(media) {
-  return normalizeImageUrl(media?.poster_url || media?.thumbnail_url || media?.preview_url || media?.large_url || media?.url || '');
+  return normalizeImageUrl(
+    media?.poster_url
+      || media?.posterUrl
+      || media?.thumbnail_url
+      || media?.thumbnailUrl
+      || media?.video_thumbnail_url
+      || media?.videoThumbnailUrl
+      || media?.first_frame_url
+      || media?.firstFrameUrl
+      || media?.preview_url
+      || media?.previewUrl
+      || media?.large_url
+      || media?.largeUrl
+      || (isVideoMedia(media) ? '' : media?.url)
+      || '',
+  );
 }
 
 function mediaImageUrl(media) {
@@ -23,6 +38,153 @@ function formatDate(value) {
   if (!value) return '';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false });
+}
+
+function hasValue(value) {
+  return value !== undefined && value !== null && value !== ''
+    && !(Array.isArray(value) && value.length === 0);
+}
+
+function parseMetadata(media) {
+  const raw = media?.metadata ?? media?.metadata_json ?? media?.metadataJson ?? {};
+  if (typeof raw !== 'string') return raw && typeof raw === 'object' ? raw : {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseObjectValue(value) {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function displayValue(value) {
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (Array.isArray(value)) return value.map((item) => displayValue(item)).join('、');
+  if (value && typeof value === 'object') return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function collectParameterEntries(value, prefix = '') {
+  if (!value || typeof value !== 'object') return [];
+  return Object.entries(value).flatMap(([key, nested]) => {
+    const label = prefix ? `${prefix}.${key}` : key;
+    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+      return collectParameterEntries(nested, label);
+    }
+    return hasValue(nested) ? [{ label, value: displayValue(nested) }] : [];
+  });
+}
+
+function parameterLabel(key) {
+  const labels = {
+    model: '模型', resolution: '分辨率', duration: '时长', ratio: '比例', aspect_ratio: '画面比例',
+    sound_effect: '音效', generate_audio: '生成音频', reference_images: '参考图', first_frame_url: '首帧',
+    last_frame_url: '尾帧', reference_video_url: '参考视频', reference_audio_url: '参考音频',
+  };
+  return labels[key] || key;
+}
+
+function normalizeMediaSource(value) {
+  const source = String(value || '').toLowerCase().replace(/_/g, '-');
+  if (
+    source === 'local'
+    || source === 'upload'
+    || source === 'uploaded'
+    || source === 'local-upload'
+    || source === 'manual-upload'
+    || source === 'user-upload'
+    || source === 'user-uploaded'
+    || source.includes('local-upload')
+    || source.includes('manual-upload')
+    || source.includes('user-upload')
+  ) return 'local-upload';
+  if (
+    source === 'asset'
+    || source === 'asset-library'
+    || source === 'library'
+    || source === 'creation-shot-import'
+    || source === 'asset-import'
+    || source === 'imported-asset'
+    || source.includes('asset-import')
+    || source.includes('shot-import')
+  ) return 'asset-library';
+  if (source === 'ai' || source === 'ai-generated' || source === 'generated') return 'ai-generated';
+  return source;
+}
+
+const GENERATION_PARAMETER_KEYS = new Set([
+  'model', 'resolution', 'size', 'duration', 'ratio', 'aspect_ratio', 'aspectRatio',
+  'sound_effect', 'soundEffect', 'generate_audio', 'generateAudio', 'audio_setting', 'audioSetting',
+  'reference_images', 'referenceImages', 'first_frame_url', 'firstFrameUrl',
+  'last_frame_url', 'lastFrameUrl', 'reference_video_url', 'referenceVideoUrl',
+  'reference_audio_url', 'referenceAudioUrl', 'reference_mode', 'referenceMode',
+  'generation_mode', 'generationMode', 'generate_mode', 'generateMode',
+  'watermark', 'multi_shot', 'multiShot', 'expand_options', 'expandOptions',
+  'subject_completion_options', 'subjectCompletionOptions', 'optimize_prompt', 'optimizePrompt',
+  'sequential_image_generation', 'sequentialImageGeneration', 'prompt_raw', 'promptRaw',
+  'prompt_resolved', 'promptResolved', 'provider_params', 'providerParams',
+]);
+
+function pickGenerationParameters(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([key, nested]) => {
+    if (GENERATION_PARAMETER_KEYS.has(key)) return hasValue(nested);
+    return false;
+  }));
+}
+
+function getAssetGenerationParameters(media, metadata) {
+  const nestedValues = [
+    media?.params, media?.parameters, media?.generation, media?.options,
+    media?.gen_params, media?.genParams, media?.generation_params, media?.generationParams,
+    media?.provider_params, media?.providerParams,
+    metadata?.params, metadata?.parameters, metadata?.generation, metadata?.options,
+    metadata?.gen_params, metadata?.genParams, metadata?.generation_params, metadata?.generationParams,
+    metadata?.provider_params, metadata?.providerParams,
+  ].map(parseObjectValue);
+  const nestedParams = nestedValues.reduce((result, value) => ({ ...result, ...pickGenerationParameters(value) }), {});
+  const directParams = pickGenerationParameters({
+    model: media?.model ?? metadata?.model,
+    resolution: media?.resolution ?? media?.size ?? metadata?.resolution ?? metadata?.size,
+    size: media?.size ?? metadata?.size,
+    duration: media?.duration ?? metadata?.duration,
+    ratio: media?.ratio ?? media?.aspect_ratio ?? media?.aspectRatio ?? metadata?.ratio ?? metadata?.aspect_ratio ?? metadata?.aspectRatio,
+    reference_images: media?.reference_images ?? media?.referenceImages ?? metadata?.reference_images ?? metadata?.referenceImages,
+  });
+  return { ...nestedParams, ...directParams };
+}
+
+function isLocalUploadMedia(media, metadata) {
+  const source = normalizeMediaSource(
+    media?.source
+      || media?.source_type
+      || media?.sourceType
+      || metadata?.source
+      || metadata?.source_type
+      || metadata?.sourceType,
+  );
+  if (source === 'local-upload') return true;
+
+  const origin = normalizeMediaSource(
+    media?.origin
+      || media?.upload_source
+      || media?.uploadSource
+      || metadata?.origin
+      || metadata?.upload_source
+      || metadata?.uploadSource,
+  );
+  return origin === 'local-upload';
 }
 
 function CloseButton({ onClick }) {
@@ -38,16 +200,64 @@ function CloseButton({ onClick }) {
 function CandidateThumbnail({ media, active, onClick }) {
   const video = isVideoMedia(media);
   const thumb = mediaPreviewUrl(media);
+  const [generatedThumb, setGeneratedThumb] = useState('');
+  const videoUrl = normalizeImageUrl(media?.url || media?.preview_video_url || media?.previewVideoUrl || '');
+
+  useEffect(() => {
+    if (!video || thumb || !videoUrl) return undefined;
+
+    let cancelled = false;
+    const source = document.createElement('video');
+    source.src = videoUrl;
+    source.muted = true;
+    source.playsInline = true;
+    source.preload = 'auto';
+
+    const captureFirstFrame = () => {
+      if (cancelled || !source.videoWidth || !source.videoHeight) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = source.videoWidth;
+      canvas.height = source.videoHeight;
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      try {
+        context.drawImage(source, 0, 0, canvas.width, canvas.height);
+        setGeneratedThumb(canvas.toDataURL('image/jpeg', 0.88));
+      } catch {
+        // 跨域媒体无法绘制到 canvas 时，保留 video 自身的浏览器首帧兜底。
+      }
+    };
+    const seekToStart = () => {
+      source.currentTime = 0;
+      if (source.readyState >= 2) captureFirstFrame();
+    };
+    source.addEventListener('loadeddata', seekToStart);
+    source.addEventListener('seeked', captureFirstFrame);
+    source.load();
+
+    return () => {
+      cancelled = true;
+      source.removeEventListener('loadeddata', seekToStart);
+      source.removeEventListener('seeked', captureFirstFrame);
+      source.removeAttribute('src');
+      source.load();
+    };
+  }, [video, thumb, videoUrl]);
+
+  const resolvedThumb = thumb || generatedThumb;
   return (
     <button type="button" onClick={onClick} aria-label={`查看${video ? '视频' : '图片'}`} style={{ width: '100px', height: '76px', position: 'relative', flexShrink: 0, overflow: 'hidden', padding: 0, borderRadius: '6px', border: `1px solid ${active ? '#2DC3E1' : '#FFFFFF1F'}`, background: '#1D1E1E', cursor: 'pointer', boxShadow: active ? '0 0 0 1px #2DC3E166' : 'none' }}>
-      {video ? <video src={normalizeImageUrl(media?.url || media?.preview_video_url)} poster={thumb} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+      {video ? (resolvedThumb
+        ? <img src={resolvedThumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        : <video src={videoUrl} muted playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />)
+        : <img src={resolvedThumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
       <span style={{ position: 'absolute', top: '4px', right: '4px', padding: '1px 4px', borderRadius: '2px', background: '#00000099', color: '#FFFFFFCC', font: `10px/14px ${FONT}` }}>{video ? '视频' : '图片'}</span>
       {media?.is_finalized && <span style={{ position: 'absolute', top: '4px', left: '4px', padding: '1px 4px', borderRadius: '2px', background: '#2DC3E1', color: '#090909', font: `10px/14px ${FONT}` }}>定稿</span>}
     </button>
   );
 }
 
-export default function StoryboardMediaDetailModal({ shot, candidates = [], media, onClose, onFinalizeChange, onDownload }) {
+export default function StoryboardMediaDetailModal({ shot, candidates = [], media, onClose, onFinalizeChange, onDownload, readOnlyFinalize = false }) {
   const { width: modalW, height: modalH } = useModalSize();
   const items = useMemo(() => {
     const source = candidates.length ? candidates : media ? [media] : [];
@@ -57,13 +267,45 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
   const [activeKey, setActiveKey] = useState(initial);
   const activeMedia = items.find((item) => (item.id || item.url) === activeKey) || items[0] || media;
   const video = isVideoMedia(activeMedia);
+  const activePoster = mediaPreviewUrl(activeMedia);
   const finalized = !!activeMedia?.is_finalized;
 
   if (!activeMedia) return null;
 
   const label = `分镜${String(shot?.number ?? '').padStart(2, '0')}`;
-  const sourceLabel = activeMedia.source === 'local-upload' ? '本地上传' : activeMedia.source === 'asset-library' ? '资产库' : activeMedia.source ? 'AI生成' : '';
-  const prompt = activeMedia.input_prompt || activeMedia.prompt || shot?.image_prompt || shot?.video_prompt;
+  const metadata = parseMetadata(activeMedia);
+  const detailParameterContainers = [
+    activeMedia?.params, activeMedia?.parameters, activeMedia?.generation, activeMedia?.options,
+    metadata?.params, metadata?.parameters, metadata?.generation, metadata?.options,
+  ].map(parseObjectValue);
+  const detailPrompt = detailParameterContainers.reduce(
+    (result, value) => result || value.prompt || value.input_prompt || value.inputPrompt,
+    '',
+  );
+  const isLocalUpload = isLocalUploadMedia(activeMedia, metadata);
+  const source = isLocalUpload
+    ? 'local-upload'
+    : normalizeMediaSource(
+      activeMedia.detailSource
+        || activeMedia.detail_source
+        || activeMedia.source
+        || activeMedia.source_type
+        || activeMedia.sourceType
+        || metadata.detailSource
+        || metadata.detail_source
+        || metadata.source
+        || metadata.source_type
+        || metadata.sourceType,
+    );
+  const sourceLabel = source === 'local-upload' ? '本地上传' : source === 'asset-library' ? '资产库' : source === 'ai-generated' ? 'AI创作' : source ? '已有分镜媒体' : '';
+  const isAiGenerated = source === 'ai-generated';
+  const prompt = isAiGenerated
+    ? (activeMedia.input_prompt || activeMedia.inputPrompt || activeMedia.prompt_raw || activeMedia.promptRaw || activeMedia.prompt || activeMedia.prompt_resolved || activeMedia.promptResolved || metadata.input_prompt || metadata.inputPrompt || metadata.prompt_raw || metadata.promptRaw || metadata.prompt || metadata.prompt_resolved || metadata.promptResolved || detailPrompt || (video ? shot?.video_prompt : shot?.image_prompt))
+    : (source === 'asset-library' ? (activeMedia.input_prompt || activeMedia.inputPrompt || activeMedia.prompt_raw || activeMedia.promptRaw || activeMedia.prompt || activeMedia.prompt_resolved || activeMedia.promptResolved || metadata.input_prompt || metadata.inputPrompt || metadata.prompt_raw || metadata.promptRaw || metadata.prompt || metadata.prompt_resolved || metadata.promptResolved || detailPrompt) : '');
+  const parameterEntries = source === 'local-upload'
+    ? []
+    : collectParameterEntries(getAssetGenerationParameters(activeMedia, metadata));
+  const normalizedParameterEntries = parameterEntries.map((entry) => ({ ...entry, label: entry.label.split('.').map(parameterLabel).join(' / ') }));
 
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.60)', backdropFilter: 'blur(12px)' }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.(); }}>
@@ -75,7 +317,7 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
           <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', background: '#0D0D0D' }}>
             <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', background: '#0A0A0A' }}>
-              {video ? <video key={activeMedia.id || activeMedia.url} src={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url)} poster={normalizeImageUrl(activeMedia.poster_url || activeMedia.thumbnail_url)} controls autoPlay playsInline style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : <img src={mediaImageUrl(activeMedia)} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}
+              {video ? <video key={activeMedia.id || activeMedia.url} src={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url)} poster={activePoster || undefined} controls autoPlay playsInline style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : <img src={mediaImageUrl(activeMedia)} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}
             </div>
             <div style={{ flexShrink: 0, minHeight: '108px', padding: '16px', display: 'flex', gap: '12px', overflowX: 'auto', borderTop: '1px solid #FFFFFF0F', background: '#161616' }}>
               {items.map((item) => <CandidateThumbnail key={item.id || item.url} media={item} active={(item.id || item.url) === (activeMedia.id || activeMedia.url)} onClick={() => setActiveKey(item.id || item.url)} />)}
@@ -83,13 +325,37 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
           </div>
           <aside style={{ width: '280px', flex: '0 0 280px', minHeight: 0, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #FFFFFF0F', background: '#161616' }}>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px' }}><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>是否定稿</span><Toggle value={finalized} onChange={(value) => onFinalizeChange?.(activeMedia, value)} /></div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px' }}>
+                <span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>是否定稿</span>
+                {readOnlyFinalize ? (
+                  finalized ? (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      height: '18px',
+                      padding: '2px 4px',
+                      borderRadius: '2px',
+                      backgroundColor: '#4AC981',
+                      boxShadow: '#FFFFFF14 0 0 0 1px inset',
+                      color: '#0A0A0A',
+                      font: `500 12px/14px ${FONT}`,
+                    }}>
+                      定稿
+                    </span>
+                  ) : (
+                    <span style={{ color: '#FFFFFF66', font: `12px/16px ${FONT}` }}>未定稿</span>
+                  )
+                ) : (
+                  <Toggle value={finalized} onChange={(value) => onFinalizeChange?.(activeMedia, value)} />
+                )}
+              </div>
               <div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} />
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px' }}><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>分镜编号</span><span style={{ color: '#FFFFFFCC', font: `12px/16px ${FONT}` }}>{label}</span></div>
               <div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} />
               <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>内容类型</span><span style={{ color: '#FFFFFFCC', font: `12px/16px ${FONT}` }}>{video ? '视频' : '图片'}</span></div>
               {sourceLabel && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>来源</span><span style={{ color: '#FFFFFFCC', font: `12px/16px ${FONT}` }}>{sourceLabel}</span></div></>}
               {prompt && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '8px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>提示词</span><p style={{ margin: 0, color: '#FFFFFFCC', font: `12px/20px ${FONT}`, wordBreak: 'break-word' }}>{prompt}</p></div></>}
+              {normalizedParameterEntries.length > 0 && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>生成参数</span><div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>{normalizedParameterEntries.map((entry) => <div key={entry.label} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}><span style={{ color: '#FFFFFF66', font: `11px/15px ${FONT}` }}>{entry.label}</span><span style={{ color: '#FFFFFFCC', font: `12px/18px ${FONT}`, wordBreak: 'break-word', whiteSpace: entry.value.includes('\n') ? 'pre-wrap' : 'normal' }}>{entry.value}</span></div>)}</div></div></>}
               {activeMedia.created_at && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '8px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>生成时间</span><span style={{ color: '#FFFFFF66', font: `12px/16px ${FONT}` }}>{formatDate(activeMedia.created_at)}</span></div></>}
             </div>
             <div style={{ flexShrink: 0, padding: '12px 20px 20px', borderTop: '1px solid #FFFFFF0A' }}><button type="button" onClick={() => onDownload?.(activeMedia)} style={{ width: '100%', height: '40px', borderRadius: '8px', border: '1px solid #FFFFFF1F', background: '#FFFFFF14', color: '#FFFFFF99', cursor: 'pointer', font: `13px/16px ${FONT}` }}>下载</button></div>

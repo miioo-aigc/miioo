@@ -71,6 +71,7 @@
  *   2026-07-16  统一结果区与空态的模型入口和 InputCard 渲染回调，避免重复接线
  *   2026-07-17  抽离 CreationWorkspace；页面保留状态、副作用和所有显式回调接线
  *   2026-07-17  复用 downloadMediaUrl，统一图片/视频 Blob 下载和失败回退生命周期
+ *   2026-07-29  图片创作结果与历史记录按媒体地址去重，避免同图重复展示并保留创作提示词
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -82,6 +83,7 @@ import { normalizeImageUrl } from '../utils/imageUrl';
 import { mergeCreationVideoDetail } from '../utils/creationDetailAdapter';
 import {
   buildCreationHistoryCachePayload,
+  dedupeCreationHistoryList,
   getCreationHistoryList,
   normalizeCreationHistoryItem,
 } from '../utils/creationHistoryAdapter';
@@ -160,7 +162,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
 
     const list = getCreationHistoryList(cacheEntry.d);
     const type = tab === 'dubbing' ? 'audio' : tab;
-    const normalized = list.map((item) => normalizeCreationHistoryItem(item, type));
+    const normalized = dedupeCreationHistoryList([...list], type).map((item) => normalizeCreationHistoryItem(item, type));
     mergeHistoryGenerations(tab, normalized);
 
     return true;
@@ -226,7 +228,9 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       }
 
       const type = tab === 'dubbing' ? 'audio' : tab;
-      const hasMore = list.length >= PAGE_SIZE;
+      const rawListLength = list.length;
+      list = dedupeCreationHistoryList([...list], type);
+      const hasMore = rawListLength >= PAGE_SIZE;
 
       const normalized = list.map((item) => normalizeCreationHistoryItem(item, type));
       if (nextPage === 1) {
@@ -676,7 +680,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         },
       });
       const rawMediaUrls = isVideoGen ? (result.videos ?? []) : isDubbingGen ? (result.audios ?? []) : (result.images ?? []);
-      const mediaUrls = rawMediaUrls.map((u) => normalizeImageUrl(u) || u);
+      const mediaUrls = [...new Set(rawMediaUrls.map((u) => normalizeImageUrl(u) || u).filter(Boolean))];
 
       // 如果生成失败，删除占位卡片并回退文本
       if (!mediaUrls || mediaUrls.length === 0) {

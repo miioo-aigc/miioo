@@ -4,6 +4,7 @@
  *
  * ─── 列表响应适配 ───────────────────────────────────────────
  *   getCreationHistoryList       兼容数组、list、items 和 data 响应
+ *   dedupeCreationHistoryList    按媒体地址去重并优先保留非空创作提示词
  *   normalizeCreationHistoryItem 将历史记录转换为创作页 generation
  *
  * ─── 缓存适配 ───────────────────────────────────────────────
@@ -20,6 +21,42 @@ export function getCreationHistoryList(response) {
   return Array.isArray(response)
     ? response
     : (response?.list ?? response?.items ?? response?.data ?? []);
+}
+
+function getHistoryMediaKey(item, type) {
+  const rawUrl = type === 'video'
+    ? (item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '')
+    : type === 'audio'
+      ? (item.audio_url || item.audioUrl || item.original_url || item.file_url || item.url || '')
+      : (item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || '');
+  return normalizeImageUrl(rawUrl) || rawUrl;
+}
+
+export function dedupeCreationHistoryList(list, type) {
+  const seen = new Map();
+  const result = [];
+  list.forEach((item) => {
+    const mediaKey = getHistoryMediaKey(item, type);
+    const key = mediaKey ? `url:${mediaKey}` : item?.id ? `id:${item.id}` : '';
+    if (!key) {
+      result.push(item);
+      return;
+    }
+
+    const previousIndex = seen.get(key);
+    if (previousIndex === undefined) {
+      seen.set(key, result.length);
+      result.push(item);
+      return;
+    }
+
+    // 同一图片存在多条记录时，保留带创作提示词的那条，避免详情弹窗显示空提示词。
+    const previous = result[previousIndex];
+    const currentPrompt = item?.prompt || item?.input_prompt || item?.inputPrompt || '';
+    const previousPrompt = previous?.prompt || previous?.input_prompt || previous?.inputPrompt || '';
+    if (!previousPrompt && currentPrompt) result[previousIndex] = item;
+  });
+  return result;
 }
 
 export function normalizeCreationHistoryItem(item, type) {

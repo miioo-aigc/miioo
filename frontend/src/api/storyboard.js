@@ -150,7 +150,38 @@ export async function apiListStoryboardMediaCandidates(projectId, storyboardId) 
 
 // 候选媒体接口同时兼容后端 snake_case 和旧前端 camelCase，页面统一消费 camelCase。
 export function normalizeStoryboardMediaCandidate(item = {}) {
-  const metadata = item.metadata ?? item.metadata_json ?? item.metadataJson ?? {};
+  const rawMetadata = item.metadata ?? item.metadata_json ?? item.metadataJson ?? {};
+  const metadata = typeof rawMetadata === 'string'
+    ? (() => { try { return JSON.parse(rawMetadata) || {}; } catch { return {}; } })()
+    : (rawMetadata && typeof rawMetadata === 'object' ? rawMetadata : {});
+  const parseObject = (value) => {
+    if (!value) return {};
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+    if (typeof value !== 'string') return {};
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+  const parameterContainers = [
+    item.params, item.parameters, item.generation, item.options,
+    item.gen_params, item.genParams, item.generation_params, item.generationParams,
+    item.provider_params, item.providerParams,
+    metadata.params, metadata.parameters, metadata.generation, metadata.options,
+    metadata.gen_params, metadata.genParams, metadata.generation_params, metadata.generationParams,
+    metadata.provider_params, metadata.providerParams,
+  ].map(parseObject).filter((value) => Object.keys(value).length > 0);
+  const mergedParams = Object.assign({}, ...parameterContainers, {
+    expand_options: item.expand_options ?? item.expandOptions ?? metadata.expand_options ?? metadata.expandOptions,
+    subject_completion_options: item.subject_completion_options ?? item.subjectCompletionOptions ?? metadata.subject_completion_options ?? metadata.subjectCompletionOptions,
+    optimize_prompt: item.optimize_prompt ?? item.optimizePrompt ?? metadata.optimize_prompt ?? metadata.optimizePrompt,
+    sequential_image_generation: item.sequential_image_generation ?? item.sequentialImageGeneration ?? metadata.sequential_image_generation ?? metadata.sequentialImageGeneration,
+  });
+  const prompt = item.input_prompt ?? item.inputPrompt ?? item.prompt ?? metadata.input_prompt ?? metadata.inputPrompt ?? metadata.prompt
+    ?? mergedParams.input_prompt ?? mergedParams.inputPrompt ?? mergedParams.prompt;
+  const generationParams = mergedParams;
   const normalized = {
     ...item,
     id: item.id,
@@ -161,9 +192,20 @@ export function normalizeStoryboardMediaCandidate(item = {}) {
     posterUrl: item.posterUrl ?? item.poster_url,
     downloadUrl: item.downloadUrl ?? item.download_url,
     isFinalized: item.isFinalized ?? item.is_finalized ?? false,
-    source: item.source,
+    source: item.source ?? item.source_type ?? item.sourceType ?? metadata.source ?? metadata.source_type ?? metadata.sourceType,
+    detailSource: item.detailSource ?? item.detail_source ?? item.source_type ?? item.sourceType ?? metadata.detailSource ?? metadata.detail_source,
     createdAt: item.createdAt ?? item.created_at,
     metadata,
+    inputPrompt: prompt,
+    prompt,
+    model: item.model ?? metadata.model ?? mergedParams.model,
+    resolution: item.resolution ?? metadata.resolution ?? metadata.size ?? mergedParams.resolution ?? mergedParams.size,
+    duration: item.duration ?? metadata.duration ?? mergedParams.duration,
+    ratio: item.ratio ?? item.aspect_ratio ?? item.aspectRatio ?? metadata.ratio ?? metadata.aspect_ratio ?? metadata.aspectRatio ?? mergedParams.ratio ?? mergedParams.aspect_ratio ?? mergedParams.aspectRatio,
+    referenceImages: item.reference_images ?? item.referenceImages ?? metadata.reference_images ?? metadata.referenceImages ?? mergedParams.reference_images ?? mergedParams.referenceImages,
+    genParams: generationParams && typeof generationParams === 'object' ? generationParams : {},
+    prompt_raw: item.prompt_raw ?? item.promptRaw ?? metadata.prompt_raw ?? metadata.promptRaw ?? mergedParams.prompt_raw ?? mergedParams.promptRaw,
+    prompt_resolved: item.prompt_resolved ?? item.promptResolved ?? metadata.prompt_resolved ?? metadata.promptResolved ?? mergedParams.prompt_resolved ?? mergedParams.promptResolved,
     assetId: item.assetId ?? item.asset_id ?? metadata?.asset_id ?? metadata?.assetId,
   };
   // 保留 snake_case 别名，兼容当前尚未迁移的展示组件和历史缓存。
@@ -176,6 +218,10 @@ export function normalizeStoryboardMediaCandidate(item = {}) {
     download_url: normalized.downloadUrl,
     is_finalized: Boolean(normalized.isFinalized),
     created_at: normalized.createdAt,
+    input_prompt: normalized.inputPrompt,
+    gen_params: normalized.genParams,
+    generation_params: normalized.genParams,
+    detail_source: normalized.detailSource,
   };
 }
 

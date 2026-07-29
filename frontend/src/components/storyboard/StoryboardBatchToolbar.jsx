@@ -94,8 +94,7 @@ export default function StoryboardBatchToolbar({
   onOpenVideoModal,
   onEnterDownloadMode,
   onSelectAll,
-  onDownloadImages,
-  onDownloadVideos,
+  onDownload,
   onExitDownloadMode,
   onStartEdit,
 }) {
@@ -125,8 +124,7 @@ export default function StoryboardBatchToolbar({
             已选 {selectedCount} / {totalCount}
           </span>
           <SelectAllControl allSelected={totalCount > 0 && selectedCount === totalCount} onClick={onSelectAll} />
-          <Button variant="primary" size="large" icon={<DownloadIcon />} onClick={onDownloadImages}>下载图片</Button>
-          <Button variant="primary" size="large" icon={<DownloadIcon />} onClick={onDownloadVideos}>下载视频</Button>
+          <Button variant="primary" size="large" icon={<DownloadIcon />} onClick={onDownload}>下载</Button>
           <Button variant="secondary" size="large" onClick={onExitDownloadMode}>取消</Button>
         </>
       ) : (

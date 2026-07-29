@@ -20,13 +20,15 @@
  *   2026-07-17  统一按来源移除资产，并同步清理主体卡片与分页原始数据
  *   2026-07-24 项目列表按创建时间正序，与资产选择弹窗保持一致
  *   2026-07-28 删除主体单张资产时保持主体卡片标识稳定，详情弹窗仅移除缩略图
+ *   2026-07-29 修复分镜卡片在临界宽度下网格行高不足导致的上下行重叠
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { apiGetProjectAssetsPage, groupByCategory, calcProjectAssetsLimit, apiRemoveAssets, apiUpdateAsset, apiDownloadAsset } from '../../api/assets';
-import { apiGetSubjects } from '../../api/subject';
+import { apiGetSubjects, apiGetEpisodes } from '../../api/subject';
 import { apiGetProjects, apiDeleteProject, apiUpdateProject, apiCopyProject, apiDownloadProjectAssets } from '../../api/project';
+import { apiGetStoryboards, apiListStoryboardMediaCandidates, apiDownloadStoryboardMediaCandidate } from '../../api/storyboard';
 import { invalidate } from '../../utils/cache';
 import { K } from '../../utils/cacheKeys';
 import { useAssetFilter } from '../../hooks/useAssetFilter';
@@ -34,6 +36,7 @@ import { useAssetPagination } from '../../hooks/useAssetPagination';
 import { useAssetSelection } from '../../hooks/useAssetSelection';
 import { getAssetPageKey, getAssetSubjectType, getProjectBatchDeleteRequest, getProjectDownloadItems, SUBJECT_CARD_CATEGORIES } from '../../utils/assetsBatchAdapter';
 import { downloadBlob } from '../../utils/downloadBlob';
+import { normalizeStoryboard } from '../../utils/storyboardDataAdapter';
 import ConfirmDialog from '../ConfirmDialog';
 import { AssetsTabBar } from './AssetsTabs';
 import AssetsBatchToolbar from './AssetsBatchToolbar';
@@ -42,14 +45,14 @@ import AssetsScrollableContent from './AssetsScrollableContent';
 import { EmptyProjectAssets } from './AssetsEmptyState';
 import { AssetsProjectRenameModal } from './AssetsProjectModals';
 import AssetsProjectGrid from './AssetsProjectGrid';
+import StoryboardMediaDetailModal from '../storyboard/StoryboardMediaDetailModal';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const PROJECT_CATEGORY_TABS = [
   { key: 'chars', label: '角色' },
   { key: 'scenes', label: '场景' },
   { key: 'props', label: '道具' },
-  { key: 'storyboard_img', label: '分镜图' },
-  { key: 'storyboard_video', label: '分镜视频' },
+  { key: 'storyboard', label: '分镜' },
   { key: 'audio', label: '音频' },
   { key: 'final', label: '成片' },
 ];
@@ -99,6 +102,7 @@ export default function AssetsProjectPanel() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
   const [toast, setToast] = useState(null);
+  const [storyboardDetail, setStoryboardDetail] = useState(null);
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
@@ -144,6 +148,77 @@ export default function AssetsProjectPanel() {
     invalidate(K.projectAssets(projectId), 'local');
     startPage(key);
     try {
+      if (category === 'storyboard') {
+        const [storyboards, episodes] = await Promise.all([
+          apiGetStoryboards(projectId),
+          apiGetEpisodes(projectId).catch(() => []),
+        ]);
+        const episodeNumberById = new Map(
+          (episodes || []).map((episode, index) => [
+            String(episode.id),
+            episode.episode_number ?? episode.episodeNumber ?? episode.number ?? index + 1,
+          ]),
+        );
+        const cards = (await Promise.all((storyboards || []).map(async (shot) => {
+          // 资产库与分镜页统一消费归一化后的镜头数据，兼容后端扁平字段和前端嵌套媒体字段。
+          const normalizedShot = normalizeStoryboard(shot) || shot;
+          let candidates = [];
+          try {
+            candidates = await apiListStoryboardMediaCandidates(projectId, shot.id);
+          } catch (error) {
+            console.warn('[ProjectAssetsPanel] 获取分镜候选媒体失败:', error);
+          }
+          if (candidates.length === 0) {
+            const fallback = [
+              normalizedShot.storyboardImage || shot.image_url || shot.imageUrl
+                ? {
+                    id: normalizedShot.storyboardImage?.id || shot.image_asset_id || shot.image_url || shot.imageUrl,
+                    url: normalizedShot.storyboardImage?.url || shot.image_url || shot.imageUrl,
+                    thumbnail_url: normalizedShot.storyboardImage?.thumbnail_url || shot.image_url || shot.imageUrl,
+                    media_type: 'image',
+                    is_finalized: true,
+                    source: 'storyboard-existing',
+                  }
+                : null,
+              normalizedShot.storyboardVideo || shot.video_url || shot.videoUrl
+                ? {
+                    id: normalizedShot.storyboardVideo?.id || shot.video_asset_id || shot.video_url || shot.videoUrl,
+                    url: normalizedShot.storyboardVideo?.url || shot.video_url || shot.videoUrl,
+                    thumbnail_url: normalizedShot.storyboardVideo?.thumbnail_url || shot.video_thumbnail_url || null,
+                    poster_url: normalizedShot.storyboardVideo?.poster_url || shot.video_thumbnail_url || null,
+                    media_type: 'video',
+                    is_finalized: !normalizedShot.storyboardImage && !shot.image_url && !shot.imageUrl,
+                    source: 'storyboard-existing',
+                  }
+                : null,
+            ].filter((item) => item?.url);
+            candidates = fallback;
+          }
+          // 资产库只展示已经有真实媒体地址的候选，纯分镜数据不生成空卡片。
+          candidates = candidates.filter((item) => item?.url || item?.file_url || item?.fileUrl);
+          if (candidates.length === 0) return null;
+          const active = candidates.find((item) => item.is_finalized) || candidates[0];
+          const episodeNumber = episodeNumberById.get(String(shot.episode_id ?? shot.episodeId))
+            ?? shot.episode_number
+            ?? shot.episodeNumber
+            ?? '';
+          const shotNumber = normalizedShot.number ?? shot.shot_number ?? shot.number ?? '';
+          return {
+            id: shot.id,
+            name: `第${episodeNumber}集_分镜${String(shotNumber).padStart(2, '0')}`,
+            description: '',
+            url: active?.thumbnail_url || active?.poster_url || active?.url || null,
+            videoUrl: active?.media_type === 'video' ? active.url : null,
+            assetType: active?.media_type || null,
+            candidates,
+            storyboard: { ...shot, ...normalizedShot, number: shotNumber },
+            project_id: projectId,
+          };
+        }))).filter(Boolean);
+        setAssetsMap((prev) => ({ ...prev, [category]: cards }));
+        completeFirstPage(key, { cursor: null, hasMore: false, rawList: [] });
+        return;
+      }
       const limit = calcProjectAssetsLimit(category);
       const result = await apiGetProjectAssetsPage(projectId, { category, limit });
       const cards = await applySubjectMeta(projectId, category, result.grouped[category] ?? []);
@@ -353,8 +428,16 @@ export default function AssetsProjectPanel() {
     }
   }
 
-  async function downloadAsset(assetId, assetName) {
+  async function downloadAsset(assetId, assetName, storyboardAsset = null) {
     try {
+      if (activeCategory === 'storyboard' && storyboardAsset?.storyboard) {
+        const media = storyboardAsset.candidates?.find((item) => item.id === assetId) || storyboardAsset.candidates?.[0];
+        if (media?.id) {
+          const blob = await apiDownloadStoryboardMediaCandidate(activeProject, storyboardAsset.storyboard.id, media.id);
+          downloadBlob(blob, assetName || 'storyboard-media');
+          return;
+        }
+      }
       const blob = await apiDownloadAsset(assetId, { prefer_origin: true });
       downloadBlob(blob, assetName || 'asset');
     } catch (err) {
@@ -452,6 +535,11 @@ export default function AssetsProjectPanel() {
             onDownload={downloadAsset}
             onDelete={deleteAsset}
             onShowToast={showToast}
+            onOpenStoryboardDetail={(asset) => setStoryboardDetail({
+              shot: asset.storyboard,
+              candidates: asset.candidates || [],
+              media: asset.candidates?.find((item) => item.is_finalized) || asset.candidates?.[0],
+            })}
           />
         </AssetsScrollableContent>
       </div>
@@ -487,6 +575,24 @@ export default function AssetsProjectPanel() {
             deleteSelected();
           }}
           zIndex={100}
+        />
+      )}
+      {storyboardDetail && (
+        <StoryboardMediaDetailModal
+          shot={storyboardDetail.shot}
+          candidates={storyboardDetail.candidates}
+          media={storyboardDetail.media}
+          onClose={() => setStoryboardDetail(null)}
+          readOnlyFinalize
+          onDownload={async (media) => {
+            try {
+              const blob = await apiDownloadStoryboardMediaCandidate(activeProject, storyboardDetail.shot.id, media.id);
+              downloadBlob(blob, media.name || `storyboard-${media.id}`);
+            } catch (error) {
+              console.error('[ProjectAssetsPanel] 下载分镜候选媒体失败:', error);
+              showToast('下载失败，请重试', 'error');
+            }
+          }}
         />
       )}
       {toast && createPortal(

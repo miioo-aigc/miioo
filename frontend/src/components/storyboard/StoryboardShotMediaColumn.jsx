@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import Checkbox from '../Checkbox';
@@ -49,13 +49,76 @@ function PlusButton({ onClick, small = false, tooltip = '创作' }) {
 
 function CandidateCard({ item, finalized, onSelect, onPreview }) {
   const isVideo = item.media_type === 'video' || item.type?.startsWith('video');
-  const url = normalizeImageUrl(item.thumbnail_url || item.poster_url || item.url);
+  const videoUrl = normalizeImageUrl(item.url || item.preview_video_url || item.previewVideoUrl || '');
+  const providedPoster = normalizeImageUrl(
+    item.poster_url
+      || item.posterUrl
+      || item.thumbnail_url
+      || item.thumbnailUrl
+      || item.video_thumbnail_url
+      || item.videoThumbnailUrl
+      || item.first_frame_url
+      || item.firstFrameUrl
+      || '',
+  );
+  const imageUrl = normalizeImageUrl(item.large_url || item.preview_url || item.url || '');
+  const [capturedFrame, setCapturedFrame] = useState({ key: '', url: '' });
+
+  useEffect(() => {
+    if (!isVideo || providedPoster || !videoUrl) return undefined;
+
+    let cancelled = false;
+    const video = document.createElement('video');
+    video.src = videoUrl;
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+
+    const captureFirstFrame = () => {
+      if (cancelled || !video.videoWidth || !video.videoHeight) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      try {
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        if (!cancelled) setCapturedFrame({ key: videoUrl, url: canvas.toDataURL('image/jpeg', 0.86) });
+      } catch {
+        // 跨域视频无法绘制 Canvas 时，下面的 video 标签继续作为兜底展示。
+      }
+    };
+    const seekToStart = () => {
+      try {
+        video.currentTime = 0;
+      } catch {
+        captureFirstFrame();
+      }
+    };
+
+    video.addEventListener('loadeddata', seekToStart, { once: true });
+    video.addEventListener('seeked', captureFirstFrame, { once: true });
+    video.load();
+
+    return () => {
+      cancelled = true;
+      video.removeEventListener('loadeddata', seekToStart);
+      video.removeEventListener('seeked', captureFirstFrame);
+      video.removeAttribute('src');
+      video.load();
+    };
+  }, [isVideo, providedPoster, videoUrl]);
+
+  const coverUrl = providedPoster || (capturedFrame.key === videoUrl ? capturedFrame.url : '');
   return (
     <button type="button" onClick={() => onSelect?.(item)} onMouseEnter={(event) => onPreview?.(item, event.currentTarget)} onMouseLeave={() => onPreview?.(null)} style={{
       width: '60px', height: '60px', position: 'relative', padding: 0, overflow: 'hidden', flexShrink: 0, cursor: 'pointer',
       borderRadius: '4px', border: `1px solid ${finalized ? '#2DC3E1' : 'rgba(255,255,255,0.10)'}`, background: '#101111',
     }}>
-      {isVideo ? <video src={url} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+      {isVideo ? (coverUrl
+        ? <img src={coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        : <video src={videoUrl} muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />)
+        : <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
       <Checkbox
         checked={finalized}
         aria-label={finalized ? '已定稿' : '未定稿'}

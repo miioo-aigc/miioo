@@ -1,5 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { normalizeImageUrl } from '../utils/imageUrl';
+
+function getCardMediaKey(card) {
+  const rawUrl = card?.imageUrl || card?.originalUrl || card?.videoUrl || card?.audioUrl || card?.url || '';
+  return normalizeImageUrl(rawUrl) || rawUrl;
+}
 
 export const useCreationStore = create(
   persist(
@@ -15,24 +21,57 @@ export const useCreationStore = create(
         dubbing: { page: 0, hasMore: true, loading: false, initialized: false },
       },
 
-      // 合并历史数据（按卡片后端ID去重，避免重复）
+      // 合并历史数据（按卡片后端 ID 和媒体地址去重，避免本地结果与历史结果重复）
       // store 约定：数组越靠后 = 越新（display 时 reverse 展示最新在前）
       // 历史数据后端返回最新在前，插入时需反转后前置，保证 reverse 后新内容仍排第一
       mergeHistoryGenerations: (tab, newGenerations) =>
         set((state) => {
           const existing = state.generationsByTab[tab] ?? [];
-          const existingCardIds = new Set(
-            existing.flatMap((g) => g.cards.map((c) => c.id).filter(Boolean))
-          );
-          const toAdd = newGenerations.filter((g) =>
-            g.cards.every((c) => !c.id || !existingCardIds.has(c.id))
-          );
-          if (toAdd.length === 0) return {};
+          const next = existing.map((generation) => ({ ...generation, cards: [...generation.cards] }));
+          const locationsById = new Map();
+          const locationsByMedia = new Map();
+          next.forEach((generation, generationIndex) => {
+            generation.cards.forEach((card, cardIndex) => {
+              if (card.id) locationsById.set(String(card.id), { generationIndex, cardIndex });
+              const mediaKey = getCardMediaKey(card);
+              if (mediaKey) locationsByMedia.set(mediaKey, { generationIndex, cardIndex });
+            });
+          });
+
+          const toAdd = [];
+          newGenerations.forEach((generation) => {
+            const unmatchedCards = [];
+            generation.cards.forEach((card) => {
+              const location = (card.id && locationsById.get(String(card.id))) || locationsByMedia.get(getCardMediaKey(card));
+              if (!location) {
+                unmatchedCards.push(card);
+                return;
+              }
+
+              const currentGeneration = next[location.generationIndex];
+              const currentCard = currentGeneration.cards[location.cardIndex];
+              next[location.generationIndex] = {
+                ...currentGeneration,
+                prompt: currentGeneration.prompt || generation.prompt || '',
+                promptHTML: currentGeneration.promptHTML || generation.promptHTML || '',
+                model: currentGeneration.model || generation.model || '',
+                cards: currentGeneration.cards.map((item, index) => index === location.cardIndex
+                  ? { ...item, ...card, id: card.id || item.id }
+                  : item),
+              };
+              if (card.id) locationsById.set(String(card.id), location);
+              const mediaKey = getCardMediaKey(currentCard) || getCardMediaKey(card);
+              if (mediaKey) locationsByMedia.set(mediaKey, location);
+            });
+            if (unmatchedCards.length > 0) toAdd.push({ ...generation, cards: unmatchedCards });
+          });
+
+          if (toAdd.length === 0 && next.every((generation, index) => generation === existing[index])) return {};
           // 后端返回最新在前，反转后放到数组头部（老的在前），reverse 展示时新内容仍排第一
           return {
             generationsByTab: {
               ...state.generationsByTab,
-              [tab]: [...toAdd.reverse(), ...existing],
+              [tab]: [...toAdd.reverse(), ...next],
             },
           };
         }),

@@ -16,10 +16,10 @@ const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-u
 
 // accept='image' → 只允许图片类资产；'video' → 只允许视频类资产；
 // accept='media' → 只允许图片和视频类资产；'audio' → 只允许音频类资产；'all' → 不限制
-const PROJECT_SUB_TABS_ALL = ['角色', '场景', '道具', '分镜图', '分镜视频', '音频', '成片'];
-const PROJECT_SUB_TABS_IMAGE = ['角色', '场景', '道具', '分镜图'];
-const PROJECT_SUB_TABS_VIDEO = ['分镜视频'];
-const PROJECT_SUB_TABS_MEDIA = ['分镜图', '分镜视频'];
+const PROJECT_SUB_TABS_ALL = ['角色', '场景', '道具', '分镜', '音频', '成片'];
+const PROJECT_SUB_TABS_IMAGE = ['角色', '场景', '道具', '分镜'];
+const PROJECT_SUB_TABS_VIDEO = ['分镜'];
+const PROJECT_SUB_TABS_MEDIA = ['分镜'];
 const PROJECT_SUB_TABS_AUDIO = ['音频'];
 const CREATIVE_SUB_TABS_ALL = ['图片', '视频', '配音'];
 const CREATIVE_SUB_TABS_IMAGE = ['图片'];
@@ -33,8 +33,7 @@ const SUB_TAB_KEY_MAP = {
   '角色': 'chars',
   '场景': 'scenes',
   '道具': 'props',
-  '分镜图': 'storyboard_img',
-  '分镜视频': 'storyboard_video',
+  '分镜': 'storyboard',
   '音频': 'audio',
   '成片': 'final_cut',
   '图片': 'images',
@@ -43,13 +42,12 @@ const SUB_TAB_KEY_MAP = {
 };
 
 // 子 Tab → 后端 category / asset_type 过滤参数
-// 数组表示该 tab 需要拉取多个 category 的资产（如分镜图包含 storyboard + reference）
+// 数组表示该 tab 需要拉取多个 category 或媒体类型的资产。
 const SUB_TAB_CATEGORY_MAP = {
   '角色':   { category: 'character' },
   '场景':   { category: 'scene' },
   '道具':   { category: 'prop' },
-  '分镜图': { category: ['storyboard', 'reference'], asset_type: 'image' },
-  '分镜视频': { category: ['storyboard', 'reference'], asset_type: 'video' },
+  '分镜': { category: ['storyboard', 'reference'], asset_type: ['image', 'video'] },
   '音频':   { category: ['audio', 'reference'] },
   '成片':   { category: 'film' },
 };
@@ -190,6 +188,55 @@ function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onM
   );
 }
 
+function getPickerMediaKey(asset) {
+  const rawUrl = asset?.url || asset?.originalUrl || asset?.fileUrl || asset?.posterUrl || '';
+  return normalizeImageUrl(rawUrl) || rawUrl;
+}
+
+function dedupePickerAssets(list) {
+  const seen = new Map();
+  const result = [];
+  (Array.isArray(list) ? list : []).forEach((asset) => {
+    const mediaKey = getPickerMediaKey(asset);
+    const key = mediaKey ? `url:${mediaKey}` : asset?.id ? `id:${asset.id}` : '';
+    if (!key) {
+      result.push(asset);
+      return;
+    }
+    const previousIndex = seen.get(key);
+    if (previousIndex === undefined) {
+      seen.set(key, result.length);
+      result.push(asset);
+      return;
+    }
+
+    const previous = result[previousIndex];
+    // 同图不同记录时保留可用于回传和详情展示的非空字段。
+    result[previousIndex] = {
+      ...previous,
+      ...asset,
+      id: previous.id || asset.id,
+      assetId: previous.assetId || asset.assetId || asset.asset_id || null,
+      name: previous.name !== '未命名' ? previous.name : (asset.name || previous.name),
+      prompt: previous.prompt || asset.prompt || '',
+      input_prompt: previous.input_prompt || asset.input_prompt || '',
+      model: previous.model || asset.model || '',
+      resolution: previous.resolution || asset.resolution || '',
+      ratio: previous.ratio || asset.ratio || '',
+      duration: previous.duration ?? asset.duration ?? null,
+      reference_images: previous.reference_images || asset.reference_images || null,
+      reference_image_urls: previous.reference_image_urls || asset.reference_image_urls || null,
+      gen_params: previous.gen_params || asset.gen_params || null,
+      generation_params: previous.generation_params || asset.generation_params || null,
+      provider_params: previous.provider_params || asset.provider_params || null,
+      metadata: { ...(asset.metadata || {}), ...(previous.metadata || {}) },
+      metadata_json: previous.metadata_json || asset.metadata_json || null,
+      posterUrl: previous.posterUrl || asset.posterUrl || null,
+    };
+  });
+  return result;
+}
+
 function EmptyState() {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
@@ -290,6 +337,37 @@ export default function AssetPickerModal({
 
   // 将后端历史记录条目归一化为 picker 卡片格式
   function normalizeCreativeItem(item, type) {
+    const parseObject = (value) => {
+      if (!value) return {};
+      if (typeof value === 'object' && !Array.isArray(value)) return value;
+      if (typeof value !== 'string') return {};
+      try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch {
+        return {};
+      }
+    };
+    const rawMetadata = item?.metadata_json ?? item?.metadataJson ?? item?.metadata ?? {};
+    const metadata = parseObject(rawMetadata);
+    const parameterContainers = [
+      item?.params, item?.parameters, item?.generation, item?.options,
+      item?.gen_params, item?.genParams, item?.generation_params, item?.generationParams,
+      item?.provider_params, item?.providerParams,
+      metadata?.params, metadata?.parameters, metadata?.generation, metadata?.options,
+      metadata?.gen_params, metadata?.genParams, metadata?.generation_params, metadata?.generationParams,
+      metadata?.provider_params, metadata?.providerParams,
+    ].map(parseObject).filter((value) => Object.keys(value).length > 0);
+    const firstValue = (...values) => values.find((value) => value !== undefined && value !== null && value !== '');
+    const directGenerationParams = {
+      expand_options: item?.expand_options ?? item?.expandOptions ?? metadata?.expand_options ?? metadata?.expandOptions,
+      subject_completion_options: item?.subject_completion_options ?? item?.subjectCompletionOptions ?? metadata?.subject_completion_options ?? metadata?.subjectCompletionOptions,
+      optimize_prompt: item?.optimize_prompt ?? item?.optimizePrompt ?? metadata?.optimize_prompt ?? metadata?.optimizePrompt,
+      sequential_image_generation: item?.sequential_image_generation ?? item?.sequentialImageGeneration ?? metadata?.sequential_image_generation ?? metadata?.sequentialImageGeneration,
+      provider_params: item?.provider_params ?? item?.providerParams ?? metadata?.provider_params ?? metadata?.providerParams,
+    };
+    const mergedParams = Object.assign({}, ...parameterContainers, directGenerationParams);
+    const generationParams = Object.keys(mergedParams).length > 0 ? mergedParams : null;
     // 视频优先取 video_url，图片/音频取 original_url/file_url
     const rawUrl = type === 'video'
       ? (item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || item.thumbnail || '')
@@ -302,6 +380,8 @@ export default function AssetPickerModal({
       : null;
 
     return {
+      // 先保留创作接口的完整字段，详情面板需要使用这些原始生成信息。
+      ...item,
       id: item.id,
       assetId: item.assetId || item.asset_id || item.image?.asset_id || item.image?.assetId || null,
       backendId: item.backendId || null,
@@ -315,21 +395,50 @@ export default function AssetPickerModal({
       asset_type: type,
       starred: item.is_favorite ?? item.is_liked ?? item.isLiked ?? false,
       bgColor: '#252525',
+      prompt: firstValue(item.prompt, item.prompt_resolved, item.promptResolved, item.input_prompt, item.inputPrompt, item.prompt_raw, item.promptRaw, metadata.prompt, metadata.prompt_resolved, metadata.promptResolved, metadata.input_prompt, metadata.inputPrompt, metadata.prompt_raw, metadata.promptRaw, mergedParams.prompt, mergedParams.input_prompt, mergedParams.inputPrompt) || '',
+      input_prompt: firstValue(item.input_prompt, item.inputPrompt, item.prompt_raw, item.promptRaw, item.prompt, item.prompt_resolved, item.promptResolved, metadata.input_prompt, metadata.inputPrompt, metadata.prompt_raw, metadata.promptRaw, metadata.prompt, metadata.prompt_resolved, metadata.promptResolved, mergedParams.input_prompt, mergedParams.inputPrompt, mergedParams.prompt) || '',
+      prompt_raw: firstValue(item.prompt_raw, item.promptRaw, metadata.prompt_raw, metadata.promptRaw, mergedParams.prompt_raw, mergedParams.promptRaw) || '',
+      prompt_resolved: firstValue(item.prompt_resolved, item.promptResolved, metadata.prompt_resolved, metadata.promptResolved, mergedParams.prompt_resolved, mergedParams.promptResolved) || '',
+      model: firstValue(item.model, metadata.model, mergedParams.model) || '',
+      resolution: firstValue(item.resolution, item.size, metadata.resolution, metadata.size, mergedParams.resolution, mergedParams.size) || '',
+      ratio: firstValue(item.ratio, item.aspect_ratio, item.aspectRatio, metadata.ratio, metadata.aspect_ratio, metadata.aspectRatio, mergedParams.ratio, mergedParams.aspect_ratio, mergedParams.aspectRatio) || '',
+      duration: firstValue(item.duration, metadata.duration, mergedParams.duration) ?? null,
+      reference_images: firstValue(item.reference_images, item.referenceImages, metadata.reference_images, metadata.referenceImages, mergedParams.reference_images, mergedParams.referenceImages) || null,
+      reference_image_urls: firstValue(item.reference_image_urls, item.referenceImageUrls, metadata.reference_image_urls, metadata.referenceImageUrls, mergedParams.reference_image_urls, mergedParams.referenceImageUrls) || null,
+      gen_params: generationParams || null,
+      generation_params: generationParams || null,
+      provider_params: firstValue(item.provider_params, item.providerParams, metadata.provider_params, metadata.providerParams) || null,
+      metadata_json: item.metadata_json ?? (Object.keys(metadata).length > 0 ? metadata : null),
+      metadata: { ...metadata, params: mergedParams },
+      source: item.source ?? item.source_type ?? item.sourceType ?? 'ai-generated',
+      source_type: item.source_type ?? item.sourceType ?? null,
     };
   }
 
   const creativeAssets = useMemo(() => {
-    if (creativeAssetsProp) return creativeAssetsProp;
+    if (creativeAssetsProp) {
+      return {
+        images: dedupePickerAssets(creativeAssetsProp.images),
+        videos: dedupePickerAssets(creativeAssetsProp.videos),
+        dubbing: dedupePickerAssets(creativeAssetsProp.dubbing),
+      };
+    }
     // 优先使用弹窗内加载的数据；如果还没加载，降级到 store 数据
-    if (localCreativeAssets) return localCreativeAssets;
+    if (localCreativeAssets) {
+      return {
+        images: dedupePickerAssets(localCreativeAssets.images),
+        videos: dedupePickerAssets(localCreativeAssets.videos),
+        dubbing: dedupePickerAssets(localCreativeAssets.dubbing),
+      };
+    }
 
     // 从 store 转换数据格式（store 由 CreationPage 初始化，可能为空）
     return {
-      images: generationsToFlatList(generationsByTab.image || [], favorites).map(item => ({
+      images: dedupePickerAssets(generationsToFlatList(generationsByTab.image || [], favorites).map(item => ({
         ...item,
         bgColor: item.bgColor || '#1F2324',
-      })).filter((item) => !!item.url),
-      videos: generationsToFlatList(generationsByTab.video || [], favorites).map(item => ({
+      })).filter((item) => !!item.url)),
+      videos: dedupePickerAssets(generationsToFlatList(generationsByTab.video || [], favorites).map(item => ({
         ...item,
         // url = 视频地址（给 <video> 标签），posterUrl = 封面图片（给 <img> 标签）
         url: item.videoUrl || item.video_url || item.posterUrl || item.url || null,
@@ -337,12 +446,12 @@ export default function AssetPickerModal({
         posterUrl: item.thumbnail_url || item.thumbnailUrl || item.thumbnail || item.image_url || item.imageUrl || item.url || item.poster || null,
         asset_type: 'video',
         bgColor: item.bgColor || '#1F2324',
-      })).filter((item) => !!(item.url || item.posterUrl)),
-      dubbing: generationsToFlatList(generationsByTab.dubbing || [], favorites).map(item => ({
+      })).filter((item) => !!(item.url || item.posterUrl))),
+      dubbing: dedupePickerAssets(generationsToFlatList(generationsByTab.dubbing || [], favorites).map(item => ({
         ...item,
         bgColor: item.bgColor || '#1F2324',
         type: 'audio',
-      })),
+      }))),
     };
   }, [creativeAssetsProp, localCreativeAssets, generationsByTab, favorites]);
 
@@ -553,7 +662,10 @@ export default function AssetPickerModal({
     const metadata = typeof a.metadata_json === 'string'
       ? (() => { try { return JSON.parse(a.metadata_json) || {}; } catch { return {}; } })()
       : (a.metadata_json || a.metadata || {});
+    const firstValue = (...values) => values.find((value) => value !== undefined && value !== null && value !== '');
     return {
+      // 保留资产接口的原始字段，避免资产库选择后丢失生成参数、参考素材和来源信息。
+      ...a,
       id: a.id,
       name: a.name || '未命名',
       url: normalizeImageUrl(a.thumbnail_url || a.file_url) || null,
@@ -568,15 +680,22 @@ export default function AssetPickerModal({
       bgColor: '#252525',
       category: a.category,
       asset_type: a.asset_type,
-      prompt: a.prompt ?? metadata.prompt ?? '',
-      input_prompt: a.input_prompt ?? metadata.input_prompt ?? '',
-      model: a.model ?? metadata.model ?? '',
-      ratio: a.ratio ?? metadata.ratio ?? '',
-      resolution: a.resolution ?? metadata.resolution ?? a.size ?? '',
+      prompt: firstValue(a.prompt, a.input_prompt, a.inputPrompt, metadata.prompt, metadata.input_prompt, metadata.inputPrompt) || '',
+      input_prompt: firstValue(a.input_prompt, a.inputPrompt, a.prompt, metadata.input_prompt, metadata.inputPrompt, metadata.prompt) || '',
+      model: firstValue(a.model, metadata.model) || '',
+      ratio: firstValue(a.ratio, a.aspect_ratio, a.aspectRatio, metadata.ratio, metadata.aspect_ratio, metadata.aspectRatio) || '',
+      resolution: firstValue(a.resolution, a.size, metadata.resolution, metadata.size) || '',
+      duration: firstValue(a.duration, metadata.duration) ?? null,
+      gen_params: firstValue(a.gen_params, a.genParams, a.generation_params, a.generationParams, metadata.gen_params, metadata.genParams, metadata.generation_params, metadata.generationParams) || null,
+      generation_params: firstValue(a.generation_params, a.generationParams, a.gen_params, a.genParams, metadata.generation_params, metadata.generationParams, metadata.gen_params, metadata.genParams) || null,
+      provider_params: firstValue(a.provider_params, a.providerParams, metadata.provider_params, metadata.providerParams) || null,
+      reference_images: firstValue(a.reference_images, a.referenceImages, metadata.reference_images, metadata.referenceImages) || null,
+      reference_image_urls: firstValue(a.reference_image_urls, a.referenceImageUrls, metadata.reference_image_urls, metadata.referenceImageUrls) || null,
       created_at: a.created_at ?? '',
       source: a.source ?? null,
       source_type: a.source_type ?? null,
-      metadata_json: a.metadata_json ?? null,
+      metadata_json: a.metadata_json ?? (Object.keys(metadata).length > 0 ? metadata : null),
+      metadata,
     };
   }
 
@@ -597,32 +716,43 @@ export default function AssetPickerModal({
     (async () => {
       try {
         const categories = Array.isArray(categoryFilter.category) ? categoryFilter.category : [categoryFilter.category];
+        const configuredAssetTypes = categoryFilter.asset_type
+          ? (Array.isArray(categoryFilter.asset_type) ? categoryFilter.asset_type : [categoryFilter.asset_type])
+          : [undefined];
+        const acceptedAssetTypes = accept === 'image'
+          ? ['image']
+          : accept === 'video'
+            ? ['video']
+            : configuredAssetTypes;
         const allItems = [];
 
         for (const cat of categories) {
-          let cursor = undefined;
-          let hasMore = true;
+          for (const assetType of acceptedAssetTypes) {
+            let cursor = undefined;
+            let hasMore = true;
 
-          while (hasMore) {
-            const page = await apiGetAssetsPage({
-              project_id: pullProjectId,
-              scope: 'project',
-              limit: 100,
-              cursor,
-              category: cat,
-              ...(categoryFilter.asset_type ? { asset_type: categoryFilter.asset_type } : {}),
-            });
-            allItems.push(...page.list);
-            hasMore = page.hasMore;
-            cursor = page.nextCursor;
-            if (!cursor) break;
+            while (hasMore) {
+              const page = await apiGetAssetsPage({
+                project_id: pullProjectId,
+                scope: 'project',
+                limit: 100,
+                cursor,
+                category: cat,
+                ...(assetType ? { asset_type: assetType } : {}),
+              });
+              allItems.push(...page.list);
+              hasMore = page.hasMore;
+              cursor = page.nextCursor;
+              if (!cursor) break;
+            }
           }
         }
 
-        // 分镜 Tab 需要用分镜板数据交叉比对，补全 is_primary / ratio 字段
-        const isStoryboardTab = tabKey === 'storyboard_img' || tabKey === 'storyboard_video';
+        // 分镜 Tab 需要用分镜板数据交叉比对，补全 is_primary / ratio 字段。
+        // storyboard/reference 两类接口可能返回同一媒体，合并前按媒体地址去重。
+        const isStoryboardTab = tabKey === 'storyboard';
         const enriched = await enrichWithStoryboards(pullProjectId, allItems, isStoryboardTab);
-        const normalized = enriched.map(normalizePickerAsset);
+        const normalized = dedupePickerAssets(enriched.map(normalizePickerAsset));
         setApiAssetsMap(prev => ({
           ...prev,
           [pullProjectId]: { ...(prev?.[pullProjectId] ?? {}), [tabKey]: normalized },
@@ -632,7 +762,7 @@ export default function AssetPickerModal({
         console.error('[AssetPickerModal] 拉取项目资产失败:', err);
       }
     })();
-  }, [open, activeTab, projectId, activeProjectId, projectSubTab, loadedTabKeys]);
+  }, [open, activeTab, accept, projectId, activeProjectId, projectSubTab, loadedTabKeys]);
 
   // 切换到创作资产 tab 时，从后端补齐全部分页。
   // CreationPage 的 store 只保证当前创作页已加载的分页，不能作为资产库弹窗的完整数据源。
@@ -672,9 +802,9 @@ export default function AssetPickerModal({
           page += 1;
         }
 
-        const normalized = allItems
+        const normalized = dedupePickerAssets(allItems
           .map(item => normalizeCreativeItem(item, type === 'audio' ? 'audio' : type))
-          .filter(item => type === 'audio' || !!(item.url || item.posterUrl));
+          .filter(item => type === 'audio' || !!(item.url || item.posterUrl)));
         setLocalCreativeAssets(prev => ({
           images: prev?.images ?? [],
           videos: prev?.videos ?? [],
@@ -766,7 +896,9 @@ export default function AssetPickerModal({
     }
     setProjectOpen(nextOpen);
   };
-  const isCompactCard = (activeTab === 'creative' && (creativeSubTab === '图片' || creativeSubTab === '视频')) || (activeTab === 'project' && (projectSubTab === '分镜图' || projectSubTab === '分镜视频'));
+  // 项目资产分镜图和分镜视频合并为一个 Tab，但仍按独立资产卡片平铺展示，
+  // 与角色、场景、道具的卡片结构保持一致。
+  const isCompactCard = activeTab === 'creative' && (creativeSubTab === '图片' || creativeSubTab === '视频');
 
   // 获取当前内容区资产列表
   const getCurrentAssets = () => {

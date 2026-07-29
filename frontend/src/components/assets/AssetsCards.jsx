@@ -13,7 +13,7 @@ import ShotVideoDetailModal from './ShotVideoDetailModal';
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-export function AssetCard({ name, url = null, starred = false, selected = false, batchMode = false, showStar = false, assetType = 'asset', onDownload, onDelete, onStar, onSelect, asset = {} }) {
+export function AssetCard({ name, url = null, starred = false, selected = false, batchMode = false, showStar = false, assetType = 'asset', videoObjectFit = 'cover', onDownload, onDelete, onStar, onSelect, asset = {} }) {
   const [hov, setHov] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -73,6 +73,7 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
         onStar={handleStar}
         onDownload={onDownload}
         onDelete={onDelete}
+        videoObjectFit={videoObjectFit}
       />
     </div>
     {detailOpen && assetType === 'shot_video' && (
@@ -129,15 +130,18 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
   );
 }
 
-export function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownload, onDelete, onSelect, onShowToast, asset = {}, category = '' }) {
+export function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownload, onDelete, onSelect, onShowToast, onOpenDetail, asset = {}, category = '' }) {
   const [hov, setHov] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
 
   const images = asset.images ?? [];
-  const isVideo = category === 'storyboard_video';
+  const isVideo = category === 'storyboard'
+    ? asset.assetType === 'video'
+    : category === 'storyboard_video';
   const videoRef = useRef(null);
 
-  const isStoryboard = category === 'storyboard_img' || category === 'storyboard_video';
+  const isStoryboard = category === 'storyboard' || category === 'storyboard_img' || category === 'storyboard_video';
+  const storyboardMediaFit = category === 'storyboard';
   const cardAspectRatio = isStoryboard ? '16/9' : '200/246';
 
   // 视频悬停播放
@@ -154,6 +158,7 @@ export function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownl
 
   function handleClick() {
     if (batchMode) { onSelect?.(); return; }
+    if (onOpenDetail) { onOpenDetail(); return; }
     setDetailOpen(true);
   }
 
@@ -173,6 +178,8 @@ export function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownl
           position: 'relative',
           display: 'flex',
           flexDirection: 'column',
+          alignSelf: isStoryboard ? 'start' : undefined,
+          minHeight: isStoryboard ? 0 : undefined,
         }}
         onMouseEnter={() => setHov(true)}
         onMouseLeave={() => setHov(false)}
@@ -196,7 +203,7 @@ export function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownl
             <video
               ref={videoRef}
               src={asset.videoUrl}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              style={{ width: '100%', height: '100%', objectFit: storyboardMediaFit ? 'contain' : 'cover', display: 'block' }}
               muted
               playsInline
               loop
@@ -208,7 +215,8 @@ export function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownl
                 width: '100%',
                 height: '100%',
                 backgroundImage: `url(${url})`,
-                backgroundSize: 'cover',
+                backgroundSize: storyboardMediaFit ? 'contain' : 'cover',
+                backgroundRepeat: storyboardMediaFit ? 'no-repeat' : undefined,
                 backgroundPosition: '50%',
               }}
             />
@@ -258,7 +266,7 @@ export function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownl
             <span style={{ fontFamily: FONT_MEDIUM, fontWeight: 500, fontSize: '14px', lineHeight: '20px', color: '#FFFFFFE6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {name}
             </span>
-            {desc ? (
+            {desc && category !== 'storyboard' ? (
               <span style={{
                 fontFamily: FONT, fontSize: '12px', lineHeight: '17px', color: '#FFFFFF66',
                 display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',

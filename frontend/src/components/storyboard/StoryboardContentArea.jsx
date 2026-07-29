@@ -1,4 +1,5 @@
-export default function StoryboardContentArea({ header, children, timeline, onContentBlankClick }) {
+export default function StoryboardContentArea({ header, children, timeline, projectRatio = '16:9', onContentBlankClick }) {
+  const isPortraitProject = String(projectRatio || '').replace(/\s/g, '') === '9:16';
   function handleContentClick(event) {
     if (event.target.closest('[data-storyboard-shot-row="true"]')) return;
     if (event.target.closest('[data-storyboard-finalized-card="true"]')) return;
@@ -19,7 +20,7 @@ export default function StoryboardContentArea({ header, children, timeline, onCo
           {children}
         </div>
       </section>
-      <section style={{ flexShrink: 0, minHeight: '167px', display: 'flex', alignItems: 'stretch', overflow: 'hidden', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', background: 'var(--color-dark-bg)', backgroundImage: 'none', padding: '16px 24px', boxSizing: 'border-box' }}>
+      <section style={{ flexShrink: 0, minHeight: isPortraitProject ? '272px' : '167px', display: 'flex', alignItems: 'stretch', overflow: 'hidden', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', background: 'var(--color-dark-bg)', backgroundImage: 'none', padding: '16px 24px', boxSizing: 'border-box' }}>
         {timeline}
       </section>
     </div>

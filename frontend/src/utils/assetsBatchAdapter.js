@@ -20,8 +20,7 @@ export const SUBJECT_CARD_CATEGORIES = new Set([
   'chars',
   'scenes',
   'props',
-  'storyboard_img',
-  'storyboard_video',
+  'storyboard',
 ]);
 
 export const SUBJECT_TYPE_MAP = Object.freeze({

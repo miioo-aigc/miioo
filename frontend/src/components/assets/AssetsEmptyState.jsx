@@ -60,7 +60,7 @@ function EmptyAssetState({ mediaType = 'image' }) {
 }
 
 function categoryToMediaType(category) {
-  if (category === 'storyboard_video' || category === 'final') return 'video';
+  if (category === 'final') return 'video';
   if (category === 'audio') return 'audio';
   return 'image';
 }

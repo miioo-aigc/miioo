@@ -5,6 +5,7 @@ import { useCreationStore } from '../../stores/creationStore';
 import { useAssetSelection } from '../../hooks/useAssetSelection';
 import { generationsToDays } from '../../utils/creativeDaysAdapter';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { dedupeCreationHistoryList } from '../../utils/creationHistoryAdapter';
 import { getCreativeBatchDeleteRequest } from '../../utils/assetsBatchAdapter';
 import { downloadMediaUrl } from '../../utils/downloadMediaUrl';
 import { downloadBlob } from '../../utils/downloadBlob';
@@ -84,6 +85,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
       createdAt: item.created_at || new Date().toISOString(),
       cards: [{
         id: item.id,
+        assetId: item.asset_id || item.assetId || item.image?.asset_id || item.image?.assetId || null,
         type,
         status: 'done',
         imageUrl: type === 'image' ? url : null,
@@ -93,6 +95,12 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         isFavorite: item.is_favorite ?? item.is_liked ?? item.isLiked ?? false,
       }],
     };
+  }
+
+  function getCreativeMediaKey(generation) {
+    const card = generation?.cards?.[0];
+    const rawUrl = card?.imageUrl || card?.videoUrl || card?.audioUrl || card?.originalUrl || '';
+    return normalizeImageUrl(rawUrl) || rawUrl;
   }
 
   // 根据视口计算首屏所需条数
@@ -142,19 +150,57 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
       }
 
       const type = tab === 'dubbing' ? 'audio' : tab;
-      const list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
-      const hasMore = list.length >= pageSize;
+      const rawList = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
+      const hasMore = rawList.length >= pageSize;
+      // 资产库接口可能为同一媒体返回不同 ID 的多条记录，不能只按后端 ID 去重。
+      const list = dedupeCreationHistoryList(rawList, type);
       const normalized = list.map((item) => normalizeHistoryItem(item, type));
-      // 合并到本地创作资产列表（按卡片后端ID去重，后端最新在前则反转后前置）
+      // 合并到本地创作资产列表：按卡片 ID 或媒体地址去重，重复时保留非空提示词。
       const existing = creationGenerationsRef.current[tab] ?? [];
       const existingCardIds = new Set(
         existing.flatMap((g) => g.cards.map((c) => c.id).filter(Boolean))
       );
-      const toAdd = normalized.filter((g) =>
-        g.cards.every((c) => !c.id || !existingCardIds.has(c.id))
+      const existingMediaKeys = new Map(
+        existing.map((generation, index) => [getCreativeMediaKey(generation), index])
+          .filter(([key]) => key)
       );
-      const mergedGens = toAdd.length > 0 ? [...toAdd.reverse(), ...existing] : existing;
-      setCreationGenerationsByTab((prev) => ({ ...prev, [tab]: mergedGens }));
+      const toAdd = [];
+      const mergedExisting = existing.map((generation) => ({
+        ...generation,
+        cards: generation.cards.map((card) => ({ ...card })),
+      }));
+      normalized.forEach((generation) => {
+        const card = generation.cards[0];
+        const mediaKey = getCreativeMediaKey(generation);
+        const existingIndex = card?.id && existingCardIds.has(card.id)
+          ? mergedExisting.findIndex((item) => item.cards.some((existingCard) => existingCard.id === card.id))
+          : existingMediaKeys.get(mediaKey);
+        if (existingIndex == null || existingIndex < 0) {
+          toAdd.push(generation);
+          return;
+        }
+        const current = mergedExisting[existingIndex];
+        mergedExisting[existingIndex] = {
+          ...current,
+          prompt: current.prompt || generation.prompt || '',
+          input_prompt: current.input_prompt || generation.input_prompt || '',
+          model: current.model || generation.model || '',
+          cards: current.cards.map((existingCard, cardIndex) => cardIndex === 0
+            ? {
+                ...existingCard,
+                ...card,
+                id: card.id || existingCard.id,
+                assetId: card.assetId || existingCard.assetId || null,
+              }
+            : existingCard),
+        };
+      });
+      const additions = [...toAdd].reverse();
+      const mergedGens = additions.length > 0 ? [...additions, ...mergedExisting] : mergedExisting;
+      setCreationGenerationsByTab((prev) => ({
+        ...prev,
+        [tab]: mergedGens,
+      }));
 
       // 同步收藏状态
       const latestGens = mergedGens;

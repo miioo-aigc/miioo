@@ -29,6 +29,72 @@ function getUploadMediaType(file) {
   return null;
 }
 
+const ASSET_GENERATION_KEYS = new Set([
+  'model', 'resolution', 'size', 'duration', 'ratio', 'aspect_ratio', 'aspectRatio',
+  'sound_effect', 'soundEffect', 'generate_audio', 'generateAudio', 'audio_setting', 'audioSetting',
+  'reference_images', 'referenceImages', 'first_frame_url', 'firstFrameUrl',
+  'last_frame_url', 'lastFrameUrl', 'reference_video_url', 'referenceVideoUrl',
+  'reference_audio_url', 'referenceAudioUrl', 'reference_mode', 'referenceMode',
+  'generation_mode', 'generationMode', 'generate_mode', 'generateMode',
+  'watermark', 'multi_shot', 'multiShot', 'expand_options', 'expandOptions',
+  'subject_completion_options', 'subjectCompletionOptions', 'optimize_prompt', 'optimizePrompt',
+  'sequential_image_generation', 'sequentialImageGeneration', 'prompt_raw', 'promptRaw',
+  'prompt_resolved', 'promptResolved', 'provider_params', 'providerParams',
+]);
+
+function parseAssetMetadata(asset) {
+  const raw = asset?.metadata_json ?? asset?.metadataJson ?? asset?.metadata ?? {};
+  if (typeof raw !== 'string') return raw && typeof raw === 'object' ? raw : {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseObjectValue(value) {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function getAssetParameterContainers(asset, metadata) {
+  return [
+    asset?.params, asset?.parameters, asset?.generation, asset?.options,
+    asset?.gen_params, asset?.genParams, asset?.generation_params, asset?.generationParams,
+    asset?.provider_params, asset?.providerParams,
+    metadata?.params, metadata?.parameters, metadata?.generation, metadata?.options,
+    metadata?.gen_params, metadata?.genParams, metadata?.generation_params, metadata?.generationParams,
+    metadata?.provider_params, metadata?.providerParams,
+  ].map(parseObjectValue).filter((value) => Object.keys(value).length > 0);
+}
+
+function getAssetGenerationParams(asset, metadata) {
+  const nested = Object.assign({}, ...getAssetParameterContainers(asset, metadata));
+  const direct = {
+    expand_options: asset?.expand_options ?? asset?.expandOptions ?? metadata?.expand_options ?? metadata?.expandOptions,
+    subject_completion_options: asset?.subject_completion_options ?? asset?.subjectCompletionOptions ?? metadata?.subject_completion_options ?? metadata?.subjectCompletionOptions,
+    optimize_prompt: asset?.optimize_prompt ?? asset?.optimizePrompt ?? metadata?.optimize_prompt ?? metadata?.optimizePrompt,
+    sequential_image_generation: asset?.sequential_image_generation ?? asset?.sequentialImageGeneration ?? metadata?.sequential_image_generation ?? metadata?.sequentialImageGeneration,
+    model: asset?.model ?? metadata?.model ?? nested?.model,
+    resolution: asset?.resolution ?? asset?.size ?? metadata?.resolution ?? metadata?.size ?? nested?.resolution ?? nested?.size,
+    duration: asset?.duration ?? metadata?.duration ?? nested?.duration,
+    ratio: asset?.ratio ?? asset?.aspect_ratio ?? asset?.aspectRatio ?? metadata?.ratio ?? metadata?.aspect_ratio ?? metadata?.aspectRatio ?? nested?.ratio ?? nested?.aspect_ratio ?? nested?.aspectRatio,
+    reference_images: asset?.reference_images ?? asset?.referenceImages ?? metadata?.reference_images ?? metadata?.referenceImages ?? nested?.reference_images ?? nested?.referenceImages,
+    reference_image_urls: asset?.reference_image_urls ?? asset?.referenceImageUrls ?? metadata?.reference_image_urls ?? metadata?.referenceImageUrls ?? nested?.reference_image_urls ?? nested?.referenceImageUrls,
+    provider_params: asset?.provider_params ?? asset?.providerParams ?? metadata?.provider_params ?? metadata?.providerParams ?? nested?.provider_params ?? nested?.providerParams,
+    ...nested,
+  };
+  return Object.fromEntries(Object.entries({ ...nested, ...direct }).filter(([key, value]) => ASSET_GENERATION_KEYS.has(key) && value !== undefined && value !== null && value !== ''));
+}
+
 function CandidateItem({ item, onSelect, onPreview, onDownload }) {
   const [hovered, setHovered] = useState(false);
   const isVideo = item.media_type === 'video' || item.type?.startsWith('video');
@@ -111,10 +177,35 @@ export default function StoryboardCreationPanel({ initialTab = 'image', onTabCha
 
   function handleAssets(assets) {
     (assets || []).forEach((asset) => {
+      const metadata = parseAssetMetadata(asset);
+      const parameterContainers = getAssetParameterContainers(asset, metadata);
+      const mergedParams = Object.assign({}, ...parameterContainers);
       const url = normalizeImageUrl(asset.fileUrl || asset.originalUrl || asset.original_url || asset.thumbnailUrl || asset.thumbnail_url || asset.url || asset.file_url);
       const rawType = String(asset.asset_type || asset.assetType || asset.media_type || asset.mediaType || asset.type || '').toLowerCase();
       const mediaType = rawType.startsWith('video') ? 'video' : rawType.startsWith('image') ? 'image' : null;
-      if (url && mediaType) onCandidateMedia?.({ id: asset.id || url, asset_id: asset.asset_id || asset.assetId || asset.id || null, url, media_type: mediaType, source: 'asset-library' });
+      if (url && mediaType) onCandidateMedia?.({
+        id: asset.id || url,
+        asset_id: asset.asset_id || asset.assetId || asset.id || null,
+        url,
+        thumbnail_url: asset.thumbnailUrl || asset.thumbnail_url || null,
+        poster_url: asset.posterUrl || asset.poster_url || asset.thumbnailUrl || asset.thumbnail_url || null,
+        download_url: asset.downloadUrl || asset.download_url || asset.fileUrl || asset.file_url || url,
+        media_type: mediaType,
+        source: 'asset-library',
+        detailSource: 'asset-library',
+        prompt: asset.input_prompt ?? asset.inputPrompt ?? asset.prompt_raw ?? asset.promptRaw ?? asset.prompt ?? asset.prompt_resolved ?? asset.promptResolved ?? metadata.input_prompt ?? metadata.inputPrompt ?? metadata.prompt_raw ?? metadata.promptRaw ?? metadata.prompt ?? metadata.prompt_resolved ?? metadata.promptResolved ?? mergedParams.input_prompt ?? mergedParams.inputPrompt ?? mergedParams.prompt,
+        input_prompt: asset.input_prompt ?? asset.inputPrompt ?? asset.prompt_raw ?? asset.promptRaw ?? asset.prompt ?? asset.prompt_resolved ?? asset.promptResolved ?? metadata.input_prompt ?? metadata.inputPrompt ?? metadata.prompt_raw ?? metadata.promptRaw ?? metadata.prompt ?? metadata.prompt_resolved ?? metadata.promptResolved ?? mergedParams.input_prompt ?? mergedParams.inputPrompt ?? mergedParams.prompt,
+        prompt_raw: asset.prompt_raw ?? asset.promptRaw ?? metadata.prompt_raw ?? metadata.promptRaw ?? mergedParams.prompt_raw ?? mergedParams.promptRaw,
+        prompt_resolved: asset.prompt_resolved ?? asset.promptResolved ?? metadata.prompt_resolved ?? metadata.promptResolved ?? mergedParams.prompt_resolved ?? mergedParams.promptResolved,
+        model: asset.model ?? metadata.model ?? mergedParams.model,
+        resolution: asset.resolution ?? asset.size ?? metadata.resolution ?? metadata.size ?? mergedParams.resolution ?? mergedParams.size,
+        duration: asset.duration ?? metadata.duration ?? mergedParams.duration,
+        ratio: asset.ratio ?? asset.aspect_ratio ?? asset.aspectRatio ?? metadata.ratio ?? metadata.aspect_ratio ?? metadata.aspectRatio ?? mergedParams.ratio ?? mergedParams.aspect_ratio ?? mergedParams.aspectRatio,
+        reference_images: asset.reference_images ?? asset.referenceImages ?? metadata.reference_images ?? metadata.referenceImages ?? mergedParams.reference_images ?? mergedParams.referenceImages,
+        reference_image_urls: asset.reference_image_urls ?? asset.referenceImageUrls ?? metadata.reference_image_urls ?? metadata.referenceImages ?? mergedParams.reference_image_urls ?? mergedParams.referenceImageUrls,
+        genParams: getAssetGenerationParams(asset, metadata),
+        metadata: { ...metadata, params: mergedParams },
+      });
     });
     setAssetPickerOpen(false);
   }

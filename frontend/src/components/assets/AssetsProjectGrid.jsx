@@ -16,6 +16,7 @@ export default function AssetsProjectGrid({
   onDownload,
   onDelete,
   onShowToast,
+  onOpenStoryboardDetail,
 }) {
   return assets.map((asset) => {
     const isSelected = batchMode && selected.has(asset.id);
@@ -47,11 +48,12 @@ export default function AssetsProjectGrid({
           selected={isSelected}
           batchMode={batchMode}
           onSelect={() => onSelect(asset.id)}
-          onDownload={() => onDownload(asset.id, asset.name)}
+          onDownload={() => onDownload(asset.id, asset.name, asset)}
           onDelete={(imageId) => onDelete(asset.id, imageId)}
           onShowToast={onShowToast}
           asset={asset}
           category={activeCategory}
+          onOpenDetail={activeCategory === 'storyboard' ? () => onOpenStoryboardDetail?.(asset) : undefined}
         />
       );
     }
@@ -64,7 +66,8 @@ export default function AssetsProjectGrid({
         starred={asset.starred}
         selected={isSelected}
         batchMode={batchMode}
-        assetType={activeCategory === 'storyboard_img' ? 'shot' : activeCategory === 'storyboard_video' ? 'shot_video' : 'asset'}
+        assetType={activeCategory === 'storyboard' ? 'shot' : 'asset'}
+        videoObjectFit={activeCategory === 'final' ? 'contain' : 'cover'}
         onSelect={() => onSelect(asset.id)}
         onStar={() => onStar(asset.id)}
         onDownload={() => onDownload(asset.id, asset.name)}

@@ -15,7 +15,7 @@ export default function AssetsScrollableContent({
   const isEmpty = items.length === 0;
   const isAudio = activeCategory === 'audio';
   const isSubjectGrid = subjectCardCategories.has(activeCategory)
-    && !['storyboard_img', 'storyboard_video'].includes(activeCategory);
+    && activeCategory !== 'storyboard';
 
   const layoutStyle = isEmpty
     ? {
@@ -35,6 +35,8 @@ export default function AssetsScrollableContent({
           gridTemplateColumns: isSubjectGrid
             ? 'repeat(auto-fill, minmax(clamp(160px, 10.67vw, 192px), 1fr))'
             : 'repeat(auto-fill, minmax(clamp(240px, 16vw, 288px), 1fr))',
+          // 让带 aspect-ratio 的分镜卡片按完整内容高度占据网格行，避免临界宽度下下一行提前开始。
+          ...(activeCategory === 'storyboard' ? { gridAutoRows: 'max-content' } : {}),
           gap: '8px',
           alignContent: 'flex-start',
         };

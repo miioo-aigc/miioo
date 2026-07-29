@@ -30,7 +30,10 @@ export default function ProjectAssetDetail({
     finalized: image.is_primary,
   }));
 
-  if (category === 'storyboard_img') {
+  const isStoryboardVideo = category === 'storyboard_video'
+    || (category === 'storyboard' && asset.assetType === 'video');
+
+  if (category === 'storyboard_img' || (category === 'storyboard' && !isStoryboardVideo)) {
     return (
       <ShotDetailModal
         onClose={onClose}
@@ -48,7 +51,7 @@ export default function ProjectAssetDetail({
     );
   }
 
-  if (category === 'storyboard_video') {
+  if (isStoryboardVideo) {
     return (
       <ShotVideoDetailModal
         onClose={onClose}

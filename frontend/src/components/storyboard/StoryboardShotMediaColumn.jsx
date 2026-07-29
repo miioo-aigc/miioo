@@ -55,7 +55,7 @@ function CandidateCard({ item, finalized, onSelect, onPreview }) {
       borderRadius: '4px', border: `1px solid ${finalized ? '#2DC3E1' : 'rgba(255,255,255,0.10)'}`, background: '#101111',
     }}>
       {isVideo ? <video src={url} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-      {finalized && <span style={{ position: 'absolute', left: '4px', bottom: '4px', color: '#090909', background: '#2DC3E1', font: `10px ${FONT}`, padding: '1px 3px', borderRadius: '2px' }}>定稿</span>}
+      {finalized && <span style={{ position: 'absolute', left: '4px', top: '4px', color: '#090909', background: '#2DC3E1', font: `10px ${FONT}`, padding: '1px 3px', borderRadius: '2px' }}>定稿</span>}
     </button>
   );
 }
@@ -105,10 +105,10 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
   }
 
   return (
-    <div style={{ width: '105px', minWidth: '105px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', borderRight: '1px solid rgba(255,255,255,0.08)', alignSelf: 'stretch', position: 'relative' }}>
+    <div style={{ width: '91px', minWidth: '91px', boxSizing: 'border-box', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', borderRight: '1px solid rgba(255,255,255,0.08)', alignSelf: 'stretch', position: 'relative' }}>
       <input ref={inputRef} type="file" accept="image/*,video/*" hidden onChange={handleFile} />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-        <span style={{ font: `12px ${FONT}`, color: '#FFFFFF99', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>分镜内容</span>
+      <div style={{ width: '66px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <span style={{ font: `12px ${FONT}`, color: '#FFFFFF99', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>分镜</span>
         {media.length > 0 && <NarrationAddButton tooltip="创作" onClick={handleOpenCreation} />}
       </div>
       {generating && <div style={{ height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2DC3E1', font: `12px ${FONT}` }}>生成中</div>}

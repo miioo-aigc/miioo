@@ -22,14 +22,48 @@ import FileUploadButton from '../ui/FileUploadButton';
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
-function CandidateItem({ item }) {
+function CandidateItem({ item, onSelect, onPreview, onDownload }) {
+  const [hovered, setHovered] = useState(false);
   const isVideo = item.media_type === 'video' || item.type?.startsWith('video');
   const source = normalizeImageUrl(item.thumbnail_url || item.poster_url || item.url);
   return (
-    <div style={{ width: '100px', height: '100px', position: 'relative', overflow: 'hidden', flexShrink: 0, borderRadius: '6px', border: `1px solid ${item.is_finalized ? '#2DC3E1' : 'rgba(255,255,255,0.12)'}`, background: '#1D1E1E' }}>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect?.();
+        }
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      aria-label={item.is_finalized ? '取消定稿' : '设为定稿'}
+      style={{ width: '100px', height: '100px', position: 'relative', overflow: 'hidden', flexShrink: 0, borderRadius: '6px', border: `1px solid ${item.is_finalized ? '#2DC3E1' : hovered ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.12)'}`, background: '#1D1E1E', padding: 0, cursor: 'pointer', display: 'block', transition: 'border-color 120ms, box-shadow 120ms', boxShadow: hovered ? '0 4px 16px rgba(0,0,0,0.35)' : 'none' }}
+    >
       {isVideo ? <video src={normalizeImageUrl(item.url)} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <img src={source} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-      <span style={{ position: 'absolute', left: '4px', bottom: '4px', padding: '1px 4px', borderRadius: '2px', background: '#00000099', color: '#FFFFFFCC', fontFamily: FONT, fontSize: '10px', lineHeight: '14px' }}>{isVideo ? '视频' : '图片'}</span>
-      {item.is_finalized && <span style={{ position: 'absolute', right: '4px', top: '4px', padding: '1px 4px', borderRadius: '2px', background: '#2DC3E1', color: '#090909', fontFamily: FONT, fontSize: '10px', lineHeight: '14px' }}>定稿</span>}
+      <span style={{ position: 'absolute', right: '4px', top: '4px', padding: '1px 4px', borderRadius: '2px', background: '#00000099', color: '#FFFFFFCC', fontFamily: FONT, fontSize: '10px', lineHeight: '14px' }}>{isVideo ? '视频' : '图片'}</span>
+      {item.is_finalized && <span style={{ position: 'absolute', left: '4px', top: '4px', padding: '1px 4px', borderRadius: '2px', background: '#2DC3E1', color: '#090909', fontFamily: FONT, fontSize: '10px', lineHeight: '14px' }}>定稿</span>}
+      {hovered && (
+        <div style={{ position: 'absolute', right: '4px', bottom: '4px', display: 'flex', gap: '4px' }}>
+          <button type="button" aria-label="放大" onClick={(event) => { event.stopPropagation(); onPreview?.(item); }} style={{ width: '24px', height: '24px', padding: 0, border: 0, borderRadius: '4px', background: '#00000099', color: '#FFFFFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M5.333 2H2.667C2.298 2 2 2.298 2 2.667V5.333" fill="none" stroke="#FFFFFF" strokeLinejoin="round" />
+              <path d="M5.333 14H2.667C2.298 14 2 13.701 2 13.333V10.667" fill="none" stroke="#FFFFFF" strokeLinejoin="round" />
+              <path d="M10.667 14H13.333C13.701 14 14 13.701 14 13.333V10.667" fill="none" stroke="#FFFFFF" strokeLinejoin="round" />
+              <path d="M10.667 2H13.333C13.701 2 14 2.298 14 2.667V5.333" fill="none" stroke="#FFFFFF" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button type="button" aria-label="下载" onClick={(event) => { event.stopPropagation(); onDownload?.(item); }} style={{ width: '24px', height: '24px', padding: 0, border: 0, borderRadius: '4px', background: '#00000099', color: '#FFFFFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" style={{ rotate: '180deg' }} aria-hidden="true">
+              <path d="M8.003 4.7V14" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 8.667L8 4.667L12 8.667" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 2H12" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -45,7 +79,7 @@ function UploadEntry({ type, onUpload, onOpenAssets }) {
   );
 }
 
-export default function StoryboardCreationPanel({ initialTab = 'image', onTabChange, onClose, candidates = [], projectId, storyboardId, onCandidateMedia, children }) {
+export default function StoryboardCreationPanel({ initialTab = 'image', onTabChange, onClose, candidates = [], projectId, storyboardId, onCandidateMedia, onFinalizeToggle, onPreview, onDownload, children }) {
   const [tab, setTab] = useState(initialTab);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [uploadType, setUploadType] = useState(initialTab === 'video' ? 'video' : 'image');
@@ -83,9 +117,8 @@ export default function StoryboardCreationPanel({ initialTab = 'image', onTabCha
       <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
         <section style={{ width: '457px', minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#161616' }}>{children}</section>
         <aside style={{ width: '141px', flex: '0 0 141px', minHeight: 0, display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px 24px 8px 16px', boxSizing: 'border-box', overflowY: 'auto', background: '#161616', borderLeft: '1px solid #FFFFFF14' }}>
-          <div style={{ flexShrink: 0, color: '#FFFFFF99', fontFamily: FONT, fontSize: '14px', lineHeight: '18px' }}>分镜候选</div>
           <UploadEntry type={uploadType} onUpload={handleUpload} onOpenAssets={() => setAssetPickerOpen(true)} />
-          {candidates.map((item, index) => <CandidateItem key={item.id || item.url || index} item={item} />)}
+          {candidates.map((item, index) => <CandidateItem key={item.id || item.url || index} item={item} onSelect={() => onFinalizeToggle?.(item)} onPreview={onPreview} onDownload={onDownload} />)}
         </aside>
         <AssetPickerModal accept={uploadType} open={assetPickerOpen} onClose={() => setAssetPickerOpen(false)} projectId={projectId} onConfirm={handleAssets} />
       </div>

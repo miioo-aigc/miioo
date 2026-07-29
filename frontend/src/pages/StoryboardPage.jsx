@@ -1702,6 +1702,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     ) : timelinePreviewMedia ? (
       <MediaDetailModal
         mode="image"
+        zIndex={1100}
         images={[{
           id: timelinePreviewMedia.media.id || timelinePreviewMedia.media.url,
           url: normalizeImageUrl(timelinePreviewMedia.media.large_url || timelinePreviewMedia.media.preview_url || timelinePreviewMedia.media.url),
@@ -1719,7 +1720,32 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       />
     ) : null}
     {creationPanel && (
-      <StoryboardCreationPanel projectId={projectId} storyboardId={creationPanel.shot?.id} initialTab={creationPanel.tab} onTabChange={handleCreationTabChange} candidates={candidateMediaMap[creationPanel.shot?.id] || []} onCandidateMedia={(media) => saveCandidateMedia(creationPanel.shot?.id, media)} onClose={() => { setImagePanel(null); setVideoPanel(null); setCreationPanel(null); }}>
+      <StoryboardCreationPanel
+        projectId={projectId}
+        storyboardId={creationPanel.shot?.id}
+        initialTab={creationPanel.tab}
+        onTabChange={handleCreationTabChange}
+        candidates={candidateMediaMap[creationPanel.shot?.id] || []}
+        onCandidateMedia={(media) => saveCandidateMedia(creationPanel.shot?.id, media)}
+        onFinalizeToggle={(media) => handleFinalizeToggle(creationPanel.shot, media)}
+        onPreview={(media) => openTimelinePreview(media, creationPanel.shot)}
+        onDownload={async (media) => {
+          try {
+            if (media?.id && !String(media.id).startsWith('blob:')) {
+              const blob = await apiDownloadStoryboardMediaCandidate(projectId, creationPanel.shot.id, media.id);
+              downloadBlob(blob, media.name || `storyboard-${media.id}`);
+              return;
+            }
+          } catch (error) {
+            console.warn('[StoryboardPage] 候选媒体受控下载失败，回退直链:', error);
+          }
+          const link = document.createElement('a');
+          link.href = normalizeImageUrl(media?.downloadUrl || media?.download_url || media?.url);
+          link.download = media?.name || `storyboard-${media?.id || 'media'}`;
+          link.click();
+        }}
+        onClose={() => { setImagePanel(null); setVideoPanel(null); setCreationPanel(null); }}
+      >
     {imagePanel && creationPanel.tab === 'image' && (
       <GenerateImagePanel
         shot={imagePanel.shot}

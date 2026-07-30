@@ -1,5 +1,11 @@
 # 组件重构盘点基线
 
+## 2026-07-29 资产选择弹窗分镜定稿筛选修复
+
+- `AssetPickerModal` 的项目资产“分镜”Tab勾选“仅显示定稿图”时，定稿标记不再只依赖分镜主表的单个封面字段。
+- `enrichWithStoryboards` 同时读取各镜头的候选媒体列表，收集 `is_finalized` 候选，并通过资产 ID、候选媒体 ID及多种媒体 URL补全 `is_primary`。
+- 分镜 Tab 合并读取的 `storyboard`/`reference` 资产均参与匹配；本次不改变图片、视频独立卡片平铺结构。
+
 ## 2026-07-29 图片创作资产重复展示修复
 
 - `AssetsCreativePanel` 的创作资产历史列表改为复用 `dedupeCreationHistoryList`，首次加载时按归一化媒体地址去重，不再只按后端记录 ID 判断重复。

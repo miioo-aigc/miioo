@@ -2,7 +2,7 @@ const BASE = import.meta.env.VITE_API_BASE_URL;
 
 import { authFetch } from './request.js';
 import { normalizeImageUrl } from '../utils/imageUrl.js';
-import { apiGetStoryboards } from './storyboard.js';
+import { apiGetStoryboards, apiListStoryboardMediaCandidates } from './storyboard.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 
@@ -660,38 +660,109 @@ async function enrichWithStoryboards(projectId, rawList, needsStoryboards) {
   if (!needsStoryboards) return rawList;
   const storyboardsRaw = await apiGetStoryboards(projectId).catch(() => []);
   const storyboards = Array.isArray(storyboardsRaw) ? storyboardsRaw : [];
+  // 分镜页的定稿状态保存在每个镜头的候选媒体中，不能只依赖分镜主表的 image_url/video_url。
+  // 这里批量读取候选列表，只收集已定稿媒体，保证资产选择弹窗的“仅显示定稿图”与分镜页一致。
+  const finalizedCandidates = (await Promise.all(
+    storyboards.map((storyboard) => apiListStoryboardMediaCandidates(projectId, storyboard.id).catch(() => [])),
+  )).flat().filter((candidate) => candidate?.is_finalized === true || candidate?.isFinalized === true);
+  const primaryAssetIds = new Set();
   const primaryImageUrls = new Set();
   const primaryVideoAssetIds = new Set();
   const primaryVideoUrls = new Set();
   const videoAssetIdRatio = {};
   const videoUrlRatio = {};
   const imageUrlRatio = {};
+
+  // 分镜接口在不同版本中可能返回资产 ID、原图 URL、缩略图 URL或嵌套媒体对象。
+  // 统一收集这些关联键，避免资产列表因字段版本差异被“仅显示定稿图”误过滤。
+  const addId = (value, target) => {
+    if (value !== undefined && value !== null && value !== '') target.add(String(value));
+  };
+  const addUrl = (value, target) => {
+    const normalized = normalizeImageUrl(value);
+    if (normalized) target.add(normalized);
+  };
+  const getMediaValues = (sb, kind) => {
+    const isImage = kind === 'image';
+    const idKeys = isImage
+      ? ['image_asset_id', 'imageAssetId', 'storyboard_image_asset_id', 'storyboardImageAssetId', 'image_id', 'imageId']
+      : ['video_asset_id', 'videoAssetId', 'storyboard_video_asset_id', 'storyboardVideoAssetId', 'video_id', 'videoId'];
+    const urlKeys = isImage
+      ? ['image_url', 'imageUrl', 'image_file_url', 'imageFileUrl', 'image_thumbnail_url', 'imageThumbnailUrl', 'thumbnail_url', 'thumbnailUrl']
+      : ['video_url', 'videoUrl', 'video_file_url', 'videoFileUrl', 'video_preview_url', 'videoPreviewUrl', 'preview_video_url', 'previewVideoUrl'];
+    const media = isImage ? (sb.image || sb.storyboard_image) : (sb.video || sb.storyboard_video);
+    const ids = idKeys.map((key) => sb[key]).concat(media && typeof media === 'object' ? [media.id, media.asset_id, media.assetId] : []);
+    const urls = urlKeys.map((key) => sb[key]).concat(media && typeof media === 'object'
+      ? [media.url, media.file_url, media.fileUrl, media.original_url, media.originalUrl, media.thumbnail_url, media.thumbnailUrl]
+      : []);
+    return { ids, urls };
+  };
+
   storyboards.forEach((sb) => {
     const ratio = sb.ratio || sb.aspect_ratio || '';
-    if (sb.image_url) {
-      primaryImageUrls.add(normalizeImageUrl(sb.image_url));
-      if (ratio) imageUrlRatio[normalizeImageUrl(sb.image_url)] = ratio;
-    }
-    if (sb.video_asset_id) {
-      primaryVideoAssetIds.add(sb.video_asset_id);
-      if (ratio) videoAssetIdRatio[sb.video_asset_id] = ratio;
-    } else if (sb.video_url) {
-      primaryVideoUrls.add(normalizeImageUrl(sb.video_url));
-      if (ratio) videoUrlRatio[normalizeImageUrl(sb.video_url)] = ratio;
-    }
+    const imageMedia = getMediaValues(sb, 'image');
+    const videoMedia = getMediaValues(sb, 'video');
+    imageMedia.ids.forEach((value) => addId(value, primaryAssetIds));
+    videoMedia.ids.forEach((value) => { addId(value, primaryAssetIds); addId(value, primaryVideoAssetIds); });
+    imageMedia.urls.forEach((value) => {
+      const normalized = normalizeImageUrl(value);
+      addUrl(normalized, primaryImageUrls);
+      if (ratio && normalized) imageUrlRatio[normalized] = ratio;
+    });
+    videoMedia.ids.forEach((value) => {
+      if (ratio) videoAssetIdRatio[String(value)] = ratio;
+    });
+    videoMedia.urls.forEach((value) => {
+      const normalized = normalizeImageUrl(value);
+      if (ratio) videoUrlRatio[normalized] = ratio;
+    });
+  });
+  finalizedCandidates.forEach((candidate) => {
+    const mediaType = String(candidate.media_type ?? candidate.mediaType ?? candidate.type ?? '').toLowerCase();
+    const isVideo = mediaType === 'video' || mediaType.startsWith('video/');
+    const candidateMetadata = candidate.metadata && typeof candidate.metadata === 'object'
+      ? candidate.metadata
+      : {};
+    const assetId = candidate.asset_id ?? candidate.assetId ?? candidateMetadata.asset_id ?? candidateMetadata.assetId ?? candidate.id;
+    addId(assetId, primaryAssetIds);
+    if (isVideo) addId(assetId, primaryVideoAssetIds);
+    const urls = [
+      candidate.url, candidate.file_url, candidate.fileUrl,
+      candidate.original_url, candidate.originalUrl,
+      candidate.thumbnail_url, candidate.thumbnailUrl,
+      candidate.poster_url, candidate.posterUrl,
+    ];
+    urls.forEach((value) => {
+      const normalized = normalizeImageUrl(value);
+      if (!normalized) return;
+      if (isVideo) {
+        primaryVideoUrls.add(normalized);
+        if (candidate.ratio) videoUrlRatio[normalized] = candidate.ratio;
+      } else {
+        primaryImageUrls.add(normalized);
+        if (candidate.ratio) imageUrlRatio[normalized] = candidate.ratio;
+      }
+    });
   });
   return rawList.map((item) => {
-    if (item.category !== 'storyboard') return item;
+    if (item.category !== 'storyboard' && item.category !== 'reference') return item;
     let is_primary = item.is_primary ?? false;
     let ratio = item.ratio || '';
+    const itemId = String(item.id ?? item.asset_id ?? item.assetId ?? '');
+    const itemUrls = [
+      item.file_url, item.original_url, item.originalUrl, item.url,
+      item.thumbnail_url, item.thumbnailUrl, item.preview_url, item.previewUrl,
+    ].map(normalizeImageUrl).filter(Boolean);
+    const matchedById = primaryAssetIds.has(itemId) || primaryVideoAssetIds.has(itemId);
+    const matchedByUrl = itemUrls.some((url) => primaryImageUrls.has(url) || primaryVideoUrls.has(url));
     if (item.asset_type === 'video') {
       // 保留后端原始 is_primary，或通过 storyboard 交叉比对补充
-      is_primary = is_primary || primaryVideoAssetIds.has(item.id) || primaryVideoUrls.has(normalizeImageUrl(item.file_url));
-      if (!ratio) ratio = videoAssetIdRatio[item.id] || videoUrlRatio[normalizeImageUrl(item.file_url)] || '';
+      is_primary = is_primary || matchedById || matchedByUrl;
+      if (!ratio) ratio = videoAssetIdRatio[itemId] || itemUrls.map((url) => videoUrlRatio[url]).find(Boolean) || '';
     } else {
       // 保留后端原始 is_primary，或通过 storyboard 交叉比对补充
-      is_primary = is_primary || primaryImageUrls.has(normalizeImageUrl(item.file_url)) || primaryImageUrls.has(normalizeImageUrl(item.thumbnail_url));
-      if (!ratio) ratio = imageUrlRatio[normalizeImageUrl(item.file_url)] || imageUrlRatio[normalizeImageUrl(item.thumbnail_url)] || '';
+      is_primary = is_primary || matchedById || matchedByUrl;
+      if (!ratio) ratio = itemUrls.map((url) => imageUrlRatio[url] || videoUrlRatio[url]).find(Boolean) || '';
     }
     return { ...item, is_primary, ...(ratio ? { ratio } : {}) };
   });

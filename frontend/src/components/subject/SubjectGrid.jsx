@@ -36,6 +36,7 @@ export default function SubjectGrid({
   onRetryScenes,
   onRetryProps,
   onVoiceClick,
+  onVoiceRemove,
   onSelect,
   onDownloadImage,
   onDeleteSubject,
@@ -78,6 +79,7 @@ export default function SubjectGrid({
             voiceName={isCharacterTab ? (item.voice_name ?? voice?.name) : undefined}
             voicePreviewUrl={isCharacterTab ? (item.voice_preview_url ?? voice?.preview_url) : undefined}
             onVoiceClick={isCharacterTab ? () => onVoiceClick?.(item) : undefined}
+            onVoiceRemove={isCharacterTab ? () => onVoiceRemove?.(item) : undefined}
             onClick={() => onSelect?.(activeTab, item)}
             onDownloadImage={() => onDownloadImage?.(item.id)}
             onDeleteSubject={() => onDeleteSubject?.(item.id)}

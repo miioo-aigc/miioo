@@ -119,6 +119,9 @@
  *   2026-07-30  分镜列表网络加载期间在内容区居中显示 DotsLoading，避免请求期间误显示空态或空列表
  *   2026-07-31  修复主体参考列漏查场景和道具：分镜加载、分页、刷新及新增镜头统一使用角色/场景/道具主体索引，旁白列仍仅使用角色
  *   2026-07-31  修复主体参考本地上传封面显示「？」：兼容上传响应 image/asset 嵌套图片地址，解析失败时回滚临时卡片
+ *   2026-07-31  分镜首屏优先保留本地缓存文字：后台刷新期间不清空已缓存镜头，仅在无缓存或切换分集时显示整页加载
+ *   2026-07-31  修复分集信息异步到达时缓存未及时恢复：分集 effect 内同步读取当前分集缓存，已有镜头时不再显示整页 loading
+ *   2026-07-31  分镜数据请求失败时区分网络错误与真实空集，避免已有数据未加载时误显示「开始智能分镜」
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -258,7 +261,7 @@ import {
 
 // ─── 分镜行 ───────────────────────────────────────────────────────────────────
 
-function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, onDragStart, onDragOver, onDrop, insertBefore, insertAfter, globalVoiceParams, onSaveGlobalVoice, projectId, generatingImage, generatingVideo, candidates = [], onOpenCreation, onFinalizeToggle, onSelectShot, isSelectMode = false, isSelected = false, isActive = false, onSelect, onToggleSelect, onUploadImage, onUploadVideo }) {
+function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, onDragStart, onDragOver, onDrop, insertBefore, insertAfter, globalVoiceParams, onSaveGlobalVoice, projectId, generatingImage, generatingVideo, candidates = [], mediaLoading = false, onOpenCreation, onFinalizeToggle, onSelectShot, isSelectMode = false, isSelected = false, isActive = false, onSelect, onToggleSelect, onUploadImage, onUploadVideo }) {
   async function handleMainRefFileUpload({ file, tempRef, nextRefs }) {
     const result = await apiUploadCreationImage({ file, category: 'reference', project_id: projectId });
     const uploadedUrl = normalizeImageUrl(getUploadedImageUrl(result));
@@ -316,6 +319,7 @@ function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, o
             image={shot.storyboardImage}
             video={shot.storyboardVideo}
             candidates={candidates}
+            loading={mediaLoading}
             generating={generatingImage || generatingVideo}
             onOpenCreation={onOpenCreation}
             onFinalizeToggle={onFinalizeToggle}
@@ -391,6 +395,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const [isGenerating, setIsGenerating] = useState(false);
   const [episodeGenerationError, setEpisodeGenerationError] = useState(false);
   const [isLoadingEpisode, setIsLoadingEpisode] = useState(false);
+  const [storyboardLoadError, setStoryboardLoadError] = useState(false);
   const [hasMoreShots, setHasMoreShots] = useState(true);
   const [isLoadingMoreShots, setIsLoadingMoreShots] = useState(false);
   const generatingEpisodeRef = useRef(null);
@@ -447,6 +452,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   shotsRef.current = shots;
   const [candidateMediaMap, setCandidateMediaMap] = useState({});
   const [finalizedMediaMap, setFinalizedMediaMap] = useState({});
+  const [mediaLoadingMap, setMediaLoadingMap] = useState({});
   const [timelinePreviewMedia, setTimelinePreviewMedia] = useState(null);
   const [creationPanel, setCreationPanel] = useState(null); // { shot, tab }
   const [activeShotId, setActiveShotId] = useState(null);
@@ -505,6 +511,8 @@ function fallbackCandidates(shot) {
 
   const loadShotCandidates = useCallback(async (currentShots) => {
     const validShots = (currentShots || []).filter((shot) => isBackendStoryboardId(shot?.backendId || shot?.id));
+    const loadingIds = validShots.map((shot) => shot.id);
+    setMediaLoadingMap((prev) => ({ ...prev, ...Object.fromEntries(loadingIds.map((id) => [id, true])) }));
     const entries = await Promise.all(validShots.map(async (shot) => {
       const backendId = shot.backendId || shot.id;
       try {
@@ -540,6 +548,7 @@ function fallbackCandidates(shot) {
       return merged;
     });
     setFinalizedMediaMap((prev) => ({ ...prev, ...nextFinalized }));
+    setMediaLoadingMap((prev) => ({ ...prev, ...Object.fromEntries(loadingIds.map((id) => [id, false])) }));
   }, [projectId]);
 
   async function loadMoreShots() {
@@ -746,21 +755,68 @@ function fallbackCandidates(shot) {
     const episodeId = getEpisodeId(episode);
     if (!episodeId) return;
 
-    // 切换分集时先清空上一集镜头，避免第二集尚未返回时继续显示第一集内容。
+    // 分集对象可能晚于页面首次渲染到达，因此不能只依赖 useState 初始化时的缓存读取。
+    // 在当前分集 effect 内再次同步读取，确保文字缓存先展示，后台请求只负责校验更新。
+    const cacheKey = K.storyboards(projectId, episodeId);
+    const cacheKeyAll = K.storyboards(projectId);
+    const cachedEpisodeData = peekCache(cacheKey, MEDIUM.CONTENT);
+    const cachedAllData = peekCache(cacheKeyAll, MEDIUM.CONTENT);
+    const cachedRaw = Array.isArray(cachedEpisodeData)
+      ? cachedEpisodeData
+      : (Array.isArray(cachedAllData)
+        ? cachedAllData.filter((item) => (item.episode_id ?? item.episodeId) === episodeId)
+        : []);
+    const cachedShots = normalizeStoryboardList(cachedRaw, storyboardSubjects).slice(0, STORYBOARD_PAGE_SIZE);
+    const hasCachedShots = cachedShots.length > 0;
+    const currentEpisode = activeEpisodes.find((item) => getEpisodeId(item) === episodeId);
+    const episodeStatus = String(
+      currentEpisode?.status
+      ?? currentEpisode?.storyboard_status
+      ?? currentEpisode?.storyboardStatus
+      ?? '',
+    ).toLowerCase();
+    const episodeStoryboardCount = Number(
+      currentEpisode?.storyboard_count
+      ?? currentEpisode?.storyboardCount
+      ?? currentEpisode?.shot_count
+      ?? currentEpisode?.shotCount
+      ?? 0,
+    );
+    const episodeHasKnownStoryboard = episodeStoryboardCount > 0
+      || ['storyboarded', 'generated', 'videos_ready', 'no_image', 'images_ready', 'edited'].includes(episodeStatus);
+    const episodeIsExplicitlyUngenerated = ['pending', 'draft', 'initial', 'not_started', 'not-started'].includes(episodeStatus);
+    const shouldTreatEmptyAsLoadError = !episodeIsExplicitlyUngenerated
+      && (episodeHasKnownStoryboard || !currentEpisode);
+    let cancelled = false;
+
+    // 切换分集时清空上一集镜头，避免第二集尚未返回时继续显示第一集内容。
     if (loadedEpisodeRef.current !== episodeId) {
       loadedEpisodeRef.current = episodeId;
-      setShots([]);
-      setHasMoreShots(true);
-      setIsLoadingMoreShots(false);
-      setIsLoadingEpisode(true);
+      if (hasCachedShots) {
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          setShots(cachedShots);
+          hydrateCreationForms(cachedShots);
+          setIsLoadingEpisode(false);
+          setStoryboardLoadError(false);
+          loadShotCandidates(cachedShots);
+        });
+      } else {
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          setShots([]);
+          setIsLoadingEpisode(true);
+          setStoryboardLoadError(false);
+        });
+      }
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        setHasMoreShots(true);
+        setIsLoadingMoreShots(false);
+      });
       requestAnimationFrame(() => setEpisodeGenerationError(false));
     }
 
-    // 优先订阅带 episodeId 的 key，fallback 订阅 :all
-    const cacheKey = K.storyboards(projectId, episodeId);
-    const cacheKeyAll = K.storyboards(projectId);
-
-    let cancelled = false;
     const onlyCurrentEpisode = (data) => {
       if (!Array.isArray(data)) return [];
       return data.filter((item) => (item.episode_id ?? item.episodeId) === episodeId);
@@ -780,10 +836,12 @@ function fallbackCandidates(shot) {
           setShots(visible);
           hydrateCreationForms(visible);
           loadShotCandidates(visible);
+          setStoryboardLoadError(false);
         } else {
           // 空数组：只有在当前 shots 也为空时才清空，避免剧本定稿后
           // episode ID 变更导致 API 用新 ID 查不到数据而误清已有分镜
           setShots((prev) => (prev.length > 0 ? prev : normalized));
+          if (shouldTreatEmptyAsLoadError) setStoryboardLoadError(true);
         }
         if (!cancelled) setIsLoadingEpisode(false);
       })
@@ -791,6 +849,7 @@ function fallbackCandidates(shot) {
         if (!cancelled) {
           console.error('[StoryboardPage] 加载分镜失败:', err);
           setIsLoadingEpisode(false);
+          setStoryboardLoadError(true);
         }
       });
 
@@ -804,11 +863,12 @@ function fallbackCandidates(shot) {
         setShots(visible);
         hydrateCreationForms(visible);
         setIsLoadingEpisode(false);
+        setStoryboardLoadError(false);
         loadShotCandidates(visible);
       } else {
+        // 空缓存不是“加载完成”：缓存可能刚被清理、持久化失败，或仍在等待接口校验。
+        // 保持 loading，避免缓存订阅先发 [] 时误显示「开始智能分镜」。
         setShots((prev) => (prev.length > 0 ? prev : normalized));
-        setIsLoadingEpisode(false);
-        loadShotCandidates(normalized);
       }
     });
     const unsub2 = subscribe(cacheKeyAll, (data) => {
@@ -820,10 +880,11 @@ function fallbackCandidates(shot) {
         setHasMoreShots(normalized.length >= STORYBOARD_PAGE_SIZE);
         setShots(visible);
         setIsLoadingEpisode(false);
+        setStoryboardLoadError(false);
         loadShotCandidates(visible);
       } else {
+        // :all 缓存同样不能用空数组结束当前分集的加载状态，交给接口请求确认。
         setShots((prev) => (prev.length > 0 ? prev : normalized));
-        setIsLoadingEpisode(false);
       }
     });
 
@@ -832,7 +893,7 @@ function fallbackCandidates(shot) {
       unsub1();
       unsub2();
     };
-  }, [projectId, episode, storyboardSubjects, homeIsGenerating, isGenerating, generateError, episodeGenerationError, loadShotCandidates]);
+  }, [projectId, episode, activeEpisodes, storyboardSubjects, homeIsGenerating, isGenerating, generateError, episodeGenerationError, loadShotCandidates]);
 
   // 当主体数据变化时（如主体页修改了定稿图），一次性用三类主体重新富化已有 shots。
   useEffect(() => {
@@ -1723,7 +1784,8 @@ function fallbackCandidates(shot) {
   // homeIsGenerating 期间如果已有分镜数据，直接展示数据，不再显示全屏 loading
   const showGeneratingLoading = (isGenerating || homeIsGenerating) && shots.length === 0;
   const showGeneratingError = (!!generateError || episodeGenerationError) && shots.length === 0 && !hasManuallyInteracted.current;
-  const showEpisodeStart = !isLoadingEpisode && !showGeneratingLoading && shots.length === 0 && !hasManuallyInteracted.current;
+  const showStoryboardLoadError = storyboardLoadError && !showGeneratingLoading && shots.length === 0 && !hasManuallyInteracted.current;
+  const showEpisodeStart = !storyboardLoadError && !isLoadingEpisode && !showGeneratingLoading && shots.length === 0 && !hasManuallyInteracted.current;
   const displayLoadingText = statusMessage || loadingTexts[loadingTextIndex];
   const totalDuration = shots.reduce((sum, shot) => {
     const value = Number.parseFloat(shot.params?.duration ?? shot.duration ?? 0);
@@ -1780,7 +1842,7 @@ function fallbackCandidates(shot) {
     );
   }
 
-  if (showGeneratingError || showEpisodeStart) {
+  if (showStoryboardLoadError || showGeneratingError || showEpisodeStart) {
     return (
       <div style={{
         position: 'absolute', inset: 0, marginBottom: '24px', marginRight: '32px',
@@ -1797,6 +1859,21 @@ function fallbackCandidates(shot) {
           projectRatio={projectRatio}
           timeline={<StoryboardFinalizedTimeline projectRatio={projectRatio} shots={[]} finalizedMap={{}} />}
         >
+          {showStoryboardLoadError ? (
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' }}>
+              <div style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif", fontSize: '14px', lineHeight: '20px', color: 'rgba(255,255,255,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' }}>
+                <span>抱歉，加载数据失败，请</span>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  style={{ margin: 0, padding: 0, border: 0, background: 'transparent', color: '#2DC3E1', font: 'inherit', cursor: 'pointer' }}
+                >
+                  刷新
+                </button>
+                <span>重试</span>
+              </div>
+            </div>
+          ) : (
           <div style={{
             flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
             backgroundColor: 'transparent',
@@ -1812,6 +1889,7 @@ function fallbackCandidates(shot) {
               开始智能分镜
             </Button>
           </div>
+          )}
         </StoryboardContentArea>
       </div>
     );
@@ -1846,6 +1924,7 @@ function fallbackCandidates(shot) {
           projectRatio={projectRatio}
           shots={shots}
           finalizedMap={finalizedMediaMap}
+          mediaLoadingMap={mediaLoadingMap}
           selectedShotId={activeShotId}
           onSelectShot={selectActiveShot}
           onCreate={openCreationPanel}
@@ -1956,6 +2035,7 @@ function fallbackCandidates(shot) {
             genImageHistoryMap={genImageHistoryMap}
             genVideoHistoryMap={genVideoHistoryMap}
             candidates={candidateMediaMap[shot.id] || []}
+            mediaLoading={mediaLoadingMap[shot.id] === true}
             onOpenCreation={() => openCreationPanel(shot)}
             onFinalizeToggle={(media) => handleFinalizeToggle(shot, media)}
             onSelectShot={() => selectActiveShot(shot.id)}

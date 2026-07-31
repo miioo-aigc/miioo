@@ -72,6 +72,7 @@
  *   2026-07-15  抽离主体编辑面板标题和关闭动作，页面保留面板生命周期
  *   2026-07-15  抽离主体名称、描述、提示词字段组合，页面保留字段状态与保存回调
  *   2026-07-15  抽离主体音色选择弹窗，性别和年龄复用通用 Select
+ *   2026-07-31  主体卡片支持直接清除已添加音色，兼容音色库删除后的旧引用
  *   2026-07-15  抽离主体页工具栏和标签导航，页面保留业务状态与回调
  *   2026-07-15  抽离主体详情候选图/参考图映射、去重和单一定稿纯函数
  *   2026-07-15  抽离参考图详情快照转换和主体生图参数组装纯函数
@@ -1693,6 +1694,36 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     }
   };
 
+  const handleRemoveSubjectVoice = async (subject) => {
+    if (!subject?.id) return;
+    const subjectId = subject.id;
+    const previousVoiceId = charVoices[subjectId] ?? subject.voice_id ?? null;
+    if (!previousVoiceId) return;
+
+    // 先清除卡片上的旧引用，音色库删除后仍可解除主体与失效音色的绑定。
+    setCharVoices((prev) => ({ ...prev, [subjectId]: null }));
+    setChars((prev) => prev.map((character) => character.id === subjectId
+      ? { ...character, voice_id: null, voice_name: null, voice_preview_url: null }
+      : character));
+
+    try {
+      await apiUpdateSubject(projectId, subjectId, { voice_id: null });
+      showBatchToast('音色已取消', 'success');
+    } catch (err) {
+      setCharVoices((prev) => ({ ...prev, [subjectId]: previousVoiceId }));
+      setChars((prev) => prev.map((character) => character.id === subjectId
+        ? {
+          ...character,
+          voice_id: previousVoiceId,
+          voice_name: character.voice_name ?? subject.voice_name ?? null,
+          voice_preview_url: character.voice_preview_url ?? subject.voice_preview_url ?? null,
+        }
+        : character));
+      console.error('[SubjectPage] 取消主体音色失败:', err);
+      showBatchToast(err?.message || '取消音色失败，请重试', 'error');
+    }
+  };
+
   useEffect(() => {
     if (chars.length > 0) onUnlockStep?.('subject');
   }, [chars.length, onUnlockStep]);
@@ -1766,6 +1797,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         activeTab, chars, scenes, props, charVoices, voiceList, selectedChar, selectedScene, selectedProp,
         batchLoadingSubjects, charsLoadError, scenesLoadError, propsLoadError,
         onRetryChars, onRetryScenes, onRetryProps, onVoiceClick: setVoiceModalChar,
+        onVoiceRemove: handleRemoveSubjectVoice,
         onSelect: (tab, item) => {
           if (tab === 'char') setSelectedChar(item);
           else if (tab === 'scene') setSelectedScene(item);

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import Checkbox from '../Checkbox';
+import DotsLoading from '../DotsLoading';
 import NarrationAddButton from './NarrationAddButton';
 import { MediaHoverPreview } from './MainRefCol';
 
@@ -129,7 +130,7 @@ function CandidateCard({ item, finalized, onSelect, onPreview }) {
   );
 }
 
-export default function StoryboardShotMediaColumn({ candidates = [], image, video, generating, onOpenCreation, onUpload, onFinalizeToggle, onSelectShot }) {
+export default function StoryboardShotMediaColumn({ candidates = [], image, video, generating, loading = false, onOpenCreation, onUpload, onFinalizeToggle, onSelectShot }) {
   const inputRef = useRef(null);
   const [preview, setPreview] = useState(null);
   const media = candidates.length > 0 ? candidates : [image, video].filter(Boolean).map((item) => ({ ...item, media_type: item.type?.startsWith('video') ? 'video' : 'image', is_finalized: true }));
@@ -174,7 +175,12 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
         {media.length > 0 && <NarrationAddButton tooltip="创作" onClick={handleOpenCreation} />}
       </div>
       {generating && <div style={{ height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2DC3E1', font: `12px ${FONT}` }}>生成中</div>}
-      {!generating && media.length === 0 && <PlusButton tooltip="创作" onClick={handleOpenCreation} />}
+      {!generating && loading && media.length === 0 && (
+        <div style={{ width: '60px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', background: '#101111' }} aria-label="正在加载分镜媒体" role="status">
+          <DotsLoading size={4} color="#2DC3E1" gap={3} />
+        </div>
+      )}
+      {!generating && !loading && media.length === 0 && <PlusButton tooltip="创作" onClick={handleOpenCreation} />}
       {!generating && media.length > 0 && <div style={{ minHeight: 0, flex: 1, display: 'flex', gap: '4px', flexFlow: 'column nowrap', overflowY: 'auto', overflowX: 'hidden', width: 'fit-content' }}>
         {media.map((item, index) => (
           <CandidateCard key={item.id || item.url || index} item={item} finalized={item.is_finalized} onSelect={() => { onSelectShot?.(); onFinalizeToggle?.(item); }} onPreview={handlePreview} />

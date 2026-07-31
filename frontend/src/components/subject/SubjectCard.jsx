@@ -13,6 +13,7 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 SubjectPage 抽离主体卡片、更多菜单和新增卡片
+ *   2026-07-31  音色文本悬停时显示关闭按钮，支持直接清除已添加音色
  */
 import { useEffect, useRef, useState } from 'react';
 import DotsLoading from '../DotsLoading';
@@ -59,6 +60,14 @@ function HeadphoneIcon({ color = '#2DC3E1' }) {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }} aria-hidden="true">
       <path d="M3.333 12V8C3.333 5.423 5.423 3.333 8 3.333C10.577 3.333 12.667 5.423 12.667 8V12M3.333 8.667H2C1.632 8.667 1.333 8.965 1.333 9.333V12C1.333 12.368 1.632 12.667 2 12.667H3.333V8.667ZM12.667 8.667H14C14.368 8.667 14.667 8.965 14.667 9.333V12C14.667 12.368 14.368 12.667 14 12.667H12.667V8.667Z" stroke={color} strokeLinecap="round" strokeLinejoin="round" />
       <path d="M5.333 10.667H6.667L7.333 8.667L8.667 12.667L9.333 10.667H10.667" stroke={color} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CloseIcon({ color = '#FFFFFFCC' }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M3.333 3.333L12.667 12.667M12.667 3.333L3.333 12.667" stroke={color} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -141,8 +150,9 @@ function SubjectMoreMenu({ onDownload, onDelete }) {
   );
 }
 
-export function SubjectCard({ name, desc, imageUrl, voice, voiceName, voicePreviewUrl, onVoiceClick, onClick, onDownloadImage, onDeleteSubject, loading = false, selected = false, emptyIcon }) {
+export function SubjectCard({ name, desc, imageUrl, voice, voiceName, voicePreviewUrl, onVoiceClick, onVoiceRemove, onClick, onDownloadImage, onDeleteSubject, loading = false, selected = false, emptyIcon }) {
   const [hovered, setHovered] = useState(false);
+  const [voiceHovered, setVoiceHovered] = useState(false);
   const [voicePlaying, setVoicePlaying] = useState(false);
   const voiceAudioRef = useRef(null);
 
@@ -180,13 +190,43 @@ export function SubjectCard({ name, desc, imageUrl, voice, voiceName, voicePrevi
         <div className="inline-block font-medium text-[#FFFFFFE6] text-sm/5 truncate max-w-full" style={{ fontFamily: FONT_MEDIUM, height: '20px' }}>{name}</div>
         <div className="text-[#FFFFFF66] line-clamp-2" style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '17px', flex: '0 1 auto', height: '34px' }}>{desc}</div>
         {onVoiceClick !== undefined && (
-          <div className="flex items-center justify-between" style={{ gap: '6px' }} onClick={(event) => { event.stopPropagation(); onVoiceClick?.(); }}>
+          <div
+            className="flex items-center justify-between"
+            style={{ gap: '6px' }}
+            onMouseEnter={() => setVoiceHovered(true)}
+            onMouseLeave={() => setVoiceHovered(false)}
+            onClick={(event) => { event.stopPropagation(); onVoiceClick?.(); }}
+          >
             <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '17px', color: '#FFFFFFCC', flexShrink: 0 }}>选择音色：</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <button type="button" onClick={(event) => { event.stopPropagation(); onVoiceClick?.(); }} style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: FONT, fontSize: '12px', lineHeight: '17px', color: voice ? '#2DC3E1' : '#FFFFFFCC' }}>{voiceName || voice || '未选择'}</button>
               <button type="button" title={!voice ? '请先选择音色' : '试听'} disabled={!voice} onClick={handleVoicePlay} style={{ background: 'transparent', border: 'none', padding: 0, cursor: voice ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                 {voicePlaying ? <PlayingWaveIcon color="#2DC3E1" size={16} /> : <HeadphoneIcon color={voice ? '#2DC3E1' : '#FFFFFF66'} />}
               </button>
+              {voice && (
+                <button
+                  type="button"
+                  aria-label="取消已添加音色"
+                  title="取消音色"
+                  onClick={(event) => { event.stopPropagation(); onVoiceRemove?.(); }}
+                  style={{
+                    width: voiceHovered ? '14px' : '0px',
+                    opacity: voiceHovered ? 1 : 0,
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    transition: 'width 0.15s ease, opacity 0.12s ease',
+                  }}
+                >
+                  <CloseIcon />
+                </button>
+              )}
             </div>
           </div>
         )}

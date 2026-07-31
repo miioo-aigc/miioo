@@ -34,6 +34,51 @@ function normalizeStoryboardImageSize(value) {
   return aliasMap[trimmed] || trimmed;
 }
 
+// 分镜列表缓存只服务于首屏文字和结构化字段。媒体候选会单独从
+// media-candidates 接口读取，避免把大体积媒体元数据或 data URL 写进 localStorage。
+function compactStoryboardForCache(item = {}) {
+  if (!item || typeof item !== 'object') return item;
+  const compact = { ...item };
+  const dropLargeValue = (value) => {
+    if (typeof value !== 'string') return value;
+    if (value.startsWith('data:') || value.length > 200_000) return undefined;
+    return value;
+  };
+
+  for (const key of ['image_url', 'video_url', 'imageUrl', 'videoUrl', 'thumbnail_url', 'poster_url', 'reference_image_urls', 'reference_images']) {
+    if (!(key in compact)) continue;
+    if (Array.isArray(compact[key])) {
+      compact[key] = compact[key]
+        .map((value) => {
+          if (typeof value === 'string') return dropLargeValue(value);
+          if (!value || typeof value !== 'object') return value;
+          const next = { ...value };
+          for (const urlKey of ['url', 'image_url', 'imageUrl', 'thumbnail_url', 'thumbnailUrl', 'poster_url', 'posterUrl']) {
+            if (urlKey in next) next[urlKey] = dropLargeValue(next[urlKey]);
+          }
+          return next;
+        })
+        .filter(Boolean);
+    } else {
+      compact[key] = dropLargeValue(compact[key]);
+    }
+  }
+
+  // 某些历史记录会把原始供应商响应或二进制内容放进 gen_params，
+  // 保留生成参数本身，但移除明显的大字段，保证文字缓存可持久化。
+  const genParams = compact.gen_params ?? compact.genParams;
+  if (genParams && typeof genParams === 'object') {
+    const nextParams = { ...genParams };
+    for (const [key, value] of Object.entries(nextParams)) {
+      if (typeof value === 'string' && (value.startsWith('data:') || value.length > 200_000)) delete nextParams[key];
+    }
+    if (nextParams.creation_form) delete nextParams.creation_form;
+    compact.gen_params = nextParams;
+    delete compact.genParams;
+  }
+  return compact;
+}
+
 export async function apiGetStoryboards(projectId, { episode_id, limit, offset = 0, include_gen_params = true } = {}) {
   const isPagedRequest = Number.isFinite(limit);
   const fetchPage = async (withGenParams = include_gen_params) => {
@@ -61,9 +106,10 @@ export async function apiGetStoryboards(projectId, { episode_id, limit, offset =
     }
     const data = await res.json();
     const items = Array.isArray(data) ? data : data?.list || data?.items || [];
-    return episode_id
+    const filtered = episode_id
       ? items.filter((item) => (item.episode_id ?? item.episodeId) === episode_id)
       : items;
+    return filtered;
   };
 
   // include_gen_params 是可选字段。部分历史分镜的生成参数可能无法被后端
@@ -87,7 +133,7 @@ export async function apiGetStoryboards(projectId, { episode_id, limit, offset =
   const raw = await cached(
     K.storyboards(projectId, episode_id),
     fetchPageWithFallback,
-    { medium: MEDIUM.CONTENT, ttl: TTL.CONTENT },
+    { medium: MEDIUM.CONTENT, ttl: TTL.CONTENT, serialize: (data) => Array.isArray(data) ? data.map(compactStoryboardForCache) : data },
   );
   // 兼容旧缓存可能存的非数组格式
   if (Array.isArray(raw)) return raw;

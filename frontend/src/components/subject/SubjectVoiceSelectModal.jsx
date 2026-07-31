@@ -27,6 +27,8 @@
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 SubjectPage 抽离主体音色选择弹窗
  *   2026-07-15  性别、年龄筛选器复用 components/ui/Select
+ *   2026-07-31  音色卡片支持再次点击取消选择
+ *   2026-07-31  增加音色卡片悬停态，无预览链接的音色不可选择
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DotsLoading from '../DotsLoading';
@@ -79,7 +81,9 @@ function PlayingWaveIcon({ color = '#2DC3E1', size = 16 }) {
 
 function VoiceCard({ label, active, onClick, previewUrl }) {
   const [playing, setPlaying] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const audioRef = useRef(null);
+  const selectable = Boolean(previewUrl);
 
   useEffect(() => () => {
     if (audioRef.current) {
@@ -108,13 +112,17 @@ function VoiceCard({ label, active, onClick, previewUrl }) {
 
   return (
     <div
-      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={() => { if (selectable) onClick?.(); }}
       style={{
         flex: '0 0 23.4%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: '6px', borderRadius: '8px', padding: '8px', cursor: 'pointer',
-        background: '#1D1E1E',
-        border: `1px solid ${active ? '#2DC3E1' : '#FFFFFF14'}`,
-        transition: 'border-color 0.12s',
+        gap: '6px', borderRadius: '8px', padding: '8px',
+        cursor: selectable ? 'pointer' : 'not-allowed',
+        opacity: selectable ? 1 : 0.45,
+        background: selectable && hovered ? '#252727' : '#1D1E1E',
+        border: `1px solid ${active && selectable ? '#2DC3E1' : selectable && hovered ? '#FFFFFF33' : '#FFFFFF14'}`,
+        transition: 'background-color 0.12s, border-color 0.12s, opacity 0.12s',
       }}
     >
       <button
@@ -122,7 +130,7 @@ function VoiceCard({ label, active, onClick, previewUrl }) {
         onClick={handlePlay}
         disabled={!previewUrl}
         aria-label={playing ? `停止试听${label}` : `试听${label}`}
-        style={{ background: 'transparent', border: 'none', padding: 0, cursor: previewUrl ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: previewUrl ? 1 : 0.3 }}
+        style={{ background: 'transparent', border: 'none', padding: 0, cursor: selectable ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
         {playing
           ? <PlayingWaveIcon color="#2DC3E1" size={16} />
@@ -244,7 +252,7 @@ export default function SubjectVoiceSelectModal({ open, onClose, onConfirm, curr
                   key={voice.voice_id}
                   label={voice.name}
                   active={selected === voice.voice_id}
-                  onClick={() => setSelected(voice.voice_id)}
+                  onClick={() => setSelected((current) => current === voice.voice_id ? '' : voice.voice_id)}
                   previewUrl={voice.preview_url}
                 />
               ))}

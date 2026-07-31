@@ -51,10 +51,26 @@ function writeRaw(medium, key, entry) {
     memStore.set(key, entry);
     return;
   }
+  const store = medium === 'session' ? sessionStorage : localStorage;
   try {
-    const store = medium === 'session' ? sessionStorage : localStorage;
     store.setItem(NS + key, JSON.stringify(entry));
   } catch (err) {
+    // 分镜列表曾经可能把视频相关大字段写进 localStorage。配额不足时，
+    // 只清理同项目的旧分镜缓存，给当前已经压缩过的文字缓存腾空间。
+    if (medium === 'local' && key.startsWith('storyboards:') && err?.name === 'QuotaExceededError') {
+      try {
+        const staleKeys = [];
+        for (let i = 0; i < store.length; i += 1) {
+          const fullKey = store.key(i);
+          if (fullKey?.startsWith(`${NS}storyboards:`) && fullKey !== `${NS}${key}`) staleKeys.push(fullKey);
+        }
+        staleKeys.forEach((staleKey) => store.removeItem(staleKey));
+        store.setItem(NS + key, JSON.stringify(entry));
+        return;
+      } catch {
+        // 清理后仍不足时继续走内存降级，不能阻塞页面数据展示。
+      }
+    }
     // localStorage 写满（QuotaExceeded）→ 降级到内存，不阻塞业务
     console.warn('[cache] 持久化失败，降级内存:', key, err?.name);
     memStore.set(key, entry);
@@ -107,6 +123,7 @@ export async function cached(key, fetcher, opts = {}) {
     swr = true,
     equals,
     onUpdate,
+    serialize = (value) => value,
   } = opts;
 
   const entry = readRaw(medium, key);
@@ -119,15 +136,15 @@ export async function cached(key, fetcher, opts = {}) {
 
   // 2. 命中但过期（或 ttl=0）→ SWR：先返回旧值，后台校验
   if (entry && swr) {
-    revalidate(key, fetcher, medium, entry, equals, onUpdate);
+    revalidate(key, fetcher, medium, entry, equals, onUpdate, serialize);
     return entry.d;
   }
 
   // 3. 无缓存 → 必须等请求（带并发去重）
-  return fetchAndStore(key, fetcher, medium, entry, equals, onUpdate);
+  return fetchAndStore(key, fetcher, medium, entry, equals, onUpdate, serialize);
 }
 
-function fetchAndStore(key, fetcher, medium, prevEntry, equals, onUpdate) {
+function fetchAndStore(key, fetcher, medium, prevEntry, equals, onUpdate, serialize) {
   if (inflight.has(key)) return inflight.get(key);
 
   const startEpoch = epoch;
@@ -138,7 +155,7 @@ function fetchAndStore(key, fetcher, medium, prevEntry, equals, onUpdate) {
       // 若在请求期间发生了 invalidate（epoch 已递增），丢弃本次结果，不覆盖新数据
       if (startEpoch !== epoch) return data;
       const changed = !prevEntry || !isEqual(prevEntry.d, data, equals);
-      writeRaw(medium, key, { t: now(), d: data });
+      writeRaw(medium, key, { t: now(), d: serialize(data) });
       if (changed) {
         notify(key, data);
         onUpdate?.(data);
@@ -154,9 +171,9 @@ function fetchAndStore(key, fetcher, medium, prevEntry, equals, onUpdate) {
 }
 
 // 后台静默校验：失败不抛错（保留旧缓存）
-function revalidate(key, fetcher, medium, prevEntry, equals, onUpdate) {
+function revalidate(key, fetcher, medium, prevEntry, equals, onUpdate, serialize) {
   if (inflight.has(key)) return;
-  fetchAndStore(key, fetcher, medium, prevEntry, equals, onUpdate).catch((err) => {
+  fetchAndStore(key, fetcher, medium, prevEntry, equals, onUpdate, serialize).catch((err) => {
     console.warn('[cache] 后台校验失败，保留旧缓存:', key, err?.message);
   });
 }

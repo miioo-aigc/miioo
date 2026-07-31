@@ -1,5 +1,11 @@
 # 组件重构盘点基线
 
+## 2026-07-31 主体首屏数据加载态修复
+
+- `Home.jsx` 将角色、场景、道具三类主体的首屏请求状态传入 `SubjectPage`；项目切换和请求未完成期间保持 `subjectsLoading`。
+- `SubjectPage` 在主体数据仍为空且请求未完成时复用 `DotsLoading`；只有主体列表请求完成后，才允许已有的抽取失败提示显示。
+- 已有主体数据时不遮挡页面，后台刷新期间继续回显现有卡片；本次不改变主体抽取任务轮询和接口调用顺序。
+
 ## 2026-07-31 分镜主体参考本地上传封面显示修复
 
 - `MainRefCol` 中的“？”是无 `image.url` 时的主动占位，不是图片请求失败图标；本次沿上传回调链路确认问题属于响应字段适配遗漏。
@@ -892,7 +898,7 @@
 - 新增组件：`SubjectVoiceSelectModal`，负责音色库加载、中文音色筛选、性别/年龄筛选、四列音色网格、试听、取消和确认布局。
 - 复用基础组件：性别和年龄筛选统一使用 `src/components/ui/Select`；关闭、取消和确认动作使用 `IconButton` / `Button`。
 - 组件边界：弹窗仅通过 `open`、`currentVoice`、`onClose`、`onConfirm`、`onVoicesLoaded` 与页面通信；主体音色保存 API、主体列表状态和 Toast 仍由 `SubjectPage` 持有。
-- 行为保持：打开时调用 `apiGetVoiceLibrary({ provider: 'miioo', skipCache: true })`，只展示中文音色，试听音频在卡片内部清理，确认时先回调页面保存逻辑再关闭弹窗。
+- 行为保持：打开时调用 `apiGetVoiceLibrary({ provider: 'miioo', page: 1, pageSize: 20, skipCache: true })`，展示中文音色，兼容 `zh-CN` 和缺失语言字段，试听音频在卡片内部清理，确认时先回调页面保存逻辑再关闭弹窗。
 - 页面规模：`SubjectPage.jsx` 从约 2729 行降至 2427 行，移除页面内音色筛选器、试听图标、音色卡片和弹窗实现约 300 行。
 - 风险检查：已移除旧 `VoiceSelectModal` 及 `apiGetVoiceLibrary` 页面导入，统一通过主体组件目录入口接入；未发现 `VoiceSelectModal`、`SelectField`、`VoiceCard` 等遗留引用。
 - 本轮验证：`git diff --check`、主体音色组件定向 ESLint、`npm run build`、`npm run check:architecture` 均通过；架构检查仅输出历史超长页面告警。
@@ -1657,3 +1663,9 @@
 - `StoryboardPage.jsx` 在 `POST /storyboards/generate` 返回任务 ID 后立即调用 `GET /api/tasks/{task_id}`，后续按 3 秒间隔继续轮询；不再出现请求已创建但页面长时间没有后续任务请求的空档。
 - 重新分镜任务以 `type: 'storyboard'` 写入现有任务持久化记录；刷新浏览器或离开页面后返回分镜页，会按当前分集恢复任务状态，任务终态后重新读取分镜列表和候选媒体。
 - 任务成功或失败都会清理持久化快照；失败会解除加载态并展示任务错误信息。同步返回分镜数组的旧接口响应仍保持兼容。
+
+## 2026-07-31 分镜首轮数据请求加载态修复
+
+- `StoryboardPage` 增加当前分集的数据请求完成标记，并绑定当前分集 ID，避免分集对象异步到达、切换分集或首次挂载时，在接口尚未返回前误显示「开始智能分镜」或加载失败态。
+- 无缓存镜头时，当前分集接口请求完成前持续显示 `DotsLoading`；请求完成后若确认为空，才显示开始智能分镜或错误反馈。
+- 已有本地缓存镜头时仍优先回显缓存，不改变分镜首屏缓存体验；后台请求完成后再更新当前分集的完成标记。

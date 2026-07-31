@@ -76,7 +76,8 @@ export default function SubjectGrid({
             imageUrl={item.imageUrl}
             emptyIcon={emptyIcon}
             voice={isCharacterTab ? voiceId : undefined}
-            voiceName={isCharacterTab ? (item.voice_name ?? voice?.name) : undefined}
+            // 音色 ID 已清空时不能继续展示主体接口返回的旧 voice_name。
+            voiceName={isCharacterTab && voiceId ? (item.voice_name ?? voice?.name) : undefined}
             voicePreviewUrl={isCharacterTab ? (item.voice_preview_url ?? voice?.preview_url) : undefined}
             onVoiceClick={isCharacterTab ? () => onVoiceClick?.(item) : undefined}
             onVoiceRemove={isCharacterTab ? () => onVoiceRemove?.(item) : undefined}

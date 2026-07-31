@@ -411,18 +411,20 @@ function normalizeVoiceItem(voice) {
 }
 
 function normalizeVoiceListResponse(payload) {
-  const list = Array.isArray(payload) ? payload : payload?.list ?? payload?.items ?? payload?.voices ?? [];
+  const response = payload?.data ?? payload?.result ?? payload;
+  const list = Array.isArray(response) ? response : response?.list ?? response?.items ?? response?.voices ?? [];
   return list.map(normalizeVoiceItem);
 }
 
 function normalizeVoiceLibraryPageResponse(payload, paramsModel) {
+  const response = payload?.data ?? payload?.result ?? payload;
   return {
-    list: normalizeVoiceListResponse(payload),
-    total: Number(payload?.total || 0),
-    enabledTotal: Number(payload?.enabled_total || payload?.enabledTotal || 0),
-    page: Number(payload?.page || paramsModel.page) || paramsModel.page,
-    pageSize: Number(payload?.page_size || payload?.pageSize || paramsModel.pageSize) || paramsModel.pageSize,
-    hasMore: Boolean(payload?.has_more ?? payload?.hasMore ?? false),
+    list: normalizeVoiceListResponse(response),
+    total: Number(response?.total || 0),
+    enabledTotal: Number(response?.enabled_total || response?.enabledTotal || 0),
+    page: Number(response?.page || paramsModel.page) || paramsModel.page,
+    pageSize: Number(response?.page_size || response?.pageSize || paramsModel.pageSize) || paramsModel.pageSize,
+    hasMore: Boolean(response?.has_more ?? response?.hasMore ?? false),
   };
 }
 

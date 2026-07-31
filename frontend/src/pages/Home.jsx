@@ -32,7 +32,7 @@
  *     │           微信回调与鉴权初始化                                   L559 / L570
  *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L590 / L753
  *     ├─ [底部导航配置] bottomNavItems / ApiConfigBubble           L926–L940
- *     └─ [渲染] 页面业务模块统一通过 Suspense 按需加载              L984–L1325
+ *     └─ [渲染] 页面业务模块统一通过 Suspense 按需加载              L1430–L1657
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-07-16  修复商务合作二维码定位、无 token 初始化和微信回调错误引用；GlobalSettings 按项目 ID 重建草稿
@@ -61,8 +61,10 @@
  *   2026-07-24  持久化分镜生成任务，支持刷新/返回后恢复轮询及失败重试
  *   2026-07-30  覆盖重抽任务提交后立即查询任务状态，并统一兼容嵌套任务 ID
  *   2026-07-06  新增 subject cache 订阅 useEffect，实时同步 sharedChars/sharedScenes/sharedProps
+ *   2026-07-31  主体缓存订阅接受空列表结果，确保主体音色解绑状态不会被旧缓存保留
  *   2026-07-28  剧集进度改按工作流解锁状态展示，视频生成数量不再等同于“剪辑中”
  *   2026-07-28  接入存储空间展示、容量提醒、资产库跳转及写入后的全满警告
+ *   2026-07-31  项目列表加载动画占满内容区并垂直、水平居中显示
  *   2026-07-01  初始结构索引建立
  */
 
@@ -97,6 +99,7 @@ import NewProjectModal from '../components/NewProjectModal';
 import WatermarkSettingsModal from '../components/WatermarkSettingsModal';
 import NotificationCenterModal from '../components/NotificationCenterModal';
 import DotsLoading from '../components/DotsLoading';
+import PageErrorBoundary from '../components/feedback/PageErrorBoundary';
 import { BG_VIDEOS, NAV_ITEMS, BOTTOM_NAV_ITEMS } from '../components/home/HomeNavigationConfig';
 import {
   HomeSloganText,
@@ -168,6 +171,18 @@ function clearPendingStoryboardGeneration(projectId) {
   localStorage.removeItem(getStoryboardGenerationTaskKey(projectId));
 }
 
+function readUnlockedSteps(projectId) {
+  if (!projectId) return new Set();
+  try {
+    const raw = localStorage.getItem(`miioo_unlocked_steps_${projectId}`);
+    const value = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(value) ? value : []);
+  } catch {
+    localStorage.removeItem(`miioo_unlocked_steps_${projectId}`);
+    return new Set();
+  }
+}
+
 export default function Home({ onGoToAdmin }) {
   const [activeKey, setActiveKey] = useState(() => {
     // 只有明确保存了非 home 的 activeKey 才恢复，否则默认 home
@@ -197,9 +212,9 @@ export default function Home({ onGoToAdmin }) {
   const [sharedProps, setSharedProps] = useState(null);
   // 主体分页 meta：{ cursor, hasMore, loading, rawList }
   const [subjectPageMeta, setSubjectPageMeta] = useState({
-    chars:  { nextOffset: null, hasMore: false, loading: false, rawList: [] },
-    scenes: { nextOffset: null, hasMore: false, loading: false, rawList: [] },
-    props:  { nextOffset: null, hasMore: false, loading: false, rawList: [] },
+    chars:  { nextOffset: null, hasMore: false, loading: true, rawList: [] },
+    scenes: { nextOffset: null, hasMore: false, loading: true, rawList: [] },
+    props:  { nextOffset: null, hasMore: false, loading: true, rawList: [] },
   });
   const [extractError, setExtractError] = useState(null);
   const [extractErrorProjectId, setExtractErrorProjectId] = useState(null);
@@ -378,6 +393,11 @@ export default function Home({ onGoToAdmin }) {
   // 统一的项目数据加载函数
   const loadProjectDetails = async (projectId) => {
     setIsLoadingProject(true);
+    setSubjectPageMeta({
+      chars: { nextOffset: null, hasMore: false, loading: true, rawList: [], error: false },
+      scenes: { nextOffset: null, hasMore: false, loading: true, rawList: [], error: false },
+      props: { nextOffset: null, hasMore: false, loading: true, rawList: [], error: false },
+    });
     // 每次进入项目时主动失效 episodes 和 overview 缓存，确保拿到后端最新数据
     invalidate(K.episodes(projectId));
     invalidate(K.projectOverview(projectId));
@@ -431,8 +451,7 @@ export default function Home({ onGoToAdmin }) {
         // 恢复步骤
         const savedStep = localStorage.getItem(`miioo_active_step_${projectId}`);
         setActiveStep(savedStep || 'script');
-        const savedUnlocked = localStorage.getItem(`miioo_unlocked_steps_${projectId}`);
-        if (savedUnlocked) setUnlockedSteps(new Set(JSON.parse(savedUnlocked)));
+        setUnlockedSteps(readUnlockedSteps(projectId));
         const savedFinalized = localStorage.getItem(`miioo_finalized_since_extraction_${projectId}`);
         setScriptFinalizedSinceExtraction(savedFinalized === 'true');
         // 立即关掉 loading，让 StoryboardPage 先渲染缓存数据
@@ -445,16 +464,12 @@ export default function Home({ onGoToAdmin }) {
       setActiveProject(projectData);
 
       // 2. 恢复步骤解锁状态（从 localStorage，按项目 ID）
-      const savedUnlocked = localStorage.getItem(`miioo_unlocked_steps_${projectId}`);
-      if (savedUnlocked) {
-        setUnlockedSteps(new Set(JSON.parse(savedUnlocked)));
-      } else {
-        setUnlockedSteps(new Set());
-      }
+      const restoredUnlockedSteps = readUnlockedSteps(projectId);
+      setUnlockedSteps(restoredUnlockedSteps);
 
       // 如果后端已有主体数据，自动解锁 subject 步骤
       // （避免换浏览器/清缓存后明明有数据却被锁住）
-      if (!savedUnlocked || !JSON.parse(savedUnlocked).includes('subject')) {
+      if (!restoredUnlockedSteps.has('subject')) {
         try {
           const anySubjects = await apiGetSubjects(projectId, { type: 'character' }).catch(() => []);
           if (Array.isArray(anySubjects) && anySubjects.length > 0) {
@@ -524,12 +539,15 @@ export default function Home({ onGoToAdmin }) {
       if (Object.keys(statusMap).length > 0) setEpisodeStatuses(statusMap);
 
       // 5. 加载分镜数据（需要剧集 ID）并用最新 episodesData 的 ID 写入缓存
-      if (episodesData.length > 0) {
+      if (Array.isArray(episodesData) && episodesData.length > 0) {
         // 先清空所有旧的分镜缓存（包含旧 episode ID 的 key），避免 StoryboardPage 用错 ID
         invalidate(K.storyboardsPrefix(projectId));
         const storyboardsData = await apiGetStoryboards(projectId, {
           episode_id: episodesData[0].id
-        }).catch(() => []);
+        }).catch((error) => {
+          console.warn('[Home] 预加载分镜失败，继续打开项目页面:', error);
+          return [];
+        });
 
         // 根据分镜数据判断是否解锁分镜步骤
         if (storyboardsData.length > 0) {
@@ -701,15 +719,16 @@ export default function Home({ onGoToAdmin }) {
     const unsubs = [
       subscribe(K.subjects(pid, 'character'), (data) => {
         const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
-        if (list.length > 0) setSharedChars(normalizeSubjects(list));
+        // 空列表也是一次成功的服务端结果，不能继续保留旧主体/旧音色状态。
+        if (Array.isArray(list)) setSharedChars(normalizeSubjects(list));
       }),
       subscribe(K.subjects(pid, 'scene'), (data) => {
         const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
-        if (list.length > 0) setSharedScenes(normalizeSubjects(list));
+        if (Array.isArray(list)) setSharedScenes(normalizeSubjects(list));
       }),
       subscribe(K.subjects(pid, 'prop'), (data) => {
         const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
-        if (list.length > 0) setSharedProps(normalizeSubjects(list));
+        if (Array.isArray(list)) setSharedProps(normalizeSubjects(list));
       }),
     ];
     return () => unsubs.forEach((fn) => fn());
@@ -1438,6 +1457,9 @@ export default function Home({ onGoToAdmin }) {
               className="flex-1 min-h-0 overflow-auto relative"
               style={{ overflow: activeKey === 'project' && activeProject && activeStep === 'script' ? 'visible' : undefined }}
             >
+            <PageErrorBoundary key={`${activeKey}:${activeProject?.id || 'list'}:${activeStep}`} onRetry={() => {
+              if (activeProject?.id) loadProjectDetails(activeProject.id);
+            }}>
             {activeKey === 'home' && (
               <>
                 <HomeSloganText />
@@ -1448,7 +1470,7 @@ export default function Home({ onGoToAdmin }) {
               </>
             )}
             {activeKey === 'project' && isLoadingProject && (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: '100%', height: '100%', minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <DotsLoading size={6} color="#2DC3E1" gap={5} />
               </div>
             )}
@@ -1567,6 +1589,7 @@ export default function Home({ onGoToAdmin }) {
                 onScenesChange={setSharedScenes}
                 props={sharedProps}
                 onPropsChange={setSharedProps}
+                subjectsLoading={subjectPageMeta.chars.loading || subjectPageMeta.scenes.loading || subjectPageMeta.props.loading}
                 isExtractingSubjects={isExtractingSubjects || (readPendingSubjectExtraction(activeProject.id)?.status !== 'failed' && !!readPendingSubjectExtraction(activeProject.id)?.taskId)}
                 subjectExtractionStatusMessage={subjectExtractionStatusMessage}
                 isStoryboardGenerated={unlockedSteps.has('storyboard')}
@@ -1630,6 +1653,7 @@ export default function Home({ onGoToAdmin }) {
                 onShowNoModelNotice={() => setNoModelNoticeOpen(true)}
               />
             </div>
+            </PageErrorBoundary>
             </div>
           </Suspense>
         </div>

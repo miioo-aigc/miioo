@@ -29,6 +29,7 @@
  *   2026-07-15  性别、年龄筛选器复用 components/ui/Select
  *   2026-07-31  音色卡片支持再次点击取消选择
  *   2026-07-31  增加音色卡片悬停态，无预览链接的音色不可选择
+ *   2026-07-31  按系统音色库分页契约加载完整列表，兼容 zh-CN 和缺失语言字段
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DotsLoading from '../DotsLoading';
@@ -160,9 +161,9 @@ export default function SubjectVoiceSelectModal({ open, onClose, onConfirm, curr
 
     fetchedRef.current = true;
     setLoading(true);
-    apiGetVoiceLibrary({ provider: 'miioo', skipCache: true })
+    apiGetVoiceLibrary({ provider: 'miioo', page: 1, pageSize: 20, skipCache: true })
       .then((data) => {
-        const list = Array.isArray(data) ? data : data?.items ?? data?.voices ?? [];
+        const list = Array.isArray(data) ? data : data?.list ?? data?.items ?? data?.voices ?? [];
         setVoices(list);
         onVoicesLoaded?.(list);
       })
@@ -175,7 +176,11 @@ export default function SubjectVoiceSelectModal({ open, onClose, onConfirm, curr
   const filteredVoices = useMemo(() => voices.filter((voice) => {
     if (gender !== '不限' && voice.gender !== gender) return false;
     if (age !== '不限' && voice.age_group !== age) return false;
-    return voice.language === '中文' || voice.language === 'zh';
+    // 系统音色库部分历史数据没有 language，不能因此把可用音色误过滤掉。
+    // 明确标记为其它语言的音色仍不展示在主体中文音色选择器中。
+    if (!voice.language) return true;
+    const language = String(voice.language).toLowerCase();
+    return voice.language === '中文' || language === 'zh' || language.startsWith('zh-') || language.startsWith('zh_');
   }), [voices, gender, age]);
 
   if (!open) return null;

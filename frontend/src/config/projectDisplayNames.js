@@ -1,3 +1,5 @@
+import { getVisualStyle } from './visualStyles';
+
 /**
  * 项目选项展示名称适配
  *
@@ -36,6 +38,8 @@ const CREATION_TYPE_LABELS = {
 };
 
 export function getVisualStyleLabel(value) {
+  const visualStyle = getVisualStyle(value);
+  if (visualStyle) return visualStyle.label;
   return VISUAL_STYLE_LABELS[value] || value || '';
 }
 

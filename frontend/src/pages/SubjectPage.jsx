@@ -73,6 +73,9 @@
  *   2026-07-15  抽离主体名称、描述、提示词字段组合，页面保留字段状态与保存回调
  *   2026-07-15  抽离主体音色选择弹窗，性别和年龄复用通用 Select
  *   2026-07-31  主体卡片支持直接清除已添加音色，兼容音色库删除后的旧引用
+ *   2026-07-31  服务端主体列表返回 voice_id=null 时同步清除本地音色映射，修复刷新后旧音色复现
+ *   2026-07-31  取消音色优先依据 PATCH 返回结果，兼容主体列表最终一致性延迟
+ *   2026-07-31  主体列表首屏请求期间显示 DotsLoading，请求完成且为空后才显示抽取失败态
  *   2026-07-15  抽离主体页工具栏和标签导航，页面保留业务状态与回调
  *   2026-07-15  抽离主体详情候选图/参考图映射、去重和单一定稿纯函数
  *   2026-07-15  抽离参考图详情快照转换和主体生图参数组装纯函数
@@ -108,7 +111,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import SubjectImageList from '../components/subject/SubjectImageList';
 import ConfirmStoryboardModal from '../components/subject/ConfirmStoryboardModal';
 import BatchGenerateModal from '../components/BatchGenerateModal';
-import { SubjectGenerationAction, SubjectPanelHeader, SubjectVoiceSelectModal, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, getFallbackSubjectImageModels } from '../components/subject';
+import { SubjectGenerationAction, SubjectPanelHeader, SubjectVoiceSelectModal, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, getFallbackSubjectImageModels } from '../components/subject';
 import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiDownloadSubjectImage, apiUnsetPrimarySubjectImage } from '../api/subject';
 import { apiGetTask } from '../api/storyboard';
 import { apiGetSubjectAssets } from '../api/assets';
@@ -944,7 +947,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
 
 // ── Main export ────────────────────────────────────────────────────────────
 
-export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onRegenerateStoryboard, onExtractSubjects, onRetryExtractSubjects, extractError = null, isExtractingSubjects = false, subjectExtractionStatusMessage = '', isStoryboardGenerated = false, initialTab = 'char', projectRatio, chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps }) {
+export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onRegenerateStoryboard, onExtractSubjects, onRetryExtractSubjects, extractError = null, isExtractingSubjects = false, subjectExtractionStatusMessage = '', isStoryboardGenerated = false, initialTab = 'char', projectRatio, chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, subjectsLoading = false, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps }) {
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [batchGenOpen, setBatchGenOpen] = useState(false);
@@ -1540,17 +1543,20 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     setSelectedScene(null);
   }, [projectId, chars, scenes, props]);
 
-  // 从后端数据同步 voice_id 到本地 charVoices（仅当本地无记录时）
+  // 从后端数据同步 voice_id 到本地 charVoices。
+  // null 也是后端的有效状态，不能因为“没有值”而保留已经失效的旧音色。
   useEffect(() => {
     if (!externalChars || externalChars.length === 0) return;
-    // 外部主体数据到达后同步本地音色映射，保留已有用户选择。
+    // 外部主体数据到达后以服务端绑定为准，避免刷新后从旧的本地映射恢复音色。
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCharVoices((prev) => {
       const next = { ...prev };
       let changed = false;
       externalChars.forEach((c) => {
-        if (c.voice_id && prev[c.id] === undefined) {
-          next[c.id] = c.voice_id;
+        if (!Object.prototype.hasOwnProperty.call(c, 'voice_id')) return;
+        const serverVoiceId = c.voice_id ?? null;
+        if (prev[c.id] !== serverVoiceId) {
+          next[c.id] = serverVoiceId;
           changed = true;
         }
       });
@@ -1707,7 +1713,48 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       : character));
 
     try {
-      await apiUpdateSubject(projectId, subjectId, { voice_id: null });
+      const updateResult = await apiUpdateSubject(projectId, subjectId, { voice_id: null });
+      const updatedSubject = updateResult?.subject
+        || updateResult?.data?.subject
+        || updateResult?.result?.subject
+        || updateResult?.data
+        || updateResult?.result
+        || updateResult;
+
+      // PATCH 返回 2xx 后，接口响应或后续查询任一处确认 voice_id=null 即视为成功。
+      // 部分后端部署会先返回旧主体，不能仅凭 PATCH 响应里的旧 voice_id 立即回滚。
+      const hasVoiceField = (value) => Object.prototype.hasOwnProperty.call(value || {}, 'voice_id');
+      let persisted = hasVoiceField(updatedSubject) && updatedSubject.voice_id == null;
+      let latestSubject = updatedSubject;
+
+      if (!persisted) {
+        // 给写入传播留出时间，主体详情比列表更适合作为单主体解绑状态的确认来源。
+        const retryDelays = [300, 700, 1200, 2000];
+        for (const delay of retryDelays) {
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          const detail = await apiGetSubjectDetail(projectId, subjectId).catch(() => null);
+          const detailSubject = detail?.subject || detail?.data?.subject || detail?.data || detail;
+          if (hasVoiceField(detailSubject)) {
+            latestSubject = detailSubject;
+            if (detailSubject.voice_id == null) {
+              persisted = true;
+              break;
+            }
+          }
+
+          const latestChars = await apiGetSubjects(projectId, { type: 'character', limit: 200 });
+          const listSubject = latestChars.find((character) => character.id === subjectId) || null;
+          if (listSubject) latestSubject = listSubject;
+          if (hasVoiceField(listSubject) && listSubject.voice_id == null) {
+            persisted = true;
+            break;
+          }
+        }
+      }
+
+      if (!persisted && latestSubject?.voice_id) {
+        throw new Error('音色取消未保存成功，请稍后重试');
+      }
       showBatchToast('音色已取消', 'success');
     } catch (err) {
       setCharVoices((prev) => ({ ...prev, [subjectId]: previousVoiceId }));
@@ -1760,10 +1807,15 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   // 判断是否显示 loading / 错误态
   const allEmpty = (!externalChars || externalChars.length === 0) && (!externalScenes || externalScenes.length === 0) && (!externalProps || externalProps.length === 0);
   const showLoading = isExtracting;
-  const showError = !!extractError && allEmpty;
+  const showDataLoading = subjectsLoading && allEmpty && !showLoading;
+  const showError = !!extractError && !subjectsLoading && allEmpty;
 
   if (showLoading) {
     return <SubjectExtractionLoading message={subjectExtractionStatusMessage || SUBJECT_LOADING_TEXTS[loadingTextIndex]} />;
+  }
+
+  if (showDataLoading) {
+    return <SubjectDataLoading />;
   }
 
   if (showError) {

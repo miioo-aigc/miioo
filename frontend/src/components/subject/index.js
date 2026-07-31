@@ -19,7 +19,7 @@ export { createSubjectImageActionHandlers } from './SubjectImageActions';
 export { default as ConfirmStoryboardModal } from './ConfirmStoryboardModal';
 export { default as SubjectToast } from './SubjectToast';
 export { default as SubjectEmptyIcons } from './SubjectEmptyIcons';
-export { SubjectExtractionLoading, SubjectExtractionError } from './SubjectExtractionState';
+export { SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError } from './SubjectExtractionState';
 export { default as SubjectEditorSlot } from './SubjectEditorSlot';
 export { default as SubjectGridViewport } from './SubjectGridViewport';
 export { default as SubjectWorkspace } from './SubjectWorkspace';

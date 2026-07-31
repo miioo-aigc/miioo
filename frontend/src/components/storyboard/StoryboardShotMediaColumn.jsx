@@ -181,11 +181,18 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
         </div>
       )}
       {!generating && !loading && media.length === 0 && <PlusButton tooltip="创作" onClick={handleOpenCreation} />}
-      {!generating && media.length > 0 && <div style={{ minHeight: 0, flex: 1, display: 'flex', gap: '4px', flexFlow: 'column nowrap', overflowY: 'auto', overflowX: 'hidden', width: 'fit-content' }}>
-        {media.map((item, index) => (
-          <CandidateCard key={item.id || item.url || index} item={item} finalized={item.is_finalized} onSelect={() => { onSelectShot?.(); onFinalizeToggle?.(item); }} onPreview={handlePreview} />
-        ))}
-      </div>}
+      {!generating && media.length > 0 && (
+        <div style={{ minHeight: 0, flex: 1, position: 'relative', display: 'flex', gap: '4px', flexFlow: 'column nowrap', overflowY: 'auto', overflowX: 'hidden', width: 'fit-content' }}>
+          {media.map((item, index) => (
+            <CandidateCard key={item.id || item.url || index} item={item} finalized={item.is_finalized} onSelect={() => { onSelectShot?.(); onFinalizeToggle?.(item); }} onPreview={handlePreview} />
+          ))}
+          {loading && (
+            <div style={{ position: 'absolute', inset: 0, minHeight: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', background: 'rgba(16,17,17,0.58)', pointerEvents: 'none' }} aria-label="正在加载分镜媒体" role="status">
+              <DotsLoading size={4} color="#2DC3E1" gap={3} />
+            </div>
+          )}
+        </div>
+      )}
       {preview?.item && createPortal(
         <MediaHoverPreview
           url={preview.url}

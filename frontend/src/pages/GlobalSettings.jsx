@@ -51,61 +51,17 @@ import { normalizeImageUrl } from '../utils/imageUrl';
 import { Button, Tabs, TextField, OptionTabs } from '../components/ui';
 import { ScriptProgress } from '../components/project';
 import { CharIcon, SceneIcon, PropIcon } from '../components/subject/SubjectTypeIcons';
-import styleXianxia from '../assets/styles/xianxia-3d.avif';
-import styleSuspenseAnime from '../assets/styles/suspense-anime-2d.avif';
-import styleCyberpunk from '../assets/styles/cyberpunk-3d.avif';
-import stylePixar from '../assets/styles/pixar-style.avif';
-import styleWuxia from '../assets/styles/wuxia-cg.avif';
-import styleGhibli from '../assets/styles/ghibli-style.avif';
-import styleShinkai from '../assets/styles/shinkai-style.avif';
-import styleAncientChinese from '../assets/styles/ancient-chinese.avif';
-import styleUrbanWorkplace from '../assets/styles/urban-workplace.avif';
-import stylePostApocalyptic from '../assets/styles/post-apocalyptic.avif';
-import styleLiveActionSuspense from '../assets/styles/live-action-suspense.avif';
-import styleMagicEpic from '../assets/styles/magic-epic-3d.avif';
-import styleJpkr2d from '../assets/styles/jpkr-2d.avif';
-import styleInkGuofeng from '../assets/styles/ink-guofeng-2d.avif';
-import styleDarkGothic from '../assets/styles/dark-gothic-2d.avif';
-import styleLiveActionGufeng from '../assets/styles/live-action-gufeng.avif';
-import styleUrbanEmotion from '../assets/styles/urban-emotion.avif';
-import styleXianxiaFantasy from '../assets/styles/xianxia-fantasy.avif';
-import styleLiveActionHorror from '../assets/styles/live-action-horror.avif';
-import styleRealisticEra from '../assets/styles/realistic-era.avif';
-import styleFutureScifi from '../assets/styles/future-scifi.avif';
-import styleWuxiaWar from '../assets/styles/wuxia-war.avif';
-import styleRural from '../assets/styles/rural-style.avif';
+import { VISUAL_STYLE_LIST, getVisualStyle } from '../config/visualStyles';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
-// 视觉风格映射（与 NewProjectModal 完全对齐）
+// 新风格优先覆盖同 value 的历史风格，未进入新库的历史风格仍保留旧封面。
 const VISUAL_STYLES = {
-  custom:                        { label: '自定义',      coverImg: null },
-  'xianxia-3d':                  { label: '3D国漫仙侠',  coverImg: styleXianxia },
-  'suspense-anime-2d':           { label: '2D悬疑恐怖',  coverImg: styleSuspenseAnime },
-  'cyberpunk-3d':                { label: '3D赛博朋克',  coverImg: styleCyberpunk },
-  'ghibli-style':                { label: '宫崎骏风格',  coverImg: styleGhibli },
-  'shinkai-style':               { label: '新海诚风格',  coverImg: styleShinkai },
-  'ancient-chinese-live-action': { label: '3D国风正剧',  coverImg: styleAncientChinese },
-  'magic-epic-3d':               { label: '3D魔幻史诗',  coverImg: styleMagicEpic },
-  'pixar-style':                 { label: '3D Q版',      coverImg: stylePixar },
-  'wuxia-cg':                    { label: '武侠CG',      coverImg: styleWuxia },
-  'jpkr-2d':                     { label: '日韩二次元',  coverImg: styleJpkr2d },
-  'ink-guofeng-2d':              { label: '2D写意古风',  coverImg: styleInkGuofeng },
-  'dark-gothic-2d':              { label: '暗黑哥特',    coverImg: styleDarkGothic },
-  'live-action-gufeng':          { label: '古风写实',    coverImg: styleLiveActionGufeng },
-  'urban-emotion':               { label: '都市情感',    coverImg: styleUrbanEmotion },
-  'xianxia-fantasy':             { label: '仙侠玄幻',    coverImg: styleXianxiaFantasy },
-  'live-action-horror':          { label: '悬疑恐怖',    coverImg: styleLiveActionHorror },
-  'post-apocalyptic-modern':     { label: '末日废土',    coverImg: stylePostApocalyptic },
-  'realistic-era':               { label: '写实年代剧',  coverImg: styleRealisticEra },
-  'future-scifi':                { label: '未来科幻',    coverImg: styleFutureScifi },
-  'urban-workplace':             { label: '都市职场',    coverImg: styleUrbanWorkplace },
-  'wuxia-war':                   { label: '武侠战争',    coverImg: styleWuxiaWar },
-  'rural-style':                 { label: '乡土风格',    coverImg: styleRural },
-  'live-action-suspense':        { label: '真人悬疑',    coverImg: styleLiveActionSuspense },
+  custom: { label: '自定义', coverImg: null },
+  ...Object.fromEntries(VISUAL_STYLE_LIST.map((style) => [style.value, style])),
 };
 
 // ── Stat card ──────────────────────────────────────────────────────────────

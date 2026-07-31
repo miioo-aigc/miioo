@@ -26,7 +26,7 @@ export default function StoryboardFinalizedCard({ shot, media, loading = false, 
       {hasMedia && (isVideo ? <video ref={videoRef} src={normalizeImageUrl(mediaUrl)} poster={src || undefined} muted playsInline preload="metadata" onLoadedData={() => { if (videoRef.current && !src) videoRef.current.currentTime = 0.01; }} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <img src={src} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />)}
       <span style={{ position: 'absolute', top: '6px', left: '12px', padding: '0 8px', borderRadius: '3px', background: '#000000CC', color: '#FFFFFFCC', fontSize: '12px', lineHeight: '20px' }}>{String(shot.number).padStart(2, '0')}</span>
       {hasMedia && <span style={{ position: 'absolute', top: 0, right: 0, padding: '0 10px', background: '#00000080', color: '#FFFFFFCC', fontSize: '12px', lineHeight: '22px' }}>{isVideo ? '视频' : '图片'}</span>}
-      {!hasMedia && loading && <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }} aria-label="正在加载定稿媒体" role="status"><DotsLoading size={5} color="#2DC3E1" gap={3} /></div>}
+      {loading && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(16,17,17,0.58)', pointerEvents: 'none' }} aria-label="正在加载定稿媒体" role="status"><DotsLoading size={5} color="#2DC3E1" gap={3} /></div>}
       {!hasMedia && !loading && !hovered && <span style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', color: '#FFFFFF99', fontSize: '12px', lineHeight: '20px', whiteSpace: 'nowrap' }}>分镜{String(shot.number).padStart(2, '0')}</span>}
       <Button
         variant="accent"

@@ -5,73 +5,13 @@ import TextField from '../components/ui/TextField';
 import OptionTabs from '../components/ui/OptionTabs';
 import Tabs from '../components/ui/Tabs';
 import Button from '../components/ui/Button';
-import styleXianxia from '../assets/styles/xianxia-3d.avif';
-import styleSuspenseAnime from '../assets/styles/suspense-anime-2d.avif';
-import styleCyberpunk from '../assets/styles/cyberpunk-3d.avif';
-import stylePixar from '../assets/styles/pixar-style.avif';
-import styleWuxia from '../assets/styles/wuxia-cg.avif';
-import styleGhibli from '../assets/styles/ghibli-style.avif';
-import styleShinkai from '../assets/styles/shinkai-style.avif';
-import styleAncientChinese from '../assets/styles/ancient-chinese.avif';
-import styleUrbanWorkplace from '../assets/styles/urban-workplace.avif';
-import stylePostApocalyptic from '../assets/styles/post-apocalyptic.avif';
-import styleLiveActionSuspense from '../assets/styles/live-action-suspense.avif';
-// 以下封面来自 paper 设计稿「从风格库选择」，待本机脚本下载压缩 avif 落盘后生效
-import styleMagicEpic from '../assets/styles/magic-epic-3d.avif';
-import styleJpkr2d from '../assets/styles/jpkr-2d.avif';
-import styleInkGuofeng from '../assets/styles/ink-guofeng-2d.avif';
-import styleDarkGothic from '../assets/styles/dark-gothic-2d.avif';
-import styleLiveActionGufeng from '../assets/styles/live-action-gufeng.avif';
-import styleUrbanEmotion from '../assets/styles/urban-emotion.avif';
-import styleXianxiaFantasy from '../assets/styles/xianxia-fantasy.avif';
-import styleLiveActionHorror from '../assets/styles/live-action-horror.avif';
-import styleRealisticEra from '../assets/styles/realistic-era.avif';
-import styleFutureScifi from '../assets/styles/future-scifi.avif';
-import styleWorkplaceDrama from '../assets/styles/workplace-drama.avif';
-import styleWuxiaWar from '../assets/styles/wuxia-war.avif';
-import styleRural from '../assets/styles/rural-style.avif';
+import { NEW_VISUAL_STYLE_GROUPS } from '../config/visualStyles';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
 
-// 风格库二级弹窗数据：来自 paper 设计稿「从风格库选择」
-// coverImg 优先复用本地已有 avif；设计稿剧照类封面本地无对应资源时用渐变占位（待联网补图）
-const LIBRARY_GRADIENT = 'linear-gradient(in oklab 135deg, oklab(34.8% 0 0) 0%, oklab(21.8% 0 0) 100%)';
-const LIBRARY_GROUPS = [
-  {
-    category: '动漫风格',
-    styles: [
-      { value: 'xianxia-3d', label: '3D国漫仙侠', coverImg: styleXianxia, gradient: LIBRARY_GRADIENT },
-      { value: 'suspense-anime-2d', label: '2D悬疑恐怖', coverImg: styleSuspenseAnime, gradient: LIBRARY_GRADIENT },
-      { value: 'cyberpunk-3d', label: '3D赛博朋克', coverImg: styleCyberpunk, gradient: LIBRARY_GRADIENT },
-      { value: 'ghibli-style', label: '宫崎骏风格', coverImg: styleGhibli, gradient: LIBRARY_GRADIENT },
-      { value: 'shinkai-style', label: '新海诚风格', coverImg: styleShinkai, gradient: LIBRARY_GRADIENT },
-      { value: 'ancient-chinese-live-action', label: '3D国风正剧', coverImg: styleAncientChinese, gradient: LIBRARY_GRADIENT },
-      { value: 'magic-epic-3d', label: '3D魔幻史诗', coverImg: styleMagicEpic, gradient: LIBRARY_GRADIENT },
-      { value: 'pixar-style', label: '3D Q版', coverImg: stylePixar, gradient: LIBRARY_GRADIENT },
-      { value: 'wuxia-cg', label: '武侠CG', coverImg: styleWuxia, gradient: LIBRARY_GRADIENT },
-      { value: 'jpkr-2d', label: '日韩二次元', coverImg: styleJpkr2d, gradient: LIBRARY_GRADIENT },
-      { value: 'ink-guofeng-2d', label: '2D写意古风', coverImg: styleInkGuofeng, gradient: LIBRARY_GRADIENT },
-      { value: 'dark-gothic-2d', label: '暗黑哥特', coverImg: styleDarkGothic, gradient: LIBRARY_GRADIENT },
-    ],
-  },
-  {
-    category: '真人写实',
-    styles: [
-      { value: 'live-action-gufeng', label: '古风写实', coverImg: styleLiveActionGufeng, gradient: LIBRARY_GRADIENT },
-      { value: 'urban-emotion', label: '都市情感', coverImg: styleUrbanEmotion, gradient: LIBRARY_GRADIENT },
-      { value: 'xianxia-fantasy', label: '仙侠玄幻', coverImg: styleXianxiaFantasy, gradient: LIBRARY_GRADIENT },
-      { value: 'live-action-horror', label: '悬疑恐怖', coverImg: styleLiveActionHorror, gradient: LIBRARY_GRADIENT },
-      { value: 'post-apocalyptic-modern', label: '末日废土', coverImg: stylePostApocalyptic, gradient: LIBRARY_GRADIENT },
-      { value: 'realistic-era', label: '写实年代剧', coverImg: styleRealisticEra, gradient: LIBRARY_GRADIENT },
-      { value: 'future-scifi', label: '未来科幻', coverImg: styleFutureScifi, gradient: LIBRARY_GRADIENT },
-      { value: 'workplace-drama', label: '职场商战', coverImg: styleWorkplaceDrama, gradient: LIBRARY_GRADIENT },
-      { value: 'wuxia-war', label: '武侠战争', coverImg: styleWuxiaWar, gradient: LIBRARY_GRADIENT },
-      { value: 'rural-style', label: '乡土风格', coverImg: styleRural, gradient: LIBRARY_GRADIENT },
-    ],
-  },
-];
+const LIBRARY_GROUPS = NEW_VISUAL_STYLE_GROUPS;
 
 const PRIMARY_BTN_GRADIENT =
   'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 30%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, #FFFFFF14, #FFFFFF14)';

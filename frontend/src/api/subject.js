@@ -130,12 +130,16 @@ export async function apiUpdateSubject(projectId, subjectId, data) {
     err.status = res.status;
     throw err;
   }
+  const result = await res.json();
   invalidateSubjects(projectId);
-  // 重新拉取主体列表以更新缓存，触发订阅者同步最新主图
-  apiGetSubjects(projectId, { type: "character" }).catch(() => {});
-  apiGetSubjects(projectId, { type: "scene" }).catch(() => {});
-  apiGetSubjects(projectId, { type: "prop" }).catch(() => {});
-  return res.json();
+  // 重新拉取主体列表以更新缓存，触发订阅者同步最新主图。
+  // 读取 PATCH 响应后再启动刷新，避免响应体读取与缓存刷新竞态。
+  Promise.all([
+    apiGetSubjects(projectId, { type: 'character' }),
+    apiGetSubjects(projectId, { type: 'scene' }),
+    apiGetSubjects(projectId, { type: 'prop' }),
+  ]).catch(() => {});
+  return result;
 }
 
 export async function apiDeleteSubject(projectId, subjectId) {

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "bild": "vite build",
+    "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "check:architecture": "node scripts/check-architecture.mjs"

@@ -19,8 +19,23 @@
  *   2026-07-28  合并读取绑定主体的项目资产，支持候选区上传和资产库选择刷新恢复
  *   2026-07-28  保留候选图来源及资产创作元数据，供详情弹窗按来源展示
  *   2026-07-28  候选图统一按创建/上传时间倒序排列，最新进入列表的图片置顶
+ *   2026-07-31  参考图改为按候选图片自身原数据映射，不再回退到主体当前参考图
  */
 import { normalizeImageUrl } from '../../utils/imageUrl';
+
+function getReferenceImages(value) {
+  const raw = Array.isArray(value?.reference_image_urls) ? value.reference_image_urls
+    : Array.isArray(value?.referenceImages) ? value.referenceImages
+      : Array.isArray(value?.reference_images) ? value.reference_images
+        : Array.isArray(value?.refImages) ? value.refImages
+          : Array.isArray(value?.ref_images) ? value.ref_images
+            : [];
+  return raw.map((ref) => {
+    if (typeof ref === 'string') return { url: normalizeImageUrl(ref) || ref };
+    const url = ref?.url || ref?.file_url || ref?.fileUrl || ref?.image_url || ref?.imageUrl;
+    return url ? { ...ref, url: normalizeImageUrl(url) || url } : null;
+  }).filter((ref) => ref?.url);
+}
 
 function toImageItem({ id, rawUrl, settled = false, isReference = false, refImages = [], assetId = null, source = null, detailSource = null, prompt = null, inputPrompt = null, model = null, ratio = null, resolution = null, createdAt = null }) {
   return {
@@ -49,12 +64,12 @@ export function createSubjectImageItem({ id, rawUrl, settled = false, refImages 
   return toImageItem({ id, rawUrl, settled, refImages, createdAt });
 }
 
-export function mapCandidateImages(images, refImages = []) {
+export function mapCandidateImages(images) {
   return (Array.isArray(images) ? images : []).map((image) => toImageItem({
     id: image.id,
     rawUrl: image.image_url,
     settled: image.is_primary ?? false,
-    refImages,
+    refImages: getReferenceImages(image),
     assetId: image.asset_id,
     source: 'subject-image',
     detailSource: 'ai-generated',
@@ -87,17 +102,18 @@ function getAssetMetadata(asset) {
   return asset?.metadata || {};
 }
 
-export function mapSubjectAssets(assets, refImages = []) {
+export function mapSubjectAssets(assets) {
   return (Array.isArray(assets) ? assets : []).map((asset) => {
     const metadata = getAssetMetadata(asset);
+    const detailSource = getAssetDetailSource(asset);
     return toImageItem({
       id: asset.id || asset.asset_id,
       rawUrl: asset.file_url || asset.original_url || asset.originalUrl || asset.url || asset.thumbnail_url || asset.thumbnailUrl,
       settled: asset.is_primary ?? false,
-      refImages,
+      refImages: detailSource === 'local-upload' ? [] : (asset.refImages?.length > 0 ? asset.refImages : getReferenceImages(metadata)),
       assetId: asset.id || asset.asset_id,
       source: 'creation-asset',
-      detailSource: getAssetDetailSource(asset),
+      detailSource,
       prompt: asset.prompt ?? metadata.prompt,
       inputPrompt: asset.input_prompt ?? metadata.input_prompt,
       model: asset.model ?? metadata.model,
@@ -163,7 +179,7 @@ function keepOnlyFirstSettled(images) {
   });
 }
 
-function mapPendingImage(pending, refImages) {
+function mapPendingImage(pending) {
   if (!pending) return null;
   if (pending.status === 'pending') {
     return {
@@ -178,7 +194,7 @@ function mapPendingImage(pending, refImages) {
     return toImageItem({
       id: pending.realId || pending.placeholderId,
       rawUrl: pending.rawUrl,
-      refImages: pending.refImages || refImages,
+      refImages: pending.refImages || [],
       createdAt: pending.createdAt || Date.now(),
     });
   }
@@ -221,13 +237,12 @@ export function sortSubjectImages(images = []) {
 export function mergeSubjectImages({
   candidateImages,
   subjectAssets = [],
-  refImages = [],
   pending = null,
 }) {
-  const mappedCandidates = mapCandidateImages(candidateImages, refImages);
-  const mappedAssets = mapSubjectAssets(subjectAssets, refImages);
+  const mappedCandidates = mapCandidateImages(candidateImages);
+  const mappedAssets = mapSubjectAssets(subjectAssets);
   const images = sortSubjectImages(keepOnlyFirstSettled(dedupeByUrl(dedupeById([...mappedCandidates, ...mappedAssets]))));
-  const pendingImage = mapPendingImage(pending, refImages);
+  const pendingImage = mapPendingImage(pending);
 
   return pendingImage ? [pendingImage, ...images] : images;
 }

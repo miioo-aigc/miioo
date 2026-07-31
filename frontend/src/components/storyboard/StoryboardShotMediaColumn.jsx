@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import Checkbox from '../Checkbox';
 import NarrationAddButton from './NarrationAddButton';
+import { MediaHoverPreview } from './MainRefCol';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -111,7 +112,7 @@ function CandidateCard({ item, finalized, onSelect, onPreview }) {
 
   const coverUrl = providedPoster || (capturedFrame.key === videoUrl ? capturedFrame.url : '');
   return (
-    <button type="button" onClick={() => onSelect?.(item)} onMouseEnter={(event) => onPreview?.(item, event.currentTarget)} onMouseLeave={() => onPreview?.(null)} style={{
+    <button type="button" onClick={() => onSelect?.(item)} onMouseEnter={(event) => onPreview?.(item, event)} onMouseLeave={() => onPreview?.(null)} style={{
       width: '60px', height: '60px', position: 'relative', padding: 0, overflow: 'hidden', flexShrink: 0, cursor: 'pointer',
       borderRadius: '4px', border: `1px solid ${finalized ? '#2DC3E1' : 'rgba(255,255,255,0.10)'}`, background: '#101111',
     }}>
@@ -128,7 +129,7 @@ function CandidateCard({ item, finalized, onSelect, onPreview }) {
   );
 }
 
-export default function StoryboardShotMediaColumn({ candidates = [], image, video, generating, onOpenCreation, onUpload, onFinalizeToggle, onSelectShot, shotLabel }) {
+export default function StoryboardShotMediaColumn({ candidates = [], image, video, generating, onOpenCreation, onUpload, onFinalizeToggle, onSelectShot }) {
   const inputRef = useRef(null);
   const [preview, setPreview] = useState(null);
   const media = candidates.length > 0 ? candidates : [image, video].filter(Boolean).map((item) => ({ ...item, media_type: item.type?.startsWith('video') ? 'video' : 'image', is_finalized: true }));
@@ -147,29 +148,22 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
     onOpenCreation?.();
   }
 
-  function handlePreview(item, cardElement) {
-    if (!item || !cardElement) {
+  function handlePreview(item, event) {
+    if (!item || !event) {
       setPreview(null);
       return;
     }
 
-    const rect = cardElement.getBoundingClientRect();
-    const viewportPadding = 12;
-    const gap = 8;
-    const width = Math.min(320, Math.max(1, window.innerWidth - viewportPadding * 2));
-    const height = Math.min(220, Math.max(1, window.innerHeight - viewportPadding * 2));
-    const rightPosition = rect.right + gap;
-    const leftPosition = rect.left - width - gap;
-    const left = rightPosition + width <= window.innerWidth - viewportPadding
-      ? rightPosition
-      : leftPosition >= viewportPadding
-        ? leftPosition
-        : Math.max(viewportPadding, Math.min(rect.left, window.innerWidth - width - viewportPadding));
-    const top = rect.top + height <= window.innerHeight - viewportPadding
-      ? rect.top
-      : Math.max(viewportPadding, Math.min(rect.bottom - height, window.innerHeight - height - viewportPadding));
+    const isVideo = item.media_type === 'video' || item.type?.startsWith('video');
+    const url = isVideo
+      ? item.preview_video_url || item.previewVideoUrl || item.url || item.video_url || item.videoUrl
+      : item.large_url || item.preview_url || item.previewUrl || item.url || item.thumbnail_url || item.thumbnailUrl;
+    if (!url) {
+      setPreview(null);
+      return;
+    }
 
-    setPreview({ item, left, top, width, height });
+    setPreview({ item, url: normalizeImageUrl(url), isVideo, mouseX: event.clientX, mouseY: event.clientY });
   }
 
   return (
@@ -187,12 +181,12 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
         ))}
       </div>}
       {preview?.item && createPortal(
-        <div style={{ position: 'fixed', zIndex: 10010, left: preview.left, top: preview.top, width: preview.width, height: preview.height, boxSizing: 'border-box', padding: '6px', borderRadius: '8px', background: '#090909', border: '1px solid rgba(255,255,255,0.16)', pointerEvents: 'none', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.70)' }}>
-          <span style={{ position: 'absolute', top: 0, right: 0, zIndex: 1, padding: '0 8px', background: '#000000CC', color: '#FFFFFFCC', font: `12px/22px ${FONT}` }}>
-            {preview.item.media_type === 'video' || preview.item.type?.startsWith('video') ? '视频' : '图片'}
-          </span>
-          {preview.item.media_type === 'video' ? <video autoPlay muted loop playsInline src={normalizeImageUrl(preview.item.preview_video_url || preview.item.url)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <img src={normalizeImageUrl(preview.item.large_url || preview.item.preview_url || preview.item.url)} alt={shotLabel || ''} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
-        </div>,
+        <MediaHoverPreview
+          url={preview.url}
+          isVideo={preview.isVideo}
+          mouseX={preview.mouseX}
+          mouseY={preview.mouseY}
+        />,
         document.body,
       )}
     </div>

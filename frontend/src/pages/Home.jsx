@@ -59,6 +59,7 @@
  *   2026-07-23  持久化主体抽取两阶段任务，刷新浏览器后恢复轮询和加载动画
  *   2026-07-27  主体抽取加载文案优先读取任务轮询 status_message，固定文案作为兜底
  *   2026-07-24  持久化分镜生成任务，支持刷新/返回后恢复轮询及失败重试
+ *   2026-07-30  覆盖重抽任务提交后立即查询任务状态，并统一兼容嵌套任务 ID
  *   2026-07-06  新增 subject cache 订阅 useEffect，实时同步 sharedChars/sharedScenes/sharedProps
  *   2026-07-28  剧集进度改按工作流解锁状态展示，视频生成数量不再等同于“剪辑中”
  *   2026-07-28  接入存储空间展示、容量提醒、资产库跳转及写入后的全满警告
@@ -72,12 +73,19 @@ import { clearTokens, apiLogout, apiCompleteWechatCallback } from '../api/auth';
 import { apiListProviders } from '../api/config';
 import { apiAcknowledgeStorageReminder, apiGetCurrentUser, apiGetNotifications, apiGetStorageUsage } from '../api/user';
 import { apiGetSubjects, apiGetSubjectsPage, apiGetEpisodes, apiGetScriptWorkspace, apiGetScriptStructure, apiFinalizeScriptWorkspace, apiPublishScriptStructure, apiExtractSubjectsByEpisodes, apiGetScriptTask } from '../api/subject';
-import { apiGetStoryboards, apiGenerateStoryboardsFromFinalScript, apiGetTask } from '../api/storyboard';
+import { apiGetStoryboards, apiGenerateStoryboardsFromFinalScript, apiGenerateStoryboardsFromEpisode, apiGetTask } from '../api/storyboard';
 import { invalidate } from '../utils/cache';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { normalizeSubjects } from '../utils/subjectAdapter';
 import { normalizeProjectList } from '../utils/projectAdapter';
 import { buildEpisodeStatusMap } from '../utils/episodeStatusAdapter';
+import {
+  getStoryboardTaskErrorMessage,
+  getStoryboardTaskId,
+  getStoryboardTaskStatus,
+  getStoryboardTaskStatusMessage,
+  isStoryboardTaskInProgress,
+} from '../utils/storyboardTaskAdapter';
 import { subscribe, peekCache } from '../utils/cache';
 import { K, MEDIUM } from '../utils/cacheKeys';
 import LoginModal from '../components/LoginModal';
@@ -1041,20 +1049,20 @@ export default function Home({ onGoToAdmin }) {
       const taskResp = pendingGeneration?.taskId
         ? await apiGetTask(pendingGeneration.taskId)
         : await apiGenerateStoryboardsFromFinalScript(activeProject.id, { first_episode_only: true });
-      const taskId = taskResp?.task_id || taskResp?.taskId || taskResp?.id;
-      const initialStatus = String(taskResp?.status || '').toLowerCase();
+      const taskId = getStoryboardTaskId(taskResp);
+      const initialStatus = String(getStoryboardTaskStatus(taskResp) || '').toLowerCase();
       if (!taskId && !['completed', 'succeeded', 'success', 'failed', 'error', 'cancelled', 'canceled'].includes(initialStatus)) {
         throw new Error('未获取到任务 ID');
       }
       if (taskId) {
         writePendingStoryboardGeneration(activeProject.id, { taskId, status: 'running', createdAt: pendingGeneration?.createdAt || Date.now() });
       }
-      setStoryboardStatusMessage(taskResp?.status_message || taskResp?.params?.status_message || '');
+      setStoryboardStatusMessage(getStoryboardTaskStatusMessage(taskResp));
 
       // 2. 轮询任务，每完成一集立即失效对应缓存，让 StoryboardPage 实时看到结果
       const TIMEOUT_MS = 500 * 1000; // 500 秒超时
       const INTERVAL = 3000;
-      let finalTask = ['completed', 'succeeded', 'success', 'failed', 'error', 'cancelled', 'canceled'].includes(initialStatus)
+      let finalTask = ['completed', 'succeeded', 'success', 'done', 'partial', 'failed', 'error', 'cancelled', 'canceled'].includes(initialStatus)
         ? taskResp
         : null;
       const notifiedEpisodeNumbers = new Set(); // 已通知过的分集，避免重复失效
@@ -1072,13 +1080,16 @@ export default function Home({ onGoToAdmin }) {
         apiGetStoryboards(activeProject.id, { episode_id: epId }).catch(() => {});
       };
 
+      let pollCount = 0;
       while (!finalTask && Date.now() - pollStartTime < TIMEOUT_MS) {
-        await new Promise(r => setTimeout(r, INTERVAL));
+        // 任务提交后先立即查询一次，后续查询再按 3 秒间隔执行。
+        if (pollCount > 0) await new Promise(r => setTimeout(r, INTERVAL));
+        pollCount += 1;
         if (Date.now() - pollStartTime >= TIMEOUT_MS) break;
         const t = await apiGetTask(taskId).catch(() => null);
         if (!t) continue;
-        setStoryboardStatusMessage(t.status_message || t.params?.status_message || '');
-        console.log('[poll] task status:', t.status, 'params:', JSON.stringify(t.params));
+        setStoryboardStatusMessage(getStoryboardTaskStatusMessage(t));
+        console.log('[poll] task status:', getStoryboardTaskStatus(t), 'params:', JSON.stringify(t.params));
 
         // 路径1：completed_episode_numbers 字段（后端明确告知哪些集已完成）
         const completedNums = t.completed_episode_numbers || t.params?.completed_episode_numbers;
@@ -1094,22 +1105,25 @@ export default function Home({ onGoToAdmin }) {
         if (currentNum != null) prevCurrentEpisodeNumber = currentNum;
 
         // 终态判断
-        const status = String(t.status || '').toLowerCase();
-        if (!['pending', 'queued', 'created', 'running', 'processing', 'in_progress'].includes(status)) {
+        if (!isStoryboardTaskInProgress(t)) {
           finalTask = t;
           break;
         }
       }
 
       if (!finalTask) throw new Error('POLL_TIMEOUT');
-      const finalStatus = String(finalTask.status || '').toLowerCase();
+      const finalStatus = String(getStoryboardTaskStatus(finalTask) || '').toLowerCase();
       if (['failed', 'error', 'cancelled', 'canceled'].includes(finalStatus)) {
-        const msg = finalTask.status_message
-          || finalTask.params?.status_message
-          || finalTask.error?.message
-          || finalTask.params?.error
-          || '分镜生成失败';
+        const msg = getStoryboardTaskErrorMessage(finalTask) || '分镜生成失败';
         throw new Error(msg);
+      }
+
+      // OpenAPI 约定 partial 表示任务已结束但存在失败项。保留已成功结果，
+      // 同时把失败数量反馈给用户，避免把部分失败静默当成完全成功。
+      const failedCount = Number(finalTask.fail_count || finalTask.failCount || 0);
+      if (['partial', 'completed_with_errors', 'completed_with_failures'].includes(finalStatus) && failedCount > 0) {
+        const detail = getStoryboardTaskErrorMessage(finalTask);
+        throw new Error(detail || `智能分镜失败，失败 ${failedCount} 集`);
       }
 
       // 3. 任务完成，重新拉取最新 episodes（后端可能已创建新 UUID）
@@ -1169,6 +1183,66 @@ export default function Home({ onGoToAdmin }) {
     setGenerateErrorProjectId(null);
     setStoryboardStatusMessage('');
     return handleGenerateStoryboards();
+  };
+
+  // 主体页确认“已有分镜重新生成”时，必须先提交覆盖重抽任务，再切换到分镜页。
+  // 不能复用首次抽分镜接口，否则已有分镜状态会让页面只跳转而不发起重新生成请求。
+  const handleRegenerateStoryboardsFromSubject = async () => {
+    if (generatingStoryboardsRef.current || !activeProject?.id) return;
+
+    const projectId = activeProject.id;
+    try {
+      const freshEpisodes = await apiGetEpisodes(projectId).catch(() => scriptEpisodes);
+      const firstEpisode = Array.isArray(freshEpisodes) && freshEpisodes.length > 0
+        ? freshEpisodes[0]
+        : null;
+      if (!firstEpisode?.id) {
+        throw new Error('未找到可重新抽取的正式分集');
+      }
+
+      setGenerateError(null);
+      setGenerateErrorProjectId(null);
+      setStoryboardStatusMessage('');
+      setCompletedEpisodesCount(0);
+
+      const taskResponse = await apiGenerateStoryboardsFromEpisode(projectId, {
+        episode_id: firstEpisode.id,
+        model: null,
+        overwrite_existing: true,
+        confirm_overwrite: true,
+      });
+      const taskId = getStoryboardTaskId(taskResponse);
+      const status = String(taskResponse?.status || '').toLowerCase();
+      const terminal = ['completed', 'succeeded', 'success', 'done', 'failed', 'error', 'cancelled', 'canceled'].includes(status);
+
+      if (!taskId && !terminal && !Array.isArray(taskResponse)) {
+        throw new Error('重新分镜接口未返回任务 ID');
+      }
+
+      if (taskId && !['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
+        writePendingStoryboardGeneration(projectId, {
+          taskId,
+          status: 'running',
+          createdAt: Date.now(),
+        });
+        // 复用首页已有的任务轮询和刷新逻辑。先写入 pending，再启动轮询，
+        // 这样切换页面或刷新浏览器时仍能恢复同一个覆盖重抽任务。
+        void handleGenerateStoryboards();
+      } else {
+        invalidate(K.storyboards(projectId, firstEpisode.id));
+        invalidate(K.storyboards(projectId));
+      }
+
+      handleUnlockStep('storyboard');
+      setStoryboardInitialEpisodeIndex(0);
+      setActiveStep('storyboard');
+    } catch (err) {
+      const message = err?.message || '重新分镜失败，请重试';
+      setGenerateError(message);
+      setGenerateErrorProjectId(projectId);
+      showToast(message, 'error');
+      return false;
+    }
   };
 
   // 刷新或离开分镜页后，恢复仍在执行的分镜任务；失败快照只恢复失败态，不会重复发起任务。
@@ -1501,6 +1575,7 @@ export default function Home({ onGoToAdmin }) {
                   handleGenerateStoryboards();
                   setActiveStep('storyboard');
                 }}
+                onRegenerateStoryboard={handleRegenerateStoryboardsFromSubject}
                 onExtractSubjects={(forceExtract || (readPendingSubjectExtraction(activeProject.id)?.status !== 'failed' && !!readPendingSubjectExtraction(activeProject.id)?.taskId))
                   ? handleExtractSubjects
                   : undefined}

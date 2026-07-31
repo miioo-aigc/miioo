@@ -16,10 +16,11 @@
  *   2026-07-17  上传入口改为复用无业务 FileUploadButton，API 和绑定编排保持不变
  *   2026-07-17  拆分 RefImageItem 与 RefImageUploadCard，页面继续持有参考图业务编排
  *   2026-07-22  明确参考图仅写入主体 reference_images，不参与右侧候选图列表
+ *   2026-07-30  上传/绑定成功后回读主体详情，关闭弹窗后恢复服务端参考图
  */
 import { useEffect, useReducer, useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
-import { apiBindSubjectReferenceImages, apiUploadSubjectReferenceImage } from '../../api/subject';
+import { apiBindSubjectReferenceImages, apiGetSubjectDetail, apiUploadSubjectReferenceImage } from '../../api/subject';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import RefImageItem from './RefImageItem';
 import RefImageUploadCard from './RefImageUploadCard';
@@ -43,6 +44,56 @@ function normalizeRefImages(refImageIds, previous = []) {
     }
     return { id, url: null };
   });
+}
+
+function getReferenceImageId(image) {
+  return image?.asset_id || image?.assetId || image?.id || image?.file_id || image?.fileId;
+}
+
+function getReferenceImageUrl(image) {
+  if (typeof image === 'string') return image;
+  return image?.file_url
+    || image?.fileUrl
+    || image?.preview_url
+    || image?.previewUrl
+    || image?.large_url
+    || image?.largeUrl
+    || image?.original_url
+    || image?.originalUrl
+    || image?.uploaded_url
+    || image?.uploadedUrl
+    || image?.url
+    || image?.image?.file_url
+    || image?.image?.preview_url
+    || image?.image?.url;
+}
+
+function getReferenceImagesFromResponse(response) {
+  const list = response?.reference_images
+    || response?.referenceImages
+    || response?.reference_image_ids
+    || response?.referenceImageIds
+    || response?.reference_image_urls
+    || response?.referenceImageUrls
+    || response?.subject?.reference_images
+    || response?.subject?.referenceImages
+    || response?.images
+    || response?.data?.reference_images
+    || response?.data?.referenceImages;
+  return Array.isArray(list) ? list : [];
+}
+
+function normalizeServerReferenceImages(images, fallback = []) {
+  const source = images.length > 0 ? images : fallback;
+  return source.map((image) => {
+    const id = typeof image === 'string' ? image : getReferenceImageId(image);
+    const rawUrl = getReferenceImageUrl(image);
+    return {
+      id: id || rawUrl,
+      assetId: id,
+      url: normalizeImageUrl(rawUrl) || rawUrl || null,
+    };
+  }).filter((image) => image.id || image.url);
 }
 
 function refImagesReducer(state, action) {
@@ -91,15 +142,22 @@ export default function RefImageField({ maxImages = 3, projectId, subjectId, ref
 
     if (projectId && subjectId) {
       apiUploadSubjectReferenceImage(projectId, subjectId, file)
-        .then((res) => {
-          const realId = res?.asset_id || res?.id;
-          const rawUrl = res?.file_url || res?.url;
-          const realUrl = normalizeImageUrl(rawUrl) || rawUrl;
-          if (realId && realUrl) {
-            dispatchRefImages({ type: 'replaceById', id: tempId, patch: { id: realId, url: realUrl, assetId: realId } });
-            onRefImagesChange?.(newList.map((image) => image.id === tempId
-              ? { id: realId, assetId: realId, url: realUrl }
-              : image));
+        .then(async (res) => {
+          const responseImages = getReferenceImagesFromResponse(res);
+          const responseImage = res?.reference_image || res?.referenceImage || res?.image || res?.asset || res;
+          const uploaded = normalizeServerReferenceImages(
+            responseImages,
+            [responseImage].filter(Boolean),
+          )[0];
+          // 上传接口可能只返回 asset_id + uploaded_url，详情回读才是关闭弹窗后的权威数据。
+          const detail = await apiGetSubjectDetail(projectId, subjectId).catch(() => null);
+          const detailImages = normalizeServerReferenceImages(getReferenceImagesFromResponse(detail));
+          const persistedImages = detailImages.length > 0 ? detailImages : uploaded ? [uploaded] : [];
+          if (persistedImages.length > 0) {
+            dispatchRefImages({ type: 'replace', items: persistedImages });
+            onRefImagesChange?.(persistedImages);
+          } else {
+            dispatchRefImages({ type: 'removeById', id: tempId });
           }
         })
         .catch((error) => {
@@ -125,7 +183,14 @@ export default function RefImageField({ maxImages = 3, projectId, subjectId, ref
     if (projectId && subjectId && assetIds.length > 0) {
       setLoadingRefs(true);
       apiBindSubjectReferenceImages(projectId, subjectId, { asset_ids: assetIds })
-        .then(() => onRefImagesChange?.(newList))
+        .then(async (res) => {
+          const detail = await apiGetSubjectDetail(projectId, subjectId).catch(() => null);
+          const detailImages = normalizeServerReferenceImages(getReferenceImagesFromResponse(detail));
+          const responseImages = normalizeServerReferenceImages(getReferenceImagesFromResponse(res));
+          const persistedImages = detailImages.length > 0 ? detailImages : responseImages;
+          onRefImagesChange?.(persistedImages.length > 0 ? persistedImages : newList);
+          if (persistedImages.length > 0) dispatchRefImages({ type: 'replace', items: persistedImages });
+        })
         .catch((error) => console.error('[RefImageField] 绑定参考图失败:', error))
         .finally(() => setLoadingRefs(false));
     }

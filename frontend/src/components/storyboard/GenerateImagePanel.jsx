@@ -16,6 +16,9 @@
  *   页面通过 props 注入页面级 UI、提示词构建器和业务回调；
  *   图片上传 API、模型 API 和资产选择能力在本组件内部使用；
  *   不引用页面入口、页面 Store 或页面闭包变量。
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-07-30  修复主体参考列新增资产未带入创作图片面板：保留已保存表单状态，实时合并当前分镜主体引用，不再过滤 avif/derived 预览地址
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -33,6 +36,38 @@ import { ImgUploadCard } from './StoryboardImageUpload';
 import ImageResultCard from './ImageResultCard';
 
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
+
+function getReferenceKey(item) {
+  return item?.subjectId || item?.subject_id || item?.assetId || item?.asset_id || item?.id || item?.url || null;
+}
+
+function normalizeShotReference(ref, chars, scenes, props) {
+  if (!ref) return null;
+  if (ref.url) return ref;
+  if (!ref.type || !ref.id) return ref;
+  const subjects = ref.type === 'char' ? chars : ref.type === 'scene' ? scenes : props;
+  const found = subjects?.find((subject) => subject.id === ref.id);
+  return found?.imageUrl
+    ? { ...ref, url: normalizeImageUrl(found.imageUrl), name: found.name }
+    : ref;
+}
+
+function mergeCurrentShotReferences(savedReferences, shotReferences) {
+  const currentByKey = new Map((shotReferences || []).map((ref) => [getReferenceKey(ref), ref]).filter(([key]) => key));
+  const result = (Array.isArray(savedReferences) ? savedReferences : []).map((saved) => {
+    const current = currentByKey.get(getReferenceKey(saved));
+    return current || saved;
+  });
+  const existingKeys = new Set(result.map(getReferenceKey).filter(Boolean));
+  (shotReferences || []).forEach((ref) => {
+    const key = getReferenceKey(ref);
+    if (key && !existingKeys.has(key)) {
+      result.push(ref);
+      existingKeys.add(key);
+    }
+  });
+  return result;
+}
 
 export default function GenerateImagePanel({
   shot,
@@ -90,25 +125,17 @@ export default function GenerateImagePanel({
   // 点击「生成分镜图」时才把 prompt 随 onGenerate 传回后端。
   const [prompt, setPrompt] = useState(() => formState?.prompt ?? buildStoryboardPrompt(shot));
   const [refImages, setRefImages] = useState(() => {
-    if (formState?.refImages) return formState.refImages;
-    const images = [];
+    const shotReferences = [];
     // 添加主体参考图——为项目主体补全 url/name（否则标签丢失 type 会变紫色）
     if (shot?.mainRefs?.length > 0) {
       shot.mainRefs.forEach(ref => {
-        if (ref?.url && !ref.url.toLowerCase().endsWith(".avif") && !ref.url.includes("/derived/assets/")) { images.push(ref); return; }
-        // 从 chars/scenes/props 中查找补齐 url 和 name
-        if (ref.type && ref.id) {
-          const subjects = ref.type === 'char' ? chars : ref.type === 'scene' ? scenes : props;
-          const found = subjects?.find(s => s.id === ref.id);
-          if (found?.imageUrl) {
-            images.push({ ...ref, url: normalizeImageUrl(found.imageUrl), name: found.name });
-            return;
-          }
-        }
-        if (ref?.url && !ref.url.toLowerCase().endsWith(".avif") && !ref.url.includes("/derived/assets/")) images.push(ref);
+        const normalized = normalizeShotReference(ref, chars, scenes, props);
+        if (normalized?.url) shotReferences.push(normalized);
       });
     }
-    return images;
+    // 已保存的弹窗状态优先保留；当前分镜列表新增的主体参考补到末尾。
+    // 不能再按文件后缀过滤主体图，资产库返回的 avif/derived 地址也是有效预览地址。
+    return mergeCurrentShotReferences(formState?.refImages, shotReferences);
   });
   const [refImgPickerOpen, setRefImgPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);

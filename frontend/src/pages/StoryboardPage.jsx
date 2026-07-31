@@ -35,7 +35,7 @@
  *
  * ─── 主页面入口 ──────────────────────────────────────────── L274–L1304
  *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化 L286–L870
- *   [加载与错误态] LoadingAnimation、失败操作和统计    L871–L934
+ *   [加载与错误态] LoadingAnimation、DotsLoading、失败操作和统计    L871–L934
  *   [镜头 CRUD] 上传、编辑、复制、删除、排序          L735–L860
  *   [渲染] 状态结果、内容区（列表/时间轴）、生成面板和 Toast L934–L1303
  *   [边界] 页面保留轮询循环、状态写回、缓存、持久化、Toast 和 API 副作用
@@ -99,6 +99,7 @@
  *   2026-07-23  面包屑重新分镜改为打开独立 AIRegenerateStoryboardModal，提交后复用当前分集任务轮询
  *   2026-07-23  重组分镜列表与定稿时间轴为上下两个独立面板，保留镜头行和时间轴卡片业务交互
  *   2026-07-23  未生成分集改为展示手动启动按钮，不再切换分集后自动抽取；空状态容器背景按页面反馈使用透明底色叠加 #060606
+ *   2026-07-30  分镜列表按当前返回顺序重新连续编号，分页追加时延续已有编号，修复首个镜头显示为 08 等后端残留编号
  *   2026-07-24  分镜生成失败态支持清除失败快照后重新发起任务
  *   2026-07-15  抽离 PanelPromptInput、ReferenceMentionDropdown 和 SubjectTag 到 components/storyboard/PanelPromptInput.jsx，
  *              页面只负责把提示词组件注入生成面板；提示词编辑、原子提及、光标处理和展示态标签由组件内部维护
@@ -109,9 +110,18 @@
  *              补全 Hook 依赖并将页面同步副作用延后到 requestAnimationFrame；定向 ESLint 达到 0 errors / 0 warnings，
  *              不改变 API、任务轮询、缓存、持久化和用户交互边界
  *   2026-07-29  分镜详情查看统一使用 StoryboardMediaDetailModal，图片/视频候选共用列表和定稿状态
-*/
+ *   2026-07-30  分镜详情参考图改为缩略图展示，兼容参考图嵌套字段，并补齐提示词字段读取
+ *   2026-07-30  按真实后端逻辑文档统一生成任务响应适配：兼容 task_id/id 及嵌套任务，单集覆盖生成显式确认，图片/视频生成统一进入任务轮询
+ *   2026-07-30  修复定稿时间轴初始媒体缺失：兼容候选媒体预览/封面字段和 is_finalized，使用分镜主记录字段兜底匹配，候选与定稿映射按镜头增量合并
+ *   2026-07-30  修复重新分镜 409：API 层补发 confirm_overwrite=true，确保页面确认覆盖意图传到后端
+ *   2026-07-30  修复重新分镜任务未继续轮询：提交后立即读取任务状态，持久化 storyboard 任务，并在刷新/返回页面后恢复轮询
+ *   2026-07-30  统一重新分镜任务 ID 与状态适配：未知处理中状态继续轮询，避免提交成功后提前结束
+ *   2026-07-30  分镜列表网络加载期间在内容区居中显示 DotsLoading，避免请求期间误显示空态或空列表
+ *   2026-07-31  修复主体参考列漏查场景和道具：分镜加载、分页、刷新及新增镜头统一使用角色/场景/道具主体索引，旁白列仍仅使用角色
+ *   2026-07-31  修复主体参考本地上传封面显示「？」：兼容上传响应 image/asset 嵌套图片地址，解析失败时回滚临时卡片
+ */
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ModalCloseBtn } from '../components/storyboard/StoryboardControls';
 import StoryboardToast from '../components/storyboard/StoryboardToast';
 import StoryboardHeader from '../components/storyboard/StoryboardHeader';
@@ -120,10 +130,12 @@ import { apiUploadStoryboardImage, apiUploadStoryboardVideo, apiGenerateStoryboa
 import { apiGetEpisodes, normalizeEpisodeListResponse } from '../api/subject';
 import { apiUploadCreationImage } from '../api/creation';
 import LoadingAnimation from '../components/LoadingAnimation';
+import DotsLoading from '../components/DotsLoading';
 import { normalizeImageUrl, toAbsoluteUrl } from '../utils/imageUrl';
 import {
   extractStoryboardImageUrl,
   extractStoryboardVideoUrl,
+  getStoryboardTaskId as getTaskIdFromAdapter,
   getStoryboardTaskStatus,
   hasStoryboardImageTaskResult,
   hasStoryboardVideoTaskResult,
@@ -146,11 +158,51 @@ function mergeCandidateOrder(previous = [], incoming = []) {
   });
   return [...ordered, ...additions];
 }
+
+function getStoryboardTaskId(task) {
+  return getTaskIdFromAdapter(task);
+}
+
+function unwrapStoryboardTaskResponse(value) {
+  let payload = value?.data ?? value?.payload ?? value;
+  if (payload?.task && typeof payload.task === 'object') return payload.task;
+  if (payload && typeof payload === 'object' && (
+    payload.id || payload.task_id || payload.taskId || payload.status || payload.raw_status
+  )) return payload;
+  if (payload?.result && typeof payload.result === 'object') {
+    payload = payload.result;
+    if (payload.task && typeof payload.task === 'object') return payload.task;
+  }
+  return payload;
+}
+
+function getStoryboardTaskError(task, fallback) {
+  const detail = task?.detail;
+  const detailMessage = typeof detail === 'string' ? detail : detail?.message || detail?.detail;
+  return task?.status_message
+    || task?.statusMessage
+    || task?.params?.status_message
+    || task?.params?.statusMessage
+    || detailMessage
+    || task?.error?.message
+    || task?.error?.detail
+    || task?.error
+    || task?.message
+    || task?.params?.error
+    || fallback;
+}
+
+function hasBackendStoryboardIds(items) {
+  return Array.isArray(items) && items.every((item) => isBackendStoryboardId(
+    item?.id ?? item?.storyboard_id ?? item?.storyboardId ?? item?.uuid
+  ));
+}
+
 import { Button } from '../components/ui';
 import { subscribe, peekCache, invalidate } from '../utils/cache';
 import { K, MEDIUM } from '../utils/cacheKeys';
-import { buildStoryboardRefFromAsset, toSafeStoryboardReferenceUrls } from '../utils/storyboardReferenceAdapter';
-import { enrichMainRefs, makeStoryboardShot, normalizeStoryboard, normalizeStoryboardList, toBackendStoryboard } from '../utils/storyboardDataAdapter';
+import { buildStoryboardRefFromAsset, getUploadedImageId, getUploadedImageUrl, toSafeStoryboardReferenceUrls } from '../utils/storyboardReferenceAdapter';
+import { enrichMainRefs, isBackendStoryboardId, makeStoryboardShot, normalizeStoryboard, normalizeStoryboardList, toBackendStoryboard } from '../utils/storyboardDataAdapter';
 import buildStoryboardPrompt from '../utils/buildStoryboardPrompt';
 import { addPendingTask, removePendingTask, getPendingTasks } from '../utils/taskPersistence';
 import { downloadBlob } from '../utils/downloadBlob';
@@ -209,10 +261,13 @@ import {
 function ShotRow({ shot, onChange, onAdd, onCopy, onDelete, chars, isDragging, onDragStart, onDragOver, onDrop, insertBefore, insertAfter, globalVoiceParams, onSaveGlobalVoice, projectId, generatingImage, generatingVideo, candidates = [], onOpenCreation, onFinalizeToggle, onSelectShot, isSelectMode = false, isSelected = false, isActive = false, onSelect, onToggleSelect, onUploadImage, onUploadVideo }) {
   async function handleMainRefFileUpload({ file, tempRef, nextRefs }) {
     const result = await apiUploadCreationImage({ file, category: 'reference', project_id: projectId });
-    const uploadedUrl = normalizeImageUrl(result.uploaded_url || result.uploadedUrl || result.url || result.file_url || '');
+    const uploadedUrl = normalizeImageUrl(getUploadedImageUrl(result));
+    if (!uploadedUrl) {
+      throw new Error('上传成功但未返回可用的图片地址');
+    }
     const updatedRefs = nextRefs.map((ref) => (
       ref.id === tempRef.id
-        ? { id: result.asset_id || result.id || uploadedUrl, url: uploadedUrl, name: file.name, type: file.type, uploaded: true }
+        ? { id: getUploadedImageId(result, uploadedUrl), url: uploadedUrl, name: file.name, type: file.type, uploaded: true }
         : ref
     ));
     onChange({ ...shot, mainRefs: updatedRefs });
@@ -291,6 +346,17 @@ function StartStoryboardIcon() {
 
 export default function StoryboardPage({ projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onGenerateStoryboards, onRetryGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0, statusMessage = '' }) {
 
+  // 分镜主体参考可能同时包含角色、场景和道具；旁白列仍只使用 chars。
+  const storyboardSubjects = useMemo(() => {
+    const seen = new Set();
+    return [...chars, ...scenes, ...props].filter((subject) => {
+      const key = subject?.id;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [chars, scenes, props]);
+
   // 选择器的唯一数据源是剧本分集，不根据当前分镜接口返回结果裁剪列表。
   const [scriptEpisodes, setScriptEpisodes] = useState(() => episodes.length > 0 ? episodes : []);
   const activeEpisodes = scriptEpisodes.length > 0 ? scriptEpisodes : EPISODES;
@@ -312,7 +378,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       peekCache(K.storyboards(projectId), MEDIUM.CONTENT);
     if (!raw || !Array.isArray(raw)) return [];
     const currentEpisodeRaw = raw.filter((item) => (item.episode_id ?? item.episodeId) === episodeId);
-    return normalizeStoryboardList(currentEpisodeRaw, chars).slice(0, STORYBOARD_PAGE_SIZE);
+    return normalizeStoryboardList(currentEpisodeRaw, storyboardSubjects).slice(0, STORYBOARD_PAGE_SIZE);
   });
   const [globalVoiceParams, setGlobalVoiceParams] = useState({});
   const [episode, setEpisode] = useState(() => {
@@ -438,24 +504,42 @@ function fallbackCandidates(shot) {
   }
 
   const loadShotCandidates = useCallback(async (currentShots) => {
-    const entries = await Promise.all(currentShots.map(async (shot) => {
+    const validShots = (currentShots || []).filter((shot) => isBackendStoryboardId(shot?.backendId || shot?.id));
+    const entries = await Promise.all(validShots.map(async (shot) => {
+      const backendId = shot.backendId || shot.id;
       try {
-        const items = await apiListStoryboardMediaCandidates(projectId, shot.id);
-        return [shot.id, items];
+        const items = await apiListStoryboardMediaCandidates(projectId, backendId);
+        return [shot.id, items, shot];
       } catch {
-        return [shot.id, fallbackCandidates(shot)];
+        return [shot.id, fallbackCandidates(shot), shot];
       }
     }));
-    const nextCandidates = Object.fromEntries(entries);
-    const nextFinalized = Object.fromEntries(entries.map(([id, items]) => [id, items.find((item) => item.is_finalized) || null]));
+    const nextCandidates = Object.fromEntries(entries.map(([id, items]) => [id, items]));
+    const nextFinalized = Object.fromEntries(entries.map(([id, items, shot]) => {
+      const explicitFinalized = items.find((item) => item.is_finalized || item.isFinalized);
+      if (explicitFinalized) return [id, explicitFinalized];
+
+      // 兼容后端候选接口暂未返回 is_finalized，但分镜主记录已有定稿地址的情况。
+      const storyboardMedia = [shot.storyboardImage, shot.storyboardVideo].filter(Boolean);
+      const matched = storyboardMedia.find((media) => {
+        const mediaKey = getCandidateKey(media);
+        return mediaKey && items.some((item) => getCandidateKey(item) === mediaKey);
+      });
+      if (!matched) return [id, null];
+      return [id, items.find((item) => getCandidateKey(item) === getCandidateKey(matched)) || null];
+    }));
     setCandidateMediaMap((prev) => {
       const merged = { ...prev };
       Object.entries(nextCandidates).forEach(([shotId, items]) => {
-        merged[shotId] = mergeCandidateOrder(prev[shotId] || [], items);
+        const finalized = nextFinalized[shotId];
+        merged[shotId] = mergeCandidateOrder(prev[shotId] || [], items).map((item) => ({
+          ...item,
+          is_finalized: finalized ? getCandidateKey(item) === getCandidateKey(finalized) : Boolean(item.is_finalized),
+        }));
       });
       return merged;
     });
-    setFinalizedMediaMap(nextFinalized);
+    setFinalizedMediaMap((prev) => ({ ...prev, ...nextFinalized }));
   }, [projectId]);
 
   async function loadMoreShots() {
@@ -469,7 +553,7 @@ function fallbackCandidates(shot) {
         offset: shotsRef.current.length,
       });
       if (getEpisodeId(episode) !== episodeId || loadedEpisodeRef.current !== episodeId) return;
-      const normalized = normalizeStoryboardList(nextPage, chars);
+      const normalized = normalizeStoryboardList(nextPage, storyboardSubjects, shotsRef.current.length);
       setShots((prev) => {
         const existingIds = new Set(prev.map((shot) => shot.id));
         const additions = normalized.filter((shot) => !existingIds.has(shot.id));
@@ -488,9 +572,10 @@ function fallbackCandidates(shot) {
   }
 
   const refreshCandidateForShot = useCallback(async (shot) => {
-    if (!shot?.id) return;
+    const backendId = shot?.backendId || shot?.id;
+    if (!isBackendStoryboardId(backendId)) return;
     try {
-      const items = await apiListStoryboardMediaCandidates(projectId, shot.id);
+      const items = await apiListStoryboardMediaCandidates(projectId, backendId);
       setCandidateMediaMap((prev) => ({
         ...prev,
         [shot.id]: mergeCandidateOrder(prev[shot.id] || [], items),
@@ -681,13 +766,13 @@ function fallbackCandidates(shot) {
       return data.filter((item) => (item.episode_id ?? item.episodeId) === episodeId);
     };
 
-    apiGetStoryboards(projectId, { episode_id: episodeId, limit: STORYBOARD_PAGE_SIZE, offset: 0 })
+    apiGetStoryboards(projectId, { episode_id: episodeId, limit: STORYBOARD_PAGE_SIZE, offset: 0, include_gen_params: true })
       .then((data) => {
         if (cancelled || !Array.isArray(data)) return;
         // 重新分镜期间保持加载态，避免请求完成后把旧缓存再次显示出来。
         // 任务结束后 homeIsGenerating 变化会重新触发本 effect，再读取最新结果。
         if (isGenerating || homeIsGenerating) return;
-        const normalized = normalizeStoryboardList(data, chars);
+        const normalized = normalizeStoryboardList(data, storyboardSubjects);
         setHasMoreShots(data.length >= STORYBOARD_PAGE_SIZE);
         if (normalized.length > 0) {
           // 有数据：直接覆盖（正常加载 / 刷新场景）
@@ -712,7 +797,7 @@ function fallbackCandidates(shot) {
     const unsub1 = subscribe(cacheKey, (data) => {
       if (!Array.isArray(data)) return;
       if (isGenerating || homeIsGenerating) return;
-      const normalized = normalizeStoryboardList(data, chars);
+      const normalized = normalizeStoryboardList(data, storyboardSubjects);
       if (normalized.length > 0) {
         const visible = normalized.slice(0, STORYBOARD_PAGE_SIZE);
         setHasMoreShots(normalized.length >= STORYBOARD_PAGE_SIZE);
@@ -729,7 +814,7 @@ function fallbackCandidates(shot) {
     const unsub2 = subscribe(cacheKeyAll, (data) => {
       if (!Array.isArray(data)) return;
       if (isGenerating || homeIsGenerating) return;
-      const normalized = normalizeStoryboardList(onlyCurrentEpisode(data), chars);
+      const normalized = normalizeStoryboardList(onlyCurrentEpisode(data), storyboardSubjects);
       if (normalized.length > 0) {
         const visible = normalized.slice(0, STORYBOARD_PAGE_SIZE);
         setHasMoreShots(normalized.length >= STORYBOARD_PAGE_SIZE);
@@ -747,30 +832,16 @@ function fallbackCandidates(shot) {
       unsub1();
       unsub2();
     };
-  }, [projectId, episode, chars, homeIsGenerating, isGenerating, generateError, episodeGenerationError, loadShotCandidates]);
+  }, [projectId, episode, storyboardSubjects, homeIsGenerating, isGenerating, generateError, episodeGenerationError, loadShotCandidates]);
 
-  // 当 chars/scenes/props 变化时（如主体页修改了定稿图），直接重新富化已有 shots，无需重新请求后端
+  // 当主体数据变化时（如主体页修改了定稿图），一次性用三类主体重新富化已有 shots。
   useEffect(() => {
-    if (!chars.length) return;
+    if (!storyboardSubjects.length) return;
     const frameId = requestAnimationFrame(() => {
-      setShots(prev => prev.map(shot => enrichMainRefs({ ...shot }, chars)));
+      setShots(prev => prev.map(shot => enrichMainRefs({ ...shot }, storyboardSubjects)));
     });
     return () => cancelAnimationFrame(frameId);
-  }, [chars]);
-  useEffect(() => {
-    if (!scenes.length) return;
-    const frameId = requestAnimationFrame(() => {
-      setShots(prev => prev.map(shot => enrichMainRefs({ ...shot }, scenes)));
-    });
-    return () => cancelAnimationFrame(frameId);
-  }, [scenes]);
-  useEffect(() => {
-    if (!props.length) return;
-    const frameId = requestAnimationFrame(() => {
-      setShots(prev => prev.map(shot => enrichMainRefs({ ...shot }, props)));
-    });
-    return () => cancelAnimationFrame(frameId);
-  }, [props]);
+  }, [storyboardSubjects]);
 
 
   useEffect(() => {
@@ -806,6 +877,42 @@ function fallbackCandidates(shot) {
 
     const pending = getPendingTasks(projectId, epId);
     if (pending.length === 0) return;
+
+    const resumeStoryboard = async (task) => {
+      setIsGenerating(true);
+      setEpisodeGenerationError(false);
+      try {
+        const current = await apiGetTask(task.taskId);
+        const finalTask = isStoryboardTaskInProgress(current)
+          ? await pollTask(task.taskId)
+          : current;
+        const status = String(getStoryboardTaskStatus(finalTask) || '').toLowerCase();
+        if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
+          throw new Error(getStoryboardTaskError(finalTask, '分镜生成失败'));
+        }
+
+        invalidate(K.storyboards(projectId, epId));
+        invalidate(K.storyboards(projectId));
+        const latest = await apiGetStoryboards(projectId, {
+          episode_id: epId,
+          limit: STORYBOARD_PAGE_SIZE,
+          offset: 0,
+          include_gen_params: true,
+        });
+        const normalizedLatest = normalizeStoryboardList(latest, storyboardSubjects).slice(0, STORYBOARD_PAGE_SIZE);
+        setHasMoreShots(Array.isArray(latest) && latest.length >= STORYBOARD_PAGE_SIZE);
+        setShots(normalizedLatest);
+        loadShotCandidates(normalizedLatest);
+        generatedEpisodeIdsRef.current.add(epId);
+      } catch (error) {
+        console.error('[StoryboardPage] 恢复重新分镜任务失败:', task.taskId, error);
+        setEpisodeGenerationError(true);
+        showToast(getStoryboardTaskError(error, '分镜生成失败，请稍后重试'), 'error');
+      } finally {
+        removePendingTask(projectId, task.taskId);
+        setIsGenerating(false);
+      }
+    };
 
     const resumeVideo = async (task) => {
       setGeneratingVideoShotIds(prev => new Set([...prev, task.shotId]));
@@ -896,10 +1003,11 @@ function fallbackCandidates(shot) {
     };
 
     pending.forEach(task => {
-      if (task.type === 'video') resumeVideo(task);
+      if (task.type === 'storyboard') resumeStoryboard(task);
+      else if (task.type === 'video') resumeVideo(task);
       else if (task.type === 'image') resumeImage(task);
     });
-  }, [projectId, episode]);
+  }, [projectId, episode, storyboardSubjects, loadShotCandidates]);
 
 
   function showToast(msg, type = 'success') {
@@ -913,7 +1021,9 @@ function fallbackCandidates(shot) {
     const MAX_POLLS = 150;
     const INTERVAL = 3000;
     for (let i = 0; i < MAX_POLLS; i++) {
-      await new Promise(r => setTimeout(r, INTERVAL));
+      // 提交生成任务后立即读取一次，避免任务已经创建但页面在首个 3 秒窗口内
+      // 没有任何网络活动；后续请求再按固定间隔进行。
+      if (i > 0) await new Promise(r => setTimeout(r, INTERVAL));
       const t = await apiGetTask(taskId);
       // 终态
       if (!isStoryboardTaskInProgress(t)) return t;
@@ -944,9 +1054,10 @@ function fallbackCandidates(shot) {
           aspect_ratio: projectRatio,
           reference_images: toSafeStoryboardReferenceUrls(params.refImages),
         });
-        taskId = taskResp.id;
+        taskId = getStoryboardTaskId(taskResp);
+        if (!taskId) throw new Error('分镜图生成接口未返回任务 ID');
         addPendingTask(projectId, { taskId, shotId: shot.id, episodeId, type: 'image' });
-        const task = await pollTask(taskResp.id, hasStoryboardImageTaskResult);
+        const task = await pollTask(taskId, hasStoryboardImageTaskResult);
         if ((getStoryboardTaskStatus(task) === 'completed' || getStoryboardTaskStatus(task) === 'partial') || hasStoryboardImageTaskResult(task)) {
           const imageUrl = extractStoryboardImageUrl(task);
           if (imageUrl) {
@@ -1029,9 +1140,10 @@ function fallbackCandidates(shot) {
           ratio: projectRatio,
           reference_images: toSafeStoryboardReferenceUrls(params.refImages),
         });
-        taskId = taskResp.id;
+        taskId = getStoryboardTaskId(taskResp);
+        if (!taskId) throw new Error('分镜视频生成接口未返回任务 ID');
         addPendingTask(projectId, { taskId, shotId: shot.id, episodeId, type: 'video' });
-        const task = await pollTask(taskResp.id, hasStoryboardVideoTaskResult);
+        const task = await pollTask(taskId, hasStoryboardVideoTaskResult);
         const videoUrl = extractStoryboardVideoUrl(task);
         if (videoUrl) {
           if (videoUrl) {
@@ -1237,41 +1349,54 @@ function fallbackCandidates(shot) {
     setDownloadMode(false);
     setIsGenerating(true);
 
+    let pendingTaskId = null;
     const generationPromise = apiGenerateStoryboardsFromEpisode(projectId, {
       episode_id: episodeId,
       model: null,
       overwrite_existing: true,
+      confirm_overwrite: true,
     })
-      .then((taskResponse) => {
+      .then((rawResponse) => {
+        const taskResponse = unwrapStoryboardTaskResponse(rawResponse);
         if (Array.isArray(taskResponse)) {
           return { status: 'completed', storyboards: taskResponse };
         }
 
-        const taskId = taskResponse?.task_id || taskResponse?.taskId || taskResponse?.id;
+        const taskId = getStoryboardTaskId(taskResponse);
         if (!taskId) {
-          const status = String(taskResponse?.status || '').toLowerCase();
+          const status = String(getStoryboardTaskStatus(taskResponse) || '').toLowerCase();
           if (['completed', 'success', 'succeeded', 'done'].includes(status)) {
             return taskResponse;
           }
           throw new Error('重新分镜接口未返回分镜结果或任务 ID');
         }
+        // 重新分镜任务也要写入持久化记录。这样用户刷新页面或离开后返回时，
+        // 页面可以识别仍在执行的任务，不会只剩一个已经发出的 POST 请求。
+        pendingTaskId = taskId;
+        addPendingTask(projectId, {
+          taskId,
+          shotId: null,
+          episodeId,
+          type: 'storyboard',
+        });
         return pollTask(taskId);
       })
       .then((taskResult) => {
-        const status = String(taskResult?.status || '').toLowerCase();
+        if (pendingTaskId) removePendingTask(projectId, pendingTaskId);
+        const status = String(getStoryboardTaskStatus(taskResult) || '').toLowerCase();
         if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
-          throw new Error(taskResult?.status_message || taskResult?.params?.error || '分镜生成失败');
+          throw new Error(getStoryboardTaskError(taskResult, '分镜生成失败'));
         }
-        if (Array.isArray(taskResult?.storyboards)) return taskResult.storyboards;
-        if (Array.isArray(taskResult?.results) && taskResult.results.some((item) => item?.episode_id || item?.shot_number)) {
+        if (Array.isArray(taskResult?.storyboards) && hasBackendStoryboardIds(taskResult.storyboards)) return taskResult.storyboards;
+        if (Array.isArray(taskResult?.results) && taskResult.results.some((item) => item?.episode_id || item?.shot_number) && hasBackendStoryboardIds(taskResult.results)) {
           return taskResult.results;
         }
         invalidate(K.storyboards(projectId, episodeId));
         invalidate(K.storyboards(projectId));
-        return apiGetStoryboards(projectId, { episode_id: episodeId, limit: STORYBOARD_PAGE_SIZE, offset: 0 });
+        return apiGetStoryboards(projectId, { episode_id: episodeId, limit: STORYBOARD_PAGE_SIZE, offset: 0, include_gen_params: true });
       })
       .then((latest) => {
-        const normalizedLatest = normalizeStoryboardList(latest, chars).slice(0, STORYBOARD_PAGE_SIZE);
+        const normalizedLatest = normalizeStoryboardList(latest, storyboardSubjects).slice(0, STORYBOARD_PAGE_SIZE);
         setHasMoreShots(Array.isArray(latest) && latest.length >= STORYBOARD_PAGE_SIZE);
         setShots(normalizedLatest);
         loadShotCandidates(normalizedLatest);
@@ -1279,6 +1404,7 @@ function fallbackCandidates(shot) {
       })
       .catch((err) => {
         console.error('[StoryboardPage] 重新分镜失败:', err);
+        if (pendingTaskId) removePendingTask(projectId, pendingTaskId);
         const message = err?.message || '重新分镜失败，请稍后重试';
         setRegenerateModalError(message);
         showToast(message, 'error');
@@ -1303,15 +1429,16 @@ function fallbackCandidates(shot) {
     generatingEpisodeRef.current = episodeId;
 
     try {
-      const taskResponse = await apiGenerateStoryboardsFromEpisode(projectId, {
+      const rawTaskResponse = await apiGenerateStoryboardsFromEpisode(projectId, {
         episode_id: episodeId,
         model: null,
       });
+      const taskResponse = unwrapStoryboardTaskResponse(rawTaskResponse);
       let taskResult = taskResponse;
       if (!Array.isArray(taskResponse)) {
-        const taskId = taskResponse?.task_id || taskResponse?.taskId || taskResponse?.id;
+        const taskId = getStoryboardTaskId(taskResponse);
         if (!taskId) {
-          const status = String(taskResponse?.status || '').toLowerCase();
+          const status = String(getStoryboardTaskStatus(taskResponse) || '').toLowerCase();
           if (!['completed', 'success', 'succeeded', 'done'].includes(status)) {
             throw new Error('按集生成分镜未返回分镜结果或任务 ID');
           }
@@ -1319,18 +1446,21 @@ function fallbackCandidates(shot) {
           taskResult = await pollTask(taskId);
         }
       }
-      if (['failed', 'error', 'cancelled', 'canceled'].includes(String(taskResult?.status || '').toLowerCase())) {
-        throw new Error(taskResult?.status_message || taskResult?.params?.error || '分镜生成失败');
+      if (['failed', 'error', 'cancelled', 'canceled'].includes(String(getStoryboardTaskStatus(taskResult) || '').toLowerCase())) {
+        throw new Error(getStoryboardTaskError(taskResult, '分镜生成失败'));
       }
 
-      const latest = Array.isArray(taskResult)
+      const taskItems = Array.isArray(taskResult)
         ? taskResult
         : (Array.isArray(taskResult?.storyboards)
           ? taskResult.storyboards
           : (Array.isArray(taskResult?.results) && taskResult.results.some((item) => item?.episode_id || item?.shot_number)
             ? taskResult.results
-            : await apiGetStoryboards(projectId, { episode_id: episodeId, limit: STORYBOARD_PAGE_SIZE, offset: 0 })));
-      const normalizedLatest = normalizeStoryboardList(latest, chars).slice(0, STORYBOARD_PAGE_SIZE);
+            : null));
+      const latest = hasBackendStoryboardIds(taskItems)
+        ? taskItems
+        : await apiGetStoryboards(projectId, { episode_id: episodeId, limit: STORYBOARD_PAGE_SIZE, offset: 0, include_gen_params: true });
+      const normalizedLatest = normalizeStoryboardList(latest, storyboardSubjects).slice(0, STORYBOARD_PAGE_SIZE);
       setHasMoreShots(Array.isArray(latest) && latest.length >= STORYBOARD_PAGE_SIZE);
       setShots(normalizedLatest);
       loadShotCandidates(normalizedLatest);
@@ -1495,7 +1625,7 @@ function fallbackCandidates(shot) {
 
     apiCreateStoryboard(projectId, { ...toBackendStoryboard(newShot), episode_id: getEpisodeId(episode) })
       .then((created) => {
-        const shotWithRealId = enrichMainRefs(normalizeStoryboard(created), chars);
+        const shotWithRealId = enrichMainRefs(normalizeStoryboard(created), storyboardSubjects);
         setShots((prev) => {
           const next = [...prev.slice(0, idx + 1), shotWithRealId, ...prev.slice(idx + 1)];
           const reordered = next.map((s, i) => ({ ...s, number: i + 1 }));
@@ -1517,7 +1647,7 @@ function fallbackCandidates(shot) {
     apiCreateStoryboard(projectId, { ...toBackendStoryboard(copy), episode_id: getEpisodeId(episode) })
       .then((created) => {
         // 合并原始富数据 + 后端生成的 ID
-        const shotWithRealId = { ...copy, ...enrichMainRefs(normalizeStoryboard(created), chars) };
+        const shotWithRealId = { ...copy, ...enrichMainRefs(normalizeStoryboard(created), storyboardSubjects) };
         setShots((prev) => {
           const next = [...prev.slice(0, idx + 1), shotWithRealId, ...prev.slice(idx + 1)];
           const reordered = next.map((s, i) => ({ ...s, number: i + 1 }));
@@ -1556,9 +1686,9 @@ function fallbackCandidates(shot) {
 
     apiCreateStoryboard(projectId, { ...toBackendStoryboard(newShot), episode_id: getEpisodeId(episode) })
       .then((created) => {
-        const shotWithRealId = enrichMainRefs(normalizeStoryboard(created), chars);
+        const shotWithRealId = enrichMainRefs(normalizeStoryboard(created), storyboardSubjects);
         hasManuallyInteracted.current = true;
-        setShots((prev) => [...prev, shotWithRealId]);
+        setShots((prev) => [...prev, shotWithRealId].map((shot, index) => ({ ...shot, number: index + 1 })));
       })
       .catch((err) => {
         console.error('[StoryboardPage] 创建分镜失败:', err);
@@ -1737,15 +1867,24 @@ function fallbackCandidates(shot) {
           }}
         />}
       >
-      <div
-        ref={shotListRef}
-        style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}
-        onScroll={(event) => {
-          const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
-          if (scrollHeight - scrollTop - clientHeight <= 120) loadMoreShots();
-        }}
-        onDragEnd={() => { setDragId(null); setOverId(null); }}
-      >
+      {isLoadingEpisode ? (
+        <div
+          aria-label="正在加载分镜"
+          role="status"
+          style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#060606' }}
+        >
+          <DotsLoading size={6} color="#2DC3E1" gap={4} />
+        </div>
+      ) : (
+        <div
+          ref={shotListRef}
+          style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}
+          onScroll={(event) => {
+            const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+            if (scrollHeight - scrollTop - clientHeight <= 120) loadMoreShots();
+          }}
+          onDragEnd={() => { setDragId(null); setOverId(null); }}
+        >
         {/* top sentinel — drop zone for placing before the first card */}
         {dragId && (
           <div
@@ -1756,7 +1895,7 @@ function fallbackCandidates(shot) {
         )}
         {shots.map((shot, idx) => (
           <ShotRow
-            key={shot.id}
+            key={shot.id || `shot-${shot.number || idx + 1}-${idx}`}
             shot={shot}
             projectId={projectId}
             onChange={(next) => updateShot(shot.id, next)}
@@ -1873,7 +2012,8 @@ function fallbackCandidates(shot) {
           <StoryboardIconPlus color="currentColor" />
           添加空白分镜
         </div>
-      </div>
+        </div>
+      )}
       </StoryboardContentArea>
     </div>
     {showImageModal && (
@@ -2029,9 +2169,10 @@ function fallbackCandidates(shot) {
         try {
           setGeneratingImageShotIds(prev => new Set([...prev, shot.id]));
           const taskResp = await apiGenerateStoryboardImage(projectId, shot.id, { model: params.model, resolution: params.resolution, prompt: params.prompt, aspect_ratio: projectRatio, reference_images: toSafeStoryboardReferenceUrls(params.refImages) });
-          taskId = taskResp.id;
+          taskId = getStoryboardTaskId(taskResp);
+          if (!taskId) throw new Error('分镜图生成接口未返回任务 ID');
           addPendingTask(projectId, { taskId, shotId: shot.id, episodeId: getEpisodeId(episode), type: 'image' });
-          const task = await pollTask(taskResp.id, hasStoryboardImageTaskResult);
+          const task = await pollTask(taskId, hasStoryboardImageTaskResult);
           if ((getStoryboardTaskStatus(task) === 'completed' || getStoryboardTaskStatus(task) === 'partial') || hasStoryboardImageTaskResult(task)) {
              const imageUrl = extractStoryboardImageUrl(task);
              if (imageUrl) {
@@ -2157,9 +2298,10 @@ function fallbackCandidates(shot) {
                 reference_video_url: toAbsoluteUrl(params.reference_video_url),
                 reference_audio_url: toAbsoluteUrl(params.reference_audio_url),
               });
-            taskId = taskResp.id;
+            taskId = getStoryboardTaskId(taskResp);
+            if (!taskId) throw new Error('分镜视频生成接口未返回任务 ID');
             addPendingTask(projectId, { taskId, shotId: shot.id, episodeId: getEpisodeId(episode), type: 'video' });
-            const task = await pollTask(taskResp.id, hasStoryboardVideoTaskResult);
+            const task = await pollTask(taskId, hasStoryboardVideoTaskResult);
             const videoUrl = extractStoryboardVideoUrl(task);
             if (videoUrl) {
               const normalizedUrl = normalizeImageUrl(videoUrl);

@@ -1,5 +1,48 @@
 # 组件重构盘点基线
 
+## 2026-07-31 分镜主体参考本地上传封面显示修复
+
+- `MainRefCol` 中的“？”是无 `image.url` 时的主动占位，不是图片请求失败图标；本次沿上传回调链路确认问题属于响应字段适配遗漏。
+- `StoryboardPage` 的主体参考上传适配改为复用 `storyboardReferenceAdapter` 的 `getUploadedImageUrl` / `getUploadedImageId`，兼容创作图片上传响应顶层以及 `image`、`asset`、`data` 嵌套字段。
+- 上传成功但没有可用图片地址时抛出错误并清理临时卡片，避免把无 URL 的正式主体参考写入分镜状态；资产选择适配同步兼容 `file_url`、`original_url` 和 `preview_url`。
+- 验证：`npx eslint src/pages/StoryboardPage.jsx src/utils/storyboardReferenceAdapter.js`、`npm run build` 和 `git diff --check`；真实网络上传回归待使用测试图片执行。
+
+## 2026-07-30 主体参考列刷新重复资源修复
+
+- `storyboardDataAdapter.normalizeStoryboard` 恢复 `reference_images` 时保留 `subject_id`、`asset_id`、名称和原始字段，避免主体身份在适配过程中丢失。
+- `enrichMainRefs` 先收集主体引用，再处理普通参考图；按主体 ID、资产 ID和归一化图片路径去重，主体引用优先于同图普通资源，不受接口返回顺序影响。
+- 本次只修复刷新后的参考资源归一化和列表展示，不改变主体参考图上传、资产库选择、主体定稿或后端保存接口。
+- 验证：目标适配文件定向 ESLint、`npm run build` 和 `git diff --check` 通过。
+
+## 2026-07-30 分镜创作结果详情参考图与提示词修复
+
+- `StoryboardMediaDetailModal.jsx` 的右侧信息区将参考图从生成参数文本改为 `80×56px` 缩略图展示，图片地址统一经过 `normalizeImageUrl` 处理。
+- 参考图适配兼容 snake_case、camelCase、URL数组和对象数组，并从媒体对象、元数据、`params`/`gen_params`/`generation_params` 等嵌套参数容器收集后按 URL去重。
+- 普通生成参数列表排除参考图字段，避免同时显示参考图 URL和缩略图；详情提示词兼容媒体字段、元数据、生成参数及当前镜头图片/视频提示词。
+- `MediaCol.jsx` 打开分镜媒体详情时透传 `input_prompt`、`ratio` 以及多种参考图字段；`MediaDetailModal.jsx` 的主体详情参考图兼容字符串、`url`、`fileUrl` 和 `file_url`。
+- 本次只补齐详情数据适配和右侧展示，不改变候选媒体、生成任务、上传或定稿业务链路。
+- 验证：目标文件定向 ESLint、`npm run build` 和 `git diff --check` 通过；`check:architecture` 的历史告警未因本次修改新增。
+
+## 2026-07-30 主体参考列新增资产同步到创作面板
+
+- `GenerateImagePanel.jsx` 和 `GenerateVideoPanel.jsx` 的参考素材初始化不再只消费一次性的弹窗表单快照；打开面板时会读取当前分镜最新的 `shot.mainRefs`。
+- 图片面板会补全主体引用的预览 URL 和名称，并保留 `.avif`、`/derived/assets/` 等有效派生地址；视频面板会按主体/资产 ID补全并合并当前主体参考。
+- 当前分镜引用优先级高于旧 `formState`：同一主体在列表中被替换或新增后，创作面板展示最新引用；面板内另外添加的普通参考图、主体和其他素材不被清除。
+- 图片与视频面板均按主体 ID、资产 ID或媒体 URL去重，避免主体参考列和创作面板出现重复主体。
+- 本次修复保持主体参考列原有上传、资产库选择、删除和后端持久化逻辑不变，只调整创作面板打开时的数据合并边界。
+- 验证：两个目标组件定向 ESLint 和 `git diff --check` 通过；项目构建已完成验证。
+
+## 2026-07-30 分镜任务与时间轴定稿媒体加载修复
+
+- `apiGenerateStoryboardsFromEpisode` 现在接收并发送 `confirm_overwrite`；主体页和分镜页的重新分镜入口统一提交 `overwrite_existing: true`、`confirm_overwrite: true`，修复后端返回 409“请确认覆盖”而未真正发起任务的问题。
+- `StoryboardPage.jsx` 统一处理分镜抽取、按集生成、重新分镜及图片/视频生成任务的响应解包和任务 ID读取；页面继续持有轮询、缓存失效、失败态和结果写回副作用。
+- `storyboardTaskAdapter.js` 扩展任务状态、提示信息、错误信息和图片/视频结果字段适配，兼容嵌套响应、部分完成状态及多种媒体结果字段。
+- `api/storyboard.js` 的分镜列表请求默认请求生成参数，并在 `include_gen_params` 导致历史数据 500 时降级读取基础分镜列表；候选媒体归一化统一兼容图片/视频预览、封面、缩略图、下载地址和定稿字段。
+- `StoryboardPage.jsx` 加载候选媒体时优先使用候选接口的 `is_finalized`，并以分镜主记录的图片/视频字段作为兼容兜底；候选数组和定稿映射采用增量合并，保证分镜列、创作弹窗、详情弹窗和时间轴使用同一份数据且不因异步返回顺序丢项。
+- `StoryboardFinalizedCard.jsx` 兼容候选媒体的预览图、首帧、缩略图、海报和视频地址，视频卡片加载后可显示已有定稿媒体并在悬停时播放。
+- `SubjectPage.jsx`、`SubjectImageActions.js` 和 `RefImageField.jsx` 修复主体批量创作结果 ID误用、主体详情回读定稿匹配以及参考图上传/绑定后的服务端状态恢复。
+- 已完成目标文件定向 ESLint、`npm run build` 和 `git diff --check`；真实登录态任务恢复、候选媒体和定稿联调仍需使用后端实际响应继续验证。
+
 ## 2026-07-29 资产选择弹窗分镜定稿筛选修复
 
 - `AssetPickerModal` 的项目资产“分镜”Tab勾选“仅显示定稿图”时，定稿标记不再只依赖分镜主表的单个封面字段。
@@ -1589,6 +1632,13 @@
 - 编辑主体弹窗首次消费批量缓存，以及批量结束替换占位图时均再次按图片 URL 去重，避免同一张结果图因重复回调或缓存累加而展示两次。
 - 参考图与候选图的数据边界保持不变；本次只修复批量候选结果缓存的重复展示，不改变后端候选图接口和生成参数。
 
+## 2026-07-30 主体创作结果定稿 ID 适配修复
+
+- **失败原因**：批量创作任务结果没有稳定约定 `image_id` 字段，结果对象中的通用 `id` 可能是主体 ID；前端此前把它写入候选图缓存，点击定稿时拼入主体图片 `set-primary` 路径，后端找不到对应候选图记录并返回 500。
+- **结果适配**：`SubjectPage` 只读取明确的候选图/主体图片 ID字段或嵌套图片对象 ID，不再把结果对象的通用 `id` 当作候选图 ID；缺少图片 ID时保留 URL，避免制造伪图片编号。
+- **定稿兜底**：`SubjectImageActions` 对临时批量 ID或缺失图片 ID的创作结果，先读取主体详情并按归一化图片 URL匹配 `candidate_images`、`candidateImages` 或 `images`，取得后端真实候选图 ID后再调用 `set-primary`；未同步完成时提示等待，不发送无效请求。
+- **验证**：主体 API、定稿动作和页面定向 ESLint、`npm run build`、`git diff --check` 均通过。`npm run check:architecture` 仍被仓库既有的 `src/components/assets/seedanceUploadValidation.js` 小驼峰文件名告警阻断，另有历史超长文件告警；本次未修改该无关问题。
+
 ## 2026-07-24 Seedance 虚拟人像素材库入口
 
 - 新增 `src/components/assets/AddVirtualGroupCard.jsx`，按 Paper 设计稿提供虚拟人像 Tab 的“新建素材组”卡片，复用真人素材库的 `270×180` 比例、宽度边界和固定 `16px` 网格间距。
@@ -1602,3 +1652,8 @@
 - `Home` 同步持久化并传递两阶段任务轮询返回的 `status_message`；`SubjectPage` 的加载动画优先显示后端实时文案，接口缺少文案时继续使用原固定轮换文案兜底。
 - 主体页面进入主体步骤时检测到未完成的提取记录，会重新启用 `SubjectPage` 的提取回调，并由 `Home` 传入页面级活动状态，因此刷新期间加载动画与任务轮询保持同步恢复。
 - 任务完成后沿用现有主体列表重试读取、缓存失效和三类主体状态写回流程，并清理本地提取任务记录；失败和超时清理失效任务标记后仍由原有错误态承接。
+## 2026-07-30 重新分镜任务轮询恢复修复
+
+- `StoryboardPage.jsx` 在 `POST /storyboards/generate` 返回任务 ID 后立即调用 `GET /api/tasks/{task_id}`，后续按 3 秒间隔继续轮询；不再出现请求已创建但页面长时间没有后续任务请求的空档。
+- 重新分镜任务以 `type: 'storyboard'` 写入现有任务持久化记录；刷新浏览器或离开页面后返回分镜页，会按当前分集恢复任务状态，任务终态后重新读取分镜列表和候选媒体。
+- 任务成功或失败都会清理持久化快照；失败会解除加载态并展示任务错误信息。同步返回分镜数组的旧接口响应仍保持兼容。

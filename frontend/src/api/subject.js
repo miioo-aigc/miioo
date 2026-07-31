@@ -350,7 +350,7 @@ export async function apiBatchGenerate(projectIdOrParams, maybeParams) {
 }
 
 // 流式批量生成：后端通过 SSE 逐个返回每个主体的生成结果
-// onSubjectImage(subjectId, imageUrl) — 单个主体生成成功
+// onSubjectImage(subjectId, imageUrl, result) — 单个主体生成成功，result 保留后端图片 ID
 // onSubjectError(subjectId, errorMsg)   — 单个主体生成失败
 // onComplete()                          — 全部完成
 // 如果后端尚未支持 SSE，会自动降级为普通 JSON 响应
@@ -429,7 +429,7 @@ export async function apiBatchGenerateStream(projectId, params, { onTaskCreated,
                 onSubjectError?.(sid, errMsg || '生成失败');
               } else if (imgUrl) {
                 processedIds.add(sid);
-                onSubjectImage?.(sid, imgUrl);
+                onSubjectImage?.(sid, imgUrl, item);
               }
             }
           }
@@ -458,7 +458,7 @@ export async function apiBatchGenerateStream(projectId, params, { onTaskCreated,
         if (item.status === 'error' || item.error_msg || item.errorMsg || item.error || item.success === false) {
           onSubjectError?.(sid, item.error_msg || item.errorMsg || item.error || item.message || '生成失败');
         } else if (imgUrl) {
-          onSubjectImage?.(sid, imgUrl);
+          onSubjectImage?.(sid, imgUrl, item);
         }
       }
     }
@@ -532,7 +532,7 @@ export async function apiBatchGenerateStream(projectId, params, { onTaskCreated,
                       onSubjectError?.(s, e || '生成失败');
                     } else if (u) {
                       processedIds.add(s);
-                      onSubjectImage?.(s, u);
+                      onSubjectImage?.(s, u, item);
                     }
                   }
                 }
@@ -561,7 +561,7 @@ export async function apiBatchGenerateStream(projectId, params, { onTaskCreated,
           if (errMsg || parsed.success === false) {
             onSubjectError?.(sid, errMsg);
           } else if (imgUrl) {
-            onSubjectImage?.(sid, imgUrl);
+            onSubjectImage?.(sid, imgUrl, parsed);
           }
         } catch {
           // 忽略无法解析的 chunk

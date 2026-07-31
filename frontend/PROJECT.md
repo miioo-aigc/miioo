@@ -1,6 +1,74 @@
 # miioo 项目进度管理文档
 
-> 最后更新：2026-07-29（资产选择弹窗分镜定稿筛选修复）
+> 最后更新：2026-07-30（分镜创作结果详情参考图与提示词修复）
+
+## 2026-07-31 分镜主体参考本地上传封面显示修复
+
+- 现象：分镜列表“主体参考”列中，手动新增图片的卡片显示“？”，但打开创作分镜弹窗后该图片可以正常显示。
+- 结论：这是前端上传响应字段适配问题，不是网络图片加载问题。`MainRefCol` 只有在 `image.url` 为空时才会主动渲染“？”；若是网络加载失败，卡片仍会带有 `<img src>`。
+- 根因：主体参考上传回调只读取上传响应顶层的 `uploaded_url`、`url` 和 `file_url`，没有兼容接口返回的 `image`/`asset`/`data` 嵌套对象中的 `original_url`、`thumbnail_url` 等图片地址。
+- 修复：新增 `getUploadedImageUrl` 和 `getUploadedImageId` 统一读取上传响应；主体参考本地上传兼容顶层及嵌套字段，解析不到真实地址时回滚临时上传项，避免留下无地址的“？”卡片。资产选择路径同步补齐常见蛇形 URL 字段。
+- 验证：主体参考页面定向 ESLint、`npm run build` 和 `git diff --check` 通过；未执行真实上传请求，需在页面上传一张图片确认网络面板返回 2xx 且列表卡片使用真实图片地址。
+
+## 2026-07-30 主体参考列刷新重复资源修复
+
+- 修复主体参考列新增主体参考图后刷新页面，列表中出现一个无法识别的重复资源的问题。
+- 刷新恢复时，后端可能同时返回 `character_ids` 主体引用和 `reference_images` 普通参考图；前端现在优先保留带主体身份的引用，过滤同一主体对应的普通参考记录。
+- `enrichMainRefs` 同时按主体 ID、资产 ID和归一化图片路径去重，不受后端返回顺序影响；主体引用仍会随主体最新定稿图补全和同步。
+- `normalizeStoryboard` 保留参考图对象中的 `subject_id`、`asset_id`、名称和原始字段，避免刷新适配时丢失可用于去重的身份信息。
+- 涉及文件：`src/utils/storyboardDataAdapter.js`。
+- 已执行定向 ESLint、`npm run build` 和 `git diff --check`。
+
+## 2026-07-30 分镜创作结果详情参考图与提示词修复
+
+- 修复查看创作分镜图详情时，右侧生成参数将参考图显示为图片链接文本的问题；参考图现在以缩略图展示。
+- 参考图字段兼容 `reference_images`、`referenceImages`、`reference_image_urls`、`referenceImageUrls`、`ref_images`、`refImages`，并兼容媒体对象、元数据和生成参数对象中的嵌套字段。
+- 详情弹窗补齐提示词读取，兼容候选媒体、元数据、生成参数及分镜 `image_prompt`/`video_prompt` 字段；本地上传仍不展示提示词和生成参数。
+- 详情参数列表排除参考图字段，避免缩略图和原始 URL 重复展示；主体详情弹窗同步兼容字符串、`url`、`fileUrl` 和 `file_url` 形式的参考图地址。
+- `MediaCol` 打开详情时继续透传参考图、提示词和生成参数字段，保证列表入口与统一详情弹窗使用同一份媒体信息。
+- 涉及文件：`src/components/storyboard/StoryboardMediaDetailModal.jsx`、`src/components/storyboard/MediaCol.jsx`、`src/components/MediaDetailModal.jsx`。
+- 已通过目标文件定向 ESLint、`npm run build` 和 `git diff --check`；架构检查仍保留仓库既有规模与文件命名告警。
+
+## 2026-07-30 主体参考列与创作弹窗同步修复
+
+- 修复主体参考列已经显示新上传主体参考图，但打开“创作分镜”弹窗后，图片创作面板和视频创作面板没有带入该图片的问题。
+- 根因是图片创作面板初始化时错误过滤了 `.avif` 和 `/derived/assets/` 地址；这些地址是资产库和主体参考列常用的有效派生预览地址，不能按文件后缀或路径排除。
+- 根因还包括创作弹窗保存的旧 `formState` 可能覆盖当前分镜最新的 `shot.mainRefs`，导致列表状态与弹窗状态不一致。
+- `GenerateImagePanel` 初始化参考图时，现在会先归一化当前分镜的主体引用，再与已保存的 `formState.refImages` 合并；当前分镜主体引用优先覆盖旧快照，同一主体按主体/资产 ID或 URL 去重，弹窗中用户额外添加的普通参考图继续保留。
+- `GenerateVideoPanel` 初始化参考主体时采用同样的数据规则，合并当前分镜 `shot.mainRefs` 与 `formState.refSubjects`，按主体/资产 ID或 URL 去重，并保留弹窗内其他参考素材。
+- 本次只修复前端状态合并和有效预览地址过滤，不新增接口，也不改变主体参考图上传、资产库绑定或创作提交接口。
+- 已通过 `npx eslint src/components/storyboard/GenerateImagePanel.jsx src/components/storyboard/GenerateVideoPanel.jsx`、`git diff --check`；项目构建已在本次修复前完成验证。
+
+## 2026-07-30 分镜任务响应、定稿媒体加载与主体结果持久化修复
+
+### 分镜任务与生成接口
+
+- 修复点击“重新分镜”返回 409 的问题：页面此前传入了 `confirm_overwrite: true`，但 API 层未解构和发送该字段；现在按集生成请求体同时发送 `overwrite_existing: true` 与 `confirm_overwrite: true`，后端可以正确识别覆盖确认。
+- 统一分镜任务响应的读取逻辑，兼容顶层、`data`、`payload`、`result` 以及嵌套 `task` 中的 `task_id`、`taskId` 和 `id`，避免接口已经创建任务但页面误报“未返回任务 ID”。
+- 按集生成和重新分镜继续兼容 OpenAPI 声明的直接分镜数组响应，同时兼容统一响应包装、异步任务响应和 `storyboards`/`list`/`items` 等列表字段。
+- 主体页重新分镜确认后显式调用按集生成接口，并传递 `confirm_overwrite: true`；不再只切换到分镜页而没有实际发起覆盖重抽任务。
+- 图片生成、视频生成和分镜抽取均通过统一任务 ID 适配进入轮询；兼容 `queued`、`created`、`processing`、`in_progress`、`partial` 等状态，并在失败或部分失败时优先展示后端 `status_message`、错误详情和失败数量。
+- 分镜列表请求默认带上 `include_gen_params=true`，用于恢复创作结果详情；当历史分镜的生成参数导致后端返回 500 时，自动降级读取不带该参数的基础分镜列表，保证页面仍可打开。
+
+### 分镜候选媒体与定稿时间轴
+
+- 扩展候选媒体归一化，兼容 `url`、`file_url`、`preview_url`、`preview_video_url`、`large_url`、`thumbnail_url`、`poster_url` 及其 camelCase 版本；统一得到媒体类型、媒体地址和 `isFinalized` 状态。
+- 修复页面加载完成后时间轴卡片没有带入已有定稿图/视频的问题：候选接口返回的 `is_finalized` 作为首选状态来源；候选接口暂未返回定稿标记时，再用分镜主记录中的 `storyboardImage`/`storyboardVideo` 与候选媒体匹配兜底。
+- 分镜列、创作弹窗和定稿时间轴继续共享同一份候选媒体映射；候选异步加载采用增量合并并保留原始顺序，避免请求返回顺序不同造成数量缺失、状态覆盖或定稿媒体丢失。
+- 时间轴卡片兼容预览图、首帧、缩略图、海报图和视频地址：视频优先用 poster/thumbnail 展示首帧，播放时使用真实视频地址；图片和视频均可在后端字段不完整时使用兼容地址显示。
+
+### 主体创作结果与参考图
+
+- 修复主体批量创作结果将主体 ID误当成图片候选 ID、导致设置定稿接口 500 的问题；仅使用明确的图片 ID，缺少图片 ID时按图片 URL回读主体详情匹配真实候选图后再定稿。
+- 批量生成回调保留后端返回的图片结果对象和图片 ID，主体编辑弹窗可恢复真实候选图，而不是只保留临时图片 URL。
+- 主体参考图上传或资产库绑定成功后回读主体详情，以服务端持久化结果更新弹窗和页面状态，避免关闭弹窗或刷新后参考图丢失。
+- 分镜生成参数适配兼容后端返回 JSON 字符串形式的 `gen_params`，同时保留创建表单、提示词和生成参数的恢复能力。
+
+### 验证
+
+- 已通过 `npx eslint src/api/storyboard.js src/pages/StoryboardPage.jsx src/components/storyboard/StoryboardFinalizedCard.jsx`。
+- 已通过 `npm run build` 和 `git diff --check`；构建仅保留项目原有的分块体积提示。
+- 真实后端候选媒体字段和定稿状态仍需在登录态测试项目中继续核对，重点确认 `media_type`、媒体地址字段和 `is_finalized` 的实际响应结构。
 
 ## 2026-07-29 资产选择弹窗分镜定稿筛选修复
 
@@ -422,6 +490,13 @@
 - **2026-07-17 StoryboardPage 最终手动验收通过**：用户确认分镜页面所有功能正常可用，包含弹窗打开/关闭、分镜图/视频参考素材本地上传与资产库选择、上传入口样式、模型/分辨率等选择器及其他分镜交互；参考视频/音频最多 3 个的入口修复纳入本次验收结论。音频播放/收藏仍明确排除在本次前端重构范围之外。
 
 - **2026-07-17 上传入口统一**：主体编辑弹窗左侧参考图、右侧候选图，以及分镜图/视频的参考素材和候选媒体入口统一复用无业务 `src/components/ui/FileUploadButton.jsx`；上传 API、资产选择、文件校验和状态写回仍由原业务组件负责。
+
+## 2026-07-30 主体创作结果设置定稿失败修复
+
+- 修复批量创作结果点击定稿时向主体图片 `set-primary` 接口发送错误 ID导致 500 的问题。根因是批量任务结果中的通用 `id` 可能代表主体 ID，不能直接作为候选图 ID。
+- `SubjectPage` 仅从明确的候选图/主体图片 ID字段或嵌套图片对象读取图片 ID；未返回图片 ID时只保留图片 URL，不再误用主体 ID。
+- `SubjectImageActions` 对临时 ID或缺少图片 ID的创作结果，在定稿前读取主体详情，按归一化图片 URL匹配真实候选图记录，再调用主体定稿接口；候选图尚未同步时提示稍后重试，避免发送无效请求。
+- 详细记录同步至 `docs/refactor/component-inventory.md`。主体相关定向 ESLint、`npm run build` 和 `git diff --check` 通过；架构检查仍受既有小驼峰文件名告警阻断，未纳入本次修复范围。
 
 ### 最终验收结论（2026-07-17）
 

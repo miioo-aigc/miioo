@@ -171,12 +171,12 @@ function sleep(ms) {
 // key: subjectId, value: { rawUrl }[]
 const batchGeneratedImagesCache = new Map();
 
-function appendBatchGeneratedImage(subjectId, rawUrl) {
+function appendBatchGeneratedImage(subjectId, rawUrl, imageId = null, refImages = []) {
   if (!subjectId || !rawUrl) return;
   const normalizedUrl = normalizeImageUrl(rawUrl) || rawUrl;
   const existing = batchGeneratedImagesCache.get(subjectId) || [];
   if (existing.some((image) => (normalizeImageUrl(image.rawUrl) || image.rawUrl) === normalizedUrl)) return;
-  batchGeneratedImagesCache.set(subjectId, [...existing, { rawUrl: normalizedUrl }]);
+  batchGeneratedImagesCache.set(subjectId, [...existing, { rawUrl: normalizedUrl, imageId, refImages }]);
 }
 
 function dedupeBatchGeneratedImages(images) {
@@ -187,6 +187,32 @@ function dedupeBatchGeneratedImages(images) {
     seen.add(url);
     return true;
   });
+}
+
+function getGeneratedSubjectImageId(result) {
+  const nestedImage = result?.image || result?.subject_image || result?.subjectImage || result?.candidate_image || result?.candidateImage;
+  return result?.image_id
+    || result?.imageId
+    || result?.candidate_image_id
+    || result?.candidateImageId
+    || result?.subject_image_id
+    || result?.subjectImageId
+    || nestedImage?.id
+    || nestedImage?.image_id
+    || nestedImage?.imageId
+    || null;
+}
+
+function getGeneratedSubjectReferenceImages(result) {
+  const nestedImage = result?.image || result?.subject_image || result?.subjectImage || result?.candidate_image || result?.candidateImage;
+  const metadata = result?.metadata || nestedImage?.metadata || {};
+  const refs = result?.reference_image_urls || result?.referenceImageUrls
+    || result?.reference_images || result?.referenceImages
+    || nestedImage?.reference_image_urls || nestedImage?.referenceImageUrls
+    || nestedImage?.reference_images || nestedImage?.referenceImages
+    || metadata.reference_image_urls || metadata.referenceImageUrls
+    || metadata.reference_images || metadata.referenceImages;
+  return Array.isArray(refs) ? refs : [];
 }
 
 function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, onClose, onCommit, onCoverChange, refreshToken, setBatchLoadingSubjects, isBatchLoading = false }) {
@@ -273,7 +299,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setGeneratedImages(
         uniqueBatchCached.map((img, i) => ({
-          ...createSubjectImageItem({ id: `batch-${char.id}-${Date.now()}-${i}`, rawUrl: img.rawUrl, refImages: refImagesForModal, createdAt: img.createdAt || img.created_at || Date.now() - i }),
+          ...createSubjectImageItem({ id: img.imageId || `batch-${char.id}-${Date.now()}-${i}`, rawUrl: img.rawUrl, refImages: img.refImages || [], createdAt: img.createdAt || img.created_at || Date.now() - i }),
         }))
       );
       batchGeneratedImagesCache.delete(char.id);
@@ -288,7 +314,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       const pending = pendingGenerations.get(char.id);
       if (pending?.status === 'done') {
         // 跨弹窗任务已完成，挂载时将结果追加到详情图片列表。
-        setGeneratedImages(prev => [...prev, createSubjectImageItem({ rawUrl: pending.rawUrl, id: pending.realId || pending.placeholderId, refImages: pending.refImages || refImagesForModal, createdAt: pending.createdAt || Date.now() })]);
+        setGeneratedImages(prev => [...prev, createSubjectImageItem({ rawUrl: pending.rawUrl, id: pending.realId || pending.placeholderId, refImages: pending.refImages || [], createdAt: pending.createdAt || Date.now() })]);
         pendingGenerations.delete(char.id);
       }
       return; // 不发起后端请求
@@ -302,7 +328,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
     }
     const pendingPreflight = pendingGenerations.get(char.id);
     if (pendingPreflight?.status === 'done') {
-      setGeneratedImages([createSubjectImageItem({ rawUrl: pendingPreflight.rawUrl, id: pendingPreflight.realId || pendingPreflight.placeholderId, refImages: pendingPreflight.refImages || refImagesForModal, createdAt: pendingPreflight.createdAt || Date.now() })]);
+      setGeneratedImages([createSubjectImageItem({ rawUrl: pendingPreflight.rawUrl, id: pendingPreflight.realId || pendingPreflight.placeholderId, refImages: pendingPreflight.refImages || [], createdAt: pendingPreflight.createdAt || Date.now() })]);
       // 恢复生成参数，避免跳过 API 后字段为空
       if (pendingPreflight.genParams) {
         setPromptText(pendingPreflight.genParams.prompt || '');
@@ -325,12 +351,10 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       console.log('[SubjectPage] preflight DONE hit: skipped API, restored genParams, rawUrl:', pendingPreflight.rawUrl?.substring(0, 60));
       return; // 跳过 API 请求
     } else if (pendingPreflight?.status === 'pending') {
-      // 生成进行中：占位槽已在 onClick 中创建，这里仅恢复 loading 状态
-      // 不进入 API 请求路径，避免重复占位槽（轮询由 subject-single 恢复 useEffect 接管）
+      // 生成进行中：先恢复占位槽提供即时反馈，但仍继续读取详情。
+      // 不能在这里直接 return，否则会跳过已有候选图/资产的加载，弹窗只剩一个占位框。
       setGeneratedImages([{ url: null, settled: false, id: pendingPreflight.placeholderId, isReference: false }]);
-      cacheConsumedRef.current = true;
       setDetailLoaded(true);
-      return; // 跳过 API 请求，避免 L1910 再次 unshift 占位槽
     }
 
     (async () => {
@@ -366,21 +390,27 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
         setSelectedResolution(genCfg.resolution || genCfg.size || subject.resolution);
       }
       if (genCfg.generation_mode) setGenMode(genCfg.generation_mode);
-      if (Array.isArray(detailRes.reference_images)) {
-        setRefImageIds(detailRes.reference_images.map((image) => ({
-          id: image.asset_id,
-          assetId: image.asset_id,
-          url: image.file_url || image.preview_url || image.large_url || null,
-        })));
+      const referenceImages = detailRes.reference_images || detailRes.referenceImages
+        || detailRes.reference_image_ids || detailRes.referenceImageIds
+        || detailRes.reference_image_urls || detailRes.referenceImageUrls
+        || detailRes.subject?.reference_images || detailRes.subject?.referenceImages
+        || detailRes.data?.reference_images || detailRes.data?.referenceImages;
+      if (Array.isArray(referenceImages)) {
+        setRefImageIds(referenceImages.map((image) => ({
+          id: typeof image === 'string' ? image : image?.asset_id || image?.assetId || image?.id || image?.file_id || image?.fileId,
+          assetId: typeof image === 'string' ? image : image?.asset_id || image?.assetId || image?.id,
+          url: typeof image === 'string' ? image : image?.file_url || image?.fileUrl || image?.preview_url || image?.previewUrl
+            || image?.large_url || image?.largeUrl || image?.original_url || image?.originalUrl
+            || image?.uploaded_url || image?.uploadedUrl || image?.url || image?.image?.url || null,
+        })).filter((image) => image.id || image.url));
       }
 
       // 检查是否有进行中/已完成的跨弹窗生成
       const pending = pendingGenerations.get(char.id);
-      // 参考图只用于生成输入，右侧列表只展示候选图/生成结果。
+      // 参考图只用于生成输入；详情弹窗的参考图必须来自候选图片自身原数据。
       const finalImages = mergeSubjectImages({
         candidateImages: detailRes.candidate_images,
         subjectAssets,
-        refImages: refImagesForModal,
         pending,
       }).filter((image) => {
         const imageId = image.assetId || image.id;
@@ -405,7 +435,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
         onCoverChange?.(null);
       } else if (char?.imageUrl) {
         // 兜底用 char 的封面图（不覆盖已展示的缓存图片）
-        setGeneratedImages(prev => prev.length > 0 ? prev : [createSubjectImageItem({ rawUrl: char.imageUrl, settled: true, id: char.imageUrl, refImages: refImagesForModal })]);
+        setGeneratedImages(prev => prev.length > 0 ? prev : [createSubjectImageItem({ rawUrl: char.imageUrl, settled: true, id: char.imageUrl })]);
       } else {
         setGeneratedImages(prev => prev.length > 0 ? prev : []);
       }
@@ -445,7 +475,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       // 批量生成结束：消费缓存，用真实图片替换占位槽
       const cached = dedupeBatchGeneratedImages(batchGeneratedImagesCache.get(char.id) || []);
       if (cached.length > 0) {
-        const newImgs = cached.map((img, i) => createSubjectImageItem({ id: `batch-${char.id}-${Date.now()}-${i}`, rawUrl: img.rawUrl, refImages: refImagesForModal, createdAt: img.createdAt || img.created_at || Date.now() - i }));
+        const newImgs = cached.map((img, i) => createSubjectImageItem({ id: img.imageId || `batch-${char.id}-${Date.now()}-${i}`, rawUrl: img.rawUrl, refImages: img.refImages || [], createdAt: img.createdAt || img.created_at || Date.now() - i }));
         batchGeneratedImagesCache.delete(char.id);
         // 批量流结束后，用外部缓存结果替换占位槽。
         // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -726,7 +756,6 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
           selectedModel={selectedModel}
           selectedRatio={selectedRatio}
           selectedResolution={selectedResolution}
-          refImagesForModal={refImagesForModal}
           mediaDetailOpen={mediaDetailOpen}
           mediaDetailActiveIdx={mediaDetailActiveIdx}
           onOpenDetail={(index) => { setMediaDetailActiveIdx(index); setMediaDetailOpen(true); }}
@@ -763,6 +792,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
               tab,
               knownImageIds: existingImages.map((img) => img.id).filter(Boolean),
               knownImageUrls: existingImages.flatMap((img) => [img.rawUrl, img.url]).filter(Boolean),
+              refImages: refImagesForModal,
             });
             setBatchLoadingSubjects((prev) => ({ ...prev, [char.id]: true }));
             setGeneratedImages((prev) => [{ url: null, settled: false, id: placeholder, created_at: Date.now() }, ...prev]);
@@ -913,7 +943,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
 
 // ── Main export ────────────────────────────────────────────────────────────
 
-export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onExtractSubjects, onRetryExtractSubjects, extractError = null, isExtractingSubjects = false, subjectExtractionStatusMessage = '', isStoryboardGenerated = false, initialTab = 'char', projectRatio, chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps }) {
+export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onRegenerateStoryboard, onExtractSubjects, onRetryExtractSubjects, extractError = null, isExtractingSubjects = false, subjectExtractionStatusMessage = '', isStoryboardGenerated = false, initialTab = 'char', projectRatio, chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps }) {
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [batchGenOpen, setBatchGenOpen] = useState(false);
@@ -1001,7 +1031,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
                 const fullUrl = normalizeImageUrl(imgUrl);
                 targetSetter(prev => prev.map(s => s.id === sid ? { ...s, imageUrl: fullUrl } : s));
                 setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[sid]; return n; });
-                appendBatchGeneratedImage(sid, fullUrl);
+                appendBatchGeneratedImage(sid, fullUrl, getGeneratedSubjectImageId(item), getGeneratedSubjectReferenceImages(item));
               } else if (errMsg) {
                 processedIds.add(sid);
                 setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[sid]; return n; });
@@ -1059,7 +1089,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
                   setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[task.subjectId]; return n; });
                   setSubjectDetailRefreshToken(prev => prev + 1);
                   // 同步写入缓存供 EditSubjectPanel 读取
-                  appendBatchGeneratedImage(task.subjectId, fullUrl);
+                  appendBatchGeneratedImage(task.subjectId, fullUrl, getGeneratedSubjectImageId(item), getGeneratedSubjectReferenceImages(item));
                   // 清理旧 pendingGenerations 路径的 pending 状态，避免残留 loading
                   pendingGenerations.delete(task.subjectId);
                   removePendingTask(projectId, task.taskId);
@@ -1287,7 +1317,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           batchTaskId = taskId;
           addPendingTask(projectId, { taskId, shotId: '', episodeId: '', type: 'batch-subject', tab: captureTab, subjectIds });
         },
-        onSubjectImage: (subjectId, imageUrl) => {
+        onSubjectImage: (subjectId, imageUrl, result) => {
           successCount++;
           const fullUrl = normalizeImageUrl(imageUrl);
           // 更新对应 tab 的主体封面
@@ -1301,7 +1331,9 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           return next;
           });
           // 存入批量生成缓存，EditSubjectPanel 打开时优先从缓存读取
-          appendBatchGeneratedImage(subjectId, fullUrl);
+          // 结果里的 id 通常是主体 ID（用于 sid 解析），不能当作候选图 ID。
+          const imageId = getGeneratedSubjectImageId(result);
+          appendBatchGeneratedImage(subjectId, fullUrl, imageId, getGeneratedSubjectReferenceImages(result));
         },
         onSubjectError: (subjectId, errorMsg) => {
           // 命中静默错误（如「已有主图，跳过生成」）：仅退出 loading，不弹 toast、不计入失败
@@ -1874,9 +1906,9 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
 
       {confirmStoryboardOpen && (
         <ConfirmStoryboardModal
-          onConfirm={() => {
+          onConfirm={async () => {
             setConfirmStoryboardOpen(false);
-            onStartStoryboard?.();
+            await onRegenerateStoryboard?.();
           }}
           onCancel={() => setConfirmStoryboardOpen(false)}
         />

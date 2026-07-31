@@ -22,6 +22,7 @@
  *   ReferenceMediaEditor                      参考主体、参考图、参考视频、参考音频和首尾帧
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-07-30  修复主体参考列新增资产未带入创作视频面板：当前分镜主体引用覆盖旧表单快照并按主体 ID 去重，保留其他已编辑参考素材
  *   2026-07-15  将参考素材编辑区迁移至 ReferenceMediaEditor；本组件继续持有上传 API、模型能力限制、生成参数和页面级回调，所有依赖通过显式 props 传递
  *   2026-07-16  ReferenceMediaEditor 直接引入 StoryboardUploadSlots；本组件不再接收或转发 FrameUploadSlot / PanelUploadSlot，继续负责视频面板业务上传回调和生成参数
  */
@@ -40,6 +41,24 @@ import { VideoGenerationTabs, VideoSoundToggle } from './VideoGenerationControls
 import GenerationSubmitButton from './GenerationSubmitButton';
 
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
+
+function getReferenceKey(item) {
+  return item?.subjectId || item?.subject_id || item?.assetId || item?.asset_id || item?.id || item?.url || null;
+}
+
+function mergeCurrentShotSubjects(savedSubjects, shotSubjects) {
+  const currentByKey = new Map((shotSubjects || []).map((subject) => [getReferenceKey(subject), subject]).filter(([key]) => key));
+  const result = (Array.isArray(savedSubjects) ? savedSubjects : []).map((saved) => currentByKey.get(getReferenceKey(saved)) || saved);
+  const existingKeys = new Set(result.map(getReferenceKey).filter(Boolean));
+  (shotSubjects || []).forEach((subject) => {
+    const key = getReferenceKey(subject);
+    if (key && !existingKeys.has(key)) {
+      result.push(subject);
+      existingKeys.add(key);
+    }
+  });
+  return result;
+}
 
 export default function GenerateVideoPanel({
   shot,
@@ -136,10 +155,8 @@ export default function GenerateVideoPanel({
   const [prompt, setPrompt] = useState(() => formState?.prompt ?? buildStoryboardPrompt(shot));
   const promptRef = useRef(null);
   const [refSubjects, setRefSubjects] = useState(() => {
-    if (formState?.refSubjects) return formState.refSubjects;
     // 从 shot.mainRefs 初始化主体列表，补全 url/name
-    if (!shot?.mainRefs?.length) return [];
-    return shot.mainRefs.map(ref => {
+    const shotSubjects = (shot?.mainRefs || []).map(ref => {
       // character_ids 反序列化的条目 type 被统一置为 'char'，这里按 subjectId/id 跨角色/场景/道具反查真实类型
       const sid = ref?.subjectId || ((ref?.type === 'char' || ref?.type === 'scene' || ref?.type === 'prop') ? ref?.id : null);
       if (sid) {
@@ -154,6 +171,8 @@ export default function GenerateVideoPanel({
       if (ref?.url) return ref;
       return ref;
     }).filter(ref => ref?.url);
+    // 弹窗状态可能是旧快照；把列表刚新增的主体参考补入，不丢失弹窗内已有的其他素材。
+    return mergeCurrentShotSubjects(formState?.refSubjects, shotSubjects);
   });
   const [refImages, setRefImages] = useState(() => formState?.refImages || []);
   const [refVideos, setRefVideos] = useState(() => formState?.refVideos || []);

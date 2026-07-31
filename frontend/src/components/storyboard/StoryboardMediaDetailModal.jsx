@@ -75,6 +75,54 @@ function displayValue(value) {
   return String(value);
 }
 
+function normalizeReferenceImages(value) {
+  if (!value) return [];
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        return normalizeReferenceImages(JSON.parse(trimmed));
+      } catch {
+        // 非 JSON 字符串继续按单个 URL 处理。
+      }
+    }
+  }
+  const list = Array.isArray(value) ? value : [value];
+  return list.map((item) => {
+    const url = typeof item === 'string'
+      ? item
+      : item?.url || item?.fileUrl || item?.file_url || item?.image_url || item?.imageUrl || item?.path;
+    if (!url) return null;
+    return {
+      ...((item && typeof item === 'object' && !Array.isArray(item)) ? item : {}),
+      url: normalizeImageUrl(url),
+    };
+  }).filter((item) => item?.url);
+}
+
+function collectReferenceImages(media, metadata, parameterContainers, extraValues = []) {
+  const values = [
+    media?.reference_images, media?.referenceImages,
+    media?.reference_image_urls, media?.referenceImageUrls,
+    media?.ref_images, media?.refImages,
+    metadata?.reference_images, metadata?.referenceImages,
+    metadata?.reference_image_urls, metadata?.referenceImageUrls,
+    metadata?.ref_images, metadata?.refImages,
+    ...extraValues,
+    ...parameterContainers.flatMap((container) => [
+      container.reference_images, container.referenceImages,
+      container.reference_image_urls, container.referenceImageUrls,
+      container.ref_images, container.refImages,
+    ]),
+  ];
+  const seen = new Set();
+  return values.flatMap((value) => normalizeReferenceImages(value)).filter((item) => {
+    if (seen.has(item.url)) return false;
+    seen.add(item.url);
+    return true;
+  });
+}
+
 function collectParameterEntries(value, prefix = '') {
   if (!value || typeof value !== 'object') return [];
   return Object.entries(value).flatMap(([key, nested]) => {
@@ -119,7 +167,16 @@ function normalizeMediaSource(value) {
     || source.includes('asset-import')
     || source.includes('shot-import')
   ) return 'asset-library';
-  if (source === 'ai' || source === 'ai-generated' || source === 'generated') return 'ai-generated';
+  if (
+    source === 'storyboard-existing'
+    || source === 'existing-storyboard'
+    || source === 'existing-media'
+    || source === 'storyboard-media'
+    || source === 'existing'
+    || source.includes('storyboard-existing')
+    || source.includes('existing-storyboard')
+  ) return 'storyboard-existing';
+  if (source === 'ai' || source === 'ai-generated' || source === 'generated' || source.includes('ai') || source.includes('generated')) return 'ai-generated';
   return source;
 }
 
@@ -127,6 +184,7 @@ const GENERATION_PARAMETER_KEYS = new Set([
   'model', 'resolution', 'size', 'duration', 'ratio', 'aspect_ratio', 'aspectRatio',
   'sound_effect', 'soundEffect', 'generate_audio', 'generateAudio', 'audio_setting', 'audioSetting',
   'reference_images', 'referenceImages', 'first_frame_url', 'firstFrameUrl',
+  'reference_image_urls', 'referenceImageUrls', 'ref_images', 'refImages',
   'last_frame_url', 'lastFrameUrl', 'reference_video_url', 'referenceVideoUrl',
   'reference_audio_url', 'referenceAudioUrl', 'reference_mode', 'referenceMode',
   'generation_mode', 'generationMode', 'generate_mode', 'generateMode',
@@ -144,7 +202,7 @@ function pickGenerationParameters(value) {
   }));
 }
 
-function getAssetGenerationParameters(media, metadata) {
+function getAssetGenerationParameters(media, metadata, extraContainers = []) {
   const nestedValues = [
     media?.params, media?.parameters, media?.generation, media?.options,
     media?.gen_params, media?.genParams, media?.generation_params, media?.generationParams,
@@ -152,6 +210,7 @@ function getAssetGenerationParameters(media, metadata) {
     metadata?.params, metadata?.parameters, metadata?.generation, metadata?.options,
     metadata?.gen_params, metadata?.genParams, metadata?.generation_params, metadata?.generationParams,
     metadata?.provider_params, metadata?.providerParams,
+    ...extraContainers,
   ].map(parseObjectValue);
   const nestedParams = nestedValues.reduce((result, value) => ({ ...result, ...pickGenerationParameters(value) }), {});
   const directParams = pickGenerationParameters({
@@ -161,6 +220,8 @@ function getAssetGenerationParameters(media, metadata) {
     duration: media?.duration ?? metadata?.duration,
     ratio: media?.ratio ?? media?.aspect_ratio ?? media?.aspectRatio ?? metadata?.ratio ?? metadata?.aspect_ratio ?? metadata?.aspectRatio,
     reference_images: media?.reference_images ?? media?.referenceImages ?? metadata?.reference_images ?? metadata?.referenceImages,
+    reference_image_urls: media?.reference_image_urls ?? media?.referenceImageUrls ?? metadata?.reference_image_urls ?? metadata?.referenceImageUrls,
+    ref_images: media?.ref_images ?? media?.refImages ?? metadata?.ref_images ?? metadata?.refImages,
   });
   return { ...nestedParams, ...directParams };
 }
@@ -276,15 +337,55 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
   const metadata = parseMetadata(activeMedia);
   const detailParameterContainers = [
     activeMedia?.params, activeMedia?.parameters, activeMedia?.generation, activeMedia?.options,
+    activeMedia?.gen_params, activeMedia?.genParams, activeMedia?.generation_params, activeMedia?.generationParams,
     metadata?.params, metadata?.parameters, metadata?.generation, metadata?.options,
+    metadata?.gen_params, metadata?.genParams, metadata?.generation_params, metadata?.generationParams,
   ].map(parseObjectValue);
+  const sourceValue = activeMedia?.source
+    || activeMedia?.source_type
+    || activeMedia?.sourceType
+    || activeMedia?.detailSource
+    || activeMedia?.detail_source;
+  const normalizedSource = normalizeMediaSource(sourceValue);
+  const activeUrl = activeMedia?.url || activeMedia?.file_url || activeMedia?.fileUrl;
+  const isShotMedia = [shot?.storyboardImage?.url, shot?.storyboardVideo?.url]
+    .filter(Boolean)
+    .some((url) => url === activeUrl);
+  const isExistingStoryboardMedia = normalizedSource === 'storyboard-existing' || (!sourceValue && isShotMedia);
+  const shotCreationForm = parseObjectValue(shot?.creationForm);
+  const shotForm = parseObjectValue(shotCreationForm[video ? 'video' : 'image']);
+  const shotGenerationParams = parseObjectValue(shot?.genParams);
+  const shotDetailContainers = isExistingStoryboardMedia
+    ? [shotGenerationParams, shotForm]
+    : [];
+  const referenceImages = collectReferenceImages(
+    activeMedia,
+    metadata,
+    detailParameterContainers,
+    isExistingStoryboardMedia
+      ? [shot?.mainRefs, shotForm.refImages, shotForm.referenceImages, shotForm.reference_images, shotGenerationParams.refImages, shotGenerationParams.referenceImages]
+      : [],
+  );
   const detailPrompt = detailParameterContainers.reduce(
     (result, value) => result || value.prompt || value.input_prompt || value.inputPrompt,
     '',
   );
+  const shotPrompt = shotForm.prompt
+    || shotForm.input_prompt
+    || shotForm.inputPrompt
+    || shotGenerationParams.prompt
+    || shotGenerationParams.input_prompt
+    || shotGenerationParams.inputPrompt
+    || shotGenerationParams.image_prompt
+    || shotGenerationParams.video_prompt
+    || (video ? shot?.videoPrompt : shot?.imagePrompt)
+    || (video ? shot?.video_prompt : shot?.image_prompt)
+    || '';
   const isLocalUpload = isLocalUploadMedia(activeMedia, metadata);
   const source = isLocalUpload
     ? 'local-upload'
+    : isExistingStoryboardMedia
+      ? 'storyboard-existing'
     : normalizeMediaSource(
       activeMedia.detailSource
         || activeMedia.detail_source
@@ -298,14 +399,15 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
         || metadata.sourceType,
     );
   const sourceLabel = source === 'local-upload' ? '本地上传' : source === 'asset-library' ? '资产库' : source === 'ai-generated' ? 'AI创作' : source ? '已有分镜媒体' : '';
-  const isAiGenerated = source === 'ai-generated';
-  const prompt = isAiGenerated
-    ? (activeMedia.input_prompt || activeMedia.inputPrompt || activeMedia.prompt_raw || activeMedia.promptRaw || activeMedia.prompt || activeMedia.prompt_resolved || activeMedia.promptResolved || metadata.input_prompt || metadata.inputPrompt || metadata.prompt_raw || metadata.promptRaw || metadata.prompt || metadata.prompt_resolved || metadata.promptResolved || detailPrompt || (video ? shot?.video_prompt : shot?.image_prompt))
-    : (source === 'asset-library' ? (activeMedia.input_prompt || activeMedia.inputPrompt || activeMedia.prompt_raw || activeMedia.promptRaw || activeMedia.prompt || activeMedia.prompt_resolved || activeMedia.promptResolved || metadata.input_prompt || metadata.inputPrompt || metadata.prompt_raw || metadata.promptRaw || metadata.prompt || metadata.prompt_resolved || metadata.promptResolved || detailPrompt) : '');
+  const prompt = source === 'local-upload'
+    ? ''
+    : (activeMedia.input_prompt || activeMedia.inputPrompt || activeMedia.prompt_raw || activeMedia.promptRaw || activeMedia.prompt || activeMedia.prompt_resolved || activeMedia.promptResolved || metadata.input_prompt || metadata.inputPrompt || metadata.prompt_raw || metadata.promptRaw || metadata.prompt || metadata.prompt_resolved || metadata.promptResolved || detailPrompt || shotPrompt || (video ? shot?.video_prompt : shot?.image_prompt) || '');
   const parameterEntries = source === 'local-upload'
     ? []
-    : collectParameterEntries(getAssetGenerationParameters(activeMedia, metadata));
-  const normalizedParameterEntries = parameterEntries.map((entry) => ({ ...entry, label: entry.label.split('.').map(parameterLabel).join(' / ') }));
+    : collectParameterEntries(getAssetGenerationParameters(activeMedia, metadata, shotDetailContainers));
+  const normalizedParameterEntries = parameterEntries
+    .filter((entry) => !['reference_images', 'referenceImages', 'reference_image_urls', 'referenceImageUrls', 'ref_images', 'refImages'].some((key) => entry.label === key || entry.label.startsWith(`${key}.`)))
+    .map((entry) => ({ ...entry, label: entry.label.split('.').map(parameterLabel).join(' / ') }));
 
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.60)', backdropFilter: 'blur(12px)' }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.(); }}>
@@ -355,6 +457,7 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
               <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>内容类型</span><span style={{ color: '#FFFFFFCC', font: `12px/16px ${FONT}` }}>{video ? '视频' : '图片'}</span></div>
               {sourceLabel && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>来源</span><span style={{ color: '#FFFFFFCC', font: `12px/16px ${FONT}` }}>{sourceLabel}</span></div></>}
               {prompt && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '8px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>提示词</span><p style={{ margin: 0, color: '#FFFFFFCC', font: `12px/20px ${FONT}`, wordBreak: 'break-word' }}>{prompt}</p></div></>}
+              {referenceImages.length > 0 && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>参考图</span><div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>{referenceImages.map((reference, index) => <div key={`${reference.url}-${index}`} style={{ width: '80px', height: '56px', flexShrink: 0, overflow: 'hidden', borderRadius: '4px', border: '1px solid #FFFFFF33', background: '#FFFFFF14' }}><img src={reference.url} alt={reference.name || '参考图'} style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} /></div>)}</div></div></>}
               {normalizedParameterEntries.length > 0 && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>生成参数</span><div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>{normalizedParameterEntries.map((entry) => <div key={entry.label} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}><span style={{ color: '#FFFFFF66', font: `11px/15px ${FONT}` }}>{entry.label}</span><span style={{ color: '#FFFFFFCC', font: `12px/18px ${FONT}`, wordBreak: 'break-word', whiteSpace: entry.value.includes('\n') ? 'pre-wrap' : 'normal' }}>{entry.value}</span></div>)}</div></div></>}
               {activeMedia.created_at && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '8px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>生成时间</span><span style={{ color: '#FFFFFF66', font: `12px/16px ${FONT}` }}>{formatDate(activeMedia.created_at)}</span></div></>}
             </div>

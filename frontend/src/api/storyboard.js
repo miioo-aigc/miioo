@@ -3,6 +3,7 @@ const BASE = import.meta.env.VITE_API_BASE_URL;
 import { authFetch, authFetchForm } from './request.js';
 import { cached, invalidate, setCache, peekCache } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
+import { isBackendStoryboardId } from '../utils/storyboardDataAdapter.js';
 
 // 分镜写操作后统一失效该项目的分镜缓存 + 概览（概览含分镜进度）
 function invalidateStoryboards(projectId) {
@@ -33,14 +34,14 @@ function normalizeStoryboardImageSize(value) {
   return aliasMap[trimmed] || trimmed;
 }
 
-export async function apiGetStoryboards(projectId, { episode_id, limit, offset = 0, include_gen_params = false } = {}) {
+export async function apiGetStoryboards(projectId, { episode_id, limit, offset = 0, include_gen_params = true } = {}) {
   const isPagedRequest = Number.isFinite(limit);
-  const fetchPage = async () => {
+  const fetchPage = async (withGenParams = include_gen_params) => {
     const query = new URLSearchParams();
     if (episode_id) query.set('episode_id', episode_id);
     query.set('limit', String(isPagedRequest ? limit : 200));
     if (isPagedRequest && offset > 0) query.set('offset', String(offset));
-    if (include_gen_params) query.set('include_gen_params', 'true');
+    if (withGenParams) query.set('include_gen_params', 'true');
     const res = await authFetch(
       `${BASE}/api/projects/${projectId}/storyboards?${query.toString()}`,
       { headers: { 'Content-Type': 'application/json' } },
@@ -65,12 +66,27 @@ export async function apiGetStoryboards(projectId, { episode_id, limit, offset =
       : items;
   };
 
+  // include_gen_params 是可选字段。部分历史分镜的生成参数可能无法被后端
+  // 序列化，导致带参数的列表请求返回 500；降级请求仍返回核心分镜数据，
+  // 避免整页因为一条异常 gen_params 无法打开。
+  const fetchPageWithFallback = async () => {
+    try {
+      return await fetchPage(include_gen_params);
+    } catch (error) {
+      if (include_gen_params && error?.status === 500) {
+        console.warn('[storyboard] include_gen_params 请求失败，降级读取基础分镜列表:', error.message);
+        return fetchPage(false);
+      }
+      throw error;
+    }
+  };
+
   // 分页请求不能复用“整集列表”缓存，否则翻页会读到错误的第一页或旧的 200 条数据。
-  if (isPagedRequest) return fetchPage();
+  if (isPagedRequest) return fetchPageWithFallback();
 
   const raw = await cached(
     K.storyboards(projectId, episode_id),
-    fetchPage,
+    fetchPageWithFallback,
     { medium: MEDIUM.CONTENT, ttl: TTL.CONTENT },
   );
   // 兼容旧缓存可能存的非数组格式
@@ -139,6 +155,9 @@ export async function apiUpdateStoryboardCreationForm(projectId, storyboardId, {
 // ── 分镜候选媒体 ─────────────────────────────────────────────────────────────
 
 export async function apiListStoryboardMediaCandidates(projectId, storyboardId) {
+  if (!isBackendStoryboardId(storyboardId)) {
+    throw new Error('分镜候选媒体请求缺少有效的分镜 ID');
+  }
   const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}/media-candidates`, {
     headers: { 'Content-Type': 'application/json' },
   });
@@ -179,19 +198,44 @@ export function normalizeStoryboardMediaCandidate(item = {}) {
     optimize_prompt: item.optimize_prompt ?? item.optimizePrompt ?? metadata.optimize_prompt ?? metadata.optimizePrompt,
     sequential_image_generation: item.sequential_image_generation ?? item.sequentialImageGeneration ?? metadata.sequential_image_generation ?? metadata.sequentialImageGeneration,
   });
-  const prompt = item.input_prompt ?? item.inputPrompt ?? item.prompt ?? metadata.input_prompt ?? metadata.inputPrompt ?? metadata.prompt
-    ?? mergedParams.input_prompt ?? mergedParams.inputPrompt ?? mergedParams.prompt;
+  const prompt = item.input_prompt ?? item.inputPrompt ?? item.prompt ?? item.prompt_raw ?? item.promptRaw
+    ?? item.prompt_resolved ?? item.promptResolved
+    ?? metadata.input_prompt ?? metadata.inputPrompt ?? metadata.prompt ?? metadata.prompt_raw ?? metadata.promptRaw
+    ?? metadata.prompt_resolved ?? metadata.promptResolved
+    ?? mergedParams.input_prompt ?? mergedParams.inputPrompt ?? mergedParams.prompt
+    ?? mergedParams.prompt_raw ?? mergedParams.promptRaw ?? mergedParams.prompt_resolved ?? mergedParams.promptResolved;
   const generationParams = mergedParams;
+  const mediaType = item.mediaType ?? item.media_type ?? (item.type?.startsWith('video') ? 'video' : 'image');
+  const normalizedUrl = mediaType === 'video'
+    ? (item.url
+      ?? item.file_url
+      ?? item.fileUrl
+      ?? item.preview_video_url
+      ?? item.previewVideoUrl
+      ?? item.video_url
+      ?? item.videoUrl
+      ?? item.preview_url
+      ?? item.large_url
+      ?? item.thumbnail_url
+      ?? item.thumbnailUrl)
+    : (item.url
+      ?? item.file_url
+      ?? item.fileUrl
+      ?? item.preview_url
+      ?? item.previewUrl
+      ?? item.large_url
+      ?? item.thumbnail_url
+      ?? item.thumbnailUrl);
   const normalized = {
     ...item,
     id: item.id,
     storyboardId: item.storyboardId ?? item.storyboard_id,
-    mediaType: item.mediaType ?? item.media_type,
-    url: item.url ?? item.file_url ?? item.fileUrl,
+    mediaType,
+    url: normalizedUrl,
     thumbnailUrl: item.thumbnailUrl ?? item.thumbnail_url,
     posterUrl: item.posterUrl ?? item.poster_url,
     downloadUrl: item.downloadUrl ?? item.download_url,
-    isFinalized: item.isFinalized ?? item.is_finalized ?? false,
+    isFinalized: Boolean(item.isFinalized ?? item.is_finalized ?? false),
     source: item.source ?? item.source_type ?? item.sourceType ?? metadata.source ?? metadata.source_type ?? metadata.sourceType,
     detailSource: item.detailSource ?? item.detail_source ?? item.source_type ?? item.sourceType ?? metadata.detailSource ?? metadata.detail_source,
     createdAt: item.createdAt ?? item.created_at,
@@ -202,7 +246,15 @@ export function normalizeStoryboardMediaCandidate(item = {}) {
     resolution: item.resolution ?? metadata.resolution ?? metadata.size ?? mergedParams.resolution ?? mergedParams.size,
     duration: item.duration ?? metadata.duration ?? mergedParams.duration,
     ratio: item.ratio ?? item.aspect_ratio ?? item.aspectRatio ?? metadata.ratio ?? metadata.aspect_ratio ?? metadata.aspectRatio ?? mergedParams.ratio ?? mergedParams.aspect_ratio ?? mergedParams.aspectRatio,
-    referenceImages: item.reference_images ?? item.referenceImages ?? metadata.reference_images ?? metadata.referenceImages ?? mergedParams.reference_images ?? mergedParams.referenceImages,
+    referenceImages: item.reference_images ?? item.referenceImages
+      ?? item.reference_image_urls ?? item.referenceImageUrls
+      ?? item.ref_images ?? item.refImages
+      ?? metadata.reference_images ?? metadata.referenceImages
+      ?? metadata.reference_image_urls ?? metadata.referenceImageUrls
+      ?? metadata.ref_images ?? metadata.refImages
+      ?? mergedParams.reference_images ?? mergedParams.referenceImages
+      ?? mergedParams.reference_image_urls ?? mergedParams.referenceImageUrls
+      ?? mergedParams.ref_images ?? mergedParams.refImages,
     genParams: generationParams && typeof generationParams === 'object' ? generationParams : {},
     prompt_raw: item.prompt_raw ?? item.promptRaw ?? metadata.prompt_raw ?? metadata.promptRaw ?? mergedParams.prompt_raw ?? mergedParams.promptRaw,
     prompt_resolved: item.prompt_resolved ?? item.promptResolved ?? metadata.prompt_resolved ?? metadata.promptResolved ?? mergedParams.prompt_resolved ?? mergedParams.promptResolved,
@@ -280,11 +332,29 @@ export async function apiReorderStoryboards(projectId, ordered_ids) {
 
 // ── 分镜生成 ──────────────────────────────────────────────────────────────────
 
-export async function apiGenerateStoryboardsFromEpisode(projectId, { episode_id, model = null, overwrite_existing = true } = {}) {
+function unwrapStoryboardTaskResponse(data) {
+  let payload = data?.data ?? data?.payload ?? data;
+  if (payload?.task && typeof payload.task === 'object') return payload.task;
+  if (payload && typeof payload === 'object' && (
+    payload.id || payload.task_id || payload.taskId || payload.status || payload.raw_status
+  )) return payload;
+  if (payload?.result && typeof payload.result === 'object') {
+    payload = payload.result;
+    if (payload.task && typeof payload.task === 'object') return payload.task;
+  }
+  return payload;
+}
+
+export async function apiGenerateStoryboardsFromEpisode(projectId, {
+  episode_id,
+  model = null,
+  overwrite_existing = true,
+  confirm_overwrite = false,
+} = {}) {
   const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ episode_id, model, overwrite_existing }),
+    body: JSON.stringify({ episode_id, model, overwrite_existing, confirm_overwrite }),
   });
   if (!res.ok) {
     const responseText = await res.text().catch(() => '');
@@ -302,9 +372,9 @@ export async function apiGenerateStoryboardsFromEpisode(projectId, { episode_id,
   }
   invalidateStoryboards(projectId);
   const data = await res.json();
-  // OpenAPI 当前声明该接口直接返回分镜数组；兼容后端联调期间出现的统一响应包装。
+  // 真实后端按文档返回任务对象；联调期间仍兼容旧版直接返回数组及统一响应包装。
   // 包装对象必须在 API 层解开，否则页面会把 { data: ... } 误判为“没有任务 ID”。
-  const payload = data?.data ?? data?.result ?? data?.payload ?? data;
+  const payload = unwrapStoryboardTaskResponse(data);
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.storyboards)) return payload.storyboards;
   if (Array.isArray(payload?.list)) return payload.list;
@@ -344,7 +414,7 @@ export async function apiGenerateStoryboardsFromFinalScript(projectId, options =
   // 失效 episodes 缓存：后端可能在此过程中重新创建 episodes（新 UUID）
   invalidate(K.episodes(projectId));
   invalidateStoryboards(projectId);
-  return res.json();
+  return unwrapStoryboardTaskResponse(await res.json());
 }
 
 // ── 分镜图片/视频生成 ─────────────────────────────────────────────────────────
@@ -376,7 +446,7 @@ export async function apiGenerateStoryboardImage(projectId, storyboardId, params
     err.status = res.status;
     throw err;
   }
-  return res.json();
+  return unwrapStoryboardTaskResponse(await res.json());
 }
 
 export async function apiGenerateStoryboardVideo(projectId, storyboardId, params) {
@@ -518,5 +588,5 @@ export async function apiGetTask(taskId) {
     err.status = res.status;
     throw err;
   }
-  return res.json();
+  return unwrapStoryboardTaskResponse(await res.json());
 }

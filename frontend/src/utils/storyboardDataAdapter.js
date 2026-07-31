@@ -1,9 +1,17 @@
 /**
  * Storyboard 前后端数据映射与主体参考图补全。
  * 仅处理纯数据，不读取 React 状态，也不执行 API 或缓存副作用。
+ *
+ * 更新记录：2026-07-30 刷新恢复主体引用时，主体引用优先于同图普通参考资源，按主体/资产身份和图片路径去重。
  */
 
 import { normalizeImageUrl } from './imageUrl';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isBackendStoryboardId(value) {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
 
 export function makeStoryboardShot(number, overrides = {}) {
   return {
@@ -24,9 +32,19 @@ export function makeStoryboardShot(number, overrides = {}) {
 /**
  * 后端 StoryboardResponse (snake_case flat) → 前端 shot 模型 (camelCase nested)
  */
-export function normalizeStoryboard(be) {
+export function normalizeStoryboard(be, fallbackContext = {}) {
   if (!be || typeof be !== 'object') return be;
-  const genParams = be.gen_params && typeof be.gen_params === 'object' ? be.gen_params : {};
+  const parseObject = (value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+    if (typeof value !== 'string') return {};
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+  const genParams = parseObject(be.gen_params ?? be.genParams);
   const persistedCreationForm = genParams.creation_form || genParams.creationForm;
   const creationForm = {
     image: persistedCreationForm?.image && typeof persistedCreationForm.image === 'object'
@@ -37,9 +55,23 @@ export function normalizeStoryboard(be) {
       : (be.video_prompt != null ? { prompt: be.video_prompt } : undefined),
   };
   const hasCreationForm = Boolean(creationForm.image || creationForm.video);
+  const fallbackNumber = Number.isInteger(fallbackContext.index) ? fallbackContext.index + 1 : 0;
+  const shotNumber = be.shot_number ?? be.number ?? fallbackNumber;
+  const episodeId = be.episode_id ?? be.episodeId ?? fallbackContext.episodeId;
+  const rawStoryboardId = be.id
+    ?? be.storyboard_id
+    ?? be.storyboardId
+    ?? be.uuid;
+  const hasBackendId = isBackendStoryboardId(rawStoryboardId);
+  const storyboardId = hasBackendId
+    ? rawStoryboardId
+    : ((episodeId || shotNumber) ? `storyboard-${episodeId || 'episode'}-shot-${shotNumber}` : null);
   return {
-    id: be.id,
-    number: be.shot_number ?? be.number ?? 0,
+    id: storyboardId,
+    // id 可能是前端为了渲染生成的稳定兜底值；backendId 才是可以传给后端接口的真实 ID。
+    backendId: hasBackendId ? storyboardId : null,
+    isSyntheticId: !hasBackendId,
+    number: shotNumber,
     description: be.content ?? be.description ?? '',
     params: {
       framing: be.shot_type ?? be.params?.framing ?? '全景',
@@ -85,21 +117,32 @@ export function normalizeStoryboard(be) {
               const n = normalizeImageUrl(item.url);
               // 有持久化名称就用；没有（旧数据）时用文件名兜底，至少让不同参考图各不相同
               const fallbackName = n?.split('/').pop()?.split('?')[0]?.replace(/\.[^.]+$/, '') || '参考图';
-              return { id: n, url: n, name: item.name || fallbackName, type: "image/jpeg" };
+              const subjectId = item.subject_id ?? item.subjectId ?? null;
+              const assetId = item.asset_id ?? item.assetId ?? item.id ?? null;
+              const type = item.type || item.category || (subjectId ? 'char' : 'image');
+              return {
+                ...item,
+                id: subjectId || assetId || n,
+                subjectId,
+                assetId,
+                url: n,
+                name: item.name || fallbackName,
+                type,
+              };
             });
         })(),
       ]
     ),
     storyboardImage: be.storyboardImage ?? (
       be.image_url
-        ? { id: `${be.id}_img`, url: normalizeImageUrl(be.image_url), name: '分镜图', type: 'image/jpeg',
+        ? { id: `${storyboardId}_img`, url: normalizeImageUrl(be.image_url), name: '分镜图', type: 'image/jpeg',
             source: (be.image_prompt || be.gen_params) ? 'ai-generated' : 'local-upload' }
         : null
     ),
     storyboardVideo: be.storyboardVideo ?? (
       be.video_url
         ? {
-            id: `${be.id}_vid`,
+            id: `${storyboardId}_vid`,
             url: normalizeImageUrl(be.video_url),
             name: '分镜视频',
             type: 'video/mp4',
@@ -117,9 +160,15 @@ export function normalizeStoryboard(be) {
 /**
  * 批量归一化分镜并补全主体参考图；不执行请求或状态写回。
  */
-export function normalizeStoryboardList(data, chars = []) {
+export function normalizeStoryboardList(data, chars = [], numberOffset = 0) {
   if (!Array.isArray(data)) return [];
-  return data.map((shot) => enrichMainRefs(normalizeStoryboard(shot), chars));
+  return data.map((shot, index) => {
+    const normalized = enrichMainRefs(normalizeStoryboard(shot, {
+      index,
+      episodeId: shot?.episode_id ?? shot?.episodeId,
+    }), chars);
+    return { ...normalized, number: numberOffset + index + 1 };
+  });
 }
 
 /**
@@ -217,22 +266,49 @@ export function enrichMainRefs(shot, chars) {
     }
   }
 
-  // Pass 2: build result, deduplicating by URL path
-  // - Use enriched versions for subject entries that were enriched
-  // - Skip non-subject entries whose URL path matches an already-used subject URL
+  const subjectRefKey = (ref) => {
+    if (!ref) return null;
+    const subjectId = ref.subjectId
+      || ref.subject_id
+      || ((ref.type === 'char' || ref.type === 'scene' || ref.type === 'prop') ? ref.id : null);
+    return subjectId ? `subject:${subjectId}` : null;
+  };
+
+  // Pass 2: build result, deduplicating by subject/asset identity and URL path.
+  // 主体引用优先于普通参考图：刷新后后端可能同时返回 character_ids 和
+  // reference_images，二者指向同一主体时只保留主体引用，避免列表出现重复图。
   const result = [];
+  const usedSubjectKeys = new Set();
+  const usedAssetKeys = new Set();
+  const prioritySubjectPaths = new Set();
   for (const ref of shot.mainRefs) {
-    if (enrichedById[ref.id]) {
-      result.push(enrichedById[ref.id]);
+    const enriched = enrichedById[ref.id] || ref;
+    if (!subjectRefKey(enriched) || !enriched.url) continue;
+    const pathKey = urlPathKey(normalizeImageUrl(enriched.url));
+    if (pathKey) prioritySubjectPaths.add(pathKey);
+  }
+  for (const ref of shot.mainRefs) {
+    const enriched = enrichedById[ref.id] || ref;
+    const isSubject = Boolean(subjectRefKey(enriched));
+    const subjectKey = subjectRefKey(enriched);
+    const assetKey = enriched.assetId || enriched.asset_id;
+    const pathKey = enriched.url ? urlPathKey(normalizeImageUrl(enriched.url)) : null;
+
+    if (isSubject) {
+      if (usedSubjectKeys.has(subjectKey)) continue;
+      usedSubjectKeys.add(subjectKey);
+      if (assetKey) usedAssetKeys.add(`asset:${assetKey}`);
+      if (pathKey) usedPathKeys.add(pathKey);
+      result.push(enriched);
       continue;
     }
-    // Dedup by URL path — handles absolute vs relative URL mismatch
-    if (ref.url) {
-      const pathKey = urlPathKey(normalizeImageUrl(ref.url));
-      if (pathKey && usedPathKeys.has(pathKey)) continue;
-      if (pathKey) usedPathKeys.add(pathKey);
-    }
-    result.push(ref);
+
+    if (assetKey && usedAssetKeys.has(`asset:${assetKey}`)) continue;
+    if (pathKey && prioritySubjectPaths.has(pathKey)) continue;
+    if (pathKey && usedPathKeys.has(pathKey)) continue;
+    if (assetKey) usedAssetKeys.add(`asset:${assetKey}`);
+    if (pathKey) usedPathKeys.add(pathKey);
+    result.push(enriched);
   }
 
   shot.mainRefs = result;

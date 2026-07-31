@@ -20,13 +20,16 @@
  *   2026-07-28  详情弹窗按候选图来源展示提示词和生成参数
  *   2026-07-28  详情弹窗定稿状态改用 Toggle，移除缩略图定稿文字标签
  *   2026-07-28  上传中的候选图保持加载占位，资产落库后再显示图片
+ *   2026-07-31  候选图悬浮放大和下载按钮改用浅黑色背景
+ *   2026-07-31  为候选图悬浮放大和下载按钮增加规范 Tooltip，图标改为纯白色
+ *   2026-07-31  详情弹窗仅展示候选图片自身关联的参考图
  */
 import { useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
 import Checkbox from '../Checkbox';
 import DotsLoading from '../DotsLoading';
 import MediaDetailModal from '../MediaDetailModal';
-import { IconButton, FileUploadButton } from '../ui';
+import { IconButton, FileUploadButton, Tooltip } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -89,10 +92,10 @@ function ImageItemUpload({ onUpload, projectId }) {
 function FullscreenIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M5.333 2H2.667C2.298 2 2 2.298 2 2.667V5.333" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5.333 14H2.667C2.298 14 2 13.701 2 13.333V10.667" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M10.667 14H13.333C13.701 14 14 13.701 14 13.333V10.667" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M10.667 2H13.333C13.701 2 14 2.298 14 2.667V5.333" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5.333 2H2.667C2.298 2 2 2.298 2 2.667V5.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5.333 14H2.667C2.298 14 2 13.701 2 13.333V10.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10.667 14H13.333C13.701 14 14 13.701 14 13.333V10.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10.667 2H13.333C13.701 2 14 2.298 14 2.667V5.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -100,35 +103,37 @@ function FullscreenIcon() {
 function DownloadIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M8 2.667V10" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5.333 7.333L8 10L10.667 7.333" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M2.667 12H13.333" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 2.667V10" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5.333 7.333L8 10L10.667 7.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.667 12H13.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-function ImageActionButton({ children, ariaLabel, onClick }) {
+function ImageActionButton({ children, ariaLabel, tooltip, onClick }) {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
 
   return (
-    <IconButton
-      type="button"
-      size="small"
-      variant="secondary"
-      icon={children}
-      aria-label={ariaLabel}
-      className="!h-[28px] !w-[28px] !rounded-[6px] !border-0 !p-[0px] !shadow-none !outline-0"
-      style={{
-        backgroundColor: pressed ? 'rgba(255,255,255,0.18)' : hovered ? 'rgba(255,255,255,0.12)' : 'transparent',
-        transition: 'background 100ms',
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setPressed(false); }}
-      onMouseDown={() => setPressed(true)}
-      onMouseUp={() => setPressed(false)}
-      onClick={onClick}
-    />
+    <Tooltip label={tooltip || ariaLabel}>
+      <IconButton
+        type="button"
+        size="small"
+        variant="secondary"
+        icon={children}
+        aria-label={ariaLabel}
+        className="!h-[28px] !w-[28px] !rounded-[6px] !border-0 !p-[0px] !shadow-none !outline-0"
+        style={{
+          backgroundColor: pressed ? 'rgba(0,0,0,0.55)' : hovered ? 'rgba(0,0,0,0.40)' : 'transparent',
+          transition: 'background 100ms',
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => { setHovered(false); setPressed(false); }}
+        onMouseDown={() => setPressed(true)}
+        onMouseUp={() => setPressed(false)}
+        onClick={onClick}
+      />
+    </Tooltip>
   );
 }
 
@@ -163,10 +168,10 @@ function ImageItem({ settled, imageUrl, uploading = false, onView, onSettledChan
 
       {hovered && !uploading && (
         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '6px 8px', backgroundImage: 'linear-gradient(in oklab 0deg, oklab(0% 0 0 / 60%) 0%, oklab(0% 0 0 / 0%) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-          <ImageActionButton ariaLabel="查看图片" onClick={(event) => { event.stopPropagation(); onView?.(imageUrl); }}>
+          <ImageActionButton ariaLabel="查看详情" tooltip="查看详情" onClick={(event) => { event.stopPropagation(); onView?.(imageUrl); }}>
             <FullscreenIcon />
           </ImageActionButton>
-          <ImageActionButton ariaLabel="下载图片" onClick={(event) => { event.stopPropagation(); onDownload?.(); }}>
+          <ImageActionButton ariaLabel="下载" tooltip="下载" onClick={(event) => { event.stopPropagation(); onDownload?.(); }}>
             <DownloadIcon />
           </ImageActionButton>
         </div>
@@ -183,7 +188,6 @@ export default function SubjectImageList({
   selectedModel,
   selectedRatio,
   selectedResolution,
-  refImagesForModal = [],
   mediaDetailOpen = false,
   mediaDetailActiveIdx = 0,
   onOpenDetail,
@@ -205,7 +209,7 @@ export default function SubjectImageList({
     resolution: image.resolution ?? (image.detailSource === 'ai-generated' || !image.detailSource ? selectedResolution : null),
     detailSource: image.detailSource || (image.source === 'local-upload' ? 'local-upload' : image.source === 'creation-asset' ? 'asset-library' : 'ai-generated'),
     created_at: image.created_at,
-    refImages: image.refImages?.length > 0 ? image.refImages : refImagesForModal,
+    refImages: image.refImages || [],
   }));
 
   return (

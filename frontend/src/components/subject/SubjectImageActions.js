@@ -22,6 +22,7 @@
  */
 import {
   apiDownloadSubjectImage,
+  apiGetSubjectDetail,
   apiSetPrimarySubjectImage,
   apiUnsetPrimarySubjectImage,
 } from '../../api/subject';
@@ -30,6 +31,27 @@ import { apiGetSubjectAssets, apiSetPrimarySubjectAsset, apiUpdateAsset } from '
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { invalidate } from '../../utils/cache';
 import { K, MEDIUM } from '../../utils/cacheKeys';
+
+function resolveSubjectImageId(detail, image) {
+  const targetUrl = normalizeImageUrl(image?.rawUrl || image?.url);
+  const payload = detail?.data && typeof detail.data === 'object' ? detail.data
+    : detail?.result && typeof detail.result === 'object' ? detail.result
+      : detail;
+  const candidates = [
+    ...(Array.isArray(payload?.candidate_images) ? payload.candidate_images : []),
+    ...(Array.isArray(payload?.candidateImages) ? payload.candidateImages : []),
+    ...(Array.isArray(payload?.images) ? payload.images : []),
+    ...(payload?.primary_image ? [payload.primary_image] : []),
+    ...(payload?.primaryImage ? [payload.primaryImage] : []),
+  ];
+  const matched = candidates.find((candidate) => {
+    const candidateUrl = normalizeImageUrl(candidate?.image_url || candidate?.imageUrl || candidate?.url
+      || candidate?.file_url || candidate?.fileUrl || candidate?.original_url || candidate?.originalUrl
+      || candidate?.preview_url || candidate?.previewUrl || candidate?.large_url || candidate?.largeUrl);
+    return targetUrl && candidateUrl && targetUrl === candidateUrl;
+  });
+  return matched?.id || matched?.image_id || matched?.imageId || matched?.subject_image_id || matched?.subjectImageId || null;
+}
 
 export function createSubjectImageActionHandlers({
   projectId,
@@ -169,10 +191,11 @@ export function createSubjectImageActionHandlers({
       // 主体候选图可能同时带有生成资产编号，但它仍应使用主体候选图定稿接口；
       // 只有候选区本地上传/资产库选择产生的 creation-asset 才走资产接口。
       const assetId = image.source === 'creation-asset' ? (image.assetId || image.id) : null;
+      const temporaryId = String(image?.id || '').startsWith('batch-') || String(image?.id || '').startsWith('generated-');
       const setPrimaryRequest = assetId
         ? apiUnsetPrimarySubjectImage(projectId, subjectId)
           .then(() => apiSetPrimarySubjectAsset(projectId, subjectId, assetId, { category: subjectType }))
-        : image.id && !String(image.id).startsWith('generated-')
+        : image.id && !temporaryId
           ? apiGetSubjectAssets(projectId, subjectId, { category: subjectType })
             .then((assets) => Promise.all(
               (assets || [])
@@ -180,7 +203,12 @@ export function createSubjectImageActionHandlers({
                 .map((asset) => apiUpdateAsset(asset.id || asset.asset_id, { is_primary: false }))
             ))
             .then(() => apiSetPrimarySubjectImage(projectId, subjectId, image.id))
-          : Promise.resolve();
+          : apiGetSubjectDetail(projectId, subjectId)
+            .then((detail) => {
+              const realImageId = resolveSubjectImageId(detail, image);
+              if (!realImageId) throw new Error('创作结果尚未同步到主体图片，请稍后重试');
+              return apiSetPrimarySubjectImage(projectId, subjectId, realImageId);
+            });
 
       setPrimaryRequest.catch((error) => {
         console.error('[SubjectPage] 设置定稿图失败:', error);
@@ -192,6 +220,7 @@ export function createSubjectImageActionHandlers({
       // 先乐观更新卡片封面，接口完成后再次写回，覆盖上传/资产接口返回的最终地址。
       setPrimaryRequest.then((result) => {
         const persistedUrl = result?.file_url || result?.fileUrl || result?.url || result?.image_url;
+        const persistedId = result?.id || result?.image_id || image.id;
         if (persistedUrl) {
           const normalizedUrl = normalizeImageUrl(persistedUrl);
           setGeneratedImages((prev) => prev.map((item) => (
@@ -201,7 +230,7 @@ export function createSubjectImageActionHandlers({
           )));
           onCoverChange?.(persistedUrl);
           setPrimaryImageUrl?.(normalizedUrl);
-          setPrimaryImageId?.(image.id);
+          setPrimaryImageId?.(persistedId);
         }
       }).catch(() => {});
       if (assetId) invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);

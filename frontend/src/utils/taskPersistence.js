@@ -6,7 +6,7 @@
  * 页面重新挂载时自动恢复轮询，保证生成任务不丢失。
  *
  * 存储结构：localStorage key: "miioo:pending_tasks"
- *   Array<{ projectId, taskId, shotId, episodeId, type: 'video'|'image', createdAt }>
+ *   Array<{ projectId, taskId, shotId, episodeId, type: 'video'|'image'|'storyboard', createdAt }>
  */
 
 const STORAGE_KEY = 'miioo:pending_tasks';

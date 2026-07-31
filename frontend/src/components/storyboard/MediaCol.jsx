@@ -120,10 +120,18 @@ export default function MediaCol({
         fileUrl: image.url,
         is_primary: image.settled ?? (image.url === media?.url),
         prompt: image.prompt || (detailIsAi ? shotMeta?.prompt : undefined),
+        input_prompt: image.input_prompt || image.inputPrompt,
         model: image.model || (detailIsAi ? shotMeta?.model : undefined),
         resolution: image.resolution || (detailIsAi ? shotMeta?.resolution : undefined),
+        ratio: image.ratio || (detailIsAi ? shotMeta?.ratio : undefined),
         created_at: image.created_at,
-        refImages: image.refImages?.length > 0 ? image.refImages : genRefImages,
+        refImages: image.refImages?.length > 0
+          ? image.refImages
+          : image.referenceImages?.length > 0
+            ? image.referenceImages
+            : image.reference_images?.length > 0
+              ? image.reference_images
+              : genRefImages,
       }))
     : [{
         id: media?.id ?? media?.url,
@@ -131,10 +139,18 @@ export default function MediaCol({
         fileUrl: media?.url,
         is_primary: media?.settled ?? true,
         prompt: detailIsAi ? shotMeta?.prompt : undefined,
+        input_prompt: media?.input_prompt || media?.inputPrompt,
         model: detailIsAi ? shotMeta?.model : undefined,
         resolution: detailIsAi ? shotMeta?.resolution : undefined,
+        ratio: detailIsAi ? shotMeta?.ratio : undefined,
         created_at: media?.created_at,
-        refImages: genRefImages,
+        refImages: media?.refImages?.length > 0
+          ? media.refImages
+          : media?.referenceImages?.length > 0
+            ? media.referenceImages
+            : media?.reference_images?.length > 0
+              ? media.reference_images
+              : genRefImages,
       }];
 
   return (

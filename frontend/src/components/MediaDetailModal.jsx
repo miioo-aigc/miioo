@@ -28,6 +28,7 @@
  *   2026-07-06  右侧信息区字段对齐 AssetsPage ShotDetailModal：分镜编号横向布局、分镜模式隐藏名称描述、生成参数仅模型+分辨率、时间标签统一"AI 生成时间"
  *   2026-07-06  新增 source prop：区分 AI 生成 / 本地上传 / 资产库，非 AI 图片右侧显示「来源」字段；生成参数和 AI 生成时间仅 AI 生成时展示
  *   2026-07-28  主体候选图按当前图片来源展示创作信息：本地上传隐藏，资产库图片使用资产自身字段
+ *   2026-07-31  参考图仅展示当前候选图片原数据中的关联图片，不再继承主体参考图
  *   2026-07-28  主体详情图定稿状态改用 Toggle，定稿唯一性由主体页动作链路保证
  *   2026-07-28  主体详情图隐藏缩略图定稿标签，保留其他页面默认展示
  */
@@ -37,6 +38,7 @@ import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
 import ConfirmDialog from './ConfirmDialog';
 import Toggle from './Toggle';
+import { normalizeImageUrl } from '../utils/imageUrl';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -80,7 +82,11 @@ export default function MediaDetailModal({
 
   const currentImg = imgs[activeImg];
   const isPrimary = currentImg?.is_primary ?? false;
-  const refImages = currentImg?.refImages ?? [];
+  const currentSource = currentImg?.detailSource || currentImg?.source || source;
+  const refImages = (currentSource === 'local-upload' ? [] : (currentImg?.refImages ?? [])).map((ref) => {
+    const url = typeof ref === 'string' ? ref : ref?.url ?? ref?.fileUrl ?? ref?.file_url;
+    return typeof ref === 'string' ? { url: normalizeImageUrl(url) } : { ...ref, url: normalizeImageUrl(url) };
+  }).filter((ref) => ref.url);
 
   // 分镜模式 / 非分镜模式判断
   const isShotMode = !!shotNumber;
@@ -89,7 +95,6 @@ export default function MediaDetailModal({
   const genResolution = currentImg?.resolution || null;
   const genRatio = currentImg?.ratio || null;
   // 是否 AI 生成
-  const currentSource = currentImg?.detailSource || currentImg?.source || source;
   const isAiGenerated = !currentSource || currentSource === 'ai-generated' || currentSource === 'subject-image';
   const canShowGenerationInfo = isAiGenerated || currentSource === 'asset-library';
   // 来源标签

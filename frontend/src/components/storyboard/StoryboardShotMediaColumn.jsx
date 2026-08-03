@@ -130,10 +130,37 @@ function CandidateCard({ item, finalized, onSelect, onPreview }) {
   );
 }
 
+function PendingCandidateCard() {
+  return (
+    <div
+      aria-label="生成中"
+      role="status"
+      style={{
+        width: '60px',
+        height: '60px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        borderRadius: '4px',
+        border: '1px solid rgba(45,195,225,0.45)',
+        background: '#101111',
+      }}
+    >
+      <DotsLoading size={4} color="#2DC3E1" gap={3} />
+    </div>
+  );
+}
+
 export default function StoryboardShotMediaColumn({ candidates = [], image, video, generating, loading = false, onOpenCreation, onUpload, onFinalizeToggle, onSelectShot }) {
   const inputRef = useRef(null);
   const [preview, setPreview] = useState(null);
-  const media = candidates.length > 0 ? candidates : [image, video].filter(Boolean).map((item) => ({ ...item, media_type: item.type?.startsWith('video') ? 'video' : 'image', is_finalized: true }));
+  const pendingMedia = candidates.filter((item) => item?.pending);
+  const candidateMedia = candidates.filter((item) => !item?.pending);
+  const media = candidateMedia.length > 0
+    ? candidateMedia
+    : [image, video].filter(Boolean).map((item) => ({ ...item, media_type: item.type?.startsWith('video') ? 'video' : 'image', is_finalized: true }));
+  const hasPendingMedia = pendingMedia.length > 0 || (generating && media.length === 0);
 
   function handleFile(event) {
     const file = event.target.files?.[0];
@@ -174,19 +201,20 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
         <span style={{ font: `12px ${FONT}`, color: '#FFFFFF99', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>分镜</span>
         {media.length > 0 && <NarrationAddButton tooltip="创作" onClick={handleOpenCreation} />}
       </div>
-      {generating && <div style={{ height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2DC3E1', font: `12px ${FONT}` }}>生成中</div>}
-      {!generating && loading && media.length === 0 && (
+      {loading && media.length === 0 && !hasPendingMedia && (
         <div style={{ width: '60px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', background: '#101111' }} aria-label="正在加载分镜媒体" role="status">
           <DotsLoading size={4} color="#2DC3E1" gap={3} />
         </div>
       )}
-      {!generating && !loading && media.length === 0 && <PlusButton tooltip="创作" onClick={handleOpenCreation} />}
-      {!generating && media.length > 0 && (
+      {!loading && media.length === 0 && !hasPendingMedia && <PlusButton tooltip="创作" onClick={handleOpenCreation} />}
+      {(media.length > 0 || hasPendingMedia) && (
         <div style={{ minHeight: 0, flex: 1, position: 'relative', display: 'flex', gap: '4px', flexFlow: 'column nowrap', overflowY: 'auto', overflowX: 'hidden', width: 'fit-content' }}>
           {media.map((item, index) => (
             <CandidateCard key={item.id || item.url || index} item={item} finalized={item.is_finalized} onSelect={() => { onSelectShot?.(); onFinalizeToggle?.(item); }} onPreview={handlePreview} />
           ))}
-          {loading && (
+          {pendingMedia.map((item) => <PendingCandidateCard key={item.id || item.taskId} />)}
+          {hasPendingMedia && pendingMedia.length === 0 && <PendingCandidateCard />}
+          {loading && media.length > 0 && pendingMedia.length === 0 && (
             <div style={{ position: 'absolute', inset: 0, minHeight: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', background: 'rgba(16,17,17,0.58)', pointerEvents: 'none' }} aria-label="正在加载分镜媒体" role="status">
               <DotsLoading size={4} color="#2DC3E1" gap={3} />
             </div>

@@ -149,7 +149,7 @@ function getImageModelParamsFromCap(capabilities) {
       resolutionRatios[res] = Object.keys(map).filter(r => /^\d+:\d+$/.test(r));
     }
 
-    maxCount = Math.min(capabilities.max_output_images || 4, 4);
+    maxCount = capabilities.max_output_images || 4;
   } else {
     // Local config format: resolutions = { "2K": [{ratio, width, height}, ...] }
 
@@ -179,7 +179,7 @@ function getImageModelParamsFromCap(capabilities) {
       }
     }
 
-    maxCount = Math.min(capabilities.features?.maxImagesTotal || 4, 4);
+    maxCount = capabilities.features?.maxImagesTotal || 4;
   }
 
   const counts = Array.from({ length: maxCount }, (_, i) => `${i + 1}张`);

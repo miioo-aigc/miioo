@@ -71,7 +71,15 @@ export function useCreationInputFiles({
 
   const normalizeFiles = useCallback((nextFiles) => nextFiles.map((file) => {
     const nextFile = typeof File !== 'undefined' && file instanceof File ? enrichLocalFile(file) : file;
-    if (nextFile && !nextFile._uid) return { ...nextFile, _uid: makeFileUid() };
+    if (nextFile && !nextFile._uid) {
+      // 不展开原生 File，否则会丢失 name/type 等原型字段，提交时会变成普通对象。
+      Object.defineProperty(nextFile, '_uid', {
+        value: makeFileUid(),
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+    }
     return nextFile;
   }), []);
 

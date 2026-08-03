@@ -25,6 +25,8 @@
  *   2026-07-16  抽离视频重新编辑预填充参数组装，组件保留详情请求和预填充状态
  *   2026-07-16  复用统一适配工具处理图片重新编辑和用作参考图回填
  *   2026-07-16  抽离尾帧转首帧的预填充对象构造，组件保留尾帧 API 和 Blob 生命周期
+ *   2026-08-03  尾帧转首帧预填充同步写入预览地址，修复首帧槽位不显示图片
+ *   2026-08-03  预览字段改为可枚举，修复文件归一化展开时字段丢失
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -264,7 +266,7 @@ export default function CreationResultState({
                       }
 
                       onSwitchToFrameMode?.();
-                      setPrefillData(createCreationFirstFramePrefill(frameBlob));
+                      setPrefillData(createCreationFirstFramePrefill(frameBlob, lastFrameUrl));
                       setPrefillVersion((v) => v + 1);
                       showToast('success', '尾帧已添加为首帧参考');
                     } catch (error) {

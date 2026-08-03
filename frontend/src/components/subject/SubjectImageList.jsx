@@ -23,6 +23,7 @@
  *   2026-07-31  候选图悬浮放大和下载按钮改用浅黑色背景
  *   2026-07-31  为候选图悬浮放大和下载按钮增加规范 Tooltip，图标改为纯白色
  *   2026-07-31  详情弹窗仅展示候选图片自身关联的参考图
+ *   2026-07-31  候选图首次请求期间显示 DotsLoading 占位，区分加载中与真实空列表
  */
 import { useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
@@ -184,6 +185,7 @@ export default function SubjectImageList({
   projectId,
   subject,
   generatedImages = [],
+  candidateImagesLoading = false,
   promptText,
   selectedModel,
   selectedRatio,
@@ -233,6 +235,13 @@ export default function SubjectImageList({
         />
       )}
       <ImageItemUpload projectId={projectId} onUpload={onUpload} />
+      {candidateImagesLoading && generatedImages.length === 0 && (
+        <ImageItem
+          key="candidate-images-loading"
+          imageUrl={null}
+          uploading
+        />
+      )}
       {generatedImages.map((image, index) => (
         <ImageItem
           key={image.id ?? image.url + index}

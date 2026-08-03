@@ -221,6 +221,14 @@ function sanitizeInput(val) {
   return val;
 }
 
+// 项目描述允许自然语言中的常用标点，仅过滤不可见控制字符；保留换行、回车和制表符。
+function sanitizeDescription(val) {
+  return Array.from(val).filter((char) => {
+    const code = char.charCodeAt(0);
+    return !((code >= 0 && code <= 8) || (code >= 11 && code <= 12) || (code >= 14 && code <= 31) || (code >= 127 && code <= 159));
+  }).join('');
+}
+
 function trimTrailingSpecials(val) {
   return val.replace(/[_. -]+$/, '');
 }
@@ -267,7 +275,7 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
       if (coverFile) {
         cover_url = await apiUploadProjectCover(coverFile);
       }
-      // 视觉风格：自定义走 custom:{id}，风格库走原 value
+      // 视觉风格：保存成功的自定义风格引用 custom:{id} 不再重复传 prompt。
       let visual_style = '';
       let visual_style_prompt = null;
       if (styleMode === 'custom' && customStyleDesc.trim()) {
@@ -278,9 +286,11 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
             prompt: customStyleDesc,
           });
           visual_style = `custom:${userStyle.id || userStyle.value}`;
-          visual_style_prompt = customStyleDesc;
         } catch (err) {
           console.error('创建自定义风格失败', err);
+          // 自定义风格记录创建失败时，仍按项目级自定义风格提交。
+          visual_style = 'custom';
+          visual_style_prompt = customStyleDesc;
         }
       } else if (styleMode === 'library' && libraryStyleValue) {
         visual_style = libraryStyleValue;
@@ -383,12 +393,8 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
               multiline
               height="72px"
               maxLength={300}
-              sanitize={sanitizeInput}
+              sanitize={sanitizeDescription}
               onChange={(e) => setDesc(e.target.value)}
-              onBlur={() => {
-                const trimmed = trimTrailingSpecials(desc);
-                if (trimmed !== desc) setDesc(trimmed);
-              }}
             />
 
             {/* 画面比例 */}

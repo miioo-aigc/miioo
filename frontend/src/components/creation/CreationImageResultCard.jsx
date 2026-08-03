@@ -168,7 +168,7 @@ function ImageDetailModal({ card, onClose, onDelete, favorited, onToggleFavorite
 
                 <div style={{ position: 'absolute', bottom: 0, left: 0, width: '280px', display: 'flex', gap: '8px', padding: '16px 20px 20px', flexShrink: 0, backgroundColor: '#161616' }}>
                   <ModalActionBtn label="收藏" onClick={handleStarClick} icon={<div style={{ transform: starAnim ? 'scale(1.4)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', display: 'flex' }}><StarIcon filled={favorited} strokeColor="rgba(255,255,255,0.6)" /></div>} />
-                  <ModalActionBtn label="下载" onClick={() => downloadMediaUrl(card.imageUrl, filenameFromPrompt(card.prompt, 'png'))} icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8.003 11.3V2" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 14H12" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /></svg>} />
+                  <ModalActionBtn label="下载" onClick={() => downloadMediaUrl(card.downloadUrl || card.originalUrl || card.imageUrl, filenameFromPrompt(card.prompt, 'png'))} icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8.003 11.3V2" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 14H12" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /></svg>} />
                   <ModalActionBtn label="删除" onClick={() => setConfirmDelete(true)} icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3.333V14.667H13V3.333H3Z" stroke="#FFFFFF99" strokeLinejoin="round" /><path d="M6.667 6.667V11" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M9.333 6.667V11" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M1.333 3.333H14.667" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#FFFFFF99" strokeLinejoin="round" /></svg>} />
                 </div>
               </div>
@@ -218,7 +218,7 @@ export default function CreationImageResultCard({ status, imageUrl, originalUrl,
       </div>
 
       {confirmDelete && <ConfirmDialog title="确认删除" description="删除后无法恢复，确定要删除这张图片吗？" confirmText="删除" onConfirm={() => { setConfirmDelete(false); onDelete?.(); }} onCancel={() => setConfirmDelete(false)} zIndex={1100} />}
-      {detailOpen && <ImageDetailModal card={{ imageUrl: downloadUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt }} onClose={() => setDetailOpen(false)} onDelete={onDelete} favorited={favorited} onToggleFavorite={() => onToggleFavorite?.()} />}
+      {detailOpen && <ImageDetailModal card={{ imageUrl, downloadUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt }} onClose={() => setDetailOpen(false)} onDelete={onDelete} favorited={favorited} onToggleFavorite={() => onToggleFavorite?.()} />}
     </>
   );
 }

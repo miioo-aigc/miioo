@@ -27,6 +27,8 @@
  *   2026-07-22  恢复 960px 外层定位基准，避免定位器被宽屏滚动视口裁掉
  *   2026-07-22  将滚动视口扩展到整个内容区，定位器改由父级独立定位
  *   2026-07-27  向 AI 操作传递剧本内容区边界
+ *   2026-08-03  让表单右侧内容内外层高度保持一致
+ *   2026-08-03  让右侧单行文本在内容行内垂直居中
  */
 import { useEffect, useRef, useState } from 'react';
 import { getCreationTypeLabel, getVisualStyleLabel } from '../../config/projectDisplayNames';
@@ -40,7 +42,7 @@ function SectionTitle({ children, compactBottom = false }) {
 }
 
 function Value({ children }) {
-  return <div style={{ minWidth: 0, padding: '8px 12px', color: '#FFFFFFCC', fontFamily: FONT, fontSize: '14px', lineHeight: '20px', wordBreak: 'break-word' }}>{children || '—'}</div>;
+  return <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, height: '100%', boxSizing: 'border-box', flex: 1, padding: '8px 12px', color: '#FFFFFFCC', fontFamily: FONT, fontSize: '14px', lineHeight: '20px', wordBreak: 'break-word' }}>{children || '—'}</div>;
 }
 
 function KeyValueTable({ rows, rounded = true, showBottomBorder = false }) {
@@ -49,7 +51,7 @@ function KeyValueTable({ rows, rounded = true, showBottomBorder = false }) {
       {rows.map(([label, value], index) => (
         <div key={label} style={{ display: 'flex', width: '100%', minHeight: '44px', borderBottom: index === rows.length - 1 ? 0 : '1px solid #3E3D3D', boxSizing: 'border-box' }}>
           <div style={{ width: '160px', flexShrink: 0, display: 'flex', alignItems: 'center', padding: '8px 16px', background: '#FFFFFF14', borderRight: '1px solid #3E3D3D', color: '#FFFFFFCC', fontFamily: FONT, fontSize: '14px', lineHeight: '20px', boxSizing: 'border-box' }}>{label}</div>
-          <div style={{ flex: 1, minWidth: 0, boxSizing: 'border-box' }}><Value>{value}</Value></div>
+          <div style={{ display: 'flex', flex: 1, minWidth: 0, alignSelf: 'stretch', boxSizing: 'border-box' }}><Value>{value}</Value></div>
         </div>
       ))}
     </div>

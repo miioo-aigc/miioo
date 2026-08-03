@@ -21,6 +21,7 @@
  *   2026-07-24 项目列表按创建时间正序，与资产选择弹窗保持一致
  *   2026-07-28 删除主体单张资产时保持主体卡片标识稳定，详情弹窗仅移除缩略图
  *   2026-07-29 修复分镜卡片在临界宽度下网格行高不足导致的上下行重叠
+ *   2026-08-03 主体删除后同步刷新资产库当前分类，避免保留旧主体资产卡片
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -59,10 +60,23 @@ const PROJECT_CATEGORY_TABS = [
 
 // subjectType：本次删除影响的主体类别（'character'|'scene'|'prop'），
 // 让 Home 只刷新对应类别的主体，避免误刷/覆盖其它类别的卡片。
-function notifyProjectAssetsDeleted(projectId, subjectType, assetIds = []) {
+// deletedAssets 保留 subjectId，供主体页、分镜页和资产选择弹窗精确同步。
+function notifyProjectAssetsDeleted(projectId, subjectType, records = []) {
   if (!projectId) return;
+  const deletedAssets = records
+    .map((asset) => ({
+      assetId: asset?.id ?? asset?.asset_id ?? null,
+      subjectId: asset?.subject_id ?? asset?.subjectId ?? null,
+    }))
+    .filter((asset) => asset.assetId != null)
+    .map((asset) => ({ ...asset, assetId: String(asset.assetId), subjectId: asset.subjectId == null ? null : String(asset.subjectId) }));
   window.dispatchEvent(new CustomEvent('project-assets:deleted', {
-    detail: { projectId, subjectType, assetIds },
+    detail: {
+      projectId,
+      subjectType,
+      assetIds: deletedAssets.map((asset) => asset.assetId),
+      deletedAssets,
+    },
   }));
 }
 
@@ -277,6 +291,31 @@ export default function AssetsProjectPanel() {
     return () => cancelAnimationFrame(frame);
   }, [activeProject, activeCategory, loadFirstPage]);
 
+  // 主体页删除主体后，资产库可能仍然挂载在页面中。先移除旧卡片，
+  // 再重新请求当前分类，保证资产库与“从资产库选择”读取同一份最新结果。
+  useEffect(() => {
+    const handleSubjectDeleted = (event) => {
+      const detail = event.detail || {};
+      if (!detail.subjectId || (detail.projectId && detail.projectId !== activeProject)) return;
+      const categoryBySubjectType = {
+        character: 'chars',
+        scene: 'scenes',
+        prop: 'props',
+      };
+      const deletedCategory = categoryBySubjectType[detail.subjectType];
+      if (!deletedCategory || deletedCategory !== activeCategory || activeProject == null) return;
+
+      setAssetsMap((prev) => ({ ...prev, [deletedCategory]: [] }));
+      const frame = requestAnimationFrame(() => {
+        loadFirstPage(activeProject, deletedCategory);
+      });
+      return () => cancelAnimationFrame(frame);
+    };
+
+    window.addEventListener('subject:deleted', handleSubjectDeleted);
+    return () => window.removeEventListener('subject:deleted', handleSubjectDeleted);
+  }, [activeProject, activeCategory, loadFirstPage]);
+
   // IntersectionObserver 触底加载更多
   useEffect(() => {
     if (!sentinelRef.current || !scrollContainerRef.current) return;
@@ -335,7 +374,7 @@ export default function AssetsProjectPanel() {
       if (subjectType && activeProject) {
         apiGetSubjects(activeProject, { type: subjectType }).catch(() => {});
       }
-      notifyProjectAssetsDeleted(activeProject, subjectType, removedIds);
+      notifyProjectAssetsDeleted(activeProject, subjectType, records);
     } catch (err) {
       console.error('删除资产失败', err);
     }
@@ -358,7 +397,7 @@ export default function AssetsProjectPanel() {
         [activeCategory]: (prev[activeCategory] || []).filter((asset) => !selectedIds.has(asset.id)),
       }));
       exitBatch();
-      notifyProjectAssetsDeleted(activeProject, subjectType, removedIds);
+      notifyProjectAssetsDeleted(activeProject, subjectType, records);
     } catch (err) {
       console.error('批量删除资产失败', err);
     }

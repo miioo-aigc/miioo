@@ -21,6 +21,7 @@ import NarrationAddButton from './NarrationAddButton';
  *   组件不读取 StoryboardPage 的闭包变量，不直接调用业务 API。
  *
  * ─── 更新记录 ─────────────────────────────────────────────────────
+ *   2026-08-03  主体参考列过滤无有效图片地址的失效引用，避免后端残留对象渲染成问号占位框
  *   2026-07-15  抽离 StoryboardPage 主体参考列，保留临时预览、资产选择、删除和悬浮预览行为
  */
 
@@ -171,10 +172,10 @@ function MainRefCol({ shot, onChange, projectId, onUploadFile, onAssetConfirm })
     setPreviewImage(null);
   }
 
-  function handleDelete(index) {
+  function handleDelete(refToDelete) {
     clearTimeout(hoverTimerRef.current);
     setPreviewImage(null);
-    onChange({ ...shot, mainRefs: shot.mainRefs.filter((_, itemIndex) => itemIndex !== index) });
+    onChange({ ...shot, mainRefs: shot.mainRefs.filter((ref) => ref !== refToDelete) });
   }
 
   async function handleFileSelect(event) {
@@ -221,7 +222,10 @@ function MainRefCol({ shot, onChange, projectId, onUploadFile, onAssetConfirm })
     setDropdownAnchor(null);
   }
 
-  const hasContent = shot.mainRefs.length > 0;
+  // 无 URL 的主体引用已经无法展示，也不能继续占用一个问号卡片。
+  // 上传中的临时引用有 blob URL，因此仍会保留并正常显示。
+  const visibleRefs = shot.mainRefs.filter((ref) => ref?.url || ref?.uploading);
+  const hasContent = visibleRefs.length > 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', flexShrink: 0 }}>
@@ -230,9 +234,9 @@ function MainRefCol({ shot, onChange, projectId, onUploadFile, onAssetConfirm })
         open={assetPickerOpen}
         projectId={projectId}
         onClose={() => setAssetPickerOpen(false)}
-        preSelectedIds={shot.mainRefs.map((ref) => ref.assetId).filter(Boolean)}
-        preSelectedUrls={shot.mainRefs.map((ref) => ref.url).filter(Boolean)}
-        preSelectedSubjectIds={shot.mainRefs.map((ref) => ref.subjectId || ((ref.type === 'char' || ref.type === 'scene' || ref.type === 'prop') ? ref.id : null)).filter(Boolean)}
+        preSelectedIds={visibleRefs.map((ref) => ref.assetId).filter(Boolean)}
+        preSelectedUrls={visibleRefs.map((ref) => ref.url).filter(Boolean)}
+        preSelectedSubjectIds={visibleRefs.map((ref) => ref.subjectId || ((ref.type === 'char' || ref.type === 'scene' || ref.type === 'prop') ? ref.id : null)).filter(Boolean)}
         onConfirm={handleAssetConfirm}
       />
       {dropdownOpen && (
@@ -254,7 +258,7 @@ function MainRefCol({ shot, onChange, projectId, onUploadFile, onAssetConfirm })
             <StoryboardAddSlotButton onClick={handleAddButtonClick} />
           </div>
         )}
-        {shot.mainRefs.map((image, index) => (
+        {visibleRefs.map((image, index) => (
           <div
             key={image.id ?? index}
             onMouseEnter={(event) => { setHoveredIndex(index); handleImageMouseEnter(event, image); }}
@@ -282,8 +286,8 @@ function MainRefCol({ shot, onChange, projectId, onUploadFile, onAssetConfirm })
               <div
                 role="button"
                 tabIndex={0}
-                onClick={() => handleDelete(index)}
-                onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') handleDelete(index); }}
+                onClick={() => handleDelete(image)}
+                onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') handleDelete(image); }}
                 style={{ position: 'absolute', top: '2px', right: '2px', width: '16px', height: '16px', backgroundColor: 'rgba(0,0,0,0.70)', borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               >
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">

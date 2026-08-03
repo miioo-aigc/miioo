@@ -514,7 +514,8 @@ export default function GenerateVideoPanel({
           }}
         >
           <GenerationSubmitButton
-            loading={loading}
+            loading={false}
+            disabled={loading}
             label="生成分镜视频"
             type="video"
             onClick={handleGenerate}

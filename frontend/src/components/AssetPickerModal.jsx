@@ -10,6 +10,7 @@ import { normalizeImageUrl } from '../utils/imageUrl';
 import { apiListLiveMaterialAssets, apiListLiveMaterialGroups } from '../api/liveMaterials';
 import SeedanceFolderCard from './assets/SeedanceFolderCard';
 import { isSeedanceModel } from '../utils/seedanceModel';
+import DotsLoading from './DotsLoading';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -248,6 +249,14 @@ function EmptyState() {
         <circle cx="60" cy="54" r="2.5" stroke="#FFFFFF26" strokeWidth="1.5" />
       </svg>
       <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '20px', color: '#FFFFFF40' }}>资产库暂无资产</span>
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div role="status" aria-label="正在加载资产" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <DotsLoading size={6} color="#2DC3E1" gap={4} />
     </div>
   );
 }
@@ -527,6 +536,8 @@ export default function AssetPickerModal({
       // 关闭时重置创作资产本地缓存，下次打开重新加载
       setLocalCreativeAssets(null);
       setCreativeLoadedTabs(new Set());
+      setLoadingCreativeTabs(new Set());
+      setLoadingTabKeys(new Set());
       setSeedanceGroups([]);
       setSeedanceAssets([]);
       setActiveSeedanceGroup(null);
@@ -640,6 +651,64 @@ export default function AssetPickerModal({
   const [apiAssetsMap, setApiAssetsMap] = useState(null);
   // 已加载完成的 tab key 集合：key = `${projectId}__${tabKey}`
   const [loadedTabKeys, setLoadedTabKeys] = useState(new Set());
+  const [loadingTabKeys, setLoadingTabKeys] = useState(new Set());
+  const [loadingCreativeTabs, setLoadingCreativeTabs] = useState(new Set());
+
+  useEffect(() => {
+    const handleSubjectDeleted = (event) => {
+      const detail = event.detail || {};
+      const deletedSubjectId = detail.subjectId;
+      if (!deletedSubjectId || (detail.projectId && projectId && detail.projectId !== projectId)) return;
+      const subjectId = String(deletedSubjectId);
+      const targetProjectId = detail.projectId || projectId;
+      setApiAssetsMap((prev) => Object.fromEntries(Object.entries(prev || {}).map(([pid, tabs]) => [
+        pid,
+        pid !== targetProjectId
+          ? tabs
+          : Object.fromEntries(Object.entries(tabs || {}).map(([tab, assets]) => [
+            tab,
+            (assets || []).filter((asset) => String(asset?.subject_id ?? asset?.subjectId ?? '') !== subjectId),
+          ])),
+      ])));
+      setLoadedTabKeys((prev) => {
+        const next = new Set(prev);
+        if (targetProjectId) {
+          ['chars', 'scenes', 'props'].forEach((tab) => next.delete(pickerTabKey(targetProjectId, tab)));
+        }
+        return next;
+      });
+    };
+    window.addEventListener('subject:deleted', handleSubjectDeleted);
+    return () => window.removeEventListener('subject:deleted', handleSubjectDeleted);
+  }, [projectId]);
+
+  useEffect(() => {
+    const handleAssetsDeleted = (event) => {
+      const detail = event.detail || {};
+      if (detail.projectId && projectId && detail.projectId !== projectId) return;
+      const deletedIds = new Set((detail.assetIds || []).map((id) => String(id)));
+      if (deletedIds.size === 0) return;
+      const targetProjectId = detail.projectId || projectId;
+      setApiAssetsMap((prev) => Object.fromEntries(Object.entries(prev || {}).map(([pid, tabs]) => [
+        pid,
+        pid !== targetProjectId
+          ? tabs
+          : Object.fromEntries(Object.entries(tabs || {}).map(([tab, assets]) => [
+            tab,
+            (assets || []).filter((asset) => !deletedIds.has(String(asset?.id ?? asset?.asset_id ?? ''))),
+          ])),
+      ])));
+      setLoadedTabKeys((prev) => {
+        const next = new Set(prev);
+        if (targetProjectId) {
+          ['chars', 'scenes', 'props', 'storyboard', 'audio', 'final'].forEach((tab) => next.delete(pickerTabKey(targetProjectId, tab)));
+        }
+        return next;
+      });
+    };
+    window.addEventListener('project-assets:deleted', handleAssetsDeleted);
+    return () => window.removeEventListener('project-assets:deleted', handleAssetsDeleted);
+  }, [projectId]);
 
   useEffect(() => {
     if (!open) return;
@@ -676,7 +745,12 @@ export default function AssetPickerModal({
         : null,
       subject_id: a.subject_id ?? null,
       starred: a.is_starred ?? false,
-      is_primary: a.is_primary ?? false,
+      is_primary: a.is_primary
+        ?? a.isPrimary
+        ?? a.is_finalized
+        ?? a.isFinalized
+        ?? a.finalized
+        ?? false,
       bgColor: '#252525',
       category: a.category,
       asset_type: a.asset_type,
@@ -712,6 +786,8 @@ export default function AssetPickerModal({
 
     const categoryFilter = SUB_TAB_CATEGORY_MAP[projectSubTab];
     if (!categoryFilter) return;
+
+    setLoadingTabKeys(prev => new Set([...prev, pKey]));
 
     (async () => {
       try {
@@ -752,7 +828,12 @@ export default function AssetPickerModal({
         // storyboard/reference 两类接口可能返回同一媒体，合并前按媒体地址去重。
         const isStoryboardTab = tabKey === 'storyboard';
         const enriched = await enrichWithStoryboards(pullProjectId, allItems, isStoryboardTab);
-        const normalized = dedupePickerAssets(enriched.map(normalizePickerAsset));
+        // 主体分类只展示仍绑定主体的资产。主体删除时，创作资产可能按既有规则
+        // 保留但解除 subject_id；这类资产不能再冒充已存在的角色/场景/道具。
+        const subjectCategoryTabs = new Set(['chars', 'scenes', 'props']);
+        const normalized = dedupePickerAssets(enriched
+          .map(normalizePickerAsset)
+          .filter((asset) => !subjectCategoryTabs.has(tabKey) || Boolean(asset.subject_id)));
         setApiAssetsMap(prev => ({
           ...prev,
           [pullProjectId]: { ...(prev?.[pullProjectId] ?? {}), [tabKey]: normalized },
@@ -760,6 +841,12 @@ export default function AssetPickerModal({
         setLoadedTabKeys(prev => new Set([...prev, pKey]));
       } catch (err) {
         console.error('[AssetPickerModal] 拉取项目资产失败:', err);
+      } finally {
+        setLoadingTabKeys(prev => {
+          const next = new Set(prev);
+          next.delete(pKey);
+          return next;
+        });
       }
     })();
   }, [open, activeTab, accept, projectId, activeProjectId, projectSubTab, loadedTabKeys]);
@@ -773,6 +860,8 @@ export default function AssetPickerModal({
     const subTabTypeMap = { '图片': 'image', '视频': 'video', '配音': 'audio' };
     const type = subTabTypeMap[creativeSubTab];
     if (!type || creativeLoadedTabs.has(type)) return;
+
+    setLoadingCreativeTabs(prev => new Set([...prev, type]));
 
     (async () => {
       try {
@@ -814,6 +903,12 @@ export default function AssetPickerModal({
         setCreativeLoadedTabs(prev => new Set([...prev, type]));
       } catch (err) {
         console.error('[AssetPickerModal] 拉取创作资产失败:', err);
+      } finally {
+        setLoadingCreativeTabs(prev => {
+          const next = new Set(prev);
+          next.delete(type);
+          return next;
+        });
       }
     })();
   }, [open, activeTab, creativeSubTab, creativeAssetsProp, creativeLoadedTabs, generationsByTab]);
@@ -921,6 +1016,14 @@ export default function AssetPickerModal({
     if (search && !(a.name || '').includes(search)) return false;
     return true;
   });
+  const currentProjectTabKey = activeProjectId
+    ? pickerTabKey(activeProjectId, SUB_TAB_KEY_MAP[projectSubTab])
+    : null;
+  const contentLoading = activeTab === 'project'
+    ? (!activeProjectId || apiProjects === null || Boolean(currentProjectTabKey && loadingTabKeys.has(currentProjectTabKey)))
+    : activeTab === 'creative'
+      ? (!creativeAssetsProp && loadingCreativeTabs.has({ 图片: 'image', 视频: 'video', 配音: 'audio' }[creativeSubTab]))
+      : seedanceLoading;
 
 
     // ── 资产卡片悬浮预览处理 ──────────────────────────────────────────────
@@ -1153,8 +1256,8 @@ export default function AssetPickerModal({
 
         {/* ── 内容区（可滚动） ── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 24px', display: 'flex', flexDirection: 'column' }}>
-          {activeTab === 'seedance' && !activeSeedanceGroup ? (
-            seedanceLoading ? <EmptyState /> : seedanceGroups.filter((group) => seedanceSubTab === 'virtual' ? String(group.group_type || '').toUpperCase() === 'AIGC' : String(group.group_type || '').toUpperCase() !== 'AIGC').length === 0 ? <EmptyState /> : (
+          {contentLoading ? <LoadingState /> : activeTab === 'seedance' && !activeSeedanceGroup ? (
+            seedanceGroups.filter((group) => seedanceSubTab === 'virtual' ? String(group.group_type || '').toUpperCase() === 'AIGC' : String(group.group_type || '').toUpperCase() !== 'AIGC').length === 0 ? <EmptyState /> : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px', paddingTop: '8px', paddingBottom: '8px', alignContent: 'flex-start' }}>
                 {seedanceGroups.filter((group) => seedanceSubTab === 'virtual' ? String(group.group_type || '').toUpperCase() === 'AIGC' : String(group.group_type || '').toUpperCase() !== 'AIGC').map((group) => (
                   <SeedanceFolderCard

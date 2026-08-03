@@ -29,6 +29,7 @@ export { default as CreationInputSurface } from './CreationInputSurface';
 export { default as CreationInputCard } from './CreationInputCard';
 export { default as CreationPageOverlays } from './CreationPageOverlays';
 export { default as CreationWorkspace } from './CreationWorkspace';
+export { useCreationGeneration } from './useCreationGeneration';
 export { useCreationInputFiles } from './useCreationInputFiles';
 export { useCreationPromptInteraction } from './useCreationPromptInteraction';
 export { useCreationParamsState } from './useCreationParamsState';

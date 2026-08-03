@@ -131,6 +131,7 @@
   - [x] 6.4.i.4 抽离 `CreationInputSurface` 输入区视觉组合；通过五组显式配置接入上传、提示词、参数、发送和弹窗区域，保留 `InputCard` 状态/参数组装/失败恢复及页面 API、轮询、缓存、Toast、Store 副作用（2026-07-16）
   - [x] 6.4.i.5 抽离 `CreationPageOverlays` 页面确认弹窗和视频详情 Portal 组合；页面继续保留删除、清空历史、视频下载/删除/收藏副作用（2026-07-16）
   - [x] 6.4.i.6 抽离 `CreationInputCard` 至 `src/components/creation/`；页面通过 `renderInputCard` 显式接线，继续保留生成 API、任务轮询、缓存、Toast 和 Store 副作用（2026-07-16）
+  - [x] 6.4.i.7 抽离 `useCreationGeneration` 至 `src/components/creation/`；页面通过显式参数接入，生成 API、占位/结果卡、Shot 更新和失败清理边界保持不变（2026-08-03）
 - [x] 6.4.j 完成创作页运行时验收（2026-07-17；用户确认本次纳入范围全部通过）
   - 静态安全修复和纳入范围的运行时分支均已完成；不重复执行已确认通过的外部流程。
   - [x] 6.4.j.1 登录态安全验证模型切换、图片/视频/配音参数联动、视频参考模式交互和刷新后基础恢复；未触发真实生成接口（2026-07-17）
@@ -337,3 +338,10 @@
   - [x] 6.6.ci 已将 `GenerateImagePanel` 的图片结果卡片拆分为 `ImageResultCard`；组件仅负责图片展示、加载态、定稿控件和回调透传，结果列表写回、详情弹窗、定稿/下载副作用仍由 `GenerateImagePanel` 负责；未执行真实下载或定稿（2026-07-17）
 
   - [x] 6.6.cj 已完成生成面板结果展示静态收尾：`ImageResultCard`、`VideoUploadCard`、`VideoResultCard` 均通过业务域入口导出；旧 `ImgItem`/`VideoItem` 实现和页面级上传卡片引用已清理，API、轮询、结果写回、详情弹窗、下载、定稿和 Toast 副作用未下沉（2026-07-17）
+
+  - [x] 6.6.ck 已完成 StoryboardPage P0 候选媒体适配拆分：新增 `src/utils/storyboardCandidateAdapter.js`，承载候选媒体字段、生成参数和保存结果归一化；页面继续持有候选 API、状态写回、定稿映射和错误处理（2026-08-03）
+
+  - [x] 6.6.cl 已完成 StoryboardPage P1/P2 拆分：新增 `StoryboardLoadingState.jsx` 承载全屏生成加载态，新增 `storyboardShotUtils.js` 承载镜头插入、删除、拖拽排序和连续编号纯函数；页面继续持有加载判断、API、状态写回和排序副作用（2026-08-03）
+
+  - [x] 6.6.cm 已完成 StoryboardPage P3 跨刷新任务恢复拆分：新增 `useStoryboardTaskRecovery.js`，通过显式回调承载分镜、图片和视频任务恢复流程；页面继续持有轮询函数、恢复结果写回、缓存和 API 副作用（2026-08-03）
+  - [x] 6.6.cn 已同步 StoryboardPage P0-P3 拆分、当前实际行数 `2133`、React ESLint 修复和页面级副作用保留边界；定向 lint、全量 lint、构建、架构检查和差异检查通过，规模提醒不构成阻断（2026-08-03）

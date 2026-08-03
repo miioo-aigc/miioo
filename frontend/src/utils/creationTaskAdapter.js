@@ -28,7 +28,23 @@ function getCreationTaskTab(task) {
 function getResultUrl(value) {
   if (typeof value === 'string') return value;
   if (!value || typeof value !== 'object') return '';
-  return value.url || value.original_url || value.originalUrl || value.file_url || value.fileUrl || '';
+  return value.preview_url
+    || value.previewUrl
+    || value.reference_frame_url
+    || value.referenceFrameUrl
+    || value.thumbnail_url
+    || value.thumbnailUrl
+    || value.url
+    || value.original_url
+    || value.originalUrl
+    || value.file_url
+    || value.fileUrl
+    || '';
+}
+
+function getImageDownloadUrl(value, fallback) {
+  if (!value || typeof value !== 'object') return fallback;
+  return value.download_url || value.downloadUrl || value.original_url || value.originalUrl || fallback;
 }
 
 function normalizeReferenceImage(value) {
@@ -131,11 +147,14 @@ export function normalizeCreationTaskResult(result, task) {
       refVideos: task.refVideos,
       refAudios: task.refAudios,
       createdAt: task.createdAt,
-      cards: mediaUrls.map((url) => ({
+      cards: mediaUrls.map((url, index) => ({
         id: null,
         type: cardType,
         status: 'done',
         imageUrl: task.genType === 'image' ? url : null,
+        originalUrl: task.genType === 'image'
+          ? (result?.imageDownloadUrls?.[index] || getImageDownloadUrl(rawMedia[index], url) || url)
+          : undefined,
         videoUrl: task.genType === 'video' ? url : null,
         audioUrl: task.genType === 'dubbing' ? url : null,
       })),

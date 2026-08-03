@@ -1,5 +1,23 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
+function getImageUrls(image) {
+  const previewUrl = image?.preview_url
+    || image?.previewUrl
+    || image?.reference_frame_url
+    || image?.referenceFrameUrl
+    || image?.thumbnail_url
+    || image?.thumbnailUrl
+    || image?.original_url
+    || image?.originalUrl
+    || '';
+  const downloadUrl = image?.download_url
+    || image?.downloadUrl
+    || image?.original_url
+    || image?.originalUrl
+    || previewUrl;
+  return { previewUrl, downloadUrl };
+}
+
 /**
  * 结构索引（api/creation.js）
  * ─── 视频生成（apiGenerateCreation）────────────────────────────────────
@@ -40,8 +58,10 @@ export async function apiPollCreationTask(type, taskId, timeoutMs = 1800000) {
 
       if (type === 'image') {
         const imgs = pollData.images || [];
+        const imageUrls = imgs.map(getImageUrls);
         return {
-          images: imgs.map((img) => img.original_url || img.originalUrl || img.thumbnail_url || img.thumbnailUrl),
+          images: imageUrls.map(({ previewUrl }) => previewUrl),
+          imageDownloadUrls: imageUrls.map(({ downloadUrl }) => downloadUrl),
           cardIds: imgs.map((img) => img.id),
           referenceImages: pollData.reference_images || pollData.referenceImages || [],
         };
@@ -807,7 +827,6 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     const body = {
       prompt: params.prompt,
       model: params.model || undefined,
-      size: params.resolution || undefined,
       resolution: params.resolution || undefined,
       aspect_ratio: params.ratio || undefined,
       image_count: countNum,
@@ -840,8 +859,10 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
           `${BASE}/api/creation/tasks/${tid}`,
           (pollData) => {
             const imgs = pollData.images || [];
+            const imageUrls = imgs.map(getImageUrls);
             return {
-              images: imgs.map((img) => img.original_url || img.originalUrl || img.thumbnail_url || img.thumbnailUrl),
+              images: imageUrls.map(({ previewUrl }) => previewUrl),
+              imageDownloadUrls: imageUrls.map(({ downloadUrl }) => downloadUrl),
               cardIds: imgs.map((img) => img.id),
               referenceImages: pollData.reference_images || pollData.referenceImages || [],
             };
@@ -851,12 +872,19 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     );
 
     const allImages = pollResults.flatMap((r) => r.images);
+    const allImageDownloadUrls = pollResults.flatMap((r) => r.imageDownloadUrls || []);
     const allCardIds = pollResults.flatMap((r) => r.cardIds);
     // 优先用后端返回的参考图列表，若为空则以本次实际上传/使用的 refUrls 作为兜底
     const referenceImages = (pollResults[0]?.referenceImages ?? []).length > 0
       ? (pollResults[0]?.referenceImages ?? [])
       : refUrls;
-    return { taskId: taskIds[0], images: allImages, cardIds: allCardIds, referenceImages };
+    return {
+      taskId: taskIds[0],
+      images: allImages,
+      imageDownloadUrls: allImageDownloadUrls,
+      cardIds: allCardIds,
+      referenceImages,
+    };
   }
 
   // ── 视频生成 ────────────────────────────────────────────────────────────

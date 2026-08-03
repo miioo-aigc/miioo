@@ -1,6 +1,58 @@
 # miioo 项目进度管理文档
 
-> 最后更新：2026-07-31（分镜缓存与媒体分层加载问题修复）
+> 最后更新：2026-08-03（StoryboardPage P0-P3 拆分与静态门禁收尾）
+
+## 2026-08-03 StoryboardPage P0-P3 拆分与静态门禁收尾
+
+- 完成分镜页 P0-P3 的安全拆分：候选媒体适配、全屏加载态、镜头数组纯函数和跨刷新任务恢复分别迁移至独立工具、组件和 Hook；页面继续集中编排 API、任务轮询、缓存、持久化、Store 写回、Toast 和页面级副作用。
+- 修复当前分镜页 React ESLint 规则问题：`hasManuallyInteracted` 使用 state，`shotsRef` 通过 effect 同步，`activeShotId` 的声明顺序已调整。
+- `StoryboardPage.jsx` 当前实际为 `2133` 行，仍属于页面规模提醒，但未发现结构违规或阻断级问题；不再为了压低行数搬动页面级副作用。
+- 静态门禁：`npm run lint`、`npm run build`、`npm run check:architecture` 和 `git diff --check` 均通过；构建仅保留分块体积提示。
+- 分镜生成、上传、下载、删除、定稿和配音等真实外部副作用仍只在明确测试项目和授权条件下验证。
+
+## 2026-08-03 主体参考图与候选图回归过滤修复
+
+- 修复后端将参考图资产同时返回到主体资产列表时，编辑主体弹窗把参考图误显示到右侧候选图的问题。
+- 初始化合并候选图时按参考图资产 ID 和归一化图片地址过滤 `candidate_images` 与主体关联资产；参考图仍只作为生图输入，候选图来源和持久化链路不变。
+
+## 2026-08-03 分镜主体删除后问号占位框修复
+
+- 修复从主体页面删除新增主体后，分镜页面主体参考列中的图片虽然消失，但仍残留一个灰色 `44px × 44px` 问号占位框的问题；用户已完成页面验证，结果通过。
+- 根因不是图片网络加载失败，而是 `shot.mainRefs` 中可能残留没有 `url` 的失效引用对象。`MainRefCol` 原先对数组中的每个对象都直接渲染，`url` 为空时主动显示 `?`，因此后端旧 `character_ids`、缓存旧数据或删除后的短暂一致性数据都会表现为问号卡片。
+- 主体删除事件继续携带 `subjectId`、`subjectType` 和已清理的 `assetIds`；`StoryboardPage` 同时按主体 ID、资产 ID和旧式 `ref.id` 清理本地引用，并在缓存/接口刷新期间记录已删除主体，避免旧引用重新进入展示链路。
+- 最终修复落在真正的渲染边界：`MainRefCol` 只将存在有效 `url` 的引用纳入 `visibleRefs`；上传中的临时引用仍保留，因为其 `blob:` 地址可正常预览。没有有效图片地址的失效对象不再渲染为卡片，也不会影响“新增主体”按钮显示。
+- 涉及文件：`src/pages/SubjectPage.jsx`、`src/pages/StoryboardPage.jsx`、`src/components/storyboard/MainRefCol.jsx`、`src/api/assets.js`。本次验证未进行后端数据修改。
+- 静态验证：目标文件 ESLint、`npm run build`、`npm run check:architecture` 和 `git diff --check` 均通过；架构检查仅保留既有大文件规模提醒，无阻断级违规。
+
+## 2026-08-03 视频创作尾帧转首帧预览修复
+
+- 修复视频创作结果卡片点击“尾帧用作首帧参考”后，Toast 提示成功但首帧上传槽位没有显示尾帧图片的问题。
+- 根因是尾帧 Blob 虽然被封装成了 `File` 并写入首帧状态，但预填充对象没有携带 `url`/`previewUrl`，而首帧上传槽位依赖这两个字段渲染预览。
+- 现在尾帧预填充同时保留 `File`、`url` 和 `previewUrl`；生成提交仍使用文件对象，输入框立即显示抽取出的尾帧图片。
+- 首次页面验证未通过：预览字段添加到 `File` 时默认不可枚举，进入文件状态归一化的展开复制后被丢失。
+- 二次修复将 `url` 和 `previewUrl` 设为可枚举字段，确保状态归一化后仍能驱动首帧槽位预览。
+- 三次修复补齐预填充时序：先切换到 `frame` 模式再写入首帧，并让文件归一化保留原生 `File`，避免旧模式清理首帧或提交时丢失文件原型。
+- 真实页面验证：登录态下点击视频结果卡片的“尾帧用作首帧参考”，Toast 提示成功，尾帧图片已正确填入首帧上传位置，验证通过。
+- 静态验证：相关文件 ESLint 和 `git diff --check` 通过；本条为当日历史修复记录，当前完整构建状态以文档顶部最新收尾记录为准。
+
+## 2026-08-03 CreationPage 生成逻辑 Hook 化
+
+- 新增 `src/components/creation/useCreationGeneration.js`，迁移 Shot 创建、生成占位卡、生成 API、待恢复任务持久化、结果卡写回、Shot 结果更新和失败清理。
+- `CreationPage.jsx` 通过显式参数接入 Hook，继续持有生成状态、Session Ref、Store 动作、Toast、并发计数和页面区块组合；未将整页状态对象透传给 Hook。
+- 保持生成参数、LocalStorage 待恢复任务、Store 写回、后端 Shot 更新和失败回退行为不变；未执行真实生成请求。
+- `CreationPage.jsx` 当前实际为 `698` 行，架构检查按末尾换行计为 `699` 行；新增 `useCreationGeneration.js` 为 `341` 行，仍保留 Hook 规模告警，后续可继续拆分其纯数据适配工具或进入行为验证。
+
+## 2026-07-31 资产选择弹窗 Tab 切换加载态修复
+
+- 修复从资产库选择弹窗切换项目资产、创作资产或 Seedance 素材 Tab 时，在后台请求尚未完成期间错误显示“资产库暂无资产”的问题。
+- 新增按项目资产分类和创作资产类型维护的加载状态；请求进行中显示统一的蓝色三点加载动画，请求完成后才显示资产列表或真实空状态。
+- 不改变已有 Tab 筛选、定稿过滤和资产卡片展示逻辑。
+
+## 2026-07-31 资产选择弹窗定稿筛选兼容修复
+
+- 修复资产选择弹窗勾选“仅显示定稿图”时定稿资产数量不完整的问题。
+- 资产定稿判断兼容 `is_primary`、`isPrimary`、`is_finalized`、`isFinalized` 和 `finalized` 字段；分镜候选定稿继续从各镜头的候选媒体接口补全。
+- 媒体关联同时支持资产 ID、候选媒体 ID、原图/缩略图/预览图/封面地址，并增加去除域名、查询参数后的媒体路径兜底匹配。
 
 ## 2026-07-31 分镜缓存与媒体分层加载问题修复
 
@@ -304,8 +356,8 @@
 | `SubjectPage.jsx` | 1708（2026-07-17，主体工作区与编辑表单拆分后；架构统计 1709） | 首轮收尾完成，稳定弹窗区块已迁移 | 主体工作区外框、列表滚动视口、网格、卡片、参考图、生成参数/结果、图片动作、工具栏、标签、音色弹窗、分镜确认弹窗、Toast 展示、主体空态图标、提取状态展示和主体编辑面板接线已按边界拆分；`SubjectEditForm`、`TextField`、`Select` 和参考图卡片已复用；API、任务轮询、缓存、Toast 和主体生成编排仍由页面负责 |
 | `Home.jsx` | 1296（2026-07-17，HomeNavigationRail 拆分后；架构统计 1297） | 首页稳定展示区块迁移完成，页面保留业务编排 | `HomeHeader`、`HomeLogo`、`HomeBackground`、`HomeSloganText`、`StartCreationButton`、`QRCodePopup`、`MoreOptionsMenu`、`CreationManualButton`、`LoginButton`、`WorkflowStepTabs`、`WorkflowHeadbar`、`HomeNavigationRail`、`ApiConfigBubble`、`HomeToast` 已迁移；页面仍保留认证状态、项目加载、步骤切换、任务触发和全局副作用 |
 | `AssetsPage.jsx` | 57（2026-07-16，入口收敛后） | 页面入口与主要非破坏性交互已复验，外部副作用仍待授权 | 页面只负责模块切换和外框；`AssetsProjectPanel.jsx`（506 行）负责项目资产筛选、分页、批量动作和详情编排，`AssetsCreativePanel.jsx`（358 行）负责创作资产历史、收藏和批量动作；API、IntersectionObserver、删除/下载/收藏/Toast 等副作用仍由业务面板持有 |
-| `CreationPage.jsx` | 964（2026-07-17，CreationWorkspace 与媒体下载适配复用后；架构统计 965） | 静态收尾与运行时验收完成（按用户确认） | 已抽离顶部工具栏、提示词编辑区、上传/首尾帧入口、文件卡片、参数组合层、输入区视觉组合、确认弹窗和视频详情 Portal、模型/比例/分辨率/数量/配音选择器视觉实现、图片/配音结果卡、结果展示容器、空态区、未登录空态、发送按钮、Toast、真人素材弹窗、资产选择与配音选择弹窗组合接线、素材适配纯函数、`useCreationInputFiles`、`useCreationPromptInteraction`、`useCreationParamsState`、`creationHistoryAdapter`、`creationTaskAdapter`、`creationFilename` 和 `CreationInputCard`；页面仍持有 Toast 状态/定时器、生成参数组装、生成与历史 API、任务轮询、缓存和 Store 编排；CreationPage 运行时验收按用户确认完成 |
-| `StoryboardPage.jsx` | 1297（2026-07-17，生成面板结果卡片、StoryboardHeader 与 StoryboardToast 拆分后；架构统计 1298） | 首轮迁移与最终手动验证完成 | 镜头行、媒体列、主体参考列、文本编辑列、头部、批量工具栏、图片/视频生成面板、图片/视频上传与结果卡片、参考素材编辑区、选集控制区、旁白区、上传槽位、镜头编号列和 Toast 展示已抽离；用户确认弹窗、上传入口、选择器及其余分镜功能均正常可用；API、轮询、缓存、持久化和 Toast 状态/触发仍由页面编排 |
+| `CreationPage.jsx` | 698（2026-08-03，生成逻辑 Hook 化后；架构统计 699） | 生成逻辑首轮拆分，待本轮静态验收 | 页面继续持有状态、历史 API、任务恢复、模型参数、Toast、缓存、Store 和页面区块编排；`useCreationGeneration` 负责 Shot 创建、生成请求、占位/结果卡和生成失败清理 |
+| `StoryboardPage.jsx` | 2133（2026-08-03，P0-P3 拆分与 React ESLint 修复后） | 静态迁移收尾，规模提醒非阻断 | 镜头行、媒体列、主体参考列、文本编辑列、头部、批量工具栏、图片/视频生成面板、上传槽位、镜头编号列、候选媒体适配、加载态和任务恢复已按边界拆分；用户已确认分镜页纳入范围功能可用；API、轮询、缓存、持久化、Store 写回和 Toast 仍由页面编排 |
 
 ### 验收现状
 

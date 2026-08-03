@@ -173,9 +173,24 @@ export function buildCreationImageReferencePrefill(card) {
   };
 }
 
-export function createCreationFirstFramePrefill(frameBlob) {
+export function createCreationFirstFramePrefill(frameBlob, frameUrl = '') {
+  const firstFrameFile = new File([frameBlob], 'last-frame.png', { type: 'image/png' });
+  // 首帧上传槽位使用 url/previewUrl 渲染；仅有 File 时虽然能提交，界面不会显示预览。
+  // useCreationInputFiles 会在状态归一化时展开文件对象，字段必须可枚举才能保留下来。
+  Object.defineProperty(firstFrameFile, 'url', {
+    value: frameUrl,
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
+  Object.defineProperty(firstFrameFile, 'previewUrl', {
+    value: frameUrl,
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
   return {
-    firstFrameFile: new File([frameBlob], 'last-frame.png', { type: 'image/png' }),
+    firstFrameFile,
     refMode: 'frame',
   };
 }

@@ -17,6 +17,7 @@
  *   2026-07-17  拆分 RefImageItem 与 RefImageUploadCard，页面继续持有参考图业务编排
  *   2026-07-22  明确参考图仅写入主体 reference_images，不参与右侧候选图列表
  *   2026-07-30  上传/绑定成功后回读主体详情，关闭弹窗后恢复服务端参考图
+ *   2026-08-03  参考图继续独立维护，不向候选图状态写入
  */
 import { useEffect, useReducer, useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';

@@ -76,6 +76,9 @@
  *   2026-07-31  服务端主体列表返回 voice_id=null 时同步清除本地音色映射，修复刷新后旧音色复现
  *   2026-07-31  取消音色优先依据 PATCH 返回结果，兼容主体列表最终一致性延迟
  *   2026-07-31  主体列表首屏请求期间显示 DotsLoading，请求完成且为空后才显示抽取失败态
+ *   2026-07-31  编辑主体候选图首次请求期间保留加载占位，避免已有候选图尚未返回时误显示为空列表
+ *   2026-08-03  主体删除事件携带已清理的项目资产 ID，联动分镜、资产库和资产选择弹窗移除残留引用
+ *   2026-08-03  主体初始化候选图排除参考图资产，修复参考图重新出现在右侧候选列表
  *   2026-07-15  抽离主体页工具栏和标签导航，页面保留业务状态与回调
  *   2026-07-15  抽离主体详情候选图/参考图映射、去重和单一定稿纯函数
  *   2026-07-15  抽离参考图详情快照转换和主体生图参数组装纯函数
@@ -114,7 +117,7 @@ import BatchGenerateModal from '../components/BatchGenerateModal';
 import { SubjectGenerationAction, SubjectPanelHeader, SubjectVoiceSelectModal, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, getFallbackSubjectImageModels } from '../components/subject';
 import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiDownloadSubjectImage, apiUnsetPrimarySubjectImage } from '../api/subject';
 import { apiGetTask } from '../api/storyboard';
-import { apiGetSubjectAssets } from '../api/assets';
+import { apiGetSubjectAssets, apiDeleteSubjectAssets } from '../api/assets';
 // 模型能力直接从后端 capabilities 获取
 import { apiListModels } from '../api/config';
 import { apiGetVoices } from '../api/voices';
@@ -358,7 +361,6 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       // 生成进行中：先恢复占位槽提供即时反馈，但仍继续读取详情。
       // 不能在这里直接 return，否则会跳过已有候选图/资产的加载，弹窗只剩一个占位框。
       setGeneratedImages([{ url: null, settled: false, id: pendingPreflight.placeholderId, isReference: false }]);
-      setDetailLoaded(true);
     }
 
     (async () => {
@@ -415,6 +417,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       const finalImages = mergeSubjectImages({
         candidateImages: detailRes.candidate_images,
         subjectAssets,
+        referenceImages,
         pending,
       }).filter((image) => {
         const imageId = image.assetId || image.id;
@@ -756,6 +759,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
           projectId={projectId}
           subject={char}
           generatedImages={generatedImages}
+          candidateImagesLoading={!detailLoaded}
           promptText={promptText}
           selectedModel={selectedModel}
           selectedRatio={selectedRatio}
@@ -1688,7 +1692,25 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   // ── 删除主体 ──────────────────────────────────────────────────
   const handleDeleteSubject = async (subjectId) => {
     try {
+      const subjectType = chars.some((subject) => String(subject.id) === String(subjectId))
+        ? 'character'
+        : scenes.some((subject) => String(subject.id) === String(subjectId))
+          ? 'scene'
+          : props.some((subject) => String(subject.id) === String(subjectId))
+            ? 'prop'
+            : undefined;
+      // 主体与项目资产属于同一条数据链：先清理 subject_id 关联资产，
+      // 再删除主体记录，避免资产库继续展示已删除主体的旧卡片。
+      const deletedAssetResult = await apiDeleteSubjectAssets(projectId, subjectId);
       await apiDeleteSubject(projectId, subjectId);
+      const assetIds = [
+        ...(deletedAssetResult?.ownedIds || []),
+        ...(deletedAssetResult?.creationIds || []),
+      ];
+      const deletionDetail = { projectId, subjectId, subjectType, assetIds };
+      window.dispatchEvent(new CustomEvent('subject:deleted', { detail: deletionDetail }));
+      // Home 负责跨页面共享主体列表，沿用现有事件让它重新拉取对应分类。
+      window.dispatchEvent(new CustomEvent('project-assets:deleted', { detail: deletionDetail }));
       setChars((prev) => prev.filter((c) => c.id !== subjectId));
       setScenes((prev) => prev.filter((s) => s.id !== subjectId));
       setProps((prev) => prev.filter((p) => p.id !== subjectId));

@@ -5,6 +5,24 @@ import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 const MOCK_BUILTIN = [
+  ...[
+    ['xianxia-3d', '3D国风仙侠', 'animation'], ['historical-drama-3d', '3D国风历史', 'animation'],
+    ['wuxia-cg', '3D武侠CG', 'animation'], ['modern-3d', '3D现代写实', 'animation'],
+    ['cyberpunk-3d', '3D赛博科幻', 'animation'], ['fantasy-epic-3d', '3D西方魔幻', 'animation'],
+    ['chibi-3d', '3D Q版', 'animation'], ['anime', '2D卡通动画', 'animation'],
+    ['suspense-anime-2d', '2D悬疑推理', 'animation'], ['dark-gothic-anime', '2D哥特风', 'animation'],
+    ['webtoon-2d', '2D线条漫', 'animation'], ['ancient-chinese-live-action', '古装写实', 'live_action'],
+    ['xianxia-fantasy-live-action', '仙侠奇幻', 'live_action'], ['urban-romance-live-action', '都市情感', 'live_action'],
+    ['live-action-suspense', '悬疑恐怖', 'live_action'], ['period-drama-live-action', '年代生活', 'live_action'],
+    ['republican-spy-live-action', '民国谍战', 'live_action'], ['post-apocalyptic-modern', '末日废土', 'live_action'],
+    ['future-sci-fi-live-action', '未来科幻', 'live_action'], ['urban-workplace', '职场商战', 'live_action'],
+    ['wuxia-war-live-action', '武侠战争', 'live_action'],
+  ].map(([value, label, category], index) => ({
+    id: value, value, label, prompt: `${label}风格`, color: null,
+    description: null, badge: null, category, sort_order: index + 1,
+    is_builtin: true, is_custom: false,
+  })),
+/*
   // 动漫风格
   { id: 'b1',  value: 'xianxia-3d',                 label: '3D国漫仙侠',   prompt: '3D国漫仙侠风格',   color: '#1C1A2E', description: null, badge: null, category: '动漫风格', sort_order: 1,  is_builtin: true, is_custom: false },
   { id: 'b2',  value: 'suspense-anime-2d',           label: '2D悬疑恐怖',   prompt: '2D悬疑恐怖动漫风格', color: '#141824', description: null, badge: null, category: '动漫风格', sort_order: 2,  is_builtin: true, is_custom: false },
@@ -29,9 +47,25 @@ const MOCK_BUILTIN = [
   { id: 'b20', value: 'workplace-drama',             label: '职场商战',     prompt: '职场商战真人风格',   color: '#111820', description: null, badge: null, category: '真人写实', sort_order: 8,  is_builtin: true, is_custom: false },
   { id: 'b21', value: 'wuxia-war',                   label: '武侠战争',     prompt: '武侠战争真人风格',   color: '#12112A', description: null, badge: null, category: '真人写实', sort_order: 9,  is_builtin: true, is_custom: false },
   { id: 'b22', value: 'rural-style',                 label: '乡土风格',     prompt: '乡土风格真人风格',   color: '#16120A', description: null, badge: null, category: '真人写实', sort_order: 10, is_builtin: true, is_custom: false },
+*/
 ];
 
 let mockCustomStyles = [];
+
+function normalizeVisualStyleOption(option) {
+  return {
+    ...option,
+    id: option.id ?? option.style_id ?? option.styleId ?? option.value,
+    value: option.value ?? option.style_id ?? option.styleId ?? option.id,
+    label: option.label ?? option.name ?? option.value ?? '',
+    prompt: option.prompt ?? '',
+    category: option.category ?? null,
+    sort_order: option.sort_order ?? option.sortOrder ?? null,
+    preview_key: option.preview_key ?? option.previewKey ?? null,
+    is_builtin: option.is_builtin ?? option.isBuiltin ?? false,
+    is_custom: option.is_custom ?? option.isCustom ?? false,
+  };
+}
 
 export async function apiGetVisualStyleOptions() {
   if (import.meta.env.VITE_USE_MOCK === 'true') {
@@ -40,7 +74,7 @@ export async function apiGetVisualStyleOptions() {
       ...mockCustomStyles.map(s => ({
         id: s.id, value: s.id, label: s.name, prompt: s.prompt,
         color: s.color, description: null, badge: null, is_builtin: false, is_custom: true,
-      })),
+      })).map(normalizeVisualStyleOption),
     ];
   }
   return cached(
@@ -49,7 +83,8 @@ export async function apiGetVisualStyleOptions() {
       const res = await authFetch(`${BASE}/api/user-styles/options`, {
         headers: { 'Content-Type': 'application/json' },
       });
-      return res.json();
+      const data = await res.json();
+      return (Array.isArray(data) ? data : data?.items ?? data?.options ?? []).map(normalizeVisualStyleOption);
     },
     { medium: MEDIUM.STATIC, ttl: TTL.STATIC },
   );

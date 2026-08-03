@@ -415,7 +415,8 @@ export default function GenerateImagePanel({
           }}
         >
           <GenerationSubmitButton
-            loading={loading}
+            loading={false}
+            disabled={loading}
             label="生成分镜图"
             type="image"
             onClick={handleGenerate}

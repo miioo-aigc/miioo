@@ -254,7 +254,7 @@ function classifyAsset(asset, creationIds) {
 }
 
 /**
- * 按来源移除资产：主体资产进回收站，创作资产只解除主体引用。
+ * 按来源移除资产：普通删除保留创作资产并解除主体引用；主体删除时统一删除绑定记录。
  * assetRecords 必须尽量传入完整资产记录，来源缺失时再查询创作资产集合兜底。
  */
 export async function apiRemoveAssets(assetRecords = [], { projectId, subjectType, deleteMode = 'batch' } = {}) {
@@ -266,18 +266,19 @@ export async function apiRemoveAssets(assetRecords = [], { projectId, subjectTyp
   if (recordsById.size === 0) return { ownedIds: [], creationIds: [] };
 
   const records = [...recordsById.values()];
-  const needsFallback = deleteMode !== 'project' && records.some((asset) => !hasKnownAssetSource(asset));
+  const forceDelete = deleteMode === 'subject-delete';
+  const needsFallback = !forceDelete && deleteMode !== 'project' && records.some((asset) => !hasKnownAssetSource(asset));
   const creationAssetIds = needsFallback ? await getCreationAssetIds() : new Set();
   const ownedIds = [];
   const creationIds = [];
   records.forEach((asset) => {
     const id = String(getAssetId(asset));
-    if (deleteMode !== 'project' && classifyAsset(asset, creationAssetIds) === 'creation') creationIds.push(id);
+    if (!forceDelete && deleteMode !== 'project' && classifyAsset(asset, creationAssetIds) === 'creation') creationIds.push(id);
     else ownedIds.push(id);
   });
 
   if (ownedIds.length > 0) {
-    if (deleteMode === 'single') {
+    if (deleteMode === 'single' || forceDelete) {
       // 主体删除走逐条接口。批量接口是资产中心的聚合能力，部分主体生成资产
       // 在批量处理时会触发后端关联校验并返回 500；逐条删除与资产详情接口契约一致。
       for (const id of ownedIds) {
@@ -323,7 +324,9 @@ export async function apiDeleteSubjectAssets(projectId, subjectId) {
   }
 
   if (records.length === 0) return { ownedIds: [], creationIds: [] };
-  return apiRemoveAssets(records, { projectId, deleteMode: 'single' });
+  // 主体与资产库使用同一批资产记录。主体删除后这些记录不能继续以
+  // “无主体的创作资产”留在资产库，否则资产选择弹窗和资产库会出现脏数据。
+  return apiRemoveAssets(records, { projectId, deleteMode: 'subject-delete' });
 }
 
 export async function apiBatchRestoreAssets(asset_ids) {
@@ -669,6 +672,7 @@ async function enrichWithStoryboards(projectId, rawList, needsStoryboards) {
   const primaryImageUrls = new Set();
   const primaryVideoAssetIds = new Set();
   const primaryVideoUrls = new Set();
+  const primaryMediaPathKeys = new Set();
   const videoAssetIdRatio = {};
   const videoUrlRatio = {};
   const imageUrlRatio = {};
@@ -681,6 +685,15 @@ async function enrichWithStoryboards(projectId, rawList, needsStoryboards) {
   const addUrl = (value, target) => {
     const normalized = normalizeImageUrl(value);
     if (normalized) target.add(normalized);
+  };
+  const getMediaPathKey = (value) => {
+    const normalized = normalizeImageUrl(value);
+    if (!normalized) return null;
+    return normalized.split('?')[0].split('#')[0].replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+/, '');
+  };
+  const addMediaPathKey = (value) => {
+    const key = getMediaPathKey(value);
+    if (key) primaryMediaPathKeys.add(key);
   };
   const getMediaValues = (sb, kind) => {
     const isImage = kind === 'image';
@@ -707,6 +720,7 @@ async function enrichWithStoryboards(projectId, rawList, needsStoryboards) {
     imageMedia.urls.forEach((value) => {
       const normalized = normalizeImageUrl(value);
       addUrl(normalized, primaryImageUrls);
+      addMediaPathKey(normalized);
       if (ratio && normalized) imageUrlRatio[normalized] = ratio;
     });
     videoMedia.ids.forEach((value) => {
@@ -714,6 +728,7 @@ async function enrichWithStoryboards(projectId, rawList, needsStoryboards) {
     });
     videoMedia.urls.forEach((value) => {
       const normalized = normalizeImageUrl(value);
+      addMediaPathKey(normalized);
       if (ratio) videoUrlRatio[normalized] = ratio;
     });
   });
@@ -722,7 +737,9 @@ async function enrichWithStoryboards(projectId, rawList, needsStoryboards) {
     const isVideo = mediaType === 'video' || mediaType.startsWith('video/');
     const candidateMetadata = candidate.metadata && typeof candidate.metadata === 'object'
       ? candidate.metadata
-      : {};
+      : (typeof candidate.metadata === 'string'
+        ? (() => { try { return JSON.parse(candidate.metadata) || {}; } catch { return {}; } })()
+        : {});
     const assetId = candidate.asset_id ?? candidate.assetId ?? candidateMetadata.asset_id ?? candidateMetadata.assetId ?? candidate.id;
     addId(assetId, primaryAssetIds);
     if (isVideo) addId(assetId, primaryVideoAssetIds);
@@ -735,6 +752,7 @@ async function enrichWithStoryboards(projectId, rawList, needsStoryboards) {
     urls.forEach((value) => {
       const normalized = normalizeImageUrl(value);
       if (!normalized) return;
+      addMediaPathKey(normalized);
       if (isVideo) {
         primaryVideoUrls.add(normalized);
         if (candidate.ratio) videoUrlRatio[normalized] = candidate.ratio;
@@ -746,7 +764,12 @@ async function enrichWithStoryboards(projectId, rawList, needsStoryboards) {
   });
   return rawList.map((item) => {
     if (item.category !== 'storyboard' && item.category !== 'reference') return item;
-    let is_primary = item.is_primary ?? false;
+    let is_primary = item.is_primary
+      ?? item.isPrimary
+      ?? item.is_finalized
+      ?? item.isFinalized
+      ?? item.finalized
+      ?? false;
     let ratio = item.ratio || '';
     const itemId = String(item.id ?? item.asset_id ?? item.assetId ?? '');
     const itemUrls = [
@@ -754,7 +777,7 @@ async function enrichWithStoryboards(projectId, rawList, needsStoryboards) {
       item.thumbnail_url, item.thumbnailUrl, item.preview_url, item.previewUrl,
     ].map(normalizeImageUrl).filter(Boolean);
     const matchedById = primaryAssetIds.has(itemId) || primaryVideoAssetIds.has(itemId);
-    const matchedByUrl = itemUrls.some((url) => primaryImageUrls.has(url) || primaryVideoUrls.has(url));
+    const matchedByUrl = itemUrls.some((url) => primaryImageUrls.has(url) || primaryVideoUrls.has(url) || primaryMediaPathKeys.has(getMediaPathKey(url)));
     if (item.asset_type === 'video') {
       // 保留后端原始 is_primary，或通过 storyboard 交叉比对补充
       is_primary = is_primary || matchedById || matchedByUrl;

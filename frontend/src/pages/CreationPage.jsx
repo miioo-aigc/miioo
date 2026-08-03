@@ -2,7 +2,7 @@
  * @file CreationPage.jsx
  * @structure-index
  *
- * ─── 全局常量与工具函数 ─────────────────────────────── L101–L141
+ * ─── 全局常量与工具函数 ─────────────────────────────── L109–L122
  *   FONT / FONT_MEDIUM、图片下载、动画注入
  *   filenameFromPrompt                                      utils/creationFilename.js
  *   生成类型到任务轮询类型的适配                     utils/creationTaskAdapter.js
@@ -11,14 +11,15 @@
  *   刷新任务快照、占位卡片和轮询结果适配                   utils/creationTaskAdapter.js
  *   视频详情 asset_bindings 适配和详情卡片合并                    utils/creationDetailAdapter.js
  *
- * ─── 页面入口与状态编排 ──────────────────────────────── L139–L874
- *   CreationPage 状态、Store、历史缓存和分页                       L145–L341
- *   Session 初始化、刷新任务恢复和收藏动作                           L343–L457
- *   模型能力、参数加载、Tab 和批量操作                               L459–L647
- *   handleGenerate（生成请求、占位卡、结果写回、缓存清理）            L649–L874
+ * ─── 页面入口与状态编排 ──────────────────────────────── L123–L596
+ *   CreationPage 状态、Store、历史缓存和分页                       L123–L269
+ *   Session 初始化、刷新任务恢复和收藏动作                           L271–L385
+ *   模型能力、参数加载、Tab 和批量操作                               L387–L562
+ *   useCreationGeneration 生成请求、占位卡和结果写回                  L563–L575
+ *   模型入口检查、输入卡渲染和视频详情回调                            L577–L596
  *   CreationInputCard 已迁移至 components/creation/，页面通过 renderInputCard 显式接入
  *
- * ─── 页面渲染结构 ────────────────────────────────────── L876–L1002
+ * ─── 页面渲染结构 ────────────────────────────────────── L598–L698
  *   CreationPageOverlays（确认弹窗和视频详情 Portal）         components/creation/CreationPageOverlays.jsx
  *   CreationWorkspace（主体卡片、工具栏和结果/空态组合）       components/creation/CreationWorkspace.jsx
  *   CreationToast（Toast 展示）                              components/creation/CreationToast.jsx
@@ -26,7 +27,8 @@
  *   页面只负责区块组合和显式 renderInputCard 接线
  *
  * ─── 页面级副作用边界 ──────────────────────────────────
- *   历史 API、Session、刷新任务恢复、模型/参数加载、生成 API、轮询、缓存、Toast 和 Store 写回均保留在 CreationPage。
+ *   历史 API、Session、刷新任务恢复、模型/参数加载、轮询、缓存、Toast 和 Store 写回均保留在 CreationPage；
+ *   生成 API、占位卡和生成结果写回由 useCreationGeneration 负责，页面通过显式依赖接入。
  *   CreationResultState 负责结果展示、分页触发和结果卡回填；结果卡编辑/尾帧操作所需的详情读取 API 由组件显式调用，页面业务状态和生成编排仍由 CreationPage 持有。
  *   CreationEmptyState 只负责空态展示和 CreationInputCard 的显式渲染接线，不调用 API、Store 或生成请求。
  *   CreationInputSurface 只负责输入卡片布局、悬浮反馈和子组件接线，不拥有生成状态或业务副作用。
@@ -72,14 +74,14 @@
  *   2026-07-17  抽离 CreationWorkspace；页面保留状态、副作用和所有显式回调接线
  *   2026-07-17  复用 downloadMediaUrl，统一图片/视频 Blob 下载和失败回退生命周期
  *   2026-07-29  图片创作结果与历史记录按媒体地址去重，避免同图重复展示并保留创作提示词
+ *   2026-08-03  抽离 useCreationGeneration；页面保留生成依赖、计数和区块接线，生成流程行为保持不变
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { apiGenerateCreation, apiPollCreationTask, apiGetCreationVideo, apiDeleteCreationImage, apiDeleteCreationVideo, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiCreateSession, apiGetSession, apiCreateShot, apiUpdateShot, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory } from '../api/creation';
+import { apiPollCreationTask, apiGetCreationVideo, apiDeleteCreationImage, apiDeleteCreationVideo, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { apiListModels } from '../api/config';
 import { adaptModels, getModelParams } from '../utils/modelAdapter';
-import { normalizeImageUrl } from '../utils/imageUrl';
 import { mergeCreationVideoDetail } from '../utils/creationDetailAdapter';
 import {
   buildCreationHistoryCachePayload,
@@ -100,13 +102,10 @@ import {
   CreationPageOverlays,
   CreationWorkspace,
   CREATION_TABS,
+  useCreationGeneration,
 } from '../components/creation';
 import { filenameFromPrompt } from '../utils/creationFilename';
 import { downloadMediaUrl } from '../utils/downloadMediaUrl';
-import {
-  AUDIO_EXTS_SET,
-  isVideoFile,
-} from '../components/creation/CreationFileUtils';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -562,244 +561,18 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     }
   }
 
-  const handleGenerate = async (params) => {
-    setGenerating(true);
-    incrementActive(params.genType === 'video' ? 'video' : params.genType === 'dubbing' ? 'dubbing' : 'image');
-    // Parse count: '2张' → 2, fallback to 1
-    const countNum = parseInt(params.count) || 1;
-    let shotId = null;
-    const isVideoGen = params.genType === 'video';
-    const isDubbingGen = params.genType === 'dubbing';
-
-    // Create a backend shot if session is active
-    if (isLoggedIn && sessionIdRef.current) {
-      try {
-        const now = new Date();
-        const ts = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const shotTitle = (isVideoGen ? '视频' : '图片') + ' - ' + ts;
-        const shot = await apiCreateShot(sessionIdRef.current, {
-          title: shotTitle,
-          prompt: params.prompt || undefined,
-          duration: isVideoGen ? (parseInt(params.videoDuration) || 5) : undefined,
-        });
-        shotId = shot.id;
-        params.session_id = sessionIdRef.current;
-        params.shot_id = shotId;
-      } catch { /* shot creation fails silently; generation still proceeds */ }
-    }
-    const genId = `gen-${Date.now()}`;
-    const currentTab = activeTab;
-
-    // 立即添加 loading 占位卡片（按数量生成）
-    const placeholderCardId = `placeholder-${Date.now()}`;
-    addGeneration(currentTab, {
-      id: genId,
-      shot_id: shotId || undefined,
-      ratio: params.ratio || (isVideoGen ? params.videoRatio : '') || '16:9',
-      resolution: params.resolution || (isVideoGen ? params.videoResolution : '') || '',
-      duration: isVideoGen ? params.videoDuration : undefined,
-      model: params.model || '',
-      prompt: params.prompt || '',
-      promptHTML: params.promptHTML || '',
-      refImages: (params.liveMaterialFiles || []).map(f => ({
-        url: f.previewUrl || f.url || '',
-        previewUrl: f.previewUrl || f.url || '',
-        isAsset: true, isLiveMaterial: true,
-        assetId: f.assetId, groupId: f.groupId, groupType: f.groupType, assetRefUrl: f.assetRefUrl,
-        name: f.name || '真人素材', size: 0, type: 'image/jpeg',
-      })),
-      refVideos: (params.files || []).filter(f => isVideoFile(f)).map(f => ({
-        url: f.url || null,
-        previewUrl: f.previewUrl || (f instanceof File ? URL.createObjectURL(f) : (f.url || null)),
-        isAsset: true,
-        name: f.name || 'ref.mp4',
-        size: f.size || 0,
-      })),
-      refAudios: (params.files || []).filter(f => {
-        if (!f || typeof f !== 'object') return false;
-        if (f.type && f.type.startsWith('audio/')) return true;
-        if (f.isAsset && f.url) {
-          if (/\.(mp3|wav|aac|ogg|flac|m4a|wma)$/i.test(f.url)) return true;
-        }
-        const ext = '.' + (f.name || '').split('.').pop().toLowerCase();
-        return AUDIO_EXTS_SET.has(ext);
-      }).map(f => ({
-        url: f.url || null,
-        name: f.name || 'ref.mp3',
-        size: f.size || 0,
-      })),
-      createdAt: new Date().toISOString(),
-      cards: Array.from({ length: isVideoGen || isDubbingGen ? 1 : countNum }, (_, i) => ({
-        id: null,
-        type: isVideoGen ? 'video' : isDubbingGen ? 'audio' : 'image',
-        status: 'loading',
-        imageUrl: null,
-        videoUrl: null,
-        audioUrl: null,
-        placeholderId: `${placeholderCardId}-${i}`,
-      })),
-    });
-
-    try {
-      const result = await apiGenerateCreation(params, {
-        onTaskCreated: ({ taskId }) => {
-          try {
-            const pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
-            pending.push({
-              taskId,
-              genId,
-              shotId: shotId || null,
-              tab: currentTab,
-              genType: params.genType || 'image',
-              count: parseInt(params.count) || 1,
-              prompt: params.prompt || '',
-              promptHTML: params.promptHTML || '',
-              model: params.model || '',
-              ratio: params.ratio || params.videoRatio || '16:9',
-              resolution: params.resolution || params.videoResolution || '',
-              duration: params.videoDuration || '5s',
-              createdAt: new Date().toISOString(),
-              refVideos: (params.files || []).filter(f => isVideoFile(f)).map(f => ({
-                url: f.url || null,
-                name: f.name || 'ref.mp4',
-                size: f.size || 0,
-              })),
-              refAudios: (params.files || []).filter(f => {
-                if (!f || typeof f !== 'object') return false;
-                if (f.type && f.type.startsWith('audio/')) return true;
-                const ext = '.' + (f.name || '').split('.').pop().toLowerCase();
-                return AUDIO_EXTS_SET.has(ext);
-              }).map(f => ({
-                url: f.url || null,
-                name: f.name || 'ref.mp3',
-                size: f.size || 0,
-              })),
-            });
-            localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(pending));
-          } catch { /* pending task persistence is best-effort */ }
-        },
-      });
-      const rawMediaUrls = isVideoGen ? (result.videos ?? []) : isDubbingGen ? (result.audios ?? []) : (result.images ?? []);
-      const mediaUrls = [...new Set(rawMediaUrls.map((u) => normalizeImageUrl(u) || u).filter(Boolean))];
-
-      // 如果生成失败，删除占位卡片并回退文本
-      if (!mediaUrls || mediaUrls.length === 0) {
-        showToast('error', '生成失败，请稍后重试');
-        // 删除刚添加的占位卡片
-        storeDeleteGeneration(currentTab, genId);
-        // 通知 InputCard 回退文本
-        params.onFail?.(params.prompt);
-        return { success: false };
-      }
-
-      const genMeta = {
-        prompt: params.prompt || '',
-        model: params.model || '',
-        ratio: params.ratio || (isVideoGen ? params.videoRatio : '') || '16:9',
-        resolution: params.resolution || (isVideoGen ? params.videoResolution : '') || '',
-        duration: isVideoGen ? params.videoDuration : undefined,
-        createdAt: new Date().toISOString(),
-        genType: params.genType || 'image',
-      };
-
-      // 更新占位卡片为实际结果（替换而不是新增）
-      // 先删除占位卡片
-      storeDeleteGeneration(currentTab, genId);
-      // 再添加实际结果卡片
-      addGeneration(currentTab, {
-        id: genId,
-        shot_id: shotId || undefined,
-        ratio: genMeta.ratio,
-        resolution: genMeta.resolution,
-        duration: genMeta.duration,
-        model: genMeta.model,
-        prompt: genMeta.prompt,
-        promptHTML: params.promptHTML || '',
-        refImages: [
-          ...(result.referenceImages || []).map((url) => ({
-            url: normalizeImageUrl(url) || url,
-            previewUrl: normalizeImageUrl(url) || url,
-            isAsset: true,
-            name: (url || '').split('/').pop() || 'ref.png',
-            size: 0,
-          })),
-          ...(params.liveMaterialFiles || []).map(f => ({
-            url: f.previewUrl || f.url || '',
-            previewUrl: f.previewUrl || f.url || '',
-            isAsset: true, isLiveMaterial: true,
-            assetId: f.assetId, groupId: f.groupId, groupType: f.groupType, assetRefUrl: f.assetRefUrl,
-            name: f.name || '真人素材', size: 0, type: 'image/jpeg',
-          })),
-        ],
-        refVideos: (result.referenceVideos || []).map((url) => ({
-          url: url,
-          previewUrl: url,
-          isAsset: true,
-          name: (url || '').split('/').pop() || 'ref.mp4',
-          size: 0,
-        })),
-        refAudios: (result.referenceAudios || []).map((url) => ({
-          url: url,
-          name: (url || '').split('/').pop() || 'ref.mp3',
-          size: 0,
-        })),
-        refMode: result.refMode || undefined,
-        firstFrameUrl: result.firstFrameUrl || undefined,
-        lastFrameUrl: result.lastFrameUrl || undefined,
-        createdAt: genMeta.createdAt,
-        cards: mediaUrls.map((url) => ({
-          id: null,  // 后端 ID，待轮询返回后回写
-          type: isVideoGen ? 'video' : isDubbingGen ? 'audio' : 'image',
-          status: 'done',
-          imageUrl: isDubbingGen ? null : (isVideoGen ? null : url),
-          videoUrl: isVideoGen ? url : null,
-          audioUrl: isDubbingGen ? url : null,
-       })),
-     });
-
-      // 回写后端卡片 ID，使收藏功能可用
-      if (!isDubbingGen && result.cardIds && result.cardIds.length > 0) {
-        storeUpdateCardIds(currentTab, genId, result.cardIds);
-      }
-
-     // Update backend shot with result URLs
-      if (shotId) {
-        try {
-          const updateData = {};
-          if (isVideoGen && mediaUrls.length > 0) {
-            updateData.video_url = mediaUrls[0];
-          } else if (!isDubbingGen && mediaUrls.length > 0) {
-            updateData.image_url = mediaUrls[0];
-          }
-          if (Object.keys(updateData).length > 0) {
-            await apiUpdateShot(shotId, updateData);
-          }
-        } catch { /* shot update fails silently */ }
-      }
-      // 清除 pending task 记录
-      try {
-        const pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
-        const filtered = pending.filter((t) => t.genId !== genId);
-        localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(filtered));
-      } catch { /* pending task cleanup is best-effort */ }
-      return { success: true };
-    } catch (error) {
-      try {
-        const pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
-        const filtered = pending.filter((t) => t.genId !== genId);
-        localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(filtered));
-      } catch { /* pending task cleanup is best-effort */ }
-      showToast('error', error?.message || '生成失败，请稍后重试');
-      // 删除占位卡片
-      storeDeleteGeneration(currentTab, genId);
-      // 通知 InputCard 回退文本
-      params.onFail?.(params.prompt);
-      return { success: false };
-    } finally {
-      setGenerating(false);
-      decrementActive(params.genType === 'video' ? 'video' : params.genType === 'dubbing' ? 'dubbing' : 'image');
-    }
-  };
+  const handleGenerate = useCreationGeneration({
+    activeTab,
+    setGenerating,
+    isLoggedIn,
+    sessionIdRef,
+    addGeneration,
+    storeDeleteGeneration,
+    storeUpdateCardIds,
+    incrementActive,
+    decrementActive,
+    showToast,
+  });
 
   const handleBeforeModelOpen = () => {
     if (!apiConfigured) {

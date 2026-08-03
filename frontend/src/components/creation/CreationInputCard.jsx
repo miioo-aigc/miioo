@@ -234,7 +234,15 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         return merged;
       });
     }
-    if (prefillData.firstFrameFile !== undefined) setFirstFrameFile(prefillData.firstFrameFile);
+    // 先切换到首尾帧模式，避免文件 Hook 按旧的“全能参考”模式清空刚回填的首帧。
+    if (genType === 'video' && prefillData.refMode !== undefined) {
+      setRefMode(prefillData.refMode);
+    }
+    if (prefillData.firstFrameFile !== undefined) {
+      const nextFirstFrame = prefillData.firstFrameFile;
+      // 兼容带 File 包装对象的历史预填充数据，同时保留当前 File 对象的预览字段。
+      setFirstFrameFile(nextFirstFrame?.file || nextFirstFrame);
+    }
     if (prefillData.lastFrameFile !== undefined) setLastFrameFile(prefillData.lastFrameFile);
   }, [prefillVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 

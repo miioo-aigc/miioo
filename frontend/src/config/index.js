@@ -48,7 +48,7 @@ export function getImageModelParams(modelId) {
     }
   }
 
-  const maxCount = Math.min(capabilities.features?.maxImagesTotal || 4, 4);
+  const maxCount = capabilities.features?.maxImagesTotal || 4;
   const counts = Array.from({ length: maxCount }, (_, i) => `${i + 1}张`);
 
   return {

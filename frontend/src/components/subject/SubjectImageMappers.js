@@ -20,6 +20,7 @@
  *   2026-07-28  保留候选图来源及资产创作元数据，供详情弹窗按来源展示
  *   2026-07-28  候选图统一按创建/上传时间倒序排列，最新进入列表的图片置顶
  *   2026-07-31  参考图改为按候选图片自身原数据映射，不再回退到主体当前参考图
+ *   2026-08-03  初始化候选图时排除同时出现在主体资产返回中的参考图资源
  */
 import { normalizeImageUrl } from '../../utils/imageUrl';
 
@@ -35,6 +36,41 @@ function getReferenceImages(value) {
     const url = ref?.url || ref?.file_url || ref?.fileUrl || ref?.image_url || ref?.imageUrl;
     return url ? { ...ref, url: normalizeImageUrl(url) || url } : null;
   }).filter((ref) => ref?.url);
+}
+
+function getImageUrl(value) {
+  if (typeof value === 'string') return value;
+  return value?.file_url || value?.fileUrl || value?.image_url || value?.imageUrl
+    || value?.original_url || value?.originalUrl || value?.preview_url || value?.previewUrl
+    || value?.large_url || value?.largeUrl || value?.thumbnail_url || value?.thumbnailUrl
+    || value?.url || value?.image?.url || value?.image?.file_url || value?.image?.fileUrl;
+}
+
+function getImageId(value) {
+  if (!value || typeof value === 'string') return null;
+  return value.asset_id || value.assetId || value.file_id || value.fileId
+    || value.image_id || value.imageId || value.id || value.image?.asset_id || value.image?.id;
+}
+
+function buildReferenceKeys(referenceImages = []) {
+  const ids = new Set();
+  const urls = new Set();
+  (Array.isArray(referenceImages) ? referenceImages : []).forEach((image) => {
+    const id = getImageId(image);
+    const url = getImageUrl(image);
+    if (id != null) ids.add(String(id));
+    const normalizedUrl = normalizeImageUrl(url) || url;
+    if (normalizedUrl) urls.add(normalizedUrl);
+  });
+  return { ids, urls };
+}
+
+function isReferenceImage(image, referenceKeys) {
+  const id = getImageId(image);
+  const url = getImageUrl(image);
+  const normalizedUrl = normalizeImageUrl(url) || url;
+  return (id != null && referenceKeys.ids.has(String(id)))
+    || (normalizedUrl && referenceKeys.urls.has(normalizedUrl));
 }
 
 function toImageItem({ id, rawUrl, settled = false, isReference = false, refImages = [], assetId = null, source = null, detailSource = null, prompt = null, inputPrompt = null, model = null, ratio = null, resolution = null, createdAt = null }) {
@@ -237,10 +273,18 @@ export function sortSubjectImages(images = []) {
 export function mergeSubjectImages({
   candidateImages,
   subjectAssets = [],
+  referenceImages = [],
   pending = null,
 }) {
-  const mappedCandidates = mapCandidateImages(candidateImages);
-  const mappedAssets = mapSubjectAssets(subjectAssets);
+  const referenceKeys = buildReferenceKeys(referenceImages);
+  // 参考图可能被后端同时以 subject_id 资产返回，也可能被旧接口混入
+  // candidate_images。两条情况都必须在候选列表入口过滤。
+  const candidateList = (Array.isArray(candidateImages) ? candidateImages : [])
+    .filter((image) => !isReferenceImage(image, referenceKeys));
+  const assetList = (Array.isArray(subjectAssets) ? subjectAssets : [])
+    .filter((asset) => !isReferenceImage(asset, referenceKeys));
+  const mappedCandidates = mapCandidateImages(candidateList);
+  const mappedAssets = mapSubjectAssets(assetList);
   const images = sortSubjectImages(keepOnlyFirstSettled(dedupeByUrl(dedupeById([...mappedCandidates, ...mappedAssets]))));
   const pendingImage = mapPendingImage(pending);
 

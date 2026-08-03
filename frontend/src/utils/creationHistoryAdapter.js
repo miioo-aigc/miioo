@@ -63,8 +63,14 @@ export function normalizeCreationHistoryItem(item, type) {
   // video 优先使用视频地址；图片和音频沿用原图、文件或通用地址。
   const rawUrl = type === 'video'
     ? (item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '')
-    : (item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || '');
+    : type === 'image'
+      ? (item.preview_url || item.previewUrl || item.reference_frame_url || item.referenceFrameUrl || item.thumbnail_url || item.thumbnailUrl || item.original_url || item.originalUrl || item.file_url || item.fileUrl || item.url || '')
+      : (item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || '');
   const url = normalizeImageUrl(rawUrl) || '';
+  const rawOriginalUrl = type === 'image'
+    ? (item.download_url || item.downloadUrl || item.original_url || item.originalUrl || item.file_url || item.fileUrl || rawUrl)
+    : rawUrl;
+  const originalUrl = normalizeImageUrl(rawOriginalUrl) || url;
   const rawThumbUrl = type === 'image'
     ? (item.thumbnail_url || item.thumbnailUrl || rawUrl)
     : '';
@@ -164,7 +170,7 @@ export function normalizeCreationHistoryItem(item, type) {
       type,
       status: 'done',
       imageUrl: type === 'image' ? url : null,
-      originalUrl: type === 'image' ? url : null,
+      originalUrl: type === 'image' ? originalUrl : null,
       thumbnailUrl: type === 'image' ? thumbnailUrl : null,
       videoUrl: type === 'video' ? url : null,
       audioUrl: type === 'audio' ? url : null,
@@ -191,6 +197,8 @@ export function pickCreationHistoryCacheItem(item, tab) {
   if (tab === 'image') {
     return {
       ...base,
+      preview_url: item.preview_url || item.previewUrl || item.thumbnail_url || item.thumbnailUrl || item.original_url || item.file_url || item.url || '',
+      download_url: item.download_url || item.downloadUrl || item.original_url || item.originalUrl || item.file_url || item.url || '',
       original_url: item.original_url || item.file_url || item.url || '',
       thumbnail_url: item.thumbnail_url || item.thumbnailUrl || item.original_url || item.file_url || item.url || '',
       reference_images: Array.isArray(item.reference_images)

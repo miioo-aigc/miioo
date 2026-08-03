@@ -7,7 +7,8 @@ const pagesDir = path.join(src, 'pages');
 const componentsDir = path.join(src, 'components');
 const hooksDir = path.join(src, 'hooks');
 const errors = [];
-const warnings = [];
+const advisories = [];
+const strongReminders = [];
 
 const readFiles = (dir, extensions = ['.jsx', '.js']) => {
   if (!fs.existsSync(dir)) return [];
@@ -21,10 +22,17 @@ const readFiles = (dir, extensions = ['.jsx', '.js']) => {
 };
 
 const relative = (filePath) => path.relative(root, filePath).split(path.sep).join('/');
-const lines = (filePath) => fs.readFileSync(filePath, 'utf8').split('\n').length;
+const lines = (filePath) => {
+  const content = fs.readFileSync(filePath, 'utf8');
+  return content === '' ? 0 : content.replace(/\n$/, '').split('\n').length;
+};
 
-const warnSize = (filePath, count, limit, label) => {
-  if (count > limit) warnings.push(`${relative(filePath)}：${count} 行，超过${label} ${limit} 行警告线`);
+const warnSize = (filePath, count, advisoryLimit, strongReminderLimit, label) => {
+  if (count > strongReminderLimit) {
+    strongReminders.push(`${relative(filePath)}：${count} 行，超过${label}强提醒线 ${strongReminderLimit} 行`);
+  } else if (count > advisoryLimit) {
+    advisories.push(`${relative(filePath)}：${count} 行，超过${label}提示线 ${advisoryLimit} 行`);
+  }
 };
 
 const pairedRuleDocs = [
@@ -54,7 +62,7 @@ for (const filePath of readFiles(pagesDir)) {
   if (!/^[A-Z][A-Za-z0-9]*\.(jsx|js)$/.test(name)) {
     errors.push(`${relative(filePath)}：页面文件名必须使用大驼峰`);
   }
-  warnSize(filePath, count, 300, '页面入口');
+  warnSize(filePath, count, 600, 900, '页面入口');
 }
 
 for (const filePath of readFiles(componentsDir)) {
@@ -68,9 +76,9 @@ for (const filePath of readFiles(componentsDir)) {
 
   const count = lines(filePath);
   const normalized = relative(filePath);
-  if (normalized.includes('/hooks/')) warnSize(filePath, count, 300, 'Hook');
-  else if (normalized.includes('/components/ui/')) warnSize(filePath, count, 250, '通用 UI 组件');
-  else if (name.endsWith('.jsx')) warnSize(filePath, count, 400, '业务区块组件');
+  if (isHookName || normalized.includes('/hooks/')) warnSize(filePath, count, 350, 500, 'Hook');
+  else if (normalized.includes('/components/ui/')) warnSize(filePath, count, 300, 500, '通用 UI 组件');
+  else if (name.endsWith('.jsx')) warnSize(filePath, count, 500, 800, '业务区块组件');
 }
 
 for (const filePath of readFiles(hooksDir)) {
@@ -78,7 +86,7 @@ for (const filePath of readFiles(hooksDir)) {
   if (!/^use[A-Z][A-Za-z0-9]*\.js$/.test(name)) {
     errors.push(`${relative(filePath)}：Hook 文件名必须使用 useXxx.js`);
   }
-  warnSize(filePath, lines(filePath), 300, 'Hook');
+  warnSize(filePath, lines(filePath), 350, 500, 'Hook');
 }
 
 const uiDir = path.join(componentsDir, 'ui');
@@ -123,9 +131,10 @@ for (const filePath of readFiles(componentsDir)) {
   ], '业务组件不得反向依赖页面入口');
 }
 
-if (warnings.length) {
-  console.log('架构检查告警：');
-  for (const warning of warnings) console.log(`  ⚠ ${warning}`);
+if (advisories.length || strongReminders.length) {
+  console.log('架构检查规模提醒：');
+  for (const reminder of strongReminders) console.log(`  !! ${reminder}`);
+  for (const advisory of advisories) console.log(`  ⚠ ${advisory}`);
 }
 if (errors.length) {
   console.error('架构检查失败：');

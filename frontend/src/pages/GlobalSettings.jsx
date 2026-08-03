@@ -8,14 +8,10 @@
  *   VISUAL_STYLES                                                L62
  *
  * ─── 结果/状态展示组件 ───────────────────────────────────────────
- *   <StatCard>                                                   L79
- *   EPISODE_STATUS / <EpisodeCard> / <EpisodeGrid>               L165 / L171 / L229
  *   SubjectOverviewCard（主体概览容器）                            L752
  *
  * ─── 表单与业务交互组件 ─────────────────────────────────────────
- *   <TextInput> / <TextArea>                                     L289 / L354
  *   <CoverUpload>                                                L403
- *   <ProjectNameHeading>                                         L518
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
  *   export default function GlobalSettings()                      L577
@@ -43,15 +39,15 @@
  *   2026-07-28  剧集进度按项目工作流解锁状态展示，视频生成不直接标记“剪辑中”
  */
 
-import { lazy, Suspense, useState, useRef, useCallback, useEffect } from 'react';
+import { lazy, Suspense, useState, useRef, useEffect } from 'react';
 
 const ScriptPage = lazy(() => import('./ScriptPage'));
 import { apiUploadProjectCover } from '../api/project';
 import { normalizeImageUrl } from '../utils/imageUrl';
-import { Button, Tabs, TextField, OptionTabs } from '../components/ui';
+import { Tabs, TextField, OptionTabs } from '../components/ui';
 import { ScriptProgress } from '../components/project';
 import { CharIcon, SceneIcon, PropIcon } from '../components/subject/SubjectTypeIcons';
-import { VISUAL_STYLE_LIST, getVisualStyle } from '../config/visualStyles';
+import { VISUAL_STYLE_LIST } from '../config/visualStyles';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -63,330 +59,6 @@ const VISUAL_STYLES = {
   custom: { label: '自定义', coverImg: null },
   ...Object.fromEntries(VISUAL_STYLE_LIST.map((style) => [style.value, style])),
 };
-
-// ── Stat card ──────────────────────────────────────────────────────────────
-
-function StatCard({ label, count, images = [], onClick }) {
-  const [hovered, setHovered] = useState(false);
-  const [pressed, setPressed] = useState(false);
-  const isClickable = !!onClick;
-  const hasImages = images.length > 0;
-  const gridImages = images.slice(0, 6);
-
-  return (
-    <div
-      onMouseEnter={() => isClickable && setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setPressed(false); }}
-      onMouseDown={() => isClickable && setPressed(true)}
-      onMouseUp={() => isClickable && setPressed(false)}
-      onClick={onClick}
-      style={{
-        height: '200px',
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px',
-        borderRadius: '8px',
-        padding: '16px',
-        position: 'relative',
-        background: pressed ? '#252525' : hovered ? '#222222' : '#1D1E1E',
-        border: `1px solid ${hovered ? '#FFFFFF26' : '#FFFFFF14'}`,
-        cursor: isClickable ? 'pointer' : 'default',
-        transition: 'background 0.15s, border-color 0.15s',
-        overflow: 'hidden',
-        boxSizing: 'border-box',
-      }}
-    >
-      {/* header inside card */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, position: 'relative', zIndex: 1 }}>
-        <span style={{ fontFamily: FONT_MEDIUM, fontSize: '14px', lineHeight: '100%', color: '#FFFFFF' }}>{label}</span>
-        <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '16px', color: '#FFFFFF99' }}>{count ?? 0} 个</span>
-      </div>
-      {/* content area */}
-      {hasImages ? (
-        <div style={{
-          flex: 1,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gridTemplateRows: 'repeat(2, 1fr)',
-          gap: '4px',
-          minHeight: 0,
-        }}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} style={{ borderRadius: '4px', overflow: 'hidden', background: '#FFFFFF08' }}>
-              {gridImages[i] && (
-                <img src={gridImages[i]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-              )}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div style={{
-          flex: 1,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: '8px',
-        }}>
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="4" y="4" width="24" height="24" rx="4" stroke="#FFFFFF26" strokeWidth="1.5" />
-            <circle cx="12" cy="13" r="2.5" stroke="#FFFFFF26" strokeWidth="1.5" />
-            <path d="M4 22L10 16L14 20L20 13L28 22" stroke="#FFFFFF26" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF33' }}>暂无素材</span>
-        </div>
-      )}
-      {isClickable && hovered && (
-        <div style={{
-          position: 'absolute', bottom: '10px', right: '10px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: '20px', height: '20px', borderRadius: '9999px',
-          background: '#FFFFFF14', zIndex: 1,
-        }}>
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M4 12L12 4M12 4H6M12 4V10" stroke="#FFFFFF99" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Episode grid ───────────────────────────────────────────────────────────
-
-const EPISODE_STATUS = {
-  edited:    { bg: '#003422', border: '#52BF9266', color: '#52BF92', label: '已剪辑定稿' },
-  generated: { bg: '#06252C', border: '#2DC3E166', color: '#2DC3E1', label: '已生成视频，待剪辑' },
-  pending:   { bg: '#FFFFFF08', border: '#FFFFFF14', color: '#FFFFFF99', label: '未生成视频' },
-};
-
-function EpisodeCard({ index, status = 'pending', onClick }) {
-  const [hovered, setHovered] = useState(false);
-  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
-  const s = EPISODE_STATUS[status] || EPISODE_STATUS.pending;
-  const label = String(index + 1).padStart(2, '0');
-  const isClickable = status === 'generated' || status === 'edited';
-
-  const handleMouseEnter = useCallback((e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setTooltipPos({ x: rect.left + rect.width / 2, y: rect.top - 8 });
-    setHovered(true);
-  }, []);
-
-  return (
-    <div style={{ position: 'relative' }}>
-      <div
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={() => setHovered(false)}
-        onClick={isClickable ? onClick : undefined}
-        style={{
-          width: '100%',
-          height: '32px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: '5px',
-          background: s.bg,
-          border: `1px solid ${s.border}`,
-          cursor: isClickable ? 'pointer' : 'default',
-          transition: 'opacity 0.12s',
-          opacity: hovered && isClickable ? 0.7 : 1,
-        }}
-      >
-        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '100%', color: s.color }}>{label}</span>
-      </div>
-      {hovered && (
-        <div style={{
-          position: 'fixed',
-          left: tooltipPos.x,
-          top: tooltipPos.y,
-          transform: 'translate(-50%, -100%)',
-          background: '#2A2A2A',
-          border: '1px solid #FFFFFF14',
-          borderRadius: '6px',
-          padding: '6px 10px',
-          pointerEvents: 'none',
-          zIndex: 9999,
-          whiteSpace: 'nowrap',
-        }}>
-          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF99' }}>
-            第{index + 1}集 · {s.label}{isClickable ? ' · 点击跳转' : ''}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function EpisodeGrid({ episodes = [], statuses = {}, onEpisodeClick }) {
-  const total = episodes.length;
-  const isEmpty = total === 0;
-
-  return (
-    <div style={{
-      flex: 1,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '12px',
-      borderRadius: '8px',
-      padding: '16px',
-      background: '#1D1E1E',
-      border: '1px solid #FFFFFF14',
-      height: '200px',
-      boxSizing: 'border-box',
-    }}>
-      {/* header inside card */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-        <span style={{ fontFamily: FONT_MEDIUM, fontSize: '14px', lineHeight: '100%', color: '#FFFFFF' }}>剧集结构</span>
-        {!isEmpty && <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '16px', color: '#FFFFFF99' }}>共 {total} 集</span>}
-      </div>
-      {isEmpty ? (
-        <div style={{
-          flex: 1,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: '8px',
-        }}>
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="4" y="6" width="24" height="20" rx="3" stroke="#FFFFFF26" strokeWidth="1.5" />
-            <path d="M4 12H28" stroke="#FFFFFF26" strokeWidth="1.5" />
-            <path d="M11 6V12" stroke="#FFFFFF26" strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M21 6V12" stroke="#FFFFFF26" strokeWidth="1.5" strokeLinecap="round" />
-            <rect x="8" y="16" width="4" height="3" rx="1" fill="#FFFFFF26" />
-            <rect x="14" y="16" width="4" height="3" rx="1" fill="#FFFFFF26" />
-            <rect x="20" y="16" width="4" height="3" rx="1" fill="#FFFFFF26" />
-          </svg>
-          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF33' }}>暂无剧集</span>
-        </div>
-      ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(32px, 1fr))',
-          gap: '6px',
-          overflowY: 'auto',
-          alignContent: 'flex-start',
-          flex: 1,
-          paddingRight: '2px',
-        }}>
-          {episodes.map((_, i) => (
-            <EpisodeCard key={i} index={i} status={statuses[i] ?? 'pending'} onClick={() => onEpisodeClick?.(i)} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Text input ─────────────────────────────────────────────────────────────
-
-function TextInput({ value, onChange, placeholder, maxLength }) {
-  const [focused, setFocused] = useState(false);
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        height: '36px',
-        width: '100%',
-        borderRadius: '8px',
-        paddingLeft: '12px',
-        paddingRight: '6px',
-        background: focused ? '#252525' : hovered ? '#222222' : '#1D1E1E',
-        border: `1px solid ${focused ? '#FFFFFF33' : '#FFFFFF14'}`,
-        outline: focused ? '1px solid #2DC3E180' : '1px solid #00000080',
-        boxSizing: 'border-box',
-        transition: 'background 0.2s, border-color 0.2s, outline 0.2s',
-      }}
-    >
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        maxLength={maxLength}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        className="placeholder:text-[#FFFFFF66]"
-        style={{
-          flex: 1,
-          minWidth: 0,
-          background: 'transparent',
-          border: 'none',
-          outline: 'none',
-          fontFamily: FONT,
-          fontSize: '14px',
-          lineHeight: '18px',
-          color: '#FFFFFF',
-        }}
-      />
-      {maxLength !== undefined && (
-        <span
-          style={{
-            fontFamily: FONT,
-            fontSize: '12px',
-            lineHeight: '18px',
-            color: 'rgba(255, 255, 255, 0.4)',
-            flexShrink: 0,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {value.length}/{maxLength}
-        </span>
-      )}
-    </div>
-  );
-}
-
-// ── Textarea ───────────────────────────────────────────────────────────────
-
-function TextArea({ value, onChange, placeholder, maxLength }) {
-  const [focused, setFocused] = useState(false);
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-      <textarea
-        value={value}
-        onChange={(e) => {
-          let v = e.target.value;
-          if (maxLength !== undefined) v = v.slice(0, maxLength);
-          onChange(v);
-        }}
-        placeholder={placeholder}
-        maxLength={maxLength}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          height: '72px',
-          width: '100%',
-          borderRadius: '8px',
-          padding: '9px 12px',
-          background: focused ? '#252525' : hovered ? '#222222' : '#1D1E1E',
-          border: `1px solid ${focused ? '#FFFFFF33' : '#FFFFFF14'}`,
-          outline: focused ? '1px solid #2DC3E180' : '1px solid #00000080',
-          fontFamily: FONT,
-          fontSize: '14px',
-          lineHeight: '18px',
-          color: value ? '#FFFFFF' : '#FFFFFF66',
-          resize: 'none',
-          boxSizing: 'border-box',
-          transition: 'background 0.2s, border-color 0.2s, outline 0.2s',
-        }}
-      />
-      {maxLength !== undefined && (
-        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF33', textAlign: 'right' }}>
-          {value.length}/{maxLength}
-        </span>
-      )}
-    </div>
-  );
-}
 
 // ── Cover upload ───────────────────────────────────────────────────────────
 
@@ -501,65 +173,6 @@ function CoverUpload({ coverUrl, onUpload, isSaving }) {
       </div>
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleChange} />
     </>
-  );
-}
-
-// ── Project name heading (editable inline) ─────────────────────────────────
-
-function ProjectNameHeading({ value, onChange }) {
-  const [editing, setEditing] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const inputRef = useRef(null);
-
-  const startEdit = () => {
-    setEditing(true);
-    setTimeout(() => inputRef.current?.select(), 0);
-  };
-
-  const stopEdit = () => setEditing(false);
-
-  return editing ? (
-    <input
-      ref={inputRef}
-      type="text"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      onBlur={stopEdit}
-      onKeyDown={(e) => { if (e.key === 'Enter') stopEdit(); }}
-      style={{
-        fontFamily: FONT_MEDIUM,
-        fontWeight: 500,
-        fontSize: '20px',
-        lineHeight: '24px',
-        color: '#FFFFFF',
-        background: 'transparent',
-        border: 'none',
-        outline: 'none',
-        borderBottom: '1px solid #FFFFFF33',
-        padding: '0 2px',
-        minWidth: '120px',
-      }}
-      autoFocus
-    />
-  ) : (
-    <div
-      style={{
-        fontFamily: FONT_MEDIUM,
-        fontWeight: 500,
-        fontSize: '20px',
-        lineHeight: '24px',
-        color: '#FFFFFF',
-        cursor: 'text',
-        borderBottom: hovered ? '1px solid #FFFFFF33' : '1px solid transparent',
-        padding: '0 2px',
-        transition: 'border-color 0.15s',
-      }}
-      onClick={startEdit}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {value || '项目名称'}
-    </div>
   );
 }
 
@@ -811,7 +424,6 @@ export default function GlobalSettings({
   scriptDraftContent,
   onScriptDraftContentChange,
   episodeStatuses = {},
-  onGoToStoryboard,
 }) {
   const [name, setName] = useState(projectName);
   const [description, setDescription] = useState(projectDescription);

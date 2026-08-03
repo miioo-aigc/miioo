@@ -19,6 +19,7 @@ import { apiUploadStoryboardVideo } from '../../api/storyboard';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { ModalCloseBtn } from './StoryboardControls';
 import FileUploadButton from '../ui/FileUploadButton';
+import DotsLoading from '../DotsLoading';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -97,6 +98,17 @@ function getAssetGenerationParams(asset, metadata) {
 
 function CandidateItem({ item, onSelect, onPreview, onDownload }) {
   const [hovered, setHovered] = useState(false);
+  if (item?.pending) {
+    return (
+      <div
+        aria-label="生成中"
+        role="status"
+        style={{ width: '100px', height: '100px', position: 'relative', overflow: 'hidden', flexShrink: 0, borderRadius: '6px', border: '1px solid rgba(45,195,225,0.45)', background: '#1D1E1E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <DotsLoading size={5} color="#2DC3E1" gap={4} />
+      </div>
+    );
+  }
   const isVideo = item.media_type === 'video' || item.type?.startsWith('video');
   const source = normalizeImageUrl(item.thumbnail_url || item.poster_url || item.url);
   return (

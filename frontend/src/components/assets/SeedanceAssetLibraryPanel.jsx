@@ -44,7 +44,7 @@ import {
 import SeedanceFolderCard from './SeedanceFolderCard';
 import SeedanceFolderDetail from './SeedanceFolderDetail';
 import AddVirtualGroupCard from './AddVirtualGroupCard';
-import { createVideoFirstFrame, validateSeedanceUpload } from './seedanceUploadValidation';
+import { createVideoFirstFrame, validateSeedanceUpload } from './SeedanceUploadValidation';
 import SeedanceResolutionDialog from './SeedanceResolutionDialog';
 import SeedanceAssetPreviewModal from './SeedanceAssetPreviewModal';
 

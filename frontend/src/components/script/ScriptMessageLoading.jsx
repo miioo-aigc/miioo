@@ -7,12 +7,15 @@
  *
  * ─── 状态与副作用 ───────────────────────────────────────────────────
  *   文案逐字显示后循环重置，卸载时清理计时器
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-08-03         将 AI 思考文案改为“编剧头脑风暴中”
  */
 import { useEffect, useState } from 'react';
 import LoadingAnimation from '../LoadingAnimation';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
-const LABEL = '编辑头脑风暴中';
+const LABEL = '编剧头脑风暴中';
 
 export default function ScriptMessageLoading() {
   const [visibleLength, setVisibleLength] = useState(0);

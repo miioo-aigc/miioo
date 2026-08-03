@@ -1,5 +1,31 @@
 # 组件重构盘点基线
 
+## 当前规模规则（2026-08-03）
+
+- 页面入口：超过 `600` 行提示，超过 `900` 行强提醒。
+- 业务区块组件：超过 `500` 行提示，超过 `800` 行强提醒。
+- 通用 UI 组件：超过 `300` 行提示，超过 `500` 行强提醒。
+- Hook：超过 `350` 行提示，超过 `500` 行强提醒。
+- 单纯超过行数不构成阻断；达到强提醒线后需审计职责边界，只有结构违规才阻断。
+- 当前 `npm run check:architecture` 按上述规则统计实际文件行数，并输出“提示”与“强提醒”两级结果。
+
+## 2026-08-03 CreationPage 生成逻辑 Hook 化
+
+- 新增 `src/components/creation/useCreationGeneration.js`，按 `useXxx.js` 命名规范承载 Shot 创建、生成请求、占位卡、结果卡、待恢复任务持久化、后端 Shot 更新和失败清理。
+- `CreationPage.jsx` 通过显式参数接入 `useCreationGeneration`，继续持有 `generating` 状态、Session Ref、Store 动作、Toast、并发计数和页面级区块编排；Hook 不读取页面闭包，也不接收整页状态对象。
+- 本轮没有移动刷新任务恢复、历史分页、缓存加载或页面级模型状态；没有触发真实生成、上传、下载或其他外部副作用。
+- 当前 `CreationPage.jsx` 实际为 `698` 行，按现行页面规则属于提示；`useCreationGeneration.js` 实际为 `341` 行，未超过 Hook `350` 行提示线。本轮先以静态验收和行为保持为准，不为降低行数机械拆分纯适配工具。
+
+## 2026-07-31 资产选择弹窗 Tab 切换加载态修复
+
+- `AssetPickerModal` 为项目资产分类、创作资产类型和 Seedance 素材分别维护加载态。
+- Tab 切换后的后台请求完成前渲染 `DotsLoading`，仅在请求完成且结果为空时渲染 `EmptyState`，避免加载期间出现误导性空状态。
+
+## 2026-07-31 资产选择弹窗定稿筛选兼容修复
+
+- `AssetPickerModal` 的“仅显示定稿图”兼容多版本定稿字段，并保留分镜候选接口补全逻辑。
+- 分镜候选与项目资产关联时增加媒体路径兜底，兼容域名、协议或查询参数不同但实际文件相同的地址。
+
 ## 2026-07-31 主体首屏数据加载态修复
 
 - `Home.jsx` 将角色、场景、道具三类主体的首屏请求状态传入 `SubjectPage`；项目切换和请求未完成期间保持 `subjectsLoading`。
@@ -182,6 +208,13 @@
 > 盘点日期：2026-07-17（最终手动验收与 OpenSpec 收尾审查）
 > 分支：`feat/frontend_V1.1`
 > 目的：为组件抽离和页面迁移提供可复查基线，不代表本文件中的数量永久不变。
+
+## 2026-08-03 视频创作尾帧转首帧预览修复
+
+- `CreationResultState` 调用尾帧抽取后，将抽取出的 Blob URL 一并传入首帧预填充数据。
+- `creationDetailAdapter` 将 Blob 封装成 `File` 时同步补充 `url` 与 `previewUrl`，保持生成提交使用文件对象，同时让 `CreationUploadArea` 立即显示首帧预览。
+- `CreationInputCard` 继续沿用首帧文件状态和 `refMode: frame` 回填，不改变尾帧抽取、生成参数或 Toast 行为。
+- 登录态真实页面验证通过：点击“尾帧用作首帧参考”后，尾帧图片已正确填入首帧上传槽位。
 
 ## 2026-07-29 资产选择弹窗创作图片重复展示修复
 
@@ -366,7 +399,7 @@
 | 文件 | 行数 | 优先级 |
 |---|---:|---|
 | `src/pages/StoryboardPage.jsx` | 1297（2026-07-17，生成面板结果卡片、StoryboardHeader 与 StoryboardToast 拆分后；架构统计 1298） | 首轮迁移收尾 |
-| `src/pages/CreationPage.jsx` | 964（2026-07-17，CreationWorkspace 与媒体下载适配复用后；架构统计 965） | 静态收尾与运行时验收完成（按用户确认） |
+| `src/pages/CreationPage.jsx` | 698（2026-08-03，生成逻辑 Hook 化后；架构统计 699） | 生成逻辑首轮拆分，待本轮静态验收 |
 | `src/pages/AssetsPage.jsx` | 57（2026-07-16，页面入口收敛后） | 页面入口收敛完成，业务面板和登录态副作用回归待完成 |
 | `src/pages/SubjectPage.jsx` | 1708（2026-07-17，主体工作区与编辑表单拆分后；架构统计 1709） | 首轮收尾，静态验收通过 |
 | `src/pages/ScriptPage.jsx` | 624（2026-07-16，当前工作区实际行数） | 首轮完成 |
@@ -1599,6 +1632,14 @@
 - `ScriptPage` 已改为单列剧本工作区，不再持有左侧导航的选中索引、骨架加载状态和标题滚动定位回调。
 - `ScriptPanel` / `ScriptRendered` 移除仅服务分集导航的 `onActiveIndexChange` 与当前分集侦测；剧本内容滚动和最后一集底部占位仍保留。
 - `backendEpisodes`、`apiGetEpisodes`、定稿刷新和 `onEpisodesChange` 不删除，继续承担项目级剧集数据同步职责。
+## 2026-08-03 CreationPage 生成逻辑 Hook 化记录
+
+- 新增 `src/components/creation/useCreationGeneration.js`，迁移 Shot 创建、生成占位卡、生成 API、待恢复任务快照持久化、结果卡写回、Shot 结果更新和失败清理。
+- `CreationPage.jsx` 通过显式参数接入 Hook，继续持有页面状态、Session Ref、Store 动作、Toast、并发计数、历史任务恢复和页面区块组合；没有将整页状态对象透传给 Hook。
+- 待恢复任务快照继续只保存 `refVideos` 的 `url/name/size` 字段；占位卡展示所需的 `previewUrl` 和 `isAsset` 仍只存在于运行时卡片数据。
+- 当前 `CreationPage.jsx` 实际为 `698` 行，架构检查统计为 `699` 行；`useCreationGeneration.js` 实际为 `341` 行，仍超过 Hook 规模告警线，后续仅在不改变副作用边界的前提下评估继续拆分。
+- 静态验收以本轮命令结果为准；未执行真实生成请求，不将 Hook 拆分视为真实生成、轮询或失败恢复链路已验证。
+
 ## 2026-07-22 主体参考图与候选图边界修复
 
 - `src/components/subject/SubjectImageMappers.js` 的主体详情合并逻辑只读取 `candidate_images` 和生成任务结果；后端 `reference_images` 仅转换为编辑弹窗的生图输入快照，不再进入右侧候选图、定稿或下载列表。
@@ -1669,3 +1710,32 @@
 - `StoryboardPage` 增加当前分集的数据请求完成标记，并绑定当前分集 ID，避免分集对象异步到达、切换分集或首次挂载时，在接口尚未返回前误显示「开始智能分镜」或加载失败态。
 - 无缓存镜头时，当前分集接口请求完成前持续显示 `DotsLoading`；请求完成后若确认为空，才显示开始智能分镜或错误反馈。
 - 已有本地缓存镜头时仍优先回显缓存，不改变分镜首屏缓存体验；后台请求完成后再更新当前分集的完成标记。
+
+## 2026-07-31 主体候选图首次请求加载态修复
+
+- 编辑主体弹窗拉取详情和主体资产期间，右侧候选图列表复用详情首轮加载状态；在候选图尚未返回时显示占位卡并播放 `DotsLoading`，不再因 `generatedImages` 初始为空而误显示空列表。
+- 已有图片、上传中的图片或跨弹窗生成占位存在时不额外插入重复占位；请求完成且确认没有候选图后，加载占位自动消失，保留真实空列表状态。
+
+## 2026-08-03 StoryboardPage P0-P3 剩余拆分
+
+- `StoryboardPage.jsx` 的候选媒体保存逻辑已拆出纯适配工具 `src/utils/storyboardCandidateAdapter.js`，负责媒体字段兼容、元数据解析、生成参数筛选、候选 payload 组装和保存结果归一化；页面继续持有候选接口、候选映射、定稿映射和错误处理。
+- 全屏生成加载展示已拆出 `src/components/storyboard/StoryboardLoadingState.jsx`；加载判断、加载文案来源和页面容器引用仍由页面提供。
+- 镜头插入、删除、拖拽移动和连续编号已拆出 `src/utils/storyboardShotUtils.js`；镜头 CRUD API、React 状态更新和拖拽排序请求仍由页面负责。
+- 跨刷新分镜/图片/视频任务恢复已拆出 `src/hooks/useStoryboardTaskRecovery.js`，通过显式回调接收任务轮询、状态 setter、候选占位和结果写回能力；页面保留页面级 API、缓存失效、结果写回和 Toast 编排。
+- `hasManuallyInteracted` 已改为 state，`shotsRef` 通过 effect 同步，`activeShotId` 声明顺序已修复；页面定向 ESLint、全量 lint、构建、架构检查和 `git diff --check` 均通过。
+- 当前 `StoryboardPage.jsx` 实际为 `2133` 行，仍属于页面规模提醒，但未发现结构违规或阻断级问题。页面继续集中保留 API、轮询、缓存、持久化、Store 写回、Toast 和页面编排，不再为降低行数强拆页面级副作用。
+
+## 2026-08-03 分镜主体删除后失效占位引用修复
+
+- 修复主体页面删除主体后，分镜主体参考列图片消失但仍出现灰色问号占位框的问题；用户验证通过。
+- 根因是 `MainRefCol` 对 `shot.mainRefs` 中所有对象无条件渲染，失效对象没有 `url` 时会进入问号占位分支。该对象可能来自旧式 `character_ids`、缓存恢复或后端删除后的短暂一致性延迟，并不代表仍存在一张可展示的图片。
+- `StoryboardPage` 的主体删除同步同时按 `subjectId`、`subject_id`、`assetId`、`asset_id` 和旧式 `ref.id` 过滤，并维护当前页面会话内的已删除主体/资产集合，防止刷新或富化逻辑把旧引用重新带回。
+- `MainRefCol` 新增 `visibleRefs` 渲染过滤：只展示有有效 `url` 的主体参考；上传中的临时引用仍保留，失效的无地址对象不再渲染为问号卡片。新增按钮改为依据 `visibleRefs` 判断，全部引用失效后正确回到空状态添加槽位。
+- 涉及 `src/pages/SubjectPage.jsx`、`src/pages/StoryboardPage.jsx`、`src/components/storyboard/MainRefCol.jsx` 和 `src/api/assets.js`；不改变正常主体参考上传、资产选择和删除交互。
+
+## 2026-08-03 主体参考图与候选图回归过滤修复
+
+- 根因：编辑主体弹窗初始化时会合并主体 `candidate_images` 与按 `subject_id` 查询到的项目资产；当后端将参考图资产同时返回到主体资产列表，参考图会被误映射为右侧候选图。
+- `SubjectImageMappers.mergeSubjectImages` 现在接收当前主体的 `referenceImages`，按参考图资产 ID 和归一化图片地址同时过滤 `candidate_images` 与主体项目资产，避免接口字段或来源标记变化导致参考图再次混入候选列表。
+- 参考图上传/资产绑定仍由 `RefImageField` 独立调用主体 `reference-images` 接口；候选图上传、资产库选择和 AI 创作链路保持不变。
+- 已通过主体相关文件定向 ESLint、构建和 `git diff --check`；分镜页仍保持参考素材与候选媒体的独立状态链路。

@@ -5,7 +5,7 @@
 
 import { memo, useEffect, useRef, useState } from 'react';
 import { normalizeImageUrl } from '../../utils/imageUrl';
-import { createVideoFirstFrame } from './seedanceUploadValidation';
+import { createVideoFirstFrame } from './SeedanceUploadValidation';
 import DotsLoading from '../DotsLoading';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";

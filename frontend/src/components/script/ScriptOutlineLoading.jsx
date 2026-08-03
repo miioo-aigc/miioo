@@ -9,6 +9,7 @@
  *   2026-07-21  新增编排页结构化内容加载态
  *   2026-07-22  调整解析加载态主体分组标题的水平内边距为 0
  *   2026-07-22  移除解析加载态外层内边距和描边
+ *   2026-08-03  为解析加载态的表单骨架补齐 12px 外轮廓圆角
  */
 const SHIMMER_STYLE = `
   @keyframes script-outline-shimmer {
@@ -30,7 +31,7 @@ const sectionRows = {
 
 function SkeletonTable({ labels }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
+    <div style={{ display: 'flex', width: '100%', flexDirection: 'column', overflow: 'hidden', border: '1px solid #3E3D3D', borderRadius: '12px', boxSizing: 'border-box' }}>
       {labels.map((label, index) => (
         <div key={label} style={{ display: 'flex', minHeight: '48px', marginTop: index === 0 ? 0 : '-1px' }}>
           <div style={{ width: '160px', flexShrink: 0, display: 'flex', alignItems: 'center', padding: '8px 16px', background: '#222222', border: '1px solid #3E3D3D', color: '#FFFFFFCC', fontSize: '14px', lineHeight: '18px' }}>{label}</div>
@@ -80,7 +81,7 @@ export default function ScriptOutlineLoading({ finalSectionTitle = '分集剧情
         <SkeletonSubjectSection />
         <section style={{ width: '100%' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 0', color: '#FFFFFF', fontSize: '18px', lineHeight: '22px', fontWeight: 600 }}><span style={{ width: '2px', height: '18px', background: '#FFFFFF' }} />{finalSectionTitle}（0）</div>
-          <div style={{ height: '60px', overflow: 'hidden', padding: '12px', border: '1px solid #3E3D3D', background: '#080808', boxSizing: 'border-box' }}><div style={{ height: '20px', background: 'linear-gradient(270deg, #222222, #454545, #3F3F3F)', animation: 'script-outline-sweep 2.2s ease-in-out infinite' }} /></div>
+          <div style={{ height: '60px', overflow: 'hidden', padding: '12px', border: '1px solid #3E3D3D', borderRadius: '12px', background: '#080808', boxSizing: 'border-box' }}><div style={{ height: '20px', background: 'linear-gradient(270deg, #222222, #454545, #3F3F3F)', animation: 'script-outline-sweep 2.2s ease-in-out infinite' }} /></div>
         </section>
         <div aria-hidden="true" style={{ position: 'absolute', top: '50%', left: '50%', width: '52%', height: '2px', transform: 'translate(-50%, -50%)', background: 'linear-gradient(90deg, transparent, rgba(218,250,255,.7), transparent)', filter: 'blur(10px)', animation: 'script-outline-shimmer 2.6s ease-in-out infinite' }} />
       </div>

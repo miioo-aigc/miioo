@@ -5,7 +5,7 @@ import { useCreationStore } from '../../stores/creationStore';
 import { useAssetSelection } from '../../hooks/useAssetSelection';
 import { generationsToDays } from '../../utils/creativeDaysAdapter';
 import { normalizeImageUrl } from '../../utils/imageUrl';
-import { dedupeCreationHistoryList } from '../../utils/creationHistoryAdapter';
+import { dedupeCreationHistoryList, getCreationAssetMediaAliases } from '../../utils/creationHistoryAdapter';
 import { getCreativeBatchDeleteRequest } from '../../utils/assetsBatchAdapter';
 import { downloadMediaUrl } from '../../utils/downloadMediaUrl';
 import { downloadBlob } from '../../utils/downloadBlob';
@@ -67,7 +67,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
       ? (item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '')
       : type === 'audio'
         ? (item.audio_url || item.audioUrl || item.original_url || item.file_url || item.url || '')
-        : (item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || '');
+        : (item.preview_url || item.previewUrl || item.reference_frame_url || item.referenceFrameUrl || item.original_url || item.originalUrl || item.download_url || item.downloadUrl || item.thumbnail_url || item.thumbnailUrl || item.file_url || item.fileUrl || item.url || '');
     const url = normalizeImageUrl(rawUrl) || rawUrl;
     return {
       id,
@@ -89,7 +89,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         type,
         status: 'done',
         imageUrl: type === 'image' ? url : null,
-        originalUrl: type === 'image' ? url : null,
+        originalUrl: type === 'image' ? (normalizeImageUrl(item.download_url || item.downloadUrl || item.original_url || item.originalUrl || item.file_url || item.fileUrl || url) || url) : null,
         videoUrl: type === 'video' ? url : null,
         audioUrl: type === 'audio' ? url : null,
         isFavorite: item.is_favorite ?? item.is_liked ?? item.isLiked ?? false,
@@ -97,10 +97,9 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     };
   }
 
-  function getCreativeMediaKey(generation) {
+  function getCreativeMediaAliases(generation) {
     const card = generation?.cards?.[0];
-    const rawUrl = card?.imageUrl || card?.videoUrl || card?.audioUrl || card?.originalUrl || '';
-    return normalizeImageUrl(rawUrl) || rawUrl;
+    return getCreationAssetMediaAliases(card);
   }
 
   // 根据视口计算首屏所需条数
@@ -160,10 +159,10 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
       const existingCardIds = new Set(
         existing.flatMap((g) => g.cards.map((c) => c.id).filter(Boolean))
       );
-      const existingMediaKeys = new Map(
-        existing.map((generation, index) => [getCreativeMediaKey(generation), index])
-          .filter(([key]) => key)
-      );
+      const existingMediaKeys = new Map();
+      existing.forEach((generation, index) => {
+        getCreativeMediaAliases(generation).forEach((key) => existingMediaKeys.set(key, index));
+      });
       const toAdd = [];
       const mergedExisting = existing.map((generation) => ({
         ...generation,
@@ -171,10 +170,10 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
       }));
       normalized.forEach((generation) => {
         const card = generation.cards[0];
-        const mediaKey = getCreativeMediaKey(generation);
+        const mediaKeys = getCreativeMediaAliases(generation);
         const existingIndex = card?.id && existingCardIds.has(card.id)
           ? mergedExisting.findIndex((item) => item.cards.some((existingCard) => existingCard.id === card.id))
-          : existingMediaKeys.get(mediaKey);
+          : mediaKeys.map((key) => existingMediaKeys.get(key)).find((index) => index !== undefined);
         if (existingIndex == null || existingIndex < 0) {
           toAdd.push(generation);
           return;

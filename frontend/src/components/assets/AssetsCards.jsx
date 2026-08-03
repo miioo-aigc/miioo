@@ -306,18 +306,9 @@ export function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownl
         asset={asset}
         images={images}
         onClose={() => setDetailOpen(false)}
-        onDownload={(imageId, fileUrl) => {
-          const image = images.find((item) => item.id === imageId);
-          if (image?.fileUrl || fileUrl) {
-            const link = document.createElement('a');
-            link.href = fileUrl || image.fileUrl;
-            link.download = `${name}_${imageId}`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          } else {
-            onDownload?.();
-          }
+        onDownload={(imageId) => {
+          const image = images.find((item) => String(item.id) === String(imageId));
+          onDownload?.(image?.id ?? imageId, name, image || asset);
         }}
         onDelete={onDelete}
         onShowToast={onShowToast}

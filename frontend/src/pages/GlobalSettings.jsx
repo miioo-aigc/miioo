@@ -37,6 +37,8 @@
  *   2026-07-23  按页面反馈将资产概况外层底部内边距调整为 0px
  *   2026-07-27  资产概况跳转主体页时仅查看已有结果，不重复触发主体抽取
  *   2026-07-28  剧集进度按项目工作流解锁状态展示，视频生成不直接标记“剪辑中”
+ *   2026-08-03  项目信息 Tab 内容区补齐 flex 滚动边界，支持小屏高度下滚动查看
+ *   2026-08-03  项目信息视觉风格封面与新建项目风格库统一，新增风格图优先
  */
 
 import { lazy, Suspense, useState, useRef, useEffect } from 'react';
@@ -47,7 +49,7 @@ import { normalizeImageUrl } from '../utils/imageUrl';
 import { Tabs, TextField, OptionTabs } from '../components/ui';
 import { ScriptProgress } from '../components/project';
 import { CharIcon, SceneIcon, PropIcon } from '../components/subject/SubjectTypeIcons';
-import { VISUAL_STYLE_LIST } from '../config/visualStyles';
+import { NEW_VISUAL_STYLE_GROUPS, VISUAL_STYLE_LIST } from '../config/visualStyles';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -57,7 +59,9 @@ const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-u
 // 新风格优先覆盖同 value 的历史风格，未进入新库的历史风格仍保留旧封面。
 const VISUAL_STYLES = {
   custom: { label: '自定义', coverImg: null },
+  // 与新建项目弹窗保持同一套封面；历史列表仅为旧项目值提供兜底。
   ...Object.fromEntries(VISUAL_STYLE_LIST.map((style) => [style.value, style])),
+  ...Object.fromEntries(NEW_VISUAL_STYLE_GROUPS.flatMap((group) => group.styles).map((style) => [style.value, style])),
 };
 
 // ── Cover upload ───────────────────────────────────────────────────────────
@@ -550,8 +554,8 @@ export default function GlobalSettings({
   }
 
   return (
-    <div style={{ flex: '1 1 0%', overflow: 'auto', padding: '0px 24px 24px 0px', height: '100%', boxSizing: 'border-box' }}>
-      <div style={{ borderRadius: '16px', padding: '16px 24px 0px', background: '#161616', border: '1px solid #FFFFFF14', minHeight: 0, height: '100%', boxSizing: 'border-box', overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 0 }}>
+    <div style={{ flex: '1 1 0%', minHeight: 0, minWidth: 0, overflow: 'hidden', padding: '0px 24px 24px 0px', height: '100%', boxSizing: 'border-box', display: 'flex' }}>
+      <div style={{ borderRadius: '16px', padding: '16px 24px 0px', background: '#161616', border: '1px solid #FFFFFF14', minHeight: 0, minWidth: 0, height: '100%', flex: '1 1 0%', boxSizing: 'border-box', overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 0 }}>
 
         {/* 面包屑：返回箭头 + 项目名称 + 分割线 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px', alignSelf: 'stretch', paddingBottom: '12px', paddingTop: '6px', borderBottom: '1px solid #FFFFFF14' }}>
@@ -581,7 +585,7 @@ export default function GlobalSettings({
         {/* 项目信息 Tab */}
         {activeTab === 'info' && (
           // py-5 = 20px，gap-5 = 20px，水平居中，内容宽度 600px (w-150)
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', paddingTop: '20px', paddingBottom: '20px', alignSelf: 'stretch' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', paddingTop: '20px', paddingBottom: '20px', alignSelf: 'stretch', flex: '1 1 0%', minHeight: 0, minWidth: 0, overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box' }}>
 
             {/* 项目名称 */}
             <div style={{ display: 'flex', gap: '14px', width: '600px', alignItems: 'center' }}>

@@ -19,6 +19,7 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-07-30  修复主体参考列新增资产未带入创作图片面板：保留已保存表单状态，实时合并当前分镜主体引用，不再过滤 avif/derived 预览地址
+ *   2026-08-03  参考主体与普通参考图分别归一化后再合并为图片生成输入，避免类型和重复项混淆
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -28,6 +29,7 @@ import MediaDetailModal from '../MediaDetailModal';
 import { apiListModels } from '../../api/config';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { normalizeStoryboardReferenceGroups } from '../../utils/referenceMediaAdapter';
 import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter';
 import { GenerationModelField, GenerationOptionFields } from './GenerationParamsFields';
 import GenerationSubmitButton from './GenerationSubmitButton';
@@ -36,10 +38,6 @@ import { ImgUploadCard } from './StoryboardImageUpload';
 import ImageResultCard from './ImageResultCard';
 
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
-
-function getReferenceKey(item) {
-  return item?.subjectId || item?.subject_id || item?.assetId || item?.asset_id || item?.id || item?.url || null;
-}
 
 function normalizeShotReference(ref, chars, scenes, props) {
   if (!ref) return null;
@@ -50,23 +48,6 @@ function normalizeShotReference(ref, chars, scenes, props) {
   return found?.imageUrl
     ? { ...ref, url: normalizeImageUrl(found.imageUrl), name: found.name }
     : ref;
-}
-
-function mergeCurrentShotReferences(savedReferences, shotReferences) {
-  const currentByKey = new Map((shotReferences || []).map((ref) => [getReferenceKey(ref), ref]).filter(([key]) => key));
-  const result = (Array.isArray(savedReferences) ? savedReferences : []).map((saved) => {
-    const current = currentByKey.get(getReferenceKey(saved));
-    return current || saved;
-  });
-  const existingKeys = new Set(result.map(getReferenceKey).filter(Boolean));
-  (shotReferences || []).forEach((ref) => {
-    const key = getReferenceKey(ref);
-    if (key && !existingKeys.has(key)) {
-      result.push(ref);
-      existingKeys.add(key);
-    }
-  });
-  return result;
 }
 
 export default function GenerateImagePanel({
@@ -135,7 +116,11 @@ export default function GenerateImagePanel({
     }
     // 已保存的弹窗状态优先保留；当前分镜列表新增的主体参考补到末尾。
     // 不能再按文件后缀过滤主体图，资产库返回的 avif/derived 地址也是有效预览地址。
-    return mergeCurrentShotReferences(formState?.refImages, shotReferences);
+    const groups = normalizeStoryboardReferenceGroups({
+      subjects: shotReferences,
+      images: formState?.refImages,
+    });
+    return [...groups.subjects, ...groups.images];
   });
   const [refImgPickerOpen, setRefImgPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -195,7 +180,9 @@ export default function GenerateImagePanel({
       const uploadedUrl = result.uploaded_url || result.uploadedUrl || result.url || result.file_url || '';
 
       // 添加到参考图列表（不再自动插入提示词标签，标签由用户手动 @ 引入）
-      setRefImages(prev => [...prev, { id: result.id || result.asset_id || uploadedUrl, url: uploadedUrl, name: file.name }]);
+      setRefImages(prev => normalizeStoryboardReferenceGroups({
+        images: [...prev, { id: result.id || result.asset_id || uploadedUrl, url: uploadedUrl, name: file.name }],
+      }).images);
 
       return result;
     } catch (error) {
@@ -216,7 +203,8 @@ export default function GenerateImagePanel({
     }));
     setRefImages(prev => {
       const merged = [...prev, ...newItems];
-      return maxRefImages != null ? merged.slice(0, maxRefImages) : merged;
+      const normalized = normalizeStoryboardReferenceGroups({ images: merged }).images;
+      return maxRefImages != null ? normalized.slice(0, maxRefImages) : normalized;
     });
     setRefImgPickerOpen(false);
   }
@@ -238,7 +226,9 @@ export default function GenerateImagePanel({
   }
 
   function removeRefImage(id) {
-    setRefImages((prev) => prev.filter((img) => img.id !== id));
+    setRefImages((prev) => normalizeStoryboardReferenceGroups({
+      images: prev.filter((img) => img.id !== id),
+    }).images);
   }
 
   async function handleGenerate() {

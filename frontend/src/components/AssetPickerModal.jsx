@@ -7,6 +7,7 @@ import { apiGetProjects } from '../api/project';
 import { apiGetAssetsPage, enrichWithStoryboards } from '../api/assets';
 import { apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../api/creation';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import { dedupeByMediaAliases, getCreationAssetMediaAliases } from '../utils/creationHistoryAdapter';
 import { apiListLiveMaterialAssets, apiListLiveMaterialGroups } from '../api/liveMaterials';
 import SeedanceFolderCard from './assets/SeedanceFolderCard';
 import { isSeedanceModel } from '../utils/seedanceModel';
@@ -190,30 +191,11 @@ function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onM
 }
 
 function getPickerMediaKey(asset) {
-  const rawUrl = asset?.url || asset?.originalUrl || asset?.fileUrl || asset?.posterUrl || '';
-  return normalizeImageUrl(rawUrl) || rawUrl;
+  return getCreationAssetMediaAliases(asset);
 }
 
 function dedupePickerAssets(list) {
-  const seen = new Map();
-  const result = [];
-  (Array.isArray(list) ? list : []).forEach((asset) => {
-    const mediaKey = getPickerMediaKey(asset);
-    const key = mediaKey ? `url:${mediaKey}` : asset?.id ? `id:${asset.id}` : '';
-    if (!key) {
-      result.push(asset);
-      return;
-    }
-    const previousIndex = seen.get(key);
-    if (previousIndex === undefined) {
-      seen.set(key, result.length);
-      result.push(asset);
-      return;
-    }
-
-    const previous = result[previousIndex];
-    // 同图不同记录时保留可用于回传和详情展示的非空字段。
-    result[previousIndex] = {
+  return dedupeByMediaAliases(list, getPickerMediaKey, (previous, asset) => ({
       ...previous,
       ...asset,
       id: previous.id || asset.id,
@@ -233,9 +215,7 @@ function dedupePickerAssets(list) {
       metadata: { ...(asset.metadata || {}), ...(previous.metadata || {}) },
       metadata_json: previous.metadata_json || asset.metadata_json || null,
       posterUrl: previous.posterUrl || asset.posterUrl || null,
-    };
-  });
-  return result;
+    }));
 }
 
 function EmptyState() {

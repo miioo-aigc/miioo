@@ -22,6 +22,7 @@
  *   2026-07-28 删除主体单张资产时保持主体卡片标识稳定，详情弹窗仅移除缩略图
  *   2026-07-29 修复分镜卡片在临界宽度下网格行高不足导致的上下行重叠
  *   2026-08-03 主体删除后同步刷新资产库当前分类，避免保留旧主体资产卡片
+ *   2026-08-03 统一项目资产下载文件名，并让详情弹窗通过资产下载接口获取文件
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -37,6 +38,7 @@ import { useAssetPagination } from '../../hooks/useAssetPagination';
 import { useAssetSelection } from '../../hooks/useAssetSelection';
 import { getAssetPageKey, getAssetSubjectType, getProjectBatchDeleteRequest, getProjectDownloadItems, SUBJECT_CARD_CATEGORIES } from '../../utils/assetsBatchAdapter';
 import { downloadBlob } from '../../utils/downloadBlob';
+import { getBlobExtension, getProjectAssetDownloadFilename } from '../../utils/projectAssetFilename';
 import { normalizeStoryboard } from '../../utils/storyboardDataAdapter';
 import ConfirmDialog from '../ConfirmDialog';
 import { AssetsTabBar } from './AssetsTabs';
@@ -469,16 +471,28 @@ export default function AssetsProjectPanel() {
 
   async function downloadAsset(assetId, assetName, storyboardAsset = null) {
     try {
+      const activeProjectInfo = projects.find((project) => project.id === activeProject);
+      const categoryLabel = PROJECT_CATEGORY_TABS.find((tab) => tab.key === activeCategory)?.label || activeCategory;
       if (activeCategory === 'storyboard' && storyboardAsset?.storyboard) {
         const media = storyboardAsset.candidates?.find((item) => item.id === assetId) || storyboardAsset.candidates?.[0];
         if (media?.id) {
           const blob = await apiDownloadStoryboardMediaCandidate(activeProject, storyboardAsset.storyboard.id, media.id);
-          downloadBlob(blob, assetName || 'storyboard-media');
+          downloadBlob(blob, getProjectAssetDownloadFilename({
+            projectName: activeProjectInfo?.name,
+            categoryLabel,
+            assetName,
+            extension: getBlobExtension(blob),
+          }));
           return;
         }
       }
       const blob = await apiDownloadAsset(assetId, { prefer_origin: true });
-      downloadBlob(blob, assetName || 'asset');
+      downloadBlob(blob, getProjectAssetDownloadFilename({
+        projectName: activeProjectInfo?.name,
+        categoryLabel,
+        assetName,
+        extension: getBlobExtension(blob),
+      }));
     } catch (err) {
       console.error('下载失败', err);
     }
@@ -574,7 +588,8 @@ export default function AssetsProjectPanel() {
             onDownload={downloadAsset}
             onDelete={deleteAsset}
             onShowToast={showToast}
-            onOpenStoryboardDetail={(asset) => setStoryboardDetail({
+          onOpenStoryboardDetail={(asset) => setStoryboardDetail({
+              name: asset.name,
               shot: asset.storyboard,
               candidates: asset.candidates || [],
               media: asset.candidates?.find((item) => item.is_finalized) || asset.candidates?.[0],
@@ -626,7 +641,13 @@ export default function AssetsProjectPanel() {
           onDownload={async (media) => {
             try {
               const blob = await apiDownloadStoryboardMediaCandidate(activeProject, storyboardDetail.shot.id, media.id);
-              downloadBlob(blob, media.name || `storyboard-${media.id}`);
+              const activeProjectInfo = projects.find((project) => project.id === activeProject);
+              downloadBlob(blob, getProjectAssetDownloadFilename({
+                projectName: activeProjectInfo?.name,
+                categoryLabel: '分镜',
+                assetName: storyboardDetail.name,
+                extension: getBlobExtension(blob),
+              }));
             } catch (error) {
               console.error('[ProjectAssetsPanel] 下载分镜候选媒体失败:', error);
               showToast('下载失败，请重试', 'error');

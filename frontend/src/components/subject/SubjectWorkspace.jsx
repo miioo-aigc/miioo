@@ -10,6 +10,7 @@
  *
  * ─── 更新记录 ─────────────────────────────────────────────────────
  *   2026-07-17  从 SubjectPage 抽离工作区外框和稳定展示组合
+ *   2026-08-03  主体页右上角新增按钮文案统一为「新增主体类型」
  */
 import { SUBJECT_TABS } from './SubjectTabsConstants';
 import SubjectToolbar from './SubjectToolbar';
@@ -39,7 +40,7 @@ export default function SubjectWorkspace({
       <SubjectToolbar
         projectName={projectName}
         onBack={onBack}
-        addLabel={`添加${tabLabel}`}
+        addLabel={`新增${tabLabel}`}
         onAddSubject={onAddSubject}
         onBatchGenerate={onBatchGenerate}
         onStartStoryboard={onStartStoryboard}

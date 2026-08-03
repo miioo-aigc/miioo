@@ -2,7 +2,9 @@
  * Storyboard 前后端数据映射与主体参考图补全。
  * 仅处理纯数据，不读取 React 状态，也不执行 API 或缓存副作用。
  *
- * 更新记录：2026-07-30 刷新恢复主体引用时，主体引用优先于同图普通参考资源，按主体/资产身份和图片路径去重。
+ * 更新记录：2026-08-03 创作结果同时返回主体 ID 和 video-reference-images 副本时，
+ *                只保留主体引用，避免主体参考图在分镜列表中重复展示。
+ *              2026-07-30 刷新恢复主体引用时，主体引用优先于同图普通参考资源，按主体/资产身份和图片路径去重。
  */
 
 import { normalizeImageUrl } from './imageUrl';
@@ -45,6 +47,23 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
     }
   };
   const genParams = parseObject(be.gen_params ?? be.genParams);
+  const subjectRefs = parseObject(be.subject_refs_json ?? be.subjectRefsJson);
+  const generationRefs = parseObject(be.generation_refs_json ?? be.generationRefsJson);
+  const persistedSubjectIds = new Set([
+    ...(Array.isArray(be.character_ids) ? be.character_ids : []),
+    ...(Array.isArray(be.character_subject_ids) ? be.character_subject_ids : []),
+    ...(Array.isArray(be.prop_subject_ids) ? be.prop_subject_ids : []),
+    ...(be.scene_subject_id ? [be.scene_subject_id] : []),
+    ...(Array.isArray(subjectRefs.characters) ? subjectRefs.characters : []),
+    ...(Array.isArray(subjectRefs.props) ? subjectRefs.props : []),
+    ...(subjectRefs.scene ? [subjectRefs.scene] : []),
+    ...(Array.isArray(generationRefs.character_subject_ids) ? generationRefs.character_subject_ids : []),
+    ...(Array.isArray(generationRefs.prop_subject_ids) ? generationRefs.prop_subject_ids : []),
+    ...(generationRefs.scene_subject_id ? [generationRefs.scene_subject_id] : []),
+  ].map((item) => {
+    if (item && typeof item === 'object') return item.subject_id ?? item.subjectId ?? item.id;
+    return item;
+  }).filter(Boolean).map(String));
   const persistedCreationForm = genParams.creation_form || genParams.creationForm;
   const creationForm = {
     image: persistedCreationForm?.image && typeof persistedCreationForm.image === 'object'
@@ -111,6 +130,14 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
             : (be.reference_image_urls || []).map(url => ({ url }));
           return rawList
             .filter(item => item?.url)
+            // 创作接口会把主体图片复制到 video-reference-images；主体 ID 已经在
+            // character_ids 等字段中表达，这些副本不能再次作为主体参考图展示。
+            .filter(item => {
+              const url = String(item.url);
+              const isGeneratedReferenceCopy = /\/video-reference-images\//i.test(url);
+              if (!isGeneratedReferenceCopy || persistedSubjectIds.size === 0) return true;
+              return false;
+            })
             // 排除与分镜图相同的 URL，避免分镜图出现在主体参考列（用路径键兼容绝对/相对 URL）
             .filter(item => !imgPathKey || urlPathKey(normalizeImageUrl(item.url)) !== imgPathKey)
             .map(item => {

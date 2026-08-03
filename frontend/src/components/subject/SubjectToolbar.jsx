@@ -12,6 +12,7 @@
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 SubjectPage 抽离页面工具栏
  *   2026-07-15  清理页面级按钮样式覆盖，主体常规动作统一复用全局 Button 的 Primary/Accent 结构
+ *   2026-08-03  右上角新增按钮默认文案统一使用「新增」
  */
 import { Button } from '../ui';
 
@@ -74,7 +75,7 @@ function SubjectToolbarButton({ children, icon, fontSize = 14, onClick }) {
 
 export default function SubjectToolbar({
   projectName,
-  addLabel = '添加角色',
+  addLabel = '新增角色',
   tabLabel = '角色',
   onBack,
   onAddSubject,

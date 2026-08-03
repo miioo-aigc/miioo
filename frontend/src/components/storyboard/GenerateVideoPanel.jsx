@@ -23,6 +23,7 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-07-30  修复主体参考列新增资产未带入创作视频面板：当前分镜主体引用覆盖旧表单快照并按主体 ID 去重，保留其他已编辑参考素材
+ *   2026-08-03  参考主体、参考图、参考视频和参考音频分别归一化、去重，保留各自提交字段边界
  *   2026-07-15  将参考素材编辑区迁移至 ReferenceMediaEditor；本组件继续持有上传 API、模型能力限制、生成参数和页面级回调，所有依赖通过显式 props 传递
  *   2026-07-16  ReferenceMediaEditor 直接引入 StoryboardUploadSlots；本组件不再接收或转发 FrameUploadSlot / PanelUploadSlot，继续负责视频面板业务上传回调和生成参数
  */
@@ -33,6 +34,7 @@ import ShotViewerModal from '../ShotViewerModal';
 import { apiListModels } from '../../api/config';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { normalizeStoryboardReferenceGroups } from '../../utils/referenceMediaAdapter';
 import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter';
 import ReferenceMediaEditor from './ReferenceMediaEditor';
 import VideoResultsPanel from './VideoResultsPanel';
@@ -41,24 +43,6 @@ import { VideoGenerationTabs, VideoSoundToggle } from './VideoGenerationControls
 import GenerationSubmitButton from './GenerationSubmitButton';
 
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
-
-function getReferenceKey(item) {
-  return item?.subjectId || item?.subject_id || item?.assetId || item?.asset_id || item?.id || item?.url || null;
-}
-
-function mergeCurrentShotSubjects(savedSubjects, shotSubjects) {
-  const currentByKey = new Map((shotSubjects || []).map((subject) => [getReferenceKey(subject), subject]).filter(([key]) => key));
-  const result = (Array.isArray(savedSubjects) ? savedSubjects : []).map((saved) => currentByKey.get(getReferenceKey(saved)) || saved);
-  const existingKeys = new Set(result.map(getReferenceKey).filter(Boolean));
-  (shotSubjects || []).forEach((subject) => {
-    const key = getReferenceKey(subject);
-    if (key && !existingKeys.has(key)) {
-      result.push(subject);
-      existingKeys.add(key);
-    }
-  });
-  return result;
-}
 
 export default function GenerateVideoPanel({
   shot,
@@ -172,15 +156,28 @@ export default function GenerateVideoPanel({
       return ref;
     }).filter(ref => ref?.url);
     // 弹窗状态可能是旧快照；把列表刚新增的主体参考补入，不丢失弹窗内已有的其他素材。
-    return mergeCurrentShotSubjects(formState?.refSubjects, shotSubjects);
+    return normalizeStoryboardReferenceGroups({
+      subjects: [...shotSubjects, ...(formState?.refSubjects || [])],
+    }).subjects;
   });
-  const [refImages, setRefImages] = useState(() => formState?.refImages || []);
-  const [refVideos, setRefVideos] = useState(() => formState?.refVideos || []);
-  const [refAudios, setRefAudios] = useState(() => formState?.refAudios || []);
+  const [refImages, setRefImages] = useState(() => normalizeStoryboardReferenceGroups({ images: formState?.refImages }).images);
+  const [refVideos, setRefVideos] = useState(() => normalizeStoryboardReferenceGroups({ videos: formState?.refVideos }).videos);
+  const [refAudios, setRefAudios] = useState(() => normalizeStoryboardReferenceGroups({ audios: formState?.refAudios }).audios);
   const [refFirstFrame, setRefFirstFrame] = useState(() => formState?.refFirstFrame || null);
   const [refLastFrame, setRefLastFrame] = useState(() => formState?.refLastFrame || null);
   const [loading, setLoading] = useState(false);
   const [viewerShot, setViewerShot] = useState(null);
+
+  const updateReferenceGroup = (setter, group) => (value) => {
+    setter((previous) => {
+      const next = typeof value === 'function' ? value(previous) : value;
+      return normalizeStoryboardReferenceGroups({ [group]: next })[group];
+    });
+  };
+  const handleRefSubjectsChange = updateReferenceGroup(setRefSubjects, 'subjects');
+  const handleRefImagesChange = updateReferenceGroup(setRefImages, 'images');
+  const handleRefVideosChange = updateReferenceGroup(setRefVideos, 'videos');
+  const handleRefAudiosChange = updateReferenceGroup(setRefAudios, 'audios');
 
   useEffect(() => {
     onFormStateChange?.({ tab, model, resolution, duration, sound, prompt, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame });
@@ -324,7 +321,10 @@ export default function GenerateVideoPanel({
       const uploadedUrl = result.uploaded_url || result.uploadedUrl || result.url || result.file_url || '';
 
       // 不再自动插入提示词标签，标签由用户手动 @ 引入
-      return { id: result.id || result.asset_id || uploadedUrl, url: uploadedUrl, name: file.name, type: file.type };
+      return normalizeStoryboardReferenceGroups({
+        [type === 'audio' ? 'audios' : type === 'video' ? 'videos' : 'images']:
+          [{ id: result.id || result.asset_id || uploadedUrl, url: uploadedUrl, name: file.name, type: file.type }],
+      })[type === 'audio' ? 'audios' : type === 'video' ? 'videos' : 'images'][0];
     } catch (error) {
       console.error('参考媒体上传失败:', error);
       onShowToast?.('参考图上传失败', 'error');
@@ -450,10 +450,10 @@ export default function GenerateVideoPanel({
               refAudios={refAudios}
               refFirstFrame={refFirstFrame}
               refLastFrame={refLastFrame}
-              onRefSubjectsChange={setRefSubjects}
-              onRefImagesChange={setRefImages}
-              onRefVideosChange={setRefVideos}
-              onRefAudiosChange={setRefAudios}
+              onRefSubjectsChange={handleRefSubjectsChange}
+              onRefImagesChange={handleRefImagesChange}
+              onRefVideosChange={handleRefVideosChange}
+              onRefAudiosChange={handleRefAudiosChange}
               onRefFirstFrameChange={setRefFirstFrame}
               onRefLastFrameChange={setRefLastFrame}
               onReferenceMediaUpload={handleRefMediaUpload}

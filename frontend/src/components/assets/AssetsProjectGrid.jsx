@@ -48,7 +48,9 @@ export default function AssetsProjectGrid({
           selected={isSelected}
           batchMode={batchMode}
           onSelect={() => onSelect(asset.id)}
-          onDownload={() => onDownload(asset.id, asset.name, asset)}
+          onDownload={(downloadId = asset.id, downloadName = asset.name, downloadAssetRecord = asset) => (
+            onDownload(downloadId, downloadName, downloadAssetRecord)
+          )}
           onDelete={(imageId) => onDelete(asset.id, imageId)}
           onShowToast={onShowToast}
           asset={asset}

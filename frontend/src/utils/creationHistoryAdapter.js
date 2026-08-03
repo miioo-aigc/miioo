@@ -23,40 +23,66 @@ export function getCreationHistoryList(response) {
     : (response?.list ?? response?.items ?? response?.data ?? []);
 }
 
-function getHistoryMediaKey(item, type) {
-  const rawUrl = type === 'video'
-    ? (item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '')
+function normalizeMediaAlias(value) {
+  if (!value || typeof value !== 'string') return '';
+  return normalizeImageUrl(value) || value;
+}
+
+export function getCreationMediaAliases(item, type) {
+  const values = type === 'video'
+    ? [item.video_url, item.videoUrl, item.preview_video_url, item.previewVideoUrl, item.preview_url, item.previewUrl, item.original_url, item.originalUrl, item.file_url, item.fileUrl, item.url, item.thumbnail_url, item.thumbnailUrl]
     : type === 'audio'
-      ? (item.audio_url || item.audioUrl || item.original_url || item.file_url || item.url || '')
-      : (item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || '');
-  return normalizeImageUrl(rawUrl) || rawUrl;
+      ? [item.audio_url, item.audioUrl, item.original_url, item.originalUrl, item.file_url, item.fileUrl, item.url]
+      : [item.preview_url, item.previewUrl, item.reference_frame_url, item.referenceFrameUrl, item.original_url, item.originalUrl, item.download_url, item.downloadUrl, item.thumbnail_url, item.thumbnailUrl, item.file_url, item.fileUrl, item.url];
+  return [...new Set(values.map(normalizeMediaAlias).filter(Boolean))];
+}
+
+export function getCreationAssetMediaAliases(asset) {
+  return [...new Set([
+    asset?.url,
+    asset?.originalUrl,
+    asset?.original_url,
+    asset?.downloadUrl,
+    asset?.download_url,
+    asset?.fileUrl,
+    asset?.file_url,
+    asset?.previewUrl,
+    asset?.preview_url,
+    asset?.thumbnailUrl,
+    asset?.thumbnail_url,
+    asset?.posterUrl,
+    asset?.poster_url,
+  ].map(normalizeMediaAlias).filter(Boolean))];
+}
+
+export function dedupeByMediaAliases(list, getAliases, mergeItem = (previous) => previous) {
+  const seen = new Map();
+  const result = [];
+  (Array.isArray(list) ? list : []).forEach((item) => {
+    const aliases = getAliases(item);
+    const previousIndex = aliases.map((alias) => seen.get(alias)).find((index) => index !== undefined);
+    if (previousIndex === undefined) {
+      const index = result.length;
+      result.push(item);
+      aliases.forEach((alias) => seen.set(alias, index));
+      return;
+    }
+    result[previousIndex] = mergeItem(result[previousIndex], item);
+    getAliases(result[previousIndex]).forEach((alias) => seen.set(alias, previousIndex));
+  });
+  return result;
 }
 
 export function dedupeCreationHistoryList(list, type) {
-  const seen = new Map();
-  const result = [];
-  list.forEach((item) => {
-    const mediaKey = getHistoryMediaKey(item, type);
-    const key = mediaKey ? `url:${mediaKey}` : item?.id ? `id:${item.id}` : '';
-    if (!key) {
-      result.push(item);
-      return;
-    }
-
-    const previousIndex = seen.get(key);
-    if (previousIndex === undefined) {
-      seen.set(key, result.length);
-      result.push(item);
-      return;
-    }
-
-    // 同一图片存在多条记录时，保留带创作提示词的那条，避免详情弹窗显示空提示词。
-    const previous = result[previousIndex];
-    const currentPrompt = item?.prompt || item?.input_prompt || item?.inputPrompt || '';
-    const previousPrompt = previous?.prompt || previous?.input_prompt || previous?.inputPrompt || '';
-    if (!previousPrompt && currentPrompt) result[previousIndex] = item;
-  });
-  return result;
+  return dedupeByMediaAliases(list, (item) => getCreationMediaAliases(item, type), (previous, current) => ({
+    ...previous,
+    ...current,
+    id: previous?.id || current?.id,
+    asset_id: previous?.asset_id || previous?.assetId || current?.asset_id || current?.assetId,
+    prompt: previous?.prompt || previous?.input_prompt || previous?.inputPrompt ? (previous.prompt || previous.input_prompt || previous.inputPrompt) : (current?.prompt || current?.input_prompt || current?.inputPrompt || ''),
+    input_prompt: previous?.input_prompt || previous?.inputPrompt || current?.input_prompt || current?.inputPrompt || '',
+    metadata_json: previous?.metadata_json || current?.metadata_json,
+  }));
 }
 
 export function normalizeCreationHistoryItem(item, type) {

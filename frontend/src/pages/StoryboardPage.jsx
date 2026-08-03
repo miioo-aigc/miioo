@@ -48,6 +48,7 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-08-03  主体删除兼容类型退化的旧引用，并在缓存/接口刷新期间持续过滤已删除主体，避免问号占位框复现
+ *   2026-08-03  分镜参考主体、参考图、参考视频和参考音频按类型归一化，并串行保存创作表单最新快照
  *   2026-08-03  完成 P0–P3 拆分并修复当前 React ESLint 规则问题：候选媒体适配、加载态、镜头纯函数与跨刷新任务恢复迁移至独立模块；
  *              页面保留 API、轮询、缓存、持久化、状态写回、Toast 和页面编排，当前 2133 行规模提醒不构成阻断。
  *   2026-07-30  完成任务响应适配、重新分镜任务恢复和时间轴候选媒体兼容修复。
@@ -141,6 +142,7 @@ import { enrichMainRefs, isBackendStoryboardId, makeStoryboardShot, normalizeSto
 import buildStoryboardPrompt from '../utils/buildStoryboardPrompt';
 import { addPendingTask, removePendingTask } from '../utils/taskPersistence';
 import { downloadBlob } from '../utils/downloadBlob';
+import { createLatestPersistenceQueue } from '../utils/referenceMediaPersistence';
 import {
   BatchImageModal,
   BatchVideoModal,
@@ -311,6 +313,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const imageFormStateRef = useRef({});
   const videoFormStateRef = useRef({});
   const creationFormSaveTimersRef = useRef(new Map());
+  const creationFormSaveQueuesRef = useRef(new Map());
   const shotsRef = useRef(shots);
   useEffect(() => {
     shotsRef.current = shots;
@@ -379,7 +382,12 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     if (timer) clearTimeout(timer);
     const nextTimer = setTimeout(() => {
       const shot = shotsRef.current.find((item) => item.id === shotId);
-      apiUpdateStoryboardCreationForm(projectId, shotId, {
+      if (!creationFormSaveQueuesRef.current.has(shotId)) {
+        creationFormSaveQueuesRef.current.set(shotId, createLatestPersistenceQueue((value) => (
+          apiUpdateStoryboardCreationForm(projectId, shotId, value)
+        )));
+      }
+      creationFormSaveQueuesRef.current.get(shotId).enqueue({
         image,
         video,
         genParams: shot?.genParams,

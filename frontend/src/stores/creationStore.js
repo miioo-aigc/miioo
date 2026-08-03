@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { normalizeImageUrl } from '../utils/imageUrl';
+import { dedupeByMediaAliases, getCreationAssetMediaAliases } from '../utils/creationHistoryAdapter';
 
-function getCardMediaKey(card) {
-  const rawUrl = card?.imageUrl || card?.originalUrl || card?.videoUrl || card?.audioUrl || card?.url || '';
-  return normalizeImageUrl(rawUrl) || rawUrl;
+function getCardMediaAliases(card) {
+  return getCreationAssetMediaAliases({
+    url: card?.imageUrl || card?.videoUrl || card?.audioUrl,
+    originalUrl: card?.originalUrl,
+    thumbnailUrl: card?.thumbnailUrl,
+  });
 }
 
 export const useCreationStore = create(
@@ -27,14 +30,24 @@ export const useCreationStore = create(
       mergeHistoryGenerations: (tab, newGenerations) =>
         set((state) => {
           const existing = state.generationsByTab[tab] ?? [];
-          const next = existing.map((generation) => ({ ...generation, cards: [...generation.cards] }));
+          const next = dedupeByMediaAliases(existing, (generation) => getCardMediaAliases(generation.cards?.[0]), (previous, current) => ({
+            ...previous,
+            prompt: previous.prompt || current.prompt || '',
+            promptHTML: previous.promptHTML || current.promptHTML || '',
+            model: previous.model || current.model || '',
+            cards: previous.cards.map((card, index) => index === 0 ? {
+              ...card,
+              ...current.cards?.[0],
+              id: card.id || current.cards?.[0]?.id,
+              assetId: card.assetId || current.cards?.[0]?.assetId || null,
+            } : card),
+          }));
           const locationsById = new Map();
           const locationsByMedia = new Map();
           next.forEach((generation, generationIndex) => {
             generation.cards.forEach((card, cardIndex) => {
               if (card.id) locationsById.set(String(card.id), { generationIndex, cardIndex });
-              const mediaKey = getCardMediaKey(card);
-              if (mediaKey) locationsByMedia.set(mediaKey, { generationIndex, cardIndex });
+              getCardMediaAliases(card).forEach((mediaKey) => locationsByMedia.set(mediaKey, { generationIndex, cardIndex }));
             });
           });
 
@@ -42,7 +55,8 @@ export const useCreationStore = create(
           newGenerations.forEach((generation) => {
             const unmatchedCards = [];
             generation.cards.forEach((card) => {
-              const location = (card.id && locationsById.get(String(card.id))) || locationsByMedia.get(getCardMediaKey(card));
+              const location = (card.id && locationsById.get(String(card.id))) || getCardMediaAliases(card)
+                .map((mediaKey) => locationsByMedia.get(mediaKey)).find(Boolean);
               if (!location) {
                 unmatchedCards.push(card);
                 return;
@@ -60,8 +74,7 @@ export const useCreationStore = create(
                   : item),
               };
               if (card.id) locationsById.set(String(card.id), location);
-              const mediaKey = getCardMediaKey(currentCard) || getCardMediaKey(card);
-              if (mediaKey) locationsByMedia.set(mediaKey, location);
+              getCardMediaAliases(currentCard).concat(getCardMediaAliases(card)).forEach((mediaKey) => locationsByMedia.set(mediaKey, location));
             });
             if (unmatchedCards.length > 0) toAdd.push({ ...generation, cards: unmatchedCards });
           });

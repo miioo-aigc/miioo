@@ -9,6 +9,7 @@
  *   2026-07-15  从 ScriptPage 抽离，保持发送/停止视觉和交互不变
  *   2026-07-21  按 Paper 设计稿恢复 40px 脉冲发送按钮视觉
  *   2026-07-21  独立管理默认、悬停、按下、禁用和暂停状态
+ *   2026-08-03  将发送按钮阴影边界修正为圆形
  */
 import { useState } from 'react';
 import { PulsingBorder } from '@paper-design/shaders-react';
@@ -55,6 +56,7 @@ function SendButton({ onClick, disabled = false, loading = false, isGenerating =
         gap: '0px',
         position: 'relative',
         flexShrink: 0,
+        borderRadius: '999px',
         boxShadow: '#2DC3E133 0px 0px 12px',
         cursor: 'inherit',
         transform: pressed ? 'scale(0.96)' : hovered && isClickable ? 'scale(1.05)' : 'scale(1)',

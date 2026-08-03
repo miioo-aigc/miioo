@@ -297,9 +297,31 @@ export async function apiBindSubjectReferenceImages(projectId, subjectId, { asse
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ asset_ids, primary_asset_id }),
+      // 后端实际校验会要求绑定列表有明确的主参考图；清空时显式传 null。
+      body: JSON.stringify({
+        asset_ids: Array.isArray(asset_ids) ? asset_ids : [],
+        primary_asset_id: primary_asset_id ?? null,
+      }),
     }
   );
+  if (!res.ok) {
+    const responseText = await res.text().catch(() => '');
+    const payload = (() => {
+      try {
+        return responseText ? JSON.parse(responseText) : null;
+      } catch {
+        return null;
+      }
+    })();
+    let detail = payload?.detail || payload?.message || payload?.error || responseText;
+    if (Array.isArray(detail)) {
+      detail = detail.map((item) => item?.msg || item?.message || String(item)).join('；');
+    }
+    if (typeof detail === 'object') detail = JSON.stringify(detail);
+    const error = new Error(detail || `绑定主体参考图失败（${res.status}）`);
+    error.status = res.status;
+    throw error;
+  }
   invalidateSubjects(projectId);
   // 重新拉取主体列表以更新缓存，触发订阅者同步最新主图
   apiGetSubjects(projectId, { type: "character" }).catch(() => {});

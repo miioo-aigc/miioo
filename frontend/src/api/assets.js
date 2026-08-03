@@ -204,6 +204,10 @@ function getAssetId(asset) {
   return typeof asset === 'string' ? asset : asset?.id ?? asset?.asset_id ?? null;
 }
 
+function getSubjectId(asset) {
+  return typeof asset === 'object' ? asset?.subject_id ?? asset?.subjectId ?? null : null;
+}
+
 async function getCreationAssetIds() {
   const ids = new Set();
   let cursor = null;
@@ -253,6 +257,35 @@ function classifyAsset(asset, creationIds) {
   return 'owned';
 }
 
+function isAssetLibrarySource(asset) {
+  const metadata = getAssetMetadata(asset);
+  return [
+    asset?.source,
+    asset?.source_type,
+    asset?.sourceType,
+    metadata.source,
+    metadata.source_type,
+    metadata.sourceType,
+    metadata.origin,
+    metadata.origin_type,
+    metadata.originType,
+    asset?.detail_source,
+    asset?.detailSource,
+    metadata.detail_source,
+    metadata.detailSource,
+  ].some((value) => {
+    if (value == null) return false;
+    const normalized = String(value).trim().toLowerCase().replace(/[_\s]/g, '-');
+    return normalized === 'asset-library'
+      || normalized === 'asset-library-selection'
+      || normalized === 'creation'
+      || normalized === 'created'
+      || normalized === 'generated'
+      || normalized === 'ai-generated'
+      || normalized.includes('asset-library');
+  });
+}
+
 /**
  * 按来源移除资产：普通删除保留创作资产并解除主体引用；主体删除时统一删除绑定记录。
  * assetRecords 必须尽量传入完整资产记录，来源缺失时再查询创作资产集合兜底。
@@ -267,13 +300,21 @@ export async function apiRemoveAssets(assetRecords = [], { projectId, subjectTyp
 
   const records = [...recordsById.values()];
   const forceDelete = deleteMode === 'subject-delete';
-  const needsFallback = !forceDelete && deleteMode !== 'project' && records.some((asset) => !hasKnownAssetSource(asset));
+  // 项目资产列表中的创作资产仍然保留创作资产本体，只是暂时带有 subject_id
+  // 关联。项目资产删除不能因为 deleteMode === 'project' 就跳过来源识别，
+  // 否则会把“主体绑定的创作图片”当成项目自有资产物理删除。
+  const needsFallback = !forceDelete && records.some((asset) => !hasKnownAssetSource(asset));
   const creationAssetIds = needsFallback ? await getCreationAssetIds() : new Set();
   const ownedIds = [];
-  const creationIds = [];
+  const unboundIds = [];
   records.forEach((asset) => {
     const id = String(getAssetId(asset));
-    if (!forceDelete && deleteMode !== 'project' && classifyAsset(asset, creationAssetIds) === 'creation') creationIds.push(id);
+    // 主体页面本地上传/主体创作生成的资产，以及来源未知的主体图片，
+    // 在项目资产中删除时直接删除源资产；只有明确识别为资产库选择的已有资产时才解绑。
+    if (!forceDelete && deleteMode === 'project' && getSubjectId(asset) != null
+      && !isAssetLibrarySource(asset)) ownedIds.push(id);
+    else if (!forceDelete && (deleteMode === 'project' && getSubjectId(asset) != null
+      || classifyAsset(asset, creationAssetIds) === 'creation')) unboundIds.push(id);
     else ownedIds.push(id);
   });
 
@@ -288,11 +329,11 @@ export async function apiRemoveAssets(assetRecords = [], { projectId, subjectTyp
       await apiBatchDeleteAssets(ownedIds, { projectId, subjectType });
     }
   }
-  if (creationIds.length > 0) {
-    await Promise.all(creationIds.map((id) => apiUpdateAsset(id, { subject_id: null })));
+  if (unboundIds.length > 0) {
+    await Promise.all(unboundIds.map((id) => apiUpdateAsset(id, { subject_id: null })));
   }
   invalidateProjectAssetDependents(projectId, subjectType);
-  return { ownedIds, creationIds };
+  return { ownedIds, creationIds: unboundIds, unboundIds };
 }
 
 /** 删除主体记录前，先处理项目中仍绑定该主体的全部资产。 */

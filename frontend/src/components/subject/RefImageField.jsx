@@ -18,6 +18,7 @@
  *   2026-07-22  明确参考图仅写入主体 reference_images，不参与右侧候选图列表
  *   2026-07-30  上传/绑定成功后回读主体详情，关闭弹窗后恢复服务端参考图
  *   2026-08-03  参考图继续独立维护，不向候选图状态写入
+ *   2026-08-03  参考图响应统一优先读取非空数组，避免顶层空数组遮蔽嵌套绑定
  *   2026-08-03  参考图变更按完整资产列表串行持久化，修复删除后重开恢复旧图
  */
 import { useEffect, useReducer, useRef, useState } from 'react';
@@ -25,7 +26,7 @@ import AssetPickerModal from '../AssetPickerModal';
 import { apiBindSubjectReferenceImages, apiGetSubjectDetail, apiUploadSubjectReferenceImage } from '../../api/subject';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { createLatestPersistenceQueue } from '../../utils/referenceMediaPersistence';
-import { normalizeSubjectReferenceImages } from '../../utils/referenceMediaAdapter';
+import { getSubjectReferenceImagesFromResponse, normalizeSubjectReferenceImages } from '../../utils/referenceMediaAdapter';
 import RefImageItem from './RefImageItem';
 import RefImageUploadCard from './RefImageUploadCard';
 
@@ -51,18 +52,7 @@ function normalizeRefImages(refImageIds, previous = []) {
 }
 
 function getReferenceImagesFromResponse(response) {
-  const list = response?.reference_images
-    || response?.referenceImages
-    || response?.reference_image_ids
-    || response?.referenceImageIds
-    || response?.reference_image_urls
-    || response?.referenceImageUrls
-    || response?.subject?.reference_images
-    || response?.subject?.referenceImages
-    || response?.images
-    || response?.data?.reference_images
-    || response?.data?.referenceImages;
-  return Array.isArray(list) ? list : [];
+  return getSubjectReferenceImagesFromResponse(response);
 }
 
 function normalizeServerReferenceImages(images, fallback = []) {

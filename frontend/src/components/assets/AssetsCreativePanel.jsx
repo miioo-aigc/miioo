@@ -5,7 +5,7 @@ import { useCreationStore } from '../../stores/creationStore';
 import { useAssetSelection } from '../../hooks/useAssetSelection';
 import { generationsToDays } from '../../utils/creativeDaysAdapter';
 import { normalizeImageUrl } from '../../utils/imageUrl';
-import { dedupeCreationHistoryList, getCreationAssetMediaAliases } from '../../utils/creationHistoryAdapter';
+import { dedupeByMediaAliases, dedupeCreationHistoryList, getCreationAssetMediaAliases } from '../../utils/creationHistoryAdapter';
 import { getCreativeBatchDeleteRequest } from '../../utils/assetsBatchAdapter';
 import { downloadMediaUrl } from '../../utils/downloadMediaUrl';
 import { downloadBlob } from '../../utils/downloadBlob';
@@ -195,7 +195,20 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         };
       });
       const additions = [...toAdd].reverse();
-      const mergedGens = additions.length > 0 ? [...additions, ...mergedExisting] : mergedExisting;
+      // 分页响应与已有列表都要再做一次全量合并，覆盖跨页、缓存和别名交叉形成的重复。
+      const mergedGens = dedupeByMediaAliases(
+        [...additions, ...mergedExisting],
+        getCreativeMediaAliases,
+        (previous, current) => ({
+          ...previous,
+          prompt: previous.prompt || current.prompt || '',
+          input_prompt: previous.input_prompt || current.input_prompt || '',
+          model: previous.model || current.model || '',
+          cards: previous.cards.map((existingCard, cardIndex) => cardIndex === 0
+            ? { ...existingCard, ...current.cards?.[0], id: existingCard.id || current.cards?.[0]?.id, assetId: existingCard.assetId || current.cards?.[0]?.assetId || null }
+            : existingCard),
+        }),
+      );
       setCreationGenerationsByTab((prev) => ({
         ...prev,
         [tab]: mergedGens,

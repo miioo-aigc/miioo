@@ -11,7 +11,7 @@
  *   mergeSubjectImages       去重、限制定稿图数量并插入任务占位/结果
  *
  * ─── 依赖边界 ───────────────────────────────────────────────────────
- *   仅依赖图片 URL 归一化工具；不引用 React、页面、API、Store 或 Toast
+ *   仅依赖图片地址和参考素材适配工具；不引用 React、页面、API、Store 或 Toast
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 SubjectPage 抽离主体详情图片的纯数据转换逻辑
@@ -21,16 +21,24 @@
  *   2026-07-28  候选图统一按创建/上传时间倒序排列，最新进入列表的图片置顶
  *   2026-07-31  参考图改为按候选图片自身原数据映射，不再回退到主体当前参考图
  *   2026-08-03  初始化候选图时排除同时出现在主体资产返回中的参考图资源
+ *   2026-08-03  兼容仅返回参考图资产 ID 的响应，并支持参考图状态异步回写后的二次过滤
+ *   2026-08-03  候选图过滤改用统一参考图身份键，兼容嵌套资产对象和空数组别名
+ *   2026-08-03  候选图身份兼容 reference_asset/reference_image/resource 等嵌套返回
  */
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { getSubjectReferenceImageIdentities, getSubjectReferenceImageKeys } from '../../utils/referenceMediaAdapter';
 
 function getReferenceImages(value) {
-  const raw = Array.isArray(value?.reference_image_urls) ? value.reference_image_urls
-    : Array.isArray(value?.referenceImages) ? value.referenceImages
-      : Array.isArray(value?.reference_images) ? value.reference_images
-        : Array.isArray(value?.refImages) ? value.refImages
-          : Array.isArray(value?.ref_images) ? value.ref_images
-            : [];
+  const candidates = [
+    value?.reference_image_urls,
+    value?.referenceImages,
+    value?.reference_images,
+    value?.refImages,
+    value?.ref_images,
+  ];
+  const raw = candidates.find((items) => Array.isArray(items) && items.length > 0)
+    || candidates.find((items) => Array.isArray(items))
+    || [];
   return raw.map((ref) => {
     if (typeof ref === 'string') return { url: normalizeImageUrl(ref) || ref };
     const url = ref?.url || ref?.file_url || ref?.fileUrl || ref?.image_url || ref?.imageUrl;
@@ -39,22 +47,29 @@ function getReferenceImages(value) {
 }
 
 function getImageUrl(value) {
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') {
+    return /^(https?:|blob:|\/)/i.test(value) ? value : null;
+  }
   return value?.file_url || value?.fileUrl || value?.image_url || value?.imageUrl
     || value?.original_url || value?.originalUrl || value?.preview_url || value?.previewUrl
+    || value?.uploaded_url || value?.uploadedUrl
     || value?.large_url || value?.largeUrl || value?.thumbnail_url || value?.thumbnailUrl
     || value?.url || value?.image?.url || value?.image?.file_url || value?.image?.fileUrl;
 }
 
 function getImageId(value) {
-  if (!value || typeof value === 'string') return null;
+  if (!value) return null;
+  if (typeof value === 'string') {
+    return /^(https?:|blob:|\/)/i.test(value) ? null : value;
+  }
   return value.asset_id || value.assetId || value.file_id || value.fileId
     || value.image_id || value.imageId || value.id || value.image?.asset_id || value.image?.id;
 }
 
 function buildReferenceKeys(referenceImages = []) {
-  const ids = new Set();
-  const urls = new Set();
+  const nestedKeys = getSubjectReferenceImageKeys(referenceImages);
+  const ids = new Set(nestedKeys.ids);
+  const urls = new Set(nestedKeys.urls);
   (Array.isArray(referenceImages) ? referenceImages : []).forEach((image) => {
     const id = getImageId(image);
     const url = getImageUrl(image);
@@ -66,11 +81,9 @@ function buildReferenceKeys(referenceImages = []) {
 }
 
 function isReferenceImage(image, referenceKeys) {
-  const id = getImageId(image);
-  const url = getImageUrl(image);
-  const normalizedUrl = normalizeImageUrl(url) || url;
-  return (id != null && referenceKeys.ids.has(String(id)))
-    || (normalizedUrl && referenceKeys.urls.has(normalizedUrl));
+  const identities = getSubjectReferenceImageIdentities([image]);
+  return identities.ids.some((id) => referenceKeys.ids.has(String(id)))
+    || identities.urls.some((url) => referenceKeys.urls.has(normalizeImageUrl(url) || String(url)));
 }
 
 function toImageItem({ id, rawUrl, settled = false, isReference = false, refImages = [], assetId = null, source = null, detailSource = null, prompt = null, inputPrompt = null, model = null, ratio = null, resolution = null, createdAt = null }) {
@@ -289,4 +302,14 @@ export function mergeSubjectImages({
   const pendingImage = mapPendingImage(pending);
 
   return pendingImage ? [pendingImage, ...images] : images;
+}
+
+/**
+ * 参考图绑定关系可能在候选图/主体资产请求之后才回写到页面。
+ * 对已经存在的候选状态重新执行同一套过滤，避免请求时序造成参考图回归。
+ */
+export function filterSubjectImagesByReferences(images = [], referenceImages = []) {
+  const referenceKeys = buildReferenceKeys(referenceImages);
+  return (Array.isArray(images) ? images : [])
+    .filter((image) => !isReferenceImage(image, referenceKeys));
 }

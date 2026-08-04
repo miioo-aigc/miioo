@@ -137,7 +137,7 @@ export default function CreationSendButton({ onClick, disabled = false, loading 
           frame={34362983.25087259}
           colors={['#0DC1FDB3', '#E1F5FF', '#73FFE1']}
           colorBack="#00000000"
-          className="rounded-full flex-1 w-full [box-shadow:#34DDFFB3_0px_0px_4px_2px_inset] bg-neutral-300"
+          className="rounded-full flex-1 w-full h-full [box-shadow:#34DDFFB3_0px_0px_4px_2px_inset] bg-neutral-300"
         />
         {loading ? (
           <div style={{ position: 'absolute', left: '50%', top: '50%', translate: '-50% -50%', display: 'flex', alignItems: 'center', gap: '3px' }}>

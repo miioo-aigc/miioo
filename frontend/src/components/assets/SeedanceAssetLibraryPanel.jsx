@@ -150,6 +150,8 @@ export default function SeedanceAssetLibraryPanel() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null);
   const [renameValue, setRenameValue] = useState('');
+  const [createVirtualGroupOpen, setCreateVirtualGroupOpen] = useState(false);
+  const [creatingVirtualGroup, setCreatingVirtualGroup] = useState(false);
   const [activeFolder, setActiveFolder] = useState(null);
   const [folderAssets, setFolderAssets] = useState([]);
   const [folderAssetsLoading, setFolderAssetsLoading] = useState(false);
@@ -458,14 +460,27 @@ export default function SeedanceAssetLibraryPanel() {
     refreshFolders();
   };
 
+  const handleOpenCreateVirtualGroup = () => {
+    setRenameTarget(null);
+    setRenameValue('');
+    setCreateVirtualGroupOpen(true);
+  };
+
   const handleCreateVirtualGroup = async () => {
+    const nextName = renameValue.trim();
+    if (!nextName || creatingVirtualGroup) return;
+    setCreatingVirtualGroup(true);
     try {
-      const group = await apiCreateAigcMaterialGroup({ name: '未命名素材组' });
+      const group = await apiCreateAigcMaterialGroup({ name: nextName });
       const folder = await mapGroupToFolder(group);
       setVirtualFolders((current) => [folder, ...current]);
+      setCreateVirtualGroupOpen(false);
+      setRenameValue('');
     } catch (error) {
       console.warn('[SeedanceAssetLibraryPanel] 创建AIGC素材组失败', error);
       showToast('新建素材组失败，请重试');
+    } finally {
+      setCreatingVirtualGroup(false);
     }
   };
 
@@ -515,7 +530,7 @@ export default function SeedanceAssetLibraryPanel() {
         </div>
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-[repeat(auto-fill,minmax(216px,270px))] content-start justify-start gap-[16px] overflow-y-auto px-[24px] py-[6px]">
-          <AddVirtualGroupCard onClick={handleCreateVirtualGroup} />
+          <AddVirtualGroupCard onClick={handleOpenCreateVirtualGroup} />
           {virtualFolders.map((folder) => (
             <SeedanceFolderCard
               key={folder.id}
@@ -528,13 +543,17 @@ export default function SeedanceAssetLibraryPanel() {
         </div>
       )}
 
-      {renameTarget && (
+      {(renameTarget || createVirtualGroupOpen) && (
         <AssetsProjectRenameModal
           value={renameValue}
           onChange={setRenameValue}
-          onConfirm={handleRename}
+          title={createVirtualGroupOpen ? '新建素材组' : '重命名'}
+          nameLabel={createVirtualGroupOpen ? '素材组名称' : '项目名称'}
+          confirming={createVirtualGroupOpen && creatingVirtualGroup}
+          onConfirm={createVirtualGroupOpen ? handleCreateVirtualGroup : handleRename}
           onClose={() => {
             setRenameTarget(null);
+            setCreateVirtualGroupOpen(false);
             setRenameValue('');
           }}
         />

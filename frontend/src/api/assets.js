@@ -208,6 +208,25 @@ function getSubjectId(asset) {
   return typeof asset === 'object' ? asset?.subject_id ?? asset?.subjectId ?? null : null;
 }
 
+function getAssetImageUrls(asset) {
+  if (!asset || typeof asset !== 'object') return [];
+  return [
+    asset.file_url,
+    asset.fileUrl,
+    asset.original_url,
+    asset.originalUrl,
+    asset.download_url,
+    asset.downloadUrl,
+    asset.preview_url,
+    asset.previewUrl,
+    asset.large_url,
+    asset.largeUrl,
+    asset.thumbnail_url,
+    asset.thumbnailUrl,
+    asset.url,
+  ].filter(Boolean);
+}
+
 async function getCreationAssetIds() {
   const ids = new Set();
   let cursor = null;
@@ -336,9 +355,22 @@ export async function apiRemoveAssets(assetRecords = [], { projectId, subjectTyp
   return { ownedIds, creationIds: unboundIds, unboundIds };
 }
 
-/** 删除主体记录前，先处理项目中仍绑定该主体的全部资产。 */
-export async function apiDeleteSubjectAssets(projectId, subjectId) {
+/**
+ * 删除主体记录前，先处理项目中仍绑定该主体的候选资产。
+ *
+ * 参考图虽然可能被后端同时挂上 subject_id，但它只是主体与资产的引用关系，
+ * 不能作为主体候选资产物理删除；调用方传入参考图资产 ID/地址后，这里会明确排除。
+ */
+export async function apiDeleteSubjectAssets(
+  projectId,
+  subjectId,
+  { excludedAssetIds = [], excludedAssetUrls = [], subjectType } = {},
+) {
   if (!projectId || subjectId == null) return { ownedIds: [], creationIds: [] };
+  const excludedIds = new Set((Array.isArray(excludedAssetIds) ? excludedAssetIds : [])
+    .filter(Boolean).map((id) => String(id)));
+  const excludedUrls = new Set((Array.isArray(excludedAssetUrls) ? excludedAssetUrls : [])
+    .filter(Boolean).map((url) => normalizeImageUrl(url) || String(url)));
   const records = [];
   let cursor = null;
   let offset = 0;
@@ -351,7 +383,13 @@ export async function apiDeleteSubjectAssets(projectId, subjectId) {
       limit: 200,
       ...(cursor ? { cursor } : offset > 0 ? { offset } : {}),
     });
-    records.push(...page.list.filter((asset) => String(asset.subject_id) === String(subjectId)));
+    records.push(...page.list.filter((asset) => {
+      if (String(asset.subject_id ?? asset.subjectId) !== String(subjectId)) return false;
+      const assetId = getAssetId(asset);
+      const assetUrls = getAssetImageUrls(asset);
+      return !excludedIds.has(String(assetId))
+        && !assetUrls.some((url) => excludedUrls.has(normalizeImageUrl(url) || String(url)));
+    }));
 
     const nextCursor = page.nextCursor || null;
     if (!page.hasMore || (nextCursor && nextCursor === previousCursor)) break;
@@ -367,7 +405,7 @@ export async function apiDeleteSubjectAssets(projectId, subjectId) {
   if (records.length === 0) return { ownedIds: [], creationIds: [] };
   // 主体与资产库使用同一批资产记录。主体删除后这些记录不能继续以
   // “无主体的创作资产”留在资产库，否则资产选择弹窗和资产库会出现脏数据。
-  return apiRemoveAssets(records, { projectId, deleteMode: 'subject-delete' });
+  return apiRemoveAssets(records, { projectId, subjectType, deleteMode: 'subject-delete' });
 }
 
 export async function apiBatchRestoreAssets(asset_ids) {

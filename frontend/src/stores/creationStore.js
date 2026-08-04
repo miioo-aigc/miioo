@@ -10,6 +10,21 @@ function getCardMediaAliases(card) {
   });
 }
 
+function mergeGenerations(previous, current) {
+  return {
+    ...previous,
+    prompt: previous.prompt || current.prompt || '',
+    promptHTML: previous.promptHTML || current.promptHTML || '',
+    model: previous.model || current.model || '',
+    cards: previous.cards.map((card, index) => index === 0 ? {
+      ...card,
+      ...current.cards?.[0],
+      id: card.id || current.cards?.[0]?.id,
+      assetId: card.assetId || current.cards?.[0]?.assetId || null,
+    } : card),
+  };
+}
+
 export const useCreationStore = create(
   persist(
     (set) => ({
@@ -30,18 +45,7 @@ export const useCreationStore = create(
       mergeHistoryGenerations: (tab, newGenerations) =>
         set((state) => {
           const existing = state.generationsByTab[tab] ?? [];
-          const next = dedupeByMediaAliases(existing, (generation) => getCardMediaAliases(generation.cards?.[0]), (previous, current) => ({
-            ...previous,
-            prompt: previous.prompt || current.prompt || '',
-            promptHTML: previous.promptHTML || current.promptHTML || '',
-            model: previous.model || current.model || '',
-            cards: previous.cards.map((card, index) => index === 0 ? {
-              ...card,
-              ...current.cards?.[0],
-              id: card.id || current.cards?.[0]?.id,
-              assetId: card.assetId || current.cards?.[0]?.assetId || null,
-            } : card),
-          }));
+          const next = dedupeByMediaAliases(existing, (generation) => getCardMediaAliases(generation.cards?.[0]), mergeGenerations);
           const locationsById = new Map();
           const locationsByMedia = new Map();
           next.forEach((generation, generationIndex) => {
@@ -79,12 +83,13 @@ export const useCreationStore = create(
             if (unmatchedCards.length > 0) toAdd.push({ ...generation, cards: unmatchedCards });
           });
 
-          if (toAdd.length === 0 && next.every((generation, index) => generation === existing[index])) return {};
+          const merged = dedupeByMediaAliases([...toAdd.reverse(), ...next], (generation) => getCardMediaAliases(generation.cards?.[0]), mergeGenerations);
+          if (merged.length === existing.length && merged.every((generation, index) => generation === existing[index])) return {};
           // 后端返回最新在前，反转后放到数组头部（老的在前），reverse 展示时新内容仍排第一
           return {
             generationsByTab: {
               ...state.generationsByTab,
-              [tab]: [...toAdd.reverse(), ...next],
+              [tab]: merged,
             },
           };
         }),
@@ -125,15 +130,20 @@ export const useCreationStore = create(
         })),
 
       addGeneration: (tab, generation) =>
-        set((state) => ({
-          generationsByTab: {
-            ...state.generationsByTab,
-            [tab]: [...state.generationsByTab[tab], {
-              ...generation,
-              createdAt: generation.createdAt || new Date().toISOString(),
-            }],
-          },
-        })),
+        set((state) => {
+          const item = { ...generation, createdAt: generation.createdAt || new Date().toISOString() };
+          const generations = dedupeByMediaAliases(
+            [...(state.generationsByTab[tab] ?? []), item],
+            (entry) => getCardMediaAliases(entry.cards?.[0]),
+            mergeGenerations,
+          );
+          return {
+            generationsByTab: {
+              ...state.generationsByTab,
+              [tab]: generations,
+            },
+          };
+        }),
 
       updateCardIds: (tab, genId, cardIds) =>
         set((state) => ({

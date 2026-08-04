@@ -56,19 +56,32 @@ export function getCreationAssetMediaAliases(asset) {
 }
 
 export function dedupeByMediaAliases(list, getAliases, mergeItem = (previous) => previous) {
-  const seen = new Map();
   const result = [];
   (Array.isArray(list) ? list : []).forEach((item) => {
     const aliases = getAliases(item);
-    const previousIndex = aliases.map((alias) => seen.get(alias)).find((index) => index !== undefined);
-    if (previousIndex === undefined) {
-      const index = result.length;
+    const matchingIndexes = new Set();
+    result.forEach((existingItem, index) => {
+      const existingAliases = getAliases(existingItem);
+      if (aliases.some((alias) => existingAliases.includes(alias))) matchingIndexes.add(index);
+    });
+
+    if (matchingIndexes.size === 0) {
       result.push(item);
-      aliases.forEach((alias) => seen.set(alias, index));
       return;
     }
-    result[previousIndex] = mergeItem(result[previousIndex], item);
-    getAliases(result[previousIndex]).forEach((alias) => seen.set(alias, previousIndex));
+
+    // 合并所有相交记录，而不是只合并到第一条命中的记录，避免出现
+    // A.preview_url = B.original_url、B.preview_url = C.original_url
+    // 这类别名链把同一媒体拆成两条结果。
+    const indexes = [...matchingIndexes].sort((a, b) => a - b);
+    const targetIndex = indexes[0];
+    let merged = result[targetIndex];
+    indexes.slice(1).forEach((index) => {
+      merged = mergeItem(merged, result[index]);
+    });
+    merged = mergeItem(merged, item);
+    result[targetIndex] = merged;
+    indexes.slice(1).reverse().forEach((index) => result.splice(index, 1));
   });
   return result;
 }

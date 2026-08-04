@@ -53,14 +53,22 @@ function CloseButton({ onClick }) {
   );
 }
 
-export function AssetsProjectRenameModal({ value, onChange, onClose, onConfirm }) {
+export function AssetsProjectRenameModal({
+  value,
+  onChange,
+  onClose,
+  onConfirm,
+  title = '重命名',
+  nameLabel = '项目名称',
+  confirming = false,
+}) {
   const canConfirm = Boolean(value.trim());
 
   return (
     <ModalShell onClose={onClose} width="400px">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', background: '#161616' }}>
         <span style={{ fontFamily: FONT_MEDIUM, fontWeight: 500, fontSize: '16px', lineHeight: '20px', color: '#FFFFFF' }}>
-          重命名
+          {title}
         </span>
         <CloseButton onClick={onClose} />
       </div>
@@ -68,7 +76,7 @@ export function AssetsProjectRenameModal({ value, onChange, onClose, onConfirm }
       <div style={{ padding: '8px 24px', background: '#161616' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: 'rgba(255,255,255,0.6)' }}>
-            项目名称
+            {nameLabel}
           </span>
           <TextField
             autoFocus
@@ -89,7 +97,14 @@ export function AssetsProjectRenameModal({ value, onChange, onClose, onConfirm }
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', padding: '16px 24px', background: '#161616' }}>
         <Button variant="secondary" size="large" onClick={onClose}>取消</Button>
-        <Button variant="primary" size="large" disabled={!canConfirm} onClick={canConfirm ? onConfirm : undefined}>确认</Button>
+        <Button
+          variant="primary"
+          size="large"
+          disabled={!canConfirm || confirming}
+          onClick={canConfirm && !confirming ? onConfirm : undefined}
+        >
+          {confirming ? '创建中...' : '确认'}
+        </Button>
       </div>
     </ModalShell>
   );

@@ -79,6 +79,11 @@
  *   2026-07-31  编辑主体候选图首次请求期间保留加载占位，避免已有候选图尚未返回时误显示为空列表
  *   2026-08-03  主体删除事件携带已清理的项目资产 ID，联动分镜、资产库和资产选择弹窗移除残留引用
  *   2026-08-03  主体初始化候选图排除参考图资产，修复参考图重新出现在右侧候选列表
+ *   2026-08-03  参考图异步回读后再次过滤候选状态，修复上传参考图与候选资产请求时序导致的回归
+ *   2026-08-03  删除主体前先解绑参考图，并从候选资产清理集合排除，避免误删被引用原图
+ *   2026-08-03  统一兼容空数组遮蔽嵌套参考图，以及嵌套 asset/image 身份，删除前无法读取详情时中止
+ *   2026-08-03  参考图候选过滤统一使用资产 ID/地址身份键，修复参考图再次混入右侧列表
+ *   2026-08-03  初始化请求不再用旧空参考图覆盖上传中的参考图，避免候选列表回归
  *   2026-07-15  抽离主体页工具栏和标签导航，页面保留业务状态与回调
  *   2026-07-15  抽离主体详情候选图/参考图映射、去重和单一定稿纯函数
  *   2026-07-15  抽离参考图详情快照转换和主体生图参数组装纯函数
@@ -114,14 +119,15 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import SubjectImageList from '../components/subject/SubjectImageList';
 import ConfirmStoryboardModal from '../components/subject/ConfirmStoryboardModal';
 import BatchGenerateModal from '../components/BatchGenerateModal';
-import { SubjectGenerationAction, SubjectPanelHeader, SubjectVoiceSelectModal, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, getFallbackSubjectImageModels } from '../components/subject';
-import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiDownloadSubjectImage, apiUnsetPrimarySubjectImage } from '../api/subject';
+import { SubjectGenerationAction, SubjectPanelHeader, SubjectVoiceSelectModal, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, filterSubjectImagesByReferences, getFallbackSubjectImageModels } from '../components/subject';
+import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiDownloadSubjectImage, apiUnsetPrimarySubjectImage, apiBindSubjectReferenceImages } from '../api/subject';
 import { apiGetTask } from '../api/storyboard';
 import { apiGetSubjectAssets, apiDeleteSubjectAssets } from '../api/assets';
 // 模型能力直接从后端 capabilities 获取
 import { apiListModels } from '../api/config';
 import { apiGetVoices } from '../api/voices';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import { getSubjectReferenceImageIdentities, getSubjectReferenceImagesFromResponse } from '../utils/referenceMediaAdapter';
 import { normalizeSubjects as normalizeSubjectList } from '../utils/subjectAdapter';
 import { addPendingTask, removePendingTask, getPendingTasks } from '../utils/taskPersistence';
 import { subscribe } from '../utils/cache';
@@ -235,6 +241,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   const [genMode, setGenMode] = useState('three_view');
   const [generatedImages, setGeneratedImages] = useState([]);
   const [refImageIds, setRefImageIds] = useState(Array.isArray(char?.reference_image_ids) ? char.reference_image_ids : []);
+  const latestRefImageIdsRef = useRef(refImageIds);
   const [mediaDetailOpen, setMediaDetailOpen] = useState(false);
   const [mediaDetailActiveIdx, setMediaDetailActiveIdx] = useState(0);
   const [toast, setToast] = useState(null);
@@ -248,6 +255,10 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   const draftDirtyRef = useRef(false);
   const draftFieldsRef = useRef(new Set());
   const saveChainRef = useRef(Promise.resolve());
+
+  useEffect(() => {
+    latestRefImageIdsRef.current = refImageIds;
+  }, [refImageIds]);
 
   const [, setPrimaryImageUrl] = useState(null);
   const [, setPrimaryImageId] = useState(null);
@@ -396,19 +407,24 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
         setSelectedResolution(genCfg.resolution || genCfg.size || subject.resolution);
       }
       if (genCfg.generation_mode) setGenMode(genCfg.generation_mode);
-      const referenceImages = detailRes.reference_images || detailRes.referenceImages
-        || detailRes.reference_image_ids || detailRes.referenceImageIds
-        || detailRes.reference_image_urls || detailRes.referenceImageUrls
-        || detailRes.subject?.reference_images || detailRes.subject?.referenceImages
-        || detailRes.data?.reference_images || detailRes.data?.referenceImages;
-      if (Array.isArray(referenceImages)) {
-        setRefImageIds(referenceImages.map((image) => ({
-          id: typeof image === 'string' ? image : image?.asset_id || image?.assetId || image?.id || image?.file_id || image?.fileId,
-          assetId: typeof image === 'string' ? image : image?.asset_id || image?.assetId || image?.id,
-          url: typeof image === 'string' ? image : image?.file_url || image?.fileUrl || image?.preview_url || image?.previewUrl
-            || image?.large_url || image?.largeUrl || image?.original_url || image?.originalUrl
-            || image?.uploaded_url || image?.uploadedUrl || image?.url || image?.image?.url || null,
-        })).filter((image) => image.id || image.url));
+      const referenceImages = getSubjectReferenceImagesFromResponse(detailRes);
+      const currentReferenceImages = latestRefImageIdsRef.current;
+      // 初始化详情可能早于参考图上传完成返回旧快照；此时不能用空数组覆盖
+      // 当前弹窗已经拿到的参考图，否则并行候选资产请求会再次把它显示出来。
+      const effectiveReferenceImages = referenceImages.length > 0 || currentReferenceImages.length === 0
+        ? referenceImages
+        : currentReferenceImages;
+      if (Array.isArray(effectiveReferenceImages)) {
+        const nextRefImageIds = effectiveReferenceImages.map((image) => {
+          const identities = getSubjectReferenceImageIdentities([image]);
+          const id = identities.ids[0] || (typeof image === 'string' ? image : null);
+          const url = identities.urls[0] || (typeof image === 'string' && /^(https?:|blob:|\/)/i.test(image) ? image : null);
+          return { id, assetId: id, url };
+        }).filter((image) => image.id || image.url);
+        setRefImageIds(nextRefImageIds);
+        // 参考图与候选图请求并行时，候选列表可能已先写入状态；
+        // 详情回读拿到参考图后立即清理同一资产，避免参考图回归右侧列表。
+        setGeneratedImages((prev) => filterSubjectImagesByReferences(prev, nextRefImageIds));
       }
 
       // 检查是否有进行中/已完成的跨弹窗生成
@@ -417,7 +433,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       const finalImages = mergeSubjectImages({
         candidateImages: detailRes.candidate_images,
         subjectAssets,
-        referenceImages,
+        referenceImages: effectiveReferenceImages,
         pending,
       }).filter((image) => {
         const imageId = image.assetId || image.id;
@@ -429,10 +445,12 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
 
       if (finalImages.length > 0) {
         setGeneratedImages(prev => {
-          if (refreshToken > 0) return finalImages;
-          if (prev.length === 0) return finalImages;
+          const latestReferences = latestRefImageIdsRef.current;
+          const filteredFinalImages = filterSubjectImagesByReferences(finalImages, latestReferences);
+          if (refreshToken > 0) return filteredFinalImages;
+          if (prev.length === 0) return filteredFinalImages;
           const seenUrls = new Set(prev.map(img => img.rawUrl));
-          const toAdd = finalImages.filter(img => !seenUrls.has(img.rawUrl));
+          const toAdd = filteredFinalImages.filter(img => !seenUrls.has(img.rawUrl));
           return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
         });
       } else if (refreshToken > 0) {
@@ -751,7 +769,11 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
           onModelChange={(value) => { setSelectedModel(value); updateDraftField('genConfig', { ...draftRef.current?.genConfig, model: value }); }}
           onRatioChange={(value) => { setSelectedRatio(value); updateDraftField('genConfig', { ...draftRef.current?.genConfig, ratio: value }); }}
           onResolutionChange={(value) => { setSelectedResolution(value); updateDraftField('genConfig', { ...draftRef.current?.genConfig, resolution: value }); }}
-          onRefImagesChange={(value) => { setRefImageIds(value); markDraftDirty(); }}
+          onRefImagesChange={(value) => {
+            setRefImageIds(value);
+            setGeneratedImages((prev) => filterSubjectImagesByReferences(prev, value));
+            markDraftDirty();
+          }}
           onGenModeChange={(value) => { setGenMode(value); updateDraftField('genConfig', { ...draftRef.current?.genConfig, generation_mode: value }); }}
         />
 
@@ -1699,9 +1721,28 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           : props.some((subject) => String(subject.id) === String(subjectId))
             ? 'prop'
             : undefined;
-      // 主体与项目资产属于同一条数据链：先清理 subject_id 关联资产，
-      // 再删除主体记录，避免资产库继续展示已删除主体的旧卡片。
-      const deletedAssetResult = await apiDeleteSubjectAssets(projectId, subjectId);
+      // 参考图只是 B 对图片的引用，不属于 B 的候选图资产。
+      // 先读取参考图快照并传给资产清理函数排除，避免删除 B 时误删被 A 使用的原图。
+      const subjectDetail = await apiGetSubjectDetail(projectId, subjectId).catch(() => null);
+      if (!subjectDetail) {
+        throw new Error('无法读取主体详情，已中止删除，避免误删参考图资产');
+      }
+      const referenceImages = getSubjectReferenceImagesFromResponse(subjectDetail);
+      const { ids: referenceAssetIds, urls: referenceAssetUrls } = getSubjectReferenceImageIdentities(referenceImages);
+      if (referenceAssetIds.length > 0 || referenceAssetUrls.length > 0) {
+        // 参考图是可复用资产，删除主体前只解除 B 的引用关系，不删除资产本体。
+        // 解绑失败时直接中止后续删除，避免主体删除接口级联误删参考图。
+        await apiBindSubjectReferenceImages(projectId, subjectId, {
+          asset_ids: [],
+          primary_asset_id: null,
+        });
+      }
+      const deletedAssetResult = await apiDeleteSubjectAssets(projectId, subjectId, {
+        excludedAssetIds: referenceAssetIds,
+        excludedAssetUrls: referenceAssetUrls,
+        subjectType,
+      });
+      // 主体与项目资产属于同一条数据链：清理候选资产后再删除主体记录。
       await apiDeleteSubject(projectId, subjectId);
       const assetIds = [
         ...(deletedAssetResult?.ownedIds || []),

@@ -2,11 +2,9 @@ import { useState } from 'react';
 import { Button } from '../ui';
 import DotsLoading from '../DotsLoading';
 import { normalizeImageUrl } from '../../utils/imageUrl';
-import { createPortal } from 'react-dom';
-import { MediaHoverPreview } from './MainRefCol';
 import StoryboardMediaPreview from './StoryboardMediaPreview';
 
-// 时间轴卡片悬停时只加载 preview_video_url；封面字段仅用于静态图片预览。
+// 时间轴视频悬停时直接在卡片内播放 preview_video_url，不创建额外悬浮窗。
 export default function StoryboardFinalizedCard({ shot, media, loading = false, cardSize = { width: 240, height: 135 }, selected = false, onSelect, onCreate, onPreview, onDownload }) {
   const [hovered, setHovered] = useState(false);
   const [hoverPreview, setHoverPreview] = useState(null);
@@ -38,10 +36,22 @@ export default function StoryboardFinalizedCard({ shot, media, loading = false, 
     setHoverPreview((prev) => prev ? { ...prev, x: event.clientX, y: event.clientY } : prev);
   }
   function leave() { setHovered(false); setHoverPreview(null); }
+  const isHoverVideo = hovered && hoverPreview?.isVideo;
   return (
-    <>
     <div data-storyboard-finalized-card="true" onClick={onSelect} onMouseEnter={enter} onMouseMove={move} onMouseLeave={leave} style={{ width: `${cardSize.width}px`, height: `${cardSize.height}px`, position: 'relative', flexShrink: 0, overflow: 'hidden', borderRadius: '8px', border: `1px solid ${selected ? '#2DC3E1' : 'rgba(255,255,255,0.10)'}`, boxShadow: selected ? '0 0 0 1px rgba(45,195,225,0.30)' : 'none', background: hasMedia ? '#101111' : '#242424', cursor: 'pointer', transition: 'border-color 150ms, box-shadow 150ms' }}>
       {hasMedia && <StoryboardMediaPreview media={media} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+      {isHoverVideo && (
+        <video
+          src={hoverPreview.url}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="metadata"
+          onLoadedMetadata={(event) => event.target.play().catch(() => {})}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#101111' }}
+        />
+      )}
       <span style={{ position: 'absolute', top: '6px', left: '12px', padding: '0 8px', borderRadius: '3px', background: '#000000CC', color: '#FFFFFFCC', fontSize: '12px', lineHeight: '20px' }}>{String(shot.number).padStart(2, '0')}</span>
       {hasMedia && <span style={{ position: 'absolute', top: 0, right: 0, padding: '0 10px', background: '#00000080', color: '#FFFFFFCC', fontSize: '12px', lineHeight: '22px' }}>{isVideo ? '视频' : '图片'}</span>}
       {loading && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(16,17,17,0.58)', pointerEvents: 'none' }} aria-label="正在加载定稿媒体" role="status"><DotsLoading size={5} color="#2DC3E1" gap={3} /></div>}
@@ -86,10 +96,5 @@ export default function StoryboardFinalizedCard({ shot, media, loading = false, 
         </div>
       </>}
     </div>
-    {hoverPreview && createPortal(
-      <MediaHoverPreview url={hoverPreview.url} isVideo={hoverPreview.isVideo} mouseX={hoverPreview.x} mouseY={hoverPreview.y} />,
-      document.body,
-    )}
-    </>
   );
 }

@@ -1,6 +1,16 @@
 # miioo 项目进度管理文档
 
-> 最后更新：2026-08-04（分镜分页缓存与空分镜媒体请求优化）
+> 最后更新：2026-08-04（分镜媒体悬停预览与时间轴卡片内播放）
+
+## 2026-08-04 分镜媒体悬停预览与时间轴卡片内播放
+
+- 新增分镜列视频悬停预览：鼠标移入候选视频卡片时，优先读取 `preview_video_url`，通过 Portal 在卡片附近显示预览窗口并自动播放、循环播放；没有预览视频时继续显示 `thumbnail_url`、`video_thumbnail_url` 或 `poster_url` 封面。
+- 修复视频悬浮窗在视频元数据加载完成前直接不渲染的问题。现在悬停后先按默认 `16:9` 比例显示窗口，视频元数据返回后再调整为真实比例，并显式执行静音播放。
+- 时间轴列表采用与分镜列不同的交互：视频悬停时不再显示额外悬浮窗，而是在原时间轴卡片内部直接播放 `preview_video_url`；移出卡片后恢复原有封面展示。
+- `preview_video_url` 归一化兼容接口顶层 snake_case、camelCase、`metadata` 和生成参数字段，并保留 `preview_video_url`/`previewVideoUrl` 两种前端别名，避免候选接口与分镜主数据链路之间丢失预览地址。
+- 封面地址不会作为 `<video>` 的播放源；没有 `preview_video_url` 时只显示静态封面，不主动拉取原始大视频。原始视频地址仍保留给详情弹窗和正式播放。
+- 涉及文件：`src/api/storyboard.js`、`src/utils/storyboardDataAdapter.js`、`src/components/storyboard/StoryboardShotMediaColumn.jsx`、`src/components/storyboard/StoryboardFinalizedCard.jsx`、`src/components/storyboard/MainRefCol.jsx`。
+- 验证：目标文件定向 ESLint、`npm run build` 和 `git diff --check` 均通过；构建仅保留项目已有的分块体积提示。
 
 ## 2026-08-04 分镜媒体封面缓存与原数据兜底
 

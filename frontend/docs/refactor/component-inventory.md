@@ -1,5 +1,14 @@
 # 组件重构盘点基线
 
+## 2026-08-04 分镜列与时间轴视频悬停预览
+
+- `StoryboardShotMediaColumn` 的候选视频卡片悬停时读取轻量 `preview_video_url`，在卡片附近通过 `MediaHoverPreview` 播放；缺少该字段时只显示封面，不把封面地址传给视频播放器。
+- `MediaHoverPreview` 在视频元数据尚未加载时先使用默认 `16:9` 比例渲染窗口，加载完成后根据实际视频尺寸更新比例，避免悬停时因尺寸未知出现空白。
+- `StoryboardFinalizedCard` 的时间轴视频不再创建外部悬浮窗，悬停后直接在卡片内部播放 `preview_video_url`，移出后恢复统一媒体封面；图片仍保持原有卡片预览行为。
+- `api/storyboard.js` 和 `storyboardDataAdapter.js` 兼容 `preview_video_url`、`previewVideoUrl` 及 `metadata`/生成参数中的同名字段，确保候选媒体和分镜主数据都能驱动预览。
+- 页面进入时不主动请求原始大视频；预览视频仅在悬停交互发生时加载，详情弹窗继续使用原始媒体地址。
+- 验证：相关组件定向 ESLint、`npm run build` 和 `git diff --check` 通过。
+
 ## 2026-08-04 分镜媒体封面缓存与兜底
 
 - 新增 `StoryboardMediaPreview`，统一分镜列和时间轴的媒体地址选择：优先轻量封面，图片无封面回退原图，视频无封面尝试原视频首帧，截帧失败时显示原视频。

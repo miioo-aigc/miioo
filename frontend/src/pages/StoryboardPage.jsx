@@ -47,6 +47,7 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-04  空分镜直接标记无候选媒体，跳过 media-candidates 请求并保留生成/上传后的刷新路径
  *   2026-08-03  主体删除兼容类型退化的旧引用，并在缓存/接口刷新期间持续过滤已删除主体，避免问号占位框复现
  *   2026-08-04  候选媒体按分镜缓存轻量封面与状态；无封面时恢复图片原图/视频首帧兜底
  *   2026-08-03  分镜参考主体、参考图、参考视频和参考音频按类型归一化，并串行保存创作表单最新快照
@@ -323,6 +324,14 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const [pendingCandidateMap, setPendingCandidateMap] = useState({});
   const [finalizedMediaMap, setFinalizedMediaMap] = useState({});
   const [mediaLoadingMap, setMediaLoadingMap] = useState({});
+  const candidateMediaMapRef = useRef(candidateMediaMap);
+  const pendingCandidateMapRef = useRef(pendingCandidateMap);
+  const generatingImageShotIdsRef = useRef(generatingImageShotIds);
+  const generatingVideoShotIdsRef = useRef(generatingVideoShotIds);
+  useEffect(() => { candidateMediaMapRef.current = candidateMediaMap; }, [candidateMediaMap]);
+  useEffect(() => { pendingCandidateMapRef.current = pendingCandidateMap; }, [pendingCandidateMap]);
+  useEffect(() => { generatingImageShotIdsRef.current = generatingImageShotIds; }, [generatingImageShotIds]);
+  useEffect(() => { generatingVideoShotIdsRef.current = generatingVideoShotIds; }, [generatingVideoShotIds]);
   const mediaRequestVersionRef = useRef(new Map());
   const [timelinePreviewMedia, setTimelinePreviewMedia] = useState(null);
   const [creationPanel, setCreationPanel] = useState(null); // { shot, tab }
@@ -416,19 +425,78 @@ function fallbackCandidates(shot) {
       media_type: media.type?.startsWith('video') ? 'video' : 'image',
       is_finalized: (media.id || media.url) === finalizedId,
       source: media.source || 'storyboard-existing',
-    }));
-  }
+  }));
+}
+
+function hasStoryboardMediaHint(shot = {}) {
+  const hasUrl = (value) => {
+    if (typeof value === 'string') return value.trim().length > 0;
+    return Boolean(value?.url || value?.src || value?.image_url || value?.video_url);
+  };
+  const mediaObjects = [
+    shot.storyboardImage,
+    shot.storyboardVideo,
+    shot.image,
+    shot.video,
+  ];
+  const mediaFields = [
+    shot.image_url,
+    shot.imageUrl,
+    shot.thumbnail_url,
+    shot.thumbnailUrl,
+    shot.preview_url,
+    shot.previewUrl,
+    shot.video_url,
+    shot.videoUrl,
+    shot.video_thumbnail_url,
+    shot.videoThumbnailUrl,
+    shot.poster_url,
+    shot.posterUrl,
+    shot.preview_video_url,
+    shot.previewVideoUrl,
+  ];
+  return mediaObjects.some(hasUrl) || mediaFields.some(hasUrl);
+}
 
   const loadShotCandidates = useCallback(async (currentShots) => {
     const validShots = (currentShots || []).filter((shot) => isBackendStoryboardId(shot?.backendId || shot?.id));
-    const loadingIds = validShots.map((shot) => shot.id);
+    const shotsWithoutMedia = validShots.filter((shot) => (
+      !hasStoryboardMediaHint(shot)
+      && !Object.prototype.hasOwnProperty.call(candidateMediaMapRef.current, shot.id)
+      && !pendingCandidateMapRef.current[shot.id]?.length
+      && !generatingImageShotIdsRef.current.has(shot.id)
+      && !generatingVideoShotIdsRef.current.has(shot.id)
+    ));
+    const shotsToRequest = validShots.filter((shot) => !shotsWithoutMedia.includes(shot));
+    const loadingIds = shotsToRequest.map((shot) => shot.id);
+    const skippedIds = shotsWithoutMedia.map((shot) => shot.id);
     const requestVersions = new Map(loadingIds.map((id) => {
       const nextVersion = (mediaRequestVersionRef.current.get(id) || 0) + 1;
       mediaRequestVersionRef.current.set(id, nextVersion);
       return [id, nextVersion];
     }));
-    setMediaLoadingMap((prev) => ({ ...prev, ...Object.fromEntries(loadingIds.map((id) => [id, true])) }));
-    const entries = await Promise.all(validShots.map(async (shot) => {
+    setMediaLoadingMap((prev) => ({
+      ...prev,
+      ...Object.fromEntries(loadingIds.map((id) => [id, true])),
+      ...Object.fromEntries(skippedIds.map((id) => [id, false])),
+    }));
+    if (skippedIds.length > 0) {
+      setCandidateMediaMap((prev) => {
+        const next = { ...prev };
+        skippedIds.forEach((id) => {
+          if (!Object.prototype.hasOwnProperty.call(next, id)) next[id] = [];
+        });
+        return next;
+      });
+      setFinalizedMediaMap((prev) => {
+        const next = { ...prev };
+        skippedIds.forEach((id) => {
+          if (!Object.prototype.hasOwnProperty.call(next, id)) next[id] = null;
+        });
+        return next;
+      });
+    }
+    const entries = await Promise.all(shotsToRequest.map(async (shot) => {
       const backendId = shot.backendId || shot.id;
       try {
         const items = await apiListStoryboardMediaCandidates(projectId, backendId);

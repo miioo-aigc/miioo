@@ -1764,6 +1764,15 @@
 - `hasManuallyInteracted` 已改为 state，`shotsRef` 通过 effect 同步，`activeShotId` 声明顺序已修复；页面定向 ESLint、全量 lint、构建、架构检查和 `git diff --check` 均通过。
 - 当前 `StoryboardPage.jsx` 实际为 `2133` 行，仍属于页面规模提醒，但未发现结构违规或阻断级问题。页面继续集中保留 API、轮询、缓存、持久化、Store 写回、Toast 和页面编排，不再为降低行数强拆页面级副作用。
 
+## 2026-08-04 分镜媒体缓存与空分镜请求优化
+
+- 分镜媒体候选继续按镜头使用 `storyboard-media-candidates:{projectId}:{storyboardId}` 轻量缓存，只保存候选结构、定稿状态、封面地址和详情所需的小字段；不保存视频二进制、`data:` 图片或超大字符串，避免 `QuotaExceededError` 影响文字缓存和页面展示。
+- 分镜列表新增分页缓存键 `storyboard-pages:{projectId}:{episodeId}:{limit}:{offset}:{with-gen-params|basic}`，覆盖分镜页真实使用的 `limit`、`offset` 和 `include_gen_params` 请求；分页缓存与整集缓存分离，缓存命中后可直接恢复文字和镜头结构。
+- 移除同一项目在主体页/分镜页切换时的无条件分镜缓存清理；分镜写操作、主体/资产变化、剧集删除和脚本导入仍按项目清理分镜整集缓存、分页缓存及候选媒体缓存，保证数据变更后不会长期显示旧数据。
+- `StoryboardPage` 的媒体加载先判断镜头是否存在媒体提示字段。空镜头没有图片、视频、缩略图、预览图、视频封面，也没有生成中、待恢复或上传任务时，直接写入空候选并结束加载态，不发送 `media-candidates` 请求；后续生成、上传或任务恢复会重新触发候选媒体刷新。
+- 媒体展示保持封面优先和原数据兜底：图片优先使用 `preview_url`/`thumbnail_url`，视频优先使用 `video_thumbnail_url`/`poster_url`；缺少封面时图片回退原图，视频先尝试原视频首帧，失败后回退原视频播放器。
+- 本次完成目标文件定向 ESLint、`npm run build`、`npm run check:architecture` 和 `git diff --check`；用户已验证空分镜跳过媒体请求通过。检查结果中的页面规模提醒和构建分块提示均为既有非阻断项。
+
 ## 2026-08-03 分镜主体删除后失效占位引用修复
 
 - 修复主体页面删除主体后，分镜主体参考列图片消失但仍出现灰色问号占位框的问题；用户验证通过。

@@ -23,12 +23,14 @@
  *   2026-07-29 修复分镜卡片在临界宽度下网格行高不足导致的上下行重叠
  *   2026-08-03 主体删除后同步刷新资产库当前分类，避免保留旧主体资产卡片
  *   2026-08-03 统一项目资产下载文件名，并让详情弹窗通过资产下载接口获取文件
+ *   2026-08-04 资产库结果列表排除主体参考过程资产；保留被其他主体引用的源结果资产
+ *   2026-08-04 过滤改为读取主体详情，避免主体摘要不返回 reference_images 导致过滤失效
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { apiGetProjectAssetsPage, groupByCategory, calcProjectAssetsLimit, apiRemoveAssets, apiUpdateAsset, apiDownloadAsset } from '../../api/assets';
-import { apiGetSubjects, apiGetEpisodes } from '../../api/subject';
+import { apiGetSubjects, apiGetSubjectDetail, apiGetEpisodes } from '../../api/subject';
 import { apiGetProjects, apiDeleteProject, apiUpdateProject, apiCopyProject, apiDownloadProjectAssets } from '../../api/project';
 import { apiGetStoryboards, apiListStoryboardMediaCandidates, apiDownloadStoryboardMediaCandidate } from '../../api/storyboard';
 import { invalidate } from '../../utils/cache';
@@ -39,6 +41,8 @@ import { useAssetSelection } from '../../hooks/useAssetSelection';
 import { getAssetPageKey, getAssetSubjectType, getProjectBatchDeleteRequest, getProjectDownloadItems, SUBJECT_CARD_CATEGORIES } from '../../utils/assetsBatchAdapter';
 import { downloadBlob } from '../../utils/downloadBlob';
 import { getBlobExtension, getProjectAssetDownloadFilename } from '../../utils/projectAssetFilename';
+import { getSubjectReferenceImageIdentities, getSubjectReferenceImagesFromResponse, getSubjectReferenceSnapshot, isExplicitReferenceMedia } from '../../utils/referenceMediaAdapter';
+import { normalizeImageUrl } from '../../utils/imageUrl';
 import { normalizeStoryboard } from '../../utils/storyboardDataAdapter';
 import ConfirmDialog from '../ConfirmDialog';
 import { AssetsTabBar } from './AssetsTabs';
@@ -59,6 +63,86 @@ const PROJECT_CATEGORY_TABS = [
   { key: 'audio', label: '音频' },
   { key: 'final', label: '成片' },
 ];
+
+// 参考图是主体创作的输入素材，不是项目资产库中的结果资产。
+// 后端历史数据可能把参考图错误地写入 subject_id，不能只依赖 category/subject_id
+// 判断归属；这里按主体详情中的参考图 ID 和地址，在资产库展示边界再次排除。
+function getReferenceIdentitySets(subjects = []) {
+  const references = [];
+  (Array.isArray(subjects) ? subjects : []).forEach((subject) => {
+    const subjectReferences = [
+      ...getSubjectReferenceImagesFromResponse(subject),
+      ...(getSubjectReferenceSnapshot(
+        subject?.project_id ?? subject?.projectId,
+        subject?.id ?? subject?.subject_id ?? subject?.subjectId,
+      ) || []),
+    ];
+    const identities = getSubjectReferenceImageIdentities(subjectReferences);
+    if (identities.ids.length === 0 && identities.urls.length === 0) return;
+    references.push({
+      subjectId: subject?.id ?? subject?.subject_id ?? subject?.subjectId ?? null,
+      ids: new Set(identities.ids.map((id) => String(id))),
+      urls: new Set(identities.urls.map((url) => normalizeImageUrl(url) || String(url))),
+    });
+  });
+  return references;
+}
+
+function isReferenceAsset(asset, references) {
+  const assetId = asset?.id ?? asset?.asset_id ?? asset?.assetId;
+  const subjectId = asset?.subject_id ?? asset?.subjectId ?? null;
+  const urls = [
+    asset?.file_url,
+    asset?.fileUrl,
+    asset?.original_url,
+    asset?.originalUrl,
+    asset?.preview_url,
+    asset?.previewUrl,
+    asset?.thumbnail_url,
+    asset?.thumbnailUrl,
+    asset?.url,
+  ].filter(Boolean);
+  return references.some((reference) => {
+    // A 主体的结果图被 B 作为参考图时，仍然是 A 的结果资产，不能从资产库隐藏。
+    // 只有参考图资产属于引用它的主体，或本身没有主体归属时，才视为过程素材。
+    const belongsToReferencingSubject = subjectId == null
+      || reference.subjectId == null
+      || String(subjectId) === String(reference.subjectId);
+    if (!belongsToReferencingSubject) return false;
+    return (assetId != null && reference.ids.has(String(assetId)))
+      || urls.some((url) => reference.urls.has(normalizeImageUrl(url) || String(url)));
+  });
+}
+
+async function filterReferenceAssetsForLibrary(projectId, category, assets) {
+  if (!projectId || !Array.isArray(assets) || assets.length === 0) return assets;
+  const subjectType = getAssetSubjectType(category);
+  if (!subjectType) return assets;
+  try {
+    const subjects = await apiGetSubjects(projectId, { type: subjectType });
+    // `/subjects` 是卡片摘要，历史后端不会在这里返回 reference_images；
+    // 必须再读主体详情，才能在刷新资产库后识别上传/绑定的参考过程素材。
+    const detailedSubjects = await Promise.all(
+      (Array.isArray(subjects) ? subjects : []).map(async (subject) => {
+        const subjectId = subject?.id ?? subject?.subject_id ?? subject?.subjectId;
+        if (!subjectId) return subject;
+        try {
+          const detail = await apiGetSubjectDetail(projectId, subjectId);
+          return { ...subject, ...detail, project_id: projectId };
+        } catch (error) {
+          console.warn('[ProjectAssetsPanel] 获取主体参考图详情失败:', error);
+          return { ...subject, project_id: projectId };
+        }
+      }),
+    );
+    const references = getReferenceIdentitySets(detailedSubjects);
+    return assets.filter((asset) => !isExplicitReferenceMedia(asset) && !isReferenceAsset(asset, references));
+  } catch (error) {
+    // 资产库加载不能因主体详情接口偶发失败而整体变成空态；失败时保留原列表。
+    console.warn('[ProjectAssetsPanel] 参考图资产过滤失败，保留原始资产列表:', error);
+    return assets;
+  }
+}
 
 // subjectType：本次删除影响的主体类别（'character'|'scene'|'prop'），
 // 让 Home 只刷新对应类别的主体，避免误刷/覆盖其它类别的卡片。
@@ -237,12 +321,13 @@ export default function AssetsProjectPanel() {
       }
       const limit = calcProjectAssetsLimit(category);
       const result = await apiGetProjectAssetsPage(projectId, { category, limit });
-      const cards = await applySubjectMeta(projectId, category, result.grouped[category] ?? []);
+      const filteredRawList = await filterReferenceAssetsForLibrary(projectId, category, result.rawList);
+      const cards = await applySubjectMeta(projectId, category, groupByCategory(filteredRawList)[category] ?? []);
       setAssetsMap(prev => ({ ...prev, [category]: cards }));
       completeFirstPage(key, {
         cursor: result.nextCursor,
         hasMore: result.hasMore,
-        rawList: result.rawList,
+        rawList: filteredRawList,
       });
     } catch (err) {
       console.error('[ProjectAssetsPanel] 加载失败:', err);
@@ -260,13 +345,14 @@ export default function AssetsProjectPanel() {
       const limit = calcProjectAssetsLimit(category);
       const result = await apiGetProjectAssetsPage(projectId, { category, limit, cursor: meta.cursor });
       const accumulated = [...(meta.rawList || []), ...result.rawList];
-      const regrouped = groupByCategory(accumulated);
+      const filteredAccumulated = await filterReferenceAssetsForLibrary(projectId, category, accumulated);
+      const regrouped = groupByCategory(filteredAccumulated);
       const cards = await applySubjectMeta(projectId, category, regrouped[category] ?? []);
       setAssetsMap(prev => ({ ...prev, [category]: cards }));
       completeMorePage(key, {
         cursor: result.nextCursor,
         hasMore: result.hasMore,
-        rawList: accumulated,
+        rawList: filteredAccumulated,
       });
     } catch (err) {
       console.error('[ProjectAssetsPanel] 加载更多失败:', err);

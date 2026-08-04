@@ -11,7 +11,7 @@ export { default as SubjectVoiceSelectModal } from './SubjectVoiceSelectModal';
 export { default as SubjectToolbar } from './SubjectToolbar';
 export { default as SubjectTabs } from './SubjectTabs';
 export { SUBJECT_TABS } from './SubjectTabsConstants';
-export { createSubjectImageItem, mapCandidateImages, mapSubjectAssets, mapReferenceImages, mapReferenceImageIdsForModal, mergeSubjectImages, filterSubjectImagesByReferences } from './SubjectImageMappers';
+export { createSubjectImageItem, mapCandidateImages, mapSubjectAssets, mapReferenceImages, mapReferenceImageIdsForModal, getSubjectCandidateImagesFromResponse, mergeSubjectImages, filterSubjectImagesByReferences } from './SubjectImageMappers';
 export { buildSubjectGenerationParams } from './SubjectGenerationParams';
 export { extractSubjectImageResult, getSubjectGenerationErrorMessage } from './SubjectGenerationResult';
 export { getSubjectTaskStatus, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult } from './SubjectTaskPolling';

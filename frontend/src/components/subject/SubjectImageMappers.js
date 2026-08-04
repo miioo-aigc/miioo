@@ -7,6 +7,7 @@
  *   mapSubjectAssets          将绑定主体的项目资产转换为右侧候选图
  *   mapReferenceImages       将后端参考图转换为详情/预览数据（不进入候选列表）
  *   mapReferenceImageIdsForModal  将参考图 ID/URL 转为详情弹窗快照
+ *   getSubjectCandidateImagesFromResponse 从主体详情响应读取候选图字段
  *   sortSubjectImages        按进入候选列表时间倒序排列
  *   mergeSubjectImages       去重、限制定稿图数量并插入任务占位/结果
  *
@@ -26,7 +27,7 @@
  *   2026-08-03  候选图身份兼容 reference_asset/reference_image/resource 等嵌套返回
  */
 import { normalizeImageUrl } from '../../utils/imageUrl';
-import { getSubjectReferenceImageIdentities, getSubjectReferenceImageKeys } from '../../utils/referenceMediaAdapter';
+import { getSubjectReferenceImageIdentities, getSubjectReferenceImageKeys, isExplicitReferenceMedia } from '../../utils/referenceMediaAdapter';
 
 function getReferenceImages(value) {
   const candidates = [
@@ -44,6 +45,26 @@ function getReferenceImages(value) {
     const url = ref?.url || ref?.file_url || ref?.fileUrl || ref?.image_url || ref?.imageUrl;
     return url ? { ...ref, url: normalizeImageUrl(url) || url } : null;
   }).filter((ref) => ref?.url);
+}
+
+/**
+ * 主体详情的候选图只允许来自 candidate_images/candidateImages。
+ * 不读取通用 images，避免把参考图上传响应或创作输入素材误加入候选列表。
+ */
+export function getSubjectCandidateImagesFromResponse(response) {
+  const containers = [
+    response,
+    response?.subject,
+    response?.data,
+    response?.data?.subject,
+    response?.result,
+    response?.result?.subject,
+  ];
+  for (const container of containers) {
+    const images = container?.candidate_images ?? container?.candidateImages;
+    if (Array.isArray(images)) return images;
+  }
+  return [];
 }
 
 function getImageUrl(value) {
@@ -81,6 +102,7 @@ function buildReferenceKeys(referenceImages = []) {
 }
 
 function isReferenceImage(image, referenceKeys) {
+  if (isExplicitReferenceMedia(image)) return true;
   const identities = getSubjectReferenceImageIdentities([image]);
   return identities.ids.some((id) => referenceKeys.ids.has(String(id)))
     || identities.urls.some((url) => referenceKeys.urls.has(normalizeImageUrl(url) || String(url)));

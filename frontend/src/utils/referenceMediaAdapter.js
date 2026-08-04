@@ -6,6 +6,7 @@
  *
  * 更新记录：2026-08-03 兼容参考图响应的空数组遮蔽和嵌套资产身份；统一提供候选图过滤键。
  * 更新记录：2026-08-03 兼容 reference_asset/reference_image/resource/source 等嵌套身份。
+ * 更新记录：2026-08-04 不再把通用 images 字段误判为参考图数组；补充显式参考素材标记。
  */
 
 import { normalizeImageUrl } from './imageUrl';
@@ -97,6 +98,22 @@ export function normalizeSubjectReferenceImages(items = []) {
  * 判断数组，否则空数组会遮住后续字段。
  */
 export function getSubjectReferenceImagesFromResponse(response) {
+  const scalarReferenceCandidates = [
+    response?.reference_asset_id != null ? [{ asset_id: response.reference_asset_id }] : null,
+    response?.reference_image_url ? [{ file_url: response.reference_image_url }] : null,
+    response?.referenceImageUrl ? [{ file_url: response.referenceImageUrl }] : null,
+    response?.subject?.reference_asset_id != null ? [{ asset_id: response.subject.reference_asset_id }] : null,
+    response?.subject?.reference_image_url ? [{ file_url: response.subject.reference_image_url }] : null,
+    response?.subject?.referenceImageUrl ? [{ file_url: response.subject.referenceImageUrl }] : null,
+    response?.data?.reference_asset_id != null ? [{ asset_id: response.data.reference_asset_id }] : null,
+    response?.data?.reference_image_url ? [{ file_url: response.data.reference_image_url }] : null,
+    response?.data?.subject?.reference_asset_id != null ? [{ asset_id: response.data.subject.reference_asset_id }] : null,
+    response?.data?.subject?.reference_image_url ? [{ file_url: response.data.subject.reference_image_url }] : null,
+    response?.result?.reference_asset_id != null ? [{ asset_id: response.result.reference_asset_id }] : null,
+    response?.result?.reference_image_url ? [{ file_url: response.result.reference_image_url }] : null,
+    response?.result?.subject?.reference_asset_id != null ? [{ asset_id: response.result.subject.reference_asset_id }] : null,
+    response?.result?.subject?.reference_image_url ? [{ file_url: response.result.subject.reference_image_url }] : null,
+  ].filter(Boolean);
   const candidates = [
     response?.reference_images,
     response?.referenceImages,
@@ -126,23 +143,10 @@ export function getSubjectReferenceImagesFromResponse(response) {
     response?.result?.subject?.referenceImages,
     response?.result?.subject?.reference_image_ids,
     response?.result?.subject?.referenceImageIds,
-    response?.images,
+    ...scalarReferenceCandidates,
   ];
-  const nestedCandidates = [];
-  const visited = new Set();
-  function collectNested(value) {
-    if (!value || typeof value !== 'object' || visited.has(value)) return;
-    visited.add(value);
-    Object.entries(value).forEach(([key, child]) => {
-      if (/reference|ref_images|refImages/i.test(key) && Array.isArray(child)) {
-        nestedCandidates.push(child);
-      }
-      if (child && typeof child === 'object' && !Array.isArray(child)) collectNested(child);
-    });
-  }
-  collectNested(response);
-  return [...candidates, ...nestedCandidates].find((value) => Array.isArray(value) && value.length > 0)
-    || [...candidates, ...nestedCandidates].find((value) => Array.isArray(value))
+  return candidates.find((value) => Array.isArray(value) && value.length > 0)
+    || candidates.find((value) => Array.isArray(value))
     || [];
 }
 
@@ -152,6 +156,29 @@ const REFERENCE_URL_KEYS = [
   'preview_url', 'previewUrl', 'large_url', 'largeUrl', 'thumbnail_url', 'thumbnailUrl',
   'uploaded_url', 'uploadedUrl', 'url',
 ];
+
+// 弹窗关闭后仍保留本次已确认的参考图身份，避免下一次打开时被旧详情快照覆盖。
+// 仅作为短生命周期的前端校正缓存，真实持久化仍由参考图接口负责。
+const subjectReferenceSnapshotCache = new Map();
+
+function subjectReferenceCacheKey(projectId, subjectId) {
+  return `${String(projectId ?? '')}:${String(subjectId ?? '')}`;
+}
+
+export function setSubjectReferenceSnapshot(projectId, subjectId, images = []) {
+  if (projectId == null || subjectId == null) return;
+  subjectReferenceSnapshotCache.set(
+    subjectReferenceCacheKey(projectId, subjectId),
+    Array.isArray(images) ? images.map((image) => ({ ...image })) : [],
+  );
+}
+
+export function getSubjectReferenceSnapshot(projectId, subjectId) {
+  if (projectId == null || subjectId == null) return null;
+  const key = subjectReferenceCacheKey(projectId, subjectId);
+  if (!subjectReferenceSnapshotCache.has(key)) return null;
+  return subjectReferenceSnapshotCache.get(key).map((image) => ({ ...image }));
+}
 
 function collectReferenceImageIdentity(value, ids, urls, visited) {
   if (!value || typeof value !== 'object' || visited.has(value)) return;
@@ -197,6 +224,51 @@ export function getSubjectReferenceImageKeys(images = []) {
     ids: new Set(ids.map((id) => String(id))),
     urls: new Set(urls.map((url) => normalizeImageUrl(url) || String(url))),
   };
+}
+
+/**
+ * 判断资产自身是否明确标记为参考素材。
+ * 这里只接受显式标记，不能因为 metadata 中存在 reference_images 就判定为参考图，
+ * 因为 AI 创作结果本身也会携带“创作时使用的参考图”元数据。
+ */
+export function isExplicitReferenceMedia(value) {
+  if (!value || typeof value !== 'object') return false;
+  const metadata = typeof value.metadata_json === 'string'
+    ? (() => { try { return JSON.parse(value.metadata_json) || {}; } catch { return {}; } })()
+    : (value.metadata_json || value.metadata || {});
+  const sources = [
+    value.is_reference,
+    value.isReference,
+    value.reference_type,
+    value.referenceType,
+    value.media_role,
+    value.mediaRole,
+    value.asset_role,
+    value.assetRole,
+    value.source_type,
+    value.sourceType,
+    value.source,
+    metadata.is_reference,
+    metadata.isReference,
+    metadata.reference_type,
+    metadata.referenceType,
+    metadata.media_role,
+    metadata.mediaRole,
+    metadata.asset_role,
+    metadata.assetRole,
+    metadata.source_type,
+    metadata.sourceType,
+    metadata.source,
+  ];
+  return sources.some((source) => {
+    if (source === true) return true;
+    if (source == null) return false;
+    const normalized = String(source).trim().toLowerCase().replace(/[_\s]/g, '-');
+    return normalized === 'reference'
+      || normalized === 'reference-image'
+      || normalized === 'reference-asset'
+      || normalized === 'subject-reference';
+  });
 }
 
 export function normalizeStoryboardReferenceGroups({ subjects = [], images = [], videos = [], audios = [] } = {}) {

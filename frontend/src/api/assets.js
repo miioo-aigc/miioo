@@ -99,16 +99,36 @@ export async function apiUpdateAsset(assetId, updates) {
  */
 export async function apiGetSubjectAssets(projectId, subjectId, { category, limit = 200 } = {}) {
   if (!projectId || !subjectId) return [];
-  const assets = await apiGetAssets({
-    project_id: projectId,
-    scope: 'project',
-    asset_type: 'image',
-    category,
-    limit,
-  });
-  return (Array.isArray(assets) ? assets : []).filter((asset) => (
+  const [projectResult, creationResult] = await Promise.allSettled([
+    apiGetAssets({
+      project_id: projectId,
+      scope: 'project',
+      asset_type: 'image',
+      category,
+      limit,
+    }),
+    // 从创作页选择的图片通常属于 creation scope，project_id 可以为空。
+    // 不把 category 作为创作资产的服务端过滤条件，兼容旧接口的过滤契约。
+    apiGetAssets({
+      scope: 'creation',
+      asset_type: 'image',
+      limit,
+    }),
+  ]);
+  const projectAssets = projectResult.status === 'fulfilled' ? projectResult.value : [];
+  const creationAssets = creationResult.status === 'fulfilled' ? creationResult.value : [];
+  const matchesSubject = (assets, shouldMatchCategory = false) => (Array.isArray(assets) ? assets : []).filter((asset) => (
     String(asset?.subject_id ?? asset?.subjectId ?? '') === String(subjectId)
+    && (!shouldMatchCategory || !category || String(asset?.category ?? '') === String(category))
   ));
+  const seen = new Set();
+  return [...matchesSubject(projectAssets, true), ...matchesSubject(creationAssets, true)].filter((asset) => {
+    const id = asset?.id ?? asset?.asset_id ?? asset?.assetId;
+    const key = id == null ? `${asset?.file_url ?? asset?.url ?? ''}` : String(id);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /**

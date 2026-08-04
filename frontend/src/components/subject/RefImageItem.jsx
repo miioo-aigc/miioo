@@ -53,10 +53,12 @@ function SubjectRefHoverPreview({ url, mouseX, mouseY }) {
 export default function RefImageItem({ url, onRemove }) {
   const [hovered, setHovered] = useState(false);
   const [previewPos, setPreviewPos] = useState(null);
+  const [imageFailed, setImageFailed] = useState(false);
   const hoverTimerRef = useRef(null);
 
   function handleMouseEnter(event) {
     setHovered(true);
+    if (imageFailed) return;
     hoverTimerRef.current = setTimeout(() => setPreviewPos({ x: event.clientX, y: event.clientY }), 500);
   }
   function handleMouseMove(event) {
@@ -71,12 +73,13 @@ export default function RefImageItem({ url, onRemove }) {
   return (
     <>
       <div onMouseEnter={handleMouseEnter} onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} style={{ width: '120px', height: '120px', borderRadius: '8px', overflow: 'hidden', position: 'relative', flexShrink: 0, border: `1px solid ${hovered ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`, transition: 'border-color 120ms', cursor: 'pointer' }}>
-        {url && <img src={url} alt="参考图" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+        {url && !imageFailed && <img src={url} alt="参考图" onError={() => { setImageFailed(true); setPreviewPos(null); }} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+        {imageFailed && <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF66', fontSize: '12px', backgroundColor: '#FFFFFF0A' }}>图片加载失败</div>}
         {hovered && <div onClick={(event) => { event.stopPropagation(); clearTimeout(hoverTimerRef.current); setPreviewPos(null); onRemove?.(); }} style={{ position: 'absolute', top: '4px', right: '4px', width: '18px', height: '18px', borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 2L8 8M8 2L2 8" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" /></svg>
         </div>}
       </div>
-      {previewPos && url && createPortal(<SubjectRefHoverPreview url={url} mouseX={previewPos.x} mouseY={previewPos.y} />, document.body)}
+      {previewPos && url && !imageFailed && createPortal(<SubjectRefHoverPreview url={url} mouseX={previewPos.x} mouseY={previewPos.y} />, document.body)}
     </>
   );
 }

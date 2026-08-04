@@ -1,5 +1,12 @@
 # 组件重构盘点基线
 
+## 2026-08-04 剧本输入框中文输入法提交边界
+
+- `src/components/script/InputCard.jsx` 的消息输入框增加输入法合成状态记录。
+- 中文拼音候选阶段按 Enter 时，不再执行 `preventDefault` 或 `onSend`，把按键交给输入法完成候选确认；兼容 `nativeEvent.isComposing` 和部分浏览器使用的 `keyCode === 229`。
+- 输入法合成完成后，原有 Enter 发送和 Shift+Enter 换行行为保持不变；发送按钮点击不受影响。
+- 验证：目标组件 ESLint、项目构建和 `git diff --check` 均通过。
+
 ## 2026-08-04 分镜列与时间轴视频悬停预览
 
 - `StoryboardShotMediaColumn` 的候选视频卡片悬停时读取轻量 `preview_video_url`，在卡片附近通过 `MediaHoverPreview` 播放；缺少该字段时只显示封面，不把封面地址传给视频播放器。

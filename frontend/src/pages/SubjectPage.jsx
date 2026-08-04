@@ -119,7 +119,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import SubjectImageList from '../components/subject/SubjectImageList';
 import ConfirmStoryboardModal from '../components/subject/ConfirmStoryboardModal';
 import BatchGenerateModal from '../components/BatchGenerateModal';
-import { SubjectGenerationAction, SubjectPanelHeader, SubjectVoiceSelectModal, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, filterSubjectImagesByReferences, getFallbackSubjectImageModels } from '../components/subject';
+import { SubjectGenerationAction, SubjectPanelHeader, SubjectVoiceSelectModal, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, filterSubjectImagesByReferences, getSubjectCandidateImagesFromResponse, getFallbackSubjectImageModels } from '../components/subject';
 import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiDownloadSubjectImage, apiUnsetPrimarySubjectImage, apiBindSubjectReferenceImages } from '../api/subject';
 import { apiGetTask } from '../api/storyboard';
 import { apiGetSubjectAssets, apiDeleteSubjectAssets } from '../api/assets';
@@ -127,7 +127,7 @@ import { apiGetSubjectAssets, apiDeleteSubjectAssets } from '../api/assets';
 import { apiListModels } from '../api/config';
 import { apiGetVoices } from '../api/voices';
 import { normalizeImageUrl } from '../utils/imageUrl';
-import { getSubjectReferenceImageIdentities, getSubjectReferenceImagesFromResponse } from '../utils/referenceMediaAdapter';
+import { getSubjectReferenceImageIdentities, getSubjectReferenceImagesFromResponse, getSubjectReferenceSnapshot } from '../utils/referenceMediaAdapter';
 import { normalizeSubjects as normalizeSubjectList } from '../utils/subjectAdapter';
 import { addPendingTask, removePendingTask, getPendingTasks } from '../utils/taskPersistence';
 import { subscribe } from '../utils/cache';
@@ -242,6 +242,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   const [generatedImages, setGeneratedImages] = useState([]);
   const [refImageIds, setRefImageIds] = useState(Array.isArray(char?.reference_image_ids) ? char.reference_image_ids : []);
   const latestRefImageIdsRef = useRef(refImageIds);
+  const uploadingAssetIdsRef = useRef(new Set());
   const [mediaDetailOpen, setMediaDetailOpen] = useState(false);
   const [mediaDetailActiveIdx, setMediaDetailActiveIdx] = useState(0);
   const [toast, setToast] = useState(null);
@@ -324,10 +325,6 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
 
       // ── 缓存命中：跳过 apiGetSubjectDetail，直接完成初始化 ───────
       setDetailLoaded(true);
-      // 如果 char 带封面图，设置 primaryImageUrl
-      if (char?.imageUrl) {
-        setPrimaryImageUrl(char.imageUrl);
-      }
       // 检查是否有跨弹窗完成的单主体生成
       const pending = pendingGenerations.get(char.id);
       if (pending?.status === 'done') {
@@ -358,9 +355,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       if (!char.imageUrl && pendingPreflight.rawUrl) {
         onCoverChange?.(pendingPreflight.rawUrl);
       }
-      if (char?.imageUrl) {
-        setPrimaryImageUrl(char.imageUrl);
-      } else if (pendingPreflight.rawUrl) {
+      if (pendingPreflight.rawUrl) {
         setPrimaryImageUrl(pendingPreflight.rawUrl);
       }
       cacheConsumedRef.current = true;
@@ -407,7 +402,13 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
         setSelectedResolution(genCfg.resolution || genCfg.size || subject.resolution);
       }
       if (genCfg.generation_mode) setGenMode(genCfg.generation_mode);
-      const referenceImages = getSubjectReferenceImagesFromResponse(detailRes);
+      const responseReferenceImages = getSubjectReferenceImagesFromResponse(detailRes);
+      const cachedReferenceImages = getSubjectReferenceSnapshot(projectId, char.id);
+      // 参考图接口成功写入后，详情接口可能短暂返回旧快照；关闭弹窗再打开时优先
+      // 使用本次已确认的快照。缓存中的空数组也有意义，代表用户刚完成了清空绑定。
+      const referenceImages = cachedReferenceImages !== null
+        ? cachedReferenceImages
+        : responseReferenceImages;
       const currentReferenceImages = latestRefImageIdsRef.current;
       // 初始化详情可能早于参考图上传完成返回旧快照；此时不能用空数组覆盖
       // 当前弹窗已经拿到的参考图，否则并行候选资产请求会再次把它显示出来。
@@ -431,7 +432,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       const pending = pendingGenerations.get(char.id);
       // 参考图只用于生成输入；详情弹窗的参考图必须来自候选图片自身原数据。
       const finalImages = mergeSubjectImages({
-        candidateImages: detailRes.candidate_images,
+        candidateImages: getSubjectCandidateImagesFromResponse(detailRes),
         subjectAssets,
         referenceImages: effectiveReferenceImages,
         pending,
@@ -458,21 +459,25 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
         setPrimaryImageUrl(null);
         setPrimaryImageId(null);
         onCoverChange?.(null);
-      } else if (char?.imageUrl) {
-        // 兜底用 char 的封面图（不覆盖已展示的缓存图片）
-        setGeneratedImages(prev => prev.length > 0 ? prev : [createSubjectImageItem({ rawUrl: char.imageUrl, settled: true, id: char.imageUrl })]);
       } else {
         setGeneratedImages(prev => prev.length > 0 ? prev : []);
       }
 
       setDetailLoaded(true);
 
-      // 将后端返回的定稿图同步到卡片封面
+      // 只有候选图列表中的定稿图才能同步到卡片封面；参考图不会进入 finalImages。
       const _settledImg = finalImages.find((img) => img.settled && img.rawUrl);
       if (_settledImg) {
         setPrimaryImageUrl(_settledImg.rawUrl);
         setPrimaryImageId(_settledImg.id);
         onCoverChange?.(_settledImg.rawUrl);
+      } else {
+        // 详情已完成且没有候选定稿图时，清除可能由旧 subject.image_url 带来的错误封面。
+        // 候选普通图也不能充当封面，封面来源必须是候选图中的唯一 settled 图。
+        setPrimaryImageUrl(null);
+        setPrimaryImageId(null);
+        // 仅当页面当前确实仍有旧封面时通知父级清理，避免每次打开无封面的主体都发起 unset 请求。
+        if (char?.imageUrl) onCoverChange?.(null);
       }
     })();
 
@@ -694,6 +699,8 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       projectId,
       subjectId: char?.id,
       subjectType: tabLabel === '场景' ? 'scene' : tabLabel === '道具' ? 'prop' : 'character',
+      generatedImages,
+      uploadingAssetIdsRef,
       setGeneratedImages,
       onCoverChange,
       setPrimaryImageUrl,
@@ -701,7 +708,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       showToast,
       triggerBlobDownload: downloadBlob,
     }),
-    [projectId, char?.id, tabLabel, onCoverChange, showToast]
+    [projectId, char?.id, tabLabel, generatedImages, onCoverChange, showToast]
   );
   const handleImageUpload = useCallback(
     (fileOrAsset) => getImageActionHandlers().handleUpload(fileOrAsset),

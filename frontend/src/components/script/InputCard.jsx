@@ -17,6 +17,7 @@
  *   2026-07-21  模型、时长和集数统一复用 Select UI 组件
  *   2026-07-21  集数选择保留数字输入和加减按钮的自定义菜单
  *   2026-07-21  删除本地创作指令历史缓存与方向键回溯
+ *   2026-08-04  避免中文输入法候选阶段按 Enter 误触发发送
  */
 import { useEffect, useRef, useState } from 'react';
 import { apiListModels } from '../../api/config';
@@ -33,6 +34,7 @@ function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelCha
   const [focused, setFocused] = useState(false);
   const [models, setModels] = useState([]);
   const prevDisabledRef = useRef(false);
+  const composingRef = useRef(false);
 
   useEffect(() => {
     ensureScriptInputStyle();
@@ -69,6 +71,9 @@ function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelCha
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
+      // 输入法候选阶段的 Enter 用于确认拼音，不能提交当前消息。
+      // keyCode 229 兼容部分浏览器未及时同步 nativeEvent.isComposing 的情况。
+      if (composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) return;
       e.preventDefault();
       handleSend();
     }
@@ -152,6 +157,8 @@ function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelCha
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={() => { composingRef.current = false; }}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
           />

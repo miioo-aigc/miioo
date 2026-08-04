@@ -57,6 +57,8 @@ export function createSubjectImageActionHandlers({
   projectId,
   subjectId,
   subjectType = 'character',
+  generatedImages = [],
+  uploadingAssetIdsRef,
   setGeneratedImages,
   onCoverChange,
   setPrimaryImageUrl,
@@ -81,9 +83,27 @@ export function createSubjectImageActionHandlers({
         || fileOrAsset.thumbnailUrl
         || fileOrAsset.thumbnail_url;
 
+      const normalizedAssetId = String(selectedAssetId);
+      const normalizedUrl = normalizeImageUrl(rawUrl) || rawUrl;
+      if (uploadingAssetIdsRef?.current?.has(normalizedAssetId)) {
+        showToast('这张图片正在添加，请勿重复选择', 'error');
+        return;
+      }
+      const alreadyAdded = (Array.isArray(generatedImages) ? generatedImages : []).some((image) => {
+        const imageId = image?.assetId || (image?.source === 'creation-asset' ? image?.id : null);
+        const imageUrl = normalizeImageUrl(image?.rawUrl || image?.url) || image?.rawUrl || image?.url;
+        return (imageId != null && String(imageId) === normalizedAssetId)
+          || (normalizedUrl && imageUrl === normalizedUrl);
+      });
+      if (alreadyAdded) {
+        showToast('这张图片已在候选列表中', 'error');
+        return;
+      }
+      uploadingAssetIdsRef?.current?.add(normalizedAssetId);
+
       setGeneratedImages((prev) => [{
         rawUrl,
-        url: normalizeImageUrl(rawUrl),
+        url: normalizedUrl,
         settled: false,
         id: selectedAssetId,
         assetId: selectedAssetId,
@@ -103,6 +123,9 @@ export function createSubjectImageActionHandlers({
           console.error('[SubjectPage] 绑定候选图资产失败:', error);
           setGeneratedImages((prev) => prev.filter((image) => image.assetId !== selectedAssetId));
           showToast(error.message || '保存候选图失败', 'error');
+        })
+        .finally(() => {
+          uploadingAssetIdsRef?.current?.delete(normalizedAssetId);
         });
       return;
     }

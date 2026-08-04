@@ -26,7 +26,7 @@ import AssetPickerModal from '../AssetPickerModal';
 import { apiBindSubjectReferenceImages, apiGetSubjectDetail, apiUploadSubjectReferenceImage } from '../../api/subject';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { createLatestPersistenceQueue } from '../../utils/referenceMediaPersistence';
-import { getSubjectReferenceImagesFromResponse, normalizeSubjectReferenceImages } from '../../utils/referenceMediaAdapter';
+import { getSubjectReferenceImagesFromResponse, normalizeSubjectReferenceImages, setSubjectReferenceSnapshot } from '../../utils/referenceMediaAdapter';
 import RefImageItem from './RefImageItem';
 import RefImageUploadCard from './RefImageUploadCard';
 
@@ -56,7 +56,9 @@ function getReferenceImagesFromResponse(response) {
 }
 
 function normalizeServerReferenceImages(images, fallback = []) {
-  const source = images.length > 0 ? images : fallback;
+  // 详情接口可能在上传后短暂返回旧快照；上传响应中的新资产身份不能被旧快照覆盖。
+  // 合并后再去重，既保留已有参考图，也保留本次刚上传的参考图。
+  const source = [...(Array.isArray(images) ? images : []), ...(Array.isArray(fallback) ? fallback : [])];
   return normalizeSubjectReferenceImages(source).map((image) => ({
     id: image.id,
     assetId: image.assetId || image.id,
@@ -119,7 +121,8 @@ export default function RefImageField({ maxImages = 3, projectId, subjectId, ref
         const detailImages = normalizeServerReferenceImages(getReferenceImagesFromResponse(detail));
         // 上传接口成功而详情接口尚未读到新绑定时，先保留上传响应，避免成功图片闪退；
         // 后续绑定/删除仍会通过队列继续以详情和完整 asset_ids 校正最终状态。
-        const persistedImages = detailImages.length > 0 ? detailImages : uploadFallback;
+        const persistedImages = normalizeServerReferenceImages(detailImages, uploadFallback);
+        setSubjectReferenceSnapshot(projectId, subjectId, persistedImages);
         if (mountedRef.current) {
           dispatchRefImages({ type: 'replace', items: persistedImages });
           onRefImagesChange?.(persistedImages);
@@ -192,6 +195,7 @@ export default function RefImageField({ maxImages = 3, projectId, subjectId, ref
       })),
     ].slice(0, maxImages);
     dispatchRefImages({ type: 'replace', items: newList });
+    setSubjectReferenceSnapshot(projectId, subjectId, newList);
     onRefImagesChange?.(newList);
     setAssetPickerOpen(false);
 
@@ -202,6 +206,7 @@ export default function RefImageField({ maxImages = 3, projectId, subjectId, ref
   function handleRemove(index) {
     const newList = refImages.filter((_, itemIndex) => itemIndex !== index);
     dispatchRefImages({ type: 'replace', items: newList });
+    setSubjectReferenceSnapshot(projectId, subjectId, newList);
     onRefImagesChange?.(newList);
     // 空列表也必须提交，才能真正清空后端绑定关系；不能把空列表当作“不请求”。
     persistReferenceImages(newList)

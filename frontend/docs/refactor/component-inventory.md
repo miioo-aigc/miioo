@@ -1,5 +1,11 @@
 # 组件重构盘点基线
 
+## 2026-08-04 分镜媒体封面缓存与兜底
+
+- 新增 `StoryboardMediaPreview`，统一分镜列和时间轴的媒体地址选择：优先轻量封面，图片无封面回退原图，视频无封面尝试原视频首帧，截帧失败时显示原视频。
+- `apiListStoryboardMediaCandidates` 使用按项目/镜头划分的轻量缓存；仅缓存候选元数据和 URL，不缓存视频二进制或 `data:` 图片内容。
+- 候选新增、定稿状态更新、候选删除和分镜整体失效都会清理对应缓存，保证下一次读取获取最新媒体结构。
+
 ## 2026-08-03 分镜创作后主体参考图重复修复
 
 - `storyboardDataAdapter.normalizeStoryboard` 兼容创作结果同时返回主体 ID 和 `/video-reference-images/` 参考图副本的响应结构。
@@ -91,6 +97,7 @@
 - `StoryboardPage.jsx` 统一处理分镜抽取、按集生成、重新分镜及图片/视频生成任务的响应解包和任务 ID读取；页面继续持有轮询、缓存失效、失败态和结果写回副作用。
 - `storyboardTaskAdapter.js` 扩展任务状态、提示信息、错误信息和图片/视频结果字段适配，兼容嵌套响应、部分完成状态及多种媒体结果字段。
 - `api/storyboard.js` 的分镜列表请求默认请求生成参数，并在 `include_gen_params` 导致历史数据 500 时降级读取基础分镜列表；候选媒体归一化统一兼容图片/视频预览、封面、缩略图、下载地址和定稿字段。
+- 2026-08-04 修复 `StoryboardShotMediaColumn` 加载态偏左：空加载卡片和已有媒体的覆盖层均以 60px 卡片中心作为定位基准，保持分镜列加载反馈居中。
 - `StoryboardPage.jsx` 加载候选媒体时优先使用候选接口的 `is_finalized`，并以分镜主记录的图片/视频字段作为兼容兜底；候选数组和定稿映射采用增量合并，保证分镜列、创作弹窗、详情弹窗和时间轴使用同一份数据且不因异步返回顺序丢项。
 - `StoryboardFinalizedCard.jsx` 兼容候选媒体的预览图、首帧、缩略图、海报和视频地址，视频卡片加载后可显示已有定稿媒体并在悬停时播放。
 - `SubjectPage.jsx`、`SubjectImageActions.js` 和 `RefImageField.jsx` 修复主体批量创作结果 ID误用、主体详情回读定稿匹配以及参考图上传/绑定后的服务端状态恢复。

@@ -42,6 +42,8 @@ export const K = {
   script: (projectId) => `script:${projectId}`,
   storyboards: (projectId, episodeId) => `storyboards:${projectId}:${episodeId || 'all'}`,
   storyboardsPrefix: (projectId) => `storyboards:${projectId}:`,
+  storyboardMediaCandidates: (projectId, storyboardId) => `storyboard-media-candidates:${projectId}:${storyboardId}`,
+  storyboardMediaCandidatesPrefix: (projectId) => `storyboard-media-candidates:${projectId}:`,
 
   // ── L3 列表（medium: 'session'，短缓存）─────────────────────────────────────
   projects: (search) => `projects:${search || ''}`,

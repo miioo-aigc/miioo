@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import Checkbox from '../Checkbox';
 import DotsLoading from '../DotsLoading';
 import NarrationAddButton from './NarrationAddButton';
 import { MediaHoverPreview } from './MainRefCol';
+import StoryboardMediaPreview from './StoryboardMediaPreview';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -50,77 +51,12 @@ function PlusButton({ onClick, small = false, tooltip = '创作' }) {
 }
 
 function CandidateCard({ item, finalized, onSelect, onPreview }) {
-  const isVideo = item.media_type === 'video' || item.type?.startsWith('video');
-  const videoUrl = normalizeImageUrl(item.url || item.preview_video_url || item.previewVideoUrl || '');
-  const providedPoster = normalizeImageUrl(
-    item.poster_url
-      || item.posterUrl
-      || item.thumbnail_url
-      || item.thumbnailUrl
-      || item.video_thumbnail_url
-      || item.videoThumbnailUrl
-      || item.first_frame_url
-      || item.firstFrameUrl
-      || '',
-  );
-  const imageUrl = normalizeImageUrl(item.large_url || item.preview_url || item.url || '');
-  const [capturedFrame, setCapturedFrame] = useState({ key: '', url: '' });
-
-  useEffect(() => {
-    if (!isVideo || providedPoster || !videoUrl) return undefined;
-
-    let cancelled = false;
-    const video = document.createElement('video');
-    video.src = videoUrl;
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = 'auto';
-
-    const captureFirstFrame = () => {
-      if (cancelled || !video.videoWidth || !video.videoHeight) return;
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const context = canvas.getContext('2d');
-      if (!context) return;
-      try {
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        if (!cancelled) setCapturedFrame({ key: videoUrl, url: canvas.toDataURL('image/jpeg', 0.86) });
-      } catch {
-        // 跨域视频无法绘制 Canvas 时，下面的 video 标签继续作为兜底展示。
-      }
-    };
-    const seekToStart = () => {
-      try {
-        video.currentTime = 0;
-      } catch {
-        captureFirstFrame();
-      }
-    };
-
-    video.addEventListener('loadeddata', seekToStart, { once: true });
-    video.addEventListener('seeked', captureFirstFrame, { once: true });
-    video.load();
-
-    return () => {
-      cancelled = true;
-      video.removeEventListener('loadeddata', seekToStart);
-      video.removeEventListener('seeked', captureFirstFrame);
-      video.removeAttribute('src');
-      video.load();
-    };
-  }, [isVideo, providedPoster, videoUrl]);
-
-  const coverUrl = providedPoster || (capturedFrame.key === videoUrl ? capturedFrame.url : '');
   return (
     <button type="button" onClick={() => onSelect?.(item)} onMouseEnter={(event) => onPreview?.(item, event)} onMouseLeave={() => onPreview?.(null)} style={{
       width: '60px', height: '60px', position: 'relative', padding: 0, overflow: 'hidden', flexShrink: 0, cursor: 'pointer',
       borderRadius: '4px', border: `1px solid ${finalized ? '#2DC3E1' : 'rgba(255,255,255,0.10)'}`, background: '#101111',
     }}>
-      {isVideo ? (coverUrl
-        ? <img src={coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        : <video src={videoUrl} muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />)
-        : <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+      <StoryboardMediaPreview media={item} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       <Checkbox
         checked={finalized}
         aria-label={finalized ? '已定稿' : '未定稿'}
@@ -184,8 +120,8 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
 
     const isVideo = item.media_type === 'video' || item.type?.startsWith('video');
     const url = isVideo
-      ? item.preview_video_url || item.previewVideoUrl || item.url || item.video_url || item.videoUrl
-      : item.large_url || item.preview_url || item.previewUrl || item.url || item.thumbnail_url || item.thumbnailUrl;
+      ? item.media_preview_url || item.mediaPreviewUrl || item.video_thumbnail_url || item.videoThumbnailUrl || item.poster_url || item.posterUrl
+      : item.media_preview_url || item.mediaPreviewUrl || item.preview_url || item.previewUrl || item.thumbnail_url || item.thumbnailUrl;
     if (!url) {
       setPreview(null);
       return;
@@ -202,8 +138,10 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
         {media.length > 0 && <NarrationAddButton tooltip="创作" onClick={handleOpenCreation} />}
       </div>
       {loading && media.length === 0 && !hasPendingMedia && (
-        <div style={{ width: '60px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', background: '#101111' }} aria-label="正在加载分镜媒体" role="status">
-          <DotsLoading size={4} color="#2DC3E1" gap={3} />
+        <div style={{ width: '60px', height: '60px', position: 'relative', borderRadius: '4px', background: '#101111' }} aria-label="正在加载分镜媒体" role="status">
+          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', display: 'flex' }}>
+            <DotsLoading size={4} color="#2DC3E1" gap={3} />
+          </div>
         </div>
       )}
       {!loading && media.length === 0 && !hasPendingMedia && <PlusButton tooltip="创作" onClick={handleOpenCreation} />}
@@ -215,8 +153,10 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
           {pendingMedia.map((item) => <PendingCandidateCard key={item.id || item.taskId} />)}
           {hasPendingMedia && pendingMedia.length === 0 && <PendingCandidateCard />}
           {loading && media.length > 0 && pendingMedia.length === 0 && (
-            <div style={{ position: 'absolute', inset: 0, minHeight: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', background: 'rgba(16,17,17,0.58)', pointerEvents: 'none' }} aria-label="正在加载分镜媒体" role="status">
-              <DotsLoading size={4} color="#2DC3E1" gap={3} />
+            <div style={{ position: 'absolute', inset: 0, minHeight: '60px', borderRadius: '4px', background: 'rgba(16,17,17,0.58)', pointerEvents: 'none' }} aria-label="正在加载分镜媒体" role="status">
+              <div style={{ position: 'absolute', left: '50%', top: '30px', transform: 'translate(-50%, -50%)', display: 'flex' }}>
+                <DotsLoading size={4} color="#2DC3E1" gap={3} />
+              </div>
             </div>
           )}
         </div>

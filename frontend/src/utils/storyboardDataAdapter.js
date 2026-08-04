@@ -65,6 +65,28 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
     return item;
   }).filter(Boolean).map(String));
   const persistedCreationForm = genParams.creation_form || genParams.creationForm;
+  const generatedImages = Array.isArray(be.generated_images)
+    ? be.generated_images
+    : (Array.isArray(be.generatedImages) ? be.generatedImages : []);
+  const generatedImage = generatedImages[0] || {};
+  const imageUrl = be.image_url ?? be.imageUrl ?? generatedImage.url ?? generatedImage.image_url ?? generatedImage.imageUrl;
+  const imagePreviewUrl = be.preview_url
+    ?? be.previewUrl
+    ?? generatedImage.preview_url
+    ?? generatedImage.previewUrl
+    ?? be.thumbnail_url
+    ?? be.thumbnailUrl
+    ?? generatedImage.thumbnail_url
+    ?? generatedImage.thumbnailUrl;
+  const imageThumbnailUrl = be.thumbnail_url
+    ?? be.thumbnailUrl
+    ?? generatedImage.thumbnail_url
+    ?? generatedImage.thumbnailUrl;
+  const videoUrl = be.video_url ?? be.videoUrl;
+  const videoThumbnailUrl = be.video_thumbnail_url
+    ?? be.videoThumbnailUrl
+    ?? be.poster_url
+    ?? be.posterUrl;
   const creationForm = {
     image: persistedCreationForm?.image && typeof persistedCreationForm.image === 'object'
       ? persistedCreationForm.image
@@ -123,7 +145,7 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
         ),
         // 参考图：优先读带名称的新字段 reference_images，回退到旧的纯 URL 数组 reference_image_urls
         ...(() => {
-          const imgPathKey = be.image_url ? urlPathKey(normalizeImageUrl(be.image_url)) : null;
+          const imgPathKey = imageUrl ? urlPathKey(normalizeImageUrl(imageUrl)) : null;
           // 归一为 { url, name? } 列表：新字段直接用；旧字段无名称，name 留空由下方兜底
           const rawList = Array.isArray(be.reference_images) && be.reference_images.length > 0
             ? be.reference_images.map(item => (typeof item === 'string' ? { url: item } : item))
@@ -161,22 +183,23 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
       ]
     ),
     storyboardImage: be.storyboardImage ?? (
-      be.image_url
-        ? { id: `${storyboardId}_img`, url: normalizeImageUrl(be.image_url), name: '分镜图', type: 'image/jpeg',
+      imageUrl
+        ? { id: `${storyboardId}_img`, url: normalizeImageUrl(imageUrl), preview_url: imagePreviewUrl ? normalizeImageUrl(imagePreviewUrl) : undefined, thumbnail_url: imageThumbnailUrl ? normalizeImageUrl(imageThumbnailUrl) : undefined, name: '分镜图', type: 'image/jpeg',
             source: (be.image_prompt || be.gen_params) ? 'ai-generated' : 'local-upload' }
         : null
     ),
     storyboardVideo: be.storyboardVideo ?? (
-      be.video_url
+      videoUrl
         ? {
             id: `${storyboardId}_vid`,
-            url: normalizeImageUrl(be.video_url),
+            url: normalizeImageUrl(videoUrl),
             name: '分镜视频',
             type: 'video/mp4',
             model: be.video_model,
             resolution: be.video_resolution,
             duration: be.video_duration,
-            thumbnail: be.video_thumbnail_url ? normalizeImageUrl(be.video_thumbnail_url) : undefined,
+            thumbnail: videoThumbnailUrl ? normalizeImageUrl(videoThumbnailUrl) : undefined,
+            video_thumbnail_url: videoThumbnailUrl ? normalizeImageUrl(videoThumbnailUrl) : undefined,
             finalized: true,
           }
         : null

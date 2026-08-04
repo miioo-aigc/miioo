@@ -8,6 +8,7 @@ import { isBackendStoryboardId } from '../utils/storyboardDataAdapter.js';
 // 分镜写操作后统一失效该项目的分镜缓存 + 概览（概览含分镜进度）
 function invalidateStoryboards(projectId) {
   invalidate(K.storyboardsPrefix(projectId));
+  invalidate(K.storyboardMediaCandidatesPrefix(projectId));
   invalidate(K.projectOverview(projectId));
 }
 
@@ -75,6 +76,34 @@ function compactStoryboardForCache(item = {}) {
     if (nextParams.creation_form) delete nextParams.creation_form;
     compact.gen_params = nextParams;
     delete compact.genParams;
+  }
+  return compact;
+}
+
+// 候选媒体缓存只保留可复用的元数据和封面地址，禁止把原图、视频或 data URL 写进本地缓存。
+function compactStoryboardMediaCandidateForCache(item = {}) {
+  if (!item || typeof item !== 'object') return item;
+  const dropLargeValue = (value) => (
+    typeof value === 'string' && (value.startsWith('data:') || value.length > 200_000)
+      ? undefined
+      : value
+  );
+  const compact = { ...item };
+  for (const key of ['url', 'downloadUrl', 'download_url', 'thumbnailUrl', 'thumbnail_url', 'posterUrl', 'poster_url', 'previewUrl', 'preview_url', 'videoThumbnailUrl', 'video_thumbnail_url', 'mediaPreviewUrl', 'media_preview_url']) {
+    if (key in compact) compact[key] = dropLargeValue(compact[key]);
+  }
+  for (const key of ['metadata', 'genParams', 'gen_params', 'generation_params', 'generationParams']) {
+    if (!compact[key] || typeof compact[key] !== 'object') continue;
+    const next = { ...compact[key] };
+    Object.keys(next).forEach((nestedKey) => {
+      if (typeof next[nestedKey] === 'string') next[nestedKey] = dropLargeValue(next[nestedKey]);
+      if (Array.isArray(next[nestedKey])) {
+        next[nestedKey] = next[nestedKey].map((value) => (
+          typeof value === 'string' ? dropLargeValue(value) : value
+        )).filter(Boolean);
+      }
+    });
+    compact[key] = next;
   }
   return compact;
 }
@@ -204,13 +233,24 @@ export async function apiListStoryboardMediaCandidates(projectId, storyboardId) 
   if (!isBackendStoryboardId(storyboardId)) {
     throw new Error('分镜候选媒体请求缺少有效的分镜 ID');
   }
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}/media-candidates`, {
-    headers: { 'Content-Type': 'application/json' },
-  });
-  if (!res.ok) throw new Error(`获取分镜候选媒体失败（HTTP ${res.status}）`);
-  const data = await res.json();
-  const items = Array.isArray(data) ? data : data?.items || data?.media || data?.candidates || [];
-  return items.map(normalizeStoryboardMediaCandidate);
+  const fetchCandidates = async () => {
+    const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}/media-candidates`, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) throw new Error(`获取分镜候选媒体失败（HTTP ${res.status}）`);
+    const data = await res.json();
+    const items = Array.isArray(data) ? data : data?.items || data?.media || data?.candidates || [];
+    return items.map(normalizeStoryboardMediaCandidate);
+  };
+  return cached(
+    K.storyboardMediaCandidates(projectId, storyboardId),
+    fetchCandidates,
+    {
+      medium: MEDIUM.CONTENT,
+      ttl: TTL.CONTENT,
+      serialize: (items) => Array.isArray(items) ? items.map(compactStoryboardMediaCandidateForCache) : items,
+    },
+  );
 }
 
 // 候选媒体接口同时兼容后端 snake_case 和旧前端 camelCase，页面统一消费 camelCase。
@@ -252,6 +292,29 @@ export function normalizeStoryboardMediaCandidate(item = {}) {
     ?? mergedParams.prompt_raw ?? mergedParams.promptRaw ?? mergedParams.prompt_resolved ?? mergedParams.promptResolved;
   const generationParams = mergedParams;
   const mediaType = item.mediaType ?? item.media_type ?? (item.type?.startsWith('video') ? 'video' : 'image');
+  const generatedImage = Array.isArray(item.generated_images) ? item.generated_images[0] : null;
+  const metadataGeneratedImage = Array.isArray(metadata.generated_images) ? metadata.generated_images[0] : null;
+  const imageDerivative = generatedImage || metadataGeneratedImage || {};
+  const previewUrl = item.preview_url
+    ?? item.previewUrl
+    ?? metadata.preview_url
+    ?? metadata.previewUrl
+    ?? imageDerivative.preview_url
+    ?? imageDerivative.previewUrl;
+  const thumbnailUrl = item.thumbnail_url
+    ?? item.thumbnailUrl
+    ?? metadata.thumbnail_url
+    ?? metadata.thumbnailUrl
+    ?? imageDerivative.thumbnail_url
+    ?? imageDerivative.thumbnailUrl;
+  const videoThumbnailUrl = item.video_thumbnail_url
+    ?? item.videoThumbnailUrl
+    ?? metadata.video_thumbnail_url
+    ?? metadata.videoThumbnailUrl;
+  const posterUrl = item.poster_url
+    ?? item.posterUrl
+    ?? metadata.poster_url
+    ?? metadata.posterUrl;
   const normalizedUrl = mediaType === 'video'
     ? (item.url
       ?? item.file_url
@@ -278,8 +341,11 @@ export function normalizeStoryboardMediaCandidate(item = {}) {
     storyboardId: item.storyboardId ?? item.storyboard_id,
     mediaType,
     url: normalizedUrl,
-    thumbnailUrl: item.thumbnailUrl ?? item.thumbnail_url,
-    posterUrl: item.posterUrl ?? item.poster_url,
+    thumbnailUrl,
+    posterUrl,
+    previewUrl,
+    videoThumbnailUrl,
+    mediaPreviewUrl: mediaType === 'video' ? (videoThumbnailUrl || posterUrl) : (previewUrl || thumbnailUrl),
     downloadUrl: item.downloadUrl ?? item.download_url,
     isFinalized: Boolean(item.isFinalized ?? item.is_finalized ?? false),
     source: item.source ?? item.source_type ?? item.sourceType ?? metadata.source ?? metadata.source_type ?? metadata.sourceType,
@@ -313,6 +379,9 @@ export function normalizeStoryboardMediaCandidate(item = {}) {
     media_type: normalized.mediaType,
     thumbnail_url: normalized.thumbnailUrl,
     poster_url: normalized.posterUrl,
+    preview_url: normalized.previewUrl,
+    video_thumbnail_url: normalized.videoThumbnailUrl,
+    media_preview_url: normalized.mediaPreviewUrl,
     download_url: normalized.downloadUrl,
     is_finalized: Boolean(normalized.isFinalized),
     created_at: normalized.createdAt,
@@ -330,6 +399,7 @@ export async function apiCreateStoryboardMediaCandidate(projectId, storyboardId,
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`保存分镜候选媒体失败（HTTP ${res.status}）`);
+  invalidate(K.storyboardMediaCandidates(projectId, storyboardId));
   return normalizeStoryboardMediaCandidate(await res.json());
 }
 
@@ -340,6 +410,7 @@ export async function apiUpdateStoryboardMediaCandidate(projectId, storyboardId,
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`更新分镜候选媒体失败（HTTP ${res.status}）`);
+  invalidate(K.storyboardMediaCandidates(projectId, storyboardId));
   return normalizeStoryboardMediaCandidate(await res.json());
 }
 
@@ -349,6 +420,7 @@ export async function apiDeleteStoryboardMediaCandidate(projectId, storyboardId,
     headers: { 'Content-Type': 'application/json' },
   });
   if (!res.ok) throw new Error(`删除分镜候选媒体失败（HTTP ${res.status}）`);
+  invalidate(K.storyboardMediaCandidates(projectId, storyboardId));
 }
 
 export async function apiDownloadStoryboardMediaCandidate(projectId, storyboardId, mediaId) {

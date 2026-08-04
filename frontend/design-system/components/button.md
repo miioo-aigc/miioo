@@ -131,7 +131,7 @@ function AccentButton({ children, icon: Icon, disabled, onClick }) {
         Icon && <Icon className="shrink-0 size-4 text-btn-accent-text" />
       )}
       <span
-        className="text-btn-accent-text text-font-size-14 font-font-weight-medium shrink-0"
+        className="text-btn-accent-text text-font-size-14 leading-[20px] font-font-weight-medium shrink-0"
         style={{ fontFamily: "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif" }}
       >
         {children}

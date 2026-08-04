@@ -15,6 +15,7 @@
  *   2026-07-21  按设计稿完善 Secondary 的默认、悬停、按下、禁用和加载状态
  *   2026-07-21  将 Danger 统一为深色容器配红色图标和文字
  *   2026-07-22  仅图标按钮默认移除黑色 outline，保留键盘聚焦描边
+ *   2026-08-04  为按钮文字补齐显式行高，修正小尺寸按钮文字的垂直居中
  */
 import { forwardRef } from 'react';
 
@@ -52,14 +53,14 @@ const SIZE_STYLES = {
   large: {
     button: 'h-9 min-w-0 px-[16px] rounded-medium',
     primaryButton: 'h-9 min-w-0 rounded-medium',
-    content: 'text-font-size-14',
+    content: 'text-font-size-14 leading-[20px]',
     icon: 'size-4',
     iconOnly: 'size-9 px-0',
   },
   small: {
     button: 'h-6 min-w-0 px-[12px] rounded-[6px]',
     primaryButton: 'h-6 min-w-0 rounded-[6px]',
-    content: 'text-font-size-12',
+    content: 'text-font-size-12 leading-[16px]',
     icon: 'size-3',
     iconOnly: 'size-6 px-0',
   },

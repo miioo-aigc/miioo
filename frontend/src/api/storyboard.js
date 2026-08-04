@@ -90,7 +90,7 @@ function compactStoryboardMediaCandidateForCache(item = {}) {
       : value
   );
   const compact = { ...item };
-  for (const key of ['url', 'downloadUrl', 'download_url', 'thumbnailUrl', 'thumbnail_url', 'posterUrl', 'poster_url', 'previewUrl', 'preview_url', 'videoThumbnailUrl', 'video_thumbnail_url', 'mediaPreviewUrl', 'media_preview_url']) {
+  for (const key of ['url', 'downloadUrl', 'download_url', 'thumbnailUrl', 'thumbnail_url', 'posterUrl', 'poster_url', 'previewUrl', 'preview_url', 'previewVideoUrl', 'preview_video_url', 'videoThumbnailUrl', 'video_thumbnail_url', 'mediaPreviewUrl', 'media_preview_url']) {
     if (key in compact) compact[key] = dropLargeValue(compact[key]);
   }
   for (const key of ['metadata', 'genParams', 'gen_params', 'generation_params', 'generationParams']) {
@@ -268,6 +268,7 @@ export async function apiListStoryboardMediaCandidates(projectId, storyboardId) 
 }
 
 // 候选媒体接口同时兼容后端 snake_case 和旧前端 camelCase，页面统一消费 camelCase。
+// previewVideoUrl 只用于悬停动态预览，不能替代封面或原始媒体地址。
 export function normalizeStoryboardMediaCandidate(item = {}) {
   const rawMetadata = item.metadata ?? item.metadata_json ?? item.metadataJson ?? {};
   const metadata = typeof rawMetadata === 'string'
@@ -325,6 +326,10 @@ export function normalizeStoryboardMediaCandidate(item = {}) {
     ?? item.videoThumbnailUrl
     ?? metadata.video_thumbnail_url
     ?? metadata.videoThumbnailUrl;
+  const previewVideoUrl = item.preview_video_url
+    ?? item.previewVideoUrl
+    ?? metadata.preview_video_url
+    ?? metadata.previewVideoUrl;
   const posterUrl = item.poster_url
     ?? item.posterUrl
     ?? metadata.poster_url
@@ -358,6 +363,7 @@ export function normalizeStoryboardMediaCandidate(item = {}) {
     thumbnailUrl,
     posterUrl,
     previewUrl,
+    previewVideoUrl,
     videoThumbnailUrl,
     mediaPreviewUrl: mediaType === 'video' ? (videoThumbnailUrl || posterUrl) : (previewUrl || thumbnailUrl),
     downloadUrl: item.downloadUrl ?? item.download_url,
@@ -394,6 +400,7 @@ export function normalizeStoryboardMediaCandidate(item = {}) {
     thumbnail_url: normalized.thumbnailUrl,
     poster_url: normalized.posterUrl,
     preview_url: normalized.previewUrl,
+    preview_video_url: normalized.previewVideoUrl,
     video_thumbnail_url: normalized.videoThumbnailUrl,
     media_preview_url: normalized.mediaPreviewUrl,
     download_url: normalized.downloadUrl,

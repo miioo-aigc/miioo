@@ -87,6 +87,8 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
     ?? be.videoThumbnailUrl
     ?? be.poster_url
     ?? be.posterUrl;
+  const videoPreviewUrl = be.preview_video_url
+    ?? be.previewVideoUrl;
   const creationForm = {
     image: persistedCreationForm?.image && typeof persistedCreationForm.image === 'object'
       ? persistedCreationForm.image
@@ -200,6 +202,8 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
             duration: be.video_duration,
             thumbnail: videoThumbnailUrl ? normalizeImageUrl(videoThumbnailUrl) : undefined,
             video_thumbnail_url: videoThumbnailUrl ? normalizeImageUrl(videoThumbnailUrl) : undefined,
+            preview_video_url: videoPreviewUrl ? normalizeImageUrl(videoPreviewUrl) : undefined,
+            previewVideoUrl: videoPreviewUrl ? normalizeImageUrl(videoPreviewUrl) : undefined,
             finalized: true,
           }
         : null

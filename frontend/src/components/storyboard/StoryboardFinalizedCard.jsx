@@ -2,10 +2,14 @@ import { useState } from 'react';
 import { Button } from '../ui';
 import DotsLoading from '../DotsLoading';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { createPortal } from 'react-dom';
+import { MediaHoverPreview } from './MainRefCol';
 import StoryboardMediaPreview from './StoryboardMediaPreview';
 
+// 时间轴卡片悬停时只加载 preview_video_url；封面字段仅用于静态图片预览。
 export default function StoryboardFinalizedCard({ shot, media, loading = false, cardSize = { width: 240, height: 135 }, selected = false, onSelect, onCreate, onPreview, onDownload }) {
   const [hovered, setHovered] = useState(false);
+  const [hoverPreview, setHoverPreview] = useState(null);
   const isVideo = media?.media_type === 'video' || media?.type?.startsWith('video');
   const mediaUrl = media?.url || media?.image_url || media?.imageUrl;
   const src = normalizeImageUrl(media?.media_preview_url
@@ -13,10 +17,30 @@ export default function StoryboardFinalizedCard({ shot, media, loading = false, 
     || (isVideo ? media?.video_thumbnail_url || media?.videoThumbnailUrl || media?.poster_url || media?.posterUrl : media?.preview_url || media?.previewUrl || media?.thumbnail_url || media?.thumbnailUrl));
   const hasPreview = Boolean(src);
   const hasMedia = Boolean(mediaUrl || hasPreview);
-  function enter() { setHovered(true); }
-  function leave() { setHovered(false); }
+  function enter(event) {
+    setHovered(true);
+    if (!media) return;
+    const previewVideoUrl = isVideo
+      ? media.preview_video_url
+        || media.previewVideoUrl
+        || media.metadata?.preview_video_url
+        || media.metadata?.previewVideoUrl
+        || media.gen_params?.preview_video_url
+        || media.genParams?.previewVideoUrl
+      : '';
+    const previewUrl = isVideo
+      ? media.video_thumbnail_url || media.videoThumbnailUrl || media.poster_url || media.posterUrl
+      : media.media_preview_url || media.mediaPreviewUrl || media.preview_url || media.previewUrl || media.thumbnail_url || media.thumbnailUrl || media.url;
+    const url = previewVideoUrl || previewUrl;
+    if (url) setHoverPreview({ url: normalizeImageUrl(url), isVideo: Boolean(previewVideoUrl), x: event.clientX, y: event.clientY });
+  }
+  function move(event) {
+    setHoverPreview((prev) => prev ? { ...prev, x: event.clientX, y: event.clientY } : prev);
+  }
+  function leave() { setHovered(false); setHoverPreview(null); }
   return (
-    <div data-storyboard-finalized-card="true" onClick={onSelect} onMouseEnter={enter} onMouseLeave={leave} style={{ width: `${cardSize.width}px`, height: `${cardSize.height}px`, position: 'relative', flexShrink: 0, overflow: 'hidden', borderRadius: '8px', border: `1px solid ${selected ? '#2DC3E1' : 'rgba(255,255,255,0.10)'}`, boxShadow: selected ? '0 0 0 1px rgba(45,195,225,0.30)' : 'none', background: hasMedia ? '#101111' : '#242424', cursor: 'pointer', transition: 'border-color 150ms, box-shadow 150ms' }}>
+    <>
+    <div data-storyboard-finalized-card="true" onClick={onSelect} onMouseEnter={enter} onMouseMove={move} onMouseLeave={leave} style={{ width: `${cardSize.width}px`, height: `${cardSize.height}px`, position: 'relative', flexShrink: 0, overflow: 'hidden', borderRadius: '8px', border: `1px solid ${selected ? '#2DC3E1' : 'rgba(255,255,255,0.10)'}`, boxShadow: selected ? '0 0 0 1px rgba(45,195,225,0.30)' : 'none', background: hasMedia ? '#101111' : '#242424', cursor: 'pointer', transition: 'border-color 150ms, box-shadow 150ms' }}>
       {hasMedia && <StoryboardMediaPreview media={media} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
       <span style={{ position: 'absolute', top: '6px', left: '12px', padding: '0 8px', borderRadius: '3px', background: '#000000CC', color: '#FFFFFFCC', fontSize: '12px', lineHeight: '20px' }}>{String(shot.number).padStart(2, '0')}</span>
       {hasMedia && <span style={{ position: 'absolute', top: 0, right: 0, padding: '0 10px', background: '#00000080', color: '#FFFFFFCC', fontSize: '12px', lineHeight: '22px' }}>{isVideo ? '视频' : '图片'}</span>}
@@ -62,5 +86,10 @@ export default function StoryboardFinalizedCard({ shot, media, loading = false, 
         </div>
       </>}
     </div>
+    {hoverPreview && createPortal(
+      <MediaHoverPreview url={hoverPreview.url} isVideo={hoverPreview.isVideo} mouseX={hoverPreview.x} mouseY={hoverPreview.y} />,
+      document.body,
+    )}
+    </>
   );
 }

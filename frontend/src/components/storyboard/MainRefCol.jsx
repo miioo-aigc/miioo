@@ -21,6 +21,7 @@ import NarrationAddButton from './NarrationAddButton';
  *   组件不读取 StoryboardPage 的闭包变量，不直接调用业务 API。
  *
  * ─── 更新记录 ─────────────────────────────────────────────────────
+ *   2026-08-04  分镜/时间轴视频悬浮预览统一使用 preview_video_url，封面不再误作为视频源
  *   2026-08-03  主体参考列过滤无有效图片地址的失效引用，避免后端残留对象渲染成问号占位框
  *   2026-07-15  抽离 StoryboardPage 主体参考列，保留临时预览、资产选择、删除和悬浮预览行为
  */
@@ -328,6 +329,7 @@ export function MediaHoverPreview({ url, isVideo, mouseX, mouseY }) {
     return () => { image.onload = null; };
   }, [url, isVideo, mediaKey]);
 
+  // 视频元数据加载前也先按默认比例渲染容器，避免悬停时窗口因尺寸未知直接消失。
   const size = isVideo
     ? (loadedMedia?.key === mediaKey ? loadedMedia.size : { w: 16, h: 9 })
     : loadedMedia?.key === mediaKey ? loadedMedia.size : null;
@@ -360,7 +362,20 @@ export function MediaHoverPreview({ url, isVideo, mouseX, mouseY }) {
   return (
     <div style={{ position: 'fixed', left, top, width: previewW, height: previewH, zIndex: 99999, pointerEvents: 'none', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.12)', backgroundColor: '#111' }}>
       {isVideo ? (
-        <video src={normalizeImageUrl(url)} autoPlay loop muted playsInline onLoadedMetadata={(event) => { const { videoWidth: w, videoHeight: h } = event.target; if (w && h) setLoadedMedia({ key: mediaKey, size: { w, h } }); }} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        <video
+          src={normalizeImageUrl(url)}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="metadata"
+          onLoadedMetadata={(event) => {
+            const { videoWidth: w, videoHeight: h } = event.target;
+            if (w && h) setLoadedMedia({ key: mediaKey, size: { w, h } });
+            event.target.play().catch(() => {});
+          }}
+          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+        />
       ) : (
         <img src={normalizeImageUrl(url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
       )}

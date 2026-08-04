@@ -9,6 +9,8 @@ import StoryboardMediaPreview from './StoryboardMediaPreview';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
+// 悬浮播放只接受轻量 preview_video_url，缺少时退回封面图片，不提前拉取原视频。
+
 function PlusButton({ onClick, small = false, tooltip = '创作' }) {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -119,15 +121,23 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
     }
 
     const isVideo = item.media_type === 'video' || item.type?.startsWith('video');
+    const previewVideoUrl = isVideo
+      ? item.preview_video_url
+        || item.previewVideoUrl
+        || item.metadata?.preview_video_url
+        || item.metadata?.previewVideoUrl
+        || item.gen_params?.preview_video_url
+        || item.genParams?.previewVideoUrl
+      : '';
     const url = isVideo
-      ? item.media_preview_url || item.mediaPreviewUrl || item.video_thumbnail_url || item.videoThumbnailUrl || item.poster_url || item.posterUrl
+      ? previewVideoUrl || item.media_preview_url || item.mediaPreviewUrl || item.video_thumbnail_url || item.videoThumbnailUrl || item.poster_url || item.posterUrl
       : item.media_preview_url || item.mediaPreviewUrl || item.preview_url || item.previewUrl || item.thumbnail_url || item.thumbnailUrl;
     if (!url) {
       setPreview(null);
       return;
     }
 
-    setPreview({ item, url: normalizeImageUrl(url), isVideo, mouseX: event.clientX, mouseY: event.clientY });
+    setPreview({ item, url: normalizeImageUrl(url), isVideo: Boolean(isVideo && previewVideoUrl), mouseX: event.clientX, mouseY: event.clientY });
   }
 
   return (

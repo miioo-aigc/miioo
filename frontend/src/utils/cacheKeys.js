@@ -41,6 +41,10 @@ export const K = {
   episodes: (projectId) => `episodes:${projectId}`,
   script: (projectId) => `script:${projectId}`,
   storyboards: (projectId, episodeId) => `storyboards:${projectId}:${episodeId || 'all'}`,
+  storyboardPage: (projectId, episodeId, limit, offset = 0, includeGenParams = true) => (
+    `storyboard-pages:${projectId}:${episodeId || 'all'}:${limit}:${offset}:${includeGenParams ? 'with-gen-params' : 'basic'}`
+  ),
+  storyboardPagePrefix: (projectId) => `storyboard-pages:${projectId}:`,
   storyboardsPrefix: (projectId) => `storyboards:${projectId}:`,
   storyboardMediaCandidates: (projectId, storyboardId) => `storyboard-media-candidates:${projectId}:${storyboardId}`,
   storyboardMediaCandidatesPrefix: (projectId) => `storyboard-media-candidates:${projectId}:`,

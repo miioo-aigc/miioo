@@ -16,6 +16,7 @@ function invalidateSubjects(projectId) {
   invalidate(K.subjectsPrefix(projectId));
   invalidate(K.projectOverview(projectId));
   invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
+  invalidate(K.storyboardPagePrefix(projectId));
 }
 
 export async function apiGetSubjects(projectId, { type, episode_id, limit } = {}) {
@@ -679,6 +680,7 @@ export async function apiDeleteEpisode(projectId, episodeId) {
   invalidate(K.projectOverview(projectId));
   // 剧集删除会级联影响该剧集下的分镜
   invalidate(K.storyboardsPrefix(projectId));
+  invalidate(K.storyboardPagePrefix(projectId));
 }
 
 export async function apiGenerateEpisodeScript(projectId, episodeId, { prompt, model }) {
@@ -1275,6 +1277,7 @@ export async function apiImportStoryboardXlsx(projectId, file, idempotencyKey) {
   invalidate(K.episodes(projectId));
   invalidate(K.projectOverview(projectId));
   invalidate(K.storyboardsPrefix(projectId));
+  invalidate(K.storyboardPagePrefix(projectId));
   return normalizeStoryboardImportResult(payload);
 }
 

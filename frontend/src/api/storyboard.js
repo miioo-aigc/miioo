@@ -8,6 +8,7 @@ import { isBackendStoryboardId } from '../utils/storyboardDataAdapter.js';
 // 分镜写操作后统一失效该项目的分镜缓存 + 概览（概览含分镜进度）
 function invalidateStoryboards(projectId) {
   invalidate(K.storyboardsPrefix(projectId));
+  invalidate(K.storyboardPagePrefix(projectId));
   invalidate(K.storyboardMediaCandidatesPrefix(projectId));
   invalidate(K.projectOverview(projectId));
 }
@@ -156,8 +157,21 @@ export async function apiGetStoryboards(projectId, { episode_id, limit, offset =
     }
   };
 
-  // 分页请求不能复用“整集列表”缓存，否则翻页会读到错误的第一页或旧的 200 条数据。
-  if (isPagedRequest) return fetchPageWithFallback();
+  if (isPagedRequest) {
+    // 分页结果使用独立 key，不能与整集列表共用，避免页码、limit 或参数版本串数据。
+    // 项目分镜写操作通过 storyboards: 项目前缀统一失效这些分页缓存。
+    const pageKey = K.storyboardPage(projectId, episode_id, limit, offset, include_gen_params);
+    const rawPage = await cached(
+      pageKey,
+      fetchPageWithFallback,
+      {
+        medium: MEDIUM.CONTENT,
+        ttl: TTL.CONTENT,
+        serialize: (data) => Array.isArray(data) ? data.map(compactStoryboardForCache) : data,
+      },
+    );
+    return Array.isArray(rawPage) ? rawPage : (rawPage?.list || rawPage?.items || []);
+  }
 
   const raw = await cached(
     K.storyboards(projectId, episode_id),

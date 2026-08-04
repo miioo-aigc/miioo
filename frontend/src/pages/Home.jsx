@@ -64,6 +64,7 @@
  *   2026-07-31  主体缓存订阅接受空列表结果，确保主体音色解绑状态不会被旧缓存保留
  *   2026-07-28  剧集进度改按工作流解锁状态展示，视频生成数量不再等同于“剪辑中”
  *   2026-07-28  接入存储空间展示、容量提醒、资产库跳转及写入后的全满警告
+ *   2026-08-04  同一项目在主体页与分镜页之间切换时复用分镜缓存，避免无条件清理后重复请求
  *   2026-07-31  项目列表加载动画占满内容区并垂直、水平居中显示
  *   2026-07-01  初始结构索引建立
  */
@@ -540,8 +541,9 @@ export default function Home({ onGoToAdmin }) {
 
       // 5. 加载分镜数据（需要剧集 ID）并用最新 episodesData 的 ID 写入缓存
       if (Array.isArray(episodesData) && episodesData.length > 0) {
-        // 先清空所有旧的分镜缓存（包含旧 episode ID 的 key），避免 StoryboardPage 用错 ID
-        invalidate(K.storyboardsPrefix(projectId));
+        // 分镜缓存按 projectId + episodeId 隔离，项目切换不会串数据；
+        // 写操作的 API 会主动失效对应缓存，这里不能因切换工作流再无条件清理，
+        // 否则从主体页返回分镜页时会丢失文字和媒体结构的快速路径。
         const storyboardsData = await apiGetStoryboards(projectId, {
           episode_id: episodesData[0].id
         }).catch((error) => {
@@ -1096,6 +1098,7 @@ export default function Home({ onGoToAdmin }) {
         if (!epId) return;
         invalidate(K.storyboards(activeProject.id, epId));
         invalidate(K.storyboards(activeProject.id));
+        invalidate(K.storyboardPagePrefix(activeProject.id));
         apiGetStoryboards(activeProject.id, { episode_id: epId }).catch(() => {});
       };
 
@@ -1157,9 +1160,11 @@ export default function Home({ onGoToAdmin }) {
       finalEpisodes.forEach(ep => {
         if (!ep.id) return;
         invalidate(K.storyboards(activeProject.id, ep.id));
+        invalidate(K.storyboardPagePrefix(activeProject.id));
         apiGetStoryboards(activeProject.id, { episode_id: ep.id }).catch(() => {});
       });
       invalidate(K.storyboards(activeProject.id));
+      invalidate(K.storyboardPagePrefix(activeProject.id));
       apiGetStoryboards(activeProject.id).catch(() => {});
       clearPendingStoryboardGeneration(activeProject.id);
 
@@ -1250,6 +1255,7 @@ export default function Home({ onGoToAdmin }) {
       } else {
         invalidate(K.storyboards(projectId, firstEpisode.id));
         invalidate(K.storyboards(projectId));
+        invalidate(K.storyboardPagePrefix(projectId));
       }
 
       handleUnlockStep('storyboard');

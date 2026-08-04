@@ -16,6 +16,7 @@ function invalidateProjectAssetDependents(projectId, subjectType) {
     invalidate(K.subjectsPrefix(projectId));
   }
   invalidate(K.storyboardsPrefix(projectId));
+  invalidate(K.storyboardPagePrefix(projectId));
   invalidate(K.projectOverview(projectId));
   invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
 }

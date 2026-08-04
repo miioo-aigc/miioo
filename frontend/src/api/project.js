@@ -88,6 +88,7 @@ export async function apiDeleteProject(projectId) {
   invalidate(K.projectOverview(projectId));
   invalidate(K.subjectsPrefix(projectId));
   invalidate(K.storyboardsPrefix(projectId));
+  invalidate(K.storyboardPagePrefix(projectId));
   invalidate(K.episodes(projectId));
   invalidate(K.script(projectId));
   invalidate(K.projectsPrefix());

@@ -25,6 +25,7 @@
  *   2026-08-03  兼容仅返回参考图资产 ID 的响应，并支持参考图状态异步回写后的二次过滤
  *   2026-08-03  候选图过滤改用统一参考图身份键，兼容嵌套资产对象和空数组别名
  *   2026-08-03  候选图身份兼容 reference_asset/reference_image/resource 等嵌套返回
+ *   2026-08-04  透传主体图片稳定资产/生成血缘字段，按 assetId 优先合并候选图与项目资产
  */
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { getSubjectReferenceImageIdentities, getSubjectReferenceImageKeys, isExplicitReferenceMedia } from '../../utils/referenceMediaAdapter';
@@ -108,7 +109,7 @@ function isReferenceImage(image, referenceKeys) {
     || identities.urls.some((url) => referenceKeys.urls.has(normalizeImageUrl(url) || String(url)));
 }
 
-function toImageItem({ id, rawUrl, settled = false, isReference = false, refImages = [], assetId = null, source = null, detailSource = null, prompt = null, inputPrompt = null, model = null, ratio = null, resolution = null, createdAt = null }) {
+function toImageItem({ id, rawUrl, settled = false, isReference = false, refImages = [], assetId = null, source = null, assetSource = null, taskId = null, generationId = null, resultIndex = null, contentHash = null, detailSource = null, prompt = null, inputPrompt = null, model = null, ratio = null, resolution = null, createdAt = null }) {
   return {
     id,
     rawUrl,
@@ -118,6 +119,11 @@ function toImageItem({ id, rawUrl, settled = false, isReference = false, refImag
     refImages,
     ...(assetId ? { assetId } : {}),
     ...(source ? { source } : {}),
+    ...(assetSource ? { assetSource } : {}),
+    ...(taskId ? { taskId } : {}),
+    ...(generationId ? { generationId } : {}),
+    ...(resultIndex != null ? { resultIndex } : {}),
+    ...(contentHash ? { contentHash } : {}),
     ...(detailSource ? { detailSource } : {}),
     ...(prompt != null ? { prompt } : {}),
     ...(inputPrompt != null ? { input_prompt: inputPrompt } : {}),
@@ -138,11 +144,16 @@ export function createSubjectImageItem({ id, rawUrl, settled = false, refImages 
 export function mapCandidateImages(images) {
   return (Array.isArray(images) ? images : []).map((image) => toImageItem({
     id: image.id,
-    rawUrl: image.image_url,
+    rawUrl: image.image_url || image.imageUrl,
     settled: image.is_primary ?? false,
     refImages: getReferenceImages(image),
-    assetId: image.asset_id,
+    assetId: image.asset_id ?? image.assetId,
     source: 'subject-image',
+    assetSource: image.source,
+    taskId: image.task_id ?? image.taskId,
+    generationId: image.generation_id ?? image.generationId,
+    resultIndex: image.result_index ?? image.resultIndex,
+    contentHash: image.content_hash ?? image.contentHash,
     detailSource: 'ai-generated',
     prompt: image.prompt,
     inputPrompt: image.input_prompt,
@@ -178,12 +189,17 @@ export function mapSubjectAssets(assets) {
     const metadata = getAssetMetadata(asset);
     const detailSource = getAssetDetailSource(asset);
     return toImageItem({
-      id: asset.id || asset.asset_id,
+      id: asset.id || asset.asset_id || asset.assetId,
       rawUrl: asset.file_url || asset.original_url || asset.originalUrl || asset.url || asset.thumbnail_url || asset.thumbnailUrl,
       settled: asset.is_primary ?? false,
       refImages: detailSource === 'local-upload' ? [] : (asset.refImages?.length > 0 ? asset.refImages : getReferenceImages(metadata)),
-      assetId: asset.id || asset.asset_id,
+      assetId: asset.asset_id ?? asset.assetId ?? asset.id,
       source: 'creation-asset',
+      assetSource: asset.source ?? asset.source_type ?? asset.sourceType,
+      taskId: asset.task_id ?? asset.taskId,
+      generationId: asset.generation_id ?? asset.generationId,
+      resultIndex: asset.result_index ?? asset.resultIndex,
+      contentHash: asset.content_hash ?? asset.contentHash,
       detailSource,
       prompt: asset.prompt ?? metadata.prompt,
       inputPrompt: asset.input_prompt ?? metadata.input_prompt,
@@ -223,6 +239,17 @@ function dedupeById(images) {
     if (image.id == null) return true;
     if (seenIds.has(image.id)) return false;
     seenIds.add(image.id);
+    return true;
+  });
+}
+
+function dedupeByAssetId(images) {
+  const seenAssetIds = new Set();
+  return images.filter((image) => {
+    if (image?.assetId == null) return true;
+    const assetId = String(image.assetId);
+    if (seenAssetIds.has(assetId)) return false;
+    seenAssetIds.add(assetId);
     return true;
   });
 }
@@ -320,7 +347,9 @@ export function mergeSubjectImages({
     .filter((asset) => !isReferenceImage(asset, referenceKeys));
   const mappedCandidates = mapCandidateImages(candidateList);
   const mappedAssets = mapSubjectAssets(assetList);
-  const images = sortSubjectImages(keepOnlyFirstSettled(dedupeByUrl(dedupeById([...mappedCandidates, ...mappedAssets]))));
+  const images = sortSubjectImages(keepOnlyFirstSettled(
+    dedupeByUrl(dedupeById(dedupeByAssetId([...mappedCandidates, ...mappedAssets])))
+  ));
   const pendingImage = mapPendingImage(pending);
 
   return pendingImage ? [pendingImage, ...images] : images;

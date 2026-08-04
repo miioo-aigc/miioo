@@ -65,6 +65,7 @@
  *   2026-07-28  剧集进度改按工作流解锁状态展示，视频生成数量不再等同于“剪辑中”
  *   2026-07-28  接入存储空间展示、容量提醒、资产库跳转及写入后的全满警告
  *   2026-08-04  同一项目在主体页与分镜页之间切换时复用分镜缓存，避免无条件清理后重复请求
+ *   2026-08-04  资产概况剧本进度卡片跳转到对应分集分镜
  *   2026-07-31  项目列表加载动画占满内容区并垂直、水平居中显示
  *   2026-07-01  初始结构索引建立
  */
@@ -1564,14 +1565,14 @@ export default function Home({ onGoToAdmin }) {
                   handleUnlockStep('subject');
                   setActiveStep('subject');
                 }}
-                scriptFinalizedSinceExtraction={scriptFinalizedSinceExtraction}
-                onScriptFinalized={handleScriptFinalized}
-                episodeStatuses={displayEpisodeStatuses}
                 onGoToStoryboard={(episodeIndex) => {
                   setStoryboardInitialEpisodeIndex(episodeIndex);
                   handleUnlockStep('storyboard');
                   setActiveStep('storyboard');
                 }}
+                scriptFinalizedSinceExtraction={scriptFinalizedSinceExtraction}
+                onScriptFinalized={handleScriptFinalized}
+                episodeStatuses={displayEpisodeStatuses}
               />
             )}
             {activeKey === 'project' && activeProject && activeStep === 'subject' && (
@@ -1711,6 +1712,7 @@ export default function Home({ onGoToAdmin }) {
       <NewProjectModal
         open={newProjectOpen}
         onClose={() => setNewProjectOpen(false)}
+        showToast={showToast}
         onConfirm={(project) => {
           handleProjectCreated(project);
         }}

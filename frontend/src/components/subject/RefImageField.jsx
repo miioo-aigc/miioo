@@ -20,6 +20,7 @@
  *   2026-08-03  参考图继续独立维护，不向候选图状态写入
  *   2026-08-03  参考图响应统一优先读取非空数组，避免顶层空数组遮蔽嵌套绑定
  *   2026-08-03  参考图变更按完整资产列表串行持久化，修复删除后重开恢复旧图
+ *   2026-08-04  暴露持久化等待句柄，绑定失败时回读服务端状态并回滚乐观快照
  */
 import { useEffect, useReducer, useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
@@ -83,7 +84,7 @@ function refImagesReducer(state, action) {
   }
 }
 
-export default function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], onRefImagesChange }) {
+export default function RefImageField({ maxImages = 3, projectId, subjectId, refImageIds = [], onRefImagesChange, persistenceRef }) {
   const fileInputRef = useRef(null);
   const [refImages, dispatchRefImages] = useReducer(refImagesReducer, refImageIds, normalizeRefImages);
   const syncedRefImageKeyRef = useRef(JSON.stringify(refImageIds));
@@ -127,10 +128,30 @@ export default function RefImageField({ maxImages = 3, projectId, subjectId, ref
           dispatchRefImages({ type: 'replace', items: persistedImages });
           onRefImagesChange?.(persistedImages);
         }
+        return persistedImages;
       });
     }
     return referenceMutationQueueRef.current;
   }
+
+  async function recoverFromServer() {
+    const detail = await apiGetSubjectDetail(projectId, subjectId);
+    const serverImages = normalizeServerReferenceImages(getReferenceImagesFromResponse(detail));
+    setSubjectReferenceSnapshot(projectId, subjectId, serverImages);
+    if (mountedRef.current) {
+      dispatchRefImages({ type: 'replace', items: serverImages });
+      onRefImagesChange?.(serverImages);
+    }
+    return serverImages;
+  }
+
+  useEffect(() => {
+    if (!persistenceRef) return undefined;
+    persistenceRef.current = () => referenceMutationQueueRef.current?.wait() || Promise.resolve(refImages);
+    return () => {
+      if (persistenceRef.current) persistenceRef.current = null;
+    };
+  }, [persistenceRef, refImages]);
 
   function getPersistedAssetIds(images) {
     return (Array.isArray(images) ? images : [])
@@ -180,7 +201,7 @@ export default function RefImageField({ maxImages = 3, projectId, subjectId, ref
       getReferenceMutationQueue().enqueue({ kind: 'upload', file })
         .catch((error) => {
           console.error('[RefImageField] 上传参考图失败:', error);
-          dispatchRefImages({ type: 'removeById', id: tempId });
+          recoverFromServer().catch((recoveryError) => console.error('[RefImageField] 回读参考图失败:', recoveryError));
         });
     }
   }
@@ -200,7 +221,10 @@ export default function RefImageField({ maxImages = 3, projectId, subjectId, ref
     setAssetPickerOpen(false);
 
     persistReferenceImages(newList, { showLoading: true })
-      .catch((error) => console.error('[RefImageField] 绑定参考图失败:', error));
+      .catch((error) => {
+        console.error('[RefImageField] 绑定参考图失败:', error);
+        recoverFromServer().catch((recoveryError) => console.error('[RefImageField] 回读参考图失败:', recoveryError));
+      });
   }
 
   function handleRemove(index) {
@@ -210,7 +234,10 @@ export default function RefImageField({ maxImages = 3, projectId, subjectId, ref
     onRefImagesChange?.(newList);
     // 空列表也必须提交，才能真正清空后端绑定关系；不能把空列表当作“不请求”。
     persistReferenceImages(newList)
-      .catch((error) => console.error('[RefImageField] 删除参考图绑定失败:', error));
+      .catch((error) => {
+        console.error('[RefImageField] 删除参考图绑定失败:', error);
+        recoverFromServer().catch((recoveryError) => console.error('[RefImageField] 回读参考图失败:', recoveryError));
+      });
   }
 
   return (

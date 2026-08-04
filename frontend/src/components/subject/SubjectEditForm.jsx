@@ -44,6 +44,7 @@ export default function SubjectEditForm({
   onRatioChange,
   onResolutionChange,
   onRefImagesChange,
+  referencePersistenceRef,
   onGenModeChange,
 }) {
   return (
@@ -79,6 +80,7 @@ export default function SubjectEditForm({
         subjectId={subjectId}
         refImageIds={refImageIds}
         onRefImagesChange={onRefImagesChange}
+        persistenceRef={referencePersistenceRef}
       />
 
       {tabLabel === '角色' && (

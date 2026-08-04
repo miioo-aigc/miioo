@@ -19,7 +19,7 @@ function EmptyScriptProgress() {
   );
 }
 
-export default function ScriptProgress({ episodes = [], episodeStatuses = {} }) {
+export default function ScriptProgress({ episodes = [], episodeStatuses = {}, onEpisodeClick }) {
   return (
     <section
       style={{
@@ -61,6 +61,7 @@ export default function ScriptProgress({ episodes = [], episodeStatuses = {} }) 
                 key={episode.id || index}
                 title={`${String(episodeNumber).padStart(2, '0')}.${title}`}
                 status={episodeStatuses[index] || episode.status || 'pending'}
+                onClick={onEpisodeClick ? () => onEpisodeClick(index, episode) : undefined}
               />
             );
           })}

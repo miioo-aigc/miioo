@@ -14,6 +14,7 @@
  *   2026-07-22  隐藏当前集数展示，目标集数默认继承当前剧集数量
  *   2026-07-22  提交后保留遮罩并展示 200px 加载动画，失败时恢复弹窗
  *   2026-07-27  处理中将加载遮罩限制在剧本内容区，弹窗打开态仍保持全屏遮罩
+ *   2026-08-04  目标集数选项增加两侧计步器，数字和单位居中展示
  */
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -32,6 +33,12 @@ export default function ScriptResplitModal({ open, currentEpisodeCount = 0, sele
   const [targetCount, setTargetCount] = useState(String(currentEpisodeCount));
   const [instruction, setInstruction] = useState('');
   const [submitted, setSubmitted] = useState(false);
+
+  const adjustTargetCount = (delta) => {
+    const current = Number.parseInt(targetCount, 10);
+    const base = Number.isNaN(current) ? 1 : current;
+    setTargetCount(String(Math.max(1, base + delta)));
+  };
 
   if (!open) return null;
 
@@ -70,11 +77,12 @@ export default function ScriptResplitModal({ open, currentEpisodeCount = 0, sele
             <span style={{ color: '#FFFFFF99', fontSize: '13px', lineHeight: '18px' }}>目标集数</span>
             <Tabs
               variant="resplit"
-              options={[{ value: 'count', label: '目标集数', input: true, suffix: '集', inputAriaLabel: '目标集数' }, { value: 'auto', label: '自适应' }]}
+              options={[{ value: 'count', label: '目标集数', input: true, stepper: true, suffix: '集', inputAriaLabel: '目标集数' }, { value: 'auto', label: '自适应' }]}
               value={targetMode}
               onChange={setTargetMode}
               inputValue={targetCount}
               onInputChange={setTargetCount}
+              onInputStep={adjustTargetCount}
               gap="16px"
             />
           </div>

@@ -4,7 +4,7 @@ const BASE = import.meta.env.VITE_API_BASE_URL;
 export const SCRIPT_SCHEMA_VERSION = 'script_structure.v1';
 
 import { authFetch, authFetchForm, authFetchStream } from './request.js';
-import { getDisplayErrorMessage, readResponsePayload } from './error.js';
+import { getDisplayErrorMessage, readResponsePayload, throwResponseError } from './error.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 
@@ -341,6 +341,20 @@ export async function apiDownloadSubjectImage(projectId, subjectId, imageId) {
 
 // ── 批量生成 ──────────────────────────────────────────────────────────────────
 
+const BATCH_TERMINAL_STATUSES = new Set([
+  'completed',
+  'partial',
+  'failed',
+  'cancelled',
+  'done',
+  'success',
+  'error',
+]);
+
+function isBatchSubjectTaskTerminal(status) {
+  return BATCH_TERMINAL_STATUSES.has(String(status || '').trim().toLowerCase());
+}
+
 export async function apiBatchGenerate(projectIdOrParams, maybeParams) {
   let projectId, params;
   if (maybeParams !== undefined) {
@@ -462,7 +476,7 @@ export async function apiBatchGenerateStream(projectId, params, { onTaskCreated,
           }
 
           const status = task.status || task.raw_status || '';
-          if (status === 'completed' || status === 'partial' || status === 'failed') {
+          if (isBatchSubjectTaskTerminal(status)) {
             onComplete?.();
             return data;
           }
@@ -565,7 +579,7 @@ export async function apiBatchGenerateStream(projectId, params, { onTaskCreated,
                 }
 
                 const st = task.status || task.raw_status || '';
-                if (st === 'completed' || st === 'partial' || st === 'failed') {
+                if (isBatchSubjectTaskTerminal(st)) {
                   reader.releaseLock();
                   onComplete?.();
                   return;
@@ -1250,12 +1264,18 @@ export async function apiChatScriptWorkspaceStream(
 }
 
 export async function apiUploadScriptWorkspace(projectId, file) {
+  if (!projectId) {
+    throw new Error('上传剧本前未获取到项目 ID，请先完成项目创建');
+  }
   const form = new FormData();
   form.append('file', file);
   const res = await authFetchForm(
     `${BASE}/api/projects/${projectId}/script-workspace/upload`,
     { method: 'POST', body: form }
   );
+  if (!res.ok) {
+    await throwResponseError(res, `上传剧本失败（${res.status}）`);
+  }
   invalidate(K.script(projectId));
   return res.json();
 }

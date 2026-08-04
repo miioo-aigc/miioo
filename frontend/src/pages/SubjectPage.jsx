@@ -241,6 +241,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   const [genMode, setGenMode] = useState('three_view');
   const [generatedImages, setGeneratedImages] = useState([]);
   const [refImageIds, setRefImageIds] = useState(Array.isArray(char?.reference_image_ids) ? char.reference_image_ids : []);
+  const referencePersistenceRef = useRef(null);
   const latestRefImageIdsRef = useRef(refImageIds);
   const uploadingAssetIdsRef = useRef(new Set());
   const [mediaDetailOpen, setMediaDetailOpen] = useState(false);
@@ -284,9 +285,6 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       }
     })();
   }, [projectId, char?.model, char?.default_image_model]);
-
-  // 从 refImageIds 解析出 refImages（供 MediaDetailModal 使用）
-  const refImagesForModal = useMemo(() => mapReferenceImageIdsForModal(refImageIds), [refImageIds]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -765,6 +763,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
           availableRatios={availableRatios}
           availableResolutions={availableResolutions}
           refImageIds={refImageIds}
+          referencePersistenceRef={referencePersistenceRef}
           maxRefImages={maxRefImages}
           genMode={genMode}
           onNameChange={(event) => { const value = event.target.value; setCharName(value); updateDraftField('name', value); }}
@@ -803,8 +802,8 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
         />
         </div>
       {/* footer: 生成图片动作区 — 由主体域组件负责布局，页面保留业务生成流程 */}
-      <SubjectGenerationAction
-        onGenerate={async () => {
+        <SubjectGenerationAction
+          onGenerate={async () => {
             if (!promptText.trim()) {
               showToast('请输入提示词', 'error');
               return;
@@ -814,6 +813,26 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
             const existing = pendingGenerations.get(char.id);
             if (existing && existing.status === 'pending') {
               showToast('该主体已有生成任务进行中', 'error');
+              return;
+            }
+
+            // 参考图上传/绑定是覆盖式写入。必须等待服务端完成后再创建生成任务，
+            // 否则临时上传 ID 或旧绑定可能被带入本次生成。
+            let persistedReferenceImages = refImageIds;
+            try {
+              const persisted = await referencePersistenceRef.current?.();
+              if (Array.isArray(persisted)) {
+                persistedReferenceImages = persisted;
+                const nextIds = persisted.map((image) => ({
+                  id: image?.assetId || image?.asset_id || image?.id || null,
+                  assetId: image?.assetId || image?.asset_id || image?.id || null,
+                  url: image?.url || null,
+                })).filter((image) => image.id || image.url);
+                setRefImageIds(nextIds);
+                latestRefImageIdsRef.current = nextIds;
+              }
+            } catch {
+              showToast('参考图绑定未完成，请稍后重试', 'error');
               return;
             }
 
@@ -829,7 +848,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
               tab,
               knownImageIds: existingImages.map((img) => img.id).filter(Boolean),
               knownImageUrls: existingImages.flatMap((img) => [img.rawUrl, img.url]).filter(Boolean),
-              refImages: refImagesForModal,
+              refImages: mapReferenceImageIdsForModal(persistedReferenceImages),
             });
             setBatchLoadingSubjects((prev) => ({ ...prev, [char.id]: true }));
             setGeneratedImages((prev) => [{ url: null, settled: false, id: placeholder, created_at: Date.now() }, ...prev]);
@@ -840,11 +859,11 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
               resolution: selectedResolution,
               prompt: promptText,
               generationMode: genMode,
-              refImageIds,
+              refImageIds: persistedReferenceImages,
             });
 
             // 快照当前参考图，生成成功后附加到图片对象
-            const refImagesSnapshot = refImagesForModal;
+            const refImagesSnapshot = mapReferenceImageIdsForModal(persistedReferenceImages);
 
             // 处理生成结果的回调（无论同步返回还是异步轮询，最终都走这里）
             const handleGenResult = (payload) => {

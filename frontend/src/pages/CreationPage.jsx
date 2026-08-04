@@ -197,6 +197,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
 
     try {
       let list;
+      let pageResp;
       const apiMap = {
         image: apiListCreationImages,
         video: apiListCreationVideos,
@@ -210,26 +211,33 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         // 本地缓存只用于「秒开」(hydrateHistoryFromCache)，不能作为权威数据。
         // 否则刚创作完成、但缓存尚未包含的新内容会在刷新后被旧缓存覆盖而「凭空消失」。
         const networkResp = await apiMap[tab]({ page: 1, page_size: PAGE_SIZE, exclude_hidden: true });
+        pageResp = networkResp;
         const resp = tab === 'video' ? buildCreationHistoryCachePayload(tab, networkResp) : networkResp;
         setCache(cacheKey, resp, { medium: 'local' });
         list = getCreationHistoryList(resp);
 
         const isSameAsHydratedCache = cacheEntry?.d && JSON.stringify(list) === JSON.stringify(cacheList);
         if (isSameAsHydratedCache) {
-          const hasMore = list.length >= PAGE_SIZE;
+          const explicitHasMore = networkResp?.has_more ?? networkResp?.hasMore;
+          const hasMore = explicitHasMore !== undefined
+            ? Boolean(explicitHasMore)
+            : list.length >= PAGE_SIZE;
           syncHistoryFavorites(tab);
           updateHistoryMeta(tab, { page: nextPage, hasMore, loading: false, initialized: true });
           return;
         }
       } else {
-        const resp = await apiMap[tab]({ page: nextPage, page_size: PAGE_SIZE, exclude_hidden: true });
-        list = getCreationHistoryList(resp);
+        pageResp = await apiMap[tab]({ page: nextPage, page_size: PAGE_SIZE, exclude_hidden: true });
+        list = getCreationHistoryList(pageResp);
       }
 
       const type = tab === 'dubbing' ? 'audio' : tab;
       const rawListLength = list.length;
       list = dedupeCreationHistoryList([...list], type);
-      const hasMore = rawListLength >= PAGE_SIZE;
+      const explicitHasMore = pageResp?.has_more ?? pageResp?.hasMore;
+      const hasMore = explicitHasMore !== undefined
+        ? Boolean(explicitHasMore)
+        : rawListLength >= PAGE_SIZE;
 
       const normalized = list.map((item) => normalizeCreationHistoryItem(item, type));
       if (nextPage === 1) {

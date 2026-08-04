@@ -64,9 +64,10 @@ function ProgressTag({ label, dashed = false, dim = false, success = false }) {
   );
 }
 
-export default function ScriptProgressCard({ title, status = 'pending' }) {
+export default function ScriptProgressCard({ title, status = 'pending', onClick }) {
   const normalizedStatus = LEGACY_STATUS_MAP[status] || 'pending';
   const config = STATUS_CONFIG[normalizedStatus];
+  const isClickable = Boolean(onClick) && normalizedStatus !== 'pending';
 
   return (
     <div
@@ -84,6 +85,37 @@ export default function ScriptProgressCard({ title, status = 'pending' }) {
         borderRadius: '5px',
         background: config.background,
         border: `1px solid ${config.border}`,
+        cursor: isClickable ? 'pointer' : 'default',
+        transition: 'background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease',
+      }}
+      role={isClickable ? 'button' : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      aria-label={isClickable ? `查看${title}的分镜` : undefined}
+      onClick={isClickable ? onClick : undefined}
+      onKeyDown={isClickable ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      } : undefined}
+      onMouseEnter={(event) => {
+        if (!isClickable) return;
+        event.currentTarget.style.backgroundColor = normalizedStatus === 'edited' ? '#52BF9218' : '#2DC3E118';
+        event.currentTarget.style.borderColor = normalizedStatus === 'edited' ? '#52BF9270' : '#2DC3E170';
+        event.currentTarget.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.04)';
+      }}
+      onMouseLeave={(event) => {
+        if (!isClickable) return;
+        event.currentTarget.style.backgroundColor = config.background;
+        event.currentTarget.style.borderColor = config.border;
+        event.currentTarget.style.boxShadow = 'none';
+        event.currentTarget.style.transform = 'translateY(0)';
+      }}
+      onMouseDown={(event) => {
+        if (isClickable) event.currentTarget.style.transform = 'translateY(1px)';
+      }}
+      onMouseUp={(event) => {
+        if (isClickable) event.currentTarget.style.transform = 'translateY(0)';
       }}
     >
       <div

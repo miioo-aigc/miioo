@@ -14,12 +14,22 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  抽离主体任务状态、终态与按主体结果读取适配纯函数
+ *   2026-08-04  兼容取消任务终态，避免取消后继续轮询至超时
  */
 
-const TERMINAL_STATUSES = new Set(['completed', 'partial', 'failed']);
+const TERMINAL_STATUSES = new Set([
+  'completed',
+  'partial',
+  'failed',
+  'cancelled',
+  'done',
+  'success',
+  'error',
+]);
 
 export function getSubjectTaskStatus(task) {
-  return task?.status || task?.raw_status || '';
+  const status = task?.status || task?.raw_status || '';
+  return String(status).trim().toLowerCase();
 }
 
 export function isSubjectTaskTerminal(task) {

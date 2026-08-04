@@ -150,7 +150,10 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
 
       const type = tab === 'dubbing' ? 'audio' : tab;
       const rawList = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
-      const hasMore = rawList.length >= pageSize;
+      const explicitHasMore = resp?.has_more ?? resp?.hasMore;
+      const hasMore = explicitHasMore !== undefined
+        ? Boolean(explicitHasMore)
+        : rawList.length >= pageSize;
       // 资产库接口可能为同一媒体返回不同 ID 的多条记录，不能只按后端 ID 去重。
       const list = dedupeCreationHistoryList(rawList, type);
       const normalized = list.map((item) => normalizeHistoryItem(item, type));

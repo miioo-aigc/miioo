@@ -6,6 +6,7 @@ import OptionTabs from '../components/ui/OptionTabs';
 import Tabs from '../components/ui/Tabs';
 import Button from '../components/ui/Button';
 import { NEW_VISUAL_STYLE_GROUPS } from '../config/visualStyles';
+import { getErrorMessage } from '../api/error.js';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -233,7 +234,7 @@ function trimTrailingSpecials(val) {
   return val.replace(/[_. -]+$/, '');
 }
 
-export default function NewProjectModal({ open, onClose, onConfirm }) {
+export default function NewProjectModal({ open, onClose, onConfirm, showToast }) {
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
   const [ratio, setRatio] = useState('16:9');
@@ -267,6 +268,12 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
   const handleConfirm = async () => {
     if (!name.trim()) {
       setNameError(true);
+      return;
+    }
+    const hasCustomStyle = styleMode === 'custom' && customStyleDesc.trim();
+    const hasLibraryStyle = styleMode === 'library' && libraryStyleValue;
+    if (!hasCustomStyle && !hasLibraryStyle) {
+      showToast?.('请选择自定义视觉风格或从风格库中选择一项', 'warning');
       return;
     }
     setSubmitting(true);
@@ -309,6 +316,7 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
       handleClose();
     } catch (err) {
       console.error('创建项目失败', err);
+      showToast?.(getErrorMessage(err, '创建项目失败，请稍后重试'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -622,8 +630,14 @@ export default function NewProjectModal({ open, onClose, onConfirm }) {
         open={customStyleOpen}
         onClose={() => setCustomStyleOpen(false)}
         onConfirm={(desc) => {
+          const trimmedDesc = desc.trim();
           setCustomStyleDesc(desc);
-          setStyleMode('custom');
+          if (trimmedDesc) {
+            setStyleMode('custom');
+          } else {
+            setStyleMode('none');
+            showToast?.('自定义视觉风格描述不能为空', 'warning');
+          }
         }}
         initialDesc={customStyleDesc}
       />

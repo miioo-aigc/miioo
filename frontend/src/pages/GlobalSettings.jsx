@@ -39,6 +39,7 @@
  *   2026-07-28  剧集进度按项目工作流解锁状态展示，视频生成不直接标记“剪辑中”
  *   2026-08-03  项目信息 Tab 内容区补齐 flex 滚动边界，支持小屏高度下滚动查看
  *   2026-08-03  项目信息视觉风格封面与新建项目风格库统一，新增风格图优先
+ *   2026-08-04  剧本进度卡片支持跳转对应分集分镜，并补齐卡片交互反馈
  */
 
 import { lazy, Suspense, useState, useRef, useEffect } from 'react';
@@ -427,6 +428,7 @@ export default function GlobalSettings({
   onScriptContentChange,
   scriptDraftContent,
   onScriptDraftContentChange,
+  onGoToStoryboard,
   episodeStatuses = {},
 }) {
   const [name, setName] = useState(projectName);
@@ -575,7 +577,7 @@ export default function GlobalSettings({
         {/* 资产概况 Tab */}
         {activeTab === 'overview' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', paddingTop: '16px', paddingBottom: '0px', alignSelf: 'stretch', flex: '1 1 0%', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box' }}>
-            <ScriptProgress episodes={episodes} episodeStatuses={episodeStatuses} />
+            <ScriptProgress episodes={episodes} episodeStatuses={episodeStatuses} onEpisodeClick={onGoToStoryboard} />
             <SubjectOverviewCard label="角色" type="char" subjects={chars} onNavigate={isSubjectUnlocked || chars.length > 0 ? () => onGoToSubject?.('char', { fromOverview: true }) : undefined} />
             <SubjectOverviewCard label="场景" type="scene" subjects={scenes} onNavigate={isSubjectUnlocked || scenes.length > 0 ? () => onGoToSubject?.('scene', { fromOverview: true }) : undefined} />
             <SubjectOverviewCard label="道具" type="prop" subjects={props} emptyLabel="暂无道具" onNavigate={isSubjectUnlocked || props.length > 0 ? () => onGoToSubject?.('prop', { fromOverview: true }) : undefined} />

@@ -1,6 +1,7 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 import { authFetch, authFetchForm } from './request.js';
+import { throwResponseError } from './error.js';
 import { cached, invalidate, setCache } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 
@@ -51,6 +52,9 @@ export async function apiCreateProject({ name, description, aspect_ratio, visual
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, description, aspect_ratio, visual_style, visual_style_prompt, creation_mode, project_type, cover_url }),
   });
+  if (!res.ok) {
+    await throwResponseError(res, `创建项目失败（${res.status}）`);
+  }
   invalidate(K.projectsPrefix()); // 项目列表已变
   return res.json();
 }

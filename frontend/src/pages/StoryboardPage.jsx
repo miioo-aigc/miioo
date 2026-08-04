@@ -246,6 +246,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const [hasLoadedEpisodeData, setHasLoadedEpisodeData] = useState(false);
   const [loadedEpisodeDataKey, setLoadedEpisodeDataKey] = useState(null);
   const [storyboardLoadError, setStoryboardLoadError] = useState(false);
+  const appliedInitialEpisodeIndexRef = useRef(null);
   const deletedSubjectIdsRef = useRef(new Set());
   const deletedAssetIdsRef = useRef(new Set());
   const [hasMoreShots, setHasMoreShots] = useState(true);
@@ -884,6 +885,18 @@ function hasStoryboardMediaHint(shot = {}) {
       return () => cancelAnimationFrame(frameId);
     }
   }, [activeEpisodes, episode]);
+
+  // 从项目总览点击剧集卡片进入时，按卡片传入的索引定位对应分集；
+  // 分集数据异步到达后也要重新应用目标索引，避免默认停留在第一集。
+  useEffect(() => {
+    if (initialEpisodeIndex == null || initialEpisodeIndex < 0 || initialEpisodeIndex >= activeEpisodes.length) return;
+    if (appliedInitialEpisodeIndexRef.current === initialEpisodeIndex) return;
+    appliedInitialEpisodeIndexRef.current = initialEpisodeIndex;
+    const targetEpisode = activeEpisodes[initialEpisodeIndex];
+    if (!targetEpisode || getEpisodeId(targetEpisode) === getEpisodeId(episode)) return;
+    const frameId = requestAnimationFrame(() => setEpisode(targetEpisode));
+    return () => cancelAnimationFrame(frameId);
+  }, [initialEpisodeIndex, activeEpisodes, episode]);
 
   // episode 还是字符串（episodes prop 尚未到位）时，订阅 :all key
   // 一旦有数据写入就尝试把 episode 切换到真实对象

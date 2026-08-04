@@ -16,18 +16,20 @@ export function createLatestPersistenceQueue(persist) {
     running = true;
     settled = (async () => {
       let firstError = null;
+      let lastResult;
       while (pending) {
         const next = pending;
         pending = null;
         const currentSequence = next.sequence;
         try {
-          await persist(next.value, currentSequence);
+          lastResult = await persist(next.value, currentSequence);
         } catch (error) {
           // 当前请求失败时仍继续提交队列中更新的快照，避免一次失败永久阻塞后续删除/绑定。
           firstError ||= error;
         }
       }
       if (firstError) throw firstError;
+      return lastResult;
     })().finally(() => {
       running = false;
     });

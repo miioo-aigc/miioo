@@ -84,6 +84,8 @@
  *   2026-08-03  统一兼容空数组遮蔽嵌套参考图，以及嵌套 asset/image 身份，删除前无法读取详情时中止
  *   2026-08-03  参考图候选过滤统一使用资产 ID/地址身份键，修复参考图再次混入右侧列表
  *   2026-08-03  初始化请求不再用旧空参考图覆盖上传中的参考图，避免候选列表回归
+ *   2026-08-05  主体详情接入本地缓存，编辑弹窗优先恢复缓存并后台校验，减少重复打开等待
+ *   2026-08-05  参考图快照同步写入本地存储，编辑弹窗初始化时立即恢复图片地址
  *   2026-07-15  抽离主体页工具栏和标签导航，页面保留业务状态与回调
  *   2026-07-15  抽离主体详情候选图/参考图映射、去重和单一定稿纯函数
  *   2026-07-15  抽离参考图详情快照转换和主体生图参数组装纯函数
@@ -130,8 +132,8 @@ import { normalizeImageUrl } from '../utils/imageUrl';
 import { getSubjectReferenceImageIdentities, getSubjectReferenceImagesFromResponse, getSubjectReferenceSnapshot } from '../utils/referenceMediaAdapter';
 import { normalizeSubjects as normalizeSubjectList } from '../utils/subjectAdapter';
 import { addPendingTask, removePendingTask, getPendingTasks } from '../utils/taskPersistence';
-import { subscribe } from '../utils/cache';
-import { K } from '../utils/cacheKeys';
+import { peekCacheEntry, subscribe } from '../utils/cache';
+import { K, MEDIUM } from '../utils/cacheKeys';
 import { defaultPromptForTab, findPendingSubjectImage, getPendingGenTabSetter } from '../utils/subjectPendingGenerationAdapter';
 import { clearSubjectPanelState, readSubjectPanelState, saveSubjectPanelState } from '../utils/subjectPanelStorage';
 import { pendingGenerations } from '../utils/subjectPendingGenerationStore';
@@ -240,7 +242,12 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   const [selectedResolution, setSelectedResolution] = useState(char?.resolution || '2K');
   const [genMode, setGenMode] = useState('three_view');
   const [generatedImages, setGeneratedImages] = useState([]);
-  const [refImageIds, setRefImageIds] = useState(Array.isArray(char?.reference_image_ids) ? char.reference_image_ids : []);
+  const [refImageIds, setRefImageIds] = useState(() => {
+    const snapshot = getSubjectReferenceSnapshot(projectId, char?.id);
+    return snapshot !== null
+      ? snapshot
+      : (Array.isArray(char?.reference_image_ids) ? char.reference_image_ids : []);
+  });
   const referencePersistenceRef = useRef(null);
   const latestRefImageIdsRef = useRef(refImageIds);
   const uploadingAssetIdsRef = useRef(new Set());
@@ -374,13 +381,15 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
       //   candidate_images (SubjectImageResponse[])
       //   reference_images (SubjectReferenceImage[])
       //   latest_generate_config (SubjectGenerateConfig | null)
-      console.log('[SubjectPage] preflight MISS: calling apiGetSubjectDetail for', char.id);
-      const [detailRes, subjectAssets] = await Promise.all([
-        apiGetSubjectDetail(projectId, char.id).catch(() => null),
-        apiGetSubjectAssets(projectId, char.id, {
-          category: tabLabel === '场景' ? 'scene' : tabLabel === '道具' ? 'prop' : 'character',
-        }).catch(() => []),
-      ]);
+      const detailCacheEntry = peekCacheEntry(K.subjectDetail(projectId, char.id), MEDIUM.CONTENT);
+      console.log(
+        detailCacheEntry
+          ? '[SubjectPage] 主体详情命中本地缓存，先使用缓存打开：'
+          : '[SubjectPage] 主体详情未命中本地缓存，开始请求：',
+        char.id,
+      );
+      // 先恢复主体详情和参考图；右侧候选资产较慢时不能阻塞编辑面板的首屏显示。
+      const detailRes = await apiGetSubjectDetail(projectId, char.id).catch(() => null);
       if (cancelled) return;
 
       if (!detailRes) {
@@ -425,6 +434,12 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
         // 详情回读拿到参考图后立即清理同一资产，避免参考图回归右侧列表。
         setGeneratedImages((prev) => filterSubjectImagesByReferences(prev, nextRefImageIds));
       }
+
+      // 参考图状态已经可以立即渲染，候选资产在后台补充。
+      const subjectAssets = await apiGetSubjectAssets(projectId, char.id, {
+        category: tabLabel === '场景' ? 'scene' : tabLabel === '道具' ? 'prop' : 'character',
+      }).catch(() => []);
+      if (cancelled) return;
 
       // 检查是否有进行中/已完成的跨弹窗生成
       const pending = pendingGenerations.get(char.id);

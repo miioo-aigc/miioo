@@ -118,21 +118,26 @@ function getCaretOffset(el) {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return 0;
   const range = sel.getRangeAt(0);
+  const mentionLength = (node) => node.dataset?.mention
+    ? node.dataset.mention.length + 1
+    : node.textContent.length;
+
+  // 光标落在编辑器容器本身时，startOffset 表示子节点索引；
+  // 不能按“未匹配到节点”处理，否则会错误地返回文本末尾。
+  if (range.startContainer === el) {
+    return Array.from(el.childNodes)
+      .slice(0, range.startOffset)
+      .reduce((offset, node) => offset + mentionLength(node), 0);
+  }
+
   let offset = 0;
   for (const node of el.childNodes) {
     if (node === range.startContainer || node.contains?.(range.startContainer)) {
       if (node.nodeType === Node.TEXT_NODE) offset += range.startOffset;
-      else if (node.dataset?.mention) {
-        // 统一为 @名称 的长度
-        offset += node.dataset.mention.length + 1;
-      }
+      else if (node.dataset?.mention) offset += node.dataset.mention.length + 1;
       break;
     }
-    if (node.nodeType === Node.TEXT_NODE) offset += node.textContent.length;
-    else if (node.dataset?.mention) {
-      offset += node.dataset.mention.length + 1;
-    }
-    else offset += node.textContent.length;
+    offset += mentionLength(node);
   }
   return offset;
 }

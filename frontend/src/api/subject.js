@@ -14,6 +14,7 @@ import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 // 避免资产库开启状态下看到旧数据。
 function invalidateSubjects(projectId) {
   invalidate(K.subjectsPrefix(projectId));
+  invalidate(K.subjectDetailPrefix(projectId));
   invalidate(K.projectOverview(projectId));
   invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
   invalidate(K.storyboardPagePrefix(projectId));
@@ -86,11 +87,20 @@ export async function apiGetSubjectsPage(projectId, { type, episode_id, limit = 
 }
 
 
-export async function apiGetSubjectDetail(projectId, subjectId) {
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/subjects/${subjectId}`, {
-    headers: { 'Content-Type': 'application/json' },
-  });
-  return res.json();
+export async function apiGetSubjectDetail(projectId, subjectId, { fresh = false } = {}) {
+  const fetchDetail = async () => {
+    const res = await authFetch(`${BASE}/api/projects/${projectId}/subjects/${subjectId}`, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return res.json();
+  };
+
+  if (fresh) return fetchDetail();
+  return cached(
+    K.subjectDetail(projectId, subjectId),
+    fetchDetail,
+    { medium: MEDIUM.CONTENT, ttl: TTL.CONTENT },
+  );
 }
 
 export async function apiCreateSubject(projectId, data) {

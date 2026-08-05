@@ -158,26 +158,56 @@ const REFERENCE_URL_KEYS = [
 ];
 
 // 弹窗关闭后仍保留本次已确认的参考图身份，避免下一次打开时被旧详情快照覆盖。
-// 仅作为短生命周期的前端校正缓存，真实持久化仍由参考图接口负责。
+// 只保存资产 ID 和图片地址，不保存图片二进制；接口成功写入后仍以服务端数据为准。
 const subjectReferenceSnapshotCache = new Map();
+const SUBJECT_REFERENCE_SNAPSHOT_STORAGE_KEY = 'miioo_subject_reference_snapshots';
 
 function subjectReferenceCacheKey(projectId, subjectId) {
   return `${String(projectId ?? '')}:${String(subjectId ?? '')}`;
 }
 
+function readSubjectReferenceSnapshots() {
+  try {
+    const raw = localStorage.getItem(SUBJECT_REFERENCE_SNAPSHOT_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSubjectReferenceSnapshot(key, images) {
+  try {
+    const snapshots = readSubjectReferenceSnapshots();
+    snapshots[key] = images;
+    localStorage.setItem(SUBJECT_REFERENCE_SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshots));
+  } catch {
+    // 本地存储不可用时继续使用内存快照，不影响上传和绑定流程。
+  }
+}
+
 export function setSubjectReferenceSnapshot(projectId, subjectId, images = []) {
   if (projectId == null || subjectId == null) return;
+  const key = subjectReferenceCacheKey(projectId, subjectId);
+  const snapshot = Array.isArray(images) ? images.map((image) => ({ ...image })) : [];
   subjectReferenceSnapshotCache.set(
-    subjectReferenceCacheKey(projectId, subjectId),
-    Array.isArray(images) ? images.map((image) => ({ ...image })) : [],
+    key,
+    snapshot,
   );
+  writeSubjectReferenceSnapshot(key, snapshot);
 }
 
 export function getSubjectReferenceSnapshot(projectId, subjectId) {
   if (projectId == null || subjectId == null) return null;
   const key = subjectReferenceCacheKey(projectId, subjectId);
-  if (!subjectReferenceSnapshotCache.has(key)) return null;
-  return subjectReferenceSnapshotCache.get(key).map((image) => ({ ...image }));
+  if (subjectReferenceSnapshotCache.has(key)) {
+    return subjectReferenceSnapshotCache.get(key).map((image) => ({ ...image }));
+  }
+  const snapshot = readSubjectReferenceSnapshots()[key];
+  if (!Array.isArray(snapshot)) return null;
+  const normalizedSnapshot = snapshot.map((image) => ({ ...image }));
+  subjectReferenceSnapshotCache.set(key, normalizedSnapshot);
+  return normalizedSnapshot;
 }
 
 function collectReferenceImageIdentity(value, ids, urls, visited) {

@@ -1,5 +1,20 @@
 # miioo 项目进度管理文档
 
+## 2026-08-05 主体候选图专用接口适配
+
+- 按后端交接文档切换候选图写入链路：右侧本地上传改用 `POST /api/projects/{project_id}/subjects/{subject_id}/images/upload`，资产库选择改用 `POST /api/projects/{project_id}/subjects/{subject_id}/images/from-asset`。
+- 资产库选择不再 PATCH 源资产的 `subject_id`、分类或 `is_primary`；源资产只通过 `asset_id` 作为主体候选图来源登记，避免参考图、候选图和资产库归属再次混淆。
+- 本地上传和资产库选择成功后统一消费后端 `SubjectImageResponse`；候选图定稿/取消定稿统一走主体候选图接口，不再按 `asset_id` 操作资产主图。
+- 候选图映射新增 `thumbnail_url`、`preview_url`、`download_url`、`size`、`created_at` 等字段兼容，参考图仍只读取 `referenceImages`，不进入右侧候选图或资产归属链路。
+- 验证：目标 API/组件定向 ESLint、`git diff --check` 已通过；尚未连接真实后端执行上传、资产库选择、刷新恢复和删除回归，需在联调环境按交接文档验收。
+
+## 2026-08-05 分镜主体参考场景与道具展示修复
+
+- `storyboardDataAdapter` 现在直接适配分镜接口返回的 `subject_references`，兼容 `character`、`scene`、`prop` 三类主体及其 `image_url`、预览图和缩略图字段。
+- 之前分镜主体参考列主要依赖 `character_ids`，导致接口已返回但未进入 `mainRefs` 的场景和道具无法展示；本次同时兼容旧字段 `scene_id`、`prop_ids`。
+- 主体引用仍交给现有 `enrichMainRefs` 按主体 ID、资产 ID和图片路径去重，不改变主体参考图的保存协议。
+- 验证：适配器定向 ESLint、`git diff --check` 已通过；构建验证见本次任务结果。
+
 ## 2026-08-04 剧本对话中文输入法 Enter 处理
 
 - 修复剧本对话输入框在中文拼音候选词尚未落地时按 Enter 会误触发发送的问题。

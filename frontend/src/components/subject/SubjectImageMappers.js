@@ -26,6 +26,7 @@
  *   2026-08-03  候选图过滤改用统一参考图身份键，兼容嵌套资产对象和空数组别名
  *   2026-08-03  候选图身份兼容 reference_asset/reference_image/resource 等嵌套返回
  *   2026-08-04  透传主体图片稳定资产/生成血缘字段，按 assetId 优先合并候选图与项目资产
+ *   2026-08-05  适配主体候选图上传/资产库登记接口的完整响应字段
  */
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { getSubjectReferenceImageIdentities, getSubjectReferenceImageKeys, isExplicitReferenceMedia } from '../../utils/referenceMediaAdapter';
@@ -109,11 +110,14 @@ function isReferenceImage(image, referenceKeys) {
     || identities.urls.some((url) => referenceKeys.urls.has(normalizeImageUrl(url) || String(url)));
 }
 
-function toImageItem({ id, rawUrl, settled = false, isReference = false, refImages = [], assetId = null, source = null, assetSource = null, taskId = null, generationId = null, resultIndex = null, contentHash = null, detailSource = null, prompt = null, inputPrompt = null, model = null, ratio = null, resolution = null, createdAt = null }) {
+function toImageItem({ id, rawUrl, thumbnailUrl = null, previewUrl = null, downloadUrl = null, settled = false, isReference = false, refImages = [], assetId = null, source = null, assetSource = null, taskId = null, generationId = null, resultIndex = null, contentHash = null, detailSource = null, prompt = null, inputPrompt = null, model = null, size = null, ratio = null, resolution = null, createdAt = null }) {
   return {
     id,
     rawUrl,
-    url: normalizeImageUrl(rawUrl),
+    thumbnailUrl: normalizeImageUrl(thumbnailUrl || rawUrl),
+    previewUrl: normalizeImageUrl(previewUrl || rawUrl),
+    downloadUrl: normalizeImageUrl(downloadUrl),
+    url: normalizeImageUrl(thumbnailUrl || rawUrl),
     settled,
     isReference,
     refImages,
@@ -128,6 +132,7 @@ function toImageItem({ id, rawUrl, settled = false, isReference = false, refImag
     ...(prompt != null ? { prompt } : {}),
     ...(inputPrompt != null ? { input_prompt: inputPrompt } : {}),
     ...(model != null ? { model } : {}),
+    ...(size != null ? { size } : {}),
     ...(ratio != null ? { ratio } : {}),
     ...(resolution != null ? { resolution } : {}),
     ...(createdAt != null ? { created_at: createdAt } : {}),
@@ -144,7 +149,10 @@ export function createSubjectImageItem({ id, rawUrl, settled = false, refImages 
 export function mapCandidateImages(images) {
   return (Array.isArray(images) ? images : []).map((image) => toImageItem({
     id: image.id,
-    rawUrl: image.image_url || image.imageUrl,
+    rawUrl: image.image_url || image.imageUrl || image.preview_url || image.previewUrl || image.large_url || image.largeUrl || image.thumbnail_url || image.thumbnailUrl,
+    thumbnailUrl: image.thumbnail_url || image.thumbnailUrl,
+    previewUrl: image.preview_url || image.previewUrl || image.large_url || image.largeUrl || image.image_url || image.imageUrl,
+    downloadUrl: image.download_url || image.downloadUrl,
     settled: image.is_primary ?? false,
     refImages: getReferenceImages(image),
     assetId: image.asset_id ?? image.assetId,
@@ -154,14 +162,20 @@ export function mapCandidateImages(images) {
     generationId: image.generation_id ?? image.generationId,
     resultIndex: image.result_index ?? image.resultIndex,
     contentHash: image.content_hash ?? image.contentHash,
-    detailSource: 'ai-generated',
+    detailSource: image.source === 'local-upload' ? 'local-upload' : image.source === 'asset-library' ? 'asset-library' : 'ai-generated',
     prompt: image.prompt,
-    inputPrompt: image.input_prompt,
+    inputPrompt: image.input_prompt ?? image.inputPrompt,
     model: image.model,
+    size: image.size,
     ratio: image.ratio,
     resolution: image.resolution,
-    createdAt: image.created_at,
+    createdAt: image.created_at ?? image.createdAt,
   }));
+}
+
+/** 将主体候选图写接口响应转换为页面候选图状态。 */
+export function mapSubjectImageResponse(image) {
+  return mapCandidateImages(image ? [image] : [])[0] || null;
 }
 
 function getAssetDetailSource(asset) {

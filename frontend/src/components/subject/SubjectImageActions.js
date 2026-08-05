@@ -19,18 +19,18 @@
  *   2026-07-27  上传中的本地图片禁止提前定稿，避免临时 ID 触发无效请求
  *   2026-07-28  候选图新增时间字段，支持本地上传和资产库选择后的统一排序
  *   2026-07-28  本地候选图落库前使用加载占位，定稿成功后立即同步主体封面
+ *   2026-08-05  适配主体候选图专用上传/资产登记接口，候选图操作与源资产操作彻底分离
  */
 import {
+  apiAddSubjectImageFromAsset,
   apiDownloadSubjectImage,
   apiGetSubjectDetail,
   apiSetPrimarySubjectImage,
+  apiUploadSubjectCandidateImage,
   apiUnsetPrimarySubjectImage,
 } from '../../api/subject';
-import { apiUploadCreationImage } from '../../api/creation';
-import { apiGetSubjectAssets, apiSetPrimarySubjectAsset, apiUpdateAsset } from '../../api/assets';
+import { mapSubjectImageResponse } from './SubjectImageMappers';
 import { normalizeImageUrl } from '../../utils/imageUrl';
-import { invalidate } from '../../utils/cache';
-import { K, MEDIUM } from '../../utils/cacheKeys';
 
 function resolveSubjectImageId(detail, image) {
   const targetUrl = normalizeImageUrl(image?.rawUrl || image?.url);
@@ -56,7 +56,6 @@ function resolveSubjectImageId(detail, image) {
 export function createSubjectImageActionHandlers({
   projectId,
   subjectId,
-  subjectType = 'character',
   generatedImages = [],
   uploadingAssetIdsRef,
   setGeneratedImages,
@@ -101,13 +100,14 @@ export function createSubjectImageActionHandlers({
       }
       uploadingAssetIdsRef?.current?.add(normalizedAssetId);
 
+      const assetPlaceholderId = `asset-upload-${normalizedAssetId}`;
       setGeneratedImages((prev) => [{
         rawUrl,
         url: normalizedUrl,
         settled: false,
-        id: selectedAssetId,
-        assetId: selectedAssetId,
-        source: 'creation-asset',
+        id: assetPlaceholderId,
+        assetId: normalizedAssetId,
+        source: 'asset-library',
         detailSource: 'asset-library',
         prompt: fileOrAsset.prompt,
         input_prompt: fileOrAsset.input_prompt,
@@ -117,11 +117,19 @@ export function createSubjectImageActionHandlers({
         // 资产库返回的时间优先；缺失时记录本次绑定时间，保证即时排序稳定。
         created_at: fileOrAsset.created_at || fileOrAsset.createdAt || Date.now(),
       }, ...prev]);
-      apiUpdateAsset(selectedAssetId, { subject_id: subjectId, category: subjectType })
-        .then(() => invalidate(K.projectAssets(projectId), MEDIUM.CONTENT))
+      apiAddSubjectImageFromAsset(projectId, subjectId, normalizedAssetId)
+        .then((response) => {
+          const mapped = mapSubjectImageResponse(response);
+          if (!mapped) throw new Error('资产库图片登记成功，但未返回主体候选图');
+          setGeneratedImages((prev) => prev.map((image) => (
+            image.id === assetPlaceholderId
+              ? { ...mapped, source: 'subject-image', detailSource: 'asset-library' }
+              : image
+          )));
+        })
         .catch((error) => {
-          console.error('[SubjectPage] 绑定候选图资产失败:', error);
-          setGeneratedImages((prev) => prev.filter((image) => image.assetId !== selectedAssetId));
+          console.error('[SubjectPage] 登记候选图资产失败:', error);
+          setGeneratedImages((prev) => prev.filter((image) => image.id !== assetPlaceholderId));
           showToast(error.message || '保存候选图失败', 'error');
         })
         .finally(() => {
@@ -146,48 +154,15 @@ export function createSubjectImageActionHandlers({
     }, ...prev]);
 
     if (projectId) {
-      // 主体接口只提供参考图上传，没有候选图上传接口。
-      // 右侧自定义图片必须走通用创作上传，不能写入主体 reference_images。
-      apiUploadCreationImage({ file: fileOrAsset, category: subjectType, project_id: projectId })
+      apiUploadSubjectCandidateImage(projectId, subjectId, fileOrAsset)
         .then((response) => {
-          const uploadedImage = response?.image || response?.asset || {};
-          const realId = response?.asset_id || response?.id || uploadedImage.asset_id || uploadedImage.id;
-          const realUrl = response?.uploaded_url
-            || response?.uploadedUrl
-            || response?.file_url
-            || response?.url
-            || uploadedImage.original_url
-            || uploadedImage.originalUrl
-            || uploadedImage.file_url
-            || uploadedImage.url;
-          if (!realId) throw new Error('上传候选图后未返回资产编号');
-          const uploadedMetadata = typeof uploadedImage?.metadata_json === 'object'
-            ? uploadedImage.metadata_json
-            : {};
-          return apiUpdateAsset(realId, {
-            subject_id: subjectId,
-            category: subjectType,
-            // 资产 PATCH 不支持顶层 source_type，来源写入契约允许的扩展元数据，保证刷新后仍可区分本地上传。
-            metadata_json: { ...uploadedMetadata, source_type: 'local-upload', origin: 'local-upload' },
-          }).then(() => {
-            // 主体页上传的本地图片属于项目主体资产，上传成功后必须让资产库重新读取。
-            invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
-            setGeneratedImages((prev) => prev.map((image) => (
-              image.id === tempId
-                ? {
-                  ...image,
-                  id: realId,
-                  assetId: realId,
-                  source: 'creation-asset',
-                  detailSource: 'local-upload',
-                  rawUrl: realUrl || null,
-                  url: normalizeImageUrl(realUrl) || null,
-                  uploading: false,
-                  settled: false,
-                }
-                : image
-            )));
-          });
+          const mapped = mapSubjectImageResponse(response);
+          if (!mapped) throw new Error('上传候选图成功，但未返回主体候选图');
+          setGeneratedImages((prev) => prev.map((image) => (
+            image.id === tempId
+              ? { ...mapped, source: 'subject-image', detailSource: 'local-upload', uploading: false }
+              : image
+          )));
         })
         .catch((error) => {
           console.error('[SubjectPage] 上传候选图失败:', error);
@@ -211,27 +186,15 @@ export function createSubjectImageActionHandlers({
     if (newSettled) {
       const nextCoverUrl = image?.rawUrl ?? image?.url ?? null;
       onCoverChange?.(nextCoverUrl);
-      // 主体候选图可能同时带有生成资产编号，但它仍应使用主体候选图定稿接口；
-      // 只有候选区本地上传/资产库选择产生的 creation-asset 才走资产接口。
-      const assetId = image.source === 'creation-asset' ? (image.assetId || image.id) : null;
       const temporaryId = String(image?.id || '').startsWith('batch-') || String(image?.id || '').startsWith('generated-');
-      const setPrimaryRequest = assetId
-        ? apiUnsetPrimarySubjectImage(projectId, subjectId)
-          .then(() => apiSetPrimarySubjectAsset(projectId, subjectId, assetId, { category: subjectType }))
-        : image.id && !temporaryId
-          ? apiGetSubjectAssets(projectId, subjectId, { category: subjectType })
-            .then((assets) => Promise.all(
-              (assets || [])
-                .filter((asset) => asset.is_primary)
-                .map((asset) => apiUpdateAsset(asset.id || asset.asset_id, { is_primary: false }))
-            ))
-            .then(() => apiSetPrimarySubjectImage(projectId, subjectId, image.id))
-          : apiGetSubjectDetail(projectId, subjectId)
-            .then((detail) => {
-              const realImageId = resolveSubjectImageId(detail, image);
-              if (!realImageId) throw new Error('创作结果尚未同步到主体图片，请稍后重试');
-              return apiSetPrimarySubjectImage(projectId, subjectId, realImageId);
-            });
+      const setPrimaryRequest = image.id && !temporaryId
+        ? apiSetPrimarySubjectImage(projectId, subjectId, image.id)
+        : apiGetSubjectDetail(projectId, subjectId)
+          .then((detail) => {
+            const realImageId = resolveSubjectImageId(detail, image);
+            if (!realImageId) throw new Error('创作结果尚未同步到主体图片，请稍后重试');
+            return apiSetPrimarySubjectImage(projectId, subjectId, realImageId);
+          });
 
       setPrimaryRequest.catch((error) => {
         console.error('[SubjectPage] 设置定稿图失败:', error);
@@ -256,21 +219,15 @@ export function createSubjectImageActionHandlers({
           setPrimaryImageId?.(persistedId);
         }
       }).catch(() => {});
-      if (assetId) invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
     } else {
       onCoverChange?.(null);
       setPrimaryImageUrl(null);
       setPrimaryImageId(null);
-      const assetId = image.source === 'creation-asset' ? (image.assetId || image.id) : null;
-      const unsetRequest = assetId
-        ? apiUpdateAsset(assetId, { is_primary: false })
-          .then(() => apiUnsetPrimarySubjectImage(projectId, subjectId))
-        : apiUnsetPrimarySubjectImage(projectId, subjectId);
+      const unsetRequest = apiUnsetPrimarySubjectImage(projectId, subjectId);
       unsetRequest.catch((error) => {
         console.error('[SubjectPage] 取消定稿失败:', error);
         showToast(error.message || '取消定稿失败', 'error');
       });
-      if (assetId) invalidate(K.projectAssets(projectId), MEDIUM.CONTENT);
     }
 
     setGeneratedImages((prev) => prev.map((item, itemIndex) => (

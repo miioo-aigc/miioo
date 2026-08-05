@@ -187,6 +187,53 @@ export async function apiGetSubjectImages(projectId, subjectId) {
   return res.json();
 }
 
+function safeUploadFileName(file) {
+  const name = file?.name || 'upload';
+  const extensionIndex = name.lastIndexOf('.');
+  const extension = extensionIndex > 0 ? name.slice(extensionIndex) : '';
+  const base = extensionIndex > 0 ? name.slice(0, extensionIndex) : name;
+  const safeBase = Array.from(base, (char) => char.codePointAt(0) < 128 ? char : '_').join('') || 'upload';
+  return `${safeBase}${extension}`;
+}
+
+function readSubjectImagePayload(data) {
+  return data?.subject_image || data?.subjectImage || data?.image || data?.data || data?.result || data;
+}
+
+/** 主体候选图专用本地上传，不经过通用创作上传或资产归属 PATCH。 */
+export async function apiUploadSubjectCandidateImage(projectId, subjectId, file) {
+  const form = new FormData();
+  form.append('file', file, safeUploadFileName(file));
+  const res = await authFetchForm(
+    `${BASE}/api/projects/${projectId}/subjects/${subjectId}/images/upload`,
+    { method: 'POST', body: form },
+  );
+  if (!res.ok) {
+    const payload = await readResponsePayload(res).catch(() => null);
+    throw new Error(getDisplayErrorMessage(payload) || `上传主体候选图失败（${res.status}）`);
+  }
+  invalidateSubjects(projectId);
+  return readSubjectImagePayload(await res.json());
+}
+
+/** 将资产库图片登记为主体候选图，不修改源资产归属、分类或主图状态。 */
+export async function apiAddSubjectImageFromAsset(projectId, subjectId, assetId) {
+  const res = await authFetch(
+    `${BASE}/api/projects/${projectId}/subjects/${subjectId}/images/from-asset`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ asset_id: assetId }),
+    },
+  );
+  if (!res.ok) {
+    const payload = await readResponsePayload(res).catch(() => null);
+    throw new Error(getDisplayErrorMessage(payload) || `添加主体候选图失败（${res.status}）`);
+  }
+  invalidateSubjects(projectId);
+  return readSubjectImagePayload(await res.json());
+}
+
 export async function apiGenerateSubjectImage(projectId, subjectId, params) {
   const res = await authFetch(`${BASE}/api/projects/${projectId}/subjects/${subjectId}/generate-image`, {
     method: 'POST',

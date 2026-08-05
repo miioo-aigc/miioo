@@ -49,11 +49,43 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
   const genParams = parseObject(be.gen_params ?? be.genParams);
   const subjectRefs = parseObject(be.subject_refs_json ?? be.subjectRefsJson);
   const generationRefs = parseObject(be.generation_refs_json ?? be.generationRefsJson);
+  const subjectReferences = Array.isArray(be.subject_references)
+    ? be.subject_references
+    : (Array.isArray(be.subjectReferences) ? be.subjectReferences : []);
+  const normalizedSubjectReferences = subjectReferences.map((item) => {
+    if (!item || typeof item !== 'object') return null;
+    const subjectId = item.subject_id ?? item.subjectId ?? item.id;
+    if (!subjectId) return null;
+    const rawType = String(item.subject_type ?? item.subjectType ?? item.type ?? '').toLowerCase();
+    const type = rawType === 'character' || rawType === 'char'
+      ? 'char'
+      : rawType === 'scene'
+        ? 'scene'
+        : rawType === 'prop' || rawType === 'object'
+          ? 'prop'
+          : rawType || 'char';
+    const rawUrl = item.image_url
+      ?? item.imageUrl
+      ?? item.preview_url
+      ?? item.previewUrl
+      ?? item.thumbnail_url
+      ?? item.thumbnailUrl;
+    return {
+      ...item,
+      id: subjectId,
+      subjectId,
+      type,
+      url: rawUrl ? normalizeImageUrl(rawUrl) : undefined,
+      name: item.name || '主体参考',
+      assetId: item.asset_id ?? item.assetId,
+    };
+  }).filter(Boolean);
   const persistedSubjectIds = new Set([
     ...(Array.isArray(be.character_ids) ? be.character_ids : []),
     ...(Array.isArray(be.character_subject_ids) ? be.character_subject_ids : []),
     ...(Array.isArray(be.prop_subject_ids) ? be.prop_subject_ids : []),
     ...(be.scene_subject_id ? [be.scene_subject_id] : []),
+    ...normalizedSubjectReferences.map((item) => item.subjectId),
     ...(Array.isArray(subjectRefs.characters) ? subjectRefs.characters : []),
     ...(Array.isArray(subjectRefs.props) ? subjectRefs.props : []),
     ...(subjectRefs.scene ? [subjectRefs.scene] : []),
@@ -142,8 +174,14 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
     ),
     mainRefs: be.mainRefs ?? (
       [
+        // 新版接口直接返回完整主体引用，场景和道具不能只依赖 character_ids 补全。
+        ...normalizedSubjectReferences,
         ...(be.character_ids || []).map(cid =>
           typeof cid === 'string' ? { id: cid, type: 'char' } : cid
+        ),
+        ...(be.scene_id ? [{ id: be.scene_id, type: 'scene' }] : []),
+        ...(Array.isArray(be.prop_ids) ? be.prop_ids : []).map(pid =>
+          typeof pid === 'string' ? { id: pid, type: 'prop' } : pid
         ),
         // 参考图：优先读带名称的新字段 reference_images，回退到旧的纯 URL 数组 reference_image_urls
         ...(() => {

@@ -24,6 +24,7 @@
  *   2026-07-31  为候选图悬浮放大和下载按钮增加规范 Tooltip，图标改为纯白色
  *   2026-07-31  详情弹窗仅展示候选图片自身关联的参考图
  *   2026-07-31  候选图首次请求期间显示 DotsLoading 占位，区分加载中与真实空列表
+ *   2026-08-05  候选图卡片优先使用后端缩略图/预览图/下载地址
  */
 import { useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
@@ -200,8 +201,9 @@ export default function SubjectImageList({
 }) {
   const images = generatedImages.filter((image) => image.url).map((image) => ({
     id: image.id,
-    url: image.url,
-    fileUrl: image.rawUrl ?? image.url,
+    url: image.thumbnailUrl || image.url,
+    fileUrl: image.previewUrl || image.rawUrl || image.url,
+    downloadUrl: image.downloadUrl || null,
     is_primary: image.settled ?? false,
     // AI 生成图使用当前弹窗参数；资产库图使用资产自身字段；本地上传图不补齐创作信息。
     prompt: image.prompt ?? (image.detailSource === 'ai-generated' || !image.detailSource ? promptText : null),

@@ -1,5 +1,18 @@
 # 组件重构盘点基线
 
+## 2026-08-05 分镜主体参考完整字段适配
+
+- `storyboardDataAdapter.normalizeStoryboard` 直接消费分镜响应的 `subject_references`，将角色、场景、道具统一映射为 `mainRefs`，不再只依赖 `character_ids`。
+- 兼容主体引用的完整图片字段和旧版 `scene_id`、`prop_ids`，并沿用 `enrichMainRefs` 的主体/资产/路径去重。
+- 本次只调整纯数据适配，不改变 `MainRefCol` 的展示和保存边界。
+
+## 2026-08-05 主体候选图接口闭环适配
+
+- `SubjectImageActions` 的候选图区本地上传和资产库选择已切换到主体候选图专用 API；不再调用通用创作图片上传后 PATCH 资产归属，也不再把资产库源图改绑到当前主体。
+- 候选图统一以主体 `SubjectImage.id` 作为定稿操作 ID，`assetId` 只保留资产血缘和去重用途；候选图来源无论是本地上传、资产库选择还是 AI 创作，定稿都走主体候选图 `set-primary`，取消定稿走主体取消定稿接口。
+- `SubjectImageMappers` 和 `SubjectImageList` 统一消费主体候选图响应的缩略图、预览图、下载地址及来源/生成参数字段；参考图仍与候选图独立维护。
+- 真实后端联调待验证：新接口响应包装、候选图刷新恢复、资产库源图归属不变、外部资产候选删除不物理删除源资产。
+
 ## 2026-08-04 剧本输入框中文输入法提交边界
 
 - `src/components/script/InputCard.jsx` 的消息输入框增加输入法合成状态记录。

@@ -2,7 +2,8 @@
  * Storyboard 前后端数据映射与主体参考图补全。
  * 仅处理纯数据，不读取 React 状态，也不执行 API 或缓存副作用。
  *
- * 更新记录：2026-08-03 创作结果同时返回主体 ID 和 video-reference-images 副本时，
+ * 更新记录：2026-08-05 视频提示词绑定恢复时按 subject_id 去重，避免历史重复记录继续进入表单；
+ *              2026-08-03 创作结果同时返回主体 ID 和 video-reference-images 副本时，
  *                只保留主体引用，避免主体参考图在分镜列表中重复展示。
  *              2026-07-30 刷新恢复主体引用时，主体引用优先于同图普通参考资源，按主体/资产身份和图片路径去重。
  */
@@ -121,13 +122,27 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
     ?? be.posterUrl;
   const videoPreviewUrl = be.preview_video_url
     ?? be.previewVideoUrl;
+  const hasTopLevelVideoMentions = Array.isArray(be.video_prompt_mentions)
+    || Array.isArray(be.videoPromptMentions);
+  const rawVideoMentions = Array.isArray(be.video_prompt_mentions)
+    ? be.video_prompt_mentions
+    : (Array.isArray(be.videoPromptMentions) ? be.videoPromptMentions : []);
+  const nestedVideoMentions = Array.isArray(persistedCreationForm?.video?.video_prompt_mentions)
+    ? persistedCreationForm.video.video_prompt_mentions
+    : [];
+  const videoMentions = hasTopLevelVideoMentions ? rawVideoMentions : nestedVideoMentions;
+  const persistedVideoMentions = videoMentions.filter((mention, index, list) => {
+    const subjectId = mention?.subject_id ?? mention?.subjectId ?? mention?.id;
+    if (!subjectId) return false;
+    return list.findIndex((item) => String(item?.subject_id ?? item?.subjectId ?? item?.id) === String(subjectId)) === index;
+  });
   const creationForm = {
     image: persistedCreationForm?.image && typeof persistedCreationForm.image === 'object'
       ? persistedCreationForm.image
       : (be.image_prompt != null ? { prompt: be.image_prompt } : undefined),
     video: persistedCreationForm?.video && typeof persistedCreationForm.video === 'object'
-      ? persistedCreationForm.video
-      : (be.video_prompt != null ? { prompt: be.video_prompt } : undefined),
+      ? { ...persistedCreationForm.video, video_prompt_mentions: persistedVideoMentions }
+      : (be.video_prompt != null ? { prompt: be.video_prompt, video_prompt_mentions: persistedVideoMentions } : undefined),
   };
   const hasCreationForm = Boolean(creationForm.image || creationForm.video);
   const fallbackNumber = Number.isInteger(fallbackContext.index) ? fallbackContext.index + 1 : 0;

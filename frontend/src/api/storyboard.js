@@ -231,6 +231,9 @@ export async function apiUpdateStoryboardCreationForm(projectId, storyboardId, {
   return apiUpdateStoryboard(projectId, storyboardId, {
     image_prompt: imageState.prompt ?? null,
     video_prompt: videoState.prompt ?? null,
+    video_prompt_mentions: Array.isArray(videoState.video_prompt_mentions)
+      ? videoState.video_prompt_mentions
+      : [],
     gen_params: {
       ...(genParams && typeof genParams === 'object' ? genParams : {}),
       creation_form: {

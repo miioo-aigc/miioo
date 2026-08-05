@@ -300,18 +300,46 @@ export async function apiUpdateStoryboard(projectId, storyboardId, data) {
 export async function apiUpdateStoryboardCreationForm(projectId, storyboardId, { image, video, genParams }) {
   const imageState = image && typeof image === 'object' ? image : {};
   const videoState = video && typeof video === 'object' ? video : {};
+  const referenceItems = [...(imageState.refImages || []), ...(videoState.refImages || [])]
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const url = item.url || item.fileUrl || item.file_url || item.previewUrl || item.preview_url;
+      return url ? { ...item, url } : null;
+    })
+    .filter(Boolean)
+    .filter((item) => !item.uploading)
+    .filter((item) => !item.subjectId && !item.subject_id)
+    .filter((item) => !['char', 'scene', 'prop', 'character', 'object'].includes(String(item.type || item.subject_type || '').toLowerCase()))
+    .filter((item, index, list) => {
+      const key = item.assetId || item.asset_id || item.id || item.url;
+      return list.findIndex((candidate) => (candidate.assetId || candidate.asset_id || candidate.id || candidate.url) === key) === index;
+    })
+    .map((item) => ({
+      ...(item.assetId || item.asset_id ? { asset_id: item.assetId || item.asset_id } : {}),
+      url: item.url,
+      name: item.name || '参考图',
+    }));
+  const referenceImageUrls = referenceItems.map((item) => item.url).filter(Boolean);
+  const creationForm = {
+    image: imageState,
+    video: videoState,
+  };
   return apiUpdateStoryboard(projectId, storyboardId, {
     image_prompt: imageState.prompt ?? null,
     video_prompt: videoState.prompt ?? null,
     video_prompt_mentions: Array.isArray(videoState.video_prompt_mentions)
       ? videoState.video_prompt_mentions
       : [],
+    // 创作表单是主数据；顶层字段用于兼容后端裁剪 creation_form 或列表恢复不带嵌套表单的情况。
+    reference_image_urls: referenceImageUrls,
+    reference_images: referenceItems,
     gen_params: {
       ...(genParams && typeof genParams === 'object' ? genParams : {}),
-      creation_form: {
-        image: imageState,
-        video: videoState,
-      },
+      // 同时保留标准顶层字段和 gen_params 内的兼容字段。
+      // 部分后端响应会裁剪 creation_form，但会原样保留 gen_params 里的普通字段。
+      reference_image_urls: referenceImageUrls,
+      reference_images: referenceItems,
+      creation_form: creationForm,
     },
   });
 }

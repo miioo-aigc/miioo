@@ -18,11 +18,12 @@
  *   不引用页面入口、页面 Store 或页面闭包变量。
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-05  修复异步表单恢复时首次空状态回写，确保上传参考图快照恢复后才触发持久化
  *   2026-07-30  修复主体参考列新增资产未带入创作图片面板：保留已保存表单状态，实时合并当前分镜主体引用，不再过滤 avif/derived 预览地址
  *   2026-08-03  参考主体与普通参考图分别归一化后再合并为图片生成输入，避免类型和重复项混淆
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AssetPickerModal from '../AssetPickerModal';
 import MediaDetailModal from '../MediaDetailModal';
@@ -30,6 +31,7 @@ import { apiListModels } from '../../api/config';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { normalizeStoryboardReferenceGroups } from '../../utils/referenceMediaAdapter';
+import { getUploadedImageId, getUploadedImageUrl } from '../../utils/storyboardReferenceAdapter';
 import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter';
 import { GenerationModelField, GenerationOptionFields } from './GenerationParamsFields';
 import GenerationSubmitButton from './GenerationSubmitButton';
@@ -75,6 +77,7 @@ export default function GenerateImagePanel({
   const [modelsLoading, setModelsLoading] = useState(true);
   const [model, setModel] = useState(() => formState?.model || '');
   const [resolution, setResolution] = useState(() => formState?.resolution || '');
+  const formStateHydratedRef = useRef(Array.isArray(formState?.refImages));
 
   useEffect(() => {
     (async () => {
@@ -127,7 +130,22 @@ export default function GenerateImagePanel({
   const [mediaDetailOpen, setMediaDetailOpen] = useState(false);
   const [mediaDetailActiveIdx, setMediaDetailActiveIdx] = useState(0);
 
+  // 父级可能先挂载面板、后收到异步恢复的创作表单。恢复完成前不能把本地
+  // 初始空值回传保存；首次收到快照时恢复提示词和参考图。
   useEffect(() => {
+    if (formState == null || formStateHydratedRef.current || !Array.isArray(formState.refImages)) return;
+    const restoreTimer = setTimeout(() => {
+      setModel(formState.model || '');
+      setResolution(formState.resolution || '');
+      if (typeof formState.prompt === 'string') setPrompt(formState.prompt);
+      setRefImages(normalizeStoryboardReferenceGroups({ images: formState.refImages }).images);
+      formStateHydratedRef.current = true;
+    }, 0);
+    return () => clearTimeout(restoreTimer);
+  }, [formState]);
+
+  useEffect(() => {
+    if (!formStateHydratedRef.current) return;
     onFormStateChange?.({ model, resolution, prompt, refImages });
   }, [model, resolution, prompt, refImages, onFormStateChange]);
 
@@ -177,11 +195,12 @@ export default function GenerateImagePanel({
         category: 'reference',
         project_id: projectId,
       });
-      const uploadedUrl = result.uploaded_url || result.uploadedUrl || result.url || result.file_url || '';
+      const uploadedUrl = normalizeImageUrl(getUploadedImageUrl(result));
+      if (!uploadedUrl) throw new Error('上传接口未返回参考图地址');
 
       // 添加到参考图列表（不再自动插入提示词标签，标签由用户手动 @ 引入）
       setRefImages(prev => normalizeStoryboardReferenceGroups({
-        images: [...prev, { id: result.id || result.asset_id || uploadedUrl, url: uploadedUrl, name: file.name }],
+        images: [...prev, { id: getUploadedImageId(result, uploadedUrl), assetId: getUploadedImageId(result), url: uploadedUrl, name: file.name }],
       }).images);
 
       return result;

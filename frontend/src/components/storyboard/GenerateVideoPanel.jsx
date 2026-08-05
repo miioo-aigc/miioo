@@ -22,6 +22,7 @@
  *   ReferenceMediaEditor                      参考主体、参考图、参考视频、参考音频和首尾帧
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-05  修复异步表单恢复时首次空状态回写，确保参考图和提示词快照恢复后才触发持久化
  *   2026-08-05  用户编辑提示词后停止外部提示词覆盖，避免删除标签触发状态同步循环
  *   2026-08-05  页面加载补全主体标签后，同步更新已打开弹窗的提示词展示状态
  *   2026-08-05  支持从角色/场景/道具一致性字段对主体名称做唯一模糊匹配，避免普通画面描述误建立绑定
@@ -39,6 +40,7 @@ import { apiListModels } from '../../api/config';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { normalizeStoryboardReferenceGroups } from '../../utils/referenceMediaAdapter';
+import { getUploadedImageId, getUploadedImageUrl } from '../../utils/storyboardReferenceAdapter';
 import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter';
 import ReferenceMediaEditor from './ReferenceMediaEditor';
 import VideoResultsPanel from './VideoResultsPanel';
@@ -144,6 +146,7 @@ export default function GenerateVideoPanel({
   const [prompt, setPrompt] = useState(() => formState?.prompt ?? buildStoryboardPrompt(shot));
   const promptRef = useRef(null);
   const promptEditedRef = useRef(false);
+  const formStateHydratedRef = useRef(Array.isArray(formState?.refImages));
 
   const handlePromptChange = (nextPrompt) => {
     promptEditedRef.current = true;
@@ -205,10 +208,34 @@ export default function GenerateVideoPanel({
   const handleRefVideosChange = updateReferenceGroup(setRefVideos, 'videos');
   const handleRefAudiosChange = updateReferenceGroup(setRefAudios, 'audios');
 
+  // 父级可能先挂载面板、后收到异步恢复的创作表单。恢复完成前不能把本地
+  // 初始空值回传保存；首次收到快照时一次性恢复全部字段。
   useEffect(() => {
+    if (formState == null || formStateHydratedRef.current) return;
+    if (!Array.isArray(formState.refImages)) return;
+    const restoreTimer = setTimeout(() => {
+      setTab(formState.tab || 'all');
+      setModel(formState.model || '');
+      setResolution(formState.resolution || '');
+      setDuration(formState.duration ?? null);
+      setSound(formState.sound ?? true);
+      if (!promptEditedRef.current && typeof formState.prompt === 'string') setPrompt(formState.prompt);
+      setRefSubjects(normalizeStoryboardReferenceGroups({ subjects: formState.refSubjects }).subjects);
+      setRefImages(normalizeStoryboardReferenceGroups({ images: formState.refImages }).images);
+      setRefVideos(normalizeStoryboardReferenceGroups({ videos: formState.refVideos }).videos);
+      setRefAudios(normalizeStoryboardReferenceGroups({ audios: formState.refAudios }).audios);
+      setRefFirstFrame(formState.refFirstFrame || null);
+      setRefLastFrame(formState.refLastFrame || null);
+      formStateHydratedRef.current = true;
+    }, 0);
+    return () => clearTimeout(restoreTimer);
+  }, [formState]);
+
+  useEffect(() => {
+    if (!formStateHydratedRef.current) return;
     if (!promptEditedRef.current && typeof formState?.prompt === 'string' && formState.prompt !== prompt) return;
     onFormStateChange?.({ tab, model, resolution, duration, sound, prompt, video_prompt_mentions: videoPromptMentions, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame });
-  }, [tab, model, resolution, duration, sound, prompt, videoPromptMentions, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame, onFormStateChange]);
+  }, [tab, model, resolution, duration, sound, prompt, formState?.prompt, videoPromptMentions, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame, onFormStateChange]);
 
   // 获取当前模型支持的参数（优先从后端 capabilities 派生）
   // 当前 Tab 对应的模型列表
@@ -346,12 +373,13 @@ export default function GenerateVideoPanel({
         category: 'reference',
         project_id: projectId,
       });
-      const uploadedUrl = result.uploaded_url || result.uploadedUrl || result.url || result.file_url || '';
+      const uploadedUrl = normalizeImageUrl(getUploadedImageUrl(result));
+      if (!uploadedUrl) throw new Error('上传接口未返回参考图地址');
 
       // 不再自动插入提示词标签，标签由用户手动 @ 引入
       return normalizeStoryboardReferenceGroups({
         [type === 'audio' ? 'audios' : type === 'video' ? 'videos' : 'images']:
-          [{ id: result.id || result.asset_id || uploadedUrl, url: uploadedUrl, name: file.name, type: file.type }],
+          [{ id: getUploadedImageId(result, uploadedUrl), assetId: getUploadedImageId(result), url: uploadedUrl, name: file.name, type: file.type }],
       })[type === 'audio' ? 'audios' : type === 'video' ? 'videos' : 'images'][0];
     } catch (error) {
       console.error('参考媒体上传失败:', error);

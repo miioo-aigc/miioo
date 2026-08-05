@@ -47,6 +47,7 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-05  修复创作面板异步恢复期间的空表单覆盖：打开面板优先使用镜头快照，待参考图表单恢复完成后才允许持久化
  *   2026-08-05  创作面板参考主体变更时同步写回当前镜头 mainRefs，保持创作面板与主体参考列一致
  *   2026-08-05  视频创作面板表单仅在内容变化时回写，避免提示词删除标签触发父子状态循环
  *   2026-08-05  分镜数据加载完成后提前修复缺失的视频提示词主体绑定，并按镜头防重复提交完整表单状态
@@ -334,6 +335,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const videoFormStateRef = useRef({});
   const creationFormSaveTimersRef = useRef(new Map());
   const creationFormSaveQueuesRef = useRef(new Map());
+  const dirtyCreationFormShotIdsRef = useRef(new Set());
   const promptBindingRepairRef = useRef(new Map());
   const userEditedVideoPromptRef = useRef(new Set());
   const shotsRef = useRef(shots);
@@ -401,22 +403,34 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       if (shot.creationForm?.image) backendImages[shot.id] = shot.creationForm.image;
       if (shot.creationForm?.video) backendVideos[shot.id] = shot.creationForm.video;
     });
-    imageFormStateRef.current = { ...backendImages, ...imageFormStateRef.current };
-    videoFormStateRef.current = { ...backendVideos, ...videoFormStateRef.current };
+    const dirtyIds = dirtyCreationFormShotIdsRef.current;
+    const preserveDirtyState = (backend, local) => Object.keys(backend).reduce((result, shotId) => {
+      result[shotId] = dirtyIds.has(String(shotId)) && local[shotId]
+        ? local[shotId]
+        : backend[shotId];
+      return result;
+    }, { ...local });
+    imageFormStateRef.current = preserveDirtyState(backendImages, imageFormStateRef.current);
+    videoFormStateRef.current = preserveDirtyState(backendVideos, videoFormStateRef.current);
     setImageFormStateMap(imageFormStateRef.current);
     setVideoFormStateMap(videoFormStateRef.current);
   }
 
   const enqueueCreationFormSave = useCallback((shotId, image, video) => {
     const shot = shotsRef.current.find((item) => item.id === shotId);
+    // 图片/视频面板分别触发状态变化；任一侧未传入时必须沿用当前快照，
+    // 不能让一次单侧编辑把另一侧已保存的参考素材覆盖成空对象。
+    const currentCreationForm = shot?.creationForm || {};
+    const imageState = image ?? imageFormStateRef.current[shotId] ?? currentCreationForm.image;
+    const videoState = video ?? videoFormStateRef.current[shotId] ?? currentCreationForm.video;
     if (!creationFormSaveQueuesRef.current.has(shotId)) {
       creationFormSaveQueuesRef.current.set(shotId, createLatestPersistenceQueue((value) => (
         apiUpdateStoryboardCreationForm(projectId, shotId, value)
       )));
     }
     creationFormSaveQueuesRef.current.get(shotId).enqueue({
-      image,
-      video,
+      image: imageState,
+      video: videoState,
       genParams: shot?.genParams,
     }).catch((error) => {
       console.error('[StoryboardPage] 保存创作面板状态失败:', error);
@@ -446,6 +460,10 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       videoFormStateRef.current[shotId],
     );
   }, [enqueueCreationFormSave]);
+
+  const getLatestShot = useCallback((shotId) => (
+    shotsRef.current.find((item) => item.id === shotId) || null
+  ), []);
 
   // 分镜数据和主体数据都准备好后，提前修复后端生成提示词中缺失的主体绑定。
   // 这里不依赖创作弹窗，用户打开第 N 个镜头时可以直接看到修复后的状态。
@@ -502,7 +520,23 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       videoFormStateRef.current = { ...videoFormStateRef.current, [backendId]: nextVideo };
       setVideoFormStateMap((prev) => ({ ...prev, [backendId]: nextVideo }));
       setShots((prev) => prev.map((item) => item.id === shot.id ? nextShot : item));
-      scheduleCreationFormSave(backendId, imageFormStateRef.current[backendId], nextVideo);
+      // 页面加载阶段必须带上后端当前完整的创作表单快照。后端的分镜 PATCH
+      // 可能会重建创作参数；只提交提示词会让省略的参考图字段被重置。
+      // 如果表单快照尚未恢复，不发送自动修复请求，等待下一次完整数据加载。
+      const currentImage = shot.creationForm?.image;
+      const hasCompleteReferenceSnapshot = currentImage
+        && currentVideo
+        && Array.isArray(currentImage.refImages)
+        && Array.isArray(currentVideo.refImages);
+      if (hasCompleteReferenceSnapshot) {
+        apiUpdateStoryboardCreationForm(projectId, backendId, {
+          image: currentImage,
+          video: nextVideo,
+          genParams: shot.genParams,
+        }).catch((error) => {
+          console.error('[StoryboardPage] 自动修复提示词绑定失败:', error);
+        });
+      }
     });
   }, [
     episode,
@@ -510,7 +544,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     homeIsGenerating,
     isGenerating,
     loadedEpisodeDataKey,
-    scheduleCreationFormSave,
+    projectId,
     shots,
     storyboardBindingSubjects,
   ]);
@@ -1611,7 +1645,7 @@ function hasStoryboardMediaHint(shot = {}) {
 
   function handleCreationTabChange(tab) {
     if (!creationPanel) return;
-    const shot = creationPanel.shot;
+    const shot = getLatestShot(creationPanel.shot?.id) || creationPanel.shot;
     flushCreationFormSave(shot.id);
     setCreationPanel((prev) => ({ ...prev, tab }));
     if (tab === 'image') {
@@ -1624,15 +1658,16 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   const handleCreationPanelClose = useCallback(() => {
-    flushCreationFormSave(creationPanel?.shot?.id);
+    flushCreationFormSave(activeShotId || creationPanel?.shot?.id);
     setImagePanel(null);
     setVideoPanel(null);
     setCreationPanel(null);
-  }, [creationPanel?.shot?.id, flushCreationFormSave]);
+  }, [activeShotId, creationPanel?.shot?.id, flushCreationFormSave]);
 
   const handleImageFormStateChange = useCallback((nextState) => {
     const shotId = imagePanel?.shot?.id;
     if (!shotId) return;
+    dirtyCreationFormShotIdsRef.current.add(String(shotId));
     imageFormStateRef.current = { ...imageFormStateRef.current, [shotId]: nextState };
     setImageFormStateMap(imageFormStateRef.current);
     setShots((prev) => prev.map((shot) => shot.id === shotId
@@ -1644,6 +1679,7 @@ function hasStoryboardMediaHint(shot = {}) {
   const handleVideoFormStateChange = useCallback((nextState) => {
     const shotId = videoPanel?.shot?.id;
     if (!shotId) return;
+    dirtyCreationFormShotIdsRef.current.add(String(shotId));
     const previousState = videoFormStateRef.current[shotId];
     if (previousState?.prompt !== nextState?.prompt) {
       userEditedVideoPromptRef.current.add(String(shotId));
@@ -2149,7 +2185,7 @@ function hasStoryboardMediaHint(shot = {}) {
         ModalCloseBtn={ModalCloseBtn}
         PanelPromptInput={PanelPromptInput}
         embedded
-        formState={imageFormStateMap[imagePanel.shot?.id]}
+        formState={imageFormStateMap[imagePanel.shot?.id] ?? imagePanel.shot?.creationForm?.image}
         onFormStateChange={handleImageFormStateChange}
         onCandidateMedia={(media) => saveCandidateMedia(imagePanel.shot?.id, media)}
         generatedImages={genImageHistoryMap[imagePanel.shot?.id] ?? []}
@@ -2256,7 +2292,7 @@ function hasStoryboardMediaHint(shot = {}) {
         ModalCloseBtn={ModalCloseBtn}
         PanelPromptInput={PanelPromptInput}
         embedded
-        formState={videoFormStateMap[videoPanel.shot?.id]}
+        formState={videoFormStateMap[videoPanel.shot?.id] ?? videoPanel.shot?.creationForm?.video}
         onFormStateChange={handleVideoFormStateChange}
         onCandidateMedia={(media) => saveCandidateMedia(videoPanel.shot?.id, media)}
         generatedVideos={genVideoHistoryMap[videoPanel.shot?.id] ?? []}

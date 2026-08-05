@@ -21,6 +21,7 @@ export function subjectTypeFromCategory(category) {
 export function getUploadedImageUrl(response) {
   const image = response?.image || response?.asset || response?.uploaded_asset || response?.uploadedAsset || {};
   const data = response?.data || {};
+  const nestedImage = data?.image || data?.asset || data?.uploaded_asset || data?.uploadedAsset || response?.result || {};
   return response?.uploaded_url
     || response?.uploadedUrl
     || response?.url
@@ -38,17 +39,32 @@ export function getUploadedImageUrl(response) {
     || data.url
     || data.file_url
     || data.fileUrl
+    || nestedImage.uploaded_url
+    || nestedImage.uploadedUrl
+    || nestedImage.original_url
+    || nestedImage.originalUrl
+    || nestedImage.file_url
+    || nestedImage.fileUrl
+    || nestedImage.url
     || '';
 }
 
 export function getUploadedImageId(response, fallback = '') {
   const image = response?.image || response?.asset || response?.uploaded_asset || response?.uploadedAsset || {};
+  const data = response?.data || {};
+  const nestedImage = data?.image || data?.asset || data?.uploaded_asset || data?.uploadedAsset || response?.result || {};
   return response?.asset_id
     || response?.assetId
     || response?.id
     || image.asset_id
     || image.assetId
     || image.id
+    || data.asset_id
+    || data.assetId
+    || data.id
+    || nestedImage.asset_id
+    || nestedImage.assetId
+    || nestedImage.id
     || fallback;
 }
 

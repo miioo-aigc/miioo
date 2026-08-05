@@ -136,13 +136,43 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
     if (!subjectId) return false;
     return list.findIndex((item) => String(item?.subject_id ?? item?.subjectId ?? item?.id) === String(subjectId)) === index;
   });
+  const topLevelReferenceImages = (() => {
+    const nestedReferenceImages = Array.isArray(genParams.reference_images) && genParams.reference_images.length > 0
+      ? genParams.reference_images
+      : (Array.isArray(genParams.reference_image_urls)
+        ? genParams.reference_image_urls.map((url) => ({ url }))
+        : []);
+    const rawList = Array.isArray(be.reference_images) && be.reference_images.length > 0
+      ? be.reference_images
+      : (Array.isArray(be.reference_image_urls) && be.reference_image_urls.length > 0
+        ? be.reference_image_urls.map((url) => ({ url }))
+        : nestedReferenceImages);
+    return rawList
+      .map((item) => (typeof item === 'string' ? { url: item } : item))
+      .filter((item) => item?.url)
+      .filter((item) => !item.subjectId && !item.subject_id)
+      .filter((item) => !['char', 'scene', 'prop', 'character', 'object'].includes(String(item.type || item.subject_type || '').toLowerCase()))
+      .map((item) => ({
+        ...item,
+        id: item.asset_id ?? item.assetId ?? item.id ?? item.url,
+        assetId: item.asset_id ?? item.assetId,
+        url: normalizeImageUrl(item.url),
+        name: item.name || item.url.split('/').pop()?.split('?')[0] || '参考图',
+      }));
+  })();
+  const withFallbackReferenceImages = (form) => {
+    if (!form || typeof form !== 'object') return form;
+    // 空数组是用户主动清空的结果，不能被顶层旧字段重新填回。
+    if (Array.isArray(form.refImages)) return form;
+    return { ...form, refImages: topLevelReferenceImages };
+  };
   const creationForm = {
     image: persistedCreationForm?.image && typeof persistedCreationForm.image === 'object'
-      ? persistedCreationForm.image
-      : (be.image_prompt != null ? { prompt: be.image_prompt } : undefined),
+      ? withFallbackReferenceImages(persistedCreationForm.image)
+      : (be.image_prompt != null ? { prompt: be.image_prompt, refImages: topLevelReferenceImages } : undefined),
     video: persistedCreationForm?.video && typeof persistedCreationForm.video === 'object'
       ? {
-          ...persistedCreationForm.video,
+          ...withFallbackReferenceImages(persistedCreationForm.video),
           video_prompt_generation: persistedCreationForm.video.video_prompt_generation
             ?? be.video_prompt_generation,
           video_prompt_mentions: persistedVideoMentions,
@@ -150,6 +180,7 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
       : ((be.video_prompt ?? be.video_prompt_generation) != null
         ? {
             prompt: be.video_prompt ?? be.video_prompt_generation,
+            refImages: topLevelReferenceImages,
             // video_prompt 是弹窗当前展示文本；video_prompt_generation 保留完整一致性字段，
             // 供页面加载阶段恢复缺失的主体绑定。
             video_prompt_generation: be.video_prompt_generation,
@@ -296,6 +327,10 @@ export function normalizeStoryboardList(data, chars = [], numberOffset = 0) {
  */
 export function toBackendStoryboard(shot) {
   const genParams = shot.genParams && typeof shot.genParams === 'object' ? shot.genParams : {};
+  const creationFormReferenceItems = [
+    ...(shot.creationForm?.image?.refImages || []),
+    ...(shot.creationForm?.video?.refImages || []),
+  ];
   return {
     shot_number: shot.number,
     content: shot.description || undefined,
@@ -321,10 +356,23 @@ export function toBackendStoryboard(shot) {
      .map(ref => ref?.id).filter(Boolean),
     // 参考图（非主体）条目：先筛出有效项，再派生新旧两个字段
     ...(() => {
-      const refItems = (shot.mainRefs || [])
-        .filter(ref => ref?.url && !ref.uploading)
-        .filter(ref => ref?.type !== 'char' && ref?.type !== 'scene' && ref?.type !== 'prop')
-        .filter(ref => !shot.storyboardImage?.url || ref.url !== shot.storyboardImage.url);
+      const refItems = [...(shot.mainRefs || []), ...creationFormReferenceItems]
+        .map((ref) => {
+          if (!ref || typeof ref !== 'object') return null;
+          const url = ref.url || ref.fileUrl || ref.previewUrl || ref.preview_url;
+          return url ? { ...ref, url } : null;
+        })
+        .filter(Boolean)
+        .filter(ref => !ref.uploading)
+        .filter(ref => !ref.subjectId && !ref.subject_id)
+        .filter(ref => !['char', 'scene', 'prop', 'character', 'object'].includes(String(ref.type || ref.subject_type || '').toLowerCase()))
+        .filter(ref => !shot.storyboardImage?.url || urlPathKey(ref.url) !== urlPathKey(shot.storyboardImage.url))
+        .filter((ref, index, list) => {
+          const key = ref.assetId || ref.asset_id || ref.id || urlPathKey(ref.url);
+          return list.findIndex((candidate) => (
+            (candidate.assetId || candidate.asset_id || candidate.id || urlPathKey(candidate.url)) === key
+          )) === index;
+        });
       return {
         // 旧字段：纯 URL 数组，保留以向后兼容
         reference_image_urls: refItems.map(ref => ref.url).filter(Boolean),

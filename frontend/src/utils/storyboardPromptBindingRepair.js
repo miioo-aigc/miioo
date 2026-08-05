@@ -35,6 +35,17 @@ function findPromptAlias(prompt, subjectName) {
   return aliases.sort((a, b) => b.length - a.length)[0] || null;
 }
 
+function replacePromptSubjectNames(prompt, replacements) {
+  if (!prompt || replacements.size === 0) return prompt;
+  const names = [...replacements.keys()].sort((a, b) => b.length - a.length);
+  const pattern = new RegExp(`@+(${names.map(escapeRegExp).join('|')})|(?<!@)(${names.map(escapeRegExp).join('|')})`, 'g');
+  return prompt.replace(pattern, (match, taggedName, plainName) => {
+    const name = taggedName || plainName;
+    const subjectName = replacements.get(name);
+    return subjectName ? `@${subjectName}` : match;
+  });
+}
+
 function getConsistencyMentions(prompt) {
   const mentions = [];
   const pattern = /^(角色|场景|道具)一致性\s*[:：]\s*([^\n]+)/gm;
@@ -165,13 +176,7 @@ export function repairStoryboardPromptBindings(shot, subjects) {
     const promptAlias = findPromptAlias(prompt, subjectName);
     if (promptAlias) replacementsByName.set(promptAlias, subjectName);
   });
-  const names = [...replacementsByName.keys()].sort((a, b) => b.length - a.length);
-  const taggedPrompt = names.length === 0
-    ? prompt
-    : prompt.replace(new RegExp(names.map(escapeRegExp).join('|'), 'g'), (name) => {
-      const subjectName = replacementsByName.get(name);
-      return subjectName ? `@${subjectName}` : name;
-    });
+  const taggedPrompt = replacePromptSubjectNames(prompt, replacementsByName);
   // 一致性字段已经完成了“主体类型 + 唯一名称”的确认，直接使用对应主体对象
   // 生成绑定数据，避免再次从替换后的文本反向解析时受标点或名称边界影响。
   const mentions = [];

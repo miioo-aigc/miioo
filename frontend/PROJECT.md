@@ -1,5 +1,16 @@
 # miioo 项目进度管理文档
 
+## 2026-08-05 分镜创作面板刷新后参考主体重复展示修复
+
+- 修复刷新页面后，创作视频面板中的同一张手动添加参考主体图片被展示两次的问题。
+- 根因是面板初始化时合并当前镜头 `mainRefs` 与 `creationForm.video.refSubjects`；同一张图片可能分别携带主体 ID、资产 ID或不同格式的图片 URL，原有身份去重无法识别为同一张图片。
+- `referenceMediaAdapter` 现在在主体和图片分组中增加图片路径级去重：先按主体/资产身份去重，再按规范化后的图片路径去重。
+- 同一张图片同时以主体引用和资产引用返回时，保留先出现的主体引用；兼容相对 URL和完整后端 URL。
+- 本次为独立 BUG 修复，不修改主体参考列同步逻辑、提示词主体绑定逻辑及参考视频/音频的去重规则。
+- 静态验证：定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check`通过；构建和架构检查仅保留既有提醒。
+
+详细说明见 [`docs/storyboard-creation-panel-reference-dedupe-2026-08-05.md`](./docs/storyboard-creation-panel-reference-dedupe-2026-08-05.md)。
+
 ## 2026-08-05 分镜创作面板与主体参考列同步验证通过
 
 - 修复创作视频面板从资产库新增参考主体后，关闭面板时主体参考列仍显示旧列表的问题。

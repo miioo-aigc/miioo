@@ -7,6 +7,7 @@
  * 更新记录：2026-08-03 兼容参考图响应的空数组遮蔽和嵌套资产身份；统一提供候选图过滤键。
  * 更新记录：2026-08-03 兼容 reference_asset/reference_image/resource/source 等嵌套身份。
  * 更新记录：2026-08-04 不再把通用 images 字段误判为参考图数组；补充显式参考素材标记。
+ * 更新记录：2026-08-05 创作面板恢复主体参考时，按图片路径过滤跨来源重复图片。
  */
 
 import { normalizeImageUrl } from './imageUrl';
@@ -49,6 +50,16 @@ export function getReferenceMediaKey(item) {
   return null;
 }
 
+function getReferenceImagePathKey(item) {
+  const rawUrl = normalizeImageUrl(getReferenceMediaUrl(item));
+  if (!rawUrl || rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')) return rawUrl;
+  try {
+    return new URL(rawUrl, window.location.origin).pathname;
+  } catch {
+    return rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
+  }
+}
+
 export function normalizeReferenceMedia(item, type = REFERENCE_MEDIA_TYPES.IMAGE) {
   if (!item) return null;
   const rawUrl = getReferenceMediaUrl(item);
@@ -77,12 +88,21 @@ export function normalizeReferenceMedia(item, type = REFERENCE_MEDIA_TYPES.IMAGE
 
 export function dedupeReferenceMedia(items = [], type) {
   const seen = new Set();
+  const seenImageUrls = new Set();
   return (Array.isArray(items) ? items : [])
     .map((item) => normalizeReferenceMedia(item, type))
     .filter((item) => {
       const key = getReferenceMediaKey(item);
       if (!key || seen.has(key)) return false;
+      // 后端刷新恢复时，同一张主体图可能同时以主体引用和资产引用返回，
+      // 两条记录的 subjectId/assetId 不同，但图片 URL 相同。分组展示的是
+      // 可用参考图，不应因为数据来源不同而重复显示同一张图片。
+      const imageUrl = type === REFERENCE_MEDIA_TYPES.SUBJECT || type === REFERENCE_MEDIA_TYPES.IMAGE
+        ? getReferenceImagePathKey(item)
+        : null;
+      if (imageUrl && seenImageUrls.has(imageUrl)) return false;
       seen.add(key);
+      if (imageUrl) seenImageUrls.add(imageUrl);
       return true;
     });
 }

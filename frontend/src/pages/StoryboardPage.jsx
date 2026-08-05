@@ -1622,9 +1622,20 @@ function hasStoryboardMediaHint(shot = {}) {
     videoFormStateRef.current = { ...videoFormStateRef.current, [shotId]: nextState };
     setVideoFormStateMap(videoFormStateRef.current);
     const currentShot = shotsRef.current.find((shot) => shot.id === shotId);
+    const nextDuration = nextState.duration == null || nextState.duration === ''
+      ? undefined
+      : String(nextState.duration).endsWith('s')
+        ? String(nextState.duration)
+        : `${nextState.duration}s`;
+    const durationChanged = Boolean(currentShot)
+      && nextDuration
+      && currentShot.params?.duration !== nextDuration;
     const nextShot = currentShot
       ? {
           ...currentShot,
+          ...(durationChanged
+            ? { params: { ...(currentShot.params || {}), duration: nextDuration } }
+            : {}),
           // 创作面板和主体参考列必须使用同一份当前镜头主体参考数据。
           ...(Array.isArray(nextState.refSubjects) ? { mainRefs: nextState.refSubjects } : {}),
           creationForm: { ...(currentShot.creationForm || {}), video: nextState },
@@ -1635,6 +1646,13 @@ function hasStoryboardMediaHint(shot = {}) {
       && !areCreationFormStatesEqual(currentShot?.mainRefs || [], nextState.refSubjects)) {
       apiUpdateStoryboard(projectId, shotId, toBackendStoryboard(nextShot)).catch((error) => {
         console.error('[StoryboardPage] 同步创作面板主体参考失败:', error);
+      });
+    }
+    if (durationChanged) {
+      apiUpdateStoryboard(projectId, shotId, {
+        duration: Number.parseFloat(nextDuration),
+      }).catch((error) => {
+        console.error('[StoryboardPage] 同步创作面板时长失败:', error);
       });
     }
     scheduleCreationFormSave(shotId, imageFormStateRef.current[shotId], nextState);

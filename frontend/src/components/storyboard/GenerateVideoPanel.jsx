@@ -244,7 +244,7 @@ export default function GenerateVideoPanel({
     }
   }
 
-  const availableResolutions = (() => {
+  const availableResolutions = useMemo(() => {
     const caps = currentVideoModel?.capabilities || {};
     const allRes = (caps.supported_resolutions?.length ? caps.supported_resolutions : caps.supported_sizes) || [];
     if (projectRatio && currentVideoModel?.resolutionSizeMap) {
@@ -254,7 +254,7 @@ export default function GenerateVideoPanel({
       });
     }
     return allRes;
-  })();
+  }, [currentVideoModel, projectRatio]);
 
   // 时长：优先读 supported_durations（字符串数组），兼容旧的 supported_duration_range
   const availableDurations = useMemo(() => {
@@ -299,13 +299,14 @@ export default function GenerateVideoPanel({
         setResolution(availableResolutions[0]);
       }
     }
-    // 时长：若当前时长在新模型时长列表中则保留，否则回退第一个
+    // 时长：保留用户当前选择；仅在当前值为空或不被新模型支持时回退。
     if (availableDurations.length > 0) {
-      const shotDur = shot?.params?.duration;
-      if (shotDur && availableDurations.includes(shotDur)) {
-        setDuration(shotDur);
-      } else if (duration && !availableDurations.includes(duration)) {
-        setDuration(availableDurations[0]);
+      if (!duration || !availableDurations.includes(duration)) {
+        const shotDur = shot?.params?.duration;
+        const fallback = shotDur && availableDurations.includes(shotDur)
+          ? shotDur
+          : availableDurations[0];
+        setDuration(fallback);
       }
     }
   // 模型切换时才需要重新校正；其余依赖由模型能力计算结果覆盖。

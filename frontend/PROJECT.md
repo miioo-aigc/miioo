@@ -1,5 +1,30 @@
 # miioo 项目进度管理文档
 
+## 2026-08-05 分镜创作面板与主体参考列同步验证通过
+
+- 修复创作视频面板从资产库新增参考主体后，关闭面板时主体参考列仍显示旧列表的问题。
+- 根因是创作面板使用 `videoFormState.video.refSubjects`，主体参考列使用当前镜头 `mainRefs`；原逻辑只更新创作表单，没有同步更新镜头主体引用。
+- 现在创作面板的 `refSubjects` 发生变化时，页面立即同步当前镜头的 `mainRefs`，主体参考列会即时展示新增主体。
+- 同步内容保留主体 ID、资产 ID、主体类型、名称和图片地址，并通过现有分镜 PATCH 接口持久化。
+- 刷新或重新打开创作面板后，两个列表继续使用同一份最新主体参考数据。
+- 本次为独立 BUG 修复，不依赖、不修改此前的提示词主体绑定自动恢复逻辑。
+- 用户实际操作验证：创作面板新增参考主体，关闭面板后主体参考列显示一致，验证通过。
+
+详细说明见 [`docs/storyboard-creation-reference-sync-2026-08-05.md`](./docs/storyboard-creation-reference-sync-2026-08-05.md)。
+
+## 2026-08-05 分镜视频提示词主体绑定恢复验证通过
+
+- 修复分镜接口返回 `video_prompt_mentions: []`、但 `video_prompt_generation` 的角色/场景/道具一致性字段和 `subject_references` 已完整存在时，创作视频弹窗没有主体标签的问题。
+- 页面在当前分集分镜数据加载完成后介入：仅对没有现有视频绑定的镜头，从一致性字段按主体类型和唯一名称匹配真实主体 ID，生成去重后的 `video_prompt_mentions`，并同步更新当前视频提示词。
+- 支持受控简称匹配：视频提示词出现“灾民营地”，主体完整名称为“灾民营地与峡谷窄道”时，展示文本自动补全为 `@灾民营地与峡谷窄道`；只有主体类型匹配且候选唯一时才建立绑定，避免同名主体误绑定。
+- 同一主体多次出现在提示词中时，`video_prompt_mentions` 仍按 `subject_id` 保留一条；角色、场景、道具统一保留后端主体类型和真实主体 ID。
+- 修复已打开创作视频弹窗的状态同步：页面加载阶段完成绑定恢复后，弹窗提示词同步更新，`PanelPromptInput` 能重新解析并显示标签样式和 `@` 符号。
+- 涉及文件：`src/utils/storyboardPromptBindingRepair.js`、`src/pages/StoryboardPage.jsx`、`src/utils/storyboardDataAdapter.js`、`src/components/storyboard/GenerateVideoPanel.jsx`。
+- 用户真实页面验证：打开第六个镜头创作视频弹窗后，主体标签样式和 `@` 符号显示正确，验证通过。
+- 静态验证：`npm run lint`、`npm run build`、`npm run check:architecture`、`git diff --check` 均通过；构建仅保留已有分块体积提示，架构检查仅保留既有文件规模提醒。
+
+详细说明见 [`docs/storyboard-video-prompt-binding-repair-2026-08-05.md`](./docs/storyboard-video-prompt-binding-repair-2026-08-05.md)。
+
 ## 2026-08-05 主体候选图专用接口适配
 
 - 按后端交接文档切换候选图写入链路：右侧本地上传改用 `POST /api/projects/{project_id}/subjects/{subject_id}/images/upload`，资产库选择改用 `POST /api/projects/{project_id}/subjects/{subject_id}/images/from-asset`。
@@ -7,6 +32,13 @@
 - 本地上传和资产库选择成功后统一消费后端 `SubjectImageResponse`；候选图定稿/取消定稿统一走主体候选图接口，不再按 `asset_id` 操作资产主图。
 - 候选图映射新增 `thumbnail_url`、`preview_url`、`download_url`、`size`、`created_at` 等字段兼容，参考图仍只读取 `referenceImages`，不进入右侧候选图或资产归属链路。
 - 验证：目标 API/组件定向 ESLint、`git diff --check` 已通过；尚未连接真实后端执行上传、资产库选择、刷新恢复和删除回归，需在联调环境按交接文档验收。
+
+## 2026-08-05 主体 B 复用主体 A 图片时创建独立候选资产
+
+- 主体 B 从资产库选择主体 A 的 A001 图片时改用后端 `POST /api/projects/{project_id}/subjects/{subject_id}/images/from-asset`，由后端创建 B 的独立候选资产并保留源资产关系。
+- 主体 A 的 A001 资产不被改绑、改分类或修改定稿状态；主体 B 获得独立候选图，因此可以独立设置定稿并写入 B 的封面。
+- 前端只保留登记期间的加载占位和定稿锁，不再执行下载后重新上传，避免额外异步窗口及刷新后丢失源资产血缘。
+- 资产库选择器继续展示已复制的 A001，但通过持久化的 `source_asset_id` 标记为不可重复选择；仍需在有登录态的联调环境验证接口响应包含该字段、刷新恢复以及删除 B 不影响 A001。
 
 ## 2026-08-05 分镜主体参考场景与道具展示修复
 

@@ -10,11 +10,18 @@
  */
 import { MENTION_TYPE_COLOR } from './PanelPromptConstants';
 
+function truncateMentionName(name, maxLength = 10) {
+  const text = String(name ?? '');
+  return Array.from(text).length > maxLength
+    ? `${Array.from(text).slice(0, maxLength).join('')}…`
+    : text;
+}
+
 export function SubjectTag({ name, type }) {
   const color = MENTION_TYPE_COLOR[type] ?? '#E2E24B';
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', paddingInline: '4px', borderRadius: '4px', fontSize: '14px', lineHeight: '21px', backgroundColor: `${color}26`, color, boxShadow: `inset 0 0 0 1px ${color}33`, fontFamily: '"Alibaba PuHuiTi 2.0", system-ui, sans-serif', flexShrink: 0, verticalAlign: 'middle' }}>
-      @{name}
+    <span title={`@${name}`} style={{ display: 'inline-flex', alignItems: 'center', paddingInline: '4px', borderRadius: '4px', fontSize: '14px', lineHeight: '21px', backgroundColor: `${color}26`, color, boxShadow: `inset 0 0 0 1px ${color}33`, fontFamily: '"Alibaba PuHuiTi 2.0", system-ui, sans-serif', flexShrink: 0, verticalAlign: 'middle' }}>
+      @{truncateMentionName(name)}
     </span>
   );
 }

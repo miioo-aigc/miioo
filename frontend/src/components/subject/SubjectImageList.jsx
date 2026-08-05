@@ -25,6 +25,7 @@
  *   2026-07-31  详情弹窗仅展示候选图片自身关联的参考图
  *   2026-07-31  候选图首次请求期间显示 DotsLoading 占位，区分加载中与真实空列表
  *   2026-08-05  候选图卡片优先使用后端缩略图/预览图/下载地址
+ *   2026-08-05  资产跨主体复制期间保持加载态，禁止提前进入定稿流程
  */
 import { useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
@@ -36,7 +37,7 @@ import { IconButton, FileUploadButton, Tooltip } from '../ui';
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 const UploadButton = ({ label, onClick }) => <FileUploadButton onClick={onClick}>{label}</FileUploadButton>;
-function ImageItemUpload({ onUpload, projectId }) {
+function ImageItemUpload({ onUpload, projectId, excludedAssetIds = [] }) {
   const [hovered, setHovered] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const fileInputRef = useRef(null);
@@ -65,6 +66,7 @@ function ImageItemUpload({ onUpload, projectId }) {
           setAssetPickerOpen(false);
         }}
         projectId={projectId}
+        excludedAssetIds={excludedAssetIds}
       />
       <div
         onMouseEnter={() => setHovered(true)}
@@ -199,6 +201,10 @@ export default function SubjectImageList({
   onDownload,
   onSettledChange,
 }) {
+  const excludedAssetIds = generatedImages
+    .filter((image) => image?.source === 'asset-library' || image?.detailSource === 'asset-library')
+    .map((image) => image.sourceAssetId || image.assetId)
+    .filter(Boolean);
   const images = generatedImages.filter((image) => image.url).map((image) => ({
     id: image.id,
     url: image.thumbnailUrl || image.url,
@@ -236,7 +242,7 @@ export default function SubjectImageList({
           }}
         />
       )}
-      <ImageItemUpload projectId={projectId} onUpload={onUpload} />
+      <ImageItemUpload projectId={projectId} onUpload={onUpload} excludedAssetIds={excludedAssetIds} />
       {candidateImagesLoading && generatedImages.length === 0 && (
         <ImageItem
           key="candidate-images-loading"

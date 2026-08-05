@@ -66,15 +66,31 @@ export function compactStoryboardForCache(item = {}) {
     }
   }
 
-  // 某些历史记录会把原始供应商响应或二进制内容放进 gen_params，
-  // 保留生成参数本身，但移除明显的大字段，保证文字缓存可持久化。
+  // 某些历史记录会把原始供应商响应或二进制内容放进 gen_params。
+  // 保留生成参数和可恢复的轻量创作表单，但移除明显的大字段，保证文字缓存可持久化。
   const genParams = compact.gen_params ?? compact.genParams;
   if (genParams && typeof genParams === 'object') {
     const nextParams = { ...genParams };
-    for (const [key, value] of Object.entries(nextParams)) {
-      if (typeof value === 'string' && (value.startsWith('data:') || value.length > 200_000)) delete nextParams[key];
-    }
-    if (nextParams.creation_form) delete nextParams.creation_form;
+    const compactValue = (value) => {
+      if (typeof value === 'string') {
+        return value.startsWith('data:') || value.length > 200_000 ? undefined : value;
+      }
+      if (Array.isArray(value)) {
+        return value.map(compactValue).filter((item) => item !== undefined);
+      }
+      if (value && typeof value === 'object') {
+        return Object.fromEntries(
+          Object.entries(value)
+            .map(([key, item]) => [key, compactValue(item)])
+            .filter(([, item]) => item !== undefined),
+        );
+      }
+      return value;
+    };
+    Object.keys(nextParams).forEach((key) => {
+      nextParams[key] = compactValue(nextParams[key]);
+      if (nextParams[key] === undefined) delete nextParams[key];
+    });
     compact.gen_params = nextParams;
     delete compact.genParams;
   }

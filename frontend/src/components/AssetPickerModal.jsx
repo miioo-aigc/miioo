@@ -309,6 +309,8 @@ export default function AssetPickerModal({
   preSelectedUrls = [],
   // preSelectedSubjectIds: string[]  已存在资产对应的主体ID，打开时默认选中且不可取消（最可靠的跨来源匹配键）
   preSelectedSubjectIds = [],
+  // excludedAssetIds: string[]  已被当前业务复制/占用的源资产 ID，不展示为可选项
+  excludedAssetIds = [],
   model = '',
 }) {
   const generationsByTab = useCreationStore((s) => s.generationsByTab);
@@ -473,6 +475,11 @@ export default function AssetPickerModal({
   // 调用方常以内联 map 传入预选 ID；用值签名作为依赖，避免每次渲染都重置选择并形成更新循环。
   const preSelectedIdsKey = JSON.stringify(preSelectedIds ?? []);
   const preSelectedSet = useMemo(() => new Set(preSelectedIds ?? []), [preSelectedIds]);
+  const excludedAssetIdsKey = JSON.stringify(excludedAssetIds ?? []);
+  const excludedAssetSet = useMemo(
+    () => new Set((excludedAssetIds ?? []).filter((id) => id != null).map((id) => String(id))),
+    [excludedAssetIdsKey],
+  );
   // 主体ID集合（最可靠的跨来源匹配键：主体参考图与资产库为不同记录ID，但同属一个 subject_id）
   const preSelectedSubjectSet = useMemo(
     () => new Set((preSelectedSubjectIds ?? []).filter(Boolean)),
@@ -502,6 +509,13 @@ export default function AssetPickerModal({
     const k2 = urlKey(asset.fileUrl);
     if (k2 && preSelectedUrlSet.has(k2)) return true;
     return false;
+  };
+
+  // 已复制到当前主体的源资产仍展示，但不可再次选择。
+  const isExcludedAsset = (asset) => {
+    if (!asset) return false;
+    const assetId = asset.assetId || asset.asset_id || asset.id;
+    return assetId != null && excludedAssetSet.has(String(assetId));
   };
 
   // 每次弹窗打开时用 preSelectedIds 初始化选中状态，关闭时清空
@@ -1255,7 +1269,7 @@ export default function AssetPickerModal({
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', paddingTop: '8px', paddingBottom: '8px', alignContent: 'flex-start' }}>
               {filteredAssets.map((asset) => {
-                const disabled = isPreSelected(asset);
+                const disabled = isPreSelected(asset) || isExcludedAsset(asset);
                 return (
                 <AssetCard
                   key={asset.id}

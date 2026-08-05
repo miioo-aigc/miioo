@@ -460,6 +460,7 @@ export async function apiDownloadAsset(assetId, { prefer_origin } = {}) {
   const query = params.toString();
   const url = query ? `${BASE}/api/assets/${assetId}/download?${query}` : `${BASE}/api/assets/${assetId}/download`;
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+  if (!res.ok) throw new Error(`下载资产失败（${res.status}）`);
   return res.blob();
 }
 

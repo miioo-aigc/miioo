@@ -141,9 +141,20 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
       ? persistedCreationForm.image
       : (be.image_prompt != null ? { prompt: be.image_prompt } : undefined),
     video: persistedCreationForm?.video && typeof persistedCreationForm.video === 'object'
-      ? { ...persistedCreationForm.video, video_prompt_mentions: persistedVideoMentions }
+      ? {
+          ...persistedCreationForm.video,
+          video_prompt_generation: persistedCreationForm.video.video_prompt_generation
+            ?? be.video_prompt_generation,
+          video_prompt_mentions: persistedVideoMentions,
+        }
       : ((be.video_prompt ?? be.video_prompt_generation) != null
-        ? { prompt: be.video_prompt ?? be.video_prompt_generation, video_prompt_mentions: persistedVideoMentions }
+        ? {
+            prompt: be.video_prompt ?? be.video_prompt_generation,
+            // video_prompt 是弹窗当前展示文本；video_prompt_generation 保留完整一致性字段，
+            // 供页面加载阶段恢复缺失的主体绑定。
+            video_prompt_generation: be.video_prompt_generation,
+            video_prompt_mentions: persistedVideoMentions,
+          }
         : undefined),
   };
   const hasCreationForm = Boolean(creationForm.image || creationForm.video);

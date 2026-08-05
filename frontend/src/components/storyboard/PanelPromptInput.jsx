@@ -18,6 +18,7 @@
  *   2026-07-17  抽离提示词类型常量、SubjectTag 和字符计数展示，编辑器状态与光标逻辑保持不变
  *   2026-07-17  拆分 ReferenceMentionDropdown，保留编辑器提及插入与光标逻辑
  *   2026-08-05  修复标签删除后光标跳到段尾，以及展示态首次点击无法激活/光标定位到段尾的问题；保留点击坐标并在编辑态挂载后恢复光标
+ *   2026-08-05  参考图标签名称最多展示10个字符，超出部分以省略号显示，底层引用名称保持不变
  */
 
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
@@ -30,6 +31,13 @@ const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans
 // ─── 主体 @ 下拉（角色/场景/道具，用于提示词输入框）─────────────────────────────
 
 const MAX_PROMPT_LEN = 1000;
+
+function truncateMentionName(name, maxLength = 10) {
+  const text = String(name ?? '');
+  return Array.from(text).length > maxLength
+    ? `${Array.from(text).slice(0, maxLength).join('')}…`
+    : text;
+}
 
 // ── DOM helpers for atomic mention editing ────────────────────────────────────
 
@@ -99,7 +107,8 @@ function rebuildEditorDOM(el, text, allSubjects, typeOverrides = {}) {
       span.dataset.mention = seg.name;
       span.dataset.mentionType = type;
       span.contentEditable = 'false';
-      span.textContent = `@${seg.name}`;
+      span.textContent = `@${truncateMentionName(seg.name)}`;
+      span.title = `@${seg.name}`;
       span.style.cssText = [
         'display:inline-flex', 'align-items:center', 'padding:0 4px',
         'border-radius:4px', 'font-size:14px', 'line-height:21px',

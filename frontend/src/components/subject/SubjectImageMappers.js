@@ -27,6 +27,8 @@
  *   2026-08-03  候选图身份兼容 reference_asset/reference_image/resource 等嵌套返回
  *   2026-08-04  透传主体图片稳定资产/生成血缘字段，按 assetId 优先合并候选图与项目资产
  *   2026-08-05  适配主体候选图上传/资产库登记接口的完整响应字段
+ *   2026-08-05  保留资产库复制来源编号，避免同一源图被重复复制到同一主体
+ *   2026-08-05  主体资产列表同步透传源资产编号，保证刷新后仍能禁用重复选择
  */
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { getSubjectReferenceImageIdentities, getSubjectReferenceImageKeys, isExplicitReferenceMedia } from '../../utils/referenceMediaAdapter';
@@ -110,7 +112,7 @@ function isReferenceImage(image, referenceKeys) {
     || identities.urls.some((url) => referenceKeys.urls.has(normalizeImageUrl(url) || String(url)));
 }
 
-function toImageItem({ id, rawUrl, thumbnailUrl = null, previewUrl = null, downloadUrl = null, settled = false, isReference = false, refImages = [], assetId = null, source = null, assetSource = null, taskId = null, generationId = null, resultIndex = null, contentHash = null, detailSource = null, prompt = null, inputPrompt = null, model = null, size = null, ratio = null, resolution = null, createdAt = null }) {
+function toImageItem({ id, rawUrl, thumbnailUrl = null, previewUrl = null, downloadUrl = null, settled = false, isReference = false, refImages = [], assetId = null, sourceAssetId = null, source = null, assetSource = null, taskId = null, generationId = null, resultIndex = null, contentHash = null, detailSource = null, prompt = null, inputPrompt = null, model = null, size = null, ratio = null, resolution = null, createdAt = null }) {
   return {
     id,
     rawUrl,
@@ -122,6 +124,7 @@ function toImageItem({ id, rawUrl, thumbnailUrl = null, previewUrl = null, downl
     isReference,
     refImages,
     ...(assetId ? { assetId } : {}),
+    ...(sourceAssetId ? { sourceAssetId } : {}),
     ...(source ? { source } : {}),
     ...(assetSource ? { assetSource } : {}),
     ...(taskId ? { taskId } : {}),
@@ -156,6 +159,7 @@ export function mapCandidateImages(images) {
     settled: image.is_primary ?? false,
     refImages: getReferenceImages(image),
     assetId: image.asset_id ?? image.assetId,
+    sourceAssetId: image.source_asset_id ?? image.sourceAssetId ?? image.source_asset?.id ?? image.sourceAsset?.id,
     source: 'subject-image',
     assetSource: image.source,
     taskId: image.task_id ?? image.taskId,
@@ -208,6 +212,16 @@ export function mapSubjectAssets(assets) {
       settled: asset.is_primary ?? false,
       refImages: detailSource === 'local-upload' ? [] : (asset.refImages?.length > 0 ? asset.refImages : getReferenceImages(metadata)),
       assetId: asset.asset_id ?? asset.assetId ?? asset.id,
+      sourceAssetId: asset.source_asset_id
+        ?? asset.sourceAssetId
+        ?? asset.derived_from_asset_id
+        ?? asset.derivedFromAssetId
+        ?? asset.source_asset?.id
+        ?? asset.sourceAsset?.id
+        ?? metadata.source_asset_id
+        ?? metadata.sourceAssetId
+        ?? metadata.derived_from_asset_id
+        ?? metadata.derivedFromAssetId,
       source: 'creation-asset',
       assetSource: asset.source ?? asset.source_type ?? asset.sourceType,
       taskId: asset.task_id ?? asset.taskId,

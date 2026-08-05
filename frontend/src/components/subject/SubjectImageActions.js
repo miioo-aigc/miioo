@@ -20,10 +20,12 @@
  *   2026-07-28  候选图新增时间字段，支持本地上传和资产库选择后的统一排序
  *   2026-07-28  本地候选图落库前使用加载占位，定稿成功后立即同步主体封面
  *   2026-08-05  适配主体候选图专用上传/资产登记接口，候选图操作与源资产操作彻底分离
+ *   2026-08-05  资产库选择改走主体 from-asset 接口，由后端创建独立候选资产并保留源资产关系
+ *   2026-08-05  锁定资产登记期间的定稿入口，避免临时 ID 提前提交
  */
 import {
-  apiAddSubjectImageFromAsset,
   apiDownloadSubjectImage,
+  apiAddSubjectImageFromAsset,
   apiGetSubjectDetail,
   apiSetPrimarySubjectImage,
   apiUploadSubjectCandidateImage,
@@ -91,7 +93,8 @@ export function createSubjectImageActionHandlers({
       const alreadyAdded = (Array.isArray(generatedImages) ? generatedImages : []).some((image) => {
         const imageId = image?.assetId || (image?.source === 'creation-asset' ? image?.id : null);
         const imageUrl = normalizeImageUrl(image?.rawUrl || image?.url) || image?.rawUrl || image?.url;
-        return (imageId != null && String(imageId) === normalizedAssetId)
+        return (image?.sourceAssetId != null && String(image.sourceAssetId) === normalizedAssetId)
+          || (imageId != null && String(imageId) === normalizedAssetId)
           || (normalizedUrl && imageUrl === normalizedUrl);
       });
       if (alreadyAdded) {
@@ -107,8 +110,10 @@ export function createSubjectImageActionHandlers({
         settled: false,
         id: assetPlaceholderId,
         assetId: normalizedAssetId,
+        sourceAssetId: normalizedAssetId,
         source: 'asset-library',
         detailSource: 'asset-library',
+        uploading: true,
         prompt: fileOrAsset.prompt,
         input_prompt: fileOrAsset.input_prompt,
         model: fileOrAsset.model,
@@ -117,13 +122,21 @@ export function createSubjectImageActionHandlers({
         // 资产库返回的时间优先；缺失时记录本次绑定时间，保证即时排序稳定。
         created_at: fileOrAsset.created_at || fileOrAsset.createdAt || Date.now(),
       }, ...prev]);
+      // 交给后端按目标主体创建独立候选资产，并保留 source_asset_id 等源资产关系。
+      // 不再由前端下载后重新上传，避免额外的异步窗口和刷新后丢失源资产血缘。
       apiAddSubjectImageFromAsset(projectId, subjectId, normalizedAssetId)
         .then((response) => {
           const mapped = mapSubjectImageResponse(response);
           if (!mapped) throw new Error('资产库图片登记成功，但未返回主体候选图');
           setGeneratedImages((prev) => prev.map((image) => (
             image.id === assetPlaceholderId
-              ? { ...mapped, source: 'subject-image', detailSource: 'asset-library' }
+              ? {
+                ...mapped,
+                source: 'subject-image',
+                detailSource: 'asset-library',
+                sourceAssetId: normalizedAssetId,
+                uploading: false,
+              }
               : image
           )));
         })
@@ -183,10 +196,23 @@ export function createSubjectImageActionHandlers({
   }
 
   function handleSettledChange(image, index, newSettled) {
+    if (image?.uploading) {
+      showToast('图片正在保存，请稍候再设置定稿', 'error');
+      return;
+    }
+
     if (newSettled) {
+      const imageId = String(image?.id || '');
+      const temporaryId = imageId.startsWith('asset-upload-')
+        || imageId.startsWith('upload-')
+        || imageId.startsWith('batch-')
+        || imageId.startsWith('generated-');
+      if (temporaryId) {
+        showToast('图片正在保存，请稍候再设置定稿', 'error');
+        return;
+      }
       const nextCoverUrl = image?.rawUrl ?? image?.url ?? null;
       onCoverChange?.(nextCoverUrl);
-      const temporaryId = String(image?.id || '').startsWith('batch-') || String(image?.id || '').startsWith('generated-');
       const setPrimaryRequest = image.id && !temporaryId
         ? apiSetPrimarySubjectImage(projectId, subjectId, image.id)
         : apiGetSubjectDetail(projectId, subjectId)

@@ -47,6 +47,8 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-05  创作面板参考主体变更时同步写回当前镜头 mainRefs，保持创作面板与主体参考列一致
+ *   2026-08-05  视频创作面板表单仅在内容变化时回写，避免提示词删除标签触发父子状态循环
  *   2026-08-05  分镜数据加载完成后提前修复缺失的视频提示词主体绑定，并按镜头防重复提交完整表单状态
  *   2026-08-04  空分镜直接标记无候选媒体，跳过 media-candidates 请求并保留生成/上传后的刷新路径
  *   2026-08-03  主体删除兼容类型退化的旧引用，并在缓存/接口刷新期间持续过滤已删除主体，避免问号占位框复现
@@ -79,6 +81,12 @@ import {
   hasStoryboardVideoTaskResult,
   isStoryboardTaskInProgress,
 } from '../utils/storyboardTaskAdapter';
+
+function areCreationFormStatesEqual(previous, next) {
+  if (previous === next) return true;
+  if (!previous || !next) return false;
+  return JSON.stringify(previous) === JSON.stringify(next);
+}
 
 function getCandidateKey(media) {
   return media?.id || media?.url || media?.download_url || media?.downloadUrl || null;
@@ -327,6 +335,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const creationFormSaveTimersRef = useRef(new Map());
   const creationFormSaveQueuesRef = useRef(new Map());
   const promptBindingRepairRef = useRef(new Map());
+  const userEditedVideoPromptRef = useRef(new Set());
   const shotsRef = useRef(shots);
   useEffect(() => {
     shotsRef.current = shots;
@@ -425,17 +434,32 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   // 这里不依赖创作弹窗，用户打开第 N 个镜头时可以直接看到修复后的状态。
   useEffect(() => {
     if (!hasLoadedEpisodeData || loadedEpisodeDataKey !== getEpisodeId(episode)) return;
-    if (isGenerating || homeIsGenerating || storyboardBindingSubjects.length === 0) return;
+    if (isGenerating || homeIsGenerating) return;
 
     const repairs = [];
     shots.forEach((shot) => {
       const backendId = shot?.backendId || shot?.id;
       if (!isBackendStoryboardId(backendId)) return;
+      if (userEditedVideoPromptRef.current.has(String(backendId))) return;
       const prompt = shot?.creationForm?.video?.prompt
         || shot?.creationForm?.video?.video_prompt
         || '';
       if (!prompt) return;
-      const repair = repairStoryboardPromptBindings(shot, storyboardBindingSubjects);
+      // 接口返回的 subject_references 是当前镜头的权威主体集合；
+      // 与全局主体列表合并，兼容主体列表尚未完成回填或名称版本暂时不同的情况。
+      const shotSubjects = (shot.mainRefs || [])
+        .filter((ref) => ref?.type === 'char' || ref?.type === 'scene' || ref?.type === 'prop')
+        .map((ref) => ({
+          ...ref,
+          subjectId: ref.subjectId || ref.subject_id || ref.id,
+          type: ref.type,
+        }));
+      const subjectsById = new Map();
+      [...storyboardBindingSubjects, ...shotSubjects].forEach((subject) => {
+        const id = subject?.subjectId || subject?.subject_id || subject?.id;
+        if (id && !subjectsById.has(String(id))) subjectsById.set(String(id), subject);
+      });
+      const repair = repairStoryboardPromptBindings(shot, [...subjectsById.values()]);
       if (!repair) return;
       const signature = `${backendId}:${prompt}:${repair.mentions.map((item) => item.subject_id).join(',')}`;
       if (promptBindingRepairRef.current.get(backendId) === signature) return;
@@ -1590,13 +1614,31 @@ function hasStoryboardMediaHint(shot = {}) {
   const handleVideoFormStateChange = useCallback((nextState) => {
     const shotId = videoPanel?.shot?.id;
     if (!shotId) return;
+    const previousState = videoFormStateRef.current[shotId];
+    if (previousState?.prompt !== nextState?.prompt) {
+      userEditedVideoPromptRef.current.add(String(shotId));
+    }
+    if (previousState && areCreationFormStatesEqual(previousState, nextState)) return;
     videoFormStateRef.current = { ...videoFormStateRef.current, [shotId]: nextState };
     setVideoFormStateMap(videoFormStateRef.current);
-    setShots((prev) => prev.map((shot) => shot.id === shotId
-      ? { ...shot, creationForm: { ...(shot.creationForm || {}), video: nextState } }
-      : shot));
+    const currentShot = shotsRef.current.find((shot) => shot.id === shotId);
+    const nextShot = currentShot
+      ? {
+          ...currentShot,
+          // 创作面板和主体参考列必须使用同一份当前镜头主体参考数据。
+          ...(Array.isArray(nextState.refSubjects) ? { mainRefs: nextState.refSubjects } : {}),
+          creationForm: { ...(currentShot.creationForm || {}), video: nextState },
+        }
+      : null;
+    setShots((prev) => prev.map((shot) => shot.id === shotId ? (nextShot || shot) : shot));
+    if (nextShot && Array.isArray(nextState.refSubjects)
+      && !areCreationFormStatesEqual(currentShot?.mainRefs || [], nextState.refSubjects)) {
+      apiUpdateStoryboard(projectId, shotId, toBackendStoryboard(nextShot)).catch((error) => {
+        console.error('[StoryboardPage] 同步创作面板主体参考失败:', error);
+      });
+    }
     scheduleCreationFormSave(shotId, imageFormStateRef.current[shotId], nextState);
-  }, [scheduleCreationFormSave, videoPanel?.shot?.id]);
+  }, [projectId, scheduleCreationFormSave, videoPanel?.shot?.id]);
 
   function selectActiveShot(shotId) {
     if (shotId === activeShotId) {

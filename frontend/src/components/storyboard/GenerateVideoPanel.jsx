@@ -22,6 +22,8 @@
  *   ReferenceMediaEditor                      参考主体、参考图、参考视频、参考音频和首尾帧
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-05  用户编辑提示词后停止外部提示词覆盖，避免删除标签触发状态同步循环
+ *   2026-08-05  页面加载补全主体标签后，同步更新已打开弹窗的提示词展示状态
  *   2026-08-05  支持从角色/场景/道具一致性字段对主体名称做唯一模糊匹配，避免普通画面描述误建立绑定
  *   2026-07-30  修复主体参考列新增资产未带入创作视频面板：当前分镜主体引用覆盖旧表单快照并按主体 ID 去重，保留其他已编辑参考素材
  *   2026-08-05  视频提示词保存时从当前 @标签重算 mentions，按 subject_id 去重，避免删除后重绑累加历史记录
@@ -141,6 +143,22 @@ export default function GenerateVideoPanel({
   // 点击「生成分镜视频」时才把 prompt 随 onGenerate 传回后端。
   const [prompt, setPrompt] = useState(() => formState?.prompt ?? buildStoryboardPrompt(shot));
   const promptRef = useRef(null);
+  const promptEditedRef = useRef(false);
+
+  const handlePromptChange = (nextPrompt) => {
+    promptEditedRef.current = true;
+    setPrompt(nextPrompt);
+  };
+
+  // 页面加载阶段可能会在弹窗挂载后补全主体标签。弹窗不能只读取一次初始值，
+  // 否则父级 formState 已经更新，编辑器仍会继续显示打开时的旧提示词。
+  useEffect(() => {
+    if (promptEditedRef.current) return;
+    if (typeof formState?.prompt !== 'string' || formState.prompt === prompt) return;
+    const syncTimer = setTimeout(() => setPrompt(formState.prompt), 0);
+    return () => clearTimeout(syncTimer);
+  }, [formState?.prompt, prompt]);
+
   const [refSubjects, setRefSubjects] = useState(() => {
     // 从 shot.mainRefs 初始化主体列表，补全 url/name
     const shotSubjects = (shot?.mainRefs || []).map(ref => {
@@ -188,6 +206,7 @@ export default function GenerateVideoPanel({
   const handleRefAudiosChange = updateReferenceGroup(setRefAudios, 'audios');
 
   useEffect(() => {
+    if (!promptEditedRef.current && typeof formState?.prompt === 'string' && formState.prompt !== prompt) return;
     onFormStateChange?.({ tab, model, resolution, duration, sound, prompt, video_prompt_mentions: videoPromptMentions, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame });
   }, [tab, model, resolution, duration, sound, prompt, videoPromptMentions, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame, onFormStateChange]);
 
@@ -424,7 +443,7 @@ export default function GenerateVideoPanel({
           <div style={{ display: 'flex', flexDirection: 'column', width: embedded ? '457px' : '419px', flexShrink: 0, padding: embedded ? '12px 16px 80px 24px' : '8px 12px 80px 24px', gap: '20px', overflowY: 'auto', boxSizing: 'border-box' }}>
             <VideoGenerationTabs value={tab} onChange={handleTabChange} />
 
-            <PanelPromptInput ref={promptRef} value={prompt} onChange={setPrompt} referenceItems={videoReferenceItems} />
+            <PanelPromptInput ref={promptRef} value={prompt} onChange={handlePromptChange} referenceItems={videoReferenceItems} />
 
             <GenerationModelField
               value={modelsLoading ? '加载中...' : (tabModels.find(m => m.value === model)?.label || '请选择')}

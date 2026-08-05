@@ -23,6 +23,18 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function findPromptAlias(prompt, subjectName) {
+  if (!prompt || !subjectName || prompt.includes(subjectName)) return subjectName;
+  const aliases = [];
+  for (let start = 0; start < subjectName.length; start += 1) {
+    for (let end = start + 2; end <= subjectName.length; end += 1) {
+      const alias = subjectName.slice(start, end);
+      if (prompt.includes(alias)) aliases.push(alias);
+    }
+  }
+  return aliases.sort((a, b) => b.length - a.length)[0] || null;
+}
+
 function getConsistencyMentions(prompt) {
   const mentions = [];
   const pattern = /^(角色|场景|道具)一致性\s*[:：]\s*([^\n]+)/gm;
@@ -100,6 +112,12 @@ function getPromptFromShot(shot) {
     || '';
 }
 
+function getFullPromptFromShot(shot) {
+  return shot?.creationForm?.video?.video_prompt_generation
+    || shot?.video_prompt_generation
+    || getPromptFromShot(shot);
+}
+
 function getExistingMentions(shot) {
   const mentions = shot?.creationForm?.video?.video_prompt_mentions;
   if (Array.isArray(mentions)) return mentions;
@@ -114,9 +132,58 @@ function getExistingMentions(shot) {
 export function repairStoryboardPromptBindings(shot, subjects) {
   if (!shot || getExistingMentions(shot).length > 0) return null;
   const prompt = getPromptFromShot(shot);
-  const mentions = buildVideoPromptMentions(prompt, subjects);
+  const matchingPrompt = getFullPromptFromShot(shot);
+  const items = Array.isArray(subjects) ? subjects : [];
+  const consistencyPattern = /^(角色|场景|道具)一致性\s*([:：])\s*([^\n]+)/gm;
+  const matchedNames = [];
+  const matchedSubjects = [];
+  let match;
+  while ((match = consistencyPattern.exec(matchingPrompt || '')) !== null) {
+    const shortName = match[3].split(/[，,。；;：:]/, 1)[0].trim();
+    if (!shortName || shortName.startsWith('@')) continue;
+    const type = subjectTypeForConsistency(match[1]);
+    const candidates = items.filter((subject) => {
+      const subjectName = String(subject?.name || '').trim();
+      const subjectType = backendSubjectType(subject.type || subject.subjectType || subject.subject_type);
+      return subjectName
+        && subjectType === type
+        && (subjectName === shortName || subjectName.includes(shortName) || shortName.includes(subjectName));
+    });
+    if (candidates.length === 1) {
+      const subjectName = String(candidates[0].name).trim();
+      matchedNames.push({ shortName, subjectName });
+      matchedSubjects.push(candidates[0]);
+    }
+  }
+
+  // 编辑器的标签样式由展示文本中的 @名称驱动。优先替换当前短提示词里的完整主体名；
+  // 对“灾民营地”这类简称，则用完整提示词的一致性字段建立的短名映射替换。
+  const replacementsByName = new Map();
+  matchedNames.forEach(({ shortName, subjectName }) => {
+    replacementsByName.set(subjectName, subjectName);
+    replacementsByName.set(shortName, subjectName);
+    const promptAlias = findPromptAlias(prompt, subjectName);
+    if (promptAlias) replacementsByName.set(promptAlias, subjectName);
+  });
+  const names = [...replacementsByName.keys()].sort((a, b) => b.length - a.length);
+  const taggedPrompt = names.length === 0
+    ? prompt
+    : prompt.replace(new RegExp(names.map(escapeRegExp).join('|'), 'g'), (name) => {
+      const subjectName = replacementsByName.get(name);
+      return subjectName ? `@${subjectName}` : name;
+    });
+  // 一致性字段已经完成了“主体类型 + 唯一名称”的确认，直接使用对应主体对象
+  // 生成绑定数据，避免再次从替换后的文本反向解析时受标点或名称边界影响。
+  const mentions = [];
+  const seenSubjectIds = new Set();
+  matchedSubjects.forEach((subject) => addMention(mentions, seenSubjectIds, subject));
+  buildVideoPromptMentions(taggedPrompt, subjects).forEach((mention) => {
+    if (seenSubjectIds.has(String(mention.subject_id))) return;
+    seenSubjectIds.add(String(mention.subject_id));
+    mentions.push(mention);
+  });
   if (mentions.length === 0) return null;
-  return { prompt, mentions };
+  return { prompt: taggedPrompt, mentions };
 }
 
 export function getStoryboardVideoPrompt(shot) {

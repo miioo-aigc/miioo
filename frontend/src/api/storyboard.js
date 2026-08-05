@@ -220,15 +220,69 @@ export async function apiUpdateStoryboard(projectId, storyboardId, data) {
     body: JSON.stringify(data),
   });
   const updated = await res.json();
+  // 部分 PATCH 响应只返回分镜基础字段，不回传 gen_params.creation_form。
+  // 本次请求已经提交的创作表单不能因此从本地缓存中消失，否则刷新时会恢复成旧状态。
+  const requestGenParams = data?.gen_params;
+  const responseGenParams = updated?.gen_params;
+  const requestedCreationForm = requestGenParams?.creation_form || requestGenParams?.creationForm;
+  const responseCreationForm = responseGenParams?.creation_form || responseGenParams?.creationForm;
+  const requestFields = [
+    'shot_number',
+    'content',
+    'shot_type',
+    'camera',
+    'camera_angle',
+    'composition',
+    'duration',
+    'lighting',
+    'ambient_sound',
+    'voiceover',
+    'character_ids',
+    'scene_id',
+    'prop_ids',
+    'reference_image_urls',
+    'reference_images',
+    'image_url',
+    'video_url',
+    'image_prompt',
+    'video_prompt',
+    'video_prompt_mentions',
+  ];
+  const requestedStoryboardFields = requestFields.reduce((result, field) => {
+    if (data?.[field] !== undefined) result[field] = data[field];
+    return result;
+  }, {});
+  const hasRequestGenParams = requestGenParams && typeof requestGenParams === 'object';
+  const cacheUpdated = {
+    ...updated,
+    ...requestedStoryboardFields,
+    ...(hasRequestGenParams
+      ? {
+          gen_params: {
+            ...(responseGenParams && typeof responseGenParams === 'object' ? responseGenParams : {}),
+            ...requestGenParams,
+            ...(requestedCreationForm
+              ? {
+                  creation_form: {
+                    ...(responseCreationForm || {}),
+                    ...requestedCreationForm,
+                  },
+                }
+              : {}),
+          },
+        }
+      : {}),
+  };
   // 把最新数据回填进所有相关缓存 key，避免刷新时读到旧缓存导致字段丢失
-  if (updated?.id) {
+  const updatedId = updated?.id || storyboardId;
+  if (updatedId) {
     for (const m of ['memory', 'local', 'session']) {
       // 枚举该项目下所有已缓存的 storyboards key
       for (const episodeId of [undefined, updated.episode_id]) {
         const key = K.storyboards(projectId, episodeId);
         const cached = peekCache(key, m);
         if (Array.isArray(cached)) {
-          const next = cached.map(s => s.id === updated.id ? compactStoryboardForCache(updated) : s);
+          const next = cached.map(s => s.id === updatedId ? compactStoryboardForCache({ ...cacheUpdated, id: updatedId }) : s);
           setCache(key, next, { medium: m });
         }
       }

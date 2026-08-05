@@ -26,6 +26,7 @@
  *   2026-07-31  候选图首次请求期间显示 DotsLoading 占位，区分加载中与真实空列表
  *   2026-08-05  候选图卡片优先使用后端缩略图/预览图/下载地址
  *   2026-08-05  资产跨主体复制期间保持加载态，禁止提前进入定稿流程
+ *   2026-08-05  已添加候选图的源资产统一传入资产弹窗，重复资产卡片显示为禁选
  */
 import { useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
@@ -37,7 +38,7 @@ import { IconButton, FileUploadButton, Tooltip } from '../ui';
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 const UploadButton = ({ label, onClick }) => <FileUploadButton onClick={onClick}>{label}</FileUploadButton>;
-function ImageItemUpload({ onUpload, projectId, excludedAssetIds = [] }) {
+function ImageItemUpload({ onUpload, projectId, excludedAssetIds = [], excludedAssetUrls = [] }) {
   const [hovered, setHovered] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const fileInputRef = useRef(null);
@@ -67,6 +68,7 @@ function ImageItemUpload({ onUpload, projectId, excludedAssetIds = [] }) {
         }}
         projectId={projectId}
         excludedAssetIds={excludedAssetIds}
+        excludedAssetUrls={excludedAssetUrls}
       />
       <div
         onMouseEnter={() => setHovered(true)}
@@ -203,8 +205,16 @@ export default function SubjectImageList({
 }) {
   const excludedAssetIds = generatedImages
     .filter((image) => image?.source === 'asset-library' || image?.detailSource === 'asset-library')
-    .map((image) => image.sourceAssetId || image.assetId)
+    .map((image) => image.sourceAssetId
+      || image.source_asset_id
+      || image.source_asset?.id
+      || image.sourceAsset?.id
+      || image.assetId
+      || image.asset_id)
     .filter(Boolean);
+  const excludedAssetUrls = generatedImages
+    .filter((image) => image?.source === 'asset-library' || image?.detailSource === 'asset-library')
+    .flatMap((image) => [image.rawUrl, image.url, image.thumbnailUrl, image.previewUrl].filter(Boolean));
   const images = generatedImages.filter((image) => image.url).map((image) => ({
     id: image.id,
     url: image.thumbnailUrl || image.url,
@@ -242,7 +252,12 @@ export default function SubjectImageList({
           }}
         />
       )}
-      <ImageItemUpload projectId={projectId} onUpload={onUpload} excludedAssetIds={excludedAssetIds} />
+      <ImageItemUpload
+        projectId={projectId}
+        onUpload={onUpload}
+        excludedAssetIds={excludedAssetIds}
+        excludedAssetUrls={excludedAssetUrls}
+      />
       {candidateImagesLoading && generatedImages.length === 0 && (
         <ImageItem
           key="candidate-images-loading"

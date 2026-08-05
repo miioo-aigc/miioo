@@ -20,7 +20,7 @@ const PARAM_LABELS = {
   duration: '时长',
 };
 
-function ParamSelect({ field, value, onChange, onClose, triggerRef }) {
+function ParamSelect({ field, value, onChange, onClose, triggerRef, onPointerEnter, onPointerLeave }) {
   const ref = useRef(null);
   const [pos, setPos] = useState({ top: 0, left: 0, visibility: 'hidden' });
 
@@ -48,6 +48,8 @@ function ParamSelect({ field, value, onChange, onClose, triggerRef }) {
   return createPortal(
     <div
       ref={ref}
+      onMouseEnter={onPointerEnter}
+      onMouseLeave={onPointerLeave}
       onClick={(e) => e.stopPropagation()}
       style={{
         position: 'fixed',
@@ -66,7 +68,7 @@ function ParamSelect({ field, value, onChange, onClose, triggerRef }) {
       {(PARAM_OPTIONS[field] || []).map((opt) => (
         <div
           key={opt}
-          onMouseDown={(e) => { e.preventDefault(); onChange(opt); onClose(); }}
+          onMouseDown={(e) => { e.preventDefault(); onChange(opt); }}
           style={{
             padding: '8px 12px',
             borderRadius: '6px',
@@ -92,7 +94,7 @@ function ParamSelect({ field, value, onChange, onClose, triggerRef }) {
 
 // ─── 参数触发器（景别/运镜/拍摄角度/构图/时长）────────────────────────────────
 
-function ParamTrigger({ field, label, value, isActive, triggerRef, onToggle, onClose, onUpdate }) {
+function ParamTrigger({ field, label, value, isActive, triggerRef, onToggle, onClose, onUpdate, onPointerEnter, onPointerLeave }) {
   const [hov, setHov] = useState(false);
   const [pressed, setPressed] = useState(false);
 
@@ -102,6 +104,8 @@ function ParamTrigger({ field, label, value, isActive, triggerRef, onToggle, onC
       onClick={onToggle}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => { setHov(false); setPressed(false); }}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
       onMouseDown={() => setPressed(true)}
       onMouseUp={() => setPressed(false)}
       style={{
@@ -150,6 +154,8 @@ function ParamTrigger({ field, label, value, isActive, triggerRef, onToggle, onC
           onChange={onUpdate}
           onClose={onClose}
           triggerRef={triggerRef}
+          onPointerEnter={onPointerEnter}
+          onPointerLeave={onPointerLeave}
         />
       )}
     </div>
@@ -160,13 +166,36 @@ function ParamTrigger({ field, label, value, isActive, triggerRef, onToggle, onC
 
 function DescriptionCol({ shot, onChange }) {
   const [activeParam, setActiveParam] = useState(null);
+  const selectorHoverRef = useRef(false);
+  const selectorCloseTimerRef = useRef(null);
   const triggerRefs = useMemo(
     () => Object.fromEntries(Object.keys(PARAM_LABELS).map((field) => [field, { current: null }])),
     []
   );
 
+  useEffect(() => () => {
+    if (selectorCloseTimerRef.current) clearTimeout(selectorCloseTimerRef.current);
+  }, []);
+
   function updateParam(field, val) {
     onChange({ ...shot, params: { ...shot.params, [field]: val } });
+  }
+
+  function handleSelectorPointerEnter() {
+    selectorHoverRef.current = true;
+    if (selectorCloseTimerRef.current) {
+      clearTimeout(selectorCloseTimerRef.current);
+      selectorCloseTimerRef.current = null;
+    }
+  }
+
+  function handleSelectorPointerLeave() {
+    selectorHoverRef.current = false;
+    if (selectorCloseTimerRef.current) clearTimeout(selectorCloseTimerRef.current);
+    selectorCloseTimerRef.current = setTimeout(() => {
+      selectorCloseTimerRef.current = null;
+      if (!selectorHoverRef.current) setActiveParam(null);
+    }, 16);
   }
 
   return (
@@ -201,7 +230,11 @@ function DescriptionCol({ shot, onChange }) {
             triggerRef={triggerRefs[field]}
             onToggle={() => setActiveParam(activeParam === field ? null : field)}
             onClose={() => setActiveParam(null)}
-            onUpdate={(v) => updateParam(field, v)}
+            onUpdate={(v) => {
+              updateParam(field, v);
+            }}
+            onPointerEnter={handleSelectorPointerEnter}
+            onPointerLeave={handleSelectorPointerLeave}
           />
         ))}
       </div>

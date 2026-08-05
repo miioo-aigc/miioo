@@ -407,28 +407,45 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     setVideoFormStateMap(videoFormStateRef.current);
   }
 
+  const enqueueCreationFormSave = useCallback((shotId, image, video) => {
+    const shot = shotsRef.current.find((item) => item.id === shotId);
+    if (!creationFormSaveQueuesRef.current.has(shotId)) {
+      creationFormSaveQueuesRef.current.set(shotId, createLatestPersistenceQueue((value) => (
+        apiUpdateStoryboardCreationForm(projectId, shotId, value)
+      )));
+    }
+    creationFormSaveQueuesRef.current.get(shotId).enqueue({
+      image,
+      video,
+      genParams: shot?.genParams,
+    }).catch((error) => {
+      console.error('[StoryboardPage] 保存创作面板状态失败:', error);
+    });
+  }, [projectId]);
+
   const scheduleCreationFormSave = useCallback((shotId, image, video) => {
     const timer = creationFormSaveTimersRef.current.get(shotId);
     if (timer) clearTimeout(timer);
     const nextTimer = setTimeout(() => {
-      const shot = shotsRef.current.find((item) => item.id === shotId);
-      if (!creationFormSaveQueuesRef.current.has(shotId)) {
-        creationFormSaveQueuesRef.current.set(shotId, createLatestPersistenceQueue((value) => (
-          apiUpdateStoryboardCreationForm(projectId, shotId, value)
-        )));
-      }
-      creationFormSaveQueuesRef.current.get(shotId).enqueue({
-        image,
-        video,
-        genParams: shot?.genParams,
-      }).catch((error) => {
-        console.error('[StoryboardPage] 保存创作面板状态失败:', error);
-      }).finally(() => {
-        creationFormSaveTimersRef.current.delete(shotId);
-      });
+      enqueueCreationFormSave(shotId, image, video);
+      creationFormSaveTimersRef.current.delete(shotId);
     }, 450);
     creationFormSaveTimersRef.current.set(shotId, nextTimer);
-  }, [projectId]);
+  }, [enqueueCreationFormSave]);
+
+  const flushCreationFormSave = useCallback((shotId) => {
+    if (!shotId) return;
+    const timer = creationFormSaveTimersRef.current.get(shotId);
+    if (timer) {
+      clearTimeout(timer);
+      creationFormSaveTimersRef.current.delete(shotId);
+    }
+    enqueueCreationFormSave(
+      shotId,
+      imageFormStateRef.current[shotId],
+      videoFormStateRef.current[shotId],
+    );
+  }, [enqueueCreationFormSave]);
 
   // 分镜数据和主体数据都准备好后，提前修复后端生成提示词中缺失的主体绑定。
   // 这里不依赖创作弹窗，用户打开第 N 个镜头时可以直接看到修复后的状态。
@@ -499,9 +516,14 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   ]);
 
   useEffect(() => () => {
-    creationFormSaveTimersRef.current.forEach((timer) => clearTimeout(timer));
+    creationFormSaveTimersRef.current.forEach((timer, shotId) => {
+      clearTimeout(timer);
+      const image = imageFormStateRef.current[shotId];
+      const video = videoFormStateRef.current[shotId];
+      if (image || video) enqueueCreationFormSave(shotId, image, video);
+    });
     creationFormSaveTimersRef.current.clear();
-  }, []);
+  }, [enqueueCreationFormSave]);
 
 function fallbackCandidates(shot) {
     const fallbackMedia = [shot.storyboardImage, shot.storyboardVideo].filter(Boolean);
@@ -1590,6 +1612,7 @@ function hasStoryboardMediaHint(shot = {}) {
   function handleCreationTabChange(tab) {
     if (!creationPanel) return;
     const shot = creationPanel.shot;
+    flushCreationFormSave(shot.id);
     setCreationPanel((prev) => ({ ...prev, tab }));
     if (tab === 'image') {
       setVideoPanel(null);
@@ -1599,6 +1622,13 @@ function hasStoryboardMediaHint(shot = {}) {
       setVideoPanel({ shot, nextShot: shots[shots.findIndex((item) => item.id === shot.id) + 1] ?? null });
     }
   }
+
+  const handleCreationPanelClose = useCallback(() => {
+    flushCreationFormSave(creationPanel?.shot?.id);
+    setImagePanel(null);
+    setVideoPanel(null);
+    setCreationPanel(null);
+  }, [creationPanel?.shot?.id, flushCreationFormSave]);
 
   const handleImageFormStateChange = useCallback((nextState) => {
     const shotId = imagePanel?.shot?.id;
@@ -2105,7 +2135,7 @@ function hasStoryboardMediaHint(shot = {}) {
           link.download = media?.name || `storyboard-${media?.id || 'media'}`;
           link.click();
         }}
-        onClose={() => { setImagePanel(null); setVideoPanel(null); setCreationPanel(null); }}
+        onClose={handleCreationPanelClose}
       >
     {imagePanel && creationPanel.tab === 'image' && (
       <GenerateImagePanel
@@ -2130,7 +2160,7 @@ function hasStoryboardMediaHint(shot = {}) {
             [shotId]: typeof updater === 'function' ? updater(prev[shotId] ?? []) : updater,
           }));
         }}
-        onClose={() => { setImagePanel(null); setCreationPanel(null); }}
+        onClose={handleCreationPanelClose}
         onShowToast={showToast}
        onSettleImage={(imageUrl) => {
          const n = normalizeImageUrl(imageUrl);
@@ -2237,7 +2267,7 @@ function hasStoryboardMediaHint(shot = {}) {
             [shotId]: typeof updater === 'function' ? updater(prev[shotId] ?? []) : updater,
           }));
         }}
-        onClose={() => { setVideoPanel(null); setCreationPanel(null); }}
+        onClose={handleCreationPanelClose}
         onShowToast={showToast}
         onSettleVideo={(videoUrl) => {
           const n = normalizeImageUrl(videoUrl);

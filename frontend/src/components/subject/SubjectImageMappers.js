@@ -159,7 +159,16 @@ export function mapCandidateImages(images) {
     settled: image.is_primary ?? false,
     refImages: getReferenceImages(image),
     assetId: image.asset_id ?? image.assetId,
-    sourceAssetId: image.source_asset_id ?? image.sourceAssetId ?? image.source_asset?.id ?? image.sourceAsset?.id,
+    sourceAssetId: image.source_asset_id
+      ?? image.sourceAssetId
+      ?? image.derived_from_asset_id
+      ?? image.derivedFromAssetId
+      ?? image.source_asset?.id
+      ?? image.sourceAsset?.id
+      ?? image.metadata_json?.source_asset_id
+      ?? image.metadata_json?.sourceAssetId
+      ?? image.metadata_json?.derived_from_asset_id
+      ?? image.metadata_json?.derivedFromAssetId,
     source: 'subject-image',
     assetSource: image.source,
     taskId: image.task_id ?? image.taskId,

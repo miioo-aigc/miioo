@@ -311,6 +311,8 @@ export default function AssetPickerModal({
   preSelectedSubjectIds = [],
   // excludedAssetIds: string[]  已被当前业务复制/占用的源资产 ID，不展示为可选项
   excludedAssetIds = [],
+  // excludedAssetUrls: string[]  后端暂未返回源资产 ID 时，按媒体地址兜底禁选
+  excludedAssetUrls = [],
   model = '',
 }) {
   const generationsByTab = useCreationStore((s) => s.generationsByTab);
@@ -474,11 +476,11 @@ export default function AssetPickerModal({
   }, [showSeedanceTab, activeTab]);
   // 调用方常以内联 map 传入预选 ID；用值签名作为依赖，避免每次渲染都重置选择并形成更新循环。
   const preSelectedIdsKey = JSON.stringify(preSelectedIds ?? []);
-  const preSelectedSet = useMemo(() => new Set(preSelectedIds ?? []), [preSelectedIds]);
-  const excludedAssetIdsKey = JSON.stringify(excludedAssetIds ?? []);
-  const excludedAssetSet = useMemo(
-    () => new Set((excludedAssetIds ?? []).filter((id) => id != null).map((id) => String(id))),
-    [excludedAssetIdsKey],
+  const preSelectedSet = new Set((preSelectedIds ?? []).filter((id) => id != null).map((id) => String(id)));
+  const excludedAssetSet = new Set((excludedAssetIds ?? []).filter((id) => id != null).map((id) => String(id)));
+  const excludedAssetUrlSet = useMemo(
+    () => new Set((excludedAssetUrls ?? []).flatMap((url) => getCreationAssetMediaAliases({ url })).filter(Boolean)),
+    [excludedAssetUrls],
   );
   // 主体ID集合（最可靠的跨来源匹配键：主体参考图与资产库为不同记录ID，但同属一个 subject_id）
   const preSelectedSubjectSet = useMemo(
@@ -502,7 +504,8 @@ export default function AssetPickerModal({
   // 判断某张资产卡片是否为预选（不可取消）：subject_id 命中 / ID 命中 / URL文件名 命中
   const isPreSelected = (asset) => {
     if (!asset) return false;
-    if (preSelectedSet.has(asset.id)) return true;
+    const assetIds = [asset.id, asset.assetId, asset.asset_id].filter((id) => id != null).map((id) => String(id));
+    if (assetIds.some((id) => preSelectedSet.has(id))) return true;
     if (asset.subject_id && preSelectedSubjectSet.has(asset.subject_id)) return true;
     const k1 = urlKey(asset.url);
     if (k1 && preSelectedUrlSet.has(k1)) return true;
@@ -514,8 +517,11 @@ export default function AssetPickerModal({
   // 已复制到当前主体的源资产仍展示，但不可再次选择。
   const isExcludedAsset = (asset) => {
     if (!asset) return false;
-    const assetId = asset.assetId || asset.asset_id || asset.id;
-    return assetId != null && excludedAssetSet.has(String(assetId));
+    const assetIds = [asset.assetId, asset.asset_id, asset.id]
+      .filter((id) => id != null)
+      .map((id) => String(id));
+    if (assetIds.some((id) => excludedAssetSet.has(id))) return true;
+    return getCreationAssetMediaAliases(asset).some((url) => excludedAssetUrlSet.has(url));
   };
 
   // 每次弹窗打开时用 preSelectedIds 初始化选中状态，关闭时清空
@@ -956,7 +962,7 @@ export default function AssetPickerModal({
     const assetMap = Object.fromEntries(allAssets.map(a => [a.id, a]));
     // 只返回本次新增选择的资产，排除上轮已存在的预选项（preSelectedIds），避免上游重复输入
     const selectedAssets = Array.from(selected)
-      .filter(id => !preSelectedSet.has(id))
+      .filter(id => !preSelectedSet.has(String(id)))
       .map(id => assetMap[id])
       .map((asset) => {
         if (!asset) return null;

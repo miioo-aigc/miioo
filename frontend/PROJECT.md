@@ -49,7 +49,9 @@
 - 主体 B 从资产库选择主体 A 的 A001 图片时改用后端 `POST /api/projects/{project_id}/subjects/{subject_id}/images/from-asset`，由后端创建 B 的独立候选资产并保留源资产关系。
 - 主体 A 的 A001 资产不被改绑、改分类或修改定稿状态；主体 B 获得独立候选图，因此可以独立设置定稿并写入 B 的封面。
 - 前端只保留登记期间的加载占位和定稿锁，不再执行下载后重新上传，避免额外异步窗口及刷新后丢失源资产血缘。
-- 资产库选择器继续展示已复制的 A001，但通过持久化的 `source_asset_id` 标记为不可重复选择；仍需在有登录态的联调环境验证接口响应包含该字段、刷新恢复以及删除 B 不影响 A001。
+- 资产库选择器继续展示已复制的 A001，但通过持久化的 `source_asset_id` 或 `derived_from_asset_id` 标记为不可重复选择；前端同时兼容 `id`/`asset_id` 类型差异，并以媒体地址别名作为接口字段缺失时的过渡兜底。
+- `AssetPickerModal` 已将命中资产直接置为禁选，`SubjectImageList` 已统一传入当前主体已使用的来源资产 ID和媒体地址；刷新后候选图映射也会从嵌套来源字段和 `metadata_json` 读取血缘信息。
+- 详细修复、接口文档缺口和联调验收项见 [`docs/subject-candidate-asset-disabled-fix-2026-08-05.md`](./docs/subject-candidate-asset-disabled-fix-2026-08-05.md)。静态检查已通过，真实后端响应字段和刷新恢复仍需在有登录态的联调环境确认。
 
 ## 2026-08-05 分镜主体参考场景与道具展示修复
 

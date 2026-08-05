@@ -47,6 +47,7 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-05  分镜数据加载完成后提前修复缺失的视频提示词主体绑定，并按镜头防重复提交完整表单状态
  *   2026-08-04  空分镜直接标记无候选媒体，跳过 media-candidates 请求并保留生成/上传后的刷新路径
  *   2026-08-03  主体删除兼容类型退化的旧引用，并在缓存/接口刷新期间持续过滤已删除主体，避免问号占位框复现
  *   2026-08-04  候选媒体按分镜缓存轻量封面与状态；无封面时恢复图片原图/视频首帧兜底
@@ -68,6 +69,7 @@ import { apiGetEpisodes, normalizeEpisodeListResponse } from '../api/subject';
 import { apiUploadCreationImage } from '../api/creation';
 import DotsLoading from '../components/DotsLoading';
 import { normalizeImageUrl, toAbsoluteUrl } from '../utils/imageUrl';
+import { repairStoryboardPromptBindings } from '../utils/storyboardPromptBindingRepair';
 import {
   extractStoryboardImageUrl,
   extractStoryboardVideoUrl,
@@ -209,6 +211,13 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     });
   }, [chars, scenes, props]);
 
+  // 页面级绑定修复需要知道主体类型；主体列表本身的历史数据不一定携带 type。
+  const storyboardBindingSubjects = useMemo(() => [
+    ...chars.map((subject) => ({ ...subject, type: subject.type || 'char' })),
+    ...scenes.map((subject) => ({ ...subject, type: subject.type || 'scene' })),
+    ...props.map((subject) => ({ ...subject, type: subject.type || 'prop' })),
+  ], [chars, scenes, props]);
+
   // 选择器的唯一数据源是剧本分集，不根据当前分镜接口返回结果裁剪列表。
   const [scriptEpisodes, setScriptEpisodes] = useState(() => episodes.length > 0 ? episodes : []);
   const activeEpisodes = scriptEpisodes.length > 0 ? scriptEpisodes : EPISODES;
@@ -317,6 +326,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const videoFormStateRef = useRef({});
   const creationFormSaveTimersRef = useRef(new Map());
   const creationFormSaveQueuesRef = useRef(new Map());
+  const promptBindingRepairRef = useRef(new Map());
   const shotsRef = useRef(shots);
   useEffect(() => {
     shotsRef.current = shots;
@@ -410,6 +420,59 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     }, 450);
     creationFormSaveTimersRef.current.set(shotId, nextTimer);
   }, [projectId]);
+
+  // 分镜数据和主体数据都准备好后，提前修复后端生成提示词中缺失的主体绑定。
+  // 这里不依赖创作弹窗，用户打开第 N 个镜头时可以直接看到修复后的状态。
+  useEffect(() => {
+    if (!hasLoadedEpisodeData || loadedEpisodeDataKey !== getEpisodeId(episode)) return;
+    if (isGenerating || homeIsGenerating || storyboardBindingSubjects.length === 0) return;
+
+    const repairs = [];
+    shots.forEach((shot) => {
+      const backendId = shot?.backendId || shot?.id;
+      if (!isBackendStoryboardId(backendId)) return;
+      const prompt = shot?.creationForm?.video?.prompt
+        || shot?.creationForm?.video?.video_prompt
+        || '';
+      if (!prompt) return;
+      const repair = repairStoryboardPromptBindings(shot, storyboardBindingSubjects);
+      if (!repair) return;
+      const signature = `${backendId}:${prompt}:${repair.mentions.map((item) => item.subject_id).join(',')}`;
+      if (promptBindingRepairRef.current.get(backendId) === signature) return;
+      promptBindingRepairRef.current.set(backendId, signature);
+      repairs.push({ shot, backendId, repair });
+    });
+
+    if (repairs.length === 0) return;
+    repairs.forEach(({ shot, backendId, repair }) => {
+      const currentVideo = shot.creationForm?.video || {};
+      const nextVideo = {
+        ...currentVideo,
+        prompt: repair.prompt,
+        video_prompt_mentions: repair.mentions,
+      };
+      const nextShot = {
+        ...shot,
+        creationForm: {
+          ...(shot.creationForm || {}),
+          video: nextVideo,
+        },
+      };
+      videoFormStateRef.current = { ...videoFormStateRef.current, [backendId]: nextVideo };
+      setVideoFormStateMap((prev) => ({ ...prev, [backendId]: nextVideo }));
+      setShots((prev) => prev.map((item) => item.id === shot.id ? nextShot : item));
+      scheduleCreationFormSave(backendId, imageFormStateRef.current[backendId], nextVideo);
+    });
+  }, [
+    episode,
+    hasLoadedEpisodeData,
+    homeIsGenerating,
+    isGenerating,
+    loadedEpisodeDataKey,
+    scheduleCreationFormSave,
+    shots,
+    storyboardBindingSubjects,
+  ]);
 
   useEffect(() => () => {
     creationFormSaveTimersRef.current.forEach((timer) => clearTimeout(timer));
@@ -716,12 +779,12 @@ function hasStoryboardMediaHint(shot = {}) {
       if (currentData.length > 0) return currentData;
 
       // 当前集返回空数组不能直接判定为“未生成”：缓存失效、分集 ID 切换，
-      // 或后端按集过滤异常时，都可能只让按集请求返回空结果。再查一次项目全量
-      // 分镜，避免已有数据被误判为空态。
+      // 或后端按集过滤异常时，都可能只让按集请求返回空结果。再查一次项目级
+      // 轻量分镜列表，避免已有数据被误判为空态；生成参数由创作弹窗按需读取。
       const allData = await apiGetStoryboards(projectId, {
         limit: 200,
         offset: 0,
-        include_gen_params: true,
+        include_gen_params: false,
       });
       return allData.filter((item) => (item.episode_id ?? item.episodeId) === episodeId);
     };

@@ -142,7 +142,9 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
       : (be.image_prompt != null ? { prompt: be.image_prompt } : undefined),
     video: persistedCreationForm?.video && typeof persistedCreationForm.video === 'object'
       ? { ...persistedCreationForm.video, video_prompt_mentions: persistedVideoMentions }
-      : (be.video_prompt != null ? { prompt: be.video_prompt, video_prompt_mentions: persistedVideoMentions } : undefined),
+      : ((be.video_prompt ?? be.video_prompt_generation) != null
+        ? { prompt: be.video_prompt ?? be.video_prompt_generation, video_prompt_mentions: persistedVideoMentions }
+        : undefined),
   };
   const hasCreationForm = Boolean(creationForm.image || creationForm.video);
   const fallbackNumber = Number.isInteger(fallbackContext.index) ? fallbackContext.index + 1 : 0;

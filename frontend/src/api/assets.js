@@ -761,8 +761,20 @@ const TAB_CATEGORY_FILTER = {
 // 用 storyboard 数据给资产打 is_primary / ratio 标记，返回富化后的原始资产数组
 async function enrichWithStoryboards(projectId, rawList, needsStoryboards) {
   if (!needsStoryboards) return rawList;
-  const storyboardsRaw = await apiGetStoryboards(projectId).catch(() => []);
-  const storyboards = Array.isArray(storyboardsRaw) ? storyboardsRaw : [];
+  // 这里只需要分镜 ID 和媒体字段来判断定稿状态，不需要生成参数。
+  // 分页读取避免资产页一次性拉取最多 200 条完整分镜并写入持久缓存。
+  const storyboardPageSize = 10;
+  const storyboards = [];
+  for (let offset = 0; ; offset += storyboardPageSize) {
+    const page = await apiGetStoryboards(projectId, {
+      limit: storyboardPageSize,
+      offset,
+      include_gen_params: false,
+    }).catch(() => []);
+    if (!Array.isArray(page) || page.length === 0) break;
+    storyboards.push(...page);
+    if (page.length < storyboardPageSize) break;
+  }
   // 分镜页的定稿状态保存在每个镜头的候选媒体中，不能只依赖分镜主表的 image_url/video_url。
   // 这里批量读取候选列表，只收集已定稿媒体，保证资产选择弹窗的“仅显示定稿图”与分镜页一致。
   const finalizedCandidates = (await Promise.all(

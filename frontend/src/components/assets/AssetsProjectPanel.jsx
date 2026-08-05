@@ -250,7 +250,8 @@ export default function AssetsProjectPanel() {
     try {
       if (category === 'storyboard') {
         const [storyboards, episodes] = await Promise.all([
-          apiGetStoryboards(projectId),
+          // 资产库只需要分镜基础信息和媒体字段，不需要加载生成参数。
+          apiGetStoryboards(projectId, { include_gen_params: false }),
           apiGetEpisodes(projectId).catch(() => []),
         ]);
         const episodeNumberById = new Map(

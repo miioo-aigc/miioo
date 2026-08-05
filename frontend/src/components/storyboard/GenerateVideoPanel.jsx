@@ -22,6 +22,7 @@
  *   ReferenceMediaEditor                      参考主体、参考图、参考视频、参考音频和首尾帧
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-05  支持从角色/场景/道具一致性字段对主体名称做唯一模糊匹配，避免普通画面描述误建立绑定
  *   2026-07-30  修复主体参考列新增资产未带入创作视频面板：当前分镜主体引用覆盖旧表单快照并按主体 ID 去重，保留其他已编辑参考素材
  *   2026-08-05  视频提示词保存时从当前 @标签重算 mentions，按 subject_id 去重，避免删除后重绑累加历史记录
  *   2026-08-03  参考主体、参考图、参考视频和参考音频分别归一化、去重，保留各自提交字段边界
@@ -42,51 +43,9 @@ import VideoResultsPanel from './VideoResultsPanel';
 import { GenerationModelField, GenerationOptionFields } from './GenerationParamsFields';
 import { VideoGenerationTabs, VideoSoundToggle } from './VideoGenerationControls';
 import GenerationSubmitButton from './GenerationSubmitButton';
+import { buildVideoPromptMentions } from '../../utils/storyboardPromptBindingRepair';
 
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
-
-function backendSubjectType(type) {
-  if (type === 'char' || type === 'character') return 'character';
-  if (type === 'scene') return 'scene';
-  if (type === 'prop' || type === 'object') return 'prop';
-  return type || 'character';
-}
-
-function buildVideoPromptMentions(prompt, subjects) {
-  const items = Array.isArray(subjects) ? subjects : [];
-  const byName = new Map();
-  items.forEach((subject) => {
-    const name = String(subject?.name || '').trim();
-    if (!name) return;
-    const list = byName.get(name) || [];
-    list.push(subject);
-    byName.set(name, list);
-  });
-
-  const names = [...byName.keys()].sort((a, b) => b.length - a.length);
-  if (!prompt || names.length === 0) return [];
-  const pattern = new RegExp(`@(${names.map((name) => name.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')).join('|')})(?![\\u4e00-\\u9fffA-Za-z0-9_])`, 'g');
-  const mentions = [];
-  const seen = new Set();
-  let match;
-  while ((match = pattern.exec(prompt)) !== null) {
-    const candidates = byName.get(match[1]) || [];
-    // 名称不唯一时不猜测主体；唯一名称才允许从当前参考主体建立 ID 关系。
-    if (candidates.length !== 1) continue;
-    const subject = candidates[0];
-    const subjectId = subject.subjectId || subject.subject_id || subject.id;
-    if (!subjectId || seen.has(String(subjectId))) continue;
-    seen.add(String(subjectId));
-    mentions.push({
-      subject_id: subjectId,
-      subject_type: backendSubjectType(subject.type || subject.subjectType || subject.subject_type),
-      name: subject.name,
-      display: `@${subject.name}`,
-      display_text: `@${subject.name}`,
-    });
-  }
-  return mentions;
-}
 
 export default function GenerateVideoPanel({
   shot,

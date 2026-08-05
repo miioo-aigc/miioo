@@ -38,7 +38,7 @@ function normalizeStoryboardImageSize(value) {
 
 // 分镜列表缓存只服务于首屏文字和结构化字段。媒体候选会单独从
 // media-candidates 接口读取，避免把大体积媒体元数据或 data URL 写进 localStorage。
-function compactStoryboardForCache(item = {}) {
+export function compactStoryboardForCache(item = {}) {
   if (!item || typeof item !== 'object') return item;
   const compact = { ...item };
   const dropLargeValue = (value) => {
@@ -81,7 +81,8 @@ function compactStoryboardForCache(item = {}) {
   return compact;
 }
 
-// 候选媒体缓存只保留可复用的元数据和封面地址，禁止把原图、视频或 data URL 写进本地缓存。
+// 候选媒体跨刷新只缓存卡片渲染所需的轻量索引，不保存完整候选对象。
+// 分镜列和时间轴都依赖这些封面字段；生成参数、参考图数组和供应商响应仍只保留在当前会话内。
 function compactStoryboardMediaCandidateForCache(item = {}) {
   if (!item || typeof item !== 'object') return item;
   const dropLargeValue = (value) => (
@@ -89,24 +90,24 @@ function compactStoryboardMediaCandidateForCache(item = {}) {
       ? undefined
       : value
   );
-  const compact = { ...item };
-  for (const key of ['url', 'downloadUrl', 'download_url', 'thumbnailUrl', 'thumbnail_url', 'posterUrl', 'poster_url', 'previewUrl', 'preview_url', 'previewVideoUrl', 'preview_video_url', 'videoThumbnailUrl', 'video_thumbnail_url', 'mediaPreviewUrl', 'media_preview_url']) {
-    if (key in compact) compact[key] = dropLargeValue(compact[key]);
-  }
-  for (const key of ['metadata', 'genParams', 'gen_params', 'generation_params', 'generationParams']) {
-    if (!compact[key] || typeof compact[key] !== 'object') continue;
-    const next = { ...compact[key] };
-    Object.keys(next).forEach((nestedKey) => {
-      if (typeof next[nestedKey] === 'string') next[nestedKey] = dropLargeValue(next[nestedKey]);
-      if (Array.isArray(next[nestedKey])) {
-        next[nestedKey] = next[nestedKey].map((value) => (
-          typeof value === 'string' ? dropLargeValue(value) : value
-        )).filter(Boolean);
-      }
-    });
-    compact[key] = next;
-  }
-  return compact;
+  const cached = {};
+  const copy = (key) => {
+    if (item[key] === undefined || item[key] === null || item[key] === '') return;
+    const value = dropLargeValue(item[key]);
+    if (value !== undefined) cached[key] = value;
+  };
+
+  // ID、媒体类型、定稿状态和图片地址足以恢复分镜列/时间轴卡片。
+  [
+    'id', 'assetId', 'asset_id', 'storyboardId', 'storyboard_id',
+    'mediaType', 'media_type', 'type', 'isFinalized', 'is_finalized',
+    'source', 'source_type', 'sourceType', 'name', 'createdAt', 'created_at',
+    'url', 'thumbnailUrl', 'thumbnail_url', 'posterUrl', 'poster_url',
+    'previewUrl', 'preview_url', 'previewVideoUrl', 'preview_video_url',
+    'videoThumbnailUrl', 'video_thumbnail_url', 'mediaPreviewUrl', 'media_preview_url',
+  ].forEach(copy);
+
+  return cached;
 }
 
 export async function apiGetStoryboards(projectId, { episode_id, limit, offset = 0, include_gen_params = true } = {}) {
@@ -165,7 +166,8 @@ export async function apiGetStoryboards(projectId, { episode_id, limit, offset =
       pageKey,
       fetchPageWithFallback,
       {
-        medium: MEDIUM.CONTENT,
+        // 分页数据只服务当前分镜页，避免每个分页副本长期占用 localStorage。
+        medium: 'memory',
         ttl: TTL.CONTENT,
         serialize: (data) => Array.isArray(data) ? data.map(compactStoryboardForCache) : data,
       },
@@ -210,7 +212,7 @@ export async function apiUpdateStoryboard(projectId, storyboardId, data) {
         const key = K.storyboards(projectId, episodeId);
         const cached = peekCache(key, m);
         if (Array.isArray(cached)) {
-          const next = cached.map(s => s.id === updated.id ? updated : s);
+          const next = cached.map(s => s.id === updated.id ? compactStoryboardForCache(updated) : s);
           setCache(key, next, { medium: m });
         }
       }
@@ -263,6 +265,7 @@ export async function apiListStoryboardMediaCandidates(projectId, storyboardId) 
     K.storyboardMediaCandidates(projectId, storyboardId),
     fetchCandidates,
     {
+      // 通过 serialize 只持久化轻量封面索引，避免把候选生成参数写入 localStorage。
       medium: MEDIUM.CONTENT,
       ttl: TTL.CONTENT,
       serialize: (items) => Array.isArray(items) ? items.map(compactStoryboardMediaCandidateForCache) : items,

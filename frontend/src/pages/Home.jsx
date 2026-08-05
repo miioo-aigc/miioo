@@ -542,11 +542,12 @@ export default function Home({ onGoToAdmin }) {
 
       // 5. 加载分镜数据（需要剧集 ID）并用最新 episodesData 的 ID 写入缓存
       if (Array.isArray(episodesData) && episodesData.length > 0) {
-        // 分镜缓存按 projectId + episodeId 隔离，项目切换不会串数据；
-        // 写操作的 API 会主动失效对应缓存，这里不能因切换工作流再无条件清理，
-        // 否则从主体页返回分镜页时会丢失文字和媒体结构的快速路径。
+        // 首页只需要判断是否存在分镜来解锁步骤，不需要预加载整集生成参数。
+        // 分镜页进入后再按分页请求当前集数据，避免首页一次写入最多 200 条完整分镜。
         const storyboardsData = await apiGetStoryboards(projectId, {
-          episode_id: episodesData[0].id
+          episode_id: episodesData[0].id,
+          limit: 10,
+          include_gen_params: false,
         }).catch((error) => {
           console.warn('[Home] 预加载分镜失败，继续打开项目页面:', error);
           return [];
@@ -1100,7 +1101,11 @@ export default function Home({ onGoToAdmin }) {
         invalidate(K.storyboards(activeProject.id, epId));
         invalidate(K.storyboards(activeProject.id));
         invalidate(K.storyboardPagePrefix(activeProject.id));
-        apiGetStoryboards(activeProject.id, { episode_id: epId }).catch(() => {});
+        apiGetStoryboards(activeProject.id, {
+          episode_id: epId,
+          limit: 10,
+          include_gen_params: false,
+        }).catch(() => {});
       };
 
       let pollCount = 0;
@@ -1162,11 +1167,18 @@ export default function Home({ onGoToAdmin }) {
         if (!ep.id) return;
         invalidate(K.storyboards(activeProject.id, ep.id));
         invalidate(K.storyboardPagePrefix(activeProject.id));
-        apiGetStoryboards(activeProject.id, { episode_id: ep.id }).catch(() => {});
+        apiGetStoryboards(activeProject.id, {
+          episode_id: ep.id,
+          limit: 10,
+          include_gen_params: false,
+        }).catch(() => {});
       });
       invalidate(K.storyboards(activeProject.id));
       invalidate(K.storyboardPagePrefix(activeProject.id));
-      apiGetStoryboards(activeProject.id).catch(() => {});
+      apiGetStoryboards(activeProject.id, {
+        limit: 10,
+        include_gen_params: false,
+      }).catch(() => {});
       clearPendingStoryboardGeneration(activeProject.id);
 
     } catch (err) {

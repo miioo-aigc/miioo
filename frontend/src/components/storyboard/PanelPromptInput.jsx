@@ -17,6 +17,7 @@
  *   2026-07-15  从 StoryboardPage 抽离提示词编辑、原子提及和提及下拉，保持原交互与回调签名
  *   2026-07-17  抽离提示词类型常量、SubjectTag 和字符计数展示，编辑器状态与光标逻辑保持不变
  *   2026-07-17  拆分 ReferenceMentionDropdown，保留编辑器提及插入与光标逻辑
+ *   2026-08-05  修复标签删除后光标跳到段尾，以及展示态首次点击无法激活/光标定位到段尾的问题；保留点击坐标并在编辑态挂载后恢复光标
  */
 
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
@@ -204,6 +205,7 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
   const typeOverridesRef = useRef({});
   const isBlurringRef = useRef(false);
   const pendingMentionRef = useRef(null); // { name, type } 等待编辑器挂载后插入
+  const pendingCaretPointRef = useRef(null); // 展示态点击位置，切换编辑态后恢复光标
 
   // 暴露 insertMention 方法，供外部（如参考视频卡片点击）调用
   useImperativeHandle(ref, () => ({
@@ -298,6 +300,26 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
         setCaretOffset(el, value.length);
         doInsertMention(el, name, type);
       } else {
+        const point = pendingCaretPointRef.current;
+        pendingCaretPointRef.current = null;
+        if (point) {
+          // 展示态切换为编辑态后，按首次点击的屏幕坐标恢复光标，避免默认落到段尾。
+          const range = document.caretRangeFromPoint?.(point.x, point.y)
+            || (() => {
+              const caret = document.caretPositionFromPoint?.(point.x, point.y);
+              if (!caret) return null;
+              const nextRange = document.createRange();
+              nextRange.setStart(caret.offsetNode, caret.offset);
+              nextRange.collapse(true);
+              return nextRange;
+            })();
+          if (range && (range.startContainer === el || el.contains(range.startContainer))) {
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            return;
+          }
+        }
         setCaretOffset(el, value.length);
       }
     }
@@ -533,6 +555,11 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
           /* 展示态：渲染 value 字符串，\n 由 pre-wrap 自动换行，mention 高亮 */
           <div
             key="display"
+            onMouseDown={(event) => {
+              // 只记录点击位置，不在 mousedown 阶段切换 DOM；否则编辑态替换展示态后，
+              // 浏览器会取消后续 click，导致输入框无法获得焦点。
+              pendingCaretPointRef.current = { x: event.clientX, y: event.clientY };
+            }}
             onClick={() => setFocused(true)}
             style={{
               flex: 1, overflow: 'hidden',

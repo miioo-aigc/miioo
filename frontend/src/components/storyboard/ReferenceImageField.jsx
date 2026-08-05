@@ -7,6 +7,9 @@
  *
  * ─── 依赖边界 ───────────────────────────────────────────────────────
  *   只接收素材、数量和显式回调；不调用 API、不读取 Store、不处理资产绑定
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-08-05         参考图展示键兼容重复资产 ID，避免 React 列表键冲突
  */
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -47,6 +50,13 @@ export default function ReferenceImageField({
     setPreview(null);
   }
 
+  function getRenderKey(image, index) {
+    // 参考图可能来自主体引用和资产库，历史数据中两者可能共享同一个 id。
+    // 展示键必须保证当前渲染批次唯一，业务删除仍使用原始 image.id。
+    const identity = image?.id || image?.assetId || image?.url || 'reference';
+    return `${identity}:${image?.url || 'no-url'}:${index}`;
+  }
+
   return (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignSelf: 'stretch' }}>
@@ -56,8 +66,8 @@ export default function ReferenceImageField({
         </div>
         {canAdd && <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleFileChange} />}
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {images.map((image) => (
-            <div key={image.id} onMouseEnter={(event) => handleMouseEnter(event, image)} onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}>
+          {images.map((image, index) => (
+            <div key={getRenderKey(image, index)} onMouseEnter={(event) => handleMouseEnter(event, image)} onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}>
               <img src={image.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               <button type="button" aria-label="删除参考图" onClick={() => { handleMouseLeave(); onRemove?.(image.id); }} style={{ position: 'absolute', top: '4px', right: '4px', width: '18px', height: '18px', border: 0, borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 2L8 8M8 2L2 8" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" /></svg>

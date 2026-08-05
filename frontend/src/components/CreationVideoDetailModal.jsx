@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
 import ConfirmDialog from './ConfirmDialog';
 import FilePreviewTooltip from './FilePreviewTooltip';
+import { formatReferenceMode } from '../utils/referenceMode';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -531,7 +532,7 @@ export default function CreationVideoDetailModal({
                     参考模式
                   </div>
                   <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFFCC] text-xs/4">
-                    {refMode === 'frame' ? '首尾帧' : refMode}
+                    {formatReferenceMode(refMode)}
                   </div>
                 </div>
               )}

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import Toggle from '../Toggle';
 import { useModalSize } from '../../utils/useModalSize';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { formatReferenceMode } from '../../utils/referenceMode';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -138,7 +139,7 @@ function parameterLabel(key) {
   const labels = {
     model: '模型', resolution: '分辨率', duration: '时长', ratio: '比例', aspect_ratio: '画面比例',
     sound_effect: '音效', generate_audio: '生成音频', reference_images: '参考图', first_frame_url: '首帧',
-    last_frame_url: '尾帧', reference_video_url: '参考视频', reference_audio_url: '参考音频',
+    last_frame_url: '尾帧', reference_video_url: '参考视频', reference_audio_url: '参考音频', reference_mode: '参考模式', referenceMode: '参考模式',
   };
   return labels[key] || key;
 }
@@ -406,8 +407,19 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
     ? []
     : collectParameterEntries(getAssetGenerationParameters(activeMedia, metadata, shotDetailContainers));
   const normalizedParameterEntries = parameterEntries
-    .filter((entry) => !['reference_images', 'referenceImages', 'reference_image_urls', 'referenceImageUrls', 'ref_images', 'refImages'].some((key) => entry.label === key || entry.label.startsWith(`${key}.`)))
-    .map((entry) => ({ ...entry, label: entry.label.split('.').map(parameterLabel).join(' / ') }));
+    .filter((entry) => ![
+      'reference_images', 'referenceImages', 'reference_image_urls', 'referenceImageUrls', 'ref_images', 'refImages',
+      'prompt_raw', 'promptRaw', 'prompt_resolved', 'promptResolved', 'watermark',
+    ].some((key) => entry.label === key || entry.label.startsWith(`${key}.`)))
+    .map((entry) => ({
+      ...entry,
+      label: entry.label.split('.').map(parameterLabel).join(' / '),
+      value: ['reference_mode', 'referenceMode'].includes(entry.label)
+        ? formatReferenceMode(entry.value)
+        : ['sound_effect', 'soundEffect'].includes(entry.label) && ['是', '否'].includes(entry.value)
+          ? (entry.value === '是' ? '开' : '关')
+          : entry.value,
+    }));
 
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.60)', backdropFilter: 'blur(12px)' }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.(); }}>
@@ -457,8 +469,8 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
               <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>内容类型</span><span style={{ color: '#FFFFFFCC', font: `12px/16px ${FONT}` }}>{video ? '视频' : '图片'}</span></div>
               {sourceLabel && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>来源</span><span style={{ color: '#FFFFFFCC', font: `12px/16px ${FONT}` }}>{sourceLabel}</span></div></>}
               {prompt && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '8px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>提示词</span><p style={{ margin: 0, color: '#FFFFFFCC', font: `12px/20px ${FONT}`, wordBreak: 'break-word' }}>{prompt}</p></div></>}
-              {referenceImages.length > 0 && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>参考图</span><div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>{referenceImages.map((reference, index) => <div key={`${reference.url}-${index}`} style={{ width: '80px', height: '56px', flexShrink: 0, overflow: 'hidden', borderRadius: '4px', border: '1px solid #FFFFFF33', background: '#FFFFFF14' }}><img src={reference.url} alt={reference.name || '参考图'} style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} /></div>)}</div></div></>}
-              {normalizedParameterEntries.length > 0 && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>生成参数</span><div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>{normalizedParameterEntries.map((entry) => <div key={entry.label} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}><span style={{ color: '#FFFFFF66', font: `11px/15px ${FONT}` }}>{entry.label}</span><span style={{ color: '#FFFFFFCC', font: `12px/18px ${FONT}`, wordBreak: 'break-word', whiteSpace: entry.value.includes('\n') ? 'pre-wrap' : 'normal' }}>{entry.value}</span></div>)}</div></div></>}
+              {referenceImages.length > 0 && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>参考图</span><div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>{referenceImages.map((reference, index) => <div key={`${reference.url}-${index}`} style={{ width: 'calc((100% - 16px) / 3)', aspectRatio: '1', flexShrink: 0, boxSizing: 'border-box', overflow: 'hidden', borderRadius: '4px', border: '1px solid #FFFFFF33', background: '#FFFFFF14' }}><img src={reference.url} alt={reference.name || '参考图'} style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} /></div>)}</div></div></>}
+              {normalizedParameterEntries.length > 0 && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>生成参数</span><div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>{normalizedParameterEntries.map((entry) => <div key={entry.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}><span style={{ color: '#FFFFFF66', font: `11px/15px ${FONT}` }}>{entry.label}</span><span style={{ color: '#FFFFFFCC', font: `12px/18px ${FONT}`, wordBreak: 'break-word', whiteSpace: entry.value.includes('\n') ? 'pre-wrap' : 'normal', textAlign: 'right' }}>{entry.value}</span></div>)}</div></div></>}
               {activeMedia.created_at && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '8px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>生成时间</span><span style={{ color: '#FFFFFF66', font: `12px/16px ${FONT}` }}>{formatDate(activeMedia.created_at)}</span></div></>}
             </div>
             <div style={{ flexShrink: 0, padding: '12px 20px 20px', borderTop: '1px solid #FFFFFF0A' }}><button type="button" onClick={() => onDownload?.(activeMedia)} style={{ width: '100%', height: '40px', borderRadius: '8px', border: '1px solid #FFFFFF1F', background: '#FFFFFF14', color: '#FFFFFF99', cursor: 'pointer', font: `13px/16px ${FONT}` }}>下载</button></div>

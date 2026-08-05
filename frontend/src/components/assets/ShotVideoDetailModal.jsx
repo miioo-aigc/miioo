@@ -20,6 +20,7 @@ import { createPortal } from 'react-dom';
 import { useModalSize } from '../../utils/useModalSize';
 import placeholderFlowers from '../../assets/placeholder-flowers.webp';
 import ConfirmDialog from '../ConfirmDialog';
+import { formatReferenceMode } from '../../utils/referenceMode';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -437,7 +438,7 @@ function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shot
                   <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
                     <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>创作模式</span>
                     <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>
-                      {refMode === 'full_ref' ? '全能参考' : refMode === 'frame_ref' ? '首尾帧' : refMode}
+                      {formatReferenceMode(refMode)}
                     </span>
                   </div>
                   <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />

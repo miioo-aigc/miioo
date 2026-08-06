@@ -22,6 +22,7 @@
  *   ReferenceMediaEditor                      参考主体、参考图、参考视频、参考音频和首尾帧
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-06  参考主体以当前分镜主体参考列为权威集合，并避免关闭/卸载时旧表单快照恢复已删除主体
  *   2026-08-05  修复异步表单恢复时首次空状态回写，确保参考图和提示词快照恢复后才触发持久化
  *   2026-08-05  用户编辑提示词后停止外部提示词覆盖，避免删除标签触发状态同步循环
  *   2026-08-05  页面加载补全主体标签后，同步更新已打开弹窗的提示词展示状态
@@ -41,7 +42,10 @@ import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo 
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { normalizeStoryboardReferenceGroups } from '../../utils/referenceMediaAdapter';
 import { getUploadedImageId, getUploadedImageUrl } from '../../utils/storyboardReferenceAdapter';
-import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter';
+import {
+  normalizeStoryboardDurationOptions,
+  normalizeStoryboardModelList,
+} from '../../utils/storyboardModelAdapter';
 import ReferenceMediaEditor from './ReferenceMediaEditor';
 import VideoResultsPanel from './VideoResultsPanel';
 import { GenerationModelField, GenerationOptionFields } from './GenerationParamsFields';
@@ -50,6 +54,14 @@ import GenerationSubmitButton from './GenerationSubmitButton';
 import { buildVideoPromptMentions } from '../../utils/storyboardPromptBindingRepair';
 
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
+
+function normalizeDurationValue(value) {
+  return value == null || value === '' ? value : normalizeStoryboardDurationOptions([value])[0];
+}
+
+function areReferenceGroupsEqual(previous, next) {
+  return JSON.stringify(previous) === JSON.stringify(next);
+}
 
 export default function GenerateVideoPanel({
   shot,
@@ -124,8 +136,9 @@ export default function GenerateVideoPanel({
             const durList = caps?.supported_durations;
             if (durList?.length > 0) {
               const shotDur = shot?.params?.duration;
-              const matched = shotDur && durList.some(d => (String(d).endsWith('s') ? String(d) : String(d) + 's') === shotDur);
-              if (!formState?.duration) setDuration(matched ? shotDur : (String(durList[0]).endsWith("s") ? String(durList[0]) : String(durList[0]) + "s"));
+              if (!formState?.duration) {
+                setDuration(normalizeDurationValue(shotDur || durList[0]));
+              }
             }
           }
         }
@@ -179,10 +192,8 @@ export default function GenerateVideoPanel({
       if (ref?.url) return ref;
       return ref;
     }).filter(ref => ref?.url);
-    // 弹窗状态可能是旧快照；把列表刚新增的主体参考补入，不丢失弹窗内已有的其他素材。
-    return normalizeStoryboardReferenceGroups({
-      subjects: [...shotSubjects, ...(formState?.refSubjects || [])],
-    }).subjects;
+    // 主体参考列是当前镜头主体集合的权威来源，不能再把旧表单快照中的已删除主体合并回来。
+    return normalizeStoryboardReferenceGroups({ subjects: shotSubjects }).subjects;
   });
   const [refImages, setRefImages] = useState(() => normalizeStoryboardReferenceGroups({ images: formState?.refImages }).images);
   const [refVideos, setRefVideos] = useState(() => normalizeStoryboardReferenceGroups({ videos: formState?.refVideos }).videos);
@@ -191,6 +202,17 @@ export default function GenerateVideoPanel({
   const [refLastFrame, setRefLastFrame] = useState(() => formState?.refLastFrame || null);
   const [loading, setLoading] = useState(false);
   const [viewerShot, setViewerShot] = useState(null);
+
+  // 主体参考列可能在面板保持打开时被删除；下一帧校正本地列表，避免同步 effect 直接级联渲染。
+  useEffect(() => {
+    const nextSubjects = normalizeStoryboardReferenceGroups({ subjects: shot?.mainRefs || [] }).subjects;
+    const syncTimer = setTimeout(() => {
+      setRefSubjects((previous) => (
+        areReferenceGroupsEqual(previous, nextSubjects) ? previous : nextSubjects
+      ));
+    }, 0);
+    return () => clearTimeout(syncTimer);
+  }, [shot?.mainRefs]);
 
   const videoPromptMentions = useMemo(
     () => buildVideoPromptMentions(prompt, refSubjects),
@@ -217,10 +239,12 @@ export default function GenerateVideoPanel({
       setTab(formState.tab || 'all');
       setModel(formState.model || '');
       setResolution(formState.resolution || '');
-      setDuration(formState.duration ?? null);
+      setDuration(normalizeDurationValue(formState.duration ?? null));
       setSound(formState.sound ?? true);
       if (!promptEditedRef.current && typeof formState.prompt === 'string') setPrompt(formState.prompt);
-      setRefSubjects(normalizeStoryboardReferenceGroups({ subjects: formState.refSubjects }).subjects);
+      // 表单快照只恢复参数和普通参考素材；主体集合始终从当前镜头 mainRefs 获取，
+      // 防止主体参考列删除后，旧 refSubjects 把已删除图片重新带回面板。
+      setRefSubjects(normalizeStoryboardReferenceGroups({ subjects: shot?.mainRefs || [] }).subjects);
       setRefImages(normalizeStoryboardReferenceGroups({ images: formState.refImages }).images);
       setRefVideos(normalizeStoryboardReferenceGroups({ videos: formState.refVideos }).videos);
       setRefAudios(normalizeStoryboardReferenceGroups({ audios: formState.refAudios }).audios);
@@ -229,13 +253,18 @@ export default function GenerateVideoPanel({
       formStateHydratedRef.current = true;
     }, 0);
     return () => clearTimeout(restoreTimer);
-  }, [formState]);
+  }, [formState, shot?.mainRefs]);
 
   useEffect(() => {
     if (!formStateHydratedRef.current) return;
     if (!promptEditedRef.current && typeof formState?.prompt === 'string' && formState.prompt !== prompt) return;
     onFormStateChange?.({ tab, model, resolution, duration, sound, prompt, video_prompt_mentions: videoPromptMentions, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame });
   }, [tab, model, resolution, duration, sound, prompt, formState?.prompt, videoPromptMentions, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame, onFormStateChange]);
+
+  useEffect(() => {
+    if (!formStateHydratedRef.current || !formState?.duration || formState.duration === duration) return;
+    setDuration(normalizeDurationValue(formState.duration));
+  }, [formState?.duration, duration]);
 
   // 获取当前模型支持的参数（优先从后端 capabilities 派生）
   // 当前 Tab 对应的模型列表
@@ -263,10 +292,9 @@ export default function GenerateVideoPanel({
         if (resList.length > 0) setResolution(resList[0]);
         const durList = caps?.supported_durations;
         if (durList?.length > 0) {
-              const shotDur = shot?.params?.duration;
-              const matched = shotDur && durList.some(d => (String(d).endsWith("s") ? String(d) : String(d) + "s") === shotDur);
-              setDuration(matched ? shotDur : (String(durList[0]).endsWith("s") ? String(durList[0]) : String(durList[0]) + "s"));
-            }
+          const shotDur = shot?.params?.duration;
+          setDuration(normalizeDurationValue(shotDur || durList[0]));
+        }
       }
     }
   }
@@ -328,12 +356,8 @@ export default function GenerateVideoPanel({
     }
     // 时长：保留用户当前选择；仅在当前值为空或不被新模型支持时回退。
     if (availableDurations.length > 0) {
-      if (!duration || !availableDurations.includes(duration)) {
-        const shotDur = shot?.params?.duration;
-        const fallback = shotDur && availableDurations.includes(shotDur)
-          ? shotDur
-          : availableDurations[0];
-        setDuration(fallback);
+      if (!duration) {
+        setDuration(normalizeDurationValue(shot?.params?.duration || availableDurations[0]));
       }
     }
   // 模型切换时才需要重新校正；其余依赖由模型能力计算结果覆盖。

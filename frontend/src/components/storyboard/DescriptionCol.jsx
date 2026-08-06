@@ -9,7 +9,7 @@ const PARAM_OPTIONS = {
   cameraMotion: ['固定机位', '跟拍镜头', '环绕镜头', '缓推镜头', '缓拉镜头', '左摇镜头', '右摇镜头', '左移镜头', '右移镜头', '上升镜头', '下降镜头'],
   angle: ['平视拍摄', '仰视拍摄', '俯视拍摄', '左侧45度拍摄', '右侧45度拍摄', '正面视角拍摄', '背面视角拍摄', '侧面视角拍摄', '过肩镜头拍摄', '主观镜头拍摄'],
   composition: ['三分法构图', '中心构图', '前景构图', '对角线构图', '对称构图', '框架构图', '三角形构图', '留白构图', '引导线构图'],
-  duration: Array.from({ length: 13 }, (_, i) => `${i + 3}s`),
+  duration: [],
 };
 
 const PARAM_LABELS = {
@@ -20,7 +20,7 @@ const PARAM_LABELS = {
   duration: '时长',
 };
 
-function ParamSelect({ field, value, onChange, onClose, triggerRef, onPointerEnter, onPointerLeave }) {
+function ParamSelect({ field, value, options, onChange, onClose, triggerRef, onPointerEnter, onPointerLeave }) {
   const ref = useRef(null);
   const [pos, setPos] = useState({ top: 0, left: 0, visibility: 'hidden' });
 
@@ -65,7 +65,7 @@ function ParamSelect({ field, value, onChange, onClose, triggerRef, onPointerEnt
         minWidth: '100px',
       }}
     >
-      {(PARAM_OPTIONS[field] || []).map((opt) => (
+      {(options?.length ? options : PARAM_OPTIONS[field] || []).map((opt) => (
         <div
           key={opt}
           onMouseDown={(e) => { e.preventDefault(); onChange(opt); }}
@@ -94,7 +94,7 @@ function ParamSelect({ field, value, onChange, onClose, triggerRef, onPointerEnt
 
 // ─── 参数触发器（景别/运镜/拍摄角度/构图/时长）────────────────────────────────
 
-function ParamTrigger({ field, label, value, isActive, triggerRef, onToggle, onClose, onUpdate, onPointerEnter, onPointerLeave }) {
+function ParamTrigger({ field, label, value, options, isActive, triggerRef, onToggle, onClose, onUpdate, onPointerEnter, onPointerLeave }) {
   const [hov, setHov] = useState(false);
   const [pressed, setPressed] = useState(false);
 
@@ -151,6 +151,7 @@ function ParamTrigger({ field, label, value, isActive, triggerRef, onToggle, onC
         <ParamSelect
           field={field}
           value={value}
+          options={options}
           onChange={onUpdate}
           onClose={onClose}
           triggerRef={triggerRef}
@@ -164,7 +165,7 @@ function ParamTrigger({ field, label, value, isActive, triggerRef, onToggle, onC
 
 // ─── 画面描述列 ───────────────────────────────────────────────────────────────
 
-function DescriptionCol({ shot, onChange }) {
+function DescriptionCol({ shot, onChange, durationOptions = [] }) {
   const [activeParam, setActiveParam] = useState(null);
   const selectorHoverRef = useRef(false);
   const selectorCloseTimerRef = useRef(null);
@@ -226,6 +227,7 @@ function DescriptionCol({ shot, onChange }) {
             field={field}
             label={label}
             value={shot.params[field]}
+            options={field === 'duration' ? durationOptions : undefined}
             isActive={activeParam === field}
             triggerRef={triggerRefs[field]}
             onToggle={() => setActiveParam(activeParam === field ? null : field)}

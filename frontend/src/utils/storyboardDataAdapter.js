@@ -2,7 +2,8 @@
  * Storyboard 前后端数据映射与主体参考图补全。
  * 仅处理纯数据，不读取 React 状态，也不执行 API 或缓存副作用。
  *
- * 更新记录：2026-08-05 普通参考图序列化时保留 asset_id，统一本地上传与资产库选择的持久化身份；
+ * 更新记录：2026-08-06 主体参考刷新时按显式主体 ID 过滤旧 subject_references/mainRefs，并增加最新快照保护；
+ *              2026-08-05 普通参考图序列化时保留 asset_id，统一本地上传与资产库选择的持久化身份；
  *              2026-08-05 视频提示词绑定恢复时按 subject_id 去重，避免历史重复记录继续进入表单；
  *              2026-08-03 创作结果同时返回主体 ID 和 video-reference-images 副本时，
  *                只保留主体引用，避免主体参考图在分镜列表中重复展示。
@@ -12,6 +13,89 @@
 import { normalizeImageUrl } from './imageUrl';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const STORYBOARD_SUBJECT_SNAPSHOT_KEY = 'miioo_storyboard_subject_snapshots';
+
+function storyboardSubjectSnapshotKey(projectId, storyboardId) {
+  return `${String(projectId ?? '')}:${String(storyboardId ?? '')}`;
+}
+
+function readStoryboardSubjectSnapshots() {
+  try {
+    const raw = localStorage.getItem(STORYBOARD_SUBJECT_SNAPSHOT_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function setStoryboardSubjectSnapshot(projectId, storyboardId, mainRefs = []) {
+  if (projectId == null || storyboardId == null) return;
+  try {
+    const snapshots = readStoryboardSubjectSnapshots();
+    snapshots[storyboardSubjectSnapshotKey(projectId, storyboardId)] = Array.isArray(mainRefs)
+      ? mainRefs.map((ref) => ({ ...ref }))
+      : [];
+    localStorage.setItem(STORYBOARD_SUBJECT_SNAPSHOT_KEY, JSON.stringify(snapshots));
+  } catch {
+    // 本地存储不可用时不阻塞接口保存，服务端数据仍是最终来源。
+  }
+}
+
+function getStoryboardSubjectSnapshot(projectId, storyboardId) {
+  if (projectId == null || storyboardId == null) return null;
+  const snapshot = readStoryboardSubjectSnapshots()[storyboardSubjectSnapshotKey(projectId, storyboardId)];
+  return Array.isArray(snapshot) ? snapshot : null;
+}
+
+function clearStoryboardSubjectSnapshot(projectId, storyboardId) {
+  if (projectId == null || storyboardId == null) return;
+  try {
+    const snapshots = readStoryboardSubjectSnapshots();
+    delete snapshots[storyboardSubjectSnapshotKey(projectId, storyboardId)];
+    localStorage.setItem(STORYBOARD_SUBJECT_SNAPSHOT_KEY, JSON.stringify(snapshots));
+  } catch {
+    // 忽略本地存储清理失败。
+  }
+}
+
+function storyboardReferenceIdentity(ref) {
+  return String(
+    ref?.subjectId
+      || ref?.subject_id
+      || ref?.assetId
+      || ref?.asset_id
+      || ref?.id
+      || ref?.url
+      || '',
+  );
+}
+
+function storyboardReferenceSignature(refs = []) {
+  return (Array.isArray(refs) ? refs : []).map(storyboardReferenceIdentity).join('|');
+}
+
+export function applyStoryboardSubjectSnapshot(shot, projectId) {
+  if (!shot || projectId == null) return shot;
+  const snapshot = getStoryboardSubjectSnapshot(projectId, shot.backendId || shot.id);
+  if (!snapshot) return shot;
+  if (storyboardReferenceSignature(shot.mainRefs) === storyboardReferenceSignature(snapshot)) {
+    clearStoryboardSubjectSnapshot(projectId, shot.backendId || shot.id);
+    return shot;
+  }
+  return {
+    ...shot,
+    mainRefs: snapshot,
+    creationForm: shot.creationForm
+      ? {
+          ...shot.creationForm,
+          video: shot.creationForm.video
+            ? { ...shot.creationForm.video, refSubjects: snapshot }
+            : shot.creationForm.video,
+        }
+      : shot.creationForm,
+  };
+}
 
 export function isBackendStoryboardId(value) {
   return typeof value === 'string' && UUID_RE.test(value);
@@ -51,6 +135,23 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
   const genParams = parseObject(be.gen_params ?? be.genParams);
   const subjectRefs = parseObject(be.subject_refs_json ?? be.subjectRefsJson);
   const generationRefs = parseObject(be.generation_refs_json ?? be.generationRefsJson);
+  const hasDirectSubjectFields = Array.isArray(be.character_ids)
+    || Array.isArray(be.character_subject_ids)
+    || Array.isArray(be.prop_subject_ids)
+    || Array.isArray(be.prop_ids)
+    || Object.prototype.hasOwnProperty.call(be, 'scene_id')
+    || Object.prototype.hasOwnProperty.call(be, 'scene_subject_id');
+  const directSubjectIds = new Set([
+    ...(Array.isArray(be.character_ids) ? be.character_ids : []),
+    ...(Array.isArray(be.character_subject_ids) ? be.character_subject_ids : []),
+    ...(Array.isArray(be.prop_subject_ids) ? be.prop_subject_ids : []),
+    ...(Array.isArray(be.prop_ids) ? be.prop_ids : []),
+    ...(be.scene_id ? [be.scene_id] : []),
+    ...(be.scene_subject_id ? [be.scene_subject_id] : []),
+  ].map((item) => {
+    if (item && typeof item === 'object') return item.subject_id ?? item.subjectId ?? item.id;
+    return item;
+  }).filter(Boolean).map(String));
   const subjectReferences = Array.isArray(be.subject_references)
     ? be.subject_references
     : (Array.isArray(be.subjectReferences) ? be.subjectReferences : []);
@@ -81,7 +182,9 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
       name: item.name || '主体参考',
       assetId: item.asset_id ?? item.assetId,
     };
-  }).filter(Boolean);
+  }).filter(Boolean).filter((item) => (
+    !hasDirectSubjectFields || directSubjectIds.has(String(item.subjectId))
+  ));
   const persistedSubjectIds = new Set([
     ...(Array.isArray(be.character_ids) ? be.character_ids : []),
     ...(Array.isArray(be.character_subject_ids) ? be.character_subject_ids : []),
@@ -232,7 +335,13 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
           }
         : { segments: [] }
     ),
-    mainRefs: be.mainRefs ?? (
+    mainRefs: Array.isArray(be.mainRefs)
+      ? be.mainRefs.filter((ref) => {
+          if (!hasDirectSubjectFields || !isStoryboardSubjectReference(ref)) return true;
+          const refId = ref?.subjectId || ref?.subject_id || ref?.id;
+          return refId && directSubjectIds.has(String(refId));
+        })
+      : (
       [
         // 新版接口直接返回完整主体引用，场景和道具不能只依赖 character_ids 补全。
         ...normalizedSubjectReferences,
@@ -281,7 +390,7 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
             });
         })(),
       ]
-    ),
+      ),
     storyboardImage: be.storyboardImage ?? (
       imageUrl
         ? { id: `${storyboardId}_img`, url: normalizeImageUrl(imageUrl), preview_url: imagePreviewUrl ? normalizeImageUrl(imagePreviewUrl) : undefined, thumbnail_url: imageThumbnailUrl ? normalizeImageUrl(imageThumbnailUrl) : undefined, name: '分镜图', type: 'image/jpeg',
@@ -312,15 +421,43 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
 /**
  * 批量归一化分镜并补全主体参考图；不执行请求或状态写回。
  */
-export function normalizeStoryboardList(data, chars = [], numberOffset = 0) {
+export function normalizeStoryboardList(data, chars = [], numberOffset = 0, projectId = null) {
   if (!Array.isArray(data)) return [];
   return data.map((shot, index) => {
     const normalized = enrichMainRefs(normalizeStoryboard(shot, {
       index,
       episodeId: shot?.episode_id ?? shot?.episodeId,
     }), chars);
-    return { ...normalized, number: numberOffset + index + 1 };
+    return applyStoryboardSubjectSnapshot(
+      { ...normalized, number: numberOffset + index + 1 },
+      projectId,
+    );
   });
+}
+
+export function isStoryboardSubjectReference(ref) {
+  if (!ref || typeof ref !== 'object') return false;
+  const type = String(ref.type || ref.subject_type || '').toLowerCase();
+  return Boolean(
+    ref.subjectId
+      || ref.subject_id
+      || ['char', 'character', 'scene', 'prop', 'object'].includes(type),
+  );
+}
+
+export function buildStoryboardSubjectFields(mainRefs = []) {
+  const subjectRefs = (Array.isArray(mainRefs) ? mainRefs : []).filter(isStoryboardSubjectReference);
+  const getId = (ref) => ref?.subjectId || ref?.subject_id || ref?.id || null;
+  const getType = (ref) => String(ref?.type || ref?.subject_type || '').toLowerCase();
+  const uniqueIds = (refs) => [...new Set(refs.map(getId).filter(Boolean))];
+  const sceneRef = subjectRefs.find((ref) => getType(ref) === 'scene');
+
+  return {
+    // character_ids 是历史兼容主字段，继续提交三类主体的完整集合。
+    character_ids: uniqueIds(subjectRefs),
+    scene_id: getId(sceneRef),
+    prop_ids: uniqueIds(subjectRefs.filter((ref) => ['prop', 'object'].includes(getType(ref)))),
+  };
 }
 
 /**
@@ -328,9 +465,25 @@ export function normalizeStoryboardList(data, chars = [], numberOffset = 0) {
  */
 export function toBackendStoryboard(shot) {
   const genParams = shot.genParams && typeof shot.genParams === 'object' ? shot.genParams : {};
+  // 主体引用是覆盖语义，显式提交空数组/null，不能让后端沿用旧快照。
+  const subjectFields = buildStoryboardSubjectFields(shot.mainRefs);
+  const creationForm = shot.creationForm
+    ? {
+        ...shot.creationForm,
+        ...(shot.creationForm.video
+          ? {
+              video: {
+                ...shot.creationForm.video,
+                // 当前镜头 mainRefs 是唯一权威主体集合，旧表单快照不得继续保留已删除主体。
+                refSubjects: Array.isArray(shot.mainRefs) ? shot.mainRefs : [],
+              },
+            }
+          : {}),
+      }
+    : null;
   const creationFormReferenceItems = [
-    ...(shot.creationForm?.image?.refImages || []),
-    ...(shot.creationForm?.video?.refImages || []),
+    ...(creationForm?.image?.refImages || []),
+    ...(creationForm?.video?.refImages || []),
   ];
   return {
     shot_number: shot.number,
@@ -349,12 +502,11 @@ export function toBackendStoryboard(shot) {
     // 否则 PATCH 不包含该字段 → 后端保留旧值 → 刷新后 normalizeStoryboard 从 be.narration 恢复旧数据
     gen_params: {
       ...genParams,
+      ...subjectFields,
       ...(shot.narration?.segments?.length === 0 ? { narration_segments: [] } : {}),
-      ...(shot.creationForm ? { creation_form: shot.creationForm } : {}),
+      ...(creationForm ? { creation_form: creationForm } : {}),
     },
-   character_ids: (shot.mainRefs || [])
-     .filter(ref => ref?.type === 'char' || ref?.type === 'scene' || ref?.type === 'prop')
-     .map(ref => ref?.id).filter(Boolean),
+    ...subjectFields,
     // 参考图（非主体）条目：先筛出有效项，再派生新旧两个字段
     ...(() => {
       const refItems = [...(shot.mainRefs || []), ...creationFormReferenceItems]
@@ -365,8 +517,7 @@ export function toBackendStoryboard(shot) {
         })
         .filter(Boolean)
         .filter(ref => !ref.uploading)
-        .filter(ref => !ref.subjectId && !ref.subject_id)
-        .filter(ref => !['char', 'scene', 'prop', 'character', 'object'].includes(String(ref.type || ref.subject_type || '').toLowerCase()))
+        .filter(ref => !isStoryboardSubjectReference(ref))
         .filter(ref => !shot.storyboardImage?.url || urlPathKey(ref.url) !== urlPathKey(shot.storyboardImage.url))
         .filter((ref, index, list) => {
           const key = ref.assetId || ref.asset_id || ref.id || urlPathKey(ref.url);

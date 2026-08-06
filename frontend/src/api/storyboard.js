@@ -1,9 +1,11 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
+// 更新记录：2026-08-06 创作表单保存同时覆盖主体字段，并与最新 mainRefs 快照串行提交，避免刷新后旧主体恢复。
+
 import { authFetch, authFetchForm } from './request.js';
 import { cached, invalidate, setCache, peekCache } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
-import { isBackendStoryboardId } from '../utils/storyboardDataAdapter.js';
+import { buildStoryboardSubjectFields, isBackendStoryboardId, isStoryboardSubjectReference } from '../utils/storyboardDataAdapter.js';
 
 // 分镜写操作后统一失效该项目的分镜缓存 + 概览（概览含分镜进度）
 function invalidateStoryboards(projectId) {
@@ -319,10 +321,14 @@ export async function apiUpdateStoryboard(projectId, storyboardId, data) {
  * 结构化表单放在 gen_params.creation_form，提示词同步写入分镜已有字段，
  * 这样既能完整恢复前端表单，也兼容后端已有的提示词读取逻辑。
  */
-export async function apiUpdateStoryboardCreationForm(projectId, storyboardId, { image, video, genParams }) {
+export async function apiUpdateStoryboardCreationForm(projectId, storyboardId, { image, video, genParams, mainRefs }) {
   const imageState = image && typeof image === 'object' ? image : {};
   const videoState = video && typeof video === 'object' ? video : {};
-  const referenceItems = [...(imageState.refImages || []), ...(videoState.refImages || [])]
+  const referenceItems = [
+    ...(Array.isArray(mainRefs) ? mainRefs : []),
+    ...(imageState.refImages || []),
+    ...(videoState.refImages || []),
+  ]
     .map((item) => {
       if (!item || typeof item !== 'object') return null;
       const url = item.url || item.fileUrl || item.file_url || item.previewUrl || item.preview_url;
@@ -330,8 +336,7 @@ export async function apiUpdateStoryboardCreationForm(projectId, storyboardId, {
     })
     .filter(Boolean)
     .filter((item) => !item.uploading)
-    .filter((item) => !item.subjectId && !item.subject_id)
-    .filter((item) => !['char', 'scene', 'prop', 'character', 'object'].includes(String(item.type || item.subject_type || '').toLowerCase()))
+    .filter((item) => !isStoryboardSubjectReference(item))
     .filter((item, index, list) => {
       const key = item.assetId || item.asset_id || item.id || item.url;
       return list.findIndex((candidate) => (candidate.assetId || candidate.asset_id || candidate.id || candidate.url) === key) === index;
@@ -342,11 +347,19 @@ export async function apiUpdateStoryboardCreationForm(projectId, storyboardId, {
       name: item.name || '参考图',
     }));
   const referenceImageUrls = referenceItems.map((item) => item.url).filter(Boolean);
+  const hasMainRefs = Array.isArray(mainRefs);
+  const subjectFields = hasMainRefs
+    ? buildStoryboardSubjectFields(mainRefs)
+    : {};
+  const persistedVideoState = hasMainRefs
+    ? { ...videoState, refSubjects: mainRefs }
+    : videoState;
   const creationForm = {
     image: imageState,
-    video: videoState,
+    video: persistedVideoState,
   };
   return apiUpdateStoryboard(projectId, storyboardId, {
+    ...subjectFields,
     image_prompt: imageState.prompt ?? null,
     video_prompt: videoState.prompt ?? null,
     video_prompt_mentions: Array.isArray(videoState.video_prompt_mentions)
@@ -357,6 +370,7 @@ export async function apiUpdateStoryboardCreationForm(projectId, storyboardId, {
     reference_images: referenceItems,
     gen_params: {
       ...(genParams && typeof genParams === 'object' ? genParams : {}),
+      ...(hasMainRefs ? subjectFields : {}),
       // 同时保留标准顶层字段和 gen_params 内的兼容字段。
       // 部分后端响应会裁剪 creation_form，但会原样保留 gen_params 里的普通字段。
       reference_image_urls: referenceImageUrls,

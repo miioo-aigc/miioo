@@ -38,6 +38,7 @@ export default function StoryboardShotRowContent({
   onUploadVideo,
   onUploadMainRef,
   onConfirmMainRefAssets,
+  durationOptions = [],
 }) {
   return (
     <StoryboardShotRow
@@ -62,7 +63,7 @@ export default function StoryboardShotRowContent({
         isSelected={isSelected}
         onToggleSelect={onToggleSelect}
       />
-      <DescriptionCol shot={shot} onChange={onChange} />
+      <DescriptionCol shot={shot} onChange={onChange} durationOptions={durationOptions} />
       <TextEditCol label="光影" value={shot.lightShadow} onChange={(value) => onChange({ ...shot, lightShadow: value })} />
       <TextEditCol label="环境音" value={shot.ambientSound} onChange={(value) => onChange({ ...shot, ambientSound: value })} />
       <NarrationColWrapper

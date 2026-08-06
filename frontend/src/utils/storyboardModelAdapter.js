@@ -4,6 +4,12 @@
  */
 import { getVideoModelCapabilities } from '../config';
 
+export function normalizeStoryboardDurationOptions(values = []) {
+  return values
+    .map((duration) => String(duration).endsWith('s') ? String(duration) : `${duration}s`)
+    .filter((duration, index, list) => list.indexOf(duration) === index);
+}
+
 export function normalizeStoryboardModelList(data, category) {
   const list = Array.isArray(data) ? data : (data?.items || data?.models || []);
   return list.map((item) => {
@@ -16,7 +22,7 @@ export function normalizeStoryboardModelList(data, category) {
     if (category === 'video') {
       const durations = capabilities.supported_durations || [];
       durationRange = durations.length > 0
-        ? durations.map((duration) => String(duration).endsWith('s') ? String(duration) : `${duration}s`)
+        ? normalizeStoryboardDurationOptions(durations)
         : capabilities.supported_duration_range || null;
       if (!durationRange) durationRange = getVideoModelCapabilities(modelId)?.outputVideo?.durationRange || null;
     }

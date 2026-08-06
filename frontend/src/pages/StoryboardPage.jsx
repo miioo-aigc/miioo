@@ -38,7 +38,7 @@
  *   GenerateImagePanel                         components/storyboard/GenerateImagePanel.jsx
  *   GenerateVideoPanel / ReferenceMediaEditor  components/storyboard/
  *
- * ─── 主页面入口 ──────────────────────────────────────────── L235–L2133
+ * ─── 主页面入口 ──────────────────────────────────────────── L211–L2573
  *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化
  *   [加载与错误态] LoadingAnimation、DotsLoading、失败操作和统计
  *   [镜头 CRUD] 上传、编辑、复制、删除、排序
@@ -47,10 +47,12 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-06  主体参考列增删时同步创作表单主体集合，处理关闭/卸载旧快照、刷新多来源和版本滞后覆盖
  *   2026-08-05  修复创作面板异步恢复期间的空表单覆盖：打开面板优先使用镜头快照，待参考图表单恢复完成后才允许持久化
  *   2026-08-05  创作面板参考主体变更时同步写回当前镜头 mainRefs，保持创作面板与主体参考列一致
  *   2026-08-05  视频创作面板表单仅在内容变化时回写，避免提示词删除标签触发父子状态循环
  *   2026-08-06  分镜读取绕过旧分页缓存，提示词绑定自动修复不再携带普通参考图快照
+ *   2026-08-06  画面描述列时长选项复用视频模型能力，并与创作面板时长双向同步
  *   2026-08-04  空分镜直接标记无候选媒体，跳过 media-candidates 请求并保留生成/上传后的刷新路径
  *   2026-08-03  主体删除兼容类型退化的旧引用，并在缓存/接口刷新期间持续过滤已删除主体，避免问号占位框复现
  *   2026-08-04  候选媒体按分镜缓存轻量封面与状态；无封面时恢复图片原图/视频首帧兜底
@@ -70,8 +72,10 @@ import { getEpisodeId } from '../components/storyboard/storyboardControlUtils';
 import { apiUploadStoryboardImage, apiUploadStoryboardVideo, apiGenerateStoryboardImage, apiGenerateStoryboardVideo, apiGenerateStoryboardsFromEpisode, apiCreateStoryboard, apiUpdateStoryboard, apiUpdateStoryboardCreationForm, apiDeleteStoryboard, apiReorderStoryboards, apiGetStoryboards, apiBatchDownloadStoryboardImages, apiBatchDownloadStoryboardVideos, apiGetTask, apiListStoryboardMediaCandidates, apiCreateStoryboardMediaCandidate, apiUpdateStoryboardMediaCandidate, apiDownloadStoryboardMediaCandidate } from '../api/storyboard';
 import { apiGetEpisodes, normalizeEpisodeListResponse } from '../api/subject';
 import { apiUploadCreationImage } from '../api/creation';
+import { apiListModels } from '../api/config';
 import DotsLoading from '../components/DotsLoading';
 import { normalizeImageUrl, toAbsoluteUrl } from '../utils/imageUrl';
+import { normalizeStoryboardModelList, normalizeStoryboardDurationOptions } from '../utils/storyboardModelAdapter';
 import { repairStoryboardPromptBindings } from '../utils/storyboardPromptBindingRepair';
 import {
   extractStoryboardImageUrl,
@@ -151,7 +155,7 @@ import { buildStoryboardRefFromAsset, getUploadedImageId, getUploadedImageUrl, t
 import { buildStoryboardCandidatePayload, normalizeSavedStoryboardCandidate } from '../utils/storyboardCandidateAdapter';
 import { insertStoryboardShot, moveStoryboardShot, removeStoryboardShot, renumberStoryboardShots } from '../utils/storyboardShotUtils';
 import useStoryboardTaskRecovery from '../hooks/useStoryboardTaskRecovery';
-import { enrichMainRefs, isBackendStoryboardId, makeStoryboardShot, normalizeStoryboard, normalizeStoryboardList, toBackendStoryboard } from '../utils/storyboardDataAdapter';
+import { enrichMainRefs, isBackendStoryboardId, makeStoryboardShot, normalizeStoryboard, normalizeStoryboardList, setStoryboardSubjectSnapshot, toBackendStoryboard } from '../utils/storyboardDataAdapter';
 import buildStoryboardPrompt from '../utils/buildStoryboardPrompt';
 import { addPendingTask, removePendingTask } from '../utils/taskPersistence';
 import { downloadBlob } from '../utils/downloadBlob';
@@ -248,7 +252,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       peekCache(K.storyboards(projectId), MEDIUM.CONTENT);
     if (!raw || !Array.isArray(raw)) return [];
     const currentEpisodeRaw = raw.filter((item) => (item.episode_id ?? item.episodeId) === episodeId);
-    return normalizeStoryboardList(currentEpisodeRaw, storyboardSubjects).slice(0, STORYBOARD_PAGE_SIZE);
+    return normalizeStoryboardList(currentEpisodeRaw, storyboardSubjects, 0, projectId).slice(0, STORYBOARD_PAGE_SIZE);
   });
   const [globalVoiceParams, setGlobalVoiceParams] = useState({});
   const [episode, setEpisode] = useState(() => {
@@ -331,6 +335,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const [genVideoHistoryMap, setGenVideoHistoryMap] = useState({}); // { [shotId]: generatedVideos[] }
   const [imageFormStateMap, setImageFormStateMap] = useState({}); // { [shotId]: image creation form state }
   const [videoFormStateMap, setVideoFormStateMap] = useState({}); // { [shotId]: video creation form state }
+  const [videoModels, setVideoModels] = useState([]);
   const imageFormStateRef = useRef({});
   const videoFormStateRef = useRef({});
   const creationFormSaveTimersRef = useRef(new Map());
@@ -342,6 +347,36 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   useEffect(() => {
     shotsRef.current = shots;
   }, [shots]);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiListModels({ category: 'video' })
+      .then((data) => {
+        if (!cancelled) setVideoModels(normalizeStoryboardModelList(data, 'video'));
+      })
+      .catch((error) => {
+        console.warn('[StoryboardPage] 获取视频模型时长能力失败:', error);
+        if (!cancelled) setVideoModels([]);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const getShotDurationOptions = useCallback((shot) => {
+    const form = videoFormStateMap[shot?.id] || shot?.creationForm?.video || {};
+    const fullModels = videoModels.filter((model) => {
+      const modes = model.capabilities?.reference_modes || [];
+      return modes.length === 0 || modes.some((mode) => !['first_frame', 'last_frame', 'start_end', 'multiframe'].includes(mode));
+    });
+    const selected = fullModels.find((model) => model.value === form.model)
+      || fullModels.find((model) => model.is_default)
+      || fullModels[0];
+    const backendDuration = shot?.params?.duration || form.duration || null;
+    const options = normalizeStoryboardDurationOptions([
+      backendDuration,
+      ...(selected?.durationRange || selected?.capabilities?.supported_durations || []),
+    ].filter((value) => value != null && value !== ''));
+    return options.length > 0 ? options : ['5s'];
+  }, [videoFormStateMap, videoModels]);
   const [candidateMediaMap, setCandidateMediaMap] = useState({});
   const [pendingCandidateMap, setPendingCandidateMap] = useState({});
   const [finalizedMediaMap, setFinalizedMediaMap] = useState({});
@@ -416,22 +451,50 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     setVideoFormStateMap(videoFormStateRef.current);
   }
 
-  const enqueueCreationFormSave = useCallback((shotId, image, video) => {
+  const enqueueCreationFormSave = useCallback((shotId, image, video, mainRefs) => {
     const shot = shotsRef.current.find((item) => item.id === shotId);
     // 图片/视频面板分别触发状态变化；任一侧未传入时必须沿用当前快照，
     // 不能让一次单侧编辑把另一侧已保存的参考素材覆盖成空对象。
     const currentCreationForm = shot?.creationForm || {};
     const imageState = image ?? imageFormStateRef.current[shotId] ?? currentCreationForm.image;
     const videoState = video ?? videoFormStateRef.current[shotId] ?? currentCreationForm.video;
+    // 关闭/卸载时 shotsRef 可能还没完成 React 状态回写，优先使用表单内最新 refSubjects，
+    // 最后才回退到镜头快照，避免删除后把旧主体集合重新提交。
+    const subjectRefs = Array.isArray(mainRefs)
+      ? mainRefs
+      : (Array.isArray(videoState?.refSubjects) ? videoState.refSubjects : shot?.mainRefs);
+    const shouldForceSubjectPatch = Array.isArray(mainRefs);
+    const persistedVideoState = Array.isArray(subjectRefs) && videoState && typeof videoState === 'object'
+      ? { ...videoState, refSubjects: subjectRefs }
+      : videoState;
     if (!creationFormSaveQueuesRef.current.has(shotId)) {
       creationFormSaveQueuesRef.current.set(shotId, createLatestPersistenceQueue((value) => (
-        apiUpdateStoryboardCreationForm(projectId, shotId, value)
+        (async () => {
+          const result = await apiUpdateStoryboardCreationForm(projectId, shotId, value);
+          if (!value.forceSubjectPatch) return result;
+
+          // 主体删除是覆盖语义。创作表单接口成功后，再用同一份完整镜头快照
+          // 写标准分镜字段，确保后端不会继续保留旧 subject_references/character_ids。
+          const latestShot = shotsRef.current.find((item) => item.id === shotId) || shot;
+          const subjectShot = {
+            ...latestShot,
+            mainRefs: value.mainRefs,
+            creationForm: {
+              ...(latestShot?.creationForm || {}),
+              image: value.image,
+              video: value.video,
+            },
+          };
+          return apiUpdateStoryboard(projectId, shotId, toBackendStoryboard(subjectShot));
+        })()
       )));
     }
     creationFormSaveQueuesRef.current.get(shotId).enqueue({
       image: imageState,
-      video: videoState,
+      video: persistedVideoState,
       genParams: shot?.genParams,
+      mainRefs: subjectRefs,
+      forceSubjectPatch: shouldForceSubjectPatch,
     }).catch((error) => {
       console.error('[StoryboardPage] 保存创作面板状态失败:', error);
     });
@@ -458,6 +521,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       shotId,
       imageFormStateRef.current[shotId],
       videoFormStateRef.current[shotId],
+      videoFormStateRef.current[shotId]?.refSubjects
+        || shotsRef.current.find((shot) => shot.id === shotId)?.mainRefs,
     );
   }, [enqueueCreationFormSave]);
 
@@ -545,7 +610,14 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       clearTimeout(timer);
       const image = imageFormStateRef.current[shotId];
       const video = videoFormStateRef.current[shotId];
-      if (image || video) enqueueCreationFormSave(shotId, image, video);
+      if (image || video) {
+        enqueueCreationFormSave(
+          shotId,
+          image,
+          video,
+          video?.refSubjects || shotsRef.current.find((shot) => shot.id === shotId)?.mainRefs,
+        );
+      }
     });
     creationFormSaveTimersRef.current.clear();
   }, [enqueueCreationFormSave]);
@@ -687,7 +759,7 @@ function hasStoryboardMediaHint(shot = {}) {
         skipCache: true,
       });
       if (getEpisodeId(episode) !== episodeId || loadedEpisodeRef.current !== episodeId) return;
-      const normalized = normalizeStoryboardList(nextPage, storyboardSubjects, shotsRef.current.length);
+      const normalized = normalizeStoryboardList(nextPage, storyboardSubjects, shotsRef.current.length, projectId);
       setShots((prev) => {
         const existingIds = new Set(prev.map((shot) => shot.id));
         const additions = normalized.filter((shot) => !existingIds.has(shot.id));
@@ -783,7 +855,7 @@ function hasStoryboardMediaHint(shot = {}) {
       : (Array.isArray(cachedAllData)
         ? cachedAllData.filter((item) => (item.episode_id ?? item.episodeId) === episodeId)
         : []);
-    const cachedShots = normalizeStoryboardList(cachedRaw, storyboardSubjects).slice(0, STORYBOARD_PAGE_SIZE);
+    const cachedShots = normalizeStoryboardList(cachedRaw, storyboardSubjects, 0, projectId).slice(0, STORYBOARD_PAGE_SIZE);
     const hasCachedShots = cachedShots.length > 0;
     const currentEpisode = activeEpisodes.find((item) => getEpisodeId(item) === episodeId);
     const episodeStatus = String(
@@ -869,7 +941,7 @@ function hasStoryboardMediaHint(shot = {}) {
         // 重新分镜期间保持加载态，避免请求完成后把旧缓存再次显示出来。
         // 任务结束后 homeIsGenerating 变化会重新触发本 effect，再读取最新结果。
         if (isGenerating || homeIsGenerating) return;
-        const normalized = normalizeStoryboardList(data, storyboardSubjects);
+        const normalized = normalizeStoryboardList(data, storyboardSubjects, 0, projectId);
         setHasMoreShots(data.length >= STORYBOARD_PAGE_SIZE);
         if (normalized.length > 0) {
           // 有数据：直接覆盖（正常加载 / 刷新场景）
@@ -903,7 +975,7 @@ function hasStoryboardMediaHint(shot = {}) {
     const unsub1 = subscribe(cacheKey, (data) => {
       if (!Array.isArray(data)) return;
       if (isGenerating || homeIsGenerating) return;
-      const normalized = normalizeStoryboardList(data, storyboardSubjects);
+      const normalized = normalizeStoryboardList(data, storyboardSubjects, 0, projectId);
       if (normalized.length > 0) {
         const visible = normalized.slice(0, STORYBOARD_PAGE_SIZE);
         setHasMoreShots(normalized.length >= STORYBOARD_PAGE_SIZE);
@@ -923,7 +995,7 @@ function hasStoryboardMediaHint(shot = {}) {
     const unsub2 = subscribe(cacheKeyAll, (data) => {
       if (!Array.isArray(data)) return;
       if (isGenerating || homeIsGenerating) return;
-      const normalized = normalizeStoryboardList(onlyCurrentEpisode(data), storyboardSubjects);
+      const normalized = normalizeStoryboardList(onlyCurrentEpisode(data), storyboardSubjects, 0, projectId);
       if (normalized.length > 0) {
         const visible = normalized.slice(0, STORYBOARD_PAGE_SIZE);
         setHasMoreShots(normalized.length >= STORYBOARD_PAGE_SIZE);
@@ -1080,7 +1152,7 @@ function hasStoryboardMediaHint(shot = {}) {
       offset: 0,
       include_gen_params: true,
     });
-    const normalizedLatest = normalizeStoryboardList(latest, storyboardSubjects).slice(0, STORYBOARD_PAGE_SIZE);
+    const normalizedLatest = normalizeStoryboardList(latest, storyboardSubjects, 0, projectId).slice(0, STORYBOARD_PAGE_SIZE);
     setHasMoreShots(Array.isArray(latest) && latest.length >= STORYBOARD_PAGE_SIZE);
     setShots(normalizedLatest);
     loadShotCandidates(normalizedLatest);
@@ -1497,7 +1569,7 @@ function hasStoryboardMediaHint(shot = {}) {
         return apiGetStoryboards(projectId, { episode_id: episodeId, limit: STORYBOARD_PAGE_SIZE, offset: 0, include_gen_params: true });
       })
       .then((latest) => {
-        const normalizedLatest = normalizeStoryboardList(latest, storyboardSubjects).slice(0, STORYBOARD_PAGE_SIZE);
+        const normalizedLatest = normalizeStoryboardList(latest, storyboardSubjects, 0, projectId).slice(0, STORYBOARD_PAGE_SIZE);
         setHasMoreShots(Array.isArray(latest) && latest.length >= STORYBOARD_PAGE_SIZE);
         setShots(normalizedLatest);
         loadShotCandidates(normalizedLatest);
@@ -1561,7 +1633,7 @@ function hasStoryboardMediaHint(shot = {}) {
       const latest = hasBackendStoryboardIds(taskItems)
         ? taskItems
         : await apiGetStoryboards(projectId, { episode_id: episodeId, limit: STORYBOARD_PAGE_SIZE, offset: 0, include_gen_params: true });
-      const normalizedLatest = normalizeStoryboardList(latest, storyboardSubjects).slice(0, STORYBOARD_PAGE_SIZE);
+      const normalizedLatest = normalizeStoryboardList(latest, storyboardSubjects, 0, projectId).slice(0, STORYBOARD_PAGE_SIZE);
       setHasMoreShots(Array.isArray(latest) && latest.length >= STORYBOARD_PAGE_SIZE);
       setShots(normalizedLatest);
       loadShotCandidates(normalizedLatest);
@@ -1581,10 +1653,72 @@ function hasStoryboardMediaHint(shot = {}) {
   }, [shots.length, onUnlockStep]);
 
   function updateShot(id, next) {
-    setShots((prev) => prev.map((s) => (s.id === id ? next : s)));
-    apiUpdateStoryboard(projectId, id, toBackendStoryboard(next)).catch((err) => {
-      console.error('[StoryboardPage] 更新分镜失败:', err);
-    });
+    // 主体参考列与创作面板的参考主体必须共享同一份当前镜头集合。
+    // 优先读取表单 ref，避免弹窗尚未重新渲染时把旧 creationForm 快照写回。
+    const latestVideoForm = videoFormStateRef.current[id] || next?.creationForm?.video;
+    const currentShot = shotsRef.current.find((shot) => shot.id === id);
+    const durationChanged = next?.params?.duration != null
+      && next.params.duration !== currentShot?.params?.duration;
+    const synchronizedDurationNext = durationChanged
+      ? {
+          ...next,
+          creationForm: {
+            ...(next.creationForm || {}),
+            video: {
+              ...(next.creationForm?.video || currentShot?.creationForm?.video || {}),
+              duration: next.params.duration,
+            },
+          },
+        }
+      : next;
+    const hasMainRefs = Array.isArray(next?.mainRefs);
+    const mainRefsChanged = hasMainRefs
+      && !areCreationFormStatesEqual(currentShot?.mainRefs || [], next.mainRefs);
+    const hasVideoForm = Boolean(latestVideoForm || synchronizedDurationNext?.creationForm?.video);
+    const nextVideoForm = hasVideoForm
+      ? {
+          ...(latestVideoForm || synchronizedDurationNext.creationForm?.video || {}),
+          ...(hasMainRefs ? { refSubjects: next.mainRefs } : {}),
+          ...(durationChanged ? { duration: next.params.duration } : {}),
+        }
+      : null;
+    const synchronizedNext = (hasMainRefs || durationChanged) && hasVideoForm
+      ? {
+          ...synchronizedDurationNext,
+          creationForm: {
+            ...(synchronizedDurationNext.creationForm || {}),
+            video: nextVideoForm,
+          },
+        }
+      : synchronizedDurationNext;
+
+    if ((mainRefsChanged || durationChanged) && hasVideoForm) {
+      videoFormStateRef.current = { ...videoFormStateRef.current, [id]: nextVideoForm };
+      setVideoFormStateMap(videoFormStateRef.current);
+    }
+    setShots((prev) => prev.map((s) => (s.id === id ? synchronizedNext : s)));
+    setVideoPanel((prev) => prev?.shot?.id === id ? { ...prev, shot: synchronizedNext } : prev);
+    setCreationPanel((prev) => prev?.shot?.id === id ? { ...prev, shot: synchronizedNext } : prev);
+    if (mainRefsChanged) {
+      setStoryboardSubjectSnapshot(projectId, id, next.mainRefs);
+      // 主体引用变更必须进入创作表单的串行最新快照队列，和普通参考图一样避免旧请求覆盖。
+      if (hasVideoForm) {
+        enqueueCreationFormSave(
+          id,
+          synchronizedNext.creationForm?.image,
+          nextVideoForm,
+          next.mainRefs,
+        );
+      } else {
+        apiUpdateStoryboard(projectId, id, toBackendStoryboard(synchronizedNext)).catch((err) => {
+          console.error('[StoryboardPage] 更新分镜主体参考失败:', err);
+        });
+      }
+    } else {
+      apiUpdateStoryboard(projectId, id, toBackendStoryboard(synchronizedNext)).catch((err) => {
+        console.error('[StoryboardPage] 更新分镜失败:', err);
+      });
+    }
   }
 
   async function handleFinalizeToggle(shot, media, requestedFinalized) {
@@ -1702,11 +1836,10 @@ function hasStoryboardMediaHint(shot = {}) {
         }
       : null;
     setShots((prev) => prev.map((shot) => shot.id === shotId ? (nextShot || shot) : shot));
-    if (nextShot && Array.isArray(nextState.refSubjects)
-      && !areCreationFormStatesEqual(currentShot?.mainRefs || [], nextState.refSubjects)) {
-      apiUpdateStoryboard(projectId, shotId, toBackendStoryboard(nextShot)).catch((error) => {
-        console.error('[StoryboardPage] 同步创作面板主体参考失败:', error);
-      });
+    const subjectRefsChanged = Boolean(nextShot && Array.isArray(nextState.refSubjects)
+      && !areCreationFormStatesEqual(currentShot?.mainRefs || [], nextState.refSubjects));
+    if (subjectRefsChanged) {
+      setStoryboardSubjectSnapshot(projectId, shotId, nextState.refSubjects);
     }
     if (durationChanged) {
       apiUpdateStoryboard(projectId, shotId, {
@@ -1715,8 +1848,13 @@ function hasStoryboardMediaHint(shot = {}) {
         console.error('[StoryboardPage] 同步创作面板时长失败:', error);
       });
     }
-    scheduleCreationFormSave(shotId, imageFormStateRef.current[shotId], nextState);
-  }, [projectId, scheduleCreationFormSave, videoPanel?.shot?.id]);
+    if (subjectRefsChanged) {
+      // 主体引用是覆盖语义，立即把最新集合放入同一串行队列，避免旧请求在删除后回写。
+      enqueueCreationFormSave(shotId, imageFormStateRef.current[shotId], nextState, nextState.refSubjects);
+    } else {
+      scheduleCreationFormSave(shotId, imageFormStateRef.current[shotId], nextState);
+    }
+  }, [enqueueCreationFormSave, projectId, scheduleCreationFormSave, videoPanel?.shot?.id]);
 
   function selectActiveShot(shotId) {
     if (shotId === activeShotId) {
@@ -2008,6 +2146,7 @@ function hasStoryboardMediaHint(shot = {}) {
               key={shot.id || `shot-${shot.number || idx + 1}-${idx}`}
               shot={removeDeletedSubjectRefs(shot)}
               projectId={projectId}
+              durationOptions={getShotDurationOptions(shot)}
               onChange={(next) => updateShot(shot.id, next)}
               onAdd={() => addShotAfter(shot.id)}
               onCopy={() => copyShot(shot.id)}
@@ -2274,6 +2413,10 @@ function hasStoryboardMediaHint(shot = {}) {
     )}
     {videoPanel && creationPanel.tab === 'video' && (
       <GenerateVideoPanel
+        // 主体参考列变更时重置面板内部主体快照，避免旧 refSubjects effect 在父级更新后回写。
+        key={`${videoPanel.shot?.id || 'shot'}:${(videoPanel.shot?.mainRefs || []).map((ref) => (
+          ref?.subjectId || ref?.subject_id || ref?.assetId || ref?.asset_id || ref?.id || ref?.url || ''
+        )).join('|')}`}
         shot={videoPanel.shot}
         projectId={projectId}
         nextShot={videoPanel.nextShot}

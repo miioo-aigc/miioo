@@ -1,5 +1,16 @@
 # miioo 项目进度管理文档
 
+## 2026-08-06 分镜参考主体删除后刷新恢复修复
+
+- 修复主体参考列删除 C、D 后当前页面只剩 AB，但刷新后主体参考列和创作面板又恢复 ABCD 的旧快照覆盖问题。
+- 当前镜头 `mainRefs` 现在是参考主体的唯一权威集合；打开创作面板时不再与旧 `creationForm.video.refSubjects` 合并。
+- 主体列增删与创作表单保存共用串行最新快照队列，并同时覆盖 `character_ids`、`scene_id`、`prop_ids` 和 `creation_form.video.refSubjects`。
+- 分镜序列化会强制用当前 `mainRefs` 覆盖历史表单主体列表；普通参考资产继续独立写入 `reference_images/reference_image_urls`。
+- 用户已验证通过：删除 C、D 后，刷新分镜页面，主体参考列和创作面板参考主体字段均只保留 A、B。
+- 已完成定向 ESLint、完整 lint、构建、架构检查和 `git diff --check`；静态请求体和响应适配模拟确认 ABCD 删除为 AB 后，顶层、嵌套主体字段和刷新后的 `mainRefs` 均只保留 AB。
+
+详细说明见 [`docs/storyboard-creation-reference-sync-2026-08-05.md`](./docs/storyboard-creation-reference-sync-2026-08-05.md)。
+
 ## 2026-08-05 分镜创作面板刷新后参考主体重复展示修复
 
 - 修复刷新页面后，创作视频面板中的同一张手动添加参考主体图片被展示两次的问题。

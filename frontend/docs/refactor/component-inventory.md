@@ -1,5 +1,13 @@
 # 组件重构盘点基线
 
+## 2026-08-06 四类详情图弹窗尺寸规则统一
+
+- 详情弹窗统一使用 `3:2` 宽高比，按视口的 `90%` 计算显示尺寸，最小尺寸保持 `1200×800`；`src/utils/useModalSize.js` 返回基准宽高和整体缩放比例。
+- `MediaDetailModal` 覆盖主体页面和分镜页面的通用媒体详情入口；`StoryboardMediaDetailModal` 覆盖分镜页面及资产库分镜详情；`CreationImageResultCard` 内部图片详情弹窗覆盖创作页面；`ImageDetailModal`、`AssetDetailModal`、`SubjectAssetDetailModal` 和 `ShotDetailModal` 覆盖资产库图片、创作资产、主体资产和分镜图片详情。
+- 各详情弹窗将整体内容应用 `transform: scale(...)`，保留原有基准布局的内部比例和交互；相关视频详情查看组件同步接入尺寸工具，避免共享入口产生不一致。
+- 本次只调整弹窗尺寸计算和展示缩放，不改变详情数据边界、API、Store、下载、删除、定稿或播放副作用。
+- 验证：`npm run lint`、`npm run build`、`npm run check:architecture`、`git diff --check` 均通过；仅保留已有构建分块体积和文件规模提醒。
+
 ## 2026-08-05 分镜主体参考完整字段适配
 
 - `storyboardDataAdapter.normalizeStoryboard` 直接消费分镜响应的 `subject_references`，将角色、场景、道具统一映射为 `mainRefs`，不再只依赖 `character_ids`。
@@ -154,6 +162,12 @@
 - 本次仍不删除后端重复资产，避免影响其他业务引用；修复范围为三个前端展示入口及其分页合并逻辑。
 - 去重算法补齐连通集合合并：当多条记录通过不同媒体地址别名间接相交时，合并所有相交记录并保留非空详情；实时新增和资产库分页写回前再做全量合并，避免并发/缓存顺序造成回归。
 - 验证通过：目标文件定向 ESLint、`git diff --check`、`npm run check:architecture` 和 `npm run build`；架构检查仅有既有文件规模提醒。
+
+## 2026-08-06 创作资产删除真实 ID 修复
+
+- `AssetsCreativePanel` 单项删除不再把 `history-{记录ID}-{卡片序号}` 展示键传给创作删除接口，统一使用卡片保留的后端真实记录 ID。
+- 创作资产批量删除先将选中的展示键映射为对应卡片，再只提交真实后端 ID；缺少真实 ID 时保留列表并提示刷新重试。
+- 图片和视频单项、批量删除接口补齐非成功响应检查；前端仅在服务端确认删除成功后移除本地卡片，请求失败时保留资产和批量选中状态。
 
 ## 2026-07-29 分镜详情媒体来源信息边界
 

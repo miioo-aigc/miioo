@@ -79,9 +79,15 @@ export function getProjectDownloadItems({ selectedIds = [], assets = [] }) {
   return items;
 }
 
-export function getCreativeBatchDeleteRequest({ activeType, selectedIds = [] }) {
+export function getCreativeBatchDeleteRequest({ activeType, selectedIds = [], cards = [] }) {
+  const selectedCards = [...selectedIds]
+    .map((id) => cards.find((card) => card.id === id))
+    .filter(Boolean);
+
   return {
     kind: activeType === 'image' || activeType === 'video' ? activeType : null,
-    ids: [...selectedIds],
+    // id 是页面展示/选中用的复合键，backendId 才是接口要求的真实创作记录 ID。
+    ids: selectedCards.map((card) => card.backendId).filter(Boolean),
+    selectedIds: [...selectedIds],
   };
 }

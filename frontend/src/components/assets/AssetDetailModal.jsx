@@ -12,6 +12,7 @@
  *
  * ─── 更新记录 ─────────────────────
  *   2026-07-16  从 AssetsPage 抽离；页面级数据和动作通过显式 props 注入
+ *   2026-08-06  详情弹窗统一使用 3:2、90% 视口和 1200×800 最小尺寸，并整体等比缩放
  */
 
 import { useState } from 'react';
@@ -39,7 +40,7 @@ const MOCK_DETAIL = {
 // Props: name, description, prompt, model, ratio, resolution, images (array of {id, src, finalized})
 // images[0] should be the finalized image; default activeImg = index of first finalized image
 export default function AssetDetailModal({ onClose, onDownload, name, description, prompt, model, ratio, resolution, generatedAt, images }) {
-  const { width: modalW, height: modalH } = useModalSize();
+  const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const imgs = images ?? MOCK_DETAIL.images;
   const defaultIdx = imgs.findIndex((img) => img.finalized);
   const [activeImg, setActiveImg] = useState(defaultIdx >= 0 ? defaultIdx : 0);
@@ -69,6 +70,9 @@ export default function AssetDetailModal({ onClose, onDownload, name, descriptio
           display: 'flex',
           flexDirection: 'column',
           width: `${modalW}px`,
+          height: `${modalH}px`,
+          transform: `scale(${modalScale})`,
+          transformOrigin: 'center center',
           borderRadius: '16px',
           overflow: 'hidden',
           boxShadow: '#00000099 -10px 24px 64px',

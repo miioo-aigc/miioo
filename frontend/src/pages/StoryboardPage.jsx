@@ -52,6 +52,7 @@
  *   2026-08-05  创作面板参考主体变更时同步写回当前镜头 mainRefs，保持创作面板与主体参考列一致
  *   2026-08-05  视频创作面板表单仅在内容变化时回写，避免提示词删除标签触发父子状态循环
  *   2026-08-06  分镜读取绕过旧分页缓存，提示词绑定自动修复不再携带普通参考图快照
+ *   2026-08-06  画面描述列与创作面板时长按后端默认值、用户修改值分层处理并双向同步；收敛表单回写范围，修复时长切换循环闪烁
  *   2026-08-06  画面描述列时长选项复用视频模型能力，并与创作面板时长双向同步
  *   2026-08-04  空分镜直接标记无候选媒体，跳过 media-candidates 请求并保留生成/上传后的刷新路径
  *   2026-08-03  主体删除兼容类型退化的旧引用，并在缓存/接口刷新期间持续过滤已删除主体，避免问号占位框复现
@@ -362,7 +363,10 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   }, []);
 
   const getShotDurationOptions = useCallback((shot) => {
-    const form = videoFormStateMap[shot?.id] || shot?.creationForm?.video || {};
+    const form = videoFormStateRef.current[shot?.id]
+      || videoFormStateMap[shot?.id]
+      || shot?.creationForm?.video
+      || {};
     const fullModels = videoModels.filter((model) => {
       const modes = model.capabilities?.reference_modes || [];
       return modes.length === 0 || modes.some((mode) => !['first_frame', 'last_frame', 'start_end', 'multiframe'].includes(mode));
@@ -1813,8 +1817,11 @@ function hasStoryboardMediaHint(shot = {}) {
       userEditedVideoPromptRef.current.add(String(shotId));
     }
     if (previousState && areCreationFormStatesEqual(previousState, nextState)) return;
+    const currentFormState = videoFormStateRef.current[shotId];
+    if (currentFormState && areCreationFormStatesEqual(currentFormState, nextState)) return;
+    // 面板内部已经持有编辑态。这里仅更新 ref 和持久化队列，避免每次字段变化
+    // 都通过页面 state 反向刷新面板，形成父子 effect 循环。
     videoFormStateRef.current = { ...videoFormStateRef.current, [shotId]: nextState };
-    setVideoFormStateMap(videoFormStateRef.current);
     const currentShot = shotsRef.current.find((shot) => shot.id === shotId);
     const nextDuration = nextState.duration == null || nextState.duration === ''
       ? undefined
@@ -1835,9 +1842,22 @@ function hasStoryboardMediaHint(shot = {}) {
           creationForm: { ...(currentShot.creationForm || {}), video: nextState },
         }
       : null;
-    setShots((prev) => prev.map((shot) => shot.id === shotId ? (nextShot || shot) : shot));
     const subjectRefsChanged = Boolean(nextShot && Array.isArray(nextState.refSubjects)
       && !areCreationFormStatesEqual(currentShot?.mainRefs || [], nextState.refSubjects));
+    // 用户在创作面板修改时长或主体后，需要把最新值回传给面板 props 和列表；
+    // 其它表单字段继续只保存在 ref，避免普通表单快照触发父子循环。
+    if (durationChanged || subjectRefsChanged) {
+      const nextVideoFormStateMap = { ...videoFormStateRef.current, [shotId]: nextState };
+      videoFormStateRef.current = nextVideoFormStateMap;
+      setVideoFormStateMap((previous) => (
+        previous[shotId] && areCreationFormStatesEqual(previous[shotId], nextState)
+          ? previous
+          : nextVideoFormStateMap
+      ));
+    }
+    if (durationChanged || subjectRefsChanged) {
+      setShots((prev) => prev.map((shot) => shot.id === shotId ? (nextShot || shot) : shot));
+    }
     if (subjectRefsChanged) {
       setStoryboardSubjectSnapshot(projectId, shotId, nextState.refSubjects);
     }
@@ -2429,7 +2449,8 @@ function hasStoryboardMediaHint(shot = {}) {
         ModalCloseBtn={ModalCloseBtn}
         PanelPromptInput={PanelPromptInput}
         embedded
-        formState={videoFormStateMap[videoPanel.shot?.id] ?? videoPanel.shot?.creationForm?.video}
+        formState={videoFormStateMap[videoPanel.shot?.id]
+          ?? videoPanel.shot?.creationForm?.video}
         onFormStateChange={handleVideoFormStateChange}
         onCandidateMedia={(media) => saveCandidateMedia(videoPanel.shot?.id, media)}
         generatedVideos={genVideoHistoryMap[videoPanel.shot?.id] ?? []}

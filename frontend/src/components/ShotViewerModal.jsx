@@ -82,7 +82,7 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
   const [muted, setMuted] = useState(false);
   const [finalized, setFinalized] = useState(shot?.finalized ?? false);
   const [downloading, setDownloading] = useState(false);
-  const { width: modalW, height: modalH } = useModalSize();
+  const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current;
@@ -195,6 +195,9 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
       <div style={{
         display: 'flex', flexDirection: 'column',
         width: `${modalW}px`,
+        height: `${modalH}px`,
+        transform: `scale(${modalScale})`,
+        transformOrigin: 'center center',
         borderRadius: '16px', overflow: 'hidden',
         backgroundColor: '#161616',
         border: '1px solid rgba(255,255,255,0.08)',

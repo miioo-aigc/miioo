@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import ConfirmDialog from './ConfirmDialog';
+import { useModalSize } from '../utils/useModalSize';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -79,6 +80,7 @@ const DETAIL_PANEL_DIVIDER = (
 );
 
 export default function ImageDetailModal({ card, onClose, onDelete, onDownload, favorited, onToggleFavorite }) {
+  const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const [starAnim, setStarAnim] = useState(false);
   const [closeHovered, setCloseHovered] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -97,7 +99,7 @@ export default function ImageDetailModal({ card, onClose, onDelete, onDownload, 
           onClick={onClose}
         >
           <div
-            style={{ width: '960px', borderRadius: '16px', border: '1px solid #FFFFFF14', backgroundColor: '#161616', boxShadow: '#00000099 -10px 24px 64px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+            style={{ width: `${modalW}px`, height: `${modalH}px`, transform: `scale(${modalScale})`, transformOrigin: 'center center', borderRadius: '16px', border: '1px solid #FFFFFF14', backgroundColor: '#161616', boxShadow: '#00000099 -10px 24px 64px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -116,7 +118,7 @@ export default function ImageDetailModal({ card, onClose, onDelete, onDownload, 
             </div>
 
             {/* Body */}
-            <div style={{ display: 'flex', height: '540px' }}>
+            <div style={{ display: 'flex', height: `${modalH - 60}px` }}>
               {/* Left: image viewer */}
               <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0A0A0A', position: 'relative', overflow: 'hidden' }}>
                 {card.imageUrl && (
@@ -134,7 +136,7 @@ export default function ImageDetailModal({ card, onClose, onDelete, onDownload, 
               </div>
 
               {/* Right: info panel */}
-              <div style={{ width: '280px', flexShrink: 0, backgroundColor: '#161616', borderLeft: '1px solid #FFFFFF0F', display: 'flex', flexDirection: 'column', height: '540px' }}>
+              <div style={{ width: '280px', flexShrink: 0, backgroundColor: '#161616', borderLeft: '1px solid #FFFFFF0F', display: 'flex', flexDirection: 'column', height: `${modalH - 60}px` }}>
                 {/* Scrollable content area */}
                 <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                 {DETAIL_PANEL_DIVIDER}

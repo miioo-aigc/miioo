@@ -1,20 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 
 /**
- * 根据当前视口尺寸计算弹窗尺寸。
- * 基准分辨率 1920×1080 对应基准弹窗 1200×800，按比例缩放，不超过 1.0 倍。
- * 最小尺寸：800×600。
+ * 详情图弹窗统一尺寸：保持 3:2，最大占视口 90%，最小为 1200×800。
  *
- * @param {number} baseWidth  基准宽度，默认 1200
- * @param {number} baseHeight 基准高度，默认 800
- * @returns {{ width: number, height: number }}
+ * width/height 是弹窗的基准布局尺寸；scale 用于把基准内容整体等比缩放。
  */
 export function useModalSize(baseWidth = 1200, baseHeight = 800) {
   const calc = useCallback(() => {
-    const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080, 1.0);
+    const scale = Math.min(
+      0.9 * window.innerWidth / baseWidth,
+      0.9 * window.innerHeight / baseHeight,
+    );
+    const displayScale = Math.max(scale, 1);
     return {
-      width: Math.max(Math.round(baseWidth * scale), 800),
-      height: Math.max(Math.round(baseHeight * scale), 600),
+      width: baseWidth,
+      height: baseHeight,
+      scale: displayScale,
     };
   }, [baseHeight, baseWidth]);
   const [size, setSize] = useState(calc);

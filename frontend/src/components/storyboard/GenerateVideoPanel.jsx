@@ -23,6 +23,7 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-08-06  参考主体以当前分镜主体参考列为权威集合，并避免关闭/卸载时旧表单快照恢复已删除主体
+ *   2026-08-06  保留后端时长作为初始默认值；用户修改时长后以用户值为准并同步列表，避免旧值覆盖和父子状态循环
  *   2026-08-05  修复异步表单恢复时首次空状态回写，确保参考图和提示词快照恢复后才触发持久化
  *   2026-08-05  用户编辑提示词后停止外部提示词覆盖，避免删除标签触发状态同步循环
  *   2026-08-05  页面加载补全主体标签后，同步更新已打开弹窗的提示词展示状态
@@ -151,7 +152,7 @@ export default function GenerateVideoPanel({
     })();
   // 模型列表只在面板挂载时读取；shot 时长仅用于首次默认值。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formState?.duration, formState?.model, formState?.resolution]);
+  }, []);
   const [sound, setSound] = useState(() => formState?.sound ?? true);
   // 提示词：仅暂存在当前弹窗的本地 state，编辑不回写分镜列表字段。
   // 关闭面板时组件卸载、本地态丢弃，下次打开按 shot 当前字段重新生成初始内容。
@@ -159,6 +160,7 @@ export default function GenerateVideoPanel({
   const [prompt, setPrompt] = useState(() => formState?.prompt ?? buildStoryboardPrompt(shot));
   const promptRef = useRef(null);
   const promptEditedRef = useRef(false);
+  const lastEmittedFormStateRef = useRef(null);
   const formStateHydratedRef = useRef(Array.isArray(formState?.refImages));
 
   const handlePromptChange = (nextPrompt) => {
@@ -258,12 +260,31 @@ export default function GenerateVideoPanel({
   useEffect(() => {
     if (!formStateHydratedRef.current) return;
     if (!promptEditedRef.current && typeof formState?.prompt === 'string' && formState.prompt !== prompt) return;
-    onFormStateChange?.({ tab, model, resolution, duration, sound, prompt, video_prompt_mentions: videoPromptMentions, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame });
+    const nextState = {
+      tab,
+      model,
+      resolution,
+      duration,
+      sound,
+      prompt,
+      video_prompt_mentions: videoPromptMentions,
+      refSubjects,
+      refImages,
+      refVideos,
+      refAudios,
+      refFirstFrame,
+      refLastFrame,
+    };
+    const signature = JSON.stringify(nextState);
+    if (lastEmittedFormStateRef.current === signature) return;
+    lastEmittedFormStateRef.current = signature;
+    onFormStateChange?.(nextState);
   }, [tab, model, resolution, duration, sound, prompt, formState?.prompt, videoPromptMentions, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame, onFormStateChange]);
 
   useEffect(() => {
-    if (!formStateHydratedRef.current || !formState?.duration || formState.duration === duration) return;
-    setDuration(normalizeDurationValue(formState.duration));
+    const nextDuration = normalizeDurationValue(formState?.duration);
+    if (!formStateHydratedRef.current || !nextDuration || nextDuration === duration) return;
+    setDuration(nextDuration);
   }, [formState?.duration, duration]);
 
   // 获取当前模型支持的参数（优先从后端 capabilities 派生）

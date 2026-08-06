@@ -94,7 +94,7 @@ function VideoFrameThumbnail({ frame, isActive, onSelect }) {
 }
 
 function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shotNumber, prompt, model, resolution, duration, ratio, generatedAt, frames, videoSrc, refMode, firstFrame, lastFrame, refImages, refVideos }) {
-  const { width: modalW, height: modalH } = useModalSize();
+  const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const frms = frames ?? MOCK_SHOT_VIDEO_DETAIL.frames;
   const defaultIdx = frms.findIndex((f) => f.finalized);
   const [activeFrame, setActiveFrame] = useState(defaultIdx >= 0 ? defaultIdx : 0);
@@ -216,7 +216,8 @@ function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shot
     >
       <div
         style={{
-          display: 'flex', flexDirection: 'column', width: `${modalW}px`,
+          display: 'flex', flexDirection: 'column', width: `${modalW}px`, height: `${modalH}px`,
+          transform: `scale(${modalScale})`, transformOrigin: 'center center',
           borderRadius: '16px', overflow: 'hidden',
           boxShadow: '#00000099 -10px 24px 64px',
           backgroundColor: '#161616', border: '1px solid #FFFFFF14',

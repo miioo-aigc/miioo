@@ -12,6 +12,7 @@
  *
  * ─── 更新记录 ─────────────────────
  *   2026-07-16  从 AssetsPage 抽离；所有页面级动作通过显式 props 注入
+ *   2026-08-06  详情弹窗统一使用 3:2、90% 视口和 1200×800 最小尺寸，并整体等比缩放
  */
 
 import { useState, useRef } from 'react';
@@ -25,7 +26,7 @@ const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-u
 
 // 主体资产详情弹窗 — 图片列表（角色/场景/道具的多张图聚合）
 export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteImage, onShowToast, name, description, images }) {
-  const { width: modalW, height: modalH } = useModalSize();
+  const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const imgs = images ?? [];
   const defaultIdx = imgs.findIndex((img) => img.is_primary);
   const [activeImg, setActiveImg] = useState(defaultIdx >= 0 ? defaultIdx : 0);
@@ -67,6 +68,8 @@ export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteI
           flexDirection: 'column',
           width: `${modalW}px`,
           height: `${modalH}px`,
+          transform: `scale(${modalScale})`,
+          transformOrigin: 'center center',
           borderRadius: '16px',
           overflow: 'hidden',
           boxShadow: '#00000099 -10px 24px 64px',

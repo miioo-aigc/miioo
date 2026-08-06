@@ -259,16 +259,36 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     selectAllAssets(allIds);
   }
 
-  function deleteSelected() {
+  async function deleteSelected() {
+    const cards = days.flatMap((day) => day.cards);
     const { kind, ids: cardIds } = getCreativeBatchDeleteRequest({
       activeType,
       selectedIds: selected,
+      cards,
     });
-    // 仅从本地创作资产列表移除（不回写共享 store），后端已删除；
-    // 创作页下次以 exclude_hidden=true 拉取时不会再返回该记录。
+    const selectedIds = [...selected];
+    const selectedCards = cards.filter((card) => selected.has(card.id));
+    const missingBackendId = selectedCards.some((card) => !card.backendId);
+    if (missingBackendId) {
+      showToast('删除失败：部分创作资产缺少真实编号，请刷新后重试', 'error');
+      return;
+    }
+    const deleteRequest = kind === 'image'
+      ? apiBatchDeleteImages(cardIds)
+      : kind === 'video'
+        ? apiBatchDeleteVideos(cardIds)
+        : null;
+    try {
+      await deleteRequest;
+    } catch {
+      showToast('删除失败，请刷新后重试', 'error');
+      return;
+    }
+
+    // 服务端确认成功后再移除本地展示，避免请求失败时刷新页面恢复资产。
     setCreationGenerationsByTab((prev) => {
       const toDelete = {};
-      cardIds.forEach((key) => {
+      selectedIds.forEach((key) => {
         const lastDash = key.lastIndexOf('-');
         const genId = key.slice(0, lastDash);
         const cardIdx = parseInt(key.slice(lastDash + 1), 10);
@@ -278,16 +298,12 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
       return {
         ...prev,
         [activeType]: prev[activeType]
-          .map((gen) =>
-            toDelete[gen.id]
-              ? { ...gen, cards: gen.cards.filter((_, i) => !toDelete[gen.id].has(i)) }
-              : gen
-          )
+          .map((gen) => toDelete[gen.id]
+            ? { ...gen, cards: gen.cards.filter((_, i) => !toDelete[gen.id].has(i)) }
+            : gen)
           .filter((gen) => gen.cards.length > 0),
       };
     });
-    if (kind === 'image') apiBatchDeleteImages(cardIds);
-    else if (kind === 'video') apiBatchDeleteVideos(cardIds);
     exitBatch();
   }
 
@@ -303,19 +319,31 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     apiCall.catch(() => storeToggleFavorite(cardKey)); // rollback on failure
   }
 
-  function deleteSingle(card) {
+  async function deleteSingle(card) {
+    const backendId = card.backendId;
+    if (!backendId) {
+      showToast('删除失败：缺少真实创作资产编号，请刷新后重试', 'error');
+      return;
+    }
+    const deleteRequest = activeType === 'image'
+      ? apiDeleteCreationImage(backendId)
+      : activeType === 'video'
+        ? apiDeleteCreationVideo(backendId)
+        : null;
+    try {
+      await deleteRequest;
+    } catch {
+      showToast('删除失败，请刷新后重试', 'error');
+      return;
+    }
     setCreationGenerationsByTab((prev) => ({
       ...prev,
       [activeType]: prev[activeType]
-        .map((gen) =>
-          gen.id !== card.genId
-            ? gen
-            : { ...gen, cards: gen.cards.filter((_, i) => i !== card.cardIdx) }
-        )
+        .map((gen) => gen.id !== card.genId
+          ? gen
+          : { ...gen, cards: gen.cards.filter((_, i) => i !== card.cardIdx) })
         .filter((gen) => gen.cards.length > 0),
     }));
-    if (activeType === 'image') apiDeleteCreationImage(card.id);
-    else if (activeType === 'video') apiDeleteCreationVideo(card.id);
   }
 
   function downloadCreativeAsset(card, options) {
@@ -438,7 +466,6 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
           onConfirm={() => {
             setBatchDeleteConfirm(false);
             deleteSelected();
-            exitBatch();
           }}
           zIndex={100}
         />

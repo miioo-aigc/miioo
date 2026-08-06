@@ -13,6 +13,7 @@
  *
  * ─── 更新记录 ─────────────────────
  *   2026-07-16  从 AssetsPage 抽离；API、删除和 Toast 副作用通过显式 props 注入
+ *   2026-08-06  详情弹窗统一使用 3:2、90% 视口和 1200×800 最小尺寸，并整体等比缩放
  */
 
 import { useState, useRef } from 'react';
@@ -39,7 +40,7 @@ const MOCK_SHOT_DETAIL = {
 
 // Props: shotNumber, prompt, model, resolution, images (array of {id, src, finalized})
 export default function ShotDetailModal({ onClose, onDownload, onDelete, onShowToast, shotNumber, prompt, model, resolution, generatedAt, images, refImages }) {
-  const { width: modalW, height: modalH } = useModalSize();
+  const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const imgs = images ?? MOCK_SHOT_DETAIL.images;
   const defaultIdx = imgs.findIndex((img) => img.finalized);
   const [activeImg, setActiveImg] = useState(defaultIdx >= 0 ? defaultIdx : 0);
@@ -83,6 +84,9 @@ export default function ShotDetailModal({ onClose, onDownload, onDelete, onShowT
           display: 'flex',
           flexDirection: 'column',
           width: `${modalW}px`,
+          height: `${modalH}px`,
+          transform: `scale(${modalScale})`,
+          transformOrigin: 'center center',
           borderRadius: '16px',
           overflow: 'hidden',
           boxShadow: '#00000099 -10px 24px 64px',

@@ -165,7 +165,7 @@ export default function CreationVideoDetailModal({
     console.error('CreationVideoDetailModal: videoUrl is missing!');
   }
 
-  const { width: modalW } = useModalSize();
+  const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const [isPlaying, setIsPlaying] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -294,7 +294,7 @@ export default function CreationVideoDetailModal({
       onClick={onClose}
     >
       <div
-        className="flex flex-col rounded-2xl h-fit [box-shadow:#00000099_-10px_24px_64px] bg-[#161616] border border-solid border-[#FFFFFF14]" style={{ width: `${modalW}px` }}
+        className="flex flex-col rounded-2xl h-fit [box-shadow:#00000099_-10px_24px_64px] bg-[#161616] border border-solid border-[#FFFFFF14]" style={{ width: `${modalW}px`, height: `${modalH}px`, transform: `scale(${modalScale})`, transformOrigin: 'center center' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

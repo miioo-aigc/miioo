@@ -5,6 +5,8 @@ import { useModalSize } from '../../utils/useModalSize';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { formatReferenceMode } from '../../utils/referenceMode';
 
+// 详情弹窗尺寸由 useModalSize 统一计算：基准 1200×800，内部内容整体等比缩放。
+
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -320,7 +322,7 @@ function CandidateThumbnail({ media, active, onClick }) {
 }
 
 export default function StoryboardMediaDetailModal({ shot, candidates = [], media, onClose, onFinalizeChange, onDownload, readOnlyFinalize = false }) {
-  const { width: modalW, height: modalH } = useModalSize();
+  const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const items = useMemo(() => {
     const source = candidates.length ? candidates : media ? [media] : [];
     return source.filter((item, index, list) => item && (item.id || item.url) && list.findIndex((candidate) => (candidate.id || candidate.url) === (item.id || item.url)) === index);
@@ -422,7 +424,7 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
 
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.60)', backdropFilter: 'blur(12px)' }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.(); }}>
-      <div style={{ width: `${modalW}px`, height: `${modalH}px`, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '16px', background: '#161616', border: '1px solid #FFFFFF14', boxShadow: '-10px 24px 64px #00000099' }} onMouseDown={(event) => event.stopPropagation()}>
+      <div style={{ width: `${modalW}px`, height: `${modalH}px`, transform: `scale(${modalScale})`, transformOrigin: 'center center', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '16px', background: '#161616', border: '1px solid #FFFFFF14', boxShadow: '-10px 24px 64px #00000099' }} onMouseDown={(event) => event.stopPropagation()}>
         <header style={{ height: '60px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', background: '#161616' }}>
           <span style={{ color: '#FFFFFF', font: `500 16px/20px ${FONT_MEDIUM}` }}>查看详情</span>
           <CloseButton onClick={onClose} />

@@ -31,6 +31,7 @@
  *   2026-07-31  参考图仅展示当前候选图片原数据中的关联图片，不再继承主体参考图
  *   2026-07-28  主体详情图定稿状态改用 Toggle，定稿唯一性由主体页动作链路保证
  *   2026-07-28  主体详情图隐藏缩略图定稿标签，保留其他页面默认展示
+ *   2026-08-06  详情弹窗统一使用 3:2、90% 视口和 1200×800 最小尺寸，并整体等比缩放
  */
 
 import { useState, useRef } from 'react';
@@ -62,7 +63,7 @@ export default function MediaDetailModal({
   onPrimaryChange,
   showPrimaryBadge = true,
 }) {
-  const { width: modalW, height: modalH } = useModalSize();
+  const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const imgs = images ?? [];
   const defaultIdx = activeIndex >= 0 && activeIndex < imgs.length ? activeIndex : imgs.findIndex((img) => img.is_primary);
   const [activeImg, setActiveImg] = useState(defaultIdx >= 0 ? defaultIdx : 0);
@@ -122,6 +123,8 @@ export default function MediaDetailModal({
             flexDirection: 'column',
             width: `${modalW}px`,
             height: `${modalH}px`,
+            transform: `scale(${modalScale})`,
+            transformOrigin: 'center center',
             borderRadius: '16px',
             overflow: 'hidden',
             boxShadow: '#00000099 -10px 24px 64px',

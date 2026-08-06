@@ -22,16 +22,16 @@ function getImageUrls(image) {
  * 结构索引（api/creation.js）
  * ─── 视频生成（apiGenerateCreation）────────────────────────────────────
  *   [函数] apiGenerateCreation()                      入口：按 genType 分流 图片/视频/配音
- *   [上传] 参考文件分类循环                            L722  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
+ *   [上传] 参考文件分类循环                            L683  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
  *                                                        （图片 asset_id 兜底：assetId || backendId || asset_id）
- *   [上传] 首/尾帧上传                                 L770  仅首尾帧模式使用
- *   [分支] kling v3 omni 生成模式推断                  L937  hasRefMedia 初值 'full' → 被本分支覆盖
+ *   [上传] 首/尾帧上传                                 L730  仅首尾帧模式使用
+ *   [分支] kling v3 omni 生成模式推断                  L908  hasRefMedia 初值 'full' → 被本分支覆盖
  *                                                        generation_mode 取自 supported_generation_modes，
  *                                                        不再发 reference_mode='full'（避免 400），改发 '' 保留键名
  *                                                        素材映射：图→multi_shot / 视频→video_ref / 首尾帧→first_frame|start_end / 无图有媒→first_frame / 纯文→text_to_video
- *   [组装] @ 数字资产绑定 attachments                   L969  CreationAssetBinding[]，source:'mention'
- *   [组装] 视频生成请求体 body                          L998  generation_mode / reference_mode / multi_shot / attachments / reference_image_asset_ids / first_frame_url
- *   [日志] [video-generate] 调试日志                    L1028  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
+ *   [组装] @ 数字资产绑定 attachments                   L937  CreationAssetBinding[]，source:'mention'
+ *   [组装] 视频生成请求体 body                          L964  generation_mode / reference_mode / multi_shot / attachments / reference_image_asset_ids / first_frame_url
+ *   [日志] [video-generate] 调试日志                    L997  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-13  video-kling-v3-omni「全能参考」修复：不再发 reference_mode='full'（会触发后端 400），
  *               改按实际上传素材推断 supported_generation_modes；参考图走 attachments + reference_image_asset_ids（asset_id 兜底到 asset.id）。
@@ -247,9 +247,24 @@ export async function apiGenerateShotImage(shotId, data) {
   return res.json();
 }
 
+async function parseCreationDeleteResponse(res, action) {
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const payload = await res.json();
+      detail = payload?.detail || payload?.message || '';
+      if (typeof detail === 'object') detail = JSON.stringify(detail);
+    } catch {
+      // 非 JSON 错误响应仍按 HTTP 状态抛出，交给页面统一提示。
+    }
+    throw new Error(detail || `${action}失败（${res.status}）`);
+  }
+  return res.json();
+}
+
 export async function apiDeleteCreationImage(imageId) {
   const res = await authFetch(`${BASE}/api/creation/images/${imageId}`, { method: 'DELETE' });
-  return res.json();
+  return parseCreationDeleteResponse(res, '删除创作图片');
 }
 
 export async function apiToggleImageFavorite(imageId, liked) {
@@ -267,7 +282,7 @@ export async function apiBatchDeleteImages(ids) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids, asset_ids: ids }),
   });
-  return res.json();
+  return parseCreationDeleteResponse(res, '批量删除创作图片');
 }
 
 export async function apiBatchDownloadImages(ids) {
@@ -329,7 +344,7 @@ export async function apiGenerateShotVideo(shotId, data) {
 
 export async function apiDeleteCreationVideo(videoId) {
   const res = await authFetch(`${BASE}/api/creation/videos/${videoId}`, { method: 'DELETE' });
-  return res.json();
+  return parseCreationDeleteResponse(res, '删除创作视频');
 }
 
 
@@ -358,7 +373,7 @@ export async function apiBatchDeleteVideos(ids) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids, asset_ids: ids }),
   });
-  return res.json();
+  return parseCreationDeleteResponse(res, '批量删除创作视频');
 }
 
 export async function apiBatchDownloadVideos(ids) {

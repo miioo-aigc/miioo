@@ -27,6 +27,8 @@ import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo 
 import { MediaContent, MediaRemoveButton, ShortcutMediaCard } from './StoryboardMediaPrimitives';
 import { MediaHoverPreview as StoryboardMediaHoverPreview } from './MainRefCol';
 import FileUploadButton from '../ui/FileUploadButton';
+import { normalizeImageUrl } from '../../utils/imageUrl';
+import { getUploadedImageId, getUploadedImageUrl } from '../../utils/storyboardReferenceAdapter';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -45,8 +47,16 @@ function getFileLimit(file) {
 }
 
 function toUploadedMedia(result, file) {
-  const url = result.uploaded_url || result.uploadedUrl || result.url || result.file_url || '';
-  return { id: url, url, name: file.name, type: file.type };
+  const url = normalizeImageUrl(getUploadedImageUrl(result));
+  const assetId = getUploadedImageId(result);
+  if (!url) return null;
+  return {
+    id: assetId || url,
+    ...(assetId ? { assetId } : {}),
+    url,
+    name: file.name,
+    type: file.type,
+  };
 }
 
 export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabel, shortcutImage, shortcutTooltip, projectId }) {
@@ -66,7 +76,9 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
     }
     try {
       const result = await getUploadFn(file)({ file, category: 'reference', project_id: projectId });
-      onUpload?.(toUploadedMedia(result, file));
+      const uploadedMedia = toUploadedMedia(result, file);
+      if (!uploadedMedia) throw new Error('上传接口未返回素材地址');
+      onUpload?.(uploadedMedia);
     } catch {
       alert('上传失败，请重试');
     }
@@ -133,7 +145,12 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
         projectId={projectId}
         onConfirm={(assets) => {
           const asset = assets?.[0];
-          if (asset) onUpload?.({ id: asset.id, url: asset.fileUrl || asset.originalUrl || asset.original_url || asset.thumbnailUrl || asset.thumbnail_url || asset.url || asset.file_url || '', name: asset.name || asset.filename || '' });
+          if (asset) onUpload?.({
+            id: asset.id,
+            assetId: asset.id,
+            url: asset.fileUrl || asset.originalUrl || asset.original_url || asset.thumbnailUrl || asset.thumbnail_url || asset.url || asset.file_url || '',
+            name: asset.name || asset.filename || '',
+          });
           setAssetPickerOpen(false);
         }}
       />
@@ -166,7 +183,9 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
     }
     try {
       const result = await getUploadFn(file)({ file, category: 'reference', project_id: projectId });
-      onUpload?.(toUploadedMedia(result, file));
+      const uploadedMedia = toUploadedMedia(result, file);
+      if (!uploadedMedia) throw new Error('上传接口未返回素材地址');
+      onUpload?.(uploadedMedia);
     } catch {
       alert('上传失败，请重试');
     }

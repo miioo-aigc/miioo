@@ -1358,6 +1358,19 @@ export async function apiImportStoryboardXlsx(projectId, file, idempotencyKey) {
   return normalizeStoryboardImportResult(payload);
 }
 
+/**
+ * 下载当前项目持久化的分镜脚本原文件。
+ * 工作区响应可能只返回 file_id/file_name，前端仍通过稳定项目接口完成下载。
+ */
+export async function apiDownloadStoryboardFile(projectId) {
+  if (!projectId) throw new Error('下载分镜脚本前未获取到项目 ID');
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/storyboard-file/download`);
+  if (!res.ok) {
+    await throwResponseError(res, `下载分镜脚本失败（${res.status}）`);
+  }
+  return res.blob();
+}
+
 function firstDefined(source, keys) {
   if (!source || typeof source !== 'object') return undefined;
   for (const key of keys) {

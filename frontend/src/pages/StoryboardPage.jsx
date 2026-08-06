@@ -50,7 +50,7 @@
  *   2026-08-05  修复创作面板异步恢复期间的空表单覆盖：打开面板优先使用镜头快照，待参考图表单恢复完成后才允许持久化
  *   2026-08-05  创作面板参考主体变更时同步写回当前镜头 mainRefs，保持创作面板与主体参考列一致
  *   2026-08-05  视频创作面板表单仅在内容变化时回写，避免提示词删除标签触发父子状态循环
- *   2026-08-05  分镜数据加载完成后提前修复缺失的视频提示词主体绑定，并按镜头防重复提交完整表单状态
+ *   2026-08-06  分镜读取绕过旧分页缓存，提示词绑定自动修复不再携带普通参考图快照
  *   2026-08-04  空分镜直接标记无候选媒体，跳过 media-candidates 请求并保留生成/上传后的刷新路径
  *   2026-08-03  主体删除兼容类型退化的旧引用，并在缓存/接口刷新期间持续过滤已删除主体，避免问号占位框复现
  *   2026-08-04  候选媒体按分镜缓存轻量封面与状态；无封面时恢复图片原图/视频首帧兜底
@@ -520,23 +520,14 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       videoFormStateRef.current = { ...videoFormStateRef.current, [backendId]: nextVideo };
       setVideoFormStateMap((prev) => ({ ...prev, [backendId]: nextVideo }));
       setShots((prev) => prev.map((item) => item.id === shot.id ? nextShot : item));
-      // 页面加载阶段必须带上后端当前完整的创作表单快照。后端的分镜 PATCH
-      // 可能会重建创作参数；只提交提示词会让省略的参考图字段被重置。
-      // 如果表单快照尚未恢复，不发送自动修复请求，等待下一次完整数据加载。
-      const currentImage = shot.creationForm?.image;
-      const hasCompleteReferenceSnapshot = currentImage
-        && currentVideo
-        && Array.isArray(currentImage.refImages)
-        && Array.isArray(currentVideo.refImages);
-      if (hasCompleteReferenceSnapshot) {
-        apiUpdateStoryboardCreationForm(projectId, backendId, {
-          image: currentImage,
-          video: nextVideo,
-          genParams: shot.genParams,
-        }).catch((error) => {
-          console.error('[StoryboardPage] 自动修复提示词绑定失败:', error);
-        });
-      }
+      // 自动修复只更新提示词和 mentions。普通参考图属于独立编辑状态，
+      // 不能因为绑定修复拿到旧快照而被一并写回为空。
+      apiUpdateStoryboard(projectId, backendId, {
+        video_prompt: nextVideo.prompt ?? null,
+        video_prompt_mentions: nextVideo.video_prompt_mentions,
+      }).catch((error) => {
+        console.error('[StoryboardPage] 自动修复提示词绑定失败:', error);
+      });
     });
   }, [
     episode,
@@ -693,6 +684,7 @@ function hasStoryboardMediaHint(shot = {}) {
         episode_id: episodeId,
         limit: STORYBOARD_PAGE_SIZE,
         offset: shotsRef.current.length,
+        skipCache: true,
       });
       if (getEpisodeId(episode) !== episodeId || loadedEpisodeRef.current !== episodeId) return;
       const normalized = normalizeStoryboardList(nextPage, storyboardSubjects, shotsRef.current.length);
@@ -855,6 +847,7 @@ function hasStoryboardMediaHint(shot = {}) {
         limit: STORYBOARD_PAGE_SIZE,
         offset: 0,
         include_gen_params: true,
+        skipCache: true,
       });
       if (currentData.length > 0) return currentData;
 
@@ -865,6 +858,7 @@ function hasStoryboardMediaHint(shot = {}) {
         limit: 200,
         offset: 0,
         include_gen_params: false,
+        skipCache: true,
       });
       return allData.filter((item) => (item.episode_id ?? item.episodeId) === episodeId);
     };

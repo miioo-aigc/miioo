@@ -2,7 +2,8 @@
  * Storyboard 前后端数据映射与主体参考图补全。
  * 仅处理纯数据，不读取 React 状态，也不执行 API 或缓存副作用。
  *
- * 更新记录：2026-08-05 视频提示词绑定恢复时按 subject_id 去重，避免历史重复记录继续进入表单；
+ * 更新记录：2026-08-05 普通参考图序列化时保留 asset_id，统一本地上传与资产库选择的持久化身份；
+ *              2026-08-05 视频提示词绑定恢复时按 subject_id 去重，避免历史重复记录继续进入表单；
  *              2026-08-03 创作结果同时返回主体 ID 和 video-reference-images 副本时，
  *                只保留主体引用，避免主体参考图在分镜列表中重复展示。
  *              2026-07-30 刷新恢复主体引用时，主体引用优先于同图普通参考资源，按主体/资产身份和图片路径去重。
@@ -379,7 +380,11 @@ export function toBackendStoryboard(shot) {
         // 新字段：带名称，让名称随数据持久化（后端支持后刷新仍可区分不同参考图）
         reference_images: refItems
           .filter(ref => ref.url)
-          .map(ref => ({ url: ref.url, name: ref.name || '参考图' })),
+          .map(ref => ({
+            ...(ref.assetId || ref.asset_id ? { asset_id: ref.assetId || ref.asset_id } : {}),
+            url: ref.url,
+            name: ref.name || '参考图',
+          })),
       };
     })(),
     image_url: shot.storyboardImage?.url || undefined,

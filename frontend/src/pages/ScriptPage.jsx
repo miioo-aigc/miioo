@@ -39,9 +39,10 @@
  *   2026-07-22  统一从分镜导入任务和工作区恢复编排类型，避免误渲染分集剧情
  *   2026-07-27  将 OneLinkAI 结构字段提取异常转换为可执行的模型切换提示
  *   2026-07-27  AI 分集与重写处理中仅遮罩剧本内容区，保留导航可见
+ *   2026-08-06  分镜脚本下载缺少后端地址时改用项目工作区下载接口兜底
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
+import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiDownloadStoryboardFile, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
 import { Button } from '../components/ui';
 import { InputCard, ScriptEmptyState, ScriptMessageArea, ScriptOutlineLoading, ScriptOutlineWorkspace, ScriptModifyConfirmModal } from '../components/script';
 
@@ -952,6 +953,27 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     }
   }, [projectId, projectName]);
 
+  const handleDownloadStoryboard = useCallback(async () => {
+    if (!projectId) {
+      showToast('当前没有可下载的分镜脚本', 'warning');
+      return;
+    }
+    try {
+      const blob = await apiDownloadStoryboardFile(projectId);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = storyboardFileName || `${sanitizeDownloadName(projectName, projectId)}.xlsx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('[ScriptPage] 下载分镜脚本失败:', error);
+      showToast(error?.message || '下载分镜脚本失败，请重试', 'error');
+    }
+  }, [projectId, projectName, storyboardFileName]);
+
   return (
     <>
     <div
@@ -997,6 +1019,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
               outlineType={scriptOutlineType}
               storyboardFileName={storyboardFileName || storyboardInputFile?.name || ''}
               storyboardDownloadUrl={storyboardDownloadUrl}
+              onDownloadStoryboard={handleDownloadStoryboard}
               loadingContainerRef={scriptContentContainerRef}
             />
           )}

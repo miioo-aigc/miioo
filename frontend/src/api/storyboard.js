@@ -126,7 +126,13 @@ function compactStoryboardMediaCandidateForCache(item = {}) {
   return cached;
 }
 
-export async function apiGetStoryboards(projectId, { episode_id, limit, offset = 0, include_gen_params = true } = {}) {
+export async function apiGetStoryboards(projectId, {
+  episode_id,
+  limit,
+  offset = 0,
+  include_gen_params = true,
+  skipCache = false,
+} = {}) {
   const isPagedRequest = Number.isFinite(limit);
   const fetchPage = async (withGenParams = include_gen_params) => {
     const query = new URLSearchParams();
@@ -134,9 +140,19 @@ export async function apiGetStoryboards(projectId, { episode_id, limit, offset =
     query.set('limit', String(isPagedRequest ? limit : 200));
     if (isPagedRequest && offset > 0) query.set('offset', String(offset));
     if (withGenParams) query.set('include_gen_params', 'true');
+    if (skipCache) query.set('_ts', String(Date.now()));
+    // 分镜列表在页面关键加载路径可显式绕过项目缓存；本层同时禁止浏览器/中间层
+    // 复用旧 HTTP 响应，避免 PATCH 已返回新 scene_block 后刷新仍读旧版本。
     const res = await authFetch(
       `${BASE}/api/projects/${projectId}/storyboards?${query.toString()}`,
-      { headers: { 'Content-Type': 'application/json' } },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          Pragma: 'no-cache',
+        },
+        cache: 'no-store',
+      },
     );
     if (!res.ok) {
       const responseText = await res.text().catch(() => '');
@@ -178,6 +194,7 @@ export async function apiGetStoryboards(projectId, { episode_id, limit, offset =
     // 分页结果使用独立 key，不能与整集列表共用，避免页码、limit 或参数版本串数据。
     // 项目分镜写操作通过 storyboards: 项目前缀统一失效这些分页缓存。
     const pageKey = K.storyboardPage(projectId, episode_id, limit, offset, include_gen_params);
+    if (skipCache) return fetchPageWithFallback();
     const rawPage = await cached(
       pageKey,
       fetchPageWithFallback,
@@ -190,6 +207,8 @@ export async function apiGetStoryboards(projectId, { episode_id, limit, offset =
     );
     return Array.isArray(rawPage) ? rawPage : (rawPage?.list || rawPage?.items || []);
   }
+
+  if (skipCache) return fetchPageWithFallback();
 
   const raw = await cached(
     K.storyboards(projectId, episode_id),
@@ -288,6 +307,9 @@ export async function apiUpdateStoryboard(projectId, storyboardId, data) {
       }
     }
   }
+  // 分页读取使用独立 key。不能只回填 storyboards:*，否则页面刷新或加载更多
+  // 仍可能命中保存前的 storyboard-pages:* 快照。
+  invalidate(K.storyboardPagePrefix(projectId));
   invalidate(K.projectOverview(projectId));
   return updated;
 }

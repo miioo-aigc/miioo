@@ -1,0 +1,18 @@
+{
+  "name": "miioo AI - 免费开源视频创作工具",
+  "short_name": "miioo AI",
+  "description": "免费开源的 AI 视频创作工具，支持剧本、角色、场景、分镜、图片、视频和配音。",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060606",
+  "theme_color": "#061b2b",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "/miioo-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

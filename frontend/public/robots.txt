@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /debug-storage.html
+
+Sitemap: https://miiooai.com/sitemap.xml

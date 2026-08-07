@@ -75,6 +75,7 @@
  *   2026-07-31  主体卡片支持直接清除已添加音色，兼容音色库删除后的旧引用
  *   2026-07-31  服务端主体列表返回 voice_id=null 时同步清除本地音色映射，修复刷新后旧音色复现
  *   2026-07-31  取消音色优先依据 PATCH 返回结果，兼容主体列表最终一致性延迟
+ *   2026-08-07  主体编辑面板未保存画面比例时默认选择 16:9，不再继承项目画幅
  *   2026-07-31  主体列表首屏请求期间显示 DotsLoading，请求完成且为空后才显示抽取失败态
  *   2026-07-31  编辑主体候选图首次请求期间保留加载占位，避免已有候选图尚未返回时误显示为空列表
  *   2026-08-03  主体删除事件携带已清理的项目资产 ID，联动分镜、资产库和资产选择弹窗移除残留引用
@@ -230,7 +231,7 @@ function getGeneratedSubjectReferenceImages(result) {
   return Array.isArray(refs) ? refs : [];
 }
 
-function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, onClose, onCommit, onCoverChange, refreshToken, setBatchLoadingSubjects, isBatchLoading = false }) {
+function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCommit, onCoverChange, refreshToken, setBatchLoadingSubjects, isBatchLoading = false }) {
   // ── 从后端拉取模型列表，直接使用后端 capabilities ──────────────
   const [imageModels, setImageModels] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
@@ -238,7 +239,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
   // 本地表单状态必须先于模型加载 effect 声明，避免 effect 闭包引用尚未声明的 setter。
   const [promptText, setPromptText] = useState(char?.prompt || char?.prompt_text || '');
   const [selectedModel, setSelectedModel] = useState(char?.model || char?.default_image_model || imageModels[0]?.value || 'doubao-seedream-5.0-lite');
-  const [selectedRatio, setSelectedRatio] = useState(char?.ratio || projectRatio || '16:9');
+  const [selectedRatio, setSelectedRatio] = useState(char?.ratio || '16:9');
   const [selectedResolution, setSelectedResolution] = useState(char?.resolution || '2K');
   const [genMode, setGenMode] = useState('three_view');
   const [generatedImages, setGeneratedImages] = useState([]);
@@ -625,10 +626,11 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
     }
   }, [availableResolutions, selectedResolution]);
   useEffect(() => {
+    if (availableRatios.length === 0) return;
     if (!availableRatios.includes(selectedRatio)) {
       // 模型能力联动后修正失效比例，避免选择器展示不可提交的值。
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSelectedRatio(availableRatios[0]);
+      setSelectedRatio(availableRatios.includes('16:9') ? '16:9' : availableRatios[0]);
     }
   }, [availableRatios, selectedRatio]);
 
@@ -1014,7 +1016,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', projectRatio, 
 
 // ── Main export ────────────────────────────────────────────────────────────
 
-export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onRegenerateStoryboard, onExtractSubjects, onRetryExtractSubjects, extractError = null, isExtractingSubjects = false, subjectExtractionStatusMessage = '', isStoryboardGenerated = false, initialTab = 'char', projectRatio, chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, subjectsLoading = false, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps }) {
+export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onRegenerateStoryboard, onExtractSubjects, onRetryExtractSubjects, extractError = null, isExtractingSubjects = false, subjectExtractionStatusMessage = '', isStoryboardGenerated = false, initialTab = 'char', chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, subjectsLoading = false, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps }) {
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [batchGenOpen, setBatchGenOpen] = useState(false);
@@ -1968,7 +1970,6 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       <SubjectEditorSlot
         EditorComponent={EditSubjectPanel}
         projectId={projectId}
-        projectRatio={projectRatio}
         subject={selectedChar}
         tabLabel="角色"
         refreshToken={subjectDetailRefreshToken}
@@ -1998,7 +1999,6 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       <SubjectEditorSlot
         EditorComponent={EditSubjectPanel}
         projectId={projectId}
-        projectRatio={projectRatio}
         subject={selectedScene}
         tabLabel="场景"
         refreshToken={subjectDetailRefreshToken}
@@ -2028,7 +2028,6 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       <SubjectEditorSlot
         EditorComponent={EditSubjectPanel}
         projectId={projectId}
-        projectRatio={projectRatio}
         subject={selectedProp}
         tabLabel="道具"
         refreshToken={subjectDetailRefreshToken}
@@ -2084,7 +2083,6 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       )}
 
       <BatchGenerateModal
-        projectRatio={projectRatio}
         open={batchGenOpen}
         onClose={() => setBatchGenOpen(false)}
         onConfirm={handleBatchGenerate}

@@ -14,6 +14,7 @@
 
 import { apiUploadStoryboardVideo } from '../../api/storyboard';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { mergeStoryboardMediaItems } from '../../utils/storyboardMediaDedup';
 import VideoResultCard from './VideoResultCard';
 import VideoUploadCard from './VideoUploadCard';
 
@@ -79,7 +80,7 @@ async function handleVideoUpload(file, { projectId, shotId, onSetGeneratedVideos
     if (videoUrl) {
       const normalizedUrl = normalizeImageUrl(videoUrl);
       const candidate = { url: normalizedUrl, settled: false, id: result.id || normalizedUrl, asset_id: result.asset_id || result.assetId || null, media_type: 'video', source: 'local-upload' };
-      onSetGeneratedVideos?.((prev) => [candidate, ...prev]);
+      onSetGeneratedVideos?.((prev) => mergeStoryboardMediaItems(prev, [candidate]));
       onCandidateMedia?.(candidate);
       onSettleVideo?.(normalizedUrl, null);
     }
@@ -93,6 +94,6 @@ function handleVideoAssetsSelected(assets, onSetGeneratedVideos, onCandidateMedi
     const url = normalizeImageUrl(asset.fileUrl || asset.originalUrl || asset.original_url || asset.thumbnailUrl || asset.thumbnail_url || asset.file_url || asset.url);
     return url ? { url, settled: false, id: asset.id || asset.asset_id || url, media_type: 'video', source: 'asset-library' } : null;
   }).filter(Boolean);
-  onSetGeneratedVideos?.((prev) => [...newItems, ...prev]);
+  onSetGeneratedVideos?.((prev) => mergeStoryboardMediaItems(prev, newItems));
   newItems.forEach((item) => onCandidateMedia?.(item));
 }

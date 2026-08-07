@@ -49,6 +49,7 @@ import {
 } from '../../utils/storyboardModelAdapter';
 import ReferenceMediaEditor from './ReferenceMediaEditor';
 import VideoResultsPanel from './VideoResultsPanel';
+import { mergeStoryboardMediaItems } from '../../utils/storyboardMediaDedup';
 import { GenerationModelField, GenerationOptionFields } from './GenerationParamsFields';
 import { VideoGenerationTabs, VideoSoundToggle } from './VideoGenerationControls';
 import GenerationSubmitButton from './GenerationSubmitButton';
@@ -458,9 +459,12 @@ export default function GenerateVideoPanel({
         reference_video_url: refVideos[0]?.url,
         reference_audio_url: refAudios[0]?.url,
       });
-      onSetGeneratedVideos?.((prev) =>
-        prev.map((item) => item.id === placeholder ? { ...item, url: result?.url ?? null, created_at: item.created_at || new Date().toISOString().replace('T', ' ').slice(0, 19) } : item)
-      );
+      onSetGeneratedVideos?.((prev) => mergeStoryboardMediaItems(
+        prev.map((item) => item.id === placeholder
+          ? { ...item, url: result?.url ?? null, created_at: item.created_at || new Date().toISOString().replace('T', ' ').slice(0, 19) }
+          : item),
+        [],
+      ));
       onShowToast?.('视频生成成功', 'success');
     } catch (err) {
       onSetGeneratedVideos?.((prev) => prev.filter((item) => item.id !== placeholder));

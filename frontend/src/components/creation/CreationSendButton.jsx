@@ -6,11 +6,12 @@
  *   创作输入区圆形发送按钮、加载动画、禁用提示和交互反馈
  *
  * ─── 依赖边界 ───────────────────────────────────────────────────────
- *   只通过 onClick、disabled、loading 和 disabledTooltip 接收页面状态
+ *   只通过 onClick、disabled、loading、cancelable 和 disabledTooltip 接收页面状态
  *   复用 components/ui/Button；不引用页面、API、Store 或生成编排
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离
+ *   2026-08-07  配音生成中允许再次点击按钮停止当前请求
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -38,7 +39,9 @@ function ensureThinkingStyle() {
   document.head.appendChild(style);
 }
 
-export default function CreationSendButton({ onClick, disabled = false, loading = false, disabledTooltip = '' }) {
+export default function CreationSendButton({ onClick, disabled = false, loading = false, cancelable = false, disabledTooltip = '' }) {
+  const isDisabled = disabled && !cancelable;
+  const isCancelable = cancelable && loading;
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -54,13 +57,13 @@ export default function CreationSendButton({ onClick, disabled = false, loading 
     <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0, display: 'inline-flex' }}
       onMouseEnter={() => {
         setHovered(true);
-        if (disabled && disabledTooltip && wrapRef.current) {
+        if (isDisabled && disabledTooltip && wrapRef.current) {
           setTooltipRect(wrapRef.current.getBoundingClientRect());
         }
       }}
       onMouseLeave={() => { setHovered(false); setPressed(false); setTooltipRect(null); }}
     >
-      {disabled && hovered && disabledTooltip && tooltipRect && createPortal(
+      {isDisabled && hovered && disabledTooltip && tooltipRect && createPortal(
         <div style={{
           position: 'fixed',
           zIndex: 9999,
@@ -90,14 +93,15 @@ export default function CreationSendButton({ onClick, disabled = false, loading 
         variant="accent"
         size="large"
         iconOnly
-        disabled={disabled}
-        onMouseEnter={() => !disabled && setHovered(true)}
+        disabled={isDisabled}
+        aria-label={isCancelable ? '停止配音创作' : '发送创作请求'}
+        onMouseEnter={() => !isDisabled && setHovered(true)}
         onMouseLeave={() => { setHovered(false); setPressed(false); }}
-        onMouseDown={() => !disabled && setPressed(true)}
+        onMouseDown={() => !isDisabled && setPressed(true)}
         onMouseUp={() => setPressed(false)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        onClick={disabled ? undefined : onClick}
+        onClick={isDisabled ? undefined : onClick}
         className="!w-10 !h-10 !min-w-0 !rounded-full !p-0 !bg-transparent !border-0 !shadow-none"
         contentClassName="!w-full !h-full !min-w-0 !rounded-full !p-0 !bg-transparent !text-transparent"
         style={{
@@ -107,10 +111,10 @@ export default function CreationSendButton({ onClick, disabled = false, loading 
           boxShadow: '#2DC3E133 0px 0px 12px',
           width: '40px',
           height: '40px',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          transform: disabled ? 'scale(1)' : scale,
+          cursor: isDisabled ? 'not-allowed' : 'pointer',
+          transform: isDisabled ? 'scale(1)' : scale,
           transition: 'transform 0.15s cubic-bezier(0.4,0,0.2,1), opacity 0.15s',
-          opacity: disabled ? 0.45 : 1,
+          opacity: isDisabled ? 0.45 : isCancelable ? 0.82 : 1,
           background: 'transparent',
           backgroundImage: 'none',
           border: 'none',
@@ -139,7 +143,12 @@ export default function CreationSendButton({ onClick, disabled = false, loading 
           colorBack="#00000000"
           className="rounded-full flex-1 w-full h-full [box-shadow:#34DDFFB3_0px_0px_4px_2px_inset] bg-neutral-300"
         />
-        {loading ? (
+        {isCancelable ? (
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"
+            style={{ position: 'absolute', left: '50%', top: '50%', translate: '-50% -50%' }}>
+            <rect x="5" y="5" width="8" height="8" rx="1" fill="#FFFFFF" />
+          </svg>
+        ) : loading ? (
           <div style={{ position: 'absolute', left: '50%', top: '50%', translate: '-50% -50%', display: 'flex', alignItems: 'center', gap: '3px' }}>
             {[0, 1, 2].map((i) => (
               <div key={i} className="creation-thinking-dot" style={{ width: '4px', height: '4px', borderRadius: '9999px', background: '#FFFFFF' }} />

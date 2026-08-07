@@ -740,8 +740,10 @@ export default function Home({ onGoToAdmin }) {
 
   useEffect(() => {
     const handleForceLogout = () => {
-      if (!localStorage.getItem('token')) return;
       setIsLoggedIn(false);
+      setApiConfigured(false);
+      setApiConfigOpen(false);
+      setNoModelNoticeOpen(false);
       setLoginOpen(true);
     };
 

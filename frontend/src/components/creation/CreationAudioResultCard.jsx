@@ -20,6 +20,8 @@
  * ─── 更新记录 ──────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离配音结果卡；页面通过显式 props 注入业务回调
  *   2026-07-16  复用 utils/creationFilename.js；下载副作用仍保留在结果卡
+ *   2026-08-07  配音结果卡统一使用 16:9 尺寸，并在左上角展示提示词前 10 个字
+ *                 卡片尺寸由 CreationResultState 的 240px 最小列宽网格控制，宽度随结果容器适配
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -28,17 +30,33 @@ import DotsLoading from '../DotsLoading';
 import CreationCardActionButton from './CreationCardActionButton';
 import { filenameFromPrompt } from '../../utils/creationFilename';
 import { downloadMediaUrl } from '../../utils/downloadMediaUrl';
+import { apiDownloadCreationAudio } from '../../api/creation';
+import { downloadBlob } from '../../utils/downloadBlob';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const WAVEFORM_HEIGHTS = [14, 20, 11, 18, 24, 16, 22, 10, 19, 15, 23, 12, 17, 21, 13, 18, 11, 20, 15, 22];
 
-export default function CreationAudioResultCard({ status, audioUrl, prompt, onDelete, batchMode = false, isSelected = false, onToggleSelect }) {
+export default function CreationAudioResultCard({ status, audioUrl, audioId, prompt, onDelete, batchMode = false, isSelected = false, onToggleSelect }) {
   const [hovered, setHovered] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const audioRef = useRef(null);
 
   const isDone = status === 'done' && audioUrl;
+  const promptTitle = Array.from(prompt || '').slice(0, 10).join('');
+
+  const handleDownload = async () => {
+    if (audioId) {
+      try {
+        const blob = await apiDownloadCreationAudio(audioId);
+        downloadBlob(blob, filenameFromPrompt(prompt, 'mp3'));
+        return;
+      } catch {
+        // 鉴权下载失败时回退到结果地址，避免已可播放的音频无法下载。
+      }
+    }
+    await downloadMediaUrl(audioUrl, filenameFromPrompt(prompt, 'mp3'));
+  };
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -60,6 +78,11 @@ export default function CreationAudioResultCard({ status, audioUrl, prompt, onDe
           if (batchMode && isDone) onToggleSelect?.();
         }}
       >
+        {promptTitle && (
+          <div style={{ position: 'absolute', top: '12px', left: '16px', zIndex: 1, maxWidth: 'calc(100% - 32px)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFFCC', pointerEvents: 'none' }}>
+            {promptTitle}
+          </div>
+        )}
         {status === 'loading' ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <DotsLoading size={5} color="#2DC3E1" gap={4} />
@@ -100,7 +123,7 @@ export default function CreationAudioResultCard({ status, audioUrl, prompt, onDe
           <div style={{ position: 'absolute', bottom: '8px', right: '8px', display: 'flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
             <CreationCardActionButton
               tooltip="下载"
-              onClick={() => downloadMediaUrl(audioUrl, filenameFromPrompt(prompt, 'mp3'))}
+              onClick={handleDownload}
               icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8.003 11.3V2" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 14H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /></svg>}
             />
             <CreationCardActionButton
@@ -115,7 +138,7 @@ export default function CreationAudioResultCard({ status, audioUrl, prompt, onDe
       {confirmDelete && (
         <ConfirmDialog
           title="确认删除"
-          description="删除后无法恢复，确定要删除这张图片吗？"
+          description="删除后无法恢复，确定要删除这段配音吗？"
           confirmText="删除"
           onConfirm={() => { setConfirmDelete(false); onDelete?.(); }}
           onCancel={() => setConfirmDelete(false)}

@@ -104,7 +104,7 @@ export function normalizeCreationHistoryItem(item, type) {
     ? (item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '')
     : type === 'image'
       ? (item.preview_url || item.previewUrl || item.reference_frame_url || item.referenceFrameUrl || item.thumbnail_url || item.thumbnailUrl || item.original_url || item.originalUrl || item.file_url || item.fileUrl || item.url || '')
-      : (item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || '');
+      : (item.audio_url || item.audioUrl || item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || '');
   const url = normalizeImageUrl(rawUrl) || '';
   const rawOriginalUrl = type === 'image'
     ? (item.download_url || item.downloadUrl || item.original_url || item.originalUrl || item.file_url || item.fileUrl || rawUrl)
@@ -213,6 +213,7 @@ export function normalizeCreationHistoryItem(item, type) {
       thumbnailUrl: type === 'image' ? thumbnailUrl : null,
       videoUrl: type === 'video' ? url : null,
       audioUrl: type === 'audio' ? url : null,
+      audioId: type === 'audio' ? (item.id || item.audio_id || item.audioId || null) : undefined,
       posterUrl: type === 'video' ? posterUrl : undefined,
       isFavorite: item.is_favorite ?? item.is_liked ?? item.isLiked ?? false,
     }],
@@ -267,7 +268,7 @@ export function pickCreationHistoryCacheItem(item, tab) {
 
   return {
     ...base,
-    file_url: item.file_url || item.url || item.original_url || '',
+    audio_url: item.audio_url || item.audioUrl || item.file_url || item.url || item.original_url || '',
   };
 }
 

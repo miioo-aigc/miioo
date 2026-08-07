@@ -13,6 +13,7 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离空态图标和空历史输入区
+ *   2026-08-07  空态输入卡接入配音取消回调，保留再次发送后的提示词并支持失败/取消恢复
  */
 
 function EmptyIconShell({ children }) {
@@ -116,11 +117,15 @@ export default function CreationEmptyState({
   showToast,
   activeCount = 0,
   capabilitiesMap = {},
+  isGenerating = false,
+  onCancelGeneration,
   renderInputCard,
 }) {
   const EmptyIcon = EMPTY_ICON_MAP[genType] ?? CreationEmptyIconImage;
   const inputCardProps = {
     onGenerate,
+    onCancelGeneration,
+    disabled: isGenerating,
     width: '100%',
     genType,
     onGenTypeChange,

@@ -3,14 +3,16 @@
  * @structure-index
  *
  * ─── 生成动作 ───────────────────────────────────────────────
- *   useCreationGeneration  创建创作请求、占位卡和结果卡，并处理失败清理
+ *   useCreationGeneration  创建创作请求、占位卡和结果卡，并处理失败/取消清理
+ *   cancelGeneration       取消当前配音请求并清理前端占位状态
  *
  * ─── 依赖边界 ───────────────────────────────────────────────
  *   页面通过显式参数传入 Session、Store、Toast 和并发计数动作；
- *   Hook 不读取 CreationPage 闭包，不管理页面级状态或历史加载。
+ *   Hook 不读取 CreationPage 闭包，不管理页面级状态或历史加载；
+ *   取消只中断前端请求和轮询，后端任务是否停止取决于后端取消能力。
  */
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import {
   apiCreateShot,
   apiGenerateCreation,
@@ -23,6 +25,12 @@ import {
 } from './CreationFileUtils';
 
 const PENDING_CREATION_TASKS_KEY = 'miioo_pending_tasks';
+
+function createAbortError() {
+  const error = new Error('请求已停止');
+  error.name = 'AbortError';
+  return error;
+}
 
 function getCreationTab(genType) {
   return genType === 'video' ? 'video' : genType === 'dubbing' ? 'dubbing' : 'image';
@@ -159,7 +167,7 @@ function createGenerationPlaceholder({ genId, shotId, params, countNum, isVideoG
   };
 }
 
-function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, imageDownloadUrls, isVideoGen, isDubbingGen }) {
+function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, imageDownloadUrls, audioIds, isVideoGen, isDubbingGen }) {
   const genMeta = {
     prompt: params.prompt || '',
     model: params.model || '',
@@ -206,13 +214,14 @@ function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, i
     lastFrameUrl: result.lastFrameUrl || undefined,
     createdAt: genMeta.createdAt,
     cards: mediaUrls.map((url, index) => ({
-      id: null,
+      id: isDubbingGen ? (audioIds?.[index] || null) : null,
       type: isVideoGen ? 'video' : isDubbingGen ? 'audio' : 'image',
       status: 'done',
       imageUrl: isDubbingGen ? null : (isVideoGen ? null : url),
       originalUrl: !isVideoGen && !isDubbingGen ? (imageDownloadUrls?.[index] || url) : undefined,
       videoUrl: isVideoGen ? url : null,
       audioUrl: isDubbingGen ? url : null,
+      audioId: isDubbingGen ? (audioIds?.[index] || null) : undefined,
     })),
   };
 }
@@ -229,9 +238,23 @@ export function useCreationGeneration({
   decrementActive,
   showToast,
 }) {
-  return useCallback(async (params) => {
-    setGenerating(true);
+  const activeGenerationRef = useRef(null);
+
+  const generateCreation = useCallback(async (params) => {
+    const controller = new AbortController();
+    const currentTab = activeTab;
     const genType = params.genType || 'image';
+    const request = {
+      controller,
+      currentTab,
+      genType,
+      genId: null,
+      params,
+      cancelled: false,
+    };
+    activeGenerationRef.current = request;
+
+    setGenerating(true);
     incrementActive(getCreationTab(genType));
     const countNum = parseInt(params.count, 10) || 1;
     const isVideoGen = genType === 'video';
@@ -250,17 +273,30 @@ export function useCreationGeneration({
           title: `${isVideoGen ? '视频' : '图片'} - ${timestamp}`,
           prompt: params.prompt || undefined,
           duration: isVideoGen ? (parseInt(params.videoDuration, 10) || 5) : undefined,
-        });
+        }, { signal: controller.signal });
         shotId = shot.id;
         params.session_id = sessionIdRef.current;
         params.shot_id = shotId;
-      } catch {
+      } catch (error) {
+        if (error?.name === 'AbortError' || controller.signal.aborted) {
+          request.cancelled = true;
+        }
         // shot creation fails silently; generation still proceeds
       }
     }
 
+    if (request.cancelled || controller.signal.aborted) {
+      params.onCancel?.();
+      decrementActive(getCreationTab(genType));
+      if (activeGenerationRef.current === request) {
+        activeGenerationRef.current = null;
+        setGenerating(false);
+      }
+      return { success: false };
+    }
+
     const genId = `gen-${Date.now()}`;
-    const currentTab = activeTab;
+    request.genId = genId;
     addGeneration(currentTab, createGenerationPlaceholder({
       genId,
       shotId,
@@ -272,15 +308,21 @@ export function useCreationGeneration({
 
     try {
       const result = await apiGenerateCreation(params, {
-        onTaskCreated: ({ taskId }) => persistPendingTask(createPendingTaskSnapshot({
-          taskId,
-          genId,
-          shotId,
-          tab: currentTab,
-          params,
-        })),
+        signal: controller.signal,
+        onTaskCreated: ({ taskId }) => {
+          if (request.cancelled || controller.signal.aborted) return;
+          persistPendingTask(createPendingTaskSnapshot({
+            taskId,
+            genId,
+            shotId,
+            tab: currentTab,
+            params,
+          }));
+        },
       });
+      if (request.cancelled || controller.signal.aborted) throw createAbortError();
       const rawMediaUrls = isVideoGen ? (result.videos ?? []) : isDubbingGen ? (result.audios ?? []) : (result.images ?? []);
+      const audioIds = isDubbingGen ? (result.audioIds || []) : [];
       let mediaUrls;
       let imageDownloadUrls = [];
       if (!isVideoGen && !isDubbingGen) {
@@ -316,6 +358,7 @@ export function useCreationGeneration({
         result,
         mediaUrls,
         imageDownloadUrls,
+        audioIds,
         isVideoGen,
         isDubbingGen,
       }));
@@ -337,14 +380,22 @@ export function useCreationGeneration({
       removePendingTask(genId);
       return { success: true };
     } catch (error) {
+      const cancelled = request.cancelled || error?.name === 'AbortError';
       removePendingTask(genId);
-      showToast('error', error?.message || '生成失败，请稍后重试');
       storeDeleteGeneration(currentTab, genId);
-      params.onFail?.(params.prompt);
+      if (cancelled) {
+        params.onCancel?.();
+      } else {
+        showToast('error', error?.message || '生成失败，请稍后重试');
+        params.onFail?.(params.prompt);
+      }
       return { success: false };
     } finally {
-      setGenerating(false);
       decrementActive(getCreationTab(genType));
+      if (activeGenerationRef.current === request) {
+        activeGenerationRef.current = null;
+        setGenerating(false);
+      }
     }
   }, [
     activeTab,
@@ -358,4 +409,17 @@ export function useCreationGeneration({
     storeDeleteGeneration,
     storeUpdateCardIds,
   ]);
+
+  const cancelGeneration = useCallback(() => {
+    const request = activeGenerationRef.current;
+    if (!request || request.genType !== 'dubbing') return false;
+
+    request.cancelled = true;
+    request.controller.abort();
+    removePendingTask(request.genId);
+    if (request.genId) storeDeleteGeneration(request.currentTab, request.genId);
+    return true;
+  }, [storeDeleteGeneration]);
+
+  return { generateCreation, cancelGeneration };
 }

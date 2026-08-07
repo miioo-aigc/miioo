@@ -79,8 +79,23 @@ export async function refreshAccessToken() {
   return refreshPromise;
 }
 
+async function ensureAccessToken() {
+  if (getToken()) return true;
+  return refreshAccessToken();
+}
+
+function createUnauthorizedError() {
+  const error = new Error('Unauthorized');
+  error.status = 401;
+  return error;
+}
+
 // 带自动刷新的 fetch，供所有需要鉴权的 API 使用
 export async function authFetch(url, options = {}) {
+  if (!(await ensureAccessToken())) {
+    throw createUnauthorizedError();
+  }
+
   // 克隆 FormData，防止首次 fetch 消费后 401 重试时 body 为空
   const formClone = options.body instanceof FormData ? cloneFormData(options.body) : null;
   let res;
@@ -113,6 +128,10 @@ export async function authFetch(url, options = {}) {
 
 // 不带 Content-Type 的 authFetch，用于 FormData 上传
 export async function authFetchForm(url, options = {}) {
+  if (!(await ensureAccessToken())) {
+    throw createUnauthorizedError();
+  }
+
   // 克隆 FormData，防止首次 fetch 消费后 401 重试时 body 为空
   const formClone = options.body instanceof FormData ? cloneFormData(options.body) : null;
   const token = getToken();
@@ -155,6 +174,10 @@ export async function authFetchForm(url, options = {}) {
 // Streaming fetch — 与 authFetch 相同的鉴权 + 401 重试逻辑，
 // 但直接返回 Response 对象，由调用方自行读取流式 body
 export async function authFetchStream(url, options = {}) {
+  if (!(await ensureAccessToken())) {
+    throw createUnauthorizedError();
+  }
+
   let res;
   try {
     res = await fetch(url, withAuth(options));

@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, u
 import Toggle from './Toggle';
 import ConfirmDialog from './ConfirmDialog';
 import { apiOneClickSetup, apiCreateModel, apiCreateProvider, apiListModels, apiUpdateModel, apiDeleteModel, apiGetBanner, apiListProviders, apiTestConnection, apiUpdateProvider, apiGetCardVisibility } from '../api/config';
+import { getToken } from '../api/request.js';
 // 全局 API 卡片背景图（本地打包，保证离线可用）
 import globalApiBg from '../assets/api-global-bg.png';
 
@@ -969,12 +970,16 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   }, []);
 
   const initializeFromBackend = useCallback(() => {
+    if (!getToken()) return;
+
     Promise.all([
       apiListProviders().catch(() => []),
       apiListModels().catch(() => []),
       apiGetBanner().catch(() => null),
       apiGetCardVisibility().catch(() => []),
     ]).then(([providersData, allModels, bannerResult, cardVisibility]) => {
+      if (!getToken()) return;
+
       if (bannerResult) setBannerData(bannerResult);
 
       const rawList = Array.isArray(providersData) ? providersData : (providersData?.items ?? providersData?.providers ?? []);
@@ -1117,7 +1122,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
 
   // 加载广告位数据和 provider 信息
   useEffect(() => {
-    if (!open) return;
+    if (!open || !getToken()) return;
     initializeFromBackend();
   }, [open, initializeFromBackend]);
 
@@ -1745,7 +1750,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
       case 'onelink-config':
         return (
           <ConfigModelModal
-            title="配置OneLinkAI API"
+            title="配置OneLinkAI API Key"
             apiValue={state.onelinkApiKey}
             apiPlaceholder="输入你的API"
             onApiChange={(event) => {
@@ -1844,7 +1849,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
           zIndex={150}
         />
       )}
-      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-surface-overlay p-[24px] backdrop-blur-[20px]" onClick={closeMain}>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-surface-overlay p-[24px] backdrop-blur-[20px]">
         <div className="relative overflow-hidden rounded-2xl" onClick={(event) => event.stopPropagation()}>
           <MainModal
             configured={state.mainConfigured}

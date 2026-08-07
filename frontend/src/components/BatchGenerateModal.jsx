@@ -16,7 +16,7 @@
  *
  * ─── 副作用与业务回调 ───────────────────────────────────────────────
  *   模型列表请求                     打开弹窗时读取 image 模型能力
- *   弹窗重置                         打开弹窗时恢复默认模型和项目比例
+ *   弹窗重置                         打开弹窗时恢复默认模型和 16:9 画面比例
  *   ESC 关闭                         弹窗打开时监听 Escape
  *   handleModelChange                切换模型并校正分辨率和比例
  *   handleResolutionChange           切换分辨率并校正比例
@@ -29,6 +29,7 @@
  *   2026-07-22  批量生成角色弹窗默认生成方式改为多视图
  *   2026-07-22  批量生成进行中允许通过关闭和取消按钮退出弹窗
  *   2026-07-23  批量生成弹窗默认选中“仅生成未定稿”
+ *   2026-08-07  批量生成弹窗默认画面比例改为 16:9，不再继承项目画幅
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 // 模型能力直接从后端 capabilities 获取
@@ -42,9 +43,9 @@ const ACCENT_BUTTON_GRADIENT =
 
 // 本地兜底模型列表（后端不可用时使用）
 const FALLBACK_MODELS = [
-  { value: 'doubao-seedream-5.0-lite', label: 'Doubao-Seed-5.0-Lite', resolutions: ['2K','3K','4K'], resolutionSizeMap: {} },
-  { value: 'doubao-seedream-4.5', label: 'Doubao-Seed-4.5', resolutions: ['2K','4K'], resolutionSizeMap: {} },
-  { value: 'doubao-seedream-4.0', label: 'Doubao-Seed-4.0', resolutions: ['1K','2K','4K'], resolutionSizeMap: {} },
+  { value: 'doubao-seedream-5.0-lite', label: 'Doubao-Seed-5.0-Lite', resolutions: ['2K','3K','4K'], resolutionSizeMap: {}, ratios: ['1:1', '16:9', '9:16', '4:3', '3:4'] },
+  { value: 'doubao-seedream-4.5', label: 'Doubao-Seed-4.5', resolutions: ['2K','4K'], resolutionSizeMap: {}, ratios: ['1:1', '16:9', '9:16', '4:3', '3:4'] },
+  { value: 'doubao-seedream-4.0', label: 'Doubao-Seed-4.0', resolutions: ['1K','2K','4K'], resolutionSizeMap: {}, ratios: ['1:1', '16:9', '9:16', '4:3', '3:4'] },
 ];
 
 const GENERATION_MODES = [
@@ -103,7 +104,7 @@ function RadioGroup({ label, value, options, onChange }) {
   );
 }
 
-export default function BatchGenerateModal({ open, onClose, onConfirm, generating = false, projectRatio, activeTab = 'char' }) {
+export default function BatchGenerateModal({ open, onClose, onConfirm, generating = false, activeTab = 'char' }) {
   // ── 从后端拉取模型列表，与本地能力表合并 ──────────────────────
   const [modelList, setModelList] = useState(FALLBACK_MODELS);
   const [modelsLoading, setModelsLoading] = useState(true);
@@ -140,7 +141,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
 
   const defaultModel = modelList.find(m => m.is_default) || modelList[0];
   const [model, setModel] = useState(defaultModel?.value || '');
-  const [ratio, setRatio] = useState(projectRatio || '16:9');
+  const [ratio, setRatio] = useState('16:9');
   const [resolution, setResolution] = useState('2K');
   const [mode, setMode] = useState('three_view');
   const [onlyUndrafted, setOnlyUndrafted] = useState(true);
@@ -211,6 +212,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
   }, [model, ratio, modelList]);
 
   const resetForm = useCallback(() => {
+    setRatio('16:9');
     const first = modelList.find(m => m.is_default) || modelList[0];
     if (!first) return;
     setModel(first.value);
@@ -220,18 +222,17 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
       const resRatios = first.resolutionSizeMap?.[resList[0]];
       if (resRatios) {
         const ratioKeys = Object.keys(resRatios);
-        if (projectRatio && ratioKeys.includes(projectRatio)) {
-          setRatio(projectRatio);
-        } else {
-          setRatio(ratioKeys[0] || '16:9');
-        }
+        const availableRatios = ratioKeys.length > 0 ? ratioKeys : (first.ratios || []);
+        setRatio(availableRatios.includes('16:9') ? '16:9' : (availableRatios[0] || '16:9'));
+      } else if (first.ratios?.length) {
+        setRatio(first.ratios.includes('16:9') ? '16:9' : first.ratios[0]);
       }
     }
     setMode('three_view');
     setOnlyUndrafted(true);
-  }, [modelList, projectRatio]);
+  }, [modelList]);
 
-  // 每次打开弹窗时，重置为第一个模型的默认值（比例优先用项目比例）
+  // 每次打开弹窗时，重置为第一个模型的默认值，画面比例优先使用 16:9。
   useEffect(() => {
     if (!open) return;
     // 弹窗打开和模型异步加载完成时，必须同步恢复原有受控表单初始值。

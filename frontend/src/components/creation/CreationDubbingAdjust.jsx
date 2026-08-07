@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { FONT } from './CreationSelectorPrimitives';
-import { DEFAULT_EMOTIONS } from './CreationSelectorConstants';
+import { DEFAULT_EMOTIONS, getEmotionDisplayLabel } from './CreationSelectorConstants';
 
 // ─── DubbingAdjust — 配音语速 + 情绪调节 ───────────────────────────────────
 /* EQ icon from Paper design YFJ-1 */
@@ -95,7 +95,7 @@ export function DubbingAdjust({ speed, emotion, onSpeedChange, onEmotionChange, 
                   return (
                     <button key={em} type="button" onClick={() => onEmotionChange?.(isSelected ? '' : em)}
                       style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 12px', borderRadius: '4px', border: 'none', background: isSelected ? '#FFFFFF14' : '#FFFFFF0D', boxShadow: isSelected ? '#FFFFFF33 0px 0px 0px 1px inset' : 'none', color: isSelected ? '#FFFFFF' : '#FFFFFF66', fontFamily: FONT, fontSize: '12px', lineHeight: '16px', cursor: 'pointer', transition: 'background 0.15s, box-shadow 0.15s, color 0.15s' }}>
-                      {em}
+                      {getEmotionDisplayLabel(em)}
                     </button>
                   );
                 })}

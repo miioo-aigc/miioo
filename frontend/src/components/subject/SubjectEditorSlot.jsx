@@ -5,7 +5,6 @@
 export default function SubjectEditorSlot({
   EditorComponent,
   projectId,
-  projectRatio,
   subject,
   tabLabel,
   refreshToken,
@@ -20,7 +19,6 @@ export default function SubjectEditorSlot({
     <EditorComponent
       key={subject.id}
       projectId={projectId}
-      projectRatio={projectRatio}
       char={subject}
       tabLabel={tabLabel}
       refreshToken={refreshToken}

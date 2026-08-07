@@ -1,4 +1,43 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
+const CREATION_DEFAULT_POLL_TIMEOUT_MS = 1800000;
+const CREATION_AUDIO_POLL_TIMEOUT_MS = 600000;
+const CREATION_POLL_INTERVAL_MS = 3000;
+
+function createAbortError() {
+  const error = new Error('请求已停止');
+  error.name = 'AbortError';
+  return error;
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw createAbortError();
+}
+
+function isAbortError(error) {
+  return error?.name === 'AbortError';
+}
+
+function waitForPollInterval(signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortError());
+      return;
+    }
+
+    let timer;
+    const cleanup = () => signal?.removeEventListener('abort', handleAbort);
+    const handleAbort = () => {
+      clearTimeout(timer);
+      cleanup();
+      reject(createAbortError());
+    };
+    timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, CREATION_POLL_INTERVAL_MS);
+    signal?.addEventListener('abort', handleAbort, { once: true });
+  });
+}
 
 function getImageUrls(image) {
   const previewUrl = image?.preview_url
@@ -22,34 +61,44 @@ function getImageUrls(image) {
  * 结构索引（api/creation.js）
  * ─── 视频生成（apiGenerateCreation）────────────────────────────────────
  *   [函数] apiGenerateCreation()                      入口：按 genType 分流 图片/视频/配音
- *   [上传] 参考文件分类循环                            L683  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
+ *   [上传] 参考文件分类循环                            L734–L787  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
  *                                                        （图片 asset_id 兜底：assetId || backendId || asset_id）
- *   [上传] 首/尾帧上传                                 L730  仅首尾帧模式使用
- *   [分支] kling v3 omni 生成模式推断                  L908  hasRefMedia 初值 'full' → 被本分支覆盖
+ *   [分支] 配音同步/异步生成与任务轮询                   L819–L930  短文本直取音频，长文本轮询任务
+ *                                                        配音任务轮询最多 600 秒，可通过 AbortSignal 停止
+ *   [上传] 首/尾帧上传                                 L789–L817  仅视频首尾帧模式使用
+ *   [分支] kling v3 omni 生成模式推断                  L998–L1025  hasRefMedia → supported_generation_modes
  *                                                        generation_mode 取自 supported_generation_modes，
  *                                                        不再发 reference_mode='full'（避免 400），改发 '' 保留键名
  *                                                        素材映射：图→multi_shot / 视频→video_ref / 首尾帧→first_frame|start_end / 无图有媒→first_frame / 纯文→text_to_video
- *   [组装] @ 数字资产绑定 attachments                   L937  CreationAssetBinding[]，source:'mention'
- *   [组装] 视频生成请求体 body                          L964  generation_mode / reference_mode / multi_shot / attachments / reference_image_asset_ids / first_frame_url
- *   [日志] [video-generate] 调试日志                    L997  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
+ *   [组装] @ 数字资产绑定 attachments                   L1027–L1056  CreationAssetBinding[]，source:'mention'
+ *   [组装] 视频生成请求体 body                          L1057–L1089  generation_mode / reference_mode / multi_shot / attachments / reference_image_asset_ids / first_frame_url
+ *   [日志] [video-generate] 调试日志                    L1090  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-13  video-kling-v3-omni「全能参考」修复：不再发 reference_mode='full'（会触发后端 400），
  *               改按实际上传素材推断 supported_generation_modes；参考图走 attachments + reference_image_asset_ids（asset_id 兜底到 asset.id）。
+ *   2026-08-07  修复同步配音将音频记录 id 误当异步任务 id，避免错误请求配音任务轮询接口
+ *   2026-08-07  配音轮询超时收紧为 600 秒，并支持 AbortSignal 中断上传、生成请求和轮询
+ *   2026-08-07  配音生成支持再次点击发送按钮停止前端请求和轮询；后端任务取消能力仍由后端接口决定
  */
 
 // ── 通用任务轮询（供刷新后恢复使用，支持图片/视频/音频）───────────────────
 
-export async function apiPollCreationTask(type, taskId, timeoutMs = 1800000) {
+export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = {}) {
   const start = Date.now();
+  const effectiveTimeoutMs = timeoutMs ?? (type === 'audio'
+    ? CREATION_AUDIO_POLL_TIMEOUT_MS
+    : CREATION_DEFAULT_POLL_TIMEOUT_MS);
   const pollUrl = type === 'image'
     ? `${BASE}/api/creation/tasks/${taskId}`
     : type === 'audio'
       ? `${BASE}/api/creation/audios/tasks/${taskId}`
       : `${BASE}/api/creation/videos/tasks/${taskId}`;
 
-  while (Date.now() - start < timeoutMs) {
-    await new Promise((r) => setTimeout(r, 3000));
-    const pollRes = await authFetch(pollUrl);
+  while (Date.now() - start < effectiveTimeoutMs) {
+    await waitForPollInterval(signal);
+    if (Date.now() - start >= effectiveTimeoutMs) break;
+    throwIfAborted(signal);
+    const pollRes = await authFetch(pollUrl, { signal });
     const pollData = await pollRes.json();
     const status = pollData.status;
 
@@ -71,6 +120,7 @@ export async function apiPollCreationTask(type, taskId, timeoutMs = 1800000) {
         const audioUrl = result.audio_url || result.audioUrl || pollData.audio_url || pollData.audioUrl;
         return {
           audios: audioUrl ? [audioUrl] : [],
+          audioIds: [result.id || result.audio_id || result.audioId || pollData.id || pollData.audio_id].filter(Boolean),
         };
       } else {
         const result = pollData.result;
@@ -102,7 +152,7 @@ export async function apiPollCreationTask(type, taskId, timeoutMs = 1800000) {
       throw err;
     }
   }
-  throw new Error('Generation timeout');
+  throw new Error(type === 'audio' ? '配音生成超过600秒，已停止轮询' : 'Generation timeout');
 }
 
 
@@ -168,11 +218,12 @@ export async function apiListShots(sessionId) {
   return res.json();
 }
 
-export async function apiCreateShot(sessionId, data) {
+export async function apiCreateShot(sessionId, data, { signal } = {}) {
   const res = await authFetch(`${BASE}/api/creation/sessions/${sessionId}/shots`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
+    signal,
   });
   return res.json();
 }
@@ -394,11 +445,12 @@ export async function apiDownloadCreationVideo(videoId) {
 
 // ── 创作音频 ──────────────────────────────────────────────────────────────────
 
-export async function apiGenerateCreationAudio(data) {
+export async function apiGenerateCreationAudio(data, { signal } = {}) {
   const res = await authFetch(`${BASE}/api/creation/audios/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
+    signal,
   });
   return res.json();
 }
@@ -524,7 +576,7 @@ function safeFileName(file) {
   return safeBase + ext;
 }
 
-export async function apiUploadCreationImage({ file, category, asset_name, session_id, shot_id, project_id }) {
+export async function apiUploadCreationImage({ file, category, asset_name, session_id, shot_id, project_id, signal }) {
   const params = new URLSearchParams();
   if (category) params.append('category', category);
   if (asset_name) params.append('asset_name', asset_name);
@@ -536,11 +588,12 @@ export async function apiUploadCreationImage({ file, category, asset_name, sessi
   const res = await authFetch(`${BASE}/api/creation/images/upload?${params.toString()}`, {
     method: 'POST',
     body: form,
+    signal,
   });
   return res.json();
 }
 
-export async function apiUploadCreationVideo({ file, category, asset_name, session_id, shot_id, project_id }) {
+export async function apiUploadCreationVideo({ file, category, asset_name, session_id, shot_id, project_id, signal }) {
   const params = new URLSearchParams();
   if (category) params.append('category', category);
   if (asset_name) params.append('asset_name', asset_name);
@@ -552,11 +605,12 @@ export async function apiUploadCreationVideo({ file, category, asset_name, sessi
   const res = await authFetch(`${BASE}/api/creation/videos/upload?${params.toString()}`, {
     method: 'POST',
     body: form,
+    signal,
   });
   return res.json();
 }
 
-export async function apiUploadCreationAudio({ file, category, asset_name, session_id, shot_id, project_id }) {
+export async function apiUploadCreationAudio({ file, category, asset_name, session_id, shot_id, project_id, signal }) {
   const params = new URLSearchParams();
   if (category) params.append('category', category);
   if (asset_name) params.append('asset_name', asset_name);
@@ -568,6 +622,7 @@ export async function apiUploadCreationAudio({ file, category, asset_name, sessi
   const res = await authFetch(`${BASE}/api/creation/audios/upload?${params.toString()}`, {
     method: 'POST',
     body: form,
+    signal,
   });
   return res.json();
 }
@@ -631,16 +686,22 @@ export async function apiPollVideoTask(taskId, timeoutMs = 1800000) {
 
 // ── Legacy：apiGenerateCreation（兼容旧调用，内部拆分图片/视频分支）──────────
 
-export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
+export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}) {
   const isDubbing = params.genType === 'dubbing';
   const isVideo = params.genType === 'video';
 
   // ── 内部：轮询任务 ──────────────────────────────────────────────────────
-  async function pollTask(pollUrl, extractFn, timeoutMs = 1800000) {
+  async function pollTask(
+    pollUrl,
+    extractFn,
+    timeoutMs = isDubbing ? CREATION_AUDIO_POLL_TIMEOUT_MS : CREATION_DEFAULT_POLL_TIMEOUT_MS,
+  ) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-      await new Promise((r) => setTimeout(r, 3000));
-      const pollRes = await authFetch(pollUrl);
+      await waitForPollInterval(signal);
+      if (Date.now() - start >= timeoutMs) break;
+      throwIfAborted(signal);
+      const pollRes = await authFetch(pollUrl, { signal });
       const pollData = await pollRes.json();
       const status = pollData.status;
       if (status === 'done' || status === 'completed' || status === 'success' || status === 'partial') {
@@ -663,8 +724,10 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
         throw err;
       }
     }
-    throw new Error('Generation timeout');
+    throw new Error(isDubbing ? '配音生成超过600秒，已停止轮询' : 'Generation timeout');
   }
+
+  throwIfAborted(signal);
 
   // ── 上传参考文件，拿到 URL / asset_id ──────────────────────────────────
   const uploadContext = {
@@ -707,33 +770,39 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
     const isAud = mime.startsWith('audio/');
     try {
       if (isVid) {
-        const result = await apiUploadCreationVideo({ file: f, category: 'reference', ...uploadContext });
+        const result = await apiUploadCreationVideo({ file: f, category: 'reference', ...uploadContext, signal });
         const url = result.uploaded_url || result.uploadedUrl || '';
         if (url) uploadedRefVideoUrl = url;
       } else if (isAud) {
-        const result = await apiUploadCreationAudio({ file: f, category: 'reference', ...uploadContext });
+        const result = await apiUploadCreationAudio({ file: f, category: 'reference', ...uploadContext, signal });
         const url = result.uploaded_url || result.uploadedUrl || '';
         if (url) uploadedRefAudioUrl = url;
       } else {
         // 图片
-        const result = await apiUploadCreationImage({ file: f, category: 'reference', ...uploadContext });
+        const result = await apiUploadCreationImage({ file: f, category: 'reference', ...uploadContext, signal });
         const url = result.uploaded_url || result.uploadedUrl || '';
         if (url) refUrls.push(url);
         // 兜底取 asset_id：优先顶层（CreationImageUploadResponse.asset_id），再兜底 image.asset_id
         const assetId = result?.asset_id || result?.image?.asset_id;
         if (assetId) refAssetIds.push(assetId);
       }
-    } catch { /* 单个文件上传失败不阻塞整体 */ }
+    } catch (error) {
+      if (isAbortError(error)) throw error;
+      /* 单个文件上传失败不阻塞整体 */
+    }
   }
 
   // 上传首帧 / 尾帧（图片），用于视频生成
   let firstFrameUrl, lastFrameUrl, firstFrameAssetId, lastFrameAssetId;
   if (params.firstFrameFile instanceof File) {
     try {
-      const r = await apiUploadCreationImage({ file: params.firstFrameFile, category: 'reference', ...uploadContext });
+      const r = await apiUploadCreationImage({ file: params.firstFrameFile, category: 'reference', ...uploadContext, signal });
       firstFrameUrl = r.uploaded_url || r.uploadedUrl || undefined;
       firstFrameAssetId = r.asset_id || undefined;
-    } catch { /* 单个首帧上传失败时保留后续生成流程 */ }
+    } catch (error) {
+      if (isAbortError(error)) throw error;
+      /* 单个首帧上传失败时保留后续生成流程 */
+    }
   } else if (params.firstFrameFile && params.firstFrameFile.url) {
     // 资产库选择的首帧：已有 URL，无需上传
     firstFrameUrl = params.firstFrameFile.url;
@@ -741,10 +810,13 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
   }
   if (params.lastFrameFile instanceof File) {
     try {
-      const r = await apiUploadCreationImage({ file: params.lastFrameFile, category: 'reference', ...uploadContext });
+      const r = await apiUploadCreationImage({ file: params.lastFrameFile, category: 'reference', ...uploadContext, signal });
       lastFrameUrl = r.uploaded_url || r.uploadedUrl || undefined;
       lastFrameAssetId = r.asset_id || undefined;
-    } catch { /* 单个尾帧上传失败时保留后续生成流程 */ }
+    } catch (error) {
+      if (isAbortError(error)) throw error;
+      /* 单个尾帧上传失败时保留后续生成流程 */
+    }
   } else if (params.lastFrameFile && params.lastFrameFile.url) {
     // 资产库选择的尾帧：已有 URL，无需上传
     lastFrameUrl = params.lastFrameFile.url;
@@ -763,10 +835,13 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       }
       if (!(f instanceof File)) continue;
       try {
-        const result = await apiUploadCreationAudio({ file: f, category: 'reference', ...uploadContext });
+        const result = await apiUploadCreationAudio({ file: f, category: 'reference', ...uploadContext, signal });
         const url = result.uploaded_url || result.uploadedUrl || '';
         if (url) referenceAudioUrl = url;
-      } catch { /* 单个文件上传失败不阻塞整体 */ }
+      } catch (error) {
+        if (isAbortError(error)) throw error;
+        /* 单个文件上传失败不阻塞整体 */
+      }
     }
     const dubbingBody = {
       text: params.prompt || params.text,
@@ -774,7 +849,7 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
       model: params.model || undefined,
       speed: params.speed ?? 1.0,
       emotion: params.emotion || undefined,
-      voice_id: params.voice_id || undefined,
+      voice_id: params.voice_id || params.voiceId || undefined,
       reference_audio_url: referenceAudioUrl || undefined,
       session_id: uploadContext.session_id,
       shot_id: uploadContext.shot_id,
@@ -796,33 +871,58 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dubbingBody),
+        signal,
       });
       const asyncData = await asyncRes.json();
-      const taskId = asyncData.task_id || asyncData.id;
+      const taskId = asyncData.task_id || asyncData.taskId || asyncData.id;
       if (!taskId) throw new Error('No task_id returned');
 
       onTaskCreated?.({ taskId, params });
 
-      const { audios } = await pollTask(
+      const { audios, audioIds } = await pollTask(
         `${BASE}/api/creation/audios/tasks/${taskId}`,
         (pollData) => {
           const result = pollData.result;
           if (!result) return { audios: [] };
+          const audioUrl = result.audio_url || result.audioUrl || pollData.audio_url || pollData.audioUrl;
           return {
-            audios: [result.audio_url || result.audioUrl],
+            audios: audioUrl ? [audioUrl] : [],
+            audioIds: [result.id || result.audio_id || result.audioId || pollData.id || pollData.audio_id].filter(Boolean),
           };
         },
       );
-      return { taskId, audios };
+      return { taskId, audios, audioIds };
     }
 
-    const genData = await apiGenerateCreationAudio(dubbingBody);
-    const taskId = genData.task_id || genData.id;
+    const genData = await apiGenerateCreationAudio(dubbingBody, { signal });
+    const audioUrl = typeof genData === 'string'
+      ? genData
+      : genData?.audio_url
+        || genData?.audioUrl
+        || genData?.preview_url
+        || genData?.previewUrl
+        || genData?.download_url
+        || genData?.downloadUrl
+        || genData?.result?.audio_url
+        || genData?.result?.audioUrl;
+    if (audioUrl) return {
+      audios: [audioUrl],
+      audioIds: [
+        genData?.id,
+        genData?.audio_id,
+        genData?.audioId,
+        genData?.result?.id,
+        genData?.result?.audio_id,
+        genData?.result?.audioId,
+      ].filter(Boolean),
+    };
+
+    const taskId = genData?.task_id || genData?.taskId;
     if (!taskId) throw new Error('No task_id returned');
 
     onTaskCreated?.({ taskId, params });
 
-    const { audios } = await pollTask(
+    const { audios, audioIds } = await pollTask(
       `${BASE}/api/creation/audios/tasks/${taskId}`,
       (pollData) => {
         const result = pollData.result;
@@ -830,10 +930,11 @@ export async function apiGenerateCreation(params, { onTaskCreated } = {}) {
         const audioUrl = result.audio_url || result.audioUrl || pollData.audio_url || pollData.audioUrl;
         return {
           audios: audioUrl ? [audioUrl] : [],
+          audioIds: [result.id || result.audio_id || result.audioId || pollData.id || pollData.audio_id].filter(Boolean),
         };
       },
     );
-    return { taskId, audios };
+    return { taskId, audios, audioIds };
   }
 
   // ── 图片生成 ────────────────────────────────────────────────────────────

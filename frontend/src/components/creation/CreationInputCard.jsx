@@ -6,9 +6,9 @@
  * 页面继续负责生成请求、任务轮询、缓存和全局状态写回。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   InputCard 状态与 Hook 接线                         L28–L179
- *   输入预填充、素材选择和失败恢复                     L181–L430
- *   CreationInputSurface 组合                           L432–L525
+ *   InputCard 状态与 Hook 接线                         L30–L181
+ *   输入预填充、素材选择和失败/取消恢复                 L183–L437
+ *   CreationInputSurface 组合                           L439–L538
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -27,7 +27,7 @@ import {
 } from './CreationFileUtils';
 
 // ─── InputCard ────────────────────────────────────────────────────────────────
-function InputCard({ onGenerate, width = '800px', disabled = false, genType, onGenTypeChange,
+function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled = false, genType, onGenTypeChange,
   model, onModelChange, modelOptions = [], creationParams, prefillVersion = 0, prefillData = null, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {} }) {
   const [liveMaterialModalOpen, setLiveMaterialModalOpen] = useState(false);
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
@@ -148,8 +148,9 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     previousGenTypeRef.current = genType;
     const draft = draftsRef.current[genType];
     if (draft) {
-      restoreContent({ html: draft.html, text: draft.text });
-      replaceFiles(draft.files || []);
+      const draftFiles = draft.files || [];
+      restoreContent({ html: draft.html, text: draft.text, restoreFiles: draftFiles });
+      replaceFiles(draftFiles);
       setFirstFrameFile(draft.firstFrameFile || null);
       setLastFrameFile(draft.lastFrameFile || null);
       if (draft.refMode && genType === 'video') setRefMode(draft.refMode);
@@ -326,6 +327,24 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
   const concurrentLimit = genType === 'dubbing' ? 5 : 10;
   const atConcurrentLimit = activeCount >= concurrentLimit;
   const canSend = !disabled && !atConcurrentLimit && (hasContent || files.length > 0 || firstFrameFile || lastFrameFile || (genType === 'dubbing' && selectedVoiceId));
+  const isDubbingGenerating = genType === 'dubbing' && disabled;
+
+  const restoreSavedInput = () => {
+    const backup = savedContentRef.current;
+    restoreContent({
+      html: backup.html,
+      text: backup.text,
+      restoreFiles: savedContentRef.current.files || files,
+    });
+    const savedFiles = savedContentRef.current.files || [];
+    replaceFiles(savedFiles);
+    setFirstFrameFile(savedContentRef.current.firstFrameFile || null);
+    setLastFrameFile(savedContentRef.current.lastFrameFile || null);
+    if (backup.dubbingSpeed !== undefined) setDubbingSpeed(backup.dubbingSpeed);
+    if (backup.dubbingEmotion !== undefined) setDubbingEmotion(backup.dubbingEmotion);
+    setSelectedVoiceId(backup.voiceId || '');
+    setSelectedVoiceName(backup.voiceName || '');
+  };
 
   const handleSend = async () => {
     if (!canSend) return;
@@ -335,6 +354,9 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
     savedContentRef.current = {
       html: savedHTML,
       text: currentText,
+      files: savedFiles,
+      firstFrameFile,
+      lastFrameFile,
       voiceId: selectedVoiceId || "",
       voiceName: selectedVoiceName || "",
       dubbingSpeed,
@@ -380,25 +402,26 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
       ...(genType === 'dubbing' ? { speed: dubbingSpeed, emotion: dubbingEmotion, voiceId: selectedVoiceId, voiceName: selectedVoiceName } : {}),
       files: savedFiles.filter(f => !f.isLiveMaterial),
       onFail: (fallbackPrompt) => {
-        const backup = savedContentRef.current;
         // 失败时回退输入框内容（含标签 HTML）和附件
-        restoreContent({
-          html: backup.html,
-          text: backup.text,
-          fallback: fallbackPrompt,
-          restoreFiles: savedFiles,
-        });
+        restoreContent({ html: savedHTML, text: currentText, fallback: fallbackPrompt, restoreFiles: savedFiles });
         replaceFiles(savedFiles);
         setFirstFrameFile(savedFirstFrameFile);
         setLastFrameFile(savedLastFrameFile);
-        if (backup.dubbingSpeed !== undefined) setDubbingSpeed(backup.dubbingSpeed);
-        if (backup.dubbingEmotion !== undefined) setDubbingEmotion(backup.dubbingEmotion);
-        if (backup.voiceId) {
-          setSelectedVoiceId(backup.voiceId);
-          setSelectedVoiceName(backup.voiceName || '');
-        }
+        setDubbingSpeed(dubbingSpeed);
+        setDubbingEmotion(dubbingEmotion);
+        setSelectedVoiceId(selectedVoiceId || '');
+        setSelectedVoiceName(selectedVoiceName || '');
       },
+      onCancel: genType === 'dubbing' ? restoreSavedInput : undefined,
     });
+  };
+
+  const handleSendOrCancel = () => {
+    if (isDubbingGenerating) {
+      onCancelGeneration?.();
+      return;
+    }
+    handleSend();
   };
 
   const handleKeyDown = (event) => {
@@ -486,9 +509,10 @@ function InputCard({ onGenerate, width = '800px', disabled = false, genType, onG
         onOpenLiveMaterial: () => setLiveMaterialModalOpen(true),
       }}
       send={{
-        onClick: handleSend,
-        disabled: !canSend,
+        onClick: handleSendOrCancel,
+        disabled: isDubbingGenerating ? false : !canSend,
         loading: disabled,
+        cancelable: isDubbingGenerating,
         disabledTooltip: atConcurrentLimit ? `当前有${concurrentLimit}个任务进行中，为了保证成功率，请稍等一会儿再发送创作请求` : '',
       }}
       overlays={{

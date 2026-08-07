@@ -782,11 +782,11 @@ export async function apiUploadEpisodeScript(projectId, episodeId, file) {
 
 // ── 剧本工作区 ────────────────────────────────────────────────────────────────
 
-export async function apiGetScriptWorkspace(projectId, { fresh = false } = {}) {
+export async function apiGetScriptWorkspace(projectId, { fresh = false, signal } = {}) {
   const fetchWorkspace = async () => {
     const res = await authFetch(
       `${BASE}/api/projects/${projectId}/script-workspace`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: { 'Content-Type': 'application/json' }, signal }
     );
     return res.json();
   };

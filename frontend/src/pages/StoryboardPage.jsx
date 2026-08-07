@@ -2,7 +2,7 @@
  * @file StoryboardPage.jsx
  * @structure-index
  *
- * ─── 全局常量与工具函数 ───────────────────────────────────── L121–L144
+ * ─── 全局常量与工具函数 ───────────────────────────────────── L95–L143
  *   normalizeStoryboard / normalizeStoryboardList / toBackendStoryboard  utils/storyboardDataAdapter.js
  *   buildStoryboardPrompt                      utils/buildStoryboardPrompt.js
  *   enrichMainRefs / buildStoryboardRefFromAsset         适配工具：主体参考图补全与资产映射
@@ -11,7 +11,7 @@
  *   storyboardCandidateAdapter.js              候选媒体字段与生成参数适配
  *   storyboardShotUtils.js                     镜头数组插入、删除、排序与重编号
  *
- * ─── 页面内稳定组件 ───────────────────────────────────────── L145–L265
+ * ─── 页面内稳定组件 ───────────────────────────────────────── L144–L265
  *   EpisodeSelector / ModalCloseBtn             components/storyboard/StoryboardControls.jsx
  *   ParamSelect / ParamTrigger / DescriptionCol  components/storyboard/DescriptionCol.jsx
  *   CharTag / AddSlotBtn                       components/storyboard/NarrationAtoms.jsx
@@ -38,7 +38,7 @@
  *   GenerateImagePanel                         components/storyboard/GenerateImagePanel.jsx
  *   GenerateVideoPanel / ReferenceMediaEditor  components/storyboard/
  *
- * ─── 主页面入口 ──────────────────────────────────────────── L211–L2573
+ * ─── 主页面入口 ──────────────────────────────────────────── L196–L2586
  *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化
  *   [加载与错误态] LoadingAnimation、DotsLoading、失败操作和统计
  *   [镜头 CRUD] 上传、编辑、复制、删除、排序
@@ -54,6 +54,7 @@
  *   2026-08-06  分镜读取绕过旧分页缓存，提示词绑定自动修复不再携带普通参考图快照
  *   2026-08-06  画面描述列与创作面板时长按后端默认值、用户修改值分层处理并双向同步；收敛表单回写范围，修复时长切换循环闪烁
  *   2026-08-06  画面描述列时长选项复用视频模型能力，并与创作面板时长双向同步
+ *   2026-08-07  分镜视频结果按多字段 ID/地址交叉去重，统一候选展示和视频历史写入口，修复异步刷新重复卡片
  *   2026-08-04  空分镜直接标记无候选媒体，跳过 media-candidates 请求并保留生成/上传后的刷新路径
  *   2026-08-03  主体删除兼容类型退化的旧引用，并在缓存/接口刷新期间持续过滤已删除主体，避免问号占位框复现
  *   2026-08-04  候选媒体按分镜缓存轻量封面与状态；无封面时恢复图片原图/视频首帧兜底
@@ -92,23 +93,6 @@ function areCreationFormStatesEqual(previous, next) {
   if (previous === next) return true;
   if (!previous || !next) return false;
   return JSON.stringify(previous) === JSON.stringify(next);
-}
-
-function getCandidateKey(media) {
-  return media?.id || media?.url || media?.download_url || media?.downloadUrl || null;
-}
-
-function mergeCandidateOrder(previous = [], incoming = []) {
-  const incomingByKey = new Map(incoming.map((item) => [getCandidateKey(item), item]).filter(([key]) => key));
-  const ordered = previous
-    .map((item) => incomingByKey.get(getCandidateKey(item)))
-    .filter(Boolean);
-  const existingKeys = new Set(ordered.map(getCandidateKey));
-  const additions = incoming.filter((item) => {
-    const key = getCandidateKey(item);
-    return key && !existingKeys.has(key);
-  });
-  return [...ordered, ...additions];
 }
 
 function getStoryboardTaskId(task) {
@@ -154,6 +138,7 @@ import { subscribe, peekCache, invalidate } from '../utils/cache';
 import { K, MEDIUM } from '../utils/cacheKeys';
 import { buildStoryboardRefFromAsset, getUploadedImageId, getUploadedImageUrl, toSafeStoryboardReferenceUrls } from '../utils/storyboardReferenceAdapter';
 import { buildStoryboardCandidatePayload, normalizeSavedStoryboardCandidate } from '../utils/storyboardCandidateAdapter';
+import { areStoryboardMediaSame, mergeStoryboardMediaItems } from '../utils/storyboardMediaDedup';
 import { insertStoryboardShot, moveStoryboardShot, removeStoryboardShot, renumberStoryboardShots } from '../utils/storyboardShotUtils';
 import useStoryboardTaskRecovery from '../hooks/useStoryboardTaskRecovery';
 import { enrichMainRefs, isBackendStoryboardId, makeStoryboardShot, normalizeStoryboard, normalizeStoryboardList, setStoryboardSubjectSnapshot, toBackendStoryboard } from '../utils/storyboardDataAdapter';
@@ -724,19 +709,18 @@ function hasStoryboardMediaHint(shot = {}) {
       // 兼容后端候选接口暂未返回 is_finalized，但分镜主记录已有定稿地址的情况。
       const storyboardMedia = [shot.storyboardImage, shot.storyboardVideo].filter(Boolean);
       const matched = storyboardMedia.find((media) => {
-        const mediaKey = getCandidateKey(media);
-        return mediaKey && items.some((item) => getCandidateKey(item) === mediaKey);
+        return items.some((item) => areStoryboardMediaSame(item, media));
       });
       if (!matched) return [id, null];
-      return [id, items.find((item) => getCandidateKey(item) === getCandidateKey(matched)) || null];
+      return [id, items.find((item) => areStoryboardMediaSame(item, matched)) || null];
     }));
     setCandidateMediaMap((prev) => {
       const merged = { ...prev };
       Object.entries(nextCandidates).forEach(([shotId, items]) => {
         const finalized = nextFinalized[shotId];
-        merged[shotId] = mergeCandidateOrder(prev[shotId] || [], items).map((item) => ({
+        merged[shotId] = mergeStoryboardMediaItems(prev[shotId] || [], items).map((item) => ({
           ...item,
-          is_finalized: finalized ? getCandidateKey(item) === getCandidateKey(finalized) : Boolean(item.is_finalized),
+          is_finalized: finalized ? areStoryboardMediaSame(item, finalized) : Boolean(item.is_finalized),
         }));
       });
       return merged;
@@ -788,7 +772,7 @@ function hasStoryboardMediaHint(shot = {}) {
       const items = await apiListStoryboardMediaCandidates(projectId, backendId);
       setCandidateMediaMap((prev) => ({
         ...prev,
-        [shot.id]: mergeCandidateOrder(prev[shot.id] || [], items),
+        [shot.id]: mergeStoryboardMediaItems(prev[shot.id] || [], items),
       }));
       setFinalizedMediaMap((prev) => ({ ...prev, [shot.id]: items.find((item) => item.is_finalized) || null }));
     } catch (error) {
@@ -804,11 +788,9 @@ function hasStoryboardMediaHint(shot = {}) {
       const candidate = normalizeSavedStoryboardCandidate(payload, saved);
       setCandidateMediaMap((prev) => {
         const current = prev[shotId] || [];
-        const candidateKey = getCandidateKey(candidate);
-        const withoutDuplicate = current.filter((item) => getCandidateKey(item) !== candidateKey);
         return {
           ...prev,
-          [shotId]: [...withoutDuplicate, candidate],
+          [shotId]: mergeStoryboardMediaItems(current, [candidate]),
         };
       });
       setFinalizedMediaMap((prev) => ({ ...prev, [shotId]: candidate.is_finalized ? candidate : (prev[shotId] || null) }));
@@ -1171,7 +1153,13 @@ function hasStoryboardMediaHint(shot = {}) {
     apiUpdateStoryboard(projectId, shotId, { video_url: normalizedUrl }).catch(console.error);
     setGenVideoHistoryMap((prev) => {
       const list = prev[shotId] ?? [];
-      return { ...prev, [shotId]: [{ url: normalizedUrl, settled: false, id: `vid-${shotId}-resumed` }, ...list.filter((item) => !String(item.id).startsWith('pending-resume-'))] };
+      return {
+        ...prev,
+        [shotId]: mergeStoryboardMediaItems(
+          list.filter((item) => !String(item.id).startsWith('pending-resume-')),
+          [{ url: normalizedUrl, settled: false, id: `vid-${shotId}-resumed` }],
+        ),
+      };
     });
   }, [projectId]);
 
@@ -1322,41 +1310,39 @@ function hasStoryboardMediaHint(shot = {}) {
         const task = await pollTask(taskId, hasStoryboardVideoTaskResult);
         const videoUrl = extractStoryboardVideoUrl(task);
         if (videoUrl) {
-          if (videoUrl) {
-            const normalizedUrl = normalizeImageUrl(videoUrl);
-            const updatedVideo = { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4' };
-            setShots((prev) => prev.map((s) => s.id === shot.id
-              ? { ...s, storyboardVideo: updatedVideo }
-              : s
-            ));
-            // 持久化到后端，避免刷新后视频列消失
-            apiUpdateStoryboard(projectId, shot.id, { video_url: normalizedUrl }).catch(console.error);
-            await saveCandidateMedia(shot.id, {
-              id: `vid-${shot.id}`,
-              url: normalizedUrl,
-              name: 'generated.mp4',
-              type: 'video/mp4',
-              media_type: 'video',
-              source: 'ai-generated',
-              prompt: params.prompt,
+          const normalizedUrl = normalizeImageUrl(videoUrl);
+          // 任务已有可播放结果时立即移除占位，候选保存接口较慢也不能并排渲染两张卡片。
+          removePendingCandidate(taskId || pendingClientId, shot.id);
+          const updatedVideo = { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4' };
+          setShots((prev) => prev.map((s) => s.id === shot.id
+            ? { ...s, storyboardVideo: updatedVideo }
+            : s
+          ));
+          // 持久化到后端，避免刷新后视频列消失
+          apiUpdateStoryboard(projectId, shot.id, { video_url: normalizedUrl }).catch(console.error);
+          await saveCandidateMedia(shot.id, {
+            id: `vid-${shot.id}`,
+            url: normalizedUrl,
+            name: 'generated.mp4',
+            type: 'video/mp4',
+            media_type: 'video',
+            source: 'ai-generated',
+            prompt: params.prompt,
+            model: params.model,
+            resolution: params.resolution,
+            duration: durationValue,
+            ratio: projectRatio,
+            referenceImages: toSafeStoryboardReferenceUrls(params.refImages),
+            genParams: {
               model: params.model,
               resolution: params.resolution,
               duration: durationValue,
+              sound_effect: params.sound,
               ratio: projectRatio,
-              referenceImages: toSafeStoryboardReferenceUrls(params.refImages),
-              genParams: {
-                model: params.model,
-                resolution: params.resolution,
-                duration: durationValue,
-                sound_effect: params.sound,
-                ratio: projectRatio,
-                reference_images: toSafeStoryboardReferenceUrls(params.refImages),
-              },
-            });
-            successCount++;
-          } else {
-            failCount++;
-          }
+              reference_images: toSafeStoryboardReferenceUrls(params.refImages),
+            },
+          });
+          successCount++;
         } else {
           failCount++;
         }
@@ -2029,10 +2015,10 @@ function hasStoryboardMediaHint(shot = {}) {
   const resolvedMediaLoadingMap = Object.fromEntries(
     shots.map((shot) => [shot.id, isMediaLoading(shot)]),
   );
-  const getCreationCandidates = (shotId) => [
-    ...(pendingCandidateMap[shotId] || []),
-    ...(candidateMediaMap[shotId] || []),
-  ];
+  const getCreationCandidates = (shotId) => mergeStoryboardMediaItems(
+    pendingCandidateMap[shotId] || [],
+    candidateMediaMap[shotId] || [],
+  );
 
   const storyboardHeader = (
     <StoryboardHeader
@@ -2458,7 +2444,10 @@ function hasStoryboardMediaHint(shot = {}) {
           const shotId = videoPanel.shot?.id;
           setGenVideoHistoryMap((prev) => ({
             ...prev,
-            [shotId]: typeof updater === 'function' ? updater(prev[shotId] ?? []) : updater,
+            [shotId]: mergeStoryboardMediaItems(
+              typeof updater === 'function' ? updater(prev[shotId] ?? []) : updater,
+              [],
+            ),
           }));
         }}
         onClose={handleCreationPanelClose}
@@ -2544,6 +2533,8 @@ function hasStoryboardMediaHint(shot = {}) {
             const videoUrl = extractStoryboardVideoUrl(task);
             if (videoUrl) {
               const normalizedUrl = normalizeImageUrl(videoUrl);
+              // 任务已有可播放结果时立即移除任务占位，候选保存接口较慢也不能并排渲染占位和正式结果。
+              removePendingCandidate(taskId || pendingClientId, shot.id);
               // 将参考素材信息一并存入 shot，供查看弹窗展示
               const refInfo = {
                 referenceImages: params.reference_images?.length > 0 ? params.reference_images : undefined,

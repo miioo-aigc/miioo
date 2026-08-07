@@ -16,7 +16,7 @@
  * ─── 组件结构 ─────────────────────────────────────────────────
  *   CreationResultState                                           结果滚动区、结果卡片、加载态和底部输入区
  *   CreationVideoResultCard / CreationImageResultCard             图片与视频结果展示
- *   CreationAudioResultCard                                      配音结果展示
+ *   CreationAudioResultCard                                      配音结果展示（与图片/视频共用 240px 最小列宽、16px 间距、16:9 卡片）
  *
  * ─── 更新记录 ─────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离结果列表容器；页面继续持有历史请求、生成请求、轮询、缓存和 Toast
@@ -27,6 +27,8 @@
  *   2026-07-16  抽离尾帧转首帧的预填充对象构造，组件保留尾帧 API 和 Blob 生命周期
  *   2026-08-03  尾帧转首帧预填充同步写入预览地址，修复首帧槽位不显示图片
  *   2026-08-03  预览字段改为可枚举，修复文件归一化展开时字段丢失
+ *   2026-08-07  结果区输入卡接入配音取消回调，保留再次发送后的提示词并支持失败/取消恢复
+ *   2026-08-07  配音结果纳入图片/视频结果网格：列宽最小 240px、宽度随容器适配、卡片比例 16:9
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -70,6 +72,7 @@ export default function CreationResultState({
   autoFillLimit = Infinity,
   activeCount = 0,
   capabilitiesMap = {},
+  onCancelGeneration,
   renderInputCard,
 }) {
   const scrollRef = useRef(null);
@@ -143,6 +146,8 @@ export default function CreationResultState({
   const isAudio = genType === 'dubbing';
   const inputCardProps = {
     onGenerate,
+    onCancelGeneration,
+    disabled: isGenerating,
     width: '100%',
     genType,
     onGenTypeChange,
@@ -180,9 +185,8 @@ export default function CreationResultState({
       >
         <div
           style={{
-            display: isAudio ? 'flex' : 'grid',
-            gridTemplateColumns: isAudio ? undefined : 'repeat(auto-fill, minmax(240px, 1fr))',
-            flexDirection: isAudio ? 'column' : undefined,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
             width: '100%',
             rowGap: '16px',
             columnGap: '16px',
@@ -191,7 +195,7 @@ export default function CreationResultState({
         >
           {isGenerating && allCards.length === 0 && (
             <div style={{
-              width: '100%', height: isAudio ? '72px' : undefined, aspectRatio: isAudio ? undefined : '16/9', borderRadius: '8px',
+              width: '100%', aspectRatio: '16/9', borderRadius: '8px',
               background: 'rgba(255,255,255,0.04)',
               border: '1px solid rgba(255,255,255,0.06)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',

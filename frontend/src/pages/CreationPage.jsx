@@ -15,11 +15,11 @@
  *   CreationPage 状态、Store、历史缓存和分页                       L123–L269
  *   Session 初始化、刷新任务恢复和收藏动作                           L271–L385
  *   模型能力、参数加载、Tab 和批量操作                               L387–L562
- *   useCreationGeneration 生成请求、占位卡和结果写回                  L563–L575
- *   模型入口检查、输入卡渲染和视频详情回调                            L577–L596
+ *   useCreationGeneration 生成请求、占位卡和结果写回                  L563–L578
+ *   模型入口检查、输入卡渲染和视频详情回调                            L580–L599
  *   CreationInputCard 已迁移至 components/creation/，页面通过 renderInputCard 显式接入
  *
- * ─── 页面渲染结构 ────────────────────────────────────── L598–L698
+ * ─── 页面渲染结构 ────────────────────────────────────── L601–L712
  *   CreationPageOverlays（确认弹窗和视频详情 Portal）         components/creation/CreationPageOverlays.jsx
  *   CreationWorkspace（主体卡片、工具栏和结果/空态组合）       components/creation/CreationWorkspace.jsx
  *   CreationToast（Toast 展示）                              components/creation/CreationToast.jsx
@@ -75,10 +75,11 @@
  *   2026-07-17  复用 downloadMediaUrl，统一图片/视频 Blob 下载和失败回退生命周期
  *   2026-07-29  图片创作结果与历史记录按媒体地址去重，避免同图重复展示并保留创作提示词
  *   2026-08-03  抽离 useCreationGeneration；页面保留生成依赖、计数和区块接线，生成流程行为保持不变
+ *   2026-08-07  配音生成接入 600 秒轮询上限、提示词保留和再次点击发送停止前端请求/轮询
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { apiPollCreationTask, apiGetCreationVideo, apiDeleteCreationImage, apiDeleteCreationVideo, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory } from '../api/creation';
+import { apiPollCreationTask, apiGetCreationVideo, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { apiListModels } from '../api/config';
 import { adaptModels, getModelParams } from '../utils/modelAdapter';
@@ -474,7 +475,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     const allDoneKeys = [...generations].reverse().flatMap((gen) =>
       gen.cards.map((card, i) => ({
         key: `${gen.id}-${i}`,
-        isDone: card.status === 'done' && (!!card.imageUrl || !!card.videoUrl)
+        isDone: card.status === 'done' && (!!card.imageUrl || !!card.videoUrl || !!card.audioUrl)
       }))
     ).filter(({ isDone }) => isDone).map(({ key }) => key);
     const isAllSelected = allDoneKeys.length > 0 && allDoneKeys.every((k) => selected.has(k));
@@ -485,20 +486,24 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     // Collect backend IDs by type for API calls
     const imageIds = [];
     const videoIds = [];
+    const audioIds = [];
     selected.forEach((key) => {
       const lastDash = key.lastIndexOf('-');
       const genId = key.slice(0, lastDash);
       const cardIdx = parseInt(key.slice(lastDash + 1));
       const gen = generationsByTab[activeTab]?.find((g) => g.id === genId);
       const card = gen?.cards?.[cardIdx];
-      if (card?.id) {
-        if (card.type === 'video') videoIds.push(card.id);
-        else imageIds.push(card.id);
+      const cardId = card?.id || card?.audioId;
+      if (cardId) {
+        if (card.type === 'video') videoIds.push(cardId);
+        else if (card.type === 'audio') audioIds.push(cardId);
+        else imageIds.push(cardId);
       }
     });
     // Call backend APIs
     if (imageIds.length > 0) apiBatchDeleteImages(imageIds).catch(() => {});
     if (videoIds.length > 0) apiBatchDeleteVideos(videoIds).catch(() => {});
+    if (audioIds.length > 0) apiBatchDeleteAudios(audioIds).catch(() => {});
     // Update local store
     deleteSelectedCards(activeTab, selected);
     invalidate(`creation_history:${activeTab}:`, 'local');
@@ -539,11 +544,14 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   const handleDeleteCard = (genId, cardIdx) => {
     const gen = generationsByTab[activeTab]?.find((g) => g.id === genId);
     const card = gen?.cards?.[cardIdx];
-    if (card?.id) {
+    const cardId = card?.id || card?.audioId;
+    if (cardId) {
       if (card.type === 'video') {
-        apiDeleteCreationVideo(card.id).catch(() => {});
+        apiDeleteCreationVideo(cardId).catch(() => {});
+      } else if (card.type === 'audio') {
+        apiDeleteCreationAudio(cardId).catch(() => {});
       } else {
-        apiDeleteCreationImage(card.id).catch(() => {});
+        apiDeleteCreationImage(cardId).catch(() => {});
       }
     }
     storeDeleteCard(activeTab, genId, cardIdx);
@@ -569,7 +577,10 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     }
   }
 
-  const handleGenerate = useCreationGeneration({
+  const {
+    generateCreation: handleGenerate,
+    cancelGeneration,
+  } = useCreationGeneration({
     activeTab,
     setGenerating,
     isLoggedIn,
@@ -590,7 +601,9 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     return true;
   };
 
-  const renderInputCard = (inputCardProps) => <CreationInputCard {...inputCardProps} />;
+  const renderInputCard = (inputCardProps) => (
+    <CreationInputCard {...inputCardProps} onCancelGeneration={cancelGeneration} />
+  );
 
   const handleVideoCardClick = (card) => {
     setVideoDetailModal(card);
@@ -699,6 +712,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         autoFillLimit={activeTab === 'video' ? 2 : Infinity}
         activeCount={activeCountByTab[genType] ?? 0}
         onBeforeModelOpen={handleBeforeModelOpen}
+        onCancelGeneration={cancelGeneration}
         renderInputCard={renderInputCard}
       />
     </>

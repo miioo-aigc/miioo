@@ -119,6 +119,51 @@ const VOICE_ID_DISPLAY_ALIAS_MAP = new Map([
   ['cantonese_playfulman', '活泼男声'],
   ['cantonese_cutegirl', '可爱女孩'],
   ['cantonese_kindwoman', '善良女声'],
+  ['english_expressive_narrator', '表现力旁白'],
+  ['english_radiant_girl', '明亮少女'],
+  ['expressive_narrator', '表现力旁白'],
+  ['radiant_girl', '明亮少女'],
+]);
+
+const VOICE_TEXT_ALIAS_MAP = new Map([
+  ['expressive', '表现力'],
+  ['narrator', '旁白'],
+  ['radiant', '明亮'],
+  ['girl', '少女'],
+  ['woman', '女声'],
+  ['man', '男声'],
+  ['male', '男声'],
+  ['female', '女声'],
+  ['young', '年轻'],
+  ['adult', '成人'],
+  ['elder', '长者'],
+  ['professional', '专业'],
+  ['reliable', '沉稳'],
+  ['warm', '温暖'],
+  ['gentle', '温柔'],
+  ['sweet', '甜美'],
+  ['cute', '可爱'],
+  ['calm', '平静'],
+  ['news', '新闻'],
+  ['anchor', '主播'],
+  ['host', '主持'],
+  ['voice', '音色'],
+]);
+
+const EMOTION_ALIAS_MAP = new Map([
+  ['happy', '开心'],
+  ['sad', '悲伤'],
+  ['angry', '愤怒'],
+  ['fearful', '恐惧'],
+  ['fear', '恐惧'],
+  ['disgusted', '厌恶'],
+  ['disgust', '厌恶'],
+  ['surprised', '惊讶'],
+  ['surprise', '惊讶'],
+  ['calm', '平静'],
+  ['neutral', '中性'],
+  ['gentle', '温柔'],
+  ['warm', '温暖'],
 ]);
 
 function normalizeText(value) {
@@ -127,6 +172,25 @@ function normalizeText(value) {
 
 function hasChineseText(value) {
   return /[\u4e00-\u9fff]/.test(normalizeText(value));
+}
+
+function translateVoiceText(value) {
+  const text = normalizeText(value);
+  if (!text || hasChineseText(text)) return text;
+  return text
+    .replace(/[()（）]/g, '')
+    .split(/([\s_-]+)/)
+    .map((part) => VOICE_TEXT_ALIAS_MAP.get(part.toLowerCase()) || part)
+    .join('')
+    .trim();
+}
+
+export function getVoiceEmotionDisplay(value) {
+  return normalizeText(value)
+    .split(/[,，、\s]+/)
+    .filter(Boolean)
+    .map((emotion) => EMOTION_ALIAS_MAP.get(emotion.toLowerCase()) || translateVoiceText(emotion) || emotion)
+    .join('、');
 }
 
 function buildVoiceInferenceText(voice) {
@@ -355,12 +419,14 @@ export function getVoiceDisplayName(voice) {
 
   const alias = resolveVoiceAliasFromIds(voice);
 
-  const rawName = normalizeText(voice.name)
+  const rawName = normalizeText(voice.display_name)
+    || normalizeText(voice.displayName)
+    || normalizeText(voice.name)
     || normalizeText(voice.voice_name)
     || normalizeText(voice.original_name)
     || normalizeText(voice.originalName);
   if (alias && !hasChineseText(rawName)) return alias;
-  if (rawName && !isVoiceIdentifierLike(rawName)) return rawName;
+  if (rawName && !isVoiceIdentifierLike(rawName)) return translateVoiceText(rawName);
   if (alias) return alias;
 
   return buildFriendlyVoiceFallbackName(voice);
@@ -388,6 +454,7 @@ function normalizeVoiceItem(voice) {
     language: normalizeVoiceLanguage(voice.language, voice),
     style: normalizeText(voice.style) || null,
     emotions: normalizeText(voice.emotions) || null,
+    display_emotions: getVoiceEmotionDisplay(voice.emotions) || null,
     preview_url: previewUrl,
     previewUrl,
     source_audio_url: sourceAudioUrl,
@@ -406,6 +473,7 @@ function normalizeVoiceItem(voice) {
       age_group: ageGroup,
       language: normalizeVoiceLanguage(voice.language, voice),
       style: normalizeText(voice.style) || null,
+      display_name: normalizeText(voice.display_name || voice.displayName) || null,
     }),
   };
 }

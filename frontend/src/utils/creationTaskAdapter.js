@@ -148,7 +148,7 @@ export function normalizeCreationTaskResult(result, task) {
       refAudios: task.refAudios,
       createdAt: task.createdAt,
       cards: mediaUrls.map((url, index) => ({
-        id: null,
+        id: task.genType === 'dubbing' ? (result?.audioIds?.[index] || null) : null,
         type: cardType,
         status: 'done',
         imageUrl: task.genType === 'image' ? url : null,
@@ -157,6 +157,7 @@ export function normalizeCreationTaskResult(result, task) {
           : undefined,
         videoUrl: task.genType === 'video' ? url : null,
         audioUrl: task.genType === 'dubbing' ? url : null,
+        audioId: task.genType === 'dubbing' ? (result?.audioIds?.[index] || null) : undefined,
       })),
     },
   };

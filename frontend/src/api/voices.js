@@ -125,6 +125,137 @@ const VOICE_ID_DISPLAY_ALIAS_MAP = new Map([
   ['radiant_girl', '明亮少女'],
 ]);
 
+// MiniMax 官方音色的 name 是产品命名，不是可直接逐词替换的技术标识。
+// 按完整名称翻译，避免出现“Magnetic-voiced 男声”这类中英文混排；voice_id 仍保持原值用于提交接口。
+const MINIMAX_VOICE_NAME_DISPLAY_MAP = new Map([
+  ['expressive narrator', '表现力旁白'],
+  ['radiant girl', '明亮少女'],
+  ['magnetic-voiced male', '磁性男声'],
+  ['compelling lady', '迷人女声'],
+  ['aussie bloke', '澳洲男声'],
+  ['captivating female', '迷人女声'],
+  ['upbeat woman', '活泼女声'],
+  ['trustworthy man', '可信男声'],
+  ['calm woman', '平静女声'],
+  ['upset girl', '忧郁少女'],
+  ['gentle-voiced man', '温柔男声'],
+  ['whispering girl', '耳语少女'],
+  ['diligent man', '沉稳男声'],
+  ['graceful lady', '优雅女声'],
+  ['reserved young man', '内敛青年男声'],
+  ['playful girl', '俏皮少女'],
+  ['man with deep voice', '低沉男声'],
+  ['mature partner', '成熟伴侣'],
+  ['friendly guy', '亲切男声'],
+  ['bossy lady', '强势女声'],
+  ['male debater', '辩论男声'],
+  ['lovely girl', '可爱少女'],
+  ['reliable man', '可靠男声'],
+  ['deep-voiced gentleman', '深沉绅士'],
+  ['wise lady', '睿智女声'],
+  ['captivating storyteller', '魅力讲述者'],
+  ['decent young man', '得体青年男声'],
+  ['sentimental lady', '感性女声'],
+  ['imposing queen', '威严女王'],
+  ['teen boy', '少年男声'],
+  ['passionate warrior', '热血战士'],
+  ['wise scholar', '睿智学者'],
+  ['soft-spoken girl', '轻声少女'],
+  ['serene woman', '宁静女声'],
+  ['confident woman', '自信女声'],
+  ['patient man', '耐心男声'],
+  ['comedian', '喜剧演员'],
+  ['bossy leader', '强势领袖'],
+  ['strong-willed boy', '坚毅少年'],
+  ['stressed lady', '焦虑女声'],
+  ['assertive queen', '果断女王'],
+  ['female narrator', '女性旁白'],
+  ['jovial man', '开朗男声'],
+  ['whimsical girl', '灵动少女'],
+  ['kind-hearted girl', '善良少女'],
+  ['reliable executive', '沉稳高管'],
+  ['news anchor', '新闻主播'],
+  ['unrestrained young man', '不羁青年男声'],
+  ['mature woman', '成熟女声'],
+  ['arrogant miss', '傲娇小姐'],
+  ['robot armor', '机械战甲'],
+  ['kind-hearted antie', '热心大婶'],
+  ['hk flight attendant', '港普空姐'],
+  ['humorous elder', '搞笑长者'],
+  ['gentleman', '温润男声'],
+  ['warm bestie', '温暖闺蜜'],
+  ['stubborn friend', '嘴硬竹马'],
+  ['sweet lady', '甜美女声'],
+  ['southern young man', '南方小哥'],
+  ['wise women', '阅历姐姐'],
+  ['gentle youth', '温润青年'],
+  ['warm girl', '温暖少女'],
+  ['male announcer', '播报男声'],
+  ['kind-hearted elder', '慈祥长者'],
+  ['cute spirit', '憨憨萌兽'],
+  ['radio host', '电台主播'],
+  ['lyrical voice', '抒情男声'],
+  ['straightforward boy', '率真少年'],
+  ['sincere adult', '真诚成年人'],
+  ['gentle senior', '温柔长者'],
+  ['crisp girl', '清脆少女'],
+  ['pure-hearted boy', '纯真少年'],
+  ['soft girl', '柔和少女'],
+]);
+
+const MINIMAX_VOICE_WORD_DISPLAY_MAP = new Map([
+  ['expressive', '表现力'], ['narrator', '旁白'], ['radiant', '明亮'], ['magnetic', '磁性'],
+  ['voiced', '音色'], ['compelling', '迷人'], ['lady', '女士'], ['aussie', '澳洲'], ['bloke', '男士'],
+  ['captivating', '魅力'], ['female', '女性'], ['upbeat', '活泼'], ['woman', '女士'], ['trustworthy', '可信'],
+  ['man', '男士'], ['calm', '平静'], ['upset', '忧郁'], ['girl', '少女'], ['gentle', '温柔'],
+  ['whispering', '耳语'], ['diligent', '勤勉'], ['graceful', '优雅'], ['reserved', '内敛'], ['young', '青年'],
+  ['playful', '俏皮'], ['deep', '低沉'], ['voice', '音色'], ['mature', '成熟'], ['partner', '伴侣'],
+  ['friendly', '亲切'], ['guy', '男士'], ['bossy', '强势'], ['male', '男性'], ['debater', '辩论者'],
+  ['lovely', '可爱'], ['reliable', '可靠'], ['gentleman', '绅士'], ['wise', '睿智'], ['lady', '女士'],
+  ['storyteller', '讲述者'], ['decent', '得体'], ['sentimental', '感性'], ['imposing', '威严'], ['queen', '女王'],
+  ['teen', '少年'], ['boy', '男孩'], ['passionate', '热血'], ['warrior', '战士'], ['scholar', '学者'],
+  ['soft', '轻柔'], ['spoken', '说话'], ['serene', '宁静'], ['confident', '自信'], ['patient', '耐心'],
+  ['comedian', '喜剧演员'], ['leader', '领袖'], ['strong', '坚毅'], ['willed', '意志坚定'], ['stressed', '焦虑'],
+  ['assertive', '果断'], ['jovial', '开朗'], ['whimsical', '灵动'], ['kind', '善良'], ['hearted', '热心'],
+  ['executive', '高管'], ['news', '新闻'], ['anchor', '主播'], ['unrestrained', '不羁'], ['arrogant', '傲娇'],
+  ['miss', '小姐'], ['robot', '机械'], ['armor', '战甲'], ['antie', '大婶'], ['flight', '航班'], ['attendant', '空姐'],
+  ['humorous', '搞笑'], ['elder', '长者'], ['warm', '温暖'], ['bestie', '闺蜜'], ['stubborn', '嘴硬'], ['friend', '朋友'],
+  ['sweet', '甜美'], ['southern', '南方'], ['wise', '睿智'], ['women', '女性'], ['youth', '青年'], ['announcer', '播报员'],
+  ['lyrical', '抒情'], ['straightforward', '率真'], ['sincere', '真诚'], ['adult', '成年人'], ['senior', '长者'],
+  ['crisp', '清脆'], ['pure', '纯真'], ['intellectual', '知性'], ['heart', '内心'], ['laid', '随和'], ['back', '自在'],
+  ['explorative', '探索'], ['aunt', '阿姨'], ['bashful', '羞涩'], ['decisive', '果断'], ['princess', '公主'], ['loyal', '忠诚'],
+  ['knight', '骑士'], ['dominant', '强势'], ['serious', '严肃'], ['commander', '指挥官'], ['cold', '冷静'], ['dependable', '可靠'],
+  ['butler', '管家'], ['optimistic', '乐观'], ['generous', '慷慨'], ['izakaya', '居酒屋'], ['owner', '老板'], ['sporty', '运动'],
+  ['student', '学生'], ['innocent', '纯真'], ['maiden', '少女'], ['professional', '专业'], ['host', '主持人'], ['cute', '可爱'],
+  ['woman', '女士'], ['airheaded', '迷糊'], ['athletic', '运动'], ['brave', '勇敢'], ['adventurer', '冒险者'], ['caring', '体贴'],
+  ['charming', '迷人'], ['cheerful', '开朗'], ['boyfriend', '男友'], ['childhood', '童年'], ['cocky', '自信'], ['sassy', '泼辣'],
+  ['shy', '羞涩'], ['soothing', '舒缓'], ['strict', '严厉'], ['thoughtful', '体贴'], ['elf', '精灵'], ['teacher', '教师'],
+  ['determined', '坚定'], ['manager', '经理'], ['sophisticated', '成熟'], ['rational', '理性'], ['anime', '动漫'], ['character', '角色'],
+  ['fussy', '挑剔'], ['teen', '少年'], ['frank', '坦率'], ['tough', '强硬'], ['mentor', '导师'], ['santa', '圣诞老人'],
+  ['claus', '圣诞老人'], ['rudolph', '鲁道夫'], ['arnold', '阿诺德'], ['ghost', '幽灵'], ['energetic', '活力'], ['elder', '长者'],
+  ['angry', '愤怒'], ['girlfriend', '女友'], ['powerful', '强大'], ['soldier', '战士'], ['chatty', '健谈'], ['romantic', '浪漫'],
+  ['husband', '丈夫'], ['attractive', '迷人'], ['gorgeous', '美丽'], ['naughty', '淘气'], ['schoolgirl', '女学生'], ['dramatist', '戏剧演员'],
+  ['godfather', '教父'], ['smart', '聪明'], ['pompous', '自负'], ['grinch', '格林奇'], ['neighbor', '邻居'], ['fascinating', '迷人'],
+  ['veteran', '老兵'], ['sensible', '理智'], ['theatrical', '戏剧'], ['actor', '演员'], ['fragile', '脆弱'], ['instructor', '导师'],
+  ['level', '沉稳'], ['headed', '头脑'], ['casual', '随和'], ['movie', '电影'], ['lead', '主角'], ['ambitious', '有抱负'],
+  ['crazy', '疯狂'], ['pessimistic', '悲观'], ['handsome', '英俊'], ['bad', '坏脾气'], ['tempered', '脾气'], ['heroine', '女主角'],
+  ['wandering', '流浪'], ['sorcerer', '巫师'], ['diligent', '勤勉'], ['assured', '自信'], ['presenter', '主持人'], ['steadfast', '坚定'],
+  ['elegant', '优雅'], ['assetive', '自信'], ['advisor', '顾问'], ['tranquil', '宁静'], ['thoughtful', '体贴'], ['next', '邻家'],
+  ['door', '门'], ['male', '男'], ['female', '女'], ['new', '新'], ['sample', '示例'],
+]);
+
+function translateMinimaxVoiceName(value) {
+  const raw = normalizeText(value);
+  const exact = MINIMAX_VOICE_NAME_DISPLAY_MAP.get(raw.toLowerCase());
+  if (exact) return exact;
+  const words = raw
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .split(/[\s_-]+/)
+    .filter(Boolean);
+  const translated = words.map((word) => MINIMAX_VOICE_WORD_DISPLAY_MAP.get(word.toLowerCase())).filter(Boolean);
+  return translated.length === words.length ? translated.join('') : raw;
+}
+
 const VOICE_TEXT_ALIAS_MAP = new Map([
   ['expressive', '表现力'],
   ['narrator', '旁白'],
@@ -425,6 +556,10 @@ export function getVoiceDisplayName(voice) {
     || normalizeText(voice.voice_name)
     || normalizeText(voice.original_name)
     || normalizeText(voice.originalName);
+  if (normalizeText(voice.provider).toLowerCase() === 'minimax') {
+    const minimaxName = translateMinimaxVoiceName(rawName);
+    if (minimaxName !== rawName) return minimaxName;
+  }
   if (alias && !hasChineseText(rawName)) return alias;
   if (rawName && !isVoiceIdentifierLike(rawName)) return translateVoiceText(rawName);
   if (alias) return alias;

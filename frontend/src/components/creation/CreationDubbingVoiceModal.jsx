@@ -21,6 +21,7 @@
  *   2026-07-16  从 pages 迁入创作域组件目录，保持音色选择行为不变
  *   2026-08-07  无试听地址的官方音色隐藏耳机按钮，名称和情绪增加中文展示适配
  *   2026-08-07  官方音色 Tab 改为 minimax 官方音色库，移除性别/年龄筛选和情绪副标题
+ *   2026-08-07  官方音色卡片名称统一使用 minimax 音色 name 的中文翻译，提交仍使用原始 voice_id
  */
 import { apiGetOfficialVoices, getVoiceDisplayName } from "../../api/voices";
 import { useState, useRef, useEffect } from "react";

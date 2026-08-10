@@ -10,6 +10,7 @@
  *   2026-07-21  按 Paper 设计稿恢复 40px 脉冲发送按钮视觉
  *   2026-07-21  独立管理默认、悬停、按下、禁用和暂停状态
  *   2026-08-03  将发送按钮阴影边界修正为圆形
+ *   2026-08-10  剧本生成中有待发送文字时显示箭头并允许触发业务提示
  */
 import { useState } from 'react';
 import { PulsingBorder } from '@paper-design/shaders-react';
@@ -19,7 +20,7 @@ function SendButton({ onClick, disabled = false, loading = false, isGenerating =
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
   const isPaused = paused || isGenerating;
-  const isClickable = isPaused || !disabled;
+  const isClickable = !disabled || isPaused;
   const label = isPaused ? '暂停生成' : loading ? '正在发送剧本' : '发送剧本';
 
   return (
@@ -39,7 +40,7 @@ function SendButton({ onClick, disabled = false, loading = false, isGenerating =
       aria-label={label}
       aria-disabled={!isClickable}
       disabled={!isClickable}
-      onClick={isClickable ? onClick : undefined}
+        onClick={isClickable ? onClick : undefined}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); setPressed(false); }}
       onMouseDown={() => isClickable && setPressed(true)}

@@ -3,9 +3,8 @@
  * @structure-index
  *
  * ─── 全局常量 & 工具函数 ─────────────────────────────────────────────
- *   FONT / CHAT_TIMEOUT_MS / 页面级常量                                  L51–L58
- *   剧本对话任务状态与恢复工具                                             L60–L155
- *   formatEpisodeHeaders                                                   L178
+ *   FONT / CHAT_TIMEOUT_MS / 页面级常量                                  L52–L56
+ *   formatEpisodeHeaders                                                   L66
  *
  * ─── 反馈与输入区组件 ─────────────────────────────────────────────────
  *   Toast                                                                  L235
@@ -14,9 +13,9 @@
  *   ScriptOutlineLoading / ScriptOutlineWorkspace / ScriptEpisodeOutline / ScriptStoryboardDocument / ScriptModifyConfirmModal src/components/script/
  *
  * ─── 主页面入口 ───────────────────────────────────────────────────────
- *   export default ScriptPage()                                         L277
+ *   export default ScriptPage()                                         L176
  *     ├─ [状态] 受控/非受控 phase、剧本内容、入口文件、模型、集数/时长、消息和编排任务
- *     ├─ [函数] handleSend L828 / handleScriptFileSelect L745 / handleOpenScriptOutline L331 / handleStop L725
+ *     ├─ [函数] handleSend L912 / handleScriptFileSelect L644 / handleOpenScriptOutline L230 / handleStop L624
  *     └─ [副作用] 工作区加载、编排任务恢复与轮询、流式请求、剧本和分集同步
  *
  * ─── 更新记录 ────────────────────────────────────────────────────────
@@ -42,6 +41,8 @@
  *   2026-07-27  AI 分集与重写处理中仅遮罩剧本内容区，保留导航可见
  *   2026-08-06  分镜脚本下载缺少后端地址时改用项目工作区下载接口兜底
  *   2026-08-07  剧本对话超时后发送前等待旧任务释放，并用同一请求 ID处理忙碌重试
+ *   2026-08-10  剧本生成中允许编辑输入；统一剧本对话超时反馈
+ *   2026-08-10  移除发送前的前端任务拦截，发送直接透传到后端剧本对话接口
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiDownloadStoryboardFile, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
@@ -50,112 +51,10 @@ import { InputCard, ScriptEmptyState, ScriptMessageArea, ScriptOutlineLoading, S
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
-const CHAT_TIMEOUT_MS = 120_000; // 2 分钟客户端超时兜底（后端通常先返回 504）
-const SCRIPT_CHAT_RECOVERY_POLL_INTERVAL_MS = 1_500;
-const SCRIPT_CHAT_RECOVERY_TIMEOUT_MS = 2 * 60 * 1_000;
+const CHAT_TIMEOUT_MS = 30 * 60 * 1_000; // 30 分钟客户端超时兜底（后端通常先返回 504）
 const SCRIPT_OUTLINE_POLL_INTERVAL_MS = 1_500;
 const SCRIPT_OUTLINE_TIMEOUT_MS = 30 * 60 * 1_000;
 const SCRIPT_OUTLINE_TYPE_STORAGE_PREFIX = 'miioo:script-outline-type:';
-
-const SCRIPT_TASK_TERMINAL_STATUSES = new Set([
-  'completed',
-  'complete',
-  'done',
-  'finished',
-  'success',
-  'succeeded',
-  'failed',
-  'error',
-  'cancelled',
-  'canceled',
-  'interrupted',
-  'timeout',
-  'timed_out',
-  'expired',
-]);
-
-function getTaskStatus(task) {
-  return String(task?.status || task?.state || '').trim().toLowerCase();
-}
-
-function isTerminalScriptTask(task) {
-  return SCRIPT_TASK_TERMINAL_STATUSES.has(getTaskStatus(task));
-}
-
-function getScriptTaskType(task) {
-  return [task?.type, task?.operation, task?.task_type, task?.taskType]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-}
-
-function isScriptChatTask(task) {
-  return /(chat|dialogue|conversation)/.test(getScriptTaskType(task));
-}
-
-function getActiveScriptChat(workspace) {
-  const activeTurn = workspace?.active_turn || workspace?.activeTurn || workspace?.script?.active_turn || workspace?.script?.activeTurn;
-  if (activeTurn) return isTerminalScriptTask(activeTurn) ? null : activeTurn;
-
-  const activeTask = workspace?.active_task || workspace?.activeTask;
-  if (isScriptChatTask(activeTask) && !isTerminalScriptTask(activeTask)) return activeTask;
-
-  const activeOperation = workspace?.active_operation || workspace?.activeOperation;
-  if (isScriptChatTask(activeOperation) && !isTerminalScriptTask(activeOperation)) return activeOperation;
-
-  const script = workspace?.script;
-  if (script?.active_turn_id || script?.activeTurnId) return script;
-  return null;
-}
-
-function isScriptChatBusyError(error) {
-  if (![409, 423, 429].includes(error?.status)) return false;
-  const payload = error?.rawPayload;
-  const payloadText = payload && typeof payload === 'object' ? JSON.stringify(payload) : String(payload || '');
-  const message = `${error?.message || ''} ${error?.code || ''} ${payloadText}`.toLowerCase();
-  return /已有剧本|剧本对话.*(生成|处理)|对话.*(生成|处理)|script[_ -]?chat|active[_ -]?turn|chat.*(in progress|running|active)|generation.*(in progress|running|active)/.test(message);
-}
-
-function waitWithAbort(delay, signal) {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      const error = new Error('请求已取消');
-      error.name = 'AbortError';
-      reject(error);
-      return;
-    }
-
-    const handleAbort = () => {
-      window.clearTimeout(timerId);
-      const error = new Error('请求已取消');
-      error.name = 'AbortError';
-      reject(error);
-    };
-    const timerId = window.setTimeout(() => {
-      signal?.removeEventListener('abort', handleAbort);
-      resolve();
-    }, delay);
-    signal?.addEventListener('abort', handleAbort, { once: true });
-  });
-}
-
-async function waitForScriptChatIdle(projectId, { signal } = {}) {
-  const startedAt = Date.now();
-  let workspace = await apiGetScriptWorkspace(projectId, { fresh: true, signal });
-
-  while (getActiveScriptChat(workspace)) {
-    if (Date.now() - startedAt >= SCRIPT_CHAT_RECOVERY_TIMEOUT_MS) {
-      const error = new Error('已有剧本对话正在生成，请稍后重试');
-      error.code = 'SCRIPT_CHAT_BUSY';
-      error.status = 409;
-      throw error;
-    }
-    await waitWithAbort(SCRIPT_CHAT_RECOVERY_POLL_INTERVAL_MS, signal);
-    workspace = await apiGetScriptWorkspace(projectId, { fresh: true, signal });
-  }
-
-  return workspace;
-}
 
 function getScriptTaskId(task) {
   if (!task || typeof task !== 'object') return null;
@@ -825,17 +724,17 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     anchor.click();
   };
 
-  const handleSend = async (text, model, epCount, duration) => {
+  const performSend = async (text, model, epCount, duration) => {
     if (!text || chatSendLockRef.current) return;
     chatSendLockRef.current = true;
 
-    // 发送前保存当前内容，超时时可恢复（避免丢失已有剧本）
+    // 保存发送前的内容，超时时可恢复（避免丢失已有剧本）
     const prevContent = scriptContent;
     const clientRequestId = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `script-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-    // 每次发送前清除上次的恢复内容（成功时不恢复）
+    // 每次发送时清除上次的恢复内容（成功时不恢复）
     setInputRestoreText('');
     stopReasonRef.current = null;
 
@@ -900,57 +799,39 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     };
 
     try {
-      // 发送前先等待上一次超时后仍在后台运行的对话任务释放。
-      // 这段等待不启动生成超时计时器，用户仍可通过停止按钮取消等待。
-      await waitForScriptChatIdle(projectId, { signal: abortController.signal });
-
-      let hasRetriedBusyRequest = false;
-      while (true) {
-        // 客户端兜底超时：后端通常先返回 504，此处作为最后保障。
-        startClientTimeout();
-        try {
-          // 纯文本入口走流式 chat 接口。忙碌重试时复用同一个请求 ID，避免后端产生第二个 turn。
-          let hasStartedStreaming = false;
-          await apiChatScriptWorkspaceStream(
-            projectId,
-            {
-              message: text,
-              model,
-              episode_count: epCount,
-              episode_duration_seconds: duration === 'auto' ? null : duration,
-              client_request_id: clientRequestId,
-            },
-            {
-              onChunk: (accumulated) => {
-                const formatted = formatEpisodeHeaders(accumulated);
-                receivedContent = formatted;
-                if (!hasStartedStreaming) {
-                  hasStartedStreaming = true;
-                  setScriptContent(formatted);
-                  setPhase('streaming');
-                } else {
-                  setScriptContent(formatted);
-                }
-                setMessages((previous) => previous.map((message) => (
-                  message.id === assistantMessageId
-                    ? { ...message, content: formatted, status: 'streaming' }
-                    : message
-                )));
-              },
-              signal: abortController.signal,
+      // 点击发送后直接请求后端；后端的任务冲突和业务错误由请求层透传给页面。
+      // 客户端只负责为这一次流式请求提供 30 分钟超时兜底。
+      startClientTimeout();
+      let hasStartedStreaming = false;
+      await apiChatScriptWorkspaceStream(
+        projectId,
+        {
+          message: text,
+          model,
+          episode_count: epCount,
+          episode_duration_seconds: duration === 'auto' ? null : duration,
+          client_request_id: clientRequestId,
+        },
+        {
+          onChunk: (accumulated) => {
+            const formatted = formatEpisodeHeaders(accumulated);
+            receivedContent = formatted;
+            if (!hasStartedStreaming) {
+              hasStartedStreaming = true;
+              setScriptContent(formatted);
+              setPhase('streaming');
+            } else {
+              setScriptContent(formatted);
             }
-          );
-          break;
-        } catch (error) {
-          if (!isScriptChatBusyError(error) || hasRetriedBusyRequest) throw error;
-          hasRetriedBusyRequest = true;
-          // 忙碌冲突后的恢复轮询不属于流式生成阶段，避免旧计时器在等待期间触发超时。
-          clearClientTimeout();
-          await waitForScriptChatIdle(projectId, { signal: abortController.signal });
-        } finally {
-          clearClientTimeout();
+            setMessages((previous) => previous.map((message) => (
+              message.id === assistantMessageId
+                ? { ...message, content: formatted, status: 'streaming' }
+                : message
+            )));
+          },
+          signal: abortController.signal,
         }
-      }
+      );
 
       setMessages((previous) => previous.map((message) => (
         message.id === assistantMessageId ? { ...message, content: receivedContent, status: 'completed' } : message
@@ -1017,19 +898,8 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       (() => {
         const rawMsg = err?.message || '';
         let toastMsg;
-        const upstreamMatch = rawMsg.match(/上游模型服务返回\s*(\d+)/);
-        if (upstreamMatch) {
-          const code = upstreamMatch[1];
-          toastMsg = code === '404' ? '上游模型服务返回 404，请换个模型重试' : `上游模型服务返回 ${code}，请稍后重试`;
-        } else if (rawMsg.toLowerCase().includes('deprecated') || rawMsg.toLowerCase().includes('migrate')) {
-          toastMsg = '当前模型已废弃，请换个模型重试';
-        } else if (err?.status) {
-          toastMsg = `请求失败 (HTTP ${err.status})，请稍后重试`;
-        } else if (rawMsg.length > 0 && rawMsg.length < 60) {
-          toastMsg = rawMsg;
-        } else {
-          toastMsg = '剧本生成失败，请稍后重试';
-        }
+        // 后端已返回可读错误时，透传原文；只有没有错误正文时才使用兜底文案。
+        toastMsg = rawMsg || (err?.status ? `请求失败 (HTTP ${err.status})，请稍后重试` : '剧本生成失败，请稍后重试');
         showToast(toastMsg);
       })();
     } finally {
@@ -1037,6 +907,11 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       if (abortControllerRef.current === abortController) abortControllerRef.current = null;
       chatSendLockRef.current = false;
     }
+  };
+
+  const handleSend = async (text, model, epCount, duration) => {
+    if (!text) return false;
+    return performSend(text, model, epCount, duration);
   };
 
   const handleRequestModifyScript = useCallback(() => {

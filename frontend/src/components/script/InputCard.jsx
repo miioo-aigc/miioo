@@ -18,6 +18,7 @@
  *   2026-07-21  集数选择保留数字输入和加减按钮的自定义菜单
  *   2026-07-21  删除本地创作指令历史缓存与方向键回溯
  *   2026-08-04  避免中文输入法候选阶段按 Enter 误触发发送
+ *   2026-08-10  剧本生成中保持输入可用，非空输入直接交由页面发送到后端
  */
 import { useEffect, useRef, useState } from 'react';
 import { apiListModels } from '../../api/config';
@@ -57,12 +58,13 @@ function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelCha
     prevDisabledRef.current = disabled;
   }, [disabled, restoreText]);
 
-  const canSend = !disabled && Boolean(text.trim());
+  const hasText = Boolean(text.trim());
 
-  const handleSend = () => {
-    if (!canSend) return;
-    onSend(text.trim(), selectedModel, episodeCount, episodeDuration);
-    setText('');
+  const handleSend = async () => {
+    // 忙碌态也允许发送，后端负责判断任务冲突并返回真实错误。
+    if (!hasText) return;
+    const sent = await onSend(text.trim(), selectedModel, episodeCount, episodeDuration);
+    if (sent !== false) setText('');
   };
 
   const handleStop = () => {
@@ -139,7 +141,6 @@ function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelCha
           }}
         >
           <textarea
-            disabled={disabled}
             className="placeholder:text-[#FFFFFF66]"
             style={{
               flex: 1,
@@ -178,7 +179,13 @@ function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelCha
             <EpisodeDurationSelector value={episodeDuration} onChange={onEpisodeDurationChange} disabled={disabled} />
             <EpisodeCountSelector value={episodeCount} onChange={onEpisodeCountChange} disabled={disabled} />
           </div>
-          <SendButton onClick={disabled ? handleStop : handleSend} disabled={!canSend && !disabled} loading={disabled && !onStop} paused={disabled && !!onStop} />
+          <SendButton
+            // 有输入时始终进入页面层 handleSend，直接发送到后端剧本对话接口。
+            onClick={hasText ? handleSend : handleStop}
+            disabled={!hasText}
+            loading={disabled && !hasText}
+            paused={disabled && !hasText && !!onStop}
+          />
         </div>
       </div>
     </div>

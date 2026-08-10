@@ -845,6 +845,11 @@ body {
   50% { height: 4px; }
 }
 
+@keyframes creation-audio-waveform {
+  0%, 100% { transform: scaleY(0.55); }
+  50% { transform: scaleY(1); }
+}
+
 @keyframes api-bubble-nudge {
   0%, 100% { transform: translateX(0); }
   20%       { transform: translateX(6px); }

@@ -784,9 +784,22 @@ export async function apiUploadEpisodeScript(projectId, episodeId, file) {
 
 export async function apiGetScriptWorkspace(projectId, { fresh = false, signal } = {}) {
   const fetchWorkspace = async () => {
+    const isFreshRequest = fresh === true;
     const res = await authFetch(
-      `${BASE}/api/projects/${projectId}/script-workspace`,
-      { headers: { 'Content-Type': 'application/json' }, signal }
+      `${BASE}/api/projects/${projectId}/script-workspace${isFreshRequest ? `?_workspace_check=${Date.now()}` : ''}`,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(isFreshRequest
+            ? {
+                'Cache-Control': 'no-cache',
+                'X-Miioo-Workspace-Check': 'send-preflight',
+              }
+            : {}),
+        },
+        ...(isFreshRequest ? { cache: 'no-store' } : {}),
+        signal,
+      }
     );
     return res.json();
   };
@@ -1252,8 +1265,10 @@ export async function apiChatScriptWorkspaceStream(
 
     if (parsed?.error || parsed?.type === 'error' || parsed?.event === 'error') {
       const error = parsed.error || parsed;
-      const eventError = new Error(error?.message || error?.detail || '剧本生成失败');
-      eventError.code = error?.code || null;
+      const eventError = new Error(getDisplayErrorMessage(error, '剧本生成失败'));
+      eventError.code = error?.code || parsed?.code || null;
+      eventError.status = error?.status || parsed?.status;
+      eventError.rawPayload = parsed;
       onEvent?.({ type: 'error', error: eventError, payload: parsed });
       throw eventError;
     }

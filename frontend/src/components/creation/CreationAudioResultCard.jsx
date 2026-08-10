@@ -22,6 +22,8 @@
  *   2026-07-16  复用 utils/creationFilename.js；下载副作用仍保留在结果卡
  *   2026-08-07  配音结果卡统一使用 16:9 尺寸，并在左上角展示提示词前 10 个字
  *                 卡片尺寸由 CreationResultState 的 240px 最小列宽网格控制，宽度随结果容器适配
+ *   2026-08-10  配音卡内部改为提示词顶部、播放控制底部的样式；播放结束自动恢复三角形
+ *   2026-08-10  恢复播放时波形动画，悬停操作按钮与播放按钮垂直对齐
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -34,7 +36,12 @@ import { apiDownloadCreationAudio } from '../../api/creation';
 import { downloadBlob } from '../../utils/downloadBlob';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
-const WAVEFORM_HEIGHTS = [14, 20, 11, 18, 24, 16, 22, 10, 19, 15, 23, 12, 17, 21, 13, 18, 11, 20, 15, 22];
+const WAVEFORM_HEIGHTS = [
+  14, 20, 11, 18, 24, 16, 22, 10, 19, 15,
+  23, 12, 17, 21, 13, 18, 11, 20, 15, 22,
+  13, 18, 10, 21, 16, 23, 12, 19, 14, 20,
+  11, 22, 17, 15, 24, 13, 18, 10, 21, 16,
+];
 
 export default function CreationAudioResultCard({ status, audioUrl, audioId, prompt, onDelete, batchMode = false, isSelected = false, onToggleSelect }) {
   const [hovered, setHovered] = useState(false);
@@ -43,7 +50,6 @@ export default function CreationAudioResultCard({ status, audioUrl, audioId, pro
   const audioRef = useRef(null);
 
   const isDone = status === 'done' && audioUrl;
-  const promptTitle = Array.from(prompt || '').slice(0, 10).join('');
 
   const handleDownload = async () => {
     if (audioId) {
@@ -61,7 +67,7 @@ export default function CreationAudioResultCard({ status, audioUrl, audioId, pro
   useEffect(() => {
     if (!audioRef.current) return;
     if (playing && isDone) {
-      audioRef.current.play().catch(() => {});
+      audioRef.current.play().catch(() => setPlaying(false));
     } else {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -78,34 +84,62 @@ export default function CreationAudioResultCard({ status, audioUrl, audioId, pro
           if (batchMode && isDone) onToggleSelect?.();
         }}
       >
-        {promptTitle && (
-          <div style={{ position: 'absolute', top: '12px', left: '16px', zIndex: 1, maxWidth: 'calc(100% - 32px)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFFCC', pointerEvents: 'none' }}>
-            {promptTitle}
-          </div>
-        )}
         {status === 'loading' ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <DotsLoading size={5} color="#2DC3E1" gap={4} />
           </div>
         ) : isDone ? (
-          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', padding: '16px' }}>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setPlaying((p) => !p); }}
-              style={{ width: '48px', height: '48px', borderRadius: '50%', border: 'none', backgroundColor: '#2DC3E1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'transform 0.15s', transform: hovered ? 'scale(1.1)' : 'scale(1)' }}
+          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '12px', padding: '16px', boxSizing: 'border-box' }}>
+            <div
+              style={{ width: '100%', minHeight: 0, flex: 1, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, fontFamily: FONT, fontSize: '16px', lineHeight: '150%', color: '#FFFFFF99', wordBreak: 'break-word' }}
+              title={prompt || ''}
             >
-              {playing ? (
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="6" y="4" width="3" height="12" rx="1" fill="#FFFFFF" /><rect x="11" y="4" width="3" height="12" rx="1" fill="#FFFFFF" /></svg>
-              ) : (
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7 4L16 10L7 16V4Z" fill="#FFFFFF" /></svg>
-              )}
-            </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', height: '24px' }}>
-              {WAVEFORM_HEIGHTS.map((height, i) => (
-                <div key={i} style={{ width: '3px', borderRadius: '2px', backgroundColor: '#2DC3E1', opacity: playing ? 0.8 : 0.4, height: `${height}px`, transition: 'height 0.2s' }} />
-              ))}
+              {prompt || ''}
             </div>
-            <audio ref={audioRef} src={audioUrl} preload="metadata" style={{ display: 'none' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', paddingRight: hovered ? '56px' : 0, boxSizing: 'border-box', flexShrink: 0 }}>
+              <button
+                type="button"
+                aria-label={playing ? '暂停播放' : '播放配音'}
+                onClick={(e) => { e.stopPropagation(); setPlaying((p) => !p); }}
+                style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', backgroundColor: '#FFFFFF1A', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+              >
+                {playing ? (
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="6" y="4" width="3" height="12" rx="1" fill="#FFFFFF" /><rect x="11" y="4" width="3" height="12" rx="1" fill="#FFFFFF" /></svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M7 4L16 10L7 16V4Z" fill="#FFFFFF" /></svg>
+                )}
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '2px', height: '24px', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                {WAVEFORM_HEIGHTS.map((height, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      width: '3px',
+                      flexShrink: 0,
+                      borderRadius: '2px',
+                      backgroundColor: '#FFFFFF80',
+                      opacity: 0.4,
+                      height: `${height}px`,
+                      transformOrigin: 'center',
+                      animationName: playing ? 'creation-audio-waveform' : 'none',
+                      animationDuration: '0.8s',
+                      animationTimingFunction: 'ease-in-out',
+                      animationIterationCount: 'infinite',
+                      animationDelay: playing ? `${(i % 6) * 0.08}s` : '0s',
+                      transition: 'opacity 0.2s',
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+            <audio
+              ref={audioRef}
+              src={audioUrl}
+              preload="metadata"
+              onEnded={() => setPlaying(false)}
+              onError={() => setPlaying(false)}
+              style={{ display: 'none' }}
+            />
           </div>
         ) : (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -120,7 +154,7 @@ export default function CreationAudioResultCard({ status, audioUrl, audioId, pro
         )}
 
         {hovered && isDone && !batchMode && (
-          <div style={{ position: 'absolute', bottom: '8px', right: '8px', display: 'flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ position: 'absolute', bottom: '20px', right: '8px', display: 'flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
             <CreationCardActionButton
               tooltip="下载"
               onClick={handleDownload}

@@ -1186,6 +1186,30 @@ export async function apiChatScriptWorkspace(projectId, { message, model, episod
   return res.json();
 }
 
+/**
+ * 确认暂停当前活动的剧本对话 turn。
+ * 仅关闭浏览器 SSE 连接不会停止后端任务，必须调用该接口收口 turn。
+ */
+export async function apiInterruptScriptChatTurn(projectId) {
+  if (!projectId) throw new Error('缺少项目编号');
+  const res = await authFetch(
+    `${BASE}/api/projects/${projectId}/script-workspace/chat/turns/active/interrupt`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+  invalidate(K.script(projectId));
+  const payload = await readScriptWorkspaceResponse(res);
+  if (String(payload?.status || '').toLowerCase() !== 'interrupted') {
+    const error = new Error(payload?.message || '后端未确认剧本已暂停');
+    error.status = res.status;
+    error.rawPayload = payload;
+    throw error;
+  }
+  return payload;
+}
+
 // 流式版本：SSE 逐 chunk 回调，完成后返回完整内容字符串
 // onChunk(accumulated: string) 每次收到新内容时触发
 // signal 用于 AbortController 取消
@@ -1262,6 +1286,8 @@ export async function apiChatScriptWorkspaceStream(
     } catch {
       // SSE 允许直接传输纯文本内容。
     }
+
+    if (parsed) onEvent?.({ type: 'payload', payload: parsed });
 
     if (parsed?.error || parsed?.type === 'error' || parsed?.event === 'error') {
       const error = parsed.error || parsed;

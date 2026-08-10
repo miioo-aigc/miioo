@@ -45,7 +45,7 @@
  *   2026-08-10  移除发送前的前端任务拦截，发送直接透传到后端剧本对话接口
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiDownloadStoryboardFile, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
+import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiInterruptScriptChatTurn, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiDownloadStoryboardFile, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
 import { Button } from '../components/ui';
 import { InputCard, ScriptEmptyState, ScriptMessageArea, ScriptOutlineLoading, ScriptOutlineWorkspace, ScriptModifyConfirmModal } from '../components/script';
 
@@ -210,6 +210,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   const [episodeActionError, setEpisodeActionError] = useState('');
   const stopReasonRef = useRef(null); // 'user-thinking' | 'user-streaming' | null
   const abortControllerRef = useRef(null); // 用于取消进行中的流式请求
+  const chatInterruptPromiseRef = useRef(null);
   const chatSendLockRef = useRef(false);
   const outlinePollStartedAtRef = useRef(null);
   const scriptContentContainerRef = useRef(null);
@@ -629,7 +630,16 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       stopReasonRef.current = 'user-thinking';
     }
     abortControllerRef.current?.abort();
-  }, [phase]);
+    const interruptPromise = apiInterruptScriptChatTurn(projectId).catch((error) => {
+      console.error('[ScriptPage] 确认暂停剧本对话失败:', error);
+      showToast(error?.message || '暂停剧本创作失败，请重试');
+      return null;
+    });
+    chatInterruptPromiseRef.current = interruptPromise;
+    interruptPromise.finally(() => {
+      if (chatInterruptPromiseRef.current === interruptPromise) chatInterruptPromiseRef.current = null;
+    });
+  }, [phase, projectId]);
 
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -726,6 +736,12 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
 
   const performSend = async (text, model, epCount, duration) => {
     if (!text || chatSendLockRef.current) return;
+    // 用户刚点击暂停时，等待后端确认上一轮 turn 已收口，避免立刻发送造成并发冲突。
+    const interruptPromise = chatInterruptPromiseRef.current;
+    if (interruptPromise) {
+      const interruptResult = await interruptPromise;
+      if (interruptResult === null) return false;
+    }
     chatSendLockRef.current = true;
 
     // 保存发送前的内容，超时时可恢复（避免丢失已有剧本）

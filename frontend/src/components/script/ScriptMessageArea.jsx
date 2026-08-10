@@ -11,6 +11,7 @@
  * ─── 更新记录 ────────────────────────────────────────────────────────
  *   2026-07-27  将用户消息气泡的三个圆角固定为 16px，保留右下角直角
  *   2026-07-27  流式输出期间允许用户上滑查看上下文，离开底部后暂停自动滚动
+ *   2026-08-10  手动暂停视为正常状态，保留已输出正文的正常颜色
  */
 import { useEffect, useRef } from 'react';
 import { TextButton } from '../ui';
@@ -44,7 +45,7 @@ function MiiooMark() {
 
 function MessageBubble({ message, isActive }) {
   const isUser = message.role === 'user';
-  const isError = message.status === 'failed' || message.status === 'interrupted';
+  const isError = message.status === 'failed';
   const showLoading = isActive && message.role === 'assistant' && message.status === 'streaming' && !message.content;
 
   if (!isUser) {

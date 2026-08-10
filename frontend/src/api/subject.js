@@ -889,9 +889,12 @@ async function scriptStructureWrite(projectId, path, body) {
 }
 
 export async function apiResplitScriptStructure(projectId, { base_revision, episode_count, instruction = '', model } = {}) {
+  const normalizedEpisodeCount = episode_count == null
+    ? null
+    : Number.parseInt(String(episode_count).trim(), 10);
   return scriptStructureWrite(projectId, '/resplit', {
     base_revision,
-    episode_count: episode_count ?? null,
+    episode_count: Number.isInteger(normalizedEpisodeCount) && normalizedEpisodeCount > 0 ? normalizedEpisodeCount : null,
     instruction,
     model: model || null,
     client_request_id: scriptClientRequestId('script-resplit'),

@@ -1483,7 +1483,7 @@ function hasStoryboardMediaHint(shot = {}) {
 
   async function handleTimelineFinalizeChange(media, nextValue) {
     if (!timelinePreviewMedia?.shot || !media) return;
-    await handleFinalizeToggle(timelinePreviewMedia.shot, media, nextValue);
+    // 先更新弹窗本地状态，让 Toggle 即时响应，不再等 PATCH + 候选刷新
     setTimelinePreviewMedia((prev) => prev ? {
       ...prev,
       finalized: nextValue,
@@ -1493,7 +1493,10 @@ function hasStoryboardMediaHint(shot = {}) {
         is_finalized: item.id === media.id ? nextValue : false,
       })),
     } : prev);
+    // PATCH + 候选刷新后台执行，不阻塞 toggle 渲染
+    handleFinalizeToggle(timelinePreviewMedia.shot, media, nextValue).catch(console.error);
   }
+
 
   async function handleRegenerate({ instruction = '' } = {}) {
     if (isGenerating || homeIsGenerating) return false;
@@ -2498,7 +2501,7 @@ function hasStoryboardMediaHint(shot = {}) {
           const n = normalizeImageUrl(videoUrl);
           const shotId = videoPanel.shot.id;
           const form = videoFormStateMap[shotId] || {};
-          const referenceImages = form.refImages?.length
+          const referenceImages = form.tab !== 'frame' && form.refImages?.length
             ? toSafeStoryboardReferenceUrls(form.refImages)
             : undefined;
           const durationValue = form.duration == null || form.duration === ''
@@ -2561,12 +2564,17 @@ function hasStoryboardMediaHint(shot = {}) {
                 sound_effect: params.sound,
                 prompt: params.prompt,
                 ratio: projectRatio,
-                reference_images: (params.reference_images || toSafeStoryboardReferenceUrls(params.refImages)),
+                reference_images: params.tab === 'frame'
+                  ? undefined
+                  : (params.reference_images || toSafeStoryboardReferenceUrls(params.refImages)),
                 first_frame_url: toAbsoluteUrl(params.first_frame_url),
                 last_frame_url: toAbsoluteUrl(params.last_frame_url),
                 reference_video_url: toAbsoluteUrl(params.reference_video_url),
                 reference_audio_url: toAbsoluteUrl(params.reference_audio_url),
               });
+            const savedReferenceImages = params.tab === 'frame'
+              ? undefined
+              : (params.reference_images || toSafeStoryboardReferenceUrls(params.refImages));
             taskId = getStoryboardTaskId(taskResp);
             if (!taskId) throw new Error('分镜视频生成接口未返回任务 ID');
             bindPendingCandidate(shot.id, pendingClientId, taskId);
@@ -2597,7 +2605,7 @@ function hasStoryboardMediaHint(shot = {}) {
                 }
                 return updated;
               });
-              await saveCandidateMedia(shot.id, { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated', prompt: params.prompt, model: params.model, resolution: params.resolution, duration: durationValue, ratio: projectRatio, referenceImages: params.reference_images || toSafeStoryboardReferenceUrls(params.refImages), genParams: { model: params.model, resolution: params.resolution, duration: durationValue, sound_effect: params.sound, ratio: projectRatio, reference_images: params.reference_images || toSafeStoryboardReferenceUrls(params.refImages), first_frame_url: params.first_frame_url, last_frame_url: params.last_frame_url, reference_video_url: params.reference_video_url, reference_audio_url: params.reference_audio_url } });
+              await saveCandidateMedia(shot.id, { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated', prompt: params.prompt, model: params.model, resolution: params.resolution, duration: durationValue, ratio: projectRatio, referenceImages: savedReferenceImages, genParams: { model: params.model, resolution: params.resolution, duration: durationValue, sound_effect: params.sound, ratio: projectRatio, reference_images: savedReferenceImages, first_frame_url: params.first_frame_url, last_frame_url: params.last_frame_url, reference_video_url: params.reference_video_url, reference_audio_url: params.reference_audio_url } });
               return { url: normalizedUrl };
             }
             // 终态但没有视频 — 发送 toast 提示失败

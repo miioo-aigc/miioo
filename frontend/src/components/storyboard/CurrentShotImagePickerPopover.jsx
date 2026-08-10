@@ -41,7 +41,7 @@ export default function CurrentShotImagePickerPopover({ open, images = [], onClo
           <span style={{ fontSize: '16px', lineHeight: '22px', color: 'rgba(255,255,255,0.90)', fontFamily: FONT }}>从当前分镜中选取</span>
           <button type="button" aria-label="关闭" onClick={onClose} style={{ width: '28px', height: '28px', border: 0, borderRadius: '6px', background: 'transparent', color: '#FFF', fontSize: '22px', lineHeight: '22px', cursor: 'pointer' }}>×</button>
         </header>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '8px 24px 24px' }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px 24px 24px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 120px)', gap: '12px' }}>
             {images.map((image, index) => (
               <ImagePickerCard

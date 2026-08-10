@@ -25,6 +25,7 @@
  *   2026-08-06  参考主体以当前分镜主体参考列为权威集合，并避免关闭/卸载时旧表单快照恢复已删除主体
  *   2026-08-10  首帧支持使用上一个分镜视频尾帧：前端抽帧后上传为图片并写入首帧槽位
  *   2026-08-10  首帧支持从当前分镜图片列表中选择，弹窗由参考媒体编辑器管理
+ *   2026-08-10  首尾帧模式提示词改为纯文本，并隔离普通参考图与主体绑定提交
  *   2026-08-06  保留后端时长作为初始默认值；用户修改时长后以用户值为准并同步列表，避免旧值覆盖和父子状态循环
  *   2026-08-05  修复异步表单恢复时首次空状态回写，确保参考图和提示词快照恢复后才触发持久化
  *   2026-08-05  用户编辑提示词后停止外部提示词覆盖，避免删除标签触发状态同步循环
@@ -222,8 +223,8 @@ export default function GenerateVideoPanel({
   }, [shot?.mainRefs]);
 
   const videoPromptMentions = useMemo(
-    () => buildVideoPromptMentions(prompt, refSubjects),
-    [prompt, refSubjects],
+    () => tab === 'frame' ? [] : buildVideoPromptMentions(prompt, refSubjects),
+    [prompt, refSubjects, tab],
   );
 
   const updateReferenceGroup = (setter, group) => (value) => {
@@ -391,6 +392,7 @@ export default function GenerateVideoPanel({
   }, [model, availableResolutions]);
 
   const videoReferenceItems = useMemo(() => {
+    if (tab === 'frame') return [];
     const items = [];
     // 参考主体（_type: char/scene/prop 为真实主体；本地上传/非主体资产为普通参考图 image，与图片弹窗保持一致：紫色标签「参考图」）
     refSubjects.forEach(s => {
@@ -411,7 +413,7 @@ export default function GenerateVideoPanel({
     // 参考音频
     refAudios.forEach((audio) => items.push({ id: audio.id, name: audio.name || '参考音频', _type: 'audio' }));
     return items;
-  }, [refSubjects, refImages, refVideos, refAudios]);
+  }, [refSubjects, refImages, refVideos, refAudios, tab]);
 
   async function handleRefMediaUpload(file, type = 'image') {
     try {
@@ -471,12 +473,14 @@ export default function GenerateVideoPanel({
     if (loading) return;
     setLoading(true);
     const placeholder = `pending-${Date.now()}`;
-    const refImagesSnapshot = refImages.map(r => ({ url: r.url, fileUrl: r.url }));
+    const refImagesSnapshot = tab === 'frame'
+      ? []
+      : refImages.map(r => ({ url: r.url, fileUrl: r.url }));
     onSetGeneratedVideos?.((prev) => [{ url: null, settled: false, id: placeholder, refImages: refImagesSnapshot }, ...prev]);
     try {
       // 收集参考媒体（仅用户手动上传的参考图，不自动附带主体参考图避免误触模型限制）
       const maxRefImages = currentVideoModel?.capabilities?.max_reference_images ?? null;
-      const referenceImages = (maxRefImages === null || maxRefImages > 0)
+      const referenceImages = tab !== 'frame' && (maxRefImages === null || maxRefImages > 0)
         ? [...refSubjects, ...refImages].map(r => r.url).filter(Boolean).slice(0, maxRefImages ?? 99)
         : [];
       const result = await onGenerate?.({
@@ -485,6 +489,7 @@ export default function GenerateVideoPanel({
         duration,
         sound,
         prompt,
+        tab,
         reference_images: referenceImages.length > 0 ? referenceImages : undefined,
         first_frame_url: refFirstFrame?.url,
         last_frame_url: refLastFrame?.url,
@@ -554,7 +559,13 @@ export default function GenerateVideoPanel({
           <div style={{ display: 'flex', flexDirection: 'column', width: embedded ? '457px' : '419px', flexShrink: 0, padding: embedded ? '12px 16px 80px 24px' : '8px 12px 80px 24px', gap: '20px', overflowY: 'auto', boxSizing: 'border-box' }}>
             <VideoGenerationTabs value={tab} onChange={handleTabChange} />
 
-            <PanelPromptInput ref={promptRef} value={prompt} onChange={handlePromptChange} referenceItems={videoReferenceItems} />
+            <PanelPromptInput
+              ref={promptRef}
+              value={prompt}
+              onChange={handlePromptChange}
+              referenceItems={videoReferenceItems}
+              plainTextMode={tab === 'frame'}
+            />
 
             <GenerationModelField
               value={modelsLoading ? '加载中...' : (tabModels.find(m => m.value === model)?.label || '请选择')}

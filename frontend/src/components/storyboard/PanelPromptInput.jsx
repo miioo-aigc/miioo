@@ -19,6 +19,7 @@
  *   2026-07-17  拆分 ReferenceMentionDropdown，保留编辑器提及插入与光标逻辑
  *   2026-08-05  修复标签删除后光标跳到段尾，以及展示态首次点击无法激活/光标定位到段尾的问题；保留点击坐标并在编辑态挂载后恢复光标
  *   2026-08-05  参考图标签名称最多展示10个字符，超出部分以省略号显示，底层引用名称保持不变
+ *   2026-08-10  首尾帧模式支持纯文本提示词展示与编辑，隔离参考图标签绑定
  */
 
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
@@ -202,7 +203,7 @@ function setCaretOffset(el, targetOffset) {
   sel.addRange(range);
 }
 
-const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange, referenceItems = [] }, ref) {
+const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange, referenceItems = [], plainTextMode = false }, ref) {
   const [focused, setFocused] = useState(false);
   const [hov, setHov] = useState(false);
   const [mentionQuery, setMentionQuery] = useState(null);
@@ -219,6 +220,7 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
   // 暴露 insertMention 方法，供外部（如参考视频卡片点击）调用
   useImperativeHandle(ref, () => ({
     insertMention(name, type) {
+      if (plainTextMode) return;
       const el = editorRef.current;
       if (el) {
         // 编辑器已挂载，直接插入
@@ -229,9 +231,10 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
         setFocused(true);
       }
     },
-  }));
+  }), [plainTextMode]);
 
   function doInsertMention(el, name, type) {
+    if (plainTextMode) return;
     const caretOffset = getCaretOffset(el);
     const currentVal = serializeEditor(el);
     const before = currentVal.slice(0, caretOffset);
@@ -278,10 +281,18 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
     // 把当前 DOM 里已有的类型合并进持久化 ref，防止 rebuild 时丢失
     const domTypes = readDOMTypes(el);
     typeOverridesRef.current = { ...typeOverridesRef.current, ...domTypes };
-    const raw = serializeEditor(el);
-    const clamped = raw.slice(0, MAX_PROMPT_LEN);
+   const raw = serializeEditor(el);
+   const clamped = raw.slice(0, MAX_PROMPT_LEN);
+   if (plainTextMode) {
+     const cleaned = clamped.replace(/@/g, '');
+     el.textContent = cleaned;
+     setCaretOffset(el, Math.min(caretOffset, cleaned.length));
+     setMentionQuery(null);
+     onChange(cleaned);
+     return;
+   }
     onChange(clamped);
-    rebuildEditorDOM(el, clamped, allSubjects, typeOverridesRef.current);
+   rebuildEditorDOM(el, clamped, allSubjects, typeOverridesRef.current);
     setCaretOffset(el, caretOffset);
     const textBefore = clamped.slice(0, caretOffset);
     const atIdx = textBefore.lastIndexOf('@');
@@ -300,6 +311,12 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
       const el = editorRef.current;
       // 必须先 focus，否则 window.getSelection() 无法定位光标
       el.focus();
+     if (plainTextMode) {
+        const cleaned = (value || '').replace(/@/g, '');
+        el.textContent = cleaned;
+        setCaretOffset(el, cleaned.length);
+        return;
+      }
       rebuildEditorDOM(el, value, allSubjects, typeOverridesRef.current);
       // 若有待插入的 mention（点击卡片时编辑器还未挂载），在此消费
       if (pendingMentionRef.current) {
@@ -332,7 +349,7 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
         setCaretOffset(el, value.length);
       }
     }
-  }, [focused]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [focused, plainTextMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 原生 beforeinput 监听：React 合成 onBeforeInput 无法 preventDefault，必须用原生事件
   useEffect(() => {
@@ -551,7 +568,7 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
             onPaste={handlePaste}
             onCompositionStart={handleCompositionStart}
             onCompositionEnd={handleCompositionEnd}
-            data-placeholder="描述画面内容、风格、镜头… 输入 @ 引入角色/场景/道具"
+            data-placeholder={plainTextMode ? '描述画面内容、风格、镜头…' : '描述画面内容、风格、镜头… 输入 @ 引入角色/场景/道具'}
             style={{
               flex: 1, outline: 'none', background: 'transparent',
               fontSize: '14px', lineHeight: '21px', color: '#FFFFFF', caretColor: '#2DC3E1',
@@ -578,16 +595,18 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
               color: value ? '#FFFFFF' : 'rgba(255,255,255,0.30)',
             }}
           >
-            {value === '' ? '描述画面内容、风格、镜头… 输入 @ 引入角色/场景/道具' : segments.map((seg, i) =>
-              seg.kind === 'mention'
-                ? <SubjectTag key={i} name={seg.name} type={seg.type} />
-                : <span key={i}>{seg.text}</span>
-            )}
+            {value === ''
+              ? (plainTextMode ? '描述画面内容、风格、镜头…' : '描述画面内容、风格、镜头… 输入 @ 引入角色/场景/道具')
+             : plainTextMode
+                ? (value || '').replace(/@/g, '')
+                : segments.map((seg, i) => seg.kind === 'mention'
+                  ? <SubjectTag key={i} name={seg.name} type={seg.type} />
+                  : <span key={i}>{seg.text}</span>)}
           </div>
         )}
 <PromptCharacterCount value={value} maxLength={MAX_PROMPT_LEN} />
       </div>
-      {mentionQuery !== null && (
+      {!plainTextMode && mentionQuery !== null && (
         <ReferenceMentionDropdown
           referenceItems={allSubjects}
           query={mentionQuery}

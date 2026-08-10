@@ -15,6 +15,7 @@
  *   2026-07-22  提交后保留遮罩并展示 200px 加载动画，失败时恢复弹窗
  *   2026-07-27  处理中将加载遮罩限制在剧本内容区，弹窗打开态仍保持全屏遮罩
  *   2026-08-04  目标集数选项增加两侧计步器，数字和单位居中展示
+ *   2026-08-10  提交时明确归一化目标集数，确保修改后的集数传入重新分集接口
  */
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -43,10 +44,13 @@ export default function ScriptResplitModal({ open, currentEpisodeCount = 0, sele
   if (!open) return null;
 
   const handleSubmit = async () => {
+    const normalizedTargetCount = Number.parseInt(String(targetCount).trim(), 10);
+    if (targetMode === 'count' && (!Number.isInteger(normalizedTargetCount) || normalizedTargetCount < 1)) return;
+
     setSubmitted(true);
     try {
       const succeeded = await onSubmit?.({
-        episode_count: targetMode === 'auto' ? null : Number(targetCount),
+        episode_count: targetMode === 'auto' ? null : normalizedTargetCount,
         instruction: instruction.trim(),
         model: selectedModel || null,
       });

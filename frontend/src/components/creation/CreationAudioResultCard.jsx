@@ -77,7 +77,7 @@ export default function CreationAudioResultCard({ status, audioUrl, audioId, pro
   return (
     <>
       <div
-        style={{ width: '100%', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#1A1A1A', position: 'relative', cursor: isDone ? 'pointer' : 'default', outline: isSelected ? '2px solid #2DC3E1' : 'none', outlineOffset: '-2px' }}
+        style={{ width: '100%', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden', backgroundColor: hovered ? '#242424' : '#1A1A1A', transition: 'background-color 0.15s', position: 'relative', cursor: isDone ? 'pointer' : 'default', outline: isSelected ? '2px solid #2DC3E1' : 'none', outlineOffset: '-2px' }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onClick={() => {
@@ -101,7 +101,7 @@ export default function CreationAudioResultCard({ status, audioUrl, audioId, pro
                 type="button"
                 aria-label={playing ? '暂停播放' : '播放配音'}
                 onClick={(e) => { e.stopPropagation(); setPlaying((p) => !p); }}
-                style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', backgroundColor: '#FFFFFF1A', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', backgroundColor: '#2DC3E1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
               >
                 {playing ? (
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="6" y="4" width="3" height="12" rx="1" fill="#FFFFFF" /><rect x="11" y="4" width="3" height="12" rx="1" fill="#FFFFFF" /></svg>
@@ -117,7 +117,7 @@ export default function CreationAudioResultCard({ status, audioUrl, audioId, pro
                       width: '3px',
                       flexShrink: 0,
                       borderRadius: '2px',
-                      backgroundColor: '#FFFFFF80',
+                      backgroundColor: '#2DC3E180',
                       opacity: 0.4,
                       height: `${height}px`,
                       transformOrigin: 'center',

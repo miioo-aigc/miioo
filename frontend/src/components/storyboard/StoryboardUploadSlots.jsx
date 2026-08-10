@@ -3,7 +3,7 @@
  * @structure-index
  *
  * ─── 组件职责 ───────────────────────────────────────────────
- *   FrameUploadSlot  首帧/尾帧图片上传、资产选择和当前/下一分镜快捷入口
+ *   FrameUploadSlot  首帧/尾帧图片上传、资产选择和分镜快捷入口
  *   PanelUploadSlot  参考主体、参考图、参考视频和参考音频的单/多媒体槽位
  *   上传与预览      负责文件校验、业务域上传 API 和资产预选；媒体展示复用 StoryboardMediaPrimitives
  *
@@ -18,6 +18,7 @@
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-07-16  从生成面板上传区迁移完成；由 ReferenceMediaEditor 直接引入并复用
  *   2026-07-17  抽离媒体内容、删除按钮和首尾帧快捷卡片展示，上传与资产逻辑保持不变
+ *   2026-08-10  首尾帧快捷入口支持异步处理后再写入槽位
  */
 
 import { useRef, useState } from 'react';
@@ -59,7 +60,7 @@ function toUploadedMedia(result, file) {
   };
 }
 
-export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabel, shortcutImage, shortcutTooltip, projectId }) {
+export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabel, shortcutImage, shortcutTooltip, onShortcutSelect, shortcutItems = [], projectId }) {
   const fileRef = useRef(null);
   const hoverTimerRef = useRef(null);
   const [hov, setHov] = useState(false);
@@ -128,14 +129,19 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
               <FileUploadButton onClick={() => setAssetPickerOpen(true)}>从资产库选择</FileUploadButton>
             </div>
           )}
-          {!media && (
+          {!media && [
+            ...(shortcutLabel ? [{ image: shortcutImage, label: shortcutLabel, tooltip: shortcutTooltip, onSelect: onShortcutSelect || onUpload }] : []),
+            ...shortcutItems,
+          ].map((shortcut, index) => (
             <ShortcutMediaCard
-              image={shortcutImage}
-              label={shortcutLabel}
-              tooltip={shortcutTooltip}
-              onSelect={onUpload}
+              key={`${shortcut.label || 'shortcut'}-${index}`}
+              image={shortcut.image}
+              label={shortcut.label}
+              tooltip={shortcut.tooltip}
+              onSelect={shortcut.onSelect || onUpload}
+              enabled={shortcut.enabled}
             />
-          )}
+          ))}
         </div>
       </div>
       <AssetPickerModal

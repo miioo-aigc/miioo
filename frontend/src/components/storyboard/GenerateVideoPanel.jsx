@@ -23,6 +23,8 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-08-06  参考主体以当前分镜主体参考列为权威集合，并避免关闭/卸载时旧表单快照恢复已删除主体
+ *   2026-08-10  首帧支持使用上一个分镜视频尾帧：前端抽帧后上传为图片并写入首帧槽位
+ *   2026-08-10  首帧支持从当前分镜图片列表中选择，弹窗由参考媒体编辑器管理
  *   2026-08-06  保留后端时长作为初始默认值；用户修改时长后以用户值为准并同步列表，避免旧值覆盖和父子状态循环
  *   2026-08-05  修复异步表单恢复时首次空状态回写，确保参考图和提示词快照恢复后才触发持久化
  *   2026-08-05  用户编辑提示词后停止外部提示词覆盖，避免删除标签触发状态同步循环
@@ -39,7 +41,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ShotViewerModal from '../ShotViewerModal';
 import { apiListModels } from '../../api/config';
-import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
+import { apiGetVideoLastFrame, apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { normalizeStoryboardReferenceGroups } from '../../utils/referenceMediaAdapter';
 import { getUploadedImageId, getUploadedImageUrl } from '../../utils/storyboardReferenceAdapter';
@@ -69,6 +71,8 @@ export default function GenerateVideoPanel({
   shot,
   projectId,
   nextShot = null,
+  previousFrameShortcut = null,
+  currentShotImages = [],
   chars = [],
   scenes = [],
   props = [],
@@ -434,6 +438,35 @@ export default function GenerateVideoPanel({
     }
   }
 
+  async function handleUsePreviousFrameShortcut() {
+    const { media, type } = previousFrameShortcut || {};
+    if (!media?.url) return;
+    if (type === 'image') {
+      setRefFirstFrame(media);
+      onShowToast?.('已使用上个分镜图', 'success');
+      return;
+    }
+    try {
+      const { lastFrameUrl, blob } = await apiGetVideoLastFrame(media.url);
+      if (!lastFrameUrl || !blob) throw new Error('无法获取视频尾帧');
+      const file = new File([blob], 'previous-shot-last-frame.jpg', { type: blob.type || 'image/jpeg' });
+      const result = await apiUploadCreationImage({ file, category: 'reference', project_id: projectId });
+      const uploadedUrl = normalizeImageUrl(getUploadedImageUrl(result));
+      if (!uploadedUrl) throw new Error('尾帧上传未返回图片地址');
+      setRefFirstFrame({
+        id: getUploadedImageId(result, uploadedUrl),
+        assetId: getUploadedImageId(result),
+        url: uploadedUrl,
+        name: '上一个分镜视频尾帧.jpg',
+        type: 'image/jpeg',
+      });
+      onShowToast?.('已使用上一个分镜视频尾帧', 'success');
+    } catch (error) {
+      console.error('[GenerateVideoPanel] 使用上一个分镜视频尾帧失败:', error);
+      onShowToast?.('获取上一个分镜视频尾帧失败，请重试', 'error');
+    }
+  }
+
   async function handleGenerate() {
     if (loading) return;
     setLoading(true);
@@ -538,6 +571,8 @@ export default function GenerateVideoPanel({
               projectId={projectId}
               shot={shot}
               nextShot={nextShot}
+              previousFrameShortcut={previousFrameShortcut}
+              currentShotImages={currentShotImages}
               showRefSubjects={showRefSubjects}
               showRefImages={showRefImages}
               showRefVideo={showRefVideo}
@@ -561,6 +596,7 @@ export default function GenerateVideoPanel({
               onRefAudiosChange={handleRefAudiosChange}
               onRefFirstFrameChange={setRefFirstFrame}
               onRefLastFrameChange={setRefLastFrame}
+              onUsePreviousFrameShortcut={handleUsePreviousFrameShortcut}
               onReferenceMediaUpload={handleRefMediaUpload}
               buildRefFromAsset={buildRefFromAsset}
               onInsertReference={(media, type) => promptRef.current?.insertMention(media.name || (type === 'video' ? '参考视频' : '参考音频'), type)}

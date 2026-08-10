@@ -38,7 +38,7 @@
  *   GenerateImagePanel                         components/storyboard/GenerateImagePanel.jsx
  *   GenerateVideoPanel / ReferenceMediaEditor  components/storyboard/
  *
- * ─── 主页面入口 ──────────────────────────────────────────── L196–L2586
+ * ─── 主页面入口 ──────────────────────────────────────────── L196–L2631
  *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化
  *   [加载与错误态] LoadingAnimation、DotsLoading、失败操作和统计
  *   [镜头 CRUD] 上传、编辑、复制、删除、排序
@@ -47,6 +47,9 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-10  图片创作面板联合去重主体/普通参考图，删除重复项后不再被旧表单快照恢复
+ *   2026-08-10  视频首尾帧新增上一分镜视频尾帧快捷入口，抽帧上传后复用首帧提交和表单恢复链路
+ *   2026-08-10  视频首帧增加当前分镜图片选择弹窗，合并历史/候选/定稿图片并按媒体身份去重
  *   2026-08-06  主体参考列增删时同步创作表单主体集合，处理关闭/卸载旧快照、刷新多来源和版本滞后覆盖
  *   2026-08-05  修复创作面板异步恢复期间的空表单覆盖：打开面板优先使用镜头快照，待参考图表单恢复完成后才允许持久化
  *   2026-08-05  创作面板参考主体变更时同步写回当前镜头 mainRefs，保持创作面板与主体参考列一致
@@ -2019,6 +2022,20 @@ function hasStoryboardMediaHint(shot = {}) {
     pendingCandidateMap[shotId] || [],
     candidateMediaMap[shotId] || [],
   );
+  const currentShotImages = useMemo(() => {
+    const shotId = videoPanel?.shot?.id;
+    if (!shotId) return [];
+    const currentShot = shots.find((item) => item.id === shotId) || videoPanel?.shot;
+    const merged = mergeStoryboardMediaItems(
+      genImageHistoryMap[shotId] || [],
+      mergeStoryboardMediaItems(candidateMediaMap[shotId] || [], currentShot?.storyboardImage ? [currentShot.storyboardImage] : []),
+    );
+    return merged.filter((item) => {
+      const type = String(item?.media_type || item?.type || '').toLowerCase();
+      return Boolean(item?.url) && !type.startsWith('video') && !type.startsWith('audio')
+        && (type === '' || type.startsWith('image') || type === 'picture');
+    });
+  }, [candidateMediaMap, genImageHistoryMap, shots, videoPanel?.shot]);
 
   const storyboardHeader = (
     <StoryboardHeader
@@ -2426,6 +2443,31 @@ function hasStoryboardMediaHint(shot = {}) {
         shot={videoPanel.shot}
         projectId={projectId}
         nextShot={videoPanel.nextShot}
+        previousFrameShortcut={(() => {
+          const index = shots.findIndex((item) => item.id === videoPanel.shot?.id);
+          const previousShot = index > 0 ? shots[index - 1] : null;
+          if (!previousShot) {
+            return { media: null, label: '使用上一个分镜视频尾帧', tooltip: '当前为第一个分镜' };
+          }
+          if (previousShot.storyboardVideo?.url) {
+            return {
+              media: previousShot.storyboardVideo,
+              type: 'video',
+              label: '使用上一个分镜视频尾帧',
+              tooltip: '上一个分镜视频尾帧',
+            };
+          }
+          if (previousShot.storyboardImage?.url) {
+            return {
+              media: previousShot.storyboardImage,
+              type: 'image',
+              label: '使用上个分镜图',
+              tooltip: '使用上个分镜图',
+            };
+          }
+          return { media: null, label: '使用上一个分镜视频尾帧', tooltip: '上一个分镜尚未生成视频' };
+        })()}
+        currentShotImages={currentShotImages}
         chars={chars}
         scenes={scenes}
         props={props}

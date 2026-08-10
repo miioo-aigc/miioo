@@ -8,6 +8,7 @@
  * 更新记录：2026-08-03 兼容 reference_asset/reference_image/resource/source 等嵌套身份。
  * 更新记录：2026-08-04 不再把通用 images 字段误判为参考图数组；补充显式参考素材标记。
  * 更新记录：2026-08-05 创作面板恢复主体参考时，按图片路径过滤跨来源重复图片。
+ * 更新记录：2026-08-10 图片创作面板合并主体参考和普通参考图时使用同一去重边界，避免旧表单快照重复回填。
  */
 
 import { normalizeImageUrl } from './imageUrl';
@@ -50,7 +51,7 @@ export function getReferenceMediaKey(item) {
   return null;
 }
 
-function getReferenceImagePathKey(item) {
+export function getReferenceImagePathKey(item) {
   const rawUrl = normalizeImageUrl(getReferenceMediaUrl(item));
   if (!rawUrl || rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')) return rawUrl;
   try {
@@ -110,6 +111,21 @@ export function dedupeReferenceMedia(items = [], type) {
 export function normalizeSubjectReferenceImages(items = []) {
   return dedupeReferenceMedia(items, REFERENCE_MEDIA_TYPES.IMAGE)
     .map((item) => ({ ...item, source: 'reference' }));
+}
+
+/**
+ * 图片创作面板的参考图是一个展示列表，但数据可能来自两个快照：
+ * 当前镜头主体引用和已保存的普通参考图。主体引用必须排在前面，
+ * 再按主体/资产身份及图片路径统一去重，避免同一图片以两种身份恢复。
+ */
+export function normalizeStoryboardImageReferences({ subjects = [], images = [] } = {}) {
+  return dedupeReferenceMedia(
+    [
+      ...(Array.isArray(subjects) ? subjects : []),
+      ...(Array.isArray(images) ? images : []),
+    ],
+    REFERENCE_MEDIA_TYPES.IMAGE,
+  );
 }
 
 /**

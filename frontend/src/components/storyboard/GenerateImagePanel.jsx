@@ -18,7 +18,9 @@
  *   不引用页面入口、页面 Store 或页面闭包变量。
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-10  收敛异步恢复 effect 的依赖快照，修复热更新时依赖数组长度变化的 React 警告
  *   2026-08-05  修复异步表单恢复时首次空状态回写，确保上传参考图快照恢复后才触发持久化
+ *   2026-08-10  合并当前主体引用与普通参考图时统一去重，删除同图重复项时同步清理旧快照副本
  *   2026-07-30  修复主体参考列新增资产未带入创作图片面板：保留已保存表单状态，实时合并当前分镜主体引用，不再过滤 avif/derived 预览地址
  *   2026-08-03  参考主体与普通参考图分别归一化后再合并为图片生成输入，避免类型和重复项混淆
  */
@@ -30,7 +32,7 @@ import MediaDetailModal from '../MediaDetailModal';
 import { apiListModels } from '../../api/config';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { normalizeImageUrl } from '../../utils/imageUrl';
-import { normalizeStoryboardReferenceGroups } from '../../utils/referenceMediaAdapter';
+import { getReferenceImagePathKey, normalizeStoryboardImageReferences, normalizeStoryboardReferenceGroups } from '../../utils/referenceMediaAdapter';
 import { getUploadedImageId, getUploadedImageUrl } from '../../utils/storyboardReferenceAdapter';
 import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter';
 import { GenerationModelField, GenerationOptionFields } from './GenerationParamsFields';
@@ -119,30 +121,39 @@ export default function GenerateImagePanel({
     }
     // 已保存的弹窗状态优先保留；当前分镜列表新增的主体参考补到末尾。
     // 不能再按文件后缀过滤主体图，资产库返回的 avif/derived 地址也是有效预览地址。
-    const groups = normalizeStoryboardReferenceGroups({
+    return normalizeStoryboardImageReferences({
       subjects: shotReferences,
       images: formState?.refImages,
     });
-    return [...groups.subjects, ...groups.images];
   });
   const [refImgPickerOpen, setRefImgPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mediaDetailOpen, setMediaDetailOpen] = useState(false);
   const [mediaDetailActiveIdx, setMediaDetailActiveIdx] = useState(0);
+  // 将异步恢复所需的多个输入收敛为一个快照，保持 effect 依赖数组长度稳定，
+  // 也避免开发热更新把旧的单项依赖数组与新的多项数组进行比较。
+  const formRestoreSnapshot = useMemo(() => ({
+    formState,
+    mainRefs: shot?.mainRefs,
+  }), [formState, shot?.mainRefs]);
 
   // 父级可能先挂载面板、后收到异步恢复的创作表单。恢复完成前不能把本地
   // 初始空值回传保存；首次收到快照时恢复提示词和参考图。
   useEffect(() => {
-    if (formState == null || formStateHydratedRef.current || !Array.isArray(formState.refImages)) return;
+    const { formState: restoredFormState, mainRefs } = formRestoreSnapshot;
+    if (restoredFormState == null || formStateHydratedRef.current || !Array.isArray(restoredFormState.refImages)) return;
     const restoreTimer = setTimeout(() => {
-      setModel(formState.model || '');
-      setResolution(formState.resolution || '');
-      if (typeof formState.prompt === 'string') setPrompt(formState.prompt);
-      setRefImages(normalizeStoryboardReferenceGroups({ images: formState.refImages }).images);
+      setModel(restoredFormState.model || '');
+      setResolution(restoredFormState.resolution || '');
+      if (typeof restoredFormState.prompt === 'string') setPrompt(restoredFormState.prompt);
+      setRefImages(normalizeStoryboardImageReferences({
+        subjects: mainRefs,
+        images: restoredFormState.refImages,
+      }));
       formStateHydratedRef.current = true;
     }, 0);
     return () => clearTimeout(restoreTimer);
-  }, [formState]);
+  }, [formRestoreSnapshot]);
 
   useEffect(() => {
     if (!formStateHydratedRef.current) return;
@@ -245,9 +256,16 @@ export default function GenerateImagePanel({
   }
 
   function removeRefImage(id) {
-    setRefImages((prev) => normalizeStoryboardReferenceGroups({
-      images: prev.filter((img) => img.id !== id),
-    }).images);
+    setRefImages((prev) => {
+      const target = prev.find((img) => img.id === id);
+      const targetPath = target?.url ? getReferenceImagePathKey(target.url) : null;
+      return normalizeStoryboardReferenceGroups({
+        images: prev.filter((img) => {
+          if (img.id === id) return false;
+          return !targetPath || getReferenceImagePathKey(img.url) !== targetPath;
+        }),
+      }).images;
+    });
   }
 
   async function handleGenerate() {

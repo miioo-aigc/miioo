@@ -14,6 +14,7 @@ export { default as VideoResultsPanel } from './VideoResultsPanel';
 export { default as VideoUploadCard } from './VideoUploadCard';
 export { default as VideoResultCard } from './VideoResultCard';
 export { default as ReferenceMediaEditor } from './ReferenceMediaEditor';
+export { default as CurrentShotImagePickerPopover } from './CurrentShotImagePickerPopover';
 export {
   ImgUploadCard,
   ImgIconBtn,

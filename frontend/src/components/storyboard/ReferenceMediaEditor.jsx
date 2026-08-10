@@ -14,17 +14,22 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-07-16  上传槽位改为业务域内直接引入，移除页面级组件转发边界；保留素材状态与回调契约
+ *   2026-08-10  首帧新增“使用上一个分镜视频尾帧”快捷入口，抽帧和上传由面板业务回调负责
+ *   2026-08-10  首帧新增当前分镜图片选择弹窗，图片候选由视频面板显式注入
  */
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { FrameUploadSlot, PanelUploadSlot } from './StoryboardUploadSlots';
+import CurrentShotImagePickerPopover from './CurrentShotImagePickerPopover';
 
 export default function ReferenceMediaEditor({
   tab,
   projectId,
   shot,
   nextShot,
+  previousFrameShortcut = null,
+  currentShotImages = [],
   showRefSubjects,
   showRefImages,
   showRefVideo,
@@ -48,10 +53,12 @@ export default function ReferenceMediaEditor({
   onRefAudiosChange,
   onRefFirstFrameChange,
   onRefLastFrameChange,
+  onUsePreviousFrameShortcut,
   onReferenceMediaUpload,
   buildRefFromAsset,
   onInsertReference,
 }) {
+  const [currentShotImagePickerOpen, setCurrentShotImagePickerOpen] = useState(false);
   const uploadBlobMedia = useCallback(async (media, type, onUploaded) => {
     if (!media?.id?.startsWith('blob:')) {
       onUploaded(media);
@@ -193,9 +200,21 @@ export default function ReferenceMediaEditor({
             media={refFirstFrame}
             onUpload={onRefFirstFrameChange}
             onRemove={() => onRefFirstFrameChange?.(null)}
-            shortcutLabel="使用当前分镜图"
-            shortcutImage={shot?.storyboardImage ?? null}
-            shortcutTooltip="当前分镜尚未生成分镜图"
+            shortcutItems={[
+              {
+                image: shot?.storyboardImage ?? null,
+                label: '从当前分镜中选取',
+                tooltip: currentShotImages.length ? '从当前分镜图片中选择' : '当前分镜暂无图片',
+                enabled: true,
+                onSelect: () => setCurrentShotImagePickerOpen(true),
+              },
+              {
+                image: previousFrameShortcut?.media,
+                label: previousFrameShortcut?.label || '使用上一个分镜视频尾帧',
+                tooltip: previousFrameShortcut?.tooltip || '上一个分镜尚未生成视频',
+                onSelect: onUsePreviousFrameShortcut,
+              },
+            ]}
             projectId={projectId}
           />
           <FrameUploadSlot
@@ -210,6 +229,15 @@ export default function ReferenceMediaEditor({
           />
         </>
       )}
+      <CurrentShotImagePickerPopover
+        open={currentShotImagePickerOpen}
+        images={currentShotImages}
+        onClose={() => setCurrentShotImagePickerOpen(false)}
+        onSelect={(image) => {
+          onRefFirstFrameChange?.({ ...image, type: image.type || 'image/jpeg', media_type: 'image' });
+          setCurrentShotImagePickerOpen(false);
+        }}
+      />
     </>
   );
 }

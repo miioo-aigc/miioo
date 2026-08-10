@@ -19,6 +19,7 @@
  *   2026-07-16  从生成面板上传区迁移完成；由 ReferenceMediaEditor 直接引入并复用
  *   2026-07-17  抽离媒体内容、删除按钮和首尾帧快捷卡片展示，上传与资产逻辑保持不变
  *   2026-08-10  首尾帧快捷入口支持异步处理后再写入槽位
+ *   2026-08-10  首尾帧上传卡片改为三列等宽布局，首帧三个入口可完整撑满一行
  */
 
 import { useRef, useState } from 'react';
@@ -107,14 +108,14 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignSelf: 'stretch' }}>
         {label && <span style={{ fontSize: '14px', lineHeight: '18px', color: 'rgba(255,255,255,0.60)', fontFamily: FONT }}>{label}</span>}
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ width: '100%', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px' }}>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
           {media ? (
             <div
               onMouseEnter={startPreview}
               onMouseMove={movePreview}
               onMouseLeave={stopPreview}
-              style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}
+              style={{ position: 'relative', width: '100%', aspectRatio: '1', borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)', boxSizing: 'border-box' }}
             >
               <MediaContent media={media} />
               <MediaRemoveButton onClick={() => { stopPreview(); onRemove?.(); }} />
@@ -123,7 +124,7 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
             <div
               onMouseEnter={() => setHov(true)}
               onMouseLeave={() => setHov(false)}
-              style={{ width: '120px', height: '120px', borderRadius: '6px', flexShrink: 0, border: `1px dashed ${hov ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.08)'}`, backgroundColor: '#1D1E1E', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'border-color 0.12s' }}
+              style={{ width: '100%', aspectRatio: '1', borderRadius: '6px', border: `1px dashed ${hov ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.08)'}`, backgroundColor: '#1D1E1E', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'border-color 0.12s', boxSizing: 'border-box' }}
             >
               <FileUploadButton onClick={() => fileRef.current?.click()}>本地上传</FileUploadButton>
               <FileUploadButton onClick={() => setAssetPickerOpen(true)}>从资产库选择</FileUploadButton>
@@ -140,6 +141,7 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
               tooltip={shortcut.tooltip}
               onSelect={shortcut.onSelect || onUpload}
               enabled={shortcut.enabled}
+              stretch
             />
           ))}
         </div>

@@ -35,11 +35,11 @@ export function MediaContent({ media, className, style }) {
   return <img className={className} src={url} alt="" style={contentStyle} />;
 }
 
-export function ShortcutMediaCard({ image, label, tooltip, onSelect, enabled = Boolean(image) }) {
+export function ShortcutMediaCard({ image, label, tooltip, onSelect, enabled = Boolean(image), stretch = false }) {
   const [hovered, setHovered] = useState(false);
   return (
     <div style={{ position: 'relative' }}>
-      <div onClick={() => enabled && onSelect?.(image)} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ width: '120px', height: '120px', borderRadius: '6px', flexShrink: 0, border: `1px dashed ${hovered && enabled ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.08)'}`, backgroundColor: '#1D1E1E', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: enabled ? 'pointer' : 'default', transition: 'border-color 0.12s', padding: '8px' }}>
+      <div onClick={() => enabled && onSelect?.(image)} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ width: stretch ? '100%' : '120px', aspectRatio: '1', borderRadius: '6px', flexShrink: 0, border: `1px dashed ${hovered && enabled ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.08)'}`, backgroundColor: '#1D1E1E', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: enabled ? 'pointer' : 'default', transition: 'border-color 0.12s', padding: '8px', boxSizing: 'border-box' }}>
         {image ? (
           <>
             <div style={{ width: '72px', height: '40px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)', opacity: hovered ? 1 : 0.6, transition: 'opacity 0.12s' }}>

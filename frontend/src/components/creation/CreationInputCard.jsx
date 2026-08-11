@@ -623,6 +623,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
           setSelectedVoiceName(voiceName);
           setVoiceModalOpen(false);
         },
+        showToast,
         liveMaterialModalOpen,
         onLiveMaterialModalClose: () => setLiveMaterialModalOpen(false),
         onLiveMaterialConfirm: (items) => {

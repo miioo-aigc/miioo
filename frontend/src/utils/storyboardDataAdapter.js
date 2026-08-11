@@ -133,6 +133,18 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
     }
   };
   const genParams = parseObject(be.gen_params ?? be.genParams);
+  const hasNarrationSegments = (value) => (
+    Array.isArray(value) && value.some((segment) => (
+      segment && typeof segment === 'object' && String(segment.lines ?? '').trim()
+    ))
+  );
+  const structuredNarrationSegments = hasNarrationSegments(be.dialogues_json)
+    ? be.dialogues_json
+    : (hasNarrationSegments(be.narration?.segments)
+      ? be.narration.segments
+      : (hasNarrationSegments(genParams.narration_segments)
+        ? genParams.narration_segments
+        : null));
   const subjectRefs = parseObject(be.subject_refs_json ?? be.subjectRefsJson);
   const generationRefs = parseObject(be.generation_refs_json ?? be.generationRefsJson);
   const hasDirectSubjectFields = Array.isArray(be.character_ids)
@@ -324,8 +336,10 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
     ambientSound: be.ambient_sound ?? be.ambientSound ?? '',
     genParams,
     creationForm: hasCreationForm ? creationForm : null,
-    narration: be.narration ?? (
-      be.voiceover
+    // 有效结构化台词优先；后端默认返回的空 dialogues_json 不得覆盖已有兼容台词。
+    narration: structuredNarrationSegments
+      ? { segments: structuredNarrationSegments }
+      : (be.voiceover
         ? {
             segments: be.voiceover.split('\n').filter(Boolean).map((line) => {
               const idx = line.indexOf('：');
@@ -333,8 +347,7 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
               return { role: '', lines: line };
             }),
           }
-        : { segments: [] }
-    ),
+        : { segments: [] }),
     mainRefs: Array.isArray(be.mainRefs)
       ? be.mainRefs.filter((ref) => {
           if (!hasDirectSubjectFields || !isStoryboardSubjectReference(ref)) return true;
@@ -465,6 +478,12 @@ export function buildStoryboardSubjectFields(mainRefs = []) {
  */
 export function toBackendStoryboard(shot) {
   const genParams = shot.genParams && typeof shot.genParams === 'object' ? shot.genParams : {};
+  const narrationSegments = Array.isArray(shot.narration?.segments)
+    ? shot.narration.segments.map((segment) => ({
+        role: segment?.role ?? '',
+        lines: segment?.lines ?? '',
+      }))
+    : [];
   // 主体引用是覆盖语义，显式提交空数组/null，不能让后端沿用旧快照。
   const subjectFields = buildStoryboardSubjectFields(shot.mainRefs);
   const creationForm = shot.creationForm
@@ -493,17 +512,19 @@ export function toBackendStoryboard(shot) {
     camera_angle: shot.params?.angle || undefined,
     composition: shot.params?.composition || undefined,
    duration: shot.params?.duration ? parseFloat(shot.params.duration) : undefined,
-   lighting: shot.lightShadow || undefined,
-   ambient_sound: shot.ambientSound || undefined,
-   voiceover: shot.narration?.segments?.length
-     ? shot.narration.segments.map(s => s.role ? `${s.role}：${s.lines}` : s.lines).join('\n')
+   // 这两个字段为空表示用户删除内容，必须显式传空字符串，不能省略后让后端保留旧值。
+   lighting: shot.lightShadow ?? '',
+   ambient_sound: shot.ambientSound ?? '',
+   voiceover: narrationSegments.length
+     ? narrationSegments.map(s => s.role ? `${s.role}：${s.lines}` : s.lines).join('\n')
      : '',
-    // 台词全部删除时显式清空后端结构化台词字段（narration_segments），
-    // 否则 PATCH 不包含该字段 → 后端保留旧值 → 刷新后 normalizeStoryboard 从 be.narration 恢复旧数据
+    // dialogues_json 是后端正式结构化字段；兼容快照同步写入 gen_params，
+    // 新增、编辑和删除都必须完整提交，不能只在删除时传空数组。
+    dialogues_json: narrationSegments,
     gen_params: {
       ...genParams,
       ...subjectFields,
-      ...(shot.narration?.segments?.length === 0 ? { narration_segments: [] } : {}),
+      narration_segments: narrationSegments,
       ...(creationForm ? { creation_form: creationForm } : {}),
     },
     ...subjectFields,

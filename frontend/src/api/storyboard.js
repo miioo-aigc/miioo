@@ -303,6 +303,7 @@ export async function apiUpdateStoryboard(projectId, storyboardId, data) {
     'lighting',
     'ambient_sound',
     'voiceover',
+    'dialogues_json',
     'character_ids',
     'scene_id',
     'prop_ids',

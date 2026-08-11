@@ -38,8 +38,9 @@
  *   GenerateImagePanel                         components/storyboard/GenerateImagePanel.jsx
  *   GenerateVideoPanel / ReferenceMediaEditor  components/storyboard/
  *
- * ─── 主页面入口 ──────────────────────────────────────────── L206–L2678
- *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化
+ * ─── 主页面入口 ──────────────────────────────────────────── L209–L2739
+ *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化；L337 按镜头最新快照保存队列
+ *   [持久化动作] L544 enqueueStoryboardSave：同一镜头串行提交最新 PATCH 快照
  *   [加载与错误态] LoadingAnimation、DotsLoading、失败操作和统计
  *   [镜头 CRUD] 上传、编辑、复制、删除、排序
  *   [渲染] 状态结果、内容区（列表/时间轴）、生成面板和 Toast
@@ -51,6 +52,8 @@
  *   2026-08-11  分镜视频首尾帧请求补传 asset_id 和 generate_mode，并确保素材 URL 为完整地址
  *   2026-08-11  新建/复制分镜时初始化候选媒体状态，避免新分镜误显“生成中”占位；复制同步已落盘候选媒体
  *   2026-08-11  候选媒体后台刷新不再覆盖已有卡片为加载态，避免其他镜头误显生成中动画
+ *   2026-08-11  光影、环境音编辑复用镜头最新快照队列，空值显式保存，避免旧请求或省略字段使刷新后恢复旧内容
+ *   2026-08-11  台词新增、编辑、删除显式提交 dialogues_json 与结构化兼容快照；刷新时有效结构化值优先，空默认值不覆盖兼容台词
  *   2026-08-10  图片创作面板联合去重主体/普通参考图，删除重复项后不再被旧表单快照恢复
  *   2026-08-10  视频首尾帧新增上一分镜视频尾帧快捷入口，抽帧上传后复用首帧提交和表单恢复链路
  *   2026-08-10  视频首帧增加当前分镜图片选择弹窗，合并历史/候选/定稿图片并按媒体身份去重
@@ -333,6 +336,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const videoFormStateRef = useRef({});
   const creationFormSaveTimersRef = useRef(new Map());
   const creationFormSaveQueuesRef = useRef(new Map());
+  const storyboardSaveQueuesRef = useRef(new Map());
   const dirtyCreationFormShotIdsRef = useRef(new Set());
   const promptBindingRepairRef = useRef(new Map());
   const userEditedVideoPromptRef = useRef(new Set());
@@ -538,6 +542,17 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const getLatestShot = useCallback((shotId) => (
     shotsRef.current.find((item) => item.id === shotId) || null
   ), []);
+
+  const enqueueStoryboardSave = useCallback((shotId, shot, errorLabel = '更新分镜') => {
+    if (!storyboardSaveQueuesRef.current.has(shotId)) {
+      storyboardSaveQueuesRef.current.set(shotId, createLatestPersistenceQueue((snapshot) => (
+        apiUpdateStoryboard(projectId, shotId, toBackendStoryboard(snapshot))
+      )));
+    }
+    storyboardSaveQueuesRef.current.get(shotId).enqueue(shot).catch((error) => {
+      console.error(`[StoryboardPage] ${errorLabel}失败:`, error);
+    });
+  }, [projectId]);
 
   // 分镜数据和主体数据都准备好后，提前修复后端生成提示词中缺失的主体绑定。
   // 这里不依赖创作弹窗，用户打开第 N 个镜头时可以直接看到修复后的状态。
@@ -1767,14 +1782,12 @@ function hasStoryboardMediaHint(shot = {}) {
           next.mainRefs,
         );
       } else {
-        apiUpdateStoryboard(projectId, id, toBackendStoryboard(synchronizedNext)).catch((err) => {
-          console.error('[StoryboardPage] 更新分镜主体参考失败:', err);
-        });
+        enqueueStoryboardSave(id, synchronizedNext, '更新分镜主体参考');
       }
     } else {
-      apiUpdateStoryboard(projectId, id, toBackendStoryboard(synchronizedNext)).catch((err) => {
-        console.error('[StoryboardPage] 更新分镜失败:', err);
-      });
+      // 光影、环境音等镜头文本和其他行内编辑共用按镜头串行的最新快照队列。
+      // 防抖无法约束已发 PATCH 的完成顺序，连续编辑时旧快照不能在最后写回后端。
+      enqueueStoryboardSave(id, synchronizedNext);
     }
   }
 

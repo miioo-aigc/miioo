@@ -19,7 +19,7 @@ const CARD_ACCENT_BUTTON_GRADIENT =
 // 教程按钮跳转链接（创作手册，与 Home.jsx 中 CREATION_MANUAL_URL 保持一致）
 const CREATION_MANUAL_URL = 'https://gcn0je6sgrhe.feishu.cn/wiki/QaKLwOx0ii2qWakn4cXcybbMnrf?from=from_copylink';
 const MODEL_DESCRIPTION = 'GPT-5.2 是 GPT-5 系列最新一代旗舰级智能模型，在架构设计、推理能力和应用性能上实现重大突破。相比 GPT-5.1…';
-const MODEL_TABS = ['对话模型', '图片模型', '视频模型', '配音模型'];
+const MODEL_TABS = ['对话模型', '图片模型', '视频模型', '配音模型', '音乐模型'];
 const TAB_SLIDE_DURATION = 220;
 
 const CARD_KEY_NAMES = {
@@ -38,6 +38,7 @@ function getCategoryTab(category) {
     'image': '图片模型',
     'video': '视频模型',
     'voice': '配音模型',
+    'music': '音乐模型',
   };
   return mapping[category] || null;
 }
@@ -49,6 +50,7 @@ function getTabCategory(tab) {
     '图片模型': 'image',
     '视频模型': 'video',
     '配音模型': 'voice',
+    '音乐模型': 'music',
   };
   return mapping[tab] || null;
 }
@@ -822,15 +824,16 @@ function ConfigModelModal({
       <div className="flex flex-1 flex-col items-start self-stretch overflow-hidden min-h-0">
         <ModelTabs activeTab={activeTab} onChange={onChangeTab} />
         <div className="w-full flex-1 overflow-hidden min-h-0 rounded-b-lg rounded-tr-lg bg-[#FFFFFF0D] px-[12px] py-[6px]">
-          <div
-            className="flex h-full will-change-transform"
-            style={{
-              width: `${MODEL_TABS.length * 100}%`,
-              transform: `translateX(-${activeTabIndex * (100 / MODEL_TABS.length)}%)`,
-              transition: `transform ${TAB_SLIDE_DURATION}ms ease`,
-            }}
-          >
-            {MODEL_TABS.map((tab) => {
+          <div className="h-full overflow-x-hidden">
+            <div
+              className="flex h-full will-change-transform"
+              style={{
+                width: `${MODEL_TABS.length * 100}%`,
+                transform: `translateX(-${activeTabIndex * (100 / MODEL_TABS.length)}%)`,
+                transition: `transform ${TAB_SLIDE_DURATION}ms ease`,
+              }}
+            >
+              {MODEL_TABS.map((tab) => {
               const tabModels = modelsByTab[tab] ?? [];
               const tabShowEmptyState = !apiTested && tabModels.length === 0;
               return (
@@ -881,7 +884,8 @@ function ConfigModelModal({
                   )}
                 </div>
               );
-            })}
+              })}
+            </div>
           </div>
         </div>
       </div>

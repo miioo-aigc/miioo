@@ -1,5 +1,27 @@
 # miioo 项目进度管理文档
 
+## 2026-08-11 API 配置新增音乐模型
+
+- “配置服务商 API Key”弹窗在配音模型后新增“音乐模型”Tab，OneLinkAI 与其他服务商共用该入口。
+- 音乐模型以真实后端分类 `music` 接入现有 `/api/models` 配置链路，可加载、添加、启停、设为默认及删除，不新增静态模拟数据。
+- 修复模型 Tab 横向切换时相邻分页的“添加模型”虚线边框露出并与当前页相连的视觉问题；分页轨道现由独立视口裁切，保留各 Tab 的纵向滚动。
+- 涉及文件：`src/components/ApiConfigModal.jsx`。
+
+## 2026-08-11 分镜台词新增刷新丢失修复
+
+- 修复分镜台词新增或编辑后刷新丢失的问题。台词虽然已进入按镜头最新快照保存队列，但此前只提交了兼容文本字段 `voiceover`；刷新链路没有从正式结构化字段恢复新增内容。
+- `toBackendStoryboard` 现对新增、编辑、删除统一提交完整 `dialogues_json` 和 `gen_params.narration_segments` 快照，仍保留 `voiceover` 兼容；读取时仅在结构化字段含有效台词时优先恢复，后端默认空数组不会覆盖已有兼容台词。
+- 涉及文件：`src/utils/storyboardDataAdapter.js`、`src/api/storyboard.js`。
+- 验证：`npx eslint src/utils/storyboardDataAdapter.js src/api/storyboard.js src/pages/StoryboardPage.jsx`、`npm run build`、`npm run check:architecture`、`git diff --check` 通过。构建仅保留项目既有分块体积提醒，架构检查仅保留既有大文件规模提醒；仍需在登录态可写测试项目中完成台词新增/编辑/删除后刷新回归。
+
+## 2026-08-11 分镜光影与环境音编辑刷新回滚修复
+
+- 修复分镜页删除或修改“光影”“环境音”后刷新又恢复旧内容的问题。根因包含两层：序列化时空值被转换为 `undefined`，删除操作没有向后端提交清空字段；同一镜头的普通 PATCH 未接入最新快照队列，连续编辑时旧请求可能晚于新请求完成并覆盖最终内容。
+- `toBackendStoryboard` 现在对 `lighting`、`ambient_sound` 显式提交字符串，空字符串代表删除；`StoryboardPage` 的镜头行内编辑复用按镜头串行的最新快照队列，等待中的更新只保留最终快照。
+- 该队列不改变创作表单已有的保存链路；参考主体和创作表单继续使用其既有的专用最新快照队列。
+- 涉及文件：`src/pages/StoryboardPage.jsx`、`src/utils/storyboardDataAdapter.js`。
+- 验证：`npx eslint src/pages/StoryboardPage.jsx src/utils/storyboardDataAdapter.js`、`npm run build`、`npm run check:architecture`、`git diff --check` 通过。全仓 `npm run lint` 无错误，但保留 `PanelPromptInput.jsx` 的既有 Hooks 依赖警告；构建仅保留项目既有分块体积提醒，架构检查仅保留既有大文件规模提醒；尚未在登录态可写测试项目中完成“修改/删除后刷新”的真实后端回归。
+
 ## 2026-08-11 创作草稿刷新后参考图恢复验证通过
 
 - 修复创作页刷新后参考图无法恢复的问题。根因是页面刷新后内存草稿为空，读取流程被 `sessionStorage` 中仅用于提示词兜底的内容提前截断，未继续读取 IndexedDB 中包含 `File`/`Blob` 的完整草稿。
@@ -644,7 +666,7 @@
 | `Home.jsx` | 1296（2026-07-17，HomeNavigationRail 拆分后；架构统计 1297） | 首页稳定展示区块迁移完成，页面保留业务编排 | `HomeHeader`、`HomeLogo`、`HomeBackground`、`HomeSloganText`、`StartCreationButton`、`QRCodePopup`、`MoreOptionsMenu`、`CreationManualButton`、`LoginButton`、`WorkflowStepTabs`、`WorkflowHeadbar`、`HomeNavigationRail`、`ApiConfigBubble`、`HomeToast` 已迁移；页面仍保留认证状态、项目加载、步骤切换、任务触发和全局副作用 |
 | `AssetsPage.jsx` | 57（2026-07-16，入口收敛后） | 页面入口与主要非破坏性交互已复验，外部副作用仍待授权 | 页面只负责模块切换和外框；`AssetsProjectPanel.jsx`（506 行）负责项目资产筛选、分页、批量动作和详情编排，`AssetsCreativePanel.jsx`（358 行）负责创作资产历史、收藏和批量动作；API、IntersectionObserver、删除/下载/收藏/Toast 等副作用仍由业务面板持有 |
 | `CreationPage.jsx` | 698（2026-08-03，生成逻辑 Hook 化后；架构统计 699） | 生成逻辑首轮拆分，待本轮静态验收 | 页面继续持有状态、历史 API、任务恢复、模型参数、Toast、缓存、Store 和页面区块编排；`useCreationGeneration` 负责 Shot 创建、生成请求、占位/结果卡和生成失败清理 |
-| `StoryboardPage.jsx` | 2133（2026-08-03，P0-P3 拆分与 React ESLint 修复后） | 静态迁移收尾，规模提醒非阻断 | 镜头行、媒体列、主体参考列、文本编辑列、头部、批量工具栏、图片/视频生成面板、上传槽位、镜头编号列、候选媒体适配、加载态和任务恢复已按边界拆分；用户已确认分镜页纳入范围功能可用；API、轮询、缓存、持久化、Store 写回和 Toast 仍由页面编排 |
+| `StoryboardPage.jsx` | 2739（2026-08-11，镜头最新快照持久化修复后） | 静态迁移收尾，规模提醒非阻断 | 镜头行、媒体列、主体参考列、文本编辑列、头部、批量工具栏、图片/视频生成面板、上传槽位、镜头编号列、候选媒体适配、加载态和任务恢复已按边界拆分；API、轮询、缓存、按镜头最新快照持久化、Store 写回和 Toast 仍由页面编排 |
 
 ### 验收现状
 

@@ -10,7 +10,7 @@
  *   音频播放 ref 和自定义音色文件上传 ref。
  *
  * ─── 数据流 ─────────────────────────────────────────────────────────
- *   通过 apiGetOfficialVoices 和现有语音接口读取数据；通过 open、onClose、
+ *   通过 apiGetOfficialVoices 和现有语音接口读取数据；通过 apiCreateCustomVoice、open、onClose、
  *   onConfirm 显式接入 InputCard，不读取页面闭包。
  *
  * ─── 组件结构 ───────────────────────────────────────────────────────
@@ -23,8 +23,10 @@
  *   2026-08-07  官方音色 Tab 改为 minimax 官方音色库，移除性别/年龄筛选和情绪副标题
  *   2026-08-07  官方音色卡片名称统一使用 minimax 音色 name 的中文翻译，提交仍使用原始 voice_id
  *   2026-08-11  已选音频参考卡片移除播放按钮，仅保留名称和类型文字
+ *   2026-08-11  自定义音色上传复用统一鉴权 API，修复空 Bearer 导致的上传失败
+ *   2026-08-11  自定义音色上传失败和格式错误改用创作页 Toast 反馈
  */
-import { apiGetOfficialVoices, getVoiceDisplayName } from "../../api/voices";
+import { apiCreateCustomVoice, apiGetCustomVoices, apiGetOfficialVoices, getVoiceDisplayName } from "../../api/voices";
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -152,13 +154,14 @@ export function DubbingVoiceFileCard({ voiceName, onRemove, onOpenModal }) {
   );
 }
 
-export default function DubbingVoiceModal({ open, onClose, onConfirm }) {
+export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast }) {
   const [tab, setTab] = useState("miioo");
   const [voices, setVoices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState("");
   const [customVoices, setCustomVoices] = useState([]);
   const [customLoading, setCustomLoading] = useState(false);
+  const [customUploading, setCustomUploading] = useState(false);
   const [favAudios, setFavAudios] = useState([]);
   const [favLoading, setFavLoading] = useState(false);
   const fileInputRef = useRef(null);
@@ -192,11 +195,8 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm }) {
     if (!open || tab !== "custom") return;
     if (customVoices.length > 0) return;
     const loadingTimer = setTimeout(() => setCustomLoading(true), 0);
-    fetch(import.meta.env.VITE_API_BASE_URL + "/api/voices?tab=all", {
-      headers: { Authorization: "Bearer " + (localStorage.getItem("access_token") || "") },
-    })
-      .then(r => r.json())
-      .then((data) => { const list = Array.isArray(data) ? data : data?.items ?? data?.voices ?? []; setCustomVoices(list.filter(v => v.is_custom)); })
+    apiGetCustomVoices()
+      .then((data) => { setCustomVoices(Array.isArray(data) ? data.filter(v => v.is_custom) : []); })
       .catch(() => setCustomVoices([]))
       .finally(() => setCustomLoading(false));
     return () => clearTimeout(loadingTimer);
@@ -230,27 +230,29 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm }) {
     const audioFile = files[0];
     const ext = "." + audioFile.name.split(".").pop().toLowerCase();
     const allowed = [".mp3", ".wav", ".aac", ".ogg", ".flac", ".m4a", ".wma"];
-    if (!allowed.includes(ext)) { alert("仅支持音频格式：mp3, wav, aac, ogg, flac, m4a, wma"); e.target.value = ""; return; }
-    const formData = new FormData();
-    formData.append("file", audioFile);
-    formData.append("name", audioFile.name.replace(/\.[^.]+$/, ""));
-    fetch(import.meta.env.VITE_API_BASE_URL + "/api/voices/custom", {
-      method: "POST",
-      headers: { Authorization: "Bearer " + (localStorage.getItem("access_token") || "") },
-      body: formData,
+    if (!allowed.includes(ext)) {
+      showToast?.("error", "仅支持音频格式：mp3、wav、aac、ogg、flac、m4a、wma");
+      e.target.value = "";
+      return;
+    }
+    setCustomUploading(true);
+    apiCreateCustomVoice({
+      file: audioFile,
+      name: audioFile.name.replace(/\.[^.]+$/, ""),
     })
-      .then(r => {
-        if (!r.ok) throw new Error("Upload failed: " + r.status);
-        return r.json();
-      })
-      .then((raw) => {
-        const voice = raw?.voice ?? raw?.data ?? raw;
+      .then((voice) => {
         setCustomVoices((prev) => [voice, ...prev]);
         const vid = voice.id || voice.voice_id || voice.name;
         if (vid) setSelectedVoice(vid);
       })
-     .catch((err) => { console.error("Failed to create custom voice:", err); alert("创建音色失败，请重试"); });
-    e.target.value = "";
+      .catch((err) => {
+        console.error("Failed to create custom voice:", err);
+        showToast?.("error", err?.message || "创建音色失败，请重试");
+      })
+      .finally(() => {
+        setCustomUploading(false);
+        e.target.value = "";
+      });
   };
 
   const handleConfirm = () => {
@@ -314,14 +316,14 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm }) {
   const customTab = (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingTop: "12px", paddingBottom: "16px" }} onClick={() => setSelectedVoice("")}>
       <input ref={fileInputRef} type="file" accept=".mp3,.wav,.aac,.ogg,.flac,.m4a,.wma" className="hidden" onChange={handleFileForCustomVoice} />
-      <button type="button" onClick={handleCreateVoice} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "4px", height: "56px", padding: "0 24px", borderRadius: "8px", border: "1px dashed #FFFFFF3D", background: "transparent", cursor: "pointer", transition: "border-color 0.15s, background 0.15s", outline: "none", width: "100%" }}
+      <button type="button" onClick={handleCreateVoice} disabled={customUploading} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "4px", height: "56px", padding: "0 24px", borderRadius: "8px", border: "1px dashed #FFFFFF3D", background: "transparent", cursor: customUploading ? "wait" : "pointer", transition: "border-color 0.15s, background 0.15s", outline: "none", width: "100%", opacity: customUploading ? 0.6 : 1 }}
         onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2DC3E1"; e.currentTarget.style.background = "rgba(45,195,225,0.06)"; }}
         onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#FFFFFF3D"; e.currentTarget.style.background = "transparent"; }}
         onMouseDown={(e) => { e.currentTarget.style.background = "rgba(45,195,225,0.12)"; }}
         onMouseUp={(e) => { e.currentTarget.style.background = "rgba(45,195,225,0.06)"; }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 6v12M6 12h12" stroke="#2DC3E1" strokeWidth="1.5" strokeLinecap="round" /></svg>
-          <span style={{ fontFamily: FONT_MEDIUM, fontSize: "14px", lineHeight: "18px", color: "#2DC3E1" }}>创建音色</span>
+          <span style={{ fontFamily: FONT_MEDIUM, fontSize: "14px", lineHeight: "18px", color: "#2DC3E1" }}>{customUploading ? "上传中..." : "创建音色"}</span>
         </div>
         <span style={{ fontFamily: FONT, fontSize: "12px", lineHeight: "16px", color: "#FFFFFF66" }}>上传大于5s的清晰人声音频，自动克隆声音。</span>
       </button>

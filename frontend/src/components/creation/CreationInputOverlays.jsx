@@ -25,6 +25,7 @@ export default function CreationInputOverlays({
   voiceModalOpen,
   onVoiceModalClose,
   onVoiceConfirm,
+  showToast,
   liveMaterialModalOpen,
   onLiveMaterialModalClose,
   onLiveMaterialConfirm,
@@ -45,6 +46,7 @@ export default function CreationInputOverlays({
         open={voiceModalOpen}
         onClose={onVoiceModalClose}
         onConfirm={onVoiceConfirm}
+        showToast={showToast}
       />
       <CreationLiveMaterialModal
         open={liveMaterialModalOpen}

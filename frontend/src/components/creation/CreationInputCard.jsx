@@ -90,6 +90,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     replaceFiles,
     clearFiles,
     swapFrameFiles,
+    getCurrentFiles,
   } = useCreationInputFiles({
     model,
     genType,
@@ -148,24 +149,27 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   // 切换 Tab 保存草稿时不能再依赖即将销毁的 DOM。
   const promptTextRef = useRef('');
   const hydratedGenTypeRef = useRef(null);
-  const createDraftSnapshot = useCallback(() => ({
-    prompt: promptTextRef.current,
-    files,
-    firstFrameFile,
-    lastFrameFile,
-    ratio,
-    resolution,
-    count,
-    refMode,
-    videoRatio,
-    videoResolution,
-    videoDuration,
-    soundEnabled,
-    selectedVoiceId,
-    selectedVoiceName,
-    dubbingSpeed,
-    dubbingEmotion,
-  }), [count, dubbingEmotion, dubbingSpeed, files, firstFrameFile, lastFrameFile, ratio, refMode, resolution, selectedVoiceId, selectedVoiceName, soundEnabled, videoDuration, videoRatio, videoResolution]);
+  const createDraftSnapshot = useCallback(() => {
+    const currentFiles = getCurrentFiles();
+    return {
+      prompt: promptTextRef.current,
+      files: currentFiles.files,
+      firstFrameFile: currentFiles.firstFrameFile,
+      lastFrameFile: currentFiles.lastFrameFile,
+      ratio,
+      resolution,
+      count,
+      refMode,
+      videoRatio,
+      videoResolution,
+      videoDuration,
+      soundEnabled,
+      selectedVoiceId,
+      selectedVoiceName,
+      dubbingSpeed,
+      dubbingEmotion,
+    };
+  }, [count, dubbingEmotion, dubbingSpeed, getCurrentFiles, ratio, refMode, resolution, selectedVoiceId, selectedVoiceName, soundEnabled, videoDuration, videoRatio, videoResolution]);
 
   const persistDraft = useCallback((force = false) => {
     if (!force && hydratedGenTypeRef.current !== genType) return;

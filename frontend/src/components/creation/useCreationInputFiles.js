@@ -84,22 +84,22 @@ export function useCreationInputFiles({
   }), []);
 
   const setFiles = useCallback((updater) => {
-    setFilesState((previousFiles) => {
-      const candidate = typeof updater === 'function' ? updater(previousFiles) : updater;
-      if (!Array.isArray(candidate)) return previousFiles;
-      const nextFiles = normalizeFiles(candidate);
-      const releasedUrls = new Set();
-      const protectedFiles = new Set(
-        [firstFrameFileRef.current, lastFrameFileRef.current].filter(Boolean),
-      );
-      previousFiles.forEach((file) => {
-        if (!nextFiles.includes(file) && !protectedFiles.has(file)) {
-          releaseBlobUrls(file, releasedUrls);
-        }
-      });
-      filesRef.current = nextFiles;
-      return nextFiles;
+    const previousFiles = filesRef.current;
+    const candidate = typeof updater === 'function' ? updater(previousFiles) : updater;
+    if (!Array.isArray(candidate)) return;
+    const nextFiles = normalizeFiles(candidate);
+    const releasedUrls = new Set();
+    const protectedFiles = new Set(
+      [firstFrameFileRef.current, lastFrameFileRef.current].filter(Boolean),
+    );
+    previousFiles.forEach((file) => {
+      if (!nextFiles.includes(file) && !protectedFiles.has(file)) {
+        releaseBlobUrls(file, releasedUrls);
+      }
     });
+    // 草稿保存可能在 React 批处理渲染前触发，ref 必须先于 setState 写入最新文件。
+    filesRef.current = nextFiles;
+    setFilesState(nextFiles);
   }, [normalizeFiles]);
 
   const replaceFiles = useCallback((nextFiles) => {
@@ -154,21 +154,21 @@ export function useCreationInputFiles({
   }, []);
 
   const setFrameFile = useCallback((setter, ref, updater) => {
-    setter((previousFile) => {
-      const candidate = typeof updater === 'function' ? updater(previousFile) : updater;
-      const nextFile = candidate ? normalizeFiles([candidate])[0] : null;
-      const otherFrameFile = ref === firstFrameFileRef
-        ? lastFrameFileRef.current
-        : firstFrameFileRef.current;
-      if (previousFile && previousFile !== nextFile
-        && !filesRef.current.includes(previousFile)
-        && previousFile !== otherFrameFile
-        && previousFile !== nextFile) {
-        releaseBlobUrls(previousFile);
-      }
-      ref.current = nextFile;
-      return nextFile;
-    });
+    const previousFile = ref.current;
+    const candidate = typeof updater === 'function' ? updater(previousFile) : updater;
+    const nextFile = candidate ? normalizeFiles([candidate])[0] : null;
+    const otherFrameFile = ref === firstFrameFileRef
+      ? lastFrameFileRef.current
+      : firstFrameFileRef.current;
+    if (previousFile && previousFile !== nextFile
+      && !filesRef.current.includes(previousFile)
+      && previousFile !== otherFrameFile
+      && previousFile !== nextFile) {
+      releaseBlobUrls(previousFile);
+    }
+    // 与普通参考图一致，先更新 ref 再触发渲染，确保立即切换 Tab 时首尾帧不会漏存。
+    ref.current = nextFile;
+    setter(nextFile);
   }, [normalizeFiles]);
 
   const setFirstFrameFile = useCallback((updater) => {
@@ -187,6 +187,13 @@ export function useCreationInputFiles({
     setFirstFrameFileState(last);
     setLastFrameFileState(first);
   }, []);
+
+  // 草稿保存读取同步 ref，避免 React 状态批处理期间读取到上一帧的素材列表。
+  const getCurrentFiles = useCallback(() => ({
+    files: filesRef.current,
+    firstFrameFile: firstFrameFileRef.current,
+    lastFrameFile: lastFrameFileRef.current,
+  }), []);
 
   const safeSetFiles = useCallback((updater) => {
     setFiles((previousFiles) => {
@@ -299,5 +306,6 @@ export function useCreationInputFiles({
     clearFrameFiles,
     releaseFiles,
     swapFrameFiles,
+    getCurrentFiles,
   };
 }

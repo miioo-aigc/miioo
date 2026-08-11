@@ -22,6 +22,7 @@
  *   2026-08-07  无试听地址的官方音色隐藏耳机按钮，名称和情绪增加中文展示适配
  *   2026-08-07  官方音色 Tab 改为 minimax 官方音色库，移除性别/年龄筛选和情绪副标题
  *   2026-08-07  官方音色卡片名称统一使用 minimax 音色 name 的中文翻译，提交仍使用原始 voice_id
+ *   2026-08-11  已选音频参考卡片移除播放按钮，仅保留名称和类型文字
  */
 import { apiGetOfficialVoices, getVoiceDisplayName } from "../../api/voices";
 import { useState, useRef, useEffect } from "react";
@@ -136,10 +137,7 @@ export function DubbingVoiceFileCard({ voiceName, onRemove, onOpenModal }) {
   const [hovered, setHovered] = useState(false);
   return (
     <div style={{ position: "relative", flexShrink: 0 }} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
-      <button type="button" onClick={onOpenModal} style={{ display: "flex", alignItems: "center", gap: "10px", height: "60px", padding: "0 16px 0 12px", borderRadius: "8px", background: "#1D1E1E", border: "1px solid #FFFFFF14", cursor: "pointer", outline: "none", position: "relative" }}>
-        <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "#FFFFFF0D", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.667 3.167v9.666l8.666-4.833L4.667 3.167z" fill="#FFFFFF66" /></svg>
-        </div>
+      <button type="button" onClick={onOpenModal} style={{ display: "flex", alignItems: "center", height: "60px", padding: "0 16px", borderRadius: "8px", background: "#1D1E1E", border: "1px solid #FFFFFF14", cursor: "pointer", outline: "none", position: "relative" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", minWidth: 0 }}>
           <span style={{ fontFamily: FONT, fontSize: "14px", lineHeight: "18px", color: "#FFFFFF", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "140px" }}>{voiceName}</span>
           <span style={{ fontFamily: FONT, fontSize: "12px", lineHeight: "16px", color: "#FFFFFF66", marginTop: "2px" }}>音频参考</span>

@@ -1,5 +1,22 @@
 # 组件重构盘点基线
 
+## 2026-08-11 创作草稿刷新后参考图恢复验证通过
+
+- `CreationDraftStorage.js` 修复完整草稿读取优先级：刷新后先读取 IndexedDB 中的完整草稿，再在没有完整草稿时读取 `sessionStorage` 提示词兜底，避免提示词兜底提前返回导致参考图丢失。
+- IndexedDB 中保存的 `File`/`Blob`、参考图、参考视频和首尾帧继续由 `CreationInputCard.jsx` 恢复并交给素材 Hook 重建预览地址；本次未改变输入区组件边界或生成 API 契约。
+- 用户实际验证：上传参考图后刷新页面，参考图成功恢复，验证通过。
+- 验证：定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；架构检查无阻断级违规。
+
+## 2026-08-11 创作输入区完整草稿缓存与参考图恢复修复
+
+- `CreationInputCard.jsx` 继续负责创作输入区的本地状态接线和草稿快照组装；生成请求、任务轮询和全局状态写回仍通过显式回调交由 `CreationPage.jsx` 编排。
+- 新增 `CreationDraftStorage.js`，以 IndexedDB 保存按 `image`、`video`、`dubbing` 隔离的完整草稿，支持提示词、`File`/`Blob`、参考素材、首尾帧、资产库引用和创作参数；全局内存镜像用于 Tab 切换即时恢复，`sessionStorage` 只承担提示词兜底。
+- `CreationInputCard.jsx` 注册 Tab 切换前保存回调，并在组件重新挂载时恢复草稿；本地文件恢复为新的 `File` 实例，使 `useCreationInputFiles.js` 能重新建立预览 URL，避免旧 Blob URL 在卸载后失效。
+- `useCreationInputFiles.js` 将文件列表和首尾帧 refs 在触发 React state 更新前同步写入，并提供 `getCurrentFiles()` 读取最新素材快照，修复上传后立即切换 Tab 时保存到旧空数组的时序问题。
+- 草稿自动保存不依赖是否已经发送创作请求；图片和视频输入内容互不串联，轮询期间输入控件也不承担禁用态或发送加载态。
+- 本次不新增通用 UI 组件，不改变生成 API 契约；页面入口仍保留页面级草稿保存时机、任务轮询和副作用编排职责。
+- 验证：目标文件定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；上传参考图后切换 Tab 的恢复已由用户验证通过，刷新后的恢复问题由顶部后续条目修复并验证通过。
+
 ## 2026-08-11 分镜候选媒体加载态与复制边界修复
 
 - `StoryboardPage.jsx` 在新建或复制分镜成功后初始化候选媒体、定稿媒体和媒体加载映射，空分镜不会因映射缺失被渲染为生成中。

@@ -79,26 +79,32 @@ export async function saveCreationDraft(type, draft) {
 
 export function readCreationDraftFromMemory(type) {
   if (!SUPPORTED_TYPES.has(type)) return null;
-  const draft = memoryDrafts.get(type);
-  if (draft) return draft;
-  const prompt = readPromptFallback(type);
-  return prompt ? { prompt } : null;
+  return memoryDrafts.get(type) ?? null;
 }
 
 export async function readCreationDraft(type) {
-  const cachedDraft = readCreationDraftFromMemory(type);
-  if (cachedDraft) return cachedDraft;
+  if (!SUPPORTED_TYPES.has(type)) return null;
+
+  // 提示词兜底只用于 IndexedDB 没有完整草稿的情况，不能提前返回并遮蔽其中的 File/Blob。
+  const memoryDraft = memoryDrafts.get(type);
+  if (memoryDraft) return memoryDraft;
+
   try {
     const storedDraft = await runTransaction('readonly', type);
     // IndexedDB 读取期间用户可能已写入了更新的草稿，优先保留内存中的新版本。
-    const latestDraft = readCreationDraftFromMemory(type);
+    const latestDraft = memoryDrafts.get(type);
     if (latestDraft) return latestDraft;
     if (storedDraft) {
       memoryDrafts.set(type, storedDraft);
       savePromptFallback(type, storedDraft.prompt);
+      return storedDraft;
     }
-    return storedDraft;
+
+    const prompt = readPromptFallback(type);
+    return prompt ? { prompt } : null;
   } catch {
-    return null;
+    // IndexedDB 不可用时仍保留提示词兜底，但不伪造素材草稿。
+    const prompt = readPromptFallback(type);
+    return prompt ? { prompt } : null;
   }
 }

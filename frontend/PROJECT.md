@@ -1,5 +1,23 @@
 # miioo 项目进度管理文档
 
+## 2026-08-11 创作草稿刷新后参考图恢复验证通过
+
+- 修复创作页刷新后参考图无法恢复的问题。根因是页面刷新后内存草稿为空，读取流程被 `sessionStorage` 中仅用于提示词兜底的内容提前截断，未继续读取 IndexedDB 中包含 `File`/`Blob` 的完整草稿。
+- 现在草稿读取顺序固定为：内存中的完整草稿、IndexedDB 中的完整草稿、最后才使用提示词兜底；提示词兜底不会再遮蔽参考图、参考视频、首尾帧或其他素材。
+- 用户实际验证：上传参考图后刷新页面，参考图成功恢复，验证通过。
+- 涉及文件：`src/components/creation/CreationDraftStorage.js`。
+- 验证：定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；构建仅保留项目既有分块体积提醒，架构检查仅保留项目既有规模提醒。
+
+## 2026-08-11 创作页完整草稿缓存与参考图切换恢复修复
+
+- 修复图片、视频和配音创作 Tab 的输入区在生成请求轮询期间被误禁用、变灰或进入发送按钮加载态的问题。请求发出后输入框和发送按钮继续保持正常可用；发送按钮保留原有流光特效，仅移除点击后额外出现的蓝色焦点外圈。
+- 建立按 `image`、`video`、`dubbing` 隔离的完整创作草稿缓存。用户即使尚未发送创作请求，只要填写了提示词或选择了素材，当前草稿就会保存；切换 Tab 后不会互相覆盖提示词、参考图、参考视频、首尾帧、资产库引用及创作参数。
+- `CreationDraftStorage.js` 使用 IndexedDB 持久化包含 `File`/`Blob` 的草稿，并以全局内存镜像支持 Tab 切换时即时恢复；`sessionStorage` 仅作为提示词兜底，不作为素材存储方案。
+- `CreationInputCard.jsx` 在 Tab 切换前显式保存当前草稿，恢复本地文件时重新构造 `File` 并交给素材 Hook 重建预览地址；提示词通过 ref 保持，避免组件卸载时从已清空的 contentEditable DOM 读取空值覆盖缓存。
+- `useCreationInputFiles.js` 在更新 React state 前同步更新文件和首尾帧 refs，草稿快照读取同步 refs，覆盖“上传后立即切换 Tab 时仍读取旧空数组”的时序断点。
+- 涉及文件：`src/components/creation/CreationDraftStorage.js`、`src/components/creation/CreationInputCard.jsx`、`src/components/creation/useCreationInputFiles.js`、`src/pages/CreationPage.jsx`。
+- 验证：目标文件定向 ESLint、`npm run build`、`git diff --check` 通过；`npm run check:architecture` 通过且仅保留项目既有规模提醒。Tab 切换后的参考图恢复已由用户验证通过；刷新后的参考图恢复另见本条目顶部的后续修复记录。
+
 ## 2026-08-11 分镜候选媒体加载态串镜头与复制生成中结果修复
 
 - 修复镜头 A 正在生成时复制得到 A2，A2 误带“正在生成”卡片或丢失 A 已完成候选结果的问题。复制现在从来源镜头的 `media-candidates` 读取并写入已持久化候选，保留已完成的 A、B、C、D；本地 `pendingCandidateMap` 中尚未落盘的 E 不会复制。

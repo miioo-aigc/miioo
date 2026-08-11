@@ -12,11 +12,11 @@
  *   视频详情 asset_bindings 适配和详情卡片合并                    utils/creationDetailAdapter.js
  *
  * ─── 页面入口与状态编排 ──────────────────────────────── L123–L596
- *   CreationPage 状态、Store、历史缓存和分页                       L123–L269
+ *   CreationPage 状态、Store、历史缓存和分页                       L123–L268
  *   Session 初始化、刷新任务恢复和收藏动作                           L271–L385
  *   模型能力、参数加载、Tab 和批量操作                               L387–L562
- *   useCreationGeneration 生成请求、占位卡和结果写回                  L563–L578
- *   模型入口检查、输入卡渲染和视频详情回调                            L580–L599
+ *   useCreationGeneration 生成请求、占位卡和结果写回                  L562–L577
+ *   模型入口检查、输入卡渲染和视频详情回调                            L579–L598
  *   CreationInputCard 已迁移至 components/creation/，页面通过 renderInputCard 显式接入
  *
  * ─── 页面渲染结构 ────────────────────────────────────── L601–L712
@@ -76,6 +76,7 @@
  *   2026-07-29  图片创作结果与历史记录按媒体地址去重，避免同图重复展示并保留创作提示词
  *   2026-08-03  抽离 useCreationGeneration；页面保留生成依赖、计数和区块接线，生成流程行为保持不变
  *   2026-08-07  配音生成接入 600 秒轮询上限、提示词保留和再次点击发送停止前端请求/轮询
+ *   2026-08-11  修复不同创作 Tab 的生成禁用状态串扰，输入区按当前创作类型隔离
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -125,7 +126,6 @@ const _sessionInitRef = { current: false };
 export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured = true, onShowNoModelNotice }) {  const [activeTab, setActiveTab] = useState('image');
   const saveActiveDraftRef = useRef(null);
   const [genType, setGenType] = useState('image');
-  const [generating, setGenerating] = useState(false); // kept for isGenerating prop (skeleton)
   const [activeCountByTab, setActiveCountByTab] = useState({ image: 0, video: 0, dubbing: 0 });
   const incrementActive = (tab) => setActiveCountByTab(prev => ({ ...prev, [tab]: (prev[tab] || 0) + 1 }));
   const decrementActive = (tab) => setActiveCountByTab(prev => ({ ...prev, [tab]: Math.max(0, (prev[tab] || 0) - 1) }));
@@ -585,7 +585,6 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     cancelGeneration,
   } = useCreationGeneration({
     activeTab,
-    setGenerating,
     isLoggedIn,
     sessionIdRef,
     addGeneration,
@@ -700,7 +699,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         generations={generations}
         onGenerate={handleGenerate}
         genType={genType}
-        isGenerating={generating}
+        isGenerating={(activeCountByTab[genType] ?? 0) > 0}
         onGenTypeChange={handleGenTypeChange}
         model={model}
         onModelChange={setModel}

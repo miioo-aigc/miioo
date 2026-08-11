@@ -228,7 +228,6 @@ function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, i
 
 export function useCreationGeneration({
   activeTab,
-  setGenerating,
   isLoggedIn,
   sessionIdRef,
   addGeneration,
@@ -254,7 +253,6 @@ export function useCreationGeneration({
     };
     activeGenerationRef.current = request;
 
-    setGenerating(true);
     incrementActive(getCreationTab(genType));
     const countNum = parseInt(params.count, 10) || 1;
     const isVideoGen = genType === 'video';
@@ -290,7 +288,6 @@ export function useCreationGeneration({
       decrementActive(getCreationTab(genType));
       if (activeGenerationRef.current === request) {
         activeGenerationRef.current = null;
-        setGenerating(false);
       }
       return { success: false };
     }
@@ -394,7 +391,6 @@ export function useCreationGeneration({
       decrementActive(getCreationTab(genType));
       if (activeGenerationRef.current === request) {
         activeGenerationRef.current = null;
-        setGenerating(false);
       }
     }
   }, [
@@ -404,7 +400,6 @@ export function useCreationGeneration({
     incrementActive,
     isLoggedIn,
     sessionIdRef,
-    setGenerating,
     showToast,
     storeDeleteGeneration,
     storeUpdateCardIds,

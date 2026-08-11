@@ -1,6 +1,7 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
-// 更新记录：2026-08-06 创作表单保存同时覆盖主体字段，并与最新 mainRefs 快照串行提交，避免刷新后旧主体恢复。
+// 更新记录：2026-08-11 分镜图片/视频生成错误保留后端原始响应，便于定位 5xx；
+//           2026-08-06 创作表单保存同时覆盖主体字段，并与最新 mainRefs 快照串行提交，避免刷新后旧主体恢复。
 
 import { authFetch, authFetchForm } from './request.js';
 import { cached, invalidate, setCache, peekCache } from '../utils/cache.js';
@@ -101,6 +102,8 @@ export function compactStoryboardForCache(item = {}) {
 
 // 候选媒体跨刷新只缓存卡片渲染所需的轻量索引，不保存完整候选对象。
 // 分镜列和时间轴都依赖这些封面字段；生成参数、参考图数组和供应商响应仍只保留在当前会话内。
+// 详情弹窗还需要提示词和参考素材字段（media-candidates 的 prompt_resolved 等），
+// 因此额外保留小体积的提示词、参考图、首尾帧、参考模式、生成参数和裁剪后的 metadata。
 function compactStoryboardMediaCandidateForCache(item = {}) {
   if (!item || typeof item !== 'object') return item;
   const dropLargeValue = (value) => (
@@ -108,6 +111,28 @@ function compactStoryboardMediaCandidateForCache(item = {}) {
       ? undefined
       : value
   );
+  const compactValue = (value) => {
+    if (typeof value === 'string') return dropLargeValue(value);
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => {
+          if (typeof entry === 'string') return dropLargeValue(entry);
+          if (entry && typeof entry === 'object') {
+            return compactValue(entry);
+          }
+          return entry;
+        })
+        .filter((entry) => entry !== undefined);
+    }
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value)
+          .map(([key, entry]) => [key, compactValue(entry)])
+          .filter(([, entry]) => entry !== undefined),
+      );
+    }
+    return value;
+  };
   const cached = {};
   const copy = (key) => {
     if (item[key] === undefined || item[key] === null || item[key] === '') return;
@@ -123,7 +148,27 @@ function compactStoryboardMediaCandidateForCache(item = {}) {
     'url', 'thumbnailUrl', 'thumbnail_url', 'posterUrl', 'poster_url',
     'previewUrl', 'preview_url', 'previewVideoUrl', 'preview_video_url',
     'videoThumbnailUrl', 'video_thumbnail_url', 'mediaPreviewUrl', 'media_preview_url',
+    // 详情弹窗展示提示词、参考素材和生成参数需要的小字段。
+    'detailSource', 'detail_source', 'downloadUrl', 'download_url',
+    'prompt', 'inputPrompt', 'input_prompt', 'promptRaw', 'prompt_raw',
+    'promptResolved', 'prompt_resolved',
+    'referenceImages', 'reference_images', 'referenceImageUrls', 'reference_image_urls',
+    'refImages', 'ref_images', 'referenceMode', 'reference_mode',
+    'firstFrameUrl', 'first_frame_url', 'lastFrameUrl', 'last_frame_url',
+    'referenceVideoUrl', 'reference_video_url', 'referenceAudioUrl', 'reference_audio_url',
+    'model', 'resolution', 'duration', 'ratio', 'size',
   ].forEach(copy);
+
+  for (const key of ['params', 'parameters', 'generation', 'options', 'genParams', 'gen_params', 'generationParams', 'generation_params', 'providerParams', 'provider_params', 'metadata', 'metadata_json', 'metadataJson']) {
+    if (item[key] !== undefined && item[key] !== null && item[key] !== '') {
+      const value = compactValue(item[key]);
+      if (value !== undefined && value !== null && value !== ''
+        && !(typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0)
+        && !(Array.isArray(value) && value.length === 0)) {
+        cached[key] = value;
+      }
+    }
+  }
 
   return cached;
 }
@@ -494,18 +539,25 @@ export function normalizeStoryboardMediaCandidate(item = {}) {
       ?? item.large_url
       ?? item.thumbnail_url
       ?? item.thumbnailUrl);
+  const videoSourceUrls = mediaType === 'video'
+    ? new Set([normalizedUrl, previewVideoUrl].filter(Boolean))
+    : new Set();
+  const safeImageUrl = (value) => (value && !videoSourceUrls.has(value) ? value : null);
+  const resolvedThumbnailUrl = mediaType === 'video' ? safeImageUrl(thumbnailUrl) : thumbnailUrl;
+  const resolvedPosterUrl = mediaType === 'video' ? safeImageUrl(posterUrl) : posterUrl;
+  const resolvedVideoThumbnailUrl = mediaType === 'video' ? safeImageUrl(videoThumbnailUrl) : videoThumbnailUrl;
   const normalized = {
     ...item,
     id: item.id,
     storyboardId: item.storyboardId ?? item.storyboard_id,
     mediaType,
     url: normalizedUrl,
-    thumbnailUrl,
-    posterUrl,
+    thumbnailUrl: resolvedThumbnailUrl,
+    posterUrl: resolvedPosterUrl,
     previewUrl,
     previewVideoUrl,
-    videoThumbnailUrl,
-    mediaPreviewUrl: mediaType === 'video' ? (videoThumbnailUrl || posterUrl) : (previewUrl || thumbnailUrl),
+    videoThumbnailUrl: resolvedVideoThumbnailUrl,
+    mediaPreviewUrl: mediaType === 'video' ? (resolvedVideoThumbnailUrl || resolvedPosterUrl) : (previewUrl || resolvedThumbnailUrl),
     downloadUrl: item.downloadUrl ?? item.download_url,
     isFinalized: Boolean(item.isFinalized ?? item.is_finalized ?? false),
     source: item.source ?? item.source_type ?? item.sourceType ?? metadata.source ?? metadata.source_type ?? metadata.sourceType,
@@ -716,13 +768,22 @@ export async function apiGenerateStoryboardImage(projectId, storyboardId, params
   );
   if (!res.ok) {
     let detail = '';
+    let rawBody = '';
     try {
-      const body = await res.json();
-      detail = body?.detail || body?.message || '';
-      if (typeof detail === 'object') detail = JSON.stringify(detail);
+      rawBody = await res.text();
+      try {
+        const body = JSON.parse(rawBody);
+        detail = body?.detail || body?.message || '';
+        if (typeof detail === 'object') detail = JSON.stringify(detail);
+      } catch {
+        detail = rawBody || '';
+      }
     } catch { /* 忽略非 JSON 错误响应 */ }
-    const err = new Error(detail || `生成失败（${res.status}）`);
+    const message = (detail || rawBody || `生成失败（${res.status}）`).slice(0, 500);
+    const err = new Error(message);
     err.status = res.status;
+    err.rawBody = rawBody || undefined;
+    if (rawBody) console.error('[apiGenerateStoryboardImage] 后端原始响应:', rawBody.slice(0, 2000));
     throw err;
   }
   return unwrapStoryboardTaskResponse(await res.json());
@@ -739,13 +800,22 @@ export async function apiGenerateStoryboardVideo(projectId, storyboardId, params
   );
   if (!res.ok) {
     let detail = '';
+    let rawBody = '';
     try {
-      const body = await res.json();
-      detail = body?.detail || body?.message || '';
-      if (typeof detail === 'object') detail = JSON.stringify(detail);
+      rawBody = await res.text();
+      try {
+        const body = JSON.parse(rawBody);
+        detail = body?.detail || body?.message || '';
+        if (typeof detail === 'object') detail = JSON.stringify(detail);
+      } catch {
+        detail = rawBody || '';
+      }
     } catch { /* 忽略非 JSON 错误响应 */ }
-    const err = new Error(detail || `生成失败（${res.status}）`);
+    const message = (detail || rawBody || `生成失败（${res.status}）`).slice(0, 500);
+    const err = new Error(message);
     err.status = res.status;
+    err.rawBody = rawBody || undefined;
+    if (rawBody) console.error('[apiGenerateStoryboardVideo] 后端原始响应:', rawBody.slice(0, 2000));
     throw err;
   }
   return res.json();

@@ -22,6 +22,9 @@
  *   ReferenceMediaEditor                      参考主体、参考图、参考视频、参考音频和首尾帧
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-11  首尾帧生成改传 generate_mode，避免将 start_end 误传为参考模式导致后端 400
+ *   2026-08-11  手动新增空白分镜保持空提示词，不代入后端返回的默认内容，并跳过异步表单恢复覆盖
+ *   2026-08-11  首尾帧提交补传 asset_id，避免后端只拿到相对 URL 时生成失败
  *   2026-08-06  参考主体以当前分镜主体参考列为权威集合，并避免关闭/卸载时旧表单快照恢复已删除主体
  *   2026-08-10  首帧支持使用上一个分镜视频尾帧：前端抽帧后上传为图片并写入首帧槽位
  *   2026-08-10  首帧支持从当前分镜图片列表中选择，弹窗由参考媒体编辑器管理
@@ -70,6 +73,7 @@ function areReferenceGroupsEqual(previous, next) {
 
 export default function GenerateVideoPanel({
   shot,
+  isManualBlank = false,
   projectId,
   nextShot = null,
   previousFrameShortcut = null,
@@ -162,8 +166,11 @@ export default function GenerateVideoPanel({
   const [sound, setSound] = useState(() => formState?.sound ?? true);
   // 提示词：仅暂存在当前弹窗的本地 state，编辑不回写分镜列表字段。
   // 关闭面板时组件卸载、本地态丢弃，下次打开按 shot 当前字段重新生成初始内容。
+  // 手动新增的空白分镜保持空提示词，不代入后端返回的默认内容。
   // 点击「生成分镜视频」时才把 prompt 随 onGenerate 传回后端。
-  const [prompt, setPrompt] = useState(() => formState?.prompt ?? buildStoryboardPrompt(shot));
+  const [prompt, setPrompt] = useState(() => (
+    isManualBlank ? '' : (formState?.prompt ?? buildStoryboardPrompt(shot))
+  ));
   const promptRef = useRef(null);
   const promptEditedRef = useRef(false);
   const lastEmittedFormStateRef = useRef(null);
@@ -177,11 +184,12 @@ export default function GenerateVideoPanel({
   // 页面加载阶段可能会在弹窗挂载后补全主体标签。弹窗不能只读取一次初始值，
   // 否则父级 formState 已经更新，编辑器仍会继续显示打开时的旧提示词。
   useEffect(() => {
+    if (isManualBlank) return;
     if (promptEditedRef.current) return;
     if (typeof formState?.prompt !== 'string' || formState.prompt === prompt) return;
     const syncTimer = setTimeout(() => setPrompt(formState.prompt), 0);
     return () => clearTimeout(syncTimer);
-  }, [formState?.prompt, prompt]);
+  }, [formState?.prompt, isManualBlank, prompt]);
 
   const [refSubjects, setRefSubjects] = useState(() => {
     // 从 shot.mainRefs 初始化主体列表，补全 url/name
@@ -249,7 +257,9 @@ export default function GenerateVideoPanel({
       setResolution(formState.resolution || '');
       setDuration(normalizeDurationValue(formState.duration ?? null));
       setSound(formState.sound ?? true);
-      if (!promptEditedRef.current && typeof formState.prompt === 'string') setPrompt(formState.prompt);
+      if (!isManualBlank && !promptEditedRef.current && typeof formState.prompt === 'string') {
+        setPrompt(formState.prompt);
+      }
       // 表单快照只恢复参数和普通参考素材；主体集合始终从当前镜头 mainRefs 获取，
       // 防止主体参考列删除后，旧 refSubjects 把已删除图片重新带回面板。
       setRefSubjects(normalizeStoryboardReferenceGroups({ subjects: shot?.mainRefs || [] }).subjects);
@@ -261,7 +271,7 @@ export default function GenerateVideoPanel({
       formStateHydratedRef.current = true;
     }, 0);
     return () => clearTimeout(restoreTimer);
-  }, [formState, shot?.mainRefs]);
+  }, [formState, isManualBlank, shot?.mainRefs]);
 
   useEffect(() => {
     if (!formStateHydratedRef.current) return;
@@ -300,6 +310,7 @@ export default function GenerateVideoPanel({
   }, [tab, frameModels, allModels]);
 
   const currentVideoModel = useMemo(() => tabModels.find(m => m.value === model), [model, tabModels]);
+
   function handleTabChange(newTab) {
     setTab(newTab);
     const newList = newTab === 'frame' ? frameModels : allModels;
@@ -493,6 +504,11 @@ export default function GenerateVideoPanel({
         reference_images: referenceImages.length > 0 ? referenceImages : undefined,
         first_frame_url: refFirstFrame?.url,
         last_frame_url: refLastFrame?.url,
+        first_frame_asset_id: refFirstFrame?.assetId || refFirstFrame?.asset_id || undefined,
+        last_frame_asset_id: refLastFrame?.assetId || refLastFrame?.asset_id || undefined,
+        generate_mode: tab === 'frame'
+          ? (refFirstFrame && refLastFrame ? 'start_end' : 'first_frame')
+          : undefined,
         // 当前分镜生成接口仍接收单个 URL；UI 可按模型能力收集多个素材，提交时保持既有接口契约。
         reference_video_url: refVideos[0]?.url,
         reference_audio_url: refAudios[0]?.url,

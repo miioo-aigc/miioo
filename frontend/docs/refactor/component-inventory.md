@@ -1,5 +1,29 @@
 # 组件重构盘点基线
 
+## 2026-08-11 分镜候选媒体加载态与复制边界修复
+
+- `StoryboardPage.jsx` 在新建或复制分镜成功后初始化候选媒体、定稿媒体和媒体加载映射，空分镜不会因映射缺失被渲染为生成中。
+- 复制分镜通过页面既有候选媒体 API 编排读取来源镜头的已持久化候选并写入新镜头；本地 `pendingCandidateMap` 仅服务当前生成任务，不参与复制，因此生成中的未落盘结果不会串入新分镜。
+- 页面级 `isMediaLoading` 仅在真实后端镜头首次尚未取得候选数组时返回加载状态。已有候选卡片的后台刷新继续显示原卡片，真实生成状态仍由当前镜头任务与待生成占位控制。
+- 本次未新增组件或跨层依赖；候选接口调用、任务状态、缓存失效和镜头状态写回继续集中在页面入口，符合其页面级编排职责。
+- 验证：`npx eslint src/pages/StoryboardPage.jsx`、`npm run build`、`git diff --check` 通过。
+
+## 2026-08-11 分镜首尾帧视频生成模式字段修复
+
+- `GenerateVideoPanel.jsx` 在首尾帧 Tab 中根据实际选中的帧素材组装 `generate_mode`：同时存在首帧、尾帧时为 `start_end`，仅首帧时为 `first_frame`；不再把生成模式误写入 `reference_mode`。
+- `StoryboardPage.jsx` 保持页面级 API 编排职责，将组件参数中的 `generate_mode` 连同首尾帧 URL、素材 ID 原样透传至 `apiGenerateStoryboardVideo`。
+- `ReferenceMediaEditor.jsx` 恢复尾帧上传槽位，不再从 `reference_modes` 判断 `start_end` 能力或在模型切换时清空尾帧。模型配置中的 `start_end` 应以 `supported_generation_modes` 解释。
+- 修复范围只覆盖分镜创作视频的首尾帧参数组装与入口展示，不改变 API 封装、任务轮询、候选媒体写回或其他参考素材字段。
+- 验证：目标文件定向 ESLint、`npm run build`、`git diff --check` 通过；真实后端生成结果待登录态首尾帧联调确认。
+
+## 2026-08-11 分镜详情右侧信息与当前媒体精准对应修复
+
+- `StoryboardMediaDetailModal.jsx` 的右侧信息区只以左侧当前 `activeMedia` 及其自身 `metadata`、`params`/`gen_params`/`generation_params` 等嵌套生成参数作为数据源。
+- 移除对当前分镜 `creationForm`、`genParams` 和 `mainRefs` 的详情回退，避免用户后来在首尾帧参考页或其他创作模式编辑草稿后，污染已生成视频或图片的详情；当前媒体没有保存的字段不展示。
+- 参考模式仅在明确 `first_frame`、`last_frame`、`start_end` 等首尾帧模式时展示“首帧图 / 尾帧图”；`video_ref` 等非首尾帧模式按全能参考分组展示，历史绑定角色不会改变当前媒体的真实生成模式。
+- `shot` 只用于镜头编号和媒体归属判断，不再参与右侧提示词、参考素材或生成参数展示。
+- 验证：目标文件定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；组件当前 773 行，属于业务区块提示线，职责仍集中于统一分镜媒体详情展示。
+
 ## 2026-08-10 剧本生成中保留输入并拦截发送
 
 - `InputCard` 在生成中不再禁用文本输入；根据是否有待发送文字分别呈现暂停按钮或箭头。
@@ -154,7 +178,7 @@
 
 - `StoryboardMediaDetailModal.jsx` 的右侧信息区将参考图从生成参数文本改为 `80×56px` 缩略图展示，图片地址统一经过 `normalizeImageUrl` 处理。
 - 参考图适配兼容 snake_case、camelCase、URL数组和对象数组，并从媒体对象、元数据、`params`/`gen_params`/`generation_params` 等嵌套参数容器收集后按 URL去重。
-- 普通生成参数列表排除参考图字段，避免同时显示参考图 URL和缩略图；详情提示词兼容媒体字段、元数据、生成参数及当前镜头图片/视频提示词。
+- 普通生成参数列表排除参考图字段，避免同时显示参考图 URL和缩略图；详情提示词兼容媒体字段、元数据和生成参数。后续已收紧为不读取当前镜头图片/视频提示词草稿，确保详情信息只对应当前媒体。
 - `MediaCol.jsx` 打开分镜媒体详情时透传 `input_prompt`、`ratio` 以及多种参考图字段；`MediaDetailModal.jsx` 的主体详情参考图兼容字符串、`url`、`fileUrl` 和 `file_url`。
 - 本次只补齐详情数据适配和右侧展示，不改变候选媒体、生成任务、上传或定稿业务链路。
 - 验证：目标文件定向 ESLint、`npm run build` 和 `git diff --check` 通过；`check:architecture` 的历史告警未因本次修改新增。
@@ -174,7 +198,7 @@
 - `StoryboardPage.jsx` 统一处理分镜抽取、按集生成、重新分镜及图片/视频生成任务的响应解包和任务 ID读取；页面继续持有轮询、缓存失效、失败态和结果写回副作用。
 - `storyboardTaskAdapter.js` 扩展任务状态、提示信息、错误信息和图片/视频结果字段适配，兼容嵌套响应、部分完成状态及多种媒体结果字段。
 - `api/storyboard.js` 的分镜列表请求默认请求生成参数，并在 `include_gen_params` 导致历史数据 500 时降级读取基础分镜列表；候选媒体归一化统一兼容图片/视频预览、封面、缩略图、下载地址和定稿字段。
-- 2026-08-04 修复 `StoryboardShotMediaColumn` 加载态偏左：空加载卡片和已有媒体的覆盖层均以 60px 卡片中心作为定位基准，保持分镜列加载反馈居中。
+- 2026-08-04 修复 `StoryboardShotMediaColumn` 首次加载态偏左：空加载卡片以 `60px` 卡片中心作为定位基准，保持分镜列首次加载反馈居中。已有媒体后台刷新不再使用覆盖加载层，现行状态边界见 2026-08-11 记录。
 - `StoryboardPage.jsx` 加载候选媒体时优先使用候选接口的 `is_finalized`，并以分镜主记录的图片/视频字段作为兼容兜底；候选数组和定稿映射采用增量合并，保证分镜列、创作弹窗、详情弹窗和时间轴使用同一份数据且不因异步返回顺序丢项。
 - `StoryboardFinalizedCard.jsx` 兼容候选媒体的预览图、首帧、缩略图、海报和视频地址，视频卡片加载后可显示已有定稿媒体并在悬停时播放。
 - `SubjectPage.jsx`、`SubjectImageActions.js` 和 `RefImageField.jsx` 修复主体批量创作结果 ID误用、主体详情回读定稿匹配以及参考图上传/绑定后的服务端状态恢复。

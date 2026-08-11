@@ -13,6 +13,7 @@
  *   仅把上传、资产选择、删除和插入提示转换为显式回调。
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-11  恢复首尾帧模式的尾帧上传入口
  *   2026-07-16  上传槽位改为业务域内直接引入，移除页面级组件转发边界；保留素材状态与回调契约
  *   2026-08-10  首帧新增“使用上一个分镜视频尾帧”快捷入口，抽帧和上传由面板业务回调负责
  *   2026-08-10  首帧新增当前分镜图片选择弹窗，图片候选由视频面板显式注入
@@ -210,7 +211,7 @@ export default function ReferenceMediaEditor({
               },
               {
                 image: previousFrameShortcut?.media,
-                label: previousFrameShortcut?.label || '使用上一个分镜视频尾帧',
+                label: previousFrameShortcut?.label || '使用上一个分镜\n视频尾帧',
                 tooltip: previousFrameShortcut?.tooltip || '上一个分镜尚未生成视频',
                 onSelect: onUsePreviousFrameShortcut,
               },

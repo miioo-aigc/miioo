@@ -878,14 +878,34 @@ function scriptClientRequestId(prefix) {
     : `${prefix}-${Date.now()}`;
 }
 
+/** 归一化异步剧本任务受理响应，保证调用方能拿到 task_id 用于轮询。 */
+function normalizeScriptOperationAccepted(payload) {
+  const taskId = payload?.task_id
+    || payload?.taskId
+    || payload?.task?.task_id
+    || payload?.task?.taskId
+    || null;
+  if (!taskId) {
+    throw new Error('剧本任务已受理但未返回任务 ID，请刷新后重试');
+  }
+  return { ...payload, taskId };
+}
+
 async function scriptStructureWrite(projectId, path, body) {
+  const clientRequestId = body?.client_request_id;
   const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/structure${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(clientRequestId ? { 'Idempotency-Key': clientRequestId } : {}),
+    },
     body: JSON.stringify(body),
   });
+  const accepted = await readScriptWorkspaceResponse(res);
   invalidate(K.script(projectId));
-  return res.json();
+  invalidate(K.episodes(projectId));
+  invalidate(K.projectOverview(projectId));
+  return normalizeScriptOperationAccepted(accepted);
 }
 
 export async function apiResplitScriptStructure(projectId, { base_revision, episode_count, instruction = '', model } = {}) {
@@ -925,9 +945,10 @@ export async function apiPatchScriptStructure(projectId, { expected_revision, op
   return readScriptWorkspaceResponse(res);
 }
 
-export async function apiGetScriptTask(projectId, taskId) {
+export async function apiGetScriptTask(projectId, taskId, { signal } = {}) {
   const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/tasks/${taskId}`, {
     headers: { 'Content-Type': 'application/json' },
+    signal,
   });
   return readScriptWorkspaceResponse(res);
 }

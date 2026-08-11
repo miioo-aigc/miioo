@@ -45,12 +45,12 @@ export function ShortcutMediaCard({ image, label, tooltip, onSelect, enabled = B
             <div style={{ width: '72px', height: '40px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)', opacity: hovered ? 1 : 0.6, transition: 'opacity 0.12s' }}>
               <MediaContent media={image} />
             </div>
-            <span style={{ fontSize: '12px', lineHeight: '16px', color: 'rgba(255,255,255,0.40)', fontFamily: FONT, textAlign: 'center' }}>{label}</span>
+            <span style={{ fontSize: '12px', lineHeight: '16px', color: 'rgba(255,255,255,0.40)', fontFamily: FONT, textAlign: 'center', whiteSpace: 'pre-line' }}>{label}</span>
           </>
         ) : (
           <>
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2" y="4" width="16" height="12" rx="2" stroke="rgba(255,255,255,0.15)" strokeWidth="1.2" /><circle cx="7" cy="8.5" r="1.5" stroke="rgba(255,255,255,0.15)" strokeWidth="1.2" /><path d="M2 13l4-3 3 2.5 3-4 4 4.5" stroke="rgba(255,255,255,0.15)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            <span style={{ fontSize: '11px', lineHeight: '14px', color: 'rgba(255,255,255,0.20)', fontFamily: FONT, textAlign: 'center' }}>{label}</span>
+            <span style={{ fontSize: '11px', lineHeight: '14px', color: 'rgba(255,255,255,0.20)', fontFamily: FONT, textAlign: 'center', whiteSpace: 'pre-line' }}>{label}</span>
           </>
         )}
       </div>

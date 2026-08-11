@@ -6,9 +6,11 @@
  * 页面继续负责生成请求、任务轮询、缓存和全局状态写回。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   InputCard 状态与 Hook 接线                         L30–L181
- *   输入预填充、素材选择和失败/取消恢复                 L183–L437
- *   CreationInputSurface 组合                           L439–L538
+ *   InputCard 状态与 Hook 接线                         L30–L195
+ *   输入预填充、素材选择和失败/取消恢复                 L197–L449
+ *   CreationInputSurface 组合                           L451–L551
+ *
+ *   2026-08-11  图片/视频生成轮询期间保持输入区可用；IndexedDB 临时缓存各类型完整创作草稿
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -18,6 +20,11 @@ import { DEFAULT_EMOTIONS } from './CreationSelectorConstants';
 import { useCreationInputFiles } from './useCreationInputFiles';
 import { useCreationPromptInteraction } from './useCreationPromptInteraction';
 import { useCreationParamsState } from './useCreationParamsState';
+import {
+  readCreationDraft,
+  readCreationDraftFromMemory,
+  saveCreationDraft,
+} from './CreationDraftStorage';
 import { isSeedanceModel } from '../../utils/seedanceModel';
 import {
   MAX_CREATION_FILES,
@@ -26,9 +33,23 @@ import {
   isImageFile,
 } from './CreationFileUtils';
 
+function restoreDraftFile(file, restoredFiles) {
+  if (!file) return null;
+  if (restoredFiles.has(file)) return restoredFiles.get(file);
+  if (typeof File === 'undefined' || !(file instanceof File)) return file;
+
+  // 旧输入卡卸载会释放本地文件的 blob 预览地址；创建新的 File 让素材 Hook 重新生成预览。
+  const restoredFile = new File([file], file.name, {
+    type: file.type,
+    lastModified: file.lastModified,
+  });
+  restoredFiles.set(file, restoredFile);
+  return restoredFile;
+}
+
 // ─── InputCard ────────────────────────────────────────────────────────────────
 function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled = false, genType, onGenTypeChange,
-  model, onModelChange, modelOptions = [], creationParams, prefillVersion = 0, prefillData = null, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {} }) {
+  model, onModelChange, modelOptions = [], creationParams, prefillVersion = 0, prefillData = null, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {}, onRegisterSaveDraft }) {
   const [liveMaterialModalOpen, setLiveMaterialModalOpen] = useState(false);
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
   const [selectedVoiceId, setSelectedVoiceId] = useState('');
@@ -88,6 +109,9 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     dubbingEmotion: undefined,
   }); // 用于失败时回退
 
+  // 图片和视频生成均为异步轮询任务，生成期间允许继续创作；配音保留生成中停止请求的交互。
+  const promptDisabled = disabled && genType === 'dubbing';
+
   const {
     editorRef,
     mentionMenuRef,
@@ -110,7 +134,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     setMentionIndex,
   } = useCreationPromptInteraction({
     files,
-    disabled,
+    disabled: promptDisabled,
     genType,
     refMode,
     showToast,
@@ -120,53 +144,118 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     prefillData,
   });
 
-  // 保留图片/视频/配音各自的输入草稿，避免切换模式时互相覆盖。
-  const draftsRef = useRef({});
-  const previousGenTypeRef = useRef(genType);
-  const captureDraft = useCallback(() => {
-    const snapshot = getPromptSnapshot();
-    draftsRef.current[previousGenTypeRef.current] = {
-      ...snapshot,
-      files,
-      firstFrameFile,
-      lastFrameFile,
-      refMode,
-      selectedVoiceId,
-      selectedVoiceName,
-      dubbingSpeed,
-      dubbingEmotion,
-    };
-  }, [dubbingEmotion, dubbingSpeed, files, firstFrameFile, getPromptSnapshot, lastFrameFile, refMode, selectedVoiceId, selectedVoiceName]);
+  // 卸载阶段 contentEditable ref 可能已被 React 清空；提示词在输入时同步镜像，
+  // 切换 Tab 保存草稿时不能再依赖即将销毁的 DOM。
+  const promptTextRef = useRef('');
+  const hydratedGenTypeRef = useRef(null);
+  const createDraftSnapshot = useCallback(() => ({
+    prompt: promptTextRef.current,
+    files,
+    firstFrameFile,
+    lastFrameFile,
+    ratio,
+    resolution,
+    count,
+    refMode,
+    videoRatio,
+    videoResolution,
+    videoDuration,
+    soundEnabled,
+    selectedVoiceId,
+    selectedVoiceName,
+    dubbingSpeed,
+    dubbingEmotion,
+  }), [count, dubbingEmotion, dubbingSpeed, files, firstFrameFile, lastFrameFile, ratio, refMode, resolution, selectedVoiceId, selectedVoiceName, soundEnabled, videoDuration, videoRatio, videoResolution]);
 
-  const handleLocalGenTypeChange = useCallback((nextType) => {
-    captureDraft();
-    onGenTypeChange?.(nextType);
-  }, [captureDraft, onGenTypeChange]);
+  const persistDraft = useCallback((force = false) => {
+    if (!force && hydratedGenTypeRef.current !== genType) return;
+    void saveCreationDraft(genType, createDraftSnapshot());
+  }, [createDraftSnapshot, genType]);
 
   useEffect(() => {
-    if (previousGenTypeRef.current === genType) return;
-    previousGenTypeRef.current = genType;
-    const draft = draftsRef.current[genType];
-    if (draft) {
-      const draftFiles = draft.files || [];
-      restoreContent({ html: draft.html, text: draft.text, restoreFiles: draftFiles });
-      replaceFiles(draftFiles);
-      setFirstFrameFile(draft.firstFrameFile || null);
-      setLastFrameFile(draft.lastFrameFile || null);
-      if (draft.refMode && genType === 'video') setRefMode(draft.refMode);
-      setSelectedVoiceId(draft.selectedVoiceId || '');
-      setSelectedVoiceName(draft.selectedVoiceName || '');
-      if (draft.dubbingSpeed !== undefined) setDubbingSpeed(draft.dubbingSpeed);
-      if (draft.dubbingEmotion !== undefined) setDubbingEmotion(draft.dubbingEmotion);
+    onRegisterSaveDraft?.(() => persistDraft(true));
+    return () => onRegisterSaveDraft?.(null);
+  }, [onRegisterSaveDraft, persistDraft]);
+
+  const handleLocalGenTypeChange = useCallback((nextType) => {
+    persistDraft();
+    onGenTypeChange?.(nextType);
+  }, [onGenTypeChange, persistDraft]);
+
+  useEffect(() => {
+    let cancelled = false;
+    hydratedGenTypeRef.current = null;
+
+    const restoreDraft = (draft) => {
+      if (cancelled) return;
+      hydratedGenTypeRef.current = genType;
+      if (prefillVersion && prefillData?.prompt !== undefined) return;
+      const prompt = draft?.prompt ?? '';
+      promptTextRef.current = prompt;
+      restoreContent({ text: prompt });
+      const restoredFiles = new Map();
+      replaceFiles((draft?.files ?? []).map((file) => restoreDraftFile(file, restoredFiles)));
+      setFirstFrameFile(restoreDraftFile(draft?.firstFrameFile, restoredFiles));
+      setLastFrameFile(restoreDraftFile(draft?.lastFrameFile, restoredFiles));
+      if (draft?.ratio !== undefined) setRatio(draft.ratio);
+      if (draft?.resolution !== undefined) setResolution(draft.resolution);
+      if (draft?.count !== undefined) setCount(draft.count);
+      if (draft?.refMode !== undefined && genType === 'video') setRefMode(draft.refMode);
+      if (draft?.videoRatio !== undefined) setVideoRatio(draft.videoRatio);
+      if (draft?.videoResolution !== undefined) setVideoResolution(draft.videoResolution);
+      if (draft?.videoDuration !== undefined) setVideoDuration(draft.videoDuration);
+      if (draft?.soundEnabled !== undefined) setSoundEnabled(draft.soundEnabled);
+      setSelectedVoiceId(draft?.selectedVoiceId ?? '');
+      setSelectedVoiceName(draft?.selectedVoiceName ?? '');
+      if (draft?.dubbingSpeed !== undefined) setDubbingSpeed(draft.dubbingSpeed);
+      if (draft?.dubbingEmotion !== undefined) setDubbingEmotion(draft.dubbingEmotion);
+    };
+
+    const memoryDraft = readCreationDraftFromMemory(genType);
+    if (memoryDraft) {
+      restoreDraft(memoryDraft);
     } else {
-      restoreContent({ html: '', text: '' });
-      replaceFiles([]);
-      setFirstFrameFile(null);
-      setLastFrameFile(null);
-      setSelectedVoiceId('');
-      setSelectedVoiceName('');
+      void readCreationDraft(genType).then(restoreDraft);
     }
-  }, [genType, replaceFiles, restoreContent, setDubbingEmotion, setDubbingSpeed, setFirstFrameFile, setLastFrameFile, setRefMode]);
+
+    return () => {
+      cancelled = true;
+    };
+  // 草稿加载仅由创作类型切换触发，避免每个输入状态变更都重新覆盖编辑器。
+  // 卸载清理不能在这里保存：该闭包可能持有上传前的空文件数组，反而覆盖新草稿。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [genType]);
+
+  // 草稿与发送动作完全解耦：上传/删除参考图、首尾帧或参数变化后立即持久化。
+  // 首次挂载等待当前类型草稿恢复完成，避免初始空状态覆盖已有缓存。
+  useEffect(() => {
+    if (hydratedGenTypeRef.current !== genType) return;
+    persistDraft();
+  }, [
+    count,
+    dubbingEmotion,
+    dubbingSpeed,
+    files,
+    firstFrameFile,
+    genType,
+    lastFrameFile,
+    persistDraft,
+    ratio,
+    refMode,
+    resolution,
+    selectedVoiceId,
+    selectedVoiceName,
+    soundEnabled,
+    videoDuration,
+    videoRatio,
+    videoResolution,
+  ]);
+
+  const handlePromptInput = useCallback(() => {
+    handleInput();
+    promptTextRef.current = editorRef.current?.innerText ?? '';
+    persistDraft(true);
+  }, [editorRef, handleInput, persistDraft]);
 
 
   // Video: filter modelOptions by refMode
@@ -433,6 +522,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     <CreationInputSurface
       width={width}
       disabled={disabled}
+      promptDisabled={promptDisabled}
       focused={focused}
       upload={{
         genType,
@@ -459,7 +549,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         hasContent,
         genType,
         refMode,
-        onInput: handleInput,
+        onInput: handlePromptInput,
         onKeyDown: handleKeyDown,
         onPaste: handlePaste,
         onFocus: handleEditorFocus,

@@ -18,6 +18,7 @@
  *   不引用页面入口、页面 Store 或页面闭包变量。
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-11  手动新增空白分镜保持空提示词，不代入后端返回的默认内容，并跳过异步表单恢复覆盖
  *   2026-08-10  收敛异步恢复 effect 的依赖快照，修复热更新时依赖数组长度变化的 React 警告
  *   2026-08-05  修复异步表单恢复时首次空状态回写，确保上传参考图快照恢复后才触发持久化
  *   2026-08-10  合并当前主体引用与普通参考图时统一去重，删除同图重复项时同步清理旧快照副本
@@ -56,6 +57,7 @@ function normalizeShotReference(ref, chars, scenes, props) {
 
 export default function GenerateImagePanel({
   shot,
+  isManualBlank = false,
   projectId,
   chars = [],
   scenes = [],
@@ -108,8 +110,11 @@ export default function GenerateImagePanel({
   }, [formState?.model, formState?.resolution]);
   // 提示词：仅暂存在当前弹窗的本地 state，编辑不回写分镜列表字段。
   // 关闭面板时组件卸载、本地态丢弃，下次打开按 shot 当前字段重新生成初始内容。
+  // 手动新增的空白分镜保持空提示词，不代入后端返回的默认内容。
   // 点击「生成分镜图」时才把 prompt 随 onGenerate 传回后端。
-  const [prompt, setPrompt] = useState(() => formState?.prompt ?? buildStoryboardPrompt(shot));
+  const [prompt, setPrompt] = useState(() => (
+    isManualBlank ? '' : (formState?.prompt ?? buildStoryboardPrompt(shot))
+  ));
   const [refImages, setRefImages] = useState(() => {
     const shotReferences = [];
     // 添加主体参考图——为项目主体补全 url/name（否则标签丢失 type 会变紫色）
@@ -145,7 +150,7 @@ export default function GenerateImagePanel({
     const restoreTimer = setTimeout(() => {
       setModel(restoredFormState.model || '');
       setResolution(restoredFormState.resolution || '');
-      if (typeof restoredFormState.prompt === 'string') setPrompt(restoredFormState.prompt);
+      if (!isManualBlank && typeof restoredFormState.prompt === 'string') setPrompt(restoredFormState.prompt);
       setRefImages(normalizeStoryboardImageReferences({
         subjects: mainRefs,
         images: restoredFormState.refImages,
@@ -153,7 +158,7 @@ export default function GenerateImagePanel({
       formStateHydratedRef.current = true;
     }, 0);
     return () => clearTimeout(restoreTimer);
-  }, [formRestoreSnapshot]);
+  }, [formRestoreSnapshot, isManualBlank]);
 
   useEffect(() => {
     if (!formStateHydratedRef.current) return;

@@ -48,7 +48,7 @@ export const K = {
   ),
   storyboardPagePrefix: (projectId) => `storyboard-pages:${projectId}:`,
   storyboardsPrefix: (projectId) => `storyboards:${projectId}:`,
-  storyboardMediaCandidates: (projectId, storyboardId) => `storyboard-media-candidates:${projectId}:${storyboardId}`,
+  storyboardMediaCandidates: (projectId, storyboardId) => `storyboard-media-candidates:${projectId}:${storyboardId}:v2`,
   storyboardMediaCandidatesPrefix: (projectId) => `storyboard-media-candidates:${projectId}:`,
 
   // ── L3 列表（medium: 'session'，短缓存）─────────────────────────────────────

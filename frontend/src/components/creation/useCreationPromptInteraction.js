@@ -401,7 +401,7 @@ export function useCreationPromptInteraction({
     setHasContent(false);
   }, []);
 
-  const restoreContent = useCallback(({ html = '', text = '', fallback = '', restoreFiles = files } = {}) => {
+  const restoreContent = useCallback(({ html = '', text = '', fallback = '', restoreFiles = [] } = {}) => {
     if (!editorRef.current) return;
     if (html) {
       editorRef.current.innerHTML = html;
@@ -417,7 +417,7 @@ export function useCreationPromptInteraction({
     const content = text || fallback;
     editorRef.current.innerText = content;
     setHasContent(content.trim().length > 0);
-  }, [buildTagElement, files]);
+  }, [buildTagElement]);
 
   return {
     editorRef,

@@ -123,6 +123,7 @@ const _sessionIdRef = { current: localStorage.getItem(SESSION_KEY) };
 const _sessionInitRef = { current: false };
 
 export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured = true, onShowNoModelNotice }) {  const [activeTab, setActiveTab] = useState('image');
+  const saveActiveDraftRef = useRef(null);
   const [genType, setGenType] = useState('image');
   const [generating, setGenerating] = useState(false); // kept for isGenerating prop (skeleton)
   const [activeCountByTab, setActiveCountByTab] = useState({ image: 0, video: 0, dubbing: 0 });
@@ -454,12 +455,14 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
 
   // Tab 和 genType 完全对应，切一个另一个跟着变
   const handleTabChange = (tab) => {
+    saveActiveDraftRef.current?.();
     setActiveTab(tab);
     setGenType(tab);
     setBatchMode(false);
     setSelected(new Set());
   };
   const handleGenTypeChange = (type) => {
+    saveActiveDraftRef.current?.();
     setGenType(type);
     setActiveTab(type);
     setBatchMode(false);
@@ -602,7 +605,13 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   };
 
   const renderInputCard = (inputCardProps) => (
-    <CreationInputCard {...inputCardProps} onCancelGeneration={cancelGeneration} />
+    <CreationInputCard
+      {...inputCardProps}
+      onRegisterSaveDraft={(saveDraft) => {
+        saveActiveDraftRef.current = saveDraft;
+      }}
+      onCancelGeneration={cancelGeneration}
+    />
   );
 
   const handleVideoCardClick = (card) => {

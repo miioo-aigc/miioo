@@ -111,16 +111,27 @@ function buildMediaMetadata(media, metadata, generationParams, prompt) {
 export function buildStoryboardCandidatePayload(media) {
   const mediaType = media.mediaType || media.media_type || (media.type?.startsWith('video') ? 'video' : 'image');
   const mediaUrl = media.url || media.fileUrl || media.file_url;
+  const isVideo = mediaType === 'video';
+  const videoSourceUrl = media.preview_video_url || media.previewVideoUrl;
   const metadata = readMetadata(media);
   const generationParams = readGenerationParams(media, metadata);
   const prompt = readPrompt(media, metadata, generationParams);
+  const safeImageUrl = (value) => {
+    if (!value || typeof value !== 'string') return null;
+    if (value === mediaUrl || (videoSourceUrl && value === videoSourceUrl)) return null;
+    return value;
+  };
 
   return {
     payload: {
       media_type: mediaType,
       url: mediaUrl,
-      thumbnail_url: media.thumbnail_url || media.thumbnailUrl || media.poster_url || media.posterUrl || mediaUrl,
-      poster_url: media.poster_url || media.posterUrl || media.thumbnail_url || media.thumbnailUrl || mediaUrl,
+      thumbnail_url: isVideo
+        ? safeImageUrl(media.thumbnail_url || media.thumbnailUrl || media.poster_url || media.posterUrl)
+        : (media.thumbnail_url || media.thumbnailUrl || mediaUrl),
+      poster_url: isVideo
+        ? safeImageUrl(media.poster_url || media.posterUrl || media.thumbnail_url || media.thumbnailUrl)
+        : (media.poster_url || media.posterUrl || null),
       download_url: media.download_url || media.downloadUrl || null,
       source: media.source || 'ai-generated',
       asset_id: media.asset_id || media.assetId || null,

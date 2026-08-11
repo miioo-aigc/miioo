@@ -1,5 +1,40 @@
 # miioo 项目进度管理文档
 
+## 2026-08-11 分镜候选媒体加载态串镜头与复制生成中结果修复
+
+- 修复镜头 A 正在生成时复制得到 A2，A2 误带“正在生成”卡片或丢失 A 已完成候选结果的问题。复制现在从来源镜头的 `media-candidates` 读取并写入已持久化候选，保留已完成的 A、B、C、D；本地 `pendingCandidateMap` 中尚未落盘的 E 不会复制。
+- 手动新增和复制分镜创建成功后，会立即初始化空的候选媒体、定稿媒体和加载状态，避免 `candidateMediaMap` 尚无键时被渲染层误判为生成中。
+- 修复其他未创作镜头的首张已有媒体卡片在后台刷新候选列表时错误显示加载动画的问题。候选媒体列表首次尚未取得时才展示 `DotsLoading`；已有候选卡片的刷新保持卡片可见，真实生成中状态仍仅由当前镜头的待生成候选和任务状态驱动。
+- 涉及文件：`src/pages/StoryboardPage.jsx`。
+- 验证：`npx eslint src/pages/StoryboardPage.jsx`、`npm run build`、`git diff --check` 通过；构建仅保留项目既有分块体积提醒。
+
+## 2026-08-11 分镜首尾帧生成 Seedance 2.0 返回 400 修复
+
+- 修复分镜页面“创作视频 -> 首尾帧”使用 `doubao-seedance-2.0` 同时提交首帧、尾帧时，`POST /api/projects/{projectId}/storyboards/{storyboardId}/generate-video` 返回“模型不支持 `start_end` 参考模式”的 400 问题。
+- 根因：前端将 `start_end` 错误组装到 `reference_mode`；用户提供的模型能力配置明确表明 `start_end` 属于 `supported_generation_modes`，不是 `reference_modes`。
+- 现在首尾帧请求改为传递 `generate_mode: 'start_end'`；仅有首帧时传递 `generate_mode: 'first_frame'`。首帧、尾帧 URL 和各自素材 ID 继续按原链路传递，不再发送错误的 `reference_mode: 'start_end'`。
+- 同时撤销了错误的模型能力降级：尾帧上传入口在首尾帧模式下始终展示，切换模型不会清空已选择的尾帧素材。
+- 涉及文件：`src/components/storyboard/GenerateVideoPanel.jsx`、`src/components/storyboard/ReferenceMediaEditor.jsx`、`src/pages/StoryboardPage.jsx`。
+- 验证：目标文件定向 ESLint、`npm run build`、`git diff --check` 通过。真实生成请求仍需在分镜页面使用首帧和尾帧进行联调确认。
+
+## 2026-08-11 分镜详情右侧信息与当前媒体精准对应修复
+
+- 修复分镜详情弹窗在查看既有视频或图片时，右侧可能读取当前分镜 `creationForm`、`genParams`、`mainRefs` 等后续编辑草稿，导致信息与左侧当前媒体不一致的问题。
+- `StoryboardMediaDetailModal` 的提示词、参考模式、参考主体/图片/视频/音频、首尾帧、模型、分辨率、时长、比例和其他生成参数，现在只读取左侧当前 `activeMedia` 及其自身 `metadata`、嵌套生成参数；媒体自身没有保存的字段保持不展示，不再猜测或从镜头级草稿补齐。
+- `reference_mode: video_ref` 及其他非明确首尾帧模式统一按全能参考展示；绑定素材中历史遗留的“首帧参考 / 尾帧参考”角色不再被误展示为当前视频的首帧图、尾帧图。明确的 `first_frame`、`last_frame`、`start_end` 模式仍展示首尾帧。
+- `shot` 仅保留用于弹窗分镜编号和当前媒体归属判断，不参与右侧展示信息的取值。
+- 涉及文件：`src/components/storyboard/StoryboardMediaDetailModal.jsx`。
+- 验证：目标文件定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；架构检查仅有既有规模提醒。
+
+## 2026-08-11 分镜手动新增空白分镜提示词默认内容修复
+
+- 手动新增空白分镜后打开创作面板，提示词输入框不再代入后端返回的默认内容，保持空白。
+- 根因：空白分镜创建成功后，后端返回的 `creationForm` 已带回默认提示词；图片/视频创作面板均以 `formState?.prompt ?? buildStoryboardPrompt(shot)` 初始化并做异步恢复。
+- 前端在 `addShotAfter`、`addNewShot` 创建成功时给分镜打 `isManualBlank` 标记；复制分镜不携带该标记，继续保留原分镜提示词。
+- `GenerateImagePanel` 和 `GenerateVideoPanel` 识别到 `isManualBlank` 后，提示词初始化为空，并跳过异步表单恢复对提示词的覆盖；用户后续手动输入仍正常保存。
+- 涉及文件：`src/pages/StoryboardPage.jsx`、`src/components/storyboard/GenerateImagePanel.jsx`、`src/components/storyboard/GenerateVideoPanel.jsx`。
+- 验证：用户确认修复验证通过；`npx vite build`、目标文件定向 ESLint、`git diff --check` 均通过。
+
 ## 2026-08-10 剧本生成中保留输入并拦截发送
 
 - 剧本页面等待 AI 输出期间，输入框保持可编辑；输入为空时继续显示暂停按钮。
@@ -295,9 +330,9 @@
 - 处理 `localStorage` 的 `QuotaExceededError`：分镜缓存写入失败时先清理其他旧的 `storyboards:` 缓存，再重试当前轻量缓存；仍然失败则降级到内存缓存，不阻塞页面数据展示。该降级只表示持久化失败，不代表文字数据本身获取失败。
 - 分镜页面首屏和切换分集时，先恢复文字缓存；缓存订阅返回空数组不能结束加载，必须等待接口确认，避免缓存为空或缓存失效时误显示“开始智能分镜”。
 - 分镜接口返回空数组时增加兜底全量查询，并结合分集状态、分镜数量判断真实未生成与加载异常；已有数据不会被异常空响应覆盖，网络失败或状态不明确时显示“抱歉，加载数据失败，请刷新重试”。
-- 分镜候选媒体和定稿时间轴采用独立的后台加载状态。每次重新进入分镜页、切回分镜页或恢复文字缓存后，只要媒体候选需要重新请求，分镜列和时间轴列都会显示 `DotsLoading`；已有旧媒体也会叠加加载动画，不再因为旧视频地址存在而误认为媒体已完成加载。
+- 分镜候选媒体和定稿时间轴采用独立的后台加载状态。首次尚未取得候选媒体列表时，分镜列和时间轴列显示 `DotsLoading`；已有候选媒体的后台刷新保持原卡片可见，不再把刷新误显示为“正在生成”。
 - 媒体请求增加按镜头的请求版本控制，避免缓存恢复、接口刷新或重复请求并发时，较早结束的请求提前关闭较晚请求的加载动画。
-- 媒体请求未完成期间保留文字和已有媒体内容；请求完成后才移除对应镜头的加载动画并展示候选媒体/定稿状态，避免用户误以为页面数据丢失。
+- 媒体请求未完成期间保留文字和已有媒体内容；首次加载完成后移除对应镜头的加载动画。已有媒体的后台刷新只更新候选/定稿状态，不覆盖卡片为加载动画，避免用户误以为页面正在生成或数据丢失。
 - 涉及文件：`src/utils/cache.js`、`src/api/storyboard.js`、`src/pages/StoryboardPage.jsx`、`src/components/storyboard/StoryboardShotMediaColumn.jsx`、`src/components/storyboard/StoryboardFinalizedCard.jsx`。
 - 验证：目标文件定向 ESLint、`npm run bild`、`git diff --check` 通过；构建仅保留项目已有的分块体积提示。完整 `npm run lint` 和架构检查的历史阻断项仍需按仓库既有记录处理。
 
@@ -322,7 +357,7 @@
 
 - 修复查看创作分镜图详情时，右侧生成参数将参考图显示为图片链接文本的问题；参考图现在以缩略图展示。
 - 参考图字段兼容 `reference_images`、`referenceImages`、`reference_image_urls`、`referenceImageUrls`、`ref_images`、`refImages`，并兼容媒体对象、元数据和生成参数对象中的嵌套字段。
-- 详情弹窗补齐提示词读取，兼容候选媒体、元数据、生成参数及分镜 `image_prompt`/`video_prompt` 字段；本地上传仍不展示提示词和生成参数。
+- 详情弹窗补齐提示词读取，兼容候选媒体、元数据和生成参数；本地上传仍不展示提示词和生成参数。后续已收紧为不读取分镜 `image_prompt`/`video_prompt` 草稿，确保右侧信息只对应当前媒体。
 - 详情参数列表排除参考图字段，避免缩略图和原始 URL 重复展示；主体详情弹窗同步兼容字符串、`url`、`fileUrl` 和 `file_url` 形式的参考图地址。
 - `MediaCol` 打开详情时继续透传参考图、提示词和生成参数字段，保证列表入口与统一详情弹窗使用同一份媒体信息。
 - 涉及文件：`src/components/storyboard/StoryboardMediaDetailModal.jsx`、`src/components/storyboard/MediaCol.jsx`、`src/components/MediaDetailModal.jsx`。
@@ -348,7 +383,7 @@
 - 主体页重新分镜确认后显式调用按集生成接口，并传递 `confirm_overwrite: true`；不再只切换到分镜页而没有实际发起覆盖重抽任务。
 - 图片生成、视频生成和分镜抽取均通过统一任务 ID 适配进入轮询；兼容 `queued`、`created`、`processing`、`in_progress`、`partial` 等状态，并在失败或部分失败时优先展示后端 `status_message`、错误详情和失败数量。
 - 分镜列表请求默认带上 `include_gen_params=true`，用于恢复创作结果详情；当历史分镜的生成参数导致后端返回 500 时，自动降级读取不带该参数的基础分镜列表，保证页面仍可打开。
-- 2026-08-04 修复分镜列加载动画偏左：`StoryboardShotMediaColumn` 的空态和已有媒体覆盖加载态均改为相对 60px 分镜卡片绝对定位，动画始终以卡片中心为基准。
+- 2026-08-04 修复分镜列首次加载动画偏左：`StoryboardShotMediaColumn` 的空态加载区域改为相对 `60px` 分镜卡片绝对定位，动画始终以卡片中心为基准。已有媒体后台刷新不显示覆盖加载态，现行规则见 2026-08-11 分镜候选媒体加载态修复。
 
 ### 分镜候选媒体与定稿时间轴
 

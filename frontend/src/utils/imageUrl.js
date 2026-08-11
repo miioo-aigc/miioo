@@ -1,7 +1,10 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+const API_TARGET = import.meta.env.VITE_API_TARGET || '';
 
 function getConfiguredOrigin() {
-  const origin = API_BASE.replace(/\/api\/?$/, '');
+  // 开发环境 VITE_API_BASE_URL 通常为空，API 走 Vite proxy；
+  // 透传给后端的素材 URL 必须使用代理目标域名，不能返回 /uploads/... 相对路径。
+  const origin = (API_BASE || API_TARGET).replace(/\/api\/?$/, '');
   if (/^https?:\/\//i.test(origin)) return origin;
   // 生产环境可能使用同站相对 API（例如 VITE_API_BASE_URL 为空），
   // 此时图片应跟随当前站点域名，避免后端返回的裸域地址绕过规范域名。

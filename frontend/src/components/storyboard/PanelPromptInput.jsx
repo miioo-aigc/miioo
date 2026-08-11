@@ -203,6 +203,88 @@ function setCaretOffset(el, targetOffset) {
   sel.addRange(range);
 }
 
+function locateEditorSelectionPoint(el, charOffset) {
+  let remaining = charOffset;
+  for (const node of el.childNodes) {
+    const len = node.dataset?.mention
+      ? node.dataset.mention.length + 1
+      : node.nodeType === Node.TEXT_NODE
+        ? node.textContent.length
+        : node.tagName === 'BR'
+          ? 1
+          : node.textContent.length;
+    if (remaining <= len) {
+      return {
+        node,
+        offset: remaining,
+        insideMention: Boolean(node.dataset?.mention),
+        atEnd: false,
+      };
+    }
+    remaining -= len;
+  }
+  return { node: el, offset: el.childNodes.length, insideMention: false, atEnd: true };
+}
+
+function setEditorSelection(el, startChar, endChar) {
+  const start = locateEditorSelectionPoint(el, Math.max(0, startChar));
+  const end = locateEditorSelectionPoint(el, Math.max(0, endChar));
+  const range = document.createRange();
+  if (start.atEnd) range.setStart(el, el.childNodes.length);
+  else if (start.insideMention) range.setStartBefore(start.node);
+  else range.setStart(start.node, start.offset);
+  if (end.atEnd) range.setEnd(el, el.childNodes.length);
+  else if (end.insideMention) range.setEndAfter(end.node);
+  else range.setEnd(end.node, end.offset);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+// 展示态 DOM 与编辑态 DOM 不同，选中后切换到编辑态时按语义字符偏移恢复选区：
+// 提及统一按 @名称 长度计算，普通文本按实际字符计算。
+function getDisplaySelectionOffsets(container) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  if (range.collapsed) return null;
+  if (!container.contains(range.startContainer) || !container.contains(range.endContainer)) return null;
+
+  const nodeLength = (node) => {
+    if (node.dataset?.mentionLength) return Number(node.dataset.mentionLength);
+    if (node.dataset?.mention) return node.dataset.mention.length + 1;
+    return node.textContent.length;
+  };
+
+  const locate = (root, target, targetOffset, baseOffset = 0) => {
+    if (target === root) {
+      let offset = baseOffset;
+      for (let i = 0; i < targetOffset; i += 1) offset += nodeLength(root.childNodes[i]);
+      return offset;
+    }
+    let offset = baseOffset;
+    for (const node of root.childNodes) {
+      if (node === target) {
+        if (node.nodeType === Node.TEXT_NODE) return offset + targetOffset;
+        if (node.dataset?.mentionLength) return offset + Number(node.dataset.mentionLength);
+        if (node.dataset?.mention) return offset + node.dataset.mention.length + 1;
+        return offset + targetOffset;
+      }
+      if (node.nodeType === Node.ELEMENT_NODE && node.contains(target)) {
+        if (node.dataset?.mentionLength) return offset + Number(node.dataset.mentionLength);
+        return locate(node, target, targetOffset, offset);
+      }
+      offset += nodeLength(node);
+    }
+    return null;
+  };
+
+  const startChar = locate(container, range.startContainer, range.startOffset);
+  const endChar = locate(container, range.endContainer, range.endOffset);
+  if (startChar === null || endChar === null) return null;
+  return { startChar: Math.min(startChar, endChar), endChar: Math.max(startChar, endChar) };
+}
+
 const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange, referenceItems = [], plainTextMode = false }, ref) {
   const [focused, setFocused] = useState(false);
   const [hov, setHov] = useState(false);
@@ -216,6 +298,7 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
   const isBlurringRef = useRef(false);
   const pendingMentionRef = useRef(null); // { name, type } 等待编辑器挂载后插入
   const pendingCaretPointRef = useRef(null); // 展示态点击位置，切换编辑态后恢复光标
+  const pendingSelectionRef = useRef(null); // 展示态选中文本，切换编辑态后恢复选区
 
   // 暴露 insertMention 方法，供外部（如参考视频卡片点击）调用
   useImperativeHandle(ref, () => ({
@@ -314,10 +397,25 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
      if (plainTextMode) {
         const cleaned = (value || '').replace(/@/g, '');
         el.textContent = cleaned;
-        setCaretOffset(el, cleaned.length);
+        if (pendingSelectionRef.current) {
+          const selection = pendingSelectionRef.current;
+          pendingSelectionRef.current = null;
+          pendingCaretPointRef.current = null;
+          setEditorSelection(el, selection.startChar, selection.endChar);
+        } else {
+          setCaretOffset(el, cleaned.length);
+        }
         return;
       }
       rebuildEditorDOM(el, value, allSubjects, typeOverridesRef.current);
+      // 展示态选中文本后切换编辑态：优先恢复选区，让 Delete/Backspace 可直接删除
+      if (pendingSelectionRef.current) {
+        const selection = pendingSelectionRef.current;
+        pendingSelectionRef.current = null;
+        pendingCaretPointRef.current = null;
+        setEditorSelection(el, selection.startChar, selection.endChar);
+        return;
+      }
       // 若有待插入的 mention（点击卡片时编辑器还未挂载），在此消费
       if (pendingMentionRef.current) {
         const { name, type } = pendingMentionRef.current;
@@ -586,6 +684,14 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
               // 浏览器会取消后续 click，导致输入框无法获得焦点。
               pendingCaretPointRef.current = { x: event.clientX, y: event.clientY };
             }}
+            onMouseUp={(event) => {
+              if (event.button !== 0) return;
+              const selection = getDisplaySelectionOffsets(event.currentTarget);
+              if (selection) {
+                pendingSelectionRef.current = selection;
+                setFocused(true);
+              }
+            }}
             onClick={() => setFocused(true)}
             style={{
               flex: 1, overflow: 'hidden',
@@ -600,7 +706,7 @@ const PanelPromptInput = forwardRef(function PanelPromptInput({ value, onChange,
              : plainTextMode
                 ? (value || '').replace(/@/g, '')
                 : segments.map((seg, i) => seg.kind === 'mention'
-                  ? <SubjectTag key={i} name={seg.name} type={seg.type} />
+                  ? <span key={i} data-mention-length={seg.name.length + 1}><SubjectTag name={seg.name} type={seg.type} /></span>
                   : <span key={i}>{seg.text}</span>)}
           </div>
         )}

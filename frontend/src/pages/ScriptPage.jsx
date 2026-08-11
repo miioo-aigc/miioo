@@ -3,19 +3,19 @@
  * @structure-index
  *
  * ─── 全局常量 & 工具函数 ─────────────────────────────────────────────
- *   FONT / CHAT_TIMEOUT_MS / 页面级常量                                  L52–L56
- *   formatEpisodeHeaders                                                   L66
+ *   FONT / CHAT_TIMEOUT_MS / 页面级常量                                  L53–L60
+ *   formatEpisodeHeaders                                                   L79
  *
  * ─── 反馈与输入区组件 ─────────────────────────────────────────────────
- *   Toast                                                                  L235
+ *   Toast                                                                  L176
  *
  * ─── 剧本展示与编辑组件 ───────────────────────────────────────────────
  *   ScriptOutlineLoading / ScriptOutlineWorkspace / ScriptEpisodeOutline / ScriptStoryboardDocument / ScriptModifyConfirmModal src/components/script/
  *
  * ─── 主页面入口 ───────────────────────────────────────────────────────
- *   export default ScriptPage()                                         L176
+ *   export default ScriptPage()                                         L218
  *     ├─ [状态] 受控/非受控 phase、剧本内容、入口文件、模型、集数/时长、消息和编排任务
- *     ├─ [函数] handleSend L912 / handleScriptFileSelect L644 / handleOpenScriptOutline L230 / handleStop L624
+ *     ├─ [函数] handleSend L997 / handleScriptFileSelect L723 / handleOpenScriptOutline L273 / handleStop L694
  *     └─ [副作用] 工作区加载、编排任务恢复与轮询、流式请求、剧本和分集同步
  *
  * ─── 更新记录 ────────────────────────────────────────────────────────
@@ -43,6 +43,7 @@
  *   2026-08-07  剧本对话超时后发送前等待旧任务释放，并用同一请求 ID处理忙碌重试
  *   2026-08-10  剧本生成中允许编辑输入；统一剧本对话超时反馈
  *   2026-08-10  移除发送前的前端任务拦截，发送直接透传到后端剧本对话接口
+ *   2026-08-11  分集/重写任务对齐后端：幂等头、缓存失效、409 提示、localStorage 恢复与轮询清理
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiInterruptScriptChatTurn, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiDownloadStoryboardFile, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
@@ -52,9 +53,10 @@ import { InputCard, ScriptEmptyState, ScriptMessageArea, ScriptOutlineLoading, S
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
 const CHAT_TIMEOUT_MS = 30 * 60 * 1_000; // 30 分钟客户端超时兜底（后端通常先返回 504）
-const SCRIPT_OUTLINE_POLL_INTERVAL_MS = 1_500;
+const SCRIPT_OUTLINE_POLL_INTERVAL_MS = 1_200;
 const SCRIPT_OUTLINE_TIMEOUT_MS = 30 * 60 * 1_000;
 const SCRIPT_OUTLINE_TYPE_STORAGE_PREFIX = 'miioo:script-outline-type:';
+const SCRIPT_OPERATION_STORAGE_PREFIX = 'miioo:script-operation:';
 
 function getScriptTaskId(task) {
   if (!task || typeof task !== 'object') return null;
@@ -128,6 +130,46 @@ function storeScriptOutlineType(projectId, type) {
     else window.sessionStorage.removeItem(key);
   } catch {
     // 存储不可用时仍以当前页面状态为准。
+  }
+}
+
+function scriptOperationStorageKey(projectId) {
+  return projectId ? `${SCRIPT_OPERATION_STORAGE_PREFIX}${projectId}` : '';
+}
+
+function persistScriptOperation(projectId, taskId) {
+  if (typeof window === 'undefined') return;
+  const key = scriptOperationStorageKey(projectId);
+  if (!key || !taskId) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify({ task_id: taskId, started_at: Date.now() }));
+  } catch {
+    // 存储不可用时仍可依靠后端 active_operation 恢复。
+  }
+}
+
+function readStoredScriptOperationTaskId(projectId) {
+  if (typeof window === 'undefined') return '';
+  const key = scriptOperationStorageKey(projectId);
+  if (!key) return '';
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return '';
+    const stored = JSON.parse(raw);
+    return stored?.task_id || stored?.taskId || '';
+  } catch {
+    return '';
+  }
+}
+
+function clearStoredScriptOperation(projectId) {
+  if (typeof window === 'undefined') return;
+  const key = scriptOperationStorageKey(projectId);
+  if (!key) return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // 忽略存储异常。
   }
 }
 
@@ -333,7 +375,9 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       }
       await new Promise((resolve) => window.setTimeout(resolve, SCRIPT_OUTLINE_POLL_INTERVAL_MS));
     }
-    throw new Error('剧本结构操作等待超时，请重试');
+    const timeoutError = new Error('剧本任务超时，请刷新页面查看最新结果');
+    timeoutError.isTimeout = true;
+    throw timeoutError;
   }, [projectId]);
 
   const refreshScriptOutline = useCallback(async () => {
@@ -349,12 +393,22 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     setEpisodeActionError('');
     try {
       const accepted = await operation();
-      await waitForScriptOperation(getScriptTaskId(accepted));
+      const taskId = getScriptTaskId(accepted);
+      if (!taskId) throw new Error('剧本任务已受理但未返回任务 ID，请刷新后重试');
+      persistScriptOperation(projectId, taskId);
+      await waitForScriptOperation(taskId);
+      clearStoredScriptOperation(projectId);
       await refreshScriptOutline();
       return true;
     } catch (error) {
       console.error('[ScriptPage] 分集剧情操作失败:', error);
-      const message = error?.message || '分集剧情操作失败，请重试';
+      if (!error?.isTimeout && error?.code !== 'OPERATION_ACTIVE') clearStoredScriptOperation(projectId);
+      let message = error?.message || '分集剧情操作失败，请重试';
+      if (error?.code === 'STRUCTURE_REVISION_CONFLICT') {
+        message = '结构版本已更新，请刷新后重试';
+      } else if (error?.code === 'OPERATION_ACTIVE') {
+        message = '当前已有剧本任务正在处理，请稍候';
+      }
       setEpisodeActionError(message);
       showToast(message, 'error');
       return false;
@@ -483,7 +537,8 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         const activeTask = data?.active_task || data?.active_operation;
         const activeTaskId = getScriptTaskId(activeTask);
         const hasStoryboardFile = Boolean(restoredStoryboard.fileName || restoredStoryboard.downloadUrl || restoredStoryboard.fileId);
-        if (data?.structure || activeTaskId || hasStoryboardFile) {
+        const storedTaskId = readStoredScriptOperationTaskId(projectId);
+        if (data?.structure || activeTaskId || hasStoryboardFile || storedTaskId) {
           setScriptOutlineMode(true);
           const storedOutlineType = readStoredScriptOutlineType(projectId);
           setOutlineType(isStoryboardUpload || storedOutlineType === 'storyboard' ? 'storyboard' : 'script');
@@ -497,7 +552,12 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
           }
           if (activeTaskId) {
             if (isStoryboardScriptSource(activeTask)) setOutlineType('storyboard');
+            persistScriptOperation(projectId, activeTaskId);
             setScriptOutlineTaskId(activeTaskId);
+            setScriptOutlineLoading(true);
+            outlinePollStartedAtRef.current = Date.now();
+          } else if (storedTaskId) {
+            setScriptOutlineTaskId(storedTaskId);
             setScriptOutlineLoading(true);
             outlinePollStartedAtRef.current = Date.now();
           }
@@ -531,17 +591,18 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     if (!scriptOutlineMode || !scriptOutlineTaskId || !projectId) return undefined;
     let disposed = false;
     let timerId;
+    const abortController = new AbortController();
 
     const poll = async () => {
       if (disposed) return;
       if (Date.now() - (outlinePollStartedAtRef.current || Date.now()) > SCRIPT_OUTLINE_TIMEOUT_MS) {
         setScriptOutlineLoading(false);
         setScriptOutlineTaskId(null);
-        setScriptOutlineError('剧本解析等待超时，请重试');
+        setScriptOutlineError('剧本任务超时，请刷新页面查看最新结果');
         return;
       }
       try {
-        const task = await apiGetScriptTask(projectId, scriptOutlineTaskId);
+        const task = await apiGetScriptTask(projectId, scriptOutlineTaskId, { signal: abortController.signal });
         if (disposed) return;
         if (isStoryboardScriptSource(task)) setOutlineType('storyboard');
         const status = String(task?.status || '').toLowerCase();
@@ -558,6 +619,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
           setScriptOutlineData(normalizeScriptStructure(structure));
           setScriptOutlineLoading(false);
           setScriptOutlineTaskId(null);
+          clearStoredScriptOperation(projectId);
           return;
         }
         if (status === 'partial') {
@@ -577,10 +639,12 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
             setScriptOutlineData(normalized);
             setScriptOutlineLoading(false);
             setScriptOutlineTaskId(null);
+            clearStoredScriptOperation(projectId);
             return;
           }
           setScriptOutlineLoading(false);
           setScriptOutlineTaskId(null);
+          clearStoredScriptOperation(projectId);
           const partialError = task?.error;
           setScriptOutlineError(typeof partialError === 'string' ? partialError : partialError?.message || partialError?.detail || '分镜脚本导入部分失败，暂时没有可展示的结构');
           return;
@@ -590,12 +654,14 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
           const message = getScriptOutlineTaskErrorMessage(error);
           setScriptOutlineLoading(false);
           setScriptOutlineTaskId(null);
+          clearStoredScriptOperation(projectId);
           setScriptOutlineError(message);
           return;
         }
         timerId = window.setTimeout(poll, SCRIPT_OUTLINE_POLL_INTERVAL_MS);
       } catch (error) {
         if (disposed) return;
+        if (error?.status === 404) clearStoredScriptOperation(projectId);
         setScriptOutlineLoading(false);
         setScriptOutlineTaskId(null);
         setScriptOutlineError(error?.message || '读取剧本解析状态失败，请重试');
@@ -606,6 +672,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     return () => {
       disposed = true;
       window.clearTimeout(timerId);
+      abortController.abort();
     };
   }, [projectId, scriptOutlineMode, scriptOutlineTaskId, scriptOutlineType, setOutlineType]);
 

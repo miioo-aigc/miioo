@@ -122,10 +122,11 @@ export default function CreationEmptyState({
   renderInputCard,
 }) {
   const EmptyIcon = EMPTY_ICON_MAP[genType] ?? CreationEmptyIconImage;
+  const inputDisabled = isGenerating && genType === 'dubbing';
   const inputCardProps = {
     onGenerate,
     onCancelGeneration,
-    disabled: isGenerating,
+    disabled: inputDisabled,
     width: '100%',
     genType,
     onGenTypeChange,

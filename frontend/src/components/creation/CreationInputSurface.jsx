@@ -39,7 +39,7 @@ function ensureRotateKeyframe() {
   document.head.appendChild(style);
 }
 
-function CreationInputSurface({ width = '800px', disabled = false, focused = false, upload, prompt, controls, send, overlays }) {
+function CreationInputSurface({ width = '800px', disabled = false, promptDisabled = disabled, focused = false, upload, prompt, controls, send, overlays }) {
   const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
@@ -115,7 +115,7 @@ function CreationInputSurface({ width = '800px', disabled = false, focused = fal
             />
             <CreationPromptEditor
               {...prompt}
-              disabled={disabled}
+              disabled={promptDisabled}
             />
           </div>
 

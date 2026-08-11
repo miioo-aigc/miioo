@@ -144,10 +144,11 @@ export default function CreationResultState({
   }, [autoFillLimit, genType, generations.length, historyHasMore, historyLoading, onLoadMore]);
 
   const isAudio = genType === 'dubbing';
+  const inputDisabled = isGenerating && genType === 'dubbing';
   const inputCardProps = {
     onGenerate,
     onCancelGeneration,
-    disabled: isGenerating,
+    disabled: inputDisabled,
     width: '100%',
     genType,
     onGenTypeChange,

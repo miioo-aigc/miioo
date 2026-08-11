@@ -12,8 +12,9 @@
  *   2026-07-27  将用户消息气泡的三个圆角固定为 16px，保留右下角直角
  *   2026-07-27  流式输出期间允许用户上滑查看上下文，离开底部后暂停自动滚动
  *   2026-08-10  手动暂停视为正常状态，保留已输出正文的正常颜色
+ *   2026-08-11  对话上下文超过两页时，在屏幕右侧 8px 处显示滚动时可见的悬浮滚动条
  */
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TextButton } from '../ui';
 import ScriptMessageLoading from './ScriptMessageLoading';
 
@@ -86,54 +87,150 @@ function MessageBubble({ message, isActive }) {
 
 export default function ScriptMessageArea({ messages = [], activeMessageId = null, hasScript = false, onOpenScript }) {
   const scrollRef = useRef(null);
+  const contentRef = useRef(null);
   const shouldFollowLatestRef = useRef(true);
+  const scrollbarTimerRef = useRef(null);
+  const [scrollbarState, setScrollbarState] = useState({
+    isScrolling: false,
+    overflowsTwoPages: false,
+    top: 0,
+    height: 0,
+    thumbTop: 0,
+    thumbHeight: 0,
+  });
+
+  const updateScrollbarMetrics = useCallback((container, options = {}) => {
+    if (!container) return;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const rect = container.getBoundingClientRect();
+    const overflowsTwoPages = scrollHeight > clientHeight * 2;
+    const trackHeight = rect.height;
+    const scrollableDistance = Math.max(scrollHeight - clientHeight, 1);
+    const thumbHeight = Math.max(20, (clientHeight / scrollHeight) * trackHeight);
+    const thumbTop = (scrollTop / scrollableDistance) * Math.max(trackHeight - thumbHeight, 0);
+
+    setScrollbarState((prev) => {
+      const nextIsScrolling = options.scrolling ?? prev.isScrolling;
+      if (
+        prev.isScrolling === nextIsScrolling
+        && prev.overflowsTwoPages === overflowsTwoPages
+        && prev.top === rect.top
+        && prev.height === trackHeight
+        && Math.abs(prev.thumbTop - thumbTop) < 0.5
+        && Math.abs(prev.thumbHeight - thumbHeight) < 0.5
+      ) {
+        return prev;
+      }
+      return {
+        isScrolling: nextIsScrolling,
+        overflowsTwoPages,
+        top: rect.top,
+        height: trackHeight,
+        thumbTop,
+        thumbHeight,
+      };
+    });
+  }, []);
 
   useEffect(() => {
     const container = scrollRef.current;
     if (container && shouldFollowLatestRef.current) container.scrollTop = container.scrollHeight;
-  }, [messages, activeMessageId]);
+    if (container) updateScrollbarMetrics(container);
+  }, [messages, activeMessageId, updateScrollbarMetrics]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    const content = contentRef.current;
+    if (!container) return;
+
+    updateScrollbarMetrics(container);
+    const handleWindowResize = () => updateScrollbarMetrics(container);
+    window.addEventListener('resize', handleWindowResize);
+    const observer = new ResizeObserver(() => updateScrollbarMetrics(container));
+    observer.observe(container);
+    if (content) observer.observe(content);
+
+    return () => {
+      window.removeEventListener('resize', handleWindowResize);
+      observer.disconnect();
+      clearTimeout(scrollbarTimerRef.current);
+    };
+  }, [updateScrollbarMetrics]);
 
   const handleScroll = (event) => {
     const container = event.currentTarget;
     const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     shouldFollowLatestRef.current = distanceToBottom <= 24;
+    updateScrollbarMetrics(container, { scrolling: true });
+    clearTimeout(scrollbarTimerRef.current);
+    scrollbarTimerRef.current = setTimeout(() => {
+      updateScrollbarMetrics(container, { scrolling: false });
+    }, 500);
   };
 
   return (
-    <div
-      ref={scrollRef}
-      onScroll={handleScroll}
-      style={{
-        width: 'min(800px, 100%)',
-        maxWidth: '100%',
-        alignSelf: 'center',
-        minHeight: 0,
-        flex: 1,
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        padding: '0px 24px 16px',
-        boxSizing: 'border-box',
-        scrollbarGutter: 'stable',
-      }}
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', width: '100%' }}>
-        {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} isActive={message.id === activeMessageId} />
-        ))}
-        {hasScript && onOpenScript && (
-          <TextButton
-            type="button"
-            variant="link"
-            icon={<ScriptOutlineIcon />}
-            onClick={onOpenScript}
-            className="rounded-[6px] text-[14px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#2DC3E180]"
-            contentClassName="text-[14px] leading-[20px]"
-            style={{ alignSelf: 'flex-start', marginLeft: '32px', fontFamily: FONT, lineHeight: '20px' }}
-          >
-            确认初稿，进入剧本编排
-          </TextButton>
-        )}
+    <>
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        style={{
+          width: 'min(800px, 100%)',
+          maxWidth: '100%',
+          alignSelf: 'center',
+          minHeight: 0,
+          flex: 1,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          padding: '0px 24px 16px',
+          boxSizing: 'border-box',
+          scrollbarGutter: 'stable',
+        }}
+      >
+        <div ref={contentRef} style={{ display: 'flex', flexDirection: 'column', gap: '22px', width: '100%' }}>
+          {messages.map((message) => (
+            <MessageBubble key={message.id} message={message} isActive={message.id === activeMessageId} />
+          ))}
+          {hasScript && onOpenScript && (
+            <TextButton
+              type="button"
+              variant="link"
+              icon={<ScriptOutlineIcon />}
+              onClick={onOpenScript}
+              className="rounded-[6px] text-[14px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#2DC3E180]"
+              contentClassName="text-[14px] leading-[20px]"
+              style={{ alignSelf: 'flex-start', marginLeft: '32px', fontFamily: FONT, lineHeight: '20px' }}
+            >
+              确认初稿，进入剧本编排
+            </TextButton>
+          )}
+        </div>
       </div>
-    </div>
+      {scrollbarState.overflowsTwoPages && scrollbarState.isScrolling && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            top: scrollbarState.top,
+            right: '8px',
+            width: '12px',
+            height: scrollbarState.height,
+            pointerEvents: 'none',
+            zIndex: 20,
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              top: scrollbarState.thumbTop,
+              left: 0,
+              right: 0,
+              height: scrollbarState.thumbHeight,
+              borderRadius: '9999px',
+              background: 'rgba(255,255,255,0.08)',
+            }}
+          />
+        </div>
+      )}
+    </>
   );
 }

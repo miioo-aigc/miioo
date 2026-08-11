@@ -15,20 +15,27 @@ function isVideoMedia(media) {
 }
 
 function mediaPreviewUrl(media) {
+  if (isVideoMedia(media)) {
+    return normalizeImageUrl(
+      media?.poster_url
+        || media?.posterUrl
+        || media?.thumbnail_url
+        || media?.thumbnailUrl
+        || media?.video_thumbnail_url
+        || media?.videoThumbnailUrl
+        || media?.first_frame_url
+        || media?.firstFrameUrl
+        || '',
+    );
+  }
   return normalizeImageUrl(
-    media?.poster_url
-      || media?.posterUrl
-      || media?.thumbnail_url
+    media?.thumbnail_url
       || media?.thumbnailUrl
-      || media?.video_thumbnail_url
-      || media?.videoThumbnailUrl
-      || media?.first_frame_url
-      || media?.firstFrameUrl
       || media?.preview_url
       || media?.previewUrl
       || media?.large_url
       || media?.largeUrl
-      || (isVideoMedia(media) ? '' : media?.url)
+      || media?.url
       || '',
   );
 }
@@ -78,6 +85,31 @@ function displayValue(value) {
   return String(value);
 }
 
+// asset:// 引用无法直接作为图片地址展示（需经素材认证映射到真实 URL），展示层跳过。
+function isUnresolvableAssetRef(value) {
+  return /^asset:\/\//i.test(String(value || '').trim());
+}
+
+function firstResolvableUrl(...urls) {
+  return urls.find((url) => url && !isUnresolvableAssetRef(url)) || '';
+}
+
+// 同一素材可能以绝对地址（https://host/uploads/...）与相对路径（/uploads/...）两种形态出现，
+// 用规范化后的 pathname 作为去重键，避免因 URL 形态不同而重复展示。
+function canonicalMediaKey(url) {
+  if (!url) return '';
+  const raw = String(url).trim();
+  if (!raw) return '';
+  if (isUnresolvableAssetRef(raw)) return `asset:${raw.replace(/^asset:\/\//i, '').toLowerCase()}`;
+  if (raw.startsWith('blob:') || raw.startsWith('data:')) return raw;
+  try {
+    const parsed = new URL(raw, 'http://__local__');
+    return (parsed.pathname || raw).toLowerCase();
+  } catch {
+    return raw.split(/[?#]/)[0].toLowerCase();
+  }
+}
+
 function normalizeReferenceImages(value) {
   if (!value) return [];
   if (typeof value === 'string') {
@@ -103,7 +135,181 @@ function normalizeReferenceImages(value) {
   }).filter((item) => item?.url);
 }
 
-function collectReferenceImages(media, metadata, parameterContainers, extraValues = []) {
+function normalizeRole(value) {
+  return String(value || '').trim().toLowerCase().replace(/[_\s-]/g, '');
+}
+
+function isSubjectReferenceRole(value) {
+  const role = normalizeRole(typeof value === 'string' ? value : value?.role || '');
+  const name = normalizeRole(typeof value === 'string' ? '' : value?.name || '');
+  const subjectType = normalizeRole(typeof value === 'string' ? '' : value?._type || value?.subject_type || '');
+  return ['subject', 'subjectreference', 'mainsubject', 'subjectimage', 'subjectpicture', '主体', '参考主体']
+    .includes(role)
+    || ['主体', '参考主体'].includes(name)
+    || ['char', 'character', 'scene', 'prop', 'person', 'role', 'subject', '主体'].includes(subjectType);
+}
+
+function isFirstFrameRole(value) {
+  const role = normalizeRole(typeof value === 'string' ? value : value?.role || '');
+  const name = normalizeRole(typeof value === 'string' ? '' : value?.name || '');
+  return ['firstframe', 'first', 'firstimage', '首帧', '首帧图'].includes(role)
+    || ['首帧', '首帧图', '首帧参考'].includes(name);
+}
+
+function isLastFrameRole(value) {
+  const role = normalizeRole(typeof value === 'string' ? value : value?.role || '');
+  const name = normalizeRole(typeof value === 'string' ? '' : value?.name || '');
+  return ['lastframe', 'last', 'lastimage', '尾帧', '尾帧图'].includes(role)
+    || ['尾帧', '尾帧图', '尾帧参考'].includes(name);
+}
+
+function collectAssetBindings(media, metadata, parameterContainers) {
+  const rawLists = [
+    media?.asset_bindings,
+    media?.assetBindings,
+    metadata?.asset_bindings,
+    metadata?.assetBindings,
+    ...parameterContainers.flatMap((container) => [
+      container.asset_bindings,
+      container.assetBindings,
+    ]),
+  ].filter(Array.isArray);
+  return rawLists.flatMap((list) => list).filter((item) => item && typeof item === 'object');
+}
+
+function normalizeBindingImage(binding) {
+  // asset_bindings 的 url 多为 asset:// 引用，无法直接展示，需靠素材认证映射到真实地址。
+  const rawUrl = firstResolvableUrl(
+    binding?.url,
+    binding?.preview_url,
+    binding?.previewUrl,
+    binding?.file_url,
+    binding?.fileUrl,
+    binding?.image_url,
+    binding?.imageUrl,
+  );
+  const url = normalizeImageUrl(rawUrl);
+  if (!url) return null;
+  return {
+    url,
+    name: binding?.asset_name || binding?.name || binding?.filename || '',
+    role: binding?.role || binding?.media_role || binding?.asset_role || '',
+  };
+}
+
+// 全能参考模式下，storyboard_asset_certification 是「真实图片地址 → 参考主体」的权威映射。
+function collectSubjectCertifications(media, metadata, parameterContainers) {
+  const containers = [
+    media?.seedance_voice_video, media?.seedanceVoiceVideo,
+    metadata?.seedance_voice_video, metadata?.seedanceVoiceVideo,
+    ...parameterContainers.flatMap((container) => [container?.seedance_voice_video, container?.seedanceVoiceVideo]),
+  ];
+  const rawLists = containers
+    .flatMap((container) => [container?.storyboard_asset_certification, container?.storyboardAssetCertification])
+    .filter(Array.isArray);
+  const map = new Map();
+  rawLists.flat().forEach((entry) => {
+    if (!entry || typeof entry !== 'object') return;
+    const url = normalizeImageUrl(entry.url || entry.image_url || entry.imageUrl || '');
+    if (!url) return;
+    const key = canonicalMediaKey(url);
+    if (!key || map.has(key)) return;
+    map.set(key, {
+      url,
+      name: entry.subject_name || entry.subjectName || '',
+      subjectType: entry.subject_type || entry.subjectType || '',
+    });
+  });
+  return map;
+}
+
+function collectReferenceGroups(media, metadata, parameterContainers, extraValues = [], options = {}) {
+  const { fullReferenceMode = false } = options;
+  // 全能参考模式下，reference_images 承载的都是主体参考图，默认归入参考主体；
+  // 其它模式仍按参考图处理，认证命中的图片始终提升为参考主体。
+  const defaultImageGroup = fullReferenceMode ? 'subjects' : 'references';
+  const certifications = collectSubjectCertifications(media, metadata, parameterContainers);
+  const groups = {
+    subjects: [],
+    references: [],
+    firstFrames: [],
+    lastFrames: [],
+    videos: [],
+    audios: [],
+  };
+  const seen = new Map();
+  const GROUP_PRIORITY = { firstFrames: 3, lastFrames: 3, subjects: 2, references: 1, videos: 1, audios: 1 };
+  const push = (group, item) => {
+    if (!item?.url) return;
+    const key = canonicalMediaKey(item.url);
+    // 认证映射优先：命中认证的图片一律归为参考主体，并补齐主体名称。
+    const cert = certifications.get(key);
+    let targetGroup = group;
+    let entry = item;
+    if (cert && (group === 'references' || group === 'subjects')) {
+      targetGroup = 'subjects';
+      entry = { ...item, name: item.name || cert.name };
+    }
+    const existing = seen.get(key);
+    if (existing) {
+      if (existing === targetGroup || GROUP_PRIORITY[targetGroup] <= GROUP_PRIORITY[existing]) return;
+      const index = groups[existing].findIndex((value) => canonicalMediaKey(value.url) === key);
+      if (index >= 0) groups[existing].splice(index, 1);
+    }
+    seen.set(key, targetGroup);
+    groups[targetGroup].push(entry);
+  };
+
+  collectAssetBindings(media, metadata, parameterContainers).forEach((binding) => {
+    const type = String(binding?.asset_type || binding?.media_type || binding?.type || '').toLowerCase();
+    const item = normalizeBindingImage(binding);
+    if (!item) return;
+    if (type.startsWith('video')) push('videos', item);
+    else if (type.startsWith('audio')) push('audios', item);
+    // 全能参考模式下 asset_bindings 的 last_frame/reference_image 为历史遗留角色，不代表首尾帧，忽略其角色。
+    else if (!fullReferenceMode && isFirstFrameRole(item)) push('firstFrames', item);
+    else if (!fullReferenceMode && isLastFrameRole(item)) push('lastFrames', item);
+    else if (isSubjectReferenceRole(item)) push('subjects', item);
+    else push(defaultImageGroup, item);
+  });
+
+  const firstFrameUrls = [
+    media?.first_frame_url, media?.firstFrameUrl,
+    metadata?.first_frame_url, metadata?.firstFrameUrl,
+    ...parameterContainers.flatMap((container) => [container.first_frame_url, container.firstFrameUrl]),
+  ];
+  if (groups.firstFrames.length === 0) firstFrameUrls.forEach((value) => {
+    const url = normalizeImageUrl(typeof value === 'string' ? value : (value?.url || value?.fileUrl || ''));
+    if (url) push('firstFrames', { url, name: '首帧', role: 'first_frame' });
+  });
+  const lastFrameUrls = [
+    media?.last_frame_url, media?.lastFrameUrl,
+    metadata?.last_frame_url, metadata?.lastFrameUrl,
+    ...parameterContainers.flatMap((container) => [container.last_frame_url, container.lastFrameUrl]),
+  ];
+  if (groups.lastFrames.length === 0) lastFrameUrls.forEach((value) => {
+    const url = normalizeImageUrl(typeof value === 'string' ? value : (value?.url || value?.fileUrl || ''));
+    if (url) push('lastFrames', { url, name: '尾帧', role: 'last_frame' });
+  });
+  const referenceVideoUrls = [
+    media?.reference_video_url, media?.referenceVideoUrl,
+    metadata?.reference_video_url, metadata?.referenceVideoUrl,
+    ...parameterContainers.flatMap((container) => [container.reference_video_url, container.referenceVideoUrl]),
+  ];
+  if (groups.videos.length === 0) referenceVideoUrls.forEach((value) => {
+    const url = normalizeImageUrl(typeof value === 'string' ? value : (value?.url || value?.fileUrl || value?.preview_url || ''));
+    if (url) push('videos', { url, name: '参考视频', role: 'reference_video' });
+  });
+  const referenceAudioUrls = [
+    media?.reference_audio_url, media?.referenceAudioUrl,
+    metadata?.reference_audio_url, metadata?.referenceAudioUrl,
+    ...parameterContainers.flatMap((container) => [container.reference_audio_url, container.referenceAudioUrl]),
+  ];
+  if (groups.audios.length === 0) referenceAudioUrls.forEach((value) => {
+    const url = normalizeImageUrl(typeof value === 'string' ? value : (value?.url || value?.fileUrl || ''));
+    if (url) push('audios', { url, name: '参考音频', role: 'reference_audio' });
+  });
+
   const values = [
     media?.reference_images, media?.referenceImages,
     media?.reference_image_urls, media?.referenceImageUrls,
@@ -118,12 +324,25 @@ function collectReferenceImages(media, metadata, parameterContainers, extraValue
       container.ref_images, container.refImages,
     ]),
   ];
-  const seen = new Set();
-  return values.flatMap((value) => normalizeReferenceImages(value)).filter((item) => {
-    if (seen.has(item.url)) return false;
-    seen.add(item.url);
-    return true;
+  values.flatMap((value) => normalizeReferenceImages(value)).forEach((item) => {
+    if (!fullReferenceMode && isFirstFrameRole(item)) push('firstFrames', item);
+    else if (!fullReferenceMode && isLastFrameRole(item)) push('lastFrames', item);
+    else if (isSubjectReferenceRole(item)) push('subjects', item);
+    else push(defaultImageGroup, item);
   });
+
+  return groups;
+}
+
+function isFrameReferenceMode(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[_\s-]/g, '');
+  return ['frame', 'frameref', 'firstframe', 'lastframe', 'startend', 'startendframe'].includes(normalized);
+}
+
+function isFullReferenceMode(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[_\s-]/g, '');
+  // 后端非首尾帧模式会随模型能力扩展（如 video_ref），均按全能参考展示。
+  return Boolean(normalized) && !isFrameReferenceMode(normalized);
 }
 
 function collectParameterEntries(value, prefix = '') {
@@ -251,11 +470,68 @@ function isLocalUploadMedia(media, metadata) {
   return origin === 'local-upload';
 }
 
+function ReferenceImageSection({ title, items = [] }) {
+  if (!items.length) return null;
+  return (
+    <>
+      <div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} />
+      <div style={{ padding: '16px 20px' }}>
+        <span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>{title}</span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {items.map((item, index) => (
+            <div key={`${item.url}-${index}`} style={{ width: 'calc((100% - 16px) / 3)', aspectRatio: '1', flexShrink: 0, boxSizing: 'border-box', overflow: 'hidden', borderRadius: '4px', border: '1px solid #FFFFFF33', background: '#FFFFFF14' }}>
+              <img src={item.url} alt={item.name || title} style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ReferenceMediaSection({ title, items = [], kind = 'video' }) {
+  if (!items.length) return null;
+  return (
+    <>
+      <div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} />
+      <div style={{ padding: '16px 20px' }}>
+        <span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>{title}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {items.map((item, index) => (
+            kind === 'video'
+              ? <video key={`${item.url}-${index}`} src={item.url} controls preload="metadata" style={{ width: '100%', maxHeight: '120px', borderRadius: '4px', background: '#0D0D0D', display: 'block' }} />
+              : <audio key={`${item.url}-${index}`} src={item.url} controls preload="none" style={{ width: '100%', height: '36px', display: 'block' }} />
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
 function CloseButton({ onClick }) {
   return (
     <button type="button" aria-label="关闭" onClick={onClick} style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, borderRadius: '6px', padding: 0, background: 'transparent', cursor: 'pointer' }}>
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path d="M12 4L4 12M4 4L12 12" stroke="#FFFFFF99" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
+
+function CopyPromptButton({ prompt }) {
+  return (
+    <button
+      type="button"
+      aria-label="复制提示词"
+      title="复制提示词"
+      onClick={() => navigator.clipboard.writeText(prompt)}
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', flexShrink: 0, borderRadius: '4px', border: 'none', padding: 0, background: 'none', color: '#FFFFFF99', cursor: 'pointer', transition: 'color 120ms ease' }}
+      onMouseEnter={(event) => { event.currentTarget.style.color = '#FFFFFF'; }}
+      onMouseLeave={(event) => { event.currentTarget.style.color = '#FFFFFF99'; }}
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+        <path d="M4.33337 4.14383V2.60413C4.33337 2.08636 4.75311 1.66663 5.27087 1.66663H13.3959C13.9136 1.66663 14.3334 2.08636 14.3334 2.60413V10.7291C14.3334 11.2469 13.9136 11.6666 13.3959 11.6666H11.8388" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M10.7291 4.33337H2.60413C2.08636 4.33337 1.66663 4.75311 1.66663 5.27087V13.3959C1.66663 13.9136 2.08636 14.3334 2.60413 14.3334H10.7291C11.2469 14.3334 11.6666 13.9136 11.6666 13.3959V5.27087C11.6666 4.75311 11.2469 4.33337 10.7291 4.33337Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </button>
   );
@@ -355,35 +631,31 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
     .filter(Boolean)
     .some((url) => url === activeUrl);
   const isExistingStoryboardMedia = normalizedSource === 'storyboard-existing' || (!sourceValue && isShotMedia);
-  const shotCreationForm = parseObjectValue(shot?.creationForm);
-  const shotForm = parseObjectValue(shotCreationForm[video ? 'video' : 'image']);
-  const shotGenerationParams = parseObjectValue(shot?.genParams);
-  const shotDetailContainers = isExistingStoryboardMedia
-    ? [shotGenerationParams, shotForm]
-    : [];
-  const referenceImages = collectReferenceImages(
+  const referenceModeValue = [
+    activeMedia?.reference_mode,
+    activeMedia?.referenceMode,
+    metadata?.reference_mode,
+    metadata?.referenceMode,
+    metadata?.seedance_voice_video?.reference_mode,
+    metadata?.seedanceVoiceVideo?.reference_mode,
+    ...detailParameterContainers.map((container) => container.reference_mode || container.referenceMode),
+  ].find(hasValue) ?? '';
+  const frameReferenceMode = isFrameReferenceMode(referenceModeValue);
+  const fullReferenceMode = isFullReferenceMode(referenceModeValue);
+  const referenceGroups = collectReferenceGroups(
     activeMedia,
     metadata,
     detailParameterContainers,
-    isExistingStoryboardMedia
-      ? [shot?.mainRefs, shotForm.refImages, shotForm.referenceImages, shotForm.reference_images, shotGenerationParams.refImages, shotGenerationParams.referenceImages]
-      : [],
+    [],
+    { fullReferenceMode },
   );
   const detailPrompt = detailParameterContainers.reduce(
-    (result, value) => result || value.prompt || value.input_prompt || value.inputPrompt,
+    (result, value) => result
+      || value.prompt_resolved || value.promptResolved
+      || value.prompt_raw || value.promptRaw
+      || value.prompt || value.input_prompt || value.inputPrompt,
     '',
   );
-  const shotPrompt = shotForm.prompt
-    || shotForm.input_prompt
-    || shotForm.inputPrompt
-    || shotGenerationParams.prompt
-    || shotGenerationParams.input_prompt
-    || shotGenerationParams.inputPrompt
-    || shotGenerationParams.image_prompt
-    || shotGenerationParams.video_prompt
-    || (video ? shot?.videoPrompt : shot?.imagePrompt)
-    || (video ? shot?.video_prompt : shot?.image_prompt)
-    || '';
   const isLocalUpload = isLocalUploadMedia(activeMedia, metadata);
   const source = isLocalUpload
     ? 'local-upload'
@@ -403,13 +675,24 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
     );
   const prompt = source === 'local-upload'
     ? ''
-    : (activeMedia.input_prompt || activeMedia.inputPrompt || activeMedia.prompt_raw || activeMedia.promptRaw || activeMedia.prompt || activeMedia.prompt_resolved || activeMedia.promptResolved || metadata.input_prompt || metadata.inputPrompt || metadata.prompt_raw || metadata.promptRaw || metadata.prompt || metadata.prompt_resolved || metadata.promptResolved || detailPrompt || shotPrompt || (video ? shot?.video_prompt : shot?.image_prompt) || '');
+    : (activeMedia.prompt_resolved || activeMedia.promptResolved
+      || metadata.prompt_resolved || metadata.promptResolved
+      || activeMedia.prompt_raw || activeMedia.promptRaw
+      || metadata.prompt_raw || metadata.promptRaw
+      || activeMedia.input_prompt || activeMedia.inputPrompt
+      || activeMedia.prompt
+      || metadata.input_prompt || metadata.inputPrompt
+      || metadata.prompt
+      || detailPrompt
+      || '');
   const parameterEntries = source === 'local-upload'
     ? []
-    : collectParameterEntries(getAssetGenerationParameters(activeMedia, metadata, shotDetailContainers));
+    : collectParameterEntries(getAssetGenerationParameters(activeMedia, metadata));
   const normalizedParameterEntries = parameterEntries
     .filter((entry) => ![
       'reference_images', 'referenceImages', 'reference_image_urls', 'referenceImageUrls', 'ref_images', 'refImages',
+      'first_frame_url', 'firstFrameUrl', 'last_frame_url', 'lastFrameUrl',
+      'reference_video_url', 'referenceVideoUrl', 'reference_audio_url', 'referenceAudioUrl',
       'prompt_raw', 'promptRaw', 'prompt_resolved', 'promptResolved', 'watermark',
     ].some((key) => entry.label === key || entry.label.startsWith(`${key}.`)))
     .map((entry) => ({
@@ -469,8 +752,42 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
               <div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} />
               <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>内容类型</span><span style={{ color: '#FFFFFFCC', font: `12px/16px ${FONT}`, textAlign: 'right' }}>{video ? '视频' : '图片'}</span></div>
 
-              {prompt && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '8px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>提示词</span><p style={{ margin: 0, color: '#FFFFFFCC', font: `12px/20px ${FONT}`, wordBreak: 'break-word' }}>{prompt}</p></div></>}
-              {referenceImages.length > 0 && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>参考图</span><div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>{referenceImages.map((reference, index) => <div key={`${reference.url}-${index}`} style={{ width: 'calc((100% - 16px) / 3)', aspectRatio: '1', flexShrink: 0, boxSizing: 'border-box', overflow: 'hidden', borderRadius: '4px', border: '1px solid #FFFFFF33', background: '#FFFFFF14' }}><img src={reference.url} alt={reference.name || '参考图'} style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} /></div>)}</div></div></>}
+              {prompt && <>
+                <div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} />
+                <div style={{ padding: '16px 20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', gap: '8px' }}>
+                    <span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>提示词</span>
+                    <CopyPromptButton prompt={prompt} />
+                  </div>
+                  <p style={{ margin: 0, color: '#FFFFFFCC', font: `12px/20px ${FONT}`, wordBreak: 'break-word' }}>{prompt}</p>
+                </div>
+              </>}
+              {frameReferenceMode
+                ? (
+                  <>
+                    <ReferenceImageSection title="首帧图" items={referenceGroups.firstFrames} />
+                    <ReferenceImageSection title="尾帧图" items={referenceGroups.lastFrames} />
+                  </>
+                )
+                : fullReferenceMode
+                  ? (
+                    <>
+                      <ReferenceImageSection title="参考主体" items={referenceGroups.subjects} />
+                      <ReferenceImageSection title="参考图" items={referenceGroups.references} />
+                      <ReferenceMediaSection title="参考视频" items={referenceGroups.videos} kind="video" />
+                      <ReferenceMediaSection title="参考音频" items={referenceGroups.audios} kind="audio" />
+                    </>
+                  )
+                  : (
+                    <>
+                      <ReferenceImageSection title="首帧图" items={referenceGroups.firstFrames} />
+                      <ReferenceImageSection title="尾帧图" items={referenceGroups.lastFrames} />
+                      <ReferenceImageSection title="参考主体" items={referenceGroups.subjects} />
+                      <ReferenceImageSection title="参考图" items={referenceGroups.references} />
+                      <ReferenceMediaSection title="参考视频" items={referenceGroups.videos} kind="video" />
+                      <ReferenceMediaSection title="参考音频" items={referenceGroups.audios} kind="audio" />
+                    </>
+                  )}
               {normalizedParameterEntries.length > 0 && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>生成参数</span><div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>{normalizedParameterEntries.map((entry) => <div key={entry.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}><span style={{ color: '#FFFFFF66', font: `11px/15px ${FONT}` }}>{entry.label}</span><span style={{ color: '#FFFFFFCC', font: `12px/18px ${FONT}`, wordBreak: 'break-word', whiteSpace: entry.value.includes('\n') ? 'pre-wrap' : 'normal', textAlign: 'right' }}>{entry.value}</span></div>)}</div></div></>}
               {activeMedia.created_at && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '8px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>生成时间</span><span style={{ color: '#FFFFFF66', font: `12px/16px ${FONT}` }}>{formatDate(activeMedia.created_at)}</span></div></>}
             </div>

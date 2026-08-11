@@ -12,6 +12,7 @@
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离
  *   2026-08-07  配音生成中允许再次点击按钮停止当前请求
+ *   2026-08-11  移除点击后额外焦点外圈，保留发送按钮原有流光特效
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -44,7 +45,6 @@ export default function CreationSendButton({ onClick, disabled = false, loading 
   const isCancelable = cancelable && loading;
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
-  const [focused, setFocused] = useState(false);
   const [tooltipRect, setTooltipRect] = useState(null);
   const wrapRef = useRef(null);
   const scale = pressed ? 'scale(0.9)' : hovered ? 'scale(1.1)' : 'scale(1)';
@@ -99,8 +99,6 @@ export default function CreationSendButton({ onClick, disabled = false, loading 
         onMouseLeave={() => { setHovered(false); setPressed(false); }}
         onMouseDown={() => !isDisabled && setPressed(true)}
         onMouseUp={() => setPressed(false)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
         onClick={isDisabled ? undefined : onClick}
         className="!w-10 !h-10 !min-w-0 !rounded-full !p-0 !bg-transparent !border-0 !shadow-none"
         contentClassName="!w-full !h-full !min-w-0 !rounded-full !p-0 !bg-transparent !text-transparent"
@@ -118,8 +116,7 @@ export default function CreationSendButton({ onClick, disabled = false, loading 
           background: 'transparent',
           backgroundImage: 'none',
           border: 'none',
-          outline: focused ? '1px solid #2DC3E180' : 'none',
-          outlineOffset: '4px',
+          outline: 'none',
           padding: 0,
         }}
       >

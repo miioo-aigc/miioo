@@ -19,7 +19,7 @@
  *   NarrationItem                              components/storyboard/NarrationItems.jsx
  *   NarrationAddButton                         components/storyboard/NarrationAddButton.jsx
  *   NarrationColWrapper                         components/storyboard/NarrationCol.jsx
- *   ShotRow                                      页面业务桥接 L196–L265
+ *   ShotRow                                      页面业务桥接（已迁移至 StoryboardShotRowContent）
  *   ShotNumberColumn                            components/storyboard/ShotNumberColumn.jsx
  *   StoryboardToast / StoryboardHeader            components/storyboard/
  *   makeStoryboardShot                           utils/storyboardDataAdapter.js
@@ -38,7 +38,7 @@
  *   GenerateImagePanel                         components/storyboard/GenerateImagePanel.jsx
  *   GenerateVideoPanel / ReferenceMediaEditor  components/storyboard/
  *
- * ─── 主页面入口 ──────────────────────────────────────────── L196–L2631
+ * ─── 主页面入口 ──────────────────────────────────────────── L206–L2678
  *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化
  *   [加载与错误态] LoadingAnimation、DotsLoading、失败操作和统计
  *   [镜头 CRUD] 上传、编辑、复制、删除、排序
@@ -47,6 +47,10 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-11  手动新增空白分镜打 isManualBlank 标记，图片/视频创作面板打开时不再代入后端返回的默认提示词
+ *   2026-08-11  分镜视频首尾帧请求补传 asset_id 和 generate_mode，并确保素材 URL 为完整地址
+ *   2026-08-11  新建/复制分镜时初始化候选媒体状态，避免新分镜误显“生成中”占位；复制同步已落盘候选媒体
+ *   2026-08-11  候选媒体后台刷新不再覆盖已有卡片为加载态，避免其他镜头误显生成中动画
  *   2026-08-10  图片创作面板联合去重主体/普通参考图，删除重复项后不再被旧表单快照恢复
  *   2026-08-10  视频首尾帧新增上一分镜视频尾帧快捷入口，抽帧上传后复用首帧提交和表单恢复链路
  *   2026-08-10  视频首帧增加当前分镜图片选择弹窗，合并历史/候选/定稿图片并按媒体身份去重
@@ -74,7 +78,7 @@ import { ModalCloseBtn } from '../components/storyboard/StoryboardControls';
 import StoryboardToast from '../components/storyboard/StoryboardToast';
 import StoryboardHeader from '../components/storyboard/StoryboardHeader';
 import { getEpisodeId } from '../components/storyboard/storyboardControlUtils';
-import { apiUploadStoryboardImage, apiUploadStoryboardVideo, apiGenerateStoryboardImage, apiGenerateStoryboardVideo, apiGenerateStoryboardsFromEpisode, apiCreateStoryboard, apiUpdateStoryboard, apiUpdateStoryboardCreationForm, apiDeleteStoryboard, apiReorderStoryboards, apiGetStoryboards, apiBatchDownloadStoryboardImages, apiBatchDownloadStoryboardVideos, apiGetTask, apiListStoryboardMediaCandidates, apiCreateStoryboardMediaCandidate, apiUpdateStoryboardMediaCandidate, apiDownloadStoryboardMediaCandidate } from '../api/storyboard';
+import { apiUploadStoryboardImage, apiUploadStoryboardVideo, apiGenerateStoryboardImage, apiGenerateStoryboardVideo, apiGenerateStoryboardsFromEpisode, apiGenerateStoryboardsFromFinalScript, apiCreateStoryboard, apiUpdateStoryboard, apiUpdateStoryboardCreationForm, apiDeleteStoryboard, apiReorderStoryboards, apiGetStoryboards, apiBatchDownloadStoryboardImages, apiBatchDownloadStoryboardVideos, apiGetTask, apiListStoryboardMediaCandidates, apiCreateStoryboardMediaCandidate, apiUpdateStoryboardMediaCandidate, apiDownloadStoryboardMediaCandidate } from '../api/storyboard';
 import { apiGetEpisodes, normalizeEpisodeListResponse } from '../api/subject';
 import { apiUploadCreationImage } from '../api/creation';
 import { apiListModels } from '../api/config';
@@ -395,6 +399,19 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       [shotId]: [...(prev[shotId] || []).filter((candidate) => candidate.taskId !== taskId && candidate.id !== clientId), item],
     }));
     return clientId;
+  }
+
+  // 新建/复制分镜后候选媒体必然为空，直接标记为已加载，
+  // 避免 isMediaLoading 因缺少 map 键而把新分镜当成“正在加载/生成中”渲染蓝点占位。
+  function initializeShotMediaState(shotId) {
+    if (!shotId) return;
+    setCandidateMediaMap((prev) => (
+      Object.prototype.hasOwnProperty.call(prev, shotId) ? prev : { ...prev, [shotId]: [] }
+    ));
+    setFinalizedMediaMap((prev) => (
+      Object.prototype.hasOwnProperty.call(prev, shotId) ? prev : { ...prev, [shotId]: null }
+    ));
+    setMediaLoadingMap((prev) => ({ ...prev, [shotId]: false }));
   }
 
   function bindPendingCandidate(shotId, clientId, taskId) {
@@ -802,6 +819,49 @@ function hasStoryboardMediaHint(shot = {}) {
       console.warn('[StoryboardPage] 候选媒体接口暂不可用，保留兼容媒体字段:', error);
       return null;
     }
+  }
+
+  async function copyPersistedCandidateMedia(sourceShot, targetShotId) {
+    const sourceShotId = sourceShot?.backendId || sourceShot?.id;
+    let persistedCandidates = [];
+    if (isBackendStoryboardId(sourceShotId)) {
+      try {
+        persistedCandidates = await apiListStoryboardMediaCandidates(projectId, sourceShotId);
+      } catch (error) {
+        console.warn('[StoryboardPage] 读取待复制分镜候选媒体失败，使用当前页面缓存:', error);
+      }
+    }
+
+    const fallbackMedia = [sourceShot?.storyboardImage, sourceShot?.storyboardVideo]
+      .filter((media) => media?.url)
+      .map((media) => ({
+        ...media,
+        media_type: media.type?.startsWith('video') ? 'video' : 'image',
+        source: media.source || 'storyboard-existing',
+        is_finalized: true,
+      }));
+    const candidates = mergeStoryboardMediaItems(
+      mergeStoryboardMediaItems(persistedCandidates, candidateMediaMapRef.current[sourceShot?.id] || []),
+      fallbackMedia,
+    ).filter((candidate) => !candidate?.pending && candidate?.url);
+
+    const copiedCandidates = [];
+    for (const candidate of candidates) {
+      const copied = await saveCandidateMedia(targetShotId, candidate);
+      if (copied) copiedCandidates.push({ source: candidate, copied });
+    }
+
+    const finalized = copiedCandidates.find(({ source }) => source.is_finalized || source.isFinalized);
+    if (!finalized?.copied?.id) return;
+    await apiUpdateStoryboardMediaCandidate(projectId, targetShotId, finalized.copied.id, { is_finalized: true });
+    setCandidateMediaMap((prev) => ({
+      ...prev,
+      [targetShotId]: (prev[targetShotId] || []).map((candidate) => ({
+        ...candidate,
+        is_finalized: candidate.id === finalized.copied.id,
+      })),
+    }));
+    setFinalizedMediaMap((prev) => ({ ...prev, [targetShotId]: finalized.copied }));
   }
 
   // 从剧本分集接口兜底同步列表。分镜接口只用于读取镜头，不负责提供分集选择项。
@@ -1508,8 +1568,6 @@ function hasStoryboardMediaHint(shot = {}) {
       return false;
     }
 
-    // 当前按集生成接口尚未声明 instruction 字段，先保留表单值，避免发送未约定参数。
-    void instruction;
     setRegenerateModalError('');
 
     // 只有重新分镜需要主动清空旧结果；首次进入时由任务状态决定是否展示加载态。
@@ -1519,11 +1577,14 @@ function hasStoryboardMediaHint(shot = {}) {
     setIsGenerating(true);
 
     let pendingTaskId = null;
-    const generationPromise = apiGenerateStoryboardsFromEpisode(projectId, {
+    const generationPromise = apiGenerateStoryboardsFromFinalScript(projectId, {
       episode_id: episodeId,
-      model: null,
-      overwrite_existing: true,
+      episode_number: episode?.episode_number ?? null,
+      mode: 'regenerate',
+      regenerate_instruction: instruction.trim(),
       confirm_overwrite: true,
+      first_episode_only: true,
+      model: null,
     })
       .then((rawResponse) => {
         const taskResponse = unwrapStoryboardTaskResponse(rawResponse);
@@ -1922,7 +1983,12 @@ function hasStoryboardMediaHint(shot = {}) {
 
     apiCreateStoryboard(projectId, { ...toBackendStoryboard(newShot), episode_id: getEpisodeId(episode) })
       .then((created) => {
-        const shotWithRealId = enrichMainRefs(normalizeStoryboard(created), storyboardSubjects);
+        const shotWithRealId = {
+          ...enrichMainRefs(normalizeStoryboard(created), storyboardSubjects),
+          // 手动新增的空白分镜应保持空白，打开创作面板时前端主动清空后端返回的默认提示词。
+          isManualBlank: true,
+        };
+        initializeShotMediaState(shotWithRealId.id);
         setShots((prev) => {
           const reordered = insertStoryboardShot(prev, idx + 1, shotWithRealId);
           const orderedIds = reordered.map(s => s.id);
@@ -1938,18 +2004,27 @@ function hasStoryboardMediaHint(shot = {}) {
   function copyShot(id) {
     const idx = shots.findIndex((s) => s.id === id);
     const original = shots[idx];
-    const copy = { ...original, id: undefined };
+    const copy = {
+      ...original,
+      id: undefined,
+      // 只复制已落盘的结果；生成中的占位（无 URL）不带入新分镜。
+      storyboardImage: original.storyboardImage?.url ? original.storyboardImage : null,
+      storyboardVideo: original.storyboardVideo?.url ? original.storyboardVideo : null,
+    };
 
     apiCreateStoryboard(projectId, { ...toBackendStoryboard(copy), episode_id: getEpisodeId(episode) })
-      .then((created) => {
+      .then(async (created) => {
         // 合并原始富数据 + 后端生成的 ID
         const shotWithRealId = { ...copy, ...enrichMainRefs(normalizeStoryboard(created), storyboardSubjects) };
+        initializeShotMediaState(shotWithRealId.id);
         setShots((prev) => {
           const reordered = insertStoryboardShot(prev, idx + 1, shotWithRealId);
           const orderedIds = reordered.map(s => s.id);
           apiReorderStoryboards(projectId, orderedIds).catch(console.error);
           return reordered;
         });
+        // 仅复制已持久化的候选媒体；正在生成中的本地占位不含 URL，不会写入新分镜。
+        await copyPersistedCandidateMedia(original, shotWithRealId.id);
       })
       .catch((err) => {
         console.error('[StoryboardPage] 复制分镜失败:', err);
@@ -1980,7 +2055,12 @@ function hasStoryboardMediaHint(shot = {}) {
 
     apiCreateStoryboard(projectId, { ...toBackendStoryboard(newShot), episode_id: getEpisodeId(episode) })
       .then((created) => {
-        const shotWithRealId = enrichMainRefs(normalizeStoryboard(created), storyboardSubjects);
+        const shotWithRealId = {
+          ...enrichMainRefs(normalizeStoryboard(created), storyboardSubjects),
+          // 手动新增的空白分镜应保持空白，打开创作面板时前端主动清空后端返回的默认提示词。
+          isManualBlank: true,
+        };
+        initializeShotMediaState(shotWithRealId.id);
         setHasManuallyInteracted(true);
         setShots((prev) => renumberStoryboardShots([...prev, shotWithRealId]));
       })
@@ -2015,8 +2095,10 @@ function hasStoryboardMediaHint(shot = {}) {
   }, 0);
   const isMediaLoading = (shot) => {
     if (!isBackendStoryboardId(shot?.backendId || shot?.id)) return false;
+    // 已有候选媒体时，后续请求只是后台刷新，不能覆盖卡片显示成加载动画。
+    // 只有首次尚未取得候选列表时才展示媒体加载态。
     return mediaLoadingMap[shot.id] === true
-      || !Object.prototype.hasOwnProperty.call(candidateMediaMap, shot.id);
+      && !Object.prototype.hasOwnProperty.call(candidateMediaMap, shot.id);
   };
   const resolvedMediaLoadingMap = Object.fromEntries(
     shots.map((shot) => [shot.id, isMediaLoading(shot)]),
@@ -2335,6 +2417,7 @@ function hasStoryboardMediaHint(shot = {}) {
     {imagePanel && creationPanel.tab === 'image' && (
       <GenerateImagePanel
         shot={imagePanel.shot}
+        isManualBlank={imagePanel.shot?.isManualBlank}
         chars={chars}
         projectId={projectId}
         scenes={scenes}
@@ -2444,19 +2527,20 @@ function hasStoryboardMediaHint(shot = {}) {
           ref?.subjectId || ref?.subject_id || ref?.assetId || ref?.asset_id || ref?.id || ref?.url || ''
         )).join('|')}`}
         shot={videoPanel.shot}
+        isManualBlank={videoPanel.shot?.isManualBlank}
         projectId={projectId}
         nextShot={videoPanel.nextShot}
         previousFrameShortcut={(() => {
           const index = shots.findIndex((item) => item.id === videoPanel.shot?.id);
           const previousShot = index > 0 ? shots[index - 1] : null;
           if (!previousShot) {
-            return { media: null, label: '使用上一个分镜视频尾帧', tooltip: '当前为第一个分镜' };
+            return { media: null, label: '使用上一个分镜\n视频尾帧', tooltip: '当前为第一个分镜' };
           }
           if (previousShot.storyboardVideo?.url) {
             return {
               media: previousShot.storyboardVideo,
               type: 'video',
-              label: '使用上一个分镜视频尾帧',
+              label: '使用上一个分镜\n视频尾帧',
               tooltip: '上一个分镜视频尾帧',
             };
           }
@@ -2468,7 +2552,7 @@ function hasStoryboardMediaHint(shot = {}) {
               tooltip: '使用上个分镜图',
             };
           }
-          return { media: null, label: '使用上一个分镜视频尾帧', tooltip: '上一个分镜尚未生成视频' };
+          return { media: null, label: '使用上一个分镜\n视频尾帧', tooltip: '上一个分镜尚未生成视频' };
         })()}
         currentShotImages={currentShotImages}
         chars={chars}
@@ -2569,6 +2653,9 @@ function hasStoryboardMediaHint(shot = {}) {
                   : (params.reference_images || toSafeStoryboardReferenceUrls(params.refImages)),
                 first_frame_url: toAbsoluteUrl(params.first_frame_url),
                 last_frame_url: toAbsoluteUrl(params.last_frame_url),
+                first_frame_asset_id: params.first_frame_asset_id,
+                last_frame_asset_id: params.last_frame_asset_id,
+                generate_mode: params.generate_mode,
                 reference_video_url: toAbsoluteUrl(params.reference_video_url),
                 reference_audio_url: toAbsoluteUrl(params.reference_audio_url),
               });

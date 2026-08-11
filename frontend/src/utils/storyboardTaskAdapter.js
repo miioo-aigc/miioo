@@ -113,7 +113,7 @@ export function extractStoryboardVideoMedia(task) {
   return {
     videoUrl: result.video_url || result.videoUrl || result.url || null,
     thumbnailUrl: result.thumbnail_url || result.thumbnailUrl || result.video_thumbnail_url || result.videoThumbnailUrl || null,
-    posterUrl: result.poster_url || result.posterUrl || result.preview_video_url || result.previewVideoUrl || null,
+    posterUrl: result.poster_url || result.posterUrl || result.video_thumbnail_url || result.videoThumbnailUrl || null,
     previewUrl: result.preview_video_url || result.previewVideoUrl || null,
     downloadUrl: result.download_url || result.downloadUrl || null,
     assetId: result.asset_id || result.assetId || result.video_asset_id || result.videoAssetId || null,

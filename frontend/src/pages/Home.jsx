@@ -35,6 +35,7 @@
  *     └─ [渲染] 页面业务模块统一通过 Suspense 按需加载              L1430–L1657
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-08-12  智能分镜生成任务轮询超时由 500 秒调整为 3000 秒
  *   2026-07-16  修复商务合作二维码定位、无 token 初始化和微信回调错误引用；GlobalSettings 按项目 ID 重建草稿
  *   2026-07-15  修正懒加载、Suspense、主入口状态/函数/副作用的实际结构索引行号
  *   2026-07-15  页面级业务模块改为懒加载
@@ -1085,7 +1086,7 @@ export default function Home({ onGoToAdmin }) {
       setStoryboardStatusMessage(getStoryboardTaskStatusMessage(taskResp));
 
       // 2. 轮询任务，每完成一集立即失效对应缓存，让 StoryboardPage 实时看到结果
-      const TIMEOUT_MS = 500 * 1000; // 500 秒超时
+      const TIMEOUT_MS = 3000 * 1000; // 3000 秒超时
       const INTERVAL = 3000;
       let finalTask = ['completed', 'succeeded', 'success', 'done', 'partial', 'failed', 'error', 'cancelled', 'canceled'].includes(initialStatus)
         ? taskResp

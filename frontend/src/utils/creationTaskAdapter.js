@@ -14,15 +14,15 @@
 import { normalizeImageUrl } from './imageUrl';
 
 export function getCreationTaskType(genType) {
-  return genType === 'dubbing' ? 'audio' : genType || 'image';
+  return genType === 'dubbing' || genType === 'music' ? 'audio' : genType || 'image';
 }
 
 function getCreationCardType(genType) {
-  return genType === 'video' ? 'video' : genType === 'dubbing' ? 'audio' : 'image';
+  return genType === 'video' ? 'video' : (genType === 'dubbing' || genType === 'music') ? 'audio' : 'image';
 }
 
 function getCreationTaskTab(task) {
-  return task.tab || (task.genType === 'dubbing' ? 'dubbing' : task.genType || 'image');
+  return task.tab || ((task.genType === 'dubbing' || task.genType === 'music') ? task.genType : task.genType || 'image');
 }
 
 function getResultUrl(value) {
@@ -63,7 +63,7 @@ function normalizeReferenceImage(value) {
 export function normalizeCreationPendingTask(task) {
   if (!task || typeof task !== 'object' || !task.taskId || !task.genId) return null;
 
-  const genType = task.genType === 'video' || task.genType === 'dubbing' ? task.genType : 'image';
+  const genType = task.genType === 'video' || task.genType === 'dubbing' || task.genType === 'music' ? task.genType : 'image';
   const count = Math.max(1, parseInt(task.count, 10) || 1);
 
   return {
@@ -88,7 +88,7 @@ export function normalizeCreationPendingTask(task) {
 
 export function createCreationTaskPlaceholder(task) {
   const cardType = getCreationCardType(task.genType);
-  const cardCount = task.genType === 'video' || task.genType === 'dubbing' ? 1 : task.count;
+  const cardCount = task.genType === 'video' || task.genType === 'dubbing' || task.genType === 'music' ? 1 : task.count;
 
   return {
     id: task.genId,
@@ -119,14 +119,14 @@ export function normalizeCreationTaskResult(result, task) {
   const cardType = getCreationCardType(task.genType);
   const rawMedia = task.genType === 'video'
     ? (result?.videos || [])
-    : task.genType === 'dubbing'
+    : (task.genType === 'dubbing' || task.genType === 'music')
       ? (result?.audios || [])
       : (result?.images || []);
   const mediaUrls = rawMedia.map((value) => {
     const rawUrl = getResultUrl(value);
     return normalizeImageUrl(rawUrl) || rawUrl;
   }).filter(Boolean);
-  const cardIds = task.genType === 'dubbing' ? [] : (result?.cardIds || []);
+  const cardIds = (task.genType === 'dubbing' || task.genType === 'music') ? [] : (result?.cardIds || []);
   const refImages = task.genType === 'video'
     ? []
     : (result?.referenceImages || []).map(normalizeReferenceImage).filter((item) => item.url);
@@ -148,7 +148,7 @@ export function normalizeCreationTaskResult(result, task) {
       refAudios: task.refAudios,
       createdAt: task.createdAt,
       cards: mediaUrls.map((url, index) => ({
-        id: task.genType === 'dubbing' ? (result?.audioIds?.[index] || null) : null,
+        id: (task.genType === 'dubbing' || task.genType === 'music') ? (result?.audioIds?.[index] || null) : null,
         type: cardType,
         status: 'done',
         imageUrl: task.genType === 'image' ? url : null,
@@ -156,8 +156,8 @@ export function normalizeCreationTaskResult(result, task) {
           ? (result?.imageDownloadUrls?.[index] || getImageDownloadUrl(rawMedia[index], url) || url)
           : undefined,
         videoUrl: task.genType === 'video' ? url : null,
-        audioUrl: task.genType === 'dubbing' ? url : null,
-        audioId: task.genType === 'dubbing' ? (result?.audioIds?.[index] || null) : undefined,
+        audioUrl: (task.genType === 'dubbing' || task.genType === 'music') ? url : null,
+        audioId: (task.genType === 'dubbing' || task.genType === 'music') ? (result?.audioIds?.[index] || null) : undefined,
       })),
     },
   };

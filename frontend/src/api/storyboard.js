@@ -408,6 +408,9 @@ export async function apiUpdateStoryboardCreationForm(projectId, storyboardId, {
     ...subjectFields,
     image_prompt: imageState.prompt ?? null,
     video_prompt: videoState.prompt ?? null,
+    // 首尾帧模式提示词独立持久化：全能参考提示词保留在 video_prompt（含 @主体 标签），
+    // 首尾帧纯文本写入 video_frame_prompt，互不覆盖。后端暂未支持该字段时会被忽略，不影响现有保存。
+    video_frame_prompt: typeof videoState.frame_prompt === 'string' ? videoState.frame_prompt : null,
     video_prompt_mentions: Array.isArray(videoState.video_prompt_mentions)
       ? videoState.video_prompt_mentions
       : [],

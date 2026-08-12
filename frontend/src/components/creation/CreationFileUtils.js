@@ -16,7 +16,7 @@ export function getCreationUploadExtensions(genType, supportsAudio = false) {
   if (genType === 'video') {
     return supportsAudio ? ALLOWED_MEDIA_EXTS : [...ALLOWED_IMAGE_EXTS, ...ALLOWED_VIDEO_EXTS];
   }
-  if (genType === 'dubbing') return ALLOWED_AUDIO_EXTS;
+  if (genType === 'dubbing' || genType === 'music') return ALLOWED_AUDIO_EXTS;
   return ALLOWED_EXTS;
 }
 

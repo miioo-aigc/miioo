@@ -143,8 +143,8 @@ export default function CreationResultState({
     return () => cancelAnimationFrame(raf);
   }, [autoFillLimit, genType, generations.length, historyHasMore, historyLoading, onLoadMore]);
 
-  const isAudio = genType === 'dubbing';
-  const inputDisabled = isGenerating && genType === 'dubbing';
+  const isAudio = genType === 'dubbing' || genType === 'music';
+  const inputDisabled = isGenerating && (genType === 'dubbing' || genType === 'music');
   const inputCardProps = {
     onGenerate,
     onCancelGeneration,

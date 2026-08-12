@@ -62,6 +62,10 @@
  *   2026-07-16  复跑全仓库 lint、构建、架构检查和差异检查；同步当前真实行号与验收边界
  *   2026-07-16  刷新任务恢复增加登录态边界；未登录时保留任务快照，登录后再恢复
  *   2026-07-16  抽离 CreationLoginEmptyState；页面仅通过 onLoginClick 接线，当前实际行数 1886
+ *   2026-08-12  新增「音乐」Tab（后端 API/store/分页隔离代码已就绪）
+ *               本期暂不上线：隐藏 Tab 栏与类型选择器入口，恢复时取消 CreationTabs/CreationGenTypeSelector 注释
+ *               刷新恢复音乐任务走通用任务中心 GET /api/tasks/{task_id}；同步全局活跃计数/type 映射为 audio
+ *               刷新恢复音乐任务走通用任务中心 GET /api/tasks/{task_id}；同步全局活跃计数/type 映射为 audio
  *   2026-07-16  抽离 CreationSendButton；页面仅通过显式动作 props 接线，当前实际行数 1748，架构统计 1749
  *   2026-07-16  抽离 CreationToast；Toast 状态和定时器仍由页面持有，清理重复确认弹窗，当前实际行数 1700
  *   2026-07-16  抽离 CreationInputSurface；页面保留 InputCard 状态、参数组装、素材状态和失败恢复，当前实际行数 1584
@@ -80,7 +84,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { apiPollCreationTask, apiGetCreationVideo, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory } from '../api/creation';
+import { apiPollCreationTask, apiPollCreationMusicTask, apiGetCreationVideo, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { apiListModels } from '../api/config';
 import { adaptModels, getModelParams } from '../utils/modelAdapter';
@@ -126,7 +130,7 @@ const _sessionInitRef = { current: false };
 export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured = true, onShowNoModelNotice }) {  const [activeTab, setActiveTab] = useState('image');
   const saveActiveDraftRef = useRef(null);
   const [genType, setGenType] = useState('image');
-  const [activeCountByTab, setActiveCountByTab] = useState({ image: 0, video: 0, dubbing: 0 });
+  const [activeCountByTab, setActiveCountByTab] = useState({ image: 0, video: 0, dubbing: 0, music: 0 });
   const incrementActive = (tab) => setActiveCountByTab(prev => ({ ...prev, [tab]: (prev[tab] || 0) + 1 }));
   const decrementActive = (tab) => setActiveCountByTab(prev => ({ ...prev, [tab]: Math.max(0, (prev[tab] || 0) - 1) }));
   const {
@@ -162,7 +166,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     }
 
     const list = getCreationHistoryList(cacheEntry.d);
-    const type = tab === 'dubbing' ? 'audio' : tab;
+    const type = (tab === 'dubbing' || tab === 'music') ? 'audio' : tab;
     const normalized = dedupeCreationHistoryList([...list], type).map((item) => normalizeCreationHistoryItem(item, type));
     mergeHistoryGenerations(tab, normalized);
 
@@ -187,7 +191,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
 
   // 拉取一页历史数据，自动填满视口逻辑由 CreationResultState 触发
   const loadHistoryPage = useCallback(async (tab) => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || tab === 'music') return;
     const meta = useCreationStore.getState().historyMeta[tab];
     if (meta.loading || !meta.hasMore) {
       return;
@@ -233,7 +237,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         list = getCreationHistoryList(pageResp);
       }
 
-      const type = tab === 'dubbing' ? 'audio' : tab;
+      const type = (tab === 'dubbing' || tab === 'music') ? 'audio' : tab;
       const rawListLength = list.length;
       list = dedupeCreationHistoryList([...list], type);
       const explicitHasMore = pageResp?.has_more ?? pageResp?.hasMore;
@@ -335,10 +339,13 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
 
       // 重建占位卡片（按类型生成对应数量的占位）
       addGeneration(tab, createCreationTaskPlaceholder(task));
-      incrementActive(genType === 'video' ? 'video' : genType === 'dubbing' ? 'dubbing' : 'image');
+      incrementActive(genType === 'video' ? 'video' : (genType === 'dubbing' || genType === 'music') ? genType : 'image');
 
       // 重新轮询
-      apiPollCreationTask(getCreationTaskType(genType), taskId)
+      const pollPromise = genType === 'music'
+        ? apiPollCreationMusicTask(taskId)
+        : apiPollCreationTask(getCreationTaskType(genType), taskId);
+      pollPromise
         .then((result) => {
           const { mediaUrls, cardIds, generation } = normalizeCreationTaskResult(result, task);
 
@@ -358,7 +365,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
           storeDeleteGeneration(tab, genId);
         })
         .finally(() => {
-          decrementActive(genType === 'video' ? 'video' : genType === 'dubbing' ? 'dubbing' : 'image');
+          decrementActive(genType === 'video' ? 'video' : (genType === 'dubbing' || genType === 'music') ? genType : 'image');
         });
     });
   // 仅在登录状态变化时执行，避免未登录首次挂载消费任务快照。
@@ -564,6 +571,14 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   // 清空当前 Tab 的创作历史：调用后端持久隐藏，重置本 Tab 展示与分页，并失效本地缓存
   async function handleClearHistory() {
     setClearHistoryConfirm(false);
+    // 音乐 Tab 暂无后端历史接口（/api/creation/history/hide 仅支持 image/video/dubbing），
+    // 仅清空本地展示与缓存，保持与配音等 Tab 的数据隔离。
+    if (activeTab === 'music') {
+      clearHistoryTab(activeTab);
+      invalidate(`creation_history:${activeTab}:`, 'local');
+      showToast('success', '本页创作历史已清空');
+      return;
+    }
     try {
       const res = await apiHideCreationHistory(activeTab);
       const hiddenCount = res?.hiddenCount ?? res?.hidden_count ?? 0;

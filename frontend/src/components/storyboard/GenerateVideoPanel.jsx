@@ -22,6 +22,8 @@
  *   ReferenceMediaEditor                      参考主体、参考图、参考视频、参考音频和首尾帧
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-12  拆分全能参考与首尾帧提示词：fullPrompt 保留 @主体 标签绑定，
+ *               framePrompt 为纯文本独立存储，首尾帧编辑不再覆盖全能参考提示词
  *   2026-08-11  首尾帧生成改传 generate_mode，避免将 start_end 误传为参考模式导致后端 400
  *   2026-08-11  手动新增空白分镜保持空提示词，不代入后端返回的默认内容，并跳过异步表单恢复覆盖
  *   2026-08-11  首尾帧提交补传 asset_id，避免后端只拿到相对 URL 时生成失败
@@ -62,6 +64,10 @@ import GenerationSubmitButton from './GenerationSubmitButton';
 import { buildVideoPromptMentions } from '../../utils/storyboardPromptBindingRepair';
 
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
+
+function stripPromptMentions(text) {
+  return typeof text === 'string' ? text.replace(/@/g, '') : text;
+}
 
 function normalizeDurationValue(value) {
   return value == null || value === '' ? value : normalizeStoryboardDurationOptions([value])[0];
@@ -165,31 +171,50 @@ export default function GenerateVideoPanel({
   }, []);
   const [sound, setSound] = useState(() => formState?.sound ?? true);
   // 提示词：仅暂存在当前弹窗的本地 state，编辑不回写分镜列表字段。
+  // 全能参考与首尾帧各自持有独立提示词：fullPrompt 保留 @主体 标签绑定，
+  // framePrompt 为纯文本，互不覆盖，避免首尾帧编辑剥除标签后污染全能参考绑定。
   // 关闭面板时组件卸载、本地态丢弃，下次打开按 shot 当前字段重新生成初始内容。
   // 手动新增的空白分镜保持空提示词，不代入后端返回的默认内容。
-  // 点击「生成分镜视频」时才把 prompt 随 onGenerate 传回后端。
-  const [prompt, setPrompt] = useState(() => (
-    isManualBlank ? '' : (formState?.prompt ?? buildStoryboardPrompt(shot))
+  // 点击「生成分镜视频」时才把当前模式提示词随 onGenerate 传回后端。
+  const initialPrompt = isManualBlank ? '' : (formState?.prompt ?? buildStoryboardPrompt(shot));
+  const [fullPrompt, setFullPrompt] = useState(initialPrompt);
+  const [framePrompt, setFramePrompt] = useState(() => (
+    isManualBlank ? '' : (formState?.frame_prompt ?? stripPromptMentions(initialPrompt))
   ));
   const promptRef = useRef(null);
-  const promptEditedRef = useRef(false);
+  const fullPromptEditedRef = useRef(false);
+  const framePromptEditedRef = useRef(false);
   const lastEmittedFormStateRef = useRef(null);
   const formStateHydratedRef = useRef(Array.isArray(formState?.refImages));
 
   const handlePromptChange = (nextPrompt) => {
-    promptEditedRef.current = true;
-    setPrompt(nextPrompt);
+    if (tab === 'frame') {
+      framePromptEditedRef.current = true;
+      setFramePrompt(nextPrompt);
+    } else {
+      fullPromptEditedRef.current = true;
+      setFullPrompt(nextPrompt);
+    }
   };
 
   // 页面加载阶段可能会在弹窗挂载后补全主体标签。弹窗不能只读取一次初始值，
   // 否则父级 formState 已经更新，编辑器仍会继续显示打开时的旧提示词。
   useEffect(() => {
     if (isManualBlank) return;
-    if (promptEditedRef.current) return;
-    if (typeof formState?.prompt !== 'string' || formState.prompt === prompt) return;
-    const syncTimer = setTimeout(() => setPrompt(formState.prompt), 0);
+    if (fullPromptEditedRef.current) return;
+    if (typeof formState?.prompt !== 'string' || formState.prompt === fullPrompt) return;
+    const syncTimer = setTimeout(() => setFullPrompt(formState.prompt), 0);
     return () => clearTimeout(syncTimer);
-  }, [formState?.prompt, isManualBlank, prompt]);
+  }, [formState?.prompt, isManualBlank, fullPrompt]);
+
+  // 首尾帧提示词来自后端 frame_prompt；旧数据无该字段时沿用初始化回退值。
+  useEffect(() => {
+    if (isManualBlank) return;
+    if (framePromptEditedRef.current) return;
+    if (typeof formState?.frame_prompt !== 'string' || formState.frame_prompt === framePrompt) return;
+    const syncTimer = setTimeout(() => setFramePrompt(formState.frame_prompt), 0);
+    return () => clearTimeout(syncTimer);
+  }, [formState?.frame_prompt, isManualBlank, framePrompt]);
 
   const [refSubjects, setRefSubjects] = useState(() => {
     // 从 shot.mainRefs 初始化主体列表，补全 url/name
@@ -231,8 +256,8 @@ export default function GenerateVideoPanel({
   }, [shot?.mainRefs]);
 
   const videoPromptMentions = useMemo(
-    () => tab === 'frame' ? [] : buildVideoPromptMentions(prompt, refSubjects),
-    [prompt, refSubjects, tab],
+    () => tab === 'frame' ? [] : buildVideoPromptMentions(fullPrompt, refSubjects),
+    [fullPrompt, refSubjects, tab],
   );
 
   const updateReferenceGroup = (setter, group) => (value) => {
@@ -257,8 +282,11 @@ export default function GenerateVideoPanel({
       setResolution(formState.resolution || '');
       setDuration(normalizeDurationValue(formState.duration ?? null));
       setSound(formState.sound ?? true);
-      if (!isManualBlank && !promptEditedRef.current && typeof formState.prompt === 'string') {
-        setPrompt(formState.prompt);
+      if (!isManualBlank && !fullPromptEditedRef.current && typeof formState.prompt === 'string') {
+        setFullPrompt(formState.prompt);
+      }
+      if (!isManualBlank && !framePromptEditedRef.current && typeof formState.frame_prompt === 'string') {
+        setFramePrompt(formState.frame_prompt);
       }
       // 表单快照只恢复参数和普通参考素材；主体集合始终从当前镜头 mainRefs 获取，
       // 防止主体参考列删除后，旧 refSubjects 把已删除图片重新带回面板。
@@ -275,14 +303,15 @@ export default function GenerateVideoPanel({
 
   useEffect(() => {
     if (!formStateHydratedRef.current) return;
-    if (!promptEditedRef.current && typeof formState?.prompt === 'string' && formState.prompt !== prompt) return;
+    if (!fullPromptEditedRef.current && typeof formState?.prompt === 'string' && formState.prompt !== fullPrompt) return;
     const nextState = {
       tab,
       model,
       resolution,
       duration,
       sound,
-      prompt,
+      prompt: fullPrompt,
+      frame_prompt: framePrompt,
       video_prompt_mentions: videoPromptMentions,
       refSubjects,
       refImages,
@@ -295,7 +324,7 @@ export default function GenerateVideoPanel({
     if (lastEmittedFormStateRef.current === signature) return;
     lastEmittedFormStateRef.current = signature;
     onFormStateChange?.(nextState);
-  }, [tab, model, resolution, duration, sound, prompt, formState?.prompt, videoPromptMentions, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame, onFormStateChange]);
+  }, [tab, model, resolution, duration, sound, fullPrompt, framePrompt, formState?.prompt, videoPromptMentions, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame, onFormStateChange]);
 
   useEffect(() => {
     const nextDuration = normalizeDurationValue(formState?.duration);
@@ -499,7 +528,7 @@ export default function GenerateVideoPanel({
         resolution,
         duration,
         sound,
-        prompt,
+        prompt: tab === 'frame' ? framePrompt : fullPrompt,
         tab,
         reference_images: referenceImages.length > 0 ? referenceImages : undefined,
         first_frame_url: refFirstFrame?.url,
@@ -577,7 +606,7 @@ export default function GenerateVideoPanel({
 
             <PanelPromptInput
               ref={promptRef}
-              value={prompt}
+              value={tab === 'frame' ? framePrompt : fullPrompt}
               onChange={handlePromptChange}
               referenceItems={videoReferenceItems}
               plainTextMode={tab === 'frame'}
@@ -657,7 +686,7 @@ export default function GenerateVideoPanel({
               videoUrl: video.url,
               filename: video.name,
               label: `镜头 ${String(shot?.number ?? 1).padStart(2, '0')}`,
-              prompt,
+              prompt: tab === 'frame' ? framePrompt : fullPrompt,
               model,
               resolution,
               duration: undefined,

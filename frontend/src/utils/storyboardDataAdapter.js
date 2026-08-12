@@ -289,6 +289,8 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
     video: persistedCreationForm?.video && typeof persistedCreationForm.video === 'object'
       ? {
           ...withFallbackReferenceImages(persistedCreationForm.video),
+          // 首尾帧提示词优先读后端顶层字段，回退旧版内嵌 frame_prompt，兼容两种存储形态。
+          frame_prompt: be.video_frame_prompt ?? be.videoFramePrompt ?? persistedCreationForm.video.frame_prompt,
           video_prompt_generation: persistedCreationForm.video.video_prompt_generation
             ?? be.video_prompt_generation,
           video_prompt_mentions: persistedVideoMentions,
@@ -296,6 +298,7 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
       : ((be.video_prompt ?? be.video_prompt_generation) != null
         ? {
             prompt: be.video_prompt ?? be.video_prompt_generation,
+            frame_prompt: be.video_frame_prompt ?? be.videoFramePrompt,
             refImages: topLevelReferenceImages,
             // video_prompt 是弹窗当前展示文本；video_prompt_generation 保留完整一致性字段，
             // 供页面加载阶段恢复缺失的主体绑定。
@@ -521,6 +524,8 @@ export function toBackendStoryboard(shot) {
     // dialogues_json 是后端正式结构化字段；兼容快照同步写入 gen_params，
     // 新增、编辑和删除都必须完整提交，不能只在删除时传空数组。
     dialogues_json: narrationSegments,
+    // 首尾帧提示词随完整快照写回；后端暂未支持时忽略，不影响现有保存。
+    video_frame_prompt: creationForm?.video?.frame_prompt ?? null,
     gen_params: {
       ...genParams,
       ...subjectFields,

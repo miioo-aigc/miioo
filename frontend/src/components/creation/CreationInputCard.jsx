@@ -11,6 +11,7 @@
  *   CreationInputSurface 组合                           L451–L551
  *
  *   2026-08-11  图片/视频生成轮询期间保持输入区可用；IndexedDB 临时缓存各类型完整创作草稿
+ *   2026-08-12  音乐生成与配音同规则：生成中可停止、上传音频附件、不带配音参数（速度/情感/音色）
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -111,7 +112,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   }); // 用于失败时回退
 
   // 图片和视频生成均为异步轮询任务，生成期间允许继续创作；配音保留生成中停止请求的交互。
-  const promptDisabled = disabled && genType === 'dubbing';
+  const promptDisabled = disabled && (genType === 'dubbing' || genType === 'music');
 
   const {
     editorRef,
@@ -420,7 +421,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   const concurrentLimit = genType === 'dubbing' ? 5 : 10;
   const atConcurrentLimit = activeCount >= concurrentLimit;
   const canSend = !disabled && !atConcurrentLimit && (hasContent || files.length > 0 || firstFrameFile || lastFrameFile || (genType === 'dubbing' && selectedVoiceId));
-  const isDubbingGenerating = genType === 'dubbing' && disabled;
+  const isDubbingGenerating = (genType === 'dubbing' || genType === 'music') && disabled;
 
   const restoreSavedInput = () => {
     const backup = savedContentRef.current;
@@ -505,7 +506,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         setSelectedVoiceId(selectedVoiceId || '');
         setSelectedVoiceName(selectedVoiceName || '');
       },
-      onCancel: genType === 'dubbing' ? restoreSavedInput : undefined,
+      onCancel: (genType === 'dubbing' || genType === 'music') ? restoreSavedInput : undefined,
     });
   };
 
@@ -521,7 +522,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     handlePromptKeyDown(event, handleSend);
   };
 
-  const assetPickerAccept = genType === 'image' ? 'image' : genType === 'video' ? (creationParams?.supportsAudio ? 'all' : 'image') : genType === 'dubbing' ? 'audio' : 'all';
+  const assetPickerAccept = genType === 'image' ? 'image' : genType === 'video' ? (creationParams?.supportsAudio ? 'all' : 'image') : (genType === 'dubbing' || genType === 'music') ? 'audio' : 'all';
   return (
     <CreationInputSurface
       width={width}

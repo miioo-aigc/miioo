@@ -24,7 +24,7 @@ export function adaptModels(backendModels, genType) {
     if (!m.is_enabled) continue;
     const cat = (m.category || '').toLowerCase();
     if (genType === 'image' && !cat.includes('image')) continue;
-   if (genType === 'video' && !cat.includes('video')) continue;
+    if (genType === 'video' && !cat.includes('video')) continue;
 
     if (genType === 'dubbing') {
       if (!cat.includes('dubbing') && !cat.includes('audio') && !cat.includes('tts') && !cat.includes('speech') && !cat.includes('voice')) continue;
@@ -35,7 +35,16 @@ export function adaptModels(backendModels, genType) {
       continue;
     }
 
-  if (genType === 'dubbing') return { modelOptions: options, capabilitiesMap: caps };
+    if (genType === 'music') {
+      if (!cat.includes('music') && !cat.includes('song')) continue;
+      options.push({ value: m.model_id, label: m.name });
+      if (m.capabilities && typeof m.capabilities === 'object' && Object.keys(m.capabilities).length > 0) {
+        caps[m.model_id] = m.capabilities;
+      }
+      continue;
+    }
+
+    if (genType === 'dubbing' || genType === 'music') return { modelOptions: options, capabilitiesMap: caps };
 
     const refModes = m.capabilities?.reference_modes || [];
     const frameKeys = ['first_frame', 'last_frame', 'start_end', 'multiframe'];
@@ -71,11 +80,13 @@ export function adaptModels(backendModels, genType) {
 export function getModelParams(genType, modelId, capabilitiesMap) {
   const backendCap = capabilitiesMap?.[modelId];
   if (backendCap) {
-    return genType === 'image'
-     ? getImageModelParamsFromCap(backendCap)
-      : genType === 'dubbing'
-      ? getDubbingModelParamsFromCap(backendCap)
-     : getVideoModelParamsFromCap(backendCap);
+    if (genType === 'image') return getImageModelParamsFromCap(backendCap);
+    if (genType === 'dubbing') return getDubbingModelParamsFromCap(backendCap);
+    if (genType === 'music') return {
+      ratios: [], resolutionRatios: {}, resolutions: [], counts: [],
+      defaults: { ratio: '', resolution: '', count: '' },
+    };
+    return getVideoModelParamsFromCap(backendCap);
   }
   // 无后端 capabilities 时返回空默认值
   return {

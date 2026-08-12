@@ -8,7 +8,7 @@
 const DATABASE_NAME = 'miioo-creation-drafts';
 const STORE_NAME = 'drafts';
 const DATABASE_VERSION = 1;
-const SUPPORTED_TYPES = new Set(['image', 'video', 'dubbing']);
+const SUPPORTED_TYPES = new Set(['image', 'video', 'dubbing', 'music']);
 const MEMORY_STORE_KEY = '__miiooCreationDrafts__';
 const PROMPT_STORAGE_PREFIX = 'miioo:creation_draft_prompt:';
 const memoryDrafts = globalThis[MEMORY_STORE_KEY] ?? new Map();

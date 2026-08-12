@@ -184,5 +184,6 @@ export default function CreationUploadArea({ genType, refMode, firstFrameFile, l
     return <FrameUploader firstFile={firstFrameFile} lastFile={lastFrameFile} onFirstChange={onFirstChange} onLastChange={onLastChange} onSwap={onSwap} onFirstAssetPick={onFirstAssetPick} onLastAssetPick={onLastAssetPick} disabled={disabled} />;
   }
   if (genType === 'dubbing') return renderVoiceControl?.() ?? null;
+  if (genType === 'music') return <UploadPlaceholder {...uploadProps} disabled={disabled} />;
   return <UploadPlaceholder {...uploadProps} disabled={disabled} />;
 }

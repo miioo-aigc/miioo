@@ -59,21 +59,30 @@ function getImageUrls(image) {
 
 /**
  * 结构索引（api/creation.js）
- * ─── 视频生成（apiGenerateCreation）────────────────────────────────────
- *   [函数] apiGenerateCreation()                      入口：按 genType 分流 图片/视频/配音
- *   [上传] 参考文件分类循环                            L734–L787  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
+ * ─── 音乐生成（自由函数）────────────────────────
+ *   [接口] apiGenerateCreationMusic()              L459   POST /api/music/generate （音乐生成/翻唱）
+ *   [提取] extractMusicResultUrl()                  L469   从 url/audio_url/result/results[] 提取音乐结果
+ *   [轮询] apiPollCreationMusicTask()                L487   GET /api/tasks/{task_id} 最多 600 秒，支持 AbortSignal
+ * ─── 视频生成（apiGenerateCreation）────────────────────────
+ *   [函数] apiGenerateCreation()                      入口：按 genType 分流 图片/视频/配音/音乐
+ *   [上传] 参考文件分类循环                            L783–L836  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
  *                                                        （图片 asset_id 兜底：assetId || backendId || asset_id）
- *   [分支] 配音同步/异步生成与任务轮询                   L819–L930  短文本直取音频，长文本轮询任务
+ *   [上传] 首/尾帧上传                                 L846–L874  仅视频首尾帧模式使用
+ *   [分支] 配音同步/异步生成与任务轮询                   L877–L988  短文本直取音频，长文本轮询任务
  *                                                        配音任务轮询最多 600 秒，可通过 AbortSignal 停止
- *   [上传] 首/尾帧上传                                 L789–L817  仅视频首尾帧模式使用
- *   [分支] kling v3 omni 生成模式推断                  L998–L1025  hasRefMedia → supported_generation_modes
+ *   [分支] 音乐生成与任务轮询                   L991–L1046  上传参考音频 → POST /api/music/generate → 轮询任务
+ *   [分支] 图片生成（多张并行）                     L1048–L1111  count>1 可返回多 task_ids 并行轮询
+ *   [分支] 视频生成                                 L1114–L1205  generation_mode / reference_mode / attachments
+ *   [分支] kling v3 omni 生成模式推断                  L1118–L1141  hasRefMedia → supported_generation_modes
  *                                                        generation_mode 取自 supported_generation_modes，
  *                                                        不再发 reference_mode='full'（避免 400），改发 '' 保留键名
  *                                                        素材映射：图→multi_shot / 视频→video_ref / 首尾帧→first_frame|start_end / 无图有媒→first_frame / 纯文→text_to_video
- *   [组装] @ 数字资产绑定 attachments                   L1027–L1056  CreationAssetBinding[]，source:'mention'
- *   [组装] 视频生成请求体 body                          L1057–L1089  generation_mode / reference_mode / multi_shot / attachments / reference_image_asset_ids / first_frame_url
- *   [日志] [video-generate] 调试日志                    L1090  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
+ *   [组装] @ 数字资产绑定 attachments                   L1143–L1172  CreationAssetBinding[]，source:'mention'
+ *   [组装] 视频生成请求体 body                          L1173–L1205  generation_mode / reference_mode / multi_shot / attachments / reference_image_asset_ids / first_frame_url
+ *   [日志] [video-generate] 调试日志                    L1206  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-08-12  新增音乐生成支持：POST /api/music/generate、通用任务中心 GET /api/tasks/{task_id} 轮询（最多 600 秒），
+ *               音乐分支与图片/视频/配音完全隔离，参考音频上传不阻塞整体生成
  *   2026-07-13  video-kling-v3-omni「全能参考」修复：不再发 reference_mode='full'（会触发后端 400），
  *               改按实际上传素材推断 supported_generation_modes；参考图走 attachments + reference_image_asset_ids（asset_id 兜底到 asset.id）。
  *   2026-08-07  修复同步配音将音频记录 id 误当异步任务 id，避免错误请求配音任务轮询接口
@@ -455,6 +464,56 @@ export async function apiGenerateCreationAudio(data, { signal } = {}) {
   return res.json();
 }
 
+// ── 音乐生成（POST /api/music/generate，支持 music-2.6 文本作曲与 music-cover 翻唱）──────
+export async function apiGenerateCreationMusic(data, { signal } = {}) {
+  const res = await authFetch(`${BASE}/api/music/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+    signal,
+  });
+  return res.json();
+}
+
+function extractMusicResultUrl(data) {
+  if (typeof data === 'string') return data;
+  const direct = data?.url || data?.audio_url || data?.audioUrl
+    || data?.result?.url || data?.result?.audio_url || data?.result?.audioUrl || '';
+  if (direct) return direct;
+  const results = data?.results;
+  if (Array.isArray(results)) {
+    for (const r of results) {
+      const url = r?.url || r?.audio_url || r?.audioUrl || r?.file_url || r?.fileUrl
+        || r?.preview_url || r?.previewUrl || r?.resource_url || r?.resourceUrl || '';
+      if (url) return url;
+    }
+  }
+  return '';
+}
+
+// 音乐任务走通用任务中心（GET /api/tasks/{task_id}，GenTaskResponse），
+// 轮询最多 600 秒，可通过 AbortSignal 停止。
+export async function apiPollCreationMusicTask(taskId, timeoutMs = CREATION_AUDIO_POLL_TIMEOUT_MS, { signal } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await waitForPollInterval(signal);
+    if (Date.now() - start >= timeoutMs) break;
+    throwIfAborted(signal);
+    const pollRes = await authFetch(`${BASE}/api/tasks/${taskId}`, { signal });
+    const pollData = await pollRes.json();
+    const status = pollData.status;
+    if (status === 'done' || status === 'completed' || status === 'success' || status === 'succeeded' || status === 'partial') {
+      const audioUrl = extractMusicResultUrl(pollData);
+      return { audios: audioUrl ? [audioUrl] : [], audioIds: [] };
+    }
+    if (status === 'failed' || status === 'error' || status === 'cancelled' || status === 'canceled') {
+      const rawMsg = pollData.error_msg || pollData.errorMsg || pollData.message || '';
+      throw new Error(rawMsg || '音乐生成失败');
+    }
+  }
+  throw new Error('音乐生成超过600秒，已停止轮询');
+}
+
 export async function apiGenerateShotAudio(shotId, data) {
   const res = await authFetch(`${BASE}/api/creation/shots/${shotId}/generate-audio`, {
     method: 'POST',
@@ -689,6 +748,7 @@ export async function apiPollVideoTask(taskId, timeoutMs = 1800000) {
 export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}) {
   const isDubbing = params.genType === 'dubbing';
   const isVideo = params.genType === 'video';
+  const isMusic = params.genType === 'music';
 
   // ── 内部：轮询任务 ──────────────────────────────────────────────────────
   async function pollTask(
@@ -937,8 +997,65 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
     return { taskId, audios, audioIds };
   }
 
+  // ── 音乐生成 ────────────────────────────────────────────────────────────
+  if (isMusic) {
+    // 上传参考音频（music-cover 翻唱参考，单个文件上传失败不阻塞整体）
+    let referenceAudioUrl;
+    const audioFiles = params.files ? (Array.isArray(params.files) ? params.files : [params.files]) : [];
+    for (const f of audioFiles) {
+      if (f && typeof f === 'object' && !(f instanceof File) && f.url) {
+        referenceAudioUrl = f.url;
+        break;
+      }
+      if (!(f instanceof File)) continue;
+      try {
+        const result = await apiUploadCreationAudio({ file: f, category: 'reference', ...uploadContext, signal });
+        const url = result.uploaded_url || result.uploadedUrl || '';
+        if (url) referenceAudioUrl = url;
+      } catch (error) {
+        if (isAbortError(error)) throw error;
+        /* 单个文件上传失败不阻塞整体 */
+      }
+    }
+
+    const musicBody = {
+      model: params.model || undefined,
+      prompt: params.prompt || params.text || undefined,
+      output_format: 'url',
+      audio_url: referenceAudioUrl || undefined,
+    };
+    const genData = await apiGenerateCreationMusic(musicBody, { signal });
+    const audioUrl = typeof genData === 'string'
+      ? genData
+      : genData?.url
+        || genData?.audio_url
+        || genData?.audioUrl
+        || genData?.result?.url
+        || genData?.result?.audio_url
+        || genData?.result?.audioUrl;
+    if (audioUrl) return {
+      audios: [audioUrl],
+      audioIds: [
+        genData?.id,
+        genData?.audio_id,
+        genData?.audioId,
+        genData?.result?.id,
+        genData?.result?.audio_id,
+        genData?.result?.audioId,
+      ].filter(Boolean),
+    };
+
+    const taskId = genData?.task_id || genData?.taskId;
+    if (!taskId) throw new Error('No task_id returned');
+
+    onTaskCreated?.({ taskId, params });
+
+    const musicResult = await apiPollCreationMusicTask(taskId, undefined, { signal });
+    return { taskId, audios: musicResult.audios, audioIds: musicResult.audioIds };
+  }
+
   // ── 图片生成 ────────────────────────────────────────────────────────────
-  if (!isVideo) {
+  if (!isVideo && !isMusic) {
     const countNum = parseInt(params.count) || 1;
     const body = {
       prompt: params.prompt,

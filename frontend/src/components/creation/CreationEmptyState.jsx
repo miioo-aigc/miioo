@@ -99,10 +99,28 @@ function CreationEmptyIconDubbing() {
   );
 }
 
+function CreationEmptyIconMusic() {
+  return (
+    <EmptyIconShell>
+      {/* 音符圆点 */}
+      <ellipse cx="25" cy="34" rx="4" ry="3" fill="url(#cei-icon)" stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.9" />
+      <ellipse cx="38" cy="38" rx="4" ry="3" fill="url(#cei-icon)" stroke="url(#cei-icon)" strokeWidth="1.5" strokeOpacity="0.9" />
+      {/* 音符旗杆 */}
+      <line x1="29" y1="34" x2="29" y2="20" stroke="url(#cei-icon)" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.9" />
+      <line x1="42" y1="38" x2="42" y2="24" stroke="url(#cei-icon)" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.9" />
+      {/* 音符旗帜 */}
+      <path d="M29 20 L36 22.5 L29 25 Z" stroke="url(#cei-icon)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.9" />
+      {/* Sparkle */}
+      <path d="M42 16L42.8 18.2L45 19L42.8 19.8L42 22L41.2 19.8L39 19L41.2 18.2L42 16Z" fill="#2DC3E1" fillOpacity="0.85" />
+    </EmptyIconShell>
+  );
+}
+
 const EMPTY_ICON_MAP = {
   image: CreationEmptyIconImage,
   video: CreationEmptyIconVideo,
   dubbing: CreationEmptyIconDubbing,
+  music: CreationEmptyIconMusic,
 };
 
 export default function CreationEmptyState({
@@ -122,7 +140,7 @@ export default function CreationEmptyState({
   renderInputCard,
 }) {
   const EmptyIcon = EMPTY_ICON_MAP[genType] ?? CreationEmptyIconImage;
-  const inputDisabled = isGenerating && genType === 'dubbing';
+  const inputDisabled = isGenerating && (genType === 'dubbing' || genType === 'music');
   const inputCardProps = {
     onGenerate,
     onCancelGeneration,

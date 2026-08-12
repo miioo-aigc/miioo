@@ -58,29 +58,8 @@ const GEN_TYPE_OPTIONS = [
       </svg>
     ),
   },
-  { value: 'dubbing', label: '配音生成',
-    iconSelected: (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-        <path d="M8 2V11.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M3.333 12.013C3.333 11.085 4.086 10.333 5.013 10.333H8V12.32C8 13.248 7.248 14 6.32 14H5.013C4.086 14 3.333 13.248 3.333 12.32V12.013Z" stroke="#FFFFFF" strokeLinejoin="round" />
-        <path fillRule="evenodd" clipRule="evenodd" d="M8 4.689L12.294 5.707V3.004L8 2V4.689Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-    iconDefault: (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-        <path d="M8 2V11.667" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M3.333 12.013C3.333 11.085 4.086 10.333 5.013 10.333H8V12.32C8 13.248 7.248 14 6.32 14H5.013C4.086 14 3.333 13.248 3.333 12.32V12.013Z" stroke="#FFFFFF99" strokeLinejoin="round" />
-        <path fillRule="evenodd" clipRule="evenodd" d="M8 4.689L12.294 5.707V3.004L8 2V4.689Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-    triggerIcon: (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-        <path d="M8 2V11.667" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M3.333 12.013C3.333 11.085 4.086 10.333 5.013 10.333H8V12.32C8 13.248 7.248 14 6.32 14H5.013C4.086 14 3.333 13.248 3.333 12.32V12.013Z" stroke="#FFFFFFCC" strokeLinejoin="round" />
-        <path fillRule="evenodd" clipRule="evenodd" d="M8 4.689L12.294 5.707V3.004L8 2V4.689Z" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-  },
+  // { value: 'dubbing', label: '配音生成', ... } // 配音选项本期隐藏，功能代码已就绪，恢复时取消此段注释
+  // { value: 'music', label: '音乐生成', ... } // 音乐选项本期隐藏，功能代码已就绪，恢复时取消此段注释
 ];
 // ─── Generation type selector ─────────────────────────────────────────────────
 export function GenTypeSelector({ value, onChange, disabled }) {

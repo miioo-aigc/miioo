@@ -33,7 +33,9 @@ function createAbortError() {
 }
 
 function getCreationTab(genType) {
-  return genType === 'video' ? 'video' : genType === 'dubbing' ? 'dubbing' : 'image';
+  return genType === 'video' ? 'video'
+    : (genType === 'dubbing' || genType === 'music') ? genType
+      : 'image';
 }
 
 function getAudioReferenceFiles(files = []) {
@@ -137,10 +139,10 @@ function persistPendingTask(snapshot) {
   }
 }
 
-function createGenerationPlaceholder({ genId, shotId, params, countNum, isVideoGen, isDubbingGen }) {
+function createGenerationPlaceholder({ genId, shotId, params, countNum, isVideoGen, isAudioGen }) {
   const files = params.files || [];
   const placeholderCardId = `placeholder-${Date.now()}`;
-  const cardCount = isVideoGen || isDubbingGen ? 1 : countNum;
+  const cardCount = isVideoGen || isAudioGen ? 1 : countNum;
 
   return {
     id: genId,
@@ -157,7 +159,7 @@ function createGenerationPlaceholder({ genId, shotId, params, countNum, isVideoG
     createdAt: new Date().toISOString(),
     cards: Array.from({ length: cardCount }, (_, index) => ({
       id: null,
-      type: isVideoGen ? 'video' : isDubbingGen ? 'audio' : 'image',
+      type: isVideoGen ? 'video' : isAudioGen ? 'audio' : 'image',
       status: 'loading',
       imageUrl: null,
       videoUrl: null,
@@ -167,7 +169,7 @@ function createGenerationPlaceholder({ genId, shotId, params, countNum, isVideoG
   };
 }
 
-function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, imageDownloadUrls, audioIds, isVideoGen, isDubbingGen }) {
+function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, imageDownloadUrls, audioIds, isVideoGen, isAudioGen }) {
   const genMeta = {
     prompt: params.prompt || '',
     model: params.model || '',
@@ -214,14 +216,14 @@ function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, i
     lastFrameUrl: result.lastFrameUrl || undefined,
     createdAt: genMeta.createdAt,
     cards: mediaUrls.map((url, index) => ({
-      id: isDubbingGen ? (audioIds?.[index] || null) : null,
-      type: isVideoGen ? 'video' : isDubbingGen ? 'audio' : 'image',
+      id: isAudioGen ? (audioIds?.[index] || null) : null,
+      type: isVideoGen ? 'video' : isAudioGen ? 'audio' : 'image',
       status: 'done',
-      imageUrl: isDubbingGen ? null : (isVideoGen ? null : url),
-      originalUrl: !isVideoGen && !isDubbingGen ? (imageDownloadUrls?.[index] || url) : undefined,
+      imageUrl: isAudioGen ? null : (isVideoGen ? null : url),
+      originalUrl: !isVideoGen && !isAudioGen ? (imageDownloadUrls?.[index] || url) : undefined,
       videoUrl: isVideoGen ? url : null,
-      audioUrl: isDubbingGen ? url : null,
-      audioId: isDubbingGen ? (audioIds?.[index] || null) : undefined,
+      audioUrl: isAudioGen ? url : null,
+      audioId: isAudioGen ? (audioIds?.[index] || null) : undefined,
     })),
   };
 }
@@ -256,7 +258,8 @@ export function useCreationGeneration({
     incrementActive(getCreationTab(genType));
     const countNum = parseInt(params.count, 10) || 1;
     const isVideoGen = genType === 'video';
-    const isDubbingGen = genType === 'dubbing';
+    const isAudioGen = genType === 'dubbing' || genType === 'music';
+    const shotTypeLabel = isVideoGen ? '视频' : isAudioGen ? (genType === 'music' ? '音乐' : '配音') : '图片';
     let shotId = null;
 
     if (isLoggedIn && sessionIdRef.current) {
@@ -268,7 +271,7 @@ export function useCreationGeneration({
           second: '2-digit',
         });
         const shot = await apiCreateShot(sessionIdRef.current, {
-          title: `${isVideoGen ? '视频' : '图片'} - ${timestamp}`,
+          title: `${shotTypeLabel} - ${timestamp}`,
           prompt: params.prompt || undefined,
           duration: isVideoGen ? (parseInt(params.videoDuration, 10) || 5) : undefined,
         }, { signal: controller.signal });
@@ -300,7 +303,7 @@ export function useCreationGeneration({
       params,
       countNum,
       isVideoGen,
-      isDubbingGen,
+      isAudioGen,
     }));
 
     try {
@@ -318,11 +321,11 @@ export function useCreationGeneration({
         },
       });
       if (request.cancelled || controller.signal.aborted) throw createAbortError();
-      const rawMediaUrls = isVideoGen ? (result.videos ?? []) : isDubbingGen ? (result.audios ?? []) : (result.images ?? []);
-      const audioIds = isDubbingGen ? (result.audioIds || []) : [];
+      const rawMediaUrls = isVideoGen ? (result.videos ?? []) : isAudioGen ? (result.audios ?? []) : (result.images ?? []);
+      const audioIds = isAudioGen ? (result.audioIds || []) : [];
       let mediaUrls;
       let imageDownloadUrls = [];
-      if (!isVideoGen && !isDubbingGen) {
+      if (!isVideoGen && !isAudioGen) {
         const imageEntries = rawMediaUrls
           .map((url, index) => {
             const previewUrl = normalizeImageUrl(url) || url;
@@ -357,10 +360,10 @@ export function useCreationGeneration({
         imageDownloadUrls,
         audioIds,
         isVideoGen,
-        isDubbingGen,
+        isAudioGen,
       }));
 
-      if (!isDubbingGen && result.cardIds?.length) {
+      if (!isAudioGen && result.cardIds?.length) {
         storeUpdateCardIds(currentTab, genId, result.cardIds);
       }
 
@@ -368,7 +371,7 @@ export function useCreationGeneration({
         try {
           const updateData = {};
           if (isVideoGen && mediaUrls.length > 0) updateData.video_url = mediaUrls[0];
-          else if (!isDubbingGen && mediaUrls.length > 0) updateData.image_url = mediaUrls[0];
+          else if (!isAudioGen && mediaUrls.length > 0) updateData.image_url = mediaUrls[0];
           if (Object.keys(updateData).length > 0) await apiUpdateShot(shotId, updateData);
         } catch {
           // shot update fails silently
@@ -407,7 +410,7 @@ export function useCreationGeneration({
 
   const cancelGeneration = useCallback(() => {
     const request = activeGenerationRef.current;
-    if (!request || request.genType !== 'dubbing') return false;
+    if (!request || (request.genType !== 'dubbing' && request.genType !== 'music')) return false;
 
     request.cancelled = true;
     request.controller.abort();

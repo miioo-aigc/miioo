@@ -48,6 +48,8 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-12  开始剪辑按钮改为弹出“开发中”提示 Toast，不再解锁 edit 步骤，避免跳转项目总览
+ *   2026-08-12  分镜任务轮询超时由 450 秒调整为 3000 秒（MAX_POLLS 150→1000，间隔 3000ms）
  *   2026-08-11  手动新增空白分镜打 isManualBlank 标记，图片/视频创作面板打开时不再代入后端返回的默认提示词
  *   2026-08-11  分镜视频首尾帧请求补传 asset_id 和 generate_mode，并确保素材 URL 为完整地址
  *   2026-08-11  新建/复制分镜时初始化候选媒体状态，避免新分镜误显“生成中”占位；复制同步已落盘候选媒体
@@ -56,6 +58,8 @@
  *   2026-08-11  台词新增、编辑、删除显式提交 dialogues_json 与结构化兼容快照；刷新时有效结构化值优先，空默认值不覆盖兼容台词
  *   2026-08-10  图片创作面板联合去重主体/普通参考图，删除重复项后不再被旧表单快照恢复
  *   2026-08-10  视频首尾帧新增上一分镜视频尾帧快捷入口，抽帧上传后复用首帧提交和表单恢复链路
+ *   2026-08-12  关闭/切换创作面板时把最新表单快照同步回页面状态，修复提示词等普通字段重开面板丢失；
+ *               首尾帧提示词独立存 frame_prompt（video_frame_prompt），不再覆盖全能参考 video_prompt
  *   2026-08-10  视频首帧增加当前分镜图片选择弹窗，合并历史/候选/定稿图片并按媒体身份去重
  *   2026-08-06  主体参考列增删时同步创作表单主体集合，处理关闭/卸载旧快照、刷新多来源和版本滞后覆盖
  *   2026-08-05  修复创作面板异步恢复期间的空表单覆盖：打开面板优先使用镜头快照，待参考图表单恢复完成后才允许持久化
@@ -537,6 +541,20 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       videoFormStateRef.current[shotId]?.refSubjects
         || shotsRef.current.find((shot) => shot.id === shotId)?.mainRefs,
     );
+    // 关闭/切换创作面板前，把面板内最新的表单快照同步回页面状态，
+    // 避免下次打开面板时从旧的 videoFormStateMap/shot 恢复而丢失编辑内容。
+    const latestImage = imageFormStateRef.current[shotId];
+    const latestVideo = videoFormStateRef.current[shotId];
+    if (latestImage || latestVideo) {
+      setVideoFormStateMap((prev) => ({ ...prev, [shotId]: latestVideo || prev[shotId] }));
+      setShots((prev) => prev.map((shot) => {
+        if (shot.id !== shotId) return shot;
+        const nextCreationForm = { ...(shot.creationForm || {}) };
+        if (latestImage) nextCreationForm.image = latestImage;
+        if (latestVideo) nextCreationForm.video = latestVideo;
+        return { ...shot, creationForm: nextCreationForm };
+      }));
+    }
   }, [enqueueCreationFormSave]);
 
   const getLatestShot = useCallback((shotId) => (
@@ -1192,7 +1210,7 @@ function hasStoryboardMediaHint(shot = {}) {
   // 轮询任务直到完成或超时
   // isSuccessPayload: 可选谓词，若返回 true 则即使 status 为 running 也停止轮询
   async function pollTask(taskId, isSuccessPayload) {
-    const MAX_POLLS = 150;
+    const MAX_POLLS = 1000; // 3000 秒超时（3000ms 间隔 × 1000 次）
     const INTERVAL = 3000;
     for (let i = 0; i < MAX_POLLS; i++) {
       // 提交生成任务后立即读取一次，避免任务已经创建但页面在首个 3 秒窗口内
@@ -1532,8 +1550,7 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   function handleStartEdit() {
-    onUnlockStep?.('edit');
-    showToast('已进入剪辑流程', 'success');
+    showToast('加紧开发中，敬请期待～', 'info');
   }
 
   function openRegenerateModal() {

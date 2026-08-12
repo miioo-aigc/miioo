@@ -28,7 +28,7 @@ function mergeGenerations(previous, current) {
 export const useCreationStore = create(
   persist(
     (set) => ({
-      generationsByTab: { image: [], video: [], dubbing: [] },
+      generationsByTab: { image: [], video: [], dubbing: [], music: [] },
       favorites: new Set(),
       // Keys currently being toggled (optimistic update in-flight); syncFavorites skips these
       pendingFavoriteToggles: new Set(),
@@ -37,6 +37,9 @@ export const useCreationStore = create(
         image:   { page: 0, hasMore: true, loading: false, initialized: false },
         video:   { page: 0, hasMore: true, loading: false, initialized: false },
         dubbing: { page: 0, hasMore: true, loading: false, initialized: false },
+        // 音乐 Tab 暂无后端历史接口，预置为已初始化（hasMore=false），
+        // 保证与配音等 Tab 的数据、分页和缓存完全隔离。
+        music:   { page: 0, hasMore: false, loading: false, initialized: true },
       },
 
       // 合并历史数据（按卡片后端 ID 和媒体地址去重，避免本地结果与历史结果重复）

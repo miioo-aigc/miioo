@@ -46,7 +46,7 @@ function PromptPlaceholder({ genType, refMode }) {
     : genType === 'video' && refMode === 'multi'
       ? '请添加智能多帧分镜图'
       : genType === 'dubbing'
-        ? '先添加音色，再输入您要创作的内容'
+        ? '文字转语音'
         : '描述你想生成的内容';
 
   return <span style={baseStyle}>{text}</span>;

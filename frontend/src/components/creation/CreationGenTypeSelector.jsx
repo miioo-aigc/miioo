@@ -58,7 +58,6 @@ const GEN_TYPE_OPTIONS = [
       </svg>
     ),
   },
-  /* 配音选项本期隐藏（完整代码保留，恢复时删除上下两行标记）：
   { value: 'dubbing', label: '配音生成',
     iconSelected: (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
@@ -82,7 +81,6 @@ const GEN_TYPE_OPTIONS = [
       </svg>
     ),
   },
-  */
   // { value: 'music', label: '音乐生成', ... } // 音乐选项本期隐藏，功能代码已就绪，恢复时取消此段注释
 ];
 // ─── Generation type selector ─────────────────────────────────────────────────

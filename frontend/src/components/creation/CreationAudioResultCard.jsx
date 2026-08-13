@@ -91,7 +91,7 @@ export default function CreationAudioResultCard({ status, audioUrl, audioId, pro
         ) : isDone ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '12px', padding: '16px', boxSizing: 'border-box' }}>
             <div
-              style={{ width: '100%', minHeight: 0, flex: 1, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, fontFamily: FONT, fontSize: '16px', lineHeight: '150%', color: '#FFFFFF99', wordBreak: 'break-word' }}
+              style={{ width: '100%', minHeight: 0, flex: 1, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, fontFamily: FONT, fontSize: '14px', lineHeight: '150%', color: '#FFFFFF99', wordBreak: 'break-word' }}
               title={prompt || ''}
             >
               {prompt || ''}

@@ -9,11 +9,16 @@
  * ─── 依赖边界 ───────────────────────────────────────────────
  *   仅接收 value、options、disabled 和 onChange 等显式 props；
  *   不读取页面状态、不调用业务 API、不依赖页面 Store。
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-14  下拉菜单限制最大高度为 5 个选项，超出后固定面板内滚动；打开时自动滚到当前选中项
  */
 
 import { useEffect, useRef, useState } from 'react';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
+const ITEM_HEIGHT = 36;
+const MENU_MAX_HEIGHT = ITEM_HEIGHT * 5 + 8; // 最多展示 5 项（含容器 padding 8px）
 
 function ModalSelectItem({ label, active, onSelect }) {
   const [hov, setHov] = useState(false);
@@ -27,6 +32,7 @@ function ModalSelectItem({ label, active, onSelect }) {
         fontSize: '14px', lineHeight: '18px', fontFamily: FONT,
         transition: 'background-color 0.08s',
       }}
+      data-active={active || undefined}
       onClick={onSelect}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
@@ -40,6 +46,7 @@ export default function PanelSelect({ label, value, options = [], onChange, disa
   const [open, setOpen] = useState(false);
   const [hov, setHov] = useState(false);
   const ref = useRef(null);
+  const menuRef = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -48,6 +55,13 @@ export default function PanelSelect({ label, value, options = [], onChange, disa
     }
     document.addEventListener('mousedown', onDown, true);
     return () => document.removeEventListener('mousedown', onDown, true);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const activeItem = menuRef.current?.querySelector('[data-active="true"]');
+    activeItem?.scrollIntoView({ block: 'nearest' });
+    return undefined;
   }, [open]);
 
   const borderColor = open ? 'rgba(45,195,225,0.60)' : hov ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.08)';
@@ -82,11 +96,13 @@ export default function PanelSelect({ label, value, options = [], onChange, disa
           )}
         </div>
         {open && (
-          <div style={{
+          <div ref={menuRef} className="panel-select-menu" style={{
             position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
             backgroundColor: '#1D1E1E', border: '1px solid rgba(255,255,255,0.10)',
             borderRadius: '8px', padding: '4px', zIndex: 10,
             boxShadow: '0 4px 16px rgba(0,0,0,0.40)',
+            maxHeight: MENU_MAX_HEIGHT, overflowY: 'auto', overflowX: 'hidden',
+            boxSizing: 'border-box',
           }}>
             {options.map((opt) => (
               <ModalSelectItem key={opt} label={opt} active={opt === value} onSelect={() => { onChange(opt); setOpen(false); }} />

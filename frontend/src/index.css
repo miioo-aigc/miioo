@@ -670,6 +670,18 @@ body {
   background: rgba(255, 255, 255, 0.16);
 }
 
+.panel-select-menu {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+.panel-select-menu::-webkit-scrollbar {
+  width: 4px;
+}
+.panel-select-menu::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
 .notification-card {
   width: 100%;
   display: flex;

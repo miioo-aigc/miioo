@@ -13,9 +13,11 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 AssetsPage 抽离项目资产和创作资产共用批量工具栏
+ *   2026-08-14  非批量模式下新增可选的「仅显示收藏」过滤开关，仅创作资产传入
  */
 
 import { useState } from 'react';
+import Checkbox from '../Checkbox';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -143,6 +145,30 @@ function ToolbarLabel({ children, color = '#FFFFFF' }) {
   return <span style={{ fontFamily: FONT, fontSize: '14px', color, whiteSpace: 'nowrap' }}>{children}</span>;
 }
 
+function FavoriteFilterToggle({ checked, onToggle }) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onToggle}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
+      style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', flexShrink: 0, height: '36px', paddingLeft: '8px', paddingRight: '8px', borderRadius: '8px' }}
+    >
+      <Checkbox checked={checked} hovered={hovered} />
+      <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '18px', color: '#FFFFFF66', whiteSpace: 'nowrap' }}>仅显示收藏</span>
+    </div>
+  );
+}
+
 export default function AssetsBatchToolbar({
   batchMode,
   selectedCount = 0,
@@ -151,10 +177,15 @@ export default function AssetsBatchToolbar({
   onDownload,
   onDelete,
   onCancel,
+  favoritesOnly = false,
+  onToggleFavoritesOnly,
 }) {
   if (!batchMode) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '24px', paddingRight: '24px', height: '48px', flexShrink: 0 }}>
+        {typeof onToggleFavoritesOnly === 'function' && (
+          <FavoriteFilterToggle checked={favoritesOnly} onToggle={onToggleFavoritesOnly} />
+        )}
         <BatchToolbarButton onClick={onEnterBatch}>
           <BatchModeIcon />
           <ToolbarLabel>批量操作</ToolbarLabel>

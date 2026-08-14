@@ -26,6 +26,7 @@ const CREATIVE_TYPE_TABS = [
 
 export default function AssetsCreativePanel({ isLoggedIn }) {
   const [activeType, setActiveType] = useState('image');
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const {
     batchMode,
     selected,
@@ -252,7 +253,10 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   }, [isLoggedIn, activeType, loadHistoryPage]);
 
   const generations = creationGenerationsByTab[activeType] ?? [];
-  const days = generationsToDays(generations);
+  const days = generationsToDays(generations).map((day) => favoritesOnly
+    ? { ...day, cards: day.cards.filter((card) => favorites.has(card.id)) }
+    : day
+  ).filter((day) => day.cards.length > 0);
 
   function selectAll() {
     const allIds = days.flatMap((d) => d.cards.map((c) => c.id));
@@ -391,6 +395,8 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         <AssetsBatchToolbar
           batchMode={batchMode}
           selectedCount={selectedCount}
+          favoritesOnly={favoritesOnly}
+          onToggleFavoritesOnly={() => setFavoritesOnly((v) => !v)}
           onEnterBatch={enterBatch}
           onSelectAll={selectAll}
           onDownload={downloadSelected}

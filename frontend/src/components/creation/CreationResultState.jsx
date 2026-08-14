@@ -226,6 +226,8 @@ export default function CreationResultState({
                   batchMode={batchMode}
                   isSelected={batchMode && selected?.has(key)}
                   onToggleSelect={() => onToggleSelect?.(key)}
+                  favorited={favorites?.has(key)}
+                  onToggleFavorite={() => toggleFavorite?.(key)}
                   onDelete={() => onDeleteCard?.(card.genId, card.cardIndex)}
                 />
               );

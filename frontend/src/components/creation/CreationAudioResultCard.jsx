@@ -3,11 +3,11 @@
  * @structure-index
  *
  * ─── 状态层 ─────────────────────────────────────────────────────
- *   hovered / playing / confirmDelete                            悬停、播放和删除确认状态
+ *   hovered / playing / starAnim / confirmDelete                 悬停、播放、收藏动画和删除确认状态
  *   audioRef                                                     音频播放引用
  *
  * ─── 展示层 ────────────────────────────────────────────────────
- *   CreationAudioResultCard                                      配音结果卡、波形、批量选择和媒体操作
+ *   CreationAudioResultCard                                      配音结果卡、波形、收藏、批量选择和媒体操作
  *   CreationCardActionButton                                    下载/删除悬浮操作及提示
  *
  * ─── 副作用 ────────────────────────────────────────────────────
@@ -24,6 +24,7 @@
  *                 卡片尺寸由 CreationResultState 的 240px 最小列宽网格控制，宽度随结果容器适配
  *   2026-08-10  配音卡内部改为提示词顶部、播放控制底部的样式；播放结束自动恢复三角形
  *   2026-08-10  恢复播放时波形动画，悬停操作按钮与播放按钮垂直对齐
+ *   2026-08-14  新增右上角悬停收藏按钮，与图片/视频卡片位置和交互统一
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -43,9 +44,24 @@ const WAVEFORM_HEIGHTS = [
   11, 22, 17, 15, 24, 13, 18, 10, 21, 16,
 ];
 
-export default function CreationAudioResultCard({ status, audioUrl, audioId, prompt, onDelete, batchMode = false, isSelected = false, onToggleSelect }) {
+function StarIcon({ filled = false, strokeColor = '#FFFFFF' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+      <path
+        d="M7 1.5l1.545 3.13 3.455.503-2.5 2.436.59 3.44L7 9.369l-3.09 1.64.59-3.44L2 5.133l3.455-.503L7 1.5z"
+        fill={filled ? '#F0B429' : 'none'}
+        stroke={filled ? '#F0B429' : strokeColor}
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export default function CreationAudioResultCard({ status, audioUrl, audioId, prompt, onDelete, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
   const [hovered, setHovered] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [starAnim, setStarAnim] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const audioRef = useRef(null);
 
@@ -63,6 +79,13 @@ export default function CreationAudioResultCard({ status, audioUrl, audioId, pro
     }
     await downloadMediaUrl(audioUrl, filenameFromPrompt(prompt, 'mp3'));
   };
+
+  function handleStarClick(e) {
+    e.stopPropagation();
+    setStarAnim(true);
+    setTimeout(() => setStarAnim(false), 300);
+    onToggleFavorite?.();
+  }
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -154,18 +177,27 @@ export default function CreationAudioResultCard({ status, audioUrl, audioId, pro
         )}
 
         {hovered && isDone && !batchMode && (
-          <div style={{ position: 'absolute', bottom: '20px', right: '8px', display: 'flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
-            <CreationCardActionButton
-              tooltip="下载"
-              onClick={handleDownload}
-              icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8.003 11.3V2" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 14H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-            />
-            <CreationCardActionButton
-              tooltip="删除"
-              onClick={() => setConfirmDelete(true)}
-              icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3.333V14.667H13V3.333H3Z" stroke="#FFFFFF" strokeLinejoin="round" /><path d="M6.667 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M9.333 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M1.333 3.333H14.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#FFFFFF" strokeLinejoin="round" /></svg>}
-            />
-          </div>
+          <>
+            <button
+              type="button"
+              onClick={handleStarClick}
+              style={{ position: 'absolute', top: '8px', right: '8px', width: '24px', height: '24px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#00000080', border: 'none', cursor: 'pointer', transform: starAnim ? 'scale(1.4)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', zIndex: 1 }}
+            >
+              <StarIcon filled={favorited} />
+            </button>
+            <div style={{ position: 'absolute', bottom: '20px', right: '8px', display: 'flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
+              <CreationCardActionButton
+                tooltip="下载"
+                onClick={handleDownload}
+                icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8.003 11.3V2" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 14H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+              />
+              <CreationCardActionButton
+                tooltip="删除"
+                onClick={() => setConfirmDelete(true)}
+                icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3.333V14.667H13V3.333H3Z" stroke="#FFFFFF" strokeLinejoin="round" /><path d="M6.667 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M9.333 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M1.333 3.333H14.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#FFFFFF" strokeLinejoin="round" /></svg>}
+              />
+            </div>
+          </>
         )}
       </div>
 

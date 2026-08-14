@@ -84,7 +84,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { apiPollCreationTask, apiPollCreationMusicTask, apiGetCreationVideo, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory } from '../api/creation';
+import { apiPollCreationTask, apiPollCreationMusicTask, apiGetCreationVideo, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { apiListModels } from '../api/config';
 import { adaptModels, getModelParams } from '../utils/modelAdapter';
@@ -391,7 +391,9 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     if (card?.id) {
       const apiCall = card.type === 'video'
         ? apiToggleVideoFavorite(card.id, !wasFav)
-        : apiToggleImageFavorite(card.id, !wasFav);
+        : card.type === 'audio'
+          ? apiToggleAudioFavorite(card.id)
+          : apiToggleImageFavorite(card.id, !wasFav);
       apiCall
         .then(() => storeConfirmFavoriteToggle(cardKey))
         .catch(() => storeRollbackFavoriteToggle(cardKey));

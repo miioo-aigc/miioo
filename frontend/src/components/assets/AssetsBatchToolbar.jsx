@@ -164,7 +164,7 @@ function FavoriteFilterToggle({ checked, onToggle }) {
       style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', flexShrink: 0, height: '36px', paddingLeft: '8px', paddingRight: '8px', borderRadius: '8px' }}
     >
       <Checkbox checked={checked} hovered={hovered} />
-      <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '18px', color: '#FFFFFF66', whiteSpace: 'nowrap' }}>仅显示收藏</span>
+      <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '18px', color: '#FFFFFF', whiteSpace: 'nowrap' }}>仅显示收藏</span>
     </div>
   );
 }

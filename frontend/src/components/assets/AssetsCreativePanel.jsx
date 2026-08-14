@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { apiDeleteCreationImage, apiDeleteCreationVideo, apiBatchDeleteImages, apiBatchDeleteVideos, apiToggleImageFavorite, apiToggleVideoFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../../api/creation';
+import { apiDeleteCreationImage, apiDeleteCreationVideo, apiBatchDeleteImages, apiBatchDeleteVideos, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../../api/creation';
 import { useCreationStore } from '../../stores/creationStore';
 import { useAssetSelection } from '../../hooks/useAssetSelection';
 import { generationsToDays } from '../../utils/creativeDaysAdapter';
@@ -14,8 +14,8 @@ import ConfirmDialog from '../ConfirmDialog';
 import { AssetsTabBar } from './AssetsTabs';
 import AssetsBatchToolbar from './AssetsBatchToolbar';
 import { EmptyCreativeAssets } from './AssetsEmptyState';
-import AssetsAudioCard from './AssetsAudioCard';
 import { AssetCard } from './AssetsCards';
+import CreationAudioResultCard from '../creation/CreationAudioResultCard';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const CREATIVE_TYPE_TABS = [
@@ -104,9 +104,8 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   }
 
   // 根据视口计算首屏所需条数
-  // 创作资产卡片：图片/视频 320×180，gap 16，左右 padding 32；配音列表布局直接给 50
-  function calcCreativePageSize(tab) {
-    if (tab === 'dubbing') return 50;
+  // 创作资产卡片：图片/视频/配音均为 16:9 网格卡片，gap 16，左右 padding 32
+  function calcCreativePageSize() {
     const NAV_W = 48;
     const MODULE_TAB_H = 48; // 模块切换 tab 栏
     const FILTER_TAB_H = 48; // 图片/视频/配音 tab 栏
@@ -136,7 +135,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
 
     setCreationHistoryMeta((prev) => ({ ...prev, [tab]: { ...prev[tab], loading: true } }));
     const nextPage = meta.page + 1;
-    const pageSize = calcCreativePageSize(tab);
+    const pageSize = calcCreativePageSize();
 
     try {
       let resp;
@@ -319,7 +318,9 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     const type = cardType || activeType;
     const apiCall = type === 'video'
       ? apiToggleVideoFavorite(backendId, !isLiked)
-      : apiToggleImageFavorite(backendId, !isLiked);
+      : type === 'audio'
+        ? apiToggleAudioFavorite(backendId)
+        : apiToggleImageFavorite(backendId, !isLiked);
     apiCall.catch(() => storeToggleFavorite(cardKey)); // rollback on failure
   }
 
@@ -425,20 +426,21 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <span style={{ fontFamily: FONT, fontSize: '14px', color: '#FFFFFF99', flexShrink: 0 }}>{day.date}</span>
             </div>
-            <div style={activeType === 'dubbing' ? { display: 'flex', flexDirection: 'column', gap: '8px' } : { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
               {day.cards.map((card) => {
                 const isStarred = favorites.has(card.id);
                 return activeType === 'dubbing' ? (
-                  <AssetsAudioCard
+                  <CreationAudioResultCard
                     key={card.id}
-                    name={card.name}
-                    duration={card.duration}
-                    starred={isStarred}
-                    selected={batchMode && selected.has(card.id)}
+                    status="done"
+                    audioUrl={card.audioUrl || null}
+                    audioId={card.backendId}
+                    prompt={card.prompt || ''}
                     batchMode={batchMode}
-                    onSelect={() => toggleSelect(card.id)}
-                    onStar={() => toggleStar(card.id, card.backendId, card.type)}
-                    onDownload={() => downloadCreativeAsset(card)}
+                    isSelected={batchMode && selected.has(card.id)}
+                    onToggleSelect={() => toggleSelect(card.id)}
+                    favorited={isStarred}
+                    onToggleFavorite={() => toggleStar(card.id, card.backendId, card.type)}
                     onDelete={() => deleteSingle(card)}
                   />
                 ) : (

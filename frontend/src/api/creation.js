@@ -322,6 +322,34 @@ async function parseCreationDeleteResponse(res, action) {
   return res.json();
 }
 
+async function parseCreationDownloadResponse(res, action) {
+  const contentType = res.headers.get('content-type') || '';
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const payload = contentType.includes('application/json')
+        ? await res.json()
+        : await res.text();
+      detail = typeof payload === 'object'
+        ? (payload?.detail || payload?.message || JSON.stringify(payload))
+        : payload;
+    } catch {
+      // 无法解析错误响应时仍保留 HTTP 状态，避免把错误内容保存为媒体文件。
+    }
+    throw new Error(detail || `${action}失败（${res.status}）`);
+  }
+
+  if (contentType.includes('application/json') || contentType.startsWith('text/')) {
+    throw new Error(`${action}失败：服务端未返回媒体文件`);
+  }
+
+  const blob = await res.blob();
+  if (!blob.size || blob.type.includes('application/json') || blob.type.startsWith('text/')) {
+    throw new Error(`${action}失败：服务端未返回有效媒体文件`);
+  }
+  return blob;
+}
+
 export async function apiDeleteCreationImage(imageId) {
   const res = await authFetch(`${BASE}/api/creation/images/${imageId}`, { method: 'DELETE' });
   return parseCreationDeleteResponse(res, '删除创作图片');
@@ -351,7 +379,7 @@ export async function apiBatchDownloadImages(ids) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids, asset_ids: ids }),
   });
-  return res.blob();
+  return parseCreationDownloadResponse(res, '批量下载创作图片');
 }
 
 export async function apiBatchFavoriteImages(ids, liked) {
@@ -367,7 +395,7 @@ export async function apiDownloadCreationImage(imageId) {
   const res = await authFetch(`${BASE}/api/creation/images/${imageId}/download`, {
     headers: { 'Content-Type': 'application/json' },
   });
-  return res.blob();
+  return parseCreationDownloadResponse(res, '下载创作图片');
 }
 
 // ── 创作视频 ──────────────────────────────────────────────────────────────────
@@ -442,14 +470,14 @@ export async function apiBatchDownloadVideos(ids) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids, asset_ids: ids }),
   });
-  return res.blob();
+  return parseCreationDownloadResponse(res, '批量下载创作视频');
 }
 
 export async function apiDownloadCreationVideo(videoId) {
   const res = await authFetch(`${BASE}/api/creation/videos/${videoId}/download`, {
     headers: { 'Content-Type': 'application/json' },
   });
-  return res.blob();
+  return parseCreationDownloadResponse(res, '下载创作视频');
 }
 
 // ── 创作音频 ──────────────────────────────────────────────────────────────────
@@ -577,14 +605,14 @@ export async function apiBatchDownloadAudios(audio_ids) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ audio_ids }),
   });
-  return res.blob();
+  return parseCreationDownloadResponse(res, '批量下载创作音频');
 }
 
 export async function apiDownloadCreationAudio(audioId) {
   const res = await authFetch(`${BASE}/api/creation/audios/${audioId}/download`, {
     headers: { 'Content-Type': 'application/json' },
   });
-  return res.blob();
+  return parseCreationDownloadResponse(res, '下载创作音频');
 }
 
 // ── 创作任务轮询 ──────────────────────────────────────────────────────────────

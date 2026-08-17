@@ -12,6 +12,7 @@
  * ─── 更新记录 ─────────────────────────────────────────────────────
  *   2026-07-17  从 CreationPage 抽离主体卡片组合，保持行为和页面级副作用边界不变
  *   2026-08-07  结果态和空态统一透传配音取消回调
+ *   2026-08-17  透传结果卡正式下载回调，下载副作用继续保留在页面
  */
 import CreationToolbar from './CreationToolbar';
 import CreationResultState from './CreationResultState';
@@ -25,7 +26,7 @@ export default function CreationWorkspace({
   font, fontMedium, generations, onGenerate, genType, isGenerating,
   onGenTypeChange, model, onModelChange, modelOptions, creationParams,
   capabilitiesMap, onDeleteCard, selected, onToggleSelect, onSwitchToFrameMode,
-  onVideoCardClick, favorites, toggleFavorite, showToast, historyLoading,
+  onVideoCardClick, onDownloadCard, favorites, toggleFavorite, showToast, historyLoading,
   historyHasMore, onLoadMore, autoFillLimit, activeCount, onBeforeModelOpen,
   onCancelGeneration, renderInputCard,
 }) {
@@ -39,7 +40,7 @@ export default function CreationWorkspace({
           {isLoggedIn === false ? (
             <CreationLoginEmptyState onLoginClick={onLoginClick} />
           ) : generations.length > 0 || historyLoading ? (
-            <CreationResultState generations={generations} onGenerate={onGenerate} genType={genType} isGenerating={isGenerating} onGenTypeChange={onGenTypeChange} model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap} onDeleteCard={onDeleteCard} batchMode={batchMode} selected={selected} onToggleSelect={onToggleSelect} onSwitchToFrameMode={onSwitchToFrameMode} onVideoCardClick={onVideoCardClick} favorites={favorites} toggleFavorite={toggleFavorite} showToast={showToast} historyLoading={historyLoading} historyHasMore={historyHasMore} onLoadMore={onLoadMore} autoFillLimit={autoFillLimit} activeCount={activeCount} onBeforeModelOpen={onBeforeModelOpen} onCancelGeneration={onCancelGeneration} renderInputCard={renderInputCard} />
+            <CreationResultState generations={generations} onGenerate={onGenerate} genType={genType} isGenerating={isGenerating} onGenTypeChange={onGenTypeChange} model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap} onDeleteCard={onDeleteCard} batchMode={batchMode} selected={selected} onToggleSelect={onToggleSelect} onSwitchToFrameMode={onSwitchToFrameMode} onVideoCardClick={onVideoCardClick} onDownloadCard={onDownloadCard} favorites={favorites} toggleFavorite={toggleFavorite} showToast={showToast} historyLoading={historyLoading} historyHasMore={historyHasMore} onLoadMore={onLoadMore} autoFillLimit={autoFillLimit} activeCount={activeCount} onBeforeModelOpen={onBeforeModelOpen} onCancelGeneration={onCancelGeneration} renderInputCard={renderInputCard} />
           ) : (
             <CreationEmptyState onGenerate={onGenerate} genType={genType} isGenerating={isGenerating} onCancelGeneration={onCancelGeneration} onGenTypeChange={onGenTypeChange} showToast={showToast} activeCount={activeCount} model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap} onBeforeModelOpen={onBeforeModelOpen} renderInputCard={renderInputCard} />
           )}

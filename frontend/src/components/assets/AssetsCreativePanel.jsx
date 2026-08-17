@@ -7,7 +7,6 @@ import { generationsToDays } from '../../utils/creativeDaysAdapter';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { dedupeByMediaAliases, dedupeCreationHistoryList, getCreationAssetMediaAliases } from '../../utils/creationHistoryAdapter';
 import { getCreativeBatchDeleteRequest } from '../../utils/assetsBatchAdapter';
-import { downloadMediaUrl } from '../../utils/downloadMediaUrl';
 import { downloadBlob } from '../../utils/downloadBlob';
 import { getCreativeAssetDownloadInfo } from '../../utils/creativeAssetDownload';
 import ConfirmDialog from '../ConfirmDialog';
@@ -390,18 +389,20 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         ? apiDownloadCreationVideo
         : apiDownloadCreationAudio;
 
-    // 优先走鉴权下载接口，媒体地址下载作为兼容旧数据的回退路径。
+    // 创作记录必须走鉴权下载接口，避免将已过期的短时媒体链接保存为文件。
     if (card.backendId) {
       return downloadApi(card.backendId)
         .then((blob) => {
           downloadBlob(blob, downloadInfo.filename);
           return true;
         })
-        .catch(() => downloadMediaUrl(downloadInfo.url, downloadInfo.filename));
+        .catch((error) => {
+          showToast(error?.message || '下载失败，请稍后重试', 'error');
+          return false;
+        });
     }
-    return downloadInfo.url
-      ? downloadMediaUrl(downloadInfo.url, downloadInfo.filename)
-      : Promise.resolve(false);
+    showToast('下载信息尚未同步，请刷新后重试', 'error');
+    return Promise.resolve(false);
   }
 
   async function downloadSelected() {
@@ -470,6 +471,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
                     onToggleSelect={() => toggleSelect(card.id)}
                     favorited={isStarred}
                     onToggleFavorite={() => toggleStar(card.id, card.backendId, card.type)}
+                    onDownload={() => downloadCreativeAsset(card)}
                     onDelete={() => deleteSingle(card)}
                   />
                 ) : (

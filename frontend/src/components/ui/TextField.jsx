@@ -97,7 +97,9 @@ export default function TextField({
     };
     if (!multiline) {
       commonProps.onKeyDown = (event) => {
-        if (event.key === 'Enter') event.currentTarget.blur();
+        // 输入法候选阶段的 Enter 仅用于确认文字，不能让输入框提前失焦。
+        const isComposing = event.nativeEvent?.isComposing || event.keyCode === 229;
+        if (event.key === 'Enter' && !isComposing) event.currentTarget.blur();
         inputProps.onKeyDown?.(event);
       };
     }

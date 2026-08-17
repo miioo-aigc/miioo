@@ -10,7 +10,7 @@
  * ─── 数据流与副作用 ───────────────────────────────────────────
  *   generations → allCards                                      生成记录扁平化与最新优先排序
  *   onLoadMore                                                    IntersectionObserver 与视口自动填充
- *   onVideoCardClick / onDeleteCard / toggleFavorite              页面业务回调
+ *   onVideoCardClick / onDownloadCard / onDeleteCard / toggleFavorite 页面业务回调
  *   renderInputCard                                               以渲染回调接入页面内 InputCard，避免反向依赖页面
  *
  * ─── 组件结构 ─────────────────────────────────────────────────
@@ -28,6 +28,7 @@
  *   2026-08-03  尾帧转首帧预填充同步写入预览地址，修复首帧槽位不显示图片
  *   2026-08-03  预览字段改为可枚举，修复文件归一化展开时字段丢失
  *   2026-08-07  结果区输入卡接入配音取消回调，保留再次发送后的提示词并支持失败/取消恢复
+ *   2026-08-17  图片、视频和配音下载统一回调页面正式下载接口
  *   2026-08-07  配音结果纳入图片/视频结果网格：列宽最小 240px、宽度随容器适配、卡片比例 16:9
  */
 
@@ -61,6 +62,7 @@ export default function CreationResultState({
   onToggleSelect,
   onSwitchToFrameMode,
   onVideoCardClick,
+  onDownloadCard,
   favorites,
   toggleFavorite,
   showToast,
@@ -228,6 +230,7 @@ export default function CreationResultState({
                   onToggleSelect={() => onToggleSelect?.(key)}
                   favorited={favorites?.has(key)}
                   onToggleFavorite={() => toggleFavorite?.(key)}
+                  onDownload={() => onDownloadCard?.(card)}
                   onDelete={() => onDeleteCard?.(card.genId, card.cardIndex)}
                 />
               );
@@ -243,6 +246,7 @@ export default function CreationResultState({
                   onCardClick={() => onVideoCardClick?.(card)}
                   favorited={favorites?.has(key)}
                   onToggleFavorite={() => toggleFavorite?.(key)}
+                  onDownload={() => onDownloadCard?.(card)}
                   onReEdit={async () => {
                     let refImages = card.refImages || [];
                     let refVideos = card.refVideos || [];
@@ -302,6 +306,7 @@ export default function CreationResultState({
                 }}
                 favorited={favorites?.has(key)}
                 onToggleFavorite={() => toggleFavorite?.(key)}
+                onDownload={() => onDownloadCard?.(card)}
                 onDelete={() => onDeleteCard?.(card.genId, card.cardIndex)}
               />
             );

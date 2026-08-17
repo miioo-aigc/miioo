@@ -8,13 +8,22 @@
  * ─── 数据边界 ───────────────────────────────────────────────────────
  *   只接收归一化消息和当前流式状态，不调用接口、不持有页面请求状态
  *
+ * ─── 局部展示组件 ─────────────────────────────────────────────────── L33–L116
+ *   AssistantMessageContent 解析 AI 对话消息的 Markdown，并保留剧本换行
+ *   MessageBubble            区分用户与 AI 消息的气泡展示和加载、失败状态
+ *
+ * ─── 组件入口 ─────────────────────────────────────────────────────── L118–278
+ *   ScriptMessageArea        管理消息滚动跟随及长内容悬浮滚动条
+ *
  * ─── 更新记录 ────────────────────────────────────────────────────────
  *   2026-07-27  将用户消息气泡的三个圆角固定为 16px，保留右下角直角
  *   2026-07-27  流式输出期间允许用户上滑查看上下文，离开底部后暂停自动滚动
  *   2026-08-10  手动暂停视为正常状态，保留已输出正文的正常颜色
  *   2026-08-11  对话上下文超过两页时，在屏幕右侧 8px 处显示滚动时可见的悬浮滚动条
+ *   2026-08-17  AI 对话消息改为安全渲染 Markdown，避免格式标记直接展示
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { TextButton } from '../ui';
 import ScriptMessageLoading from './ScriptMessageLoading';
 
@@ -44,6 +53,27 @@ function MiiooMark() {
   );
 }
 
+function AssistantMessageContent({ content }) {
+  return (
+    <ReactMarkdown
+      components={{
+        h1: ({ children, ...props }) => <h1 {...props} style={{ margin: '0px 0px 8px', color: '#FFFFFF', fontFamily: FONT_SEMIBOLD, fontSize: '16px', lineHeight: '22px', fontWeight: 600 }}>{children}</h1>,
+        h2: ({ children, ...props }) => <h2 {...props} style={{ margin: '8px 0px 4px', color: '#FFFFFF', fontFamily: FONT_SEMIBOLD, fontSize: '15px', lineHeight: '21px', fontWeight: 600 }}>{children}</h2>,
+        h3: ({ children, ...props }) => <h3 {...props} style={{ margin: '8px 0px 4px', color: '#FFFFFF', fontFamily: FONT_SEMIBOLD, fontSize: '14px', lineHeight: '20px', fontWeight: 600 }}>{children}</h3>,
+        p: ({ children, ...props }) => <p {...props} style={{ margin: '0px 0px 4px', whiteSpace: 'pre-wrap' }}>{children}</p>,
+        strong: ({ children, ...props }) => <strong {...props} style={{ color: '#FFFFFF', fontFamily: FONT_SEMIBOLD, fontWeight: 600 }}>{children}</strong>,
+        ul: ({ children, ...props }) => <ul {...props} style={{ margin: '0px 0px 4px', paddingLeft: '20px', whiteSpace: 'pre-wrap' }}>{children}</ul>,
+        ol: ({ children, ...props }) => <ol {...props} style={{ margin: '0px 0px 4px', paddingLeft: '20px', whiteSpace: 'pre-wrap' }}>{children}</ol>,
+        li: ({ children, ...props }) => <li {...props} style={{ margin: '2px 0px' }}>{children}</li>,
+        blockquote: ({ children, ...props }) => <blockquote {...props} style={{ margin: '4px 0px', paddingLeft: '8px', borderLeft: '2px solid #FFFFFF33', color: '#FFFFFFB3', whiteSpace: 'pre-wrap' }}>{children}</blockquote>,
+        code: ({ children, ...props }) => <code {...props} style={{ padding: '1px 4px', borderRadius: '4px', background: '#FFFFFF14', fontFamily: 'monospace', fontSize: '13px' }}>{children}</code>,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
+
 function MessageBubble({ message, isActive }) {
   const isUser = message.role === 'user';
   const isError = message.status === 'failed';
@@ -56,8 +86,8 @@ function MessageBubble({ message, isActive }) {
           <MiiooMark />
           <span style={{ color: '#FFFFFFB3', fontFamily: FONT_SEMIBOLD, fontSize: '14px', lineHeight: '18px', fontWeight: 600 }}>Miioo</span>
         </div>
-        <div style={{ alignSelf: 'stretch', paddingLeft: '32px', color: isError ? '#F75F5F' : '#FFFFFF', fontFamily: FONT, fontSize: '14px', lineHeight: '20px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-          {showLoading ? <ScriptMessageLoading /> : message.content || (isError ? (message.errorMessage || '本次创作未完成') : '')}
+        <div style={{ alignSelf: 'stretch', paddingLeft: '32px', color: isError ? '#F75F5F' : '#FFFFFF', fontFamily: FONT, fontSize: '14px', lineHeight: '20px', overflowWrap: 'anywhere' }}>
+          {showLoading ? <ScriptMessageLoading /> : (message.content ? <AssistantMessageContent content={message.content} /> : (isError ? (message.errorMessage || '本次创作未完成') : ''))}
         </div>
       </div>
     );

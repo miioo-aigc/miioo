@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { apiGetNotifications, apiMarkAllNotificationsRead } from '../api/user';
+import { apiGetNotifications } from '../api/user';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -65,25 +65,33 @@ function NotificationCard({ item, onOpenDetail }) {
       onMouseUp={() => setPressed(false)}
     >
       <div className="flex flex-col items-start gap-[4px] flex-1 min-w-0">
-        <div className="flex items-center gap-[6px] w-full min-w-0">
-          <div
-            className="truncate text-sm leading-[18px]"
-            style={{
-              fontFamily: FONT_MEDIUM,
-              fontWeight: 500,
-              color: isUnread ? '#FFFFFF' : '#FFFFFFB3',
-              transition: 'color 150ms',
-            }}
-          >
-            {item.title}
+        <div className="flex items-center justify-between w-full min-w-0 gap-[12px]">
+          <div className="flex items-center min-w-0 gap-[6px]">
+            <div
+              className="truncate text-sm leading-[18px]"
+              style={{
+                fontFamily: FONT_MEDIUM,
+                fontWeight: 500,
+                color: isUnread ? '#FFFFFF' : '#FFFFFFB3',
+                transition: 'color 150ms',
+              }}
+            >
+              {item.title}
+            </div>
+            {isUnread && (
+              <span
+                className="shrink-0 w-[5px] h-[5px] rounded-full"
+                style={{ backgroundColor: '#7AE5B9' }}
+                aria-label="未读"
+              />
+            )}
           </div>
-          {isUnread && (
-            <span
-              className="shrink-0 w-[5px] h-[5px] rounded-full"
-              style={{ backgroundColor: '#7AE5B9' }}
-              aria-label="未读"
-            />
-          )}
+          <time
+            className="shrink-0 text-[12px] leading-[16px]"
+            style={{ fontFamily: FONT, color: '#FFFFFF66' }}
+          >
+            {item.created_at}
+          </time>
         </div>
         <div
           className="self-stretch text-sm leading-[20px]"
@@ -99,16 +107,6 @@ function NotificationCard({ item, onOpenDetail }) {
         >
           {item.content}
         </div>
-      </div>
-      <div
-        className="shrink-0 text-xs leading-[16px]"
-        style={{
-          fontFamily: FONT,
-          color: isUnread ? '#FFFFFF66' : '#FFFFFF33',
-          transition: 'color 150ms',
-        }}
-      >
-        {item.time}
       </div>
     </button>
   );
@@ -168,7 +166,7 @@ function NotificationDetailModal({ item, onClose }) {
         <div className="flex items-center gap-[16px] justify-between bg-surface-modal py-[16px] px-[24px] rounded-b-large">
           <div className="flex flex-1 items-center">
             <div className="flex-1 font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF66] text-xs leading-[16px]">
-              {item.time}
+              {item.created_at}
             </div>
             <button
               type="button"
@@ -220,17 +218,6 @@ export default function NotificationCenterModal({ open, onClose, showToast }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadNotifications();
   }, [open, loadNotifications]);
-
-  const handleMarkAllRead = async () => {
-    try {
-      await apiMarkAllNotificationsRead();
-      showToast?.('已全部标记为已读', 'success');
-      loadNotifications();
-    } catch (error) {
-      console.error('一键已读失败:', error);
-      showToast?.('操作失败', 'warning');
-    }
-  };
 
   const handleTabClick = (tab) => {
     if (tab === 'team') {
@@ -307,19 +294,6 @@ export default function NotificationCenterModal({ open, onClose, showToast }) {
               <span className="text-btn-primary-text text-font-size-14 font-font-weight-regular" style={{ fontFamily: FONT }}>
                 关闭
               </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleMarkAllRead}
-              className="flex flex-col h-[36px] shrink-0 rounded-medium [box-shadow:var(--color-shadow)_3px_3px_8px] [outline:1px_solid_var(--color-stroke-outline)] outline-offset-0 p-px cursor-pointer border-0"
-              style={{ backgroundImage: 'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 30%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, #FFFFFF14, #FFFFFF14)' }}
-            >
-              <div className="flex items-center grow shrink basis-[0%] rounded-[7px] px-[16px] gap-[4px] bg-btn-primary-bg-normal hover:bg-btn-primary-bg-hover active:bg-btn-primary-bg-active">
-                <span className="text-text-primary text-font-size-14 font-font-weight-regular" style={{ fontFamily: FONT }}>
-                  一键已读
-                </span>
-              </div>
             </button>
           </div>
         </div>

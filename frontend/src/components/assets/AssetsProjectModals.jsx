@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Button, IconButton, TextField } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -63,6 +64,16 @@ export function AssetsProjectRenameModal({
   confirming = false,
 }) {
   const canConfirm = Boolean(value.trim());
+  const isComposingRef = useRef(false);
+
+  const handleNameKeyDown = (event) => {
+    // 中文输入法确认候选词时同样会触发 Enter，不能把它当成弹窗确认操作。
+    const isComposing = isComposingRef.current || event.nativeEvent?.isComposing || event.keyCode === 229;
+    if (isComposing) return;
+
+    if (event.key === 'Enter' && canConfirm && !confirming) onConfirm();
+    if (event.key === 'Escape') onClose();
+  };
 
   return (
     <ModalShell onClose={onClose} width="400px">
@@ -85,10 +96,9 @@ export function AssetsProjectRenameModal({
               const nextName = typeof nextValue === 'string' ? nextValue : nextValue?.target?.value || '';
               onChange(nextName);
             }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') onConfirm();
-              if (event.key === 'Escape') onClose();
-            }}
+            onCompositionStart={() => { isComposingRef.current = true; }}
+            onCompositionEnd={() => { isComposingRef.current = false; }}
+            onKeyDown={handleNameKeyDown}
             wrapperClassName="!gap-0"
             inputClassName="!font-normal !caret-[#2DC3E1]"
           />

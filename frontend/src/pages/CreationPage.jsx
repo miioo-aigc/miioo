@@ -11,15 +11,15 @@
  *   刷新任务快照、占位卡片和轮询结果适配                   utils/creationTaskAdapter.js
  *   视频详情 asset_bindings 适配和详情卡片合并                    utils/creationDetailAdapter.js
  *
- * ─── 页面入口与状态编排 ──────────────────────────────── L123–L596
+ * ─── 页面入口与状态编排 ──────────────────────────────── L123–L657
  *   CreationPage 状态、Store、历史缓存和分页                       L123–L268
  *   Session 初始化、刷新任务恢复和收藏动作                           L271–L385
- *   模型能力、参数加载、Tab 和批量操作                               L387–L562
- *   useCreationGeneration 生成请求、占位卡和结果写回                  L562–L577
- *   模型入口检查、输入卡渲染和视频详情回调                            L579–L598
+ *   模型能力、参数加载、Tab、批量操作和正式下载                       L387–L572
+ *   useCreationGeneration 生成请求、占位卡和结果写回                  L575–L590
+ *   模型入口检查、输入卡渲染和视频详情回调                            L592–L657
  *   CreationInputCard 已迁移至 components/creation/，页面通过 renderInputCard 显式接入
  *
- * ─── 页面渲染结构 ────────────────────────────────────── L601–L712
+ * ─── 页面渲染结构 ────────────────────────────────────── L660–L758
  *   CreationPageOverlays（确认弹窗和视频详情 Portal）         components/creation/CreationPageOverlays.jsx
  *   CreationWorkspace（主体卡片、工具栏和结果/空态组合）       components/creation/CreationWorkspace.jsx
  *   CreationToast（Toast 展示）                              components/creation/CreationToast.jsx
@@ -40,7 +40,7 @@
  *   creationTaskAdapter 只负责刷新任务快照、占位 generation 和轮询结果字段适配；不调用 API、Store、缓存、Toast 或 React 状态。
  *   CreationPageOverlays 只负责确认弹窗和视频详情 Portal 的展示组合；下载、删除、收藏和历史清理通过显式回调回到页面。
  *   creationDetailAdapter 只负责视频详情素材字段转换和轻量卡片合并；不调用 API、Store、缓存或 React 状态。
- *   downloadMediaUrl 只负责媒体 URL 的 Blob 下载和失败回退；页面继续决定文件名和触发时机。
+ *   创作下载由页面按卡片记录 ID 调用正式下载接口；直链兼容工具只用于非创作记录。
  *
  * ─── 更新记录 ───────────────────────────────────────────
  *   2026-05-28  初始结构索引建立
@@ -76,7 +76,7 @@
  *   2026-07-16  抽离 creationDetailAdapter；页面保留详情 API 请求、弹窗状态和错误提示副作用
  *   2026-07-16  统一结果区与空态的模型入口和 InputCard 渲染回调，避免重复接线
  *   2026-07-17  抽离 CreationWorkspace；页面保留状态、副作用和所有显式回调接线
- *   2026-07-17  复用 downloadMediaUrl，统一图片/视频 Blob 下载和失败回退生命周期
+ *   2026-08-17  创作下载统一改用图片/视频/音频正式下载接口，阻止过期令牌响应被保存为媒体文件
  *   2026-07-29  图片创作结果与历史记录按媒体地址去重，避免同图重复展示并保留创作提示词
  *   2026-08-03  抽离 useCreationGeneration；页面保留生成依赖、计数和区块接线，生成流程行为保持不变
  *   2026-08-07  配音生成接入 600 秒轮询上限、提示词保留和再次点击发送停止前端请求/轮询
@@ -84,7 +84,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { apiPollCreationTask, apiPollCreationMusicTask, apiGetCreationVideo, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory } from '../api/creation';
+import { apiPollCreationTask, apiPollCreationMusicTask, apiGetCreationVideo, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { apiListModels } from '../api/config';
 import { adaptModels, getModelParams } from '../utils/modelAdapter';
@@ -111,7 +111,7 @@ import {
   useCreationGeneration,
 } from '../components/creation';
 import { filenameFromPrompt } from '../utils/creationFilename';
-import { downloadMediaUrl } from '../utils/downloadMediaUrl';
+import { downloadBlob } from '../utils/downloadBlob';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -522,27 +522,41 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     setSelected(new Set());
   }
 
-  function downloadSelected() {
-    [...generations].reverse().forEach((gen) => {
-      gen.cards.forEach((card, i) => {
-        const key = `${gen.id}-${i}`;
-        if (selected.has(key)) {
-          if (card.imageUrl) downloadMediaUrl(card.originalUrl || card.imageUrl, filenameFromPrompt(card.prompt, 'png'));
-          if (card.audioUrl && !card.imageUrl && !card.videoUrl) {
-            const a = document.createElement('a');
-            a.href = card.audioUrl;
-            a.download = filenameFromPrompt(card.prompt, 'wav', 'dubbing');
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-          }
-          if (card.videoUrl) {
-            // 下载视频
-            downloadMediaUrl(card.videoUrl, filenameFromPrompt(card.prompt, 'mp4'));
-          }
-        }
-      });
-    });
+  async function handleDownloadCard(card) {
+    const cardId = card?.id || card?.audioId || card?.backendId;
+    if (!cardId) {
+      showToast('error', '下载信息尚未同步，请刷新后重试');
+      return false;
+    }
+
+    const isAudio = card.type === 'audio' || (card.audioUrl && !card.imageUrl && !card.videoUrl);
+    const downloadApi = card.type === 'video' || card.videoUrl
+      ? apiDownloadCreationVideo
+      : isAudio
+        ? apiDownloadCreationAudio
+        : apiDownloadCreationImage;
+    const extension = card.type === 'video' || card.videoUrl ? 'mp4' : isAudio ? 'mp3' : 'png';
+
+    try {
+      const blob = await downloadApi(cardId);
+      downloadBlob(blob, filenameFromPrompt(card.prompt, extension, isAudio ? 'dubbing' : undefined));
+      return true;
+    } catch (error) {
+      console.error('[CreationPage] 创作下载失败:', error);
+      showToast('error', error?.message || '下载失败，请稍后重试');
+      return false;
+    }
+  }
+
+  async function downloadSelected() {
+    const selectedCards = [...generations].reverse().flatMap((gen) =>
+      gen.cards
+        .map((card, index) => ({ ...card, prompt: gen.prompt, key: `${gen.id}-${index}` }))
+        .filter((card) => selected.has(card.key))
+    );
+    for (const card of selectedCards) {
+      await handleDownloadCard(card);
+    }
   }
 
   function toggleSelect(key) {
@@ -688,9 +702,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         onClearHistoryCancel={() => setClearHistoryConfirm(false)}
         videoDetail={videoDetailModal}
         onVideoDetailClose={() => setVideoDetailModal(null)}
-        onVideoDetailDownload={() => {
-          downloadMediaUrl(videoDetailModal.videoUrl, filenameFromPrompt(videoDetailModal.prompt, 'mp4'));
-        }}
+        onVideoDetailDownload={() => handleDownloadCard(videoDetailModal)}
         onVideoDetailDelete={() => {
           handleDeleteCard(videoDetailModal.genId, videoDetailModal.cardIndex);
           setVideoDetailModal(null);
@@ -728,6 +740,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         onToggleSelect={toggleSelect}
         onSwitchToFrameMode={handleSwitchToFrameMode}
         onVideoCardClick={handleVideoCardClick}
+        onDownloadCard={handleDownloadCard}
         favorites={favorites}
         toggleFavorite={handleToggleFavorite}
         showToast={showToast}

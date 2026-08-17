@@ -12,11 +12,11 @@
  *
  * ─── 依赖边界 ──────────────────────────────────────────────────
  *   只通过 props 接收图片数据和业务回调；不读取 CreationPage 闭包变量
- *   图片下载、详情展示和确认弹窗属于创作域展示交互，不调用业务 API
+ *   图片下载通过 onDownload 回调回到页面；详情展示和确认弹窗不调用业务 API
  *
  * ─── 更新记录 ──────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离图片结果卡片及图片详情弹窗；页面通过显式 props 注入业务回调
- *   2026-07-16  复用 utils/creationFilename.js；下载副作用仍保留在结果卡
+ *   2026-08-17  下载统一透传页面正式下载回调，详情弹窗不再请求短时媒体链接
  */
 
 import { useModalSize } from '../../utils/useModalSize';
@@ -25,8 +25,6 @@ import { useState } from 'react';
 import ConfirmDialog from '../ConfirmDialog';
 import DotsLoading from '../DotsLoading';
 import CreationCardActionButton from './CreationCardActionButton';
-import { filenameFromPrompt } from '../../utils/creationFilename';
-import { downloadMediaUrl } from '../../utils/downloadMediaUrl';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -97,7 +95,7 @@ const DETAIL_PANEL_DIVIDER = (
   <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px', flexShrink: 0 }} />
 );
 
-function ImageDetailModal({ card, onClose, onDelete, favorited, onToggleFavorite }) {
+function ImageDetailModal({ card, onClose, onDelete, onDownload, favorited, onToggleFavorite }) {
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const [starAnim, setStarAnim] = useState(false);
   const [closeHovered, setCloseHovered] = useState(false);
@@ -168,7 +166,7 @@ function ImageDetailModal({ card, onClose, onDelete, favorited, onToggleFavorite
 
                 <div style={{ position: 'absolute', bottom: 0, left: 0, width: '280px', display: 'flex', gap: '8px', padding: '16px 20px 20px', flexShrink: 0, backgroundColor: '#161616' }}>
                   <ModalActionBtn label="收藏" onClick={handleStarClick} icon={<div style={{ transform: starAnim ? 'scale(1.4)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', display: 'flex' }}><StarIcon filled={favorited} strokeColor="rgba(255,255,255,0.6)" /></div>} />
-                  <ModalActionBtn label="下载" onClick={() => downloadMediaUrl(card.downloadUrl || card.originalUrl || card.imageUrl, filenameFromPrompt(card.prompt, 'png'))} icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8.003 11.3V2" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 14H12" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /></svg>} />
+                  <ModalActionBtn label="下载" onClick={onDownload} icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8.003 11.3V2" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 14H12" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /></svg>} />
                   <ModalActionBtn label="删除" onClick={() => setConfirmDelete(true)} icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3.333V14.667H13V3.333H3Z" stroke="#FFFFFF99" strokeLinejoin="round" /><path d="M6.667 6.667V11" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M9.333 6.667V11" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M1.333 3.333H14.667" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" /><path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#FFFFFF99" strokeLinejoin="round" /></svg>} />
                 </div>
               </div>
@@ -183,9 +181,8 @@ function ImageDetailModal({ card, onClose, onDelete, favorited, onToggleFavorite
   );
 }
 
-export default function CreationImageResultCard({ status, imageUrl, originalUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt, onReEdit, onUseAsRef, onDelete, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
+export default function CreationImageResultCard({ status, imageUrl, originalUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt, onReEdit, onUseAsRef, onDownload, onDelete, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
   // 下载和详情弹窗使用原图；缩略图仅用于卡片显示
-  const downloadUrl = originalUrl || imageUrl;
   const [hovered, setHovered] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
@@ -211,14 +208,14 @@ export default function CreationImageResultCard({ status, imageUrl, originalUrl,
           <div style={{ position: 'absolute', bottom: '8px', right: '8px', display: 'flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
             <CreationCardActionButton tooltip="重新编辑" onClick={() => onReEdit?.()} icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.333 14H14.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M3.667 8.907V11.333H6.106L13 4.436L10.565 2L3.667 8.907Z" stroke="#FFFFFF" strokeLinejoin="round" /></svg>} />
             <CreationCardActionButton tooltip="用作参考图" onClick={() => onUseAsRef?.()} icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12.667 7V13.333C12.667 13.702 12.368 14 12 14H2.667C2.298 14 2 13.702 2 13.333V4C2 3.632 2.298 3.333 2.667 3.333H8.788" stroke="#FFFFFF" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 10.344L6 7.667L7 8.667L8.167 6.833L10.667 10.344H4Z" stroke="#FFFFFF" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round" /><path d="M11.334 3.333H14.001M12.664 1.932V4.598" stroke="#FFFFFF" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round" /></svg>} />
-            <CreationCardActionButton tooltip="下载" onClick={() => downloadMediaUrl(downloadUrl, filenameFromPrompt(prompt, 'png'))} icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8.003 11.3V2" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 14H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /></svg>} />
+            <CreationCardActionButton tooltip="下载" onClick={onDownload} icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8.003 11.3V2" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 14H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /></svg>} />
             <CreationCardActionButton tooltip="删除" onClick={() => setConfirmDelete(true)} icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3.333V14.667H13V3.333H3Z" stroke="#FFFFFF" strokeLinejoin="round" /><path d="M6.667 6.667V11M9.333 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M1.333 3.333H14.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#FFFFFF" strokeLinejoin="round" /></svg>} />
           </div>
         </>}
       </div>
 
       {confirmDelete && <ConfirmDialog title="确认删除" description="删除后无法恢复，确定要删除这张图片吗？" confirmText="删除" onConfirm={() => { setConfirmDelete(false); onDelete?.(); }} onCancel={() => setConfirmDelete(false)} zIndex={1100} />}
-      {detailOpen && <ImageDetailModal card={{ imageUrl, downloadUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt }} onClose={() => setDetailOpen(false)} onDelete={onDelete} favorited={favorited} onToggleFavorite={() => onToggleFavorite?.()} />}
+      {detailOpen && <ImageDetailModal card={{ imageUrl, originalUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt }} onClose={() => setDetailOpen(false)} onDelete={onDelete} onDownload={onDownload} favorited={favorited} onToggleFavorite={() => onToggleFavorite?.()} />}
     </>
   );
 }

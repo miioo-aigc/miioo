@@ -12,10 +12,9 @@
  *
  * ─── 副作用 ────────────────────────────────────────────────────
  *   playing + isDone                                             播放、暂停并重置音频
- *   下载                                                         fetch/blob/浏览器回退打开
  *
  * ─── 依赖边界 ──────────────────────────────────────────────────
- *   只通过 props 接收配音数据和删除/批量选择回调；不读取 CreationPage 闭包变量
+ *   只通过 props 接收配音数据和下载/删除/批量选择回调；不读取 CreationPage 闭包变量
  *
  * ─── 更新记录 ──────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离配音结果卡；页面通过显式 props 注入业务回调
@@ -25,16 +24,13 @@
  *   2026-08-10  配音卡内部改为提示词顶部、播放控制底部的样式；播放结束自动恢复三角形
  *   2026-08-10  恢复播放时波形动画，悬停操作按钮与播放按钮垂直对齐
  *   2026-08-14  新增右上角悬停收藏按钮，与图片/视频卡片位置和交互统一
+ *   2026-08-17  下载统一透传页面正式下载回调，结果卡不再回退短时媒体链接
  */
 
 import { useEffect, useRef, useState } from 'react';
 import ConfirmDialog from '../ConfirmDialog';
 import DotsLoading from '../DotsLoading';
 import CreationCardActionButton from './CreationCardActionButton';
-import { filenameFromPrompt } from '../../utils/creationFilename';
-import { downloadMediaUrl } from '../../utils/downloadMediaUrl';
-import { apiDownloadCreationAudio } from '../../api/creation';
-import { downloadBlob } from '../../utils/downloadBlob';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const WAVEFORM_HEIGHTS = [
@@ -58,7 +54,7 @@ function StarIcon({ filled = false, strokeColor = '#FFFFFF' }) {
   );
 }
 
-export default function CreationAudioResultCard({ status, audioUrl, audioId, prompt, onDelete, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
+export default function CreationAudioResultCard({ status, audioUrl, prompt, onDownload, onDelete, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
   const [hovered, setHovered] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
@@ -66,19 +62,6 @@ export default function CreationAudioResultCard({ status, audioUrl, audioId, pro
   const audioRef = useRef(null);
 
   const isDone = status === 'done' && audioUrl;
-
-  const handleDownload = async () => {
-    if (audioId) {
-      try {
-        const blob = await apiDownloadCreationAudio(audioId);
-        downloadBlob(blob, filenameFromPrompt(prompt, 'mp3'));
-        return;
-      } catch {
-        // 鉴权下载失败时回退到结果地址，避免已可播放的音频无法下载。
-      }
-    }
-    await downloadMediaUrl(audioUrl, filenameFromPrompt(prompt, 'mp3'));
-  };
 
   function handleStarClick(e) {
     e.stopPropagation();
@@ -188,7 +171,7 @@ export default function CreationAudioResultCard({ status, audioUrl, audioId, pro
             <div style={{ position: 'absolute', bottom: '20px', right: '8px', display: 'flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
               <CreationCardActionButton
                 tooltip="下载"
-                onClick={handleDownload}
+                onClick={onDownload}
                 icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8.003 11.3V2" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 14H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /></svg>}
               />
               <CreationCardActionButton

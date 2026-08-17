@@ -10,6 +10,7 @@
  *   页面通过显式参数传入 Session、Store、Toast 和并发计数动作；
  *   Hook 不读取 CreationPage 闭包，不管理页面级状态或历史加载；
  *   取消只中断前端请求和轮询，后端任务是否停止取决于后端取消能力。
+ *   完成卡写入图片、视频和配音记录 ID，供页面调用正式下载接口。
  */
 
 import { useCallback, useRef } from 'react';
@@ -216,7 +217,7 @@ function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, i
     lastFrameUrl: result.lastFrameUrl || undefined,
     createdAt: genMeta.createdAt,
     cards: mediaUrls.map((url, index) => ({
-      id: isAudioGen ? (audioIds?.[index] || null) : null,
+      id: isAudioGen ? (audioIds?.[index] || null) : (result.cardIds?.[index] || null),
       type: isVideoGen ? 'video' : isAudioGen ? 'audio' : 'image',
       status: 'done',
       imageUrl: isAudioGen ? null : (isVideoGen ? null : url),

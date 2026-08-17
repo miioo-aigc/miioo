@@ -12,19 +12,16 @@
  *
  * ─── 副作用 ────────────────────────────────────────────────────
  *   hovered + isDone                                            悬停播放/离开重置视频
- *   下载                                                        fetch/blob/浏览器回退打开
  *
  * ─── 更新记录 ──────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离视频结果卡片；页面通过显式 props 注入业务回调
- *   2026-07-16  复用 utils/creationFilename.js；下载副作用仍保留在结果卡
+ *   2026-08-17  下载统一透传页面正式下载回调，结果卡不再请求短时媒体链接
  */
 
 import { useEffect, useRef, useState } from 'react';
 import ConfirmDialog from '../ConfirmDialog';
 import DotsLoading from '../DotsLoading';
 import CreationCardActionButton from './CreationCardActionButton';
-import { filenameFromPrompt } from '../../utils/creationFilename';
-import { downloadMediaUrl } from '../../utils/downloadMediaUrl';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -42,7 +39,7 @@ function StarIcon({ filled = false, strokeColor = '#FFFFFF' }) {
   );
 }
 
-export default function CreationVideoResultCard({ status, videoUrl, prompt, onReEdit, onUseAsFirstFrame, onDelete, onCardClick, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
+export default function CreationVideoResultCard({ status, videoUrl, onReEdit, onUseAsFirstFrame, onDownload, onDelete, onCardClick, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
 
   const [hovered, setHovered] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
@@ -178,7 +175,7 @@ export default function CreationVideoResultCard({ status, videoUrl, prompt, onRe
              />
               <CreationCardActionButton
                 tooltip="下载"
-                onClick={() => downloadMediaUrl(videoUrl, filenameFromPrompt(prompt, 'mp4'))}
+                onClick={onDownload}
                 icon={
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path d="M8.003 11.3V2" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />

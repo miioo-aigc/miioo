@@ -153,15 +153,12 @@ function hasBackendStoryboardIds(items) {
   ));
 }
 
-function isSeedanceReference(ref) {
-  return Boolean(
-    ref?.isLiveMaterial
-    || ref?.isAigcMaterial
-    || ref?.isSeedanceMaterial
-    || ref?.isSeedanceCertifiedMaterial
-    || ref?.assetRefUrl
-    || ref?.asset_ref_url,
-  );
+function needsLiveMaterialPreview(ref) {
+  const isLiveMaterial = ref?.isLiveMaterial === true || ref?.is_live_material === true;
+  const isAigcMaterial = ref?.isAigcMaterial === true || ref?.is_aigc_material === true;
+  const hasAssetRefUrl = Boolean(ref?.assetRefUrl || ref?.asset_ref_url);
+  const assetId = ref?.assetId || ref?.asset_id;
+  return isLiveMaterial && !isAigcMaterial && !hasAssetRefUrl && Boolean(assetId);
 }
 
 function applySeedancePreviewToShot(shot, assetId, previewUrl, detail = {}) {
@@ -1167,7 +1164,7 @@ function hasStoryboardMediaHint(shot = {}) {
   useEffect(() => {
     const pendingAssetIds = [...new Set(shots
       .flatMap((shot) => shot.mainRefs || [])
-      .filter((ref) => isSeedanceReference(ref))
+      .filter((ref) => needsLiveMaterialPreview(ref))
       .map((ref) => ref.assetId || ref.asset_id || ref.id)
       .filter((assetId) => (
         assetId

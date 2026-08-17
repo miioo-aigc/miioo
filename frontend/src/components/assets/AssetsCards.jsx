@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { apiGetAssetDetail, apiGetShotDetail, apiGetShotVideoDetail } from '../../api/assets';
+import { apiGetCreationVideo } from '../../api/creation';
+import { mergeCreationVideoDetail } from '../../utils/creationDetailAdapter';
 import ImageDetailModal from '../ImageDetailModal';
 import AssetsMoreMenu from './AssetsMoreMenu';
 import AssetCardMedia from './AssetCardMedia';
@@ -18,12 +20,26 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
   const [starAnim, setStarAnim] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailData, setDetailData] = useState(null);
+  const [creativeDetailAsset, setCreativeDetailAsset] = useState(null);
 
   function handleOpen() {
     if (batchMode) { onSelect?.(); return; }
-    // 创作资产：直接用 card 数据打开详情弹窗，不调 API
+    // 创作视频列表是轻量摘要；打开后用详情接口补全参考素材。
     if (asset.type === 'image' || asset.type === 'video') {
+      setCreativeDetailAsset(asset);
       setDetailOpen(true);
+      if (asset.type === 'video' && asset.backendId) {
+        const backendId = asset.backendId;
+        apiGetCreationVideo(backendId)
+          .then((detail) => {
+            setCreativeDetailAsset((current) => current?.backendId === backendId
+              ? mergeCreationVideoDetail(current, detail)
+              : current);
+          })
+          .catch((error) => {
+            console.warn('[AssetsCards] 创作视频详情加载失败，保留列表摘要展示', error);
+          });
+      }
       return;
     }
     const id = asset.id;
@@ -92,14 +108,14 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
         refImages={detailData?.refImages}
       />
     )}
-    {detailOpen && (asset.type === 'image' || asset.type === 'video') && (
+    {detailOpen && creativeDetailAsset && (asset.type === 'image' || asset.type === 'video') && (
       <AssetCardCreativeDetail
-        asset={asset}
+        asset={creativeDetailAsset}
         url={url}
         starred={starred}
-        onClose={() => setDetailOpen(false)}
+        onClose={() => { setDetailOpen(false); setCreativeDetailAsset(null); }}
         onDownload={onDownload}
-        onDelete={() => { setDetailOpen(false); onDelete?.(); }}
+        onDelete={() => { setDetailOpen(false); setCreativeDetailAsset(null); onDelete?.(); }}
         onFavorite={() => onStar?.()}
       />
     )}

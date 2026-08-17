@@ -73,15 +73,17 @@ export default function WechatOfficialQr({ authUrl, onReady, onError, containerI
       try {
         await loadWxScript();
 
+        // 脚本加载期间组件可能因切换登录方式或请求失败而卸载。
+        if (!containerRef.current) return;
+
         // 清空容器
-        if (containerRef.current) {
-          containerRef.current.innerHTML = '';
-        }
+        const container = containerRef.current;
+        container.innerHTML = '';
 
         // 通过 WxLogin 渲染二维码
         wxLoginInstanceRef.current = new window.WxLogin({
           self_redirect: true,
-          id: containerRef.current.id,
+          id: container.id,
           appid,
           redirect_uri,
           state,
@@ -91,12 +93,12 @@ export default function WechatOfficialQr({ authUrl, onReady, onError, containerI
         });
 
         // 监听 iframe 插入，自适应容器大小
-        if (containerRef.current) {
+        if (containerRef.current === container) {
           const fitIframe = () => {
-            const iframe = containerRef.current.querySelector('iframe');
+            const iframe = container.querySelector('iframe');
             if (iframe) {
-              const containerWidth = containerRef.current.offsetWidth;
-              const containerHeight = containerRef.current.offsetHeight;
+              const containerWidth = container.offsetWidth;
+              const containerHeight = container.offsetHeight;
               
               // WxLogin 默认内容尺寸约 300×400
               const originalWidth = 300;
@@ -132,7 +134,7 @@ export default function WechatOfficialQr({ authUrl, onReady, onError, containerI
                 observerRef.current = null;
               }
             });
-            observerRef.current.observe(containerRef.current, {
+            observerRef.current.observe(container, {
               childList: true,
               subtree: true,
             });

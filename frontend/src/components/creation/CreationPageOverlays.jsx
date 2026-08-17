@@ -69,6 +69,8 @@ export default function CreationPageOverlays({
           refImages={videoDetail.refImages}
           refVideos={videoDetail.refVideos}
           refAudios={videoDetail.refAudios}
+          firstFrame={videoDetail.firstFrame || videoDetail.firstFrameUrl}
+          lastFrame={videoDetail.lastFrame || videoDetail.lastFrameUrl}
           createdAt={videoDetail.createdAt}
           onClose={onVideoDetailClose}
           onDownload={onVideoDetailDownload}

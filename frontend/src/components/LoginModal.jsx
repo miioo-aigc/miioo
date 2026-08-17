@@ -488,6 +488,11 @@ function WechatView({ onBackToPhone, onLoginSuccess, onNeedBind, onShowToast, on
   const [authUrl, setAuthUrl] = useState('');
   const qrcodeIdRef = useRef('');
   const pollingRef = useRef(null);
+  const handleQrReady = useCallback(() => {}, []);
+  const handleQrError = useCallback((err) => {
+    console.error('[WechatOfficialQr] 渲染失败:', err);
+    setQrStatus('error');
+  }, []);
 
   // 保持 agreedRef 与 agreed state 同步，供轮询回调读取最新值
   useEffect(() => { agreedRef.current = agreed; }, [agreed]);
@@ -538,6 +543,9 @@ function WechatView({ onBackToPhone, onLoginSuccess, onNeedBind, onShowToast, on
     setAuthUrl('');
     try {
       const data = await apiGetWechatQrCode();
+      if (!data?.qrcode_id || !data?.raw_qr_code_value) {
+        throw new Error('二维码接口返回数据不完整');
+      }
       qrcodeIdRef.current = data.qrcode_id;
       onSessionId?.(data.qrcode_id);
       setAuthUrl(data.raw_qr_code_value);
@@ -585,11 +593,8 @@ function WechatView({ onBackToPhone, onLoginSuccess, onNeedBind, onShowToast, on
             {qrStatus !== 'loading' && qrStatus !== 'error' && qrStatus !== 'expired' && (
               <WechatOfficialQr
                 authUrl={authUrl}
-                onReady={() => {}}
-                onError={(err) => {
-                  console.error('[WechatOfficialQr] 渲染失败:', err);
-                  setQrStatus('error');
-                }}
+                onReady={handleQrReady}
+                onError={handleQrError}
               />
             )}
             {qrStatus === 'loading' && (
@@ -821,11 +826,11 @@ export default function LoginModal({ open, onClose, onSuccess }) {
   const wechatSessionIdRef = useRef('');
   const [wechatSessionId, setWechatSessionId] = useState('');
 
-  const showToast = (type, message) => {
+  const showToast = useCallback((type, message) => {
     const id = Date.now();
     setToasts((prev) => [...prev, { id, type, message }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
-  };
+  }, []);
 
   const handleClose = useCallback(() => {
     onClose();
@@ -838,15 +843,20 @@ export default function LoginModal({ open, onClose, onSuccess }) {
     }, 0);
   }, [onClose]);
 
-  const handleLoginSuccess = () => {
+  const handleLoginSuccess = useCallback(() => {
     onSuccess?.();
     handleClose();
-  };
+  }, [handleClose, onSuccess]);
 
-  const handleNeedBind = (token) => {
+  const handleNeedBind = useCallback((token) => {
     setBindToken(token);
     setStep('bind');
-  };
+  }, []);
+
+  const handleWechatSessionId = useCallback((id) => {
+    wechatSessionIdRef.current = id;
+    setWechatSessionId(id);
+  }, []);
 
   // 监听来自首页（iframe 父窗口）的微信回调完成消息
   useEffect(() => {
@@ -880,7 +890,7 @@ export default function LoginModal({ open, onClose, onSuccess }) {
 
     window.addEventListener('message', handleWechatCallbackMessage);
     return () => window.removeEventListener('message', handleWechatCallbackMessage);
-  }, [handleClose, onSuccess]);
+  }, [handleClose, onSuccess, showToast]);
 
   if (!open) return <Toast toasts={toasts} />;
 
@@ -919,7 +929,7 @@ export default function LoginModal({ open, onClose, onSuccess }) {
           ) : tab === 'phone' ? (
             <PhoneLoginView onLogin={handleLoginSuccess} onChangeTab={setTab} onShowToast={showToast} />
           ) : (
-            <WechatView onBackToPhone={() => setTab('phone')} onLoginSuccess={handleLoginSuccess} onNeedBind={handleNeedBind} onShowToast={showToast} onSessionId={(id) => { wechatSessionIdRef.current = id; setWechatSessionId(id); }} />
+            <WechatView onBackToPhone={() => setTab('phone')} onLoginSuccess={handleLoginSuccess} onNeedBind={handleNeedBind} onShowToast={showToast} onSessionId={handleWechatSessionId} />
           )}
         </div>
       </div>

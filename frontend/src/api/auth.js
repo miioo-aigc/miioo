@@ -87,13 +87,24 @@ export async function apiGetWechatQrCode() {
     };
   }
   const res = await fetch(`${BASE}/api/auth/wechat/qrcode`);
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { const body = await res.json(); detail = body?.detail || body?.message || detail; } catch { /* 忽略非 JSON 错误响应 */ }
+    const err = new Error(`获取微信二维码失败（${res.status}）：${detail}`);
+    err.status = res.status;
+    throw err;
+  }
   const data = await res.json();
   // 字段映射：后端返回的字段 → 前端使用的字段
-  return {
+  const result = {
     qrcode_id: data.qrcode_id || data.session_id,
     raw_qr_code_value: data.raw_qr_code_value || data.qr_code_value,
     expire_seconds: data.expire_seconds || data.expires_in,
   };
+  if (!result.qrcode_id || !result.raw_qr_code_value) {
+    throw new Error('获取微信二维码失败：接口返回数据不完整');
+  }
+  return result;
 }
 
 // 2. 轮询二维码状态

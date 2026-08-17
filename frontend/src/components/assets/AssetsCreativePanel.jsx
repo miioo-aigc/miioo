@@ -70,6 +70,23 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         ? (item.audio_url || item.audioUrl || item.original_url || item.file_url || item.url || '')
         : (item.preview_url || item.previewUrl || item.reference_frame_url || item.referenceFrameUrl || item.original_url || item.originalUrl || item.download_url || item.downloadUrl || item.thumbnail_url || item.thumbnailUrl || item.file_url || item.fileUrl || item.url || '');
     const url = normalizeImageUrl(rawUrl) || rawUrl;
+    const referenceImages = item.reference_images
+      || item.referenceImages
+      || item.reference_image_urls
+      || item.referenceImageUrls
+      || (item.asset_bindings || item.assetBindings || [])
+        .filter((binding) => binding?.asset_type === 'image' || binding?.assetType === 'image');
+    const refImages = referenceImages.map((img) => {
+      const imgUrl = typeof img === 'string'
+        ? img
+        : (img?.preview_url || img?.previewUrl || img?.url || img?.original_url || img?.originalUrl || '');
+      return { url: imgUrl, previewUrl: imgUrl, isAsset: true, name: img?.name || imgUrl.split('/').pop() || 'ref.png', size: 0 };
+    }).filter((img) => img.url);
+    const firstFrame = item.first_frame_url || item.firstFrameUrl || '';
+    const lastFrame = item.last_frame_url || item.lastFrameUrl || '';
+    const createdAt = item.created_at || new Date().toISOString();
+    const refMode = item.ref_mode || item.refMode || item.reference_mode || item.referenceMode || item.generation_mode || '';
+    const sound = item.sound ?? item.with_audio ?? item.withAudio;
     return {
       id,
       backendId: item.id,
@@ -79,11 +96,12 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
      model: item.model || '',
      input_prompt: item.input_prompt || item.inputPrompt || '',
      prompt: item.prompt || item.input_prompt || item.inputPrompt || '',
-     refImages: (item.reference_images || item.referenceImages || []).map((img) => {
-        const imgUrl = typeof img === 'string' ? img : (img?.url || img?.original_url || '');
-        return { url: imgUrl, previewUrl: imgUrl, isAsset: true, name: imgUrl.split('/').pop() || 'ref.png', size: 0 };
-      }),
-      createdAt: item.created_at || new Date().toISOString(),
+     refImages,
+     refMode,
+     firstFrame,
+     lastFrame,
+     sound,
+     createdAt,
       cards: [{
         id: item.id,
         assetId: item.asset_id || item.assetId || item.image?.asset_id || item.image?.assetId || null,
@@ -93,6 +111,17 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         originalUrl: type === 'image' ? (normalizeImageUrl(item.download_url || item.downloadUrl || item.original_url || item.originalUrl || item.file_url || item.fileUrl || url) || url) : null,
         videoUrl: type === 'video' ? url : null,
         audioUrl: type === 'audio' ? url : null,
+        prompt: item.prompt || item.input_prompt || item.inputPrompt || '',
+        model: item.model || '',
+        ratio: item.ratio || item.aspect_ratio || '16:9',
+        resolution: item.resolution || item.size || '',
+        duration: item.duration || undefined,
+        refImages,
+        refMode,
+        firstFrame,
+        lastFrame,
+        sound,
+        createdAt,
         isFavorite: item.is_favorite ?? item.is_liked ?? item.isLiked ?? false,
       }],
     };

@@ -281,6 +281,8 @@ export default function CreationVideoDetailModal({
   }
 
   const progressPct = videoDuration > 0 ? (currentTime / videoDuration) * 100 : 0;
+  const isFrameReference = refMode === 'frame'
+    || ['first_frame', 'last_frame', 'start_end', 'multiframe'].includes(refMode);
 
   return (
     <>
@@ -320,7 +322,7 @@ export default function CreationVideoDetailModal({
         </div>
 
         {/* Body */}
-        <div className="flex grow shrink basis-[0%] h-[540px]">
+        <div className="flex grow shrink basis-[0%] min-h-0 h-[540px]">
           {/* Left: video player */}
           <div className="flex flex-col grow shrink basis-[0%] min-w-0 min-h-0 bg-[#0D0D0D]">
             <div className="grow shrink basis-[0%] flex items-center justify-center min-h-0 bg-[#0A0A0A]">
@@ -424,7 +426,7 @@ export default function CreationVideoDetailModal({
           </div>
 
           {/* Right: params panel */}
-          <div className="w-[280px] flex flex-col min-h-[unset] h-[540px] shrink-0 bg-[#161616] border-l border-l-solid border-l-[#FFFFFF0F]">
+          <div className="w-[280px] flex flex-col min-h-0 h-full shrink-0 bg-[#161616] border-l border-l-solid border-l-[#FFFFFF0F]">
             {/* Scrollable content area */}
             <div className="flex-1 overflow-y-auto min-h-0">
               <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
@@ -445,7 +447,7 @@ export default function CreationVideoDetailModal({
             </div>
 
             {/* Reference */}
-            {refMode === 'frame' ? (
+            {isFrameReference ? (
               <>
                 <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
                 <div className="flex py-[16px] px-[20px] gap-[12px]">
@@ -480,14 +482,14 @@ export default function CreationVideoDetailModal({
                 <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
                 <div className="flex flex-col py-[16px] px-[20px] gap-[12px]">
                   <div className="tracking-[0.66px] uppercase inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[11px]/[14px]">
-                    参考
+                    参考图
                   </div>
                   <div className="flex items-start gap-[12px] self-stretch flex-wrap">
                     {refImages.map((img, i) => {
                       const imgUrl = typeof img === 'string' ? img : (img.url || img.previewUrl || '');
                       return (
                         <div key={i} className="rounded-md overflow-clip h-[84px] w-[calc(47.49%)] bg-[#FFFFFF14] border border-solid border-[#FFFFFF14]">
-                          <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: `url(${imgUrl})` }} />
+                          {imgUrl ? <img src={imgUrl} alt="参考图" className="w-full h-full object-cover" /> : null}
                         </div>
                       );
                     })}
@@ -593,11 +595,11 @@ export default function CreationVideoDetailModal({
               </>
             )}
 
-            <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
+              <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
             </div>
 
             {/* Fixed action buttons at bottom */}
-            <div className="pb-[20px] flex items-start gap-[16px] w-[280px] bg-[#161616] px-[20px] shrink-0">
+            <div className="flex items-start gap-[16px] w-full box-border bg-[#161616] px-[20px] pt-[16px] pb-[20px] shrink-0 border-t border-t-solid border-t-[#FFFFFF0A]">
               <button
                 type="button"
                 className="flex items-center justify-center w-full h-[40px] rounded-lg gap-[4px] bg-[#FFFFFF14] border border-solid border-[#FFFFFF1F]"

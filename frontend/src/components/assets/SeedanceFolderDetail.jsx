@@ -214,8 +214,22 @@ const AssetImageCard = memo(function AssetImageCard({ asset, onPreview, onDelete
   );
 });
 
-export default function SeedanceFolderDetail({ folder, assets = [], loading = false, uploading = false, onBack, onUpload, onPreview, onDelete }) {
+export default function SeedanceFolderDetail({ folder, assets = [], loading = false, uploading = false, onBack, onUpload, onSelectFromLibrary, onPreview, onDelete }) {
   const inputRef = useRef(null);
+  const uploadMenuRef = useRef(null);
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
+  const [uploadMenuPosition, setUploadMenuPosition] = useState({ x: 0, y: 0 });
+  const [hoveredUploadMenuItem, setHoveredUploadMenuItem] = useState(null);
+  const [pressedUploadMenuItem, setPressedUploadMenuItem] = useState(null);
+
+  useEffect(() => {
+    if (!uploadMenuOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (!uploadMenuRef.current?.contains(event.target)) setUploadMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [uploadMenuOpen]);
 
   const handleFileChange = (event) => {
     const file = event.target.files?.[0];
@@ -256,17 +270,62 @@ export default function SeedanceFolderDetail({ folder, assets = [], loading = fa
           style={{ display: 'none' }}
           onChange={handleFileChange}
         />
-        <button
-          type="button"
-          disabled={uploading}
-          onClick={() => inputRef.current?.click()}
-          style={{ width: '242px', height: '160px', borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.03)', cursor: uploading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexShrink: 0, transition: 'background 0.15s', opacity: uploading ? 0.65 : 1, fontFamily: FONT }}
-          onMouseEnter={(event) => { if (!uploading) event.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-          onMouseLeave={(event) => { event.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
-        >
-          <UploadIcon />
-          <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFFCC', flexShrink: 0 }}>上传</span>
-        </button>
+        <div ref={uploadMenuRef} style={{ position: 'relative', width: '242px', height: '160px', flexShrink: 0 }}>
+          <button
+            type="button"
+            disabled={uploading}
+            aria-haspopup="menu"
+            aria-expanded={uploadMenuOpen}
+            onClick={(event) => {
+              if (uploadMenuOpen) {
+                setUploadMenuOpen(false);
+                return;
+              }
+              const menuWidth = 168;
+              const menuHeight = 82;
+              const gap = 8;
+              setUploadMenuPosition({
+                x: Math.min(event.clientX + gap, window.innerWidth - menuWidth - gap),
+                y: Math.min(event.clientY + gap, window.innerHeight - menuHeight - gap),
+              });
+              setUploadMenuOpen(true);
+            }}
+            style={{ width: '100%', height: '100%', borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.2)', background: uploadMenuOpen ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)', cursor: uploading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', transition: 'background 0.15s', opacity: uploading ? 0.65 : 1, fontFamily: FONT }}
+            onMouseEnter={(event) => { if (!uploading) event.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            onMouseLeave={(event) => { if (!uploadMenuOpen) event.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+          >
+            <UploadIcon />
+            <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFFCC', flexShrink: 0 }}>上传</span>
+          </button>
+          {uploadMenuOpen && !uploading ? (
+            <div role="menu" style={{ position: 'fixed', top: `${uploadMenuPosition.y}px`, left: `${uploadMenuPosition.x}px`, zIndex: 1202, minWidth: '148px', padding: '4px', border: '1px solid #FFFFFF14', borderRadius: '8px', background: '#1C1C1C', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setUploadMenuOpen(false); inputRef.current?.click(); }}
+                onMouseEnter={() => setHoveredUploadMenuItem('local')}
+                onMouseLeave={() => { setHoveredUploadMenuItem(null); setPressedUploadMenuItem(null); }}
+                onMouseDown={() => setPressedUploadMenuItem('local')}
+                onMouseUp={() => setPressedUploadMenuItem(null)}
+                style={{ display: 'block', width: '100%', height: '32px', padding: '0 12px', border: 0, borderRadius: '6px', background: pressedUploadMenuItem === 'local' ? '#FFFFFF1A' : hoveredUploadMenuItem === 'local' ? '#FFFFFF0F' : 'transparent', color: hoveredUploadMenuItem === 'local' ? '#FFFFFF' : '#FFFFFFCC', cursor: 'pointer', textAlign: 'left', fontFamily: FONT, fontSize: '14px', outline: 'none', transition: 'background 100ms, color 100ms' }}
+                onFocus={(event) => { event.currentTarget.style.boxShadow = '0 0 0 2px rgba(45,195,225,0.6) inset'; }}
+                onBlur={(event) => { event.currentTarget.style.boxShadow = 'none'; }}
+              >从本地上传</button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setUploadMenuOpen(false); onSelectFromLibrary?.(); }}
+                onMouseEnter={() => setHoveredUploadMenuItem('library')}
+                onMouseLeave={() => { setHoveredUploadMenuItem(null); setPressedUploadMenuItem(null); }}
+                onMouseDown={() => setPressedUploadMenuItem('library')}
+                onMouseUp={() => setPressedUploadMenuItem(null)}
+                style={{ display: 'block', width: '100%', height: '32px', padding: '0 12px', border: 0, borderRadius: '6px', background: pressedUploadMenuItem === 'library' ? '#FFFFFF1A' : hoveredUploadMenuItem === 'library' ? '#FFFFFF0F' : 'transparent', color: hoveredUploadMenuItem === 'library' ? '#FFFFFF' : '#FFFFFFCC', cursor: 'pointer', textAlign: 'left', fontFamily: FONT, fontSize: '14px', outline: 'none', transition: 'background 100ms, color 100ms' }}
+                onFocus={(event) => { event.currentTarget.style.boxShadow = '0 0 0 2px rgba(45,195,225,0.6) inset'; }}
+                onBlur={(event) => { event.currentTarget.style.boxShadow = 'none'; }}
+              >从资产库选择</button>
+            </div>
+          ) : null}
+        </div>
         {!loading && assets.map((asset) => <AssetImageCard key={asset.id} asset={asset} onPreview={onPreview} onDelete={onDelete} />)}
         </div>
       </div>

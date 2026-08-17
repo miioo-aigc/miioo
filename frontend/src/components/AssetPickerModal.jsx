@@ -21,7 +21,7 @@ const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-u
 const PROJECT_SUB_TABS_ALL = ['角色', '场景', '道具', '分镜', '音频', '成片'];
 const PROJECT_SUB_TABS_IMAGE = ['角色', '场景', '道具', '分镜'];
 const PROJECT_SUB_TABS_VIDEO = ['分镜'];
-const PROJECT_SUB_TABS_MEDIA = ['分镜'];
+const PROJECT_SUB_TABS_MEDIA = ['角色', '场景', '道具', '分镜', '成片'];
 const PROJECT_SUB_TABS_AUDIO = ['音频'];
 const CREATIVE_SUB_TABS_ALL = ['图片', '视频', '配音'];
 const CREATIVE_SUB_TABS_IMAGE = ['图片'];
@@ -1010,6 +1010,11 @@ export default function AssetPickerModal({
 
   const rawAssets = getCurrentAssets();
   const filteredAssets = rawAssets.filter(a => {
+    if (accept === 'media') {
+      const assetType = String(a?.asset_type || a?.assetType || a?.type || '').toLowerCase();
+      if (assetType === 'audio' || assetType.startsWith('audio/')) return false;
+      if (activeTab === 'project' && !['image', 'video'].includes(assetType)) return false;
+    }
     if (activeTab === 'creative' && creativeSubTab !== '配音' && !(a.url || a.posterUrl)) return false;
     if (activeTab === 'project' && finalOnly && !a.is_primary) return false;
     if (favOnly && !a.starred) return false;

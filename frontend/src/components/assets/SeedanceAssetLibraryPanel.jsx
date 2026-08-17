@@ -24,6 +24,7 @@
  *   2026-07-24  增加虚拟人像素材库卡片网格和新建素材组入口
  *   2026-07-24  接入 AIGC 素材组真实接口，真人与虚拟素材组按类型隔离
  *   2026-07-27  详情页素材卡片增加悬停预览、删除确认和删除后列表同步
+ *   2026-08-17  文件夹上传入口增加本地上传/资产库选择，并限制资产库选择为图片和视频
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -47,6 +48,8 @@ import AddVirtualGroupCard from './AddVirtualGroupCard';
 import { createVideoFirstFrame, validateSeedanceUpload } from './SeedanceUploadValidation';
 import SeedanceResolutionDialog from './SeedanceResolutionDialog';
 import SeedanceAssetPreviewModal from './SeedanceAssetPreviewModal';
+import AssetPickerModal from '../AssetPickerModal';
+import { normalizeImageUrl } from '../../utils/imageUrl';
 
 const SUB_TABS = [
   { value: 'real', label: '真人人像' },
@@ -160,6 +163,7 @@ export default function SeedanceAssetLibraryPanel() {
   const [resolutionDialogOpen, setResolutionDialogOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState(null);
   const [assetDeleteTarget, setAssetDeleteTarget] = useState(null);
+  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [deletingAsset, setDeletingAsset] = useState(false);
   const toastTimerRef = useRef(null);
   const assetPollRef = useRef(null);
@@ -393,6 +397,42 @@ export default function SeedanceAssetLibraryPanel() {
     }
   };
 
+  const assetToFile = async (asset) => {
+    const url = normalizeImageUrl(asset?.fileUrl || asset?.file_url || asset?.originalUrl || asset?.original_url || asset?.url);
+    if (!url) throw new Error('资产缺少可下载地址');
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`下载资产失败: ${response.status}`);
+    const blob = await response.blob();
+    const assetType = String(asset?.asset_type || asset?.assetType || asset?.type || '').toLowerCase();
+    const isVideo = assetType === 'video' || assetType.startsWith('video/');
+    const fallbackType = isVideo ? 'video/mp4' : 'image/jpeg';
+    const type = blob.type || fallbackType;
+    const extension = isVideo
+      ? 'mp4'
+      : ({ 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic', 'image/heif': 'heic' }[type] || 'jpg');
+    const rawName = String(asset?.name || `asset-${asset?.id || Date.now()}`).trim();
+    const existingExtension = rawName.split('.').pop()?.toLowerCase();
+    const supportedExtensions = isVideo ? ['mp4', 'mov'] : ['jpeg', 'jpg', 'png', 'webp', 'gif', 'heic'];
+    const name = supportedExtensions.includes(existingExtension)
+      ? rawName
+      : `${rawName || 'asset'}.${extension}`;
+    return new File([blob], name, { type });
+  };
+
+  const handleSelectLibraryAssets = async (selectedAssets) => {
+    setAssetPickerOpen(false);
+    if (!Array.isArray(selectedAssets) || selectedAssets.length === 0) return;
+    try {
+      for (const asset of selectedAssets) {
+        const file = await assetToFile(asset);
+        await handleUploadAsset(file);
+      }
+    } catch (error) {
+      console.warn('[SeedanceAssetLibraryPanel] 导入资产库素材失败', error);
+      showToast('资产导入失败，请重试');
+    }
+  };
+
   const handleConfirmDeleteAsset = async () => {
     if (!assetDeleteTarget || deletingAsset) return;
     setDeletingAsset(true);
@@ -511,6 +551,7 @@ export default function SeedanceAssetLibraryPanel() {
             uploading={uploading}
             onBack={handleBackToFolders}
             onUpload={handleUploadAsset}
+            onSelectFromLibrary={() => setAssetPickerOpen(true)}
             onPreview={setPreviewAsset}
             onDelete={setAssetDeleteTarget}
           />
@@ -588,6 +629,12 @@ export default function SeedanceAssetLibraryPanel() {
       />
       <SeedanceResolutionDialog open={resolutionDialogOpen} onClose={() => setResolutionDialogOpen(false)} />
       <SeedanceAssetPreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />
+      <AssetPickerModal
+        open={assetPickerOpen}
+        accept="media"
+        onClose={() => setAssetPickerOpen(false)}
+        onConfirm={handleSelectLibraryAssets}
+      />
       <CreationToast toasts={toast ? [toast] : []} />
     </section>
   );

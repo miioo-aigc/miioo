@@ -11,6 +11,7 @@
  *   CreationInputSurface 组合                           L451–L551
  *
  *   2026-08-11  图片/视频生成轮询期间保持输入区可用；IndexedDB 临时缓存各类型完整创作草稿
+ *   2026-08-17  草稿同步保存提示词 HTML，恢复后重建 @素材标签，避免视频发送后标签降级为纯文本
  *   2026-08-12  音乐生成与配音同规则：生成中可停止、上传音频附件、不带配音参数（速度/情感/音色）
  */
 
@@ -44,6 +45,16 @@ function restoreDraftFile(file, restoredFiles) {
     type: file.type,
     lastModified: file.lastModified,
   });
+  // 标签 HTML 保存的是这个稳定引用；如果恢复时重新生成 _uid，标签会匹配失败，
+  // 最终把旧 UID 当成名称显示在蓝色标签里。
+  if (file._uid) {
+    Object.defineProperty(restoredFile, '_uid', {
+      value: file._uid,
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    });
+  }
   restoredFiles.set(file, restoredFile);
   return restoredFile;
 }
@@ -152,8 +163,10 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   const hydratedGenTypeRef = useRef(null);
   const createDraftSnapshot = useCallback(() => {
     const currentFiles = getCurrentFiles();
+    const promptSnapshot = getPromptSnapshot();
     return {
-      prompt: promptTextRef.current,
+      prompt: promptSnapshot.text || promptTextRef.current,
+      promptHTML: promptSnapshot.html,
       files: currentFiles.files,
       firstFrameFile: currentFiles.firstFrameFile,
       lastFrameFile: currentFiles.lastFrameFile,
@@ -170,7 +183,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       dubbingSpeed,
       dubbingEmotion,
     };
-  }, [count, dubbingEmotion, dubbingSpeed, getCurrentFiles, ratio, refMode, resolution, selectedVoiceId, selectedVoiceName, soundEnabled, videoDuration, videoRatio, videoResolution]);
+  }, [count, dubbingEmotion, dubbingSpeed, getCurrentFiles, getPromptSnapshot, ratio, refMode, resolution, selectedVoiceId, selectedVoiceName, soundEnabled, videoDuration, videoRatio, videoResolution]);
 
   const persistDraft = useCallback((force = false) => {
     if (!force && hydratedGenTypeRef.current !== genType) return;
@@ -197,11 +210,18 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       if (prefillVersion && prefillData?.prompt !== undefined) return;
       const prompt = draft?.prompt ?? '';
       promptTextRef.current = prompt;
-      restoreContent({ text: prompt });
       const restoredFiles = new Map();
-      replaceFiles((draft?.files ?? []).map((file) => restoreDraftFile(file, restoredFiles)));
-      setFirstFrameFile(restoreDraftFile(draft?.firstFrameFile, restoredFiles));
-      setLastFrameFile(restoreDraftFile(draft?.lastFrameFile, restoredFiles));
+      const restoredReferenceFiles = (draft?.files ?? []).map((file) => restoreDraftFile(file, restoredFiles));
+      replaceFiles(restoredReferenceFiles);
+      const restoredFirstFrameFile = restoreDraftFile(draft?.firstFrameFile, restoredFiles);
+      const restoredLastFrameFile = restoreDraftFile(draft?.lastFrameFile, restoredFiles);
+      setFirstFrameFile(restoredFirstFrameFile);
+      setLastFrameFile(restoredLastFrameFile);
+      restoreContent({
+        html: draft?.promptHTML ?? '',
+        text: prompt,
+        restoreFiles: restoredReferenceFiles,
+      });
       if (draft?.ratio !== undefined) setRatio(draft.ratio);
       if (draft?.resolution !== undefined) setResolution(draft.resolution);
       if (draft?.count !== undefined) setCount(draft.count);
@@ -258,9 +278,10 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
 
   const handlePromptInput = useCallback(() => {
     handleInput();
-    promptTextRef.current = editorRef.current?.innerText ?? '';
+    const snapshot = getPromptSnapshot();
+    promptTextRef.current = snapshot.text;
     persistDraft(true);
-  }, [editorRef, handleInput, persistDraft]);
+  }, [getPromptSnapshot, handleInput, persistDraft]);
 
 
   // Video: filter modelOptions by refMode
@@ -456,6 +477,9 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       dubbingSpeed,
       dubbingEmotion,
     };
+    // @素材标签是通过 DOM 插入的，部分浏览器不会为这类操作触发 input 事件；
+    // 发送前显式写入当前快照，避免新输入卡从旧的纯文本草稿恢复。
+    persistDraft(true);
     const savedFirstFrameFile = firstFrameFile;
     const savedLastFrameFile = lastFrameFile;
     resetDubbingParams();

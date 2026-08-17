@@ -22,6 +22,14 @@
 - 涉及文件：`src/pages/StoryboardPage.jsx`、`src/utils/storyboardDataAdapter.js`。
 - 验证：`npx eslint src/pages/StoryboardPage.jsx src/utils/storyboardDataAdapter.js`、`npm run build`、`npm run check:architecture`、`git diff --check` 通过。全仓 `npm run lint` 无错误，但保留 `PanelPromptInput.jsx` 的既有 Hooks 依赖警告；构建仅保留项目既有分块体积提醒，架构检查仅保留既有大文件规模提醒；尚未在登录态可写测试项目中完成“修改/删除后刷新”的真实后端回归。
 
+## 2026-08-17 创作视频发送后 @素材标签保持绑定修复
+
+- 修复视频创作发送提示词后，输入框中的 `@` 素材标签变成普通文本的问题。
+- 根因是完整草稿此前只保存纯文本 `prompt`，恢复时也只使用 `text` 写入 `contentEditable`，导致标签所需的 `data-file-ref` 节点和标签样式丢失；通过 @ 菜单插入标签时，部分浏览器还不会触发 `input` 事件。
+- 现在草稿同步保存 `promptHTML`，恢复时先恢复参考素材，再按 HTML 重建标签并重新绑定当前素材；发送前也会显式保存一次当前 HTML 快照，覆盖“插入标签后直接发送”的时序。
+- 后端请求仍使用剔除标签节点后的纯文本 `prompt`，仅编辑器恢复和创作历史展示保留 `promptHTML`，不改变接口参数语义。
+- 本次未提交或推送代码；需在视频创作页实际验证：绑定参考素材后发送，发送完成/轮询期间标签仍为蓝色绑定样式，并可继续编辑或重新切换 Tab 恢复。
+
 ## 2026-08-11 创作草稿刷新后参考图恢复验证通过
 
 - 修复创作页刷新后参考图无法恢复的问题。根因是页面刷新后内存草稿为空，读取流程被 `sessionStorage` 中仅用于提示词兜底的内容提前截断，未继续读取 IndexedDB 中包含 `File`/`Blob` 的完整草稿。

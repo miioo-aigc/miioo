@@ -400,7 +400,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         assetRefUrl: asset.assetRefUrl,
         url: asset.previewUrl || asset.url,
         previewUrl: asset.previewUrl || asset.url,
-        name: asset.name || '真人素材',
+        name: asset.name || '认证素材',
         type: 'image/jpeg',
         size: 0,
       }));
@@ -410,14 +410,17 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       let fileUrl;
       if (isVideo) fileUrl = asset.videoUrl || asset.fileUrl || asset.url;
       else if (isAudio) fileUrl = asset.audioUrl || asset.fileUrl || asset.url;
-      else fileUrl = asset.fileUrl || asset.url;
+      else fileUrl = asset.isAigcMaterial
+        ? (asset.assetRefUrl || asset.asset_ref_url || asset.fileUrl || asset.url)
+        : (asset.fileUrl || asset.url);
       const previewUrl = asset.url || asset.thumbnailUrl || asset.thumbnail_url || fileUrl;
       // 只传真实后端 UUID：backendId（创作资产回写的 card.id）或 asset_id（项目资产）
       // 排除 composite id（如 "gen-xxx-0" / "history-xxx-0"），这些不是有效后端 ID
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       // 兜底到 asset.id：项目/全局资产经 normalizePickerAsset 后真实后端 id 就在 id 上，
       // 创作历史 composite id 会因 UUID 校验被过滤，安全
-      // AIGC 素材属于 live-materials 资源，不一定存在统一资产表记录；仅通过 URL 作为参考图传递。
+      // AIGC 素材的 asset_ref_url 是服务商引用地址；不把 live-materials 资产 ID
+      // 当作普通资产 ID 传入，避免后端改走普通图片解析。
       const rawId = asset.isAigcMaterial ? undefined : (asset.backendId || asset.asset_id || asset.id);
       const assetId = rawId && UUID_RE.test(rawId) ? rawId : undefined;
       return {
@@ -426,6 +429,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         url: fileUrl,
         previewUrl,
         assetId,
+        isAigcMaterial: Boolean(asset.isAigcMaterial),
+        assetRefUrl: asset.assetRefUrl || asset.asset_ref_url || undefined,
         isAsset: true,
         type: isVideo ? 'video/mp4' : isAudio ? 'audio/mpeg' : 'image/jpeg',
       };

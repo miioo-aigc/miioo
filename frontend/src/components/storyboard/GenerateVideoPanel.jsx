@@ -22,6 +22,8 @@
  *   ReferenceMediaEditor                      参考主体、参考图、参考视频、参考音频和首尾帧
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-17  Seedance 真人保留 live_material 参数，虚拟人像保留 asset_ref_url 服务商引用；
+ *               主体参考从主体列表补全认证身份且同步过程不丢失；全能参考显式传 generate_mode='full'
  *   2026-08-12  拆分全能参考与首尾帧提示词：fullPrompt 保留 @主体 标签绑定，
  *               framePrompt 为纯文本独立存储，首尾帧编辑不再覆盖全能参考提示词
  *   2026-08-11  首尾帧生成改传 generate_mode，避免将 start_end 误传为参考模式导致后端 400
@@ -50,7 +52,11 @@ import { apiListModels } from '../../api/config';
 import { apiGetVideoLastFrame, apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { normalizeStoryboardReferenceGroups } from '../../utils/referenceMediaAdapter';
-import { getUploadedImageId, getUploadedImageUrl } from '../../utils/storyboardReferenceAdapter';
+import {
+  getUploadedImageId,
+  getUploadedImageUrl,
+  mergeStoryboardReferenceWithSubject,
+} from '../../utils/storyboardReferenceAdapter';
 import {
   normalizeStoryboardDurationOptions,
   normalizeStoryboardModelList,
@@ -75,6 +81,27 @@ function normalizeDurationValue(value) {
 
 function areReferenceGroupsEqual(previous, next) {
   return JSON.stringify(previous) === JSON.stringify(next);
+}
+
+function enrichReferenceSubject(ref, chars, scenes, props) {
+  const sid = ref?.subjectId || (
+    ref?.type === 'char' || ref?.type === 'scene' || ref?.type === 'prop'
+      ? ref?.id
+      : null
+  );
+  if (!sid) return ref;
+  const inChars = chars?.find((subject) => subject.id === sid);
+  const inScenes = scenes?.find((subject) => subject.id === sid);
+  const inProps = props?.find((subject) => subject.id === sid);
+  const subject = inChars || inScenes || inProps;
+  const type = inChars ? 'char' : inScenes ? 'scene' : inProps ? 'prop' : ref.type;
+  if (!subject?.imageUrl) return { ...ref, type };
+  return {
+    ...mergeStoryboardReferenceWithSubject(ref, subject),
+    type,
+    url: normalizeImageUrl(subject.imageUrl),
+    name: subject.name,
+  };
 }
 
 export default function GenerateVideoPanel({
@@ -218,21 +245,9 @@ export default function GenerateVideoPanel({
 
   const [refSubjects, setRefSubjects] = useState(() => {
     // 从 shot.mainRefs 初始化主体列表，补全 url/name
-    const shotSubjects = (shot?.mainRefs || []).map(ref => {
-      // character_ids 反序列化的条目 type 被统一置为 'char'，这里按 subjectId/id 跨角色/场景/道具反查真实类型
-      const sid = ref?.subjectId || ((ref?.type === 'char' || ref?.type === 'scene' || ref?.type === 'prop') ? ref?.id : null);
-      if (sid) {
-        const inChars = chars?.find(s => s.id === sid);
-        const inScenes = scenes?.find(s => s.id === sid);
-        const inProps = props?.find(s => s.id === sid);
-        const found = inChars || inScenes || inProps;
-        const realType = inChars ? 'char' : inScenes ? 'scene' : inProps ? 'prop' : ref.type;
-        if (found?.imageUrl) return { ...ref, type: realType, url: normalizeImageUrl(found.imageUrl), name: found.name };
-        if (ref?.url) return { ...ref, type: realType };
-      }
-      if (ref?.url) return ref;
-      return ref;
-    }).filter(ref => ref?.url);
+    const shotSubjects = (shot?.mainRefs || [])
+      .map((ref) => enrichReferenceSubject(ref, chars, scenes, props))
+      .filter((ref) => ref?.url);
     // 主体参考列是当前镜头主体集合的权威来源，不能再把旧表单快照中的已删除主体合并回来。
     return normalizeStoryboardReferenceGroups({ subjects: shotSubjects }).subjects;
   });
@@ -246,14 +261,16 @@ export default function GenerateVideoPanel({
 
   // 主体参考列可能在面板保持打开时被删除；下一帧校正本地列表，避免同步 effect 直接级联渲染。
   useEffect(() => {
-    const nextSubjects = normalizeStoryboardReferenceGroups({ subjects: shot?.mainRefs || [] }).subjects;
+    const nextSubjects = normalizeStoryboardReferenceGroups({
+      subjects: (shot?.mainRefs || []).map((ref) => enrichReferenceSubject(ref, chars, scenes, props)),
+    }).subjects;
     const syncTimer = setTimeout(() => {
       setRefSubjects((previous) => (
         areReferenceGroupsEqual(previous, nextSubjects) ? previous : nextSubjects
       ));
     }, 0);
     return () => clearTimeout(syncTimer);
-  }, [shot?.mainRefs]);
+  }, [shot?.mainRefs, chars, scenes, props]);
 
   const videoPromptMentions = useMemo(
     () => tab === 'frame' ? [] : buildVideoPromptMentions(fullPrompt, refSubjects),
@@ -290,7 +307,9 @@ export default function GenerateVideoPanel({
       }
       // 表单快照只恢复参数和普通参考素材；主体集合始终从当前镜头 mainRefs 获取，
       // 防止主体参考列删除后，旧 refSubjects 把已删除图片重新带回面板。
-      setRefSubjects(normalizeStoryboardReferenceGroups({ subjects: shot?.mainRefs || [] }).subjects);
+      setRefSubjects(normalizeStoryboardReferenceGroups({
+        subjects: (shot?.mainRefs || []).map((ref) => enrichReferenceSubject(ref, chars, scenes, props)),
+      }).subjects);
       setRefImages(normalizeStoryboardReferenceGroups({ images: formState.refImages }).images);
       setRefVideos(normalizeStoryboardReferenceGroups({ videos: formState.refVideos }).videos);
       setRefAudios(normalizeStoryboardReferenceGroups({ audios: formState.refAudios }).audios);
@@ -299,7 +318,7 @@ export default function GenerateVideoPanel({
       formStateHydratedRef.current = true;
     }, 0);
     return () => clearTimeout(restoreTimer);
-  }, [formState, isManualBlank, shot?.mainRefs]);
+  }, [formState, isManualBlank, shot?.mainRefs, chars, scenes, props]);
 
   useEffect(() => {
     if (!formStateHydratedRef.current) return;
@@ -518,11 +537,13 @@ export default function GenerateVideoPanel({
       : refImages.map(r => ({ url: r.url, fileUrl: r.url }));
     onSetGeneratedVideos?.((prev) => [{ url: null, settled: false, id: placeholder, refImages: refImagesSnapshot }, ...prev]);
     try {
-      // 收集参考媒体（仅用户手动上传的参考图，不自动附带主体参考图避免误触模型限制）
+      // 认证虚拟人像走服务商 asset:// 引用；普通参考图保持用户当前选择，
+      // 由上层根据每个素材的身份组装服务商所需字段。
       const maxRefImages = currentVideoModel?.capabilities?.max_reference_images ?? null;
-      const referenceImages = tab !== 'frame' && (maxRefImages === null || maxRefImages > 0)
-        ? [...refSubjects, ...refImages].map(r => r.url).filter(Boolean).slice(0, maxRefImages ?? 99)
+      const referenceMedia = tab !== 'frame' && (maxRefImages === null || maxRefImages > 0)
+        ? [...refSubjects, ...refImages].slice(0, maxRefImages ?? 99)
         : [];
+      const referenceImages = referenceMedia.map((item) => item.url).filter(Boolean);
       const result = await onGenerate?.({
         model,
         resolution,
@@ -531,13 +552,14 @@ export default function GenerateVideoPanel({
         prompt: tab === 'frame' ? framePrompt : fullPrompt,
         tab,
         reference_images: referenceImages.length > 0 ? referenceImages : undefined,
+        reference_media: referenceMedia.length > 0 ? referenceMedia : undefined,
         first_frame_url: refFirstFrame?.url,
         last_frame_url: refLastFrame?.url,
         first_frame_asset_id: refFirstFrame?.assetId || refFirstFrame?.asset_id || undefined,
         last_frame_asset_id: refLastFrame?.assetId || refLastFrame?.asset_id || undefined,
         generate_mode: tab === 'frame'
           ? (refFirstFrame && refLastFrame ? 'start_end' : 'first_frame')
-          : undefined,
+          : 'full',
         // 当前分镜生成接口仍接收单个 URL；UI 可按模型能力收集多个素材，提交时保持既有接口契约。
         reference_video_url: refVideos[0]?.url,
         reference_audio_url: refAudios[0]?.url,
@@ -625,6 +647,7 @@ export default function GenerateVideoPanel({
             <ReferenceMediaEditor
               tab={tab}
               projectId={projectId}
+              model={model}
               shot={shot}
               nextShot={nextShot}
               previousFrameShortcut={previousFrameShortcut}

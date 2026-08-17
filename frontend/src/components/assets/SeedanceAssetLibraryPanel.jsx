@@ -25,6 +25,7 @@
  *   2026-07-24  接入 AIGC 素材组真实接口，真人与虚拟素材组按类型隔离
  *   2026-07-27  详情页素材卡片增加悬停预览、删除确认和删除后列表同步
  *   2026-08-17  文件夹上传入口增加本地上传/资产库选择，并限制资产库选择为图片和视频
+ *   2026-08-17  资产库导入优先下载原图地址，避免将 AVIF 缩略图上传至 Seedance
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -49,6 +50,8 @@ import { createVideoFirstFrame, validateSeedanceUpload } from './SeedanceUploadV
 import SeedanceResolutionDialog from './SeedanceResolutionDialog';
 import SeedanceAssetPreviewModal from './SeedanceAssetPreviewModal';
 import AssetPickerModal from '../AssetPickerModal';
+import { apiDownloadAsset } from '../../api/assets';
+import { authFetch } from '../../api/request';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 
 const SUB_TABS = [
@@ -398,11 +401,31 @@ export default function SeedanceAssetLibraryPanel() {
   };
 
   const assetToFile = async (asset) => {
-    const url = normalizeImageUrl(asset?.fileUrl || asset?.file_url || asset?.originalUrl || asset?.original_url || asset?.url);
-    if (!url) throw new Error('资产缺少可下载地址');
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`下载资产失败: ${response.status}`);
-    const blob = await response.blob();
+    const assetId = asset?.assetId || asset?.asset_id || asset?.id;
+    let blob;
+
+    if (assetId) {
+      // 资产库的下载接口返回原文件，避免把卡片使用的 AVIF 缩略图当作上传文件。
+      blob = await apiDownloadAsset(assetId, { prefer_origin: true });
+    } else {
+      const url = normalizeImageUrl(
+        asset?.downloadUrl
+        || asset?.download_url
+        || asset?.originalUrl
+        || asset?.original_url
+        || asset?.largeUrl
+        || asset?.large_url
+        || asset?.fileUrl
+        || asset?.file_url
+        || asset?.url,
+      );
+      if (!url) throw new Error('资产缺少可下载地址');
+      // 受控下载地址需要和业务 API 一样携带 Bearer，不能使用原生 fetch。
+      const response = await authFetch(url);
+      if (!response.ok) throw new Error(`下载资产失败: ${response.status}`);
+      blob = await response.blob();
+    }
+
     const assetType = String(asset?.asset_type || asset?.assetType || asset?.type || '').toLowerCase();
     const isVideo = assetType === 'video' || assetType.startsWith('video/');
     const fallbackType = isVideo ? 'video/mp4' : 'image/jpeg';

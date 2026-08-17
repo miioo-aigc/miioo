@@ -45,6 +45,9 @@ export function normalizeImageUrl(url) {
   if (!url) return null;
   if (url.startsWith('http://') || url.startsWith('https://')) return normalizeSameSiteAbsoluteUrl(url);
   if (url.startsWith('blob:') || url.startsWith('data:')) return url;
+  // Seedance 的 asset:// 是服务商素材身份，不是本站静态资源路径。
+  // 虽然展示层应优先使用 preview_url/source_url，但归一化时也不能把它破坏成 /asset://...。
+  if (url.startsWith('asset://')) return url;
   // 开发环境返回相对路径，走 Vite proxy 避免 CORS
   if (import.meta.env.DEV) {
     return url.startsWith('/') ? url : `/${url}`;
@@ -60,6 +63,9 @@ export function toAbsoluteUrl(url) {
   if (!url) return url;
   if (url.startsWith('http://') || url.startsWith('https://')) return normalizeSameSiteAbsoluteUrl(url);
   if (url.startsWith('blob:') || url.startsWith('data:')) return url;
+  // Seedance 素材库的 asset:// 是服务商可识别的素材引用，不是本站相对路径。
+  // 透传给后端时必须保持原样，不能拼接为 /asset://...。
+  if (url.startsWith('asset://')) return url;
   const origin = API_BASE.replace(/\/api\/?$/, '');
   if (!origin) return url.startsWith('/') ? url : `/${url}`;
   return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;

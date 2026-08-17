@@ -2,7 +2,9 @@
  * Storyboard 前后端数据映射与主体参考图补全。
  * 仅处理纯数据，不读取 React 状态，也不执行 API 或缓存副作用。
  *
- * 更新记录：2026-08-06 主体参考刷新时按显式主体 ID 过滤旧 subject_references/mainRefs，并增加最新快照保护；
+ * 更新记录：2026-08-17 刷新恢复创作面板参考主体时保留项目资产与 Seedance 素材的预览、身份和服务商引用，
+ *              并以主体列表补全缺失的认证身份；
+ *              2026-08-06 主体参考刷新时按显式主体 ID 过滤旧 subject_references/mainRefs，并增加最新快照保护；
  *              2026-08-05 普通参考图序列化时保留 asset_id，统一本地上传与资产库选择的持久化身份；
  *              2026-08-05 视频提示词绑定恢复时按 subject_id 去重，避免历史重复记录继续进入表单；
  *              2026-08-03 创作结果同时返回主体 ID 和 video-reference-images 副本时，
@@ -11,6 +13,10 @@
  */
 
 import { normalizeImageUrl } from './imageUrl';
+import {
+  getStoryboardSeedanceMaterialFields,
+  mergeStoryboardReferenceWithSubject,
+} from './storyboardReferenceAdapter';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STORYBOARD_SUBJECT_SNAPSHOT_KEY = 'miioo_storyboard_subject_snapshots';
@@ -73,6 +79,152 @@ function storyboardReferenceIdentity(ref) {
 
 function storyboardReferenceSignature(refs = []) {
   return (Array.isArray(refs) ? refs : []).map(storyboardReferenceIdentity).join('|');
+}
+
+function getReferencePreviewUrl(item) {
+  const values = [
+    item?.previewUrl,
+    item?.preview_url,
+    item?.thumbnailUrl,
+    item?.thumbnail_url,
+    item?.sourceUrl,
+    item?.source_url,
+    item?.fileUrl,
+    item?.file_url,
+    item?.imageUrl,
+    item?.image_url,
+    item?.originalUrl,
+    item?.original_url,
+    item?.url,
+  ];
+  // asset:// 是 Seedance 的生成身份，不是浏览器可加载的媒体地址。
+  return values.find((value) => value && !String(value).startsWith('asset://')) ?? null;
+}
+
+/**
+ * 将不同来源的参考素材还原为可在创作面板展示的统一条目。
+ * assetRefUrl 是 Seedance 生成专用的 asset:// 引用，不能用于浏览器预览。
+ */
+function normalizeStoryboardReferenceItem(item) {
+  if (!item || typeof item !== 'object') return null;
+  const rawUrl = getReferencePreviewUrl(item);
+  const subjectId = item.subjectId ?? item.subject_id ?? null;
+  const assetId = item.assetId ?? item.asset_id ?? (subjectId ? null : item.id) ?? null;
+  const seedanceFields = getStoryboardSeedanceMaterialFields(item);
+  const isSeedanceMaterial = seedanceFields.isLiveMaterial
+    || seedanceFields.isAigcMaterial
+    || seedanceFields.isSeedanceMaterial
+    || seedanceFields.isSeedanceCertifiedMaterial
+    || seedanceFields.assetRefUrl;
+  // 历史数据可能只保存了 Seedance 素材 ID 和 asset://。保留该条目，
+  // 页面加载后会按资产 ID 重新取得带鉴权的预览图，不能在适配阶段丢掉它。
+  if (!rawUrl && !(isSeedanceMaterial && assetId)) return null;
+  const url = rawUrl ? normalizeImageUrl(rawUrl) : null;
+  const fallbackName = rawUrl
+    ? String(rawUrl).split('/').pop()?.split('?')[0]?.replace(/\.[^.]+$/, '')
+    : '参考图';
+  return {
+    ...item,
+    id: subjectId || assetId || item.id || url,
+    subjectId,
+    assetId,
+    url,
+    name: item.name || fallbackName,
+    type: item.type || item.category || (subjectId ? 'char' : 'image'),
+    ...seedanceFields,
+  };
+}
+
+/**
+ * 为后端 reference_images 提供可恢复的轻量结构。
+ * 普通资产保持原字段；Seedance 素材额外保留生成所需身份与 asset:// 引用。
+ */
+export function serializeStoryboardReferenceItem(item) {
+  const normalized = normalizeStoryboardReferenceItem(item);
+  if (!normalized) return null;
+  const isSeedanceMaterial = normalized.isLiveMaterial
+    || normalized.isAigcMaterial
+    || normalized.isSeedanceMaterial
+    || normalized.isSeedanceCertifiedMaterial
+    || normalized.assetRefUrl;
+  // Blob URL 仅存在于当前浏览器会话，不能写进分镜快照。
+  const persistableUrl = normalized.url && !String(normalized.url).startsWith('blob:')
+    ? normalized.url
+    : null;
+  return {
+    ...(normalized.assetId ? { asset_id: normalized.assetId } : {}),
+    ...(normalized.subjectId ? { subject_id: normalized.subjectId } : {}),
+    ...(persistableUrl ? { url: persistableUrl } : {}),
+    name: normalized.name,
+    type: normalized.type,
+    ...(isSeedanceMaterial
+      ? {
+          is_live_material: normalized.isLiveMaterial,
+          is_aigc_material: normalized.isAigcMaterial,
+          is_seedance_material: normalized.isSeedanceMaterial,
+          is_seedance_certified_material: normalized.isSeedanceCertifiedMaterial,
+          group_id: normalized.groupId,
+          group_type: normalized.groupType,
+          asset_ref_url: normalized.assetRefUrl,
+        }
+      : {}),
+  };
+}
+
+function hasSeedanceMaterialIdentity(item) {
+  const fields = getStoryboardSeedanceMaterialFields(item);
+  return Boolean(
+    fields.isLiveMaterial
+    || fields.isAigcMaterial
+    || fields.isSeedanceMaterial
+    || fields.isSeedanceCertifiedMaterial
+    || fields.groupId
+    || fields.assetRefUrl,
+  );
+}
+
+function mergeStoryboardReferenceIdentity(existing, candidate) {
+  if (!hasSeedanceMaterialIdentity(candidate)) return existing;
+  const fields = getStoryboardSeedanceMaterialFields(candidate);
+  // character_ids 等顶层字段先构造出简化主体引用，creation_form.video.refSubjects
+  // 随后才提供同一 subjectId 的完整 Seedance 身份。不能因去重把认证字段丢掉。
+  // 预览 URL 仍优先保留当前主体图，避免短时签名 URL 被写回常规展示链路。
+  return {
+    ...existing,
+    ...(fields.isLiveMaterial !== undefined ? { isLiveMaterial: fields.isLiveMaterial } : {}),
+    ...(fields.isAigcMaterial !== undefined ? { isAigcMaterial: fields.isAigcMaterial } : {}),
+    ...(fields.isSeedanceMaterial !== undefined ? { isSeedanceMaterial: fields.isSeedanceMaterial } : {}),
+    ...(fields.isSeedanceCertifiedMaterial !== undefined
+      ? { isSeedanceCertifiedMaterial: fields.isSeedanceCertifiedMaterial }
+      : {}),
+    ...(fields.groupId !== undefined ? { groupId: fields.groupId } : {}),
+    ...(fields.groupType !== undefined ? { groupType: fields.groupType } : {}),
+    ...(fields.assetRefUrl !== undefined ? { assetRefUrl: fields.assetRefUrl } : {}),
+    // 对 Seedance 认证主体，必须使用认证实体的资产 ID；简化主体图 assetId
+    // 只适用于普通图片附件，不能随虚拟人像进入 reference_image_asset_ids。
+    ...(candidate.assetId !== undefined || candidate.asset_id !== undefined
+      ? { assetId: candidate.assetId ?? candidate.asset_id }
+      : {}),
+  };
+}
+
+function mergeStoryboardReferences(...groups) {
+  const references = [];
+  const indexByKey = new Map();
+  groups.flat().filter(Boolean).forEach((item) => {
+    // 同一主体的常规图片引用与认证素材引用可能拥有不同的 asset://，
+    // 但仍是同一个主体；subjectId 必须优先作为合并键。
+    const key = item.subjectId || item.subject_id || item.assetRefUrl || item.assetId || item.id || item.url;
+    if (!key) return;
+    const existingIndex = indexByKey.get(String(key));
+    if (existingIndex === undefined) {
+      indexByKey.set(String(key), references.length);
+      references.push(item);
+      return;
+    }
+    references[existingIndex] = mergeStoryboardReferenceIdentity(references[existingIndex], item);
+  });
+  return references;
 }
 
 export function applyStoryboardSubjectSnapshot(shot, projectId) {
@@ -214,6 +366,11 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
     return item;
   }).filter(Boolean).map(String));
   const persistedCreationForm = genParams.creation_form || genParams.creationForm;
+  const persistedVideoSubjects = Array.isArray(persistedCreationForm?.video?.refSubjects)
+    ? persistedCreationForm.video.refSubjects
+      .map(normalizeStoryboardReferenceItem)
+      .filter(Boolean)
+    : [];
   const generatedImages = Array.isArray(be.generated_images)
     ? be.generated_images
     : (Array.isArray(be.generatedImages) ? be.generatedImages : []);
@@ -268,13 +425,8 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
       .filter((item) => item?.url)
       .filter((item) => !item.subjectId && !item.subject_id)
       .filter((item) => !['char', 'scene', 'prop', 'character', 'object'].includes(String(item.type || item.subject_type || '').toLowerCase()))
-      .map((item) => ({
-        ...item,
-        id: item.asset_id ?? item.assetId ?? item.id ?? item.url,
-        assetId: item.asset_id ?? item.assetId,
-        url: normalizeImageUrl(item.url),
-        name: item.name || item.url.split('/').pop()?.split('?')[0] || '参考图',
-      }));
+      .map(normalizeStoryboardReferenceItem)
+      .filter(Boolean);
   })();
   const withFallbackReferenceImages = (form) => {
     if (!form || typeof form !== 'object') return form;
@@ -352,13 +504,17 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
           }
         : { segments: [] }),
     mainRefs: Array.isArray(be.mainRefs)
-      ? be.mainRefs.filter((ref) => {
+      ? mergeStoryboardReferences(
+        be.mainRefs.filter((ref) => {
           if (!hasDirectSubjectFields || !isStoryboardSubjectReference(ref)) return true;
           const refId = ref?.subjectId || ref?.subject_id || ref?.id;
           return refId && directSubjectIds.has(String(refId));
-        })
+        }).map((ref) => normalizeStoryboardReferenceItem(ref) || ref),
+        persistedVideoSubjects,
+      )
       : (
-      [
+      mergeStoryboardReferences(
+        [
         // 新版接口直接返回完整主体引用，场景和道具不能只依赖 character_ids 补全。
         ...normalizedSubjectReferences,
         ...(be.character_ids || []).map(cid =>
@@ -387,25 +543,14 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
             })
             // 排除与分镜图相同的 URL，避免分镜图出现在主体参考列（用路径键兼容绝对/相对 URL）
             .filter(item => !imgPathKey || urlPathKey(normalizeImageUrl(item.url)) !== imgPathKey)
-            .map(item => {
-              const n = normalizeImageUrl(item.url);
-              // 有持久化名称就用；没有（旧数据）时用文件名兜底，至少让不同参考图各不相同
-              const fallbackName = n?.split('/').pop()?.split('?')[0]?.replace(/\.[^.]+$/, '') || '参考图';
-              const subjectId = item.subject_id ?? item.subjectId ?? null;
-              const assetId = item.asset_id ?? item.assetId ?? item.id ?? null;
-              const type = item.type || item.category || (subjectId ? 'char' : 'image');
-              return {
-                ...item,
-                id: subjectId || assetId || n,
-                subjectId,
-                assetId,
-                url: n,
-                name: item.name || fallbackName,
-                type,
-              };
-            });
+            .map(normalizeStoryboardReferenceItem)
+            .filter(Boolean);
         })(),
-      ]
+        // 创作表单保存的是参考主体的完整快照。它优先于为兼容准备的顶层简化字段，
+        // 这样项目资产和 Seedance 素材刷新后都能恢复为可展示、可生成的条目。
+          ...persistedVideoSubjects,
+        ],
+      )
       ),
     storyboardImage: be.storyboardImage ?? (
       imageUrl
@@ -556,12 +701,8 @@ export function toBackendStoryboard(shot) {
         reference_image_urls: refItems.map(ref => ref.url).filter(Boolean),
         // 新字段：带名称，让名称随数据持久化（后端支持后刷新仍可区分不同参考图）
         reference_images: refItems
-          .filter(ref => ref.url)
-          .map(ref => ({
-            ...(ref.assetId || ref.asset_id ? { asset_id: ref.assetId || ref.asset_id } : {}),
-            url: ref.url,
-            name: ref.name || '参考图',
-          })),
+          .map(serializeStoryboardReferenceItem)
+          .filter(Boolean),
       };
     })(),
     image_url: shot.storyboardImage?.url || undefined,
@@ -611,7 +752,11 @@ export function enrichMainRefs(shot, chars) {
         const pathKey = urlPathKey(url);
         if (pathKey) usedPathKeys.add(pathKey);
         // 无论之前有无 url，都用最新 chars 里的 imageUrl 更新（主体换定稿图后自动同步）
-        enrichedById[ref.id] = { ...ref, url, name: ch.name };
+        enrichedById[ref.id] = {
+          ...mergeStoryboardReferenceWithSubject(ref, ch),
+          url,
+          name: ch.name,
+        };
       }
     }
   }

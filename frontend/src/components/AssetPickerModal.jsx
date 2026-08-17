@@ -8,7 +8,7 @@ import { apiGetAssetsPage, enrichWithStoryboards } from '../api/assets';
 import { apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../api/creation';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { dedupeByMediaAliases, getCreationAssetMediaAliases } from '../utils/creationHistoryAdapter';
-import { apiListLiveMaterialAssets, apiListLiveMaterialGroups } from '../api/liveMaterials';
+import { apiGetLiveMaterialAsset, apiListLiveMaterialAssets, apiListLiveMaterialGroups } from '../api/liveMaterials';
 import SeedanceFolderCard from './assets/SeedanceFolderCard';
 import { isSeedanceModel } from '../utils/seedanceModel';
 import DotsLoading from './DotsLoading';
@@ -216,6 +216,54 @@ function dedupePickerAssets(list) {
       metadata_json: previous.metadata_json || asset.metadata_json || null,
       posterUrl: previous.posterUrl || asset.posterUrl || null,
     }));
+}
+
+function unwrapLiveMaterialAsset(payload) {
+  if (!payload || typeof payload !== 'object') return {};
+  return payload.asset || payload.data || payload.result || payload;
+}
+
+/**
+ * Seedance 的 asset_ref_url 仅用于提交给服务商，不能作为图片地址。
+ * 选择器保留两类地址，防止后续持久化时把 asset:// 写入浏览器展示字段。
+ */
+function toSeedancePickerAsset(rawAsset, group = {}) {
+  const asset = unwrapLiveMaterialAsset(rawAsset);
+  const rawAssetType = String(asset.asset_type || asset.assetType || asset.type || 'image').toLowerCase();
+  const isVideo = rawAssetType.startsWith('video');
+  const previewUrl = asset.preview_url || asset.previewUrl || null;
+  const sourceUrl = asset.download_url
+    || asset.downloadUrl
+    || asset.original_url
+    || asset.originalUrl
+    || asset.source_url
+    || asset.sourceUrl
+    || null;
+  const fileUrl = asset.file_url || asset.fileUrl || null;
+  const mediaUrl = isVideo
+    ? (sourceUrl || fileUrl || previewUrl)
+    : (previewUrl || sourceUrl || fileUrl);
+
+  return {
+    id: asset.id,
+    name: asset.name || group.name || '未命名',
+    url: normalizeImageUrl(mediaUrl) || null,
+    // fileUrl 必须是可展示/下载的真实媒体地址，不能复用 asset:// 服务商引用。
+    fullUrl: normalizeImageUrl(sourceUrl || fileUrl || previewUrl) || null,
+    fileUrl: normalizeImageUrl(sourceUrl || fileUrl || previewUrl) || null,
+    asset_type: isVideo ? 'video' : rawAssetType,
+    posterUrl: normalizeImageUrl(asset.poster_url || asset.posterUrl || asset.thumbnail_url || asset.thumbnailUrl || asset.cover_url || asset.coverUrl || asset.first_frame_url || asset.firstFrameUrl || '') || null,
+    isLiveMaterial: String(group.group_type || asset.group_type || '').toUpperCase() !== 'AIGC',
+    isAigcMaterial: String(group.group_type || asset.group_type || '').toUpperCase() === 'AIGC',
+    isSeedanceCertifiedMaterial: true,
+    groupId: asset.group_id || asset.groupId || group.id,
+    groupType: group.group_type || asset.group_type || asset.groupType || 'LivenessFace',
+    assetRefUrl: asset.asset_ref_url || asset.assetRefUrl || null,
+    previewUrl,
+    sourceUrl,
+    isSeedanceMaterial: true,
+    bgColor: '#252525',
+  };
 }
 
 function EmptyState() {
@@ -553,6 +601,7 @@ export default function AssetPickerModal({
   const [cancelPressed, setCancelPressed] = useState(false);
   const [confirmHovered, setConfirmHovered] = useState(false);
   const [confirmPressed, setConfirmPressed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [favHovered, setFavHovered] = useState(false);
   const [finalHovered, setFinalHovered] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
@@ -581,7 +630,7 @@ export default function AssetPickerModal({
                 const posterUrl = normalizeImageUrl(asset.poster_url || asset.posterUrl || asset.thumbnail_url || asset.thumbnailUrl || asset.cover_url || asset.coverUrl || asset.first_frame_url || asset.firstFrameUrl || '') || null;
                 const mediaUrl = normalizeImageUrl(assetType === 'video'
                   ? (asset.source_url || asset.sourceUrl || asset.file_url || asset.fileUrl || asset.preview_url || asset.previewUrl || '')
-                  : (asset.source_url || asset.sourceUrl || asset.file_url || asset.fileUrl || asset.preview_url || asset.previewUrl || asset.asset_ref_url || asset.assetRefUrl || '')) || null;
+                  : (asset.source_url || asset.sourceUrl || asset.file_url || asset.fileUrl || asset.preview_url || asset.previewUrl || '')) || null;
                 if (!mediaUrl && !posterUrl) return null;
                 return assetType === 'video'
                   ? { url: mediaUrl, type: 'video', posterUrl }
@@ -614,28 +663,9 @@ export default function AssetPickerModal({
     apiListLiveMaterialAssets(activeSeedanceGroup.id)
       .then((assets) => {
         if (cancelled) return;
-        setSeedanceAssets((Array.isArray(assets) ? assets : []).map((asset) => ({
-          id: asset.id,
-          name: asset.name || activeSeedanceGroup.name || '未命名',
-          url: normalizeImageUrl(
-            String(asset.asset_type || asset.assetType || asset.type || '').toLowerCase().startsWith('video')
-              ? (asset.source_url || asset.sourceUrl || asset.file_url || asset.fileUrl || asset.preview_url || asset.previewUrl)
-              : (asset.preview_url || asset.previewUrl || asset.asset_ref_url || asset.assetRefUrl || asset.file_url || asset.fileUrl)
-          ) || null,
-          fullUrl: normalizeImageUrl(asset.asset_ref_url || asset.assetRefUrl || asset.preview_url || asset.previewUrl || asset.file_url || asset.fileUrl || asset.source_url || asset.sourceUrl) || null,
-          fileUrl: normalizeImageUrl(asset.asset_ref_url || asset.assetRefUrl || asset.preview_url || asset.previewUrl || asset.file_url || asset.fileUrl || asset.source_url || asset.sourceUrl) || null,
-          asset_type: String(asset.asset_type || asset.assetType || asset.type || 'image').toLowerCase().startsWith('video') ? 'video' : String(asset.asset_type || asset.assetType || asset.type || 'image').toLowerCase(),
-          posterUrl: normalizeImageUrl(asset.poster_url || asset.posterUrl || asset.thumbnail_url || asset.thumbnailUrl || asset.cover_url || asset.coverUrl || asset.first_frame_url || asset.firstFrameUrl || '') || null,
-          // 只有真人组进入真人素材参数；AIGC 组按普通参考图片返回。
-          isLiveMaterial: String(activeSeedanceGroup.group_type || '').toUpperCase() !== 'AIGC',
-          isAigcMaterial: String(activeSeedanceGroup.group_type || '').toUpperCase() === 'AIGC',
-          groupId: asset.group_id || activeSeedanceGroup.id,
-          groupType: activeSeedanceGroup.group_type || 'LivenessFace',
-          assetRefUrl: asset.asset_ref_url,
-          previewUrl: asset.preview_url,
-          isSeedanceMaterial: true,
-          bgColor: '#252525',
-        })));
+        setSeedanceAssets((Array.isArray(assets) ? assets : []).map((asset) => (
+          toSeedancePickerAsset(asset, activeSeedanceGroup)
+        )));
       })
       .catch((error) => {
         if (!cancelled) console.error('[AssetPickerModal] 拉取Seedance素材失败:', error);
@@ -737,9 +767,10 @@ export default function AssetPickerModal({
       ...a,
       id: a.id,
       name: a.name || '未命名',
-      url: normalizeImageUrl(a.thumbnail_url || a.file_url) || null,
-      fullUrl: normalizeImageUrl(a.file_url) || null,
-      fileUrl: normalizeImageUrl(a.file_url) || null,
+      // 卡片使用缩略图快速展示；选择资产时通过 fileUrl 下载原图，避免将 AVIF 缩略图当作上传文件。
+      url: normalizeImageUrl(a.thumbnail_url || a.thumbnailUrl || a.preview_url || a.previewUrl || a.file_url || a.fileUrl) || null,
+      fullUrl: normalizeImageUrl(a.download_url || a.downloadUrl || a.original_url || a.originalUrl || a.large_url || a.largeUrl || a.file_url || a.fileUrl) || null,
+      fileUrl: normalizeImageUrl(a.download_url || a.downloadUrl || a.original_url || a.originalUrl || a.large_url || a.largeUrl || a.file_url || a.fileUrl) || null,
       posterUrl: a.asset_type === 'video'
         ? (normalizeImageUrl(a.poster_url || a.posterUrl || a.thumbnail_url || a.thumbnailUrl || '') || null)
         : null,
@@ -952,7 +983,8 @@ export default function AssetPickerModal({
     });
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
+    if (confirming) return;
     // 构建全量 id→asset map，供按 ID 查完整对象
     const allAssets = [
       ...Object.values(projectAssetsMap).flatMap(p => Object.values(p).flat()),
@@ -961,7 +993,7 @@ export default function AssetPickerModal({
     ];
     const assetMap = Object.fromEntries(allAssets.map(a => [a.id, a]));
     // 只返回本次新增选择的资产，排除上轮已存在的预选项（preSelectedIds），避免上游重复输入
-    const selectedAssets = Array.from(selected)
+    let selectedAssets = Array.from(selected)
       .filter(id => !preSelectedSet.has(String(id)))
       .map(id => assetMap[id])
       .map((asset) => {
@@ -970,6 +1002,32 @@ export default function AssetPickerModal({
         return assetId && assetId !== asset.id ? { ...asset, id: assetId, pickerId: asset.id } : asset;
       })
       .filter(Boolean);
+
+    const selectedSeedanceAssets = selectedAssets.filter((asset) => asset.isSeedanceMaterial);
+    if (selectedSeedanceAssets.length > 0) {
+      setConfirming(true);
+      try {
+        // 素材列表可能只返回 asset:// 身份或旧审核状态。确认前获取详情，
+        // 让保存到分镜的数据始终带可展示的 preview_url/source_url。
+        const hydratedAssets = await Promise.all(selectedAssets.map(async (asset) => {
+          if (!asset.isSeedanceMaterial || !asset.id) return asset;
+          try {
+            const detail = await apiGetLiveMaterialAsset(asset.id);
+            return toSeedancePickerAsset({ ...asset, ...unwrapLiveMaterialAsset(detail) }, {
+              id: asset.groupId,
+              name: asset.name,
+              group_type: asset.groupType,
+            });
+          } catch (error) {
+            console.warn('[AssetPickerModal] 获取Seedance素材详情失败，使用列表数据继续保存:', error);
+            return asset;
+          }
+        }));
+        selectedAssets = hydratedAssets;
+      } finally {
+        setConfirming(false);
+      }
+    }
     onConfirm?.(selectedAssets);
     onClose?.();
   };
@@ -1334,14 +1392,15 @@ export default function AssetPickerModal({
           <button
             type="button"
             onClick={handleConfirm}
+            disabled={confirming}
             onMouseEnter={() => setConfirmHovered(true)}
             onMouseLeave={() => { setConfirmHovered(false); setConfirmPressed(false); }}
             onMouseDown={() => setConfirmPressed(true)}
             onMouseUp={() => setConfirmHovered(true)}
-            style={{ display: 'flex', flexDirection: 'column', height: '36px', borderRadius: '8px', outline: '1px solid #00000080', boxShadow: '#00000066 3px 3px 8px', padding: '1px', backgroundImage: 'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 30%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.08))', cursor: 'pointer', border: 'none', transition: 'opacity 100ms', opacity: confirmPressed ? 0.75 : 1 }}
+            style={{ display: 'flex', flexDirection: 'column', height: '36px', borderRadius: '8px', outline: '1px solid #00000080', boxShadow: '#00000066 3px 3px 8px', padding: '1px', backgroundImage: 'linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 30%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.08))', cursor: confirming ? 'wait' : 'pointer', border: 'none', transition: 'opacity 100ms', opacity: confirming || confirmPressed ? 0.75 : 1 }}
           >
             <div style={{ display: 'flex', alignItems: 'center', flex: 1, borderRadius: '7px', padding: '0 15px', background: confirmPressed ? '#111111' : confirmHovered ? '#1A1A1A' : '#161616', transition: 'background 100ms' }}>
-              <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF', whiteSpace: 'nowrap' }}>确定</span>
+              <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF', whiteSpace: 'nowrap' }}>{confirming ? '处理中...' : '确定'}</span>
             </div>
           </button>
           </div>

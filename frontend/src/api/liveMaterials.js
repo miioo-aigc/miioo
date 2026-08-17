@@ -49,6 +49,44 @@ export async function apiGetLiveMaterialAsset(assetId) {
   return res.json();
 }
 
+function unwrapLiveMaterialAsset(payload) {
+  if (!payload || typeof payload !== 'object') return {};
+  return payload.asset || payload.data || payload.result || payload;
+}
+
+function getLiveMaterialSourceUrl(asset) {
+  return asset?.download_url
+    || asset?.downloadUrl
+    || asset?.original_url
+    || asset?.originalUrl
+    || asset?.source_url
+    || asset?.sourceUrl
+    || asset?.preview_url
+    || asset?.previewUrl
+    || asset?.file_url
+    || asset?.fileUrl
+    || null;
+}
+
+/**
+ * 受控素材下载地址不能直接交给 img 标签：标签请求无法附带 Bearer Token，
+ * 短时令牌过期后会返回 401。这里经 authFetch 下载后转为当前页面可用的 Blob URL。
+ */
+export async function apiGetLiveMaterialPreview(assetId) {
+  const payload = await apiGetLiveMaterialAsset(assetId);
+  const asset = unwrapLiveMaterialAsset(payload);
+  const sourceUrl = getLiveMaterialSourceUrl(asset);
+  if (!sourceUrl) return { asset, previewUrl: null };
+
+  const mediaUrl = /^https?:\/\//i.test(sourceUrl)
+    ? sourceUrl
+    : `${BASE || ''}${sourceUrl.startsWith('/') ? '' : '/'}${sourceUrl}`;
+  const res = await authFetch(mediaUrl);
+  if (!res.ok) throw new Error(`获取素材预览失败: ${res.status}`);
+  const blob = await res.blob();
+  return { asset, previewUrl: URL.createObjectURL(blob) };
+}
+
 /** 删除真人素材 */
 export async function apiDeleteLiveMaterialAsset(assetId) {
   const res = await authFetch(`${BASE}/api/live-materials/assets/${assetId}`, { method: 'DELETE' });

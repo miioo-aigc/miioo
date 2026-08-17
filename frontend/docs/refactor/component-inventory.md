@@ -1,5 +1,13 @@
 # 组件重构盘点基线
 
+## 2026-08-17 分镜 Seedance 虚拟人像参考主体刷新恢复
+
+- `AssetPickerModal.jsx` 为 Seedance 素材分离浏览器预览地址和 `asset_ref_url`：后者仅作为视频生成的服务商引用，绝不写入图片展示字段；素材详情补齐 `asset_id`、组信息和认证标记后再交给分镜。
+- `storyboardDataAdapter.js` 与 `api/storyboard.js` 持久化参考主体的素材身份和 `asset_ref_url`，同时过滤会话级 `blob:` 地址。项目资产继续保留自身真实图片地址，Seedance 素材刷新时则依据 `asset_id` 恢复。
+- `StoryboardPage.jsx` 在加载后通过 `apiGetLiveMaterialPreview` 以鉴权请求下载真实高清媒体，并生成当前会话的 Blob 预览；创作面板、表单状态与分镜参考列同步更新，但不触发保存队列，因此不会把过期下载地址或 Blob 地址写回服务端。
+- `api/liveMaterials.js` 的预览读取优先使用真实原图/下载地址。素材库的 AVIF 仍只用于缩略图展示，不参与上传或分镜生成文件选择。
+- 验证：相关目标文件 ESLint、`npm run build`、`npm run check:architecture` 和 `git diff --check` 通过；架构检查仅有现存文件规模提醒，真实登录态下的“两张虚拟人像后刷新”流程仍需页面回归确认。
+
 ## 2026-08-11 API 配置音乐模型支持
 
 - `ApiConfigModal.jsx` 的模型 Tab 与前后端分类映射新增“音乐模型”/`music`。既有 `ConfigModelModal` 依据统一 Tab 列表渲染，因此 OneLinkAI 和其他服务商的配置弹窗均复用现有真实 `/api/models` 加载、添加、启停、默认及删除链路。

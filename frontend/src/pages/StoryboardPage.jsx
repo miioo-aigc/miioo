@@ -38,7 +38,7 @@
  *   GenerateImagePanel                         components/storyboard/GenerateImagePanel.jsx
  *   GenerateVideoPanel / ReferenceMediaEditor  components/storyboard/
  *
- * ─── 主页面入口 ──────────────────────────────────────────── L209–L2739
+ * ─── 主页面入口 ──────────────────────────────────────────── L233–L2886
  *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化；L337 按镜头最新快照保存队列
  *   [持久化动作] L544 enqueueStoryboardSave：同一镜头串行提交最新 PATCH 快照
  *   [加载与错误态] LoadingAnimation、DotsLoading、失败操作和统计
@@ -48,6 +48,10 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-17  Seedance 虚拟人像参考主体刷新后按 asset_id 鉴权重取高清预览，运行时转为 Blob URL；
+ *               不持久化短时下载地址或 Blob URL，避免过期 401 后参考主体丢失
+ *   2026-08-17  分镜视频生成前以镜头已保存主体补全 Seedance 素材身份：真人走 live_material，虚拟人像走 asset_ref_url；
+ *               全能参考模式不再携带遗留首尾帧，避免普通真人图片混入请求
  *   2026-08-12  开始剪辑按钮改为弹出“开发中”提示 Toast，不再解锁 edit 步骤，避免跳转项目总览
  *   2026-08-12  分镜任务轮询超时由 450 秒调整为 3000 秒（MAX_POLLS 150→1000，间隔 3000ms）
  *   2026-08-11  手动新增空白分镜打 isManualBlank 标记，图片/视频创作面板打开时不再代入后端返回的默认提示词
@@ -89,6 +93,7 @@ import { apiUploadStoryboardImage, apiUploadStoryboardVideo, apiGenerateStoryboa
 import { apiGetEpisodes, normalizeEpisodeListResponse } from '../api/subject';
 import { apiUploadCreationImage } from '../api/creation';
 import { apiListModels } from '../api/config';
+import { apiGetLiveMaterialPreview } from '../api/liveMaterials';
 import DotsLoading from '../components/DotsLoading';
 import { normalizeImageUrl, toAbsoluteUrl } from '../utils/imageUrl';
 import { normalizeStoryboardModelList, normalizeStoryboardDurationOptions } from '../utils/storyboardModelAdapter';
@@ -148,9 +153,50 @@ function hasBackendStoryboardIds(items) {
   ));
 }
 
+function isSeedanceReference(ref) {
+  return Boolean(
+    ref?.isLiveMaterial
+    || ref?.isAigcMaterial
+    || ref?.isSeedanceMaterial
+    || ref?.isSeedanceCertifiedMaterial
+    || ref?.assetRefUrl
+    || ref?.asset_ref_url,
+  );
+}
+
+function applySeedancePreviewToShot(shot, assetId, previewUrl, detail = {}) {
+  const currentRefs = shot?.mainRefs || [];
+  const nextRefs = currentRefs.map((ref) => {
+    const refAssetId = ref.assetId || ref.asset_id || ref.id;
+    if (String(refAssetId) !== String(assetId)) return ref;
+    return {
+      ...ref,
+      url: previewUrl,
+      previewUrl,
+      assetRefUrl: detail.asset_ref_url || detail.assetRefUrl || ref.assetRefUrl,
+      groupId: detail.group_id || detail.groupId || ref.groupId,
+      groupType: detail.group_type || detail.groupType || ref.groupType,
+      isSeedanceMaterial: true,
+    };
+  });
+  if (nextRefs.every((ref, index) => ref === currentRefs[index])) return shot;
+  const video = shot.creationForm?.video;
+  return {
+    ...shot,
+    mainRefs: nextRefs,
+    creationForm: video
+      ? { ...shot.creationForm, video: { ...video, refSubjects: nextRefs } }
+      : shot.creationForm,
+  };
+}
+
 import { subscribe, peekCache, invalidate } from '../utils/cache';
 import { K, MEDIUM } from '../utils/cacheKeys';
 import { buildStoryboardRefFromAsset, getUploadedImageId, getUploadedImageUrl, toSafeStoryboardReferenceUrls } from '../utils/storyboardReferenceAdapter';
+import {
+  buildStoryboardVideoReferencePayload,
+  enrichStoryboardVideoReferenceMedia,
+} from '../utils/storyboardVideoRequestAdapter';
 import { buildStoryboardCandidatePayload, normalizeSavedStoryboardCandidate } from '../utils/storyboardCandidateAdapter';
 import { areStoryboardMediaSame, mergeStoryboardMediaItems } from '../utils/storyboardMediaDedup';
 import { insertStoryboardShot, moveStoryboardShot, removeStoryboardShot, renumberStoryboardShots } from '../utils/storyboardShotUtils';
@@ -345,9 +391,16 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const promptBindingRepairRef = useRef(new Map());
   const userEditedVideoPromptRef = useRef(new Set());
   const shotsRef = useRef(shots);
+  const liveMaterialPreviewUrlsRef = useRef(new Map());
+  const liveMaterialPreviewPendingIdsRef = useRef(new Set());
   useEffect(() => {
     shotsRef.current = shots;
   }, [shots]);
+
+  useEffect(() => () => {
+    liveMaterialPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    liveMaterialPreviewUrlsRef.current.clear();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1108,6 +1161,77 @@ function hasStoryboardMediaHint(shot = {}) {
     });
     return () => cancelAnimationFrame(frameId);
   }, [storyboardSubjects]);
+
+  // Seedance 的展示地址可能是短时受控下载链接，img 请求无法附带 Bearer Token。
+  // 分镜快照只保存素材身份；每次刷新后用已鉴权的请求重新取图，生成 Blob URL 供当前页面展示。
+  useEffect(() => {
+    const pendingAssetIds = [...new Set(shots
+      .flatMap((shot) => shot.mainRefs || [])
+      .filter((ref) => isSeedanceReference(ref))
+      .map((ref) => ref.assetId || ref.asset_id || ref.id)
+      .filter((assetId) => (
+        assetId
+        && !liveMaterialPreviewUrlsRef.current.has(String(assetId))
+        && !liveMaterialPreviewPendingIdsRef.current.has(String(assetId))
+      )))];
+    if (pendingAssetIds.length === 0) return undefined;
+
+    let cancelled = false;
+    pendingAssetIds.forEach((assetId) => liveMaterialPreviewPendingIdsRef.current.add(String(assetId)));
+    Promise.all(pendingAssetIds.map(async (assetId) => {
+      try {
+        const { asset, previewUrl } = await apiGetLiveMaterialPreview(assetId);
+        if (!previewUrl) return;
+        if (cancelled) {
+          URL.revokeObjectURL(previewUrl);
+          return;
+        }
+        liveMaterialPreviewUrlsRef.current.set(String(assetId), previewUrl);
+        const detail = asset || {};
+        setShots((previous) => previous.map((shot) => (
+          applySeedancePreviewToShot(shot, assetId, previewUrl, detail)
+        )));
+        // 创作面板优先读取 videoFormStateMap，必须与镜头快照同时替换过期 URL。
+        // 这是纯展示态更新，不调用表单保存队列，Blob URL 不会被写回后端。
+        setVideoFormStateMap((previous) => {
+          let changed = false;
+          const next = { ...previous };
+          Object.entries(previous).forEach(([shotId, form]) => {
+            if (!Array.isArray(form?.refSubjects)) return;
+            const nextRefs = applySeedancePreviewToShot(
+              { mainRefs: form.refSubjects, creationForm: { video: form } },
+              assetId,
+              previewUrl,
+              detail,
+            ).mainRefs;
+            if (nextRefs === form.refSubjects) return;
+            changed = true;
+            next[shotId] = { ...form, refSubjects: nextRefs };
+          });
+          if (changed) videoFormStateRef.current = next;
+          return changed ? next : previous;
+        });
+        setVideoPanel((previous) => {
+          if (!previous?.shot) return previous;
+          const nextShot = applySeedancePreviewToShot(previous.shot, assetId, previewUrl, detail);
+          return nextShot === previous.shot ? previous : { ...previous, shot: nextShot };
+        });
+        setCreationPanel((previous) => {
+          if (!previous?.shot) return previous;
+          const nextShot = applySeedancePreviewToShot(previous.shot, assetId, previewUrl, detail);
+          return nextShot === previous.shot ? previous : { ...previous, shot: nextShot };
+        });
+      } catch (error) {
+        console.warn('[StoryboardPage] 刷新 Seedance 素材预览失败:', error);
+      } finally {
+        liveMaterialPreviewPendingIdsRef.current.delete(String(assetId));
+      }
+    }));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shots]);
 
   // 主体页删除主体后，当前分镜页不能继续展示旧主体引用。
   // Home 的共享主体列表随后会刷新；这里先即时移除本地引用，避免出现旧图或空占位。
@@ -2659,7 +2783,7 @@ function hasStoryboardMediaHint(shot = {}) {
             .then((res) => console.log('[onSettleVideo] video_url 保存成功，后端返回:', JSON.stringify(res)))
             .catch((err) => console.error('[onSettleVideo] video_url 保存失败', err));
         }}
-       onGenerate={async (params) => {
+         onGenerate={async (params) => {
          const shot = videoPanel.shot;
          let taskId = null;
          const pendingClientId = addPendingCandidate(shot.id, 'video');
@@ -2671,6 +2795,16 @@ function hasStoryboardMediaHint(shot = {}) {
               const parsed = parseFloat(params.duration);
               return isNaN(parsed) ? undefined : parsed;
             })();
+            const referencePayload = params.tab === 'frame'
+              ? {}
+              : buildStoryboardVideoReferencePayload(
+                enrichStoryboardVideoReferenceMedia(
+                  params.reference_media || params.refImages || [],
+                  videoFormStateRef.current[shot.id]?.refSubjects
+                    || shot.creationForm?.video?.refSubjects,
+                  shot.mainRefs,
+                ),
+              );
             const taskResp = await apiGenerateStoryboardVideo(projectId, shot.id, {
                 model: params.model,
                 resolution: params.resolution,
@@ -2678,20 +2812,18 @@ function hasStoryboardMediaHint(shot = {}) {
                 sound_effect: params.sound,
                 prompt: params.prompt,
                 ratio: projectRatio,
-                reference_images: params.tab === 'frame'
-                  ? undefined
-                  : (params.reference_images || toSafeStoryboardReferenceUrls(params.refImages)),
-                first_frame_url: toAbsoluteUrl(params.first_frame_url),
-                last_frame_url: toAbsoluteUrl(params.last_frame_url),
-                first_frame_asset_id: params.first_frame_asset_id,
-                last_frame_asset_id: params.last_frame_asset_id,
+                ...referencePayload,
+                ...(params.tab === 'frame' ? {
+                  first_frame_url: toAbsoluteUrl(params.first_frame_url),
+                  last_frame_url: toAbsoluteUrl(params.last_frame_url),
+                  first_frame_asset_id: params.first_frame_asset_id,
+                  last_frame_asset_id: params.last_frame_asset_id,
+                } : {}),
                 generate_mode: params.generate_mode,
                 reference_video_url: toAbsoluteUrl(params.reference_video_url),
                 reference_audio_url: toAbsoluteUrl(params.reference_audio_url),
               });
-            const savedReferenceImages = params.tab === 'frame'
-              ? undefined
-              : (params.reference_images || toSafeStoryboardReferenceUrls(params.refImages));
+            const savedReferenceImages = referencePayload.reference_images;
             taskId = getStoryboardTaskId(taskResp);
             if (!taskId) throw new Error('分镜视频生成接口未返回任务 ID');
             bindPendingCandidate(shot.id, pendingClientId, taskId);
@@ -2704,7 +2836,7 @@ function hasStoryboardMediaHint(shot = {}) {
               removePendingCandidate(taskId || pendingClientId, shot.id);
               // 将参考素材信息一并存入 shot，供查看弹窗展示
               const refInfo = {
-                referenceImages: params.reference_images?.length > 0 ? params.reference_images : undefined,
+                referenceImages: savedReferenceImages,
                 firstFrameUrl: params.first_frame_url || undefined,
                 lastFrameUrl: params.last_frame_url || undefined,
                 referenceVideoUrl: params.reference_video_url || undefined,

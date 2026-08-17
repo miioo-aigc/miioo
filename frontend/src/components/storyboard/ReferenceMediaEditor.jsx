@@ -13,6 +13,7 @@
  *   仅把上传、资产选择、删除和插入提示转换为显式回调。
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-17  素材库选择保留 Seedance 真人/虚拟认证字段，并向选择器传递当前模型以显示认证素材库
  *   2026-08-11  恢复首尾帧模式的尾帧上传入口
  *   2026-07-16  上传槽位改为业务域内直接引入，移除页面级组件转发边界；保留素材状态与回调契约
  *   2026-08-10  首帧新增“使用上一个分镜视频尾帧”快捷入口，抽帧和上传由面板业务回调负责
@@ -27,6 +28,7 @@ import CurrentShotImagePickerPopover from './CurrentShotImagePickerPopover';
 export default function ReferenceMediaEditor({
   tab,
   projectId,
+  model = '',
   shot,
   nextShot,
   previousFrameShortcut = null,
@@ -108,6 +110,7 @@ export default function ReferenceMediaEditor({
           {showRefSubjects && (
             <PanelUploadSlot
               projectId={projectId}
+              model={model}
               label="参考主体"
               countLabel={imageCountLabel}
               accept="image/*"
@@ -130,6 +133,7 @@ export default function ReferenceMediaEditor({
           {showRefImages && (
             <PanelUploadSlot
               projectId={projectId}
+              model={model}
               label="参考图"
               countLabel={imageCountLabel}
               accept="image/*"
@@ -142,9 +146,17 @@ export default function ReferenceMediaEditor({
                 if (!selectedAssets?.length) return;
                 const newItems = selectedAssets.map((asset) => ({
                   id: asset.id,
-                  assetId: asset.id,
-                  url: normalizeImageUrl(asset.fileUrl || asset.originalUrl || asset.original_url || asset.thumbnailUrl || asset.thumbnail_url || asset.url || asset.file_url),
+                  assetId: asset.assetId || asset.asset_id || asset.id,
+                  // Seedance 的 asset_ref_url 是生成专用 asset:// 引用，面板使用可访问预览图展示。
+                  url: normalizeImageUrl(asset.previewUrl || asset.preview_url || asset.thumbnailUrl || asset.thumbnail_url || asset.url || asset.fileUrl || asset.file_url || asset.originalUrl || asset.original_url),
                   name: asset.name || asset.filename || '',
+                  isLiveMaterial: Boolean(asset.isLiveMaterial),
+                  isAigcMaterial: Boolean(asset.isAigcMaterial),
+                  isSeedanceMaterial: Boolean(asset.isSeedanceMaterial),
+                  isSeedanceCertifiedMaterial: Boolean(asset.isSeedanceCertifiedMaterial),
+                  groupId: asset.groupId || asset.group_id || null,
+                  groupType: asset.groupType || asset.group_type || null,
+                  assetRefUrl: asset.assetRefUrl || asset.asset_ref_url || null,
                 }));
                 onRefImagesChange?.((prev) => {
                   const merged = [...prev, ...newItems];
@@ -157,6 +169,7 @@ export default function ReferenceMediaEditor({
           {showRefVideo && (
             <PanelUploadSlot
               projectId={projectId}
+              model={model}
               label="参考视频"
               countLabel={videoCountLabel}
               accept="video/mp4,video/quicktime"
@@ -176,6 +189,7 @@ export default function ReferenceMediaEditor({
           {showRefAudio && (
             <PanelUploadSlot
               projectId={projectId}
+              model={model}
               label="参考音频"
               countLabel={audioCountLabel}
               accept="audio/mpeg,audio/wav"

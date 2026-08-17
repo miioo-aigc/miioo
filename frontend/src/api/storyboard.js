@@ -6,7 +6,7 @@ const BASE = import.meta.env.VITE_API_BASE_URL;
 import { authFetch, authFetchForm } from './request.js';
 import { cached, invalidate, setCache, peekCache } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
-import { buildStoryboardSubjectFields, isBackendStoryboardId, isStoryboardSubjectReference } from '../utils/storyboardDataAdapter.js';
+import { buildStoryboardSubjectFields, isBackendStoryboardId, isStoryboardSubjectReference, serializeStoryboardReferenceItem } from '../utils/storyboardDataAdapter.js';
 
 // 分镜写操作后统一失效该项目的分镜缓存 + 概览（概览含分镜进度）
 function invalidateStoryboards(projectId) {
@@ -377,7 +377,8 @@ export async function apiUpdateStoryboardCreationForm(projectId, storyboardId, {
   ]
     .map((item) => {
       if (!item || typeof item !== 'object') return null;
-      const url = item.url || item.fileUrl || item.file_url || item.previewUrl || item.preview_url;
+      // Seedance 的 fileUrl 可能来自历史快照并指向 asset://；展示与持久化优先使用真实预览/源文件地址。
+      const url = item.url || item.previewUrl || item.preview_url || item.sourceUrl || item.source_url || item.fileUrl || item.file_url;
       return url ? { ...item, url } : null;
     })
     .filter(Boolean)
@@ -387,18 +388,18 @@ export async function apiUpdateStoryboardCreationForm(projectId, storyboardId, {
       const key = item.assetId || item.asset_id || item.id || item.url;
       return list.findIndex((candidate) => (candidate.assetId || candidate.asset_id || candidate.id || candidate.url) === key) === index;
     })
-    .map((item) => ({
-      ...(item.assetId || item.asset_id ? { asset_id: item.assetId || item.asset_id } : {}),
-      url: item.url,
-      name: item.name || '参考图',
-    }));
+    .map(serializeStoryboardReferenceItem)
+    .filter(Boolean);
   const referenceImageUrls = referenceItems.map((item) => item.url).filter(Boolean);
   const hasMainRefs = Array.isArray(mainRefs);
   const subjectFields = hasMainRefs
     ? buildStoryboardSubjectFields(mainRefs)
     : {};
+  const persistedSubjectRefs = hasMainRefs
+    ? mainRefs.map(serializeStoryboardReferenceItem).filter(Boolean)
+    : null;
   const persistedVideoState = hasMainRefs
-    ? { ...videoState, refSubjects: mainRefs }
+    ? { ...videoState, refSubjects: persistedSubjectRefs }
     : videoState;
   const creationForm = {
     image: imageState,

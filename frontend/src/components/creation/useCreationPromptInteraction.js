@@ -2,19 +2,19 @@
  * @file useCreationPromptInteraction.js
  * @structure-index
  *
- * ─── 纯函数与 DOM 标签构造 ───────────────────────────── L26–L117
- *   FONT、formatMentionLabel()、handleTagClick()、buildTagElement()
+ * ─── 纯函数与 DOM 标签构造 ───────────────────────────── L26–L121
+ *   FONT、formatMentionLabel()、hasEditorContent()、handleTagClick()、buildTagElement()
  *
- * ─── 提示词编辑生命周期 ─────────────────────────────── L119–L155
+ * ─── 提示词编辑生命周期 ─────────────────────────────── L124–L162
  *   预填充 HTML/文本、重建 @素材标签、@菜单 outside click
  *
- * ─── 输入事件与素材标签操作 ─────────────────────────── L157–L387
+ * ─── 输入事件与素材标签操作 ─────────────────────────── L164–L391
  *   粘贴处理、文件移除、卡片插入、@菜单选择、键盘删除/提交
  *
- * ─── 快照与恢复接口 ─────────────────────────────────── L389–L420
+ * ─── 快照与恢复接口 ─────────────────────────────────── L393–L426
  *   getPromptSnapshot()、clearContent()、restoreContent()
  *
- * ─── 公开 Hook 接口 ──────────────────────────────────── L422–L444
+ * ─── 公开 Hook 接口 ──────────────────────────────────── L428–L450
  *   编辑器 ref、焦点/内容状态、事件回调、快照与恢复能力
  *
  * ─── 边界说明 ─────────────────────────────────────────
@@ -32,6 +32,11 @@ function formatMentionLabel(name = '') {
   const ext = name.slice(dotIdx);
   const truncatedBase = base.length > 9 ? `${base.slice(0, 9)}…` : base;
   return truncatedBase + ext;
+}
+
+function hasEditorContent(editor) {
+  if (!editor) return false;
+  return Boolean(editor.querySelector('[data-file-ref]')) || Boolean(editor.innerText?.trim());
 }
 
 /**
@@ -101,8 +106,7 @@ export function useCreationPromptInteraction({
       event.preventDefault();
       event.stopPropagation();
       tag.remove();
-      const content = editorRef.current?.innerText ?? '';
-      setHasContent(content.trim().length > 0);
+      setHasContent(hasEditorContent(editorRef.current));
     });
     tag.appendChild(closeButton);
 
@@ -136,9 +140,8 @@ export function useCreationPromptInteraction({
       } else if (prefillData.prompt) {
         editorRef.current.textContent = prefillData.prompt;
       }
-      // 这里同步 React 状态与手动维护的 contentEditable DOM；触发信号由 prefillVersion 控制。
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setHasContent((prefillData.prompt || '').trim().length > 0);
+      // 空 HTML（如浏览器保留的 <br>）不应遮蔽占位符；@素材标签仍视为输入内容。
+      setHasContent(hasEditorContent(editorRef.current));
     }
   // prefillVersion 是外部约定的唯一触发信号，不能因 prefillData 对象重建而重复覆盖编辑器内容。
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -202,8 +205,7 @@ export function useCreationPromptInteraction({
       editorRef.current.querySelectorAll('[data-file-ref]').forEach((tag) => {
         if (tag.dataset.fileRef === (file._uid || file.name)) tag.remove();
       });
-      const content = editorRef.current.innerText ?? '';
-      setHasContent(content.trim().length > 0);
+      setHasContent(hasEditorContent(editorRef.current));
     }
   }, [files, removeFile]);
 
@@ -276,8 +278,7 @@ export function useCreationPromptInteraction({
   }, [buildTagElement, mentionAnchorRange, mentionTargetTag]);
 
   const handleInput = useCallback(() => {
-    const content = editorRef.current?.innerText ?? '';
-    setHasContent(content.trim().length > 0);
+    setHasContent(hasEditorContent(editorRef.current));
     const selection = window.getSelection();
     if (!selection || !selection.rangeCount) {
       setMentionOpen(false);
@@ -377,8 +378,7 @@ export function useCreationPromptInteraction({
       if (tagToRemove) {
         event.preventDefault();
         tagToRemove.remove();
-        const content = editorRef.current?.innerText ?? '';
-        setHasContent(content.trim().length > 0);
+        setHasContent(hasEditorContent(editorRef.current));
         return;
       }
     }
@@ -416,7 +416,7 @@ export function useCreationPromptInteraction({
           || { name: fileName || fileRef, url: '', size: 0, _uid: fileRef };
         oldTag.parentNode?.replaceChild(buildTagElement(file), oldTag);
       });
-      setHasContent(true);
+      setHasContent(hasEditorContent(editorRef.current));
       return;
     }
     const content = text || fallback;

@@ -24,6 +24,8 @@ export { DEFAULT_EMOTIONS } from './CreationSelectorConstants';
 export { default as CreationLiveMaterialModal } from './CreationLiveMaterialModal';
 export { default as CreationAssetPickerModal } from './CreationAssetPickerModal';
 export { default as DubbingVoiceModal, DubbingVoiceFileCard } from './CreationDubbingVoiceModal';
+export { default as DubbingVoiceCard } from './DubbingVoiceCard';
+export { default as DubbingVoiceFilters } from './DubbingVoiceFilters';
 export { default as CreationInputOverlays } from './CreationInputOverlays';
 export { default as CreationInputSurface } from './CreationInputSurface';
 export { default as CreationInputCard } from './CreationInputCard';

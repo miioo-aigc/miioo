@@ -3,19 +3,16 @@
  * @structure-index
  *
  * ─── 组件职责 ───────────────────────────────────────────────────────
- *   创作输入区的音色选择、试听、自定义音色上传和收藏音频选择。
- *
- * ─── 状态层 ─────────────────────────────────────────────────────────
- *   当前 Tab、官方/自定义/收藏音色列表、加载状态、选中音色、
- *   音频播放 ref 和自定义音色文件上传 ref。
+ *   创作配音的选择音色弹窗，以及输入区已选音频参考卡片。
+ *   官方音色以接口可用集为准，并合并本地官网展示元数据；收藏 Tab 读取收藏音频接口。
  *
  * ─── 数据流 ─────────────────────────────────────────────────────────
- *   通过 apiGetOfficialVoices 和现有语音接口读取数据；通过 apiCreateCustomVoice、open、onClose、
- *   onConfirm 显式接入 InputCard，不读取页面闭包。
+ *   弹窗通过 open、onClose、onConfirm 接入 CreationInputCard；
+ *   音频参考卡片通过 voiceName、onRemove、onOpenModal 接入输入区。
  *
  * ─── 组件结构 ───────────────────────────────────────────────────────
- *   VoiceCard / CustomVoiceCard / DubbingVoiceFileCard /
- *   DubbingVoiceModal。
+ *   DubbingVoiceFileCard / ModalCloseIcon / SearchIcon / FilterIcon /
+ *   DubbingVoiceFilters / DubbingVoiceCard / DubbingVoiceModal
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-16  从 pages 迁入创作域组件目录，保持音色选择行为不变
@@ -25,352 +22,317 @@
  *   2026-08-11  已选音频参考卡片移除播放按钮，仅保留名称和类型文字
  *   2026-08-11  自定义音色上传复用统一鉴权 API，修复空 Bearer 导致的上传失败
  *   2026-08-11  自定义音色上传失败和格式错误改用创作页 Toast 反馈
+ *   2026-08-18  创作配音选择音色弹窗隐藏自定义音色 Tab，保留官方音色和收藏入口
+ *   2026-08-18  按新设计稿重构选择音色弹窗，暂以静态音色卡片呈现视觉结构
+ *   2026-08-18  按新版设计稿将弹窗尺寸调整为 800 × 600，并收紧内容区控制栏布局
+ *   2026-08-18  补齐弹窗按钮、搜索框、Tab 和筛选按钮的本地交互状态
+ *   2026-08-18  Tab 切换真实展示官方静态音色与收藏音频，移除设计稿外的列表分页器
+ *   2026-08-18  音色卡片抽离为 DubbingVoiceCard，收藏 Tab 接入取消收藏接口
+ *   2026-08-18  官方音色接入查询接口，并以官网采集元数据补全展示名称、标签和描述
+ *   2026-08-18  新增固定音色筛选区，并使用官网元数据兜底筛选字段
  */
-import { apiCreateCustomVoice, apiGetCustomVoices, apiGetOfficialVoices, getVoiceDisplayName } from "../../api/voices";
-import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
+import { apiListCreationAudios, apiToggleAudioFavorite } from "../../api/creation";
+import { apiGetOfficialVoices } from "../../api/voices";
+import { Button } from "../ui/Button";
+import { CreationEmptyIconDubbing } from "./CreationEmptyState";
+import DubbingVoiceCard from "./DubbingVoiceCard";
+import DubbingVoiceFilters from "./DubbingVoiceFilters";
+import { MINIMAX_OFFICIAL_VOICE_FILTER_OPTIONS, MINIMAX_OFFICIAL_VOICE_METADATA } from "./MinimaxOfficialVoiceMetadata";
+
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
-const HeadphoneIcon = ({ color = "#2DC3E1" }) => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M3 18v-6a9 9 0 0118 0v6" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3v5zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3v5z" fill={color} fillOpacity="0.15" stroke={color} strokeWidth="1.5" />
-  </svg>
-);
+const FAVORITE_LIST_SIZE = 100;
 
-const PlayingWaveIcon = ({ color = "#2DC3E1", size = 16 }) => (
-  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="1" y="6" width="2" height="4" rx="1" fill={color}>
-      <animate attributeName="height" values="4;10;4" dur="0.8s" repeatCount="indefinite" />
-      <animate attributeName="y" values="6;3;6" dur="0.8s" repeatCount="indefinite" />
-    </rect>
-    <rect x="5" y="4" width="2" height="8" rx="1" fill={color}>
-      <animate attributeName="height" values="8;14;8" dur="0.8s" begin="0.15s" repeatCount="indefinite" />
-      <animate attributeName="y" values="4;1;4" dur="0.8s" begin="0.15s" repeatCount="indefinite" />
-    </rect>
-    <rect x="9" y="3" width="2" height="10" rx="1" fill={color}>
-      <animate attributeName="height" values="10;16;10" dur="0.8s" begin="0.3s" repeatCount="indefinite" />
-      <animate attributeName="y" values="3;0;3" dur="0.8s" begin="0.3s" repeatCount="indefinite" />
-    </rect>
-    <rect x="13" y="5" width="2" height="6" rx="1" fill={color}>
-      <animate attributeName="height" values="6;12;6" dur="0.8s" begin="0.45s" repeatCount="indefinite" />
-      <animate attributeName="y" values="5;2;5" dur="0.8s" begin="0.45s" repeatCount="indefinite" />
-    </rect>
-  </svg>
-);
-
-function DotsLoading({ size = 6, color = "#2DC3E1", gap = 4 }) {
-  return (
-    <div style={{ display: "flex", gap: gap + "px", alignItems: "center" }}>
-      {[0, 1, 2].map(i => (
-        <div key={i} style={{ width: size + "px", height: size + "px", borderRadius: "50%", background: color, animation: "dotPulse 1.2s ease-in-out " + (i * 0.2) + "s infinite" }} />
-      ))}
-    </div>
-  );
+function ModalCloseIcon({ color = "#FFFFFF" }) {
+  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.667 2.667L13.333 13.333M2.667 13.333L13.333 2.667" stroke={color} strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-function VoiceCard({ label, active, onClick, previewUrl }) {
-  const [playing, setPlaying] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const audioRef = useRef(null);
-  useEffect(() => {
-    return () => { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } };
-  }, []);
-  const handlePlay = (e) => {
-    e.stopPropagation();
-    if (!previewUrl) return;
-    if (playing) { audioRef.current?.pause(); audioRef.current = null; setPlaying(false); }
-    else {
-      const audio = new Audio(previewUrl);
-      audioRef.current = audio;
-      audio.play().catch(() => setPlaying(false));
-      audio.onended = () => { audioRef.current = null; setPlaying(false); };
-      audio.onerror = () => { audioRef.current = null; setPlaying(false); };
-      setPlaying(true);
-    }
-  };
-  return (
-    <div onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ width: "100%", minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "6px", borderRadius: "8px", padding: "8px", cursor: "pointer", background: active ? "#1D1E1E" : hovered ? "#252525" : "#1D1E1E", border: "1px solid " + (active ? "#2DC3E1" : hovered ? "#FFFFFF3D" : "#FFFFFF14"), transition: "background 0.15s, border-color 0.15s", boxSizing: "border-box" }}>
-      {previewUrl && (
-        <button type="button" onClick={handlePlay} style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          {playing ? <PlayingWaveIcon color="#2DC3E1" size={16} /> : <HeadphoneIcon color="#2DC3E1" />}
-        </button>
-      )}
-      <span style={{ fontFamily: FONT, fontSize: "14px", lineHeight: "17px", color: active ? "#2DC3E1" : "#FFFFFF99", textAlign: "center" }}>{label}</span>
-    </div>
-  );
+function SearchIcon({ color = "#FFFFFF99" }) {
+  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M7 12.667A5.667 5.667 0 1 0 7 1.333a5.667 5.667 0 0 0 0 11.334Z" stroke={color} strokeLinejoin="round" /><path d="m11.074 11.074 2.828 2.828" stroke={color} strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-function CustomVoiceCard({ voice, selected, onSelect }) {
-  const [playing, setPlaying] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const audioRef = useRef(null);
-  useEffect(() => {
-    return () => { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } };
-  }, []);
-  const handlePlay = (e) => {
-    e.stopPropagation();
-    if (playing) { audioRef.current?.pause(); audioRef.current = null; setPlaying(false); return; }
-    const url = voice.preview_url || voice.source_audio_url || voice.sample_url || voice.audio_url || voice.url;
-    if (!url) return;
-    const audio = new Audio(url);
-    audioRef.current = audio;
-    audio.play().catch(() => setPlaying(false));
-    audio.onended = () => { audioRef.current = null; setPlaying(false); };
-    audio.onerror = () => { audioRef.current = null; setPlaying(false); };
-    setPlaying(true);
+function FilterIcon({ color = "#FFFFFF" }) {
+  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 3h12L9.2 8.606V12.8L6.8 14V8.606L2 3Z" stroke={color} strokeLinejoin="round" /></svg>;
+}
+
+function getAccent(tags = []) {
+  return tags.find((tag) => tag.includes("口音") || tag.startsWith("中国-")) || "";
+}
+
+function normalizeOfficialVoiceLanguage(language, fallbackLanguage = "") {
+  const value = String(language || "").trim();
+  if (!value) return fallbackLanguage;
+
+  const languageAliases = {
+    "chinese (mandarin)": "中文-普通话",
+    chinese: "中文-普通话",
+    mandarin: "中文-普通话",
+    cantonese: "粤语",
+    english: "英语",
+    japanese: "日语",
+    korean: "韩语",
+    french: "法语",
+    german: "德语",
+    spanish: "西班牙语",
+    portuguese: "葡萄牙语",
+    italian: "意大利语",
+    russian: "俄语",
+    arabic: "阿拉伯语",
   };
-  const name = getVoiceDisplayName(voice);
+
+  return languageAliases[value.toLocaleLowerCase("en-US")] || value;
+}
+
+function normalizeFavoriteAudio(audio) {
+  const tags = [audio.model, audio.emotion, audio.speed ? `${audio.speed}x` : ""].filter(Boolean).slice(0, 3);
+
+  return {
+    id: audio.id || audio.audio_id || audio.asset_id,
+    name: audio.name || audio.audio_name || audio.asset_name || "未命名音频",
+    mood: audio.voice_name || audio.voiceName || "收藏音频",
+    tags: tags.length ? tags : ["创作配音"],
+    description: audio.prompt || audio.text || audio.description || "暂无音频描述",
+    audioUrl: audio.audio_url || audio.audioUrl || audio.original_url || audio.originalUrl || audio.file_url || audio.fileUrl || audio.url,
+  };
+}
+
+function normalizeOfficialVoice(voice) {
+  const voiceId = voice.voice_id || voice.voiceId || voice.id;
+  const metadata = MINIMAX_OFFICIAL_VOICE_METADATA[voiceId];
+  const fallbackTags = [voice.language, voice.gender, voice.age_group || voice.ageGroup, voice.style].filter(Boolean);
+
+  return {
+    id: voiceId,
+    name: metadata?.name || voice.display_name || voice.displayName || voice.name || "未命名音色",
+    mood: metadata?.mood || voice.style || "官方系统音色",
+    tags: metadata?.tags?.length ? metadata.tags : fallbackTags,
+    description: metadata?.description || `${voice.display_name || voice.name || "该音色"}暂未提供详细介绍。`,
+    language: normalizeOfficialVoiceLanguage(voice.language, metadata?.language || ""),
+    accent: voice.accent || voice.dialect || voice.dialect_name || getAccent(metadata?.tags || fallbackTags),
+    gender: voice.gender || metadata?.gender || "",
+    ageGroup: voice.age_group || voice.ageGroup || metadata?.ageGroup || "",
+    audioUrl: voice.preview_url || voice.previewUrl || voice.source_audio_url || voice.sourceAudioUrl,
+    sortOrder: Number(voice.sort_order ?? voice.sortOrder ?? 0),
+  };
+}
+
+function VoiceListEmptyState({ message }) {
   return (
-    <button type="button" onClick={onSelect} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: "flex", alignItems: "center", gap: "12px", height: "56px", padding: "0 12px", borderRadius: "8px", background: selected ? "#1D1E1E" : hovered ? "#252525" : "#1D1E1E", border: selected ? "1px solid #2DC3E1" : hovered ? "1px solid #FFFFFF14" : "1px solid transparent", cursor: "pointer", outline: "none", width: "100%", textAlign: "left", transition: "background 0.15s, border-color 0.15s" }}>
-      <button type="button" onClick={handlePlay} style={{ width: "36px", height: "36px", borderRadius: "6px", background: "#FFFFFF0D", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "none", cursor: "pointer", padding: 0 }}>
-        {playing ? <PlayingWaveIcon color="#2DC3E1" size={14} /> : <HeadphoneIcon color="#FFFFFF66" />}
-      </button>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: FONT, fontSize: "14px", lineHeight: "18px", color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
-        <div style={{ fontFamily: FONT, fontSize: "12px", lineHeight: "16px", color: "#FFFFFF66", marginTop: "2px" }}>自定义音色</div>
-      </div>
-    </button>
+    <div style={{ gridColumn: "1 / -1", alignSelf: "stretch", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", minHeight: "100%" }}>
+      <CreationEmptyIconDubbing />
+      <span style={{ color: "#FFFFFF66", fontFamily: FONT, fontSize: "14px", lineHeight: "18px", textAlign: "center" }}>{message}</span>
+    </div>
   );
 }
 
 export function DubbingVoiceFileCard({ voiceName, onRemove, onOpenModal }) {
   const [hovered, setHovered] = useState(false);
+
   return (
     <div style={{ position: "relative", flexShrink: 0 }} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
-      <button type="button" onClick={onOpenModal} style={{ display: "flex", alignItems: "center", height: "60px", padding: "0 16px", borderRadius: "8px", background: "#1D1E1E", border: "1px solid #FFFFFF14", cursor: "pointer", outline: "none", position: "relative" }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", minWidth: 0 }}>
-          <span style={{ fontFamily: FONT, fontSize: "14px", lineHeight: "18px", color: "#FFFFFF", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "140px" }}>{voiceName}</span>
-          <span style={{ fontFamily: FONT, fontSize: "12px", lineHeight: "16px", color: "#FFFFFF66", marginTop: "2px" }}>音频参考</span>
-        </div>
+      <button type="button" onClick={onOpenModal} style={{ display: "flex", alignItems: "center", height: "60px", padding: "0 16px", borderRadius: "8px", background: "#1D1E1E", border: "1px solid #FFFFFF14", cursor: "pointer", outline: "none" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", minWidth: 0 }}><span style={{ maxWidth: "140px", overflow: "hidden", color: "#FFFFFF", fontFamily: FONT, fontSize: "14px", lineHeight: "18px", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{voiceName}</span><span style={{ marginTop: "2px", color: "#FFFFFF66", fontFamily: FONT, fontSize: "12px", lineHeight: "16px" }}>音频参考</span></div>
       </button>
-      {hovered && (
-        <button type="button" onClick={(e) => { e.stopPropagation(); onRemove?.(); }} style={{ position: "absolute", top: "-6px", right: "-6px", width: "18px", height: "18px", borderRadius: "50%", background: "#2D2D2D", border: "1px solid #FFFFFF14", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, zIndex: 2 }}>
-          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 1.5L6.5 6.5M6.5 1.5L1.5 6.5" stroke="#FFFFFF99" strokeWidth="1.2" strokeLinecap="round" /></svg>
-        </button>
-      )}
+      {hovered && onRemove && <button type="button" onClick={(event) => { event.stopPropagation(); onRemove(); }} aria-label="移除音频参考" style={{ position: "absolute", top: "-6px", right: "-6px", width: "18px", height: "18px", padding: 0, border: "1px solid #FFFFFF14", borderRadius: "50%", background: "#2D2D2D", color: "#FFFFFF99", cursor: "pointer" }}>×</button>}
     </div>
   );
 }
 
 export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast }) {
-  const [tab, setTab] = useState("miioo");
-  const [voices, setVoices] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedVoice, setSelectedVoice] = useState("");
-  const [customVoices, setCustomVoices] = useState([]);
-  const [customLoading, setCustomLoading] = useState(false);
-  const [customUploading, setCustomUploading] = useState(false);
-  const [favAudios, setFavAudios] = useState([]);
-  const [favLoading, setFavLoading] = useState(false);
-  const fileInputRef = useRef(null);
+  const [activeTab, setActiveTab] = useState("official");
+  const [hoveredTab, setHoveredTab] = useState("");
+  const [searchValue, setSearchValue] = useState("");
+  const [officialVoices, setOfficialVoices] = useState([]);
+  const [officialLoading, setOfficialLoading] = useState(false);
+  const [officialError, setOfficialError] = useState("");
+  const [favoriteAudios, setFavoriteAudios] = useState([]);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [favoriteError, setFavoriteError] = useState("");
+  const [selectedVoiceId, setSelectedVoiceId] = useState("");
+  const [officialFavoriteIds, setOfficialFavoriteIds] = useState(new Set());
+  const [favoriteUpdatingId, setFavoriteUpdatingId] = useState("");
+  const [searchHovered, setSearchHovered] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [filtersVisible, setFiltersVisible] = useState(false);
+  const [voiceFilters, setVoiceFilters] = useState({ language: "不限", accent: "不限", gender: "不限", ageGroup: "不限" });
+  const [closeHovered, setCloseHovered] = useState(false);
+  const [closePressed, setClosePressed] = useState(false);
 
+  const handleConfirm = () => {
+    const selectedVoice = visibleVoices.find((voice) => voice.id === selectedVoiceId);
+    if (selectedVoice) onConfirm?.(selectedVoice.id, selectedVoice.name, activeTab);
+    onClose?.();
+  };
+
+  const isSearchActive = searchHovered || searchFocused;
+  const tabs = [
+    { id: "official", label: "minimax官方音色库" },
+    { id: "favorites", label: "收藏" },
+  ];
+
+  const normalizedSearchValue = searchValue.trim().toLocaleLowerCase("zh-CN");
+  const filteredOfficialVoices = officialVoices.filter((voice) => {
+    const matchesSearch = !normalizedSearchValue || [voice.name, voice.mood, ...voice.tags, voice.description]
+      .join(" ")
+      .toLocaleLowerCase("zh-CN")
+      .includes(normalizedSearchValue);
+    const matchesLanguage = voiceFilters.language === "不限"
+      || voice.language === voiceFilters.language
+      || voice.tags.includes(voiceFilters.language);
+    const matchesFilters = matchesLanguage
+      && (voiceFilters.accent === "不限" || voice.accent === voiceFilters.accent)
+      && (voiceFilters.gender === "不限" || voice.gender === voiceFilters.gender)
+      && (voiceFilters.ageGroup === "不限" || voice.ageGroup === voiceFilters.ageGroup);
+
+    return matchesSearch && matchesFilters;
+  });
+  const isFavoritesTab = activeTab === "favorites";
+  const visibleVoices = isFavoritesTab ? favoriteAudios.map(normalizeFavoriteAudio) : filteredOfficialVoices;
 
   useEffect(() => {
-    if (!open || tab !== "miioo") return;
-    if (voices.length > 0) return;
-    const loadingTimer = setTimeout(() => setLoading(true), 0);
-    const fallback = () => {
-      fetch(import.meta.env.VITE_API_BASE_URL + "/api/voices?tab=all", {
-        headers: { Authorization: "Bearer " + (localStorage.getItem("access_token") || "") },
+    if (!open) return undefined;
+
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        setOfficialLoading(true);
+        setOfficialError("");
+      }
+    });
+
+    apiGetOfficialVoices({ provider: "minimax" })
+      .then((voices) => {
+        if (cancelled) return;
+        setOfficialVoices(voices
+          .filter((voice) => voice.voice_id || voice.voiceId || voice.id)
+          .filter((voice) => voice.is_enabled !== false && voice.isEnabled !== false && voice.supports_generate !== false && voice.supportsGenerate !== false)
+          .map(normalizeOfficialVoice)
+          .sort((first, second) => first.sortOrder - second.sortOrder));
       })
-        .then(r => r.json())
-        .then((data) => { const list = Array.isArray(data) ? data : data?.items ?? data?.voices ?? []; setVoices(list); })
-        .catch(() => setVoices([]))
-        .finally(() => setLoading(false));
+      .catch((error) => {
+        if (!cancelled) {
+          setOfficialVoices([]);
+          setOfficialError(error?.message || "官方音色加载失败，请稍后重试");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setOfficialLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
     };
-    // 优先尝试官方音色接口
-    apiGetOfficialVoices()
-      .then((data) => {
-        const list = Array.isArray(data) ? data : data?.items ?? data?.voices ?? [];
-        if (list.length > 0) { setVoices(list); setLoading(false); }
-        else { fallback(); }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || activeTab !== "favorites") return undefined;
+
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        setFavoriteLoading(true);
+        setFavoriteError("");
+      }
+    });
+
+    apiListCreationAudios({ page: 1, page_size: FAVORITE_LIST_SIZE, is_favorite: true, search: searchValue.trim() || undefined })
+      .then((response) => {
+        if (cancelled) return;
+        const list = Array.isArray(response) ? response : (response?.list ?? response?.items ?? response?.data ?? []);
+        setFavoriteAudios(list);
       })
-      .catch(() => { fallback(); });
-    return () => clearTimeout(loadingTimer);
-  }, [open, tab, voices.length]);
+      .catch(() => {
+        if (!cancelled) {
+          setFavoriteAudios([]);
+          setFavoriteError("收藏音频加载失败，请稍后重试");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setFavoriteLoading(false);
+      });
 
-  useEffect(() => {
-    if (!open || tab !== "custom") return;
-    if (customVoices.length > 0) return;
-    const loadingTimer = setTimeout(() => setCustomLoading(true), 0);
-    apiGetCustomVoices()
-      .then((data) => { setCustomVoices(Array.isArray(data) ? data.filter(v => v.is_custom) : []); })
-      .catch(() => setCustomVoices([]))
-      .finally(() => setCustomLoading(false));
-    return () => clearTimeout(loadingTimer);
-  }, [open, tab, customVoices.length]);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, open, searchValue]);
 
-  useEffect(() => {
-    if (!open || tab !== "fav") return;
-    const loadingTimer = setTimeout(() => setFavLoading(true), 0);
-    fetch(import.meta.env.VITE_API_BASE_URL + "/api/creation/audios?is_favorite=true", {
-      headers: { Authorization: "Bearer " + (localStorage.getItem("access_token") || "") },
-    })
-      .then(r => r.json())
-      .then((data) => { const list = Array.isArray(data) ? data : data?.items ?? data?.audios ?? []; setFavAudios(list); })
-      .catch(() => setFavAudios([]))
-      .finally(() => setFavLoading(false));
-    return () => clearTimeout(loadingTimer);
-  }, [open, tab]);
+  const handleTabChange = (tabId) => {
+    setActiveTab(tabId);
+    setSearchValue("");
+  };
+
+  const handleVoiceSelect = (voice) => {
+    setSelectedVoiceId((current) => current === voice.id ? "" : voice.id);
+  };
+
+  const handleFilterChange = (filterKey, value) => {
+    setVoiceFilters((current) => ({ ...current, [filterKey]: value }));
+  };
+
+  const handleFavoriteToggle = async (voice) => {
+    if (isFavoritesTab) {
+      setFavoriteUpdatingId(voice.id);
+      try {
+        await apiToggleAudioFavorite(voice.id);
+        setFavoriteAudios((current) => current.filter((audio) => (audio.id || audio.audio_id || audio.asset_id) !== voice.id));
+        setSelectedVoiceId((current) => current === voice.id ? "" : current);
+      } catch (error) {
+        showToast?.("error", error?.message || "取消收藏失败，请稍后重试");
+      } finally {
+        setFavoriteUpdatingId("");
+      }
+      return;
+    }
+
+    setOfficialFavoriteIds((current) => {
+      const next = new Set(current);
+      if (next.has(voice.id)) next.delete(voice.id);
+      else next.add(voice.id);
+      return next;
+    });
+  };
 
   if (!open) return null;
 
-  const filteredVoices = voices;
-
-  const rows = [];
-  for (let i = 0; i < filteredVoices.length; i += 4) rows.push(filteredVoices.slice(i, i + 4));
-
-  const handleCreateVoice = () => { fileInputRef.current?.click(); };
-
-  const handleFileForCustomVoice = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    const audioFile = files[0];
-    const ext = "." + audioFile.name.split(".").pop().toLowerCase();
-    const allowed = [".mp3", ".wav", ".aac", ".ogg", ".flac", ".m4a", ".wma"];
-    if (!allowed.includes(ext)) {
-      showToast?.("error", "仅支持音频格式：mp3、wav、aac、ogg、flac、m4a、wma");
-      e.target.value = "";
-      return;
-    }
-    setCustomUploading(true);
-    apiCreateCustomVoice({
-      file: audioFile,
-      name: audioFile.name.replace(/\.[^.]+$/, ""),
-    })
-      .then((voice) => {
-        setCustomVoices((prev) => [voice, ...prev]);
-        const vid = voice.id || voice.voice_id || voice.name;
-        if (vid) setSelectedVoice(vid);
-      })
-      .catch((err) => {
-        console.error("Failed to create custom voice:", err);
-        showToast?.("error", err?.message || "创建音色失败，请重试");
-      })
-      .finally(() => {
-        setCustomUploading(false);
-        e.target.value = "";
-      });
-  };
-
-  const handleConfirm = () => {
-    let voiceId = selectedVoice;
-    let voiceName = "";
-    if (tab === "miioo") {
-      const v = voices.find((x) => x.voice_id === selectedVoice);
-      if (v) { voiceName = getVoiceDisplayName(v); voiceId = v.voice_id; }
-    } else if (tab === "custom") {
-      const v = customVoices.find((x) => (x.id || x.voice_id || x.name) === selectedVoice);
-      if (v) { voiceName = getVoiceDisplayName(v); voiceId = v.id || v.voice_id || voiceId; }
-    } else if (tab === "fav") {
-      const a = favAudios.find((x) => (x.id || x.audio_id) === selectedVoice);
-      if (a) { voiceName = a.name || a.audio_name || "未命名音频"; voiceId = a.id || a.audio_id || voiceId; }
-    }
-    onConfirm?.(voiceId, voiceName, tab);
-    onClose();
-  };
-
-  const tabItems = [
-    { key: "miioo", label: "minimax官方音色库" },
-    { key: "custom", label: "自定义音色" },
-    { key: "fav", label: "收藏" },
-  ];
-
-  const tabBtns = tabItems.map(({ key, label }) => (
-    <button key={key} type="button" onClick={() => setTab(key)}
-      style={{ fontFamily: tab === key ? FONT_MEDIUM : FONT, fontSize: "14px", lineHeight: "20px", fontWeight: tab === key ? 500 : 400, color: tab === key ? "#FFFFFF" : "#FFFFFF66", padding: "4px 0px", background: "transparent", border: "none", cursor: "pointer", transition: "color 0.15s" }}>
-      {label}
-    </button>
-  ));
-
-  const footerContent = (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "16px", padding: "16px 24px", background: "#161616", flexShrink: 0, borderTop: "1px solid #FFFFFF0D" }}>
-      <button type="button" onClick={onClose}
-        style={{ height: "36px", borderRadius: "8px", padding: "0 16px", background: "#161616", border: "1px solid #FFFFFF0D", boxShadow: "#00000066 3px 3px 8px", outline: "1px solid #00000080", cursor: "pointer", fontFamily: FONT, fontSize: "14px", lineHeight: "18px", color: "#FFFFFF99" }}>
-        取消
-      </button>
-      <div style={{ height: "36px", borderRadius: "8px", padding: "1px", backgroundImage: "linear-gradient(in oklab 148.76deg, oklab(94.7% -0.078 -0.022 / 30%) 3.64%, oklab(75.5% -0.102 -0.072 / 0%) 42.81%), linear-gradient(in oklab 180deg, #FFFFFF14, #FFFFFF14)", boxShadow: "#00000066 3px 3px 8px", outline: "1px solid #00000080", cursor: selectedVoice ? "pointer" : "not-allowed", opacity: selectedVoice ? 1 : 0.5, display: "flex" }} onClick={handleConfirm}>
-        <div style={{ display: "flex", alignItems: "center", flex: 1, borderRadius: "7px", padding: "0 15px", background: "#161616" }}>
-          <span style={{ fontFamily: FONT, fontSize: "14px", lineHeight: "18px", color: "#FFFFFF", whiteSpace: "nowrap" }}>确认</span>
-        </div>
-      </div>
-    </div>
-  );
-
-  const miiooTab = (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px", paddingTop: "12px", paddingBottom: "16px" }} onClick={() => setSelectedVoice("")}>
-      {loading ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, minHeight: 200 }}><DotsLoading size={6} color="#2DC3E1" gap={4} /></div>
-      : !loading && filteredVoices.length === 0 ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}><span style={{ fontFamily: FONT, fontSize: "14px", color: "#FFFFFF66" }}>暂无匹配音色</span></div>
-      : rows.map((row, ri) => (
-        <div key={ri} style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "14px" }}>
-          {row.map((v) => (
-            <VoiceCard key={v.voice_id} label={getVoiceDisplayName(v)} active={selectedVoice === v.voice_id} onClick={(e) => { e.stopPropagation(); setSelectedVoice(selectedVoice === v.voice_id ? "" : v.voice_id); }} previewUrl={v.preview_url} />
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-
-  const customTab = (
-    <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingTop: "12px", paddingBottom: "16px" }} onClick={() => setSelectedVoice("")}>
-      <input ref={fileInputRef} type="file" accept=".mp3,.wav,.aac,.ogg,.flac,.m4a,.wma" className="hidden" onChange={handleFileForCustomVoice} />
-      <button type="button" onClick={handleCreateVoice} disabled={customUploading} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "4px", height: "56px", padding: "0 24px", borderRadius: "8px", border: "1px dashed #FFFFFF3D", background: "transparent", cursor: customUploading ? "wait" : "pointer", transition: "border-color 0.15s, background 0.15s", outline: "none", width: "100%", opacity: customUploading ? 0.6 : 1 }}
-        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2DC3E1"; e.currentTarget.style.background = "rgba(45,195,225,0.06)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#FFFFFF3D"; e.currentTarget.style.background = "transparent"; }}
-        onMouseDown={(e) => { e.currentTarget.style.background = "rgba(45,195,225,0.12)"; }}
-        onMouseUp={(e) => { e.currentTarget.style.background = "rgba(45,195,225,0.06)"; }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 6v12M6 12h12" stroke="#2DC3E1" strokeWidth="1.5" strokeLinecap="round" /></svg>
-          <span style={{ fontFamily: FONT_MEDIUM, fontSize: "14px", lineHeight: "18px", color: "#2DC3E1" }}>{customUploading ? "上传中..." : "创建音色"}</span>
-        </div>
-        <span style={{ fontFamily: FONT, fontSize: "12px", lineHeight: "16px", color: "#FFFFFF66" }}>上传大于5s的清晰人声音频，自动克隆声音。</span>
-      </button>
-      {customLoading ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}><DotsLoading size={6} color="#2DC3E1" gap={4} /></div>
-      : customVoices.length > 0 && <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "4px" }}>{customVoices.map((v) => <CustomVoiceCard key={v.id || v.voice_id || v.name} voice={v} selected={selectedVoice === (v.id || v.voice_id || v.name)} onSelect={(e) => { e.stopPropagation(); const vid = v.id || v.voice_id || v.name; setSelectedVoice(selectedVoice === vid ? "" : vid); }} />)}</div>}
-    </div>
-  );
-
-  const favTab = (
-    <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingTop: "12px", paddingBottom: "16px" }} onClick={() => setSelectedVoice("")}>
-      {favLoading ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}><DotsLoading size={6} color="#2DC3E1" gap={4} /></div>
-      : favAudios.length === 0 ? <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", padding: "48px 24px", flex: 1 }}>
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="8" width="32" height="32" rx="6" stroke="#FFFFFF1A" strokeWidth="1.5" /><path d="M20 24H28M24 20V28" stroke="#FFFFFF33" strokeWidth="1.5" strokeLinecap="round" /></svg>
-        <span style={{ fontFamily: FONT, fontSize: "14px", lineHeight: "18px", color: "#FFFFFF66" }}>暂无收藏的音频</span>
-      </div>
-      : favAudios.map((audio) => (
-        <button key={audio.id || audio.audio_id} type="button" onClick={(e) => { e.stopPropagation(); const aid = audio.id || audio.audio_id; setSelectedVoice(selectedVoice === aid ? "" : aid); }}
-          style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 12px", borderRadius: "8px", background: selectedVoice === (audio.id || audio.audio_id) ? "#FFFFFF14" : "transparent", border: selectedVoice === (audio.id || audio.audio_id) ? "1px solid #2DC3E199" : "1px solid transparent", cursor: "pointer", transition: "background 0.15s, border-color 0.15s", outline: "none", width: "100%", textAlign: "left" }}>
-          <div style={{ width: "36px", height: "36px", borderRadius: "6px", background: "#FFFFFF0D", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.333 2v12l10-6-10-6z" fill="#FFFFFF66" /></svg>
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: FONT, fontSize: "14px", lineHeight: "18px", color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{audio.name || audio.audio_name || "未命名音频"}</div>
-            <div style={{ fontFamily: FONT, fontSize: "12px", lineHeight: "16px", color: "#FFFFFF66", marginTop: "2px" }}>{audio.created_at ? new Date(audio.created_at).toLocaleDateString("zh-CN") : ""}</div>
-          </div>
-        </button>
-      ))}
-    </div>
-  );
-
   return createPortal(
-    <div style={{ position: "fixed", inset: 0, zIndex: 110, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }} onClick={onClose}>
-      <div style={{ width: "800px", height: "600px", background: "#161616", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "16px", overflow: "hidden", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px", background: "#161616", flexShrink: 0 }}>
-          <span style={{ fontFamily: FONT_MEDIUM, fontWeight: 500, fontSize: "16px", lineHeight: "20px", color: "#FFFFFF", flex: 1 }}>选择音色</span>
-          <button type="button" onClick={onClose} style={{ width: "28px", height: "28px", display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.667 2.667L13.333 13.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M2.667 13.333L13.333 2.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          </button>
-        </div>
-        <div style={{ display: "flex", gap: "24px", padding: "0 24px", background: "#161616", flexShrink: 0 }}>{tabBtns}</div>
-        <div style={{ flex: 1, overflowY: "auto", padding: "0 24px", background: "#161616" }}>
-          {tab === "miioo" && miiooTab}
-          {tab === "custom" && customTab}
-          {tab === "fav" && favTab}
-        </div>
-        {footerContent}
+    <div style={{ position: "fixed", inset: 0, zIndex: 110, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="dubbing-voice-modal-title" style={{ width: "min(800px, calc(100vw - 48px))", height: "min(600px, calc(100vh - 48px))", display: "flex", flexDirection: "column", overflow: "hidden", border: "1px solid #FFFFFF14", borderRadius: "8px", background: "#161616", boxSizing: "border-box" }}>
+        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", padding: "16px 24px", flexShrink: 0, background: "#161616" }}>
+          <h2 id="dubbing-voice-modal-title" style={{ flex: 1, margin: 0, color: "#FFFFFF", fontFamily: FONT_MEDIUM, fontSize: "16px", fontWeight: 500, lineHeight: "20px" }}>选择音色</h2>
+          <button type="button" onClick={onClose} onMouseEnter={() => setCloseHovered(true)} onMouseLeave={() => { setCloseHovered(false); setClosePressed(false); }} onMouseDown={() => setClosePressed(true)} onMouseUp={() => setClosePressed(false)} aria-label="关闭选择音色弹窗" style={{ width: "16px", height: "16px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, border: 0, background: "transparent", cursor: "pointer", opacity: closePressed ? 0.6 : 1, transition: "opacity 120ms" }}><ModalCloseIcon color={closeHovered ? "#FFFFFF" : "#FFFFFF99"} /></button>
+        </header>
+        <main style={{ display: "flex", flexDirection: "column", gap: "16px", minHeight: 0, padding: "8px 24px", flex: 1, background: "#161616", overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", flexShrink: 0 }}>
+            <div role="tablist" aria-label="音色来源" style={{ display: "flex", alignItems: "center", gap: "24px", height: "36px", flex: 1, minWidth: 0 }}>
+              {tabs.map((tab) => {
+                const isActive = activeTab === tab.id;
+                const isHovered = hoveredTab === tab.id;
+
+                return <button key={tab.id} type="button" role="tab" aria-selected={isActive} onClick={() => handleTabChange(tab.id)} onMouseEnter={() => setHoveredTab(tab.id)} onMouseLeave={() => setHoveredTab("")} style={{ height: "36px", padding: 0, border: 0, background: "transparent", color: isActive ? "#FFFFFF" : isHovered ? "#FFFFFFCC" : "#FFFFFF99", cursor: "pointer", fontFamily: isActive ? FONT_MEDIUM : FONT, fontSize: "16px", fontWeight: isActive ? 500 : 400, lineHeight: isActive ? "20px" : "18px", transition: "color 120ms" }}>{tab.label}</button>;
+              })}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "16px", flex: 1, minWidth: 0 }}>
+              <div onMouseEnter={() => setSearchHovered(true)} onMouseLeave={() => setSearchHovered(false)} style={{ flex: 1, minWidth: 0, height: "36px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "0 12px", border: `1px solid ${searchFocused ? "rgba(45,195,225,0.6)" : isSearchActive ? "#FFFFFF33" : "#FFFFFF14"}`, outline: searchFocused ? "3px solid rgba(45,195,225,0.08)" : "1px solid #00000080", borderRadius: "8px", background: searchFocused ? "rgba(45,195,225,0.04)" : isSearchActive ? "#222222" : "#1D1E1E", boxSizing: "border-box", transition: "background 120ms, border-color 120ms, outline 120ms" }}>
+                <input value={searchValue} onChange={(event) => setSearchValue(event.target.value)} onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)} placeholder="输入关键词，搜索音色库" aria-label="搜索音色库" style={{ flex: 1, minWidth: 0, padding: 0, border: 0, outline: "none", background: "transparent", color: "#FFFFFF", caretColor: "#2DC3E1", fontFamily: FONT, fontSize: "14px", lineHeight: "18px" }} className="placeholder:text-[#FFFFFF66]" />
+                <span style={{ display: "flex", flexShrink: 0 }}><SearchIcon color={searchFocused ? "#FFFFFF" : isSearchActive ? "#FFFFFFCC" : "#FFFFFF99"} /></span>
+              </div>
+              <Button variant="primary" icon={<span style={{ display: "flex", width: "16px", height: "16px", flexShrink: 0 }}><FilterIcon color={filtersVisible ? "#2DC3E1" : "#FFFFFF"} /></span>} iconOnly aria-label={filtersVisible ? "收起音色筛选" : "展开音色筛选"} aria-pressed={filtersVisible} onClick={() => setFiltersVisible((current) => !current)} style={{ width: "36px", height: "36px" }} />
+            </div>
+          </div>
+          {filtersVisible && <DubbingVoiceFilters filters={voiceFilters} options={MINIMAX_OFFICIAL_VOICE_FILTER_OPTIONS} onChange={handleFilterChange} />}
+          <div style={{ minHeight: 0, flex: 1 }}>
+            {(isFavoritesTab ? favoriteLoading : officialLoading) && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}><span style={{ color: "#FFFFFF66", fontFamily: FONT, fontSize: "14px", lineHeight: "18px", textAlign: "center" }}>{isFavoritesTab ? "收藏音频加载中" : "官方音色加载中"}</span></div>}
+            {!(isFavoritesTab ? favoriteLoading : officialLoading) && (isFavoritesTab ? favoriteError : officialError) && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}><span style={{ color: "#FFFFFF66", fontFamily: FONT, fontSize: "14px", lineHeight: "18px", textAlign: "center" }}>{isFavoritesTab ? favoriteError : officialError}</span></div>}
+            {!(isFavoritesTab ? favoriteLoading : officialLoading) && !(isFavoritesTab ? favoriteError : officialError) && visibleVoices.length === 0 && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}><VoiceListEmptyState message={searchValue.trim() ? "没有匹配的音色" : isFavoritesTab ? "暂无收藏音频" : "暂无音色"} /></div>}
+            {!(isFavoritesTab ? favoriteLoading : officialLoading) && !(isFavoritesTab ? favoriteError : officialError) && visibleVoices.length > 0 && <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", alignContent: "start", gap: "12px", minHeight: 0, height: "100%", overflowY: "auto", overflowX: "hidden", paddingRight: "4px" }}>{visibleVoices.map((voice) => <DubbingVoiceCard key={voice.id} voice={voice} selected={selectedVoiceId === voice.id} favorited={isFavoritesTab || officialFavoriteIds.has(voice.id)} favoriteLoading={favoriteUpdatingId === voice.id} onSelect={handleVoiceSelect} onFavoriteToggle={handleFavoriteToggle} />)}</div>}
+          </div>
+        </main>
+        <footer style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "16px", padding: "16px 24px", flexShrink: 0, borderTop: "1px solid #FFFFFF0D", background: "#161616" }}><Button variant="secondary" onClick={onClose}>取消</Button><Button variant="primary" onClick={handleConfirm}>确认</Button></footer>
       </div>
-    </div>
-  , document.body);
+    </div>,
+    document.body,
+  );
 }

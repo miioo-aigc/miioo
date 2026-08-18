@@ -82,7 +82,7 @@ function CreationEmptyIconVideo() {
   );
 }
 
-function CreationEmptyIconDubbing() {
+export function CreationEmptyIconDubbing() {
   return (
     <EmptyIconShell>
       {/* 麦克风主体 */}

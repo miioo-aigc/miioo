@@ -110,17 +110,21 @@ export async function apiOneClickCleanup() {
 
 // ── Models ────────────────────────────────────────────────────────────────────
 
-export async function apiListModels({ category } = {}) {
+export async function apiListModels({ category, fresh = false } = {}) {
+  const fetchModels = async () => {
+    const params = new URLSearchParams();
+    if (category) params.append('category', category);
+    const query = params.toString();
+    const url = query ? `${BASE}/api/models?${query}` : `${BASE}/api/models`;
+    const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+    return res.json();
+  };
+
+  if (fresh) return fetchModels();
+
   return cached(
     K.models(category),
-    async () => {
-      const params = new URLSearchParams();
-      if (category) params.append('category', category);
-      const query = params.toString();
-      const url = query ? `${BASE}/api/models?${query}` : `${BASE}/api/models`;
-      const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
-      return res.json();
-    },
+    fetchModels,
     { medium: MEDIUM.STATIC, ttl: TTL.STATIC },
   );
 }

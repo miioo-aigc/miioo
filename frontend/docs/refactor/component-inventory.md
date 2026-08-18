@@ -23,6 +23,12 @@
 - 发给后端的 `prompt` 仍由 `getPromptSnapshot` 剔除标签节点后生成，`promptHTML` 只用于编辑器/历史展示，不改变生成接口协议。
 - 本次不新增组件，不改变图片/视频 Tab 草稿隔离、输入可用状态或发送按钮视觉状态；真实视频发送与轮询中的标签交互需在登录态继续复验。
 
+## 2026-08-18 创作空草稿恢复占位符修复
+
+- `useCreationPromptInteraction.js` 统一以编辑器实际文本或仍存在的 `@` 素材标签判断提示词输入态；浏览器遗留的空 `<br>`、空段落等 HTML 结构不再被误判为内容。
+- 用户清空提示词和全部参考图后，草稿仍保存当前模型、比例、分辨率、时长等生成参数；重新挂载、刷新或切换创作类型时，输入区恢复占位符初始视觉状态。
+- 本次不改变草稿存储结构、生成请求参数或图片/视频/配音草稿隔离规则。
+
 ## 2026-08-11 创作草稿刷新后参考图恢复验证通过
 
 - `CreationDraftStorage.js` 修复完整草稿读取优先级：刷新后先读取 IndexedDB 中的完整草稿，再在没有完整草稿时读取 `sessionStorage` 提示词兜底，避免提示词兜底提前返回导致参考图丢失。
@@ -80,6 +86,13 @@
 - 官方音色 Tab 文案改为“minimax官方音色库”，移除性别和年龄筛选控件。
 - 官方音色没有 `preview_url` 时不显示耳机试听按钮；音色卡片不再展示情绪副标题。
 - 音色名称和情绪的中文适配仅用于展示，生成请求仍使用原始 `voice_id` 和情绪值。
+
+## 2026-08-18 创作配音选择音色卡片重构
+
+- `CreationDubbingVoiceModal.jsx` 保持弹窗容器、Tab 切换、官方音色与收藏音频读取、关键词和筛选状态及确认回调编排；官方 Tab 通过既有 `apiGetOfficialVoices({ provider: 'minimax' })` 获取可用音色，再以 `voice_id` 合并官网展示元数据；收藏 Tab 通过既有 `apiToggleAudioFavorite` 取消收藏，成功后从当前列表移除，失败时保持列表并复用创作页 Toast 反馈。
+- 新增 `src/components/creation/MinimaxOfficialVoiceMetadata.js`，保存由 MiniMax 官网采集资料转换的展示名称、风格短描述、页面标签、音色描述及语言、口音、性别、年龄筛选兜底数据；它不决定接口可用性、选中值或生成请求参数。
+- 新增 `src/components/creation/DubbingVoiceFilters.jsx`，复用通用 `Select` 固定展示语言、口音、性别、年龄四项受控筛选条件，不直接读取 API、Store 或弹窗状态。
+- 新增 `src/components/creation/DubbingVoiceCard.jsx`，只负责单张音色卡片的选中、试听、收藏与鼠标交互；标签和描述均保持单行横向滚动且隐藏原生滚动条，radio 以绝对定位覆盖在卡片表面，标题优先展示名称并在空间不足时收缩风格短描述；通过 `voice`、状态 props 和回调与弹窗通信，不直接读取 API、Store 或页面状态。
 
 ## 2026-08-07 主体比例默认值统一为 16:9
 

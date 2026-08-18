@@ -944,7 +944,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   }, []);
 
   const loadModelsFromBackend = useCallback(() => {
-    apiListModels().then((models) => {
+    apiListModels({ fresh: true }).then((models) => {
       if (!models || !models.length) return;
       setState((current) => {
         const modelsByTab = createEmptyModelsByTab();
@@ -978,7 +978,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
 
     Promise.all([
       apiListProviders().catch(() => []),
-      apiListModels().catch(() => []),
+      apiListModels({ fresh: true }).catch(() => null),
       apiGetBanner().catch(() => null),
       apiGetCardVisibility().catch(() => []),
     ]).then(([providersData, allModels, bannerResult, cardVisibility]) => {
@@ -1028,7 +1028,9 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
           onelinkApiKeyActual: maskedKey,
           onelinkKeyIsFromServer: true,
           apiTested: true,
-          onelinkModelsByTab: groupedByProvider[onelinkProvider.id] || createEmptyModelsByTab(),
+          ...(Array.isArray(allModels)
+            ? { onelinkModelsByTab: groupedByProvider[onelinkProvider.id] || createEmptyModelsByTab() }
+            : {}),
         };
       }
 
@@ -1071,7 +1073,11 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
       setState(current => ({
         ...current,
         ...onelinkUpdate,
-        otherProviders: formattedOtherProviders,
+        otherProviders: formattedOtherProviders.map((provider) => {
+          if (Array.isArray(allModels)) return provider;
+          const previousProvider = current.otherProviders.find((item) => item.cardKey === provider.cardKey);
+          return previousProvider ? { ...provider, modelsByTab: previousProvider.modelsByTab } : provider;
+        }),
         visibleCardKeys,
       }));
 
@@ -1193,7 +1199,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
 
     // 打开配置弹窗时重新拉取该 provider 的最新模型列表
     if (provider.configured) {
-      apiListModels().then((models) => {
+      apiListModels({ fresh: true }).then((models) => {
         if (!models || !models.length) return;
         const providerModels = models.filter(m => m.provider_id === providerId);
         const modelsByTab = createEmptyModelsByTab();

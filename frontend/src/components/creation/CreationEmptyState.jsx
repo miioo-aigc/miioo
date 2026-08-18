@@ -14,7 +14,10 @@
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离空态图标和空历史输入区
  *   2026-08-07  空态输入卡接入配音取消回调，保留再次发送后的提示词并支持失败/取消恢复
+ *   2026-08-18  配音高级模式下输入框向 Tab 下方与内容区两侧平滑展开
  */
+
+import CreationInputDock from './CreationInputDock';
 
 function EmptyIconShell({ children }) {
   return (
@@ -138,6 +141,8 @@ export default function CreationEmptyState({
   isGenerating = false,
   onCancelGeneration,
   renderInputCard,
+  dubbingAdvancedEnabled = false,
+  onDubbingAdvancedChange,
 }) {
   const EmptyIcon = EMPTY_ICON_MAP[genType] ?? CreationEmptyIconImage;
   const inputDisabled = isGenerating && (genType === 'dubbing' || genType === 'music');
@@ -156,6 +161,8 @@ export default function CreationEmptyState({
     showToast,
     activeCount,
     capabilitiesMap,
+    dubbingAdvancedEnabled,
+    onDubbingAdvancedChange,
   };
 
   return (
@@ -189,10 +196,12 @@ export default function CreationEmptyState({
       >
         <EmptyIcon />
       </div>
-      {/* InputCard: absolute, centered horizontally, 16px from bottom */}
-      <div style={{ position: 'absolute', left: '50%', bottom: '16px', translate: '-50% 0', width: 'min(800px, 100%)' }}>
+      <CreationInputDock
+        expanded={genType === 'dubbing' && dubbingAdvancedEnabled}
+        collapsedWidth="min(800px, 100%)"
+      >
         {renderInputCard?.(inputCardProps)}
-      </div>
+      </CreationInputDock>
     </div>
   );
 }

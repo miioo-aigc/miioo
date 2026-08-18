@@ -6,17 +6,19 @@
  * 页面继续负责生成请求、任务轮询、缓存和全局状态写回。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   草稿文件恢复工具                                   L39–L61
- *   InputCard 状态、Hook 与草稿接线                    L63–L291
- *   模型筛选、素材选择与参数预填充                     L293–L451
- *   发送、失败/取消恢复与参数组装                      L453–L560
- *   CreationInputSurface 组合                           L562–L693
+ *   草稿文件恢复工具                                   L43–L65
+ *   InputCard 状态、Hook 与草稿接线                    L68–L316
+ *   模型筛选、素材选择与参数预填充                     L318–L474
+ *   发送、失败/取消恢复与参数组装                      L476–L578
+ *   CreationInputSurface 组合                           L585–L719
  *
  *   2026-08-18  配音面板改为语速/声调/音量，草稿与失败恢复同步新字段；接口暂只保留既有语速参数
  *   2026-08-11  图片/视频生成轮询期间保持输入区可用；IndexedDB 临时缓存各类型完整创作草稿
  *   2026-08-18  空提示词/参考图草稿恢复为占位符初始态，模型和生成参数继续保留
  *   2026-08-17  草稿同步保存提示词 HTML，恢复后重建 @素材标签，避免视频发送后标签降级为纯文本
  *   2026-08-12  音乐生成与配音同规则：生成中可停止、上传音频附件；音乐不带配音参数
+ *   2026-08-18  配音高级模式接入输入框展开状态，保持页面编排与生成参数边界不变
+ *   2026-08-18  高级模式支持从 PDF/DOCX/TXT/HTML 提取最多 3000 字正文并写入提示词草稿
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -31,6 +33,7 @@ import {
   saveCreationDraft,
 } from './CreationDraftStorage';
 import { isSeedanceModel } from '../../utils/seedanceModel';
+import { readCreationDocumentText } from './CreationDocumentTextReader';
 import {
   MAX_CREATION_FILES,
   getCreationUploadExtensions,
@@ -64,7 +67,8 @@ function restoreDraftFile(file, restoredFiles) {
 
 // ─── InputCard ────────────────────────────────────────────────────────────────
 function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled = false, genType, onGenTypeChange,
-  model, onModelChange, modelOptions = [], creationParams, prefillVersion = 0, prefillData = null, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {}, onRegisterSaveDraft }) {
+  model, onModelChange, modelOptions = [], creationParams, prefillVersion = 0, prefillData = null, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {}, onRegisterSaveDraft,
+  dubbingAdvancedEnabled = false, onDubbingAdvancedChange }) {
   const [liveMaterialModalOpen, setLiveMaterialModalOpen] = useState(false);
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
   const [selectedVoiceId, setSelectedVoiceId] = useState('');
@@ -291,6 +295,23 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     promptTextRef.current = snapshot.text;
     persistDraft(true);
   }, [getPromptSnapshot, handleInput, persistDraft]);
+
+  const handleDubbingDocumentSelect = useCallback(async (file) => {
+    try {
+      const documentText = await readCreationDocumentText(file);
+      const truncatedText = documentText.slice(0, 3000);
+      restoreContent({ text: truncatedText });
+      promptTextRef.current = truncatedText;
+      persistDraft(true);
+      if (documentText.length > 3000) {
+        showToast?.('warning', '文件正文超过 3000 字，已保留前 3000 字');
+      } else {
+        showToast?.('success', '文件正文已导入');
+      }
+    } catch (error) {
+      showToast?.('error', error?.message || '文件正文读取失败，请重试');
+    }
+  }, [persistDraft, restoreContent, showToast]);
 
   // 是否显示真人素材入口：仅视频模式、当前模型支持，且不属于 Seedance 系列。
   const showLiveMaterial = useMemo(() => {
@@ -567,6 +588,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       disabled={disabled}
       promptDisabled={promptDisabled}
       focused={focused}
+      expanded={genType === 'dubbing' && dubbingAdvancedEnabled}
       upload={{
         genType,
         refMode,
@@ -592,6 +614,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         hasContent,
         genType,
         refMode,
+        dubbingAdvancedEnabled,
+        onDocumentSelect: handleDubbingDocumentSelect,
         onInput: handlePromptInput,
         onKeyDown: handleKeyDown,
         onPaste: handlePaste,
@@ -623,6 +647,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         onDubbingSpeedChange: setDubbingSpeed,
         onDubbingPitchChange: setDubbingPitch,
         onDubbingVolumeChange: setDubbingVolume,
+        dubbingAdvancedEnabled,
+        onDubbingAdvancedChange,
         ratio,
         resolution,
         count,

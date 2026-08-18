@@ -6,9 +6,12 @@
  * 任务轮询与弹窗状态仍由 InputCard 通过 props 提供或处理。
  */
 
+import { useRef } from 'react';
+
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
-function PromptPlaceholder({ genType, refMode }) {
+function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled, onDocumentSelect }) {
+  const documentInputRef = useRef(null);
   const baseStyle = {
     position: 'absolute',
     top: 0,
@@ -41,6 +44,37 @@ function PromptPlaceholder({ genType, refMode }) {
     );
   }
 
+  if (genType === 'dubbing' && dubbingAdvancedEnabled) {
+    return (
+      <span style={{ ...baseStyle, whiteSpace: 'pre-wrap' }}>
+        请在此输入或者
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => documentInputRef.current?.click()}
+          style={{ border: 0, padding: 0, background: 'transparent', color: '#2DC3E1', font: 'inherit', lineHeight: 'inherit', textDecoration: 'underline', textUnderlineOffset: '2px', cursor: disabled ? 'not-allowed' : 'pointer', pointerEvents: 'auto' }}
+        >
+          上传
+        </button>
+        文字内容，生成您的精彩音频。<br />
+        左下角支持添加情绪、停顿以及语气词，更多调整可以查看叠加效果器
+        <input
+          ref={documentInputRef}
+          type="file"
+          accept=".pdf,.docx,.txt,.html"
+          tabIndex={-1}
+          aria-hidden="true"
+          style={{ display: 'none' }}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            if (file) onDocumentSelect?.(file);
+          }}
+        />
+      </span>
+    );
+  }
+
   const text = genType === 'video' && refMode === 'frame'
     ? '输入文字，描述你想创作的画面内容'
     : genType === 'video' && refMode === 'multi'
@@ -59,6 +93,8 @@ function CreationPromptEditor({
   hasContent,
   genType,
   refMode,
+  dubbingAdvancedEnabled,
+  onDocumentSelect,
   onInput,
   onKeyDown,
   onPaste,
@@ -85,7 +121,7 @@ function CreationPromptEditor({
         </div>
       )}
       <div style={{ flex: 1, alignSelf: 'stretch', position: 'relative' }}>
-      {!hasContent && <PromptPlaceholder genType={genType} refMode={refMode} />}
+      {!hasContent && <PromptPlaceholder genType={genType} refMode={refMode} dubbingAdvancedEnabled={dubbingAdvancedEnabled} disabled={disabled} onDocumentSelect={onDocumentSelect} />}
       <div
         ref={editorRef}
         contentEditable={!disabled}

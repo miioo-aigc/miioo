@@ -30,6 +30,7 @@
  *   2026-08-07  结果区输入卡接入配音取消回调，保留再次发送后的提示词并支持失败/取消恢复
  *   2026-08-17  图片、视频和配音下载统一回调页面正式下载接口
  *   2026-08-07  配音结果纳入图片/视频结果网格：列宽最小 240px、宽度随容器适配、卡片比例 16:9
+ *   2026-08-18  配音高级模式下输入框保持下边缘并向内容区上方和两侧展开
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -45,6 +46,7 @@ import DotsLoading from '../DotsLoading';
 import CreationAudioResultCard from './CreationAudioResultCard';
 import CreationImageResultCard from './CreationImageResultCard';
 import CreationVideoResultCard from './CreationVideoResultCard';
+import CreationInputDock from './CreationInputDock';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 export default function CreationResultState({
@@ -76,6 +78,8 @@ export default function CreationResultState({
   capabilitiesMap = {},
   onCancelGeneration,
   renderInputCard,
+  dubbingAdvancedEnabled = false,
+  onDubbingAdvancedChange,
 }) {
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
@@ -164,6 +168,8 @@ export default function CreationResultState({
     showToast,
     activeCount,
     capabilitiesMap,
+    dubbingAdvancedEnabled,
+    onDubbingAdvancedChange,
   };
 
   return (
@@ -350,25 +356,13 @@ export default function CreationResultState({
         }}
       />
 
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          display: 'flex',
-          justifyContent: 'center',
-          paddingLeft: '32px',
-          paddingRight: '32px',
-          paddingBottom: '16px',
-          paddingTop: '8px',
-          zIndex: 2,
-        }}
+      <CreationInputDock
+        expanded={genType === 'dubbing' && dubbingAdvancedEnabled}
+        collapsedWidth="min(800px, calc(100% - 64px))"
+        zIndex={2}
       >
-        <div style={{ width: 'min(800px, 100%)' }}>
-          {renderInputCard?.(inputCardProps)}
-        </div>
-      </div>
+        {renderInputCard?.(inputCardProps)}
+      </CreationInputDock>
     </div>
   );
 }

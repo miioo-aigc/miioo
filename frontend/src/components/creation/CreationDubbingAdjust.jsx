@@ -69,9 +69,8 @@ function DubbingRangeControl({ config, value, onChange }) {
   );
 }
 
-export function DubbingAdjust({ speed, pitch, volume, onSpeedChange, onPitchChange, onVolumeChange, disabled }) {
+export function DubbingAdjust({ speed, pitch, volume, onSpeedChange, onPitchChange, onVolumeChange, advancedEnabled = false, onAdvancedChange, disabled }) {
   const [open, setOpen] = useState(false);
-  const [advancedEnabled, setAdvancedEnabled] = useState(false);
   const ref = useRef(null);
   const values = { speed, pitch, volume };
   const changeHandlers = { speed: onSpeedChange, pitch: onPitchChange, volume: onVolumeChange };
@@ -109,8 +108,8 @@ export function DubbingAdjust({ speed, pitch, volume, onSpeedChange, onPitchChan
       </button>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', height: '32px', paddingLeft: '12px', paddingRight: '6px', borderRadius: '8px', background: '#1D1E1E', border: '1px solid #FFFFFF14', outline: '1px solid #00000080', flexShrink: 0, opacity: disabled ? 0.45 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
-        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC', whiteSpace: 'nowrap' }}>高级功能</span>
-        <Toggle value={advancedEnabled} onChange={setAdvancedEnabled} />
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC', whiteSpace: 'nowrap' }}>高级模式</span>
+        <Toggle value={advancedEnabled} onChange={onAdvancedChange} />
       </div>
 
       {open && (

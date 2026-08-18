@@ -21,6 +21,8 @@ export default function CreationParamsControls({
   onDubbingSpeedChange,
   onDubbingPitchChange,
   onDubbingVolumeChange,
+  dubbingAdvancedEnabled = false,
+  onDubbingAdvancedChange,
   ratio,
   resolution,
   count,
@@ -65,6 +67,8 @@ export default function CreationParamsControls({
           onSpeedChange={onDubbingSpeedChange}
           onPitchChange={onDubbingPitchChange}
           onVolumeChange={onDubbingVolumeChange}
+          advancedEnabled={dubbingAdvancedEnabled}
+          onAdvancedChange={onDubbingAdvancedChange}
           disabled={disabled}
         />
       )}

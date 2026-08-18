@@ -13,7 +13,9 @@
  *   2026-07-17  从 CreationPage 抽离主体卡片组合，保持行为和页面级副作用边界不变
  *   2026-08-07  结果态和空态统一透传配音取消回调
  *   2026-08-17  透传结果卡正式下载回调，下载副作用继续保留在页面
+ *   2026-08-18  持有配音高级模式展开状态，保证空态与结果态切换时形态连续
  */
+import { useState } from 'react';
 import CreationToolbar from './CreationToolbar';
 import CreationResultState from './CreationResultState';
 import CreationEmptyState from './CreationEmptyState';
@@ -30,6 +32,8 @@ export default function CreationWorkspace({
   historyHasMore, onLoadMore, autoFillLimit, activeCount, onBeforeModelOpen,
   onCancelGeneration, renderInputCard,
 }) {
+  const [dubbingAdvancedEnabled, setDubbingAdvancedEnabled] = useState(false);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, flexShrink: 1, flexBasis: '0%', minHeight: 0, height: '100%', overflow: 'clip', alignSelf: 'stretch', paddingBottom: '24px', paddingRight: '24px', fontSize: '12px', lineHeight: '16px', WebkitFontSmoothing: 'antialiased' }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: 1, minHeight: 0, borderRadius: '16px', overflow: 'clip', alignSelf: 'stretch', backgroundColor: '#161616', border: '1px solid #FFFFFF14' }}>
@@ -40,9 +44,9 @@ export default function CreationWorkspace({
           {isLoggedIn === false ? (
             <CreationLoginEmptyState onLoginClick={onLoginClick} />
           ) : generations.length > 0 || historyLoading ? (
-            <CreationResultState generations={generations} onGenerate={onGenerate} genType={genType} isGenerating={isGenerating} onGenTypeChange={onGenTypeChange} model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap} onDeleteCard={onDeleteCard} batchMode={batchMode} selected={selected} onToggleSelect={onToggleSelect} onSwitchToFrameMode={onSwitchToFrameMode} onVideoCardClick={onVideoCardClick} onDownloadCard={onDownloadCard} favorites={favorites} toggleFavorite={toggleFavorite} showToast={showToast} historyLoading={historyLoading} historyHasMore={historyHasMore} onLoadMore={onLoadMore} autoFillLimit={autoFillLimit} activeCount={activeCount} onBeforeModelOpen={onBeforeModelOpen} onCancelGeneration={onCancelGeneration} renderInputCard={renderInputCard} />
+            <CreationResultState generations={generations} onGenerate={onGenerate} genType={genType} isGenerating={isGenerating} onGenTypeChange={onGenTypeChange} model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap} onDeleteCard={onDeleteCard} batchMode={batchMode} selected={selected} onToggleSelect={onToggleSelect} onSwitchToFrameMode={onSwitchToFrameMode} onVideoCardClick={onVideoCardClick} onDownloadCard={onDownloadCard} favorites={favorites} toggleFavorite={toggleFavorite} showToast={showToast} historyLoading={historyLoading} historyHasMore={historyHasMore} onLoadMore={onLoadMore} autoFillLimit={autoFillLimit} activeCount={activeCount} onBeforeModelOpen={onBeforeModelOpen} onCancelGeneration={onCancelGeneration} renderInputCard={renderInputCard} dubbingAdvancedEnabled={dubbingAdvancedEnabled} onDubbingAdvancedChange={setDubbingAdvancedEnabled} />
           ) : (
-            <CreationEmptyState onGenerate={onGenerate} genType={genType} isGenerating={isGenerating} onCancelGeneration={onCancelGeneration} onGenTypeChange={onGenTypeChange} showToast={showToast} activeCount={activeCount} model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap} onBeforeModelOpen={onBeforeModelOpen} renderInputCard={renderInputCard} />
+            <CreationEmptyState onGenerate={onGenerate} genType={genType} isGenerating={isGenerating} onCancelGeneration={onCancelGeneration} onGenTypeChange={onGenTypeChange} showToast={showToast} activeCount={activeCount} model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap} onBeforeModelOpen={onBeforeModelOpen} renderInputCard={renderInputCard} dubbingAdvancedEnabled={dubbingAdvancedEnabled} onDubbingAdvancedChange={setDubbingAdvancedEnabled} />
           )}
         </div>
       </div>

@@ -44,6 +44,7 @@
  *   2026-08-10  剧本生成中允许编辑输入；统一剧本对话超时反馈
  *   2026-08-10  移除发送前的前端任务拦截，发送直接透传到后端剧本对话接口
  *   2026-08-11  分集/重写任务对齐后端：幂等头、缓存失效、409 提示、localStorage 恢复与轮询清理
+ *   2026-08-18  已确认项目收到 SCRIPT_ALREADY_CONFIRMED 时从工作区恢复已有结构，避免重复 confirm
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiInterruptScriptChatTurn, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiDownloadStoryboardFile, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
@@ -302,6 +303,17 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         });
       } catch (error) {
         if (error?.status !== 409) throw error;
+
+        // 项目已进入结构化阶段时，confirm 不允许重复调用；直接读取已有结构即可恢复页面。
+        if (error?.code === 'SCRIPT_ALREADY_CONFIRMED') {
+          const latestWorkspace = await apiGetScriptWorkspace(projectId, { fresh: true });
+          if (!latestWorkspace?.structure) {
+            throw new Error('剧本已经进入结构化阶段，但结构数据暂时不可用，请刷新后重试', { cause: error });
+          }
+          setScriptOutlineData(normalizeScriptStructure(latestWorkspace.structure));
+          setScriptOutlineLoading(false);
+          return;
+        }
 
         // 409 可能表示后端已接受过本次确认，重新读取工作区即可恢复任务或已生成结构。
         const responseTaskId = getScriptTaskId(error?.rawPayload);

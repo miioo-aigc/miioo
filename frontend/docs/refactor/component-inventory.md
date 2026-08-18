@@ -1,12 +1,14 @@
 # 组件重构盘点基线
 
-## 2026-08-17 分镜 Seedance 虚拟人像参考主体刷新恢复
+## 2026-08-17 分镜 Seedance 认证虚拟人像视频创作引用修复
 
-- `AssetPickerModal.jsx` 为 Seedance 素材分离浏览器预览地址和 `asset_ref_url`：后者仅作为视频生成的服务商引用，绝不写入图片展示字段；素材详情补齐 `asset_id`、组信息和认证标记后再交给分镜。
-- `storyboardDataAdapter.js` 与 `api/storyboard.js` 持久化参考主体的素材身份和 `asset_ref_url`，同时过滤会话级 `blob:` 地址。项目资产继续保留自身真实图片地址，Seedance 素材刷新时则依据 `asset_id` 恢复。
-- `StoryboardPage.jsx` 在加载后通过 `apiGetLiveMaterialPreview` 以鉴权请求下载真实高清媒体，并生成当前会话的 Blob 预览；创作面板、表单状态与分镜参考列同步更新，但不触发保存队列，因此不会把过期下载地址或 Blob 地址写回服务端。
-- `api/liveMaterials.js` 的预览读取优先使用真实原图/下载地址。素材库的 AVIF 仍只用于缩略图展示，不参与上传或分镜生成文件选择。
-- 验证：相关目标文件 ESLint、`npm run build`、`npm run check:architecture` 和 `git diff --check` 通过；架构检查仅有现存文件规模提醒，真实登录态下的“两张虚拟人像后刷新”流程仍需页面回归确认。
+- 根因：认证虚拟人像从主体页代入分镜后，创作面板的展示态在部分历史路径中仅保留图片 URL 和普通资产 ID；`generate-video` 因而将其当作普通参考图提交，未使用已保存的 `assetRefUrl`，可能触发上游真人肖像/隐私风控。
+- 数据依据：镜头响应的 `creation_form.video.refSubjects` 已完整保存并返回 `isAigcMaterial`、`isSeedanceCertifiedMaterial`、`groupId`、`groupType` 与 `assetRefUrl`。问题不在认证状态或后端数据缺失，而在前端生成请求组装前没有稳定恢复这些字段。
+- `storyboardDataAdapter.js`、`storyboardReferenceAdapter.js` 与 `AssetPickerModal.jsx` 保留并传递认证身份；页面刷新/主体合并时不再用简化主体引用覆盖完整认证实体。`assetRefUrl` 仅用于服务商生成引用，浏览器展示仍使用可访问的预览 URL。
+- `storyboardVideoRequestAdapter.js` 在生成前以当前镜头已保存的 `refSubjects`、`mainRefs` 补全当前选中参考素材的认证字段；只补字段、不自动追加未被用户选择的参考项。认证 AIGC 虚拟人像使用 `asset://...` 进入 `reference_images` 和 `attachments[].url`，且不进入 `reference_image_asset_ids`；普通参考图继续保持 URL 与普通资产 ID。
+- `GenerateVideoPanel.jsx` 将当前参考媒体显式交给页面请求适配；全能参考模式统一传递 `generate_mode: "full"`，不再误用首帧参考模式字段。
+- 结论：本问题已由前端请求适配修复，认证虚拟人像可正确以 `asset://...` 参与创作并成功拿到视频结果；无需额外后端交接或修改。
+- 验证：目标文件定向 ESLint、`npm run build`、`npm run check:architecture` 与 `git diff --check` 通过；架构检查仅有既存文件规模提醒。
 
 ## 2026-08-11 API 配置音乐模型支持
 

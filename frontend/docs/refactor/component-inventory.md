@@ -1086,6 +1086,13 @@
 - 验证：选择器组件定向 ESLint、`npm run build` 和差异检查通过；页面历史 lint 问题仍单独保留，未伪报全量 lint 通过。
 - 下一步：继续拆分 `StoryboardPage` 的批量工具栏和生成面板组合，不移动 API、任务轮询和持久化副作用。
 
+## 2026-08-18 CreationPage 配音参数面板调整记录
+
+- `CreationDubbingAdjust.jsx` 删除情绪选择，改为共享同一内部滑杆实现的语速、声调、音量连续调节；范围分别为 `0.50–2.00`、`-12–12`、`0.01–10.00`。
+- `useCreationParamsState.js`、`CreationInputCard.jsx` 与 `CreationParamsControls.jsx` 将配音前端状态由 `speed + emotion` 调整为 `speed + pitch + volume`，覆盖默认值、重置、草稿持久化/恢复及失败/取消恢复。
+- 后端能力尚未接入，本轮生成参数继续只传递既有 `speed` 与音色信息，不向 API 发送 `pitch`、`volume`，也不修改 `src/api/creation.js` 的兼容适配。
+- 验证：目标文件定向 ESLint、`npm run build`、`npm run check:architecture` 与 `git diff --check` 通过；全仓库 lint 无错误，保留 `PanelPromptInput.jsx` 的一条历史 Hook 依赖警告。
+
 ## 2026-07-15 AssetsPage 首轮核对与 CreationPage 首轮迁移
 
 - `AssetsPage.jsx` 最新实际行数为 `3422`；架构检查脚本计数为 `3423`。已验证 `AssetsScrollableContent` 的导入/导出、滚动容器、分页哨兵和加载节点只保留一份。

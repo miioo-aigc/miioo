@@ -6,7 +6,7 @@
  *   ratio / resolution / count                                  图片参数
  *   videoRatio / videoResolution / videoDuration                视频参数
  *   refMode / soundEnabled                                      参考模式与音效
- *   dubbingSpeed / dubbingEmotion                               配音参数
+ *   dubbingSpeed / dubbingPitch / dubbingVolume                 配音参数
  *
  * ─── 状态转换 ───────────────────────────────────────────────────
  *   creationParams 或 genType 变化                               默认值与联动重置
@@ -19,6 +19,7 @@
  *   CreationPage 持有。
  *
  * ─── 更新记录 ───────────────────────────────────────────────────
+ *   2026-08-18  配音参数由语速/情绪调整为语速/声调/音量，并补齐默认值与重置
  *   2026-07-16  从 CreationPage 的 InputCard 抽离参数状态与默认值联动
  *   2026-07-16  补齐视频重新编辑的 videoRatio / videoResolution / videoDuration 回填；完成定向 ESLint、构建、架构和差异检查
  */
@@ -107,7 +108,8 @@ export function useCreationParamsState({
   const [videoDuration, setVideoDuration] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [dubbingSpeed, setDubbingSpeed] = useState(1.0);
-  const [dubbingEmotion, setDubbingEmotion] = useState('');
+  const [dubbingPitch, setDubbingPitch] = useState(0);
+  const [dubbingVolume, setDubbingVolume] = useState(1.0);
   const currentRefModeRef = useRef('');
 
   useEffect(() => {
@@ -116,7 +118,8 @@ export function useCreationParamsState({
 
   const resetDubbingParams = useCallback(() => {
     setDubbingSpeed(1.0);
-    setDubbingEmotion('中性');
+    setDubbingPitch(0);
+    setDubbingVolume(1.0);
   }, []);
 
   useEffect(() => {
@@ -189,8 +192,10 @@ export function useCreationParamsState({
     setSoundEnabled,
     dubbingSpeed,
     setDubbingSpeed,
-    dubbingEmotion,
-    setDubbingEmotion,
+    dubbingPitch,
+    setDubbingPitch,
+    dubbingVolume,
+    setDubbingVolume,
     resetDubbingParams,
   };
 }

@@ -6,20 +6,22 @@
  * 页面继续负责生成请求、任务轮询、缓存和全局状态写回。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   InputCard 状态与 Hook 接线                         L30–L195
- *   输入预填充、素材选择和失败/取消恢复                 L197–L449
- *   CreationInputSurface 组合                           L451–L551
+ *   草稿文件恢复工具                                   L39–L61
+ *   InputCard 状态、Hook 与草稿接线                    L63–L291
+ *   模型筛选、素材选择与参数预填充                     L293–L451
+ *   发送、失败/取消恢复与参数组装                      L453–L560
+ *   CreationInputSurface 组合                           L562–L693
  *
+ *   2026-08-18  配音面板改为语速/声调/音量，草稿与失败恢复同步新字段；接口暂只保留既有语速参数
  *   2026-08-11  图片/视频生成轮询期间保持输入区可用；IndexedDB 临时缓存各类型完整创作草稿
  *   2026-08-18  空提示词/参考图草稿恢复为占位符初始态，模型和生成参数继续保留
  *   2026-08-17  草稿同步保存提示词 HTML，恢复后重建 @素材标签，避免视频发送后标签降级为纯文本
- *   2026-08-12  音乐生成与配音同规则：生成中可停止、上传音频附件、不带配音参数（速度/情感/音色）
+ *   2026-08-12  音乐生成与配音同规则：生成中可停止、上传音频附件；音乐不带配音参数
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import CreationFileCard from './CreationFileCard';
 import CreationInputSurface from './CreationInputSurface';
-import { DEFAULT_EMOTIONS } from './CreationSelectorConstants';
 import { useCreationInputFiles } from './useCreationInputFiles';
 import { useCreationPromptInteraction } from './useCreationPromptInteraction';
 import { useCreationParamsState } from './useCreationParamsState';
@@ -86,8 +88,10 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     setSoundEnabled,
     dubbingSpeed,
     setDubbingSpeed,
-    dubbingEmotion,
-    setDubbingEmotion,
+    dubbingPitch,
+    setDubbingPitch,
+    dubbingVolume,
+    setDubbingVolume,
     resetDubbingParams,
   } = useCreationParamsState({ creationParams, genType, prefillVersion, prefillData });
   const {
@@ -120,7 +124,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     voiceId: "",
     voiceName: "",
     dubbingSpeed: undefined,
-    dubbingEmotion: undefined,
+    dubbingPitch: undefined,
+    dubbingVolume: undefined,
   }); // 用于失败时回退
 
   // 图片和视频生成均为异步轮询任务，生成期间允许继续创作；配音保留生成中停止请求的交互。
@@ -182,9 +187,10 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       selectedVoiceId,
       selectedVoiceName,
       dubbingSpeed,
-      dubbingEmotion,
+      dubbingPitch,
+      dubbingVolume,
     };
-  }, [count, dubbingEmotion, dubbingSpeed, getCurrentFiles, getPromptSnapshot, ratio, refMode, resolution, selectedVoiceId, selectedVoiceName, soundEnabled, videoDuration, videoRatio, videoResolution]);
+  }, [count, dubbingPitch, dubbingSpeed, dubbingVolume, getCurrentFiles, getPromptSnapshot, ratio, refMode, resolution, selectedVoiceId, selectedVoiceName, soundEnabled, videoDuration, videoRatio, videoResolution]);
 
   const persistDraft = useCallback((force = false) => {
     if (!force && hydratedGenTypeRef.current !== genType) return;
@@ -234,7 +240,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       setSelectedVoiceId(draft?.selectedVoiceId ?? '');
       setSelectedVoiceName(draft?.selectedVoiceName ?? '');
       if (draft?.dubbingSpeed !== undefined) setDubbingSpeed(draft.dubbingSpeed);
-      if (draft?.dubbingEmotion !== undefined) setDubbingEmotion(draft.dubbingEmotion);
+      if (draft?.dubbingPitch !== undefined) setDubbingPitch(draft.dubbingPitch);
+      if (draft?.dubbingVolume !== undefined) setDubbingVolume(draft.dubbingVolume);
     };
 
     const memoryDraft = readCreationDraftFromMemory(genType);
@@ -259,8 +266,9 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     persistDraft();
   }, [
     count,
-    dubbingEmotion,
+    dubbingPitch,
     dubbingSpeed,
+    dubbingVolume,
     files,
     firstFrameFile,
     genType,
@@ -283,10 +291,6 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     promptTextRef.current = snapshot.text;
     persistDraft(true);
   }, [getPromptSnapshot, handleInput, persistDraft]);
-
-
-  // Video: filter modelOptions by refMode
-  const dubbingEmotions = useMemo(() => { return creationParams?.emotions ?? DEFAULT_EMOTIONS; }, [creationParams]);
 
   // 是否显示真人素材入口：仅视频模式、当前模型支持，且不属于 Seedance 系列。
   const showLiveMaterial = useMemo(() => {
@@ -462,7 +466,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     setFirstFrameFile(savedContentRef.current.firstFrameFile || null);
     setLastFrameFile(savedContentRef.current.lastFrameFile || null);
     if (backup.dubbingSpeed !== undefined) setDubbingSpeed(backup.dubbingSpeed);
-    if (backup.dubbingEmotion !== undefined) setDubbingEmotion(backup.dubbingEmotion);
+    if (backup.dubbingPitch !== undefined) setDubbingPitch(backup.dubbingPitch);
+    if (backup.dubbingVolume !== undefined) setDubbingVolume(backup.dubbingVolume);
     setSelectedVoiceId(backup.voiceId || '');
     setSelectedVoiceName(backup.voiceName || '');
   };
@@ -481,7 +486,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       voiceId: selectedVoiceId || "",
       voiceName: selectedVoiceName || "",
       dubbingSpeed,
-      dubbingEmotion,
+      dubbingPitch,
+      dubbingVolume,
     };
     // @素材标签是通过 DOM 插入的，部分浏览器不会为这类操作触发 input 事件；
     // 发送前显式写入当前快照，避免新输入卡从旧的纯文本草稿恢复。
@@ -523,7 +529,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
           liveMaterialFiles: liveMats,  // 保留预览信息用于详情展示和重新编辑
         };
       })() : {}),
-      ...(genType === 'dubbing' ? { speed: dubbingSpeed, emotion: dubbingEmotion, voiceId: selectedVoiceId, voiceName: selectedVoiceName } : {}),
+      // 声调和音量先保留在前端状态链路，待后端能力就绪后再加入生成参数。
+      ...(genType === 'dubbing' ? { speed: dubbingSpeed, voiceId: selectedVoiceId, voiceName: selectedVoiceName } : {}),
       files: savedFiles.filter(f => !f.isLiveMaterial),
       onFail: (fallbackPrompt) => {
         // 失败时回退输入框内容（含标签 HTML）和附件
@@ -532,7 +539,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         setFirstFrameFile(savedFirstFrameFile);
         setLastFrameFile(savedLastFrameFile);
         setDubbingSpeed(dubbingSpeed);
-        setDubbingEmotion(dubbingEmotion);
+        setDubbingPitch(dubbingPitch);
+        setDubbingVolume(dubbingVolume);
         setSelectedVoiceId(selectedVoiceId || '');
         setSelectedVoiceName(selectedVoiceName || '');
       },
@@ -610,10 +618,11 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         onModelChange,
         onBeforeModelOpen,
         dubbingSpeed,
-        dubbingEmotion,
-        dubbingEmotions,
+        dubbingPitch,
+        dubbingVolume,
         onDubbingSpeedChange: setDubbingSpeed,
-        onDubbingEmotionChange: setDubbingEmotion,
+        onDubbingPitchChange: setDubbingPitch,
+        onDubbingVolumeChange: setDubbingVolume,
         ratio,
         resolution,
         count,

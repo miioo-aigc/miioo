@@ -16,10 +16,11 @@ export default function CreationParamsControls({
   onModelChange,
   onBeforeModelOpen,
   dubbingSpeed,
-  dubbingEmotion,
-  dubbingEmotions,
+  dubbingPitch,
+  dubbingVolume,
   onDubbingSpeedChange,
-  onDubbingEmotionChange,
+  onDubbingPitchChange,
+  onDubbingVolumeChange,
   ratio,
   resolution,
   count,
@@ -59,10 +60,11 @@ export default function CreationParamsControls({
       {genType === 'dubbing' && (
         <DubbingAdjust
           speed={dubbingSpeed}
-          emotion={dubbingEmotion}
+          pitch={dubbingPitch}
+          volume={dubbingVolume}
           onSpeedChange={onDubbingSpeedChange}
-          onEmotionChange={onDubbingEmotionChange}
-          emotions={dubbingEmotions}
+          onPitchChange={onDubbingPitchChange}
+          onVolumeChange={onDubbingVolumeChange}
           disabled={disabled}
         />
       )}

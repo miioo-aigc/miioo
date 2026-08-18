@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import Toggle from '../Toggle';
 import { FONT } from './CreationSelectorPrimitives';
-import { DEFAULT_EMOTIONS, getEmotionDisplayLabel } from './CreationSelectorConstants';
 
-// ─── DubbingAdjust — 配音语速 + 情绪调节 ───────────────────────────────────
-/* EQ icon from Paper design YFJ-1 */
+const SLIDER_CONFIGS = [
+  { key: 'speed', label: '语速', min: 0.5, max: 2, step: 0.01, format: (value) => `${value.toFixed(2)}×`, marks: [0.5, 1, 1.5, 2] },
+  { key: 'pitch', label: '声调', min: -12, max: 12, step: 1, format: (value) => String(Math.round(value)), marks: [-12, -4, 4, 12] },
+  { key: 'volume', label: '音量', min: 0.01, max: 10, step: 0.01, format: (value) => value.toFixed(2), marks: [0.01, 3.34, 6.67, 10] },
+];
+
 function DubbingEqIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
@@ -18,92 +22,110 @@ function DubbingEqIcon() {
   );
 }
 
-export function DubbingAdjust({ speed, emotion, onSpeedChange, onEmotionChange, emotions, disabled }) {
+function DubbingRangeControl({ config, value, onChange }) {
+  const numericValue = Number(value);
+  const safeValue = Number.isFinite(numericValue) ? numericValue : config.min;
+  const progress = Math.min(100, Math.max(0, ((safeValue - config.min) / (config.max - config.min)) * 100));
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>{config.label}</span>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '18px', color: '#FFFFFF' }}>{config.format(safeValue)}</span>
+      </div>
+      <div style={{ borderRadius: '8px', border: '1px solid #FFFFFF14', background: '#1D1E1E', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={{ position: 'relative', height: '20px', display: 'flex', alignItems: 'center' }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, height: '3px', borderRadius: '2px', background: '#FFFFFF1A' }} />
+          <div style={{ position: 'absolute', left: 0, height: '3px', borderRadius: '2px', background: '#2DC3E1', width: `${progress}%` }} />
+          <input
+            type="range"
+            min={config.min}
+            max={config.max}
+            step={config.step}
+            value={safeValue}
+            className="dubbing-range-slider"
+            aria-label={config.label}
+            onChange={(event) => onChange?.(Number(event.target.value))}
+            style={{ position: 'absolute', left: '-9px', top: 0, width: 'calc(100% + 18px)', height: '100%', cursor: 'pointer' }}
+          />
+          <div style={{ position: 'absolute', left: `${progress}%`, top: '50%', transform: 'translate(-50%, -50%)', width: '14px', height: '14px', borderRadius: '50%', background: '#FFFFFF', boxShadow: '#2DC3E1 0px 0px 0px 2px, #00000066 0px 2px 6px', zIndex: 1, pointerEvents: 'none' }} />
+        </div>
+        <div style={{ position: 'relative', height: '16px' }}>
+          {config.marks.map((mark, index) => {
+            const markPosition = ((mark - config.min) / (config.max - config.min)) * 100;
+            const isFirstMark = index === 0;
+            const isLastMark = index === config.marks.length - 1;
+            const transform = isFirstMark ? 'translateX(0)' : isLastMark ? 'translateX(-100%)' : 'translateX(-50%)';
+
+            return (
+              <span key={mark} style={{ position: 'absolute', left: `${markPosition}%`, transform, fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF99', whiteSpace: 'nowrap' }}>
+              {config.format(mark)}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function DubbingAdjust({ speed, pitch, volume, onSpeedChange, onPitchChange, onVolumeChange, disabled }) {
   const [open, setOpen] = useState(false);
+  const [advancedEnabled, setAdvancedEnabled] = useState(false);
   const ref = useRef(null);
-  const emoList = emotions?.length ? emotions : DEFAULT_EMOTIONS;
-  const speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-  const displaySpeed = speedOptions.reduce((prev, curr) => Math.abs(curr - speed) < Math.abs(prev - speed) ? curr : prev);
-  const emoLabel = emotion || '中性';
+  const values = { speed, pitch, volume };
+  const changeHandlers = { speed: onSpeedChange, pitch: onPitchChange, volume: onVolumeChange };
+  const displayValues = SLIDER_CONFIGS.map((config) => {
+    const numericValue = Number(values[config.key]);
+    return config.format(Number.isFinite(numericValue) ? numericValue : config.min);
+  });
 
   useEffect(() => {
-    if (!open) return;
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    if (!open) return undefined;
+    const handleOutsideMouseDown = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutsideMouseDown);
+    return () => document.removeEventListener('mousedown', handleOutsideMouseDown);
   }, [open]);
 
   return (
-    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
-      {/* Trigger — matched to YFJ-1 open state */}
-      <button type="button" onClick={() => { if (!disabled) setOpen(v => !v); }} disabled={disabled}
-        style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '32px', paddingLeft: '12px', paddingRight: '6px', borderRadius: '8px', background: open ? '#1A1A1A' : '#1D1E1E', border: '1px solid ' + (open ? '#2DC3E199' : '#FFFFFF14'), outline: '1px solid #00000080', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, transition: 'background 0.2s, border-color 0.2s' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+      <button
+        type="button"
+        onClick={() => { if (!disabled) setOpen((current) => !current); }}
+        disabled={disabled}
+        style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '32px', paddingLeft: '12px', paddingRight: '6px', borderRadius: '8px', background: open ? '#1A1A1A' : '#1D1E1E', border: `1px solid ${open ? '#2DC3E199' : '#FFFFFF14'}`, outline: '1px solid #00000080', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, transition: 'background 0.2s, border-color 0.2s' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
           <DubbingEqIcon />
-          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF' }}>{displaySpeed}x</span>
-          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF' }}>{emoLabel}</span>
+          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF' }}>语速 {displayValues[0]}</span>
+          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF' }}>声调 {displayValues[1]}</span>
+          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF' }}>音量 {displayValues[2]}</span>
         </div>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', flexShrink: 0 }}>
           <path d="M12 6.333L8 10.333L4 6.333H12Z" fill="#FFFFFF" stroke="#FFFFFF" strokeWidth="1.333" strokeLinejoin="round" />
         </svg>
       </button>
-      {/* Popup — matched to YFJ-1 design: 400px, left-aligned from trigger */}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', height: '32px', paddingLeft: '12px', paddingRight: '6px', borderRadius: '8px', background: '#1D1E1E', border: '1px solid #FFFFFF14', outline: '1px solid #00000080', flexShrink: 0, opacity: disabled ? 0.45 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC', whiteSpace: 'nowrap' }}>高级功能</span>
+        <Toggle value={advancedEnabled} onChange={setAdvancedEnabled} />
+      </div>
+
       {open && (
-        <div style={{ position: 'absolute', bottom: 'calc(100% + 2px)', left: '-1px', zIndex: 60, width: '400px', padding: '8px', borderRadius: '8px', background: '#1D1E1E', border: '1px solid #FFFFFF0D', boxShadow: '#00000066 0px 4px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {/* Speed section */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>语速</span>
-              <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '18px', color: '#FFFFFF' }}>{displaySpeed}×</span>
-            </div>
-            <div style={{ borderRadius: '8px', border: '1px solid #FFFFFF14', background: '#1D1E1E', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ position: 'relative', height: '20px', display: 'flex', alignItems: 'center' }}>
-                {/* Empty track */}
-                <div style={{ position: 'absolute', left: 0, right: 0, height: '3px', borderRadius: '2px', background: '#FFFFFF1A' }} />
-                {/* Filled track */}
-                <div style={{ position: 'absolute', left: 0, height: '3px', borderRadius: '2px', background: '#2DC3E1', width: ((speed - 0.5) / 1.5 * 100) + '%' }} />
-                {/* Invisible range input */}
-                <input type="range" min={0.5} max={2.0} step={0.01} value={speed}
-                  className="dubbing-speed-slider"
-                  onChange={(e) => onSpeedChange?.(parseFloat(e.target.value))}
-                  style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', cursor: 'pointer' }}
-                />
-                {/* Thumb knob */}
-                <div style={{ position: 'absolute', left: ((speed - 0.5) / 1.5 * 100) + '%', top: '50%', transform: 'translate(-50%, -50%)', width: '14px', height: '14px', borderRadius: '50%', background: '#FFFFFF', boxShadow: '#2DC3E1 0px 0px 0px 2px, #00000066 0px 2px 6px', zIndex: 1, pointerEvents: 'none' }} />
-              </div>
-              <style>{`
-                .dubbing-speed-slider { -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; margin: 0; padding: 0; }
-                .dubbing-speed-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; background: transparent; border: none; cursor: pointer; }
-                .dubbing-speed-slider::-moz-range-thumb { width: 18px; height: 18px; background: transparent; border: none; cursor: pointer; }
-              `}</style>
-              {/* Speed labels: 0.5× / 1.0× (Medium) / 2.0× */}
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF99' }}>0.5×</span>
-                <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF99' }}>1.0×</span>
-                <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF99' }}>1.5×</span>
-                <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF99' }}>2.0×</span>
-              </div>
-            </div>
-          </div>
-          {/* Emotion section */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF66' }}>情绪</span>
-            {[0, 1].map(row => (
-              <div key={row} style={{ display: 'flex', gap: '4px' }}>
-                {emoList.slice(row * 4, row * 4 + 4).map(em => {
-                  const isSelected = em === emotion;
-                  return (
-                    <button key={em} type="button" onClick={() => onEmotionChange?.(isSelected ? '' : em)}
-                      style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 12px', borderRadius: '4px', border: 'none', background: isSelected ? '#FFFFFF14' : '#FFFFFF0D', boxShadow: isSelected ? '#FFFFFF33 0px 0px 0px 1px inset' : 'none', color: isSelected ? '#FFFFFF' : '#FFFFFF66', fontFamily: FONT, fontSize: '12px', lineHeight: '16px', cursor: 'pointer', transition: 'background 0.15s, box-shadow 0.15s, color 0.15s' }}>
-                      {getEmotionDisplayLabel(em)}
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+        <div style={{ position: 'absolute', bottom: 'calc(100% + 4px)', left: '-1px', zIndex: 60, width: '400px', padding: '8px', borderRadius: '8px', background: '#1D1E1E', border: '1px solid #FFFFFF0D', boxShadow: '#00000066 0px 4px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {SLIDER_CONFIGS.map((config) => (
+            <DubbingRangeControl key={config.key} config={config} value={values[config.key]} onChange={changeHandlers[config.key]} />
+          ))}
         </div>
       )}
+
+      <style>{`
+        .dubbing-range-slider { -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; margin: 0; padding: 0; }
+        .dubbing-range-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; background: transparent; border: none; cursor: pointer; }
+        .dubbing-range-slider::-moz-range-thumb { width: 18px; height: 18px; background: transparent; border: none; cursor: pointer; }
+      `}</style>
     </div>
   );
 }

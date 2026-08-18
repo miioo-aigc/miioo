@@ -30,6 +30,7 @@
  *   2026-08-18  音色卡片抽离为 DubbingVoiceCard，收藏 Tab 接入取消收藏接口
  *   2026-08-18  官方音色接入查询接口，并以官网采集元数据补全展示名称、标签和描述
  *   2026-08-18  新增固定音色筛选区，并使用官网元数据兜底筛选字段
+ *   2026-08-18  官方语言筛选优先使用官网元数据，避免接口语言格式差异导致漏查
  */
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
@@ -110,7 +111,7 @@ function normalizeOfficialVoice(voice) {
     mood: metadata?.mood || voice.style || "官方系统音色",
     tags: metadata?.tags?.length ? metadata.tags : fallbackTags,
     description: metadata?.description || `${voice.display_name || voice.name || "该音色"}暂未提供详细介绍。`,
-    language: normalizeOfficialVoiceLanguage(voice.language, metadata?.language || ""),
+    language: metadata?.language || normalizeOfficialVoiceLanguage(voice.language),
     accent: voice.accent || voice.dialect || voice.dialect_name || getAccent(metadata?.tags || fallbackTags),
     gender: voice.gender || metadata?.gender || "",
     ageGroup: voice.age_group || voice.ageGroup || metadata?.ageGroup || "",

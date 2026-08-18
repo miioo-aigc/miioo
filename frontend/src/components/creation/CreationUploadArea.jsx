@@ -6,6 +6,7 @@ import {
   isFileOverLimit,
   isImageFile,
 } from './CreationFileUtils';
+import { Tooltip } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -30,7 +31,7 @@ function UploadMenuItem({ label, icon, onClick }) {
   );
 }
 
-export function UploadPlaceholder({ onFileSelect, onAssetPick, onDirectClick, disabled = false, allowedExts = ALLOWED_EXTS, acceptAttr = '.txt,.md,.pdf,.docx' }) {
+export function UploadPlaceholder({ onFileSelect, onAssetPick, onDirectClick, tooltip = '', disabled = false, allowedExts = ALLOWED_EXTS, acceptAttr = '.txt,.md,.pdf,.docx' }) {
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const fileInputRef = useRef(null);
@@ -79,23 +80,27 @@ export function UploadPlaceholder({ onFileSelect, onAssetPick, onDirectClick, di
     event.target.value = '';
   };
 
+  const trigger = (
+    <button
+      type="button"
+      onMouseEnter={() => !disabled && setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={() => { if (!disabled) { if (onDirectClick) onDirectClick(); else setMenuOpen((value) => !value); } }}
+      disabled={disabled}
+      style={{ display: 'flex', alignItems: 'center', gap: '0px', position: 'relative', padding: 0, cursor: disabled ? 'not-allowed' : 'pointer', background: 'transparent', border: 'none', opacity: disabled ? 0.45 : 1, outline: 'none', borderRadius: '8px', flexShrink: 0 }}
+    >
+      <input ref={fileInputRef} type="file" multiple accept={acceptAttr} className="hidden" onChange={handleChange} onClick={(event) => event.stopPropagation()} />
+      <div style={{ width: '44px', height: '60px', borderRadius: '4px', flexShrink: 0, boxShadow: '#FFFFFF14 0px 0px 0px 0.5px inset', opacity: back.opacity, background: back.bg, rotate: back.rotate, transition }} />
+      <div style={{ width: '44px', height: '60px', borderRadius: '4px', position: 'absolute', boxShadow: '#FFFFFF14 0px 0px 0px 0.5px inset', transformOrigin: 'top left', background: front.bg, rotate: front.rotate, left: '50%', top: '50%', translate: `${front.tx} ${front.ty}`, transition }} />
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ position: 'absolute', left: '50%', top: '50%', translate: `${icon.tx} ${icon.ty}`, rotate: icon.rotate, transformOrigin: '0% 0%', transition }}>
+        <path d="M8 3v10M3 8h10" stroke={icon.stroke} strokeWidth="1.5" strokeLinecap="round" style={{ transition }} />
+      </svg>
+    </button>
+  );
+
   return (
     <div ref={wrapperRef} style={{ position: 'relative', flexShrink: 0 }}>
-      <button
-        type="button"
-        onMouseEnter={() => !disabled && setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        onClick={() => { if (!disabled) { if (onDirectClick) onDirectClick(); else setMenuOpen((value) => !value); } }}
-        disabled={disabled}
-        style={{ display: 'flex', alignItems: 'center', gap: '0px', position: 'relative', padding: 0, cursor: disabled ? 'not-allowed' : 'pointer', background: 'transparent', border: 'none', opacity: disabled ? 0.45 : 1, outline: 'none', borderRadius: '8px', flexShrink: 0 }}
-      >
-        <input ref={fileInputRef} type="file" multiple accept={acceptAttr} className="hidden" onChange={handleChange} onClick={(event) => event.stopPropagation()} />
-        <div style={{ width: '44px', height: '60px', borderRadius: '4px', flexShrink: 0, boxShadow: '#FFFFFF14 0px 0px 0px 0.5px inset', opacity: back.opacity, background: back.bg, rotate: back.rotate, transition }} />
-        <div style={{ width: '44px', height: '60px', borderRadius: '4px', position: 'absolute', boxShadow: '#FFFFFF14 0px 0px 0px 0.5px inset', transformOrigin: 'top left', background: front.bg, rotate: front.rotate, left: '50%', top: '50%', translate: `${front.tx} ${front.ty}`, transition }} />
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ position: 'absolute', left: '50%', top: '50%', translate: `${icon.tx} ${icon.ty}`, rotate: icon.rotate, transformOrigin: '0% 0%', transition }}>
-          <path d="M8 3v10M3 8h10" stroke={icon.stroke} strokeWidth="1.5" strokeLinecap="round" style={{ transition }} />
-        </svg>
-      </button>
+      {tooltip ? <Tooltip label={tooltip} offset={12} color="#FFFFFF99">{trigger}</Tooltip> : trigger}
       {menuOpen && (
         <div style={{ position: 'absolute', zIndex: 50, left: 0, bottom: 'calc(100% + 8px)', borderRadius: '8px', background: '#1D1E1E', border: '1px solid #FFFFFF0D', boxShadow: '0px 4px 16px #00000066', padding: '4px', minWidth: '140px', display: 'flex', flexDirection: 'column' }}>
           <UploadMenuItem

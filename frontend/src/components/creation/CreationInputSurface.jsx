@@ -106,6 +106,7 @@ function CreationInputSurface({ width = '800px', disabled = false, promptDisable
               ) : (
                 <UploadPlaceholder
                   onDirectClick={upload.onOpenVoiceModal}
+                  tooltip="选择音色"
                   allowedExts={upload.allowedExts}
                   acceptAttr={upload.acceptAttr}
                   disabled={disabled}

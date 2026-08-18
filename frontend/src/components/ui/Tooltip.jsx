@@ -16,7 +16,7 @@ import { createPortal } from 'react-dom';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-export default function Tooltip({ label, children }) {
+export default function Tooltip({ label, children, offset = 4, color = '#FFFFFF' }) {
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState(null);
 
@@ -45,7 +45,7 @@ export default function Tooltip({ label, children }) {
             position: 'fixed',
             left: position.left,
             top: position.top,
-            transform: 'translate(-50%, calc(-100% - 4px))',
+            transform: `translate(-50%, calc(-100% - ${offset}px))`,
             zIndex: 10000,
             pointerEvents: 'none',
             display: 'flex',
@@ -57,7 +57,7 @@ export default function Tooltip({ label, children }) {
             backdropFilter: 'blur(10px)',
             WebkitBackdropFilter: 'blur(10px)',
             whiteSpace: 'nowrap',
-            color: '#FFFFFF',
+            color,
             fontFamily: FONT,
             fontSize: '12px',
             lineHeight: '16px',

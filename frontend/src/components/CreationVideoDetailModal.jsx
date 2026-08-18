@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
 import ConfirmDialog from './ConfirmDialog';
 import FilePreviewTooltip from './FilePreviewTooltip';
+import AsyncImagePreview from './AsyncImagePreview';
 import { formatReferenceMode } from '../utils/referenceMode';
+import { apiGetLiveMaterialPreviewByRef } from '../api/liveMaterials';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -283,6 +285,15 @@ export default function CreationVideoDetailModal({
   const progressPct = videoDuration > 0 ? (currentTime / videoDuration) * 100 : 0;
   const isFrameReference = refMode === 'frame'
     || ['first_frame', 'last_frame', 'start_end', 'multiframe'].includes(refMode);
+  const firstFrameImage = firstFrame || refImages.find((image) => (
+    typeof image !== 'string' && image?.role === 'first_frame'
+  )) || (refMode === 'first_frame' ? refImages[0] : null);
+  const lastFrameImage = lastFrame || refImages.find((image) => (
+    typeof image !== 'string' && image?.role === 'last_frame'
+  )) || (refMode === 'last_frame' ? refImages[0] : null);
+  const getFrameImageUrl = (image) => typeof image === 'string'
+    ? image
+    : (image?.url || image?.previewUrl || '');
 
   return (
     <>
@@ -456,8 +467,13 @@ export default function CreationVideoDetailModal({
                       首帧
                     </div>
                     <div className="rounded-md overflow-clip flex flex-col items-center gap-0 justify-center h-[84px] self-stretch shrink-0 bg-[#FFFFFF14] border border-solid border-[#FFFFFF14] p-0">
-                      {firstFrame ? (
-                        <div className="w-full h-full shrink-0 bg-cover bg-[center]" style={{ backgroundImage: `url(${firstFrame})` }} />
+                      {getFrameImageUrl(firstFrameImage) ? (
+                        <AsyncImagePreview
+                          src={getFrameImageUrl(firstFrameImage)}
+                          alt="首帧参考"
+                          resolveSrc={apiGetLiveMaterialPreviewByRef}
+                          style={{ width: '100%', height: '84px', border: 'none', borderRadius: 0 }}
+                        />
                       ) : (
                         <div className="font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF40] text-[12px]">无</div>
                       )}
@@ -468,8 +484,13 @@ export default function CreationVideoDetailModal({
                       尾帧
                     </div>
                     <div className="rounded-md overflow-clip flex flex-col items-center gap-0 justify-center h-[84px] self-stretch shrink-0 bg-[#FFFFFF14] border border-solid border-[#FFFFFF14] p-0">
-                      {lastFrame ? (
-                        <div className="w-full h-full shrink-0 bg-cover bg-[center]" style={{ backgroundImage: `url(${lastFrame})` }} />
+                      {getFrameImageUrl(lastFrameImage) ? (
+                        <AsyncImagePreview
+                          src={getFrameImageUrl(lastFrameImage)}
+                          alt="尾帧参考"
+                          resolveSrc={apiGetLiveMaterialPreviewByRef}
+                          style={{ width: '100%', height: '84px', border: 'none', borderRadius: 0 }}
+                        />
                       ) : (
                         <div className="font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF40] text-[12px]">无</div>
                       )}
@@ -488,9 +509,13 @@ export default function CreationVideoDetailModal({
                     {refImages.map((img, i) => {
                       const imgUrl = typeof img === 'string' ? img : (img.url || img.previewUrl || '');
                       return (
-                        <div key={i} className="rounded-md overflow-clip h-[84px] w-[calc(47.49%)] bg-[#FFFFFF14] border border-solid border-[#FFFFFF14]">
-                          {imgUrl ? <img src={imgUrl} alt="参考图" className="w-full h-full object-cover" /> : null}
-                        </div>
+                        <AsyncImagePreview
+                          key={`${i}-${imgUrl}`}
+                          src={imgUrl}
+                          alt="参考图"
+                          resolveSrc={apiGetLiveMaterialPreviewByRef}
+                          style={{ width: '47.49%' }}
+                        />
                       );
                     })}
                     {refVideos.map((vid, i) => {

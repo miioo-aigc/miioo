@@ -79,7 +79,14 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
       const imgUrl = typeof img === 'string'
         ? img
         : (img?.preview_url || img?.previewUrl || img?.url || img?.original_url || img?.originalUrl || '');
-      return { url: imgUrl, previewUrl: imgUrl, isAsset: true, name: img?.name || imgUrl.split('/').pop() || 'ref.png', size: 0 };
+      return {
+        url: imgUrl,
+        previewUrl: imgUrl,
+        isAsset: true,
+        name: img?.name || imgUrl.split('/').pop() || 'ref.png',
+        size: 0,
+        role: img?.role || img?.assetRole || '',
+      };
     }).filter((img) => img.url);
     const firstFrame = item.first_frame_url || item.firstFrameUrl || '';
     const lastFrame = item.last_frame_url || item.lastFrameUrl || '';

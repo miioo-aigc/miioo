@@ -88,6 +88,15 @@
 - 移除两处组件之间不再需要的 `projectRatio` 透传，避免主体编辑和批量生成的初始值继承项目画幅。
 
 
+## 2026-08-18 创作详情参考图加载槽
+
+- 新增 `src/components/AsyncImagePreview.jsx`，以固定 `84px` 卡片尺寸承载图片加载中、加载完成和加载失败三态；加载中直接复用现有 `DotsLoading` 蓝色动画，参考图字段由结果数据是否存在决定，不再等待浏览器图片请求完成才出现。
+- `ImageDetailModal`、`CreationImageResultCard` 内嵌图片详情和 `CreationVideoDetailModal` 统一复用该预览槽，因此创作页与资产库的创作图片/视频详情保持一致；加载失败沿用“图片加载失败”反馈。
+- Seedance 认证素材中的 `asset://...` 是服务商生成引用，不是浏览器可加载地址。详情展示必须通过真人素材接口按 `asset_ref_url` 反查实际预览地址，且解析函数只返回图片 URL 字符串，不能将包含素材元数据的对象直接传给图片预览槽。
+- 外部 COS 的 `http(s)` 预览地址直接交由 `<img>` 加载；不能通过带 `Authorization` 的鉴权请求读取为 Blob URL，否则会触发 COS 不支持的跨域预检。本站相对路径仍走既有鉴权请求后转 Blob URL 的策略。
+- 首尾帧详情优先读取显式 `first_frame_url`/`last_frame_url`；字段为空时，必须按 `asset_bindings.role` 回退读取 `first_frame`/`last_frame`，并兼容仅有首帧绑定的 `first_frame` 模式。为保留这条语义，创作历史与资产库的归一化链路均需透传绑定 `role`。
+- 本次同时调整了详情数据映射和真人素材 API 适配；不改变下载、删除、收藏和弹窗布局尺寸。后续新增包含服务商引用的素材类型时，应沿用“生成引用与浏览器预览地址分离、按需解析”的边界，避免将内部引用直接用于展示。
+
 ## 2026-08-07 配音创作接口与可停止生成
 
 - `CreationPage` 的配音生成使用同步 `/api/creation/audios/generate`；长文本按接口契约使用 `/api/creation/audios/generate-async`，并轮询 `/api/creation/audios/tasks/{task_id}`，兼容 `task_id`/`taskId` 和音频地址字段。

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import ConfirmDialog from './ConfirmDialog';
+import AsyncImagePreview from './AsyncImagePreview';
+import { apiGetLiveMaterialPreviewByRef } from '../api/liveMaterials';
 import { useModalSize } from '../utils/useModalSize';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -157,18 +159,12 @@ export default function ImageDetailModal({ card, onClose, onDelete, onDownload, 
                         {card.refImages.map((img, i) => {
                           const imgUrl = img.url || img.previewUrl || '';
                           return (
-                            <div key={i} style={{
-                              width: 'calc(50% - 6px)',
-                              height: '84px',
-                              borderRadius: '6px',
-                              border: '1px solid #FFFFFF14',
-                              backgroundColor: '#FFFFFF14',
-                              overflow: 'hidden',
-                              flexShrink: 0,
-                              backgroundImage: imgUrl ? `url(${imgUrl})` : 'none',
-                              backgroundSize: 'cover',
-                              backgroundPosition: 'center',
-                            }} />
+                            <AsyncImagePreview
+                              key={`${i}-${imgUrl}`}
+                              src={imgUrl}
+                              alt="参考图"
+                              resolveSrc={apiGetLiveMaterialPreviewByRef}
+                            />
                           );
                         })}
                       </div>

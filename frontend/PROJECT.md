@@ -1,5 +1,15 @@
 # miioo 项目进度管理文档
 
+## 2026-08-18 创作详情认证素材参考图加载与首尾帧回退修复
+
+- 修复创作页和资产库创作资产详情弹窗中，参考图在后台缓冲期间只有空占位、没有蓝色 `DotsLoading` 动画，以及 Seedance 认证素材参考图无法渲染的问题；参考图字段由结果数据是否存在决定，固定占位槽立即显示加载态，图片加载完成后填入对应槽位，失败时沿用“图片加载失败”样式。
+- Seedance 认证素材返回的 `asset://...` 是服务商生成引用，不是浏览器可加载地址。详情展示通过真人素材接口按 `asset_ref_url` 反查实际预览地址；解析函数只返回图片 URL 字符串，不把素材元数据对象直接交给图片预览组件。
+- 外部 COS 的 `http(s)` 预览地址直接交给 `<img>` 加载，避免使用带 `Authorization` 的鉴权请求读取 Blob URL，触发 COS 不支持的跨域预检；本站相对路径继续使用鉴权请求转 Blob URL 的策略。
+- 修复首尾帧参考模式只读取 `first_frame_url`/`last_frame_url` 导致参考图缺失的问题：显式首尾帧地址为空时，按 `asset_bindings.role` 回退读取 `first_frame`/`last_frame`；`first_frame` 模式兼容仅有首帧绑定的数据。创作历史和资产库归一化链路同步保留绑定角色。
+- 创作页与资产库详情继续共用 `CreationVideoDetailModal` 和统一异步图片预览槽，保持加载中、加载完成和加载失败状态一致；不改变下载、删除、收藏和弹窗布局尺寸。
+- 涉及文件：`src/api/liveMaterials.js`、`src/components/AsyncImagePreview.jsx`、`src/components/CreationVideoDetailModal.jsx`、`src/components/ImageDetailModal.jsx`、`src/components/creation/CreationImageResultCard.jsx`、`src/components/assets/AssetsCreativePanel.jsx`、`src/utils/creationDetailAdapter.js`、`src/utils/creationHistoryAdapter.js`。
+- 验证：目标文件定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；构建仅保留既有分块体积提醒，架构检查仅保留既有文件规模提醒；用户已验证参考图正常渲染。
+
 ## 2026-08-11 API 配置新增音乐模型
 
 - “配置服务商 API Key”弹窗在配音模型后新增“音乐模型”Tab，OneLinkAI 与其他服务商共用该入口。

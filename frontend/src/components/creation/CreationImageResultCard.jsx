@@ -17,6 +17,7 @@
  * ─── 更新记录 ──────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离图片结果卡片及图片详情弹窗；页面通过显式 props 注入业务回调
  *   2026-08-17  下载统一透传页面正式下载回调，详情弹窗不再请求短时媒体链接
+ *   2026-08-18  详情参考图改用固定加载槽，加载或失败均不影响字段显示
  */
 
 import { useModalSize } from '../../utils/useModalSize';
@@ -24,6 +25,7 @@ import { createPortal } from 'react-dom';
 import { useState } from 'react';
 import ConfirmDialog from '../ConfirmDialog';
 import DotsLoading from '../DotsLoading';
+import AsyncImagePreview from '../AsyncImagePreview';
 import CreationCardActionButton from './CreationCardActionButton';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -146,7 +148,7 @@ function ImageDetailModal({ card, onClose, onDelete, onDownload, favorited, onTo
                       {DETAIL_PANEL_DIVIDER}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 20px', flexShrink: 0 }}>
                         <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>参考图</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>{card.refImages.map((img, i) => { const imgUrl = img.url || img.previewUrl || ''; return <div key={i} style={{ width: 'calc(50% - 6px)', height: '84px', borderRadius: '6px', border: '1px solid #FFFFFF14', backgroundColor: '#FFFFFF14', overflow: 'hidden', flexShrink: 0, backgroundImage: imgUrl ? `url(${imgUrl})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' }} />; })}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>{card.refImages.map((img, i) => { const imgUrl = img.url || img.previewUrl || ''; return <AsyncImagePreview key={`${i}-${imgUrl}`} src={imgUrl} alt="参考图" />; })}</div>
                       </div>
                     </>
                   )}

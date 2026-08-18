@@ -130,6 +130,7 @@ export function normalizeCreationHistoryItem(item, type) {
             name: binding.asset_name || 'ref.png',
             size: 0,
             assetId: binding.asset_id,
+            role: binding.role || binding.assetRole || '',
           };
         })
     : (item.reference_images || item.referenceImages || []).map((image) => {

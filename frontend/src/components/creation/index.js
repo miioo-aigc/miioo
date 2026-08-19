@@ -21,6 +21,7 @@ export { RefModeSelector } from './CreationRefModeSelector';
 export { VideoParamsSelector } from './CreationVideoParamsSelector';
 export { DubbingAdjust } from './CreationDubbingAdjust';
 export { default as CreationDubbingAdvancedToolbar } from './CreationDubbingAdvancedToolbar';
+export { default as CreationDubbingEmotionMenu } from './CreationDubbingEmotionMenu';
 export { default as CreationDubbingEffectsMenu } from './CreationDubbingEffectsMenu';
 export { DEFAULT_EMOTIONS } from './CreationSelectorConstants';
 export { default as CreationLiveMaterialModal } from './CreationLiveMaterialModal';

@@ -27,7 +27,7 @@ function EffectsIcon() {
 
 const TOOL_BUTTON_STYLE = { height: '32px' };
 
-export default function CreationDubbingAdvancedToolbar({ hasTextSelection = false, disabled = false }) {
+export default function CreationDubbingAdvancedToolbar({ hasTextSelection = false, disabled = false, onEmotionClick, onPauseClick, onInterjectionClick }) {
   const emotionUnavailable = !disabled && !hasTextSelection;
   const emotionTooltip = hasTextSelection
     ? '给选中文本并添加情绪，让语音表达更生动'
@@ -52,6 +52,7 @@ export default function CreationDubbingAdvancedToolbar({ hasTextSelection = fals
           contentClassName="!text-[12px] !leading-[16px]"
           onClick={(event) => {
             if (emotionUnavailable) event.preventDefault();
+            else onEmotionClick?.();
           }}
           onKeyDown={(event) => {
             if (emotionUnavailable && (event.key === 'Enter' || event.key === ' ')) event.preventDefault();
@@ -65,7 +66,17 @@ export default function CreationDubbingAdvancedToolbar({ hasTextSelection = fals
         offset={8}
         multiline
       >
-        <Button variant="secondary" icon={<PauseIcon />} disabled={disabled} aria-label="停顿" style={TOOL_BUTTON_STYLE}>
+        <Button
+          variant="secondary"
+          icon={<PauseIcon />}
+          disabled={disabled}
+          aria-label="停顿"
+          style={TOOL_BUTTON_STYLE}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            onPauseClick?.();
+          }}
+        >
           停顿
         </Button>
       </Tooltip>
@@ -74,7 +85,17 @@ export default function CreationDubbingAdvancedToolbar({ hasTextSelection = fals
         offset={8}
         multiline
       >
-        <Button variant="secondary" icon={<InterjectionIcon />} disabled={disabled} aria-label="语气词" style={TOOL_BUTTON_STYLE}>
+        <Button
+          variant="secondary"
+          icon={<InterjectionIcon />}
+          disabled={disabled}
+          aria-label="语气词"
+          style={TOOL_BUTTON_STYLE}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            onInterjectionClick?.();
+          }}
+        >
           语气词
         </Button>
       </Tooltip>

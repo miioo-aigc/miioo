@@ -949,3 +949,11 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+/* 高级配音：用生成内容建立浮动轮廓，真实音色控件保持在编辑器交互层。 */
+.creation-prompt-editor--voice-wrap::before {
+  content: '';
+  float: left;
+  width: var(--creation-voice-wrap-width, 0px);
+  height: var(--creation-voice-wrap-height, 0px);
+  pointer-events: none;
+}

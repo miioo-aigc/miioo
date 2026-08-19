@@ -25,6 +25,9 @@ export default function CreationParamsControls({
   onDubbingAdvancedChange,
   dubbingPromptCharacterCount = 0,
   dubbingHasTextSelection = false,
+  onDubbingEmotionClick,
+  onDubbingPauseClick,
+  onDubbingInterjectionClick,
   ratio,
   resolution,
   count,
@@ -73,6 +76,9 @@ export default function CreationParamsControls({
           onAdvancedChange={onDubbingAdvancedChange}
           promptCharacterCount={dubbingPromptCharacterCount}
           hasTextSelection={dubbingHasTextSelection}
+          onEmotionClick={onDubbingEmotionClick}
+          onPauseClick={onDubbingPauseClick}
+          onInterjectionClick={onDubbingInterjectionClick}
           disabled={disabled}
         />
       )}

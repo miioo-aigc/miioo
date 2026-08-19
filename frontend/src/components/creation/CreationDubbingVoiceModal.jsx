@@ -135,7 +135,7 @@ export function DubbingVoiceFileCard({ voiceName, onRemove, onOpenModal }) {
   return (
     <div style={{ position: "relative", flexShrink: 0 }} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       <button type="button" onClick={onOpenModal} style={{ display: "flex", alignItems: "center", height: "60px", padding: "0 16px", borderRadius: "8px", background: "#1D1E1E", border: "1px solid #FFFFFF14", cursor: "pointer", outline: "none" }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", minWidth: 0 }}><span style={{ maxWidth: "140px", overflow: "hidden", color: "#FFFFFF", fontFamily: FONT, fontSize: "14px", lineHeight: "18px", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{voiceName}</span><span style={{ marginTop: "2px", color: "#FFFFFF66", fontFamily: FONT, fontSize: "12px", lineHeight: "16px" }}>音频参考</span></div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", minWidth: 0 }}><span style={{ overflow: "hidden", color: "#FFFFFF", fontFamily: FONT, fontSize: "14px", lineHeight: "18px", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{voiceName}</span><span style={{ marginTop: "2px", color: "#FFFFFF66", fontFamily: FONT, fontSize: "12px", lineHeight: "16px" }}>音频参考</span></div>
       </button>
       {hovered && onRemove && <button type="button" onClick={(event) => { event.stopPropagation(); onRemove(); }} aria-label="移除音频参考" style={{ position: "absolute", top: "-6px", right: "-6px", width: "18px", height: "18px", padding: 0, border: "1px solid #FFFFFF14", borderRadius: "50%", background: "#2D2D2D", color: "#FFFFFF99", cursor: "pointer" }}>×</button>}
     </div>

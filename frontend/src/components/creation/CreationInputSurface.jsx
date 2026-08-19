@@ -41,6 +41,7 @@ function ensureRotateKeyframe() {
 
 function CreationInputSurface({ width = '800px', disabled = false, promptDisabled = disabled, focused = false, expanded = false, upload, prompt, controls, send, overlays }) {
   const [hovered, setHovered] = useState(false);
+  const usesAdvancedDubbingLayout = upload.genType === 'dubbing' && prompt.dubbingAdvancedEnabled;
 
   useEffect(() => {
     ensureRotateKeyframe();
@@ -82,42 +83,52 @@ function CreationInputSurface({ width = '800px', disabled = false, promptDisable
               minHeight: '110px', padding: 0, position: 'relative', overflow: 'visible',
             }}
           >
-            <CreationUploadArea
-              genType={upload.genType}
-              refMode={upload.refMode}
-              firstFrameFile={upload.firstFrameFile}
-              lastFrameFile={upload.lastFrameFile}
-              onFirstChange={upload.onFirstChange}
-              onLastChange={upload.onLastChange}
-              onSwap={upload.onSwap}
-              onFirstAssetPick={upload.onFirstAssetPick}
-              onLastAssetPick={upload.onLastAssetPick}
-              uploadProps={{
-                onFileSelect: upload.onFileSelect,
-                onAssetPick: upload.onAssetPick,
-                allowedExts: upload.allowedExts,
-                acceptAttr: upload.acceptAttr,
-              }}
-              renderVoiceControl={() => upload.voiceId ? (
-                <DubbingVoiceFileCard
-                  voiceName={upload.voiceName}
-                  onRemove={upload.onVoiceRemove}
-                  onOpenModal={upload.onOpenVoiceModal}
-                />
-              ) : (
-                <UploadPlaceholder
-                  onDirectClick={upload.onOpenVoiceModal}
-                  tooltip="选择音色"
-                  allowedExts={upload.allowedExts}
-                  acceptAttr={upload.acceptAttr}
-                  disabled={disabled}
-                />
-              )}
-              disabled={disabled}
-            />
+            {!usesAdvancedDubbingLayout && (
+              <CreationUploadArea
+                genType={upload.genType}
+                refMode={upload.refMode}
+                firstFrameFile={upload.firstFrameFile}
+                lastFrameFile={upload.lastFrameFile}
+                onFirstChange={upload.onFirstChange}
+                onLastChange={upload.onLastChange}
+                onSwap={upload.onSwap}
+                onFirstAssetPick={upload.onFirstAssetPick}
+                onLastAssetPick={upload.onLastAssetPick}
+                uploadProps={{
+                  onFileSelect: upload.onFileSelect,
+                  onAssetPick: upload.onAssetPick,
+                  allowedExts: upload.allowedExts,
+                  acceptAttr: upload.acceptAttr,
+                }}
+                renderVoiceControl={() => upload.voiceId ? (
+                  <DubbingVoiceFileCard
+                    voiceName={upload.voiceName}
+                    onRemove={upload.onVoiceRemove}
+                    onOpenModal={upload.onOpenVoiceModal}
+                  />
+                ) : (
+                  <UploadPlaceholder
+                    onDirectClick={upload.onOpenVoiceModal}
+                    tooltip="选择音色"
+                    allowedExts={upload.allowedExts}
+                    acceptAttr={upload.acceptAttr}
+                    disabled={disabled}
+                  />
+                )}
+                disabled={disabled}
+              />
+            )}
             <CreationPromptEditor
               {...prompt}
               disabled={promptDisabled}
+              voiceControl={usesAdvancedDubbingLayout ? {
+                voiceId: upload.voiceId,
+                voiceName: upload.voiceName,
+                onRemove: upload.onVoiceRemove,
+                onOpen: upload.onOpenVoiceModal,
+                allowedExts: upload.allowedExts,
+                acceptAttr: upload.acceptAttr,
+              } : null}
             />
           </div>
 

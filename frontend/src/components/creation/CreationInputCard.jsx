@@ -20,6 +20,7 @@
  *   2026-08-18  配音高级模式接入输入框展开状态，保持页面编排与生成参数边界不变
  *   2026-08-18  高级模式支持从 PDF/DOCX/TXT/HTML 提取最多 3000 字正文并写入提示词草稿
  *   2026-08-19  退出登录时清空提示词与参考素材草稿，保留当前模型和生成参数
+ *   2026-08-19  高级配音生成前要求已选择音色，未选择时提示并打开音色弹窗
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -152,7 +153,12 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     mentionQuery,
     mentionPos,
     mentionIndex,
+    emotionMenuPosition,
+    emotionMenuSelectedEmotion,
+    pauseMenuPosition,
+    interjectionMenuPosition,
     handleInput,
+    handleBeforeInput,
     handleKeyDown: handlePromptKeyDown,
     handlePaste,
     handleEditorFocus,
@@ -160,6 +166,10 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     handleRemoveFile,
     insertFromCard,
     insertMention,
+    openEmotionMenu,
+    openInlineMenu,
+    insertInlineTag,
+    applyEmotion,
     getPromptSnapshot,
     clearContent,
     restoreContent,
@@ -174,6 +184,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     removeFile,
     prefillVersion,
     prefillData,
+    dubbingAdvancedEnabled,
     onTextChange: handlePromptTextChange,
   });
 
@@ -505,6 +516,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   const atConcurrentLimit = activeCount >= concurrentLimit;
   const canSend = !disabled && !atConcurrentLimit && (hasContent || files.length > 0 || firstFrameFile || lastFrameFile || (genType === 'dubbing' && selectedVoiceId));
   const isDubbingGenerating = (genType === 'dubbing' || genType === 'music') && disabled;
+  const requiresDubbingVoice = genType === 'dubbing' && dubbingAdvancedEnabled;
 
   const restoreSavedInput = () => {
     const backup = savedContentRef.current;
@@ -527,6 +539,11 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
 
   const handleSend = async () => {
     if (!canSend) return;
+    if (requiresDubbingVoice && !selectedVoiceId) {
+      showToast?.('warning', '请先选择音色');
+      setVoiceModalOpen(true);
+      return;
+    }
     // 提取纯文字 prompt，剔除 @ 标签节点（data-file-ref），避免把 @文件名 混入发给后端的 prompt
     const { text: currentText, html: savedHTML } = getPromptSnapshot();
     const savedFiles = files;
@@ -650,6 +667,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         dubbingAdvancedEnabled,
         onDocumentSelect: handleDubbingDocumentSelect,
         onInput: handlePromptInput,
+        onBeforeInput: handleBeforeInput,
         onKeyDown: handleKeyDown,
         onPaste: handlePaste,
         onFocus: handleEditorFocus,
@@ -664,6 +682,14 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         mentionIndex,
         onMentionSelect: insertMention,
         onMentionIndexChange: setMentionIndex,
+        emotionMenuPosition,
+        emotionMenuSelectedEmotion,
+        onEmotionSelect: applyEmotion,
+        pauseMenuPosition,
+        interjectionMenuPosition,
+        onPauseSelect: (value) => insertInlineTag(`#${value.replace('s', '')}#`, 'pause'),
+        onPauseCustomInput: (value) => insertInlineTag(`#${value}#`, 'pause'),
+        onInterjectionSelect: (value) => insertInlineTag(value, 'interjection'),
       }}
       controls={{
         genType,
@@ -684,6 +710,9 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         onDubbingAdvancedChange,
         dubbingPromptCharacterCount: promptCharacterCount,
         dubbingHasTextSelection: hasTextSelection,
+        onDubbingEmotionClick: openEmotionMenu,
+        onDubbingPauseClick: () => openInlineMenu('pause'),
+        onDubbingInterjectionClick: () => openInlineMenu('interjection'),
         ratio,
         resolution,
         count,

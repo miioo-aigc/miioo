@@ -6,11 +6,16 @@
  * 任务轮询与弹窗状态仍由 InputCard 通过 props 提供或处理。
  */
 
-import { useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import CreationDubbingEmotionMenu from './CreationDubbingEmotionMenu';
+import CreationDubbingPauseMenu from './CreationDubbingPauseMenu';
+import CreationDubbingInterjectionMenu from './CreationDubbingInterjectionMenu';
+import { DubbingVoiceFileCard } from './CreationDubbingVoiceModal';
+import { UploadPlaceholder } from './CreationUploadArea';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
-function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled, onDocumentSelect }) {
+function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled, onDocumentSelect, voiceWrapWidth = 0 }) {
   const documentInputRef = useRef(null);
   const baseStyle = {
     position: 'absolute',
@@ -46,7 +51,7 @@ function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled,
 
   if (genType === 'dubbing' && dubbingAdvancedEnabled) {
     return (
-      <span style={{ ...baseStyle, lineHeight: '150%', whiteSpace: 'pre-wrap' }}>
+      <span style={{ ...baseStyle, left: `${voiceWrapWidth}px`, maxWidth: `calc(100% - ${voiceWrapWidth}px)`, lineHeight: '150%', whiteSpace: 'pre-wrap' }}>
         请在此输入或者
         <button
           type="button"
@@ -96,6 +101,7 @@ function CreationPromptEditor({
   dubbingAdvancedEnabled,
   onDocumentSelect,
   onInput,
+  onBeforeInput,
   onKeyDown,
   onPaste,
   onFocus,
@@ -108,11 +114,57 @@ function CreationPromptEditor({
   mentionIndex,
   onMentionSelect,
   onMentionIndexChange,
+  emotionMenuPosition,
+  emotionMenuSelectedEmotion,
+  onEmotionSelect,
+  pauseMenuPosition,
+  interjectionMenuPosition,
+  onPauseSelect,
+  onPauseCustomInput,
+  onInterjectionSelect,
+  voiceControl,
 }) {
   const usesAdvancedDubbingTypography = genType === 'dubbing' && dubbingAdvancedEnabled;
+  const voiceControlRef = useRef(null);
+  const [voiceControlSize, setVoiceControlSize] = useState({ width: 0, height: 0 });
   const mentionFiles = files.filter((file) => (
     mentionQuery === '' || file.name.toLowerCase().includes(mentionQuery.toLowerCase())
   ));
+
+  const measureVoiceControl = useCallback(() => {
+    const element = voiceControlRef.current;
+    if (!element) {
+      setVoiceControlSize({ width: 0, height: 0 });
+      return;
+    }
+    const nextSize = {
+      width: Math.ceil(element.getBoundingClientRect().width),
+      height: Math.ceil(element.getBoundingClientRect().height),
+    };
+    setVoiceControlSize((currentSize) => (
+      currentSize.width === nextSize.width && currentSize.height === nextSize.height
+        ? currentSize
+        : nextSize
+    ));
+  }, []);
+
+  useEffect(() => {
+    const element = voiceControlRef.current;
+    if (!voiceControl || !element) {
+      setVoiceControlSize({ width: 0, height: 0 });
+      return undefined;
+    }
+
+    measureVoiceControl();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measureVoiceControl);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [measureVoiceControl, voiceControl, voiceControl?.voiceId, voiceControl?.voiceName]);
+
+  const voiceWrapGap = voiceControl ? 16 : 0;
+  const voiceWrapWidth = voiceControlSize.width + voiceWrapGap;
+  const voiceWrapHeight = voiceControlSize.height;
 
   return (
     <>
@@ -122,12 +174,34 @@ function CreationPromptEditor({
         </div>
       )}
       <div style={{ flex: 1, alignSelf: 'stretch', position: 'relative' }}>
-      {!hasContent && <PromptPlaceholder genType={genType} refMode={refMode} dubbingAdvancedEnabled={dubbingAdvancedEnabled} disabled={disabled} onDocumentSelect={onDocumentSelect} />}
+      {voiceControl && (
+        <div ref={voiceControlRef} style={{ position: 'absolute', top: 0, left: 0, zIndex: 2, width: 'max-content', maxWidth: 'calc(100% - 16px)' }}>
+          {voiceControl.voiceId ? (
+            <DubbingVoiceFileCard
+              voiceName={voiceControl.voiceName}
+              onRemove={voiceControl.onRemove}
+              onOpenModal={voiceControl.onOpen}
+            />
+          ) : (
+            <UploadPlaceholder
+              onDirectClick={voiceControl.onOpen}
+              tooltip="选择音色"
+              allowedExts={voiceControl.allowedExts}
+              acceptAttr={voiceControl.acceptAttr}
+              disabled={disabled}
+            />
+          )}
+        </div>
+      )}
+      {!hasContent && <PromptPlaceholder genType={genType} refMode={refMode} dubbingAdvancedEnabled={dubbingAdvancedEnabled} disabled={disabled} onDocumentSelect={onDocumentSelect} voiceWrapWidth={voiceWrapWidth} />}
       <div
         ref={editorRef}
+        className={voiceControl ? 'creation-prompt-editor--voice-wrap' : undefined}
         contentEditable={!disabled}
         suppressContentEditableWarning
         style={{
+          '--creation-voice-wrap-width': `${voiceWrapWidth}px`,
+          '--creation-voice-wrap-height': `${voiceWrapHeight}px`,
           width: '100%',
           height: '100%',
           resize: 'none',
@@ -135,8 +209,8 @@ function CreationPromptEditor({
           border: 'none',
           outline: 'none',
           fontFamily: FONT,
-          fontSize: usesAdvancedDubbingTypography ? '15px' : '14px',
-          lineHeight: usesAdvancedDubbingTypography ? '150%' : '18px',
+          fontSize: usesAdvancedDubbingTypography ? '16px' : '14px',
+          lineHeight: usesAdvancedDubbingTypography ? '200%' : '18px',
           color: usesAdvancedDubbingTypography ? '#FFFFFFE6' : '#FFFFFFCC',
           overflowY: 'auto',
           whiteSpace: 'pre-wrap',
@@ -144,11 +218,29 @@ function CreationPromptEditor({
           cursor: disabled ? 'not-allowed' : 'text',
         }}
         onInput={onInput}
+        onBeforeInput={onBeforeInput}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
         onFocus={onFocus}
         onBlur={onBlur}
       />
+      {usesAdvancedDubbingTypography && (
+        <CreationDubbingEmotionMenu
+          position={emotionMenuPosition}
+          selectedEmotion={emotionMenuSelectedEmotion}
+          onSelect={onEmotionSelect}
+        />
+      )}
+      {usesAdvancedDubbingTypography && pauseMenuPosition && (
+        <div style={{ position: 'absolute', top: pauseMenuPosition.top, left: pauseMenuPosition.left, zIndex: 110 }}>
+          <CreationDubbingPauseMenu onSelect={onPauseSelect} onCustomInput={onPauseCustomInput} />
+        </div>
+      )}
+      {usesAdvancedDubbingTypography && interjectionMenuPosition && (
+        <div style={{ position: 'absolute', top: interjectionMenuPosition.top, left: interjectionMenuPosition.left, zIndex: 110 }}>
+          <CreationDubbingInterjectionMenu onSelect={onInterjectionSelect} />
+        </div>
+      )}
       {mentionOpen && mentionFiles.length > 0 && (
         <div ref={mentionMenuRef} style={{
           position: 'absolute',

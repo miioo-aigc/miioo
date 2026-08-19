@@ -25,6 +25,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import CreationFileCard from './CreationFileCard';
+import ConfirmDialog from '../ConfirmDialog';
 import CreationInputSurface from './CreationInputSurface';
 import { useCreationInputFiles } from './useCreationInputFiles';
 import { useCreationPromptInteraction } from './useCreationPromptInteraction';
@@ -43,6 +44,14 @@ import {
   getCreationAcceptAttr,
   isImageFile,
 } from './CreationFileUtils';
+import { DEFAULT_DUBBING_EFFECTS } from './CreationDubbingEffectsDefaults';
+
+function createDefaultDubbingEffects() {
+  return {
+    toneValues: { ...DEFAULT_DUBBING_EFFECTS.toneValues },
+    selectedEffects: [],
+  };
+}
 
 function restoreDraftFile(file, restoredFiles) {
   if (!file) return null;
@@ -76,6 +85,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
   const [selectedVoiceId, setSelectedVoiceId] = useState('');
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
+  const [advancedExitConfirmOpen, setAdvancedExitConfirmOpen] = useState(false);
+  const [dubbingEffects, setDubbingEffects] = useState(createDefaultDubbingEffects);
   const [promptCharacterCount, setPromptCharacterCount] = useState(0);
   const handlePromptTextChange = useCallback((text) => {
     setPromptCharacterCount(String(text ?? '').length);
@@ -172,6 +183,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     applyEmotion,
     getPromptSnapshot,
     clearContent,
+    clearAdvancedContent,
     restoreContent,
     setMentionIndex,
   } = useCreationPromptInteraction({
@@ -187,6 +199,33 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     dubbingAdvancedEnabled,
     onTextChange: handlePromptTextChange,
   });
+
+  const handleAdvancedChange = useCallback((nextEnabled) => {
+    if (nextEnabled) {
+      onDubbingAdvancedChange?.(true);
+      return;
+    }
+    if (!dubbingAdvancedEnabled) return;
+
+    const hasAdvancedPromptContent = Boolean(
+      editorRef.current?.querySelector('[data-emotion], [data-dubbing-inline-tag]'),
+    );
+    const hasAdvancedEffects = Object.values(dubbingEffects.toneValues).some((value) => Number(value) !== 0)
+      || dubbingEffects.selectedEffects.length > 0;
+    if (!hasAdvancedPromptContent && !hasAdvancedEffects) {
+      setDubbingEffects(createDefaultDubbingEffects());
+      onDubbingAdvancedChange?.(false);
+      return;
+    }
+    setAdvancedExitConfirmOpen(true);
+  }, [dubbingAdvancedEnabled, dubbingEffects, editorRef, onDubbingAdvancedChange]);
+
+  const confirmAdvancedExit = useCallback(() => {
+    clearAdvancedContent();
+    setDubbingEffects(createDefaultDubbingEffects());
+    setAdvancedExitConfirmOpen(false);
+    onDubbingAdvancedChange?.(false);
+  }, [clearAdvancedContent, onDubbingAdvancedChange]);
 
   // 卸载阶段 contentEditable ref 可能已被 React 清空；提示词在输入时同步镜像，
   // 切换 Tab 保存草稿时不能再依赖即将销毁的 DOM。
@@ -633,7 +672,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
 
   const assetPickerAccept = genType === 'image' ? 'image' : genType === 'video' ? (creationParams?.supportsAudio ? 'all' : 'image') : (genType === 'dubbing' || genType === 'music') ? 'audio' : 'all';
   return (
-    <CreationInputSurface
+    <>
+      <CreationInputSurface
       width={width}
       disabled={disabled}
       promptDisabled={promptDisabled}
@@ -707,7 +747,10 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         onDubbingPitchChange: setDubbingPitch,
         onDubbingVolumeChange: setDubbingVolume,
         dubbingAdvancedEnabled,
-        onDubbingAdvancedChange,
+        onDubbingAdvancedChange: handleAdvancedChange,
+        dubbingEffects,
+        onDubbingEffectToneChange: (key, value) => setDubbingEffects((current) => ({ ...current, toneValues: { ...current.toneValues, [key]: value } })),
+        onDubbingEffectToggle: (selectedEffects) => setDubbingEffects((current) => ({ ...current, selectedEffects })),
         dubbingPromptCharacterCount: promptCharacterCount,
         dubbingHasTextSelection: hasTextSelection,
         onDubbingEmotionClick: openEmotionMenu,
@@ -779,7 +822,19 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
           name: file.name,
         })),
       }}
-    />
+      />
+      {advancedExitConfirmOpen && (
+        <ConfirmDialog
+          title="退出高级模式"
+          description={<>是否要继续退出高级模式？<br />现在编辑的高级内容会丢失，请谨慎操作！</>}
+          cancelText="我再想想"
+          confirmText="直接退出"
+          confirmVariant="danger"
+          onCancel={() => setAdvancedExitConfirmOpen(false)}
+          onConfirm={confirmAdvancedExit}
+        />
+      )}
+    </>
   );
 }
 

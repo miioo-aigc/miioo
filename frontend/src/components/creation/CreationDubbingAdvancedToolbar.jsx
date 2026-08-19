@@ -27,7 +27,7 @@ function EffectsIcon() {
 
 const TOOL_BUTTON_STYLE = { height: '32px' };
 
-export default function CreationDubbingAdvancedToolbar({ hasTextSelection = false, disabled = false, onEmotionClick, onPauseClick, onInterjectionClick }) {
+export default function CreationDubbingAdvancedToolbar({ hasTextSelection = false, disabled = false, onEmotionClick, onPauseClick, onInterjectionClick, effects = {}, onEffectToneChange, onEffectToggle }) {
   const emotionUnavailable = !disabled && !hasTextSelection;
   const emotionTooltip = hasTextSelection
     ? '给选中文本并添加情绪，让语音表达更生动'
@@ -101,7 +101,7 @@ export default function CreationDubbingAdvancedToolbar({ hasTextSelection = fals
       </Tooltip>
       <Select
         displayValue="叠加效果器"
-        menuContent={() => <CreationDubbingEffectsMenu />}
+        menuContent={() => <CreationDubbingEffectsMenu toneValues={effects.toneValues} selectedEffects={effects.selectedEffects} onToneChange={onEffectToneChange} onEffectToggle={onEffectToggle} />}
         menuPlacement="up"
         menuRole="dialog"
         menuAriaLabel="叠加效果器设置"

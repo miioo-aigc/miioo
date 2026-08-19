@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { FONT } from './CreationSelectorPrimitives';
+import { DEFAULT_DUBBING_EFFECTS } from './CreationDubbingEffectsDefaults';
 
 const TONE_CONTROLS = [
   { key: 'brightness', negativeLabel: '低沉', positiveLabel: '明亮' },
@@ -124,17 +125,13 @@ function CheckIcon() {
   );
 }
 
-export default function CreationDubbingEffectsMenu() {
-  const [toneValues, setToneValues] = useState(() => Object.fromEntries(TONE_CONTROLS.map(({ key }) => [key, 0])));
-  const [selectedEffects, setSelectedEffects] = useState(() => new Set());
+export default function CreationDubbingEffectsMenu({ toneValues = DEFAULT_DUBBING_EFFECTS.toneValues, selectedEffects = DEFAULT_DUBBING_EFFECTS.selectedEffects, onToneChange, onEffectToggle }) {
 
   const toggleEffect = (effectKey) => {
-    setSelectedEffects((current) => {
-      const next = new Set(current);
-      if (next.has(effectKey)) next.delete(effectKey);
-      else next.add(effectKey);
-      return next;
-    });
+    const next = new Set(selectedEffects);
+    if (next.has(effectKey)) next.delete(effectKey);
+    else next.add(effectKey);
+    onEffectToggle?.(Array.from(next));
   };
 
   return (
@@ -148,14 +145,14 @@ export default function CreationDubbingEffectsMenu() {
             key={config.key}
             config={config}
             value={toneValues[config.key]}
-            onChange={(value) => setToneValues((current) => ({ ...current, [config.key]: value }))}
+            onChange={(value) => onToneChange?.(config.key, value)}
           />
         ))}
       </div>
 
       <div role="group" aria-label="声音效果" style={{ display: 'flex', alignItems: 'stretch', gap: '8px', width: '100%' }}>
         {EFFECT_OPTIONS.map((option) => {
-          const selected = selectedEffects.has(option.key);
+          const selected = selectedEffects.includes(option.key);
           return (
             <button
               key={option.key}

@@ -922,6 +922,27 @@ export function useCreationPromptInteraction({
     setHasContent(false);
   }, []);
 
+  const clearAdvancedContent = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    // 情绪保留正文、移除标签；停顿和语气词连同标签内容一起删除。
+    Array.from(editor.querySelectorAll('[data-emotion]')).forEach(unwrapEmotionElement);
+    editor.querySelectorAll('[data-dubbing-inline-tag]').forEach((element) => element.remove());
+    editor.querySelectorAll('[data-emotion-label], [data-emotion-remove]').forEach((element) => element.remove());
+    lastValidEditorHtmlRef.current = editor.innerHTML;
+    setEmotionMenuPosition(null);
+    setEmotionMenuSelectedEmotion(null);
+    setPauseMenuPosition(null);
+    setInterjectionMenuPosition(null);
+    emotionRangeRef.current = null;
+    inlineInsertRangeRef.current = null;
+    setHasTextSelection(false);
+    setHasContent(hasEditorContent(editor));
+    onTextChange?.(getPlainTextFromNode(editor));
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'formatRemove' }));
+  }, [onTextChange]);
+
   const restoreContent = useCallback(({ html = '', text = '', fallback = '', restoreFiles = [] } = {}) => {
     if (!editorRef.current) return;
     if (html) {
@@ -977,6 +998,7 @@ export function useCreationPromptInteraction({
     applyEmotion,
     getPromptSnapshot,
     clearContent,
+    clearAdvancedContent,
     restoreContent,
     setMentionIndex,
   };

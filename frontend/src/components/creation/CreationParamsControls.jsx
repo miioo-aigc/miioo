@@ -28,6 +28,9 @@ export default function CreationParamsControls({
   onDubbingEmotionClick,
   onDubbingPauseClick,
   onDubbingInterjectionClick,
+  dubbingEffects,
+  onDubbingEffectToneChange,
+  onDubbingEffectToggle,
   ratio,
   resolution,
   count,
@@ -79,6 +82,9 @@ export default function CreationParamsControls({
           onEmotionClick={onDubbingEmotionClick}
           onPauseClick={onDubbingPauseClick}
           onInterjectionClick={onDubbingInterjectionClick}
+          effects={dubbingEffects}
+          onEffectToneChange={onDubbingEffectToneChange}
+          onEffectToggle={onDubbingEffectToggle}
           disabled={disabled}
         />
       )}

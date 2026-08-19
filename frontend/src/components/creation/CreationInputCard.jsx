@@ -19,6 +19,7 @@
  *   2026-08-12  音乐生成与配音同规则：生成中可停止、上传音频附件；音乐不带配音参数
  *   2026-08-18  配音高级模式接入输入框展开状态，保持页面编排与生成参数边界不变
  *   2026-08-18  高级模式支持从 PDF/DOCX/TXT/HTML 提取最多 3000 字正文并写入提示词草稿
+ *   2026-08-19  退出登录时清空提示词与参考素材草稿，保留当前模型和生成参数
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -28,6 +29,7 @@ import { useCreationInputFiles } from './useCreationInputFiles';
 import { useCreationPromptInteraction } from './useCreationPromptInteraction';
 import { useCreationParamsState } from './useCreationParamsState';
 import {
+  CREATION_DRAFTS_CLEARED_EVENT,
   readCreationDraft,
   readCreationDraftFromMemory,
   saveCreationDraft,
@@ -73,6 +75,10 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
   const [selectedVoiceId, setSelectedVoiceId] = useState('');
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
+  const [promptCharacterCount, setPromptCharacterCount] = useState(0);
+  const handlePromptTextChange = useCallback((text) => {
+    setPromptCharacterCount(String(text ?? '').length);
+  }, []);
   const {
     ratio,
     setRatio,
@@ -110,6 +116,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     removeFile,
     replaceFiles,
     clearFiles,
+    clearFrameFiles,
     swapFrameFiles,
     getCurrentFiles,
   } = useCreationInputFiles({
@@ -140,6 +147,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     mentionMenuRef,
     focused,
     hasContent,
+    hasTextSelection,
     mentionOpen,
     mentionQuery,
     mentionPos,
@@ -153,6 +161,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     insertFromCard,
     insertMention,
     getPromptSnapshot,
+    clearContent,
     restoreContent,
     setMentionIndex,
   } = useCreationPromptInteraction({
@@ -165,6 +174,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     removeFile,
     prefillVersion,
     prefillData,
+    onTextChange: handlePromptTextChange,
   });
 
   // 卸载阶段 contentEditable ref 可能已被 React 清空；提示词在输入时同步镜像，
@@ -202,6 +212,23 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   }, [createDraftSnapshot, genType]);
 
   useEffect(() => {
+    const handleDraftsCleared = () => {
+      // 先关闭当前类型的自动保存，避免清空素材触发的状态更新重新写入草稿。
+      hydratedGenTypeRef.current = null;
+      promptTextRef.current = '';
+      setPromptCharacterCount(0);
+      clearContent();
+      clearFiles();
+      clearFrameFiles();
+      setSelectedVoiceId('');
+      setSelectedVoiceName('');
+    };
+
+    window.addEventListener(CREATION_DRAFTS_CLEARED_EVENT, handleDraftsCleared);
+    return () => window.removeEventListener(CREATION_DRAFTS_CLEARED_EVENT, handleDraftsCleared);
+  }, [clearContent, clearFiles, clearFrameFiles]);
+
+  useEffect(() => {
     onRegisterSaveDraft?.(() => persistDraft(true));
     return () => onRegisterSaveDraft?.(null);
   }, [onRegisterSaveDraft, persistDraft]);
@@ -221,6 +248,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       if (prefillVersion && prefillData?.prompt !== undefined) return;
       const prompt = draft?.prompt ?? '';
       promptTextRef.current = prompt;
+      setPromptCharacterCount(prompt.length);
       const restoredFiles = new Map();
       const restoredReferenceFiles = (draft?.files ?? []).map((file) => restoreDraftFile(file, restoredFiles));
       replaceFiles(restoredReferenceFiles);
@@ -293,6 +321,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     handleInput();
     const snapshot = getPromptSnapshot();
     promptTextRef.current = snapshot.text;
+    setPromptCharacterCount(snapshot.text.length);
     persistDraft(true);
   }, [getPromptSnapshot, handleInput, persistDraft]);
 
@@ -302,6 +331,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       const truncatedText = documentText.slice(0, 3000);
       restoreContent({ text: truncatedText });
       promptTextRef.current = truncatedText;
+      setPromptCharacterCount(truncatedText.length);
       persistDraft(true);
       if (documentText.length > 3000) {
         showToast?.('warning', '文件正文超过 3000 字，已保留前 3000 字');
@@ -356,6 +386,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   // Apply prefill when version bumps (re-edit or use-as-ref or use-as-first-frame)
   useEffect(() => {
     if (!prefillVersion || !prefillData) return;
+    if (prefillData.prompt !== undefined) promptTextRef.current = String(prefillData.prompt ?? '');
     if (prefillData.files !== undefined) {
       // 替换模式（onReEdit 等场景）
       replaceFiles(prefillData.files);
@@ -482,6 +513,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       text: backup.text,
       restoreFiles: savedContentRef.current.files || files,
     });
+    setPromptCharacterCount((backup.text || '').length);
     const savedFiles = savedContentRef.current.files || [];
     replaceFiles(savedFiles);
     setFirstFrameFile(savedContentRef.current.firstFrameFile || null);
@@ -556,6 +588,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       onFail: (fallbackPrompt) => {
         // 失败时回退输入框内容（含标签 HTML）和附件
         restoreContent({ html: savedHTML, text: currentText, fallback: fallbackPrompt, restoreFiles: savedFiles });
+        setPromptCharacterCount(currentText.length);
         replaceFiles(savedFiles);
         setFirstFrameFile(savedFirstFrameFile);
         setLastFrameFile(savedLastFrameFile);
@@ -649,6 +682,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         onDubbingVolumeChange: setDubbingVolume,
         dubbingAdvancedEnabled,
         onDubbingAdvancedChange,
+        dubbingPromptCharacterCount: promptCharacterCount,
+        dubbingHasTextSelection: hasTextSelection,
         ratio,
         resolution,
         count,

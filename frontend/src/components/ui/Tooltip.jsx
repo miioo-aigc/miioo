@@ -10,13 +10,14 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-31  按设计系统 Tooltip 规范新增通用提示组件
+ *   2026-08-19  支持通过换行符展示多行纯文字提示
  */
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-export default function Tooltip({ label, children, offset = 4, color = '#FFFFFF' }) {
+export default function Tooltip({ label, children, offset = 4, color = '#FFFFFF', multiline = false }) {
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState(null);
 
@@ -56,7 +57,7 @@ export default function Tooltip({ label, children, offset = 4, color = '#FFFFFF'
             backgroundColor: '#090909',
             backdropFilter: 'blur(10px)',
             WebkitBackdropFilter: 'blur(10px)',
-            whiteSpace: 'nowrap',
+            whiteSpace: multiline ? 'pre-line' : 'nowrap',
             color,
             fontFamily: FONT,
             fontSize: '12px',

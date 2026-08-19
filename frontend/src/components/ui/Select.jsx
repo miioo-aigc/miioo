@@ -19,6 +19,8 @@
  *   2026-07-21  增加触发器和选项文本的单行省略显示
  *   2026-07-21  为被省略的长文本增加延迟 Tooltip 和自动换行
  *   2026-07-23  增加实例级隐藏触发器描边配置
+ *   2026-08-18  增加仅触发器模式、前置图标和触发回调，支持菜单待接入场景
+ *   2026-08-19  增加自定义菜单宽度、语义角色和实例样式，支持复合交互内容
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -152,19 +154,29 @@ export default function Select({
   menuMaxHeight = '300px',
   menuPlacement = 'down',
   menuContent,
+  menuRole = 'listbox',
+  menuAriaLabel,
+  menuWidth,
+  menuStyle,
   openBoxShadow,
   openMixBlendMode,
   hideTriggerBorder = false,
+  triggerOnly = false,
+  startIcon,
   triggerStyle,
+  displayTextStyle,
+  onTriggerClick,
   onChange,
 }) {
   const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState(null);
   const triggerRef = useRef(null);
   const dropdownRef = useRef(null);
   const hasOptions = options.length > 0;
-  const isDisabled = disabled || loading || !hasOptions;
+  const hasMenuContent = typeof menuContent === 'function';
+  const isDisabled = disabled || loading || (!triggerOnly && !hasOptions && !hasMenuContent);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -186,7 +198,7 @@ export default function Select({
 
   const selectStyle = {
     display: 'flex', alignItems: 'center', height: '36px', width, borderRadius: '8px', padding: '0 12px', gap: '8px',
-    background: hovered || open ? '#222222' : '#1D1E1E',
+    background: pressed ? '#161616' : hovered || open ? '#222222' : '#1D1E1E',
     cursor: isDisabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.55 : 1,
     ...(open && openBoxShadow ? { boxShadow: openBoxShadow } : {}),
@@ -199,6 +211,11 @@ export default function Select({
 
   function toggleOpen() {
     if (isDisabled) return;
+
+    if (triggerOnly) {
+      onTriggerClick?.();
+      return;
+    }
 
     const nextOpen = !open;
     if (nextOpen && triggerRef.current) {
@@ -234,13 +251,15 @@ export default function Select({
       {label && <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF99' }}>{label}</span>}
       <div
         ref={triggerRef}
-        role="combobox"
+        role={triggerOnly ? 'button' : 'combobox'}
         tabIndex={isDisabled ? -1 : 0}
-        aria-expanded={open}
+        aria-expanded={triggerOnly ? undefined : open}
         aria-disabled={isDisabled}
         style={selectStyle}
         onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        onMouseDown={() => !isDisabled && setPressed(true)}
+        onMouseUp={() => setPressed(false)}
+        onMouseLeave={() => { setHovered(false); setPressed(false); }}
         onClick={toggleOpen}
         onKeyDown={(event) => {
           if ((event.key === 'Enter' || event.key === ' ') && !isDisabled) {
@@ -250,22 +269,24 @@ export default function Select({
           if (event.key === 'Escape') setOpen(false);
         }}
       >
+        {startIcon}
         <EllipsisTooltipText
           text={String(loading ? loadingText : displayValue ?? '')}
-          style={{ display: 'block', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: loading ? '#FFFFFF66' : '#FFFFFF' }}
+          style={{ display: 'block', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: loading ? '#FFFFFF66' : '#FFFFFF', ...displayTextStyle }}
         />
         <ChevronDownIcon />
       </div>
       {open && !isDisabled && menuPosition && createPortal(
         <div
           ref={dropdownRef}
-          role="listbox"
+          role={menuRole}
+          aria-label={menuAriaLabel}
           style={{
             position: 'fixed',
             ...(menuPosition.top != null ? { top: `${menuPosition.top}px` } : {}),
             ...(menuPosition.bottom != null ? { bottom: `${menuPosition.bottom}px` } : {}),
             left: `${menuPosition.left}px`,
-            width: `${menuPosition.width || 200}px`,
+            width: menuWidth || `${menuPosition.width || 200}px`,
             zIndex: 9999,
             background: '#1D1E1E',
             border: '1px solid rgba(255,255,255,0.12)',
@@ -274,6 +295,7 @@ export default function Select({
             boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
             maxHeight: menuMaxHeight,
             overflowY: 'auto',
+            ...menuStyle,
           }}
         >
           {menuContent ? menuContent({ close: () => setOpen(false) }) : options.map((option) => {

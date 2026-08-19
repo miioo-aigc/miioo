@@ -46,7 +46,7 @@ function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled,
 
   if (genType === 'dubbing' && dubbingAdvancedEnabled) {
     return (
-      <span style={{ ...baseStyle, whiteSpace: 'pre-wrap' }}>
+      <span style={{ ...baseStyle, lineHeight: '150%', whiteSpace: 'pre-wrap' }}>
         请在此输入或者
         <button
           type="button"
@@ -109,6 +109,7 @@ function CreationPromptEditor({
   onMentionSelect,
   onMentionIndexChange,
 }) {
+  const usesAdvancedDubbingTypography = genType === 'dubbing' && dubbingAdvancedEnabled;
   const mentionFiles = files.filter((file) => (
     mentionQuery === '' || file.name.toLowerCase().includes(mentionQuery.toLowerCase())
   ));
@@ -134,9 +135,9 @@ function CreationPromptEditor({
           border: 'none',
           outline: 'none',
           fontFamily: FONT,
-          fontSize: '14px',
-          lineHeight: '18px',
-          color: '#FFFFFFCC',
+          fontSize: usesAdvancedDubbingTypography ? '15px' : '14px',
+          lineHeight: usesAdvancedDubbingTypography ? '150%' : '18px',
+          color: usesAdvancedDubbingTypography ? '#FFFFFFE6' : '#FFFFFFCC',
           overflowY: 'auto',
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',

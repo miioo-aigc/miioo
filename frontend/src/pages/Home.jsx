@@ -36,6 +36,7 @@
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-08-12  智能分镜生成任务轮询超时由 500 秒调整为 3000 秒
+ *   2026-08-19  主动退出与鉴权失效时清空创作提示词和参考素材草稿
  *   2026-07-16  修复商务合作二维码定位、无 token 初始化和微信回调错误引用；GlobalSettings 按项目 ID 重建草稿
  *   2026-07-15  修正懒加载、Suspense、主入口状态/函数/副作用的实际结构索引行号
  *   2026-07-15  页面级业务模块改为懒加载
@@ -103,6 +104,7 @@ import WatermarkSettingsModal from '../components/WatermarkSettingsModal';
 import NotificationCenterModal from '../components/NotificationCenterModal';
 import DotsLoading from '../components/DotsLoading';
 import PageErrorBoundary from '../components/feedback/PageErrorBoundary';
+import { clearCreationDrafts } from '../components/creation/CreationDraftStorage';
 import { BG_VIDEOS, NAV_ITEMS, BOTTOM_NAV_ITEMS } from '../components/home/HomeNavigationConfig';
 import {
   HomeSloganText,
@@ -342,6 +344,7 @@ export default function Home({ onGoToAdmin }) {
 
     // 清除登录凭证
     clearTokens();
+    await clearCreationDrafts();
 
     // 只清除当前会话状态，保留项目数据和解锁状态供下次登录使用
     localStorage.removeItem('miioo_active_project_id');
@@ -741,6 +744,7 @@ export default function Home({ onGoToAdmin }) {
 
   useEffect(() => {
     const handleForceLogout = () => {
+      void clearCreationDrafts();
       setIsLoggedIn(false);
       setApiConfigured(false);
       setApiConfigOpen(false);

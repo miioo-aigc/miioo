@@ -23,6 +23,8 @@ export default function CreationParamsControls({
   onDubbingVolumeChange,
   dubbingAdvancedEnabled = false,
   onDubbingAdvancedChange,
+  dubbingPromptCharacterCount = 0,
+  dubbingHasTextSelection = false,
   ratio,
   resolution,
   count,
@@ -69,6 +71,8 @@ export default function CreationParamsControls({
           onVolumeChange={onDubbingVolumeChange}
           advancedEnabled={dubbingAdvancedEnabled}
           onAdvancedChange={onDubbingAdvancedChange}
+          promptCharacterCount={dubbingPromptCharacterCount}
+          hasTextSelection={dubbingHasTextSelection}
           disabled={disabled}
         />
       )}

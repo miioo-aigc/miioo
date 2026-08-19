@@ -23,6 +23,10 @@ Select 由两部分组成：**触发器 Trigger** + **下拉面板 Dropdown**。
 
 Select 通过 `width` 控制触发器宽度，默认值为 `200px`；通过 `menuPlacement="up"` 可让下拉面板向上展开，适用于贴近页面底部的输入区。
 
+当业务菜单尚未接入、但需要先展示标准选择器入口时，可使用 `triggerOnly` 仅启用触发器交互，通过 `onTriggerClick` 接收点击；`startIcon`、`triggerStyle` 和 `displayTextStyle` 分别用于前置图标、实例尺寸与文字样式。该模式不创建空下拉面板，仍保留默认、悬停、按下、禁用和键盘聚焦状态。
+
+业务需要在菜单中组合滑杆、多选按钮等复合控件时，使用 `menuContent` 注入业务内容，并通过 `menuRole="dialog"` 和 `menuAriaLabel` 提供对应语义。`menuWidth`、`menuStyle` 只调整当前实例的面板尺寸与外观，不应在通用组件中加入业务状态。
+
 ---
 
 ## 二、下拉面板规范

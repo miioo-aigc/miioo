@@ -22,6 +22,7 @@ Tooltip 是鼠标悬停时显示的简短提示文字，用于解释图标或功
 | 字号 | `font-size-12` |
 | 文字色 | `text-text-primary` |
 | 出现位置 | 跟随触发元素，默认在上方，边缘自动调整 |
+| 多行提示 | 传入包含换行符的纯文本，并设置 `multiline`；未设置时保持单行 |
 
 ---
 
@@ -77,5 +78,6 @@ export default function TooltipDemo() {
 ## 四、使用禁忌
 
 - Tooltip 内容只能是纯文字，不可包含图标或按钮
+- 两行提示使用明确的换行符控制断句，不依赖容器宽度自动换行
 - 不可用 Tooltip 传递重要信息，重要信息用 Notification
 - 不可在移动端使用，移动端没有 hover 状态

@@ -11,7 +11,10 @@ const DATABASE_VERSION = 1;
 const SUPPORTED_TYPES = new Set(['image', 'video', 'dubbing', 'music']);
 const MEMORY_STORE_KEY = '__miiooCreationDrafts__';
 const PROMPT_STORAGE_PREFIX = 'miioo:creation_draft_prompt:';
+export const CREATION_DRAFTS_CLEARED_EVENT = 'creation:drafts-cleared';
 const memoryDrafts = globalThis[MEMORY_STORE_KEY] ?? new Map();
+let storageEpoch = 0;
+let storageMutationQueue = Promise.resolve();
 
 if (!globalThis[MEMORY_STORE_KEY]) {
   globalThis[MEMORY_STORE_KEY] = memoryDrafts;
@@ -62,6 +65,27 @@ async function runTransaction(mode, type, value) {
   }
 }
 
+async function clearStoredDrafts() {
+  if (typeof indexedDB === 'undefined') return;
+  const database = await openDatabase();
+  try {
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(STORE_NAME, 'readwrite');
+      const request = transaction.objectStore(STORE_NAME).clear();
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    database.close();
+  }
+}
+
+function enqueueStorageMutation(operation) {
+  const result = storageMutationQueue.then(operation, operation);
+  storageMutationQueue = result.catch(() => {});
+  return result;
+}
+
 export async function saveCreationDraft(type, draft) {
   if (!SUPPORTED_TYPES.has(type)) return;
   const nextDraft = {
@@ -71,7 +95,7 @@ export async function saveCreationDraft(type, draft) {
   memoryDrafts.set(type, nextDraft);
   savePromptFallback(type, nextDraft.prompt);
   try {
-    await runTransaction('readwrite', type, nextDraft);
+    await enqueueStorageMutation(() => runTransaction('readwrite', type, nextDraft));
   } catch {
     // 浏览器不支持或存储空间不足时，不阻断当前创作流程。
   }
@@ -89,8 +113,13 @@ export async function readCreationDraft(type) {
   const memoryDraft = memoryDrafts.get(type);
   if (memoryDraft) return memoryDraft;
 
+  const readEpoch = storageEpoch;
   try {
+    // 退出清理与草稿写入串行执行；新账号读取前必须等待旧账号草稿彻底删除。
+    await storageMutationQueue;
+    if (readEpoch !== storageEpoch) return null;
     const storedDraft = await runTransaction('readonly', type);
+    if (readEpoch !== storageEpoch) return null;
     // IndexedDB 读取期间用户可能已写入了更新的草稿，优先保留内存中的新版本。
     const latestDraft = memoryDrafts.get(type);
     if (latestDraft) return latestDraft;
@@ -106,5 +135,27 @@ export async function readCreationDraft(type) {
     // IndexedDB 不可用时仍保留提示词兜底，但不伪造素材草稿。
     const prompt = readPromptFallback(type);
     return prompt ? { prompt } : null;
+  }
+}
+
+export async function clearCreationDrafts() {
+  storageEpoch += 1;
+  memoryDrafts.clear();
+  SUPPORTED_TYPES.forEach((type) => {
+    try {
+      sessionStorage.removeItem(`${PROMPT_STORAGE_PREFIX}${type}`);
+    } catch {
+      // sessionStorage 不可用时继续清理其它存储层。
+    }
+  });
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(CREATION_DRAFTS_CLEARED_EVENT));
+  }
+
+  try {
+    await enqueueStorageMutation(clearStoredDrafts);
+  } catch {
+    // IndexedDB 不可用或清理失败时，内存与提示词兜底仍已清空。
   }
 }

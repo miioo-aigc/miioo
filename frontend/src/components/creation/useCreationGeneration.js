@@ -234,6 +234,7 @@ function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, i
       size: 0,
     })),
     refMode: result.refMode || undefined,
+    refModeLabel: result.referenceModeLabel || result.reference_mode_label || undefined,
     firstFrameUrl: result.firstFrameUrl || undefined,
     lastFrameUrl: result.lastFrameUrl || undefined,
     createdAt: genMeta.createdAt,

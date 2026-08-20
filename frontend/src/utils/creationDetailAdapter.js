@@ -19,6 +19,25 @@ function bindingUrl(binding, ...keys) {
   return '';
 }
 
+function readReferenceModeLabel(detail) {
+  const metadata = detail?.metadata_json || detail?.metadataJson || detail?.metadata || {};
+  const parsedMetadata = typeof metadata === 'string'
+    ? (() => { try { return JSON.parse(metadata); } catch { return {}; } })()
+    : metadata;
+  const containers = [
+    detail, parsedMetadata,
+    detail?.params, detail?.gen_params, detail?.genParams, detail?.generation_params, detail?.generationParams,
+    parsedMetadata?.params, parsedMetadata?.gen_params, parsedMetadata?.genParams,
+    parsedMetadata?.generation_params, parsedMetadata?.generationParams,
+  ];
+  for (const container of containers) {
+    if (!container || typeof container !== 'object') continue;
+    const label = container.reference_mode_label || container.referenceModeLabel;
+    if (String(label || '').trim()) return label;
+  }
+  return '';
+}
+
 export function normalizeCreationVideoDetailMedia(detail, { preferOriginalImageUrl = false } = {}) {
   const bindings = detail?.asset_bindings || detail?.assetBindings || [];
   const refImages = bindings
@@ -84,13 +103,15 @@ export function mergeCreationVideoDetail(card, detail) {
     ...card,
     ...media,
     promptHTML: detail?.prompt_raw || detail?.promptResolved || card.promptHTML,
+    refModeLabel: readReferenceModeLabel(detail) || card.refModeLabel,
   };
 }
 
 const FRAME_REFERENCE_MODES = new Set(['first_frame', 'last_frame', 'start_end', 'multiframe']);
 
 export function toCreationRefMode(value) {
-  if (value === 'frame' || value === 'all') return value;
+  if (value === 'frame' || value === 'all' || value === 'multi_shot') return value;
+  if (value === 'multi') return 'multi_shot';
   return FRAME_REFERENCE_MODES.has(value) ? 'frame' : 'all';
 }
 

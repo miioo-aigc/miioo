@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { apiDeleteCreationImage, apiDeleteCreationVideo, apiBatchDeleteImages, apiBatchDeleteVideos, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../../api/creation';
+import { apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../../api/creation';
 import { useCreationStore } from '../../stores/creationStore';
 import { useAssetSelection } from '../../hooks/useAssetSelection';
 import { generationsToDays } from '../../utils/creativeDaysAdapter';
@@ -15,6 +15,7 @@ import AssetsBatchToolbar from './AssetsBatchToolbar';
 import { EmptyCreativeAssets } from './AssetsEmptyState';
 import { AssetCard } from './AssetsCards';
 import CreationAudioResultCard from '../creation/CreationAudioResultCard';
+import CreationAudioDetailModal from '../creation/CreationAudioDetailModal';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const CREATIVE_TYPE_TABS = [
@@ -36,6 +37,9 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     exitBatch,
   } = useAssetSelection();
   const [toast, setToast] = useState(null);
+  const [audioDetail, setAudioDetail] = useState(null);
+  const scrollContainerRef = useRef(null);
+  const loadMoreSentinelRef = useRef(null);
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
@@ -55,6 +59,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   // 始终指向最新本地 state，供 loadHistoryPage 同步读取（对应原 useCreationStore.getState()）
   const creationGenerationsRef = useRef(creationGenerationsByTab);
   const creationHistoryMetaRef = useRef(creationHistoryMeta);
+  const historyRequestTabsRef = useRef(new Set());
   const favorites = useCreationStore((s) => s.favorites);
   const storeToggleFavorite = useCreationStore((s) => s.toggleFavorite);
   const storeSyncFavorites = useCreationStore((s) => s.syncFavorites);
@@ -92,7 +97,15 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     const lastFrame = item.last_frame_url || item.lastFrameUrl || '';
     const createdAt = item.created_at || new Date().toISOString();
     const refMode = item.ref_mode || item.refMode || item.reference_mode || item.referenceMode || item.generation_mode || '';
+    const refModeLabel = item.reference_mode_label || item.referenceModeLabel || '';
     const sound = item.sound ?? item.with_audio ?? item.withAudio;
+    const metadata = item.metadata_json || item.metadataJson || item.metadata || {};
+    const voiceName = item.voice_name || item.voiceName || metadata.voice_name || metadata.voiceName || '';
+    const voiceId = item.voice_id || item.voiceId || metadata.voice_id || metadata.voiceId || '';
+    const speed = item.speed ?? metadata.speed;
+    const pitch = item.pitch ?? metadata.pitch;
+    const volume = item.volume ?? metadata.volume;
+    const advancedEnabled = item.advanced_enabled ?? item.advancedEnabled ?? metadata.advanced_enabled ?? metadata.advancedEnabled;
     return {
       id,
       backendId: item.id,
@@ -100,10 +113,17 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
      resolution: item.resolution || item.size || '',
      duration: item.duration || undefined,
      model: item.model || '',
+     voiceName,
+     voiceId,
+     speed,
+     pitch,
+     volume,
+     advancedEnabled,
      input_prompt: item.input_prompt || item.inputPrompt || '',
      prompt: item.prompt || item.input_prompt || item.inputPrompt || '',
      refImages,
      refMode,
+     refModeLabel,
      firstFrame,
      lastFrame,
      sound,
@@ -119,11 +139,18 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         audioUrl: type === 'audio' ? url : null,
         prompt: item.prompt || item.input_prompt || item.inputPrompt || '',
         model: item.model || '',
+        voiceName,
+        voiceId,
+        speed,
+        pitch,
+        volume,
+        advancedEnabled,
         ratio: item.ratio || item.aspect_ratio || '16:9',
         resolution: item.resolution || item.size || '',
         duration: item.duration || undefined,
         refImages,
         refMode,
+        refModeLabel,
         firstFrame,
         lastFrame,
         sound,
@@ -166,8 +193,9 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   const loadHistoryPage = useCallback(async (tab) => {
     if (!isLoggedIn) return;
     const meta = creationHistoryMetaRef.current[tab];
-    if (meta.loading || !meta.hasMore) return;
+    if (meta.loading || !meta.hasMore || historyRequestTabsRef.current.has(tab)) return;
 
+    historyRequestTabsRef.current.add(tab);
     setCreationHistoryMeta((prev) => ({ ...prev, [tab]: { ...prev[tab], loading: true } }));
     const nextPage = meta.page + 1;
     const pageSize = calcCreativePageSize();
@@ -274,6 +302,8 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         ...prev,
         [tab]: { ...prev[tab], loading: false, initialized: true },
       }));
+    } finally {
+      historyRequestTabsRef.current.delete(tab);
     }
   }, [isLoggedIn, storeSyncFavorites]);
 
@@ -287,10 +317,43 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   }, [isLoggedIn, activeType, loadHistoryPage]);
 
   const generations = creationGenerationsByTab[activeType] ?? [];
+  const activeHistoryMeta = creationHistoryMeta[activeType];
   const days = generationsToDays(generations).map((day) => favoritesOnly
     ? { ...day, cards: day.cards.filter((card) => favorites.has(card.id)) }
     : day
   ).filter((day) => day.cards.length > 0);
+
+  // 滚动接近底部时继续请求下一页；以面板自身为 root，避免页面外层 overflow 影响触发。
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    const sentinel = loadMoreSentinelRef.current;
+    if (!container || !sentinel || !activeHistoryMeta?.hasMore) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !creationHistoryMetaRef.current[activeType]?.loading) {
+          loadHistoryPage(activeType);
+        }
+      },
+      { root: container, rootMargin: '120px', threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeType, activeHistoryMeta?.hasMore, activeHistoryMeta?.loading, loadHistoryPage]);
+
+  // 首屏数据不足以形成滚动条时主动补页，直到填满视口或服务端返回没有更多数据。
+  useEffect(() => {
+    if (!activeHistoryMeta?.initialized || activeHistoryMeta.loading || !activeHistoryMeta.hasMore) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const frame = requestAnimationFrame(() => {
+      if (container.scrollHeight <= container.clientHeight + 1) {
+        loadHistoryPage(activeType);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeType, activeHistoryMeta?.hasMore, activeHistoryMeta?.initialized, activeHistoryMeta?.loading, generations.length, loadHistoryPage]);
 
   function selectAll() {
     const allIds = days.flatMap((d) => d.cards.map((c) => c.id));
@@ -315,7 +378,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
       ? apiBatchDeleteImages(cardIds)
       : kind === 'video'
         ? apiBatchDeleteVideos(cardIds)
-        : null;
+        : apiBatchDeleteAudios(cardIds);
     try {
       await deleteRequest;
     } catch {
@@ -369,7 +432,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
       ? apiDeleteCreationImage(backendId)
       : activeType === 'video'
         ? apiDeleteCreationVideo(backendId)
-        : null;
+        : apiDeleteCreationAudio(backendId);
     try {
       await deleteRequest;
     } catch {
@@ -443,7 +506,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         />
       </div>
 
-      <div style={{
+      <div ref={scrollContainerRef} style={{
         flex: 1,
         overflowY: 'auto',
         paddingTop: '16px',
@@ -480,6 +543,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
                     onToggleFavorite={() => toggleStar(card.id, card.backendId, card.type)}
                     onDownload={() => downloadCreativeAsset(card)}
                     onDelete={() => deleteSingle(card)}
+                    onCardClick={() => setAudioDetail(card)}
                   />
                 ) : (
                   <AssetCard
@@ -501,6 +565,12 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
             </div>
           </div>
         ))}
+        <div ref={loadMoreSentinelRef} style={{ width: '100%', height: '1px', flexShrink: 0 }} />
+        {activeHistoryMeta?.loading && generations.length > 0 && (
+          <div role="status" aria-label="正在加载更多创作资产" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '32px' }}>
+            <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #FFFFFF1A', borderTopColor: '#2DC3E1', animation: 'spin 1s linear infinite' }} />
+          </div>
+        )}
       </div>
       {/* 批量删除二次确认 */}
       {batchDeleteConfirm && (
@@ -515,6 +585,29 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
           }}
           zIndex={100}
         />
+      )}
+      {audioDetail && createPortal(
+        <CreationAudioDetailModal
+          audioUrl={audioDetail.audioUrl}
+          prompt={audioDetail.prompt}
+          model={audioDetail.model}
+          speed={audioDetail.speed}
+          pitch={audioDetail.pitch}
+          volume={audioDetail.volume}
+          advancedEnabled={audioDetail.advancedEnabled}
+          voiceName={audioDetail.voiceName}
+          voiceId={audioDetail.voiceId}
+          createdAt={audioDetail.createdAt}
+          onClose={() => setAudioDetail(null)}
+          onDownload={() => downloadCreativeAsset(audioDetail)}
+          onDelete={() => {
+            deleteSingle(audioDetail);
+            setAudioDetail(null);
+          }}
+          favorited={favorites.has(audioDetail.id)}
+          onFavorite={() => toggleStar(audioDetail.id, audioDetail.backendId, audioDetail.type)}
+        />,
+        document.body
       )}
       {toast && createPortal(
         <div style={{

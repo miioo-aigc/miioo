@@ -1,3 +1,16 @@
+/**
+ * @file AssetPickerModal.jsx
+ * @description 项目资产、创作资产与 Seedance 素材的统一选择弹窗。
+ *
+ * ─── 结构索引 ───────────────────────────────────────────
+ *   资产卡片、空态与悬浮预览                           L92-L453
+ *   弹窗状态、外部数据适配与会话复位                   L455-L753
+ *   项目/创作/Seedance 数据请求                        L754-L1102
+ *   筛选、选择确认与弹窗渲染                           L1104-L1609
+ *
+ *   2026-08-20  Seedance 视频对齐资产库，通过原生视频短暂解码后停帧展示封面
+ */
+
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useCreationStore } from '../stores/creationStore';
@@ -12,6 +25,7 @@ import { apiGetLiveMaterialAsset, apiListLiveMaterialAssets, apiListLiveMaterial
 import SeedanceFolderCard from './assets/SeedanceFolderCard';
 import { isSeedanceModel } from '../utils/seedanceModel';
 import DotsLoading from './DotsLoading';
+import CreationAudioResultCard from './creation/CreationAudioResultCard';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -29,7 +43,18 @@ const CREATIVE_SUB_TABS_VIDEO = ['视频'];
 const CREATIVE_SUB_TABS_MEDIA = ['图片', '视频'];
 const CREATIVE_SUB_TABS_AUDIO = ['配音'];
 const CREATIVE_PAGE_SIZE = 9;
+const SEEDANCE_VIDEO_POSTER_STORAGE_KEY = 'seedance-video-posters';
 const CREATIVE_SUB_TAB_TYPE_MAP = { '图片': 'image', '视频': 'video', '配音': 'audio' };
+
+function getStoredSeedanceVideoPoster(assetId) {
+  if (!assetId) return null;
+  try {
+    const posters = JSON.parse(localStorage.getItem(SEEDANCE_VIDEO_POSTER_STORAGE_KEY) || '{}');
+    return posters[assetId] || null;
+  } catch {
+    return null;
+  }
+}
 
 function createCreativePagination() {
   return {
@@ -64,50 +89,63 @@ const SUB_TAB_CATEGORY_MAP = {
   '成片':   { category: 'film' },
 };
 
-function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onMouseMove, onMouseLeave, onClick, compact = false }) {
-  const [generatedPoster, setGeneratedPoster] = useState(null);
+function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onMouseMove, onMouseLeave, onClick, compact = false, inlineVideoPreview = false }) {
+  const [failedPosterUrl, setFailedPosterUrl] = useState(null);
+  const videoRef = useRef(null);
   const assetType = String(asset.asset_type || asset.type || '').toLowerCase();
   const isVideo = assetType === 'video';
+  const isSeedanceVideo = asset.isSeedanceMaterial && isVideo && Boolean(asset.url);
+  const rawPosterUrl = (isSeedanceVideo ? getStoredSeedanceVideoPoster(asset.id) : null) || asset.posterUrl || null;
+  const assetPosterUrl = rawPosterUrl && failedPosterUrl !== rawPosterUrl
+    ? rawPosterUrl
+    : null;
+  const posterUrl = assetPosterUrl;
 
   useEffect(() => {
-    if (!isVideo || asset.posterUrl || !asset.url) return undefined;
+    const video = videoRef.current;
+    if (!video || !isSeedanceVideo) return undefined;
+    if (isHovered) {
+      video.currentTime = 0;
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+      video.currentTime = 0;
+    }
+    return undefined;
+  }, [isHovered, isSeedanceVideo, asset.url]);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isSeedanceVideo || isHovered || posterUrl) return undefined;
     let cancelled = false;
-    const video = document.createElement('video');
-    let captured = false;
-    const captureFrame = () => {
-      if (cancelled || captured || !video.videoWidth || !video.videoHeight) return;
+    const showDecodedFrame = async () => {
       try {
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-        const poster = canvas.toDataURL('image/jpeg', 0.86);
-        captured = true;
-        setGeneratedPoster({ assetId: asset.id, url: poster });
+        await video.play();
+        window.setTimeout(() => {
+          if (!cancelled) {
+            video.pause();
+            video.currentTime = 0;
+          }
+        }, 160);
       } catch {
-        // 远程媒体未提供 CORS 头时无法读取 Canvas，下面的视频元素仍可显示首帧。
+        // 视频源不允许自动播放时，悬停播放仍作为兜底交互。
       }
     };
-    const seekToFirstFrame = () => {
-      try { video.currentTime = 0; } catch { captureFrame(); }
-    };
-    video.addEventListener('loadeddata', captureFrame, { once: true });
-    video.addEventListener('loadedmetadata', seekToFirstFrame, { once: true });
-    video.addEventListener('seeked', captureFrame, { once: true });
-    video.preload = 'metadata';
-    video.muted = true;
-    video.playsInline = true;
-    video.src = normalizeImageUrl(asset.url);
+    showDecodedFrame();
+    return () => { cancelled = true; };
+  }, [isHovered, isSeedanceVideo, posterUrl, asset.url]);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!inlineVideoPreview || !isHovered || !video) return undefined;
+    video.currentTime = 0;
+    video.play().catch(() => {});
     return () => {
-      cancelled = true;
-      video.removeAttribute('src');
-      video.load();
+      video.pause();
+      try { video.currentTime = 0; } catch { /* ignore reset errors during unmount */ }
     };
-  }, [asset.id, asset.posterUrl, asset.url, isVideo]);
+  }, [inlineVideoPreview, isHovered, asset.url]);
 
-  const posterUrl = asset.posterUrl || (generatedPoster?.assetId === asset.id ? generatedPoster.url : null);
   return (
     <div
       onClick={isDisabled ? undefined : onClick}
@@ -146,17 +184,67 @@ function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onM
               transition: 'opacity 100ms',
             }}
           />
+        ) : isSeedanceVideo ? (
+          <video
+            ref={videoRef}
+            src={normalizeImageUrl(asset.url)}
+            poster={posterUrl ? (posterUrl.startsWith('data:') ? posterUrl : normalizeImageUrl(posterUrl)) : undefined}
+            muted
+            playsInline
+            preload="auto"
+            aria-label={asset.name || 'Seedance视频素材'}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#1A1A1A', pointerEvents: 'none', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }}
+            onLoadedData={(event) => {
+              if (posterUrl) return;
+              const video = event.currentTarget;
+              try {
+                video.currentTime = 0;
+                video.pause();
+              } catch {
+                // 视频尚未准备好定位时，保留浏览器当前已加载的首帧。
+              }
+            }}
+          />
+        ) : isVideo && inlineVideoPreview && asset.url ? (
+          <video
+            ref={videoRef}
+            src={normalizeImageUrl(asset.url)}
+            poster={posterUrl ? normalizeImageUrl(posterUrl) : undefined}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.95 : 1, transition: 'opacity 100ms' }}
+            muted
+            autoPlay={isHovered}
+            loop
+            playsInline
+            preload="metadata"
+          />
         ) : isVideo && (posterUrl || asset.url) ? (
-          // 视频卡片：优先用封面图显示（清晰、快速），无封面时回退到 video 标签加载首帧
+          // 普通资产视频沿用既有封面与视频展示；Seedance 视频已在上方独立停帧展示。
           posterUrl ? (
-            <img src={normalizeImageUrl(posterUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }} />
+            <img
+              src={normalizeImageUrl(posterUrl)}
+              alt=""
+              onError={() => {
+                if (assetPosterUrl) setFailedPosterUrl(assetPosterUrl);
+              }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }}
+            />
           ) : (
             <video
+              ref={videoRef}
               src={normalizeImageUrl(asset.url)}
               style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }}
               muted
               playsInline
-              preload="metadata"
+              preload="auto"
+              onLoadedData={(event) => {
+                const video = event.currentTarget;
+                try {
+                  video.currentTime = Math.min(0.05, Number.isFinite(video.duration) ? video.duration : 0.05);
+                  video.pause();
+                } catch {
+                  // 当前帧已经可用时无需继续定位。
+                }
+              }}
             />
           )
         ) : asset.url ? (
@@ -253,6 +341,19 @@ function toSeedancePickerAsset(rawAsset, group = {}) {
   const mediaUrl = isVideo
     ? (sourceUrl || fileUrl || previewUrl)
     : (previewUrl || sourceUrl || fileUrl);
+  const explicitPosterUrl = asset.poster_url
+    || asset.posterUrl
+    || asset.thumbnail_url
+    || asset.thumbnailUrl
+    || asset.cover_url
+    || asset.coverUrl
+    || asset.first_frame_url
+    || asset.firstFrameUrl
+    || asset.image_url
+    || asset.imageUrl
+    || null;
+  // 接口只保证 source_url / preview_url。两者不同时，preview_url 可能就是后端生成的静态预览图。
+  const posterUrl = explicitPosterUrl || (isVideo && previewUrl && previewUrl !== mediaUrl ? previewUrl : null);
 
   return {
     id: asset.id,
@@ -262,7 +363,7 @@ function toSeedancePickerAsset(rawAsset, group = {}) {
     fullUrl: normalizeImageUrl(sourceUrl || fileUrl || previewUrl) || null,
     fileUrl: normalizeImageUrl(sourceUrl || fileUrl || previewUrl) || null,
     asset_type: isVideo ? 'video' : rawAssetType,
-    posterUrl: normalizeImageUrl(asset.poster_url || asset.posterUrl || asset.thumbnail_url || asset.thumbnailUrl || asset.cover_url || asset.coverUrl || asset.first_frame_url || asset.firstFrameUrl || '') || null,
+    posterUrl: normalizeImageUrl(posterUrl) || null,
     isLiveMaterial: String(group.group_type || asset.group_type || '').toUpperCase() !== 'AIGC',
     isAigcMaterial: String(group.group_type || asset.group_type || '').toUpperCase() === 'AIGC',
     isSeedanceCertifiedMaterial: true,
@@ -424,7 +525,9 @@ export default function AssetPickerModal({
     // 视频优先取 video_url，图片/音频取 original_url/file_url
     const rawUrl = type === 'video'
       ? (item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || item.thumbnail || '')
-      : (item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || '');
+      : type === 'audio'
+        ? (item.audio_url || item.audioUrl || item.original_url || item.file_url || item.url || item.preview_url || item.previewUrl || '')
+        : (item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || '');
     const url = normalizeImageUrl(rawUrl) || null;
 
     // 视频封面：poster_url / thumbnail_url，用于静态预览
@@ -584,7 +687,7 @@ export default function AssetPickerModal({
     return getCreationAssetMediaAliases(asset).some((url) => excludedAssetUrlSet.has(url));
   };
 
-  // 每次弹窗打开时用 preSelectedIds 初始化选中状态，关闭时清空
+  // 每次弹窗打开时用 preSelectedIds 初始化选中状态；关闭时清空本次会话的全部临时操作。
   useEffect(() => {
     if (open) {
       // 弹窗打开时从外部预选数据恢复本地选择；这里不是派生渲染状态。
@@ -603,8 +706,32 @@ export default function AssetPickerModal({
       setSeedanceGroups([]);
       setSeedanceAssets([]);
       setActiveSeedanceGroup(null);
+      setActiveTab('project');
+      setProjectSubTab(projectSubTabsAvail[0]);
+      setCreativeSubTab(creativeSubTabsAvail[0]);
+      setFavOnly(false);
+      setFinalOnly(true);
+      setSearch('');
+      setSearchFocused(false);
+      setHoveredCard(null);
+      setPreviewImage(null);
+      setMousePos({ x: 0, y: 0 });
+      clearTimeout(hoverTimerRef.current);
+      setProjectOpen(false);
+      setProjectHovIdx(null);
+      setProjectMenuRect(null);
+      setActiveProjectId(projectId || null);
+      setSeedanceSubTab('real');
+      setCloseHovered(false);
+      setCancelHovered(false);
+      setCancelPressed(false);
+      setConfirmHovered(false);
+      setConfirmPressed(false);
+      setConfirming(false);
+      setFavHovered(false);
+      setFinalHovered(false);
     }
-  }, [open, preSelectedIdsKey]);
+  }, [open, preSelectedIdsKey, projectId, projectSubTabsAvail, creativeSubTabsAvail]);
   const [searchFocused, setSearchFocused] = useState(false);
   const [hoveredCard, setHoveredCard] = useState(null);
   const [closeHovered, setCloseHovered] = useState(false);
@@ -982,7 +1109,6 @@ export default function AssetPickerModal({
   useEffect(() => {
     if (projectId) {
       // projectId 是父页面传入的外部上下文，需要同步到弹窗本地选择状态。
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- 同步父页面指定的项目
       setActiveProjectId(projectId);
       return;
     }
@@ -1011,6 +1137,10 @@ export default function AssetPickerModal({
       next.has(asset.id) ? next.delete(asset.id) : next.add(asset.id);
       return next;
     });
+  };
+
+  const handleRequestClose = () => {
+    onClose?.();
   };
 
   const handleConfirm = async () => {
@@ -1059,7 +1189,7 @@ export default function AssetPickerModal({
       }
     }
     onConfirm?.(selectedAssets);
-    onClose?.();
+    handleRequestClose();
   };
 
   const handleSelectProject = (p) => {
@@ -1151,7 +1281,7 @@ export default function AssetPickerModal({
   return createPortal(
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
-      onClick={onClose}
+      onClick={handleRequestClose}
     >
       <div
         style={{ width: '800px', height: '600px', borderRadius: '16px', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#161616', border: '1px solid #FFFFFF14' }}
@@ -1162,7 +1292,7 @@ export default function AssetPickerModal({
           <span style={{ fontFamily: FONT_MEDIUM, fontWeight: 500, fontSize: '16px', lineHeight: '20px', color: '#FFFFFF' }}>从资产中选择</span>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleRequestClose}
             onMouseEnter={() => setCloseHovered(true)}
             onMouseLeave={() => setCloseHovered(false)}
             style={{ background: closeHovered ? 'rgba(255,255,255,0.08)' : 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', transition: 'background 100ms', flexShrink: 0 }}
@@ -1199,19 +1329,8 @@ export default function AssetPickerModal({
               </div>
             );
           })}
-          {/* 右侧：创作资产有收藏过滤，项目资产无 */}
+          {/* 右侧搜索框 */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '16px', height: '48px' }}>
-            {activeTab === 'creative' && (
-              <div
-                onClick={() => setFavOnly(v => !v)}
-                onMouseEnter={() => setFavHovered(true)}
-                onMouseLeave={() => setFavHovered(false)}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', flexShrink: 0 }}
-              >
-                <Checkbox checked={favOnly} hovered={favHovered} />
-                <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '18px', color: '#FFFFFF66', whiteSpace: 'nowrap' }}>仅显示收藏</span>
-              </div>
-            )}
             {/* 搜索框 */}
             <div style={{
               display: 'flex', alignItems: 'center', height: '36px', width: '232px',
@@ -1379,6 +1498,23 @@ export default function AssetPickerModal({
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', paddingTop: '8px', paddingBottom: '8px', alignContent: 'flex-start' }}>
               {filteredAssets.map((asset) => {
                 const disabled = isPreSelected(asset) || isExcludedAsset(asset);
+                const isInlineCreativeVideo = activeTab === 'creative' && creativeSubTab === '视频';
+                if (activeTab === 'creative' && creativeSubTab === '配音') {
+                  return (
+                    <div key={asset.id} style={{ width: 'calc((100% - 32px) / 3)', flexShrink: 0 }}>
+                      <CreationAudioResultCard
+                        status="done"
+                        audioUrl={asset.url || asset.audio_url || asset.audioUrl || null}
+                        prompt={asset.prompt || asset.name || ''}
+                        batchMode
+                        isSelected={selected.has(asset.id) || disabled}
+                        selectionDisabled={disabled}
+                        selectionCheckboxPosition="left"
+                        onToggleSelect={() => toggle(asset)}
+                      />
+                    </div>
+                  );
+                }
                 return (
                 <AssetCard
                   key={asset.id}
@@ -1388,15 +1524,16 @@ export default function AssetPickerModal({
                   isDisabled={disabled}
                   onMouseEnter={(e) => {
                     setHoveredCard(asset.id);
-                    if (!asset.isSeedanceMaterial) handlePreviewEnter(e, asset);
+                    if (!asset.isSeedanceMaterial && !isInlineCreativeVideo) handlePreviewEnter(e, asset);
                   }}
-                  onMouseMove={asset.isSeedanceMaterial ? undefined : handlePreviewMove}
+                  onMouseMove={asset.isSeedanceMaterial || isInlineCreativeVideo ? undefined : handlePreviewMove}
                   onMouseLeave={() => {
                     setHoveredCard(null);
-                    if (!asset.isSeedanceMaterial) handlePreviewLeave();
+                    if (!asset.isSeedanceMaterial && !isInlineCreativeVideo) handlePreviewLeave();
                   }}
                   onClick={() => toggle(asset)}
                   compact={isCompactCard}
+                  inlineVideoPreview={isInlineCreativeVideo}
                 />
                 );
               })}
@@ -1422,10 +1559,21 @@ export default function AssetPickerModal({
               <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '18px', color: finalHovered ? '#FFFFFF' : '#FFFFFF99', whiteSpace: 'nowrap' }}>仅显示定稿图</span>
             </div>
           )}
+          {activeTab === 'creative' && (
+            <div
+              onClick={() => setFavOnly(v => !v)}
+              onMouseEnter={() => setFavHovered(true)}
+              onMouseLeave={() => setFavHovered(false)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', flexShrink: 0 }}
+            >
+              <Checkbox checked={favOnly} hovered={favHovered} />
+              <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '18px', color: favHovered ? '#FFFFFF' : '#FFFFFF99', whiteSpace: 'nowrap' }}>仅显示收藏</span>
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0, marginLeft: 'auto' }}>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleRequestClose}
             onMouseEnter={() => setCancelHovered(true)}
             onMouseLeave={() => { setCancelHovered(false); setCancelPressed(false); }}
             onMouseDown={() => setCancelPressed(true)}

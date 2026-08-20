@@ -67,6 +67,7 @@ export default function ProjectAssetDetail({
         videoSrc={asset.videoUrl}
         frames={mappedImages}
         refMode={asset.refMode}
+        refModeLabel={asset.refModeLabel || asset.reference_mode_label}
         firstFrame={asset.firstFrame}
         lastFrame={asset.lastFrame}
         refImages={asset.refImages}

@@ -85,7 +85,7 @@ export function getCreativeBatchDeleteRequest({ activeType, selectedIds = [], ca
     .filter(Boolean);
 
   return {
-    kind: activeType === 'image' || activeType === 'video' ? activeType : null,
+    kind: activeType === 'dubbing' ? 'audio' : activeType,
     // id 是页面展示/选中用的复合键，backendId 才是接口要求的真实创作记录 ID。
     ids: selectedCards.map((card) => card.backendId).filter(Boolean),
     selectedIds: [...selectedIds],

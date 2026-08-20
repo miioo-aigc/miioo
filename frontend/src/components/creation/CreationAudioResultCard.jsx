@@ -25,9 +25,12 @@
  *   2026-08-10  恢复播放时波形动画，悬停操作按钮与播放按钮垂直对齐
  *   2026-08-14  新增右上角悬停收藏按钮，与图片/视频卡片位置和交互统一
  *   2026-08-17  下载统一透传页面正式下载回调，结果卡不再回退短时媒体链接
+ *   2026-08-20  支持资产选择模式在左上角展示复选框，并保持播放按钮独立交互
+ *   2026-08-20  资产选择模式复用组件系统 Checkbox，移除卡片内手写复选框样式
  */
 
 import { useEffect, useRef, useState } from 'react';
+import Checkbox from '../Checkbox';
 import ConfirmDialog from '../ConfirmDialog';
 import DotsLoading from '../DotsLoading';
 import CreationCardActionButton from './CreationCardActionButton';
@@ -54,7 +57,21 @@ function StarIcon({ filled = false, strokeColor = '#FFFFFF' }) {
   );
 }
 
-export default function CreationAudioResultCard({ status, audioUrl, prompt, onDownload, onDelete, onCardClick, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
+export default function CreationAudioResultCard({
+  status,
+  audioUrl,
+  prompt,
+  onDownload,
+  onDelete,
+  onCardClick,
+  batchMode = false,
+  isSelected = false,
+  onToggleSelect,
+  selectionDisabled = false,
+  selectionCheckboxPosition = 'right',
+  favorited = false,
+  onToggleFavorite,
+}) {
   const [hovered, setHovered] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
@@ -83,11 +100,11 @@ export default function CreationAudioResultCard({ status, audioUrl, prompt, onDo
   return (
     <>
       <div
-        style={{ width: '100%', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden', backgroundColor: hovered ? '#242424' : '#1A1A1A', transition: 'background-color 0.15s', position: 'relative', cursor: isDone ? 'pointer' : 'default', outline: isSelected ? '2px solid #2DC3E1' : 'none', outlineOffset: '-2px' }}
+        style={{ width: '100%', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden', backgroundColor: hovered ? '#242424' : '#1A1A1A', transition: 'background-color 0.15s', position: 'relative', cursor: isDone && !selectionDisabled ? 'pointer' : 'default', outline: isSelected ? '2px solid #2DC3E1' : 'none', outlineOffset: '-2px', opacity: selectionDisabled ? 0.6 : 1 }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onClick={() => {
-          if (batchMode && isDone) onToggleSelect?.();
+          if (batchMode && isDone && !selectionDisabled) onToggleSelect?.();
           if (!batchMode && isDone) onCardClick?.();
         }}
       >
@@ -96,7 +113,7 @@ export default function CreationAudioResultCard({ status, audioUrl, prompt, onDo
             <DotsLoading size={5} color="#2DC3E1" gap={4} />
           </div>
         ) : isDone ? (
-          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '12px', padding: '16px', boxSizing: 'border-box' }}>
+          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '12px', padding: batchMode && selectionCheckboxPosition === 'left' ? '36px 16px 16px' : '16px', boxSizing: 'border-box' }}>
             <div
               style={{ width: '100%', minHeight: 0, flex: 1, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, fontFamily: FONT, fontSize: '14px', lineHeight: '150%', color: '#FFFFFF99', wordBreak: 'break-word' }}
               title={prompt || ''}
@@ -155,8 +172,8 @@ export default function CreationAudioResultCard({ status, audioUrl, prompt, onDo
         )}
 
         {batchMode && isDone && (
-          <div style={{ position: 'absolute', top: '8px', right: '8px', width: '18px', height: '18px', borderRadius: '4px', zIndex: 1, border: isSelected ? '1px solid #2DC3E1' : '1px solid rgba(255,255,255,0.5)', backgroundColor: isSelected ? '#2DC3E1' : 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            {isSelected && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="#000" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+          <div style={{ position: 'absolute', top: '8px', [selectionCheckboxPosition === 'left' ? 'left' : 'right']: '8px', zIndex: 1 }}>
+            <Checkbox checked={isSelected} hovered={hovered} disabled={selectionDisabled} />
           </div>
         )}
 

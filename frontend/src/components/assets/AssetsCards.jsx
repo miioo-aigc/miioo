@@ -97,7 +97,7 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
         shotNumber={detailData?.shotNumber} prompt={detailData?.input_prompt ?? detailData?.prompt} model={detailData?.model}
         resolution={detailData?.resolution} duration={detailData?.duration} ratio={detailData?.ratio}
         generatedAt={detailData?.generatedAt} frames={detailData?.frames} videoSrc={detailData?.videoSrc}
-        refMode={detailData?.refMode} firstFrame={detailData?.firstFrame} lastFrame={detailData?.lastFrame}
+        refMode={detailData?.refMode || detailData?.reference_mode} refModeLabel={detailData?.refModeLabel || detailData?.reference_mode_label} firstFrame={detailData?.firstFrame} lastFrame={detailData?.lastFrame}
         refImages={detailData?.refImages} refVideos={detailData?.refVideos}
       />
     )}

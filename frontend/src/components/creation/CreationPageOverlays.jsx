@@ -74,6 +74,7 @@ export default function CreationPageOverlays({
           resolution={videoDetail.resolution}
           duration={videoDetail.duration}
           refMode={videoDetail.refMode}
+          refModeLabel={videoDetail.refModeLabel}
           refImages={videoDetail.refImages}
           refVideos={videoDetail.refVideos}
           refAudios={videoDetail.refAudios}

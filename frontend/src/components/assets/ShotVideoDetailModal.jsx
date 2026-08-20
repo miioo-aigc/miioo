@@ -93,7 +93,7 @@ function VideoFrameThumbnail({ frame, isActive, onSelect }) {
   );
 }
 
-function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shotNumber, prompt, model, resolution, duration, ratio, generatedAt, frames, videoSrc, refMode, firstFrame, lastFrame, refImages, refVideos }) {
+function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shotNumber, prompt, model, resolution, duration, ratio, generatedAt, frames, videoSrc, refMode, refModeLabel, firstFrame, lastFrame, refImages, refVideos }) {
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const frms = frames ?? MOCK_SHOT_VIDEO_DETAIL.frames;
   const defaultIdx = frms.findIndex((f) => f.finalized);
@@ -434,12 +434,12 @@ function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shot
               <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
 
               {/* Creation mode — if refMode provided */}
-              {refMode && (
+              {(refModeLabel || refMode) && (
                 <>
                   <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
                     <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>创作模式</span>
                     <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>
-                      {formatReferenceMode(refMode)}
+                      {formatReferenceMode(refMode, refModeLabel)}
                     </span>
                   </div>
                   <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />

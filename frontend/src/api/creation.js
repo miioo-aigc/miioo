@@ -2,6 +2,8 @@ const BASE = import.meta.env.VITE_API_BASE_URL;
 const CREATION_DEFAULT_POLL_TIMEOUT_MS = 1800000;
 const CREATION_AUDIO_POLL_TIMEOUT_MS = 600000;
 const CREATION_POLL_INTERVAL_MS = 3000;
+const CREATION_POLL_TRANSIENT_FAILURE_LIMIT = 5;
+const CREATION_POLL_TRANSIENT_STATUSES = new Set([502, 503, 504]);
 
 function createAbortError() {
   const error = new Error('请求已停止');
@@ -39,6 +41,88 @@ function waitForPollInterval(signal) {
   });
 }
 
+function createPollResponseError(message, status) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+function recordTransientPollFailure(retryState, error, pollUrl) {
+  retryState.consecutiveFailures += 1;
+  if (retryState.consecutiveFailures >= CREATION_POLL_TRANSIENT_FAILURE_LIMIT) {
+    throw createPollResponseError(
+      '任务状态查询暂时不可用，请稍后刷新页面恢复任务',
+      error?.status,
+    );
+  }
+  console.warn('[creation-poll] 临时查询失败，继续轮询', {
+    pollUrl,
+    consecutiveFailures: retryState.consecutiveFailures,
+    status: error?.status,
+    message: error?.message,
+  });
+  return null;
+}
+
+async function fetchCreationPollData(pollUrl, { signal, retryState }) {
+  let pollRes;
+  try {
+    pollRes = await authFetch(pollUrl, { signal });
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    if (error?.isNetworkError || error instanceof TypeError) {
+      return recordTransientPollFailure(retryState, error, pollUrl);
+    }
+    throw error;
+  }
+
+  let rawBody;
+  try {
+    rawBody = await pollRes.text();
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    return recordTransientPollFailure(retryState, error, pollUrl);
+  }
+  if (CREATION_POLL_TRANSIENT_STATUSES.has(pollRes.status)) {
+    return recordTransientPollFailure(
+      retryState,
+      createPollResponseError(`任务状态查询返回 ${pollRes.status}`, pollRes.status),
+      pollUrl,
+    );
+  }
+  if (!pollRes.ok) {
+    let message = `任务状态查询失败（${pollRes.status}）`;
+    if (rawBody) {
+      try {
+        const errorData = JSON.parse(rawBody);
+        message = errorData.detail || errorData.message || errorData.error_msg || message;
+      } catch {
+        message = rawBody;
+      }
+    }
+    throw createPollResponseError(message, pollRes.status);
+  }
+  if (!rawBody) {
+    return recordTransientPollFailure(
+      retryState,
+      createPollResponseError('任务状态查询返回空响应', pollRes.status),
+      pollUrl,
+    );
+  }
+
+  try {
+    const pollData = JSON.parse(rawBody);
+    retryState.consecutiveFailures = 0;
+    return pollData;
+  } catch {
+    return recordTransientPollFailure(
+      retryState,
+      createPollResponseError('任务状态查询返回了无法解析的数据', pollRes.status),
+      pollUrl,
+    );
+  }
+}
+
 function getImageUrls(image) {
   const previewUrl = image?.preview_url
     || image?.previewUrl
@@ -60,31 +144,29 @@ function getImageUrls(image) {
 /**
  * 结构索引（api/creation.js）
  * ─── 音乐生成（自由函数）────────────────────────
- *   [接口] apiGenerateCreationMusic()              L459   POST /api/music/generate （音乐生成/翻唱）
- *   [提取] extractMusicResultUrl()                  L469   从 url/audio_url/result/results[] 提取音乐结果
- *   [轮询] apiPollCreationMusicTask()                L487   GET /api/tasks/{task_id} 最多 600 秒，支持 AbortSignal
+ *   [接口] apiGenerateCreationMusic()              L580   POST /api/music/generate （音乐生成/翻唱）
+ *   [提取] extractMusicResultUrl()                  L590   从 url/audio_url/result/results[] 提取音乐结果
+ *   [轮询] apiPollCreationMusicTask()                L608   GET /api/tasks/{task_id} 最多 600 秒，支持 AbortSignal
  * ─── 视频生成（apiGenerateCreation）────────────────────────
- *   [函数] apiGenerateCreation()                      入口：按 genType 分流 图片/视频/配音/音乐
- *   [上传] 参考文件分类循环                            L783–L836  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
+ *   [函数] apiGenerateCreation()                    L862  入口：按 genType 分流 图片/视频/配音/音乐
+ *   [上传] 参考文件分类循环                           L907  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
  *                                                        （图片 asset_id 兜底：assetId || backendId || asset_id）
- *   [上传] 首/尾帧上传                                 L846–L874  仅视频首尾帧模式使用
- *   [分支] 配音同步/异步生成与任务轮询                   L877–L988  短文本直取音频，长文本轮询任务
+ *   [上传] 首/尾帧上传                               L972  仅视频首尾帧模式使用
+ *   [分支] 配音同步/异步生成与任务轮询                L1003  短文本直取音频，长文本轮询任务
  *                                                        配音任务轮询最多 600 秒，可通过 AbortSignal 停止
- *   [分支] 音乐生成与任务轮询                   L991–L1046  上传参考音频 → POST /api/music/generate → 轮询任务
- *   [分支] 图片生成（多张并行）                     L1048–L1111  count>1 可返回多 task_ids 并行轮询
- *   [分支] 视频生成                                 L1114–L1205  generation_mode / reference_mode / attachments
- *   [分支] kling v3 omni 生成模式推断                  L1118–L1141  hasRefMedia → supported_generation_modes
- *                                                        generation_mode 取自 supported_generation_modes，
- *                                                        不再发 reference_mode='full'（避免 400），改发 '' 保留键名
- *                                                        素材映射：图→multi_shot / 视频→video_ref / 首尾帧→first_frame|start_end / 无图有媒→first_frame / 纯文→text_to_video
- *   [组装] @ 数字资产绑定 attachments                   L1143–L1172  CreationAssetBinding[]，source:'mention'
- *   [组装] 视频生成请求体 body                          L1173–L1205  generation_mode / reference_mode / multi_shot / attachments / reference_image_asset_ids / first_frame_url
- *   [日志] [video-generate] 调试日志                    L1206  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
+ *   [分支] 音乐生成与任务轮询                        L1117  上传参考音频 → POST /api/music/generate → 轮询任务
+ *   [分支] 图片生成（多张并行）                      L1174  count>1 可返回多 task_ids 并行轮询
+ *   [分支] 视频生成                                  L1253  generation_mode / reference_mode / attachments
+ *   [校验] 视频能力与音频门禁                         L915  上传前校验 generation_mode、reference_mode 与能力映射
+ *   [组装] @ 数字资产绑定 attachments                L1259  CreationAssetBinding[]，source:'mention'
+ *   [组装] 视频生成请求体 body                       L1289  generation_mode / reference_mode / multi_shot / attachments / reference_image_asset_ids / first_frame_url
+ *   [日志] [video-generate] 调试日志                 L1322  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-08-12  新增音乐生成支持：POST /api/music/generate、通用任务中心 GET /api/tasks/{task_id} 轮询（最多 600 秒），
  *               音乐分支与图片/视频/配音完全隔离，参考音频上传不阻塞整体生成
- *   2026-07-13  video-kling-v3-omni「全能参考」修复：不再发 reference_mode='full'（会触发后端 400），
- *               改按实际上传素材推断 supported_generation_modes；参考图走 attachments + reference_image_asset_ids（asset_id 兜底到 asset.id）。
+ *   2026-08-20  视频 generation_mode 改由输入层统一能力路由确定；API 仅校验能力并保留厂商字段适配。
+ *   2026-08-20  视频请求改为读取后端 generation_reference_mode_map，分别发送 generation_mode 与 reference_mode。
+ *   2026-08-20  视频任务轮询容忍连续 5 次 502/503/504、网络异常、空响应或无效 JSON，正常响应后重置计数。
  *   2026-08-07  修复同步配音将音频记录 id 误当异步任务 id，避免错误请求配音任务轮询接口
  *   2026-08-07  配音轮询超时收紧为 600 秒，并支持 AbortSignal 中断上传、生成请求和轮询
  *   2026-08-07  配音生成支持再次点击发送按钮停止前端请求和轮询；后端任务取消能力仍由后端接口决定
@@ -94,6 +176,7 @@ function getImageUrls(image) {
 
 export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = {}) {
   const start = Date.now();
+  const retryState = { consecutiveFailures: 0 };
   const effectiveTimeoutMs = timeoutMs ?? (type === 'audio'
     ? CREATION_AUDIO_POLL_TIMEOUT_MS
     : CREATION_DEFAULT_POLL_TIMEOUT_MS);
@@ -107,8 +190,8 @@ export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = 
     await waitForPollInterval(signal);
     if (Date.now() - start >= effectiveTimeoutMs) break;
     throwIfAborted(signal);
-    const pollRes = await authFetch(pollUrl, { signal });
-    const pollData = await pollRes.json();
+    const pollData = await fetchCreationPollData(pollUrl, { signal, retryState });
+    if (!pollData) continue;
     const status = pollData.status;
 
     if (status === 'done' || status === 'completed' || status === 'success' || status === 'partial') {
@@ -168,6 +251,7 @@ export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = 
 import { authFetch } from './request.js';
 import { toAbsoluteUrl } from '../utils/imageUrl.js';
 import { captureVideoLastFrame } from '../utils/videoUtils';
+import { assertVideoRequestCapabilities } from '../utils/videoModelCapabilities';
 
 // ── 创作会话（Session）───────────────────────────────────────────────────────
 
@@ -735,10 +819,12 @@ export async function apiGetVideoLastFrame(videoUrl) {
 
 export async function apiPollVideoTask(taskId, timeoutMs = 1800000) {
   const start = Date.now();
+  const retryState = { consecutiveFailures: 0 };
   while (Date.now() - start < timeoutMs) {
     await new Promise((r) => setTimeout(r, 3000));
-    const pollRes = await authFetch(`${BASE}/api/creation/videos/tasks/${taskId}`);
-    const pollData = await pollRes.json();
+    const pollUrl = `${BASE}/api/creation/videos/tasks/${taskId}`;
+    const pollData = await fetchCreationPollData(pollUrl, { retryState });
+    if (!pollData) continue;
     const status = pollData.status;
     if (status === 'done' || status === 'completed' || status === 'success' || status === 'partial') {
       const result = pollData.result;
@@ -785,12 +871,13 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
     timeoutMs = isDubbing ? CREATION_AUDIO_POLL_TIMEOUT_MS : CREATION_DEFAULT_POLL_TIMEOUT_MS,
   ) {
     const start = Date.now();
+    const retryState = { consecutiveFailures: 0 };
     while (Date.now() - start < timeoutMs) {
       await waitForPollInterval(signal);
       if (Date.now() - start >= timeoutMs) break;
       throwIfAborted(signal);
-      const pollRes = await authFetch(pollUrl, { signal });
-      const pollData = await pollRes.json();
+      const pollData = await fetchCreationPollData(pollUrl, { signal, retryState });
+      if (!pollData) continue;
       const status = pollData.status;
       if (status === 'done' || status === 'completed' || status === 'success' || status === 'partial') {
         // partial=true 字段表示部分图片完成，继续轮询直到全部完成（针对图片多张生成）
@@ -826,6 +913,23 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
 
   // 上传参考文件（按媒体类型分类：图片 / 视频 / 音频）
   const files = params.files ? (Array.isArray(params.files) ? params.files : [params.files]) : [];
+  if (isVideo) {
+    const hasAudioFile = files.some((file) => {
+      const mime = String(file?.type || '').toLowerCase();
+      const name = String(file?.name || file?.url || '').split('?')[0].toLowerCase();
+      return mime.startsWith('audio/') || /\.(mp3|wav|aac|ogg|flac|m4a|wma)$/.test(name);
+    });
+    assertVideoRequestCapabilities({
+      modelId: params.model,
+      modelName: params.modelName,
+      generationMode: params.generation_mode,
+      referenceMode: params.reference_mode,
+      capabilities: params.videoCapabilities || {},
+      supportedGenerationModes: params.supportedGenerationModes || [],
+      isSeedance: Boolean(params.isSeedance),
+      hasAudio: hasAudioFile || Boolean(params.reference_audio_url),
+    });
+  }
   const refUrls = [];
   const refAssetIds = [];
   let uploadedRefVideoUrl;
@@ -1149,33 +1253,10 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
   }
 
   // ── 视频生成 ────────────────────────────────────────────────────────────
-  // 有参考图/参考视频时强制 generation_mode=full，不让后端自行推断（资产库选图时后端会错误设为 text_to_video）
   const liveMaterialParam = params.liveMaterialParam || null;
   const hasRefMedia = refUrls.length > 0 || refAssetIds.length > 0 || uploadedRefVideoUrl || uploadedRefAudioUrl || (liveMaterialParam && liveMaterialParam.length > 0);
-  let effectiveGenerationMode = hasRefMedia ? 'full' : (params.generation_mode || undefined);
-  // kling v3 omni 没有 full 模式：generation_mode 必须取自 supported_generation_modes，
-  // 且不再发 reference_mode（'full' 会被后端拒绝）。按实际上传的参考素材推断：
-  //   首尾帧（首/尾帧图片）→ first_frame / start_end
-  //   参考视频 → video_ref   参考图片 → multi_shot   有参考但无图无视频 → first_frame
-  let effectiveReferenceMode = params.refMode || undefined;
-  if ((params.model || '') === 'video-kling-v3-omni') {
-    const isFrameMode = params.refMode === 'first_frame' || params.refMode === 'start_end'
-      || !!params.firstFrameFile || !!params.lastFrameFile;
-    if (isFrameMode) {
-      effectiveGenerationMode = (params.firstFrameFile && params.lastFrameFile) ? 'start_end' : 'first_frame';
-    } else if (uploadedRefVideoUrl) {
-      effectiveGenerationMode = 'video_ref';                                   // 3 参考视频
-    } else if (refUrls.length > 0 || refAssetIds.length > 0) {
-      effectiveGenerationMode = 'multi_shot';                                 // 4 参考图片
-    } else if (hasRefMedia) {
-      effectiveGenerationMode = 'first_frame';                                // 1 音频/真人素材但无图
-    } else {
-      effectiveGenerationMode = params.generation_mode || 'text_to_video';    // 0 纯文生视频
-    }
-    // 不能发 reference_mode='full'：会被后端拒绝，且 undefined 会被 JSON 丢键、触发 'full' 默认兜底，
-    // 导致后端把参考图误塞进 first_frame_url（参考图无效）。改用空串保留键名，后端按 generation_mode 路由。
-    effectiveReferenceMode = '';
-  }
+  const effectiveGenerationMode = params.generation_mode;
+  const effectiveReferenceMode = params.reference_mode;
 
   // ── @ 数字资产绑定（attachments）────────────────────────────────────────
   // 后端视频生成消费 @ 参考图的真正入口是 attachments（CreationAssetBinding[]），
@@ -1215,8 +1296,8 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
     duration: parseInt(params.videoDuration) || 5,
     generation_mode: effectiveGenerationMode,
     reference_mode: effectiveReferenceMode,
-    // kling multi_shot 模式下补发 multi_shot=true，明确告知后端走多参考图通道
-    multi_shot: (params.model === 'video-kling-v3-omni' && effectiveGenerationMode === 'multi_shot') ? true : undefined,
+    // 厂商适配只补字段形态，不重新决定 generation_mode。
+    multi_shot: effectiveGenerationMode === 'multi_shot' ? true : undefined,
     with_audio: params.soundEnabled ?? false,
     // 真人素材通过 provider_params.live_material 传递（后端 _resolve_creation_live_material_inputs 消费）
     subjects: undefined,
@@ -1247,7 +1328,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
 
   onTaskCreated?.({ taskId, params });
 
-  const { videos, cardIds, posterUrl } = await pollTask(
+  const { videos, cardIds, posterUrl, referenceModeLabel } = await pollTask(
     `${BASE}/api/creation/videos/tasks/${taskId}`,
     (pollData) => {
       const result = pollData.result;
@@ -1259,6 +1340,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
         videos: [videoUrl].filter(Boolean),
         cardIds: [result.id],
         posterUrl: result.posterUrl || result.poster_url || undefined,
+        referenceModeLabel: result.referenceModeLabel || result.reference_mode_label || undefined,
       };
     },
   );
@@ -1268,6 +1350,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
     referenceVideos: uploadedRefVideoUrl ? [uploadedRefVideoUrl] : [],
     referenceAudios: uploadedRefAudioUrl ? [uploadedRefAudioUrl] : [],
     refMode: params.refMode || undefined,
+    referenceModeLabel,
     firstFrameUrl: firstFrameUrl || undefined,
     lastFrameUrl: lastFrameUrl || undefined,
   };

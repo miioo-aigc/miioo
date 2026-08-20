@@ -6,11 +6,11 @@
  * 页面继续负责生成请求、任务轮询、缓存和全局状态写回。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   草稿文件恢复工具                                   L43–L65
- *   InputCard 状态、Hook 与草稿接线                    L68–L316
- *   模型筛选、素材选择与参数预填充                     L318–L474
- *   发送、失败/取消恢复与参数组装                      L476–L578
- *   CreationInputSurface 组合                           L585–L719
+ *   草稿文件恢复工具                                   L72–L94
+ *   InputCard 状态、Hook 与草稿接线                    L97–L438
+ *   模式回退、素材选择与参数预填充                     L439–L626
+ *   发送、失败/取消恢复与参数组装                      L627–L759
+ *   CreationInputSurface 组合                           L760–L929
  *
  *   2026-08-18  配音面板改为语速/声调/音量，草稿与失败恢复同步新字段；接口暂只保留既有语速参数
  *   2026-08-11  图片/视频生成轮询期间保持输入区可用；IndexedDB 临时缓存各类型完整创作草稿
@@ -21,10 +21,16 @@
  *   2026-08-18  高级模式支持从 PDF/DOCX/TXT/HTML 提取最多 3000 字正文并写入提示词草稿
  *   2026-08-19  退出登录时清空提示词与参考素材草稿，保留当前模型和生成参数
  *   2026-08-19  高级配音生成前要求已选择音色，未选择时提示并打开音色弹窗
+ *   2026-08-20  视频模型改由 supported_generation_modes 驱动参考模式、素材门禁与 generation_mode 路由
+ *   2026-08-20  视频请求从后端 generation_reference_mode_map 解析 reference_mode，缺少映射时阻止提交
+ *   2026-08-20  配音资产确认后使用独立音频文件卡片展示，并提供播放/暂停控制
+ *   2026-08-20  资产库视频参考保留封面字段，输入区文件卡片不再把视频地址误作背景图
+ *   2026-08-20  Seedance 真人素材按带特殊标识的普通参考图追加，不替换已有真人素材
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import CreationFileCard from './CreationFileCard';
+import CreationAudioFileCard from './CreationAudioFileCard';
 import ConfirmDialog from '../ConfirmDialog';
 import CreationInputSurface from './CreationInputSurface';
 import { useCreationInputFiles } from './useCreationInputFiles';
@@ -39,12 +45,22 @@ import {
 import { isSeedanceModel } from '../../utils/seedanceModel';
 import { readCreationDocumentText } from './CreationDocumentTextReader';
 import {
+  ALLOWED_IMAGE_EXTS,
   MAX_CREATION_FILES,
   getCreationUploadExtensions,
   getCreationAcceptAttr,
+  isAudioFile,
   isImageFile,
+  isVideoFile,
 } from './CreationFileUtils';
 import { DEFAULT_DUBBING_EFFECTS } from './CreationDubbingEffectsDefaults';
+import {
+  getVideoReferenceModeLabel,
+  resolveVideoReferenceMode,
+  resolveVideoGenerationMode,
+  resolveVideoReferenceModeFallback,
+  VIDEO_REFERENCE_MODES,
+} from '../../utils/videoModelCapabilities';
 
 function createDefaultDubbingEffects() {
   return {
@@ -117,6 +133,14 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     setDubbingVolume,
     resetDubbingParams,
   } = useCreationParamsState({ creationParams, genType, prefillVersion, prefillData });
+  const currentModel = useMemo(
+    () => modelOptions.find((option) => option.value === model),
+    [model, modelOptions],
+  );
+  const isCurrentSeedance = Boolean(currentModel?.isSeedance);
+  const allowsVideoAudio = genType === 'video'
+    && refMode === VIDEO_REFERENCE_MODES.ALL
+    && isCurrentSeedance;
   const {
     files,
     setFiles,
@@ -125,7 +149,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     lastFrameFile,
     setLastFrameFile,
     safeSetFiles,
-    handleFileSelect,
+    handleFileSelect: handleRawFileSelect,
     removeFile,
     replaceFiles,
     clearFiles,
@@ -140,6 +164,19 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     onToast: showToast,
     onFileTooLarge: () => alert('抱歉，平台暂不支持上传20M以上的图片资源！'),
   });
+  const handleFileSelect = useCallback((newFiles = []) => {
+    const selectedFiles = Array.from(newFiles);
+    if (genType === 'video' && refMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
+      && selectedFiles.some((file) => !isImageFile(file))) {
+      showToast?.('warning', '智能多帧模式当前仅支持图片素材');
+      return;
+    }
+    if (genType === 'video' && !allowsVideoAudio && selectedFiles.some(isAudioFile)) {
+      showToast?.('warning', '当前仅 Seedance 全能参考支持音频素材');
+      return;
+    }
+    handleRawFileSelect(selectedFiles);
+  }, [allowsVideoAudio, genType, handleRawFileSelect, refMode, showToast]);
   const [frameAssetTarget, setFrameAssetTarget] = useState(null);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const savedContentRef = useRef({
@@ -402,43 +439,26 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   // 是否显示真人素材入口：仅视频模式、当前模型支持，且不属于 Seedance 系列。
   const showLiveMaterial = useMemo(() => {
     if (genType !== 'video') return false;
-    const currentModel = modelOptions.find(m => m.value === model);
     return !!(currentModel?.supportsLiveMaterial) && !isSeedanceModel(currentModel);
-  }, [genType, model, modelOptions]);
+  }, [currentModel, genType]);
 
-  const filteredModelOptions = useMemo(() => {
-    if (genType !== 'video') return modelOptions;
-    if (!refMode) return modelOptions;
-    if (refMode === 'frame') {
-      return modelOptions.filter(m => m.hasFrame);
-    }
-    // 'all' (全能参考): 只显示支持全能参考的模型
-    return modelOptions.filter(m => m.hasFull);
-  }, [genType, refMode, modelOptions]);
-
-  // Video: sync model when refMode changes
   const handleRefModeChange = useCallback((newRefMode) => {
-    // 切换到首尾帧：将 files 中的图片迁移到帧槽位，其余丢弃
-    if (newRefMode === 'frame') {
-      const imageFiles = files.filter((file) => isImageFile(file));
-      setFirstFrameFile(imageFiles[0] || null);
-      setLastFrameFile(imageFiles[1] || null);
-      clearFiles({ preserveFiles: imageFiles });
-    }
-    // 离开首尾帧：将帧槽位的图片合并回 files 作为普通参考图
-    if (refMode === 'frame' && newRefMode !== 'frame') {
-      const carried = [firstFrameFile, lastFrameFile].filter(Boolean);
-      if (carried.length > 0) replaceFiles(carried.map(f => (f instanceof File) ? f : { ...f, isAsset: true }));
-    }
     setRefMode(newRefMode);
-    const filtered = newRefMode === 'frame'
-      ? modelOptions.filter(m => m.hasFrame)
-      : modelOptions.filter(m => m.hasFull);
-    const inList = filtered.some(m => m.value === model);
-    if (!inList && filtered.length > 0) {
-      onModelChange(filtered[0].value);
+  }, [setRefMode]);
+
+  const previousModelRef = useRef(model);
+  useEffect(() => {
+    if (genType !== 'video' || !currentModel) return;
+    const availableModes = currentModel.availableReferenceModes || creationParams?.refModes || [];
+    const fallbackMode = resolveVideoReferenceModeFallback(refMode, availableModes);
+    const modelChanged = previousModelRef.current && previousModelRef.current !== model;
+    previousModelRef.current = model;
+    if (!fallbackMode || fallbackMode === refMode) return;
+    setRefMode(fallbackMode);
+    if (modelChanged && refMode) {
+      showToast?.('info', `新模型不支持${getVideoReferenceModeLabel(refMode)}，已切换为${getVideoReferenceModeLabel(fallbackMode)}`);
     }
-  }, [clearFiles, files, refMode, firstFrameFile, lastFrameFile, modelOptions, model, onModelChange, replaceFiles, setFirstFrameFile, setLastFrameFile, setRefMode]);
+  }, [creationParams?.refModes, currentModel, genType, model, refMode, setRefMode, showToast]);
   // Apply prefill when version bumps (re-edit or use-as-ref or use-as-first-frame)
   useEffect(() => {
     if (!prefillVersion || !prefillData) return;
@@ -475,8 +495,12 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     if (prefillData.lastFrameFile !== undefined) setLastFrameFile(prefillData.lastFrameFile);
   }, [prefillVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const uploadAllowedExts = getCreationUploadExtensions(genType, creationParams?.supportsAudio);
-  const uploadAcceptAttr = getCreationAcceptAttr(genType, creationParams?.supportsAudio);
+  const uploadAllowedExts = genType === 'video' && refMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
+    ? ALLOWED_IMAGE_EXTS
+    : getCreationUploadExtensions(genType, allowsVideoAudio);
+  const uploadAcceptAttr = genType === 'video' && refMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
+    ? ALLOWED_IMAGE_EXTS.join(',')
+    : getCreationAcceptAttr(genType, allowsVideoAudio);
 
   // 文件列表、上限裁剪和 Blob URL 生命周期由 useCreationInputFiles 统一管理。
 
@@ -503,6 +527,16 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       setFrameAssetTarget(null);
       return;
     }
+    if (genType === 'video' && refMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
+      && selectedAssets.some((asset) => String(asset.asset_type || asset.assetType || asset.type || '').toLowerCase() !== 'image')) {
+      showToast?.('warning', '智能多帧模式当前仅支持图片素材');
+      return;
+    }
+    if (genType === 'video' && !allowsVideoAudio
+      && selectedAssets.some((asset) => String(asset.asset_type || asset.assetType || asset.type || '').toLowerCase().startsWith('audio'))) {
+      showToast?.('warning', '当前仅 Seedance 全能参考支持音频素材');
+      return;
+    }
     const liveMaterialAssets = selectedAssets.filter((asset) => asset.isLiveMaterial);
     const liveMats = liveMaterialAssets.map((asset) => ({
         isAsset: true,
@@ -518,15 +552,21 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         size: 0,
       }));
     const assetFiles = selectedAssets.filter((asset) => !asset.isLiveMaterial).map((asset) => {
-      const isVideo = asset.type === 'video';
-      const isAudio = asset.type === 'audio';
+      const assetType = String(asset.asset_type || asset.assetType || asset.type || '').toLowerCase();
+      const isVideo = assetType === 'video';
+      const isAudio = assetType === 'audio' || assetType.startsWith('audio/');
       let fileUrl;
       if (isVideo) fileUrl = asset.videoUrl || asset.fileUrl || asset.url;
       else if (isAudio) fileUrl = asset.audioUrl || asset.fileUrl || asset.url;
       else fileUrl = asset.isAigcMaterial
         ? (asset.assetRefUrl || asset.asset_ref_url || asset.fileUrl || asset.url)
         : (asset.fileUrl || asset.url);
-      const previewUrl = asset.url || asset.thumbnailUrl || asset.thumbnail_url || fileUrl;
+      const posterUrl = isVideo
+        ? (asset.posterUrl || asset.poster_url || asset.thumbnailUrl || asset.thumbnail_url || null)
+        : null;
+      const previewUrl = isVideo
+        ? posterUrl
+        : (asset.url || asset.thumbnailUrl || asset.thumbnail_url || fileUrl);
       // 只传真实后端 UUID：backendId（创作资产回写的 card.id）或 asset_id（项目资产）
       // 排除 composite id（如 "gen-xxx-0" / "history-xxx-0"），这些不是有效后端 ID
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -541,6 +581,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         size: 0,
         url: fileUrl,
         previewUrl,
+        posterUrl,
         assetId,
         isAigcMaterial: Boolean(asset.isAigcMaterial),
         assetRefUrl: asset.assetRefUrl || asset.asset_ref_url || undefined,
@@ -550,7 +591,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     });
     if (liveMats.length > 0 || assetFiles.length > 0) {
       safeSetFiles((prev) => [
-        ...prev.filter((file) => !file.isLiveMaterial),
+        ...prev,
         ...liveMats,
         ...assetFiles,
       ]);
@@ -593,6 +634,39 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     // 提取纯文字 prompt，剔除 @ 标签节点（data-file-ref），避免把 @文件名 混入发给后端的 prompt
     const { text: currentText, html: savedHTML } = getPromptSnapshot();
     const savedFiles = files;
+    let videoGenerationMode;
+    let videoReferenceMode;
+    if (genType === 'video') {
+      const routeResult = resolveVideoGenerationMode({
+        modelId: model,
+        modelName: currentModel?.label,
+        capabilities: capabilitiesMap?.[model] || {},
+        referenceMode: refMode,
+        hasPrompt: Boolean(currentText.trim()),
+        imageCount: savedFiles.filter((file) => !file.isLiveMaterial && isImageFile(file)).length,
+        videoCount: savedFiles.filter(isVideoFile).length,
+        audioCount: savedFiles.filter(isAudioFile).length,
+        liveMaterialCount: savedFiles.filter((file) => file.isLiveMaterial).length,
+        hasFirstFrame: Boolean(firstFrameFile),
+        hasLastFrame: Boolean(lastFrameFile),
+      });
+      if (!routeResult.ok) {
+        showToast?.('warning', routeResult.message);
+        return;
+      }
+      videoGenerationMode = routeResult.generationMode;
+      const referenceRouteResult = resolveVideoReferenceMode({
+        generationMode: videoGenerationMode,
+        modelId: model,
+        modelName: currentModel?.label,
+        capabilities: capabilitiesMap?.[model] || {},
+      });
+      if (!referenceRouteResult.ok) {
+        showToast?.('warning', referenceRouteResult.message);
+        return;
+      }
+      videoReferenceMode = referenceRouteResult.referenceMode;
+    }
     savedContentRef.current = {
       html: savedHTML,
       text: currentText,
@@ -615,21 +689,12 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     setSelectedVoiceId('');
     setSelectedVoiceName('');
     setSelectedVoiceSource('');
-    // 视频模式：把「全能参考」/「首尾帧」映射为当前模型支持的实际 reference_mode
-    let actualRefMode = refMode;
-    if (genType === 'video') {
-      const currentModel = modelOptions.find(m => m.value === model);
-      if (refMode === 'all') {
-        actualRefMode = currentModel?.actualAllRefMode || 'full';
-      } else if (refMode === 'frame') {
-        actualRefMode = currentModel?.actualFrameRefMode || 'first_frame';
-      }
-    }
     await onGenerate?.({
       prompt: currentText,
       promptHTML: savedHTML,
       genType,
-      model,
+          model,
+          modelName: currentModel?.label,
       ...(genType === 'image' ? { ratio, resolution, count } : {}),
       ...(genType === 'video' ? (() => {
         const liveMats = savedFiles.filter(f => f.isLiveMaterial);
@@ -642,7 +707,13 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         });
         const liveMaterialParam = Object.values(groupMap);
         return {
-          refMode: actualRefMode, videoRatio, videoResolution, videoDuration, soundEnabled, firstFrameFile, lastFrameFile,
+          refMode,
+          generation_mode: videoGenerationMode,
+          reference_mode: videoReferenceMode,
+          videoCapabilities: capabilitiesMap?.[model] || {},
+          supportedGenerationModes: currentModel?.supportedGenerationModes || [],
+          isSeedance: isCurrentSeedance,
+          videoRatio, videoResolution, videoDuration, soundEnabled, firstFrameFile, lastFrameFile,
           liveMaterialParam: liveMaterialParam.length > 0 ? liveMaterialParam : null,
           liveMaterialFiles: liveMats,  // 保留预览信息用于详情展示和重新编辑
         };
@@ -681,7 +752,11 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     handlePromptKeyDown(event, handleSend);
   };
 
-  const assetPickerAccept = genType === 'image' ? 'image' : genType === 'video' ? (creationParams?.supportsAudio ? 'all' : 'image') : (genType === 'dubbing' || genType === 'music') ? 'audio' : 'all';
+  const assetPickerAccept = genType === 'image'
+    ? 'image'
+    : genType === 'video'
+      ? refMode === VIDEO_REFERENCE_MODES.MULTI_SHOT ? 'image' : allowsVideoAudio ? 'all' : 'media'
+      : (genType === 'dubbing' || genType === 'music') ? 'audio' : 'all';
   return (
     <>
       <CreationInputSurface
@@ -723,7 +798,9 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         onPaste: handlePaste,
         onFocus: handleEditorFocus,
         onBlur: handleEditorBlur,
-        renderFileCard: (file, index) => (
+        renderFileCard: (file, index) => isAudioFile(file) ? (
+          <CreationAudioFileCard key={index} file={file} onRemove={() => handleRemoveFile(index)} disabled={disabled} onInsert={() => insertFromCard(file)} />
+        ) : (
           <CreationFileCard key={index} file={file} onRemove={() => handleRemoveFile(index)} disabled={disabled} onInsert={() => insertFromCard(file)} />
         ),
         mentionOpen,
@@ -746,7 +823,6 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         genType,
         model,
         modelOptions,
-        filteredModelOptions,
         creationParams,
         onGenTypeChange: handleLocalGenTypeChange,
         onModelChange,
@@ -825,7 +901,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
             type: 'image/jpeg',
             size: 0,
           }));
-          setFiles((prev) => [...prev.filter((file) => !file.isLiveMaterial), ...liveMats]);
+          setFiles((prev) => [...prev, ...liveMats]);
         },
         liveMaterialInitialSelected: files.filter((file) => file.isLiveMaterial).map((file) => ({
           assetId: file.assetId,

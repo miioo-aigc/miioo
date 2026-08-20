@@ -9,7 +9,6 @@ export default function CreationParamsControls({
   genType,
   model,
   modelOptions,
-  filteredModelOptions,
   creationParams,
   disabled = false,
   onGenTypeChange,
@@ -62,7 +61,7 @@ export default function CreationParamsControls({
       <ModelSelector
         value={model}
         onChange={onModelChange}
-        options={genType === 'video' ? filteredModelOptions : modelOptions}
+        options={modelOptions}
         disabled={disabled}
         onBeforeOpen={onBeforeModelOpen}
       />

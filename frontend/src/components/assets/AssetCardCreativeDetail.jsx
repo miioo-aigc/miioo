@@ -16,6 +16,7 @@ export default function AssetCardCreativeDetail({ asset = {}, url, starred = fal
         resolution={asset.resolution}
         duration={asset.duration}
         refMode={asset.refMode}
+        refModeLabel={asset.refModeLabel}
         firstFrame={asset.firstFrame}
         lastFrame={asset.lastFrame}
         sound={asset.sound}

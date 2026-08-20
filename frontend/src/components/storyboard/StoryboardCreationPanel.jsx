@@ -36,6 +36,7 @@ const ASSET_GENERATION_KEYS = new Set([
   'reference_images', 'referenceImages', 'first_frame_url', 'firstFrameUrl',
   'last_frame_url', 'lastFrameUrl', 'reference_video_url', 'referenceVideoUrl',
   'reference_audio_url', 'referenceAudioUrl', 'reference_mode', 'referenceMode',
+  'reference_mode_label', 'referenceModeLabel',
   'generation_mode', 'generationMode', 'generate_mode', 'generateMode',
   'watermark', 'multi_shot', 'multiShot', 'expand_options', 'expandOptions',
   'subject_completion_options', 'subjectCompletionOptions', 'optimize_prompt', 'optimizePrompt',

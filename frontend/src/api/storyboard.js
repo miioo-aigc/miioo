@@ -154,6 +154,7 @@ function compactStoryboardMediaCandidateForCache(item = {}) {
     'promptResolved', 'prompt_resolved',
     'referenceImages', 'reference_images', 'referenceImageUrls', 'reference_image_urls',
     'refImages', 'ref_images', 'referenceMode', 'reference_mode',
+    'referenceModeLabel', 'reference_mode_label',
     'firstFrameUrl', 'first_frame_url', 'lastFrameUrl', 'last_frame_url',
     'referenceVideoUrl', 'reference_video_url', 'referenceAudioUrl', 'reference_audio_url',
     'model', 'resolution', 'duration', 'ratio', 'size',

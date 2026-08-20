@@ -128,6 +128,7 @@ function CopyPromptButton({ text, onCopy }) {
  * @param {string} props.resolution - 分辨率
  * @param {string} props.duration - 时长
  * @param {string} props.refMode - 参考模式
+ * @param {string} props.refModeLabel - 后端返回的参考模式展示文案
  * @param {Array} props.refImages - 参考图片数组
  * @param {Array} props.refVideos - 参考视频数组
  * @param {Array} props.refAudios - 参考音频数组
@@ -149,6 +150,7 @@ export default function CreationVideoDetailModal({
   resolution = '',
   duration = '',
   refMode = '',
+  refModeLabel = '',
   refImages = [],
   refVideos = [],
   refAudios = [],
@@ -553,13 +555,13 @@ export default function CreationVideoDetailModal({
                   </div>
                 </div>
               )}
-              {refMode && (
+              {(refModeLabel || refMode) && (
                 <div className="flex items-center justify-between">
                   <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-xs/4">
                     参考模式
                   </div>
                   <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFFCC] text-xs/4">
-                    {formatReferenceMode(refMode)}
+                    {formatReferenceMode(refMode, refModeLabel)}
                   </div>
                 </div>
               )}

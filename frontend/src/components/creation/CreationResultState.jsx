@@ -112,6 +112,7 @@ export default function CreationResultState({
       refVideos: gen.refVideos,
       refAudios: gen.refAudios,
       refMode: gen.refMode,
+      refModeLabel: gen.refModeLabel,
       firstFrameUrl: gen.firstFrameUrl,
       lastFrameUrl: gen.lastFrameUrl,
       createdAt: gen.createdAt,

@@ -2,6 +2,7 @@ export { default as CreationCardActionButton } from './CreationCardActionButton'
 export { default as CreationPromptEditor } from './CreationPromptEditor';
 export { default as CreationToolbar } from './CreationToolbar';
 export { default as CreationFileCard } from './CreationFileCard';
+export { default as CreationAudioFileCard } from './CreationAudioFileCard';
 export { default as CreationVideoResultCard } from './CreationVideoResultCard';
 export { default as CreationImageResultCard } from './CreationImageResultCard';
 export { default as CreationAudioResultCard } from './CreationAudioResultCard';

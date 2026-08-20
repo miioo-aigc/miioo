@@ -8,6 +8,12 @@
  * 策略：后端优先；单个模型 capabilities 为 null 时回退到本地配置文件。
  */
 
+import {
+  getAvailableVideoReferenceModes,
+  isSeedanceVideoModel,
+  normalizeSupportedGenerationModes,
+} from './videoModelCapabilities';
+
 
 /**
  * 将后端模型列表转换为 CreationPage 需要的格式。
@@ -46,14 +52,8 @@ export function adaptModels(backendModels, genType) {
 
     if (genType === 'dubbing' || genType === 'music') return { modelOptions: options, capabilitiesMap: caps };
 
-    const refModes = m.capabilities?.reference_modes || [];
-    const frameKeys = ['first_frame', 'last_frame', 'start_end', 'multiframe'];
-    const hasFrame = refModes.some(r => frameKeys.includes(r));
-    const hasFull = refModes.some(r => r === 'full') || refModes.length === 0;
-    // 「全能参考」对应的实际后端值：第一个非首尾帧的 reference_mode，或 'full'
-    const actualAllRefMode = refModes.find(r => !frameKeys.includes(r)) || 'full';
-    // 「首尾帧」对应的实际后端值（含 multiframe）
-    const actualFrameRefMode = refModes.find(r => frameKeys.includes(r)) || 'first_frame';
+    const supportedGenerationModes = normalizeSupportedGenerationModes(m.capabilities);
+    const availableReferenceModes = getAvailableVideoReferenceModes(m.capabilities);
     // 支持真人素材：通过能力字段 or 模型 ID 前缀判断
     const supportsLiveMaterial = !!(
       m.capabilities?.supports_live_material ||
@@ -61,8 +61,9 @@ export function adaptModels(backendModels, genType) {
     );
     options.push({
       value: m.model_id, label: m.name,
-      refModes, hasFrame, hasFull,
-      actualAllRefMode, actualFrameRefMode,
+      supportedGenerationModes,
+      availableReferenceModes,
+      isSeedance: isSeedanceVideoModel({ modelId: m.model_id, modelName: m.name, capabilities: m.capabilities }),
       supportsLiveMaterial,
     });
 
@@ -237,20 +238,10 @@ function getVideoModelParamsFromCap(capabilities) {
       .filter(n => !isNaN(n));
     durations = durationNums.map(d => `${d}s`);
 
-    // Reference modes mapping: only two categories — 全能参考 / 首尾帧
-    const backendRefModes = capabilities.reference_modes || [];
-    refModes = [];
-    // 首尾帧: first_frame / last_frame / start_end / multiframe
-    const frameKeys = ['first_frame', 'last_frame', 'start_end', 'multiframe'];
-    const hasFrame = backendRefModes.some(r => frameKeys.includes(r));
-    // 全能参考: 只要存在非首尾帧的项（如 full / video_ref），或为空则默认全能
-    const nonFrame = backendRefModes.filter(r => !frameKeys.includes(r));
-    const hasAll = nonFrame.length > 0 || backendRefModes.length === 0;
-    if (hasAll) refModes.push({ value: 'all', label: '全能参考' });
-    if (hasFrame) refModes.push({ value: 'frame', label: '首尾帧' });
+    refModes = getAvailableVideoReferenceModes(capabilities);
 
     // Audio support
-    supportsAudio = capabilities.supports_reference_audio || false;
+    supportsAudio = capabilities.supports_reference_audio === true;
 
     // Build resolutionRatios from resolution_size_map for bi-directional filtering.
     // 空 resolution_size_map 的模型（如 Vidu Q2 / Gemini）按兜底逻辑把全部比例挂到每个分辨率，
@@ -294,18 +285,8 @@ function getVideoModelParamsFromCap(capabilities) {
       (_, i) => `${minDuration + i}s`,
     );
 
-    refModes = [];
-    const cat = capabilities.category || [];
-    // 首尾帧: first-last-frame 或 multiframe
-    if (cat.includes('first-last-frame') || cat.includes('multiframe')) {
-      refModes.push({ value: 'frame', label: '首尾帧' });
-    }
-    // 全能参考: multi-modal-ref 或 cat 为空
-    const hasAllLocal = cat.includes('multi-modal-ref') || cat.length === 0;
-    if (hasAllLocal) refModes.push({ value: 'all', label: '全能参考' });
-
-    supportsAudio = Array.isArray(capabilities.inputAudio?.formats)
-      && capabilities.inputAudio.formats.length > 0;
+    refModes = getAvailableVideoReferenceModes(capabilities);
+    supportsAudio = false;
   }
 
   return {

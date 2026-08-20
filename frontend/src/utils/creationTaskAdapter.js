@@ -12,6 +12,7 @@
  */
 
 import { normalizeImageUrl } from './imageUrl';
+import { toCreationRefMode } from './creationDetailAdapter';
 
 export function getCreationTaskType(genType) {
   return genType === 'dubbing' || genType === 'music' ? 'audio' : genType || 'image';
@@ -80,6 +81,8 @@ export function normalizeCreationPendingTask(task) {
     ratio: task.ratio || '16:9',
     resolution: task.resolution || '',
     duration: task.duration || undefined,
+    refMode: genType === 'video' ? toCreationRefMode(task.refMode || task.generationMode) : undefined,
+    refModeLabel: genType === 'video' ? (task.refModeLabel || task.referenceModeLabel || task.reference_mode_label) : undefined,
     voiceName: task.voiceName || '',
     voiceId: task.voiceId || '',
     voiceSource: task.voiceSource || '',
@@ -116,6 +119,8 @@ export function createCreationTaskPlaceholder(task) {
     refImages: [],
     refVideos: task.refVideos,
     refAudios: task.refAudios,
+    refMode: task.refMode,
+    refModeLabel: task.refModeLabel,
     createdAt: task.createdAt,
     cards: Array.from({ length: cardCount }, (_, index) => ({
       id: null,
@@ -167,6 +172,8 @@ export function normalizeCreationTaskResult(result, task) {
       refImages,
       refVideos: task.refVideos,
       refAudios: task.refAudios,
+      refMode: task.refMode,
+      refModeLabel: result?.referenceModeLabel || result?.reference_mode_label || task.refModeLabel,
       createdAt: task.createdAt,
       cards: mediaUrls.map((url, index) => ({
         id: (task.genType === 'dubbing' || task.genType === 'music') ? (result?.audioIds?.[index] || null) : null,

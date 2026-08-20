@@ -409,6 +409,7 @@ const GENERATION_PARAMETER_KEYS = new Set([
   'reference_image_urls', 'referenceImageUrls', 'ref_images', 'refImages',
   'last_frame_url', 'lastFrameUrl', 'reference_video_url', 'referenceVideoUrl',
   'reference_audio_url', 'referenceAudioUrl', 'reference_mode', 'referenceMode',
+  'reference_mode_label', 'referenceModeLabel',
   'generation_mode', 'generationMode', 'generate_mode', 'generateMode',
   'watermark', 'multi_shot', 'multiShot', 'expand_options', 'expandOptions',
   'subject_completion_options', 'subjectCompletionOptions', 'optimize_prompt', 'optimizePrompt',
@@ -640,6 +641,15 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
     metadata?.seedanceVoiceVideo?.reference_mode,
     ...detailParameterContainers.map((container) => container.reference_mode || container.referenceMode),
   ].find(hasValue) ?? '';
+  const referenceModeLabel = [
+    activeMedia?.reference_mode_label,
+    activeMedia?.referenceModeLabel,
+    metadata?.reference_mode_label,
+    metadata?.referenceModeLabel,
+    metadata?.seedance_voice_video?.reference_mode_label,
+    metadata?.seedanceVoiceVideo?.referenceModeLabel,
+    ...detailParameterContainers.map((container) => container.reference_mode_label || container.referenceModeLabel),
+  ].find(hasValue) ?? '';
   const frameReferenceMode = isFrameReferenceMode(referenceModeValue);
   const fullReferenceMode = isFullReferenceMode(referenceModeValue);
   const referenceGroups = collectReferenceGroups(
@@ -694,16 +704,20 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
       'first_frame_url', 'firstFrameUrl', 'last_frame_url', 'lastFrameUrl',
       'reference_video_url', 'referenceVideoUrl', 'reference_audio_url', 'referenceAudioUrl',
       'prompt_raw', 'promptRaw', 'prompt_resolved', 'promptResolved', 'watermark',
+      'reference_mode_label', 'referenceModeLabel',
     ].some((key) => entry.label === key || entry.label.startsWith(`${key}.`)))
     .map((entry) => ({
       ...entry,
       label: entry.label.split('.').map(parameterLabel).join(' / '),
       value: ['reference_mode', 'referenceMode'].includes(entry.label)
-        ? formatReferenceMode(entry.value)
+        ? formatReferenceMode(entry.value, referenceModeLabel)
         : ['sound_effect', 'soundEffect'].includes(entry.label) && ['是', '否'].includes(entry.value)
           ? (entry.value === '是' ? '开' : '关')
           : entry.value,
     }));
+  if (referenceModeLabel && !normalizedParameterEntries.some((entry) => entry.label === '参考模式')) {
+    normalizedParameterEntries.push({ label: '参考模式', value: referenceModeLabel });
+  }
 
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.60)', backdropFilter: 'blur(12px)' }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.(); }}>

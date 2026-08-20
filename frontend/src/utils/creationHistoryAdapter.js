@@ -16,6 +16,7 @@
  */
 
 import { normalizeImageUrl } from './imageUrl';
+import { toCreationRefMode } from './creationDetailAdapter';
 
 export function getCreationHistoryList(response) {
   return Array.isArray(response)
@@ -180,7 +181,13 @@ export function normalizeCreationHistoryItem(item, type) {
     : [];
 
   const posterUrl = normalizeImageUrl(item.poster_url || item.posterUrl || '') || undefined;
-  const refMode = item.reference_mode || item.referenceMode || undefined;
+  const generationMode = item.generation_mode || item.generationMode || undefined;
+  const refMode = type === 'video'
+    ? toCreationRefMode(generationMode || item.reference_mode || item.referenceMode)
+    : undefined;
+  const refModeLabel = type === 'video'
+    ? (item.reference_mode_label || item.referenceModeLabel || metadata.reference_mode_label || metadata.referenceModeLabel || undefined)
+    : undefined;
   const firstFrameUrl = normalizeImageUrl(item.first_frame_url || item.firstFrameUrl || '') || undefined;
   const lastFrameUrl = normalizeImageUrl(item.last_frame_url || item.lastFrameUrl || '') || undefined;
   const needsDetail = type === 'video'
@@ -205,7 +212,8 @@ export function normalizeCreationHistoryItem(item, type) {
     advancedEnabled: item.advanced_enabled ?? item.advancedEnabled ?? metadata.advanced_enabled ?? metadata.advancedEnabled,
     prompt: item.prompt || '',
     refImages,
-    refMode: type === 'video' ? refMode : undefined,
+    refMode,
+    refModeLabel,
     refVideos: type === 'video' ? refVideos : undefined,
     refAudios: type === 'video' ? refAudios : undefined,
     firstFrameUrl: type === 'video' ? firstFrameUrl : undefined,
@@ -272,6 +280,8 @@ export function pickCreationHistoryCacheItem(item, tab) {
       preview_video_url: item.preview_video_url || item.previewVideoUrl || item.video_url || item.videoUrl || '',
       poster_url: item.poster_url || item.posterUrl || '',
       reference_mode: item.reference_mode || item.referenceMode || undefined,
+      reference_mode_label: item.reference_mode_label || item.referenceModeLabel || undefined,
+      generation_mode: item.generation_mode || item.generationMode || undefined,
       first_frame_url: item.first_frame_url || item.firstFrameUrl || undefined,
       last_frame_url: item.last_frame_url || item.lastFrameUrl || undefined,
       asset_binding_count: item.asset_binding_count ?? 0,

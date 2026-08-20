@@ -20,7 +20,7 @@
  *   CreationInputCard 已迁移至 components/creation/，页面通过 renderInputCard 显式接入
  *
  * ─── 页面渲染结构 ────────────────────────────────────── L660–L758
- *   CreationPageOverlays（确认弹窗和视频详情 Portal）         components/creation/CreationPageOverlays.jsx
+ *   CreationPageOverlays（确认弹窗和媒体详情 Portal）         components/creation/CreationPageOverlays.jsx
  *   CreationWorkspace（主体卡片、工具栏和结果/空态组合）       components/creation/CreationWorkspace.jsx
  *   CreationToast（Toast 展示）                              components/creation/CreationToast.jsx
  *   handleBeforeModelOpen / renderInputCard                     页面级显式接线辅助
@@ -81,6 +81,7 @@
  *   2026-08-03  抽离 useCreationGeneration；页面保留生成依赖、计数和区块接线，生成流程行为保持不变
  *   2026-08-07  配音生成接入 600 秒轮询上限、提示词保留和再次点击发送停止前端请求/轮询
  *   2026-08-11  修复不同创作 Tab 的生成禁用状态串扰，输入区按当前创作类型隔离
+ *   2026-08-19  新增音频详情状态与回调接线；音色快照和媒体元数据由独立弹窗展示
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -375,6 +376,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   
 
   const [videoDetailModal, setVideoDetailModal] = useState(null);
+  const [audioDetailModal, setAudioDetailModal] = useState(null);
 
   // Toggle favorite with API linkage (optimistic update + rollback on failure)
   function handleToggleFavorite(cardKey) {
@@ -655,6 +657,10 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     }
   };
 
+  const handleAudioCardClick = (card) => {
+    setAudioDetailModal(card);
+  };
+
   return (
     /*
      * ┌─ Home.jsx 右侧内容区 ──────────────────────────────────────────────────┐
@@ -709,6 +715,15 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         }}
         videoDetailFavorited={videoDetailModal ? favorites.has(videoDetailModal.key) : false}
         onVideoDetailFavorite={() => handleToggleFavorite(videoDetailModal.key)}
+        audioDetail={audioDetailModal}
+        onAudioDetailClose={() => setAudioDetailModal(null)}
+        onAudioDetailDownload={() => handleDownloadCard(audioDetailModal)}
+        onAudioDetailDelete={() => {
+          handleDeleteCard(audioDetailModal.genId, audioDetailModal.cardIndex);
+          setAudioDetailModal(null);
+        }}
+        audioDetailFavorited={audioDetailModal ? favorites.has(audioDetailModal.key) : false}
+        onAudioDetailFavorite={() => handleToggleFavorite(audioDetailModal.key)}
       />
       <CreationWorkspace
         isLoggedIn={isLoggedIn}
@@ -740,6 +755,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         onToggleSelect={toggleSelect}
         onSwitchToFrameMode={handleSwitchToFrameMode}
         onVideoCardClick={handleVideoCardClick}
+        onAudioCardClick={handleAudioCardClick}
         onDownloadCard={handleDownloadCard}
         favorites={favorites}
         toggleFavorite={handleToggleFavorite}

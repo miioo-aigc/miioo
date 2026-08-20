@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Dropdown, DropdownItem, FONT } from './CreationSelectorPrimitives';
+import { ModelIcon } from '../ui';
 
 // ─── Model selector ───────────────────────────────────────────────────────────
 export function ModelSelector({ value, onChange, options = [], disabled, onBeforeOpen }) {
@@ -7,6 +8,7 @@ export function ModelSelector({ value, onChange, options = [], disabled, onBefor
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const isActive = open || hovered;
+  const currentLabel = options.find((o) => o.value === value)?.label || value;
 
   const handleClick = () => {
     if (disabled) return;
@@ -48,8 +50,11 @@ export function ModelSelector({ value, onChange, options = [], disabled, onBefor
             opacity: disabled ? 0.45 : 1,
           }}
         >
+          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0, opacity: 0.8 }}>
+            <ModelIcon name={currentLabel} />
+          </span>
           <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
-              {options.find(o => o.value === value)?.label || value}
+              {currentLabel}
           </span>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"
             style={{ flexShrink: 0, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
@@ -59,7 +64,13 @@ export function ModelSelector({ value, onChange, options = [], disabled, onBefor
       }
     >
       {options.map((opt) => (
-        <DropdownItem key={opt.value} label={opt.label} selected={opt.value === value} onClick={() => { onChange(opt.value); setOpen(false); }} />
+        <DropdownItem
+          key={opt.value}
+          label={opt.label}
+          selected={opt.value === value}
+          onClick={() => { onChange(opt.value); setOpen(false); }}
+          icon={<ModelIcon name={opt.label} />}
+        />
       ))}
     </Dropdown>
   );

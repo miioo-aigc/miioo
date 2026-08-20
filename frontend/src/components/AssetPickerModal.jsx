@@ -28,6 +28,16 @@ const CREATIVE_SUB_TABS_IMAGE = ['图片'];
 const CREATIVE_SUB_TABS_VIDEO = ['视频'];
 const CREATIVE_SUB_TABS_MEDIA = ['图片', '视频'];
 const CREATIVE_SUB_TABS_AUDIO = ['配音'];
+const CREATIVE_PAGE_SIZE = 9;
+const CREATIVE_SUB_TAB_TYPE_MAP = { '图片': 'image', '视频': 'video', '配音': 'audio' };
+
+function createCreativePagination() {
+  return {
+    image: { nextPage: 1, hasMore: true, loaded: false },
+    video: { nextPage: 1, hasMore: true, loaded: false },
+    audio: { nextPage: 1, hasMore: true, loaded: false },
+  };
+}
 
 
 // 子 Tab → projectAssetsMap 的 key
@@ -368,7 +378,9 @@ export default function AssetPickerModal({
 
   // 创作资产本地缓存（弹窗内懒加载，避免依赖 CreationPage 初始化）
   const [localCreativeAssets, setLocalCreativeAssets] = useState(null);
-  const [creativeLoadedTabs, setCreativeLoadedTabs] = useState(new Set());
+  const [creativePagination, setCreativePagination] = useState(createCreativePagination);
+  const creativeRequestedPagesRef = useRef(new Set());
+  const creativeSessionRef = useRef(0);
   const [seedanceGroups, setSeedanceGroups] = useState([]);
   const [seedanceAssets, setSeedanceAssets] = useState([]);
   const [seedanceLoading, setSeedanceLoading] = useState(false);
@@ -582,8 +594,10 @@ export default function AssetPickerModal({
       // 关闭弹窗时清理临时选择和懒加载缓存，避免下次打开复用旧会话。
       setSelected(new Set());
       // 关闭时重置创作资产本地缓存，下次打开重新加载
+      creativeSessionRef.current += 1;
+      creativeRequestedPagesRef.current.clear();
       setLocalCreativeAssets(null);
-      setCreativeLoadedTabs(new Set());
+      setCreativePagination(createCreativePagination());
       setLoadingCreativeTabs(new Set());
       setLoadingTabKeys(new Set());
       setSeedanceGroups([]);
@@ -882,67 +896,83 @@ export default function AssetPickerModal({
     })();
   }, [open, activeTab, accept, projectId, activeProjectId, projectSubTab, loadedTabKeys]);
 
-  // 切换到创作资产 tab 时，从后端补齐全部分页。
-  // CreationPage 的 store 只保证当前创作页已加载的分页，不能作为资产库弹窗的完整数据源。
-  useEffect(() => {
-    if (!open || activeTab !== 'creative' || creativeAssetsProp) return;
+  // 创作资产按类型独立分页。页码在请求发出前写入 ref，避免 effect、滚动事件或
+  // React 严格模式重复触发同一页，尤其保证第一页在一次弹窗会话中只请求一次。
+  const loadCreativePage = async (type) => {
+    if (!type || creativeAssetsProp) return;
+    const pageMeta = creativePagination[type];
+    if (!pageMeta?.hasMore) return;
 
-    // 确定当前 sub-tab 对应需要加载的类型
-    const subTabTypeMap = { '图片': 'image', '视频': 'video', '配音': 'audio' };
-    const type = subTabTypeMap[creativeSubTab];
-    if (!type || creativeLoadedTabs.has(type)) return;
+    const page = pageMeta.nextPage;
+    const requestKey = `${type}:${page}`;
+    if (creativeRequestedPagesRef.current.has(requestKey)) return;
+    creativeRequestedPagesRef.current.add(requestKey);
 
+    const requestSession = creativeSessionRef.current;
     setLoadingCreativeTabs(prev => new Set([...prev, type]));
 
-    (async () => {
-      try {
-        const listApi = type === 'image'
-          ? apiListCreationImages
-          : type === 'video'
-            ? apiListCreationVideos
-            : apiListCreationAudios;
-        const pageSize = 100;
-        const allItems = [];
-        let page = 1;
-        let hasMore = true;
+    try {
+      const listApi = type === 'image'
+        ? apiListCreationImages
+        : type === 'video'
+          ? apiListCreationVideos
+          : apiListCreationAudios;
+      const resp = await listApi({ page, page_size: CREATIVE_PAGE_SIZE });
+      if (requestSession !== creativeSessionRef.current) return;
 
-        while (hasMore) {
-          const resp = await listApi({ page, page_size: pageSize });
-          const list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
-          allItems.push(...list);
+      const list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
+      const normalized = list
+        .map(item => normalizeCreativeItem(item, type === 'audio' ? 'audio' : type))
+        .filter(item => type === 'audio' || !!(item.url || item.posterUrl));
+      const assetKey = type === 'audio' ? 'dubbing' : type === 'video' ? 'videos' : 'images';
 
-          const total = Number(resp?.total ?? resp?.count);
-          const explicitHasMore = resp?.has_more ?? resp?.hasMore;
-          hasMore = explicitHasMore !== undefined
-            ? Boolean(explicitHasMore)
-            : Number.isFinite(total) && total > allItems.length
-              ? true
-              : list.length >= pageSize;
-          if (!hasMore || list.length === 0) break;
-          page += 1;
-        }
+      setLocalCreativeAssets(prev => ({
+        images: prev?.images ?? [],
+        videos: prev?.videos ?? [],
+        dubbing: prev?.dubbing ?? [],
+        [assetKey]: dedupePickerAssets([...(prev?.[assetKey] ?? []), ...normalized]),
+      }));
 
-        const normalized = dedupePickerAssets(allItems
-          .map(item => normalizeCreativeItem(item, type === 'audio' ? 'audio' : type))
-          .filter(item => type === 'audio' || !!(item.url || item.posterUrl)));
-        setLocalCreativeAssets(prev => ({
-          images: prev?.images ?? [],
-          videos: prev?.videos ?? [],
-          dubbing: prev?.dubbing ?? [],
-          [type === 'audio' ? 'dubbing' : type === 'video' ? 'videos' : 'images']: normalized,
+      const total = Number(resp?.total ?? resp?.count);
+      const explicitHasMore = resp?.has_more ?? resp?.hasMore;
+      const hasMore = explicitHasMore !== undefined
+        ? Boolean(explicitHasMore)
+        : Number.isFinite(total)
+          ? page * CREATIVE_PAGE_SIZE < total
+          : list.length >= CREATIVE_PAGE_SIZE;
+      setCreativePagination(prev => ({
+        ...prev,
+        [type]: { nextPage: page + 1, hasMore: hasMore && list.length > 0, loaded: true },
+      }));
+    } catch (err) {
+      console.error('[AssetPickerModal] 拉取创作资产失败:', err);
+      if (requestSession === creativeSessionRef.current) {
+        setCreativePagination(prev => ({
+          ...prev,
+          [type]: { ...prev[type], hasMore: false, loaded: true },
         }));
-        setCreativeLoadedTabs(prev => new Set([...prev, type]));
-      } catch (err) {
-        console.error('[AssetPickerModal] 拉取创作资产失败:', err);
-      } finally {
+      }
+    } finally {
+      if (requestSession === creativeSessionRef.current) {
         setLoadingCreativeTabs(prev => {
           const next = new Set(prev);
           next.delete(type);
           return next;
         });
       }
-    })();
-  }, [open, activeTab, creativeSubTab, creativeAssetsProp, creativeLoadedTabs, generationsByTab]);
+    }
+  };
+
+  // 首次进入某个创作资产分类时只请求第一页，后续页由内容区滚动触发。
+  useEffect(() => {
+    if (!open || activeTab !== 'creative' || creativeAssetsProp) return;
+    const type = CREATIVE_SUB_TAB_TYPE_MAP[creativeSubTab];
+    if (!type || creativePagination[type]?.loaded) return;
+    const frame = requestAnimationFrame(() => loadCreativePage(type));
+    return () => cancelAnimationFrame(frame);
+    // loadCreativePage 读取当前分页快照；该 effect 只由当前分类的分页状态驱动首次请求。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, activeTab, creativeSubTab, creativeAssetsProp, creativePagination]);
 
   const projects = useMemo(() => apiProjects ?? [], [apiProjects]);
   const projectAssetsMap = apiAssetsMap ?? {};
@@ -1082,11 +1112,21 @@ export default function AssetPickerModal({
   const currentProjectTabKey = activeProjectId
     ? pickerTabKey(activeProjectId, SUB_TAB_KEY_MAP[projectSubTab])
     : null;
+  const activeCreativeType = CREATIVE_SUB_TAB_TYPE_MAP[creativeSubTab];
+  const creativeLoading = !creativeAssetsProp && loadingCreativeTabs.has(activeCreativeType);
   const contentLoading = activeTab === 'project'
     ? (!activeProjectId || apiProjects === null || Boolean(currentProjectTabKey && loadingTabKeys.has(currentProjectTabKey)))
     : activeTab === 'creative'
-      ? (!creativeAssetsProp && loadingCreativeTabs.has({ 图片: 'image', 视频: 'video', 配音: 'audio' }[creativeSubTab]))
+      ? (creativeLoading && rawAssets.length === 0)
       : seedanceLoading;
+
+  const handleContentScroll = (event) => {
+    if (activeTab !== 'creative' || creativeAssetsProp || creativeLoading) return;
+    const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+    if (scrollHeight - scrollTop - clientHeight <= 120) {
+      loadCreativePage(activeCreativeType);
+    }
+  };
 
 
     // ── 资产卡片悬浮预览处理 ──────────────────────────────────────────────
@@ -1318,7 +1358,7 @@ export default function AssetPickerModal({
         </div>
 
         {/* ── 内容区（可滚动） ── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 24px', display: 'flex', flexDirection: 'column' }}>
+        <div onScroll={handleContentScroll} style={{ flex: 1, overflowY: 'auto', padding: '8px 24px', display: 'flex', flexDirection: 'column' }}>
           {contentLoading ? <LoadingState /> : activeTab === 'seedance' && !activeSeedanceGroup ? (
             seedanceGroups.filter((group) => seedanceSubTab === 'virtual' ? String(group.group_type || '').toUpperCase() === 'AIGC' : String(group.group_type || '').toUpperCase() !== 'AIGC').length === 0 ? <EmptyState /> : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px', paddingTop: '8px', paddingBottom: '8px', alignContent: 'flex-start' }}>
@@ -1360,6 +1400,11 @@ export default function AssetPickerModal({
                 />
                 );
               })}
+              {activeTab === 'creative' && creativeLoading && (
+                <div role="status" aria-label="正在加载更多资产" style={{ width: '100%', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <DotsLoading size={6} color="#2DC3E1" gap={4} />
+                </div>
+              )}
             </div>
           )}
         </div>

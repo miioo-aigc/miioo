@@ -3,7 +3,7 @@
  * @structure-index
  *
  * ─── 展示组合 ───────────────────────────────────────────────
- *   CreationPageOverlays                                      创作页确认弹窗与视频详情 Portal
+ *   CreationPageOverlays                                      创作页确认弹窗与媒体详情 Portal
  *
  * ─── 边界 ───────────────────────────────────────────────────
  *   只接收显式状态、展示文本和动作回调；不调用 API、Store、缓存或任务轮询。
@@ -11,11 +11,13 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离页面确认弹窗和视频详情 Portal 组合
+ *   2026-08-19  新增独立音频详情 Portal，页面仅编排音频详情状态与动作回调
  */
 
 import { createPortal } from 'react-dom';
 import ConfirmDialog from '../ConfirmDialog';
 import CreationVideoDetailModal from '../CreationVideoDetailModal';
+import CreationAudioDetailModal from './CreationAudioDetailModal';
 
 export default function CreationPageOverlays({
   batchDeleteConfirm = false,
@@ -31,6 +33,12 @@ export default function CreationPageOverlays({
   onVideoDetailDelete,
   videoDetailFavorited = false,
   onVideoDetailFavorite,
+  audioDetail,
+  onAudioDetailClose,
+  onAudioDetailDownload,
+  onAudioDetailDelete,
+  audioDetailFavorited = false,
+  onAudioDetailFavorite,
 }) {
   return (
     <>
@@ -79,6 +87,25 @@ export default function CreationPageOverlays({
           onFavorite={onVideoDetailFavorite}
         />,
         document.body
+      )}
+      {audioDetail && createPortal(
+        <CreationAudioDetailModal
+          audioUrl={audioDetail.audioUrl}
+          prompt={audioDetail.prompt}
+          model={audioDetail.model}
+          speed={audioDetail.speed}
+          pitch={audioDetail.pitch}
+          volume={audioDetail.volume}
+          advancedEnabled={audioDetail.advancedEnabled}
+          voiceName={audioDetail.voiceName}
+          voiceId={audioDetail.voiceId}
+          createdAt={audioDetail.createdAt}
+          onClose={onAudioDetailClose}
+          onDownload={onAudioDetailDownload}
+          onDelete={onAudioDetailDelete}
+          favorited={audioDetailFavorited}
+          onFavorite={onAudioDetailFavorite}
+        />, document.body
       )}
     </>
   );

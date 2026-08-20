@@ -78,6 +78,8 @@ export function GenTypeDropdownItem({ label, iconSelected, iconDefault, selected
 
 export function DropdownItem({ label, selected, onClick, icon }) {
   const [hovered, setHovered] = useState(false);
+  const hasIconSlot = icon !== undefined;
+  const iconDimmed = hasIconSlot && !selected && !hovered;
   return (
     <button
       type="button"
@@ -104,7 +106,11 @@ export function DropdownItem({ label, selected, onClick, icon }) {
         transition: 'background 0.15s',
       }}
     >
-      {icon && icon}
+      {hasIconSlot && (
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0, opacity: iconDimmed ? 0.6 : 1, transition: 'opacity 0.15s' }}>
+          {icon}
+        </span>
+      )}
       <span style={{
         overflow: 'hidden',
         textOverflow: 'ellipsis',

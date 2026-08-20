@@ -20,12 +20,13 @@ const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans
 const ITEM_HEIGHT = 36;
 const MENU_MAX_HEIGHT = ITEM_HEIGHT * 5 + 8; // 最多展示 5 项（含容器 padding 8px）
 
-function ModalSelectItem({ label, active, onSelect }) {
+function ModalSelectItem({ label, icon, active, onSelect }) {
   const [hov, setHov] = useState(false);
+  const hasIconSlot = icon !== undefined;
   return (
     <div
       style={{
-        display: 'flex', alignItems: 'center', height: '36px', paddingInline: '12px',
+        display: 'flex', alignItems: 'center', gap: '8px', height: '36px', paddingInline: '12px',
         borderRadius: '6px', cursor: 'pointer',
         backgroundColor: active ? 'rgba(255,255,255,0.08)' : hov ? 'rgba(255,255,255,0.05)' : 'transparent',
         color: active || hov ? '#FFFFFF' : 'rgba(255,255,255,0.60)',
@@ -37,12 +38,17 @@ function ModalSelectItem({ label, active, onSelect }) {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
     >
+      {hasIconSlot && (
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0, opacity: active || hov ? 1 : 0.6, transition: 'opacity 0.08s' }}>
+          {icon}
+        </span>
+      )}
       {label}
     </div>
   );
 }
 
-export default function PanelSelect({ label, value, options = [], onChange, disabled = false }) {
+export default function PanelSelect({ label, value, options = [], onChange, disabled = false, startIcon }) {
   const [open, setOpen] = useState(false);
   const [hov, setHov] = useState(false);
   const ref = useRef(null);
@@ -88,6 +94,7 @@ export default function PanelSelect({ label, value, options = [], onChange, disa
           onMouseEnter={() => { if (!disabled) setHov(true); }}
           onMouseLeave={() => setHov(false)}
         >
+          {startIcon}
           <span style={{ flex: 1, fontSize: '14px', lineHeight: '18px', color: disabled ? 'rgba(255,255,255,0.40)' : '#FFFFFF', fontFamily: FONT }}>{value}</span>
           {!disabled && (
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
@@ -104,9 +111,19 @@ export default function PanelSelect({ label, value, options = [], onChange, disa
             maxHeight: MENU_MAX_HEIGHT, overflowY: 'auto', overflowX: 'hidden',
             boxSizing: 'border-box',
           }}>
-            {options.map((opt) => (
-              <ModalSelectItem key={opt} label={opt} active={opt === value} onSelect={() => { onChange(opt); setOpen(false); }} />
-            ))}
+            {options.map((opt) => {
+              const item = typeof opt === 'object' ? opt : { label: opt };
+              const key = typeof opt === 'object' ? (opt.value ?? opt.label) : opt;
+              return (
+                <ModalSelectItem
+                  key={String(key)}
+                  label={item.label}
+                  icon={item.icon}
+                  active={item.label === value}
+                  onSelect={() => { onChange(item.label); setOpen(false); }}
+                />
+              );
+            })}
           </div>
         )}
       </div>

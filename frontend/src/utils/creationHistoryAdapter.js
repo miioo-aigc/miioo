@@ -99,6 +99,7 @@ export function dedupeCreationHistoryList(list, type) {
 }
 
 export function normalizeCreationHistoryItem(item, type) {
+  const metadata = item.metadata_json || item.metadata || {};
   // video 优先使用视频地址；图片和音频沿用原图、文件或通用地址。
   const rawUrl = type === 'video'
     ? (item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '')
@@ -195,6 +196,13 @@ export function normalizeCreationHistoryItem(item, type) {
     resolution: item.resolution || item.size || '',
     duration: item.duration || undefined,
     model: item.model || '',
+    voiceName: item.voice_name || item.voiceName || metadata.voice_name || metadata.voiceName || '',
+    voiceId: item.voice_id || item.voiceId || metadata.voice_id || metadata.voiceId || '',
+    voiceSource: item.voice_source || item.voiceSource || metadata.voice_source || metadata.voiceSource || '',
+    speed: item.speed ?? metadata.speed,
+    pitch: item.pitch ?? metadata.pitch,
+    volume: item.volume ?? metadata.volume,
+    advancedEnabled: item.advanced_enabled ?? item.advancedEnabled ?? metadata.advanced_enabled ?? metadata.advancedEnabled,
     prompt: item.prompt || '',
     refImages,
     refMode: type === 'video' ? refMode : undefined,
@@ -228,6 +236,13 @@ export function pickCreationHistoryCacheItem(item, tab) {
     id: item.id,
     prompt: item.prompt || '',
     model: item.model || '',
+    voice_name: item.voice_name || item.voiceName || '',
+    voice_id: item.voice_id || item.voiceId || item.metadata_json?.voice_id || item.metadata_json?.voiceId || item.metadata?.voice_id || item.metadata?.voiceId || '',
+    voice_source: item.voice_source || item.voiceSource || '',
+    speed: item.speed,
+    pitch: item.pitch,
+    volume: item.volume,
+    advanced_enabled: item.advanced_enabled ?? item.advancedEnabled,
     ratio: item.ratio || item.aspect_ratio || '16:9',
     resolution: item.resolution || item.size || '',
     duration: item.duration || undefined,
@@ -270,6 +285,7 @@ export function pickCreationHistoryCacheItem(item, tab) {
   return {
     ...base,
     audio_url: item.audio_url || item.audioUrl || item.file_url || item.url || item.original_url || '',
+    metadata_json: item.metadata_json || item.metadata || undefined,
   };
 }
 

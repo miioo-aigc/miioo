@@ -54,7 +54,7 @@ function StarIcon({ filled = false, strokeColor = '#FFFFFF' }) {
   );
 }
 
-export default function CreationAudioResultCard({ status, audioUrl, prompt, onDownload, onDelete, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
+export default function CreationAudioResultCard({ status, audioUrl, prompt, onDownload, onDelete, onCardClick, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
   const [hovered, setHovered] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
@@ -88,6 +88,7 @@ export default function CreationAudioResultCard({ status, audioUrl, prompt, onDo
         onMouseLeave={() => setHovered(false)}
         onClick={() => {
           if (batchMode && isDone) onToggleSelect?.();
+          if (!batchMode && isDone) onCardClick?.();
         }}
       >
         {status === 'loading' ? (

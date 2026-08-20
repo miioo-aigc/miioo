@@ -9,9 +9,27 @@
  *   只接收展示值、选项和变更回调，不调用模型 API、不读取页面状态
  */
 import PanelSelect from './PanelSelect';
+import { ModelIcon } from '../ui';
 
 export function GenerationModelField({ label = '选择模型', value, options, disabled = false, onChange }) {
-  return <PanelSelect label={label} value={value} options={options} disabled={disabled} onChange={onChange} />;
+  const modelOptions = (options || []).map((opt) => {
+    const optLabel = typeof opt === 'object' ? opt.label : opt;
+    return { label: optLabel, icon: <ModelIcon name={optLabel} /> };
+  });
+  return (
+    <PanelSelect
+      label={label}
+      value={value}
+      options={modelOptions}
+      disabled={disabled}
+      onChange={onChange}
+      startIcon={(
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0, opacity: 0.8 }}>
+          <ModelIcon name={value} />
+        </span>
+      )}
+    />
+  );
 }
 
 export function GenerationOptionFields({ duration, durationOptions, resolution, resolutionOptions, onDurationChange, onResolutionChange, showDuration = false }) {

@@ -83,6 +83,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   dubbingAdvancedEnabled = false, onDubbingAdvancedChange }) {
   const [liveMaterialModalOpen, setLiveMaterialModalOpen] = useState(false);
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
+  const [selectedVoiceSource, setSelectedVoiceSource] = useState('');
   const [selectedVoiceId, setSelectedVoiceId] = useState('');
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const [advancedExitConfirmOpen, setAdvancedExitConfirmOpen] = useState(false);
@@ -146,6 +147,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     text: "",
     voiceId: "",
     voiceName: "",
+    voiceSource: "",
     dubbingSpeed: undefined,
     dubbingPitch: undefined,
     dubbingVolume: undefined,
@@ -250,11 +252,12 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       soundEnabled,
       selectedVoiceId,
       selectedVoiceName,
+      selectedVoiceSource,
       dubbingSpeed,
       dubbingPitch,
       dubbingVolume,
     };
-  }, [count, dubbingPitch, dubbingSpeed, dubbingVolume, getCurrentFiles, getPromptSnapshot, ratio, refMode, resolution, selectedVoiceId, selectedVoiceName, soundEnabled, videoDuration, videoRatio, videoResolution]);
+  }, [count, dubbingPitch, dubbingSpeed, dubbingVolume, getCurrentFiles, getPromptSnapshot, ratio, refMode, resolution, selectedVoiceId, selectedVoiceName, selectedVoiceSource, soundEnabled, videoDuration, videoRatio, videoResolution]);
 
   const persistDraft = useCallback((force = false) => {
     if (!force && hydratedGenTypeRef.current !== genType) return;
@@ -272,6 +275,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       clearFrameFiles();
       setSelectedVoiceId('');
       setSelectedVoiceName('');
+      setSelectedVoiceSource('');
     };
 
     window.addEventListener(CREATION_DRAFTS_CLEARED_EVENT, handleDraftsCleared);
@@ -321,6 +325,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       if (draft?.soundEnabled !== undefined) setSoundEnabled(draft.soundEnabled);
       setSelectedVoiceId(draft?.selectedVoiceId ?? '');
       setSelectedVoiceName(draft?.selectedVoiceName ?? '');
+      setSelectedVoiceSource(draft?.selectedVoiceSource ?? '');
       if (draft?.dubbingSpeed !== undefined) setDubbingSpeed(draft.dubbingSpeed);
       if (draft?.dubbingPitch !== undefined) setDubbingPitch(draft.dubbingPitch);
       if (draft?.dubbingVolume !== undefined) setDubbingVolume(draft.dubbingVolume);
@@ -361,6 +366,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     resolution,
     selectedVoiceId,
     selectedVoiceName,
+    selectedVoiceSource,
     soundEnabled,
     videoDuration,
     videoRatio,
@@ -574,6 +580,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     if (backup.dubbingVolume !== undefined) setDubbingVolume(backup.dubbingVolume);
     setSelectedVoiceId(backup.voiceId || '');
     setSelectedVoiceName(backup.voiceName || '');
+    setSelectedVoiceSource(backup.voiceSource || '');
   };
 
   const handleSend = async () => {
@@ -594,6 +601,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       lastFrameFile,
       voiceId: selectedVoiceId || "",
       voiceName: selectedVoiceName || "",
+      voiceSource: selectedVoiceSource || "",
       dubbingSpeed,
       dubbingPitch,
       dubbingVolume,
@@ -606,6 +614,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     resetDubbingParams();
     setSelectedVoiceId('');
     setSelectedVoiceName('');
+    setSelectedVoiceSource('');
     // 视频模式：把「全能参考」/「首尾帧」映射为当前模型支持的实际 reference_mode
     let actualRefMode = refMode;
     if (genType === 'video') {
@@ -640,6 +649,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       })() : {}),
       // 声调和音量先保留在前端状态链路，待后端能力就绪后再加入生成参数。
       ...(genType === 'dubbing' ? { speed: dubbingSpeed, voiceId: selectedVoiceId, voiceName: selectedVoiceName } : {}),
+      ...(genType === 'dubbing' ? { voiceSource: selectedVoiceSource, pitch: dubbingPitch, volume: dubbingVolume, advancedEnabled: dubbingAdvancedEnabled } : {}),
       files: savedFiles.filter(f => !f.isLiveMaterial),
       onFail: (fallbackPrompt) => {
         // 失败时回退输入框内容（含标签 HTML）和附件
@@ -653,6 +663,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         setDubbingVolume(dubbingVolume);
         setSelectedVoiceId(selectedVoiceId || '');
         setSelectedVoiceName(selectedVoiceName || '');
+        setSelectedVoiceSource(selectedVoiceSource || '');
       },
       onCancel: (genType === 'dubbing' || genType === 'music') ? restoreSavedInput : undefined,
     });
@@ -695,7 +706,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         acceptAttr: uploadAcceptAttr,
         voiceId: selectedVoiceId,
         voiceName: selectedVoiceName,
-        onVoiceRemove: () => { setSelectedVoiceId(''); setSelectedVoiceName(''); },
+        onVoiceRemove: () => { setSelectedVoiceId(''); setSelectedVoiceName(''); setSelectedVoiceSource(''); },
         onOpenVoiceModal: () => setVoiceModalOpen(true),
       }}
       prompt={{
@@ -791,9 +802,10 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         model,
         voiceModalOpen,
         onVoiceModalClose: () => setVoiceModalOpen(false),
-        onVoiceConfirm: (voiceId, voiceName) => {
+        onVoiceConfirm: (voiceId, voiceName, _tab, voiceSource) => {
           setSelectedVoiceId(voiceId);
           setSelectedVoiceName(voiceName);
+          setSelectedVoiceSource(voiceSource || '');
           setVoiceModalOpen(false);
         },
         showToast,

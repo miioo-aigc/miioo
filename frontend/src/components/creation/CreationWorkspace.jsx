@@ -28,7 +28,7 @@ export default function CreationWorkspace({
   font, fontMedium, generations, onGenerate, genType, isGenerating,
   onGenTypeChange, model, onModelChange, modelOptions, creationParams,
   capabilitiesMap, onDeleteCard, selected, onToggleSelect, onSwitchToFrameMode,
-  onVideoCardClick, onDownloadCard, favorites, toggleFavorite, showToast, historyLoading,
+  onVideoCardClick, onAudioCardClick, onDownloadCard, favorites, toggleFavorite, showToast, historyLoading,
   historyHasMore, onLoadMore, autoFillLimit, activeCount, onBeforeModelOpen,
   onCancelGeneration, renderInputCard,
 }) {
@@ -44,7 +44,7 @@ export default function CreationWorkspace({
           {isLoggedIn === false ? (
             <CreationLoginEmptyState onLoginClick={onLoginClick} />
           ) : generations.length > 0 || historyLoading ? (
-            <CreationResultState generations={generations} onGenerate={onGenerate} genType={genType} isGenerating={isGenerating} onGenTypeChange={onGenTypeChange} model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap} onDeleteCard={onDeleteCard} batchMode={batchMode} selected={selected} onToggleSelect={onToggleSelect} onSwitchToFrameMode={onSwitchToFrameMode} onVideoCardClick={onVideoCardClick} onDownloadCard={onDownloadCard} favorites={favorites} toggleFavorite={toggleFavorite} showToast={showToast} historyLoading={historyLoading} historyHasMore={historyHasMore} onLoadMore={onLoadMore} autoFillLimit={autoFillLimit} activeCount={activeCount} onBeforeModelOpen={onBeforeModelOpen} onCancelGeneration={onCancelGeneration} renderInputCard={renderInputCard} dubbingAdvancedEnabled={dubbingAdvancedEnabled} onDubbingAdvancedChange={setDubbingAdvancedEnabled} />
+            <CreationResultState generations={generations} onGenerate={onGenerate} genType={genType} isGenerating={isGenerating} onGenTypeChange={onGenTypeChange} model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap} onDeleteCard={onDeleteCard} batchMode={batchMode} selected={selected} onToggleSelect={onToggleSelect} onSwitchToFrameMode={onSwitchToFrameMode} onVideoCardClick={onVideoCardClick} onAudioCardClick={onAudioCardClick} onDownloadCard={onDownloadCard} favorites={favorites} toggleFavorite={toggleFavorite} showToast={showToast} historyLoading={historyLoading} historyHasMore={historyHasMore} onLoadMore={onLoadMore} autoFillLimit={autoFillLimit} activeCount={activeCount} onBeforeModelOpen={onBeforeModelOpen} onCancelGeneration={onCancelGeneration} renderInputCard={renderInputCard} dubbingAdvancedEnabled={dubbingAdvancedEnabled} onDubbingAdvancedChange={setDubbingAdvancedEnabled} />
           ) : (
             <CreationEmptyState onGenerate={onGenerate} genType={genType} isGenerating={isGenerating} onCancelGeneration={onCancelGeneration} onGenTypeChange={onGenTypeChange} showToast={showToast} activeCount={activeCount} model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap} onBeforeModelOpen={onBeforeModelOpen} renderInputCard={renderInputCard} dubbingAdvancedEnabled={dubbingAdvancedEnabled} onDubbingAdvancedChange={setDubbingAdvancedEnabled} />
           )}

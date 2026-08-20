@@ -14,7 +14,7 @@
  *   2026-07-15  从 SubjectPage 抽离主体生图选项区
  *   2026-07-15  改为复用 components/ui/Select 基础选择器
  */
-import { Select } from '../ui';
+import { ModelIcon, Select } from '../ui';
 
 export default function SubjectGenerationOptions({
   imageModels = [],
@@ -37,7 +37,16 @@ export default function SubjectGenerationOptions({
         width="100%"
         value={selectedModel}
         displayValue={selectedModelLabel}
-        options={imageModels}
+        options={imageModels.map((m) => ({ ...m, icon: <ModelIcon name={m.label} /> }))}
+        startIcon={(
+          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0, opacity: 0.8 }}>
+            <ModelIcon name={selectedModelLabel} />
+          </span>
+        )}
+        
+        selectedOptionColor="#FFFFFF"
+        selectedOptionBackground="rgba(255,255,255,0.08)"
+        optionHoverBackground="rgba(255,255,255,0.06)"
         loading={modelsLoading}
         loadingText="加载模型中…"
         onChange={onModelChange}
@@ -47,6 +56,9 @@ export default function SubjectGenerationOptions({
         width="100%"
         value={selectedRatio}
         options={availableRatios}
+        selectedOptionColor="#FFFFFF"
+        selectedOptionBackground="rgba(255,255,255,0.08)"
+        optionHoverBackground="rgba(255,255,255,0.06)"
         onChange={onRatioChange}
       />
       <Select
@@ -54,6 +66,9 @@ export default function SubjectGenerationOptions({
         width="100%"
         value={selectedResolution}
         options={availableResolutions}
+        selectedOptionColor="#FFFFFF"
+        selectedOptionBackground="rgba(255,255,255,0.08)"
+        optionHoverBackground="rgba(255,255,255,0.06)"
         onChange={onResolutionChange}
       />
     </>

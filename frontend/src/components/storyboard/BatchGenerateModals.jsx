@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Toggle from '../Toggle';
 import Checkbox from '../Checkbox';
-import { Button, Select } from '../ui';
+import { Button, ModelIcon, Select } from '../ui';
 import { apiListModels } from '../../api/config';
 import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter';
 
@@ -85,13 +85,19 @@ function ModalActions({ onClose, onConfirm, onlyUndrafted, onOnlyUndraftedChange
 }
 
 function ModelSelect({ modelList, model, loading, onChange }) {
+  const currentLabel = modelList.find((item) => item.value === model)?.label || model;
   return (
     <Select
       label="选择模型"
       width="100%"
       value={model}
-      displayValue={loading ? '加载中...' : (modelList.find((item) => item.value === model)?.label || '请选择')}
-      options={modelList}
+      displayValue={loading ? '加载中...' : (currentLabel || '请选择')}
+      options={modelList.map((item) => ({ ...item, icon: <ModelIcon name={item.label} /> }))}
+      startIcon={(
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0, opacity: 0.8 }}>
+          <ModelIcon name={currentLabel} />
+        </span>
+      )}
       loading={loading}
       selectedOptionColor="#FFFFFF"
       selectedOptionBackground="rgba(255,255,255,0.08)"

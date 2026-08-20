@@ -43,6 +43,40 @@ function getOptionLabel(option) {
   return typeof option === 'object' ? option.label : option;
 }
 
+function SelectOptionItem({ option, selected, selectedOptionColor, selectedOptionBackground, optionHoverBackground, onSelect }) {
+  const [hovered, setHovered] = useState(false);
+  const optionLabel = getOptionLabel(option);
+  const optionIcon = typeof option === 'object' ? option.icon : undefined;
+  const hasIconSlot = optionIcon !== undefined;
+
+  return (
+    <div
+      role="option"
+      aria-selected={selected}
+      onClick={onSelect}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '8px',
+        padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: FONT, fontSize: '14px', lineHeight: '18px',
+        color: selected ? selectedOptionColor : '#FFFFFFCC',
+        background: selected ? selectedOptionBackground : hovered ? optionHoverBackground : 'transparent',
+        transition: 'background 80ms',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {hasIconSlot && (
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0, opacity: selected || hovered ? 1 : 0.6, transition: 'opacity 80ms' }}>
+          {optionIcon}
+        </span>
+      )}
+      <EllipsisTooltipText
+        text={String(optionLabel ?? '')}
+        style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      />
+    </div>
+  );
+}
+
 function EllipsisTooltipText({ text, style }) {
   const textRef = useRef(null);
   const timerRef = useRef(null);
@@ -300,32 +334,19 @@ export default function Select({
         >
           {menuContent ? menuContent({ close: () => setOpen(false) }) : options.map((option) => {
             const optionValue = getOptionValue(option);
-            const optionLabel = getOptionLabel(option);
-            const selected = value === optionValue;
-
             return (
-              <div
+              <SelectOptionItem
                 key={String(optionValue)}
-                role="option"
-                aria-selected={selected}
-                onClick={() => {
+                option={option}
+                selected={value === optionValue}
+                selectedOptionColor={selectedOptionColor}
+                selectedOptionBackground={selectedOptionBackground}
+                optionHoverBackground={optionHoverBackground}
+                onSelect={() => {
                   onChange?.(optionValue);
                   setOpen(false);
                 }}
-                style={{
-                  padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: FONT, fontSize: '14px', lineHeight: '18px',
-                  color: selected ? selectedOptionColor : '#FFFFFFCC',
-                  background: selected ? selectedOptionBackground : 'transparent',
-                  transition: 'background 80ms',
-                }}
-                onMouseEnter={(event) => { if (!selected) event.currentTarget.style.background = optionHoverBackground; }}
-                onMouseLeave={(event) => { event.currentTarget.style.background = selected ? selectedOptionBackground : 'transparent'; }}
-              >
-                <EllipsisTooltipText
-                  text={String(optionLabel ?? '')}
-                  style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                />
-              </div>
+              />
             );
           })}
         </div>,

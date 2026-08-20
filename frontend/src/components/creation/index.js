@@ -5,6 +5,7 @@ export { default as CreationFileCard } from './CreationFileCard';
 export { default as CreationVideoResultCard } from './CreationVideoResultCard';
 export { default as CreationImageResultCard } from './CreationImageResultCard';
 export { default as CreationAudioResultCard } from './CreationAudioResultCard';
+export { default as CreationAudioDetailModal } from './CreationAudioDetailModal';
 export { default as CreationResultState } from './CreationResultState';
 export { default as CreationEmptyState } from './CreationEmptyState';
 export { default as CreationLoginEmptyState } from './CreationLoginEmptyState';

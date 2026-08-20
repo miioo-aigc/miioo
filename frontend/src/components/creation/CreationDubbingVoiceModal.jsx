@@ -97,6 +97,7 @@ function normalizeFavoriteAudio(audio) {
     tags: tags.length ? tags : ["创作配音"],
     description: audio.prompt || audio.text || audio.description || "暂无音频描述",
     audioUrl: audio.audio_url || audio.audioUrl || audio.original_url || audio.originalUrl || audio.file_url || audio.fileUrl || audio.url,
+    source: audio.source || audio.provider || audio.provider_name || "收藏音色",
   };
 }
 
@@ -117,6 +118,7 @@ function normalizeOfficialVoice(voice) {
     ageGroup: voice.age_group || voice.ageGroup || metadata?.ageGroup || "",
     audioUrl: voice.preview_url || voice.previewUrl || voice.source_audio_url || voice.sourceAudioUrl,
     sortOrder: Number(voice.sort_order ?? voice.sortOrder ?? 0),
+    source: voice.source || voice.provider || voice.provider_name || "MiniMax 官方音色库",
   };
 }
 
@@ -164,7 +166,7 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast 
 
   const handleConfirm = () => {
     const selectedVoice = visibleVoices.find((voice) => voice.id === selectedVoiceId);
-    if (selectedVoice) onConfirm?.(selectedVoice.id, selectedVoice.name, activeTab);
+    if (selectedVoice) onConfirm?.(selectedVoice.id, selectedVoice.name, activeTab, selectedVoice.source);
     onClose?.();
   };
 

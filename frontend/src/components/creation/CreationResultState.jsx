@@ -64,6 +64,7 @@ export default function CreationResultState({
   onToggleSelect,
   onSwitchToFrameMode,
   onVideoCardClick,
+  onAudioCardClick,
   onDownloadCard,
   favorites,
   toggleFavorite,
@@ -97,6 +98,13 @@ export default function CreationResultState({
       prompt: gen.prompt,
       promptHTML: gen.promptHTML || '',
       model: gen.model,
+      voiceName: gen.voiceName,
+      voiceId: gen.voiceId || '',
+      voiceSource: gen.voiceSource,
+      speed: gen.speed,
+      pitch: gen.pitch,
+      volume: gen.volume,
+      advancedEnabled: gen.advancedEnabled,
       ratio: gen.ratio,
       resolution: gen.resolution,
       duration: gen.duration,
@@ -238,6 +246,7 @@ export default function CreationResultState({
                   onToggleFavorite={() => toggleFavorite?.(key)}
                   onDownload={() => onDownloadCard?.(card)}
                   onDelete={() => onDeleteCard?.(card.genId, card.cardIndex)}
+                  onCardClick={() => onAudioCardClick?.(card)}
                 />
               );
             }

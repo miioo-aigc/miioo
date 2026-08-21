@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../../api/creation';
+import { apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiGetCreationAudio, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../../api/creation';
 import { useCreationStore } from '../../stores/creationStore';
 import { useAssetSelection } from '../../hooks/useAssetSelection';
 import { generationsToDays } from '../../utils/creativeDaysAdapter';
@@ -9,6 +9,7 @@ import { dedupeByMediaAliases, dedupeCreationHistoryList, getCreationAssetMediaA
 import { getCreativeBatchDeleteRequest } from '../../utils/assetsBatchAdapter';
 import { downloadBlob } from '../../utils/downloadBlob';
 import { getCreativeAssetDownloadInfo } from '../../utils/creativeAssetDownload';
+import { normalizeCreationAudioDetail } from '../../utils/creationAudioDetailAdapter';
 import ConfirmDialog from '../ConfirmDialog';
 import { AssetsTabBar } from './AssetsTabs';
 import AssetsBatchToolbar from './AssetsBatchToolbar';
@@ -105,7 +106,12 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     const speed = item.speed ?? metadata.speed;
     const pitch = item.pitch ?? metadata.pitch;
     const volume = item.volume ?? metadata.volume;
-    const advancedEnabled = item.advanced_enabled ?? item.advancedEnabled ?? metadata.advanced_enabled ?? metadata.advancedEnabled;
+    const advancedEnabled = item.advanced_mode_enabled
+      ?? item.advanced_enabled
+      ?? item.advancedEnabled
+      ?? metadata.advanced_mode_enabled
+      ?? metadata.advanced_enabled
+      ?? metadata.advancedEnabled;
     return {
       id,
       backendId: item.id,
@@ -163,6 +169,22 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   function getCreativeMediaAliases(generation) {
     const card = generation?.cards?.[0];
     return getCreationAssetMediaAliases(card);
+  }
+
+  function openAudioDetail(card) {
+    setAudioDetail(card);
+    const audioId = card.backendId || card.audioId || card.id;
+    if (!audioId) return;
+    apiGetCreationAudio(audioId).then((detail) => {
+      setAudioDetail((current) => {
+        const currentAudioId = current?.backendId || current?.audioId || current?.id;
+        return current && String(currentAudioId) === String(audioId)
+          ? normalizeCreationAudioDetail(detail, current)
+          : current;
+      });
+    }).catch((error) => {
+      console.warn('[AssetsCreativePanel] 获取创作音频详情失败，保留列表详情:', error);
+    });
   }
 
   // 根据视口计算首屏所需条数
@@ -543,7 +565,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
                     onToggleFavorite={() => toggleStar(card.id, card.backendId, card.type)}
                     onDownload={() => downloadCreativeAsset(card)}
                     onDelete={() => deleteSingle(card)}
-                    onCardClick={() => setAudioDetail(card)}
+                    onCardClick={() => openAudioDetail(card)}
                   />
                 ) : (
                   <AssetCard
@@ -597,6 +619,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
           advancedEnabled={audioDetail.advancedEnabled}
           voiceName={audioDetail.voiceName}
           voiceId={audioDetail.voiceId}
+          voiceOriginLabel={audioDetail.voiceOriginLabel}
           createdAt={audioDetail.createdAt}
           onClose={() => setAudioDetail(null)}
           onDownload={() => downloadCreativeAsset(audioDetail)}

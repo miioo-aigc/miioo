@@ -3,11 +3,11 @@ import { createPortal } from 'react-dom';
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 const EMOTIONS = [
-  { key: 'neutral', label: '中性', tone: 'positive' },
-  { key: 'afraid', label: '害怕', tone: 'negative' },
+  { key: 'calm', label: '中性', tone: 'positive' },
+  { key: 'fearful', label: '害怕', tone: 'negative' },
   { key: 'happy', label: '开心', tone: 'positive' },
   { key: 'sad', label: '难过', tone: 'negative' },
-  { key: 'lively', label: '生动', tone: 'positive' },
+  { key: 'fluent', label: '生动', tone: 'positive' },
   { key: 'angry', label: '生气', tone: 'negative' },
   { key: 'surprised', label: '惊讶', tone: 'positive' },
   { key: 'disgusted', label: '厌恶', tone: 'negative' },

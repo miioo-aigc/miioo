@@ -12,7 +12,7 @@
  *
  * ─── 数据边界 ─────────────────────────────────────────────────────
  *   只管理卡片内部悬停、播放视觉态和收藏动画；下载、删除、收藏与
- *   批量选中通过显式回调交给页面，不调用 API、不读取 Store。
+ *   批量选中、详情打开通过显式回调交给页面，不调用 API、不读取 Store。
  */
 
 import { useState } from 'react';
@@ -86,6 +86,7 @@ export default function AssetsAudioCard({
   onDelete,
   onStar,
   onSelect,
+  onOpen,
 }) {
   const [hovered, setHovered] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -124,7 +125,7 @@ export default function AssetsAudioCard({
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={() => { if (batchMode) onSelect?.(); }}
+      onClick={() => { if (batchMode) onSelect?.(); else onOpen?.(); }}
     >
       {batchMode ? (
         <div style={{
@@ -231,4 +232,3 @@ export default function AssetsAudioCard({
     </div>
   );
 }
-

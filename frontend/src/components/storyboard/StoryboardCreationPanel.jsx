@@ -233,7 +233,7 @@ export default function StoryboardCreationPanel({ initialTab = 'image', onTabCha
       </header>
       <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
         <section style={{ width: '457px', minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#161616' }}>{children}</section>
-        <aside style={{ width: '141px', flex: '0 0 141px', minHeight: 0, display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px 24px 8px 16px', boxSizing: 'border-box', overflowY: 'auto', background: '#161616', borderLeft: '1px solid #FFFFFF14' }}>
+        <aside style={{ width: '141px', flex: '0 0 141px', minHeight: 0, display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 24px 8px 16px', boxSizing: 'border-box', overflowY: 'auto', background: '#161616', borderLeft: '1px solid #FFFFFF14' }}>
           <UploadEntry onUpload={handleUpload} onOpenAssets={() => setAssetPickerOpen(true)} />
           {candidates.map((item, index) => <CandidateItem key={item.id || item.url || index} item={item} onSelect={() => onFinalizeToggle?.(item)} onPreview={onPreview} onDownload={onDownload} />)}
         </aside>

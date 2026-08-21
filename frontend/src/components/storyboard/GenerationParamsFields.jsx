@@ -9,7 +9,7 @@
  *   只接收展示值、选项和变更回调，不调用模型 API、不读取页面状态
  */
 import PanelSelect from './PanelSelect';
-import { ModelIcon } from '../ui';
+import { ModelIcon, ReferenceModeIcon } from '../ui';
 
 export function GenerationModelField({ label = '选择模型', value, options, disabled = false, onChange }) {
   const modelOptions = (options || []).map((opt) => {
@@ -26,6 +26,29 @@ export function GenerationModelField({ label = '选择模型', value, options, d
       startIcon={(
         <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0, opacity: 0.8 }}>
           <ModelIcon name={value} />
+        </span>
+      )}
+    />
+  );
+}
+
+export function GenerationReferenceModeField({ value, options, disabled = false, onChange }) {
+  const referenceModeOptions = (options || []).map((option) => {
+    const label = typeof option === 'object' ? option.label : option;
+    const mode = typeof option === 'object' ? option.value : label;
+    return { label, value: mode, icon: <ReferenceModeIcon mode={mode} /> };
+  });
+
+  return (
+    <PanelSelect
+      label="参考模式"
+      value={value}
+      options={referenceModeOptions}
+      disabled={disabled}
+      onChange={onChange}
+      startIcon={(
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0, color: '#FFFFFF', opacity: 0.8 }}>
+          <ReferenceModeIcon mode={value} />
         </span>
       )}
     />

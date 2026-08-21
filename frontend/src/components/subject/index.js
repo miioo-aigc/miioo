@@ -24,3 +24,4 @@ export { default as SubjectEditorSlot } from './SubjectEditorSlot';
 export { default as SubjectGridViewport } from './SubjectGridViewport';
 export { default as SubjectWorkspace } from './SubjectWorkspace';
 export { normalizeSubjectImageModels, getFallbackSubjectImageModels } from './SubjectModelAdapter';
+export { buildSubjectCertificationMap } from './SubjectCertificationAdapter';

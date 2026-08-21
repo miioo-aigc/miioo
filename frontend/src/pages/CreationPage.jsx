@@ -9,7 +9,7 @@
  *   文件类型常量与判断工具                               components/creation/CreationFileUtils.js
  *   历史响应、记录标准化与缓存载荷适配                     utils/creationHistoryAdapter.js
  *   刷新任务快照、占位卡片和轮询结果适配                   utils/creationTaskAdapter.js
- *   视频详情 asset_bindings 适配和详情卡片合并                    utils/creationDetailAdapter.js
+ *   视频详情与音频详情字段适配                                    utils/creationDetailAdapter.js / creationAudioDetailAdapter.js
  *
  * ─── 页面入口与状态编排 ──────────────────────────────── L123–L657
  *   CreationPage 状态、Store、历史缓存和分页                       L123–L268
@@ -82,14 +82,16 @@
  *   2026-08-07  配音生成接入 600 秒轮询上限、提示词保留和再次点击发送停止前端请求/轮询
  *   2026-08-11  修复不同创作 Tab 的生成禁用状态串扰，输入区按当前创作类型隔离
  *   2026-08-19  新增音频详情状态与回调接线；音色快照和媒体元数据由独立弹窗展示
+ *   2026-08-21  音频详情打开后调用 AudioClip 详情接口补全配音参数
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { apiPollCreationTask, apiPollCreationMusicTask, apiGetCreationVideo, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../api/creation';
+import { apiPollCreationTask, apiPollCreationMusicTask, apiGetCreationVideo, apiGetCreationAudio, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { apiListModels } from '../api/config';
 import { adaptModels, getModelParams } from '../utils/modelAdapter';
 import { mergeCreationVideoDetail } from '../utils/creationDetailAdapter';
+import { normalizeCreationAudioDetail } from '../utils/creationAudioDetailAdapter';
 import {
   buildCreationHistoryCachePayload,
   dedupeCreationHistoryList,
@@ -659,6 +661,18 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
 
   const handleAudioCardClick = (card) => {
     setAudioDetailModal(card);
+    const audioId = card.audioId || card.backendId || card.id;
+    if (!audioId) return;
+    apiGetCreationAudio(audioId).then((detail) => {
+      setAudioDetailModal((current) => {
+        const currentAudioId = current?.audioId || current?.backendId || current?.id;
+        return current && String(currentAudioId) === String(audioId)
+          ? normalizeCreationAudioDetail(detail, current)
+          : current;
+      });
+    }).catch((error) => {
+      console.warn('[CreationPage] 获取创作音频详情失败，保留列表详情:', error);
+    });
   };
 
   return (

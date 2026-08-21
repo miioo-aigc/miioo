@@ -148,8 +148,8 @@ function AddRealPersonCard({ onClick }) {
   );
 }
 
-export default function SeedanceAssetLibraryPanel() {
-  const [activeTab, setActiveTab] = useState('real');
+export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [folders, setFolders] = useState([]);
   const [virtualFolders, setVirtualFolders] = useState([]);
   const [liveMaterialModalOpen, setLiveMaterialModalOpen] = useState(false);

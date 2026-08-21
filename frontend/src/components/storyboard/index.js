@@ -50,8 +50,8 @@ export { default as AIRegenerateStoryboardModal } from './AIRegenerateStoryboard
 export { MENTION_TYPE_LABEL, MENTION_TYPE_COLOR, MENTION_TABS } from './PanelPromptConstants';
 export { SubjectTag, PromptCharacterCount } from './PanelPromptPrimitives';
 export { default as ReferenceMentionDropdown } from './ReferenceMentionDropdown';
-export { GenerationModelField, GenerationOptionFields } from './GenerationParamsFields';
+export { GenerationModelField, GenerationOptionFields, GenerationReferenceModeField } from './GenerationParamsFields';
 export { default as ReferenceImageField } from './ReferenceImageField';
-export { VideoGenerationTabs, VideoSoundToggle } from './VideoGenerationControls';
+export { VideoSoundToggle } from './VideoGenerationControls';
 export { MediaRemoveButton, MediaContent, ShortcutMediaCard } from './StoryboardMediaPrimitives';
 export { default as GenerationSubmitButton } from './GenerationSubmitButton';

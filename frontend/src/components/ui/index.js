@@ -10,3 +10,4 @@ export { default as OptionTabs } from './OptionTabs';
 export { default as Tabs } from './Tabs';
 export { default as Tooltip } from './Tooltip';
 export { ModelIcon } from './ModelIcon';
+export { ReferenceModeIcon } from './ReferenceModeIcon';

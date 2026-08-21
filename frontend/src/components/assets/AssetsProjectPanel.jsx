@@ -10,7 +10,7 @@
  *   首屏/追加分页、主体元数据覆盖和项目列表加载                    L118–L213
  *
  * ─── 业务动作 ───────────────────────────────────────
- *   单项/批量删除、项目重命名/删除/复制/下载、资产下载               L226–L356
+ *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L226–L356
  *
  * ─── 页面组合 ───────────────────────────────────────
  *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L357–L486
@@ -25,11 +25,13 @@
  *   2026-08-03 统一项目资产下载文件名，并让详情弹窗通过资产下载接口获取文件
  *   2026-08-04 资产库结果列表排除主体参考过程资产；保留被其他主体引用的源结果资产
  *   2026-08-04 过滤改为读取主体详情，避免主体摘要不返回 reference_images 导致过滤失效
+ *   2026-08-21 项目音频卡片接入统一详情弹窗，按 Asset/AudioClip 视图补全详情字段
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { apiGetProjectAssetsPage, groupByCategory, calcProjectAssetsLimit, apiRemoveAssets, apiUpdateAsset, apiDownloadAsset } from '../../api/assets';
+import { apiGetProjectAssetsPage, groupByCategory, calcProjectAssetsLimit, apiGetAssetDetail, apiRemoveAssets, apiUpdateAsset, apiDownloadAsset } from '../../api/assets';
+import { apiGetCreationAudio } from '../../api/creation';
 import { apiGetSubjects, apiGetSubjectDetail, apiGetEpisodes } from '../../api/subject';
 import { apiGetProjects, apiDeleteProject, apiUpdateProject, apiCopyProject, apiDownloadProjectAssets } from '../../api/project';
 import { apiGetStoryboards, apiListStoryboardMediaCandidates, apiDownloadStoryboardMediaCandidate } from '../../api/storyboard';
@@ -44,6 +46,7 @@ import { getBlobExtension, getProjectAssetDownloadFilename } from '../../utils/p
 import { getSubjectReferenceImageIdentities, getSubjectReferenceImagesFromResponse, getSubjectReferenceSnapshot, isExplicitReferenceMedia } from '../../utils/referenceMediaAdapter';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { normalizeStoryboard } from '../../utils/storyboardDataAdapter';
+import { normalizeAudioAssetDetail, normalizeCreationAudioDetail } from '../../utils/creationAudioDetailAdapter';
 import ConfirmDialog from '../ConfirmDialog';
 import { AssetsTabBar } from './AssetsTabs';
 import AssetsBatchToolbar from './AssetsBatchToolbar';
@@ -53,6 +56,7 @@ import { EmptyProjectAssets } from './AssetsEmptyState';
 import { AssetsProjectRenameModal } from './AssetsProjectModals';
 import AssetsProjectGrid from './AssetsProjectGrid';
 import StoryboardMediaDetailModal from '../storyboard/StoryboardMediaDetailModal';
+import CreationAudioDetailModal from '../creation/CreationAudioDetailModal';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const PROJECT_CATEGORY_TABS = [
@@ -203,6 +207,7 @@ export default function AssetsProjectPanel() {
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
   const [toast, setToast] = useState(null);
   const [storyboardDetail, setStoryboardDetail] = useState(null);
+  const [audioDetail, setAudioDetail] = useState(null);
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
@@ -431,6 +436,36 @@ export default function AssetsProjectPanel() {
       ...prev,
       [activeCategory]: prev[activeCategory].map((a) => a.id === id ? { ...a, starred: newStarred } : a),
     }));
+  }
+
+  function updateAudioDetail(detail, assetId) {
+    setAudioDetail((current) => (
+      current && String(current.assetId) === String(assetId)
+        ? { ...current, ...detail }
+        : current
+    ));
+  }
+
+  async function openAudioDetail(asset) {
+    const initial = normalizeAudioAssetDetail(asset);
+    setAudioDetail(initial);
+
+    try {
+      const assetDetail = await apiGetAssetDetail(asset.id);
+      const assetView = { ...initial, ...normalizeAudioAssetDetail(assetDetail) };
+      const clipId = assetView.clipId || initial.clipId;
+      updateAudioDetail(assetView, initial.assetId);
+      if (!clipId) return;
+
+      try {
+        const clipDetail = await apiGetCreationAudio(clipId);
+        updateAudioDetail(normalizeCreationAudioDetail(clipDetail, assetView), initial.assetId);
+      } catch (error) {
+        console.warn('[ProjectAssetsPanel] 获取创作配音详情失败，保留资产详情:', error);
+      }
+    } catch (error) {
+      console.warn('[ProjectAssetsPanel] 获取音频资产详情失败，保留卡片详情:', error);
+    }
   }
 
   async function deleteAsset(id, singleImageId = null) {
@@ -673,8 +708,9 @@ export default function AssetsProjectPanel() {
             onSelect={toggleSelect}
             onStar={toggleStar}
             onDownload={downloadAsset}
-            onDelete={deleteAsset}
-            onShowToast={showToast}
+          onDelete={deleteAsset}
+          onShowToast={showToast}
+          onOpenAudioDetail={openAudioDetail}
           onOpenStoryboardDetail={(asset) => setStoryboardDetail({
               name: asset.name,
               shot: asset.storyboard,
@@ -741,6 +777,33 @@ export default function AssetsProjectPanel() {
             }
           }}
         />
+      )}
+      {audioDetail && createPortal(
+        <CreationAudioDetailModal
+          audioUrl={audioDetail.audioUrl}
+          prompt={audioDetail.prompt}
+          model={audioDetail.model}
+          speed={audioDetail.speed}
+          pitch={audioDetail.pitch}
+          volume={audioDetail.volume}
+          advancedEnabled={Boolean(audioDetail.advancedEnabled)}
+          voiceName={audioDetail.voiceName}
+          voiceId={audioDetail.voiceId}
+          voiceOriginLabel={audioDetail.voiceOriginLabel}
+          createdAt={audioDetail.createdAt}
+          onClose={() => setAudioDetail(null)}
+          onDownload={() => downloadAsset(audioDetail.assetId, audioDetail.name)}
+          onDelete={() => {
+            deleteAsset(audioDetail.assetId);
+            setAudioDetail(null);
+          }}
+          favorited={audioDetail.favorited}
+          onFavorite={() => {
+            toggleStar(audioDetail.assetId);
+            updateAudioDetail({ favorited: !audioDetail.favorited }, audioDetail.assetId);
+          }}
+        />,
+        document.body
       )}
       {toast && createPortal(
         <div style={{

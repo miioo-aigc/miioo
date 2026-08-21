@@ -6,13 +6,13 @@
  * 页面继续负责生成请求、任务轮询、缓存和全局状态写回。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   草稿文件恢复工具                                   L72–L94
- *   InputCard 状态、Hook 与草稿接线                    L97–L438
- *   模式回退、素材选择与参数预填充                     L439–L626
- *   发送、失败/取消恢复与参数组装                      L627–L759
- *   CreationInputSurface 组合                           L760–L929
+ *   草稿文件恢复工具                                   L98–L121
+ *   InputCard 状态、Hook 与草稿接线                    L123–L437
+ *   模式回退、素材选择与参数预填充                     L439–L637
+ *   发送、失败/取消恢复与参数组装                      L639–L803
+ *   CreationInputSurface 组合                           L811–L979
  *
- *   2026-08-18  配音面板改为语速/声调/音量，草稿与失败恢复同步新字段；接口暂只保留既有语速参数
+ *   2026-08-18  配音面板改为语速/声调/音量，草稿与失败恢复同步新字段
  *   2026-08-11  图片/视频生成轮询期间保持输入区可用；IndexedDB 临时缓存各类型完整创作草稿
  *   2026-08-18  空提示词/参考图草稿恢复为占位符初始态，模型和生成参数继续保留
  *   2026-08-17  草稿同步保存提示词 HTML，恢复后重建 @素材标签，避免视频发送后标签降级为纯文本
@@ -28,6 +28,8 @@
  *   2026-08-20  Seedance 真人素材按带特殊标识的普通参考图追加，不替换已有真人素材
  *   2026-08-21  首尾帧与全能参考/智能多帧双向切换时迁移图片素材，避免模式切换丢图
  *   2026-08-21  高频切换时同步清空首尾帧 ref，避免旧状态更新覆盖新回填结果
+ *   2026-08-21  普通与高级配音模式统一透传 voice_setting，保持现有编辑和多选交互不变
+ *   2026-08-21  高级配音生成中保持输入框不透明，避免与创作结果卡片叠加时视觉变淡
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -69,6 +71,29 @@ function createDefaultDubbingEffects() {
     toneValues: { ...DEFAULT_DUBBING_EFFECTS.toneValues },
     selectedEffects: [],
   };
+}
+
+const DUBBING_SOUND_EFFECT_API_VALUES = {
+  echo: 'spacious_echo',
+  hall: 'auditorium_echo',
+  telephone: 'lofi_telephone',
+  electronic: 'robotic',
+};
+
+function buildDubbingVoiceModify(effects) {
+  const pitch = Number(effects?.toneValues?.brightness) || 0;
+  const intensity = Number(effects?.toneValues?.softness) || 0;
+  const timbre = Number(effects?.toneValues?.clarity) || 0;
+  const selectedEffect = effects?.selectedEffects?.at(-1);
+  const soundEffects = DUBBING_SOUND_EFFECT_API_VALUES[selectedEffect];
+  const voiceModify = {
+    ...(pitch !== 0 ? { pitch } : {}),
+    ...(intensity !== 0 ? { intensity } : {}),
+    ...(timbre !== 0 ? { timbre } : {}),
+    ...(soundEffects ? { sound_effects: soundEffects } : {}),
+  };
+
+  return Object.keys(voiceModify).length > 0 ? voiceModify : undefined;
 }
 
 function restoreDraftFile(file, restoredFiles) {
@@ -646,7 +671,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       return;
     }
     // 提取纯文字 prompt，剔除 @ 标签节点（data-file-ref），避免把 @文件名 混入发给后端的 prompt
-    const { text: currentText, html: savedHTML } = getPromptSnapshot();
+    const { text: currentText, requestText, html: savedHTML } = getPromptSnapshot();
+    const generationText = genType === 'dubbing' && dubbingAdvancedEnabled ? requestText : currentText;
     const savedFiles = files;
     let videoGenerationMode;
     let videoReferenceMode;
@@ -704,7 +730,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     setSelectedVoiceName('');
     setSelectedVoiceSource('');
     await onGenerate?.({
-      prompt: currentText,
+      prompt: generationText,
       promptHTML: savedHTML,
       genType,
           model,
@@ -732,9 +758,22 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
           liveMaterialFiles: liveMats,  // 保留预览信息用于详情展示和重新编辑
         };
       })() : {}),
-      // 声调和音量先保留在前端状态链路，待后端能力就绪后再加入生成参数。
       ...(genType === 'dubbing' ? { speed: dubbingSpeed, voiceId: selectedVoiceId, voiceName: selectedVoiceName } : {}),
-      ...(genType === 'dubbing' ? { voiceSource: selectedVoiceSource, pitch: dubbingPitch, volume: dubbingVolume, advancedEnabled: dubbingAdvancedEnabled } : {}),
+      ...(genType === 'dubbing' ? {
+        voiceSource: selectedVoiceSource,
+        pitch: dubbingPitch,
+        volume: dubbingVolume,
+        advancedEnabled: dubbingAdvancedEnabled,
+        voice_setting: {
+          voice_id: selectedVoiceId,
+          speed: dubbingSpeed,
+          pitch: dubbingPitch,
+          vol: dubbingVolume,
+        },
+        ...(dubbingAdvancedEnabled ? {
+          voice_modify: buildDubbingVoiceModify(dubbingEffects),
+        } : {}),
+      } : {}),
       files: savedFiles.filter(f => !f.isLiveMaterial),
       onFail: (fallbackPrompt) => {
         // 失败时回退输入框内容（含标签 HTML）和附件

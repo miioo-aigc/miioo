@@ -100,6 +100,7 @@ export default function CreationPageOverlays({
           advancedEnabled={audioDetail.advancedEnabled}
           voiceName={audioDetail.voiceName}
           voiceId={audioDetail.voiceId}
+          voiceOriginLabel={audioDetail.voiceOriginLabel}
           createdAt={audioDetail.createdAt}
           onClose={onAudioDetailClose}
           onDownload={onAudioDetailDownload}

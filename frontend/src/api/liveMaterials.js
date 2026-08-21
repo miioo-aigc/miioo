@@ -160,6 +160,28 @@ export async function apiListLiveMaterialGroups() {
   return res.json();
 }
 
+/** 获取项目主体与真人素材组的归档绑定及审核状态 */
+export async function apiListLiveMaterialSubjectBindings(projectId) {
+  const res = await authFetch(`${BASE}/api/live-materials/projects/${projectId}/subject-bindings`);
+  if (!res.ok) {
+    const error = new Error(`获取主体真人认证状态失败: ${res.status}`);
+    error.status = res.status;
+    throw error;
+  }
+  return res.json();
+}
+
+/** 将主体当前定稿图归档到指定真人素材组并发起认证 */
+export async function apiBindSubjectFinalAsset(groupId, { project_id, subject_id } = {}) {
+  const res = await authFetch(`${BASE}/api/live-materials/groups/${groupId}/subject-final-assets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id, subject_id }),
+  });
+  if (!res.ok) throw new Error(`提交真人素材认证失败: ${res.status}`);
+  return res.json();
+}
+
 /** 获取指定组的素材列表，返回 LiveMaterialAssetResponse[]
  * @param {string} groupId
  * @param {{ refresh?: boolean }} options - refresh=true 触发从 OneLinkAI 上游同步最新状态

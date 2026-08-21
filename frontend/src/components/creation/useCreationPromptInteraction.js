@@ -2,27 +2,30 @@
  * @file useCreationPromptInteraction.js
  * @structure-index
  *
- * ─── 纯函数与 DOM 标签构造 ───────────────────────────── L29–L91
- *   文本标签辅助、情绪边界标记、情绪定义恢复
+ * ─── 纯函数与 DOM 标签构造 ───────────────────────────── L29–L162
+ *   文本标签辅助、MiniMax 高级配音文本序列化、情绪边界标记、情绪定义恢复
  *
- * ─── 情绪标记与菜单交互 ─────────────────────────────── L113–L304
+ * ─── 情绪标记与菜单交互 ─────────────────────────────── L184–L375
  *   菜单定位、标签构建与删除、选区边界拆分、局部情绪替换
  *
- * ─── 提示词编辑生命周期 ─────────────────────────────── L306–L448
+ * ─── 提示词编辑生命周期 ─────────────────────────────── L377–L519
  *   预填充 HTML/文本、重建 @素材标签、正文选区同步、@菜单 outside click
  *
- * ─── 输入事件与素材标签操作 ─────────────────────────── L450–L705
+ * ─── 输入事件与素材标签操作 ─────────────────────────── L521–L976
  *   粘贴处理、文件移除、卡片插入、@菜单选择、键盘删除/提交
  *   高级配音情绪选区、菜单定位、情绪标签替换
  *
- * ─── 快照与恢复接口 ─────────────────────────────────── L707–L743
- *   getPromptSnapshot()、clearContent()、restoreContent()
+ * ─── 快照与恢复接口 ─────────────────────────────────── L978–L1043
+ *   getPromptSnapshot()（含高级配音请求文本）、clearContent()、restoreContent()
  *
- * ─── 公开 Hook 接口 ──────────────────────────────────── L746–L774
+ * ─── 公开 Hook 接口 ──────────────────────────────────── L1045–L1079
  *   编辑器 ref、焦点/内容状态、事件回调、快照与恢复能力
  *
  * ─── 边界说明 ─────────────────────────────────────────
  *   本 Hook 只管理 contentEditable 和 @素材标签 DOM；文件列表、参数状态、生成 API、任务轮询、缓存和 Store 仍由 InputCard/CreationPage 持有。
+ *
+ * ─── 更新记录 ─────────────────────────────────────────
+ *   2026-08-21  高级配音提交时将情绪、停顿和语气词视觉标签序列化为 MiniMax 官方 text 标记格式。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -30,6 +33,73 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const DUBBING_ADVANCED_CHARACTER_LIMIT = 3000;
 const CHARACTER_LIMIT_TOAST_MESSAGE = '最多支持输入 3000 字';
+
+const DUBBING_INTERJECTION_API_VALUES = {
+  '笑声': 'laughs',
+  '轻笑': 'chuckle',
+  '咳嗽': 'coughs',
+  '清嗓子': 'clear-throat',
+  '呻吟': 'groans',
+  '正常换气': 'breath',
+  '喘气': 'pant',
+  '吸气': 'inhale',
+  '呼气': 'exhale',
+  '倒吸气': 'gasps',
+  '吸鼻子': 'sniffs',
+  '叹气': 'sighs',
+  '喷鼻息': 'snorts',
+  '哼': 'humming',
+  '打嗝': 'burps',
+  '咂嘴': 'lip-smacking',
+  '哼唱': 'humming',
+  '嘶嘶声': 'hissing',
+  '嗯': 'emm',
+  '呃': 'emm',
+  '唌': 'sneezes',
+};
+
+function normalizePauseValue(value) {
+  const matchedValue = String(value || '').match(/\d+(?:\.\d+)?/);
+  const seconds = Number(matchedValue?.[0]);
+  if (!Number.isFinite(seconds)) return '';
+  return Math.min(99.99, Math.max(0.01, seconds))
+    .toFixed(2)
+    .replace(/\.00$/, '')
+    .replace(/(\.\d)0$/, '$1');
+}
+
+function serializeDubbingTextNode(node) {
+  if (!node) return '';
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+  if (node.nodeType !== Node.ELEMENT_NODE) return '';
+  if (node.matches('[data-file-ref], [data-voice-wrap-spacer], [data-emotion-label], [data-emotion-remove]')) return '';
+
+  const inlineType = node.dataset.dubbingInlineTag;
+  if (inlineType === 'pause') {
+    const value = normalizePauseValue(node.dataset.dubbingInlineValue || node.textContent);
+    return value ? `<#${value}#>` : '';
+  }
+  if (inlineType === 'interjection') {
+    const value = DUBBING_INTERJECTION_API_VALUES[node.dataset.dubbingInlineValue || node.textContent?.trim()];
+    return value ? `(${value})` : '';
+  }
+  if (node.dataset.emotion === 'true') {
+    const key = String(node.dataset.emotionKey || '').trim();
+    const content = Array.from(node.childNodes).map(serializeDubbingTextNode).join('');
+    return key && content ? `{${key}}${content}{/${key}}` : content;
+  }
+
+  const content = Array.from(node.childNodes).map(serializeDubbingTextNode).join('');
+  return node.tagName === 'DIV' || node.tagName === 'P' ? `${content}\n` : content;
+}
+
+function serializeDubbingText(editor) {
+  return Array.from(editor?.childNodes || [])
+    .map(serializeDubbingTextNode)
+    .join('')
+    .replace(/\n+$/, '')
+    .trim();
+}
 
 function formatMentionLabel(name = '') {
   const dotIdx = name.lastIndexOf('.');
@@ -92,7 +162,7 @@ function createEmotionBoundary(name) {
 }
 
 function getEmotionDefinition(emotionElement) {
-  const negativeKeys = new Set(['afraid', 'sad', 'angry', 'disgusted']);
+  const negativeKeys = new Set(['fearful', 'sad', 'angry', 'disgusted']);
   const key = emotionElement.dataset.emotionKey || '';
   return {
     key,
@@ -910,9 +980,12 @@ export function useCreationPromptInteraction({
     clone.querySelectorAll('[data-emotion-label]').forEach((element) => element.remove());
     return {
       text: clone.innerText?.trim() ?? '',
+      requestText: genType === 'dubbing' && dubbingAdvancedEnabled
+        ? serializeDubbingText(editorRef.current)
+        : clone.innerText?.trim() ?? '',
       html: editorRef.current.innerHTML ?? '',
     };
-  }, []);
+  }, [dubbingAdvancedEnabled, genType]);
 
   const clearContent = useCallback(() => {
     if (editorRef.current) {

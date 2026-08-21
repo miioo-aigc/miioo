@@ -349,7 +349,7 @@ export default function GenerateImagePanel({
         {/* 内容区：左表单 + 右预览 */}
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           {/* 左侧表单 */}
-          <div style={{ display: 'flex', flexDirection: 'column', width: embedded ? '457px' : '419px', flexShrink: 0, padding: embedded ? '12px 16px 80px 24px' : '8px 12px 80px 24px', gap: '20px', overflowY: 'auto', boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', width: embedded ? '457px' : '419px', flexShrink: 0, padding: embedded ? '16px 16px 80px 24px' : '8px 12px 80px 24px', gap: '20px', overflowY: 'auto', boxSizing: 'border-box' }}>
             <PanelPromptInput value={prompt} onChange={setPrompt} referenceItems={imageReferenceItems} />
             <GenerationModelField
               value={modelsLoading ? '加载中...' : (modelList.find(m => m.value === model)?.label || '请选择')}

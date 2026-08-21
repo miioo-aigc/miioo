@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import DotsLoading from '../DotsLoading';
 import ConfirmDialog from '../ConfirmDialog';
 import { IconButton } from '../ui';
+import SubjectCertificationMenu from './SubjectCertificationMenu';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -150,7 +151,7 @@ function SubjectMoreMenu({ onDownload, onDelete }) {
   );
 }
 
-export function SubjectCard({ name, desc, imageUrl, voice, voiceName, voicePreviewUrl, onVoiceClick, onVoiceRemove, onClick, onDownloadImage, onDeleteSubject, loading = false, selected = false, emptyIcon }) {
+export function SubjectCard({ name, desc, imageUrl, voice, voiceName, voicePreviewUrl, onVoiceClick, onVoiceRemove, onClick, onDownloadImage, onDeleteSubject, loading = false, selected = false, emptyIcon, certificationStatus, certificationGroups = [], onCertificationClick, onCertificationCreateGroup }) {
   const [hovered, setHovered] = useState(false);
   const [voiceHovered, setVoiceHovered] = useState(false);
   const [voicePlaying, setVoicePlaying] = useState(false);
@@ -181,6 +182,18 @@ export function SubjectCard({ name, desc, imageUrl, voice, voiceName, voicePrevi
     <div className="[font-synthesis:none] flex flex-col rounded-xl overflow-clip relative bg-[#1A1A1A] antialiased cursor-pointer" style={{ aspectRatio: '200/246', outline: selected ? '1px solid rgba(45,195,225,0.6)' : hovered ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.08)', transition: 'outline-color 0.15s' }} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={onClick}>
       <div className="self-stretch relative shrink-0" style={{ flex: '1', background: imageUrl ? `url(${imageUrl}) 50% / cover no-repeat` : '#0D0D0D' }}>
         {!imageUrl && emptyIcon && <div className="absolute inset-0 flex items-center justify-center">{emptyIcon}</div>}
+        {certificationStatus === 'pending' && <div className="absolute inset-0 z-[5]" style={{ backgroundColor: 'rgba(0,0,0,0.50)' }} />}
+        {certificationStatus && (
+          <div className="absolute z-[6]" style={{ top: 0, right: 0 }} onClick={(event) => event.stopPropagation()}>
+            {certificationStatus === 'unverified' || certificationStatus === 'failed' ? (
+              <SubjectCertificationMenu failed={certificationStatus === 'failed'} groups={certificationGroups} onSelectGroup={onCertificationClick} onCreateGroup={onCertificationCreateGroup} />
+            ) : (
+              <div className="flex items-center rounded-tl-none rounded-bl-[6px] px-[8px] py-[4px]" style={{ backgroundColor: certificationStatus === 'pending' ? 'var(--color-status-warning)' : 'var(--color-status-success)', color: '#090909', fontFamily: FONT, fontSize: '14px', lineHeight: '18px' }}>
+                {certificationStatus === 'pending' ? '审核中' : '已认证'}
+              </div>
+            )}
+          </div>
+        )}
         {loading && <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)', paddingBottom: '10%' }}><DotsLoading size={6} color="#2DC3E1" gap={4} /></div>}
         <div className="absolute flex gap-[4px]" style={{ top: '8px', right: '8px', opacity: hovered && !loading ? 1 : 0, transition: 'opacity 0.15s' }} onClick={(event) => event.stopPropagation()}>
           <SubjectMoreMenu onDownload={onDownloadImage} onDelete={onDeleteSubject} />

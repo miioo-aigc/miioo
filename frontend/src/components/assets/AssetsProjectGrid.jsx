@@ -16,6 +16,7 @@ export default function AssetsProjectGrid({
   onDownload,
   onDelete,
   onShowToast,
+  onOpenAudioDetail,
   onOpenStoryboardDetail,
 }) {
   return assets.map((asset) => {
@@ -34,6 +35,7 @@ export default function AssetsProjectGrid({
           onStar={() => onStar(asset.id)}
           onDownload={() => onDownload(asset.id, asset.name)}
           onDelete={() => onDelete(asset.id)}
+          onOpen={() => onOpenAudioDetail?.(asset)}
         />
       );
     }

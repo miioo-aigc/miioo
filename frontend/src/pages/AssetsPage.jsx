@@ -30,8 +30,8 @@ const MODULE_TABS = [
   { key: 'seedance', label: 'seedance素材库' },
 ];
 
-export default function AssetsPage({ isLoggedIn }) {
-  const [activeModule, setActiveModule] = useState('project');
+export default function AssetsPage({ isLoggedIn, initialModule = 'project', initialSeedanceTab = 'real' }) {
+  const [activeModule, setActiveModule] = useState(initialModule);
 
   return (
     <div style={{
@@ -55,7 +55,7 @@ export default function AssetsPage({ isLoggedIn }) {
         <AssetsModuleTabBar tabs={MODULE_TABS} active={activeModule} onChange={setActiveModule} />
         {activeModule === 'project' && <AssetsProjectPanel />}
         {activeModule === 'creative' && <AssetsCreativePanel isLoggedIn={isLoggedIn} />}
-        {activeModule === 'seedance' && <SeedanceAssetLibraryPanel />}
+        {activeModule === 'seedance' && <SeedanceAssetLibraryPanel initialTab={initialSeedanceTab} />}
       </div>
     </div>
   );

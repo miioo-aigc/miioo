@@ -144,23 +144,24 @@ function getImageUrls(image) {
 /**
  * 结构索引（api/creation.js）
  * ─── 音乐生成（自由函数）────────────────────────
- *   [接口] apiGenerateCreationMusic()              L580   POST /api/music/generate （音乐生成/翻唱）
- *   [提取] extractMusicResultUrl()                  L590   从 url/audio_url/result/results[] 提取音乐结果
- *   [轮询] apiPollCreationMusicTask()                L608   GET /api/tasks/{task_id} 最多 600 秒，支持 AbortSignal
+ *   [接口] apiGenerateCreationMusic()              L599   POST /api/music/generate （音乐生成/翻唱）
+ *   [提取] extractMusicResultUrl()                  L609   从 url/audio_url/result/results[] 提取音乐结果
+ *   [轮询] apiPollCreationMusicTask()                L627   GET /api/tasks/{task_id} 最多 600 秒，支持 AbortSignal
  * ─── 视频生成（apiGenerateCreation）────────────────────────
- *   [函数] apiGenerateCreation()                    L862  入口：按 genType 分流 图片/视频/配音/音乐
- *   [上传] 参考文件分类循环                           L907  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
+ *   [函数] apiGenerateCreation()                    L881  入口：按 genType 分流 图片/视频/配音/音乐
+ *   [上传] 参考文件分类循环                           L933  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
  *                                                        （图片 asset_id 兜底：assetId || backendId || asset_id）
- *   [上传] 首/尾帧上传                               L972  仅视频首尾帧模式使用
- *   [分支] 配音同步/异步生成与任务轮询                L1003  短文本直取音频，长文本轮询任务
+ *   [上传] 首/尾帧上传                               L1006  仅视频首尾帧模式使用
+ *   [分支] 配音同步/异步生成与任务轮询                L1037  短文本直取音频，长文本轮询
+ *                                                        普通/高级模式统一透传 voice_setting
  *                                                        配音任务轮询最多 600 秒，可通过 AbortSignal 停止
- *   [分支] 音乐生成与任务轮询                        L1117  上传参考音频 → POST /api/music/generate → 轮询任务
- *   [分支] 图片生成（多张并行）                      L1174  count>1 可返回多 task_ids 并行轮询
- *   [分支] 视频生成                                  L1253  generation_mode / reference_mode / attachments
- *   [校验] 视频能力与音频门禁                         L915  上传前校验 generation_mode、reference_mode 与能力映射
- *   [组装] @ 数字资产绑定 attachments                L1259  CreationAssetBinding[]，source:'mention'
- *   [组装] 视频生成请求体 body                       L1289  generation_mode / reference_mode / multi_shot / attachments / reference_image_asset_ids / first_frame_url
- *   [日志] [video-generate] 调试日志                 L1322  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
+ *   [分支] 音乐生成与任务轮询                        L1163  上传参考音频 → POST /api/music/generate → 轮询任务
+ *   [分支] 图片生成（多张并行）                      L1220  count>1 可返回多 task_ids 并行轮询
+ *   [分支] 视频生成                                  L1286  generation_mode / reference_mode / attachments
+ *   [校验] 视频能力与音频门禁                         L935  上传前校验 generation_mode、reference_mode 与能力映射
+ *   [组装] @ 数字资产绑定 attachments                L1292  CreationAssetBinding[]，source:'mention'
+ *   [组装] 视频生成请求体 body                       L1322  generation_mode / reference_mode / multi_shot / attachments / reference_image_asset_ids / first_frame_url
+ *   [日志] [video-generate] 调试日志                 L1355  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-08-12  新增音乐生成支持：POST /api/music/generate、通用任务中心 GET /api/tasks/{task_id} 轮询（最多 600 秒），
  *               音乐分支与图片/视频/配音完全隔离，参考音频上传不阻塞整体生成
@@ -170,7 +171,25 @@ function getImageUrls(image) {
  *   2026-08-07  修复同步配音将音频记录 id 误当异步任务 id，避免错误请求配音任务轮询接口
  *   2026-08-07  配音轮询超时收紧为 600 秒，并支持 AbortSignal 中断上传、生成请求和轮询
  *   2026-08-07  配音生成支持再次点击发送按钮停止前端请求和轮询；后端任务取消能力仍由后端接口决定
+ *   2026-08-21  配音同步/异步请求透传高级参数，并识别 speech-* MiniMax 长文本模型
+ *   2026-08-21  普通配音模式将 speed / pitch / volume 归一到 voice_setting.speed / pitch / vol
  */
+
+function isMiniMaxSpeechModel(model) {
+  const normalizedModel = String(model || '').trim().toLowerCase();
+  return normalizedModel.includes('minimax') || normalizedModel.startsWith('speech-');
+}
+
+function normalizeDubbingVoiceSetting(params) {
+  const input = params.voice_setting || {};
+  return {
+    ...input,
+    voice_id: input.voice_id ?? params.voice_id ?? params.voiceId ?? undefined,
+    speed: input.speed ?? params.speed ?? 1.0,
+    vol: input.vol ?? params.volume ?? params.vol ?? 1.0,
+    pitch: input.pitch ?? params.pitch ?? 0,
+  };
+}
 
 // ── 通用任务轮询（供刷新后恢复使用，支持图片/视频/音频）───────────────────
 
@@ -1042,14 +1061,30 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
       speed: params.speed ?? 1.0,
       emotion: params.emotion || undefined,
       voice_id: params.voice_id || params.voiceId || undefined,
+      advanced_mode_enabled: params.advanced_mode_enabled
+        ?? params.advancedEnabled
+        ?? params.advanced_enabled
+        ?? false,
       reference_audio_url: referenceAudioUrl || undefined,
+      voice_setting: normalizeDubbingVoiceSetting(params),
+      voice_modify: params.voice_modify || undefined,
+      audio_setting: params.audio_setting || undefined,
+      pronunciation_dict: params.pronunciation_dict || undefined,
+      timbre_weights: params.timbre_weights || undefined,
+      language_boost: params.language_boost || undefined,
+      subtitle_enable: params.subtitle_enable,
+      subtitle_type: params.subtitle_type || undefined,
+      output_format: params.output_format || undefined,
+      aigc_watermark: params.aigc_watermark,
+      stream: params.stream,
+      stream_options: params.stream_options || undefined,
       session_id: uploadContext.session_id,
       shot_id: uploadContext.shot_id,
       project_id: uploadContext.project_id,
     };
     const TEXT_LENGTH_THRESHOLD = 500;
     const text = params.prompt || params.text || '';
-    const isMiniMax = (params.model || '').toLowerCase().includes('minimax');
+    const isMiniMax = isMiniMaxSpeechModel(params.model);
 
     if (text.length > TEXT_LENGTH_THRESHOLD) {
       if (!isMiniMax) {

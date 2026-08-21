@@ -11,6 +11,7 @@
  * ─── 更新记录 ─────────────────────────────────────────────────────
  *   2026-07-17  从 SubjectPage 抽离工作区外框和稳定展示组合
  *   2026-08-03  主体页右上角新增按钮文案统一为「新增主体类型」
+ *   2026-08-21  透传 Seedance 真人素材认证模式和进入/退出回调
  */
 import { SUBJECT_TABS } from './SubjectTabsConstants';
 import SubjectToolbar from './SubjectToolbar';
@@ -27,6 +28,9 @@ export default function SubjectWorkspace({
   onAddSubject,
   onBatchGenerate,
   onStartStoryboard,
+  isSeedanceCertificationMode,
+  onEnterSeedanceCertification,
+  onExitSeedanceCertification,
   onTabChange,
   children,
 }) {
@@ -45,6 +49,10 @@ export default function SubjectWorkspace({
         onBatchGenerate={onBatchGenerate}
         onStartStoryboard={onStartStoryboard}
         tabLabel={tabLabel}
+        isCharacterTab={activeTab === 'char'}
+        isSeedanceCertificationMode={isSeedanceCertificationMode}
+        onEnterSeedanceCertification={onEnterSeedanceCertification}
+        onExitSeedanceCertification={onExitSeedanceCertification}
       />
       <SubjectTabs activeTab={activeTab} counts={counts} onChange={onTabChange} />
       <SubjectGridViewport subjectListRef={subjectListRef} gridProps={gridProps} />

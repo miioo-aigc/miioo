@@ -48,6 +48,8 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-21  分镜视频创作复用创作页模型能力路由：按 UI 参考模式分流首尾帧素材，
+ *               请求同步传递生成模式、参考模式与模型能力上下文
  *   2026-08-17  Seedance 虚拟人像参考主体刷新后按 asset_id 鉴权重取高清预览，运行时转为 Blob URL；
  *               不持久化短时下载地址或 Blob URL，避免过期 401 后参考主体丢失
  *   2026-08-17  分镜视频生成前以镜头已保存主体补全 Seedance 素材身份：真人走 live_material，虚拟人像走 asset_ref_url；
@@ -2736,7 +2738,8 @@ function hasStoryboardMediaHint(shot = {}) {
           const n = normalizeImageUrl(videoUrl);
           const shotId = videoPanel.shot.id;
           const form = videoFormStateMap[shotId] || {};
-          const referenceImages = form.tab !== 'frame' && form.refImages?.length
+          const referenceMode = form.referenceMode || form.tab;
+          const referenceImages = referenceMode !== 'frame' && form.refImages?.length
             ? toSafeStoryboardReferenceUrls(form.refImages)
             : undefined;
           const durationValue = form.duration == null || form.duration === ''
@@ -2792,7 +2795,8 @@ function hasStoryboardMediaHint(shot = {}) {
               const parsed = parseFloat(params.duration);
               return isNaN(parsed) ? undefined : parsed;
             })();
-            const referencePayload = params.tab === 'frame'
+            const isFrameReference = params.uiReferenceMode === 'frame';
+            const referencePayload = isFrameReference
               ? {}
               : buildStoryboardVideoReferencePayload(
                 enrichStoryboardVideoReferenceMedia(
@@ -2810,15 +2814,21 @@ function hasStoryboardMediaHint(shot = {}) {
                 prompt: params.prompt,
                 ratio: projectRatio,
                 ...referencePayload,
-                ...(params.tab === 'frame' ? {
+                ...(isFrameReference ? {
                   first_frame_url: toAbsoluteUrl(params.first_frame_url),
                   last_frame_url: toAbsoluteUrl(params.last_frame_url),
                   first_frame_asset_id: params.first_frame_asset_id,
                   last_frame_asset_id: params.last_frame_asset_id,
                 } : {}),
                 generate_mode: params.generate_mode,
-                reference_video_url: toAbsoluteUrl(params.reference_video_url),
-                reference_audio_url: toAbsoluteUrl(params.reference_audio_url),
+                reference_mode: params.reference_mode,
+                multi_shot: params.multi_shot,
+                modelName: params.modelName,
+                videoCapabilities: params.videoCapabilities,
+                supportedGenerationModes: params.supportedGenerationModes,
+                isSeedance: params.isSeedance,
+                reference_video_url: isFrameReference ? undefined : toAbsoluteUrl(params.reference_video_url),
+                reference_audio_url: isFrameReference ? undefined : toAbsoluteUrl(params.reference_audio_url),
               });
             const savedReferenceImages = referencePayload.reference_images;
             taskId = getStoryboardTaskId(taskResp);
@@ -2851,7 +2861,7 @@ function hasStoryboardMediaHint(shot = {}) {
                 }
                 return updated;
               });
-              await saveCandidateMedia(shot.id, { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated', prompt: params.prompt, model: params.model, resolution: params.resolution, duration: durationValue, ratio: projectRatio, referenceImages: savedReferenceImages, genParams: { model: params.model, resolution: params.resolution, duration: durationValue, sound_effect: params.sound, ratio: projectRatio, reference_images: savedReferenceImages, first_frame_url: params.first_frame_url, last_frame_url: params.last_frame_url, reference_video_url: params.reference_video_url, reference_audio_url: params.reference_audio_url } });
+              await saveCandidateMedia(shot.id, { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated', prompt: params.prompt, model: params.model, resolution: params.resolution, duration: durationValue, ratio: projectRatio, referenceImages: savedReferenceImages, genParams: { model: params.model, resolution: params.resolution, duration: durationValue, sound_effect: params.sound, ratio: projectRatio, generate_mode: params.generate_mode, reference_mode: params.reference_mode, reference_images: savedReferenceImages, first_frame_url: params.first_frame_url, last_frame_url: params.last_frame_url, reference_video_url: isFrameReference ? undefined : params.reference_video_url, reference_audio_url: isFrameReference ? undefined : params.reference_audio_url } });
               return { url: normalizedUrl };
             }
             // 终态但没有视频 — 发送 toast 提示失败

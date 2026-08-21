@@ -26,7 +26,7 @@ import { FrameUploadSlot, PanelUploadSlot } from './StoryboardUploadSlots';
 import CurrentShotImagePickerPopover from './CurrentShotImagePickerPopover';
 
 export default function ReferenceMediaEditor({
-  tab,
+  referenceMode,
   projectId,
   model = '',
   shot,
@@ -105,9 +105,9 @@ export default function ReferenceMediaEditor({
 
   return (
     <>
-      {tab === 'all' && (
+      {referenceMode !== 'frame' && (
         <>
-          {showRefSubjects && (
+          {referenceMode === 'all' && showRefSubjects && (
             <PanelUploadSlot
               projectId={projectId}
               model={model}
@@ -166,7 +166,7 @@ export default function ReferenceMediaEditor({
             />
           )}
 
-          {showRefVideo && (
+          {referenceMode === 'all' && showRefVideo && (
             <PanelUploadSlot
               projectId={projectId}
               model={model}
@@ -186,7 +186,7 @@ export default function ReferenceMediaEditor({
             />
           )}
 
-          {showRefAudio && (
+          {referenceMode === 'all' && showRefAudio && (
             <PanelUploadSlot
               projectId={projectId}
               model={model}
@@ -208,7 +208,7 @@ export default function ReferenceMediaEditor({
         </>
       )}
 
-      {tab === 'frame' && (
+      {referenceMode === 'frame' && (
         <>
           <FrameUploadSlot
             label="首帧图"

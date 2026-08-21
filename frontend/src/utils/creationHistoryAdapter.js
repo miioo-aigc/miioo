@@ -209,7 +209,12 @@ export function normalizeCreationHistoryItem(item, type) {
     speed: item.speed ?? metadata.speed,
     pitch: item.pitch ?? metadata.pitch,
     volume: item.volume ?? metadata.volume,
-    advancedEnabled: item.advanced_enabled ?? item.advancedEnabled ?? metadata.advanced_enabled ?? metadata.advancedEnabled,
+    advancedEnabled: item.advanced_mode_enabled
+      ?? item.advanced_enabled
+      ?? item.advancedEnabled
+      ?? metadata.advanced_mode_enabled
+      ?? metadata.advanced_enabled
+      ?? metadata.advancedEnabled,
     prompt: item.prompt || '',
     refImages,
     refMode,
@@ -250,7 +255,15 @@ export function pickCreationHistoryCacheItem(item, tab) {
     speed: item.speed,
     pitch: item.pitch,
     volume: item.volume,
-    advanced_enabled: item.advanced_enabled ?? item.advancedEnabled,
+    advanced_mode_enabled: item.advanced_mode_enabled
+      ?? item.advanced_enabled
+      ?? item.advancedEnabled
+      ?? item.metadata_json?.advanced_mode_enabled
+      ?? item.metadata_json?.advanced_enabled
+      ?? item.metadata_json?.advancedEnabled
+      ?? item.metadata?.advanced_mode_enabled
+      ?? item.metadata?.advanced_enabled
+      ?? item.metadata?.advancedEnabled,
     ratio: item.ratio || item.aspect_ratio || '16:9',
     resolution: item.resolution || item.size || '',
     duration: item.duration || undefined,

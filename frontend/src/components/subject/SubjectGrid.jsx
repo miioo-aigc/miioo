@@ -44,6 +44,11 @@ export default function SubjectGrid({
   emptyIcons,
   sentinelRef,
   hasMore = false,
+  certificationMode = false,
+  certificationBySubject = {},
+  certificationGroups = [],
+  onCertificationClick,
+  onCertificationCreateGroup,
 }) {
   const items = activeTab === 'char' ? chars : activeTab === 'scene' ? scenes : props;
   const isCharacterTab = activeTab === 'char';
@@ -86,6 +91,10 @@ export default function SubjectGrid({
             onDeleteSubject={() => onDeleteSubject?.(item.id)}
             loading={!!batchLoadingSubjects[item.id]}
             selected={selectedId === item.id}
+            certificationStatus={certificationMode && isCharacterTab ? (certificationBySubject[item.id]?.status || 'unverified') : undefined}
+            certificationGroups={certificationGroups}
+            onCertificationClick={(group) => onCertificationClick?.(item, group)}
+            onCertificationCreateGroup={onCertificationCreateGroup}
           />
         );
       })}

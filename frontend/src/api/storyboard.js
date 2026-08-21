@@ -4,6 +4,7 @@ const BASE = import.meta.env.VITE_API_BASE_URL;
 //           2026-08-06 创作表单保存同时覆盖主体字段，并与最新 mainRefs 快照串行提交，避免刷新后旧主体恢复。
 
 import { authFetch, authFetchForm } from './request.js';
+import { assertVideoRequestCapabilities } from '../utils/videoModelCapabilities';
 import { cached, invalidate, setCache, peekCache } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 import { buildStoryboardSubjectFields, isBackendStoryboardId, isStoryboardSubjectReference, serializeStoryboardReferenceItem } from '../utils/storyboardDataAdapter.js';
@@ -796,12 +797,35 @@ export async function apiGenerateStoryboardImage(projectId, storyboardId, params
 }
 
 export async function apiGenerateStoryboardVideo(projectId, storyboardId, params) {
+  if (params.videoCapabilities || params.supportedGenerationModes) {
+    assertVideoRequestCapabilities({
+      modelId: params.model,
+      modelName: params.modelName,
+      generationMode: params.generate_mode,
+      referenceMode: params.reference_mode,
+      capabilities: params.videoCapabilities || {},
+      supportedGenerationModes: params.supportedGenerationModes || [],
+      isSeedance: Boolean(params.isSeedance),
+      hasAudio: Boolean(params.reference_audio_url),
+    });
+  }
+  const {
+    modelName,
+    videoCapabilities,
+    supportedGenerationModes,
+    isSeedance,
+    ...requestParams
+  } = params;
+  void modelName;
+  void videoCapabilities;
+  void supportedGenerationModes;
+  void isSeedance;
   const res = await authFetch(
     `${BASE}/api/projects/${projectId}/storyboards/${storyboardId}/generate-video`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
+      body: JSON.stringify(requestParams),
     }
   );
   if (!res.ok) {

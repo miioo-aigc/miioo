@@ -194,6 +194,7 @@ export default function Home({ onGoToAdmin }) {
     const savedKey = localStorage.getItem('miioo_active_key');
     return savedKey || 'home';
   });
+  const [assetsEntry, setAssetsEntry] = useState({ module: 'project', seedanceTab: 'real' });
   const [bottomActiveKey, setBottomActiveKey] = useState(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [apiConfigOpen, setApiConfigOpen] = useState(false);
@@ -1335,6 +1336,7 @@ export default function Home({ onGoToAdmin }) {
   };
 
   const handleNavChange = (key) => {
+    if (key === 'assets') setAssetsEntry({ module: 'project', seedanceTab: 'real' });
     setActiveKey(key);
     setActiveProject(null);
     setActiveProjectId(null);
@@ -1599,6 +1601,10 @@ export default function Home({ onGoToAdmin }) {
                 projectRatio={activeProject.aspect_ratio || activeProject.ratio}
                 projectId={activeProject.id}
                 projectName={activeProject.name}
+                onGoToSeedanceLiveMaterials={() => {
+                  setAssetsEntry({ module: 'seedance', seedanceTab: 'real' });
+                  setActiveKey('assets');
+                }}
                 onBack={() => {
                   setActiveProject(null);
                   setActiveProjectId(null);
@@ -1669,7 +1675,12 @@ export default function Home({ onGoToAdmin }) {
               />
             )}
             {activeKey === 'assets' && (
-              <AssetsPage projects={projects} isLoggedIn={isLoggedIn} />
+              <AssetsPage
+                projects={projects}
+                isLoggedIn={isLoggedIn}
+                initialModule={assetsEntry.module}
+                initialSeedanceTab={assetsEntry.seedanceTab}
+              />
             )}
             <div style={{ display: activeKey === 'create' ? 'flex' : 'none', flexDirection: 'column', position: 'absolute', inset: 0 }}>
               <CreationPage

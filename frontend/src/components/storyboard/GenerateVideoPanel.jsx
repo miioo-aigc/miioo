@@ -5,7 +5,7 @@
  * ─── 组件职责 ───────────────────────────────────────────────
  *   视频生成面板       管理模型、生成模式、提示词和参考素材表单
  *   GenerationModelField / GenerationOptionFields  参数选择纯展示组合
- *   VideoGenerationTabs / VideoSoundToggle  视频模式和音效纯展示组合
+ *   VideoSoundToggle                         音效纯展示组合
  *   GenerationSubmitButton  底部生成动作纯展示按钮
  *   参考素材编辑       管理主体、图片、视频、音频及首尾帧输入
  *   生成结果编排       连接 VideoResultsPanel 与页面回调，维护查看弹窗状态
@@ -22,6 +22,8 @@
  *   ReferenceMediaEditor                      参考主体、参考图、参考视频、参考音频和首尾帧
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-21  移除全能参考/首尾帧 Tab；模型下新增按模型能力动态展示的参考模式选择器，
+ *               分镜视频请求复用创作页生成模式、参考模式映射与能力校验逻辑
  *   2026-08-17  Seedance 真人保留 live_material 参数，虚拟人像保留 asset_ref_url 服务商引用；
  *               主体参考从主体列表补全认证身份且同步过程不丢失；全能参考显式传 generate_mode='full'
  *   2026-08-12  拆分全能参考与首尾帧提示词：fullPrompt 保留 @主体 标签绑定，
@@ -64,10 +66,19 @@ import {
 import ReferenceMediaEditor from './ReferenceMediaEditor';
 import VideoResultsPanel from './VideoResultsPanel';
 import { mergeStoryboardMediaItems } from '../../utils/storyboardMediaDedup';
-import { GenerationModelField, GenerationOptionFields } from './GenerationParamsFields';
-import { VideoGenerationTabs, VideoSoundToggle } from './VideoGenerationControls';
+import { GenerationModelField, GenerationOptionFields, GenerationReferenceModeField } from './GenerationParamsFields';
+import { VideoSoundToggle } from './VideoGenerationControls';
 import GenerationSubmitButton from './GenerationSubmitButton';
 import { buildVideoPromptMentions } from '../../utils/storyboardPromptBindingRepair';
+import {
+  VIDEO_REFERENCE_MODES,
+  getAvailableVideoReferenceModes,
+  getVideoReferenceModeLabel,
+  isSeedanceVideoModel,
+  resolveVideoGenerationMode,
+  resolveVideoReferenceMode,
+  resolveVideoReferenceModeFallback,
+} from '../../utils/videoModelCapabilities';
 
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -130,12 +141,12 @@ export default function GenerateVideoPanel({
   formState,
   onFormStateChange,
 }) {
-  // 生成方式 Tab：'all' 全能参考 | 'frame' 首尾帧
-  const [tab, setTab] = useState(() => formState?.tab || 'all');
+  const [referenceMode, setReferenceMode] = useState(() => (
+    formState?.referenceMode || formState?.tab || VIDEO_REFERENCE_MODES.ALL
+  ));
   const [modelsLoading, setModelsLoading] = useState(true);
   const [model, setModel] = useState(() => formState?.model || '');
-  const [frameModels, setFrameModels] = useState([]);
-  const [allModels, setAllModels] = useState([]);
+  const [videoModels, setVideoModels] = useState([]);
   const [resolution, setResolution] = useState(() => formState?.resolution || '');
   const [duration, setDuration] = useState(() => formState?.duration ?? null);
 
@@ -145,32 +156,15 @@ export default function GenerateVideoPanel({
         const data = await apiListModels({ category: 'video' });
         const merged = normalizeStoryboardModelList(data, 'video');
 
-        // 按 reference_modes 分类模型
-        const frameModes = ['first_frame', 'last_frame', 'start_end', 'multiframe'];
-        const isFrameModel = (m) => {
-          const refs = m.capabilities?.reference_modes || [];
-          return refs.some(r => frameModes.includes(r));
-        };
-        const frameModels = merged.filter(isFrameModel);
-        const isAllRefModel = (m) => {
-          const refs = m.capabilities?.reference_modes || [];
-          if (refs.length === 0) return true;
-          return refs.some(r => !frameModes.includes(r));
-        };
-        const allModels = merged.filter(isAllRefModel);
+        setVideoModels(merged);
 
-        // 缓存分类列表供 Tab 切换使用
-        setFrameModels(frameModels);
-        setAllModels(allModels);
-
-        // 默认选中全能参考
-        if (allModels.length > 0) {
-          const first = allModels.find(m => m.is_default) || allModels[0];
-          const restoredModel = formState?.model && allModels.some((item) => item.value === formState.model)
+        if (merged.length > 0) {
+          const first = merged.find(m => m.is_default) || merged[0];
+          const restoredModel = formState?.model && merged.some((item) => item.value === formState.model)
             ? formState.model
             : first.value;
           setModel(restoredModel);
-          const selectedModel = allModels.find((item) => item.value === restoredModel) || first;
+          const selectedModel = merged.find((item) => item.value === restoredModel) || first;
           const caps = selectedModel.capabilities;
           {
             const resList = (caps?.supported_resolutions?.length ? caps.supported_resolutions : caps?.supported_sizes) || [];
@@ -187,8 +181,7 @@ export default function GenerateVideoPanel({
           }
         }
       } catch {
-        setFrameModels([]);
-        setAllModels([]);
+        setVideoModels([]);
       } finally {
         setModelsLoading(false);
       }
@@ -215,7 +208,7 @@ export default function GenerateVideoPanel({
   const formStateHydratedRef = useRef(Array.isArray(formState?.refImages));
 
   const handlePromptChange = (nextPrompt) => {
-    if (tab === 'frame') {
+    if (referenceMode === VIDEO_REFERENCE_MODES.FRAME) {
       framePromptEditedRef.current = true;
       setFramePrompt(nextPrompt);
     } else {
@@ -273,8 +266,8 @@ export default function GenerateVideoPanel({
   }, [shot?.mainRefs, chars, scenes, props]);
 
   const videoPromptMentions = useMemo(
-    () => tab === 'frame' ? [] : buildVideoPromptMentions(fullPrompt, refSubjects),
-    [fullPrompt, refSubjects, tab],
+    () => referenceMode === VIDEO_REFERENCE_MODES.FRAME ? [] : buildVideoPromptMentions(fullPrompt, refSubjects),
+    [fullPrompt, refSubjects, referenceMode],
   );
 
   const updateReferenceGroup = (setter, group) => (value) => {
@@ -294,7 +287,7 @@ export default function GenerateVideoPanel({
     if (formState == null || formStateHydratedRef.current) return;
     if (!Array.isArray(formState.refImages)) return;
     const restoreTimer = setTimeout(() => {
-      setTab(formState.tab || 'all');
+      setReferenceMode(formState.referenceMode || formState.tab || VIDEO_REFERENCE_MODES.ALL);
       setModel(formState.model || '');
       setResolution(formState.resolution || '');
       setDuration(normalizeDurationValue(formState.duration ?? null));
@@ -324,7 +317,8 @@ export default function GenerateVideoPanel({
     if (!formStateHydratedRef.current) return;
     if (!fullPromptEditedRef.current && typeof formState?.prompt === 'string' && formState.prompt !== fullPrompt) return;
     const nextState = {
-      tab,
+      referenceMode,
+      tab: referenceMode,
       model,
       resolution,
       duration,
@@ -343,7 +337,7 @@ export default function GenerateVideoPanel({
     if (lastEmittedFormStateRef.current === signature) return;
     lastEmittedFormStateRef.current = signature;
     onFormStateChange?.(nextState);
-  }, [tab, model, resolution, duration, sound, fullPrompt, framePrompt, formState?.prompt, videoPromptMentions, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame, onFormStateChange]);
+  }, [referenceMode, model, resolution, duration, sound, fullPrompt, framePrompt, formState?.prompt, videoPromptMentions, refSubjects, refImages, refVideos, refAudios, refFirstFrame, refLastFrame, onFormStateChange]);
 
   useEffect(() => {
     const nextDuration = normalizeDurationValue(formState?.duration);
@@ -352,38 +346,7 @@ export default function GenerateVideoPanel({
   }, [formState?.duration, duration]);
 
   // 获取当前模型支持的参数（优先从后端 capabilities 派生）
-  // 当前 Tab 对应的模型列表
-  const tabModels = useMemo(() => {
-    return tab === 'frame' ? frameModels : allModels;
-  }, [tab, frameModels, allModels]);
-
-  const currentVideoModel = useMemo(() => tabModels.find(m => m.value === model), [model, tabModels]);
-
-  function handleTabChange(newTab) {
-    setTab(newTab);
-    const newList = newTab === 'frame' ? frameModels : allModels;
-    if (newList.length > 0) {
-      // 如果当前模型不在新列表中，切到新列表第一个
-      const inList = newList.some(m => m.value === model);
-      let targetModel = model;
-      if (!inList) {
-        targetModel = newList[0].value;
-        setModel(targetModel);
-      }
-      // 重置分辨率和时长
-      const target = newList.find(m => m.value === targetModel);
-      {
-        const caps = target?.capabilities;
-        const resList = (caps?.supported_resolutions?.length ? caps.supported_resolutions : caps?.supported_sizes) || [];
-        if (resList.length > 0) setResolution(resList[0]);
-        const durList = caps?.supported_durations;
-        if (durList?.length > 0) {
-          const shotDur = shot?.params?.duration;
-          setDuration(normalizeDurationValue(shotDur || durList[0]));
-        }
-      }
-    }
-  }
+  const currentVideoModel = useMemo(() => videoModels.find(m => m.value === model), [model, videoModels]);
 
   const availableResolutions = useMemo(() => {
     const caps = currentVideoModel?.capabilities || {};
@@ -415,18 +378,35 @@ export default function GenerateVideoPanel({
 
   // ── 模型能力：参考素材数量上限 ──────────────────────────────────────────────
   const videoCaps = useMemo(() => currentVideoModel?.capabilities || {}, [currentVideoModel]);
+  const availableReferenceModes = useMemo(
+    () => getAvailableVideoReferenceModes(videoCaps),
+    [videoCaps],
+  );
+  useEffect(() => {
+    if (!availableReferenceModes.length) return;
+    const fallbackMode = resolveVideoReferenceModeFallback(referenceMode, availableReferenceModes);
+    if (!fallbackMode || fallbackMode === referenceMode) return;
+    const fallbackTimer = setTimeout(() => setReferenceMode(fallbackMode), 0);
+    return () => clearTimeout(fallbackTimer);
+  }, [availableReferenceModes, referenceMode]);
   const maxRefImages = videoCaps.max_reference_images ?? null;
   const maxRefVideos = videoCaps.max_reference_videos ?? null;
   const maxRefAudios = videoCaps.max_reference_audios ?? null;
   const showRefVideo = maxRefVideos === null || maxRefVideos > 0;
-  const showRefAudio = maxRefAudios === null || maxRefAudios > 0;
-  const showRefImages = maxRefImages === null || maxRefImages > 0;
+  const isSeedance = isSeedanceVideoModel({ modelId: model, modelName: currentVideoModel?.label });
+  const showRefAudio = isSeedance && (maxRefAudios === null || maxRefAudios > 0);
+  const showRefImages = referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
+    ? true
+    : maxRefImages === null || maxRefImages > 0;
   const showRefSubjects = showRefImages && (
     videoCaps.supports_reference_subjects === true ||
     (videoCaps.supported_generation_modes || []).includes('full') ||
     (videoCaps.supported_generation_modes || []).includes('reference_subjects')
   );
-  const imageCount = (showRefSubjects ? refSubjects.length : 0) + refImages.length;
+  const activeReferenceImages = referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
+    ? refImages
+    : [...refSubjects, ...refImages];
+  const imageCount = activeReferenceImages.length;
   const canAddImage = maxRefImages === null || imageCount < maxRefImages;
   const imageCountLabel = maxRefImages != null ? `${imageCount}/${maxRefImages}` : null;
   const videoCountLabel = maxRefVideos != null ? `${refVideos.length}/${maxRefVideos}` : null;
@@ -451,10 +431,11 @@ export default function GenerateVideoPanel({
   }, [model, availableResolutions]);
 
   const videoReferenceItems = useMemo(() => {
-    if (tab === 'frame') return [];
+    if (referenceMode === VIDEO_REFERENCE_MODES.FRAME) return [];
     const items = [];
     // 参考主体（_type: char/scene/prop 为真实主体；本地上传/非主体资产为普通参考图 image，与图片弹窗保持一致：紫色标签「参考图」）
-    refSubjects.forEach(s => {
+    const activeSubjects = referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT ? [] : refSubjects;
+    activeSubjects.forEach(s => {
       const rawType = s._type || s.type;
       const isSubject = rawType === 'char' || rawType === 'scene' || rawType === 'prop';
       const type = isSubject ? rawType : 'image';
@@ -468,11 +449,13 @@ export default function GenerateVideoPanel({
       items.push({ id: img.id, name: img.name || (img.url ? img.url.split('/').pop()?.split('?')[0]?.replace(/\.[^.]+$/, '') || '参考图' : '参考图'), _type: 'image' });
     });
     // 参考视频
-    refVideos.forEach((video) => items.push({ id: video.id, name: video.name || '参考视频', _type: 'video' }));
-    // 参考音频
-    refAudios.forEach((audio) => items.push({ id: audio.id, name: audio.name || '参考音频', _type: 'audio' }));
+    if (referenceMode === VIDEO_REFERENCE_MODES.ALL) {
+      refVideos.forEach((video) => items.push({ id: video.id, name: video.name || '参考视频', _type: 'video' }));
+      // 参考音频
+      refAudios.forEach((audio) => items.push({ id: audio.id, name: audio.name || '参考音频', _type: 'audio' }));
+    }
     return items;
-  }, [refSubjects, refImages, refVideos, refAudios, tab]);
+  }, [refSubjects, refImages, refVideos, refAudios, referenceMode]);
 
   async function handleRefMediaUpload(file, type = 'image') {
     try {
@@ -530,9 +513,43 @@ export default function GenerateVideoPanel({
 
   async function handleGenerate() {
     if (loading) return;
+    const isFrameReference = referenceMode === VIDEO_REFERENCE_MODES.FRAME;
+    const activePrompt = isFrameReference ? framePrompt : fullPrompt;
+    const routeImages = referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
+      ? refImages
+      : [...refSubjects, ...refImages];
+    const routeVideos = isFrameReference || referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT ? [] : refVideos;
+    const routeAudios = isFrameReference || referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT ? [] : refAudios;
+    const routeResult = resolveVideoGenerationMode({
+      modelId: model,
+      modelName: currentVideoModel?.label,
+      capabilities: videoCaps,
+      referenceMode,
+      hasPrompt: Boolean(activePrompt?.trim()),
+      imageCount: isFrameReference ? 0 : routeImages.length,
+      videoCount: routeVideos.length,
+      audioCount: routeAudios.length,
+      liveMaterialCount: isFrameReference ? 0 : routeImages.filter((item) => item?.isLiveMaterial).length,
+      hasFirstFrame: Boolean(refFirstFrame),
+      hasLastFrame: Boolean(refLastFrame),
+    });
+    if (!routeResult.ok) {
+      onShowToast?.(routeResult.message, 'warning');
+      return;
+    }
+    const referenceRouteResult = resolveVideoReferenceMode({
+      generationMode: routeResult.generationMode,
+      modelId: model,
+      modelName: currentVideoModel?.label,
+      capabilities: videoCaps,
+    });
+    if (!referenceRouteResult.ok) {
+      onShowToast?.(referenceRouteResult.message, 'warning');
+      return;
+    }
     setLoading(true);
     const placeholder = `pending-${Date.now()}`;
-    const refImagesSnapshot = tab === 'frame'
+    const refImagesSnapshot = isFrameReference
       ? []
       : refImages.map(r => ({ url: r.url, fileUrl: r.url }));
     onSetGeneratedVideos?.((prev) => [{ url: null, settled: false, id: placeholder, refImages: refImagesSnapshot }, ...prev]);
@@ -540,8 +557,8 @@ export default function GenerateVideoPanel({
       // 认证虚拟人像走服务商 asset:// 引用；普通参考图保持用户当前选择，
       // 由上层根据每个素材的身份组装服务商所需字段。
       const maxRefImages = currentVideoModel?.capabilities?.max_reference_images ?? null;
-      const referenceMedia = tab !== 'frame' && (maxRefImages === null || maxRefImages > 0)
-        ? [...refSubjects, ...refImages].slice(0, maxRefImages ?? 99)
+      const referenceMedia = !isFrameReference && (maxRefImages === null || maxRefImages > 0)
+        ? routeImages.slice(0, maxRefImages ?? 99)
         : [];
       const referenceImages = referenceMedia.map((item) => item.url).filter(Boolean);
       const result = await onGenerate?.({
@@ -549,20 +566,25 @@ export default function GenerateVideoPanel({
         resolution,
         duration,
         sound,
-        prompt: tab === 'frame' ? framePrompt : fullPrompt,
-        tab,
+        prompt: activePrompt,
+        referenceMode,
+        uiReferenceMode: referenceMode,
         reference_images: referenceImages.length > 0 ? referenceImages : undefined,
         reference_media: referenceMedia.length > 0 ? referenceMedia : undefined,
         first_frame_url: refFirstFrame?.url,
         last_frame_url: refLastFrame?.url,
         first_frame_asset_id: refFirstFrame?.assetId || refFirstFrame?.asset_id || undefined,
         last_frame_asset_id: refLastFrame?.assetId || refLastFrame?.asset_id || undefined,
-        generate_mode: tab === 'frame'
-          ? (refFirstFrame && refLastFrame ? 'start_end' : 'first_frame')
-          : 'full',
+        generate_mode: routeResult.generationMode,
+        reference_mode: referenceRouteResult.referenceMode,
+        multi_shot: routeResult.generationMode === 'multi_shot',
+        modelName: currentVideoModel?.label,
+        videoCapabilities: videoCaps,
+        supportedGenerationModes: videoCaps.supported_generation_modes || [],
+        isSeedance,
         // 当前分镜生成接口仍接收单个 URL；UI 可按模型能力收集多个素材，提交时保持既有接口契约。
-        reference_video_url: refVideos[0]?.url,
-        reference_audio_url: refAudios[0]?.url,
+        reference_video_url: routeVideos[0]?.url,
+        reference_audio_url: routeAudios[0]?.url,
       });
       onSetGeneratedVideos?.((prev) => mergeStoryboardMediaItems(
         prev.map((item) => item.id === placeholder
@@ -623,29 +645,37 @@ export default function GenerateVideoPanel({
         {/* 内容区 */}
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           {/* 左侧表单 */}
-          <div style={{ display: 'flex', flexDirection: 'column', width: embedded ? '457px' : '419px', flexShrink: 0, padding: embedded ? '12px 16px 80px 24px' : '8px 12px 80px 24px', gap: '20px', overflowY: 'auto', boxSizing: 'border-box' }}>
-            <VideoGenerationTabs value={tab} onChange={handleTabChange} />
-
+          <div style={{ display: 'flex', flexDirection: 'column', width: embedded ? '457px' : '419px', flexShrink: 0, padding: embedded ? '16px 16px 80px 24px' : '8px 12px 80px 24px', gap: '20px', overflowY: 'auto', boxSizing: 'border-box' }}>
             <PanelPromptInput
               ref={promptRef}
-              value={tab === 'frame' ? framePrompt : fullPrompt}
+              value={referenceMode === VIDEO_REFERENCE_MODES.FRAME ? framePrompt : fullPrompt}
               onChange={handlePromptChange}
               referenceItems={videoReferenceItems}
-              plainTextMode={tab === 'frame'}
+              plainTextMode={referenceMode === VIDEO_REFERENCE_MODES.FRAME}
             />
 
             <GenerationModelField
-              value={modelsLoading ? '加载中...' : (tabModels.find(m => m.value === model)?.label || '请选择')}
-              options={tabModels.map(m => m.label)}
+              value={modelsLoading ? '加载中...' : (currentVideoModel?.label || '请选择')}
+              options={videoModels.map(m => m.label)}
               onChange={(label) => {
-                const selected = tabModels.find(m => m.label === label);
+                const selected = videoModels.find(m => m.label === label);
                 if (selected) setModel(selected.value);
               }}
               disabled={modelsLoading}
             />
 
+            <GenerationReferenceModeField
+              value={getVideoReferenceModeLabel(referenceMode)}
+              options={availableReferenceModes.map((item) => item.label)}
+              onChange={(label) => {
+                const selected = availableReferenceModes.find((item) => item.label === label);
+                if (selected) setReferenceMode(selected.value);
+              }}
+              disabled={modelsLoading || availableReferenceModes.length === 0}
+            />
+
             <ReferenceMediaEditor
-              tab={tab}
+              referenceMode={referenceMode}
               projectId={projectId}
               model={model}
               shot={shot}
@@ -709,7 +739,7 @@ export default function GenerateVideoPanel({
               videoUrl: video.url,
               filename: video.name,
               label: `镜头 ${String(shot?.number ?? 1).padStart(2, '0')}`,
-              prompt: tab === 'frame' ? framePrompt : fullPrompt,
+              prompt: referenceMode === VIDEO_REFERENCE_MODES.FRAME ? framePrompt : fullPrompt,
               model,
               resolution,
               duration: undefined,

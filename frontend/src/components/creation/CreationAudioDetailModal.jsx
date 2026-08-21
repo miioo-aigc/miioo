@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useModalSize } from '../../utils/useModalSize';
 import ConfirmDialog from '../ConfirmDialog';
+import CreationDubbingPromptPreview from './CreationDubbingPromptPreview';
 import { MINIMAX_OFFICIAL_VOICE_METADATA } from './MinimaxOfficialVoiceMetadata';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -51,6 +52,7 @@ export default function CreationAudioDetailModal({
   advancedEnabled = false,
   voiceName = '',
   voiceId = '',
+  voiceOriginLabel = '',
   createdAt = '',
   onDownload,
   onDelete,
@@ -67,6 +69,9 @@ export default function CreationAudioDetailModal({
   const [muted, setMuted] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
+  const [copyPromptState, setCopyPromptState] = useState('default');
+  const [promptCopied, setPromptCopied] = useState(false);
+  const copyPromptTimerRef = useRef(null);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -91,6 +96,20 @@ export default function CreationAudioDetailModal({
     audio.muted = muted;
     return undefined;
   }, [playbackVolume, muted, audioUrl]);
+
+  useEffect(() => () => clearTimeout(copyPromptTimerRef.current), []);
+
+  async function handleCopyPrompt() {
+    if (!prompt) return;
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setPromptCopied(true);
+      clearTimeout(copyPromptTimerRef.current);
+      copyPromptTimerRef.current = setTimeout(() => setPromptCopied(false), 1600);
+    } catch (error) {
+      console.warn('[CreationAudioDetailModal] 复制提示词失败:', error);
+    }
+  }
 
   function togglePlay() {
     const audio = audioRef.current;
@@ -122,6 +141,7 @@ export default function CreationAudioDetailModal({
 
   const progress = audioDuration > 0 ? Math.min(1, currentTime / audioDuration) : 0;
   const voiceDisplayName = MINIMAX_OFFICIAL_VOICE_METADATA[voiceId]?.name || voiceName;
+  const voiceOriginDisplayName = voiceOriginLabel || 'MiniMax';
   return (
     <>
       <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)' }} onClick={onClose}>
@@ -157,8 +177,41 @@ export default function CreationAudioDetailModal({
             </div>
             <div style={{ width: '280px', display: 'flex', flexDirection: 'column', minHeight: 0, flexShrink: 0, background: '#161616', borderLeft: '1px solid #FFFFFF0F', color: '#FFFFFF' }}>
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px' }}>
-                <section style={{ paddingBottom: '16px', borderBottom: '1px solid #FFFFFF0A' }}><div style={{ color: '#FFFFFF99', fontFamily: FONT, fontSize: '11px', marginBottom: '10px' }}>提示词</div><div style={{ color: '#FFFFFFCC', fontFamily: FONT, fontSize: '12px', lineHeight: 1.7, wordBreak: 'break-word' }}>{prompt || '暂无'}</div></section>
-                <section style={{ padding: '16px 0', borderBottom: '1px solid #FFFFFF0A' }}><div style={{ color: '#FFFFFF99', fontFamily: FONT, fontSize: '11px', marginBottom: '12px' }}>音色参考</div><div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}><ValueRow label="音色名称" value={voiceDisplayName} /><ValueRow label="音色来源" value="MiniMax" /></div></section>
+                <section style={{ paddingBottom: '16px', borderBottom: '1px solid #FFFFFF0A' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '10px' }}>
+                    <div style={{ color: '#FFFFFF99', fontFamily: FONT, fontSize: '11px', lineHeight: '14px' }}>提示词</div>
+                    <button
+                      type="button"
+                      aria-label="复制提示词"
+                      title={promptCopied ? '已复制' : '复制提示词'}
+                      disabled={!prompt}
+                      onClick={handleCopyPrompt}
+                      onMouseEnter={() => setCopyPromptState('hover')}
+                      onMouseLeave={() => setCopyPromptState('default')}
+                      onMouseDown={() => setCopyPromptState('pressed')}
+                      onMouseUp={() => setCopyPromptState('hover')}
+                      style={{
+                        padding: 0,
+                        margin: 0,
+                        border: 0,
+                        background: 'transparent',
+                        cursor: prompt ? 'pointer' : 'default',
+                        display: 'flex',
+                        alignItems: 'center',
+                        color: !prompt ? '#FFFFFF1F' : copyPromptState === 'pressed' ? '#2DC3E1' : copyPromptState === 'hover' ? '#FFFFFF99' : '#FFFFFF66',
+                        transition: 'color 120ms',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M4.33337 4.14383V2.60413C4.33337 2.08636 4.75311 1.66663 5.27087 1.66663H13.3959C13.9136 1.66663 14.3334 2.08636 14.3334 2.60413V10.7291C14.3334 11.2469 13.9136 11.6666 13.3959 11.6666H11.8388" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M10.7291 4.33337H2.60413C2.08636 4.33337 1.66663 4.75311 1.66663 5.27087V13.3959C1.66663 13.9136 2.08636 14.3334 2.60413 14.3334H10.7291C11.2469 14.3334 11.6666 13.9136 11.6666 13.3959V5.27087C11.6666 4.75311 11.2469 4.33337 10.7291 4.33337Z" stroke="currentColor" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                  </div>
+                  <CreationDubbingPromptPreview prompt={prompt} advancedEnabled={advancedEnabled} />
+                </section>
+                <section style={{ padding: '16px 0', borderBottom: '1px solid #FFFFFF0A' }}><div style={{ color: '#FFFFFF99', fontFamily: FONT, fontSize: '11px', marginBottom: '12px' }}>音色参考</div><div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}><ValueRow label="音色名称" value={voiceDisplayName} /><ValueRow label="音色来源" value={voiceOriginDisplayName} /></div></section>
                 <section style={{ padding: '16px 0', borderBottom: '1px solid #FFFFFF0A' }}><div style={{ color: '#FFFFFF99', fontFamily: FONT, fontSize: '11px', marginBottom: '12px' }}>生成参数</div><div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}><ValueRow label="模型" value={model} /><ValueRow label="语速" value={speed == null ? '' : `${Number(speed).toFixed(2)}x`} /><ValueRow label="声调" value={pitch == null ? '' : String(Math.round(pitch))} /><ValueRow label="音量" value={volume == null ? '' : Number(volume).toFixed(2)} /><ValueRow label="高级模式" value={advancedEnabled ? '已开启' : '未开启'} /><ValueRow label="音频时长" value={formatDuration(audioDuration)} /></div></section>
                 <section style={{ paddingTop: '16px' }}><div style={{ color: '#FFFFFF99', fontFamily: FONT, fontSize: '11px', marginBottom: '8px' }}>创作时间</div><div style={{ color: '#FFFFFF66', fontFamily: FONT, fontSize: '12px' }}>{formatCreatedAt(createdAt)}</div></section>
               </div>

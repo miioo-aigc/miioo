@@ -39,7 +39,7 @@ function ensureRotateKeyframe() {
   document.head.appendChild(style);
 }
 
-function CreationInputSurface({ width = '800px', disabled = false, promptDisabled = disabled, focused = false, expanded = false, upload, prompt, controls, send, overlays }) {
+function CreationInputSurface({ width = '800px', disabled = false, promptDisabled = disabled, focused = false, upload, prompt, controls, send, overlays }) {
   const [hovered, setHovered] = useState(false);
   const usesAdvancedDubbingLayout = upload.genType === 'dubbing' && prompt.dubbingAdvancedEnabled;
 
@@ -62,7 +62,7 @@ function CreationInputSurface({ width = '800px', disabled = false, promptDisable
         style={{
           display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0px',
           borderRadius: '20px', justifyContent: 'flex-end', padding: '1px', width,
-          ...wrapperStyle, boxShadow: expanded ? 'none' : '-5px -10px 50px #2DC3E11F', opacity: disabled ? 0.72 : 1,
+          ...wrapperStyle, boxShadow: '-5px -10px 50px #2DC3E11F', opacity: disabled && !usesAdvancedDubbingLayout ? 0.72 : 1,
           overflow: 'visible', height: '100%', boxSizing: 'border-box',
         }}
         onMouseEnter={() => !disabled && setHovered(true)}

@@ -4,11 +4,11 @@
  *
  * ─── 全局常量 & 工具函数 ──────────────────────────────────────────
  *   SubjectEmptyIcons / SubjectExtractionState / SubjectEditorSlot components/subject/
- *   SUBJECT_LOADING_TEXTS                                            L99
+ *   SUBJECT_LOADING_TEXTS                                           L145
  *   downloadBlob                                                  utils/downloadBlob.js
- *   INITIAL_CHARS                                                  L120–L128
- *   sleep                                                           L141
- *   batchGeneratedImagesCache                                      L145
+ *   INITIAL_CHARS                                                  L165–L175
+ *   sleep                                                           L183
+ *   batchGeneratedImagesCache                                      L189
  *   主体面板会话缓存 / pending 任务存储                               utils/subjectPanelStorage.js / subjectPendingGenerationStore.js
  *   normalizeSubjectList                                           utils/subjectAdapter.js
  *   getSubjectDownloadName                                          主体下载文件名适配
@@ -32,11 +32,11 @@
  *
  * ─── 业务组件 ────────────────────────────────────────────────────
  *   ConfirmStoryboardModal                                          components/subject/ConfirmStoryboardModal.jsx
- *   <EditSubjectPanel>                                              L157–L896
- *     ├─ [状态/Ref] 模型、字段、图片、弹窗、Toast 与保存队列状态     L160–L178 / L495–L553
- *     ├─ [函数] 生成、定稿、保存及图片动作句柄                      L521–L835
- *     ├─ [纯数据] 详情图片映射、参考图快照和生成参数由域工具完成    L278 / L672
- *     └─ [副作用] 模型/详情加载、批量占位、模型能力和选项联动      L211–L519
+ *   <EditSubjectPanel>                                             L235–L1014
+ *     ├─ [状态/Ref] 模型、字段、图片、弹窗、Toast 与保存队列状态    L238–L257 / L573–L631
+ *     ├─ [函数] 生成、定稿、保存及图片动作句柄                      L599–L953
+ *     ├─ [纯数据] 详情图片映射、参考图快照和生成参数由域工具完成    L356 / L750
+ *     └─ [副作用] 模型/详情加载、批量占位、模型能力和选项联动      L289–L597
  *   SubjectGenerationOptions  主体生图选项组合                       src/components/subject/SubjectGenerationOptions.jsx
  *   SubjectGenerationMode     主体生图方式选择                       src/components/subject/SubjectGenerationMode.jsx
  *   SubjectGenerationAction   主体编辑面板底部生成动作区             src/components/subject/SubjectGenerationAction.jsx
@@ -48,12 +48,12 @@
  *   SubjectGridViewport / SubjectWorkspace 主体列表和工作区组合    src/components/subject/
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
- *   export default function SubjectPage()                           L775
- *     ├─ [状态] activeTab / 提取状态 / 批量状态 / 选中主体与列表数据   L777–L1024
- *     ├─ [Ref] extractingRef / 列表哨兵 / 批量任务控制器              L780–L816
- *     ├─ [函数] 批量生成、添加、下载、删除、进入分镜                 L1026–L1516
- *     ├─ [副作用] 提取、任务恢复、缓存订阅、资产删除和滚动加载       L805–L1541
- *     └─ [渲染] loading/error、SubjectWorkspace 和弹窗组合          L1568–L1765
+ *   export default function SubjectPage()                          L1020
+ *     ├─ [状态] activeTab / 认证模式 / 提取 / 批量 / 选中主体与列表  L1022–L1570
+ *     ├─ [Ref] extractingRef / 列表哨兵 / 批量任务控制器            L1028–L1064
+ *     ├─ [函数] 批量生成、添加、下载、删除、进入分镜               L1328–L1910
+ *     ├─ [副作用] 提取、任务恢复、缓存订阅、资产删除和滚动加载     L1033–L1904
+ *     └─ [渲染] loading/error、SubjectWorkspace 和弹窗组合        L1913–L2118
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-07-16  迁移 SubjectExtractionState 至 components/subject/SubjectExtractionState.jsx；页面仅传入加载文案和重试回调
@@ -76,6 +76,7 @@
  *   2026-07-31  服务端主体列表返回 voice_id=null 时同步清除本地音色映射，修复刷新后旧音色复现
  *   2026-07-31  取消音色优先依据 PATCH 返回结果，兼容主体列表最终一致性延迟
  *   2026-08-07  主体编辑面板未保存画面比例时默认选择 16:9，不再继承项目画幅
+ *   2026-08-21  角色 Tab 新增 Seedance 真人素材认证入口和工具栏认证模式切换
  *   2026-07-31  主体列表首屏请求期间显示 DotsLoading，请求完成且为空后才显示抽取失败态
  *   2026-07-31  编辑主体候选图首次请求期间保留加载占位，避免已有候选图尚未返回时误显示为空列表
  *   2026-08-03  主体删除事件携带已清理的项目资产 ID，联动分镜、资产库和资产选择弹窗移除残留引用
@@ -122,7 +123,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import SubjectImageList from '../components/subject/SubjectImageList';
 import ConfirmStoryboardModal from '../components/subject/ConfirmStoryboardModal';
 import BatchGenerateModal from '../components/BatchGenerateModal';
-import { SubjectGenerationAction, SubjectPanelHeader, SubjectVoiceSelectModal, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, filterSubjectImagesByReferences, getSubjectCandidateImagesFromResponse, getFallbackSubjectImageModels } from '../components/subject';
+import { SubjectGenerationAction, SubjectPanelHeader, SubjectVoiceSelectModal, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, filterSubjectImagesByReferences, getSubjectCandidateImagesFromResponse, getFallbackSubjectImageModels, buildSubjectCertificationMap } from '../components/subject';
 import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiDownloadSubjectImage, apiUnsetPrimarySubjectImage, apiBindSubjectReferenceImages } from '../api/subject';
 import { apiGetTask } from '../api/storyboard';
 import { apiGetSubjectAssets, apiDeleteSubjectAssets } from '../api/assets';
@@ -140,6 +141,7 @@ import { clearSubjectPanelState, readSubjectPanelState, saveSubjectPanelState } 
 import { pendingGenerations } from '../utils/subjectPendingGenerationStore';
 import { downloadBlob } from '../utils/downloadBlob';
 import { normalizeSubjectImageModels } from '../components/subject/SubjectModelAdapter';
+import { apiBindSubjectFinalAsset, apiListLiveMaterialAssets, apiListLiveMaterialGroups, apiListLiveMaterialSubjectBindings } from '../api/liveMaterials';
 
 const SUBJECT_LOADING_TEXTS = ['正在抽取剧本灵魂', '正在抽取剧本主角', '正在抽取剧本配角', '正在抽取场景', '正在抽取道具'];
 
@@ -1016,9 +1018,13 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
 
 // ── Main export ────────────────────────────────────────────────────────────
 
-export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onRegenerateStoryboard, onExtractSubjects, onRetryExtractSubjects, extractError = null, isExtractingSubjects = false, subjectExtractionStatusMessage = '', isStoryboardGenerated = false, initialTab = 'char', chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, subjectsLoading = false, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps }) {
+export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onRegenerateStoryboard, onExtractSubjects, onRetryExtractSubjects, extractError = null, isExtractingSubjects = false, subjectExtractionStatusMessage = '', isStoryboardGenerated = false, initialTab = 'char', chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, subjectsLoading = false, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps, onGoToSeedanceLiveMaterials }) {
 
   const [activeTab, setActiveTab] = useState(initialTab);
+  const [isSeedanceCertificationMode, setIsSeedanceCertificationMode] = useState(false);
+  const [certificationBySubject, setCertificationBySubject] = useState({});
+  const [certificationGroups, setCertificationGroups] = useState([]);
+  const certificationRefreshRef = useRef(null);
   const [batchGenOpen, setBatchGenOpen] = useState(false);
   const [isRetryingExtraction, setIsRetryingExtraction] = useState(false);
   const isExtracting = isExtractingSubjects || isRetryingExtraction;
@@ -1060,6 +1066,81 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   // 批量生成 AbortController，组件卸载时取消
   const batchAbortRef = useRef(null);
   const singleGenRecoveryRunRef = useRef(0);
+
+  const refreshCertificationBindings = useCallback(async (refreshPending = false) => {
+    if (!projectId) return false;
+    try {
+      let payload = await apiListLiveMaterialSubjectBindings(projectId);
+      let certificationMap = buildSubjectCertificationMap(payload);
+      if (refreshPending) {
+        const pendingGroupIds = [...new Set(Object.values(certificationMap)
+          .filter((item) => item.status === 'pending')
+          .map((item) => item.binding?.group?.id)
+          .filter(Boolean))];
+        if (pendingGroupIds.length > 0) {
+          await Promise.all(pendingGroupIds.map((groupId) => apiListLiveMaterialAssets(groupId, { refresh: true }).catch(() => null)));
+          payload = await apiListLiveMaterialSubjectBindings(projectId);
+          certificationMap = buildSubjectCertificationMap(payload);
+        }
+      }
+      setCertificationBySubject(certificationMap);
+      return true;
+    } catch (error) {
+      console.warn('[SubjectPage] 获取真人认证状态失败', error);
+      return false;
+    }
+  }, [projectId]);
+
+  const loadCertificationGroups = useCallback(async () => {
+    try {
+      const payload = await apiListLiveMaterialGroups();
+      const groups = Array.isArray(payload) ? payload : (payload?.list ?? payload?.items ?? payload?.data ?? []);
+      setCertificationGroups(groups.filter((group) => String(group?.group_type || '').toUpperCase() !== 'AIGC'));
+    } catch (error) {
+      console.warn('[SubjectPage] 获取真人素材组失败', error);
+      setCertificationGroups([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isSeedanceCertificationMode) {
+      clearInterval(certificationRefreshRef.current);
+      certificationRefreshRef.current = null;
+      return undefined;
+    }
+    let cancelled = false;
+    const initialTimer = setTimeout(async () => {
+      loadCertificationGroups();
+      const available = await refreshCertificationBindings();
+      if (!cancelled && available) {
+        certificationRefreshRef.current = setInterval(async () => {
+          const stillAvailable = await refreshCertificationBindings(true);
+          if (!stillAvailable) {
+            clearInterval(certificationRefreshRef.current);
+            certificationRefreshRef.current = null;
+          }
+        }, 5000);
+      }
+    }, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(initialTimer);
+      clearInterval(certificationRefreshRef.current);
+      certificationRefreshRef.current = null;
+    };
+  }, [isSeedanceCertificationMode, loadCertificationGroups, refreshCertificationBindings]);
+
+  const handleCertificationGroupSelect = useCallback(async (subject, group) => {
+    if (!projectId || !subject?.id || !group?.id) return;
+    setCertificationBySubject((previous) => ({ ...previous, [subject.id]: { ...previous[subject.id], status: 'pending' } }));
+    try {
+      await apiBindSubjectFinalAsset(group.id, { project_id: projectId, subject_id: subject.id });
+      await refreshCertificationBindings();
+    } catch (error) {
+      setCertificationBySubject((previous) => ({ ...previous, [subject.id]: { ...previous[subject.id], status: 'failed' } }));
+      setBatchToast({ id: Date.now(), message: error?.message || '真人认证提交失败，请重试', type: 'error' });
+    }
+  }, [projectId, refreshCertificationBindings]);
 
   // ── 恢复跨刷新挂起的批量生成任务 ────────────────────────────────────────────
   useEffect(() => {
@@ -1945,7 +2026,11 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       onAddSubject={handleAdd}
       onBatchGenerate={() => setBatchGenOpen(true)}
       onStartStoryboard={handleStartStoryboardRequest}
+      isSeedanceCertificationMode={isSeedanceCertificationMode}
+      onEnterSeedanceCertification={() => setIsSeedanceCertificationMode(true)}
+      onExitSeedanceCertification={() => setIsSeedanceCertificationMode(false)}
       onTabChange={(tab) => {
+        setIsSeedanceCertificationMode(false);
         setActiveTab(tab);
         setSelectedChar(null);
         setSelectedScene(null);
@@ -1964,6 +2049,11 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         onDownloadImage: handleDownloadSubjectImage, onDeleteSubject: handleDeleteSubject, onAdd: handleAdd,
         emptyIcons: SubjectEmptyIcons, sentinelRef: subjectSentinelRef,
         hasMore: (activeTab === 'char' && hasMoreChars) || (activeTab === 'scene' && hasMoreScenes) || (activeTab === 'prop' && hasMoreProps),
+        certificationMode: isSeedanceCertificationMode,
+        certificationBySubject,
+        certificationGroups,
+        onCertificationClick: handleCertificationGroupSelect,
+        onCertificationCreateGroup: onGoToSeedanceLiveMaterials,
       }}
     >
       {/* edit panel */}

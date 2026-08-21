@@ -54,25 +54,17 @@ const REF_MODE_ICON_FRAME_SELECTED = (
   </svg>
 );
 const REF_MODE_ICON_MULTI_DEFAULT = (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-    <path d="M8 8V4M8 8L4.5 10.021M8 8L11.5 10.021" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M4.667 5.333C4.667 6.07 4.07 6.667 3.333 6.667C2.597 6.667 2 6.07 2 5.333C2 4.597 2.597 4 3.333 4C4.07 4 4.667 4.597 4.667 5.333Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M4.667 10.667C4.667 11.403 4.07 12 3.333 12C2.597 12 2 11.403 2 10.667C2 9.93 2.597 9.333 3.333 9.333C4.07 9.333 4.667 9.93 4.667 10.667Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M9.333 13.333C9.333 14.07 8.736 14.667 8 14.667C7.264 14.667 6.667 14.07 6.667 13.333C6.667 12.597 7.264 12 8 12C8.736 12 9.333 12.597 9.333 13.333Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M14 10.667C14 11.403 13.403 12 12.667 12C11.93 12 11.333 11.403 11.333 10.667C11.333 9.93 11.93 9.333 12.667 9.333C13.403 9.333 14 9.93 14 10.667Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M14 5.333C14 6.07 13.403 6.667 12.667 6.667C11.93 6.667 11.333 6.07 11.333 5.333C11.333 4.597 11.93 4 12.667 4C13.403 4 14 4.597 14 5.333Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M9.333 2.667C9.333 3.403 8.736 4 8 4C7.264 4 6.667 3.403 6.667 2.667C6.667 1.93 7.264 1.333 8 1.333C8.736 1.333 9.333 1.93 9.333 2.667Z" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0, opacity: 0.6 }}>
+    <path opacity="0.6" d="M8.38096 12.3819L2.51207 13.6294L0.640869 4.82605L3.57531 4.20231L4.30892 4.04638" stroke="white" strokeLinejoin="round" />
+    <path opacity="0.8" d="M7.5 12H4.5V3H10.5V3.79344" stroke="white" strokeLinejoin="round" />
+    <rect x="9.78113" y="3.27368" width="6" height="9" transform="rotate(18 9.78113 3.27368)" stroke="white" strokeLinejoin="round" />
   </svg>
 );
 const REF_MODE_ICON_MULTI_SELECTED = (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-    <path d="M8 8V4M8 8L4.5 10.021M8 8L11.5 10.021" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M4.667 5.333C4.667 6.07 4.07 6.667 3.333 6.667C2.597 6.667 2 6.07 2 5.333C2 4.597 2.597 4 3.333 4C4.07 4 4.667 4.597 4.667 5.333Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M4.667 10.667C4.667 11.403 4.07 12 3.333 12C2.597 12 2 11.403 2 10.667C2 9.93 2.597 9.333 3.333 9.333C4.07 9.333 4.667 9.93 4.667 10.667Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M9.333 13.333C9.333 14.07 8.736 14.667 8 14.667C7.264 14.667 6.667 14.07 6.667 13.333C6.667 12.597 7.264 12 8 12C8.736 12 9.333 12.597 9.333 13.333Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M14 10.667C14 11.403 13.403 12 12.667 12C11.93 12 11.333 11.403 11.333 10.667C11.333 9.93 11.93 9.333 12.667 9.333C13.403 9.333 14 9.93 14 10.667Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M14 5.333C14 6.07 13.403 6.667 12.667 6.667C11.93 6.667 11.333 6.07 11.333 5.333C11.333 4.597 11.93 4 12.667 4C13.403 4 14 4.597 14 5.333Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M9.333 2.667C9.333 3.403 8.736 4 8 4C7.264 4 6.667 3.403 6.667 2.667C6.667 1.93 7.264 1.333 8 1.333C8.736 1.333 9.333 1.93 9.333 2.667Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
+    <path opacity="0.6" d="M8.38096 12.3819L2.51207 13.6294L0.640869 4.82605L3.57531 4.20231L4.30892 4.04638" stroke="white" strokeLinejoin="round" />
+    <path opacity="0.8" d="M7.5 12H4.5V3H10.5V3.79344" stroke="white" strokeLinejoin="round" />
+    <rect x="9.78113" y="3.27368" width="6" height="9" transform="rotate(18 9.78113 3.27368)" stroke="white" strokeLinejoin="round" />
   </svg>
 );
 
@@ -80,7 +72,7 @@ const REF_MODE_ICON_MULTI_SELECTED = (
 const REF_MODE_ICON_MAP = {
   all:   { iconSelected: REF_MODE_ICON_ALL_SELECTED,    iconDefault: REF_MODE_ICON_ALL_DEFAULT,    triggerIcon: REF_MODE_ICON_ALL_SELECTED    },
   frame: { iconSelected: REF_MODE_ICON_FRAME_SELECTED,  iconDefault: REF_MODE_ICON_FRAME_DEFAULT,  triggerIcon: REF_MODE_ICON_FRAME_SELECTED  },
-  multi: { iconSelected: REF_MODE_ICON_MULTI_SELECTED,  iconDefault: REF_MODE_ICON_MULTI_DEFAULT,  triggerIcon: REF_MODE_ICON_MULTI_SELECTED  },
+  multi_shot: { iconSelected: REF_MODE_ICON_MULTI_SELECTED, iconDefault: REF_MODE_ICON_MULTI_DEFAULT, triggerIcon: REF_MODE_ICON_MULTI_SELECTED },
 };
 
 // ─── Reference mode selector ──────────────────────────────────────────────────
@@ -165,7 +157,8 @@ export function RefModeSelector({ value, onChange, disabled, options = [] }) {
               <RefModeDropdownItem
                 key={opt.value}
                 label={opt.label}
-                icon={sel ? icons.iconSelected : icons.iconDefault}
+                iconDefault={icons.iconDefault}
+                iconSelected={icons.iconSelected}
                 selected={sel}
                 onClick={() => { onChange(opt.value); setOpen(false); }}
               />
@@ -177,7 +170,7 @@ export function RefModeSelector({ value, onChange, disabled, options = [] }) {
   );
 }
 
-function RefModeDropdownItem({ label, icon, selected, onClick }) {
+function RefModeDropdownItem({ label, iconDefault, iconSelected, selected, onClick }) {
   const [hovered, setHovered] = useState(false);
   return (
     <button
@@ -206,9 +199,8 @@ function RefModeDropdownItem({ label, icon, selected, onClick }) {
         transition: 'background 0.15s',
       }}
     >
-      {icon}
+      {selected || hovered ? iconSelected : iconDefault}
       <span style={{ flex: 1 }}>{label}</span>
     </button>
   );
 }
-

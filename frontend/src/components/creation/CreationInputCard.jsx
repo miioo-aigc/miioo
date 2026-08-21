@@ -26,6 +26,8 @@
  *   2026-08-20  配音资产确认后使用独立音频文件卡片展示，并提供播放/暂停控制
  *   2026-08-20  资产库视频参考保留封面字段，输入区文件卡片不再把视频地址误作背景图
  *   2026-08-20  Seedance 真人素材按带特殊标识的普通参考图追加，不替换已有真人素材
+ *   2026-08-21  首尾帧与全能参考/智能多帧双向切换时迁移图片素材，避免模式切换丢图
+ *   2026-08-21  高频切换时同步清空首尾帧 ref，避免旧状态更新覆盖新回填结果
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -154,6 +156,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     replaceFiles,
     clearFiles,
     clearFrameFiles,
+    moveFrameFilesToFiles,
+    moveFilesToFrameFiles,
     swapFrameFiles,
     getCurrentFiles,
   } = useCreationInputFiles({
@@ -443,8 +447,17 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   }, [currentModel, genType]);
 
   const handleRefModeChange = useCallback((newRefMode) => {
+    if (genType === 'video' && newRefMode !== VIDEO_REFERENCE_MODES.FRAME
+      && !moveFrameFilesToFiles()) {
+      return false;
+    }
+    if (genType === 'video' && newRefMode === VIDEO_REFERENCE_MODES.FRAME
+      && !moveFilesToFrameFiles()) {
+      return false;
+    }
     setRefMode(newRefMode);
-  }, [setRefMode]);
+    return true;
+  }, [genType, moveFilesToFrameFiles, moveFrameFilesToFiles, setRefMode]);
 
   const previousModelRef = useRef(model);
   useEffect(() => {
@@ -454,11 +467,12 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     const modelChanged = previousModelRef.current && previousModelRef.current !== model;
     previousModelRef.current = model;
     if (!fallbackMode || fallbackMode === refMode) return;
-    setRefMode(fallbackMode);
+    const switched = handleRefModeChange(fallbackMode);
+    if (!switched) return;
     if (modelChanged && refMode) {
       showToast?.('info', `新模型不支持${getVideoReferenceModeLabel(refMode)}，已切换为${getVideoReferenceModeLabel(fallbackMode)}`);
     }
-  }, [creationParams?.refModes, currentModel, genType, model, refMode, setRefMode, showToast]);
+  }, [creationParams?.refModes, currentModel, genType, handleRefModeChange, model, refMode, showToast]);
   // Apply prefill when version bumps (re-edit or use-as-ref or use-as-first-frame)
   useEffect(() => {
     if (!prefillVersion || !prefillData) return;

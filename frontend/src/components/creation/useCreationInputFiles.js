@@ -125,20 +125,49 @@ export function useCreationInputFiles({
   const clearFrameFiles = useCallback(({ preserveFiles = [] } = {}) => {
     const preserved = new Set(preserveFiles);
     const releasedUrls = new Set();
-    const clearFrame = (setter, ref, otherRef) => {
-      setter((previousFile) => {
-        if (previousFile && !preserved.has(previousFile)
-          && !filesRef.current.includes(previousFile)
-          && previousFile !== otherRef.current) {
-          releaseBlobUrls(previousFile, releasedUrls);
-        }
-        ref.current = null;
-        return null;
-      });
-    };
-    clearFrame(setFirstFrameFileState, firstFrameFileRef, lastFrameFileRef);
-    clearFrame(setLastFrameFileState, lastFrameFileRef, firstFrameFileRef);
+    const frameFiles = [firstFrameFileRef.current, lastFrameFileRef.current]
+      .filter(Boolean);
+    frameFiles.forEach((file) => {
+      if (!preserved.has(file) && !filesRef.current.includes(file)) {
+        releaseBlobUrls(file, releasedUrls);
+      }
+    });
+    // 先同步清空 ref，再提交状态。高频切换时，不能让旧的函数式更新回调
+    // 在后续回填首尾帧之后才执行，从而把新图片再次清空。
+    firstFrameFileRef.current = null;
+    lastFrameFileRef.current = null;
+    setFirstFrameFileState(null);
+    setLastFrameFileState(null);
   }, []);
+
+  const moveFrameFilesToFiles = useCallback(() => {
+    const frameFiles = [firstFrameFileRef.current, lastFrameFileRef.current].filter(Boolean);
+    if (frameFiles.length === 0) return true;
+
+    const existingFiles = filesRef.current;
+    const seen = new Set(existingFiles.map((file) => file?._uid || file?.assetId || file?.url || file?.previewUrl).filter(Boolean));
+    const additions = frameFiles.filter((file) => {
+      const identity = file?._uid || file?.assetId || file?.url || file?.previewUrl;
+      if (!identity || seen.has(identity)) return false;
+      seen.add(identity);
+      return true;
+    });
+    // 首帧、尾帧排在普通素材列表最前，保证再次切回时恢复同一组图片和原始顺序。
+    const mergedFiles = [...additions, ...existingFiles];
+    const rejectedLabels = getReferenceLimitLabels(mergedFiles, currentCap, existingFiles);
+    if (rejectedLabels.length > 0) {
+      onToastRef.current?.('warning', `${rejectedLabels.join('、')}已达该模型的上限，无法切换参考模式`);
+      return false;
+    }
+    if (mergedFiles.length > MAX_CREATION_FILES) {
+      onToastRef.current?.('warning', `参考素材最多支持${MAX_CREATION_FILES}个，无法切换参考模式`);
+      return false;
+    }
+
+    setFiles(mergedFiles);
+    clearFrameFiles({ preserveFiles: mergedFiles });
+    return true;
+  }, [clearFrameFiles, currentCap, setFiles]);
 
   const releaseFiles = useCallback((filesToRelease = []) => {
     const releasedUrls = new Set();
@@ -178,6 +207,19 @@ export function useCreationInputFiles({
   const setLastFrameFile = useCallback((updater) => {
     setFrameFile(setLastFrameFileState, lastFrameFileRef, updater);
   }, [setFrameFile]);
+
+  const moveFilesToFrameFiles = useCallback(() => {
+    const imageFiles = filesRef.current.filter(isImageFile);
+    if (imageFiles.length === 0) return true;
+
+    const emptySlots = [];
+    if (!firstFrameFileRef.current) emptySlots.push(setFirstFrameFile);
+    if (!lastFrameFileRef.current) emptySlots.push(setLastFrameFile);
+    const filesToMove = imageFiles.slice(0, emptySlots.length);
+    filesToMove.forEach((file, index) => emptySlots[index](file));
+    setFiles((previousFiles) => previousFiles.filter((file) => !filesToMove.includes(file)));
+    return true;
+  }, [setFiles, setFirstFrameFile, setLastFrameFile]);
 
   const swapFrameFiles = useCallback(() => {
     const first = firstFrameFileRef.current;
@@ -304,6 +346,8 @@ export function useCreationInputFiles({
     removeFile,
     clearFiles,
     clearFrameFiles,
+    moveFrameFilesToFiles,
+    moveFilesToFrameFiles,
     releaseFiles,
     swapFrameFiles,
     getCurrentFiles,

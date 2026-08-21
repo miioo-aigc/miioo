@@ -4,6 +4,7 @@
  *
  * ─── 状态层 ─────────────────────────────────────────────────────
  *   hovered / starAnim / confirmDelete                         卡片悬停、收藏动画和删除确认状态
+ *   extractingLastFrame                                         尾帧提取中的单卡片加载状态
  *   videoRef                                                    悬停播放的视频引用
  *
  * ─── 展示层 ────────────────────────────────────────────────────
@@ -16,6 +17,7 @@
  * ─── 更新记录 ──────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离视频结果卡片；页面通过显式 props 注入业务回调
  *   2026-08-17  下载统一透传页面正式下载回调，结果卡不再请求短时媒体链接
+ *   2026-08-21  尾帧提取期间显示单卡片 DotsLoading，并防止重复触发
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -44,6 +46,7 @@ export default function CreationVideoResultCard({ status, videoUrl, onReEdit, on
   const [hovered, setHovered] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [extractingLastFrame, setExtractingLastFrame] = useState(false);
   const videoRef = useRef(null);
   
 
@@ -65,6 +68,16 @@ export default function CreationVideoResultCard({ status, videoUrl, onReEdit, on
     setStarAnim(true);
     setTimeout(() => setStarAnim(false), 300);
     onToggleFavorite?.();
+  }
+
+  async function handleUseAsFirstFrame() {
+    if (extractingLastFrame) return;
+    setExtractingLastFrame(true);
+    try {
+      await onUseAsFirstFrame?.();
+    } finally {
+      setExtractingLastFrame(false);
+    }
   }
 
   return (
@@ -161,7 +174,8 @@ export default function CreationVideoResultCard({ status, videoUrl, onReEdit, on
               />
              <CreationCardActionButton
                tooltip="尾帧用作首帧参考"
-               onClick={() => onUseAsFirstFrame?.()}
+               onClick={handleUseAsFirstFrame}
+               disabled={extractingLastFrame}
                icon={
                   <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style={{ width: '16px', height: '16px', overflow: 'visible' }}>
                     <path d="M9.446 1.733C9.888 1.733 10.246 2.092 10.246 2.533V21.855C10.246 22.297 9.888 22.655 9.447 22.655C9.005 22.655 8.646 22.297 8.646 21.855V2.533C8.646 2.092 9.005 1.733 9.447 1.733H9.446Z" fill="#FFFFFF" />
@@ -199,6 +213,24 @@ export default function CreationVideoResultCard({ status, videoUrl, onReEdit, on
               />
             </div>
           </>
+        )}
+
+        {extractingLastFrame && (
+          <div
+            aria-label="正在提取尾帧"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'rgba(0, 0, 0, 0.58)',
+              cursor: 'wait',
+            }}
+          >
+            <DotsLoading size={5} color="#2DC3E1" gap={4} />
+          </div>
         )}
       </div>
 

@@ -9,7 +9,7 @@ import { useState } from 'react';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
-export default function CreationCardActionButton({ icon, tooltip, onClick }) {
+export default function CreationCardActionButton({ icon, tooltip, onClick, disabled = false }) {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -24,6 +24,7 @@ export default function CreationCardActionButton({ icon, tooltip, onClick }) {
         onClick={onClick}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
+        disabled={disabled}
         style={{ width: '24px', height: '24px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: hovered ? '#000000B3' : '#00000080', border: 'none', cursor: 'pointer', flexShrink: 0, transition: 'background-color 0.15s' }}
       >
         {icon}

@@ -27,6 +27,7 @@
  *   2026-08-17  下载统一透传页面正式下载回调，结果卡不再回退短时媒体链接
  *   2026-08-20  支持资产选择模式在左上角展示复选框，并保持播放按钮独立交互
  *   2026-08-20  资产选择模式复用组件系统 Checkbox，移除卡片内手写复选框样式
+ *   2026-08-21  创作历史配音台词复用提示词预览，展示停顿、语气词和情绪高亮
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -34,6 +35,7 @@ import Checkbox from '../Checkbox';
 import ConfirmDialog from '../ConfirmDialog';
 import DotsLoading from '../DotsLoading';
 import CreationCardActionButton from './CreationCardActionButton';
+import CreationDubbingPromptPreview from './CreationDubbingPromptPreview';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const WAVEFORM_HEIGHTS = [
@@ -61,6 +63,7 @@ export default function CreationAudioResultCard({
   status,
   audioUrl,
   prompt,
+  advancedEnabled = false,
   onDownload,
   onDelete,
   onCardClick,
@@ -114,12 +117,12 @@ export default function CreationAudioResultCard({
           </div>
         ) : isDone ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '12px', padding: batchMode && selectionCheckboxPosition === 'left' ? '36px 16px 16px' : '16px', boxSizing: 'border-box' }}>
-            <div
-              style={{ width: '100%', minHeight: 0, flex: 1, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, fontFamily: FONT, fontSize: '14px', lineHeight: '150%', color: '#FFFFFF99', wordBreak: 'break-word' }}
+            <CreationDubbingPromptPreview
+              prompt={prompt}
+              advancedEnabled={advancedEnabled}
               title={prompt || ''}
-            >
-              {prompt || ''}
-            </div>
+              style={{ width: '100%', minHeight: 0, flex: 1, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, fontSize: '14px', lineHeight: '150%', color: '#FFFFFF99' }}
+            />
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', paddingRight: hovered ? '56px' : 0, boxSizing: 'border-box', flexShrink: 0 }}>
               <button
                 type="button"

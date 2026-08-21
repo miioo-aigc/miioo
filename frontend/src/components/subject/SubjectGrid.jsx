@@ -11,6 +11,7 @@
  */
 import { Button } from '../ui';
 import { AddSubjectCard, SubjectCard } from './SubjectCard';
+import { getCurrentSubjectCertificationStatus } from './SubjectCertificationAdapter';
 
 const TAB_LABELS = { char: '角色', scene: '场景', prop: '道具' };
 
@@ -73,6 +74,9 @@ export default function SubjectGrid({
       {items.map((item) => {
         const voiceId = charVoices[item.id];
         const voice = voiceList.find((entry) => entry.voice_id === voiceId);
+        const certificationStatus = certificationMode && isCharacterTab
+          ? getCurrentSubjectCertificationStatus(item, certificationBySubject[item.id])
+          : undefined;
         return (
           <SubjectCard
             key={item.id}
@@ -91,7 +95,7 @@ export default function SubjectGrid({
             onDeleteSubject={() => onDeleteSubject?.(item.id)}
             loading={!!batchLoadingSubjects[item.id]}
             selected={selectedId === item.id}
-            certificationStatus={certificationMode && isCharacterTab ? (certificationBySubject[item.id]?.status || 'unverified') : undefined}
+            certificationStatus={certificationStatus}
             certificationGroups={certificationGroups}
             onCertificationClick={(group) => onCertificationClick?.(item, group)}
             onCertificationCreateGroup={onCertificationCreateGroup}

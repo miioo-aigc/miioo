@@ -1095,7 +1095,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     try {
       const payload = await apiListLiveMaterialGroups();
       const groups = Array.isArray(payload) ? payload : (payload?.list ?? payload?.items ?? payload?.data ?? []);
-      setCertificationGroups(groups.filter((group) => String(group?.group_type || '').toUpperCase() !== 'AIGC'));
+      setCertificationGroups(groups);
     } catch (error) {
       console.warn('[SubjectPage] 获取真人素材组失败', error);
       setCertificationGroups([]);
@@ -1132,12 +1132,34 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
 
   const handleCertificationGroupSelect = useCallback(async (subject, group) => {
     if (!projectId || !subject?.id || !group?.id) return;
-    setCertificationBySubject((previous) => ({ ...previous, [subject.id]: { ...previous[subject.id], status: 'pending' } }));
+    const primaryAssetId = subject.primary_asset_id ?? subject.primaryAssetId;
+    const pendingCertification = {
+      status: 'pending',
+      binding: {
+        subject_id: subject.id,
+        primary_asset_id: primaryAssetId,
+        group_id: group.id,
+      },
+    };
+    setCertificationBySubject((previous) => ({
+      ...previous,
+      [subject.id]: {
+        ...pendingCertification,
+        records: [pendingCertification, ...(previous[subject.id]?.records ?? [])],
+      },
+    }));
     try {
       await apiBindSubjectFinalAsset(group.id, { project_id: projectId, subject_id: subject.id });
       await refreshCertificationBindings();
     } catch (error) {
-      setCertificationBySubject((previous) => ({ ...previous, [subject.id]: { ...previous[subject.id], status: 'failed' } }));
+      setCertificationBySubject((previous) => ({
+        ...previous,
+        [subject.id]: {
+          ...pendingCertification,
+          status: 'failed',
+          records: [{ ...pendingCertification, status: 'failed' }, ...(previous[subject.id]?.records ?? []).slice(1)],
+        },
+      }));
       setBatchToast({ id: Date.now(), message: error?.message || '真人认证提交失败，请重试', type: 'error' });
     }
   }, [projectId, refreshCertificationBindings]);

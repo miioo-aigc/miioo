@@ -139,13 +139,15 @@ function renderPromptTokens(prompt, keyPrefix = 'prompt') {
   return nodes;
 }
 
-export default function CreationDubbingPromptPreview({ prompt = '', advancedEnabled = false }) {
-  if (!prompt) return <div style={BASE_TEXT_STYLE}>暂无</div>;
+export default function CreationDubbingPromptPreview({ prompt = '', advancedEnabled = false, style, title }) {
+  const previewStyle = { ...BASE_TEXT_STYLE, ...style };
+
+  if (!prompt) return <div style={previewStyle} title={title}>暂无</div>;
 
   const shouldParse = advancedEnabled || hasAdvancedPromptToken(prompt);
 
   return (
-    <div style={BASE_TEXT_STYLE}>
+    <div style={previewStyle} title={title}>
       {shouldParse ? renderPromptTokens(prompt) : prompt}
     </div>
   );

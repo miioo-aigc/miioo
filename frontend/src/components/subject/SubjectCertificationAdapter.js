@@ -38,7 +38,7 @@ export function unwrapSubjectBindings(payload) {
 
 export function getSubjectCertificationStatus(binding) {
   if (!binding) return 'unverified';
-  const status = String(binding.asset?.status || binding.status || '').trim().toLowerCase();
+  const status = String(binding.status || binding.asset?.status || '').trim().toLowerCase();
   if (APPROVED.has(status)) return 'approved';
   if (FAILED.has(status)) return 'failed';
   return 'pending';
@@ -65,13 +65,15 @@ export function buildSubjectCertificationMap(payload) {
  * 任意 Seedance 素材库记录只要认证通过，当前定稿图即可使用。
  */
 export function getCurrentSubjectCertificationStatus(subject, certification) {
+  return getCurrentSubjectCertification(subject, certification)?.status ?? 'unverified';
+}
+
+export function getCurrentSubjectCertification(subject, certification) {
   const currentAssetId = subject?.primary_asset_id ?? subject?.primaryAssetId;
-  if (!currentAssetId || !certification) return 'unverified';
+  if (!currentAssetId || !certification) return null;
 
   const records = certification.records ?? [certification];
-  const matchingRecords = records
+  return records
     .filter((record) => String(getBindingPrimaryAssetId(record?.binding)) === String(currentAssetId))
-    .sort((left, right) => compareBindingsByRecency(left.binding, right.binding));
-
-  return matchingRecords[0]?.status ?? 'unverified';
+    .sort((left, right) => compareBindingsByRecency(left.binding, right.binding))[0] ?? null;
 }

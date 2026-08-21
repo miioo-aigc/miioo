@@ -123,7 +123,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import SubjectImageList from '../components/subject/SubjectImageList';
 import ConfirmStoryboardModal from '../components/subject/ConfirmStoryboardModal';
 import BatchGenerateModal from '../components/BatchGenerateModal';
-import { SubjectGenerationAction, SubjectPanelHeader, SubjectVoiceSelectModal, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, filterSubjectImagesByReferences, getSubjectCandidateImagesFromResponse, getFallbackSubjectImageModels, buildSubjectCertificationMap } from '../components/subject';
+import { SubjectGenerationAction, SubjectPanelHeader, SubjectVoiceSelectModal, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, filterSubjectImagesByReferences, getSubjectCandidateImagesFromResponse, getFallbackSubjectImageModels, buildSubjectCertificationMap, getCurrentSubjectCertification } from '../components/subject';
 import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiDownloadSubjectImage, apiUnsetPrimarySubjectImage, apiBindSubjectReferenceImages } from '../api/subject';
 import { apiGetTask } from '../api/storyboard';
 import { apiGetSubjectAssets, apiDeleteSubjectAssets } from '../api/assets';
@@ -1025,6 +1025,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   const [certificationBySubject, setCertificationBySubject] = useState({});
   const [certificationGroups, setCertificationGroups] = useState([]);
   const certificationRefreshRef = useRef(null);
+  const certificationCharactersRef = useRef([]);
   const [batchGenOpen, setBatchGenOpen] = useState(false);
   const [isRetryingExtraction, setIsRetryingExtraction] = useState(false);
   const isExtracting = isExtractingSubjects || isRetryingExtraction;
@@ -1068,34 +1069,50 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   const singleGenRecoveryRunRef = useRef(0);
 
   const refreshCertificationBindings = useCallback(async (refreshPending = false) => {
-    if (!projectId) return false;
+    if (!projectId) return { available: false, hasPending: false };
     try {
       let payload = await apiListLiveMaterialSubjectBindings(projectId);
       let certificationMap = buildSubjectCertificationMap(payload);
+      let pendingCertifications = certificationCharactersRef.current
+        .map((subject) => getCurrentSubjectCertification(subject, certificationMap[subject.id]))
+        .filter((certification) => certification?.status === 'pending');
       if (refreshPending) {
-        const pendingGroupIds = [...new Set(Object.values(certificationMap)
-          .filter((item) => item.status === 'pending')
-          .map((item) => item.binding?.group?.id)
+        const pendingGroupIds = [...new Set(pendingCertifications
+          .map((item) => item.binding?.group_id ?? item.binding?.groupId ?? item.binding?.group?.id)
           .filter(Boolean))];
         if (pendingGroupIds.length > 0) {
           await Promise.all(pendingGroupIds.map((groupId) => apiListLiveMaterialAssets(groupId, { refresh: true }).catch(() => null)));
           payload = await apiListLiveMaterialSubjectBindings(projectId);
           certificationMap = buildSubjectCertificationMap(payload);
+          pendingCertifications = certificationCharactersRef.current
+            .map((subject) => getCurrentSubjectCertification(subject, certificationMap[subject.id]))
+            .filter((certification) => certification?.status === 'pending');
         }
       }
       setCertificationBySubject(certificationMap);
-      return true;
+      return { available: true, hasPending: pendingCertifications.length > 0 };
     } catch (error) {
       console.warn('[SubjectPage] 获取真人认证状态失败', error);
-      return false;
+      return { available: false, hasPending: false };
     }
   }, [projectId]);
+
+  const startCertificationPolling = useCallback(() => {
+    if (certificationRefreshRef.current) return;
+    certificationRefreshRef.current = setInterval(async () => {
+      const { available, hasPending } = await refreshCertificationBindings(true);
+      if (!available || !hasPending) {
+        clearInterval(certificationRefreshRef.current);
+        certificationRefreshRef.current = null;
+      }
+    }, 5000);
+  }, [refreshCertificationBindings]);
 
   const loadCertificationGroups = useCallback(async () => {
     try {
       const payload = await apiListLiveMaterialGroups();
       const groups = Array.isArray(payload) ? payload : (payload?.list ?? payload?.items ?? payload?.data ?? []);
-      setCertificationGroups(groups);
+      setCertificationGroups(groups.filter((group) => String(group?.group_type ?? group?.groupType ?? '').toUpperCase() !== 'AIGC'));
     } catch (error) {
       console.warn('[SubjectPage] 获取真人素材组失败', error);
       setCertificationGroups([]);
@@ -1111,15 +1128,9 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     let cancelled = false;
     const initialTimer = setTimeout(async () => {
       loadCertificationGroups();
-      const available = await refreshCertificationBindings();
-      if (!cancelled && available) {
-        certificationRefreshRef.current = setInterval(async () => {
-          const stillAvailable = await refreshCertificationBindings(true);
-          if (!stillAvailable) {
-            clearInterval(certificationRefreshRef.current);
-            certificationRefreshRef.current = null;
-          }
-        }, 5000);
+      const { available, hasPending } = await refreshCertificationBindings();
+      if (!cancelled && available && hasPending) {
+        startCertificationPolling();
       }
     }, 0);
     return () => {
@@ -1128,7 +1139,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       clearInterval(certificationRefreshRef.current);
       certificationRefreshRef.current = null;
     };
-  }, [isSeedanceCertificationMode, loadCertificationGroups, refreshCertificationBindings]);
+  }, [isSeedanceCertificationMode, loadCertificationGroups, refreshCertificationBindings, startCertificationPolling]);
 
   const handleCertificationGroupSelect = useCallback(async (subject, group) => {
     if (!projectId || !subject?.id || !group?.id) return;
@@ -1140,17 +1151,18 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         primary_asset_id: primaryAssetId,
         group_id: group.id,
       },
-    };
-    setCertificationBySubject((previous) => ({
+      };
+      setCertificationBySubject((previous) => ({
       ...previous,
       [subject.id]: {
         ...pendingCertification,
         records: [pendingCertification, ...(previous[subject.id]?.records ?? [])],
       },
-    }));
+      }));
     try {
       await apiBindSubjectFinalAsset(group.id, { project_id: projectId, subject_id: subject.id });
-      await refreshCertificationBindings();
+      const { hasPending } = await refreshCertificationBindings();
+      if (hasPending) startCertificationPolling();
     } catch (error) {
       setCertificationBySubject((previous) => ({
         ...previous,
@@ -1162,7 +1174,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       }));
       setBatchToast({ id: Date.now(), message: error?.message || '真人认证提交失败，请重试', type: 'error' });
     }
-  }, [projectId, refreshCertificationBindings]);
+  }, [projectId, refreshCertificationBindings, startCertificationPolling]);
 
   // ── 恢复跨刷新挂起的批量生成任务 ────────────────────────────────────────────
   useEffect(() => {
@@ -1599,6 +1611,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
 
   const [internalChars, setInternalChars] = useState(INITIAL_CHARS);
   const chars = (externalChars !== undefined && externalChars !== null) ? externalChars : internalChars;
+  certificationCharactersRef.current = chars;
   const hasExternalChars = externalChars !== undefined && externalChars !== null;
   function setChars(updater) {
     if (typeof updater === 'function') {

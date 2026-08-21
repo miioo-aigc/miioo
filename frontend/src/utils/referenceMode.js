@@ -4,6 +4,7 @@
  */
 export function formatReferenceMode(value, label) {
   const normalizedLabel = String(label || '').trim();
+  if (['first_frame', 'start_end', 'last_frame'].includes(normalizedLabel.toLowerCase())) return '首尾帧';
   if (normalizedLabel) return normalizedLabel;
   if (value === undefined || value === null || value === '') return '';
   const normalized = String(value).trim().toLowerCase();

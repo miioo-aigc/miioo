@@ -13,7 +13,7 @@ export default function SubjectCertificationMenu({ groups = [], onSelectGroup, o
   const triggerRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState(null);
-  const items = groups.length > 0 ? groups : [{ id: '__create__', name: '新增真人素材组', create: true }];
+  const items = [...groups, { id: '__create__', name: '新增真人素材组', create: true }];
 
   useEffect(() => {
     if (!open) return undefined;

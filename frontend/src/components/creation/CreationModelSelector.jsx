@@ -63,16 +63,17 @@ export function ModelSelector({ value, onChange, options = [], disabled, onBefor
         </button>
       }
     >
-      {options.map((opt) => (
-        <DropdownItem
-          key={opt.value}
-          label={opt.label}
-          selected={opt.value === value}
-          onClick={() => { onChange(opt.value); setOpen(false); }}
-          icon={<ModelIcon name={opt.label} />}
-        />
-      ))}
+      <div style={{ maxHeight: '160px', overflowY: 'auto' }}>
+        {options.map((opt) => (
+          <DropdownItem
+            key={opt.value}
+            label={opt.label}
+            selected={opt.value === value}
+            onClick={() => { onChange(opt.value); setOpen(false); }}
+            icon={<ModelIcon name={opt.label} />}
+          />
+        ))}
+      </div>
     </Dropdown>
   );
 }
-

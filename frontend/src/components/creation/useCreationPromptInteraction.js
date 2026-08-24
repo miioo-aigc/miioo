@@ -26,6 +26,7 @@
  *
  * ─── 更新记录 ─────────────────────────────────────────
  *   2026-08-21  高级配音提交时将情绪、停顿和语气词视觉标签序列化为 MiniMax 官方 text 标记格式。
+ *   2026-08-24  高级配音粘贴时解析官方 text 标记并恢复为可编辑的情绪、停顿和语气词标签。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -57,6 +58,21 @@ const DUBBING_INTERJECTION_API_VALUES = {
   '呃': 'emm',
   '唌': 'sneezes',
 };
+
+const DUBBING_EMOTIONS = {
+  calm: { key: 'calm', label: '中性', tone: 'positive' },
+  fearful: { key: 'fearful', label: '害怕', tone: 'negative' },
+  happy: { key: 'happy', label: '开心', tone: 'positive' },
+  sad: { key: 'sad', label: '难过', tone: 'negative' },
+  fluent: { key: 'fluent', label: '生动', tone: 'positive' },
+  angry: { key: 'angry', label: '生气', tone: 'negative' },
+  surprised: { key: 'surprised', label: '惊讶', tone: 'positive' },
+  disgusted: { key: 'disgusted', label: '厌恶', tone: 'negative' },
+};
+
+const DUBBING_INTERJECTION_LABELS = Object.fromEntries(
+  Object.entries(DUBBING_INTERJECTION_API_VALUES).map(([label, value]) => [value, label]),
+);
 
 function normalizePauseValue(value) {
   const matchedValue = String(value || '').match(/\d+(?:\.\d+)?/);
@@ -169,6 +185,29 @@ function getEmotionDefinition(emotionElement) {
     label: emotionElement.querySelector('[data-emotion-label]')?.firstChild?.textContent || '',
     tone: emotionElement.dataset.emotionTone || (negativeKeys.has(key) ? 'negative' : 'positive'),
   };
+}
+
+function findEmotionEnd(text, key, startIndex) {
+  const openTag = `{${key}}`;
+  const closeTag = `{/${key}}`;
+  let depth = 1;
+  let cursor = startIndex;
+
+  while (cursor < text.length) {
+    const nextOpen = text.indexOf(openTag, cursor);
+    const nextClose = text.indexOf(closeTag, cursor);
+    if (nextClose === -1) return -1;
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      depth += 1;
+      cursor = nextOpen + openTag.length;
+      continue;
+    }
+    depth -= 1;
+    if (depth === 0) return nextClose;
+    cursor = nextClose + closeTag.length;
+  }
+
+  return -1;
 }
 
 /**
@@ -475,6 +514,87 @@ export function useCreationPromptInteraction({
     return tag;
   }, []);
 
+  const buildAdvancedDubbingFragment = useCallback((text) => {
+    const buildFragment = (source) => {
+      const fragment = document.createDocumentFragment();
+      let cursor = 0;
+
+      while (cursor < source.length) {
+        const rest = source.slice(cursor);
+        const emotionMatch = rest.match(/^\{([a-z-]+)\}/i);
+        const emotionKey = emotionMatch?.[1]?.toLowerCase();
+        const emotion = emotionKey ? DUBBING_EMOTIONS[emotionKey] : null;
+        if (emotion) {
+          const contentStart = cursor + emotionMatch[0].length;
+          const closingIndex = findEmotionEnd(source, emotionKey, contentStart);
+          if (closingIndex !== -1) {
+            fragment.appendChild(buildEmotionElement(
+              emotion,
+              buildFragment(source.slice(contentStart, closingIndex)),
+            ));
+            cursor = closingIndex + `{/${emotionKey}}`.length;
+            continue;
+          }
+        }
+
+        const pauseMatch = rest.match(/^<#(\d+(?:\.\d+)?)#>/);
+        if (pauseMatch) {
+          const value = normalizePauseValue(pauseMatch[1]);
+          if (value) fragment.appendChild(buildInlineTag(`${value}s`, 'pause'));
+          cursor += pauseMatch[0].length;
+          continue;
+        }
+
+        const interjectionMatch = rest.match(/^\(([a-z-]+)\)/i);
+        const interjectionKey = interjectionMatch?.[1]?.toLowerCase();
+        if (interjectionKey && DUBBING_INTERJECTION_LABELS[interjectionKey]) {
+          fragment.appendChild(buildInlineTag(DUBBING_INTERJECTION_LABELS[interjectionKey], 'interjection'));
+          cursor += interjectionMatch[0].length;
+          continue;
+        }
+
+        const nextMarker = source.slice(cursor + 1).search(/[<{(]/);
+        const textEnd = nextMarker === -1 ? source.length : cursor + nextMarker + 1;
+        fragment.appendChild(document.createTextNode(source.slice(cursor, textEnd)));
+        cursor = textEnd;
+      }
+
+      return fragment;
+    };
+
+    return buildFragment(text);
+  }, [buildEmotionElement, buildInlineTag]);
+
+  const insertAdvancedDubbingText = useCallback((text) => {
+    const editor = editorRef.current;
+    if (!editor || !text) return;
+
+    const selection = window.getSelection();
+    const selectedRange = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    const range = selectedRange && editor.contains(selectedRange.commonAncestorContainer)
+      ? selectedRange.cloneRange()
+      : document.createRange();
+    if (!selectedRange || !editor.contains(selectedRange.commonAncestorContainer)) {
+      range.selectNodeContents(editor);
+      range.collapse(false);
+    }
+
+    const fragment = buildAdvancedDubbingFragment(text);
+    const lastNode = fragment.lastChild;
+    if (!lastNode) return;
+    range.deleteContents();
+    range.insertNode(fragment);
+
+    const afterRange = document.createRange();
+    afterRange.setStartAfter(lastNode);
+    afterRange.collapse(true);
+    selection?.removeAllRanges();
+    selection?.addRange(afterRange);
+    savedCursorRangeRef.current = afterRange.cloneRange();
+    setHasContent(hasEditorContent(editor));
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste', data: text }));
+  }, [buildAdvancedDubbingFragment]);
+
   const insertInlineTag = useCallback((value, type) => {
     const editor = editorRef.current;
     const savedRange = inlineInsertRangeRef.current;
@@ -721,12 +841,12 @@ export function useCreationPromptInteraction({
         : 0;
       const availableLength = Math.max(0, DUBBING_ADVANCED_CHARACTER_LIMIT - currentLength + selectedLength);
       const acceptedText = text.slice(0, availableLength);
-      if (acceptedText) document.execCommand('insertText', false, acceptedText);
+      if (acceptedText) insertAdvancedDubbingText(acceptedText);
       if (acceptedText.length < text.length) showCharacterLimitToast();
       return;
     }
     document.execCommand('insertText', false, text);
-  }, [dubbingAdvancedEnabled, genType, handleFileSelect, refMode, showCharacterLimitToast, showToast]);
+  }, [dubbingAdvancedEnabled, genType, handleFileSelect, insertAdvancedDubbingText, refMode, showCharacterLimitToast, showToast]);
 
   const handleRemoveFile = useCallback((index) => {
     const file = files[index];

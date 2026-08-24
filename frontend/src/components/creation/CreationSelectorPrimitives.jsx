@@ -95,6 +95,7 @@ export function DropdownItem({ label, selected, onClick, icon }) {
         height: '32px',
         paddingLeft: '12px',
         paddingRight: '12px',
+        borderRadius: '6px',
         cursor: 'pointer',
         border: 'none',
         textAlign: 'left',

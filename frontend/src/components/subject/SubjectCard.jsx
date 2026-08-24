@@ -14,6 +14,7 @@
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 SubjectPage 抽离主体卡片、更多菜单和新增卡片
  *   2026-07-31  音色文本悬停时显示关闭按钮，支持直接清除已添加音色
+ *   2026-08-24  角色音色行调整试听耳机与音色名称顺序
  */
 import { useEffect, useRef, useState } from 'react';
 import DotsLoading from '../DotsLoading';
@@ -212,10 +213,10 @@ export function SubjectCard({ name, desc, imageUrl, voice, voiceName, voicePrevi
           >
             <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '17px', color: '#FFFFFFCC', flexShrink: 0 }}>选择音色：</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <button type="button" onClick={(event) => { event.stopPropagation(); onVoiceClick?.(); }} style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: FONT, fontSize: '12px', lineHeight: '17px', color: voice ? '#2DC3E1' : '#FFFFFFCC' }}>{voiceName || voice || '未选择'}</button>
               <button type="button" title={!voice ? '请先选择音色' : '试听'} disabled={!voice} onClick={handleVoicePlay} style={{ background: 'transparent', border: 'none', padding: 0, cursor: voice ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                 {voicePlaying ? <PlayingWaveIcon color="#2DC3E1" size={16} /> : <HeadphoneIcon color={voice ? '#2DC3E1' : '#FFFFFF66'} />}
               </button>
+              <button type="button" onClick={(event) => { event.stopPropagation(); onVoiceClick?.(); }} style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: FONT, fontSize: '12px', lineHeight: '17px', color: voice ? '#2DC3E1' : '#FFFFFFCC' }}>{voiceName || voice || '未选择'}</button>
               {voice && (
                 <button
                   type="button"
@@ -237,7 +238,7 @@ export function SubjectCard({ name, desc, imageUrl, voice, voiceName, voicePrevi
                     transition: 'width 0.15s ease, opacity 0.12s ease',
                   }}
                 >
-                  <CloseIcon />
+                  <CloseIcon color="#FFFFFF99" />
                 </button>
               )}
             </div>

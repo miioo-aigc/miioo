@@ -388,13 +388,14 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
     ?? be.thumbnailUrl
     ?? generatedImage.thumbnail_url
     ?? generatedImage.thumbnailUrl;
-  const videoUrl = be.video_url ?? be.videoUrl;
   const videoThumbnailUrl = be.video_thumbnail_url
     ?? be.videoThumbnailUrl
     ?? be.poster_url
     ?? be.posterUrl;
   const videoPreviewUrl = be.preview_video_url
     ?? be.previewVideoUrl;
+  // 部分生成中的视频只有预览地址，正式 video_url 仍为空；预览地址同样可以作为列表候选播放。
+  const videoUrl = be.video_url ?? be.videoUrl ?? videoPreviewUrl;
   const hasTopLevelVideoMentions = Array.isArray(be.video_prompt_mentions)
     || Array.isArray(be.videoPromptMentions);
   const rawVideoMentions = Array.isArray(be.video_prompt_mentions)

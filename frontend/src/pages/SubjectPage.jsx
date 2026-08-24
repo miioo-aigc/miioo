@@ -1022,6 +1022,13 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [isSeedanceCertificationMode, setIsSeedanceCertificationMode] = useState(false);
+  const [showCertificationBanner, setShowCertificationBanner] = useState(() => {
+    try {
+      return localStorage.getItem('miioo:subject:seedance-certification-banner-dismissed') !== 'true';
+    } catch {
+      return true;
+    }
+  });
   const [certificationBySubject, setCertificationBySubject] = useState({});
   const [certificationGroups, setCertificationGroups] = useState([]);
   const certificationRefreshRef = useRef(null);
@@ -2089,6 +2096,15 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         certificationGroups,
         onCertificationClick: handleCertificationGroupSelect,
         onCertificationCreateGroup: onGoToSeedanceLiveMaterials,
+        showCertificationBanner,
+        onCloseCertificationBanner: () => {
+          setShowCertificationBanner(false);
+          try {
+            localStorage.setItem('miioo:subject:seedance-certification-banner-dismissed', 'true');
+          } catch {
+            // 本地缓存不可用时仍允许本次关闭。
+          }
+        },
       }}
     >
       {/* edit panel */}

@@ -9,6 +9,7 @@ export { default as SubjectEditForm } from './SubjectEditForm';
 export { default as SubjectPanelHeader } from './SubjectPanelHeader';
 export { default as SubjectVoiceSelectModal } from './SubjectVoiceSelectModal';
 export { default as SubjectToolbar } from './SubjectToolbar';
+export { default as SubjectCertificationBanner } from './SubjectCertificationBanner';
 export { default as SubjectTabs } from './SubjectTabs';
 export { SUBJECT_TABS } from './SubjectTabsConstants';
 export { createSubjectImageItem, mapCandidateImages, mapSubjectImageResponse, mapSubjectAssets, mapReferenceImages, mapReferenceImageIdsForModal, getSubjectCandidateImagesFromResponse, mergeSubjectImages, filterSubjectImagesByReferences } from './SubjectImageMappers';

@@ -60,6 +60,7 @@
  *   2026-08-11  分镜视频首尾帧请求补传 asset_id 和 generate_mode，并确保素材 URL 为完整地址
  *   2026-08-11  新建/复制分镜时初始化候选媒体状态，避免新分镜误显“生成中”占位；复制同步已落盘候选媒体
  *   2026-08-11  候选媒体后台刷新不再覆盖已有卡片为加载态，避免其他镜头误显生成中动画
+ *   2026-08-24  兼容仅返回 preview_video_url 的分镜视频，纳入创作面板和分镜候选列表
  *   2026-08-11  光影、环境音编辑复用镜头最新快照队列，空值显式保存，避免旧请求或省略字段使刷新后恢复旧内容
  *   2026-08-11  台词新增、编辑、删除显式提交 dialogues_json 与结构化兼容快照；刷新时有效结构化值优先，空默认值不覆盖兼容台词
  *   2026-08-10  图片创作面板联合去重主体/普通参考图，删除重复项后不再被旧表单快照恢复
@@ -717,6 +718,7 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   }, [enqueueCreationFormSave]);
 
 function fallbackCandidates(shot) {
+    if (!shot || typeof shot !== 'object') return [];
     const fallbackMedia = [shot.storyboardImage, shot.storyboardVideo].filter(Boolean);
     const finalizedId = fallbackMedia[0]?.id || fallbackMedia[0]?.url;
     return fallbackMedia.map((media) => ({
@@ -2258,7 +2260,10 @@ function hasStoryboardMediaHint(shot = {}) {
   );
   const getCreationCandidates = (shotId) => mergeStoryboardMediaItems(
     pendingCandidateMap[shotId] || [],
-    candidateMediaMap[shotId] || [],
+    mergeStoryboardMediaItems(
+      candidateMediaMap[shotId] || [],
+      fallbackCandidates(shots.find((shot) => shot.id === shotId)),
+    ),
   );
   const currentShotImages = useMemo(() => {
     const shotId = videoPanel?.shot?.id;

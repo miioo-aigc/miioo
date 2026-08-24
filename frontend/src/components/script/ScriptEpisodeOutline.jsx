@@ -30,6 +30,7 @@
  *   2026-07-22  移除展开按钮造成的无效右侧占位，避免标签被误挤换行
  *   2026-07-27  将 AI 操作加载层绑定到剧本内容区
  *   2026-07-27  删除本集增加二次确认，确认后才提交后端删除
+ *   2026-08-24  定稿态隐藏剧集标签悬停新增按钮，修改剧本后恢复
  */
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -194,7 +195,7 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
   };
 
   return (
-    <section ref={sectionRef} style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', fontFamily: FONT }}>
+    <section ref={sectionRef} data-episode-actions-hidden={hideEpisodeActions ? 'true' : 'false'} style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', fontFamily: FONT }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 0 0' }}>
         <span style={{ width: '2px', height: '18px', flexShrink: 0, background: '#FFFFFF' }} />
         <h3 style={{ flex: 1, margin: 0, color: '#FFFFFF', fontSize: '18px', lineHeight: '22px', fontWeight: 600 }}>分集剧情（{episodes.length}）</h3>

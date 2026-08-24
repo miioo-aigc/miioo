@@ -8,7 +8,7 @@
 
 ## 2026-08-21 主体角色 Seedance 真人素材认证入口
 
-- `SubjectToolbar` 在角色 Tab 的右上角操作区新增 `seedance真人素材认证`，复用通用 `Button` 的 Primary 样式和支持下方居中定位、可配置描边及文字色的 `Tooltip`；认证提示在当前宽度内自然换行并使用 `status-warning` 文字色，场景、道具 Tab 不展示该入口。
+- `SubjectToolbar` 在角色 Tab 的右上角操作区新增 `seedance真人素材认证`，复用通用 `Button` 的 Primary 样式；认证说明改为图片列表上方的 `SubjectCertificationBanner`，支持手动关闭并通过 `localStorage` 持久化关闭状态，场景、道具 Tab 不展示该入口或提示。
 - `SubjectPage` 持有页面级认证模式状态，并通过 `SubjectWorkspace` 显式透传进入和退出回调；进入后工具栏原按钮组替换为 Secondary 样式的“退出认证模式”，退出或切换主体 Tab 时恢复常规按钮组。
 - 本阶段只建立认证入口和模式切换，不修改角色卡片、认证状态判断、认证接口或后续素材认证流程。
 
@@ -169,6 +169,14 @@
 - 页面级 `isMediaLoading` 仅在真实后端镜头首次尚未取得候选数组时返回加载状态。已有候选卡片的后台刷新继续显示原卡片，真实生成状态仍由当前镜头任务与待生成占位控制。
 - 本次未新增组件或跨层依赖；候选接口调用、任务状态、缓存失效和镜头状态写回继续集中在页面入口，符合其页面级编排职责。
 - 验证：`npx eslint src/pages/StoryboardPage.jsx`、`npm run build`、`git diff --check` 通过。
+
+## 2026-08-24 分镜预览视频候选恢复修复
+
+- `storyboardDataAdapter.js` 兼容分镜主记录仅返回 `preview_video_url`、`video_url` 为空的生成结果，将预览地址回填为可播放的 `storyboardVideo.url`。
+- `api/storyboard.js` 的候选媒体归一化在存在 `preview_video_url`、`previewVideoUrl` 或视频地址时推断 `media_type: 'video'`，避免被按图片处理。
+- `StoryboardPage.jsx` 将当前分镜主记录中的视频兜底项与候选媒体合并后，同时供分镜列表和创作弹窗使用；合并工具继续按媒体地址去重，避免正式候选与预览兜底重复展示。
+- 排查重点：后端返回预览地址不等于候选接口返回了带 `url` 的候选对象；需要同时检查字段适配和“是否跳过候选请求”的判断条件。
+- 验证：目标文件定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；用户已验证修复通过。
 
 ## 2026-08-11 分镜首尾帧视频生成模式字段修复
 

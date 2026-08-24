@@ -902,6 +902,14 @@ body {
   opacity: 1 !important;
 }
 
+[data-episode-actions-hidden="true"] .episode-insert-slot {
+  pointer-events: none;
+}
+
+[data-episode-actions-hidden="true"] .episode-insert-button {
+  visibility: hidden;
+}
+
 .episode-tag:not(:disabled):not([data-active="true"]):hover {
   background: #2DC3E133 !important;
   border-color: #FFFFFF26 !important;

@@ -15,7 +15,7 @@
  *   2026-08-03  右上角新增按钮默认文案统一使用「新增」
  *   2026-08-21  角色 Tab 新增 Seedance 真人素材认证入口和认证模式退出按钮
  */
-import { Button, Tooltip } from '../ui';
+import { Button } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -145,26 +145,15 @@ export default function SubjectToolbar({
               批量生成{tabLabel}
             </SubjectToolbarButton>
             {isCharacterTab && (
-              <Tooltip
-                label="如果角色资产使用了真人人像作为参考，请进行认证，否则可能无法使用Seedance系列模型创作视频。"
-                color="var(--color-status-warning)"
-                borderColor="rgba(255,255,255,0.08)"
-                offset={8}
-                placement="bottom"
-                fontSize={14}
-                lineHeight={21}
-                maxWidth={288}
+              <Button
+                type="button"
+                variant="primary"
+                size="large"
+                icon={<CertificationIcon />}
+                onClick={onEnterSeedanceCertification}
               >
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="large"
-                  icon={<CertificationIcon />}
-                  onClick={onEnterSeedanceCertification}
-                >
-                  seedance真人素材认证
-                </Button>
-              </Tooltip>
+                seedance真人素材认证
+              </Button>
             )}
             <Button
               type="button"

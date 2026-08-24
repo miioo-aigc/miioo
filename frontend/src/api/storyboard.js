@@ -498,7 +498,9 @@ export function normalizeStoryboardMediaCandidate(item = {}) {
     ?? mergedParams.input_prompt ?? mergedParams.inputPrompt ?? mergedParams.prompt
     ?? mergedParams.prompt_raw ?? mergedParams.promptRaw ?? mergedParams.prompt_resolved ?? mergedParams.promptResolved;
   const generationParams = mergedParams;
-  const mediaType = item.mediaType ?? item.media_type ?? (item.type?.startsWith('video') ? 'video' : 'image');
+  const mediaType = item.mediaType
+    ?? item.media_type
+    ?? (item.type?.startsWith('video') || item.preview_video_url || item.previewVideoUrl || item.video_url || item.videoUrl ? 'video' : 'image');
   const generatedImage = Array.isArray(item.generated_images) ? item.generated_images[0] : null;
   const metadataGeneratedImage = Array.isArray(metadata.generated_images) ? metadata.generated_images[0] : null;
   const imageDerivative = generatedImage || metadataGeneratedImage || {};

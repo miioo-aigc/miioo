@@ -43,7 +43,7 @@ export default function SubjectCertificationMenu({ groups = [], onSelectGroup, o
         onClick={toggle}
         className="flex items-center gap-[4px] border-0 rounded-tl-none rounded-bl-[6px] px-[8px] py-[4px]"
         style={{ backgroundColor: failed ? 'var(--color-status-wrong)' : 'var(--color-brand-main)', color: '#090909', fontFamily: FONT, fontSize: '14px', lineHeight: '18px', cursor: disabled ? 'default' : 'pointer' }}
-      >{failed ? '认证失败' : '去认证 >'}</button>
+      >{failed ? '认证失败' : '真人认证 >'}</button>
       {open && position && createPortal(
         <div style={{ position: 'fixed', top: position.top, right: position.right, zIndex: 10001 }}>
           <DropdownMenu

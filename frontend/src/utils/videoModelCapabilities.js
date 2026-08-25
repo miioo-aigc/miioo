@@ -1,3 +1,8 @@
+/**
+ * 视频生成能力解析：素材路由由前端决定，生成模式与参考模式绑定由后端映射决定。
+ *
+ * 2026-08-25  删除模型名称硬编码兜底，完整依赖后端 generation_reference_mode_map；保留 Seedance 全能参考固定走 full。
+ */
 const ALL_REFERENCE_GENERATION_MODES = new Set([
   'full',
   'text_to_video',
@@ -19,100 +24,6 @@ const REFERENCE_MODE_LABELS = Object.freeze({
   [VIDEO_REFERENCE_MODES.MULTI_SHOT]: '智能多帧',
   [VIDEO_REFERENCE_MODES.FRAME]: '首尾帧',
 });
-
-const LOCAL_GENERATION_REFERENCE_MODE_FALLBACKS = Object.freeze([
-  {
-    keys: ['happyhorse'],
-    map: {
-      text_to_video: 'full',
-      first_frame: 'first_frame',
-      reference_subjects: 'full',
-      video_edit: 'video_ref',
-    },
-  },
-  {
-    keys: ['klingv3omni'],
-    map: {
-      text_to_video: 'full',
-      first_frame: 'first_frame',
-      start_end: 'start_end',
-      video_ref: 'video_ref',
-      multi_shot: 'full',
-    },
-  },
-  {
-    keys: ['klingv3'],
-    map: {
-      text_to_video: 'first_frame',
-      first_frame: 'first_frame',
-      reference_subjects: 'first_frame',
-      multi_shot: 'first_frame',
-    },
-  },
-  {
-    keys: ['seedance'],
-    map: {
-      full: 'full',
-      first_frame: 'first_frame',
-      start_end: 'last_frame',
-    },
-  },
-  {
-    keys: ['viduq3pro'],
-    map: {
-      text_to_video: 'first_frame',
-      first_frame: 'first_frame',
-      start_end: 'first_frame',
-    },
-  },
-  {
-    keys: ['viduq2turbo'],
-    map: {
-      first_frame: 'first_frame',
-      start_end: 'first_frame',
-    },
-  },
-  {
-    keys: ['viduq2'],
-    map: {
-      first_frame: 'first_frame',
-      start_end: 'first_frame',
-    },
-  },
-  {
-    keys: ['veo31fast'],
-    map: {
-      text_to_video: 'full',
-      reference_subjects: 'full',
-      first_frame: 'first_frame',
-      start_end: 'first_frame',
-    },
-  },
-  {
-    keys: ['veo31'],
-    map: {
-      text_to_video: 'full',
-      reference_subjects: 'full',
-      first_frame: 'first_frame',
-      start_end: 'first_frame',
-    },
-  },
-]);
-
-function normalizeModelKey(value = '') {
-  return String(value)
-    .toLowerCase()
-    .replace(/[\s•、_\-:.]+/g, '')
-    .replace(/[^a-z0-9]/g, '');
-}
-
-function getLocalGenerationReferenceModeMap({ modelId = '', modelName = '' } = {}) {
-  const modelKey = normalizeModelKey(`${modelId} ${modelName}`);
-  const fallback = LOCAL_GENERATION_REFERENCE_MODE_FALLBACKS.find(({ keys }) =>
-    keys.some((key) => modelKey.includes(key))
-  );
-  return fallback ? fallback.map : null;
-}
 
 export function normalizeSupportedGenerationModes(capabilities = {}) {
   const modes = capabilities?.supported_generation_modes;
@@ -137,13 +48,8 @@ export function normalizeGenerationReferenceModeMap(capabilities = {}) {
   return normalizedMap;
 }
 
-export function resolveGenerationReferenceModeMap({
-  modelId = '',
-  modelName = '',
-  capabilities = {},
-} = {}) {
-  return normalizeGenerationReferenceModeMap(capabilities)
-    || getLocalGenerationReferenceModeMap({ modelId, modelName });
+export function resolveGenerationReferenceModeMap({ capabilities = {} } = {}) {
+  return normalizeGenerationReferenceModeMap(capabilities);
 }
 
 export function isSeedanceVideoModel({ modelId = '', modelName = '' } = {}) {
@@ -177,11 +83,9 @@ export function resolveVideoReferenceModeFallback(currentMode, availableModes = 
 
 export function resolveVideoReferenceMode({
   generationMode,
-  modelId = '',
-  modelName = '',
   capabilities = {},
 } = {}) {
-  const mapping = resolveGenerationReferenceModeMap({ modelId, modelName, capabilities });
+  const mapping = resolveGenerationReferenceModeMap({ capabilities });
   if (!mapping || !Object.prototype.hasOwnProperty.call(mapping, generationMode)) {
     return fail(
       'REFERENCE_MODE_MAPPING_REQUIRED',
@@ -268,8 +172,6 @@ export function resolveVideoGenerationMode({
 }
 
 export function assertVideoRequestCapabilities({
-  modelId = '',
-  modelName = '',
   generationMode,
   referenceMode,
   capabilities = {},
@@ -280,7 +182,7 @@ export function assertVideoRequestCapabilities({
   if (!supportedGenerationModes.includes(generationMode)) {
     throw new Error('当前生成能力不在模型 supported_generation_modes 中，请刷新模型数据后重试');
   }
-  const mapping = resolveGenerationReferenceModeMap({ modelId, modelName, capabilities });
+  const mapping = resolveGenerationReferenceModeMap({ capabilities });
   if (!mapping || !Object.prototype.hasOwnProperty.call(mapping, generationMode)) {
     throw new Error('当前模型尚未提供生成模式与参考模式映射，请刷新模型数据或联系后端补充能力配置');
   }

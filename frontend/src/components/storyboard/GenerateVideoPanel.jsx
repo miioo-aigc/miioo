@@ -539,8 +539,6 @@ export default function GenerateVideoPanel({
     }
     const referenceRouteResult = resolveVideoReferenceMode({
       generationMode: routeResult.generationMode,
-      modelId: model,
-      modelName: currentVideoModel?.label,
       capabilities: videoCaps,
     });
     if (!referenceRouteResult.ok) {

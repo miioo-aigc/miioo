@@ -939,8 +939,6 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
       return mime.startsWith('audio/') || /\.(mp3|wav|aac|ogg|flac|m4a|wma)$/.test(name);
     });
     assertVideoRequestCapabilities({
-      modelId: params.model,
-      modelName: params.modelName,
       generationMode: params.generation_mode,
       referenceMode: params.reference_mode,
       capabilities: params.videoCapabilities || {},

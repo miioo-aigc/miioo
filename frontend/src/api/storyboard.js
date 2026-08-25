@@ -801,8 +801,6 @@ export async function apiGenerateStoryboardImage(projectId, storyboardId, params
 export async function apiGenerateStoryboardVideo(projectId, storyboardId, params) {
   if (params.videoCapabilities || params.supportedGenerationModes) {
     assertVideoRequestCapabilities({
-      modelId: params.model,
-      modelName: params.modelName,
       generationMode: params.generate_mode,
       referenceMode: params.reference_mode,
       capabilities: params.videoCapabilities || {},

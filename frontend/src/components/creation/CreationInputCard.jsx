@@ -29,6 +29,7 @@
  *   2026-08-21  首尾帧与全能参考/智能多帧双向切换时迁移图片素材，避免模式切换丢图
  *   2026-08-21  高频切换时同步清空首尾帧 ref，避免旧状态更新覆盖新回填结果
  *   2026-08-21  普通与高级配音模式统一透传 voice_setting，保持现有编辑和多选交互不变
+ *   2026-08-25  视频生成模式与参考模式映射移除模型名称硬编码兜底，改为完全读取后端能力数据
  *   2026-08-21  高级配音生成中保持输入框不透明，避免与创作结果卡片叠加时视觉变淡
  */
 
@@ -697,8 +698,6 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       videoGenerationMode = routeResult.generationMode;
       const referenceRouteResult = resolveVideoReferenceMode({
         generationMode: videoGenerationMode,
-        modelId: model,
-        modelName: currentModel?.label,
         capabilities: capabilitiesMap?.[model] || {},
       });
       if (!referenceRouteResult.ok) {

@@ -21,8 +21,9 @@ import { apiGetAssetsPage, enrichWithStoryboards } from '../api/assets';
 import { apiListCreationImages, apiListCreationVideos, apiListCreationAudios } from '../api/creation';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { dedupeByMediaAliases, getCreationAssetMediaAliases } from '../utils/creationHistoryAdapter';
-import { apiGetLiveMaterialAsset, apiListLiveMaterialAssets, apiListLiveMaterialGroups } from '../api/liveMaterials';
+import { apiGetLiveMaterialAsset, apiGetLiveMaterialPreview, apiListLiveMaterialAssets, apiListLiveMaterialGroups } from '../api/liveMaterials';
 import SeedanceFolderCard from './assets/SeedanceFolderCard';
+import SeedanceAssetCard from './assets/SeedanceAssetCard';
 import { isSeedanceModel } from '../utils/seedanceModel';
 import DotsLoading from './DotsLoading';
 import CreationAudioResultCard from './creation/CreationAudioResultCard';
@@ -321,6 +322,18 @@ function unwrapLiveMaterialAsset(payload) {
   return payload.asset || payload.data || payload.result || payload;
 }
 
+function normalizeSeedanceMediaUrl(value) {
+  if (!value || typeof value !== 'string') return null;
+  const trimmed = value.trim()
+    .replace(/\\\//g, '/')
+    .replace(/\\&/g, '&')
+    .replace(/\\_/g, '_');
+  const urlMatch = trimmed.match(/https?:\/\/[^\s)\]]+/i);
+  const url = (urlMatch ? urlMatch[0] : trimmed).replace(/[),]+$/, '');
+  if (url.startsWith('asset://')) return null;
+  return normalizeImageUrl(url);
+}
+
 /**
  * Seedance 的 asset_ref_url 仅用于提交给服务商，不能作为图片地址。
  * 选择器保留两类地址，防止后续持久化时把 asset:// 写入浏览器展示字段。
@@ -329,7 +342,7 @@ function toSeedancePickerAsset(rawAsset, group = {}) {
   const asset = unwrapLiveMaterialAsset(rawAsset);
   const rawAssetType = String(asset.asset_type || asset.assetType || asset.type || 'image').toLowerCase();
   const isVideo = rawAssetType.startsWith('video');
-  const previewUrl = asset.preview_url || asset.previewUrl || null;
+  const rawPreviewUrl = asset.preview_url || asset.previewUrl || null;
   const sourceUrl = asset.download_url
     || asset.downloadUrl
     || asset.original_url
@@ -338,9 +351,6 @@ function toSeedancePickerAsset(rawAsset, group = {}) {
     || asset.sourceUrl
     || null;
   const fileUrl = asset.file_url || asset.fileUrl || null;
-  const mediaUrl = isVideo
-    ? (sourceUrl || fileUrl || previewUrl)
-    : (previewUrl || sourceUrl || fileUrl);
   const explicitPosterUrl = asset.poster_url
     || asset.posterUrl
     || asset.thumbnail_url
@@ -351,27 +361,45 @@ function toSeedancePickerAsset(rawAsset, group = {}) {
     || asset.firstFrameUrl
     || asset.image_url
     || asset.imageUrl
+    || asset.media_url
+    || asset.mediaUrl
+    || asset.avatar_url
+    || asset.avatarUrl
     || null;
-  // 接口只保证 source_url / preview_url。两者不同时，preview_url 可能就是后端生成的静态预览图。
-  const posterUrl = explicitPosterUrl || (isVideo && previewUrl && previewUrl !== mediaUrl ? previewUrl : null);
+  // 虚拟人像有时会返回“有值但不可展示”的 asset:// preview_url，不能先按原始字符串选中它，
+  // 必须逐个归一化后再取第一个可访问地址，否则会把后面的 source_url 一起挡掉。
+  const normalizeFirstMediaUrl = (...values) => values.map(normalizeSeedanceMediaUrl).find(Boolean) || null;
+  const normalizedPreviewUrl = normalizeFirstMediaUrl(rawPreviewUrl, sourceUrl, fileUrl);
+  const normalizedSourceUrl = normalizeFirstMediaUrl(sourceUrl, fileUrl, rawPreviewUrl);
+  const isAigcMaterial = String(group.group_type || asset.group_type || '').toUpperCase() === 'AIGC';
+  const normalizedMediaUrl = isVideo
+    ? normalizeFirstMediaUrl(sourceUrl, fileUrl, rawPreviewUrl)
+    : normalizeFirstMediaUrl(...(isAigcMaterial
+      ? [sourceUrl, fileUrl, rawPreviewUrl]
+      : [rawPreviewUrl, sourceUrl, fileUrl]));
+  const normalizedExplicitPosterUrl = normalizeFirstMediaUrl(explicitPosterUrl);
+  const normalizedPosterUrl = normalizedExplicitPosterUrl
+    || (isVideo && normalizedPreviewUrl !== normalizedMediaUrl ? normalizedPreviewUrl : null);
 
   return {
     id: asset.id,
     name: asset.name || group.name || '未命名',
-    url: normalizeImageUrl(mediaUrl) || null,
+    url: normalizedMediaUrl,
     // fileUrl 必须是可展示/下载的真实媒体地址，不能复用 asset:// 服务商引用。
-    fullUrl: normalizeImageUrl(sourceUrl || fileUrl || previewUrl) || null,
-    fileUrl: normalizeImageUrl(sourceUrl || fileUrl || previewUrl) || null,
+    fullUrl: normalizedSourceUrl || normalizedPreviewUrl,
+    fileUrl: normalizedSourceUrl || normalizedPreviewUrl,
     asset_type: isVideo ? 'video' : rawAssetType,
-    posterUrl: normalizeImageUrl(posterUrl) || null,
+    posterUrl: normalizedPosterUrl,
     isLiveMaterial: String(group.group_type || asset.group_type || '').toUpperCase() !== 'AIGC',
-    isAigcMaterial: String(group.group_type || asset.group_type || '').toUpperCase() === 'AIGC',
+    isAigcMaterial,
     isSeedanceCertifiedMaterial: true,
     groupId: asset.group_id || asset.groupId || group.id,
     groupType: group.group_type || asset.group_type || asset.groupType || 'LivenessFace',
     assetRefUrl: asset.asset_ref_url || asset.assetRefUrl || null,
-    previewUrl,
-    sourceUrl,
+    previewUrl: normalizedPreviewUrl,
+    sourceUrl: normalizedSourceUrl,
+    status: asset.status || 'active',
+    error_message: asset.error_message || null,
     isSeedanceMaterial: true,
     bgColor: '#252525',
   };
@@ -1171,13 +1199,38 @@ export default function AssetPickerModal({
         // 让保存到分镜的数据始终带可展示的 preview_url/source_url。
         const hydratedAssets = await Promise.all(selectedAssets.map(async (asset) => {
           if (!asset.isSeedanceMaterial || !asset.id) return asset;
+          // 虚拟人像列表接口已经返回完整的 source_url/preview_url，且列表卡片
+          // 已经使用同一个对象完成渲染。确认时再次请求详情会引入另一套字段
+          // 或覆盖 group 标识，导致回填到输入框后无法识别为图片。保留列表对象，
+          // 只把它已有的可展示地址和 assetRefUrl 原样交给输入框。
+          if (asset.isAigcMaterial || String(asset.groupType || '').toUpperCase() === 'AIGC') {
+            return asset;
+          }
           try {
             const detail = await apiGetLiveMaterialAsset(asset.id);
-            return toSeedancePickerAsset({ ...asset, ...unwrapLiveMaterialAsset(detail) }, {
+            const detailAsset = unwrapLiveMaterialAsset(detail);
+            let hydrated = toSeedancePickerAsset({ ...asset, ...detailAsset }, {
               id: asset.groupId,
               name: asset.name,
               group_type: asset.groupType,
             });
+            // 虚拟人像的详情有时只返回服务商引用或受控媒体地址。此时通过统一预览接口
+            // 获取当前页面真正可读取的地址，同时保留 assetRefUrl 供 Seedance 生成请求使用。
+            if (asset.isAigcMaterial && !hydrated.url) {
+              const preview = await apiGetLiveMaterialPreview(asset.id);
+              const previewUrl = normalizeSeedanceMediaUrl(preview?.previewUrl);
+              if (previewUrl) {
+                hydrated = {
+                  ...hydrated,
+                  url: previewUrl,
+                  fullUrl: previewUrl,
+                  fileUrl: previewUrl,
+                  previewUrl,
+                  sourceUrl: hydrated.sourceUrl || previewUrl,
+                };
+              }
+            }
+            return hydrated;
           } catch (error) {
             console.warn('[AssetPickerModal] 获取Seedance素材详情失败，使用列表数据继续保存:', error);
             return asset;
@@ -1212,6 +1265,7 @@ export default function AssetPickerModal({
   // 项目资产分镜图和分镜视频合并为一个 Tab，但仍按独立资产卡片平铺展示，
   // 与角色、场景、道具的卡片结构保持一致。
   const isCompactCard = activeTab === 'creative' && (creativeSubTab === '图片' || creativeSubTab === '视频');
+  const isSeedanceAssetGrid = activeTab === 'seedance' && Boolean(activeSeedanceGroup);
 
   // 获取当前内容区资产列表
   const getCurrentAssets = () => {
@@ -1495,7 +1549,7 @@ export default function AssetPickerModal({
           ) : filteredAssets.length === 0 ? (
             <EmptyState />
           ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', paddingTop: '8px', paddingBottom: '8px', alignContent: 'flex-start' }}>
+            <div style={{ display: isSeedanceAssetGrid ? 'grid' : 'flex', gridTemplateColumns: isSeedanceAssetGrid ? 'repeat(3, minmax(0, 1fr))' : undefined, flexWrap: isSeedanceAssetGrid ? undefined : 'wrap', gap: '16px', paddingTop: '8px', paddingBottom: '8px', alignContent: 'flex-start' }}>
               {filteredAssets.map((asset) => {
                 const disabled = isPreSelected(asset) || isExcludedAsset(asset);
                 const isInlineCreativeVideo = activeTab === 'creative' && creativeSubTab === '视频';
@@ -1515,26 +1569,41 @@ export default function AssetPickerModal({
                     </div>
                   );
                 }
+                if (asset.isSeedanceMaterial) {
+                  return (
+                    <div key={asset.id} style={{ width: '100%', minWidth: 0 }}>
+                      <SeedanceAssetCard
+                        asset={asset}
+                        width="100%"
+                        selected={selected.has(asset.id) || disabled}
+                        disabled={disabled}
+                        showActions={false}
+                        showSelection
+                        onClick={() => toggle(asset)}
+                      />
+                    </div>
+                  );
+                }
                 return (
-                <AssetCard
-                  key={asset.id}
-                  asset={asset}
-                  isSelected={selected.has(asset.id) || disabled}
-                  isHovered={hoveredCard === asset.id}
-                  isDisabled={disabled}
-                  onMouseEnter={(e) => {
-                    setHoveredCard(asset.id);
-                    if (!asset.isSeedanceMaterial && !isInlineCreativeVideo) handlePreviewEnter(e, asset);
-                  }}
-                  onMouseMove={asset.isSeedanceMaterial || isInlineCreativeVideo ? undefined : handlePreviewMove}
-                  onMouseLeave={() => {
-                    setHoveredCard(null);
-                    if (!asset.isSeedanceMaterial && !isInlineCreativeVideo) handlePreviewLeave();
-                  }}
-                  onClick={() => toggle(asset)}
-                  compact={isCompactCard}
-                  inlineVideoPreview={isInlineCreativeVideo}
-                />
+                  <AssetCard
+                    key={asset.id}
+                    asset={asset}
+                    isSelected={selected.has(asset.id) || disabled}
+                    isHovered={hoveredCard === asset.id}
+                    isDisabled={disabled}
+                    onMouseEnter={(e) => {
+                      setHoveredCard(asset.id);
+                      if (!isInlineCreativeVideo) handlePreviewEnter(e, asset);
+                    }}
+                    onMouseMove={isInlineCreativeVideo ? undefined : handlePreviewMove}
+                    onMouseLeave={() => {
+                      setHoveredCard(null);
+                      if (!isInlineCreativeVideo) handlePreviewLeave();
+                    }}
+                    onClick={() => toggle(asset)}
+                    compact={isCompactCard}
+                    inlineVideoPreview={isInlineCreativeVideo}
+                  />
                 );
               })}
               {activeTab === 'creative' && creativeLoading && (

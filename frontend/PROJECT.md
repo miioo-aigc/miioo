@@ -1,5 +1,20 @@
 # miioo 项目进度管理文档
 
+## 2026-08-25 Seedance 素材卡片图片渲染与弹窗三列布局修复
+
+- 修复资产库选择弹窗中 Seedance 真人/虚拟人像进入素材组文件夹后图片显示为黑卡片的问题。统一 Seedance 素材卡片使用原生 `<img>` 渲染，并按 `preview_url`、`source_url`、`file_url`、缩略图等候选地址依次回退；过滤不能直接交给浏览器加载的 `asset://` 引用，并兼容接口返回的 Markdown 链接格式。
+- 资产库 Seedance 文件夹详情页和“从资产库选择”弹窗统一复用 `SeedanceAssetCard`，保持预览、删除、审核态和上传态展示逻辑一致。
+- 修复弹窗 Seedance 素材组内部固定卡片宽度导致第三张卡片换行的问题。仅 Seedance 素材列表使用三列等分网格，卡片宽度适配网格列宽；项目资产、创作资产等其他 Tab 保持原有布局和卡片尺寸。
+- 保留现有勾选、禁选和点击选择逻辑；弹窗内不显示素材卡片的预览、删除操作按钮。
+- 用户已验证图片渲染和三列布局均通过。
+- 追加修复创作输入框回填：Seedance 真人/虚拟人像的图片槽只使用可访问的 `url`/`previewUrl`，不再把 `asset://` 服务商引用当作图片地址；生成请求仍保留 `assetRefUrl`。
+- 针对用户复测仍无法渲染的问题，继续修复 `CreationFileCard`：资产图片改用原生 `<img>`，统一归一化 URL，并在预览地址加载失败时回退到 `url`、`sourceUrl`、`fileUrl`；回填时同步保留备用媒体地址。真人和虚拟人像共用该链路，生成引用逻辑不变。
+- 最终定位虚拟人像仍无法渲染的原因：素材列表对象已经可以正常展示，但确认时再次请求详情并重建对象，覆盖了列表阶段已归一化的展示字段或分组标识。现改为虚拟人像确认时沿用已渲染的列表对象，继续分离浏览器展示地址与 `assetRefUrl`；用户已验证真人和虚拟人像加入创作输入框均可正常渲染。
+- 涉及文件：`src/components/AssetPickerModal.jsx`、`src/components/assets/SeedanceAssetCard.jsx`、`src/components/assets/SeedanceFolderDetail.jsx`、`src/components/assets/index.js`、`src/components/creation/CreationFileCard.jsx`、`src/components/creation/CreationInputCard.jsx`、`src/api/liveMaterials.js`。
+- 验证：`npm run lint -- --quiet`、`npm run build`、`git diff --check` 均通过；构建仅保留项目既有大体积 chunk 提醒。
+
+详细说明见 [`docs/seedance-asset-card-rendering-fix-2026-08-25.md`](./docs/seedance-asset-card-rendering-fix-2026-08-25.md)。
+
 ## 2026-08-25 视频模型能力适配与参考模式展示优化
 
 - 创作页面和分镜页面的视频模型选择器统一使用关键词优先级排序：Seedance、Kling、Vidu、HappyHorse、Veo 依次排列；未命中这些关键词的模型保持在后面，并保留后端返回的相对顺序。

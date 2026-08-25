@@ -65,6 +65,14 @@ function getLiveMaterialSourceUrl(asset) {
     || asset?.previewUrl
     || asset?.file_url
     || asset?.fileUrl
+    || asset?.image_url
+    || asset?.imageUrl
+    || asset?.media_url
+    || asset?.mediaUrl
+    || asset?.avatar_url
+    || asset?.avatarUrl
+    || asset?.cover_url
+    || asset?.coverUrl
     || null;
 }
 

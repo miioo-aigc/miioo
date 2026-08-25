@@ -583,35 +583,47 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       return;
     }
     const liveMaterialAssets = selectedAssets.filter((asset) => asset.isLiveMaterial);
-    const liveMats = liveMaterialAssets.map((asset) => ({
-        isAsset: true,
-        isLiveMaterial: true,
-        assetId: asset.id,
-        groupId: asset.groupId,
-        groupType: asset.groupType,
-        assetRefUrl: asset.assetRefUrl,
-        url: asset.previewUrl || asset.url,
-        previewUrl: asset.previewUrl || asset.url,
-        name: asset.name || '认证素材',
-        type: 'image/jpeg',
-        size: 0,
-      }));
+    const liveMats = liveMaterialAssets.map((asset) => {
+        // Seedance 的 assetRefUrl 只用于生成请求，输入框图片槽必须使用可访问的媒体 URL。
+        const previewUrl = asset.url || asset.previewUrl || asset.preview_url || null;
+        return {
+          isAsset: true,
+          isLiveMaterial: true,
+          assetId: asset.id,
+          groupId: asset.groupId,
+          groupType: asset.groupType,
+          assetRefUrl: asset.assetRefUrl,
+          url: previewUrl,
+          previewUrl,
+          sourceUrl: asset.sourceUrl || asset.source_url || null,
+          fileUrl: asset.fileUrl || asset.file_url || null,
+          name: asset.name || '认证素材',
+          type: 'image/jpeg',
+          size: 0,
+        };
+      });
     const assetFiles = selectedAssets.filter((asset) => !asset.isLiveMaterial).map((asset) => {
       const assetType = String(asset.asset_type || asset.assetType || asset.type || '').toLowerCase();
       const isVideo = assetType === 'video';
       const isAudio = assetType === 'audio' || assetType.startsWith('audio/');
+      const isAigcMaterial = Boolean(asset.isAigcMaterial)
+        || String(asset.groupType || asset.group_type || '').toUpperCase() === 'AIGC';
       let fileUrl;
       if (isVideo) fileUrl = asset.videoUrl || asset.fileUrl || asset.url;
       else if (isAudio) fileUrl = asset.audioUrl || asset.fileUrl || asset.url;
-      else fileUrl = asset.isAigcMaterial
-        ? (asset.assetRefUrl || asset.asset_ref_url || asset.fileUrl || asset.url)
+      else fileUrl = isAigcMaterial
+        // 虚拟人像的 assetRefUrl 是 Seedance 服务商引用，不能作为输入框图片地址。
+        // 展示地址优先使用已归一化的 preview/url，引用地址单独保留在 assetRefUrl。
+        ? (asset.sourceUrl || asset.source_url || asset.fileUrl || asset.file_url || asset.url || asset.previewUrl || asset.preview_url || null)
         : (asset.fileUrl || asset.url);
       const posterUrl = isVideo
         ? (asset.posterUrl || asset.poster_url || asset.thumbnailUrl || asset.thumbnail_url || null)
         : null;
       const previewUrl = isVideo
         ? posterUrl
-        : (asset.url || asset.thumbnailUrl || asset.thumbnail_url || fileUrl);
+        : (isAigcMaterial
+          ? (asset.sourceUrl || asset.source_url || asset.fileUrl || asset.file_url || asset.url || asset.previewUrl || asset.preview_url || fileUrl)
+          : (asset.url || asset.previewUrl || asset.preview_url || asset.thumbnailUrl || asset.thumbnail_url || fileUrl));
       // 只传真实后端 UUID：backendId（创作资产回写的 card.id）或 asset_id（项目资产）
       // 排除 composite id（如 "gen-xxx-0" / "history-xxx-0"），这些不是有效后端 ID
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -626,6 +638,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         size: 0,
         url: fileUrl,
         previewUrl,
+        sourceUrl: asset.sourceUrl || asset.source_url || null,
+        fileUrl: asset.fileUrl || asset.file_url || null,
         posterUrl,
         assetId,
         isAigcMaterial: Boolean(asset.isAigcMaterial),
@@ -968,6 +982,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
             assetRefUrl: item.assetRefUrl,
             url: item.previewUrl,
             previewUrl: item.previewUrl,
+            sourceUrl: item.sourceUrl || item.source_url || null,
+            fileUrl: item.fileUrl || item.file_url || null,
             name: item.name || '真人素材',
             type: 'image/jpeg',
             size: 0,

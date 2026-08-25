@@ -1,13 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import FilePreviewTooltip from '../FilePreviewTooltip';
 import { formatFileSize, isImageFile, isVideoFile, truncateFileName } from './CreationFileUtils';
+import { normalizeImageUrl } from '../../utils/imageUrl';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
+
+function normalizeAssetPreviewUrl(value) {
+  if (!value || typeof value !== 'string') return null;
+  const trimmed = value.trim()
+    .replace(/\\\//g, '/')
+    .replace(/\\&/g, '&')
+    .replace(/\\_/g, '_');
+  const urlMatch = trimmed.match(/https?:\/\/[^\s)\]]+/i);
+  const url = (urlMatch ? urlMatch[0] : trimmed).replace(/[),]+$/, '');
+  if (url.startsWith('asset://')) return null;
+  return normalizeImageUrl(url);
+}
 
 export default function CreationFileCard({ file, onRemove, disabled = false, onInsert }) {
   const [hovered, setHovered] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [cardRect, setCardRect] = useState(null);
+  const [failedAssetPreviewUrls, setFailedAssetPreviewUrls] = useState(() => new Set());
   const hoverTimerRef = useRef(null);
   const cardRef = useRef(null);
   const isImage = isImageFile(file);
@@ -21,7 +35,12 @@ export default function CreationFileCard({ file, onRemove, disabled = false, onI
     return URL.createObjectURL(file);
   }, [file, isVideo]);
   const imagePreviewUrl = isImage
-    ? (file?.isAsset ? (file.previewUrl || file.url) : file?.previewUrl || generatedImageUrl)
+    ? (file?.isAsset
+      ? [file.previewUrl, file.url, file.sourceUrl, file.source_url, file.fileUrl, file.file_url]
+        .map(normalizeAssetPreviewUrl)
+        .filter(Boolean)
+        .find((url) => !failedAssetPreviewUrls.has(url)) || null
+      : file?.previewUrl || generatedImageUrl)
     : null;
   const videoPreviewUrl = file?.isAsset ? file.url : file?._objectUrl || generatedVideoUrl;
   const videoPosterUrl = isVideo
@@ -44,7 +63,18 @@ export default function CreationFileCard({ file, onRemove, disabled = false, onI
   if (isImage || isVideo) {
     return <>
       <div ref={cardRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px', borderRadius: '8px', width: '100px', height: '100px', justifyContent: 'space-between', flexShrink: 0, position: 'relative', background: '#1D1E1E', border: '1px solid #FFFFFF14', overflow: 'hidden', opacity: disabled ? 0.45 : 1, cursor: disabled ? 'default' : 'pointer' }} onMouseEnter={() => { if (!disabled) { setHovered(true); hoverTimerRef.current = setTimeout(() => { if (cardRef.current) setCardRect(cardRef.current.getBoundingClientRect()); setPreviewVisible(true); }, 500); } }} onMouseLeave={() => { setHovered(false); clearTimeout(hoverTimerRef.current); setPreviewVisible(false); }} onClick={() => { if (!disabled) onInsert?.(); }}>
-        <div style={{ flex: 1, borderRadius: '7px', alignSelf: 'stretch', overflow: 'hidden', ...(displayPreviewUrl ? { backgroundImage: `url(${displayPreviewUrl})`, backgroundSize: 'cover', backgroundPosition: '50%' } : { background: '#FFFFFF14' }), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ flex: 1, borderRadius: '7px', alignSelf: 'stretch', overflow: 'hidden', background: displayPreviewUrl ? '#1D1E1E' : '#FFFFFF14', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {isImage && displayPreviewUrl && (
+            <img
+              src={displayPreviewUrl}
+              alt={file?.name || '图片素材'}
+              onError={() => {
+                if (!file?.isAsset) return;
+                setFailedAssetPreviewUrls((current) => new Set([...current, displayPreviewUrl]));
+              }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+          )}
           {isVideo && !displayPreviewUrl && videoPreviewUrl && (
             <video
               src={videoPreviewUrl}

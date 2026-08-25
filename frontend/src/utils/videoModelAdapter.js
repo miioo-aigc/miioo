@@ -57,6 +57,14 @@ const SPECIAL_MODE_CONFIG = Object.freeze({
   },
 });
 
+const VIDEO_MODEL_SORT_PRIORITY = Object.freeze([
+  'seedance',
+  'kling',
+  'vidu',
+  'happyhorse',
+  'veo',
+]);
+
 function isVideoModel(item) {
   return String(item?.category || '').toLowerCase().includes('video');
 }
@@ -152,6 +160,34 @@ function unwrapModelList(data) {
   }
 
   return [];
+}
+
+function getVideoModelSortPriority(option) {
+  const searchableText = [
+    option?.value,
+    option?.label,
+    ...(Array.isArray(option?.sourceModelIds) ? option.sourceModelIds : []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  const matchedPriority = VIDEO_MODEL_SORT_PRIORITY.findIndex((keyword) => (
+    searchableText.includes(keyword)
+  ));
+
+  return matchedPriority === -1 ? VIDEO_MODEL_SORT_PRIORITY.length : matchedPriority;
+}
+
+export function sortVideoModelOptions(options = []) {
+  return options
+    .map((option, originalIndex) => ({
+      option,
+      originalIndex,
+      priority: getVideoModelSortPriority(option),
+    }))
+    .sort((first, second) => first.priority - second.priority || first.originalIndex - second.originalIndex)
+    .map(({ option }) => option);
 }
 
 export function normalizeVideoModelList(backendModels) {

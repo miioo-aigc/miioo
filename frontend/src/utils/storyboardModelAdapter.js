@@ -3,7 +3,7 @@
  * 只负责字段转换和能力读取，不调用 API、Store 或 React 状态。
  */
 import { getVideoModelCapabilities } from '../config';
-import { normalizeVideoModelList } from './videoModelAdapter';
+import { normalizeVideoModelList, sortVideoModelOptions } from './videoModelAdapter';
 
 export function normalizeStoryboardDurationOptions(values = []) {
   return values
@@ -14,7 +14,7 @@ export function normalizeStoryboardDurationOptions(values = []) {
 export function normalizeStoryboardModelList(data, category) {
   const list = Array.isArray(data) ? data : (data?.items || data?.models || []);
   if (category === 'video') {
-    return normalizeVideoModelList(list).map((item) => {
+    return sortVideoModelOptions(normalizeVideoModelList(list)).map((item) => {
       const capabilities = item.capabilities || {};
       const resolutions = (capabilities.supported_resolutions?.length
         ? capabilities.supported_resolutions

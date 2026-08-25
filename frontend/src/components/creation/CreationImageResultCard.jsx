@@ -18,13 +18,14 @@
  *   2026-07-16  从 CreationPage.jsx 抽离图片结果卡片及图片详情弹窗；页面通过显式 props 注入业务回调
  *   2026-08-17  下载统一透传页面正式下载回调，详情弹窗不再请求短时媒体链接
  *   2026-08-18  详情参考图改用固定加载槽，加载或失败均不影响字段显示
+ *   2026-08-25  创作历史占位卡复用 LoadingAnimation，宽度 88px、高度按比例自适应
  */
 
 import { useModalSize } from '../../utils/useModalSize';
 import { createPortal } from 'react-dom';
 import { useState } from 'react';
 import ConfirmDialog from '../ConfirmDialog';
-import DotsLoading from '../DotsLoading';
+import LoadingAnimation from '../LoadingAnimation';
 import AsyncImagePreview from '../AsyncImagePreview';
 import CreationCardActionButton from './CreationCardActionButton';
 
@@ -201,7 +202,7 @@ export default function CreationImageResultCard({ status, imageUrl, originalUrl,
   return (
     <>
       <div style={{ width: '100%', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden', backgroundColor: hovered ? '#343434' : '#272727', transition: 'background-color 0.15s', position: 'relative', cursor: isDone ? 'pointer' : 'default', outline: isSelected ? '2px solid #2DC3E1' : 'none', outlineOffset: '-2px' }} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={() => { if (batchMode && isDone) { onToggleSelect?.(); return; } if (isDone) setDetailOpen(true); }}>
-        {status === 'loading' ? <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><DotsLoading size={5} color="#2DC3E1" gap={4} /></div> : isDone ? <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ color: '#FFFFFF33', fontSize: '12px', fontFamily: FONT }}>生成失败</span></div>}
+        {status === 'loading' ? <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><LoadingAnimation width={88} /></div> : isDone ? <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ color: '#FFFFFF33', fontSize: '12px', fontFamily: FONT }}>生成失败</span></div>}
 
         {batchMode && isDone && <div style={{ position: 'absolute', top: '8px', right: '8px', width: '18px', height: '18px', borderRadius: '4px', zIndex: 1, border: isSelected ? '1px solid #2DC3E1' : '1px solid rgba(255,255,255,0.5)', backgroundColor: isSelected ? '#2DC3E1' : 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{isSelected && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="#000" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}</div>}
 

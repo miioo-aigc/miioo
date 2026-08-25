@@ -18,11 +18,13 @@
  *   2026-07-16  从 CreationPage.jsx 抽离视频结果卡片；页面通过显式 props 注入业务回调
  *   2026-08-17  下载统一透传页面正式下载回调，结果卡不再请求短时媒体链接
  *   2026-08-21  尾帧提取期间显示单卡片 DotsLoading，并防止重复触发
+ *   2026-08-25  创作历史占位卡复用 LoadingAnimation，宽度 88px、高度按比例自适应
  */
 
 import { useEffect, useRef, useState } from 'react';
 import ConfirmDialog from '../ConfirmDialog';
 import DotsLoading from '../DotsLoading';
+import LoadingAnimation from '../LoadingAnimation';
 import CreationCardActionButton from './CreationCardActionButton';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -104,7 +106,7 @@ export default function CreationVideoResultCard({ status, videoUrl, onReEdit, on
       >
         {status === 'loading' ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <DotsLoading size={5} color="#2DC3E1" gap={4} />
+            <LoadingAnimation width={88} />
           </div>
         ) : isDone ? (
           <video

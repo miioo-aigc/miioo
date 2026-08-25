@@ -28,12 +28,13 @@
  *   2026-08-20  支持资产选择模式在左上角展示复选框，并保持播放按钮独立交互
  *   2026-08-20  资产选择模式复用组件系统 Checkbox，移除卡片内手写复选框样式
  *   2026-08-21  创作历史配音台词复用提示词预览，展示停顿、语气词和情绪高亮
+ *   2026-08-25  创作历史占位卡复用 LoadingAnimation，宽度 88px、高度按比例自适应
  */
 
 import { useEffect, useRef, useState } from 'react';
 import Checkbox from '../Checkbox';
 import ConfirmDialog from '../ConfirmDialog';
-import DotsLoading from '../DotsLoading';
+import LoadingAnimation from '../LoadingAnimation';
 import CreationCardActionButton from './CreationCardActionButton';
 import CreationDubbingPromptPreview from './CreationDubbingPromptPreview';
 
@@ -113,7 +114,7 @@ export default function CreationAudioResultCard({
       >
         {status === 'loading' ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <DotsLoading size={5} color="#2DC3E1" gap={4} />
+            <LoadingAnimation width={88} />
           </div>
         ) : isDone ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '12px', padding: batchMode && selectionCheckboxPosition === 'left' ? '36px 16px 16px' : '16px', boxSizing: 'border-box' }}>

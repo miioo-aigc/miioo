@@ -37,6 +37,7 @@ export default function CreationParamsControls({
   onResolutionChange,
   onCountChange,
   refMode,
+  referenceModeOptions,
   onRefModeChange,
   videoRatio,
   videoResolution,
@@ -110,7 +111,7 @@ export default function CreationParamsControls({
             value={refMode}
             onChange={onRefModeChange}
             disabled={disabled}
-            options={creationParams?.refModes ?? []}
+            options={referenceModeOptions ?? creationParams?.refModes ?? []}
           />
           <VideoParamsSelector
             ratio={videoRatio}

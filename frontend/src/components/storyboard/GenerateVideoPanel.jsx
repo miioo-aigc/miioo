@@ -24,6 +24,8 @@
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-08-21  移除全能参考/首尾帧 Tab；模型下新增按模型能力动态展示的参考模式选择器，
  *               分镜视频请求复用创作页生成模式、参考模式映射与能力校验逻辑
+ *   2026-08-25  分镜页仅对 Kling V3 与 Kling V3 Omni 展示全能参考、首尾帧，
+ *               创作页专项能力展示不受影响
  *   2026-08-17  Seedance 真人保留 live_material 参数，虚拟人像保留 asset_ref_url 服务商引用；
  *               主体参考从主体列表补全认证身份且同步过程不丢失；全能参考显式传 generate_mode='full'
  *   2026-08-12  拆分全能参考与首尾帧提示词：fullPrompt 保留 @主体 标签绑定，
@@ -79,6 +81,7 @@ import {
   resolveVideoReferenceMode,
   resolveVideoReferenceModeFallback,
 } from '../../utils/videoModelCapabilities';
+import { resolveVideoModelRoute } from '../../utils/videoModelAdapter';
 
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -160,8 +163,9 @@ export default function GenerateVideoPanel({
 
         if (merged.length > 0) {
           const first = merged.find(m => m.is_default) || merged[0];
-          const restoredModel = formState?.model && merged.some((item) => item.value === formState.model)
-            ? formState.model
+          const restoredOption = formState?.model && merged.find((item) => item.value === formState.model || item.sourceModelIds?.includes(formState.model));
+          const restoredModel = restoredOption
+            ? restoredOption.value
             : first.value;
           setModel(restoredModel);
           const selectedModel = merged.find((item) => item.value === restoredModel) || first;
@@ -377,10 +381,26 @@ export default function GenerateVideoPanel({
   }, [currentVideoModel]);
 
   // ── 模型能力：参考素材数量上限 ──────────────────────────────────────────────
-  const videoCaps = useMemo(() => currentVideoModel?.capabilities || {}, [currentVideoModel]);
+  const baseVideoCaps = useMemo(() => currentVideoModel?.capabilities || {}, [currentVideoModel]);
+  const videoCaps = useMemo(() => (
+    currentVideoModel?.specialRouteModels?.[referenceMode]?.capabilities
+      || baseVideoCaps
+      || {}
+  ), [baseVideoCaps, currentVideoModel, referenceMode]);
   const availableReferenceModes = useMemo(
-    () => getAvailableVideoReferenceModes(videoCaps),
-    [videoCaps],
+    () => {
+      const modes = currentVideoModel?.availableReferenceModes || getAvailableVideoReferenceModes(baseVideoCaps);
+      const isStoryboardRestrictedKling = [
+        'video-kling-v3',
+        'video-kling-v3-omni',
+      ].includes(currentVideoModel?.value);
+      if (!isStoryboardRestrictedKling) return modes;
+      return modes.filter((item) => (
+        item.value === VIDEO_REFERENCE_MODES.ALL
+        || item.value === VIDEO_REFERENCE_MODES.FRAME
+      ));
+    },
+    [baseVideoCaps, currentVideoModel],
   );
   useEffect(() => {
     if (!availableReferenceModes.length) return;
@@ -537,9 +557,19 @@ export default function GenerateVideoPanel({
       onShowToast?.(routeResult.message, 'warning');
       return;
     }
+    const requestRoute = resolveVideoModelRoute({
+      modelOption: currentVideoModel,
+      generationMode: routeResult.generationMode,
+      referenceMode,
+    });
+    if (referenceMode?.startsWith('kling_') && !requestRoute) {
+      onShowToast?.('当前 Kling V3 专项能力暂不可用，请刷新模型数据后重试', 'warning');
+      return;
+    }
+    const requestCapabilities = requestRoute?.capabilities || videoCaps;
     const referenceRouteResult = resolveVideoReferenceMode({
       generationMode: routeResult.generationMode,
-      capabilities: videoCaps,
+      capabilities: requestCapabilities,
     });
     if (!referenceRouteResult.ok) {
       onShowToast?.(referenceRouteResult.message, 'warning');
@@ -560,7 +590,7 @@ export default function GenerateVideoPanel({
         : [];
       const referenceImages = referenceMedia.map((item) => item.url).filter(Boolean);
       const result = await onGenerate?.({
-        model,
+        model: requestRoute?.modelId || model,
         resolution,
         duration,
         sound,
@@ -577,8 +607,8 @@ export default function GenerateVideoPanel({
         reference_mode: referenceRouteResult.referenceMode,
         multi_shot: routeResult.generationMode === 'multi_shot',
         modelName: currentVideoModel?.label,
-        videoCapabilities: videoCaps,
-        supportedGenerationModes: videoCaps.supported_generation_modes || [],
+        videoCapabilities: requestCapabilities,
+        supportedGenerationModes: requestCapabilities.supported_generation_modes || [],
         isSeedance,
         // 当前分镜生成接口仍接收单个 URL；UI 可按模型能力收集多个素材，提交时保持既有接口契约。
         reference_video_url: routeVideos[0]?.url,

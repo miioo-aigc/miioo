@@ -13,6 +13,7 @@ import {
   isSeedanceVideoModel,
   normalizeSupportedGenerationModes,
 } from './videoModelCapabilities';
+import { normalizeVideoModelList } from './videoModelAdapter';
 
 
 /**
@@ -21,6 +22,12 @@ import {
 export function adaptModels(backendModels, genType) {
   if (!Array.isArray(backendModels) || backendModels.length === 0) {
     return { modelOptions: [], capabilitiesMap: {} };
+  }
+
+  if (genType === 'video') {
+    const videoOptions = normalizeVideoModelList(backendModels);
+    const videoCaps = Object.fromEntries(videoOptions.map((option) => [option.value, option.capabilities]));
+    return { modelOptions: videoOptions, capabilitiesMap: videoCaps };
   }
 
   const options = [];

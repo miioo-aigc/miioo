@@ -19,6 +19,12 @@ export const VIDEO_REFERENCE_MODES = Object.freeze({
   FRAME: 'frame',
 });
 
+export const VIDEO_SPECIAL_REFERENCE_MODES = Object.freeze({
+  MOTION_CONTROL: 'kling_motion_control',
+  LIP_SYNC: 'kling_lip_sync',
+  AVATAR: 'kling_avatar',
+});
+
 const REFERENCE_MODE_LABELS = Object.freeze({
   [VIDEO_REFERENCE_MODES.ALL]: '全能参考',
   [VIDEO_REFERENCE_MODES.MULTI_SHOT]: '智能多帧',
@@ -126,6 +132,21 @@ export function resolveVideoGenerationMode({
   const ensureSupported = (generationMode) => supportedModes.has(generationMode)
     ? success(generationMode)
     : fail('UNSUPPORTED_GENERATION_MODE', `当前模型不支持${generationMode}能力，请调整素材或更换模型`);
+
+  if (referenceMode === VIDEO_SPECIAL_REFERENCE_MODES.MOTION_CONTROL) {
+    if (videoCount !== 1) return fail('MOTION_CONTROL_VIDEO_REQUIRED', '动作控制需要上传一段参考视频');
+    return success('video_edit');
+  }
+  if (referenceMode === VIDEO_SPECIAL_REFERENCE_MODES.LIP_SYNC) {
+    if (videoCount + imageCount !== 1) return fail('LIP_SYNC_MEDIA_REQUIRED', '对口型需要上传一段视频或一张图片');
+    if (audioCount !== 1) return fail('LIP_SYNC_AUDIO_REQUIRED', '对口型需要上传一段音频');
+    return success('video_edit');
+  }
+  if (referenceMode === VIDEO_SPECIAL_REFERENCE_MODES.AVATAR) {
+    if (imageCount !== 1) return fail('AVATAR_IMAGE_REQUIRED', '数字人需要上传一张人物图片');
+    if (audioCount !== 1) return fail('AVATAR_AUDIO_REQUIRED', '数字人需要上传一段音频');
+    return success('first_frame');
+  }
 
   if (referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT) {
     if (imageCount < 1) return fail('MULTI_SHOT_IMAGE_REQUIRED', '智能多帧模式请至少添加一张图片');

@@ -111,22 +111,32 @@ export async function apiOneClickCleanup() {
 // ── Models ────────────────────────────────────────────────────────────────────
 
 export async function apiListModels({ category, fresh = false } = {}) {
+  const unwrapModelResponse = (data) => {
+    if (Array.isArray(data)) return data;
+    if (!data || typeof data !== 'object') return [];
+    for (const key of ['items', 'models', 'data', 'd', 'results']) {
+      if (Array.isArray(data[key])) return data[key];
+    }
+    return [];
+  };
+
   const fetchModels = async () => {
     const params = new URLSearchParams();
     if (category) params.append('category', category);
     const query = params.toString();
     const url = query ? `${BASE}/api/models?${query}` : `${BASE}/api/models`;
     const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
-    return res.json();
+    return unwrapModelResponse(await res.json());
   };
 
   if (fresh) return fetchModels();
 
-  return cached(
+  const cachedModels = await cached(
     K.models(category),
     fetchModels,
     { medium: MEDIUM.STATIC, ttl: TTL.STATIC },
   );
+  return unwrapModelResponse(cachedModels);
 }
 
 export async function apiCreateModel(data) {

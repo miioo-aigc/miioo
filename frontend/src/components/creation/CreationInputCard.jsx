@@ -66,6 +66,7 @@ import {
   resolveVideoReferenceModeFallback,
   VIDEO_REFERENCE_MODES,
 } from '../../utils/videoModelCapabilities';
+import { resolveVideoModelRoute } from '../../utils/videoModelAdapter';
 
 function createDefaultDubbingEffects() {
   return {
@@ -165,10 +166,14 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     () => modelOptions.find((option) => option.value === model),
     [model, modelOptions],
   );
+  const activeVideoCapabilities = useMemo(() => (
+    currentModel?.specialRouteModels?.[refMode]?.capabilities
+      || capabilitiesMap?.[model]
+      || {}
+  ), [capabilitiesMap, currentModel, model, refMode]);
   const isCurrentSeedance = Boolean(currentModel?.isSeedance);
   const allowsVideoAudio = genType === 'video'
-    && refMode === VIDEO_REFERENCE_MODES.ALL
-    && isCurrentSeedance;
+    && (isCurrentSeedance || activeVideoCapabilities.supports_reference_audio === true);
   const {
     files,
     setFiles,
@@ -677,11 +682,13 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     const savedFiles = files;
     let videoGenerationMode;
     let videoReferenceMode;
+    let requestModel = model;
+    let requestCapabilities = capabilitiesMap?.[model] || {};
     if (genType === 'video') {
       const routeResult = resolveVideoGenerationMode({
         modelId: model,
         modelName: currentModel?.label,
-        capabilities: capabilitiesMap?.[model] || {},
+        capabilities: activeVideoCapabilities,
         referenceMode: refMode,
         hasPrompt: Boolean(currentText.trim()),
         imageCount: savedFiles.filter((file) => !file.isLiveMaterial && isImageFile(file)).length,
@@ -696,15 +703,26 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         return;
       }
       videoGenerationMode = routeResult.generationMode;
+      const requestRoute = resolveVideoModelRoute({
+        modelOption: currentModel,
+        generationMode: videoGenerationMode,
+        referenceMode: refMode,
+      });
+      requestModel = requestRoute?.modelId || model;
+      requestCapabilities = requestRoute?.capabilities || activeVideoCapabilities;
       const referenceRouteResult = resolveVideoReferenceMode({
         generationMode: videoGenerationMode,
-        capabilities: capabilitiesMap?.[model] || {},
+        capabilities: requestCapabilities,
       });
       if (!referenceRouteResult.ok) {
         showToast?.('warning', referenceRouteResult.message);
         return;
       }
       videoReferenceMode = referenceRouteResult.referenceMode;
+      if (refMode?.startsWith('kling_') && !requestRoute) {
+        showToast?.('warning', '当前 Kling V3 专项能力暂不可用，请刷新模型数据后重试');
+        return;
+      }
     }
     savedContentRef.current = {
       html: savedHTML,
@@ -728,11 +746,11 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     setSelectedVoiceId('');
     setSelectedVoiceName('');
     setSelectedVoiceSource('');
-    await onGenerate?.({
+      await onGenerate?.({
       prompt: generationText,
       promptHTML: savedHTML,
       genType,
-          model,
+          model: requestModel,
           modelName: currentModel?.label,
       ...(genType === 'image' ? { ratio, resolution, count } : {}),
       ...(genType === 'video' ? (() => {
@@ -749,8 +767,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
           refMode,
           generation_mode: videoGenerationMode,
           reference_mode: videoReferenceMode,
-          videoCapabilities: capabilitiesMap?.[model] || {},
-          supportedGenerationModes: currentModel?.supportedGenerationModes || [],
+          videoCapabilities: requestCapabilities,
+          supportedGenerationModes: requestCapabilities?.supported_generation_modes || [],
           isSeedance: isCurrentSeedance,
           videoRatio, videoResolution, videoDuration, soundEnabled, firstFrameFile, lastFrameFile,
           liveMaterialParam: liveMaterialParam.length > 0 ? liveMaterialParam : null,
@@ -902,6 +920,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         onResolutionChange: setResolution,
         onCountChange: setCount,
         refMode,
+        referenceModeOptions: currentModel?.availableReferenceModes || creationParams?.refModes || [],
         onRefModeChange: handleRefModeChange,
         videoRatio,
         videoResolution,

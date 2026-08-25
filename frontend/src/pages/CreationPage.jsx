@@ -432,7 +432,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         // 优先使用用户在 API 配置中设置的默认模型（is_default: true），
         // 若未设置则回退到列表第一个
         const defaultFromConfig = Array.isArray(models)
-          ? models.find((m) => m.is_default && m.is_enabled && opts.some((o) => o.value === m.model_id))
+          ? models.find((m) => m.is_default && m.is_enabled && opts.some((o) => o.value === m.model_id || o.sourceModelIds?.includes(m.model_id)))
           : null;
         setModel(defaultFromConfig?.model_id ?? opts[0]?.value ?? '');
       } catch {

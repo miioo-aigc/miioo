@@ -25,7 +25,7 @@ export function adaptModels(backendModels, genType) {
   }
 
   if (genType === 'video') {
-    const videoOptions = normalizeVideoModelList(backendModels);
+    const videoOptions = sortCreationVideoModelOptions(normalizeVideoModelList(backendModels));
     const videoCaps = Object.fromEntries(videoOptions.map((option) => [option.value, option.capabilities]));
     return { modelOptions: videoOptions, capabilitiesMap: videoCaps };
   }
@@ -80,6 +80,42 @@ export function adaptModels(backendModels, genType) {
   }
 
   return { modelOptions: options, capabilitiesMap: caps };
+}
+
+const CREATION_VIDEO_MODEL_SORT_PRIORITY = Object.freeze([
+  'seedance',
+  'kling',
+  'vidu',
+  'happyhorse',
+  'veo',
+]);
+
+function getCreationVideoModelSortPriority(option) {
+  const searchableText = [
+    option?.value,
+    option?.label,
+    ...(Array.isArray(option?.sourceModelIds) ? option.sourceModelIds : []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  const matchedPriority = CREATION_VIDEO_MODEL_SORT_PRIORITY.findIndex((keyword) => (
+    searchableText.includes(keyword)
+  ));
+
+  return matchedPriority === -1 ? CREATION_VIDEO_MODEL_SORT_PRIORITY.length : matchedPriority;
+}
+
+function sortCreationVideoModelOptions(options) {
+  return options
+    .map((option, originalIndex) => ({
+      option,
+      originalIndex,
+      priority: getCreationVideoModelSortPriority(option),
+    }))
+    .sort((first, second) => first.priority - second.priority || first.originalIndex - second.originalIndex)
+    .map(({ option }) => option);
 }
 
 /**

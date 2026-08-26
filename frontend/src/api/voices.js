@@ -602,14 +602,10 @@ function normalizeVoiceItem(voice) {
     supports_generate: voice.supports_generate ?? voice.supportsGenerate ?? true,
     is_enabled: voice.is_enabled ?? voice.isEnabled ?? true,
     sort_order: Number(voice.sort_order ?? voice.sortOrder ?? 0),
-    display_name: getVoiceDisplayName({
-      ...voice,
-      gender,
-      age_group: ageGroup,
-      language: normalizeVoiceLanguage(voice.language, voice),
-      style: normalizeText(voice.style) || null,
-      display_name: normalizeText(voice.display_name || voice.displayName) || null,
-    }),
+    // 后端已提供展示名称时保持原值，避免运行时再通过 voice_id 覆盖后端数据。
+    display_name: normalizeText(voice.display_name || voice.displayName)
+      || normalizeText(voice.name)
+      || '未命名音色',
   };
 }
 
@@ -774,6 +770,26 @@ export async function apiGetOfficialVoices({
     },
     { medium: MEDIUM.STATIC, ttl: TTL.STATIC },
   );
+}
+
+export async function apiAddVoiceFavorite(voiceId) {
+  const encodedVoiceId = encodeURIComponent(String(voiceId || ''));
+  const res = await authFetch(`${BASE}/api/voices/${encodedVoiceId}/favorite`, {
+    method: 'POST',
+  });
+  const payload = await parseVoiceJsonResponse(res, '收藏音色失败');
+  invalidate(K.officialVoicesPrefix());
+  return payload;
+}
+
+export async function apiRemoveVoiceFavorite(voiceId) {
+  const encodedVoiceId = encodeURIComponent(String(voiceId || ''));
+  const res = await authFetch(`${BASE}/api/voices/${encodedVoiceId}/favorite`, {
+    method: 'DELETE',
+  });
+  const payload = await parseVoiceJsonResponse(res, '取消收藏音色失败');
+  invalidate(K.officialVoicesPrefix());
+  return payload;
 }
 
 export async function apiGetCustomVoices() {

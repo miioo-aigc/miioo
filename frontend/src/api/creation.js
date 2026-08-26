@@ -1,5 +1,6 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 const CREATION_DEFAULT_POLL_TIMEOUT_MS = 1800000;
+const CREATION_VIDEO_POLL_TIMEOUT_MS = 3600000;
 const CREATION_AUDIO_POLL_TIMEOUT_MS = 600000;
 const CREATION_POLL_INTERVAL_MS = 3000;
 const CREATION_POLL_TRANSIENT_FAILURE_LIMIT = 5;
@@ -168,6 +169,7 @@ function getImageUrls(image) {
  *   2026-08-20  视频 generation_mode 改由输入层统一能力路由确定；API 仅校验能力并保留厂商字段适配。
  *   2026-08-20  视频请求改为读取后端 generation_reference_mode_map，分别发送 generation_mode 与 reference_mode。
  *   2026-08-20  视频任务轮询容忍连续 5 次 502/503/504、网络异常、空响应或无效 JSON，正常响应后重置计数。
+ *   2026-08-26  视频创作任务轮询超时由 1800 秒延长至 3600 秒，图片和配音超时保持不变。
  *   2026-08-07  修复同步配音将音频记录 id 误当异步任务 id，避免错误请求配音任务轮询接口
  *   2026-08-07  配音轮询超时收紧为 600 秒，并支持 AbortSignal 中断上传、生成请求和轮询
  *   2026-08-07  配音生成支持再次点击发送按钮停止前端请求和轮询；后端任务取消能力仍由后端接口决定
@@ -198,7 +200,9 @@ export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = 
   const retryState = { consecutiveFailures: 0 };
   const effectiveTimeoutMs = timeoutMs ?? (type === 'audio'
     ? CREATION_AUDIO_POLL_TIMEOUT_MS
-    : CREATION_DEFAULT_POLL_TIMEOUT_MS);
+    : type === 'video'
+      ? CREATION_VIDEO_POLL_TIMEOUT_MS
+      : CREATION_DEFAULT_POLL_TIMEOUT_MS);
   const pollUrl = type === 'image'
     ? `${BASE}/api/creation/tasks/${taskId}`
     : type === 'audio'
@@ -836,7 +840,7 @@ export async function apiGetVideoLastFrame(videoUrl) {
 
 // ── 视频任务独立轮询（供刷新后恢复使用）──────────────────────────────────────
 
-export async function apiPollVideoTask(taskId, timeoutMs = 1800000) {
+export async function apiPollVideoTask(taskId, timeoutMs = CREATION_VIDEO_POLL_TIMEOUT_MS) {
   const start = Date.now();
   const retryState = { consecutiveFailures: 0 };
   while (Date.now() - start < timeoutMs) {
@@ -887,7 +891,11 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
   async function pollTask(
     pollUrl,
     extractFn,
-    timeoutMs = isDubbing ? CREATION_AUDIO_POLL_TIMEOUT_MS : CREATION_DEFAULT_POLL_TIMEOUT_MS,
+    timeoutMs = isDubbing
+      ? CREATION_AUDIO_POLL_TIMEOUT_MS
+      : isVideo
+        ? CREATION_VIDEO_POLL_TIMEOUT_MS
+        : CREATION_DEFAULT_POLL_TIMEOUT_MS,
   ) {
     const start = Date.now();
     const retryState = { consecutiveFailures: 0 };

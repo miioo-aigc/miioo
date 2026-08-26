@@ -106,7 +106,7 @@ export default function useStoryboardTaskRecovery({
       try {
         const current = await apiGetTask(task.taskId);
         const finalTask = isStoryboardTaskInProgress(current)
-          ? await callbacksRef.current.pollTask(task.taskId, hasStoryboardVideoTaskResult)
+          ? await callbacksRef.current.pollTask(task.taskId, hasStoryboardVideoTaskResult, 1200)
           : current;
         if (getStoryboardTaskStatus(finalTask) === 'completed' || hasStoryboardVideoTaskResult(finalTask)) {
           const url = extractStoryboardVideoUrl(finalTask);

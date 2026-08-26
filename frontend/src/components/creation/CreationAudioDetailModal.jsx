@@ -3,14 +3,13 @@
  * @structure-index
  *
  * 独立负责配音结果详情展示、音频播放、波形进度和媒体动作；页面只注入数据与回调。
- * 音色名称优先使用本地静态官网资料按 voiceId 匹配中文名，匹配不到时回退展示原音色名称。
+ * 音色名称以后端返回的音色名称为准。
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { useModalSize } from '../../utils/useModalSize';
 import ConfirmDialog from '../ConfirmDialog';
 import CreationDubbingPromptPreview from './CreationDubbingPromptPreview';
-import { MINIMAX_OFFICIAL_VOICE_METADATA } from './MinimaxOfficialVoiceMetadata';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const WAVEFORM = [14, 22, 11, 18, 28, 16, 24, 10, 19, 26, 13, 21, 30, 15, 23, 12, 20, 27, 14, 22, 10, 18, 26, 16, 24, 12, 20, 29, 15, 23, 11, 19, 27, 14, 22, 10, 18, 25, 13, 21, 29, 16, 24, 12, 20, 28, 15, 23];
@@ -140,7 +139,7 @@ export default function CreationAudioDetailModal({
   }
 
   const progress = audioDuration > 0 ? Math.min(1, currentTime / audioDuration) : 0;
-  const voiceDisplayName = MINIMAX_OFFICIAL_VOICE_METADATA[voiceId]?.name || voiceName;
+  const voiceDisplayName = voiceName || voiceId || '未命名音色';
   const voiceOriginDisplayName = voiceOriginLabel || 'MiniMax';
   return (
     <>

@@ -25,6 +25,7 @@ export const K = {
   voiceLibraryPrefix: () => 'voices-library:',
   voices: (params = {}) => `voices:${stable(params)}`,
   officialVoices: (params = {}) => `voices-official:${stable(params)}`,
+  officialVoicesPrefix: () => 'voices-official:',
   cardVisibility: () => 'card-visibility',
   banner: () => 'banner',
   adminCommunityQr: () => 'admin-community-qr',

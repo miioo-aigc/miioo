@@ -56,6 +56,7 @@
  *               全能参考模式不再携带遗留首尾帧，避免普通真人图片混入请求
  *   2026-08-12  开始剪辑按钮改为弹出“开发中”提示 Toast，不再解锁 edit 步骤，避免跳转项目总览
  *   2026-08-12  分镜任务轮询超时由 450 秒调整为 3000 秒（MAX_POLLS 150→1000，间隔 3000ms）
+ *   2026-08-26  分镜视频创作任务轮询超时由 3000 秒延长至 3600 秒（MAX_POLLS 1000→1200，间隔 3000ms）
  *   2026-08-11  手动新增空白分镜打 isManualBlank 标记，图片/视频创作面板打开时不再代入后端返回的默认提示词
  *   2026-08-11  分镜视频首尾帧请求补传 asset_id 和 generate_mode，并确保素材 URL 为完整地址
  *   2026-08-11  新建/复制分镜时初始化候选媒体状态，避免新分镜误显“生成中”占位；复制同步已落盘候选媒体
@@ -1332,10 +1333,10 @@ function hasStoryboardMediaHint(shot = {}) {
     setTimeout(() => setToast(null), 2500);
   }
 
-  // 轮询任务直到完成或超时
+  // 轮询任务直到完成或超时；视频创作允许等待 3600 秒，分镜生成保持 3000 秒。
   // isSuccessPayload: 可选谓词，若返回 true 则即使 status 为 running 也停止轮询
-  async function pollTask(taskId, isSuccessPayload) {
-    const MAX_POLLS = 1000; // 3000 秒超时（3000ms 间隔 × 1000 次）
+  async function pollTask(taskId, isSuccessPayload, maxPolls = 1000) {
+    const MAX_POLLS = maxPolls;
     const INTERVAL = 3000;
     for (let i = 0; i < MAX_POLLS; i++) {
       // 提交生成任务后立即读取一次，避免任务已经创建但页面在首个 3 秒窗口内
@@ -1528,7 +1529,7 @@ function hasStoryboardMediaHint(shot = {}) {
         if (!taskId) throw new Error('分镜视频生成接口未返回任务 ID');
         bindPendingCandidate(shot.id, pendingClientId, taskId);
         addPendingTask(projectId, { taskId, shotId: shot.id, episodeId, type: 'video' });
-        const task = await pollTask(taskId, hasStoryboardVideoTaskResult);
+        const task = await pollTask(taskId, hasStoryboardVideoTaskResult, 1200);
         const videoUrl = extractStoryboardVideoUrl(task);
         if (videoUrl) {
           const normalizedUrl = normalizeImageUrl(videoUrl);
@@ -2840,7 +2841,7 @@ function hasStoryboardMediaHint(shot = {}) {
             if (!taskId) throw new Error('分镜视频生成接口未返回任务 ID');
             bindPendingCandidate(shot.id, pendingClientId, taskId);
             addPendingTask(projectId, { taskId, shotId: shot.id, episodeId: getEpisodeId(episode), type: 'video' });
-            const task = await pollTask(taskId, hasStoryboardVideoTaskResult);
+          const task = await pollTask(taskId, hasStoryboardVideoTaskResult, 1200);
             const videoUrl = extractStoryboardVideoUrl(task);
             if (videoUrl) {
               const normalizedUrl = normalizeImageUrl(videoUrl);

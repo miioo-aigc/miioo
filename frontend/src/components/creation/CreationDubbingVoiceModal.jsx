@@ -4,7 +4,7 @@
  *
  * ─── 组件职责 ───────────────────────────────────────────────────────
  *   创作配音的选择音色弹窗，以及输入区已选音频参考卡片。
- *   官方音色以接口可用集为准，并合并本地官网展示元数据；收藏 Tab 读取收藏音频接口。
+ *   官方音色、展示字段和收藏状态以后端接口返回为准；收藏 Tab 只展示官方收藏音色。
  *
  * ─── 数据流 ─────────────────────────────────────────────────────────
  *   弹窗通过 open、onClose、onConfirm 接入 CreationInputCard；
@@ -26,26 +26,27 @@
  *   2026-08-18  按新设计稿重构选择音色弹窗，暂以静态音色卡片呈现视觉结构
  *   2026-08-18  按新版设计稿将弹窗尺寸调整为 800 × 600，并收紧内容区控制栏布局
  *   2026-08-18  补齐弹窗按钮、搜索框、Tab 和筛选按钮的本地交互状态
- *   2026-08-18  Tab 切换真实展示官方静态音色与收藏音频，移除设计稿外的列表分页器
- *   2026-08-18  音色卡片抽离为 DubbingVoiceCard，收藏 Tab 接入取消收藏接口
+ *   2026-08-18  Tab 切换真实展示官方静态音色与收藏入口，移除设计稿外的列表分页器
+ *   2026-08-18  音色卡片抽离为 DubbingVoiceCard
  *   2026-08-18  官方音色接入查询接口，并以官网采集元数据补全展示名称、标签和描述
  *   2026-08-18  新增固定音色筛选区，并使用官网元数据兜底筛选字段
  *   2026-08-18  官方语言筛选优先使用官网元数据，避免接口语言格式差异导致漏查
+ *   2026-08-25  官方音色展示字段改为完全使用后端返回值，移除 voice_id 本地静态元数据匹配
+ *   2026-08-25  音色筛选项改为根据后端返回字段动态生成
+ *   2026-08-25  官方音色收藏接入后端接口，收藏状态和能力以后端返回值为准
+ *   2026-08-25  收藏 Tab 改为只筛选展示已收藏的官方音色，不再读取创作音频
+ *   2026-08-25  按接口文档统一通过 voice_id 调用官方音色 favorite 接口
  */
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
-import { apiListCreationAudios, apiToggleAudioFavorite } from "../../api/creation";
-import { apiGetOfficialVoices } from "../../api/voices";
+import { apiAddVoiceFavorite, apiGetOfficialVoices, apiRemoveVoiceFavorite } from "../../api/voices";
 import { Button } from "../ui/Button";
 import { CreationEmptyIconDubbing } from "./CreationEmptyState";
 import DubbingVoiceCard from "./DubbingVoiceCard";
 import DubbingVoiceFilters from "./DubbingVoiceFilters";
-import { MINIMAX_OFFICIAL_VOICE_FILTER_OPTIONS, MINIMAX_OFFICIAL_VOICE_METADATA } from "./MinimaxOfficialVoiceMetadata";
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
-
-const FAVORITE_LIST_SIZE = 100;
 
 function ModalCloseIcon({ color = "#FFFFFF" }) {
   return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.667 2.667L13.333 13.333M2.667 13.333L13.333 2.667" stroke={color} strokeLinecap="round" strokeLinejoin="round" /></svg>;
@@ -59,67 +60,33 @@ function FilterIcon({ color = "#FFFFFF" }) {
   return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 3h12L9.2 8.606V12.8L6.8 14V8.606L2 3Z" stroke={color} strokeLinejoin="round" /></svg>;
 }
 
-function getAccent(tags = []) {
-  return tags.find((tag) => tag.includes("口音") || tag.startsWith("中国-")) || "";
-}
-
-function normalizeOfficialVoiceLanguage(language, fallbackLanguage = "") {
-  const value = String(language || "").trim();
-  if (!value) return fallbackLanguage;
-
-  const languageAliases = {
-    "chinese (mandarin)": "中文-普通话",
-    chinese: "中文-普通话",
-    mandarin: "中文-普通话",
-    cantonese: "粤语",
-    english: "英语",
-    japanese: "日语",
-    korean: "韩语",
-    french: "法语",
-    german: "德语",
-    spanish: "西班牙语",
-    portuguese: "葡萄牙语",
-    italian: "意大利语",
-    russian: "俄语",
-    arabic: "阿拉伯语",
-  };
-
-  return languageAliases[value.toLocaleLowerCase("en-US")] || value;
-}
-
-function normalizeFavoriteAudio(audio) {
-  const tags = [audio.model, audio.emotion, audio.speed ? `${audio.speed}x` : ""].filter(Boolean).slice(0, 3);
-
-  return {
-    id: audio.id || audio.audio_id || audio.asset_id,
-    name: audio.name || audio.audio_name || audio.asset_name || "未命名音频",
-    mood: audio.voice_name || audio.voiceName || "收藏音频",
-    tags: tags.length ? tags : ["创作配音"],
-    description: audio.prompt || audio.text || audio.description || "暂无音频描述",
-    audioUrl: audio.audio_url || audio.audioUrl || audio.original_url || audio.originalUrl || audio.file_url || audio.fileUrl || audio.url,
-    source: audio.source || audio.provider || audio.provider_name || "收藏音色",
-  };
-}
-
 function normalizeOfficialVoice(voice) {
-  const voiceId = voice.voice_id || voice.voiceId || voice.id;
-  const metadata = MINIMAX_OFFICIAL_VOICE_METADATA[voiceId];
-  const fallbackTags = [voice.language, voice.gender, voice.age_group || voice.ageGroup, voice.style].filter(Boolean);
+  const voiceId = voice.voice_id || voice.voiceId || voice.provider_voice_id || voice.providerVoiceId || voice.id;
+  const tags = Array.isArray(voice.tags) ? voice.tags.filter(Boolean) : [];
 
   return {
     id: voiceId,
-    name: metadata?.name || voice.display_name || voice.displayName || voice.name || "未命名音色",
-    mood: metadata?.mood || voice.style || "官方系统音色",
-    tags: metadata?.tags?.length ? metadata.tags : fallbackTags,
-    description: metadata?.description || `${voice.display_name || voice.name || "该音色"}暂未提供详细介绍。`,
-    language: metadata?.language || normalizeOfficialVoiceLanguage(voice.language),
-    accent: voice.accent || voice.dialect || voice.dialect_name || getAccent(metadata?.tags || fallbackTags),
-    gender: voice.gender || metadata?.gender || "",
-    ageGroup: voice.age_group || voice.ageGroup || metadata?.ageGroup || "",
+    name: voice.display_name || voice.displayName || voice.name || "未命名音色",
+    mood: voice.style || "官方系统音色",
+    tags,
+    description: voice.description || "暂无音色描述",
+    language: voice.language || "",
+    accent: voice.accent || "",
+    gender: voice.gender || "",
+    ageGroup: voice.age_group || voice.ageGroup || "",
     audioUrl: voice.preview_url || voice.previewUrl || voice.source_audio_url || voice.sourceAudioUrl,
     sortOrder: Number(voice.sort_order ?? voice.sortOrder ?? 0),
-    source: voice.source || voice.provider || voice.provider_name || "MiniMax 官方音色库",
+    source: voice.source_label || voice.sourceLabel || voice.source || voice.provider || voice.provider_name || "MiniMax 官方音色库",
+    isFavorite: Boolean(voice.is_favorite ?? voice.isFavorite),
+    supportsFavorite: voice.supports_favorite ?? voice.supportsFavorite ?? false,
   };
+}
+
+function getUniqueValues(voices, getValue) {
+  return [...new Set(voices.flatMap((voice) => {
+    const value = getValue(voice);
+    return Array.isArray(value) ? value : [value];
+  }).filter(Boolean))].sort((first, second) => String(first).localeCompare(String(second), "zh-CN"));
 }
 
 function VoiceListEmptyState({ message }) {
@@ -151,9 +118,6 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast 
   const [officialVoices, setOfficialVoices] = useState([]);
   const [officialLoading, setOfficialLoading] = useState(false);
   const [officialError, setOfficialError] = useState("");
-  const [favoriteAudios, setFavoriteAudios] = useState([]);
-  const [favoriteLoading, setFavoriteLoading] = useState(false);
-  const [favoriteError, setFavoriteError] = useState("");
   const [selectedVoiceId, setSelectedVoiceId] = useState("");
   const [officialFavoriteIds, setOfficialFavoriteIds] = useState(new Set());
   const [favoriteUpdatingId, setFavoriteUpdatingId] = useState("");
@@ -193,7 +157,13 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast 
     return matchesSearch && matchesFilters;
   });
   const isFavoritesTab = activeTab === "favorites";
-  const visibleVoices = isFavoritesTab ? favoriteAudios.map(normalizeFavoriteAudio) : filteredOfficialVoices;
+  const visibleVoices = isFavoritesTab ? filteredOfficialVoices.filter((voice) => officialFavoriteIds.has(voice.id)) : filteredOfficialVoices;
+  const officialFilterOptions = {
+    languages: getUniqueValues(officialVoices, (voice) => voice.language),
+    accents: getUniqueValues(officialVoices, (voice) => voice.accent),
+    genders: getUniqueValues(officialVoices, (voice) => voice.gender),
+    ageGroups: getUniqueValues(officialVoices, (voice) => voice.age_group || voice.ageGroup),
+  };
 
   useEffect(() => {
     if (!open) return undefined;
@@ -209,11 +179,13 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast 
     apiGetOfficialVoices({ provider: "minimax" })
       .then((voices) => {
         if (cancelled) return;
-        setOfficialVoices(voices
+        const normalizedVoices = voices
           .filter((voice) => voice.voice_id || voice.voiceId || voice.id)
           .filter((voice) => voice.is_enabled !== false && voice.isEnabled !== false && voice.supports_generate !== false && voice.supportsGenerate !== false)
           .map(normalizeOfficialVoice)
-          .sort((first, second) => first.sortOrder - second.sortOrder));
+          .sort((first, second) => first.sortOrder - second.sortOrder);
+        setOfficialVoices(normalizedVoices);
+        setOfficialFavoriteIds(new Set(normalizedVoices.filter((voice) => voice.isFavorite).map((voice) => voice.id)));
       })
       .catch((error) => {
         if (!cancelled) {
@@ -230,38 +202,6 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast 
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open || activeTab !== "favorites") return undefined;
-
-    let cancelled = false;
-    Promise.resolve().then(() => {
-      if (!cancelled) {
-        setFavoriteLoading(true);
-        setFavoriteError("");
-      }
-    });
-
-    apiListCreationAudios({ page: 1, page_size: FAVORITE_LIST_SIZE, is_favorite: true, search: searchValue.trim() || undefined })
-      .then((response) => {
-        if (cancelled) return;
-        const list = Array.isArray(response) ? response : (response?.list ?? response?.items ?? response?.data ?? []);
-        setFavoriteAudios(list);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFavoriteAudios([]);
-          setFavoriteError("收藏音频加载失败，请稍后重试");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setFavoriteLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, open, searchValue]);
-
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
     setSearchValue("");
@@ -276,26 +216,29 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast 
   };
 
   const handleFavoriteToggle = async (voice) => {
-    if (isFavoritesTab) {
-      setFavoriteUpdatingId(voice.id);
-      try {
-        await apiToggleAudioFavorite(voice.id);
-        setFavoriteAudios((current) => current.filter((audio) => (audio.id || audio.audio_id || audio.asset_id) !== voice.id));
-        setSelectedVoiceId((current) => current === voice.id ? "" : current);
-      } catch (error) {
-        showToast?.("error", error?.message || "取消收藏失败，请稍后重试");
-      } finally {
-        setFavoriteUpdatingId("");
-      }
-      return;
-    }
+    if (favoriteUpdatingId === voice.id) return;
 
-    setOfficialFavoriteIds((current) => {
-      const next = new Set(current);
-      if (next.has(voice.id)) next.delete(voice.id);
-      else next.add(voice.id);
-      return next;
-    });
+    const isFavorited = officialFavoriteIds.has(voice.id);
+    setFavoriteUpdatingId(voice.id);
+    try {
+      if (isFavorited) await apiRemoveVoiceFavorite(voice.id);
+      else await apiAddVoiceFavorite(voice.id);
+
+      setOfficialFavoriteIds((current) => {
+        const next = new Set(current);
+        if (isFavorited) next.delete(voice.id);
+        else next.add(voice.id);
+        return next;
+      });
+      if (isFavorited && isFavoritesTab) {
+        setSelectedVoiceId((current) => current === voice.id ? "" : current);
+      }
+      showToast?.("success", isFavorited ? "已取消收藏" : "收藏成功");
+    } catch (error) {
+      showToast?.("error", error?.message || (isFavorited ? "取消收藏失败，请稍后重试" : "收藏失败，请稍后重试"));
+    } finally {
+      setFavoriteUpdatingId("");
+    }
   };
 
   if (!open) return null;
@@ -325,12 +268,12 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast 
               <Button variant="primary" icon={<span style={{ display: "flex", width: "16px", height: "16px", flexShrink: 0 }}><FilterIcon color={filtersVisible ? "#2DC3E1" : "#FFFFFF"} /></span>} iconOnly aria-label={filtersVisible ? "收起音色筛选" : "展开音色筛选"} aria-pressed={filtersVisible} onClick={() => setFiltersVisible((current) => !current)} style={{ width: "36px", height: "36px" }} />
             </div>
           </div>
-          {filtersVisible && <DubbingVoiceFilters filters={voiceFilters} options={MINIMAX_OFFICIAL_VOICE_FILTER_OPTIONS} onChange={handleFilterChange} />}
+          {filtersVisible && <DubbingVoiceFilters filters={voiceFilters} options={officialFilterOptions} onChange={handleFilterChange} />}
           <div style={{ minHeight: 0, flex: 1 }}>
-            {(isFavoritesTab ? favoriteLoading : officialLoading) && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}><span style={{ color: "#FFFFFF66", fontFamily: FONT, fontSize: "14px", lineHeight: "18px", textAlign: "center" }}>{isFavoritesTab ? "收藏音频加载中" : "官方音色加载中"}</span></div>}
-            {!(isFavoritesTab ? favoriteLoading : officialLoading) && (isFavoritesTab ? favoriteError : officialError) && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}><span style={{ color: "#FFFFFF66", fontFamily: FONT, fontSize: "14px", lineHeight: "18px", textAlign: "center" }}>{isFavoritesTab ? favoriteError : officialError}</span></div>}
-            {!(isFavoritesTab ? favoriteLoading : officialLoading) && !(isFavoritesTab ? favoriteError : officialError) && visibleVoices.length === 0 && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}><VoiceListEmptyState message={searchValue.trim() ? "没有匹配的音色" : isFavoritesTab ? "暂无收藏音频" : "暂无音色"} /></div>}
-            {!(isFavoritesTab ? favoriteLoading : officialLoading) && !(isFavoritesTab ? favoriteError : officialError) && visibleVoices.length > 0 && <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", alignContent: "start", gap: "12px", minHeight: 0, height: "100%", overflowY: "auto", overflowX: "hidden", paddingRight: "4px" }}>{visibleVoices.map((voice) => <DubbingVoiceCard key={voice.id} voice={voice} selected={selectedVoiceId === voice.id} favorited={isFavoritesTab || officialFavoriteIds.has(voice.id)} favoriteLoading={favoriteUpdatingId === voice.id} onSelect={handleVoiceSelect} onFavoriteToggle={handleFavoriteToggle} />)}</div>}
+            {officialLoading && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}><span style={{ color: "#FFFFFF66", fontFamily: FONT, fontSize: "14px", lineHeight: "18px", textAlign: "center" }}>官方音色加载中</span></div>}
+            {!officialLoading && officialError && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}><span style={{ color: "#FFFFFF66", fontFamily: FONT, fontSize: "14px", lineHeight: "18px", textAlign: "center" }}>{officialError}</span></div>}
+            {!officialLoading && !officialError && visibleVoices.length === 0 && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}><VoiceListEmptyState message={searchValue.trim() ? "没有匹配的音色" : isFavoritesTab ? "暂无收藏音色" : "暂无音色"} /></div>}
+            {!officialLoading && !officialError && visibleVoices.length > 0 && <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", alignContent: "start", gap: "12px", minHeight: 0, height: "100%", overflowY: "auto", overflowX: "hidden", paddingRight: "4px" }}>{visibleVoices.map((voice) => <DubbingVoiceCard key={voice.id} voice={voice} selected={selectedVoiceId === voice.id} favorited={officialFavoriteIds.has(voice.id)} favoriteLoading={favoriteUpdatingId === voice.id} onSelect={handleVoiceSelect} onFavoriteToggle={handleFavoriteToggle} />)}</div>}
           </div>
         </main>
         <footer style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "16px", padding: "16px 24px", flexShrink: 0, borderTop: "1px solid #FFFFFF0D", background: "#161616" }}><Button variant="secondary" onClick={onClose}>取消</Button><Button variant="primary" onClick={handleConfirm}>确认</Button></footer>

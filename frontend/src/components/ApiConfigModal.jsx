@@ -1,6 +1,22 @@
+/**
+ * @file ApiConfigModal.jsx
+ * @structure-index
+ *
+ * ─── 通用配置组件 ────────────────────────────────────────────────
+ *   ConfigModelModal()       服务商 API Key、模型 Tab 与保存操作      L718
+ *   PrimaryButton()          弹窗主按钮视觉和禁用状态                 L206
+ *
+ * ─── 页面级状态与动作 ────────────────────────────────────────────
+ *   ApiConfigModal()         API 配置弹窗状态、服务商请求和子弹窗编排 L953
+ *   saveOneLinkConfig()      OneLinkAI 配置保存与空值保护             L1546
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────────
+ *   2026-08-26  OneLinkAI API Key 清空时禁用保存并显示原因 Tooltip
+ */
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Toggle from './Toggle';
 import ConfirmDialog from './ConfirmDialog';
+import Tooltip from './ui/Tooltip';
 import { apiOneClickSetup, apiCreateModel, apiCreateProvider, apiListModels, apiUpdateModel, apiDeleteModel, apiGetBanner, apiListProviders, apiTestConnection, apiUpdateProvider, apiGetCardVisibility } from '../api/config';
 import { getToken } from '../api/request.js';
 // 全局 API 卡片背景图（本地打包，保证离线可用）
@@ -716,6 +732,8 @@ function ConfigModelModal({
   onSetDefaultModel,
   onTest,
   apiTested = false,
+  saveDisabled = false,
+  saveDisabledTooltip = '',
 }) {
   const activeTabIndex = Math.max(MODEL_TABS.indexOf(activeTab), 0);
   const [disablingId, setDisablingId] = useState(null);
@@ -785,9 +803,17 @@ function ConfigModelModal({
       onClose={onCancel}
       wide
       footer={
-        <PrimaryButton className="h-9" innerClassName="px-[15px]" onClick={onSave}>
-          保存
-        </PrimaryButton>
+        saveDisabled && saveDisabledTooltip ? (
+          <Tooltip label={saveDisabledTooltip}>
+            <PrimaryButton className="h-9" innerClassName="px-[15px]" onClick={onSave} disabled>
+              保存
+            </PrimaryButton>
+          </Tooltip>
+        ) : (
+          <PrimaryButton className="h-9" innerClassName="px-[15px]" onClick={onSave} disabled={saveDisabled}>
+            保存
+          </PrimaryButton>
+        )
       }
     >
       <div className="flex min-h-0 flex-1 flex-col items-start gap-[12px] self-stretch">
@@ -1524,6 +1550,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   };
 
   const saveOneLinkConfig = () => {
+    if (!state.onelinkApiKeyActual.trim()) return;
     setState((current) => ({ ...current, mainConfigured: true, onelinkEnabled: true, childView: null }));
     onConfigured?.();
   };
@@ -1781,6 +1808,8 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             onAddModel={() => updateState('childView', 'edit-onelink-model')}
             onCancel={closeChild}
             onSave={saveOneLinkConfig}
+            saveDisabled={!state.onelinkApiKeyActual.trim()}
+            saveDisabledTooltip="API Key不允许为空"
             onToggleModel={toggleOnelinkModel}
             onDeleteModel={(id) => requestDelete('onelinkModel', id)}
             onSetDefaultModel={setDefaultOnelinkModel}

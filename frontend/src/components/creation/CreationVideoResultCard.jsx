@@ -19,6 +19,7 @@
  *   2026-08-17  下载统一透传页面正式下载回调，结果卡不再请求短时媒体链接
  *   2026-08-21  尾帧提取期间显示单卡片 DotsLoading，并防止重复触发
  *   2026-08-25  创作历史占位卡复用 LoadingAnimation，宽度 88px、高度按比例自适应
+ *   2026-08-26  视频卡片使用后端封面地址作为静态预览
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -43,7 +44,7 @@ function StarIcon({ filled = false, strokeColor = '#FFFFFF' }) {
   );
 }
 
-export default function CreationVideoResultCard({ status, videoUrl, onReEdit, onUseAsFirstFrame, onDownload, onDelete, onCardClick, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
+export default function CreationVideoResultCard({ status, videoUrl, posterUrl = '', onReEdit, onUseAsFirstFrame, onDownload, onDelete, onCardClick, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
 
   const [hovered, setHovered] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
@@ -112,6 +113,7 @@ export default function CreationVideoResultCard({ status, videoUrl, onReEdit, on
           <video
             ref={videoRef}
             src={videoUrl}
+            poster={posterUrl || undefined}
             loop
             muted
             playsInline

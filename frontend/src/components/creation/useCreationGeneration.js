@@ -11,6 +11,7 @@
  *   Hook 不读取 CreationPage 闭包，不管理页面级状态或历史加载；
  *   取消只中断前端请求和轮询，后端任务是否停止取决于后端取消能力。
  *   完成卡写入图片、视频和配音记录 ID，供页面调用正式下载接口。
+ *   视频结果同时保留后端返回的封面地址，详情弹窗使用 poster 展示。
  */
 
 import { useCallback, useRef } from 'react';
@@ -237,6 +238,7 @@ function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, i
     refModeLabel: result.referenceModeLabel || result.reference_mode_label || undefined,
     firstFrameUrl: result.firstFrameUrl || undefined,
     lastFrameUrl: result.lastFrameUrl || undefined,
+    posterUrl: isVideoGen ? (normalizeImageUrl(result.posterUrl) || result.posterUrl || undefined) : undefined,
     createdAt: genMeta.createdAt,
     cards: mediaUrls.map((url, index) => ({
       id: isAudioGen ? (audioIds?.[index] || null) : (result.cardIds?.[index] || null),
@@ -245,6 +247,9 @@ function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, i
       imageUrl: isAudioGen ? null : (isVideoGen ? null : url),
       originalUrl: !isVideoGen && !isAudioGen ? (imageDownloadUrls?.[index] || url) : undefined,
       videoUrl: isVideoGen ? url : null,
+      posterUrl: isVideoGen
+        ? (normalizeImageUrl(result.posterUrl) || result.posterUrl || undefined)
+        : undefined,
       audioUrl: isAudioGen ? url : null,
       audioId: isAudioGen ? (audioIds?.[index] || null) : undefined,
     })),

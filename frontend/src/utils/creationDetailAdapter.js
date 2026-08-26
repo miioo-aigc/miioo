@@ -99,9 +99,27 @@ export function normalizeCreationVideoDetailMedia(detail, { preferOriginalImageU
 export function mergeCreationVideoDetail(card, detail) {
   if (!card) return card;
   const media = normalizeCreationVideoDetailMedia(detail);
+  const videoUrl = normalizeImageUrl(
+    detail?.video_url
+      || detail?.videoUrl
+      || detail?.original_url
+      || detail?.originalUrl
+      || card.videoUrl
+      || detail?.preview_video_url
+      || detail?.previewVideoUrl,
+  ) || card.videoUrl;
+  const posterUrl = normalizeImageUrl(
+    detail?.poster_url
+      || detail?.posterUrl
+      || detail?.thumbnail_url
+      || detail?.thumbnailUrl
+      || card.posterUrl,
+  ) || card.posterUrl;
   return {
     ...card,
     ...media,
+    videoUrl,
+    posterUrl,
     promptHTML: detail?.prompt_raw || detail?.promptResolved || card.promptHTML,
     refModeLabel: readReferenceModeLabel(detail) || card.refModeLabel,
   };

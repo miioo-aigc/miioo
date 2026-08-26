@@ -180,7 +180,9 @@ export function normalizeCreationHistoryItem(item, type) {
         }))
     : [];
 
-  const posterUrl = normalizeImageUrl(item.poster_url || item.posterUrl || '') || undefined;
+  const posterUrl = normalizeImageUrl(
+    item.poster_url || item.posterUrl || item.thumbnail_url || item.thumbnailUrl || '',
+  ) || undefined;
   const generationMode = item.generation_mode || item.generationMode || undefined;
   const refMode = type === 'video'
     ? toCreationRefMode(generationMode || item.reference_mode || item.referenceMode)
@@ -291,7 +293,8 @@ export function pickCreationHistoryCacheItem(item, tab) {
       ...base,
       video_url: item.video_url || item.videoUrl || item.preview_video_url || item.previewVideoUrl || item.original_url || item.file_url || item.url || '',
       preview_video_url: item.preview_video_url || item.previewVideoUrl || item.video_url || item.videoUrl || '',
-      poster_url: item.poster_url || item.posterUrl || '',
+      poster_url: item.poster_url || item.posterUrl || item.thumbnail_url || item.thumbnailUrl || '',
+      thumbnail_url: item.thumbnail_url || item.thumbnailUrl || item.poster_url || item.posterUrl || '',
       reference_mode: item.reference_mode || item.referenceMode || undefined,
       reference_mode_label: item.reference_mode_label || item.referenceModeLabel || undefined,
       generation_mode: item.generation_mode || item.generationMode || undefined,

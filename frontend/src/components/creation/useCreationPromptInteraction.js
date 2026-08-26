@@ -2,23 +2,23 @@
  * @file useCreationPromptInteraction.js
  * @structure-index
  *
- * ─── 纯函数与 DOM 标签构造 ───────────────────────────── L29–L162
+ * ─── 纯函数与 DOM 标签构造 ───────────────────────────── L35–L213
  *   文本标签辅助、MiniMax 高级配音文本序列化、情绪边界标记、情绪定义恢复
  *
- * ─── 情绪标记与菜单交互 ─────────────────────────────── L184–L375
+ * ─── 情绪标记与菜单交互 ─────────────────────────────── L235–L426
  *   菜单定位、标签构建与删除、选区边界拆分、局部情绪替换
  *
- * ─── 提示词编辑生命周期 ─────────────────────────────── L377–L519
+ * ─── 提示词编辑生命周期 ─────────────────────────────── L428–L570
  *   预填充 HTML/文本、重建 @素材标签、正文选区同步、@菜单 outside click
  *
- * ─── 输入事件与素材标签操作 ─────────────────────────── L521–L976
+ * ─── 输入事件与素材标签操作 ─────────────────────────── L572–L1124
  *   粘贴处理、文件移除、卡片插入、@菜单选择、键盘删除/提交
  *   高级配音情绪选区、菜单定位、情绪标签替换
  *
- * ─── 快照与恢复接口 ─────────────────────────────────── L978–L1043
+ * ─── 快照与恢复接口 ─────────────────────────────────── L1126–L1192
  *   getPromptSnapshot()（含高级配音请求文本）、clearContent()、restoreContent()
  *
- * ─── 公开 Hook 接口 ──────────────────────────────────── L1045–L1079
+ * ─── 公开 Hook 接口 ──────────────────────────────────── L1194–L1227
  *   编辑器 ref、焦点/内容状态、事件回调、快照与恢复能力
  *
  * ─── 边界说明 ─────────────────────────────────────────
@@ -27,11 +27,15 @@
  * ─── 更新记录 ─────────────────────────────────────────
  *   2026-08-21  高级配音提交时将情绪、停顿和语气词视觉标签序列化为 MiniMax 官方 text 标记格式。
  *   2026-08-24  高级配音粘贴时解析官方 text 标记并恢复为可编辑的情绪、停顿和语气词标签。
+ *   2026-08-26  图片、视频和配音普通模式统一限制提示词为 3000 字。
+ *   2026-08-26  视频提示词上限调整为 5000 字。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
+const PROMPT_CHARACTER_LIMIT = 3000;
+const VIDEO_PROMPT_CHARACTER_LIMIT = 5000;
 const DUBBING_ADVANCED_CHARACTER_LIMIT = 3000;
 const CHARACTER_LIMIT_TOAST_MESSAGE = '最多支持输入 3000 字';
 
@@ -250,12 +254,21 @@ export function useCreationPromptInteraction({
   const inlineInsertRangeRef = useRef(null);
   const lastValidEditorHtmlRef = useRef('');
   const characterLimitToastAtRef = useRef(0);
+  const shouldLimitRegularPrompt = genType === 'image'
+    || genType === 'video'
+    || (genType === 'dubbing' && !dubbingAdvancedEnabled);
+  const regularPromptCharacterLimit = genType === 'video'
+    ? VIDEO_PROMPT_CHARACTER_LIMIT
+    : PROMPT_CHARACTER_LIMIT;
 
-  const showCharacterLimitToast = useCallback(() => {
+  const showCharacterLimitToast = useCallback((limit = PROMPT_CHARACTER_LIMIT) => {
     const now = Date.now();
     if (now - characterLimitToastAtRef.current < 1200) return;
     characterLimitToastAtRef.current = now;
-    showToast?.('warning', CHARACTER_LIMIT_TOAST_MESSAGE);
+    const message = limit === PROMPT_CHARACTER_LIMIT
+      ? CHARACTER_LIMIT_TOAST_MESSAGE
+      : `最多支持输入 ${limit} 字`;
+    showToast?.('warning', message);
   }, [showToast]);
 
   const positionEmotionMenu = useCallback((range) => {
@@ -845,8 +858,18 @@ export function useCreationPromptInteraction({
       if (acceptedText.length < text.length) showCharacterLimitToast();
       return;
     }
-    document.execCommand('insertText', false, text);
-  }, [dubbingAdvancedEnabled, genType, handleFileSelect, insertAdvancedDubbingText, refMode, showCharacterLimitToast, showToast]);
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    const currentLength = getPlainTextFromNode(editor).length;
+    const selectedLength = range && editor?.contains(range.commonAncestorContainer)
+      ? getSelectedPlainText(range).length
+      : 0;
+    const availableLength = Math.max(0, regularPromptCharacterLimit - currentLength + selectedLength);
+    const acceptedText = shouldLimitRegularPrompt ? text.slice(0, availableLength) : text;
+    if (acceptedText) document.execCommand('insertText', false, acceptedText);
+    if (shouldLimitRegularPrompt && acceptedText.length < text.length) showCharacterLimitToast(regularPromptCharacterLimit);
+  }, [dubbingAdvancedEnabled, genType, handleFileSelect, insertAdvancedDubbingText, refMode, regularPromptCharacterLimit, shouldLimitRegularPrompt, showCharacterLimitToast, showToast]);
 
   const handleRemoveFile = useCallback((index) => {
     const file = files[index];
@@ -929,10 +952,16 @@ export function useCreationPromptInteraction({
 
   const handleInput = useCallback(() => {
     const editor = editorRef.current;
-    if (genType === 'dubbing' && dubbingAdvancedEnabled && getPlainTextFromNode(editor).length > DUBBING_ADVANCED_CHARACTER_LIMIT) {
+    const isAdvancedDubbing = genType === 'dubbing' && dubbingAdvancedEnabled;
+    const isOverRegularLimit = shouldLimitRegularPrompt
+      && getPlainTextFromNode(editor).length > regularPromptCharacterLimit;
+    if (isAdvancedDubbing && getPlainTextFromNode(editor).length > DUBBING_ADVANCED_CHARACTER_LIMIT) {
       editor.innerHTML = lastValidEditorHtmlRef.current;
       editor.querySelectorAll('[data-emotion]').forEach(bindEmotionElement);
       showCharacterLimitToast();
+    } else if (isOverRegularLimit) {
+      editor.innerHTML = lastValidEditorHtmlRef.current;
+      showCharacterLimitToast(regularPromptCharacterLimit);
     } else if (editor) {
       lastValidEditorHtmlRef.current = editor.innerHTML;
     }
@@ -963,10 +992,9 @@ export function useCreationPromptInteraction({
       }
     }
     setMentionOpen(false);
-  }, [bindEmotionElement, dubbingAdvancedEnabled, genType, showCharacterLimitToast]);
+  }, [bindEmotionElement, dubbingAdvancedEnabled, genType, regularPromptCharacterLimit, shouldLimitRegularPrompt, showCharacterLimitToast]);
 
   const handleBeforeInput = useCallback((event) => {
-    if (!dubbingAdvancedEnabled || genType !== 'dubbing') return;
     const inputType = event.nativeEvent.inputType;
     const insertsText = inputType === 'insertText' || inputType === 'insertCompositionText';
     const insertsLineBreak = inputType === 'insertLineBreak' || inputType === 'insertParagraph';
@@ -977,6 +1005,16 @@ export function useCreationPromptInteraction({
     const editor = editorRef.current;
     if (!editor || !editor.contains(range.commonAncestorContainer)) return;
     const insertedText = insertsLineBreak ? '\n' : (event.nativeEvent.data || '');
+    if (shouldLimitRegularPrompt) {
+      const currentLength = getPlainTextFromNode(editor).length;
+      const selectedLength = getSelectedPlainText(range).length;
+      if (currentLength - selectedLength + insertedText.length > regularPromptCharacterLimit) {
+        event.preventDefault();
+        showCharacterLimitToast(regularPromptCharacterLimit);
+        return;
+      }
+    }
+    if (!dubbingAdvancedEnabled || genType !== 'dubbing') return;
     const currentLength = getPlainTextFromNode(editor).length;
     const selectedLength = getSelectedPlainText(range).length;
     const availableLength = Math.max(0, DUBBING_ADVANCED_CHARACTER_LIMIT - currentLength + selectedLength);
@@ -1009,7 +1047,7 @@ export function useCreationPromptInteraction({
     selection.removeAllRanges();
     selection.addRange(nextRange);
     editorRef.current?.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: event.nativeEvent.data }));
-  }, [dubbingAdvancedEnabled, genType, showCharacterLimitToast]);
+  }, [dubbingAdvancedEnabled, genType, regularPromptCharacterLimit, shouldLimitRegularPrompt, showCharacterLimitToast]);
 
   const handleEditorBlur = useCallback(() => {
     setFocused(false);

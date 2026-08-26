@@ -12,6 +12,7 @@
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离页面确认弹窗和视频详情 Portal 组合
  *   2026-08-19  新增独立音频详情 Portal，页面仅编排音频详情状态与动作回调
+ *   2026-08-26  视频详情弹窗传入封面地址，避免图片地址被当作视频源
  */
 
 import { createPortal } from 'react-dom';
@@ -67,6 +68,7 @@ export default function CreationPageOverlays({
       {videoDetail && createPortal(
         <CreationVideoDetailModal
           videoUrl={videoDetail.videoUrl}
+          posterUrl={videoDetail.posterUrl}
           prompt={videoDetail.prompt}
           promptHTML={videoDetail.promptHTML}
           model={videoDetail.model}

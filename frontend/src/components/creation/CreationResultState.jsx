@@ -31,6 +31,7 @@
  *   2026-08-17  图片、视频和配音下载统一回调页面正式下载接口
  *   2026-08-07  配音结果纳入图片/视频结果网格：列宽最小 240px、宽度随容器适配、卡片比例 16:9
  *   2026-08-18  配音高级模式下输入框保持下边缘并向内容区上方和两侧展开
+ *   2026-08-26  视频结果卡和详情弹窗透传视频封面地址
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -108,6 +109,7 @@ export default function CreationResultState({
       ratio: gen.ratio,
       resolution: gen.resolution,
       duration: gen.duration,
+      posterUrl: card.posterUrl || gen.posterUrl,
       refImages: gen.refImages,
       refVideos: gen.refVideos,
       refAudios: gen.refAudios,

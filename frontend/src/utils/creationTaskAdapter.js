@@ -6,6 +6,7 @@
  *   normalizeCreationPendingTask  校验并标准化 localStorage 任务快照
  *   createCreationTaskPlaceholder 生成恢复中的占位 generation
  *   createCreationTaskResult      将轮询结果转换为完成的 generation
+ *   视频结果保留封面地址，供结果卡和详情弹窗使用
  *
  * ─── 依赖边界 ───────────────────────────────────────────────
  *   只接收任务快照和轮询结果并返回新对象；不调用 API、Store、缓存、Toast 或 React 状态。
@@ -174,6 +175,9 @@ export function normalizeCreationTaskResult(result, task) {
       refAudios: task.refAudios,
       refMode: task.refMode,
       refModeLabel: result?.referenceModeLabel || result?.reference_mode_label || task.refModeLabel,
+      posterUrl: task.genType === 'video'
+        ? (normalizeImageUrl(result?.posterUrl || result?.poster_url || result?.thumbnailUrl || result?.thumbnail_url) || undefined)
+        : undefined,
       createdAt: task.createdAt,
       cards: mediaUrls.map((url, index) => ({
         id: (task.genType === 'dubbing' || task.genType === 'music') ? (result?.audioIds?.[index] || null) : null,
@@ -184,6 +188,9 @@ export function normalizeCreationTaskResult(result, task) {
           ? (result?.imageDownloadUrls?.[index] || getImageDownloadUrl(rawMedia[index], url) || url)
           : undefined,
         videoUrl: task.genType === 'video' ? url : null,
+        posterUrl: task.genType === 'video'
+          ? (normalizeImageUrl(result?.posterUrl || result?.poster_url || result?.thumbnailUrl || result?.thumbnail_url) || undefined)
+          : undefined,
         audioUrl: (task.genType === 'dubbing' || task.genType === 'music') ? url : null,
         audioId: (task.genType === 'dubbing' || task.genType === 'music') ? (result?.audioIds?.[index] || null) : undefined,
       })),

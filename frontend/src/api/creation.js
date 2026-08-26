@@ -6,6 +6,18 @@ const CREATION_POLL_INTERVAL_MS = 3000;
 const CREATION_POLL_TRANSIENT_FAILURE_LIMIT = 5;
 const CREATION_POLL_TRANSIENT_STATUSES = new Set([502, 503, 504]);
 
+function isLikelyImageMediaUrl(url) {
+  return /\.(?:avif|bmp|gif|jpe?g|png|webp)(?:[?#].*)?$/i.test(String(url || ''));
+}
+
+function getVideoResultUrl(result) {
+  const videoUrl = result?.video_url || result?.videoUrl;
+  if (videoUrl) return videoUrl;
+  const previewUrl = result?.hlsUrl || result?.hls_url
+    || result?.previewVideoUrl || result?.preview_video_url;
+  return isLikelyImageMediaUrl(previewUrl) ? '' : previewUrl;
+}
+
 function createAbortError() {
   const error = new Error('请求已停止');
   error.name = 'AbortError';
@@ -240,14 +252,13 @@ export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = 
       } else {
         const result = pollData.result;
         if (!result) continue;
-        const videoUrl = result.hlsUrl || result.hls_url
-          || result.previewVideoUrl || result.preview_video_url
-          || result.video_url || result.videoUrl;
+        const videoUrl = getVideoResultUrl(result);
         if (!videoUrl) continue;
         return {
           videos: [videoUrl].filter(Boolean),
           cardIds: [result.id].filter(Boolean),
-          posterUrl: result.posterUrl || result.poster_url || undefined,
+          posterUrl: result.posterUrl || result.poster_url
+            || result.thumbnailUrl || result.thumbnail_url || undefined,
         };
       }
     }
@@ -852,14 +863,13 @@ export async function apiPollVideoTask(taskId, timeoutMs = CREATION_VIDEO_POLL_T
     if (status === 'done' || status === 'completed' || status === 'success' || status === 'partial') {
       const result = pollData.result;
       if (!result) continue;
-      const videoUrl = result.hlsUrl || result.hls_url
-        || result.previewVideoUrl || result.preview_video_url
-        || result.video_url || result.videoUrl;
+      const videoUrl = getVideoResultUrl(result);
       if (!videoUrl) continue;
       return {
         videos: [videoUrl].filter(Boolean),
         cardIds: [result.id].filter(Boolean),
-        posterUrl: result.posterUrl || result.poster_url || undefined,
+        posterUrl: result.posterUrl || result.poster_url
+          || result.thumbnailUrl || result.thumbnail_url || undefined,
       };
     }
     if (status === 'failed' || status === 'error') {
@@ -1374,13 +1384,12 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
     (pollData) => {
       const result = pollData.result;
       if (!result) return { videos: [], cardIds: [], posterUrl: undefined };
-      const videoUrl = result.hlsUrl || result.hls_url
-        || result.previewVideoUrl || result.preview_video_url
-        || result.video_url || result.videoUrl;
+      const videoUrl = getVideoResultUrl(result);
       return {
         videos: [videoUrl].filter(Boolean),
         cardIds: [result.id],
-        posterUrl: result.posterUrl || result.poster_url || undefined,
+        posterUrl: result.posterUrl || result.poster_url
+          || result.thumbnailUrl || result.thumbnail_url || undefined,
         referenceModeLabel: result.referenceModeLabel || result.reference_mode_label || undefined,
       };
     },

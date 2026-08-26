@@ -7,13 +7,15 @@
  *
  * ─── 数据流 ─────────────────────────────────────────────────────────
  *   通过 props 接收音色数据、选中与收藏状态，以及选择和收藏回调。
- *   音频播放生命周期由卡片自身管理，不读取页面状态、Store 或 API。
+ *   音频播放通过全局单例播放器管理，保证列表中同时只有一条试听音频。
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-08-18  从 CreationDubbingVoiceModal 抽离音色卡片交互
  *   2026-08-18  优化横向滚动、表面 radio 与标题优先级
+ *   2026-08-26  接入全局单例试听播放器，移除卡片级隐藏 audio 实例
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { getActiveVoicePreviewKey, stopVoicePreview, subscribeVoicePreview, toggleVoicePreview } from "../../utils/voicePreviewPlayer";
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -39,25 +41,24 @@ export default function DubbingVoiceCard({ voice, selected = false, favorited = 
   const [playerHovered, setPlayerHovered] = useState(false);
   const [radioHovered, setRadioHovered] = useState(false);
   const [starHovered, setStarHovered] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const audioRef = useRef(null);
   const audioUrl = voice.audioUrl || voice.audio_url || voice.previewUrl || voice.preview_url || voice.url;
+  const previewKey = `${voice.id || voice.voice_id || voice.name}:${audioUrl}`;
+  const [activePreviewKey, setActivePreviewKey] = useState(() => getActiveVoicePreviewKey());
+  const playing = activePreviewKey === previewKey;
 
-  useEffect(() => () => audioRef.current?.pause(), []);
+  useEffect(() => subscribeVoicePreview(setActivePreviewKey), []);
 
-  const handlePlayerClick = (event) => {
+  useEffect(() => () => stopVoicePreview(previewKey), [previewKey]);
+
+  const handlePlayerClick = async (event) => {
     event.stopPropagation();
-    if (!audioUrl) {
-      setPlaying((current) => !current);
-      return;
+    if (!audioUrl) return;
+
+    try {
+      await toggleVoicePreview({ key: previewKey, url: audioUrl });
+    } catch {
+      // 播放失败时由全局播放器清理播放状态。
     }
-    if (playing) {
-      audioRef.current?.pause();
-      audioRef.current.currentTime = 0;
-      setPlaying(false);
-      return;
-    }
-    audioRef.current.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
   };
 
   const handleHorizontalWheel = (event) => {
@@ -84,7 +85,6 @@ export default function DubbingVoiceCard({ voice, selected = false, favorited = 
         <div aria-label="音色描述" onWheel={handleHorizontalWheel} style={{ alignSelf: "stretch", minWidth: 0, overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none", color: "#FFFFFF66", cursor: "default", fontFamily: FONT, fontSize: "12px", lineHeight: "17px", whiteSpace: "nowrap" }}>{voice.description}</div>
       </div>
       {showRadio && <button type="button" aria-label={selected ? "取消选择音色" : "选择音色"} onClick={(event) => { event.stopPropagation(); onSelect?.(voice); }} onMouseEnter={() => setRadioHovered(true)} onMouseLeave={() => setRadioHovered(false)} style={{ position: "absolute", top: "12px", right: "12px", display: "flex", alignItems: "center", justifyContent: "center", width: "20px", height: "20px", padding: "2px", border: 0, borderRadius: "50%", background: "transparent", cursor: "pointer" }}><RadioIcon selected={selected} hovered={radioHovered} /></button>}
-      {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" onEnded={() => setPlaying(false)} onError={() => setPlaying(false)} style={{ display: "none" }} />}
     </div>
   );
 }

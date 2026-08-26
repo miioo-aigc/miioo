@@ -122,6 +122,7 @@ function CopyPromptButton({ text, onCopy }) {
  * @param {Object} props
  * @param {Function} props.onClose - 关闭弹窗
  * @param {string} props.videoUrl - 视频地址
+ * @param {string} props.posterUrl - 视频封面地址
  * @param {string} props.prompt - 提示词
  * @param {string} props.model - 模型名称
  * @param {string} props.ratio - 画面比例
@@ -143,6 +144,7 @@ function CopyPromptButton({ text, onCopy }) {
 export default function CreationVideoDetailModal({
   onClose,
   videoUrl,
+  posterUrl = '',
   prompt = '',
   promptHTML = '',
   model = '',
@@ -163,7 +165,7 @@ export default function CreationVideoDetailModal({
   favorited = false,
   onFavorite,
 }) {
-  console.log('CreationVideoDetailModal props:', { videoUrl, prompt, model, ratio, resolution, duration });
+  console.log('CreationVideoDetailModal props:', { videoUrl, posterUrl, prompt, model, ratio, resolution, duration });
 
   if (!videoUrl) {
     console.error('CreationVideoDetailModal: videoUrl is missing!');
@@ -345,6 +347,7 @@ export default function CreationVideoDetailModal({
                   <video
                     ref={videoRef}
                     src={videoUrl}
+                    poster={posterUrl || undefined}
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }}
                     preload="metadata"
                     playsInline

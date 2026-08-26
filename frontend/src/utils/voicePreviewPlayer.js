@@ -16,8 +16,11 @@ function clearActivePreview(audioInstance) {
   if (audioInstance && activeAudio !== audioInstance) return;
 
   if (activeAudio) {
+    activeAudio.pause();
     activeAudio.onended = null;
     activeAudio.onerror = null;
+    activeAudio.removeAttribute("src");
+    activeAudio.load();
   }
 
   activeAudio = null;
@@ -39,7 +42,6 @@ export function stopVoicePreview(targetKey) {
   if (!activeAudio) return false;
 
   const audioToStop = activeAudio;
-  audioToStop.pause();
   clearActivePreview(audioToStop);
   return true;
 }

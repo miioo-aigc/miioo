@@ -36,10 +36,12 @@
  *   2026-08-25  官方音色收藏接入后端接口，收藏状态和能力以后端返回值为准
  *   2026-08-25  收藏 Tab 改为只筛选展示已收藏的官方音色，不再读取创作音频
  *   2026-08-25  按接口文档统一通过 voice_id 调用官方音色 favorite 接口
+ *   2026-08-26  音色试听改为单例播放，关闭弹窗时停止并释放音频
  */
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { apiAddVoiceFavorite, apiGetOfficialVoices, apiRemoveVoiceFavorite } from "../../api/voices";
+import { stopVoicePreview } from "../../utils/voicePreviewPlayer";
 import { Button } from "../ui/Button";
 import { CreationEmptyIconDubbing } from "./CreationEmptyState";
 import DubbingVoiceCard from "./DubbingVoiceCard";
@@ -127,6 +129,11 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast 
   const [voiceFilters, setVoiceFilters] = useState({ language: "不限", accent: "不限", gender: "不限", ageGroup: "不限" });
   const [closeHovered, setCloseHovered] = useState(false);
   const [closePressed, setClosePressed] = useState(false);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    return () => stopVoicePreview();
+  }, [open]);
 
   const handleConfirm = () => {
     const selectedVoice = visibleVoices.find((voice) => voice.id === selectedVoiceId);

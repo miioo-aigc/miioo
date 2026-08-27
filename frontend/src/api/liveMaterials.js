@@ -2,6 +2,22 @@ import { authFetch } from './request.js';
 
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
+async function createLiveMaterialApiError(res, fallbackMessage) {
+  const responseText = await res.text().catch(() => '');
+  const payload = (() => {
+    try {
+      return responseText ? JSON.parse(responseText) : {};
+    } catch {
+      return {};
+    }
+  })();
+  const detail = typeof payload?.detail === 'string' ? payload.detail.trim() : '';
+  const error = new Error(detail || payload?.message || responseText.trim() || `${fallbackMessage}: ${res.status}`);
+  error.status = res.status;
+  error.detail = detail || undefined;
+  return error;
+}
+
 /** 创建真人认证会话，返回 { session_id, h5_link, launch_url, callback_url, expires_at } */
 export async function apiCreateLiveMaterialAuthSession({ source, project_id, storyboard_id, return_path } = {}) {
   const res = await authFetch(`${BASE}/api/live-materials/auth-sessions`, {
@@ -27,7 +43,7 @@ export async function apiCreateAigcMaterialGroup({ name, description } = {}) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, description, group_type: 'AIGC' }),
   });
-  if (!res.ok) throw new Error(`创建AIGC素材组失败: ${res.status}`);
+  if (!res.ok) throw await createLiveMaterialApiError(res, '创建AIGC素材组失败');
   return res.json();
 }
 
@@ -157,7 +173,9 @@ export async function apiDeleteLiveMaterialGroup(groupId) {
   const res = await authFetch(`${BASE}/api/live-materials/groups/${groupId}`, {
     method: 'DELETE',
   });
-  if (!res.ok) throw new Error(`删除素材组失败: ${res.status}`);
+  if (!res.ok) {
+    throw await createLiveMaterialApiError(res, '删除素材组失败');
+  }
   return res.status === 204 ? null : res.json();
 }
 

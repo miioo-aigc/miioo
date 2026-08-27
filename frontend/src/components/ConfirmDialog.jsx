@@ -20,6 +20,7 @@ function CloseIcon() {
  * @param {string}   description     - 内容描述
  * @param {string}   [confirmText='确认']  - 确认按钮文案
  * @param {string}   [cancelText='取消']   - 取消按钮文案
+ * @param {boolean}  [showCancel=true]    - 是否显示取消按钮
  * @param {'danger'|'orange'} [confirmVariant='danger'] - 确认按钮样式
  * @param {function} onConfirm       - 点击确认回调
  * @param {function} onCancel        - 点击取消 / 关闭回调
@@ -30,6 +31,7 @@ export default function ConfirmDialog({
   description,
   confirmText = '确认',
   cancelText = '取消',
+  showCancel = true,
   confirmVariant = 'danger',
   onConfirm,
   onCancel,
@@ -146,9 +148,11 @@ export default function ConfirmDialog({
           }}
         >
           {/* 取消按钮 */}
-          <Button variant="secondary" onClick={onCancel}>
-            {cancelText}
-          </Button>
+          {showCancel && (
+            <Button variant="secondary" onClick={onCancel}>
+              {cancelText}
+            </Button>
+          )}
 
           {/* 确认按钮 */}
           {isOrange ? (

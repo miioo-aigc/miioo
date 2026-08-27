@@ -25,20 +25,59 @@ export function getCreationAcceptAttr(genType, supportsAudio = false) {
 }
 
 export function getModelReferenceLimits(capabilitiesMap = {}, model) {
-  return capabilitiesMap?.[model] || null;
+  const directCapabilities = capabilitiesMap?.[model];
+  if (directCapabilities) return directCapabilities;
+
+  // HappyHorse 在创作页以聚合模型展示，但默认模型、历史草稿等路径可能保留子模型 ID。
+  // 子模型上传限制必须回到聚合入口，才能按素材类型选择 r2v 或 video-edit 的能力。
+  const groupedHappyHorseModel = String(model || '').match(/^(happyhorse-1\.[01])-(?:t2v|i2v|r2v|video-edit)$/i)?.[1];
+  return groupedHappyHorseModel ? capabilitiesMap?.[groupedHappyHorseModel] || null : null;
+}
+
+function getEffectiveReferenceCapabilities(files = [], capabilities = {}) {
+  const happyHorseCaps = capabilities?.happyhorse_upload_reference_capabilities;
+  if (!happyHorseCaps) return capabilities;
+  const hasVideo = files.some(isVideoFile);
+  return (hasVideo ? happyHorseCaps.withVideo : happyHorseCaps.imageOnly) || capabilities;
+}
+
+export function getReferenceLimitMessage(files = [], capabilities = {}, previousFiles = []) {
+  const effectiveCapabilities = getEffectiveReferenceCapabilities(files, capabilities);
+  const isHappyHorseVideoRoute = Boolean(
+    capabilities?.happyhorse_upload_reference_capabilities
+      && files.some(isVideoFile),
+  );
+  const labels = getReferenceLimitLabels(files, capabilities, previousFiles);
+  if (labels.length === 0) return '';
+  if (isHappyHorseVideoRoute && labels.includes('参考图')) {
+    const maxImages = effectiveCapabilities.max_reference_images;
+    return Number.isFinite(maxImages)
+      ? `如果您需要参考视频素材，请限制图片素材数量为${maxImages}以内。`
+      : '如果您需要参考视频素材，请减少图片素材数量后重试。';
+  }
+  return `${labels.join('、')}已达该模型的上限`;
 }
 
 export function getReferenceLimitLabels(files = [], capabilities = {}, previousFiles = []) {
   const addedFiles = files.filter((file) => !previousFiles.includes(file));
+  const effectiveCapabilities = getEffectiveReferenceCapabilities(files, capabilities);
   const labels = [];
   const checks = [
-    ['参考图', isImageFile, capabilities.max_reference_images],
-    ['参考视频', isVideoFile, capabilities.max_reference_videos],
-    ['参考音频', isAudioFile, capabilities.max_reference_audios],
+    ['参考图', isImageFile, effectiveCapabilities.max_reference_images],
+    ['参考视频', isVideoFile, effectiveCapabilities.max_reference_videos],
+    ['参考音频', isAudioFile, effectiveCapabilities.max_reference_audios],
   ];
 
   for (const [label, predicate, limit] of checks) {
-    if (limit != null && addedFiles.some(predicate) && files.filter(predicate).length > limit) {
+    // HappyHorse 新增视频后会从 r2v 切换到 video-edit，此时即使本次没有新增图片，
+    // 也必须重新检查已有图片是否满足 video-edit 的图片上限。
+    const routeChangedByVideo = Boolean(
+      capabilities?.happyhorse_upload_reference_capabilities
+        && addedFiles.some(isVideoFile),
+    );
+    if (limit != null
+      && (addedFiles.some(predicate) || routeChangedByVideo)
+      && files.filter(predicate).length > limit) {
       labels.push(label);
     }
   }
@@ -46,18 +85,19 @@ export function getReferenceLimitLabels(files = [], capabilities = {}, previousF
 }
 
 export function trimFilesToModelReferenceLimits(files = [], capabilities = {}) {
+  const effectiveCapabilities = getEffectiveReferenceCapabilities(files, capabilities);
   const images = files.filter(isImageFile);
   const videos = files.filter(isVideoFile);
   const audios = files.filter(isAudioFile);
   const others = files.filter((file) => !isImageFile(file) && !isVideoFile(file) && !isAudioFile(file));
-  const trimmedImages = capabilities.max_reference_images != null
-    ? images.slice(0, capabilities.max_reference_images)
+  const trimmedImages = effectiveCapabilities.max_reference_images != null
+    ? images.slice(0, effectiveCapabilities.max_reference_images)
     : images;
-  const trimmedVideos = capabilities.max_reference_videos != null
-    ? videos.slice(0, capabilities.max_reference_videos)
+  const trimmedVideos = effectiveCapabilities.max_reference_videos != null
+    ? videos.slice(0, effectiveCapabilities.max_reference_videos)
     : videos;
-  const trimmedAudios = capabilities.max_reference_audios != null
-    ? audios.slice(0, capabilities.max_reference_audios)
+  const trimmedAudios = effectiveCapabilities.max_reference_audios != null
+    ? audios.slice(0, effectiveCapabilities.max_reference_audios)
     : audios;
   return [...trimmedImages, ...trimmedVideos, ...trimmedAudios, ...others];
 }

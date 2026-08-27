@@ -1,5 +1,27 @@
 # miioo 项目进度管理文档
 
+## 2026-08-27 HappyHorse 创作页素材上传上限闭环
+
+- 修复 HappyHorse 1.0、HappyHorse 1.1 以聚合模型展示时，普通参考素材上传上限可能按聚合后的最大能力判断、从而放宽真实子模型限制的问题。
+- 上传校验改为基于“本次追加后将形成的普通素材集合”动态选择子模型能力：集合全为图片时读取 `happyhorse-<version>-r2v.max_reference_images`；集合中含视频时同时读取 `happyhorse-<version>-video-edit.max_reference_images` 与 `max_reference_videos`。
+- 这使限制在上传入口即时生效，而不是等生成请求发出后再拦截。例如 `r2v` 支持 9 张纯图片、但 `video-edit` 实际限制为 5 张图片和 1 个视频时：9 张图片可保留；已有 8 张图片再追加视频会被拒绝；先传 1 个视频和 5 张图片后，第 6 张及后续图片会被拒绝。
+- 当图片数量阻止用户追加视频，或已有视频后继续追加超限图片时，统一提示：`如果您需要参考视频素材，请限制图片素材数量为5以内。`；视频数量超限则沿用通用的参考视频数量上限提示。
+- 本地上传、资产库普通素材和真人素材追加均通过 `safeSetFiles` 进入同一校验链路；限制命中时直接触发 Toast，避免仅依赖后续渲染副作用导致提示丢失。
+- 兼容后端默认模型和历史草稿使用 HappyHorse 子模型 ID 的情况：前端回显并校验到对应聚合模型，能力表也同时保留聚合模型 ID 与后端子模型 ID 的映射，避免绕过上传限制或生成路由不一致。
+- 本次只处理创作页视频生成的普通参考素材；用户已确认不考虑首尾帧模式，HappyHorse 当前不支持音频上传，因此音频不参与判定。
+- 涉及文件：`src/utils/videoModelAdapter.js`、`src/utils/modelAdapter.js`、`src/components/creation/CreationFileUtils.js`、`src/components/creation/useCreationInputFiles.js`、`src/components/creation/CreationInputCard.jsx`、`src/pages/CreationPage.jsx`。
+- 验证：目标文件 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；纯函数覆盖 9 张纯图片允许、1 视频加 5 图后继续传图拒绝、9 图后新增视频拒绝并返回指定提示。构建仅保留既有大体积分包提醒，架构检查仅保留既有文件规模提醒。
+- 详细规则、数据流和维护约束见 [`docs/happyhorse-creation-upload-limits-2026-08-27.md`](./docs/happyhorse-creation-upload-limits-2026-08-27.md)。
+
+## 2026-08-27 Seedance 文件夹图片悬停动效
+
+- 优化 `SeedanceFolderCard` 中层图片的悬停与键盘聚焦动效：单图保持水平居中，悬停时垂直上移 `20px`；双图悬停时两张图片共同上移 `16px`。
+- 双图悬停时，数组第一张图片向右位移 `4px` 并顺时针旋转 `3°`，数组第二张图片向左位移 `4px` 并逆时针旋转 `3°`，移出或失焦后恢复默认位置和角度。
+- 数组第一张图片默认不透明度为 `40%`，悬停或聚焦时过渡到 `100%`；图片位移、旋转和透明度过渡均为 `300ms`，位移和旋转使用 bouncy 缓动曲线。
+- 只调整中层图片预览层，不改变文件夹上层挡板、动态 SVG 曲线、毛玻璃层及其 `blur(6px)` 配置。
+- 修改文件：`src/components/assets/SeedanceFolderCard.jsx`。
+- 验证：组件定向 ESLint 和 `git diff --check` 通过；此前相关构建和架构检查已通过。
+
 ## 2026-08-27 Seedance 文件夹挡板毛玻璃效果
 
 - 为 `SeedanceFolderCard` 前方 SVG 挡板增加真实背景毛玻璃效果，模糊值固定为 `6px`。

@@ -1,0 +1,100 @@
+# HappyHorse 创作页普通参考素材上传上限
+
+## 背景与问题
+
+创作页将 HappyHorse 1.0、HappyHorse 1.1 的多个后端模型合并为一个产品模型展示。合并后的能力如果直接取最大值，不能代表每一种素材组合的真实可用能力。
+
+其中，`r2v` 可支持较多纯图片参考；一旦普通参考素材中出现视频，实际请求会走 `video-edit`，其图片和视频数量上限可能更低。此前若只按聚合模型的图片最大值判断，用户可以先上传视频再持续上传图片，或先上传多张图片再追加视频，直到生成请求才暴露不合法的组合。
+
+本次修复将校验前移到每一次上传，且使用本次上传后即将形成的完整普通素材集合决定上限。
+
+## 适用范围
+
+适用模型：
+
+- `happyhorse-1.0`
+- `happyhorse-1.1`
+
+适用场景：创作页的视频生成，普通参考素材列表。
+
+不适用范围：
+
+- 首尾帧模式。产品已明确本轮不计入该模式。
+- 音频。HappyHorse 当前不支持音频上传，暂不处理音频的组合与限制。
+
+## 能力来源与决策表
+
+| 候选最终普通素材集合 | 使用的子模型能力 | 校验字段 |
+| --- | --- | --- |
+| 全部为图片 | `happyhorse-<version>-r2v` | `max_reference_images` |
+| 含至少一个视频 | `happyhorse-<version>-video-edit` | `max_reference_images`、`max_reference_videos` |
+
+这里的“候选最终普通素材集合”是指当前已上传的普通素材加上用户这次选择追加的素材之后的集合，而不是只查看新选择的文件类型。这样可以覆盖素材类型切换造成的限制收紧。
+
+当前已确认的 `video-edit` 真实能力示例：
+
+```text
+max_reference_images: 5
+max_reference_videos: 1
+```
+
+具体数值始终由后端返回的子模型能力决定；前端不应把 `5` 和 `1` 写成通用常量。指定提示中的“5”对应当前已确认的产品能力。
+
+## 判定流程
+
+1. 收集当前普通参考素材，并与本次准备追加的素材合并，得到候选最终集合。
+2. 统计候选集合的图片数和视频数。
+3. 若为 HappyHorse 且视频数为 `0`，读取对应版本 `r2v` 的图片上限。
+4. 若为 HappyHorse 且视频数大于 `0`，切换读取对应版本 `video-edit` 的图片与视频上限。
+5. 任一数量超出选定能力即拒绝本次追加，不写入文件状态，并立即展示 Toast。
+
+## 关键场景
+
+| 已有素材与操作 | 候选集合 | 结果 |
+| --- | --- | --- |
+| 已上传 9 张图片，继续只上传图片 | 10 张图片 | 按 `r2v.max_reference_images` 判断；若该值为 9，则拒绝第 10 张。 |
+| 已上传 8 张图片，追加 1 个视频 | 8 张图片、1 个视频 | 切换至 `video-edit` 判断。若其图片上限为 5，则拒绝视频，因为候选集合中的图片已超限。 |
+| 已上传 1 个视频和 5 张图片，继续追加第 6 张图片 | 1 个视频、6 张图片 | 继续按 `video-edit` 判断，拒绝第 6 张及之后每一张图片。 |
+| 已上传 1 个视频，再上传更多视频 | 至少 2 个视频 | 按 `video-edit.max_reference_videos` 判断；若上限为 1，拒绝新增视频。 |
+
+当图片数量使视频参考组合不合法时，展示以下明确提示：
+
+```text
+如果您需要参考视频素材，请限制图片素材数量为5以内。
+```
+
+视频数量超限时沿用通用的参考视频数量上限提示。
+
+## 前端闭环与职责
+
+- `src/utils/videoModelAdapter.js`：为 HappyHorse 1.0、1.1 聚合模型保留 `imageOnly`（`r2v`）与 `withVideo`（`video-edit`）两组上传能力。
+- `src/components/creation/CreationFileUtils.js`：根据候选集合选择能力，完成图片和视频数量校验，并提供拒绝原因。
+- `src/components/creation/useCreationInputFiles.js`：所有普通参考素材状态追加都经过 `safeSetFiles`；校验拒绝时立即调用 Toast，避免依赖 React 后续渲染副作用而漏掉通知。
+- `src/components/creation/CreationInputCard.jsx`：将本地上传、资产库普通素材和真人素材追加统一接到 `safeSetFiles`。
+- `src/utils/modelAdapter.js`：同时支持 HappyHorse 聚合模型 ID 与后端子模型 ID 的能力查询。
+- `src/pages/CreationPage.jsx`：将后端默认的 HappyHorse 子模型 ID 归并为产品聚合模型，维持选择器展示、上传校验和请求路由的一致性。
+
+## 默认模型与历史草稿兼容
+
+后端默认模型或历史草稿可能保存的是 `happyhorse-1.0-r2v`、`happyhorse-1.0-video-edit` 等子模型 ID。前端需要将其识别为对应的聚合模型，不能因为 ID 不同而丢失上传能力配置或使用不一致的生成路由。
+
+能力映射也同时登记聚合 ID 和子模型 ID，作为前端状态尚未完成归并时的回退保护。
+
+## 维护约束
+
+- 新增或调整 HappyHorse 子模型时，同时更新聚合模型中的上传能力引用和子模型 ID 回退映射。
+- 不要将多个子模型的 `max_reference_images` 直接合并为一个最大值用于上传校验；限制必须由候选最终素材集合决定。
+- 新增普通素材入口时，必须复用 `safeSetFiles` 或同等的候选集合校验，不能直接写入文件状态。
+- 修改 `video-edit` 的后端图片上限后，同步更新本文件中的示例和指定提示文案；校验值本身仍应继续读取后端能力字段。
+
+## 验证记录
+
+已完成以下静态与构建验证：
+
+- 对 `CreationFileUtils.js`、`useCreationInputFiles.js`、`CreationInputCard.jsx`、`videoModelAdapter.js`、`modelAdapter.js`、`CreationPage.jsx` 执行定向 ESLint，通过。
+- `npm run build` 通过，仅保留项目既有的大体积分包提示。
+- `npm run check:architecture` 通过，仅保留项目既有的文件规模提醒。
+- `git diff --check` 通过。
+- 直接执行纯函数场景验证：9 张纯图片允许；1 个视频加 5 张图片后继续上传图片被拒绝；9 张图片后新增视频被拒绝并返回指定提示。
+
+本轮未在真实登录态下执行上传或生成，不将真实接口流程视为已验证。

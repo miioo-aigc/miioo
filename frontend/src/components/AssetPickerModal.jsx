@@ -560,7 +560,7 @@ export default function AssetPickerModal({
 
     // 视频封面：poster_url / thumbnail_url，用于静态预览
     const posterUrl = type === 'video'
-      ? (normalizeImageUrl(item.poster_url || item.posterUrl || item.thumbnail_url || item.thumbnailUrl || item.preview_url || item.previewUrl || item.image_url || item.imageUrl || item.thumbnail || '') || null)
+      ? (normalizeImageUrl(item.poster_url || item.posterUrl || item.thumbnail_url || item.thumbnailUrl || item.cover_url || item.coverUrl || item.first_frame_url || item.firstFrameUrl || item.preview_url || item.previewUrl || item.image_url || item.imageUrl || item.thumbnail || '') || null)
       : null;
 
     return {
@@ -941,7 +941,7 @@ export default function AssetPickerModal({
       fullUrl: normalizeImageUrl(a.download_url || a.downloadUrl || a.original_url || a.originalUrl || a.large_url || a.largeUrl || a.file_url || a.fileUrl) || null,
       fileUrl: normalizeImageUrl(a.download_url || a.downloadUrl || a.original_url || a.originalUrl || a.large_url || a.largeUrl || a.file_url || a.fileUrl) || null,
       posterUrl: a.asset_type === 'video'
-        ? (normalizeImageUrl(a.poster_url || a.posterUrl || a.thumbnail_url || a.thumbnailUrl || '') || null)
+        ? (normalizeImageUrl(a.poster_url || a.posterUrl || a.thumbnail_url || a.thumbnailUrl || a.cover_url || a.coverUrl || a.first_frame_url || a.firstFrameUrl || '') || null)
         : null,
       subject_id: a.subject_id ?? null,
       starred: a.is_starred ?? false,

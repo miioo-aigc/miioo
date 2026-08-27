@@ -1,5 +1,22 @@
 # 组件重构盘点基线
 
+## 2026-08-27 HappyHorse 创作页素材上传上限闭环
+
+- `videoModelAdapter.js` 为 HappyHorse 1.0、1.1 聚合模型分别挂载普通参考素材的两组子模型能力：全图片素材使用 `r2v`，含视频素材使用 `video-edit`；不再以聚合后的最大值作为上传上限。
+- `CreationFileUtils.js` 以候选最终普通素材集合判定当前限制：无视频时读取 `r2v.max_reference_images`，含视频时读取 `video-edit.max_reference_images` 和 `max_reference_videos`；新增视频会重新校验此前已上传图片，以覆盖“先传多张图片、后传视频”的能力切换。
+- `useCreationInputFiles.js` 的普通参考素材追加路径统一通过 `safeSetFiles` 校验，并在拒绝当下触发 Toast；`CreationInputCard.jsx` 的本地上传、资产库普通素材及真人素材追加均接入该链路，防止某一上传入口绕过限制。
+- `modelAdapter.js` 同时登记 HappyHorse 聚合模型 ID 和后端子模型 ID 的能力映射；`CreationPage.jsx` 将后端默认的 HappyHorse 子模型 ID 归并为聚合模型，保证模型选择、素材校验与生成路由使用同一产品模型语义。
+- 业务边界：仅约束创作页视频生成的普通参考素材；首尾帧模式不纳入本轮逻辑，音频不支持且不参与判定。
+- 规则、示例与验证记录见 [`docs/happyhorse-creation-upload-limits-2026-08-27.md`](../happyhorse-creation-upload-limits-2026-08-27.md)。
+
+## 2026-08-27 Seedance 文件夹图片悬停动效
+
+- `SeedanceFolderCard` 的中层预览图片按预览数量应用独立动效：单图默认水平居中，悬停或聚焦时上移 `20px`；双图共同上移 `16px`。
+- 双图状态下，数组第一张图片悬停时向右位移 `4px`、顺时针旋转 `3°`，默认不透明度 `40%` 并过渡到 `100%`；数组第二张图片向左位移 `4px`、逆时针旋转 `3°`。
+- 图片动效过渡时长为 `300ms`；位移和旋转使用 `cubic-bezier(0.34, 1.56, 0.64, 1)`，透明度使用 `ease`。鼠标悬停和键盘聚焦共用同一状态，移出或失焦后恢复。
+- 单图使用独立的水平居中外层容器，避免图片自身的 `transform` 覆盖 `-translate-x-1/2` 造成默认水平偏移。
+- 本次仅调整图片预览层；上层挡板、SVG 曲线、`FrontGlass` 毛玻璃层和 `6px` 背景模糊保持不变。
+
 ## 2026-08-27 Seedance 文件夹挡板毛玻璃效果
 
 - `SeedanceFolderCard` 的前方挡板继续由动态 SVG `fillPath` 绘制；新增的 `FrontGlass` 使用同尺寸 HTML `div` 承载 `backdrop-filter`，模糊值为 `6px`。

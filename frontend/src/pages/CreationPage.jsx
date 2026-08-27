@@ -78,6 +78,7 @@
  *   2026-07-17  抽离 CreationWorkspace；页面保留状态、副作用和所有显式回调接线
  *   2026-08-17  创作下载统一改用图片/视频/音频正式下载接口，阻止过期令牌响应被保存为媒体文件
  *   2026-07-29  图片创作结果与历史记录按媒体地址去重，避免同图重复展示并保留创作提示词
+ *   2026-08-27  HappyHorse 默认子模型统一映射到聚合入口，保持上传限制与生成路由一致
  *   2026-08-03  抽离 useCreationGeneration；页面保留生成依赖、计数和区块接线，生成流程行为保持不变
  *   2026-08-07  配音生成接入 600 秒轮询上限、提示词保留和再次点击发送停止前端请求/轮询
  *   2026-08-11  修复不同创作 Tab 的生成禁用状态串扰，输入区按当前创作类型隔离
@@ -434,7 +435,13 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         const defaultFromConfig = Array.isArray(models)
           ? models.find((m) => m.is_default && m.is_enabled && opts.some((o) => o.value === m.model_id || o.sourceModelIds?.includes(m.model_id)))
           : null;
-        setModel(defaultFromConfig?.model_id ?? opts[0]?.value ?? '');
+        // 默认项可能是 HappyHorse 的后端子模型。页面必须继续选中聚合入口，
+        // 否则模型选择、上传能力和生成路由会落在不同的模型 ID 上。
+        const defaultOption = opts.find((option) => (
+          option.value === defaultFromConfig?.model_id
+          || option.sourceModelIds?.includes(defaultFromConfig?.model_id)
+        ));
+        setModel(defaultOption?.value ?? opts[0]?.value ?? '');
       } catch {
         if (cancelled) return;
         const { modelOptions: opts, capabilitiesMap } = adaptModels([], genType);

@@ -4,6 +4,7 @@ import {
   MAX_CREATION_IMAGE_BYTES,
   appendFilesWithinLimit,
   getModelReferenceLimits,
+  getReferenceLimitMessage,
   getReferenceLimitLabels,
   isFileOverLimit,
   isImageFile,
@@ -36,6 +37,20 @@ function enrichLocalFile(file) {
   return file;
 }
 
+function getFileIdentity(file) {
+  if (!file) return null;
+  if (!file.isAsset) return file._uid || null;
+  return file.assetId
+    || file.asset_id
+    || file.assetRefUrl
+    || file.asset_ref_url
+    || file.fileUrl
+    || file.file_url
+    || file.url
+    || file.previewUrl
+    || null;
+}
+
 /**
  * 创作输入区的素材状态边界。
  *
@@ -54,7 +69,6 @@ export function useCreationInputFiles({
   const [lastFrameFile, setLastFrameFileState] = useState(null);
 
   const onToastRef = useRef(onToast);
-  const pendingToastRef = useRef(null);
   const trimmedToastRef = useRef(null);
   const filesRef = useRef([]);
   const firstFrameFileRef = useRef(null);
@@ -69,19 +83,27 @@ export function useCreationInputFiles({
     [capabilitiesMap, model],
   );
 
-  const normalizeFiles = useCallback((nextFiles) => nextFiles.map((file) => {
-    const nextFile = typeof File !== 'undefined' && file instanceof File ? enrichLocalFile(file) : file;
-    if (nextFile && !nextFile._uid) {
-      // 不展开原生 File，否则会丢失 name/type 等原型字段，提交时会变成普通对象。
-      Object.defineProperty(nextFile, '_uid', {
-        value: makeFileUid(),
-        writable: true,
-        configurable: true,
-        enumerable: true,
-      });
-    }
-    return nextFile;
-  }), []);
+  const normalizeFiles = useCallback((nextFiles) => {
+    const identities = new Set();
+    return nextFiles.map((file) => {
+      const nextFile = typeof File !== 'undefined' && file instanceof File ? enrichLocalFile(file) : file;
+      if (nextFile && !nextFile._uid) {
+        // 不展开原生 File，否则会丢失 name/type 等原型字段，提交时会变成普通对象。
+        Object.defineProperty(nextFile, '_uid', {
+          value: makeFileUid(),
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
+      }
+      return nextFile;
+    }).filter((file) => {
+      const identity = getFileIdentity(file);
+      if (!identity || identities.has(identity)) return !identity;
+      identities.add(identity);
+      return true;
+    });
+  }, []);
 
   const setFiles = useCallback((updater) => {
     const previousFiles = filesRef.current;
@@ -156,7 +178,8 @@ export function useCreationInputFiles({
     const mergedFiles = [...additions, ...existingFiles];
     const rejectedLabels = getReferenceLimitLabels(mergedFiles, currentCap, existingFiles);
     if (rejectedLabels.length > 0) {
-      onToastRef.current?.('warning', `${rejectedLabels.join('、')}已达该模型的上限，无法切换参考模式`);
+      const message = getReferenceLimitMessage(mergedFiles, currentCap, existingFiles);
+      onToastRef.current?.('warning', message || `${rejectedLabels.join('、')}已达该模型的上限，无法切换参考模式`);
       return false;
     }
     if (mergedFiles.length > MAX_CREATION_FILES) {
@@ -244,7 +267,10 @@ export function useCreationInputFiles({
 
       const rejectedLabels = getReferenceLimitLabels(nextFiles, currentCap, previousFiles);
       if (rejectedLabels.length > 0) {
-        pendingToastRef.current = `warning:${rejectedLabels.join('、')}已达该模型的上限，无法继续添加`;
+        const message = getReferenceLimitMessage(nextFiles, currentCap, previousFiles);
+        // 拦截时返回原数组会让 React 跳过渲染，提示不能依赖后续 effect。
+        const notice = message || `${rejectedLabels.join('、')}已达该模型的上限，无法继续添加`;
+        setTimeout(() => onToastRef.current?.('warning', notice), 0);
         return previousFiles;
       }
       return nextFiles;
@@ -288,17 +314,6 @@ export function useCreationInputFiles({
 
     return () => clearTimeout(timer);
   }, [capabilitiesMap, model, setFiles]);
-
-  useEffect(() => {
-    if (!pendingToastRef.current) return undefined;
-    const message = pendingToastRef.current;
-    pendingToastRef.current = null;
-    const timer = setTimeout(() => {
-      const [type, ...rest] = message.split(':');
-      onToastRef.current?.(type, rest.join(':'));
-    }, 0);
-    return () => clearTimeout(timer);
-  });
 
   useEffect(() => {
     if (!trimmedToastRef.current) return undefined;

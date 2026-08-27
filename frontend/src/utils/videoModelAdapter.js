@@ -142,13 +142,27 @@ function createGroupedOption(group, records) {
       if (!routeModels[mode]) routeModels[mode] = { modelId: id, capabilities: capabilitiesOf(record) };
     });
   });
-  return createOption({
+  const option = createOption({
     modelId: group.modelId,
     label: group.label,
     records,
     routeModels,
     specialReferenceModes: group.specialReferenceModes || [],
   });
+
+  // HappyHorse 的聚合入口需要在上传阶段区分 r2v 与 video-edit 的素材上限。
+  // 这份内部能力只服务于创作输入校验，不改变聚合模型的生成路由能力。
+  if (/^happyhorse-1\.[01]$/.test(group.modelId)) {
+    const r2v = records.find((record) => /-r2v$/i.test(record.model_id || ''));
+    const videoEdit = records.find((record) => /-video-edit$/i.test(record.model_id || ''));
+    option.uploadReferenceCapabilities = {
+      imageOnly: capabilitiesOf(r2v),
+      withVideo: capabilitiesOf(videoEdit),
+    };
+    option.capabilities.happyhorse_upload_reference_capabilities = option.uploadReferenceCapabilities;
+  }
+
+  return option;
 }
 
 function unwrapModelList(data) {

@@ -44,7 +44,14 @@ export default function CreationFileCard({ file, onRemove, disabled = false, onI
     : null;
   const videoPreviewUrl = file?.isAsset ? file.url : file?._objectUrl || generatedVideoUrl;
   const videoPosterUrl = isVideo
-    ? (file?.posterUrl || file?.thumbnailUrl || file?.thumbnail_url || file?.previewUrl || null)
+    ? (file?.posterUrl
+      || file?.poster_url
+      || file?.thumbnailUrl
+      || file?.thumbnail_url
+      || file?.coverUrl
+      || file?.cover_url
+      || file?.previewUrl
+      || null)
     : null;
 
   useEffect(() => () => {
@@ -75,16 +82,43 @@ export default function CreationFileCard({ file, onRemove, disabled = false, onI
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
           )}
+          {isVideo && displayPreviewUrl && (
+            <img
+              src={displayPreviewUrl}
+              alt={file?.name || '视频素材封面'}
+              onError={() => {
+                if (!file?.isAsset) return;
+                setFailedAssetPreviewUrls((current) => new Set([...current, displayPreviewUrl]));
+              }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+          )}
           {isVideo && !displayPreviewUrl && videoPreviewUrl && (
             <video
               src={videoPreviewUrl}
+              poster={videoPosterUrl || undefined}
               muted
               playsInline
               preload="auto"
+              onLoadedMetadata={(event) => {
+                const video = event.currentTarget;
+                if (video.duration > 0.1) {
+                  try { video.currentTime = 0.1; } catch { /* 视频元数据刚加载时可能尚未允许定位 */ }
+                }
+              }}
               onLoadedData={(event) => {
                 const video = event.currentTarget;
-                video.pause();
-                if (video.duration > 0.1) video.currentTime = 0.1;
+                // 远程视频没有 poster 时主动绘制首帧；仅加载 metadata 往往会留下黑色视频区域。
+                video.play()
+                  .then(() => {
+                    window.requestAnimationFrame(() => {
+                      video.pause();
+                      if (video.duration > 0.1) {
+                        try { video.currentTime = 0.1; } catch { /* ignore seek races */ }
+                      }
+                    });
+                  })
+                  .catch(() => {});
               }}
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />

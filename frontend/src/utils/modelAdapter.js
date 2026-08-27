@@ -26,7 +26,11 @@ export function adaptModels(backendModels, genType) {
 
   if (genType === 'video') {
     const videoOptions = sortVideoModelOptions(normalizeVideoModelList(backendModels));
-    const videoCaps = Object.fromEntries(videoOptions.map((option) => [option.value, option.capabilities]));
+    const videoCaps = Object.fromEntries(videoOptions.flatMap((option) => [
+      [option.value, option.capabilities],
+      // 聚合模型的子模型 ID 也映射到聚合能力，避免默认模型或旧草稿绕过上传校验。
+      ...(option.sourceModelIds || []).map((sourceModelId) => [sourceModelId, option.capabilities]),
+    ]));
     return { modelOptions: videoOptions, capabilitiesMap: videoCaps };
   }
 

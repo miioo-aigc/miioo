@@ -22,6 +22,8 @@ export default function CreationInputOverlays({
   onFrameAssetTargetClear,
   onAssetConfirm,
   assetPickerAccept,
+  assetPickerPreSelectedIds = [],
+  assetPickerPreSelectedUrls = [],
   voiceModalOpen,
   onVoiceModalClose,
   onVoiceConfirm,
@@ -40,6 +42,8 @@ export default function CreationInputOverlays({
         onFrameAssetTargetClear={onFrameAssetTargetClear}
         onConfirm={onAssetConfirm}
         accept={assetPickerAccept}
+        preSelectedIds={assetPickerPreSelectedIds}
+        preSelectedUrls={assetPickerPreSelectedUrls}
         model={model}
       />
       <DubbingVoiceModal

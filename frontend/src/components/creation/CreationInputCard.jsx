@@ -31,6 +31,9 @@
  *   2026-08-21  普通与高级配音模式统一透传 voice_setting，保持现有编辑和多选交互不变
  *   2026-08-25  视频生成模式与参考模式映射移除模型名称硬编码兜底，改为完全读取后端能力数据
  *   2026-08-21  高级配音生成中保持输入框不透明，避免与创作结果卡片叠加时视觉变淡
+ *   2026-08-27  HappyHorse 普通参考素材按 r2v/video-edit 子模型能力限制上传，首尾帧不参与；素材弹窗和真人素材追加同样走上传校验
+ *   2026-08-27  修复资产库视频添加到输入框后封面未渲染导致的黑卡
+ *   2026-08-27  资产库已添加素材回传选择器并禁用，避免图片或视频重复添加
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -176,7 +179,6 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     && (isCurrentSeedance || activeVideoCapabilities.supports_reference_audio === true);
   const {
     files,
-    setFiles,
     firstFrameFile,
     setFirstFrameFile,
     lastFrameFile,
@@ -585,7 +587,12 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     const liveMaterialAssets = selectedAssets.filter((asset) => asset.isLiveMaterial);
     const liveMats = liveMaterialAssets.map((asset) => {
         // Seedance 的 assetRefUrl 只用于生成请求，输入框图片槽必须使用可访问的媒体 URL。
-        const previewUrl = asset.url || asset.previewUrl || asset.preview_url || null;
+        const assetType = String(asset.asset_type || asset.assetType || asset.type || '').toLowerCase();
+        const isVideo = assetType === 'video' || assetType.startsWith('video/');
+        const mediaUrl = asset.fileUrl || asset.file_url || asset.sourceUrl || asset.source_url || asset.url || null;
+        const posterUrl = asset.posterUrl || asset.poster_url || asset.thumbnailUrl || asset.thumbnail_url
+          || asset.coverUrl || asset.cover_url || asset.firstFrameUrl || asset.first_frame_url || null;
+        const previewUrl = isVideo ? posterUrl : (asset.url || asset.previewUrl || asset.preview_url || null);
         return {
           isAsset: true,
           isLiveMaterial: true,
@@ -593,23 +600,25 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
           groupId: asset.groupId,
           groupType: asset.groupType,
           assetRefUrl: asset.assetRefUrl,
-          url: previewUrl,
+          url: isVideo ? mediaUrl : previewUrl,
+          videoUrl: isVideo ? mediaUrl : null,
           previewUrl,
+          posterUrl,
           sourceUrl: asset.sourceUrl || asset.source_url || null,
           fileUrl: asset.fileUrl || asset.file_url || null,
           name: asset.name || '认证素材',
-          type: 'image/jpeg',
+          type: isVideo ? 'video/mp4' : 'image/jpeg',
           size: 0,
         };
       });
     const assetFiles = selectedAssets.filter((asset) => !asset.isLiveMaterial).map((asset) => {
       const assetType = String(asset.asset_type || asset.assetType || asset.type || '').toLowerCase();
-      const isVideo = assetType === 'video';
+      const isVideo = assetType === 'video' || assetType.startsWith('video/');
       const isAudio = assetType === 'audio' || assetType.startsWith('audio/');
       const isAigcMaterial = Boolean(asset.isAigcMaterial)
         || String(asset.groupType || asset.group_type || '').toUpperCase() === 'AIGC';
       let fileUrl;
-      if (isVideo) fileUrl = asset.videoUrl || asset.fileUrl || asset.url;
+      if (isVideo) fileUrl = asset.videoUrl || asset.video_url || asset.fileUrl || asset.file_url || asset.url;
       else if (isAudio) fileUrl = asset.audioUrl || asset.fileUrl || asset.url;
       else fileUrl = isAigcMaterial
         // 虚拟人像的 assetRefUrl 是 Seedance 服务商引用，不能作为输入框图片地址。
@@ -617,7 +626,15 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         ? (asset.sourceUrl || asset.source_url || asset.fileUrl || asset.file_url || asset.url || asset.previewUrl || asset.preview_url || null)
         : (asset.fileUrl || asset.url);
       const posterUrl = isVideo
-        ? (asset.posterUrl || asset.poster_url || asset.thumbnailUrl || asset.thumbnail_url || null)
+        ? (asset.posterUrl
+          || asset.poster_url
+          || asset.thumbnailUrl
+          || asset.thumbnail_url
+          || asset.coverUrl
+          || asset.cover_url
+          || asset.firstFrameUrl
+          || asset.first_frame_url
+          || null)
         : null;
       const previewUrl = isVideo
         ? posterUrl
@@ -637,6 +654,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         name: asset.name || asset.id,
         size: 0,
         url: fileUrl,
+        videoUrl: isVideo ? fileUrl : null,
         previewUrl,
         sourceUrl: asset.sourceUrl || asset.source_url || null,
         fileUrl: asset.fileUrl || asset.file_url || null,
@@ -841,6 +859,23 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     : genType === 'video'
       ? refMode === VIDEO_REFERENCE_MODES.MULTI_SHOT ? 'image' : allowsVideoAudio ? 'all' : 'media'
       : (genType === 'dubbing' || genType === 'music') ? 'audio' : 'all';
+  const assetPickerPreSelectedFiles = [...files, firstFrameFile, lastFrameFile]
+    .filter((file) => file?.isAsset);
+  const assetPickerPreSelectedIds = assetPickerPreSelectedFiles
+    .flatMap((file) => [file.assetId, file.asset_id].filter((id) => id != null))
+    .map((id) => String(id));
+  const assetPickerPreSelectedUrls = assetPickerPreSelectedFiles
+    .flatMap((file) => [
+      file.url,
+      file.fileUrl,
+      file.file_url,
+      file.sourceUrl,
+      file.source_url,
+      file.previewUrl,
+      file.preview_url,
+      file.posterUrl,
+      file.poster_url,
+    ].filter(Boolean));
   return (
     <>
       <CreationInputSurface
@@ -960,6 +995,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         onFrameAssetTargetClear: () => setFrameAssetTarget(null),
         onAssetConfirm: handleAssetConfirm,
         assetPickerAccept,
+        assetPickerPreSelectedIds,
+        assetPickerPreSelectedUrls,
         model,
         voiceModalOpen,
         onVoiceModalClose: () => setVoiceModalOpen(false),
@@ -974,6 +1011,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         onLiveMaterialModalClose: () => setLiveMaterialModalOpen(false),
         onLiveMaterialConfirm: (items) => {
           const liveMats = items.map((item) => ({
+            ...item,
             isAsset: true,
             isLiveMaterial: true,
             assetId: item.assetId,
@@ -985,10 +1023,10 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
             sourceUrl: item.sourceUrl || item.source_url || null,
             fileUrl: item.fileUrl || item.file_url || null,
             name: item.name || '真人素材',
-            type: 'image/jpeg',
+            type: String(item.assetType || item.asset_type || item.type || '').toLowerCase().startsWith('video') ? 'video/mp4' : 'image/jpeg',
             size: 0,
           }));
-          setFiles((prev) => [...prev, ...liveMats]);
+          safeSetFiles((prev) => [...prev, ...liveMats]);
         },
         liveMaterialInitialSelected: files.filter((file) => file.isLiveMaterial).map((file) => ({
           assetId: file.assetId,

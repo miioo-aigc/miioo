@@ -33,31 +33,40 @@ function cleanMediaUrl(value) {
 }
 
 function getImageUrls(asset) {
-  return [
-    asset?.url,
-    asset?.preview_url,
-    asset?.previewUrl,
+  const assetType = getAssetType(asset);
+  const candidates = assetType === 'video' ? [
     asset?.posterUrl,
     asset?.poster_url,
     asset?.thumbnailUrl,
     asset?.thumbnail_url,
+    asset?.coverUrl,
+    asset?.cover_url,
+    asset?.firstFrameUrl,
+    asset?.first_frame_url,
+    asset?.image_url,
+    asset?.imageUrl,
+  ] : [
+    asset?.url,
+    asset?.preview_url,
+    asset?.previewUrl,
     asset?.source_url,
     asset?.sourceUrl,
     asset?.file_url,
     asset?.fileUrl,
-  ].map(cleanMediaUrl).filter(Boolean).filter((url, index, list) => list.indexOf(url) === index);
+  ];
+  return candidates.map(cleanMediaUrl).filter(Boolean).filter((url, index, list) => list.indexOf(url) === index);
 }
 
 function getVideoUrls(asset) {
   return [
     asset?.url,
+    asset?.video_url,
+    asset?.videoUrl,
     asset?.fullUrl,
     asset?.source_url,
     asset?.sourceUrl,
     asset?.file_url,
     asset?.fileUrl,
-    asset?.preview_url,
-    asset?.previewUrl,
   ].map(cleanMediaUrl).filter(Boolean).filter((url, index, list) => list.indexOf(url) === index);
 }
 
@@ -151,7 +160,32 @@ const SeedanceAssetCard = memo(function SeedanceAssetCard({
       onMouseLeave={() => setIsHovered(false)}
     >
       {isVideo && normalizedVideoUrl ? (
-        <video ref={videoRef} src={normalizedVideoUrl} poster={posterUrl || undefined} muted playsInline preload="auto" aria-label={asset.name || '视频素材'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', background: '#1A1A1A', pointerEvents: 'none' }} />
+        <video
+          ref={videoRef}
+          src={normalizedVideoUrl}
+          poster={posterUrl || undefined}
+          muted
+          playsInline
+          preload="auto"
+          aria-label={asset.name || '视频素材'}
+          onLoadedData={(event) => {
+            if (posterUrl) return;
+            const video = event.currentTarget;
+            try {
+              video.currentTime = 0;
+              video.pause();
+            } catch {
+              // 视频已加载首帧时，保留浏览器当前画面。
+            }
+          }}
+          onError={() => {
+            setFailedMediaUrls((current) => {
+              if (current.has(videoUrl)) return current;
+              return new Set([...current, videoUrl]);
+            });
+          }}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', background: '#1A1A1A', pointerEvents: 'none' }}
+        />
       ) : isAudio ? (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', background: '#1A1A1A' }}><audio src={normalizeImageUrl(asset.source_url || asset.preview_url)} controls preload="metadata" aria-label={asset.name || '音频素材'} style={{ width: '100%' }} /></div>
       ) : normalizedImageUrl ? (

@@ -136,6 +136,14 @@ function FolderPreview({ preview, className, style }) {
   return <div className={className} style={{ ...style, backgroundImage: `url(${url})` }} />;
 }
 
+function getPreviewTransform(index, previewCount, isHovered) {
+  const translateY = isHovered ? (previewCount === 1 ? -20 : -16) : 0;
+  if (previewCount === 1) return `translateY(${translateY}px)`;
+  const translateX = isHovered ? (index === 0 ? 4 : -4) : 0;
+  const rotate = isHovered ? (index === 0 ? 3 : -3) : 0;
+  return `translate(${translateX}px, ${translateY}px) rotate(${rotate}deg)`;
+}
+
 export default function SeedanceFolderCard({ name, count = 0, images = [], onOpen, onEdit, onDelete }) {
   const previews = images.slice(0, 2);
   const canManage = Boolean(onEdit || onDelete);
@@ -164,7 +172,41 @@ export default function SeedanceFolderCard({ name, count = 0, images = [], onOpe
 
   return (
     <article className="group aspect-[3/2] w-full min-w-[216px] max-w-[270px] min-h-0 cursor-pointer" role="button" tabIndex={0} style={{ fontFamily: FONT }} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen?.(); } }} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} onFocus={() => setIsHovered(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsHovered(false); }}>
-      <div className="relative h-full w-full overflow-hidden"><BackFolder id={instanceId} />{previews.length > 1 ? <FolderPreview preview={previews[0]} className="absolute left-[15.56%] top-[17.22%] h-[71.11%] w-[71.85%] rounded-[4px] border border-white/20 bg-cover bg-center opacity-40" /> : null}{previews[0] ? <FolderPreview preview={previews[1] || previews[0]} className={`absolute top-[22.78%] h-[71.11%] w-[71.85%] rounded-[4px] border border-white/50 bg-cover bg-center${previews.length === 1 ? ' left-1/2 -translate-x-1/2' : ' left-[11.11%]'}`} /> : null}<FrontFolder id={instanceId} progress={progress} showStroke={false} /><FrontGlass progress={progress} /><FrontFolder id={instanceId} progress={progress} showFill={false} showStroke /> <div className="absolute bottom-[16px] left-[24px] right-[28px] flex min-w-0 items-center"><span className="min-w-0 flex-1 truncate text-[14px] leading-[18px] text-white" title={name}>{name}</span><span className={`shrink-0 text-[12px] leading-[16px] text-white/50${canManage ? ' transition-opacity group-hover:opacity-0 group-focus-within:opacity-0' : ''}`}>{count}</span>{canManage ? <div className="absolute right-0 flex items-center gap-[6px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"><button type="button" aria-label={`编辑${name}`} title="编辑" onClick={(event) => { event.stopPropagation(); onEdit?.(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-0 text-white transition-colors hover:text-text-accent"><EditIcon /></button><button type="button" aria-label={`删除${name}`} title="删除" onClick={(event) => { event.stopPropagation(); onDelete?.(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-0 text-white transition-colors hover:text-text-danger"><DeleteIcon /></button></div> : null}</div></div>
+      <div className="relative h-full w-full overflow-hidden">
+        <BackFolder id={instanceId} />
+        {previews.length > 1 ? (
+          <FolderPreview
+            preview={previews[0]}
+            className="absolute left-[15.56%] top-[17.22%] h-[71.11%] w-[71.85%] rounded-[4px] border border-white/20 bg-cover bg-center opacity-40"
+            style={{ opacity: isHovered ? 1 : 0.4, transform: getPreviewTransform(0, previews.length, isHovered), transition: 'opacity 300ms ease, transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+          />
+        ) : null}
+        {previews[0] ? (
+          previews.length === 1 ? (
+            <div className="absolute left-1/2 top-[22.78%] h-[71.11%] w-[71.85%] -translate-x-1/2">
+              <FolderPreview
+                preview={previews[0]}
+                className="h-full w-full rounded-[4px] border border-white/50 bg-cover bg-center"
+                style={{ transform: getPreviewTransform(1, previews.length, isHovered), transition: 'transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+              />
+            </div>
+          ) : (
+            <FolderPreview
+              preview={previews[1]}
+              className="absolute left-[11.11%] top-[22.78%] h-[71.11%] w-[71.85%] rounded-[4px] border border-white/50 bg-cover bg-center"
+              style={{ transform: getPreviewTransform(1, previews.length, isHovered), transition: 'transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+            />
+          )
+        ) : null}
+        <FrontFolder id={instanceId} progress={progress} showStroke={false} />
+        <FrontGlass progress={progress} />
+        <FrontFolder id={instanceId} progress={progress} showFill={false} showStroke />
+        <div className="absolute bottom-[16px] left-[24px] right-[28px] flex min-w-0 items-center">
+          <span className="min-w-0 flex-1 truncate text-[14px] leading-[18px] text-white" title={name}>{name}</span>
+          <span className={`shrink-0 text-[12px] leading-[16px] text-white/50${canManage ? ' transition-opacity group-hover:opacity-0 group-focus-within:opacity-0' : ''}`}>{count}</span>
+          {canManage ? <div className="absolute right-0 flex items-center gap-[6px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"><button type="button" aria-label={`编辑${name}`} title="编辑" onClick={(event) => { event.stopPropagation(); onEdit?.(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-0 text-white transition-colors hover:text-text-accent"><EditIcon /></button><button type="button" aria-label={`删除${name}`} title="删除" onClick={(event) => { event.stopPropagation(); onDelete?.(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-0 text-white transition-colors hover:text-text-danger"><DeleteIcon /></button></div> : null}
+        </div>
+      </div>
     </article>
   );
 }

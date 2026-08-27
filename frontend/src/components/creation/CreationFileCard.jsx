@@ -47,6 +47,13 @@ export default function CreationFileCard({ file, onRemove, disabled = false, onI
         .find((url) => !failedAssetPreviewUrls.has(url)) || null
       : file?.previewUrl || generatedImageUrl)
     : null;
+  // 卡片封面可以使用缩略图，但悬浮预览应优先使用资产的原图地址，避免被缩略图固有尺寸限制。
+  const imageHoverPreviewUrl = isImage && file?.isAsset
+    ? [file.fileUrl, file.file_url, file.sourceUrl, file.source_url, file.url, file.previewUrl]
+      .map(normalizeAssetPreviewUrl)
+      .filter(Boolean)
+      .find(Boolean) || imagePreviewUrl
+    : imagePreviewUrl;
   const videoPreviewUrl = file?.isAsset
     ? (file.videoUrl || file.video_url || file.url || file.fileUrl || file.file_url || null)
     : file?._objectUrl || generatedVideoUrl;
@@ -144,7 +151,7 @@ export default function CreationFileCard({ file, onRemove, disabled = false, onI
           </button>
         )}
       </div>
-      {previewVisible && (displayPreviewUrl || videoPreviewUrl) && <FilePreviewTooltip isVideo={isVideo} previewUrl={displayPreviewUrl} videoSrc={videoPreviewUrl} cardRect={cardRect} />}
+      {previewVisible && (displayPreviewUrl || videoPreviewUrl) && <FilePreviewTooltip isVideo={isVideo} previewUrl={isImage ? imageHoverPreviewUrl : displayPreviewUrl} videoSrc={videoPreviewUrl} cardRect={cardRect} />}
     </>;
   }
 

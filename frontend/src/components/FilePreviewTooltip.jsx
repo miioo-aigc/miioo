@@ -10,9 +10,10 @@ import { normalizeImageUrl } from '../utils/imageUrl';
  */
 export default function FilePreviewTooltip({ isVideo, previewUrl, videoSrc, cardRect }) {
   if (!cardRect) return null;
-  const maxW = Math.round(window.innerWidth * 0.35);
+  // 保持原有的相对尺寸，同时限制超宽屏下的最大预览范围。
+  const maxW = Math.min(Math.round(window.innerWidth * 0.35), 480, window.innerWidth - 16);
+  const maxH = Math.min(480, window.innerHeight - 16);
   const gap = 12;
-  // Prefer right side, fallback to left
   const rightSpace = window.innerWidth - cardRect.right - gap;
   const leftSpace = cardRect.left - gap;
   let left, right;
@@ -24,10 +25,8 @@ export default function FilePreviewTooltip({ isVideo, previewUrl, videoSrc, card
   } else {
     left = Math.max(8, Math.min(window.innerWidth - maxW - 8, cardRect.right + gap));
   }
-  // Vertical: align top to card top, clamp to viewport
-  let top = cardRect.top;
-  const estH = maxW;
-  if (top + estH > window.innerHeight - 8) top = Math.max(8, window.innerHeight - estH - 8);
+  // 与触发卡片顶部对齐，只有确实超出视口时才向上收回。
+  const top = Math.max(8, Math.min(cardRect.top, window.innerHeight - maxH - 8));
   return createPortal(
     <div style={{
       position: 'fixed',
@@ -35,6 +34,7 @@ export default function FilePreviewTooltip({ isVideo, previewUrl, videoSrc, card
       top,
       ...(left !== undefined ? { left } : { right }),
       maxWidth: maxW,
+      maxHeight: maxH,
       borderRadius: '10px',
       overflow: 'hidden',
       boxShadow: '0 8px 32px #00000099',
@@ -42,8 +42,8 @@ export default function FilePreviewTooltip({ isVideo, previewUrl, videoSrc, card
       background: '#1D1E1E',
     }}>
       {isVideo && videoSrc
-        ? <video src={normalizeImageUrl(videoSrc)} autoPlay muted loop playsInline style={{ display: 'block', maxWidth: maxW, maxHeight: maxW }} />
-        : previewUrl && <img src={normalizeImageUrl(previewUrl)} alt="" style={{ display: 'block', maxWidth: maxW, maxHeight: maxW, objectFit: 'contain' }} />
+        ? <video src={normalizeImageUrl(videoSrc)} autoPlay muted loop playsInline style={{ display: 'block', maxWidth: maxW, maxHeight: maxH, objectFit: 'contain' }} />
+        : previewUrl && <img src={normalizeImageUrl(previewUrl)} alt="" style={{ display: 'block', maxWidth: maxW, maxHeight: maxH, objectFit: 'contain' }} />
       }
     </div>,
     document.body

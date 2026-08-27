@@ -1,5 +1,13 @@
 # 组件重构盘点基线
 
+## 2026-08-27 Seedance 视频素材输入卡片破图与重复添加修复
+
+- `CreationInputCard` 和 `CreationFileCard` 识别视频类型时同时支持 `video` 与 `video/*`，兼容 Seedance 返回的 `video/mp4`；避免视频对象落入图片分支后由 `<img>` 加载视频地址。
+- `CreationFileCard` 将真实视频地址与静态封面地址分离：视频使用 `<video>`，封面候选先过滤视频文件地址；封面加载失败后继续尝试备用封面，没有可用封面时通过真实视频解码并停在首帧。
+- 资产选择弹窗将当前输入区已有素材的资产 ID/URL 作为 `preSelectedIds`、`preSelectedUrls` 回传，已添加素材显示为禁选；确认回填和 Tab 恢复继续按资产身份去重，避免素材重复出现。
+- 维护约束：新增后端媒体字段时，必须分别判断媒体类型、浏览器展示地址、视频地址和封面地址，不能用同一个 `url` 字段无条件交给图片或视频组件；排查渲染问题时依次检查列表展示、确认回填和输入卡片三个阶段。
+- 详细排查过程与回退策略见 [`docs/seedance-creation-video-preview-fix-2026-08-27.md`](../seedance-creation-video-preview-fix-2026-08-27.md)。
+
 ## 2026-08-27 HappyHorse 创作页素材上传上限闭环
 
 - `videoModelAdapter.js` 为 HappyHorse 1.0、1.1 聚合模型分别挂载普通参考素材的两组子模型能力：全图片素材使用 `r2v`，含视频素材使用 `video-edit`；不再以聚合后的最大值作为上传上限。

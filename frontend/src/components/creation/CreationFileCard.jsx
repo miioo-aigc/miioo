@@ -17,6 +17,11 @@ function normalizeAssetPreviewUrl(value) {
   return normalizeImageUrl(url);
 }
 
+function isVideoMediaUrl(value) {
+  if (!value || typeof value !== 'string') return false;
+  return /\.(mp4|mov|avi|webm|mkv|wmv|flv)(?:$|[?#])/i.test(value);
+}
+
 export default function CreationFileCard({ file, onRemove, disabled = false, onInsert }) {
   const [hovered, setHovered] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -42,16 +47,24 @@ export default function CreationFileCard({ file, onRemove, disabled = false, onI
         .find((url) => !failedAssetPreviewUrls.has(url)) || null
       : file?.previewUrl || generatedImageUrl)
     : null;
-  const videoPreviewUrl = file?.isAsset ? file.url : file?._objectUrl || generatedVideoUrl;
+  const videoPreviewUrl = file?.isAsset
+    ? (file.videoUrl || file.video_url || file.url || file.fileUrl || file.file_url || null)
+    : file?._objectUrl || generatedVideoUrl;
   const videoPosterUrl = isVideo
-    ? (file?.posterUrl
-      || file?.poster_url
-      || file?.thumbnailUrl
-      || file?.thumbnail_url
-      || file?.coverUrl
-      || file?.cover_url
-      || file?.previewUrl
-      || null)
+    ? [
+      file?.posterUrl,
+      file?.poster_url,
+      file?.thumbnailUrl,
+      file?.thumbnail_url,
+      file?.coverUrl,
+      file?.cover_url,
+      file?.firstFrameUrl,
+      file?.first_frame_url,
+      file?.previewUrl,
+    ]
+      .map(normalizeAssetPreviewUrl)
+      .filter((url) => url && !isVideoMediaUrl(url) && !failedAssetPreviewUrls.has(url))
+      .find(Boolean) || null
     : null;
 
   useEffect(() => () => {

@@ -1,5 +1,15 @@
 # miioo 项目进度管理文档
 
+## 2026-08-27 Seedance 视频素材输入卡片破图与重复添加修复
+
+- 修复从资产库和 Seedance 素材库选择视频后，创作视频输入框上方素材卡片显示黑卡或破图的问题。
+- 最终根因是部分 Seedance 视频返回 `video/mp4` 等 MIME 类型，旧逻辑只判断 `assetType === 'video'`，导致视频被当作图片处理，并将视频地址交给 `<img>` 渲染。
+- 媒体类型判断现在兼容 `video` 与 `video/*`；视频地址和封面地址分开维护。视频优先使用真实视频地址渲染 `<video>`，静态封面只交给 `<img>`；封面加载失败时继续尝试备用封面，并回退到视频首帧。
+- 资产库已添加素材在再次打开选择弹窗时回传预选身份并显示为禁选，避免同一素材重复添加；输入框素材按资产身份去重，避免图片/视频 Tab 切换后重复回填。
+- 这类问题应按“资产库列表展示、选择确认回填、创作输入框卡片渲染”三阶段排查。列表展示正常不代表确认回填对象仍保留了正确的媒体类型和预览地址。
+- 涉及文件：`src/components/creation/CreationInputCard.jsx`、`src/components/creation/CreationFileCard.jsx`、资产选择弹窗及其素材归一化链路。
+- 详细根因、数据字段边界、回退策略和验证记录见 [`docs/seedance-creation-video-preview-fix-2026-08-27.md`](./docs/seedance-creation-video-preview-fix-2026-08-27.md)。
+
 ## 2026-08-27 HappyHorse 创作页素材上传上限闭环
 
 - 修复 HappyHorse 1.0、HappyHorse 1.1 以聚合模型展示时，普通参考素材上传上限可能按聚合后的最大能力判断、从而放宽真实子模型限制的问题。

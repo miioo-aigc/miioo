@@ -41,6 +41,11 @@ function getEffectiveReferenceCapabilities(files = [], capabilities = {}) {
   return (hasVideo ? happyHorseCaps.withVideo : happyHorseCaps.imageOnly) || capabilities;
 }
 
+function isHappyHorseVideoUnsupported(files = [], capabilities = {}) {
+  const withVideo = capabilities?.happyhorse_upload_reference_capabilities?.withVideo;
+  return files.some(isVideoFile) && withVideo?.isAvailable === false;
+}
+
 export function getReferenceLimitMessage(files = [], capabilities = {}, previousFiles = []) {
   const effectiveCapabilities = getEffectiveReferenceCapabilities(files, capabilities);
   const isHappyHorseVideoRoute = Boolean(
@@ -49,6 +54,9 @@ export function getReferenceLimitMessage(files = [], capabilities = {}, previous
   );
   const labels = getReferenceLimitLabels(files, capabilities, previousFiles);
   if (labels.length === 0) return '';
+  if (isHappyHorseVideoUnsupported(files, capabilities) && labels.includes('参考视频')) {
+    return '当前 HappyHorse 模型暂不支持参考视频，请仅上传图片素材。';
+  }
   if (isHappyHorseVideoRoute && labels.includes('参考图')) {
     const maxImages = effectiveCapabilities.max_reference_images;
     return Number.isFinite(maxImages)

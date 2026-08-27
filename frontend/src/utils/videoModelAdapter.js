@@ -151,13 +151,28 @@ function createGroupedOption(group, records) {
   });
 
   // HappyHorse 的聚合入口需要在上传阶段区分 r2v 与 video-edit 的素材上限。
-  // 这份内部能力只服务于创作输入校验，不改变聚合模型的生成路由能力。
+  // 子模型缺失也必须保留为明确状态，不能将空能力误当成“不限量”。
   if (/^happyhorse-1\.[01]$/.test(group.modelId)) {
     const r2v = records.find((record) => /-r2v$/i.test(record.model_id || ''));
     const videoEdit = records.find((record) => /-video-edit$/i.test(record.model_id || ''));
     option.uploadReferenceCapabilities = {
-      imageOnly: capabilitiesOf(r2v),
-      withVideo: capabilitiesOf(videoEdit),
+      imageOnly: {
+        ...capabilitiesOf(r2v),
+        isAvailable: Boolean(r2v),
+        modelId: r2v?.model_id || r2v?.id || null,
+      },
+      withVideo: videoEdit
+        ? {
+          ...capabilitiesOf(videoEdit),
+          isAvailable: true,
+          modelId: videoEdit.model_id || videoEdit.id,
+        }
+        : {
+          // 没有 video-edit 时，HappyHorse 聚合入口只能走纯图片 r2v。
+          isAvailable: false,
+          modelId: null,
+          max_reference_videos: 0,
+        },
     };
     option.capabilities.happyhorse_upload_reference_capabilities = option.uploadReferenceCapabilities;
   }
@@ -277,10 +292,22 @@ export function normalizeVideoModelList(backendModels) {
   return options;
 }
 
-export function resolveVideoModelRoute({ modelOption, generationMode, referenceMode } = {}) {
+export function resolveVideoModelRoute({
+  modelOption,
+  generationMode,
+  referenceMode,
+  hasReferenceVideo = false,
+} = {}) {
   if (!modelOption) return null;
   const specialRoute = modelOption.specialRouteModels?.[referenceMode];
   if (specialRoute) return specialRoute;
+  const happyHorseUploadCapabilities = modelOption.uploadReferenceCapabilities;
+  if (hasReferenceVideo && happyHorseUploadCapabilities) {
+    const videoRoute = happyHorseUploadCapabilities.withVideo;
+    return videoRoute?.isAvailable
+      ? { modelId: videoRoute.modelId, capabilities: videoRoute }
+      : null;
+  }
   return modelOption.routeModels?.[generationMode] || null;
 }
 

@@ -19,6 +19,7 @@
 - 本地上传、资产库普通素材和真人素材追加均通过 `safeSetFiles` 进入同一校验链路；限制命中时直接触发 Toast，避免仅依赖后续渲染副作用导致提示丢失。
 - 兼容后端默认模型和历史草稿使用 HappyHorse 子模型 ID 的情况：前端回显并校验到对应聚合模型，能力表也同时保留聚合模型 ID 与后端子模型 ID 的映射，避免绕过上传限制或生成路由不一致。
 - 本次只处理创作页视频生成的普通参考素材；用户已确认不考虑首尾帧模式，HappyHorse 当前不支持音频上传，因此音频不参与判定。
+- 对后端仅返回 `r2v`、缺少 `video-edit` 的降级场景补充双层保护：上传视频立即提示当前模型不支持参考视频；即使异常状态残留视频，发送阶段也要求解析到真实 `video-edit` 路由，禁止回退路由到其他 HappyHorse 子模型。
 - 涉及文件：`src/utils/videoModelAdapter.js`、`src/utils/modelAdapter.js`、`src/components/creation/CreationFileUtils.js`、`src/components/creation/useCreationInputFiles.js`、`src/components/creation/CreationInputCard.jsx`、`src/pages/CreationPage.jsx`。
 - 验证：目标文件 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；纯函数覆盖 9 张纯图片允许、1 视频加 5 图后继续传图拒绝、9 图后新增视频拒绝并返回指定提示。构建仅保留既有大体积分包提醒，架构检查仅保留既有文件规模提醒。
 - 详细规则、数据流和维护约束见 [`docs/happyhorse-creation-upload-limits-2026-08-27.md`](./docs/happyhorse-creation-upload-limits-2026-08-27.md)。

@@ -14,6 +14,7 @@
 - `CreationFileUtils.js` 以候选最终普通素材集合判定当前限制：无视频时读取 `r2v.max_reference_images`，含视频时读取 `video-edit.max_reference_images` 和 `max_reference_videos`；新增视频会重新校验此前已上传图片，以覆盖“先传多张图片、后传视频”的能力切换。
 - `useCreationInputFiles.js` 的普通参考素材追加路径统一通过 `safeSetFiles` 校验，并在拒绝当下触发 Toast；`CreationInputCard.jsx` 的本地上传、资产库普通素材及真人素材追加均接入该链路，防止某一上传入口绕过限制。
 - `modelAdapter.js` 同时登记 HappyHorse 聚合模型 ID 和后端子模型 ID 的能力映射；`CreationPage.jsx` 将后端默认的 HappyHorse 子模型 ID 归并为聚合模型，保证模型选择、素材校验与生成路由使用同一产品模型语义。
+- 缺失 `video-edit` 时，`videoModelAdapter.js` 显式将视频上限设为 `0`，`CreationFileUtils.js` 在上传时阻止视频；`CreationInputCard.jsx` 在发送阶段要求含视频请求必须解析到真实 `video-edit` 路由，禁止错误回退到 `r2v` 或其他子模型。
 - 业务边界：仅约束创作页视频生成的普通参考素材；首尾帧模式不纳入本轮逻辑，音频不支持且不参与判定。
 - 规则、示例与验证记录见 [`docs/happyhorse-creation-upload-limits-2026-08-27.md`](../happyhorse-creation-upload-limits-2026-08-27.md)。
 

@@ -735,11 +735,19 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         return;
       }
       videoGenerationMode = routeResult.generationMode;
+      const hasReferenceVideo = savedFiles.some(isVideoFile);
       const requestRoute = resolveVideoModelRoute({
         modelOption: currentModel,
         generationMode: videoGenerationMode,
         referenceMode: refMode,
+        hasReferenceVideo,
       });
+      if (hasReferenceVideo
+        && currentModel?.uploadReferenceCapabilities
+        && !requestRoute) {
+        showToast?.('warning', '当前 HappyHorse 模型暂不支持参考视频，请移除视频素材或更换模型');
+        return;
+      }
       requestModel = requestRoute?.modelId || model;
       requestCapabilities = requestRoute?.capabilities || activeVideoCapabilities;
       const referenceRouteResult = resolveVideoReferenceMode({

@@ -131,6 +131,23 @@ function CreationPromptEditor({
     mentionQuery === '' || file.name.toLowerCase().includes(mentionQuery.toLowerCase())
   ));
 
+  useEffect(() => {
+    if (!mentionOpen || mentionFiles.length === 0) return;
+    const menu = mentionMenuRef.current;
+    const selectedItem = menu?.querySelector(`[data-mention-index="${mentionIndex}"]`);
+    if (!menu || !selectedItem) return;
+
+    const itemTop = selectedItem.offsetTop;
+    const itemBottom = itemTop + selectedItem.offsetHeight;
+    const visibleTop = menu.scrollTop + 4;
+    const visibleBottom = menu.scrollTop + menu.clientHeight - 4;
+    if (itemTop < visibleTop) {
+      menu.scrollTop = Math.max(0, itemTop - 4);
+    } else if (itemBottom > visibleBottom) {
+      menu.scrollTop = itemBottom - menu.clientHeight + 4;
+    }
+  }, [mentionFiles.length, mentionIndex, mentionMenuRef, mentionOpen]);
+
   const measureVoiceControl = useCallback(() => {
     const element = voiceControlRef.current;
     if (!element) {
@@ -248,6 +265,8 @@ function CreationPromptEditor({
           left: mentionPos.left,
           zIndex: 100,
           width: '200px',
+          maxHeight: '112px',
+          overflowY: 'auto',
           borderRadius: '8px',
           boxShadow: '#00000066 0px 4px 16px',
           background: '#1D1E1E',
@@ -257,6 +276,7 @@ function CreationPromptEditor({
           {mentionFiles.map((file, index) => (
             <div
               key={file.name + index}
+              data-mention-index={index}
               onMouseDown={(event) => { event.preventDefault(); onMentionSelect(file); }}
               onMouseEnter={() => onMentionIndexChange(index)}
               style={{

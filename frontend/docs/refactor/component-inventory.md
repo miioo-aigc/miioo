@@ -1,5 +1,13 @@
 # 组件重构盘点基线
 
+## 2026-08-27 Seedance 文件夹挡板毛玻璃效果
+
+- `SeedanceFolderCard` 的前方挡板继续由动态 SVG `fillPath` 绘制；新增的 `FrontGlass` 使用同尺寸 HTML `div` 承载 `backdrop-filter`，模糊值为 `6px`。
+- 毛玻璃矩形通过当前 `fillPath` 生成内联 SVG `mask-image` 裁剪，不使用固定 `polygon` 或独立估算的梯形参数，因此悬停路径动画期间也能与挡板曲线同步。
+- 挡板填充、毛玻璃和挡板描边分层渲染，描边单独置于毛玻璃层上方；毛玻璃层设置 `pointer-events-none`，不影响卡片点击和操作按钮。
+- 维护约束：修改 `FRONT_FILL_DEFAULT`、`FRONT_FILL_HOVER` 或挡板定位时，必须同步检查 `FrontFolder` 与 `FrontGlass` 是否仍共用相同坐标系和动态路径。
+- 详细排查过程与方案取舍见 [`docs/seedance-folder-glass-effect-2026-08-27.md`](../seedance-folder-glass-effect-2026-08-27.md)。
+
 ## 2026-08-21 创作配音普通模式前后端参数打通
 
 - `CreationInputCard` 的普通模式提交现在与高级模式统一生成 `voice_setting`，透传 `voice_id`、`speed`、`pitch` 和后端字段名 `vol`。

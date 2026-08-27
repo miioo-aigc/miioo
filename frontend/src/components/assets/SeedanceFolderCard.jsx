@@ -1,6 +1,7 @@
 /**
  * Seedance 素材库文件夹卡片。
  * 按 Paper 设计稿复刻文件夹层级，并使用路径插值实现挡板形状动画。
+ * 前方挡板使用同一条动态路径裁剪 HTML 毛玻璃层，保证曲线边缘与挡板完全重合。
  */
 
 import { useEffect, useId, useRef, useState } from 'react';
@@ -31,6 +32,11 @@ function interpolatePath(from, to, progress) {
   });
 }
 
+function createPathMask(path) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 139" preserveAspectRatio="none"><path d="${path}" fill="white"/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
 function BackFolder({ id }) {
   return (
     <svg className="absolute left-1/2 top-0 h-full w-[90.234%] -translate-x-1/2" viewBox="0 0 231 195" preserveAspectRatio="none" fill="none" aria-hidden="true">
@@ -39,14 +45,47 @@ function BackFolder({ id }) {
   );
 }
 
-function FrontFolder({ id, progress }) {
+function FrontFolder({ id, progress, showFill = true, showStroke = true }) {
   const fillPath = interpolatePath(FRONT_FILL_DEFAULT, FRONT_FILL_HOVER, progress);
   const strokePath = interpolatePath(FRONT_STROKE_DEFAULT, FRONT_STROKE_HOVER, progress);
   return (
     <svg className="absolute bottom-0 left-1/2 h-[71.282%] w-full -translate-x-1/2" viewBox="0 0 256 139" preserveAspectRatio="none" fill="none" aria-hidden="true">
-      <defs><linearGradient id={`${id}-front-fill`} x1="0.41" y1="0" x2="0.61" y2="0.97"><stop stopColor="#696969" stopOpacity="0.85" /><stop offset="0.66" stopColor="#1A1919" stopOpacity="0.95" /><stop offset="1" stopColor="#000000" stopOpacity="0.95" /></linearGradient><linearGradient id={`${id}-front-stroke`} x1="0.06" y1="0" x2="0.33" y2="1.03"><stop stopColor="#ABABAB" /><stop offset="1" stopColor="#212121" /></linearGradient></defs>
-      <path d={fillPath} fill={`url(#${id}-front-fill)`} /><path d={strokePath} vectorEffect="non-scaling-stroke" fill="none" stroke={`url(#${id}-front-stroke)`} />
+      <defs>
+        <linearGradient id={`${id}-front-fill`} x1="0.41" y1="0" x2="0.61" y2="0.97">
+          <stop stopColor="#696969" stopOpacity="0.85" />
+          <stop offset="0.66" stopColor="#1A1919" stopOpacity="0.95" />
+          <stop offset="1" stopColor="#000000" stopOpacity="0.95" />
+        </linearGradient>
+        <linearGradient id={`${id}-front-stroke`} x1="0.06" y1="0" x2="0.33" y2="1.03">
+          <stop stopColor="#ABABAB" />
+          <stop offset="1" stopColor="#212121" />
+        </linearGradient>
+      </defs>
+      {showFill ? <path d={fillPath} fill={`url(#${id}-front-fill)`} /> : null}
+      {showStroke ? <path d={strokePath} vectorEffect="non-scaling-stroke" fill="none" stroke={`url(#${id}-front-stroke)`} /> : null}
     </svg>
+  );
+}
+
+function FrontGlass({ progress }) {
+  const fillPath = interpolatePath(FRONT_FILL_DEFAULT, FRONT_FILL_HOVER, progress);
+  const pathMask = createPathMask(fillPath);
+  return (
+    <div
+      className="pointer-events-none absolute bottom-0 left-1/2 h-[71.282%] w-full -translate-x-1/2"
+      aria-hidden="true"
+      style={{
+        background: 'rgba(35, 35, 35, 0.14)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
+        maskImage: pathMask,
+        WebkitMaskImage: pathMask,
+        maskRepeat: 'no-repeat',
+        WebkitMaskRepeat: 'no-repeat',
+        maskSize: '100% 100%',
+        WebkitMaskSize: '100% 100%',
+      }}
+    />
   );
 }
 
@@ -125,7 +164,7 @@ export default function SeedanceFolderCard({ name, count = 0, images = [], onOpe
 
   return (
     <article className="group aspect-[3/2] w-full min-w-[216px] max-w-[270px] min-h-0 cursor-pointer" role="button" tabIndex={0} style={{ fontFamily: FONT }} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen?.(); } }} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} onFocus={() => setIsHovered(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsHovered(false); }}>
-      <div className="relative h-full w-full overflow-hidden"><BackFolder id={instanceId} />{previews.length > 1 ? <FolderPreview preview={previews[0]} className="absolute left-[15.56%] top-[17.22%] h-[71.11%] w-[71.85%] rounded-[4px] border border-white/20 bg-cover bg-center opacity-40" /> : null}{previews[0] ? <FolderPreview preview={previews[1] || previews[0]} className={`absolute top-[22.78%] h-[71.11%] w-[71.85%] rounded-[4px] border border-white/50 bg-cover bg-center${previews.length === 1 ? ' left-1/2 -translate-x-1/2' : ' left-[11.11%]'}`} /> : null}<FrontFolder id={instanceId} progress={progress} /><div className="absolute bottom-[16px] left-[24px] right-[28px] flex min-w-0 items-center"><span className="min-w-0 flex-1 truncate text-[14px] leading-[18px] text-white" title={name}>{name}</span><span className={`shrink-0 text-[12px] leading-[16px] text-white/50${canManage ? ' transition-opacity group-hover:opacity-0 group-focus-within:opacity-0' : ''}`}>{count}</span>{canManage ? <div className="absolute right-0 flex items-center gap-[6px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"><button type="button" aria-label={`编辑${name}`} title="编辑" onClick={(event) => { event.stopPropagation(); onEdit?.(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-0 text-white transition-colors hover:text-text-accent"><EditIcon /></button><button type="button" aria-label={`删除${name}`} title="删除" onClick={(event) => { event.stopPropagation(); onDelete?.(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-0 text-white transition-colors hover:text-text-danger"><DeleteIcon /></button></div> : null}</div></div>
+      <div className="relative h-full w-full overflow-hidden"><BackFolder id={instanceId} />{previews.length > 1 ? <FolderPreview preview={previews[0]} className="absolute left-[15.56%] top-[17.22%] h-[71.11%] w-[71.85%] rounded-[4px] border border-white/20 bg-cover bg-center opacity-40" /> : null}{previews[0] ? <FolderPreview preview={previews[1] || previews[0]} className={`absolute top-[22.78%] h-[71.11%] w-[71.85%] rounded-[4px] border border-white/50 bg-cover bg-center${previews.length === 1 ? ' left-1/2 -translate-x-1/2' : ' left-[11.11%]'}`} /> : null}<FrontFolder id={instanceId} progress={progress} showStroke={false} /><FrontGlass progress={progress} /><FrontFolder id={instanceId} progress={progress} showFill={false} showStroke /> <div className="absolute bottom-[16px] left-[24px] right-[28px] flex min-w-0 items-center"><span className="min-w-0 flex-1 truncate text-[14px] leading-[18px] text-white" title={name}>{name}</span><span className={`shrink-0 text-[12px] leading-[16px] text-white/50${canManage ? ' transition-opacity group-hover:opacity-0 group-focus-within:opacity-0' : ''}`}>{count}</span>{canManage ? <div className="absolute right-0 flex items-center gap-[6px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"><button type="button" aria-label={`编辑${name}`} title="编辑" onClick={(event) => { event.stopPropagation(); onEdit?.(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-0 text-white transition-colors hover:text-text-accent"><EditIcon /></button><button type="button" aria-label={`删除${name}`} title="删除" onClick={(event) => { event.stopPropagation(); onDelete?.(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-0 text-white transition-colors hover:text-text-danger"><DeleteIcon /></button></div> : null}</div></div>
     </article>
   );
 }

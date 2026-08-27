@@ -1,5 +1,14 @@
 # miioo 项目进度管理文档
 
+## 2026-08-27 Seedance 文件夹挡板毛玻璃效果
+
+- 为 `SeedanceFolderCard` 前方 SVG 挡板增加真实背景毛玻璃效果，模糊值固定为 `6px`。
+- 毛玻璃层使用与挡板相同尺寸和定位的 HTML `div`，通过当前动态 `fillPath` 生成 SVG `mask-image`，从容器层面裁剪矩形毛玻璃，确保与挡板曲线边缘完全重合。
+- 不使用 SVG 图形元素上的 `backdrop-filter`，也不使用复制素材图后通过 `feGaussianBlur` 进行伪背景模糊；前者在浏览器中的裁剪和背景过滤表现不稳定，后者不是实际的背景模糊。
+- 修改文件：`src/components/assets/SeedanceFolderCard.jsx`。
+- 用户已验证视觉效果通过；定向 ESLint、`npm run build`、`npm run check:architecture` 和 `git diff --check` 均通过。
+- 详细实现经验见 [`docs/seedance-folder-glass-effect-2026-08-27.md`](./docs/seedance-folder-glass-effect-2026-08-27.md)。
+
 ## 2026-08-25 Seedance 素材卡片图片渲染与弹窗三列布局修复
 
 - 修复资产库选择弹窗中 Seedance 真人/虚拟人像进入素材组文件夹后图片显示为黑卡片的问题。统一 Seedance 素材卡片使用原生 `<img>` 渲染，并按 `preview_url`、`source_url`、`file_url`、缩略图等候选地址依次回退；过滤不能直接交给浏览器加载的 `asset://` 引用，并兼容接口返回的 Markdown 链接格式。

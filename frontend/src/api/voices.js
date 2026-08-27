@@ -755,19 +755,24 @@ export async function apiGetVoiceLibrary({
 export async function apiGetOfficialVoices({
   provider,
   language,
+  skipCache = false,
 } = {}) {
+  const fetcher = async () => {
+    const params = new URLSearchParams();
+    if (provider) params.append('provider', provider);
+    if (language) params.append('language', language);
+    const query = params.toString();
+    const url = query ? `${BASE}/api/voices/official?${query}` : `${BASE}/api/voices/official`;
+    const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+    const data = await res.json();
+    return normalizeVoiceListResponse(data);
+  };
+
+  if (skipCache) return fetcher();
+
   return cached(
     K.officialVoices({ provider, language }),
-    async () => {
-      const params = new URLSearchParams();
-      if (provider) params.append('provider', provider);
-      if (language) params.append('language', language);
-      const query = params.toString();
-      const url = query ? `${BASE}/api/voices/official?${query}` : `${BASE}/api/voices/official`;
-      const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
-      const data = await res.json();
-      return normalizeVoiceListResponse(data);
-    },
+    fetcher,
     { medium: MEDIUM.STATIC, ttl: TTL.STATIC },
   );
 }

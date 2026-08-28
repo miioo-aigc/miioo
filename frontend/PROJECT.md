@@ -1,5 +1,18 @@
 # miioo 项目进度管理文档
 
+## 2026-08-28 分镜页复用 HappyHorse 动态素材限制
+
+- 分镜页面“创作视频”面板的全能参考模式复用创作页 HappyHorse 1.0、HappyHorse 1.1 的动态素材能力判断，不再按聚合模型合并后的最大值放宽上传上限。
+- 当前分镜主体图片会计入参考图片数量：主体参考与普通参考图合并形成候选图片集合；当候选集合全为图片时按对应版本 `r2v.max_reference_images` 判断，含视频时按 `video-edit.max_reference_images` 和 `max_reference_videos` 同时判断。
+- 本地上传和资产库选择在素材写入状态前统一校验；已有素材发生能力切换时会重新校验完整候选集合。因此已有 8 张图片时追加视频会按视频编辑能力拒绝，已有 1 个视频和 5 张图片时继续追加图片会被拒绝。
+- 图片数量因加入参考视频而超过 `video-edit` 上限时提示“如果您需要参考视频素材，请限制图片素材数量为5以内。”；参考视频数量超限仍提示对应的通用数量上限信息。
+- 分镜上传槽位保留右侧动态数量展示：图片计数包含主体图片，视频计数使用当前 `video-edit.max_reference_videos`；能力数值来自后端，不写死为固定常量。
+- 当 HappyHorse 聚合模型缺少 `video-edit` 子模型时，参考视频入口不展示，上传/资产库选择会被拒绝；即使异常状态残留视频，生成前也不允许将请求错误回退到 `r2v`、`i2v` 或其他子模型。
+- 本次仅覆盖分镜全能参考普通素材；首尾帧模式按既定边界不纳入 HappyHorse 动态素材判断，HappyHorse 不支持音频上传，音频不参与该逻辑。
+- 涉及文件：`src/components/storyboard/GenerateVideoPanel.jsx`、`src/components/storyboard/ReferenceMediaEditor.jsx`、`src/components/storyboard/StoryboardUploadSlots.jsx`、`src/components/creation/CreationFileUtils.js`。
+- 验证：今天的目标文件定向 ESLint、`npm run build`、`npm run check:architecture` 和 `git diff --check` 已通过；构建仅保留既有大体积分包提醒，架构检查仅保留既有文件规模提醒。
+- 详细规则和维护边界见 [`docs/happyhorse-creation-upload-limits-2026-08-27.md`](./docs/happyhorse-creation-upload-limits-2026-08-27.md)。
+
 ## 2026-08-27 Seedance 视频素材输入卡片破图与重复添加修复
 
 - 修复从资产库和 Seedance 素材库选择视频后，创作视频输入框上方素材卡片显示黑卡或破图的问题。

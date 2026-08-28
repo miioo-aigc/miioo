@@ -1,5 +1,16 @@
 # 组件重构盘点基线
 
+## 2026-08-28 分镜全能参考复用 HappyHorse 动态素材限制
+
+- `GenerateVideoPanel.jsx` 将当前分镜主体参考、普通参考图、参考视频和参考音频整理为候选最终素材集合，并复用 `CreationFileUtils.js` 选择 HappyHorse 的 `imageOnly`/`withVideo` 能力；主体图片与普通参考图合并计入图片额度。
+- 全部为图片时读取对应 `r2v.max_reference_images`；候选集合含视频时切换到 `video-edit.max_reference_images` 与 `max_reference_videos`。新增视频会触发已有图片的重新校验，覆盖“先传多张图片、后传视频”的能力收紧场景。
+- `ReferenceMediaEditor.jsx` 将图片主体、普通参考图、参考视频和参考音频入口统一接入上层候选集合校验；`StoryboardUploadSlots.jsx` 在本地文件上传和资产库确认写入前执行校验，拒绝时不改变素材状态，并保留动态数量展示。
+- 分镜图片计数包含主体图片；含视频时图片超限使用当前后端能力值生成“如果您需要参考视频素材，请限制图片素材数量为5以内。”提示，不在组件内写死 `5` 或 `1`。
+- HappyHorse 缺少 `video-edit` 时明确视为不支持参考视频：视频入口不展示，上传和资产库选择被拒绝；生成请求通过 `hasReferenceVideo` 强制要求真实 `video-edit` 路由，避免路由降级到其他子模型。
+- 组件边界保持不变：`GenerateVideoPanel` 负责页面级表单状态、能力选择和生成前校验，`ReferenceMediaEditor` 负责素材域编排，`StoryboardUploadSlots` 负责槽位展示、文件校验和资产选择，纯能力判断继续收口在创作域 `CreationFileUtils.js`。
+- 业务范围：仅分镜全能参考普通素材；首尾帧模式不纳入本轮动态限制，HappyHorse 不支持音频上传，音频不作为 HappyHorse 判定依据。
+- 验证：目标文件定向 ESLint、构建、架构检查和 `git diff --check` 已通过；未将未执行的真实登录态上传/生成联调记录为已验证。
+
 ## 2026-08-27 Seedance 视频素材输入卡片破图与重复添加修复
 
 - `CreationInputCard` 和 `CreationFileCard` 识别视频类型时同时支持 `video` 与 `video/*`，兼容 Seedance 返回的 `video/mp4`；避免视频对象落入图片分支后由 `<img>` 加载视频地址。

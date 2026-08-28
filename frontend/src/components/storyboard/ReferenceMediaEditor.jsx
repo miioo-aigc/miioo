@@ -14,6 +14,7 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-08-17  素材库选择保留 Seedance 真人/虚拟认证字段，并向选择器传递当前模型以显示认证素材库
+ *   2026-08-28  图片主体、参考图、视频和音频入口统一接收上传前能力校验，避免静默截断
  *   2026-08-11  恢复首尾帧模式的尾帧上传入口
  *   2026-07-16  上传槽位改为业务域内直接引入，移除页面级组件转发边界；保留素材状态与回调契约
  *   2026-08-10  首帧新增“使用上一个分镜视频尾帧”快捷入口，抽帧和上传由面板业务回调负责
@@ -37,7 +38,6 @@ export default function ReferenceMediaEditor({
   showRefImages,
   showRefVideo,
   showRefAudio,
-  maxRefImages,
   maxRefVideos,
   maxRefAudios,
   imageCountLabel,
@@ -58,6 +58,7 @@ export default function ReferenceMediaEditor({
   onRefLastFrameChange,
   onUsePreviousFrameShortcut,
   onReferenceMediaUpload,
+  onValidateReferenceAdd,
   buildRefFromAsset,
   onInsertReference,
 }) {
@@ -116,6 +117,8 @@ export default function ReferenceMediaEditor({
               accept="image/*"
               mediaList={refSubjects}
               canAddMore={canAddImage}
+              onValidateAdd={(items) => onValidateReferenceAdd?.(items, 'image')}
+              validationType="image"
               onUpload={appendSubject}
               onRemove={() => onRefSubjectsChange?.([])}
               onRemoveItem={(index) => onRefSubjectsChange?.((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
@@ -124,7 +127,7 @@ export default function ReferenceMediaEditor({
                 const newItems = selectedAssets.map(buildRefFromAsset);
                 onRefSubjectsChange?.((prev) => {
                   const merged = [...prev, ...newItems];
-                  return maxRefImages != null ? merged.slice(0, maxRefImages) : merged;
+                  return merged;
                 });
               }}
             />
@@ -139,6 +142,8 @@ export default function ReferenceMediaEditor({
               accept="image/*"
               mediaList={refImages}
               canAddMore={canAddImage}
+              onValidateAdd={(items) => onValidateReferenceAdd?.(items, 'image')}
+              validationType="image"
               onUpload={appendImage}
               onRemove={() => onRefImagesChange?.([])}
               onRemoveItem={(index) => onRefImagesChange?.((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
@@ -160,7 +165,7 @@ export default function ReferenceMediaEditor({
                 }));
                 onRefImagesChange?.((prev) => {
                   const merged = [...prev, ...newItems];
-                  return maxRefImages != null ? merged.slice(0, maxRefImages) : merged;
+                  return merged;
                 });
               }}
             />
@@ -175,12 +180,14 @@ export default function ReferenceMediaEditor({
               accept="video/mp4,video/quicktime"
               mediaList={refVideos}
               canAddMore={maxRefVideos == null || refVideos.length < maxRefVideos}
+              onValidateAdd={(items) => onValidateReferenceAdd?.(items, 'video')}
+              validationType="video"
               onUpload={appendVideo}
               onRemove={() => onRefVideosChange?.([])}
               onRemoveItem={(index) => onRefVideosChange?.((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
               onAssetConfirm={(assets) => {
                 const items = (assets || []).map((asset) => ({ id: asset.id, url: asset.fileUrl || asset.url, name: asset.name || '参考视频', type: 'video/mp4' }));
-                onRefVideosChange?.((prev) => [...prev, ...items].slice(0, maxRefVideos ?? 99));
+                onRefVideosChange?.((prev) => [...prev, ...items]);
               }}
               onInsert={(media) => onInsertReference?.(media, 'video')}
             />
@@ -195,6 +202,8 @@ export default function ReferenceMediaEditor({
               accept="audio/mpeg,audio/wav"
               mediaList={refAudios}
               canAddMore={maxRefAudios == null || refAudios.length < maxRefAudios}
+              onValidateAdd={(items) => onValidateReferenceAdd?.(items, 'audio')}
+              validationType="audio"
               onUpload={appendAudio}
               onRemove={() => onRefAudiosChange?.([])}
               onRemoveItem={(index) => onRefAudiosChange?.((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}

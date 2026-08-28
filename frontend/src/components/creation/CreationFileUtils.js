@@ -34,7 +34,7 @@ export function getModelReferenceLimits(capabilitiesMap = {}, model) {
   return groupedHappyHorseModel ? capabilitiesMap?.[groupedHappyHorseModel] || null : null;
 }
 
-function getEffectiveReferenceCapabilities(files = [], capabilities = {}) {
+export function getEffectiveReferenceCapabilities(files = [], capabilities = {}) {
   const happyHorseCaps = capabilities?.happyhorse_upload_reference_capabilities;
   if (!happyHorseCaps) return capabilities;
   const hasVideo = files.some(isVideoFile);

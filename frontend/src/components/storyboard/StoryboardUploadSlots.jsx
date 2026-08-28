@@ -17,6 +17,7 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-08-17  参考素材选择器接收当前视频模型，Seedance 模型可展示认证素材库
+ *   2026-08-28  PanelUploadSlot 支持上传和资产库确认前的业务素材数量校验
  *   2026-07-16  从生成面板上传区迁移完成；由 ReferenceMediaEditor 直接引入并复用
  *   2026-07-17  抽离媒体内容、删除按钮和首尾帧快捷卡片展示，上传与资产逻辑保持不变
  *   2026-08-10  首尾帧快捷入口支持异步处理后再写入槽位
@@ -171,7 +172,7 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
   );
 }
 
-export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'image/*', projectId, model = '', countLabel, mediaList, canAddMore = true, onRemoveItem, onAssetConfirm, onInsert }) {
+export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'image/*', projectId, model = '', countLabel, mediaList, canAddMore = true, onRemoveItem, onAssetConfirm, onInsert, onValidateAdd, validationType }) {
   const fileRef = useRef(null);
   const hoverTimerRef = useRef(null);
   const [hov, setHov] = useState(false);
@@ -188,6 +189,12 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
     const limit = getFileLimit(file);
     if (file.size > limit.size) {
       alert(`抱歉，平台暂不支持上传${limit.size / 1024 / 1024}M以上的${limit.label}资源！`);
+      return;
+    }
+    const validationMessage = onValidateAdd?.([file]);
+    if (validationMessage) {
+      alert(validationMessage);
+      event.target.value = '';
       return;
     }
     try {
@@ -271,7 +278,15 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
         model={model}
         preSelectedIds={isMultiMode ? (mediaList || []).map((item) => item.assetId || item.id).filter((id) => id && !id.startsWith('blob:')) : (media?.assetId || (!media?.id?.startsWith('blob:') ? media?.id : null)) ? [media.assetId || media.id] : []}
         preSelectedUrls={isMultiMode ? (mediaList || []).map((item) => item.url).filter(Boolean) : (media?.url ? [media.url] : [])}
-        onConfirm={(assets) => { onAssetConfirm?.(assets); setAssetPickerOpen(false); }}
+        onConfirm={(assets) => {
+          const validationMessage = onValidateAdd?.(assets || [], validationType);
+          if (validationMessage) {
+            alert(validationMessage);
+            return;
+          }
+          onAssetConfirm?.(assets);
+          setAssetPickerOpen(false);
+        }}
       />
       {previewMedia && createPortal(
         <StoryboardMediaHoverPreview url={previewMedia.url} isVideo={previewMedia.isVideo} mouseX={mousePos.x} mouseY={mousePos.y} />,

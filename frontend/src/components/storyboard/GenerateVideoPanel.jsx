@@ -26,6 +26,8 @@
  *               分镜视频请求复用创作页生成模式、参考模式映射与能力校验逻辑
  *   2026-08-25  分镜页仅对 Kling V3 与 Kling V3 Omni 展示全能参考、首尾帧，
  *               创作页专项能力展示不受影响
+ *   2026-08-28  分镜全能参考复用 HappyHorse 动态素材能力：主体与参考图合并计数，
+ *               含视频时切换 video-edit 上限，上传/资产库/生成前统一校验并保护缺失路由
  *   2026-08-17  Seedance 真人保留 live_material 参数，虚拟人像保留 asset_ref_url 服务商引用；
  *               主体参考从主体列表补全认证身份且同步过程不丢失；全能参考显式传 generate_mode='full'
  *   2026-08-12  拆分全能参考与首尾帧提示词：fullPrompt 保留 @主体 标签绑定，
@@ -82,6 +84,10 @@ import {
   resolveVideoReferenceModeFallback,
 } from '../../utils/videoModelCapabilities';
 import { resolveVideoModelRoute } from '../../utils/videoModelAdapter';
+import {
+  getEffectiveReferenceCapabilities,
+  getReferenceLimitMessage,
+} from '../creation/CreationFileUtils';
 
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -274,17 +280,6 @@ export default function GenerateVideoPanel({
     [fullPrompt, refSubjects, referenceMode],
   );
 
-  const updateReferenceGroup = (setter, group) => (value) => {
-    setter((previous) => {
-      const next = typeof value === 'function' ? value(previous) : value;
-      return normalizeStoryboardReferenceGroups({ [group]: next })[group];
-    });
-  };
-  const handleRefSubjectsChange = updateReferenceGroup(setRefSubjects, 'subjects');
-  const handleRefImagesChange = updateReferenceGroup(setRefImages, 'images');
-  const handleRefVideosChange = updateReferenceGroup(setRefVideos, 'videos');
-  const handleRefAudiosChange = updateReferenceGroup(setRefAudios, 'audios');
-
   // 父级可能先挂载面板、后收到异步恢复的创作表单。恢复完成前不能把本地
   // 初始空值回传保存；首次收到快照时一次性恢复全部字段。
   useEffect(() => {
@@ -409,10 +404,25 @@ export default function GenerateVideoPanel({
     const fallbackTimer = setTimeout(() => setReferenceMode(fallbackMode), 0);
     return () => clearTimeout(fallbackTimer);
   }, [availableReferenceModes, referenceMode]);
-  const maxRefImages = videoCaps.max_reference_images ?? null;
-  const maxRefVideos = videoCaps.max_reference_videos ?? null;
-  const maxRefAudios = videoCaps.max_reference_audios ?? null;
-  const showRefVideo = maxRefVideos === null || maxRefVideos > 0;
+  const currentReferenceFiles = useMemo(() => [
+    ...refSubjects.map((item) => ({ ...item, type: 'image/reference' })),
+    ...refImages,
+    ...refVideos,
+    ...refAudios,
+  ], [refAudios, refImages, refSubjects, refVideos]);
+  const effectiveReferenceCaps = useMemo(
+    () => getEffectiveReferenceCapabilities(currentReferenceFiles, videoCaps),
+    [currentReferenceFiles, videoCaps],
+  );
+  const happyHorseVideoCaps = currentVideoModel?.uploadReferenceCapabilities?.withVideo;
+  const maxRefImages = effectiveReferenceCaps.max_reference_images ?? null;
+  const maxRefVideos = currentVideoModel?.uploadReferenceCapabilities
+    ? (happyHorseVideoCaps?.isAvailable ? happyHorseVideoCaps.max_reference_videos : 0)
+    : (effectiveReferenceCaps.max_reference_videos ?? null);
+  const maxRefAudios = effectiveReferenceCaps.max_reference_audios ?? null;
+  const showRefVideo = currentVideoModel?.uploadReferenceCapabilities
+    ? Boolean(happyHorseVideoCaps?.isAvailable)
+    : maxRefVideos === null || maxRefVideos > 0;
   const isSeedance = isSeedanceVideoModel({ modelId: model, modelName: currentVideoModel?.label });
   const showRefAudio = isSeedance && (maxRefAudios === null || maxRefAudios > 0);
   const showRefImages = referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
@@ -431,6 +441,57 @@ export default function GenerateVideoPanel({
   const imageCountLabel = maxRefImages != null ? `${imageCount}/${maxRefImages}` : null;
   const videoCountLabel = maxRefVideos != null ? `${refVideos.length}/${maxRefVideos}` : null;
   const audioCountLabel = maxRefAudios != null ? `${refAudios.length}/${maxRefAudios}` : null;
+
+  function toReferenceValidationFile(item, type) {
+    if (type === 'video') return { ...item, type: item?.type?.startsWith('video/') ? item.type : 'video/mp4' };
+    if (type === 'audio') return { ...item, type: item?.type?.startsWith('audio/') ? item.type : 'audio/mpeg' };
+    return { ...item, type: item?.type?.startsWith('image/') ? item.type : 'image/reference' };
+  }
+
+  function validateReferenceAddition(items = [], type = 'image') {
+    const additions = items.map((item) => toReferenceValidationFile(item, type));
+    const candidateFiles = [...currentReferenceFiles, ...additions];
+    return getReferenceLimitMessage(candidateFiles, videoCaps, currentReferenceFiles);
+  }
+
+  function updateReferenceGroup(setter, group) {
+    return (value) => {
+      setter((previous) => {
+        const next = typeof value === 'function' ? value(previous) : value;
+        const normalizedNext = normalizeStoryboardReferenceGroups({ [group]: next })[group];
+        const groups = {
+          subjects: refSubjects,
+          images: refImages,
+          videos: refVideos,
+          audios: refAudios,
+          [group]: normalizedNext,
+        };
+        const nextFiles = [
+          ...groups.subjects.map((item) => toReferenceValidationFile(item, 'image')),
+          ...groups.images.map((item) => toReferenceValidationFile(item, 'image')),
+          ...groups.videos.map((item) => toReferenceValidationFile(item, 'video')),
+          ...groups.audios.map((item) => toReferenceValidationFile(item, 'audio')),
+        ];
+        const previousFiles = [
+          ...refSubjects.map((item) => toReferenceValidationFile(item, 'image')),
+          ...refImages.map((item) => toReferenceValidationFile(item, 'image')),
+          ...refVideos.map((item) => toReferenceValidationFile(item, 'video')),
+          ...refAudios.map((item) => toReferenceValidationFile(item, 'audio')),
+        ];
+        const message = getReferenceLimitMessage(nextFiles, videoCaps, previousFiles);
+        if (message) {
+          onShowToast?.(message, 'warning');
+          return previous;
+        }
+        return normalizedNext;
+      });
+    };
+  }
+
+  const handleRefSubjectsChange = updateReferenceGroup(setRefSubjects, 'subjects');
+  const handleRefImagesChange = updateReferenceGroup(setRefImages, 'images');
+  const handleRefVideosChange = updateReferenceGroup(setRefVideos, 'videos');
+  const handleRefAudiosChange = updateReferenceGroup(setRefAudios, 'audios');
 
   // 模型切换时保留当前分辨率/时长（若新模型支持）
   useEffect(() => {
@@ -540,10 +601,15 @@ export default function GenerateVideoPanel({
       : [...refSubjects, ...refImages];
     const routeVideos = isFrameReference || referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT ? [] : refVideos;
     const routeAudios = isFrameReference || referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT ? [] : refAudios;
+    const routeReferenceCaps = getEffectiveReferenceCapabilities([
+      ...routeImages.map((item) => toReferenceValidationFile(item, 'image')),
+      ...routeVideos.map((item) => toReferenceValidationFile(item, 'video')),
+      ...routeAudios.map((item) => toReferenceValidationFile(item, 'audio')),
+    ], videoCaps);
     const routeResult = resolveVideoGenerationMode({
       modelId: model,
       modelName: currentVideoModel?.label,
-      capabilities: videoCaps,
+      capabilities: routeReferenceCaps,
       referenceMode,
       hasPrompt: Boolean(activePrompt?.trim()),
       imageCount: isFrameReference ? 0 : routeImages.length,
@@ -557,11 +623,28 @@ export default function GenerateVideoPanel({
       onShowToast?.(routeResult.message, 'warning');
       return;
     }
+    const referenceLimitMessage = getReferenceLimitMessage(
+      [
+        ...routeImages.map((item) => toReferenceValidationFile(item, 'image')),
+        ...routeVideos.map((item) => toReferenceValidationFile(item, 'video')),
+        ...routeAudios.map((item) => toReferenceValidationFile(item, 'audio')),
+      ],
+      videoCaps,
+    );
+    if (referenceLimitMessage) {
+      onShowToast?.(referenceLimitMessage, 'warning');
+      return;
+    }
     const requestRoute = resolveVideoModelRoute({
       modelOption: currentVideoModel,
       generationMode: routeResult.generationMode,
       referenceMode,
+      hasReferenceVideo: routeVideos.length > 0,
     });
+    if (routeVideos.length > 0 && currentVideoModel?.uploadReferenceCapabilities && !requestRoute) {
+      onShowToast?.('当前 HappyHorse 模型暂不支持参考视频，请移除视频素材或更换模型', 'warning');
+      return;
+    }
     if (referenceMode?.startsWith('kling_') && !requestRoute) {
       onShowToast?.('当前 Kling V3 专项能力暂不可用，请刷新模型数据后重试', 'warning');
       return;
@@ -584,7 +667,7 @@ export default function GenerateVideoPanel({
     try {
       // 认证虚拟人像走服务商 asset:// 引用；普通参考图保持用户当前选择，
       // 由上层根据每个素材的身份组装服务商所需字段。
-      const maxRefImages = currentVideoModel?.capabilities?.max_reference_images ?? null;
+      const maxRefImages = requestCapabilities.max_reference_images ?? null;
       const referenceMedia = !isFrameReference && (maxRefImages === null || maxRefImages > 0)
         ? routeImages.slice(0, maxRefImages ?? 99)
         : [];
@@ -714,7 +797,6 @@ export default function GenerateVideoPanel({
               showRefImages={showRefImages}
               showRefVideo={showRefVideo}
               showRefAudio={showRefAudio}
-              maxRefImages={maxRefImages}
               maxRefVideos={maxRefVideos}
               maxRefAudios={maxRefAudios}
               imageCountLabel={imageCountLabel}
@@ -735,6 +817,7 @@ export default function GenerateVideoPanel({
               onRefLastFrameChange={setRefLastFrame}
               onUsePreviousFrameShortcut={handleUsePreviousFrameShortcut}
               onReferenceMediaUpload={handleRefMediaUpload}
+              onValidateReferenceAdd={validateReferenceAddition}
               buildRefFromAsset={buildRefFromAsset}
               onInsertReference={(media, type) => promptRef.current?.insertMention(media.name || (type === 'video' ? '参考视频' : '参考音频'), type)}
             />

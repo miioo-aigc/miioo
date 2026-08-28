@@ -1,5 +1,13 @@
 # 组件重构盘点基线
 
+## 2026-08-28 视频模型映射下线能力收口
+
+- `videoModelAdapter.js` 在模型菜单聚合前过滤明确无能力的视频模型：`supported_generation_modes` 明确为空数组，或 snake_case/camelCase 的生成模式映射明确为空对象时不展示；能力字段缺失继续保留给后续校验处理。
+- `videoModelCapabilities.js` 将当前参考模式收敛为全能参考和首尾帧，使用后端 `supported_generation_modes` 推导 `generation_mode`，再以真实路由模型的 `generation_reference_mode_map` 读取 `reference_mode`；不再消费旧 `reference_modes`。
+- `CreationInputCard.jsx`、`CreationRefModeSelector.jsx`、`CreationPromptEditor.jsx`、`GenerateVideoPanel.jsx`、`StoryboardPage.jsx` 和 `api/creation.js` 已移除 `multi_shot`/`multiframe` 的新创作入口、素材分流和请求参数。历史详情与候选媒体仍保留只读字段兼容；`creationDetailAdapter.js` 重新编辑旧多帧记录时仅将其降级为当前首尾帧输入。
+- 当前聚合模型架构保持不变：聚合能力服务于模型菜单与初步 UI，真实子模型路由继续承担发送前映射与校验。HappyHorse 动态上传限制是这一分层的现有局部实现；完整的“展示聚合能力/请求路由能力”拆分留待后续专项重构。
+- 验证：目标文件定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；全仓 `npm run lint` 无错误，仅保留 `src/components/storyboard/PanelPromptInput.jsx` 的既有 Hook 依赖警告。
+
 ## 2026-08-28 分镜全能参考复用 HappyHorse 动态素材限制
 
 - `GenerateVideoPanel.jsx` 将当前分镜主体参考、普通参考图、参考视频和参考音频整理为候选最终素材集合，并复用 `CreationFileUtils.js` 选择 HappyHorse 的 `imageOnly`/`withVideo` 能力；主体图片与普通参考图合并计入图片额度。

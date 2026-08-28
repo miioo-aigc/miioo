@@ -26,7 +26,8 @@
  *   2026-08-20  配音资产确认后使用独立音频文件卡片展示，并提供播放/暂停控制
  *   2026-08-20  资产库视频参考保留封面字段，输入区文件卡片不再把视频地址误作背景图
  *   2026-08-20  Seedance 真人素材按带特殊标识的普通参考图追加，不替换已有真人素材
- *   2026-08-21  首尾帧与全能参考/智能多帧双向切换时迁移图片素材，避免模式切换丢图
+ *   2026-08-28  当前视频创作仅保留全能参考与首尾帧；已下线多帧模式不再进入上传、资产选择或请求参数
+ *   2026-08-21  首尾帧与普通参考双向切换时迁移图片素材，避免模式切换丢图
  *   2026-08-21  高频切换时同步清空首尾帧 ref，避免旧状态更新覆盖新回填结果
  *   2026-08-21  普通与高级配音模式统一透传 voice_setting，保持现有编辑和多选交互不变
  *   2026-08-25  视频生成模式与参考模式映射移除模型名称硬编码兜底，改为完全读取后端能力数据
@@ -53,7 +54,6 @@ import {
 import { isSeedanceModel } from '../../utils/seedanceModel';
 import { readCreationDocumentText } from './CreationDocumentTextReader';
 import {
-  ALLOWED_IMAGE_EXTS,
   MAX_CREATION_FILES,
   getCreationUploadExtensions,
   getCreationAcceptAttr,
@@ -203,17 +203,12 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   });
   const handleFileSelect = useCallback((newFiles = []) => {
     const selectedFiles = Array.from(newFiles);
-    if (genType === 'video' && refMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
-      && selectedFiles.some((file) => !isImageFile(file))) {
-      showToast?.('warning', '智能多帧模式当前仅支持图片素材');
-      return;
-    }
     if (genType === 'video' && !allowsVideoAudio && selectedFiles.some(isAudioFile)) {
       showToast?.('warning', '当前仅 Seedance 全能参考支持音频素材');
       return;
     }
     handleRawFileSelect(selectedFiles);
-  }, [allowsVideoAudio, genType, handleRawFileSelect, refMode, showToast]);
+  }, [allowsVideoAudio, genType, handleRawFileSelect, showToast]);
   const [frameAssetTarget, setFrameAssetTarget] = useState(null);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const savedContentRef = useRef({
@@ -542,12 +537,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     if (prefillData.lastFrameFile !== undefined) setLastFrameFile(prefillData.lastFrameFile);
   }, [prefillVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const uploadAllowedExts = genType === 'video' && refMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
-    ? ALLOWED_IMAGE_EXTS
-    : getCreationUploadExtensions(genType, allowsVideoAudio);
-  const uploadAcceptAttr = genType === 'video' && refMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
-    ? ALLOWED_IMAGE_EXTS.join(',')
-    : getCreationAcceptAttr(genType, allowsVideoAudio);
+  const uploadAllowedExts = getCreationUploadExtensions(genType, allowsVideoAudio);
+  const uploadAcceptAttr = getCreationAcceptAttr(genType, allowsVideoAudio);
 
   // 文件列表、上限裁剪和 Blob URL 生命周期由 useCreationInputFiles 统一管理。
 
@@ -572,11 +563,6 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       if (frameAssetTarget === 'first') setFirstFrameFile(assetFile);
       else setLastFrameFile(assetFile);
       setFrameAssetTarget(null);
-      return;
-    }
-    if (genType === 'video' && refMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
-      && selectedAssets.some((asset) => String(asset.asset_type || asset.assetType || asset.type || '').toLowerCase() !== 'image')) {
-      showToast?.('warning', '智能多帧模式当前仅支持图片素材');
       return;
     }
     if (genType === 'video' && !allowsVideoAudio
@@ -865,7 +851,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   const assetPickerAccept = genType === 'image'
     ? 'image'
     : genType === 'video'
-      ? refMode === VIDEO_REFERENCE_MODES.MULTI_SHOT ? 'image' : allowsVideoAudio ? 'all' : 'media'
+      ? allowsVideoAudio ? 'all' : 'media'
       : (genType === 'dubbing' || genType === 'music') ? 'audio' : 'all';
   const assetPickerPreSelectedFiles = [...files, firstFrameFile, lastFrameFile]
     .filter((file) => file?.isAsset);

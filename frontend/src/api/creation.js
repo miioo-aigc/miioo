@@ -173,9 +173,10 @@ function getImageUrls(image) {
  *   [分支] 视频生成                                  L1286  generation_mode / reference_mode / attachments
  *   [校验] 视频能力与音频门禁                         L935  上传前校验 generation_mode、reference_mode 与能力映射
  *   [组装] @ 数字资产绑定 attachments                L1292  CreationAssetBinding[]，source:'mention'
- *   [组装] 视频生成请求体 body                       L1322  generation_mode / reference_mode / multi_shot / attachments / reference_image_asset_ids / first_frame_url
+ *   [组装] 视频生成请求体 body                       L1322  generation_mode / reference_mode / attachments / reference_image_asset_ids / first_frame_url
  *   [日志] [video-generate] 调试日志                 L1355  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *  2026-08-28  视频新请求不再发送已下线的 multi_shot 参数；参考模式继续由后端映射结果决定
  *   2026-08-12  新增音乐生成支持：POST /api/music/generate、通用任务中心 GET /api/tasks/{task_id} 轮询（最多 600 秒），
  *               音乐分支与图片/视频/配音完全隔离，参考音频上传不阻塞整体生成
  *   2026-08-20  视频 generation_mode 改由输入层统一能力路由确定；API 仅校验能力并保留厂商字段适配。
@@ -1348,7 +1349,6 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
     generation_mode: effectiveGenerationMode,
     reference_mode: effectiveReferenceMode,
     // 厂商适配只补字段形态，不重新决定 generation_mode。
-    multi_shot: effectiveGenerationMode === 'multi_shot' ? true : undefined,
     with_audio: params.soundEnabled ?? false,
     // 真人素材通过 provider_params.live_material 传递（后端 _resolve_creation_live_material_inputs 消费）
     subjects: undefined,
@@ -1372,7 +1372,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
     shot_id: uploadContext.shot_id,
     project_id: uploadContext.project_id,
   };
-  console.log('[video-generate]', { model: params.model, generation_mode: body.generation_mode, reference_mode: body.reference_mode, multi_shot: body.multi_shot, refUrls, refAssetIds, attachments, firstFrameUrl, uploadedRefVideoUrl, hasRefMedia });
+  console.log('[video-generate]', { model: params.model, generation_mode: body.generation_mode, reference_mode: body.reference_mode, refUrls, refAssetIds, attachments, firstFrameUrl, uploadedRefVideoUrl, hasRefMedia });
   const genData = await apiGenerateCreationVideo(body);
   const taskId = genData.task_id || genData.id;
   if (!taskId) throw new Error('No task_id returned');

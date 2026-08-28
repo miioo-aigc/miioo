@@ -125,11 +125,11 @@ export function mergeCreationVideoDetail(card, detail) {
   };
 }
 
+// multiframe 仅用于历史详情回填为当前首尾帧输入，不代表当前模型能力或新请求参数。
 const FRAME_REFERENCE_MODES = new Set(['first_frame', 'last_frame', 'start_end', 'multiframe']);
 
 export function toCreationRefMode(value) {
-  if (value === 'frame' || value === 'all' || value === 'multi_shot') return value;
-  if (value === 'multi') return 'multi_shot';
+  if (value === 'frame' || value === 'all') return value;
   return FRAME_REFERENCE_MODES.has(value) ? 'frame' : 'all';
 }
 

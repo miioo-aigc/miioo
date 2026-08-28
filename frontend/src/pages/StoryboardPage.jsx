@@ -48,6 +48,8 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-08-28  分镜视频模型筛选改由可展示参考模式判断；不再读取已废弃的 reference_modes，
+ *               已下线多帧模式不进入新建分镜视频请求
  *   2026-08-21  分镜视频创作复用创作页模型能力路由：按 UI 参考模式分流首尾帧素材，
  *               请求同步传递生成模式、参考模式与模型能力上下文
  *   2026-08-17  Seedance 虚拟人像参考主体刷新后按 asset_id 鉴权重取高清预览，运行时转为 Blob URL；
@@ -101,6 +103,7 @@ import { apiGetLiveMaterialPreview } from '../api/liveMaterials';
 import DotsLoading from '../components/DotsLoading';
 import { normalizeImageUrl, toAbsoluteUrl } from '../utils/imageUrl';
 import { normalizeStoryboardModelList, normalizeStoryboardDurationOptions } from '../utils/storyboardModelAdapter';
+import { VIDEO_REFERENCE_MODES } from '../utils/videoModelCapabilities';
 import { repairStoryboardPromptBindings } from '../utils/storyboardPromptBindingRepair';
 import {
   extractStoryboardImageUrl,
@@ -421,10 +424,9 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
       || videoFormStateMap[shot?.id]
       || shot?.creationForm?.video
       || {};
-    const fullModels = videoModels.filter((model) => {
-      const modes = model.capabilities?.reference_modes || [];
-      return modes.length === 0 || modes.some((mode) => !['first_frame', 'last_frame', 'start_end', 'multiframe'].includes(mode));
-    });
+    const fullModels = videoModels.filter((model) => (
+      model.availableReferenceModes?.some((mode) => mode.value === VIDEO_REFERENCE_MODES.ALL)
+    ));
     const selected = fullModels.find((model) => model.value === form.model)
       || fullModels.find((model) => model.is_default)
       || fullModels[0];
@@ -2828,7 +2830,6 @@ function hasStoryboardMediaHint(shot = {}) {
                 } : {}),
                 generate_mode: params.generate_mode,
                 reference_mode: params.reference_mode,
-                multi_shot: params.multi_shot,
                 modelName: params.modelName,
                 videoCapabilities: params.videoCapabilities,
                 supportedGenerationModes: params.supportedGenerationModes,

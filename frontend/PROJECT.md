@@ -1,5 +1,14 @@
 # miioo 项目进度管理文档
 
+## 2026-08-28 视频模型映射下线能力收口
+
+- 创作页和分镜页的视频模型列表在聚合前过滤明确无能力的模型：后端显式返回 `supported_generation_modes: []`，或显式返回空的 `generation_reference_mode_map` / `generationReferenceModeMap` 时不展示；字段缺失仍保留，避免把配置缺失误判为下线。
+- 当前新建视频只由 `supported_generation_modes` 与 `generation_reference_mode_map` 驱动参考模式、`generation_mode` 和请求校验，不再读取旧 `reference_modes`。Seedance 系列按已确认规则继续强制使用 `full`。
+- `multi_shot` 与 `multiframe` 不再进入参考模式菜单、上传/资产选择、素材分流或新请求参数。历史记录仍可展示；重新编辑旧模式时会回填到当前可用的全能参考或首尾帧输入，不会重新发出旧模式。
+- HappyHorse、Kling 等产品模型仍采用现有展示聚合与真实子模型路由机制；本轮没有推翻该架构。后续若继续扩展子模型能力，应将菜单展示的聚合范围与最终请求路由后的真实能力明确分层，避免聚合上限放宽真实子模型限制。
+- 涉及文件：`src/utils/videoModelAdapter.js`、`src/utils/videoModelCapabilities.js`、`src/utils/creationDetailAdapter.js`、`src/components/creation/`、`src/components/storyboard/GenerateVideoPanel.jsx`、`src/pages/StoryboardPage.jsx`、`src/api/creation.js`。
+- 验证：目标文件定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；全仓 `npm run lint` 无错误，仅保留 `src/components/storyboard/PanelPromptInput.jsx` 的既有 Hook 依赖警告。
+
 ## 2026-08-28 分镜页复用 HappyHorse 动态素材限制
 
 - 分镜页面“创作视频”面板的全能参考模式复用创作页 HappyHorse 1.0、HappyHorse 1.1 的动态素材能力判断，不再按聚合模型合并后的最大值放宽上传上限。

@@ -28,6 +28,7 @@
  *               创作页专项能力展示不受影响
  *   2026-08-28  分镜全能参考复用 HappyHorse 动态素材能力：主体与参考图合并计数，
  *               含视频时切换 video-edit 上限，上传/资产库/生成前统一校验并保护缺失路由
+ *   2026-08-28  当前分镜视频仅使用全能参考与首尾帧；已下线多帧模式不再参与素材分流或生成参数
  *   2026-08-17  Seedance 真人保留 live_material 参数，虚拟人像保留 asset_ref_url 服务商引用；
  *               主体参考从主体列表补全认证身份且同步过程不丢失；全能参考显式传 generate_mode='full'
  *   2026-08-12  拆分全能参考与首尾帧提示词：fullPrompt 保留 @主体 标签绑定，
@@ -425,17 +426,13 @@ export default function GenerateVideoPanel({
     : maxRefVideos === null || maxRefVideos > 0;
   const isSeedance = isSeedanceVideoModel({ modelId: model, modelName: currentVideoModel?.label });
   const showRefAudio = isSeedance && (maxRefAudios === null || maxRefAudios > 0);
-  const showRefImages = referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
-    ? true
-    : maxRefImages === null || maxRefImages > 0;
+  const showRefImages = maxRefImages === null || maxRefImages > 0;
   const showRefSubjects = showRefImages && (
     videoCaps.supports_reference_subjects === true ||
     (videoCaps.supported_generation_modes || []).includes('full') ||
     (videoCaps.supported_generation_modes || []).includes('reference_subjects')
   );
-  const activeReferenceImages = referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
-    ? refImages
-    : [...refSubjects, ...refImages];
+  const activeReferenceImages = [...refSubjects, ...refImages];
   const imageCount = activeReferenceImages.length;
   const canAddImage = maxRefImages === null || imageCount < maxRefImages;
   const imageCountLabel = maxRefImages != null ? `${imageCount}/${maxRefImages}` : null;
@@ -515,8 +512,7 @@ export default function GenerateVideoPanel({
     if (referenceMode === VIDEO_REFERENCE_MODES.FRAME) return [];
     const items = [];
     // 参考主体（_type: char/scene/prop 为真实主体；本地上传/非主体资产为普通参考图 image，与图片弹窗保持一致：紫色标签「参考图」）
-    const activeSubjects = referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT ? [] : refSubjects;
-    activeSubjects.forEach(s => {
+    refSubjects.forEach(s => {
       const rawType = s._type || s.type;
       const isSubject = rawType === 'char' || rawType === 'scene' || rawType === 'prop';
       const type = isSubject ? rawType : 'image';
@@ -596,11 +592,9 @@ export default function GenerateVideoPanel({
     if (loading) return;
     const isFrameReference = referenceMode === VIDEO_REFERENCE_MODES.FRAME;
     const activePrompt = isFrameReference ? framePrompt : fullPrompt;
-    const routeImages = referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT
-      ? refImages
-      : [...refSubjects, ...refImages];
-    const routeVideos = isFrameReference || referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT ? [] : refVideos;
-    const routeAudios = isFrameReference || referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT ? [] : refAudios;
+    const routeImages = [...refSubjects, ...refImages];
+    const routeVideos = isFrameReference ? [] : refVideos;
+    const routeAudios = isFrameReference ? [] : refAudios;
     const routeReferenceCaps = getEffectiveReferenceCapabilities([
       ...routeImages.map((item) => toReferenceValidationFile(item, 'image')),
       ...routeVideos.map((item) => toReferenceValidationFile(item, 'video')),
@@ -688,7 +682,6 @@ export default function GenerateVideoPanel({
         last_frame_asset_id: refLastFrame?.assetId || refLastFrame?.asset_id || undefined,
         generate_mode: routeResult.generationMode,
         reference_mode: referenceRouteResult.referenceMode,
-        multi_shot: routeResult.generationMode === 'multi_shot',
         modelName: currentVideoModel?.label,
         videoCapabilities: requestCapabilities,
         supportedGenerationModes: requestCapabilities.supported_generation_modes || [],

@@ -15,7 +15,6 @@ const FRAME_GENERATION_MODES = new Set(['first_frame', 'last_frame', 'start_end'
 
 export const VIDEO_REFERENCE_MODES = Object.freeze({
   ALL: 'all',
-  MULTI_SHOT: 'multi_shot',
   FRAME: 'frame',
 });
 
@@ -27,7 +26,6 @@ export const VIDEO_SPECIAL_REFERENCE_MODES = Object.freeze({
 
 const REFERENCE_MODE_LABELS = Object.freeze({
   [VIDEO_REFERENCE_MODES.ALL]: '全能参考',
-  [VIDEO_REFERENCE_MODES.MULTI_SHOT]: '智能多帧',
   [VIDEO_REFERENCE_MODES.FRAME]: '首尾帧',
 });
 
@@ -64,14 +62,10 @@ export function isSeedanceVideoModel({ modelId = '', modelName = '' } = {}) {
 
 export function getAvailableVideoReferenceModes(capabilities = {}) {
   const generationModes = normalizeSupportedGenerationModes(capabilities);
-  const supported = new Set(generationModes);
   const modes = [];
 
   if (generationModes.some((mode) => ALL_REFERENCE_GENERATION_MODES.has(mode))) {
     modes.push({ value: VIDEO_REFERENCE_MODES.ALL, label: REFERENCE_MODE_LABELS.all });
-  }
-  if (supported.has('multi_shot')) {
-    modes.push({ value: VIDEO_REFERENCE_MODES.MULTI_SHOT, label: REFERENCE_MODE_LABELS.multi_shot });
   }
   if (generationModes.some((mode) => FRAME_GENERATION_MODES.has(mode))) {
     modes.push({ value: VIDEO_REFERENCE_MODES.FRAME, label: REFERENCE_MODE_LABELS.frame });
@@ -83,7 +77,7 @@ export function getAvailableVideoReferenceModes(capabilities = {}) {
 export function resolveVideoReferenceModeFallback(currentMode, availableModes = []) {
   const values = availableModes.map((mode) => typeof mode === 'string' ? mode : mode.value);
   if (values.includes(currentMode)) return currentMode;
-  return [VIDEO_REFERENCE_MODES.ALL, VIDEO_REFERENCE_MODES.FRAME, VIDEO_REFERENCE_MODES.MULTI_SHOT]
+  return [VIDEO_REFERENCE_MODES.ALL, VIDEO_REFERENCE_MODES.FRAME]
     .find((mode) => values.includes(mode)) || '';
 }
 
@@ -148,14 +142,6 @@ export function resolveVideoGenerationMode({
     return success('first_frame');
   }
 
-  if (referenceMode === VIDEO_REFERENCE_MODES.MULTI_SHOT) {
-    if (imageCount < 1) return fail('MULTI_SHOT_IMAGE_REQUIRED', '智能多帧模式请至少添加一张图片');
-    if (videoCount > 0 || audioCount > 0 || liveMaterialCount > 0) {
-      return fail('MULTI_SHOT_IMAGE_ONLY', '智能多帧模式当前仅支持图片素材');
-    }
-    return ensureSupported('multi_shot');
-  }
-
   if (referenceMode === VIDEO_REFERENCE_MODES.FRAME) {
     if (!hasFirstFrame && !hasLastFrame) return fail('FRAME_REQUIRED', '请至少上传首帧或尾帧');
     const generationMode = hasFirstFrame && hasLastFrame
@@ -186,7 +172,7 @@ export function resolveVideoGenerationMode({
   if (imageCount > 0 || liveMaterialCount > 0) {
     if (supportedModes.has('reference_subjects')) return success('reference_subjects');
     if (supportedModes.has('full')) return success('full');
-    return fail('IMAGE_NOT_SUPPORTED', '当前模型不支持全能参考中的图片素材，请选择智能多帧、首尾帧或更换模型');
+    return fail('IMAGE_NOT_SUPPORTED', '当前模型不支持全能参考中的图片素材，请选择首尾帧或更换模型');
   }
   if (hasPrompt) return ensureSupported('text_to_video');
   return fail('VIDEO_INPUT_REQUIRED', '请输入文字或添加当前模式支持的参考素材');

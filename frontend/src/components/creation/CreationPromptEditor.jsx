@@ -82,11 +82,9 @@ function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled,
 
   const text = genType === 'video' && refMode === 'frame'
     ? '输入文字，描述你想创作的画面内容'
-    : genType === 'video' && refMode === 'multi_shot'
-      ? '请添加智能多帧分镜图'
-      : genType === 'dubbing'
-        ? '文字转语音'
-        : '描述你想生成的内容';
+    : genType === 'dubbing'
+      ? '文字转语音'
+      : '描述你想生成的内容';
 
   return <span style={baseStyle}>{text}</span>;
 }

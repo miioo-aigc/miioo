@@ -60,8 +60,8 @@ const SPECIAL_MODE_CONFIG = Object.freeze({
 const VIDEO_MODEL_SORT_PRIORITY = Object.freeze([
   'seedance',
   'kling',
-  'vidu',
   'happyhorse',
+  'vidu',
   'veo',
 ]);
 
@@ -77,12 +77,35 @@ function capabilitiesOf(item) {
   return item?.capabilities && typeof item.capabilities === 'object' ? item.capabilities : {};
 }
 
+/**
+ * 后端显式下发空数组或空映射，表示模型当前没有可用的视频生成能力。
+ * 字段缺失仍保留，交给后续能力校验提示配置问题，不能误判为已下线。
+ */
+export function hasUsableVideoCapabilities(item) {
+  const capabilities = capabilitiesOf(item);
+  const hasSupportedModes = Object.prototype.hasOwnProperty.call(capabilities, 'supported_generation_modes');
+  const supportedModes = capabilities.supported_generation_modes;
+  if (hasSupportedModes && Array.isArray(supportedModes) && supportedModes.length === 0) return false;
+
+  const mapKey = Object.prototype.hasOwnProperty.call(capabilities, 'generation_reference_mode_map')
+    ? 'generation_reference_mode_map'
+    : Object.prototype.hasOwnProperty.call(capabilities, 'generationReferenceModeMap')
+      ? 'generationReferenceModeMap'
+      : null;
+  if (mapKey && capabilities[mapKey] && typeof capabilities[mapKey] === 'object'
+    && !Array.isArray(capabilities[mapKey]) && Object.keys(capabilities[mapKey]).length === 0) {
+    return false;
+  }
+
+  return true;
+}
+
 function mergeCapabilities(items) {
   const first = capabilitiesOf(items[0]);
   const merged = { ...first };
   const arrayFields = [
     'supported_aspect_ratios', 'supported_resolutions', 'supported_sizes',
-    'supported_durations', 'supported_generation_modes', 'reference_modes',
+    'supported_durations', 'supported_generation_modes',
   ];
   for (const field of arrayFields) {
     const values = items.flatMap((item) => Array.isArray(capabilitiesOf(item)[field]) ? capabilitiesOf(item)[field] : []);
@@ -97,7 +120,6 @@ function mergeCapabilities(items) {
   for (const field of [
     'max_reference_images', 'max_reference_videos', 'max_reference_audios',
     'max_total_attachments', 'max_subjects', 'max_subject_images_per_subject',
-    'max_multiframe_segments',
   ]) {
     const values = items
       .map((item) => capabilitiesOf(item)[field])
@@ -106,7 +128,7 @@ function mergeCapabilities(items) {
   }
   for (const field of [
     'supports_reference_video', 'supports_reference_audio', 'supports_reference_subjects',
-    'supports_multishot', 'supports_multiframe', 'supports_video_edit',
+    'supports_video_edit',
     'supports_video_extension', 'supports_live_material', 'supports_text_only',
   ]) {
     if (items.some((item) => capabilitiesOf(item)[field] === true)) merged[field] = true;
@@ -220,7 +242,9 @@ export function sortVideoModelOptions(options = []) {
 }
 
 export function normalizeVideoModelList(backendModels) {
-  const list = unwrapModelList(backendModels).filter((item) => enabled(item) && isVideoModel(item));
+  const list = unwrapModelList(backendModels).filter((item) => (
+    enabled(item) && isVideoModel(item) && hasUsableVideoCapabilities(item)
+  ));
   const consumed = new Set();
   const options = [];
 

@@ -10,6 +10,7 @@
  *
  * ─── 状态转换 ───────────────────────────────────────────────────
  *   creationParams 或 genType 变化                               默认值与联动重置
+ *   genType 离开 dubbing                                          配音参数恢复默认值
  *   prefillVersion 变化                                          重新编辑/复用时回填参数
  *   resetDubbingParams                                            发送后恢复配音参数
  *
@@ -19,12 +20,19 @@
  *   CreationPage 持有。
  *
  * ─── 更新记录 ───────────────────────────────────────────────────
+ *   2026-08-31  离开配音一级 Tab 时恢复语速、声调和音量默认值
  *   2026-08-18  配音参数由语速/情绪调整为语速/声调/音量，并补齐默认值与重置
  *   2026-07-16  从 CreationPage 的 InputCard 抽离参数状态与默认值联动
  *   2026-07-16  补齐视频重新编辑的 videoRatio / videoResolution / videoDuration 回填；完成定向 ESLint、构建、架构和差异检查
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+export const DEFAULT_DUBBING_PARAMS = Object.freeze({
+  speed: 1.0,
+  pitch: 0,
+  volume: 1.0,
+});
 
 function resolveImageDefaults(creationParams) {
   let ratio = creationParams.defaults?.ratio || creationParams.ratios?.[0]?.value || '';
@@ -107,9 +115,9 @@ export function useCreationParamsState({
   const [videoResolution, setVideoResolution] = useState('');
   const [videoDuration, setVideoDuration] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [dubbingSpeed, setDubbingSpeed] = useState(1.0);
-  const [dubbingPitch, setDubbingPitch] = useState(0);
-  const [dubbingVolume, setDubbingVolume] = useState(1.0);
+  const [dubbingSpeed, setDubbingSpeed] = useState(DEFAULT_DUBBING_PARAMS.speed);
+  const [dubbingPitch, setDubbingPitch] = useState(DEFAULT_DUBBING_PARAMS.pitch);
+  const [dubbingVolume, setDubbingVolume] = useState(DEFAULT_DUBBING_PARAMS.volume);
   const currentRefModeRef = useRef('');
 
   useEffect(() => {
@@ -117,10 +125,16 @@ export function useCreationParamsState({
   }, [refMode]);
 
   const resetDubbingParams = useCallback(() => {
-    setDubbingSpeed(1.0);
-    setDubbingPitch(0);
-    setDubbingVolume(1.0);
+    setDubbingSpeed(DEFAULT_DUBBING_PARAMS.speed);
+    setDubbingPitch(DEFAULT_DUBBING_PARAMS.pitch);
+    setDubbingVolume(DEFAULT_DUBBING_PARAMS.volume);
   }, []);
+
+  useEffect(() => {
+    if (genType === 'dubbing') return undefined;
+    const timer = setTimeout(resetDubbingParams, 0);
+    return () => clearTimeout(timer);
+  }, [genType, resetDubbingParams]);
 
   useEffect(() => {
     if (!creationParams) return;

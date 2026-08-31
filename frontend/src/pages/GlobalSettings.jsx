@@ -40,6 +40,8 @@
  *   2026-08-03  项目信息 Tab 内容区补齐 flex 滚动边界，支持小屏高度下滚动查看
  *   2026-08-03  项目信息视觉风格封面与新建项目风格库统一，新增风格图优先
  *   2026-08-04  剧本进度卡片支持跳转对应分集分镜，并补齐卡片交互反馈
+ *   2026-08-31  项目信息 Tab 支持自定义视觉风格入口卡片展示
+ *   2026-08-31  自定义视觉风格卡片恢复普通深色卡片结构
  */
 
 import { lazy, Suspense, useState, useRef, useEffect } from 'react';
@@ -178,6 +180,15 @@ function CoverUpload({ coverUrl, onUpload, isSaving }) {
       </div>
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleChange} />
     </>
+  );
+}
+
+// 与新建项目弹窗一致的自定义风格入口图标。
+function AdjustIcon() {
+  return (
+    <svg viewBox="0 0 102.4 102.4" width="20" height="20" fill="none" aria-hidden="true">
+      <path d="M71.015 37.529l16.844-16.845-6.144-6.143-16.845 16.844 6.145 6.144zM96.768 20.684c0 1.024-.358 1.895-1.024 2.612L21.709 97.28c-.665.665-1.638 1.075-2.612 1.023-.973.051-1.895-.358-2.611-1.023L5.12 85.862c-.665-.665-1.075-1.075-1.025-2.611 0-1.024.358-1.895 1.025-2.611L79.155 6.656c.665-.665 1.638-1.075 2.611-1.024 1.024 0 1.895.358 2.611 1.024L95.744 18.073c.665.665 1.024 1.536 1.024 2.611zM18.995 9.728l5.632 1.741-5.632 1.74-1.74 5.633-1.741-5.633-5.632-1.74 5.632-1.741 1.741-5.632 1.74 5.632z m20.173 9.318l11.264 3.43-11.264 3.431-3.431 11.264-3.43-11.264-11.264-3.431 11.264-3.43 3.43-11.264 3.431 11.264zM92.672 46.541l5.632 1.741-5.632 1.74-1.741 5.632-1.741-5.632-5.632-1.74 5.632-1.741 1.741-5.632 1.741 5.632zM55.859 9.728l5.632 1.741-5.632 1.74-1.741 5.633-1.741-5.633-5.632-1.74 5.632-1.741 1.741-5.632 1.74 5.632z" fill="#FFFFFFCC" />
+    </svg>
   );
 }
 
@@ -408,6 +419,7 @@ export default function GlobalSettings({
   projectRatio = '16:9',
   projectStyle = 'xianxia-3d',
   projectStyleLabel = '',
+  projectStylePrompt = '',
   projectCreationType = 'dialogue',
   onProjectUpdate,
   onBack,
@@ -557,6 +569,10 @@ export default function GlobalSettings({
     );
   }
 
+  const isCustomStyle = projectStyle === 'custom' || projectStyle?.startsWith('custom:');
+  const customStyleText = projectStyleLabel || projectStylePrompt || '自定义风格';
+  const style = VISUAL_STYLES[projectStyle];
+
   return (
     <div style={{ flex: '1 1 0%', minHeight: 0, minWidth: 0, overflow: 'hidden', padding: '0px 24px 24px 0px', height: '100%', boxSizing: 'border-box', display: 'flex' }}>
       <div style={{ borderRadius: '16px', padding: '16px 24px 0px', background: '#161616', border: '1px solid #FFFFFF14', minHeight: 0, minWidth: 0, height: '100%', flex: '1 1 0%', boxSizing: 'border-box', overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -623,23 +639,24 @@ export default function GlobalSettings({
             <div style={{ display: 'flex', gap: '14px', width: '600px', height: '200px', flexShrink: 0 }}>
               <div style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFFB3', paddingTop: '2px', flexShrink: 0 }}>视觉风格</div>
               {/* 风格卡片 — 只读展示，200×200 */}
-              <div style={{ width: '200px', height: '200px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden', position: 'relative', background: '#2A2A2A' }}>
-                {VISUAL_STYLES[projectStyle]?.coverImg && (
-                  <img src={VISUAL_STYLES[projectStyle].coverImg} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              <div
+                style={{
+                  width: '200px', height: '200px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden', position: 'relative',
+                  background: '#2A2A2A',
+                  boxSizing: 'border-box',
+                }}
+              >
+                {isCustomStyle ? (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '20px 16px', boxSizing: 'border-box' }}>
+                    <AdjustIcon />
+                    <span style={{ maxWidth: '168px', maxHeight: '96px', overflow: 'hidden', textAlign: 'center', fontFamily: FONT, fontSize: '12px', lineHeight: '18px', color: '#FFFFFF66', wordBreak: 'break-word' }}>
+                      {customStyleText}
+                    </span>
+                  </div>
+                ) : style?.coverImg && (
+                  <img src={style.coverImg} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 )}
-                {/* 底部渐变 + 风格名 — h-26 = 104px */}
-                <div style={{
-                  position: 'absolute', bottom: -1, left: 0, right: 0,
-                  height: '104px',
-                  paddingTop: '18px', paddingBottom: '12px', paddingLeft: '16px', paddingRight: '16px',
-                  display: 'flex', alignItems: 'flex-end',
-                  backgroundImage: 'linear-gradient(in oklab 180deg, oklab(0% 0 0 / 0%) 0%, oklab(0% 0 0) 100%)',
-                  borderRadius: '0 0 6px 6px',
-                }}>
-                  <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '16px', color: '#FFFFFF' }}>
-                    {VISUAL_STYLES[projectStyle]?.label || '未设置'}
-                  </span>
-                </div>
+                <div style={{ position: 'absolute', bottom: -1, left: 0, right: 0, height: '104px', padding: '18px 16px 12px', display: 'flex', alignItems: 'flex-end', backgroundImage: 'linear-gradient(in oklab 180deg, oklab(0% 0 0 / 0%) 0%, oklab(0% 0 0) 100%)', borderRadius: '0 0 6px 6px' }}><span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '16px', color: '#FFFFFF' }}>{isCustomStyle ? '自定义风格' : style?.label || projectStyleLabel || '未设置'}</span></div>
               </div>
             </div>
 

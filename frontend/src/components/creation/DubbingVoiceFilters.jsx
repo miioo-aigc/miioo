@@ -10,8 +10,11 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-08-18  按选择音色弹窗筛选设计稿新增
+ *   2026-08-31  语言筛选项统一中文展示并保留后端原始值
+ *   2026-08-31  语言和口音下拉选项支持双向联动
  */
 import { Select } from "../ui";
+import { getLanguageDisplayName } from "./DubbingVoiceLanguage";
 
 const FILTER_FIELDS = [
   { key: "language", label: "语言", optionKey: "languages" },
@@ -28,7 +31,8 @@ export default function DubbingVoiceFilters({ filters, options, onChange }) {
           key={field.key}
           label={field.label}
           value={filters[field.key]}
-          options={["不限", ...(options[field.optionKey] || [])]}
+          displayValue={field.key === "language" ? getLanguageDisplayName(filters[field.key]) : filters[field.key]}
+          options={field.key === "language" ? [{ value: "不限", label: "不限" }, ...(options[field.optionKey] || [])] : ["不限", ...(options[field.optionKey] || [])]}
           width="100%"
           menuMaxHeight="216px"
           onChange={(value) => onChange?.(field.key, value)}

@@ -1557,6 +1557,7 @@ export default function AssetPickerModal({
                   return (
                     <div key={asset.id} style={{ width: 'calc((100% - 32px) / 3)', flexShrink: 0 }}>
                       <CreationAudioResultCard
+                        playbackKey={`asset-picker-${asset.id}`}
                         status="done"
                         audioUrl={asset.url || asset.audio_url || asset.audioUrl || null}
                         prompt={asset.prompt || asset.name || ''}

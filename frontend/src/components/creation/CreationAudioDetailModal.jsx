@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useModalSize } from '../../utils/useModalSize';
 import ConfirmDialog from '../ConfirmDialog';
 import CreationDubbingPromptPreview from './CreationDubbingPromptPreview';
+import { stopVoicePreview } from '../../utils/voicePreviewPlayer';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const WAVEFORM = [14, 22, 11, 18, 28, 16, 24, 10, 19, 26, 13, 21, 30, 15, 23, 12, 20, 27, 14, 22, 10, 18, 26, 16, 24, 12, 20, 29, 15, 23, 11, 19, 27, 14, 22, 10, 18, 25, 13, 21, 29, 16, 24, 12, 20, 28, 15, 23];
@@ -90,6 +91,34 @@ export default function CreationAudioDetailModal({
 
   useEffect(() => {
     const audio = audioRef.current;
+    if (!audio || !audioUrl) {
+      setIsPlaying(false);
+      return undefined;
+    }
+
+    // 详情弹窗使用独立 audio 实例，开始播放前先停止结果卡的全局试听。
+    stopVoicePreview();
+    setCurrentTime(0);
+    setAudioDuration(0);
+
+    const playAudio = () => {
+      audio.play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
+    };
+
+    if (audio.readyState >= 1) playAudio();
+    else audio.addEventListener('loadedmetadata', playAudio, { once: true });
+
+    return () => {
+      audio.removeEventListener('loadedmetadata', playAudio);
+      audio.pause();
+      setIsPlaying(false);
+    };
+  }, [audioUrl]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
     if (!audio || !audioUrl) return undefined;
     audio.volume = playbackVolume;
     audio.muted = muted;
@@ -114,6 +143,7 @@ export default function CreationAudioDetailModal({
     const audio = audioRef.current;
     if (!audio) return;
     if (audio.paused) {
+      stopVoicePreview();
       audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
     } else {
       audio.pause();

@@ -4,14 +4,14 @@
  *
  * ─── 状态层 ─────────────────────────────────────────────────────
  *   hovered / playing / starAnim / confirmDelete                 悬停、播放、收藏动画和删除确认状态
- *   audioRef                                                     音频播放引用
+ *   activeAudioKey                                               共享播放器当前播放卡片
  *
  * ─── 展示层 ────────────────────────────────────────────────────
  *   CreationAudioResultCard                                      配音结果卡、波形、收藏、批量选择和媒体操作
  *   CreationCardActionButton                                    下载/删除悬浮操作及提示
  *
  * ─── 副作用 ────────────────────────────────────────────────────
- *   playing + isDone                                             播放、暂停并重置音频
+ *   共享播放器                                                     卡片间单例播放和状态同步
  *
  * ─── 依赖边界 ──────────────────────────────────────────────────
  *   只通过 props 接收配音数据和下载/删除/批量选择回调；不读取 CreationPage 闭包变量
@@ -29,14 +29,21 @@
  *   2026-08-20  资产选择模式复用组件系统 Checkbox，移除卡片内手写复选框样式
  *   2026-08-21  创作历史配音台词复用提示词预览，展示停顿、语气词和情绪高亮
  *   2026-08-25  创作历史占位卡复用 LoadingAnimation，宽度 88px、高度按比例自适应
+ *   2026-08-31  配音结果卡接入共享播放器，保证同时只播放一段音频
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Checkbox from '../Checkbox';
 import ConfirmDialog from '../ConfirmDialog';
 import LoadingAnimation from '../LoadingAnimation';
 import CreationCardActionButton from './CreationCardActionButton';
 import CreationDubbingPromptPreview from './CreationDubbingPromptPreview';
+import {
+  getActiveVoicePreviewKey,
+  stopVoicePreview,
+  subscribeVoicePreview,
+  toggleVoicePreview,
+} from '../../utils/voicePreviewPlayer';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const WAVEFORM_HEIGHTS = [
@@ -61,6 +68,9 @@ function StarIcon({ filled = false, strokeColor = '#FFFFFF' }) {
 }
 
 export default function CreationAudioResultCard({
+  id = '',
+  audioId = '',
+  playbackKey = '',
   status,
   audioUrl,
   prompt,
@@ -77,12 +87,12 @@ export default function CreationAudioResultCard({
   onToggleFavorite,
 }) {
   const [hovered, setHovered] = useState(false);
-  const [playing, setPlaying] = useState(false);
+  const [activeAudioKey, setActiveAudioKey] = useState(() => getActiveVoicePreviewKey());
   const [starAnim, setStarAnim] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const audioRef = useRef(null);
-
   const isDone = status === 'done' && audioUrl;
+  const audioKey = String(playbackKey || audioId || id || `${audioUrl}:${prompt || ''}`);
+  const playing = activeAudioKey === audioKey;
 
   function handleStarClick(e) {
     e.stopPropagation();
@@ -91,15 +101,20 @@ export default function CreationAudioResultCard({
     onToggleFavorite?.();
   }
 
-  useEffect(() => {
-    if (!audioRef.current) return;
-    if (playing && isDone) {
-      audioRef.current.play().catch(() => setPlaying(false));
-    } else {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+  useEffect(() => subscribeVoicePreview(setActiveAudioKey), []);
+
+  useEffect(() => () => stopVoicePreview(audioKey), [audioKey]);
+
+  async function handlePlayClick(event) {
+    event.stopPropagation();
+    if (!isDone) return;
+
+    try {
+      await toggleVoicePreview({ key: audioKey, url: audioUrl });
+    } catch {
+      // 播放失败时由共享播放器清理播放状态。
     }
-  }, [playing, isDone]);
+  }
 
   return (
     <>
@@ -128,7 +143,7 @@ export default function CreationAudioResultCard({
               <button
                 type="button"
                 aria-label={playing ? '暂停播放' : '播放配音'}
-                onClick={(e) => { e.stopPropagation(); setPlaying((p) => !p); }}
+                onClick={handlePlayClick}
                 style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', backgroundColor: '#2DC3E1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
               >
                 {playing ? (
@@ -160,14 +175,6 @@ export default function CreationAudioResultCard({
                 ))}
               </div>
             </div>
-            <audio
-              ref={audioRef}
-              src={audioUrl}
-              preload="metadata"
-              onEnded={() => setPlaying(false)}
-              onError={() => setPlaying(false)}
-              style={{ display: 'none' }}
-            />
           </div>
         ) : (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -181,15 +188,19 @@ export default function CreationAudioResultCard({
           </div>
         )}
 
+        {isDone && !batchMode && (hovered || favorited) && (
+          <button
+            type="button"
+            onClick={handleStarClick}
+            aria-label={favorited ? '取消收藏' : '收藏配音'}
+            style={{ position: 'absolute', top: '8px', right: '8px', width: '24px', height: '24px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#00000080', border: 'none', cursor: 'pointer', transform: starAnim ? 'scale(1.4)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', zIndex: 1 }}
+          >
+            <StarIcon filled={favorited} />
+          </button>
+        )}
+
         {hovered && isDone && !batchMode && (
           <>
-            <button
-              type="button"
-              onClick={handleStarClick}
-              style={{ position: 'absolute', top: '8px', right: '8px', width: '24px', height: '24px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#00000080', border: 'none', cursor: 'pointer', transform: starAnim ? 'scale(1.4)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', zIndex: 1 }}
-            >
-              <StarIcon filled={favorited} />
-            </button>
             <div style={{ position: 'absolute', bottom: '20px', right: '8px', display: 'flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
               <CreationCardActionButton
                 tooltip="下载"

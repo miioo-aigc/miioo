@@ -16,7 +16,7 @@
  */
 
 import { normalizeImageUrl } from './imageUrl';
-import { toCreationRefMode } from './creationDetailAdapter';
+import { normalizeCreationVideoDetailMedia, toCreationRefMode } from './creationDetailAdapter';
 
 export function getCreationHistoryList(response) {
   return Array.isArray(response)
@@ -116,25 +116,12 @@ export function normalizeCreationHistoryItem(item, type) {
     ? (item.thumbnail_url || item.thumbnailUrl || rawUrl)
     : '';
   const thumbnailUrl = normalizeImageUrl(rawThumbUrl) || url;
-  const assetBindings = item.asset_bindings || item.assetBindings || [];
+  const detailMedia = type === 'video'
+    ? normalizeCreationVideoDetailMedia(item)
+    : { refImages: [], refVideos: [], refAudios: [] };
 
   const refImages = type === 'video'
-    ? assetBindings
-        .filter((binding) => binding.asset_type === 'image')
-        .map((binding) => {
-          const imageUrl = binding.preview_url || binding.previewUrl || binding.url || '';
-          const normalized = normalizeImageUrl(imageUrl) || imageUrl;
-          return {
-            url: normalized,
-            previewUrl: normalized,
-            type: 'image/png',
-            isAsset: true,
-            name: binding.asset_name || 'ref.png',
-            size: 0,
-            assetId: binding.asset_id,
-            role: binding.role || binding.assetRole || '',
-          };
-        })
+    ? detailMedia.refImages
     : (item.reference_images || item.referenceImages || []).map((image) => {
         const imageUrl = typeof image === 'string' ? image : (image?.url || image?.original_url || '');
         const normalized = normalizeImageUrl(imageUrl) || imageUrl;
@@ -150,34 +137,11 @@ export function normalizeCreationHistoryItem(item, type) {
       });
 
   const refVideos = type === 'video'
-    ? assetBindings
-        .filter((binding) => binding.asset_type === 'video')
-        .map((binding) => {
-          const videoUrl = binding.url || '';
-          const previewUrl = binding.preview_video_url || binding.previewVideoUrl || binding.preview_url || binding.previewUrl || videoUrl;
-          return {
-            url: videoUrl,
-            previewUrl,
-            type: 'video/mp4',
-            isAsset: true,
-            name: binding.asset_name || 'ref.mp4',
-            size: 0,
-            duration: binding.duration,
-            assetId: binding.asset_id,
-          };
-        })
+    ? detailMedia.refVideos
     : [];
 
   const refAudios = type === 'video'
-    ? assetBindings
-        .filter((binding) => binding.asset_type === 'audio')
-        .map((binding) => ({
-          url: binding.url || '',
-          name: binding.asset_name || 'ref.mp3',
-          size: 0,
-          duration: binding.duration,
-          assetId: binding.asset_id,
-        }))
+    ? detailMedia.refAudios
     : [];
 
   const posterUrl = normalizeImageUrl(

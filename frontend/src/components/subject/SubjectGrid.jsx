@@ -25,6 +25,7 @@ export default function SubjectGrid({
   scenes = [],
   props = [],
   charVoices = {},
+  charVoiceNames = {},
   voiceList = [],
   selectedChar,
   selectedScene,
@@ -74,6 +75,7 @@ export default function SubjectGrid({
       {items.map((item) => {
         const voiceId = charVoices[item.id];
         const voice = voiceList.find((entry) => entry.voice_id === voiceId);
+        const voiceName = item.voice_name || item.voiceName || charVoiceNames[item.id] || voice?.name || voiceId;
         const certificationStatus = certificationMode && isCharacterTab
           ? getCurrentSubjectCertificationStatus(item, certificationBySubject[item.id])
           : undefined;
@@ -85,8 +87,8 @@ export default function SubjectGrid({
             imageUrl={item.imageUrl}
             emptyIcon={emptyIcon}
             voice={isCharacterTab ? voiceId : undefined}
-            // 音色 ID 已清空时不能继续展示主体接口返回的旧 voice_name。
-            voiceName={isCharacterTab && voiceId ? (item.voice_name ?? voice?.name) : undefined}
+            // 音色名称优先使用主体字段；保存后的本地映射用于等待父级列表回传期间的即时展示。
+            voiceName={isCharacterTab && voiceId ? voiceName : undefined}
             voicePreviewUrl={isCharacterTab ? (item.voice_preview_url ?? voice?.preview_url) : undefined}
             onVoiceClick={isCharacterTab ? () => onVoiceClick?.(item) : undefined}
             onVoiceRemove={isCharacterTab ? () => onVoiceRemove?.(item) : undefined}

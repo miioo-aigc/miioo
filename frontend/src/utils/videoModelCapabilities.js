@@ -2,6 +2,7 @@
  * 视频生成能力解析：素材路由由前端决定，生成模式与参考模式绑定由后端映射决定。
  *
  * 2026-08-25  删除模型名称硬编码兜底，完整依赖后端 generation_reference_mode_map；保留 Seedance 全能参考固定走 full。
+ * 2026-08-31  Seedance 2.0 仅音频参考增加发送前拦截，Seedance 2.5 保持支持。
  */
 const ALL_REFERENCE_GENERATION_MODES = new Set([
   'full',
@@ -58,6 +59,14 @@ export function resolveGenerationReferenceModeMap({ capabilities = {} } = {}) {
 
 export function isSeedanceVideoModel({ modelId = '', modelName = '' } = {}) {
   return /seedance/i.test(`${modelId} ${modelName}`.replace(/[\s•、_-]+/g, ''));
+}
+
+export function isSeedance20VideoModel({ modelId = '', modelName = '' } = {}) {
+  const normalized = `${modelId} ${modelName}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+
+  return normalized.includes('seedance20');
 }
 
 export function getAvailableVideoReferenceModes(capabilities = {}) {
@@ -171,6 +180,7 @@ export function resolveVideoGenerationMode({
 } = {}) {
   const supportedModes = new Set(normalizeSupportedGenerationModes(capabilities));
   const isSeedance = isSeedanceVideoModel({ modelId, modelName, capabilities });
+  const isSeedance20 = isSeedance20VideoModel({ modelId, modelName });
   const ensureSupported = (generationMode) => supportedModes.has(generationMode)
     ? success(generationMode)
     : fail('UNSUPPORTED_GENERATION_MODE', `当前模型不支持${generationMode}能力，请调整素材或更换模型`);
@@ -200,6 +210,16 @@ export function resolveVideoGenerationMode({
 
   if (referenceMode !== VIDEO_REFERENCE_MODES.ALL) {
     return fail('REFERENCE_MODE_REQUIRED', '请选择当前模型支持的参考模式');
+  }
+
+  if (isSeedance20
+    && audioCount > 0
+    && imageCount === 0
+    && videoCount === 0
+    && liveMaterialCount === 0
+    && !hasFirstFrame
+    && !hasLastFrame) {
+    return fail('SEEDANCE_20_AUDIO_REFERENCE_REQUIRED', '当前 Seedance 2.0 不支持仅音频参考，请添加图片或视频素材同时作为参考');
   }
 
   if (audioCount > 0 && !isSeedance) {

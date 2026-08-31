@@ -20,7 +20,8 @@
  *   2026-08-18  配音高级模式接入输入框展开状态，保持页面编排与生成参数边界不变
  *   2026-08-18  高级模式支持从 PDF/DOCX/TXT/HTML 提取最多 3000 字正文并写入提示词草稿
  *   2026-08-19  退出登录时清空提示词与参考素材草稿，保留当前模型和生成参数
- *   2026-08-19  高级配音生成前要求已选择音色，未选择时提示并打开音色弹窗
+ *   2026-08-31  配音语速、声调和音量不再写入草稿，切换一级 Tab 后恢复默认值
+ *   2026-08-19  配音生成前要求已选择音色，未选择时提示并打开音色弹窗
  *   2026-08-20  视频模型改由 supported_generation_modes 驱动参考模式、素材门禁与 generation_mode 路由
  *   2026-08-20  视频请求从后端 generation_reference_mode_map 解析 reference_mode，缺少映射时阻止提交
  *   2026-08-20  配音资产确认后使用独立音频文件卡片展示，并提供播放/暂停控制
@@ -336,11 +337,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       selectedVoiceId,
       selectedVoiceName,
       selectedVoiceSource,
-      dubbingSpeed,
-      dubbingPitch,
-      dubbingVolume,
     };
-  }, [count, dubbingPitch, dubbingSpeed, dubbingVolume, getCurrentFiles, getPromptSnapshot, ratio, refMode, resolution, selectedVoiceId, selectedVoiceName, selectedVoiceSource, soundEnabled, videoDuration, videoRatio, videoResolution]);
+  }, [count, getCurrentFiles, getPromptSnapshot, ratio, refMode, resolution, selectedVoiceId, selectedVoiceName, selectedVoiceSource, soundEnabled, videoDuration, videoRatio, videoResolution]);
 
   const persistDraft = useCallback((force = false) => {
     if (!force && hydratedGenTypeRef.current !== genType) return;
@@ -409,9 +407,6 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       setSelectedVoiceId(draft?.selectedVoiceId ?? '');
       setSelectedVoiceName(draft?.selectedVoiceName ?? '');
       setSelectedVoiceSource(draft?.selectedVoiceSource ?? '');
-      if (draft?.dubbingSpeed !== undefined) setDubbingSpeed(draft.dubbingSpeed);
-      if (draft?.dubbingPitch !== undefined) setDubbingPitch(draft.dubbingPitch);
-      if (draft?.dubbingVolume !== undefined) setDubbingVolume(draft.dubbingVolume);
     };
 
     const memoryDraft = readCreationDraftFromMemory(genType);
@@ -436,9 +431,6 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     persistDraft();
   }, [
     count,
-    dubbingPitch,
-    dubbingSpeed,
-    dubbingVolume,
     files,
     firstFrameFile,
     genType,
@@ -753,7 +745,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   const atConcurrentLimit = activeCount >= concurrentLimit;
   const canSend = !disabled && !atConcurrentLimit && (hasContent || files.length > 0 || firstFrameFile || lastFrameFile || (genType === 'dubbing' && selectedVoiceId));
   const isDubbingGenerating = (genType === 'dubbing' || genType === 'music') && disabled;
-  const requiresDubbingVoice = genType === 'dubbing' && dubbingAdvancedEnabled;
+  const requiresDubbingVoice = genType === 'dubbing';
 
   const restoreSavedInput = () => {
     const backup = savedContentRef.current;

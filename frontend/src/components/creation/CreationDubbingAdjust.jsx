@@ -6,7 +6,7 @@ import CreationDubbingAdvancedToolbar from './CreationDubbingAdvancedToolbar';
 const SLIDER_CONFIGS = [
   { key: 'speed', label: '语速', min: 0.5, max: 2, step: 0.01, decimals: 2, suffix: '×', format: (value) => `${value.toFixed(2)}×`, marks: [0.5, 1, 1.5, 2] },
   { key: 'pitch', label: '声调', min: -12, max: 12, step: 1, decimals: 0, suffix: '', format: (value) => String(Math.round(value)), marks: [-12, -4, 4, 12] },
-  { key: 'volume', label: '音量', min: 0.01, max: 10, step: 0.01, decimals: 2, suffix: '', format: (value) => value.toFixed(2), marks: [0.01, 3.34, 6.67, 10] },
+  { key: 'volume', label: '音量', min: 0.01, max: 10, step: 0.01, decimals: 2, suffix: '', format: (value) => value.toFixed(2), markFormat: (value) => value === 0.01 ? '0' : String(value), marks: [0.01, 2, 4, 6, 8, 10] },
 ];
 
 function DubbingEqIcon() {
@@ -134,7 +134,7 @@ function DubbingRangeControl({ config, value, onChange }) {
 
             return (
               <span key={mark} style={{ position: 'absolute', left: `${markPosition}%`, transform, fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF99', whiteSpace: 'nowrap' }}>
-                {config.format(mark)}
+                {config.markFormat ? config.markFormat(mark) : config.format(mark)}
               </span>
             );
           })}

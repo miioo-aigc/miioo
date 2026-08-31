@@ -43,7 +43,7 @@
  *   SubjectTextFields         主体字段组合，内部复用 ui/TextField       src/components/subject/SubjectTextFields.jsx
  *   SubjectEditForm           编辑面板左侧表单组合                         src/components/subject/SubjectEditForm.jsx
  *   SubjectPanelHeader        主体编辑面板标题和关闭动作             src/components/subject/SubjectPanelHeader.jsx
- *   SubjectVoiceSelectModal   主体音色选择、筛选和试听弹窗           src/components/subject/SubjectVoiceSelectModal.jsx
+ *   DubbingVoiceModal         复用创作页官方音色选择、筛选和试听弹窗   src/components/creation/CreationDubbingVoiceModal.jsx
  *   SubjectToolbar / SubjectTabs 主体页工具栏和标签导航             src/components/subject/
  *   SubjectGridViewport / SubjectWorkspace 主体列表和工作区组合    src/components/subject/
  *
@@ -123,7 +123,8 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import SubjectImageList from '../components/subject/SubjectImageList';
 import ConfirmStoryboardModal from '../components/subject/ConfirmStoryboardModal';
 import BatchGenerateModal from '../components/BatchGenerateModal';
-import { SubjectGenerationAction, SubjectPanelHeader, SubjectVoiceSelectModal, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, filterSubjectImagesByReferences, getSubjectCandidateImagesFromResponse, getFallbackSubjectImageModels, buildSubjectCertificationMap, getCurrentSubjectCertification } from '../components/subject';
+import { SubjectGenerationAction, SubjectPanelHeader, SubjectToast, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, filterSubjectImagesByReferences, getSubjectCandidateImagesFromResponse, getFallbackSubjectImageModels, buildSubjectCertificationMap, getCurrentSubjectCertification } from '../components/subject';
+import { DubbingVoiceModal } from '../components/creation';
 import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiDownloadSubjectImage, apiUnsetPrimarySubjectImage, apiBindSubjectReferenceImages } from '../api/subject';
 import { apiGetTask } from '../api/storyboard';
 import { apiGetSubjectAssets, apiDeleteSubjectAssets } from '../api/assets';
@@ -1689,6 +1690,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   const [charVoices, setCharVoices] = useState(() =>
     Object.fromEntries(INITIAL_CHARS.map((c) => [c.id, c.voice]))
   );
+  const [charVoiceNames, setCharVoiceNames] = useState({});
 
   useEffect(() => {
     const panelState =
@@ -1937,6 +1939,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
 
     // 先清除卡片上的旧引用，音色库删除后仍可解除主体与失效音色的绑定。
     setCharVoices((prev) => ({ ...prev, [subjectId]: null }));
+    setCharVoiceNames((prev) => ({ ...prev, [subjectId]: null }));
     setChars((prev) => prev.map((character) => character.id === subjectId
       ? { ...character, voice_id: null, voice_name: null, voice_preview_url: null }
       : character));
@@ -1987,6 +1990,10 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       showBatchToast('音色已取消', 'success');
     } catch (err) {
       setCharVoices((prev) => ({ ...prev, [subjectId]: previousVoiceId }));
+      setCharVoiceNames((prev) => ({
+        ...prev,
+        [subjectId]: subject.voice_name || subject.voiceName || null,
+      }));
       setChars((prev) => prev.map((character) => character.id === subjectId
         ? {
           ...character,
@@ -2079,7 +2086,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         setSelectedProp(null);
       }}
       gridProps={{
-        activeTab, chars, scenes, props, charVoices, voiceList, selectedChar, selectedScene, selectedProp,
+        activeTab, chars, scenes, props, charVoices, charVoiceNames, voiceList, selectedChar, selectedScene, selectedProp,
         batchLoadingSubjects, charsLoadError, scenesLoadError, propsLoadError,
         onRetryChars, onRetryScenes, onRetryProps, onVoiceClick: setVoiceModalChar,
         onVoiceRemove: handleRemoveSubjectVoice,
@@ -2198,26 +2205,28 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
 
       {/* voice select modal */}
       {voiceModalChar && (
-        <SubjectVoiceSelectModal
+        <DubbingVoiceModal
           open
           currentVoice={charVoices[voiceModalChar.id]}
           onClose={() => setVoiceModalChar(null)}
-          onVoicesLoaded={setVoiceList}
-          onConfirm={async (voiceId) => {
+          showToast={(type, message) => showBatchToast(message, type)}
+          onConfirm={async (voiceId, voiceName, _activeTab, _source, selectedVoice) => {
             const normalizedVoiceId = voiceId || null;
             try {
               await apiUpdateSubject(projectId, voiceModalChar.id, { voice_id: normalizedVoiceId });
               setCharVoices((prev) => ({ ...prev, [voiceModalChar.id]: normalizedVoiceId }));
-              // 同步更新本地 char 的 voice_name / voice_preview_url，避免展示后端旧值
-              const selectedVoice = voiceList.find((v) => v.voice_id === normalizedVoiceId);
+              setCharVoiceNames((prev) => ({ ...prev, [voiceModalChar.id]: voiceName || normalizedVoiceId }));
+              // 同步更新本地角色卡片，避免保存后等待主体列表刷新。
               setChars((prev) => prev.map((c) => c.id === voiceModalChar.id
-                ? { ...c, voice_name: selectedVoice?.name ?? null, voice_preview_url: selectedVoice?.preview_url ?? null }
+                ? { ...c, voice_name: voiceName ?? null, voice_preview_url: selectedVoice?.audioUrl ?? null }
                 : c));
               setVoiceModalChar(null);
               showBatchToast('音色保存成功', 'success');
+              return true;
             } catch (err) {
               console.error('[SubjectPage] 更新主体音色失败:', err);
               showBatchToast(err?.message || '音色保存失败，请重试', 'error');
+              return false;
             }
           }}
         />

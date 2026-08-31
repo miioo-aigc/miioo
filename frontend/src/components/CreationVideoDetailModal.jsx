@@ -9,6 +9,12 @@ import { apiGetLiveMaterialPreviewByRef } from '../api/liveMaterials';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
+function formatVideoDuration(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  return /s$/i.test(text) ? text : `${text}s`;
+}
+
 // ConfirmDeleteModal 已迁移至 ConfirmDialog 共享组件
 
 
@@ -505,40 +511,68 @@ export default function CreationVideoDetailModal({
               </>
             ) : (refImages.length > 0 || refVideos.length > 0 || refAudios.length > 0) && (
               <>
-                <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
-                <div className="flex flex-col py-[16px] px-[20px] gap-[12px]">
-                  <div className="tracking-[0.66px] uppercase inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[11px]/[14px]">
-                    参考图
-                  </div>
-                  <div className="flex items-start gap-[12px] self-stretch flex-wrap">
-                    {refImages.map((img, i) => {
-                      const imgUrl = typeof img === 'string' ? img : (img.url || img.previewUrl || '');
-                      return (
-                        <AsyncImagePreview
-                          key={`${i}-${imgUrl}`}
-                          src={imgUrl}
-                          alt="参考图"
-                          resolveSrc={apiGetLiveMaterialPreviewByRef}
-                          style={{ width: '47.49%' }}
-                        />
-                      );
-                    })}
-                    {refVideos.map((vid, i) => {
-                      const vidUrl = typeof vid === 'string' ? vid : (vid.url || vid.previewUrl || '');
-                      return vidUrl ? <ReferenceVideoCard key={i} vidUrl={vidUrl} /> : null;
-                    })}
-                    {refAudios.map((audio, i) => (
-                      <div key={i} className="flex flex-col items-start gap-[2px] px-[8px] py-[6px] overflow-clip rounded-lg w-[calc(47.699%)] h-[84px] justify-between bg-[#1D1E1E] border border-solid border-[#FFFFFF14]">
-                        <div className="text-[14px] leading-[150%] self-stretch flex-1 font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-white">
-                          {(typeof audio === 'string' ? 'audio.mp3' : (audio.name || 'audio.mp3'))}
-                        </div>
-                        <div className="text-[12px] leading-[150%] self-stretch font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF66]">
-                          {(typeof audio === 'string' ? '' : (audio.size || '2M'))}
-                        </div>
+                {refImages.length > 0 && (
+                  <>
+                    <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
+                    <div className="flex flex-col py-[16px] px-[20px] gap-[12px]">
+                      <div className="tracking-[0.66px] uppercase inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[11px]/[14px]">
+                        参考图
                       </div>
-                    ))}
-                  </div>
-                </div>
+                      <div className="flex items-start gap-[12px] self-stretch flex-wrap">
+                        {refImages.map((img, i) => {
+                          const imgUrl = typeof img === 'string' ? img : (img.url || img.previewUrl || '');
+                          return (
+                            <AsyncImagePreview
+                              key={`${i}-${imgUrl}`}
+                              src={imgUrl}
+                              alt="参考图"
+                              resolveSrc={apiGetLiveMaterialPreviewByRef}
+                              style={{ width: '47.49%' }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+                {refVideos.length > 0 && (
+                  <>
+                    <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
+                    <div className="flex flex-col py-[16px] px-[20px] gap-[12px]">
+                      <div className="tracking-[0.66px] uppercase inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[11px]/[14px]">
+                        参考视频
+                      </div>
+                      <div className="flex items-start gap-[12px] self-stretch flex-wrap">
+                        {refVideos.map((vid, i) => {
+                          const vidUrl = typeof vid === 'string' ? vid : (vid.url || vid.previewUrl || '');
+                          return vidUrl ? <ReferenceVideoCard key={i} vidUrl={vidUrl} /> : null;
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+                {refAudios.length > 0 && (
+                  <>
+                    <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
+                    <div className="flex flex-col py-[16px] px-[20px] gap-[12px]">
+                      <div className="tracking-[0.66px] uppercase inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[11px]/[14px]">
+                        参考音频
+                      </div>
+                      <div className="flex items-start gap-[12px] self-stretch flex-wrap">
+                        {refAudios.map((audio, i) => (
+                          <div key={i} className="flex flex-col items-start gap-[2px] px-[8px] py-[6px] overflow-clip rounded-lg w-[calc(47.699%)] h-[84px] justify-between bg-[#1D1E1E] border border-solid border-[#FFFFFF14]">
+                            <div className="text-[14px] leading-[150%] self-stretch flex-1 font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-white">
+                              {(typeof audio === 'string' ? 'audio.mp3' : (audio.name || 'audio.mp3'))}
+                            </div>
+                            <div className="text-[12px] leading-[150%] self-stretch font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF66]">
+                              {(typeof audio === 'string' ? '' : (audio.size || '2M'))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
 
@@ -594,7 +628,7 @@ export default function CreationVideoDetailModal({
                     时长
                   </div>
                   <div className="tracking-[0.12px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFFCC] text-xs/4">
-                    {duration}
+                    {formatVideoDuration(duration)}
                   </div>
                 </div>
               )}

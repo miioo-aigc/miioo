@@ -241,6 +241,7 @@ export default function CreationResultState({
               return (
                 <CreationAudioResultCard
                   key={key}
+                  playbackKey={key}
                   {...cardProps}
                   batchMode={batchMode}
                   isSelected={batchMode && selected?.has(key)}

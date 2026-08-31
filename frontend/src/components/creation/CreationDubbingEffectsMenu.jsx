@@ -128,10 +128,8 @@ function CheckIcon() {
 export default function CreationDubbingEffectsMenu({ toneValues = DEFAULT_DUBBING_EFFECTS.toneValues, selectedEffects = DEFAULT_DUBBING_EFFECTS.selectedEffects, onToneChange, onEffectToggle }) {
 
   const toggleEffect = (effectKey) => {
-    const next = new Set(selectedEffects);
-    if (next.has(effectKey)) next.delete(effectKey);
-    else next.add(effectKey);
-    onEffectToggle?.(Array.from(next));
+    const nextEffects = selectedEffects.includes(effectKey) ? [] : [effectKey];
+    onEffectToggle?.(nextEffects);
   };
 
   return (

@@ -38,6 +38,8 @@
  *   2026-08-25  按接口文档统一通过 voice_id 调用官方音色 favorite 接口
  *   2026-08-26  音色试听改为单例播放，关闭弹窗时停止并释放音频
  *   2026-08-27  官方音色弹窗打开时跳过旧缓存，避免收藏 Tab 使用过期收藏状态
+ *   2026-08-31  语言筛选固定中文第一，其他语言按英文枚举排序并统一中文展示
+ *   2026-08-31  语言与口音筛选选项双向联动，但保留两个独立下拉框
  */
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
@@ -47,6 +49,7 @@ import { Button } from "../ui/Button";
 import { CreationEmptyIconDubbing } from "./CreationEmptyState";
 import DubbingVoiceCard from "./DubbingVoiceCard";
 import DubbingVoiceFilters from "./DubbingVoiceFilters";
+import { getLanguageDisplayName, getLanguageFilterOptions } from "./DubbingVoiceLanguage";
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -114,7 +117,7 @@ export function DubbingVoiceFileCard({ voiceName, onRemove, onOpenModal }) {
   );
 }
 
-export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast }) {
+export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast, currentVoice }) {
   const [activeTab, setActiveTab] = useState("official");
   const [hoveredTab, setHoveredTab] = useState("");
   const [searchValue, setSearchValue] = useState("");
@@ -132,14 +135,37 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast 
   const [closePressed, setClosePressed] = useState(false);
 
   useEffect(() => {
+    if (!open) return;
+    // 弹窗每次打开都从干净的交互状态开始，主体页复用时也不继承创作页上次筛选。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActiveTab("official");
+    setHoveredTab("");
+    setSearchValue("");
+    setSelectedVoiceId(currentVoice || "");
+    setOfficialError("");
+    setOfficialFavoriteIds(new Set());
+    setFavoriteUpdatingId("");
+    setSearchHovered(false);
+    setSearchFocused(false);
+    setFiltersVisible(false);
+    setVoiceFilters({ language: "不限", accent: "不限", gender: "不限", ageGroup: "不限" });
+    setCloseHovered(false);
+    setClosePressed(false);
+  }, [open, currentVoice]);
+
+  useEffect(() => {
     if (!open) return undefined;
     return () => stopVoicePreview();
   }, [open]);
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const selectedVoice = visibleVoices.find((voice) => voice.id === selectedVoiceId);
-    if (selectedVoice) onConfirm?.(selectedVoice.id, selectedVoice.name, activeTab, selectedVoice.source);
-    onClose?.();
+    if (!selectedVoice) {
+      onClose?.();
+      return;
+    }
+    const result = await onConfirm?.(selectedVoice.id, selectedVoice.name, activeTab, selectedVoice.source, selectedVoice);
+    if (result !== false) onClose?.();
   };
 
   const isSearchActive = searchHovered || searchFocused;
@@ -155,8 +181,8 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast 
       .toLocaleLowerCase("zh-CN")
       .includes(normalizedSearchValue);
     const matchesLanguage = voiceFilters.language === "不限"
-      || voice.language === voiceFilters.language
-      || voice.tags.includes(voiceFilters.language);
+      || getLanguageDisplayName(voice.language) === getLanguageDisplayName(voiceFilters.language)
+      || voice.tags.some((tag) => getLanguageDisplayName(tag) === getLanguageDisplayName(voiceFilters.language));
     const matchesFilters = matchesLanguage
       && (voiceFilters.accent === "不限" || voice.accent === voiceFilters.accent)
       && (voiceFilters.gender === "不限" || voice.gender === voiceFilters.gender)
@@ -166,9 +192,18 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast 
   });
   const isFavoritesTab = activeTab === "favorites";
   const visibleVoices = isFavoritesTab ? filteredOfficialVoices.filter((voice) => officialFavoriteIds.has(voice.id)) : filteredOfficialVoices;
+  const voicesForLanguageOptions = voiceFilters.accent === "不限"
+    ? officialVoices
+    : officialVoices.filter((voice) => voice.accent === voiceFilters.accent);
+  const voicesForAccentOptions = voiceFilters.language === "不限"
+    ? officialVoices
+    : officialVoices.filter((voice) => (
+      getLanguageDisplayName(voice.language) === getLanguageDisplayName(voiceFilters.language)
+      || voice.tags.some((tag) => getLanguageDisplayName(tag) === getLanguageDisplayName(voiceFilters.language))
+    ));
   const officialFilterOptions = {
-    languages: getUniqueValues(officialVoices, (voice) => voice.language),
-    accents: getUniqueValues(officialVoices, (voice) => voice.accent),
+    languages: getLanguageFilterOptions(getUniqueValues(voicesForLanguageOptions, (voice) => voice.language)),
+    accents: getUniqueValues(voicesForAccentOptions, (voice) => voice.accent),
     genders: getUniqueValues(officialVoices, (voice) => voice.gender),
     ageGroups: getUniqueValues(officialVoices, (voice) => voice.age_group || voice.ageGroup),
   };

@@ -554,6 +554,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
                 return activeType === 'dubbing' ? (
                   <CreationAudioResultCard
                     key={card.id}
+                    playbackKey={`asset-${card.id}`}
                     status="done"
                     audioUrl={card.audioUrl || null}
                     audioId={card.backendId}

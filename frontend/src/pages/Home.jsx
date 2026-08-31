@@ -1631,6 +1631,7 @@ export default function Home({ onGoToAdmin }) {
                 projectRatio={activeProject.aspect_ratio || activeProject.ratio}
                 projectStyle={activeProject.visual_style || activeProject.style}
                 projectStyleLabel={activeProject.visual_style_label || activeProject.visualStyleLabel}
+                projectStylePrompt={activeProject.visual_style_prompt || activeProject.visualStylePrompt}
                 projectCreationType={activeProject.creation_type || activeProject.creation_mode || activeProject.project_type}
                 onProjectUpdate={(updates) => {
                   return apiUpdateProject(activeProject.id, updates).then(() => {

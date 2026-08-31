@@ -19,6 +19,78 @@ function bindingUrl(binding, ...keys) {
   return '';
 }
 
+function getBindingType(binding) {
+  return binding?.asset_type || binding?.assetType || '';
+}
+
+function getBindingIdentityValues(binding) {
+  return [
+    binding?.asset_id,
+    binding?.assetId,
+    binding?.id,
+    bindingUrl(binding, 'url', 'original_url', 'originalUrl', 'file_url', 'fileUrl'),
+    bindingUrl(binding, 'preview_url', 'previewUrl', 'preview_video_url', 'previewVideoUrl'),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+}
+
+function getBindingSemanticIdentity(binding) {
+  const type = getBindingType(binding);
+  const role = String(binding?.role || binding?.assetRole || '').trim();
+  return type === 'audio' && role === 'reference_audio'
+    ? `role:${type}:${role}`
+    : '';
+}
+
+// 资产库选择的素材可能同时以不同绑定记录返回，详情展示只应保留一个媒体实体。
+export function dedupeCreationAssetBindings(bindings) {
+  const result = [];
+  const identityIndexes = new Map();
+  const semanticIndexes = new Map();
+  (Array.isArray(bindings) ? bindings : []).forEach((binding) => {
+    if (!binding || !getBindingType(binding)) return;
+    const identities = getBindingIdentityValues(binding);
+    const semanticIdentity = getBindingSemanticIdentity(binding);
+    const semanticIndex = semanticIdentity ? semanticIndexes.get(semanticIdentity) : undefined;
+    if (semanticIndex !== undefined) {
+      // 同一参考角色只保留首条记录，避免后端同时返回附件和补充绑定。
+      result[semanticIndex] = Object.keys(binding).reduce(
+        (merged, key) => ({ ...merged, ...(merged[key] == null || merged[key] === '' ? { [key]: binding[key] } : {}) }),
+        result[semanticIndex],
+      );
+      return;
+    }
+    const matchingIndexes = [...new Set(identities
+      .map((identity) => identityIndexes.get(identity))
+      .filter((index) => index !== undefined))].sort((a, b) => a - b);
+    if (matchingIndexes.length === 0) {
+      result.push(binding);
+      const index = result.length - 1;
+      identities.forEach((identity) => identityIndexes.set(identity, index));
+      if (semanticIdentity) semanticIndexes.set(semanticIdentity, index);
+      return;
+    }
+
+    const targetIndex = matchingIndexes[0];
+    let merged = result[targetIndex];
+    matchingIndexes.slice(1).forEach((index) => {
+      merged = { ...merged, ...result[index] };
+    });
+    merged = { ...merged, ...binding };
+    result[targetIndex] = merged;
+    matchingIndexes.slice(1).reverse().forEach((index) => result.splice(index, 1));
+    identityIndexes.clear();
+    semanticIndexes.clear();
+    result.forEach((item, index) => {
+      getBindingIdentityValues(item).forEach((identity) => identityIndexes.set(identity, index));
+      const itemSemanticIdentity = getBindingSemanticIdentity(item);
+      if (itemSemanticIdentity) semanticIndexes.set(itemSemanticIdentity, index);
+    });
+  });
+  return result;
+}
+
 function readReferenceModeLabel(detail) {
   const metadata = detail?.metadata_json || detail?.metadataJson || detail?.metadata || {};
   const parsedMetadata = typeof metadata === 'string'
@@ -39,9 +111,9 @@ function readReferenceModeLabel(detail) {
 }
 
 export function normalizeCreationVideoDetailMedia(detail, { preferOriginalImageUrl = false } = {}) {
-  const bindings = detail?.asset_bindings || detail?.assetBindings || [];
+  const bindings = dedupeCreationAssetBindings(detail?.asset_bindings || detail?.assetBindings || []);
   const refImages = bindings
-    .filter((binding) => binding.asset_type === 'image')
+    .filter((binding) => getBindingType(binding) === 'image')
     .map((binding) => {
       const rawUrl = preferOriginalImageUrl
         ? bindingUrl(binding, 'url', 'preview_url', 'previewUrl')
@@ -54,13 +126,13 @@ export function normalizeCreationVideoDetailMedia(detail, { preferOriginalImageU
         isAsset: true,
         name: binding.asset_name || 'ref.png',
         size: 0,
-        assetId: binding.asset_id,
+        assetId: binding.asset_id || binding.assetId || binding.id,
         role: binding.role || binding.assetRole || '',
       };
     });
 
   const refVideos = bindings
-    .filter((binding) => binding.asset_type === 'video')
+    .filter((binding) => getBindingType(binding) === 'video')
     .map((binding) => {
       const url = bindingUrl(binding, 'url');
       const previewUrl = bindingUrl(
@@ -79,18 +151,18 @@ export function normalizeCreationVideoDetailMedia(detail, { preferOriginalImageU
         name: binding.asset_name || 'ref.mp4',
         size: 0,
         duration: binding.duration,
-        assetId: binding.asset_id,
+        assetId: binding.asset_id || binding.assetId || binding.id,
       };
     });
 
   const refAudios = bindings
-    .filter((binding) => binding.asset_type === 'audio')
+    .filter((binding) => getBindingType(binding) === 'audio')
     .map((binding) => ({
       url: bindingUrl(binding, 'url'),
       name: binding.asset_name || 'ref.mp3',
       size: 0,
       duration: binding.duration,
-      assetId: binding.asset_id,
+      assetId: binding.asset_id || binding.assetId || binding.id,
     }));
 
   return { refImages, refVideos, refAudios };

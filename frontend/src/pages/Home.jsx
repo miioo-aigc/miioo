@@ -128,6 +128,51 @@ const CreationPage = lazy(() => import('./CreationPage'));
 const SUBJECT_EXTRACTION_TASK_KEY_PREFIX = 'miioo:pending_subject_extraction:';
 const STORYBOARD_GENERATION_TASK_KEY_PREFIX = 'miioo:pending_storyboard_generation:';
 
+const STEP_PATHS = {
+  global: 'overview',
+  script: 'script',
+  subject: 'subjects',
+  storyboard: 'storyboard',
+  edit: 'edit',
+};
+
+const PATH_STEPS = Object.fromEntries(Object.entries(STEP_PATHS).map(([step, path]) => [path, step]));
+
+function readWorkspaceRoute() {
+  const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (pathname === '/') return { key: 'home' };
+  if (pathname === '/workspace/project') return { key: 'project' };
+  if (pathname === '/workspace/create') return { key: 'create' };
+  if (pathname === '/workspace/assets') return { key: 'assets' };
+
+  const match = pathname.match(/^\/workspace\/project\/([^/]+)(?:\/([^/]+))?$/);
+  if (match && match[1]) {
+    return {
+      key: 'project',
+      projectId: decodeURIComponent(match[1]),
+      step: PATH_STEPS[match[2]] || 'script',
+    };
+  }
+
+  return { key: 'home' };
+}
+
+function workspacePath({ key, projectId, step }) {
+  if (key === 'project' && projectId) {
+    return `/project/${encodeURIComponent(projectId)}/${STEP_PATHS[step] || STEP_PATHS.script}`;
+  }
+  if (key === 'project') return '/workspace/project';
+  if (key === 'create') return '/workspace/create';
+  if (key === 'assets') return '/workspace/assets';
+  return '/';
+}
+
+function updateWorkspaceUrl(route, { replace = false } = {}) {
+  const nextPath = workspacePath(route);
+  if (window.location.pathname === nextPath) return;
+  window.history[replace ? 'replaceState' : 'pushState']({}, '', nextPath);
+}
+
 function getSubjectExtractionTaskKey(projectId) {
   return `${SUBJECT_EXTRACTION_TASK_KEY_PREFIX}${projectId}`;
 }
@@ -189,7 +234,10 @@ function readUnlockedSteps(projectId) {
 }
 
 export default function Home({ onGoToAdmin }) {
+  const initialRoute = readWorkspaceRoute();
+  const routeSyncReadyRef = useRef(false);
   const [activeKey, setActiveKey] = useState(() => {
+    if (initialRoute.key !== 'home') return initialRoute.key;
     // 只有明确保存了非 home 的 activeKey 才恢复，否则默认 home
     const savedKey = localStorage.getItem('miioo_active_key');
     return savedKey || 'home';
@@ -211,7 +259,7 @@ export default function Home({ onGoToAdmin }) {
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [projectsLoaded, setProjectsLoaded] = useState(() => !getToken());
   const [, setActiveProjectId] = useState(null);
-  const [activeStep, setActiveStep] = useState('script'); // loadProjectDetails 会按项目恢复正确步骤
+  const [activeStep, setActiveStep] = useState(initialRoute.step || 'script'); // loadProjectDetails 会按项目恢复正确步骤
   const [subjectInitialTab, setSubjectInitialTab] = useState('char');
   const [sharedChars, setSharedChars] = useState(null);
   const [sharedScenes, setSharedScenes] = useState(null);
@@ -398,7 +446,7 @@ export default function Home({ onGoToAdmin }) {
   }, [unlockedSteps, activeProject?.id]);
 
   // 统一的项目数据加载函数
-  const loadProjectDetails = async (projectId) => {
+  const loadProjectDetails = async (projectId, requestedStep = null) => {
     setIsLoadingProject(true);
     setSubjectPageMeta({
       chars: { nextOffset: null, hasMore: false, loading: true, rawList: [], error: false },
@@ -456,7 +504,7 @@ export default function Home({ onGoToAdmin }) {
         if (cachedScenes) setSharedScenes(normalizeSubjects(ensureArray(cachedScenes)));
         if (cachedProps) setSharedProps(normalizeSubjects(ensureArray(cachedProps)));
         // 恢复步骤
-        const savedStep = localStorage.getItem(`miioo_active_step_${projectId}`);
+        const savedStep = requestedStep || localStorage.getItem(`miioo_active_step_${projectId}`);
         setActiveStep(savedStep || 'script');
         setUnlockedSteps(readUnlockedSteps(projectId));
         const savedFinalized = localStorage.getItem(`miioo_finalized_since_extraction_${projectId}`);
@@ -497,7 +545,7 @@ export default function Home({ onGoToAdmin }) {
 
       // 恢复当前步骤（按项目 ID，新项目默认回到 script）
       // 注意：不使用全局 miioo_active_step，避免不同项目间互相污染
-      const savedStep = localStorage.getItem(`miioo_active_step_${projectId}`);
+      const savedStep = requestedStep || localStorage.getItem(`miioo_active_step_${projectId}`);
       setActiveStep(savedStep || 'script');
 
       // 3. 并行加载所有数据
@@ -576,6 +624,45 @@ export default function Home({ onGoToAdmin }) {
       setIsLoadingProject(false);
     }
   };
+
+  // 工作台采用轻量 History 路由，保留现有页面状态和登录边界。
+  useEffect(() => {
+    const handlePopState = () => {
+      const route = readWorkspaceRoute();
+      setActiveKey(route.key);
+      if (route.key === 'project' && route.projectId) {
+        setActiveProject(null);
+        setActiveProjectId(null);
+        setActiveStep(route.step || 'script');
+        loadProjectDetails(route.projectId, route.step || 'script');
+        return;
+      }
+      setActiveProject(null);
+      setActiveProjectId(null);
+      if (route.key !== 'project') setActiveStep('script');
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+    // loadProjectDetails intentionally uses the current page closure and is not recreated for route events.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!routeSyncReadyRef.current) {
+      routeSyncReadyRef.current = true;
+      return;
+    }
+    if (activeKey === 'project') {
+      if (activeProject?.id) {
+        updateWorkspaceUrl({ key: activeKey, projectId: activeProject.id, step: activeStep });
+      } else {
+        updateWorkspaceUrl({ key: activeKey });
+      }
+      return;
+    }
+    updateWorkspaceUrl({ key: activeKey });
+  }, [activeKey, activeProject?.id, activeStep]);
 
   // 处理微信回调（根路径 ?code=&state=）
   useEffect(() => {
@@ -679,15 +766,16 @@ export default function Home({ onGoToAdmin }) {
         // 按创建时间倒序排列，最新的在前
         setProjects(normalized);
 
-        // 只在项目页面（activeKey === 'project'）且有缓存项目 ID 时才恢复
-        const savedProjectId = localStorage.getItem('miioo_active_project_id');
-        const savedKey = localStorage.getItem('miioo_active_key');
+        // 地址中的项目深链接优先于旧的本地缓存，确保刷新后仍停留在原步骤。
+        const savedProjectId = initialRoute.projectId
+          || (initialRoute.key === 'home' ? localStorage.getItem('miioo_active_project_id') : null);
+        const savedKey = initialRoute.key !== 'home' ? initialRoute.key : localStorage.getItem('miioo_active_key');
 
         if (savedKey === 'project' && savedProjectId) {
           const exists = normalized.some(p => p.id === savedProjectId);
           if (exists) {
             setActiveProjectId(savedProjectId);
-            loadProjectDetails(savedProjectId);
+            loadProjectDetails(savedProjectId, initialRoute.projectId ? initialRoute.step : null);
           } else {
             // 项目已被删除，清除缓存
             localStorage.removeItem('miioo_active_project_id');

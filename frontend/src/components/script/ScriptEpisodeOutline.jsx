@@ -31,6 +31,7 @@
  *   2026-07-27  将 AI 操作加载层绑定到剧本内容区
  *   2026-07-27  删除本集增加二次确认，确认后才提交后端删除
  *   2026-08-24  定稿态隐藏剧集标签悬停新增按钮，修改剧本后恢复
+ *   2026-08-31  多行剧集标签为展开按钮预留独立布局空间，避免标签与按钮重叠
  */
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -202,7 +203,7 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
         {!hideEpisodeActions && <Button type="button" variant="secondary" icon={<SparkleIcon />} onClick={() => setResplitOpen(true)} disabled={actionLoading} contentClassName="!whitespace-nowrap">AI重新分集</Button>}
       </div>
 
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '6px', alignSelf: 'stretch', padding: '12px', border: '1px solid #3E3D3D', borderRadius: '12px', boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', alignSelf: 'stretch', padding: '12px', border: '1px solid #3E3D3D', borderRadius: '12px', boxSizing: 'border-box' }}>
         <div
           ref={episodeListRef}
           style={{ display: 'flex', flex: '1 1 auto', width: 'auto', minWidth: 0, flexWrap: 'wrap', alignItems: 'flex-start', alignContent: 'flex-start', gap: '8px 0', boxSizing: 'border-box', maxHeight: hasOverflowingEpisodes ? (isEpisodeListExpanded ? '160px' : '34px') : 'none', overflow: hasOverflowingEpisodes ? (isEpisodeListExpanded ? 'auto' : 'hidden') : 'visible' }}
@@ -224,7 +225,7 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
           {episodes.length > 0 && <div className="episode-insert-slot episode-last-insert-slot"><button type="button" aria-label="在最后一集后新增一集" onClick={() => addEpisode(episodes[episodes.length - 1].id)} disabled={actionLoading} style={{ display: 'flex', width: '16px', height: '16px', flexShrink: 0, alignItems: 'center', justifyContent: 'center', margin: 0, padding: 0, border: 0, borderRadius: '50%', background: 'transparent', color: '#2DC3E1', opacity: 0, cursor: actionLoading ? 'not-allowed' : 'pointer', transition: 'opacity 180ms ease' }} className="episode-insert-button"><svg viewBox="0 0 82 82" width="16" height="16" aria-hidden="true"><path d="M76.271 40.956C76.271 21.454 60.462 5.645 40.961 5.645 21.46 5.645 5.651 21.454 5.651 40.956 5.651 60.457 21.46 76.266 40.961 76.266 60.462 76.266 76.271 60.457 76.271 40.956ZM43.786 38.131V21.184C43.786 19.613 42.521 18.357 40.961 18.357 39.39 18.357 38.136 19.623 38.136 21.184V38.131H21.19C19.618 38.131 18.362 39.396 18.362 40.956 18.362 42.527 19.628 43.781 21.19 43.781H38.136V60.727C38.136 62.298 39.401 63.554 40.961 63.554 42.532 63.554 43.786 62.289 43.786 60.727V43.781H60.732C62.304 43.781 63.56 42.516 63.56 40.956 63.56 39.385 62.294 38.131 60.732 38.131H43.786ZM0.001 40.956C0.001 18.334 18.339-0.004 40.961-0.004 63.583-0.004 81.921 18.334 81.921 40.956 81.921 63.577 63.583 81.916 40.961 81.916 18.339 81.916 0.001 63.577 0.001 40.956Z" fill="currentColor" /></svg></button></div>}
           {episodes.length === 0 && <div style={{ color: '#FFFFFF66', fontSize: '14px', lineHeight: '20px' }}>暂无分集剧本</div>}
         </div>
-        {hasOverflowingEpisodes && <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', height: '34px', alignItems: 'center' }}><TextButton
+        {hasOverflowingEpisodes && <div style={{ display: 'flex', flex: '0 0 auto', height: '34px', alignItems: 'center' }}><TextButton
           type="button"
           variant="link"
           icon={<svg viewBox="0 0 109.9 71.68" width="14" height="14" aria-hidden="true" style={{ flexShrink: 0, transform: isEpisodeListExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 180ms ease' }}><path d="M106.882 11.725c0 1.3-0.435 2.614-1.3 3.707L59.444 72.786a5.92 5.92 90 0 1-9.213 0L4.337 15.676A5.912 5.912 90 0 1 13.555 8.269l41.287 51.375L96.364 8.015a5.912 5.912 90 0 1 10.513 3.71z" fill="currentColor" /></svg>}

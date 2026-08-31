@@ -6,11 +6,11 @@
  * 页面继续负责生成请求、任务轮询、缓存和全局状态写回。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   草稿文件恢复工具                                   L98–L121
- *   InputCard 状态、Hook 与草稿接线                    L123–L437
- *   模式回退、素材选择与参数预填充                     L439–L637
- *   发送、失败/取消恢复与参数组装                      L639–L803
- *   CreationInputSurface 组合                           L811–L979
+ *   草稿文件恢复工具                                   L106–L128
+ *   InputCard 状态、Hook 与草稿接线                    L132–L487
+ *   模式回退、素材选择与参数预填充                     L489–L728
+ *   发送、失败/取消恢复与参数组装                      L730–L937
+ *   CreationInputSurface 组合                           L939–L1143
  *
  *   2026-08-18  配音面板改为语速/声调/音量，草稿与失败恢复同步新字段
  *   2026-08-11  图片/视频生成轮询期间保持输入区可用；IndexedDB 临时缓存各类型完整创作草稿
@@ -35,6 +35,8 @@
  *   2026-08-27  HappyHorse 普通参考素材按 r2v/video-edit 子模型能力限制上传，首尾帧不参与；素材弹窗和真人素材追加同样走上传校验
  *   2026-08-27  修复资产库视频添加到输入框后封面未渲染导致的黑卡
  *   2026-08-27  资产库已添加素材回传选择器并禁用，避免图片或视频重复添加
+ *   2026-08-28  全能参考仅支持文生但支持首尾帧的模型，在添加图片时确认切换，避免发送后才提示不支持
+ *   2026-08-28  切换至纯文生全能参考模型时，确认后静默保留前两张图片为首尾帧；取消不提交模型切换
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -67,6 +69,8 @@ import {
   resolveVideoReferenceMode,
   resolveVideoGenerationMode,
   resolveVideoReferenceModeFallback,
+  shouldConfirmFrameModeForAllReferenceMedia,
+  shouldConfirmFrameModeForImageReference,
   VIDEO_REFERENCE_MODES,
 } from '../../utils/videoModelCapabilities';
 import { resolveVideoModelRoute } from '../../utils/videoModelAdapter';
@@ -130,6 +134,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   model, onModelChange, modelOptions = [], creationParams, prefillVersion = 0, prefillData = null, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {}, onRegisterSaveDraft,
   dubbingAdvancedEnabled = false, onDubbingAdvancedChange }) {
   const [liveMaterialModalOpen, setLiveMaterialModalOpen] = useState(false);
+  const [pendingFrameModeImages, setPendingFrameModeImages] = useState(null);
+  const [pendingModelChange, setPendingModelChange] = useState(null);
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
   const [selectedVoiceSource, setSelectedVoiceSource] = useState('');
   const [selectedVoiceId, setSelectedVoiceId] = useState('');
@@ -207,8 +213,16 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       showToast?.('warning', '当前仅 Seedance 全能参考支持音频素材');
       return;
     }
+    if (genType === 'video' && selectedFiles.some(isImageFile)
+      && shouldConfirmFrameModeForImageReference({
+        capabilities: activeVideoCapabilities,
+        referenceMode: refMode,
+      })) {
+      setPendingFrameModeImages(selectedFiles.filter(isImageFile));
+      return;
+    }
     handleRawFileSelect(selectedFiles);
-  }, [allowsVideoAudio, genType, handleRawFileSelect, showToast]);
+  }, [activeVideoCapabilities, allowsVideoAudio, genType, handleRawFileSelect, refMode, showToast]);
   const [frameAssetTarget, setFrameAssetTarget] = useState(null);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const savedContentRef = useRef({
@@ -487,6 +501,72 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     return true;
   }, [genType, moveFilesToFrameFiles, moveFrameFilesToFiles, setRefMode]);
 
+  const handleModelChange = useCallback((nextModel) => {
+    if (nextModel === model) return;
+
+    const targetModel = modelOptions.find((option) => option.value === nextModel);
+    const targetCapabilities = targetModel?.capabilities || capabilitiesMap?.[nextModel] || {};
+    const currentFiles = getCurrentFiles();
+    const hasReferenceMedia = currentFiles.files.some((file) => (
+      isImageFile(file) || isVideoFile(file) || isAudioFile(file)
+    ));
+    const requiresFrameModeConfirmation = genType === 'video'
+      && refMode === VIDEO_REFERENCE_MODES.ALL
+      && hasReferenceMedia
+      && shouldConfirmFrameModeForAllReferenceMedia({
+        capabilities: targetCapabilities,
+        referenceMode: refMode,
+      });
+
+    if (requiresFrameModeConfirmation) {
+      setPendingModelChange({ nextModel, previousModel: model });
+      return;
+    }
+
+    onModelChange(nextModel);
+  }, [capabilitiesMap, genType, getCurrentFiles, model, modelOptions, onModelChange, refMode]);
+
+  const confirmModelChangeToFrameMode = useCallback(() => {
+    if (!pendingModelChange) return;
+
+    const { files: currentFiles } = getCurrentFiles();
+    const frameImages = currentFiles.filter(isImageFile).slice(0, 2);
+
+    // 先保留将迁入首尾帧的图片，避免清理普通素材时释放其本地预览地址。
+    clearFiles({ preserveFiles: frameImages });
+    clearFrameFiles({ preserveFiles: frameImages });
+    setRefMode(VIDEO_REFERENCE_MODES.FRAME);
+    setFirstFrameFile(frameImages[0] || null);
+    setLastFrameFile(frameImages[1] || null);
+    onModelChange(pendingModelChange.nextModel);
+    setPendingModelChange(null);
+  }, [clearFiles, clearFrameFiles, getCurrentFiles, onModelChange, pendingModelChange, setFirstFrameFile, setLastFrameFile, setRefMode]);
+
+  const confirmFrameModeImageAdd = useCallback(() => {
+    const imageFiles = pendingFrameModeImages || [];
+    if (!handleRefModeChange(VIDEO_REFERENCE_MODES.FRAME)) return;
+
+    const currentFiles = getCurrentFiles();
+    let firstFrame = currentFiles.firstFrameFile;
+    let lastFrame = currentFiles.lastFrameFile;
+    let ignoredCount = 0;
+    imageFiles.forEach((file) => {
+      if (!firstFrame) {
+        firstFrame = file;
+        setFirstFrameFile(file);
+      } else if (!lastFrame) {
+        lastFrame = file;
+        setLastFrameFile(file);
+      } else {
+        ignoredCount += 1;
+      }
+    });
+    if (ignoredCount > 0) {
+      showToast?.('warning', '首尾帧模式最多添加两张图片，其他图片未添加');
+    }
+    setPendingFrameModeImages(null);
+  }, [getCurrentFiles, handleRefModeChange, pendingFrameModeImages, setFirstFrameFile, setLastFrameFile, showToast]);
+
   const previousModelRef = useRef(model);
   useEffect(() => {
     if (genType !== 'video' || !currentModel) return;
@@ -652,6 +732,14 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         type: isVideo ? 'video/mp4' : isAudio ? 'audio/mpeg' : 'image/jpeg',
       };
     });
+    if (genType === 'video' && assetFiles.some(isImageFile)
+      && shouldConfirmFrameModeForImageReference({
+        capabilities: activeVideoCapabilities,
+        referenceMode: refMode,
+      })) {
+      setPendingFrameModeImages(assetFiles.filter(isImageFile));
+      return;
+    }
     if (liveMats.length > 0 || assetFiles.length > 0) {
       safeSetFiles((prev) => [
         ...prev,
@@ -938,7 +1026,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         modelOptions,
         creationParams,
         onGenTypeChange: handleLocalGenTypeChange,
-        onModelChange,
+        onModelChange: handleModelChange,
         onBeforeModelOpen,
         dubbingSpeed,
         dubbingPitch,
@@ -1039,6 +1127,28 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
           confirmVariant="danger"
           onCancel={() => setAdvancedExitConfirmOpen(false)}
           onConfirm={confirmAdvancedExit}
+        />
+      )}
+      {pendingFrameModeImages && (
+        <ConfirmDialog
+          title="切换至首尾帧模式"
+          description={<>当前模型的全能参考暂仅支持文生视频，图生视频能力正在加紧接入中，敬请期待。是否切换至首尾帧模式并添加图片？</>}
+          cancelText="暂不切换"
+          confirmText="切换并添加"
+          confirmVariant="orange"
+          onCancel={() => setPendingFrameModeImages(null)}
+          onConfirm={confirmFrameModeImageAdd}
+        />
+      )}
+      {pendingModelChange && !pendingFrameModeImages && (
+        <ConfirmDialog
+          title="提醒"
+          description={<>当前模型的全能参考模式暂时不支持参考图片/视频/音频素材，你可以「切换至首尾帧」继续使用当前模型，也可以「取消」并保留上次模型选项。<br />图生视频能力正在加紧接入中，敬请期待。</>}
+          cancelText="取消"
+          confirmText="切换至首尾帧"
+          confirmVariant="orange"
+          onCancel={() => setPendingModelChange(null)}
+          onConfirm={confirmModelChangeToFrameMode}
         />
       )}
     </>

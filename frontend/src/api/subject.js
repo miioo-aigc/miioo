@@ -1099,6 +1099,7 @@ export function normalizeScriptStructure(structure) {
     schemaVersion: structure?.schema_version || payload?.schema_version || '',
     overallSettings: {
       visualStyle: firstTextValueFromSources(overallSources, ['visual_style', 'visualStyle', 'style']),
+      visualStyleLabel: firstTextValueFromSources(overallSources, ['visual_style_label', 'visualStyleLabel', 'style_label', 'styleLabel']),
       aspectRatio: firstTextValueFromSources(overallSources, ['aspect_ratio', 'aspectRatio', 'ratio']),
       creationType: firstTextValueFromSources(overallSources, ['creation_type', 'creationType', 'type']),
     },

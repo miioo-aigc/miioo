@@ -407,6 +407,7 @@ export default function GlobalSettings({
   projectCoverUrl = '',
   projectRatio = '16:9',
   projectStyle = 'xianxia-3d',
+  projectStyleLabel = '',
   projectCreationType = 'dialogue',
   onProjectUpdate,
   onBack,
@@ -534,6 +535,7 @@ export default function GlobalSettings({
             projectId={projectId}
             projectName={projectName}
             projectVisualStyle={projectStyle}
+            projectVisualStyleLabel={projectStyleLabel}
             projectAspectRatio={projectRatio}
             projectCreationType={projectCreationType}
             onGoToSubject={onGoToSubject}

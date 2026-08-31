@@ -7,6 +7,13 @@
 - `multi_shot` 与 `multiframe` 不再进入参考模式菜单、上传/资产选择、素材分流或新请求参数。历史记录仍可展示；重新编辑旧模式时会回填到当前可用的全能参考或首尾帧输入，不会重新发出旧模式。
 - HappyHorse、Kling 等产品模型仍采用现有展示聚合与真实子模型路由机制；本轮没有推翻该架构。后续若继续扩展子模型能力，应将菜单展示的聚合范围与最终请求路由后的真实能力明确分层，避免聚合上限放宽真实子模型限制。
 - 涉及文件：`src/utils/videoModelAdapter.js`、`src/utils/videoModelCapabilities.js`、`src/utils/creationDetailAdapter.js`、`src/components/creation/`、`src/components/storyboard/GenerateVideoPanel.jsx`、`src/pages/StoryboardPage.jsx`、`src/api/creation.js`。
+
+## 2026-08-28 视频模型图片素材提前引导
+
+- 视频全能参考处于纯文生能力、且当前模型支持首尾帧时，本地上传图片和资产库选图都会先提示用户确认切换；确认后保留提示词并将图片加入首尾帧槽位，取消则不写入不支持的素材。
+- 所有这类模型均适用：判断由 `supported_generation_modes` 和 `generation_reference_mode_map` 推导，不按 Vidu 或其他厂商名称硬编码；提示说明图生视频能力正在加紧接入中。
+- 用户在全能参考已添加图片、视频或音频素材后切换到同类纯文生模型时，先保持原模型和全部素材并请求确认；确认后保留新模型，静默移除不兼容素材，仅把前两张图片转为首帧、尾帧。取消、关闭或点击遮罩不提交模型切换，也不改动素材。
+- 涉及文件：`src/utils/videoModelCapabilities.js`、`src/components/creation/CreationInputCard.jsx`。
 - 验证：目标文件定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；全仓 `npm run lint` 无错误，仅保留 `src/components/storyboard/PanelPromptInput.jsx` 的既有 Hook 依赖警告。
 
 ## 2026-08-28 分镜页复用 HappyHorse 动态素材限制

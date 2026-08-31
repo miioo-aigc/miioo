@@ -100,6 +100,54 @@ export function getVideoReferenceModeLabel(mode) {
   return REFERENCE_MODE_LABELS[mode] || mode;
 }
 
+/**
+ * 当前全能参考仅能文生、但模型提供首尾帧能力时，图片应在进入输入区前请求用户确认切换。
+ * 以能力字段判断，不绑定特定厂商或模型名称。
+ */
+export function shouldConfirmFrameModeForImageReference({
+  capabilities = {},
+  referenceMode,
+} = {}) {
+  if (referenceMode !== VIDEO_REFERENCE_MODES.ALL) return false;
+
+  const supportedModes = new Set(normalizeSupportedGenerationModes(capabilities));
+  const mapping = resolveGenerationReferenceModeMap({ capabilities });
+  const knownModes = new Set([
+    ...supportedModes,
+    ...Object.keys(mapping || {}),
+  ]);
+  const supportsImageInAllMode = knownModes.has('reference_subjects')
+    || knownModes.has('full');
+  const supportsFrameMode = [...FRAME_GENERATION_MODES]
+    .some((mode) => knownModes.has(mode));
+
+  return !supportsImageInAllMode && supportsFrameMode;
+}
+
+/**
+ * 当前全能参考没有图片、视频或音频素材能力、但模型提供首尾帧能力时，
+ * 应在保留该模型前请求用户确认切换首尾帧。
+ */
+export function shouldConfirmFrameModeForAllReferenceMedia({
+  capabilities = {},
+  referenceMode,
+} = {}) {
+  if (referenceMode !== VIDEO_REFERENCE_MODES.ALL) return false;
+
+  const supportedModes = new Set(normalizeSupportedGenerationModes(capabilities));
+  const mapping = resolveGenerationReferenceModeMap({ capabilities });
+  const knownModes = new Set([
+    ...supportedModes,
+    ...Object.keys(mapping || {}),
+  ]);
+  const supportsMediaInAllMode = [...ALL_REFERENCE_GENERATION_MODES]
+    .some((mode) => mode !== 'text_to_video' && knownModes.has(mode));
+  const supportsFrameMode = [...FRAME_GENERATION_MODES]
+    .some((mode) => knownModes.has(mode));
+
+  return !supportsMediaInAllMode && supportsFrameMode;
+}
+
 function fail(code, message) {
   return { ok: false, code, message };
 }

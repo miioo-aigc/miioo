@@ -4,6 +4,8 @@
 
 - `videoModelAdapter.js` 在模型菜单聚合前过滤明确无能力的视频模型：`supported_generation_modes` 明确为空数组，或 snake_case/camelCase 的生成模式映射明确为空对象时不展示；能力字段缺失继续保留给后续校验处理。
 - `videoModelCapabilities.js` 将当前参考模式收敛为全能参考和首尾帧，使用后端 `supported_generation_modes` 推导 `generation_mode`，再以真实路由模型的 `generation_reference_mode_map` 读取 `reference_mode`；不再消费旧 `reference_modes`。
+- 所有全能参考仅支持文生、但模型支持首尾帧的模型，`CreationInputCard.jsx` 都会在本地上传或资产库选择图片后显示确认弹窗；确认切换后图片进入首尾帧槽位，取消不保留无效素材。该提示由 `videoModelCapabilities.js` 基于模式列表和映射共同判断，不绑定模型名称。
+- 用户已在全能参考添加任意图片、视频或音频素材后切换至这类模型时，`CreationInputCard.jsx` 在提交模型变更前拦截并显示确认弹窗。确认会保留目标模型、静默清理不兼容素材并把前两张图片迁入首尾帧；取消、关闭和遮罩点击不提交模型变更，因此完整保留原模型、模式和素材。
 - `CreationInputCard.jsx`、`CreationRefModeSelector.jsx`、`CreationPromptEditor.jsx`、`GenerateVideoPanel.jsx`、`StoryboardPage.jsx` 和 `api/creation.js` 已移除 `multi_shot`/`multiframe` 的新创作入口、素材分流和请求参数。历史详情与候选媒体仍保留只读字段兼容；`creationDetailAdapter.js` 重新编辑旧多帧记录时仅将其降级为当前首尾帧输入。
 - 当前聚合模型架构保持不变：聚合能力服务于模型菜单与初步 UI，真实子模型路由继续承担发送前映射与校验。HappyHorse 动态上传限制是这一分层的现有局部实现；完整的“展示聚合能力/请求路由能力”拆分留待后续专项重构。
 - 验证：目标文件定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；全仓 `npm run lint` 无错误，仅保留 `src/components/storyboard/PanelPromptInput.jsx` 的既有 Hook 依赖警告。

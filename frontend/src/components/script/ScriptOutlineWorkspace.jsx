@@ -104,6 +104,7 @@ export default function ScriptOutlineWorkspace({ data, projectSettings, onRespli
   const [activeSection, setActiveSection] = useState(0);
   const settings = {
     visualStyle: data?.overallSettings?.visualStyle || projectSettings?.visualStyle || '',
+    visualStyleLabel: data?.overallSettings?.visualStyleLabel || projectSettings?.visualStyleLabel || '',
     aspectRatio: data?.overallSettings?.aspectRatio || projectSettings?.aspectRatio || '',
     creationType: data?.overallSettings?.creationType || projectSettings?.creationType || '',
   };
@@ -149,7 +150,7 @@ export default function ScriptOutlineWorkspace({ data, projectSettings, onRespli
     <div style={{ position: 'relative', display: 'block', width: '100%', height: '100%', minHeight: 0, overflow: 'visible', borderRadius: '16px', background: '#060606', color: '#FFFFFF', fontFamily: FONT, boxSizing: 'border-box' }}>
       <div ref={scrollContainerRef} style={{ position: 'absolute', inset: 0, display: 'block', overflow: 'auto', padding: 0, boxSizing: 'border-box' }}>
         <div style={{ position: 'relative', display: 'flex', width: 'min(960px, 100%)', minHeight: '100%', margin: '0 auto', flexDirection: 'column', gap: '16px', paddingBottom: '16px', boxSizing: 'border-box' }}>
-          <section ref={(node) => { sectionRefs.current[0] = node; }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><SectionTitle>整体设定</SectionTitle><KeyValueTable rows={[['视觉风格', getVisualStyleLabel(settings.visualStyle)], ['画面比例', settings.aspectRatio], ['创作类型', getCreationTypeLabel(settings.creationType)]]} /></section>
+          <section ref={(node) => { sectionRefs.current[0] = node; }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><SectionTitle>整体设定</SectionTitle><KeyValueTable rows={[['视觉风格', settings.visualStyleLabel || getVisualStyleLabel(settings.visualStyle)], ['画面比例', settings.aspectRatio], ['创作类型', getCreationTypeLabel(settings.creationType)]]} /></section>
           <section ref={(node) => { sectionRefs.current[1] = node; }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><SectionTitle>剧本设计</SectionTitle><KeyValueTable rows={[['故事梗概', design.synopsis], ['故事背景', design.background], ['世界观设定', design.world], ['核心冲突', design.conflict]]} /></section>
           <section ref={(node) => { sectionRefs.current[2] = node; }} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><SectionTitle compactBottom>主体</SectionTitle><SubjectGroup title="角色" items={subjects.characters} /><SubjectGroup title="场景" items={subjects.scenes} /><SubjectGroup title="道具" items={subjects.props} /></section>
           {outlineType === 'storyboard' ? <ScriptStoryboardDocument fileName={storyboardFileName} downloadUrl={storyboardDownloadUrl} onDownload={onDownloadStoryboard} /> : <ScriptEpisodeOutline sectionRef={(node) => { sectionRefs.current[3] = node; }} episodes={episodes} revision={data?.revision || 0} selectedModel={selectedModel} onResplit={onResplit} onRegenerate={onRegenerateEpisode} onAdd={onAddEpisode} onPatch={onPatchStructure} onDelete={onDeleteEpisode} actionLoading={episodeActionLoading} actionError={episodeActionError} hideEpisodeActions={hideEpisodeActions} loadingContainerRef={loadingContainerRef} />}

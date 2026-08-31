@@ -216,7 +216,7 @@ function Toast({ toasts }) {
   );
 }
 
-export default function ScriptPage({ projectId, projectName = '', projectVisualStyle, projectAspectRatio, projectCreationType, onGoToSubject, onEpisodesChange, phase: phaseProp, onPhaseChange, hasStarted: hasStartedProp, onHasStartedChange, scriptContent: scriptContentProp, onScriptContentChange, isSubjectUnlocked = false }) {
+export default function ScriptPage({ projectId, projectName = '', projectVisualStyle, projectVisualStyleLabel, projectAspectRatio, projectCreationType, onGoToSubject, onEpisodesChange, phase: phaseProp, onPhaseChange, hasStarted: hasStartedProp, onHasStartedChange, scriptContent: scriptContentProp, onScriptContentChange, isSubjectUnlocked = false }) {
   const [phaseLocal, setPhaseLocalRaw] = useState('initial');
   const [hasStartedLocal, setHasStartedLocalRaw] = useState(false);
   const [scriptContentLocal, setScriptContentLocalRaw] = useState('');
@@ -1118,7 +1118,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
           ) : (
             <ScriptOutlineWorkspace
               data={scriptOutlineData}
-              projectSettings={{ visualStyle: projectVisualStyle, aspectRatio: projectAspectRatio, creationType: projectCreationType }}
+              projectSettings={{ visualStyle: projectVisualStyle, visualStyleLabel: projectVisualStyleLabel, aspectRatio: projectAspectRatio, creationType: projectCreationType }}
               selectedModel={selectedModel}
               onResplit={handleResplitEpisodes}
               onAddEpisode={handleAddEpisode}

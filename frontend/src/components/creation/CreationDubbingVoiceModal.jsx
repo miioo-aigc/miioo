@@ -40,6 +40,7 @@
  *   2026-09-01  官方音色弹窗恢复本地缓存，收藏成功后即时更新当前列表并失效旧缓存
  *   2026-08-31  语言筛选固定中文第一，其他语言按英文枚举排序并统一中文展示
  *   2026-08-31  语言与口音筛选选项双向联动，但保留两个独立下拉框
+ *   2026-09-01  选择音色弹窗每次打开默认展开筛选条件，仍支持手动收起
  */
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
@@ -129,7 +130,7 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast,
   const [favoriteUpdatingId, setFavoriteUpdatingId] = useState("");
   const [searchHovered, setSearchHovered] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
-  const [filtersVisible, setFiltersVisible] = useState(false);
+  const [filtersVisible, setFiltersVisible] = useState(true);
   const [voiceFilters, setVoiceFilters] = useState({ language: "不限", accent: "不限", gender: "不限", ageGroup: "不限" });
   const [closeHovered, setCloseHovered] = useState(false);
   const [closePressed, setClosePressed] = useState(false);
@@ -147,7 +148,7 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast,
     setFavoriteUpdatingId("");
     setSearchHovered(false);
     setSearchFocused(false);
-    setFiltersVisible(false);
+    setFiltersVisible(true);
     setVoiceFilters({ language: "不限", accent: "不限", gender: "不限", ageGroup: "不限" });
     setCloseHovered(false);
     setClosePressed(false);

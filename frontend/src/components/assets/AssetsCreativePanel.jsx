@@ -10,6 +10,7 @@ import { getCreativeBatchDeleteRequest } from '../../utils/assetsBatchAdapter';
 import { downloadBlob } from '../../utils/downloadBlob';
 import { getCreativeAssetDownloadInfo } from '../../utils/creativeAssetDownload';
 import { normalizeCreationAudioDetail } from '../../utils/creationAudioDetailAdapter';
+import { showGlobalToast } from '../../stores/toastStore';
 import ConfirmDialog from '../ConfirmDialog';
 import { AssetsTabBar } from './AssetsTabs';
 import AssetsBatchToolbar from './AssetsBatchToolbar';
@@ -37,14 +38,13 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     selectAll: selectAllAssets,
     exitBatch,
   } = useAssetSelection();
-  const [toast, setToast] = useState(null);
   const [audioDetail, setAudioDetail] = useState(null);
+  const toast = null;
   const scrollContainerRef = useRef(null);
   const loadMoreSentinelRef = useRef(null);
 
   function showToast(msg, type = 'success') {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 2500);
+    showGlobalToast(msg, type);
   }
 
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);

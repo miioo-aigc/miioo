@@ -47,6 +47,7 @@ import { getSubjectReferenceImageIdentities, getSubjectReferenceImagesFromRespon
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { normalizeStoryboard } from '../../utils/storyboardDataAdapter';
 import { normalizeAudioAssetDetail, normalizeCreationAudioDetail } from '../../utils/creationAudioDetailAdapter';
+import { showGlobalToast } from '../../stores/toastStore';
 import ConfirmDialog from '../ConfirmDialog';
 import { AssetsTabBar } from './AssetsTabs';
 import AssetsBatchToolbar from './AssetsBatchToolbar';
@@ -205,13 +206,12 @@ export default function AssetsProjectPanel() {
   const [renameValue, setRenameValue] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
-  const [toast, setToast] = useState(null);
   const [storyboardDetail, setStoryboardDetail] = useState(null);
   const [audioDetail, setAudioDetail] = useState(null);
+  const toast = null;
 
   function showToast(msg, type = 'success') {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 2500);
+    showGlobalToast(msg, type);
   }
 
   // 资产库卡片的名称/描述以「主体」为准，而非资产记录自身。

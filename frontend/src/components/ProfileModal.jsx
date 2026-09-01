@@ -5,6 +5,7 @@ import WechatOfficialQr from './WechatOfficialQr';
 import { createSerialPolling } from '../utils/serialPolling';
 import { apiUpdateProfile, apiUploadAvatar, apiDeleteAccount, apiGetWechatQrCode, apiPollWechatBind, apiUnbindWechat, apiSendPhoneCode, apiVerifyPhoneCode, apiRebindPhone } from '../api/user';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import { showGlobalToast } from '../stores/toastStore';
 
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_REGULAR = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -751,13 +752,9 @@ export default function ProfileModal({
   const [phoneUnbindStep, setPhoneUnbindStep] = useState(null);
   const [boundPhone, setBoundPhone] = useState(null);
   const [wechatUnbindConfirm, setWechatUnbindConfirm] = useState(false);
-  const [toast, setToast] = useState(null);
-  const toastTimerRef = useRef(null);
-
+  const toast = null;
   const showToast = (msg, type = 'warning') => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast({ msg, type });
-    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
+    showGlobalToast(msg, type);
   };
 
   useEffect(() => {

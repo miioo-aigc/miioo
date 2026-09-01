@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { sendVerificationCode, loginWithPhone, apiGetWechatQrCode, apiPollWechatQrCodeStatus, apiConfirmWechatLogin } from '../api/auth';
 import { createSerialPolling } from '../utils/serialPolling';
 import WechatOfficialQr from './WechatOfficialQr';
+import { showGlobalToast } from '../stores/toastStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -783,7 +784,7 @@ function BindPhoneView({ onBind, onBack, onShowToast, bindToken, sessionId }) {
   );
 }
 
-function Toast({ toasts }) {
+function LegacyToast({ toasts }) {
   return (
     <div style={{ position: 'fixed', top: '25vh', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', pointerEvents: 'none' }}>
       {toasts.map((toast) => (
@@ -818,18 +819,17 @@ function Toast({ toasts }) {
   );
 }
 
+void LegacyToast;
+
 export default function LoginModal({ open, onClose, onSuccess }) {
   const [tab, setTab] = useState('phone');
   const [step, setStep] = useState('login');
   const [bindToken, setBindToken] = useState('');
-  const [toasts, setToasts] = useState([]);
   const wechatSessionIdRef = useRef('');
   const [wechatSessionId, setWechatSessionId] = useState('');
 
   const showToast = useCallback((type, message) => {
-    const id = Date.now();
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
+    showGlobalToast(type, message);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -892,7 +892,7 @@ export default function LoginModal({ open, onClose, onSuccess }) {
     return () => window.removeEventListener('message', handleWechatCallbackMessage);
   }, [handleClose, onSuccess, showToast]);
 
-  if (!open) return <Toast toasts={toasts} />;
+  if (!open) return null;
 
   return (
     <>
@@ -934,7 +934,6 @@ export default function LoginModal({ open, onClose, onSuccess }) {
         </div>
       </div>
     </div>
-    <Toast toasts={toasts} />
     </>
   );
 }

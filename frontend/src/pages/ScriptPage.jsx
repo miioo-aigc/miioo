@@ -50,6 +50,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiInterruptScriptChatTurn, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiDownloadStoryboardFile, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
 import { Button } from '../components/ui';
 import { InputCard, ScriptEmptyState, ScriptMessageArea, ScriptOutlineLoading, ScriptOutlineWorkspace, ScriptModifyConfirmModal } from '../components/script';
+import { showGlobalToast } from '../stores/toastStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -216,6 +217,8 @@ function Toast({ toasts }) {
   );
 }
 
+void Toast;
+
 export default function ScriptPage({ projectId, projectName = '', projectVisualStyle, projectVisualStyleLabel, projectAspectRatio, projectCreationType, onGoToSubject, onEpisodesChange, phase: phaseProp, onPhaseChange, hasStarted: hasStartedProp, onHasStartedChange, scriptContent: scriptContentProp, onScriptContentChange, isSubjectUnlocked = false }) {
   const [phaseLocal, setPhaseLocalRaw] = useState('initial');
   const [hasStartedLocal, setHasStartedLocalRaw] = useState(false);
@@ -236,7 +239,6 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   const [selectedModel, setSelectedModel] = useState(null);
   const [episodeCount, setEpisodeCount] = useState(null);
   const [episodeDuration, setEpisodeDuration] = useState(null);
-  const [toasts, setToasts] = useState([]);
   const [messages, setMessages] = useState([]);
   const [activeMessageId, setActiveMessageId] = useState(null);
   const [scriptOutlineMode, setScriptOutlineMode] = useState(false);
@@ -266,9 +268,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   const scriptContentRef = useRef(scriptContent);
   scriptContentRef.current = scriptContent;
   const showToast = (message, type = 'error') => {
-    const id = Date.now();
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
+    showGlobalToast(message, type);
   };
 
   const handleOpenScriptOutline = useCallback(async ({ skipContentCheck = false, force = false } = {}) => {
@@ -1210,7 +1210,6 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
           </div>
       )}
     </div>
-    <Toast toasts={toasts} />
     <ScriptModifyConfirmModal
       open={modifyConfirmOpen}
       onConfirm={handleConfirmModifyScript}

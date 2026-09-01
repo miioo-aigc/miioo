@@ -34,12 +34,13 @@
  *   2026-08-06  详情弹窗统一使用 3:2、90% 视口和 1200×800 最小尺寸，并整体等比缩放
  */
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
 import ConfirmDialog from './ConfirmDialog';
 import Toggle from './Toggle';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import { showGlobalToast } from '../stores/toastStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -72,13 +73,9 @@ export default function MediaDetailModal({
   const [hovDelete, setHovDelete] = useState(false);
   const [pressDelete, setPressDelete] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [copyToast, setCopyToast] = useState(false);
-  const copyToastTimer = useRef(null);
-
+  const copyToast = null;
   function showCopyToast() {
-    clearTimeout(copyToastTimer.current);
-    setCopyToast(true);
-    copyToastTimer.current = setTimeout(() => setCopyToast(false), 2000);
+    showGlobalToast('提示词复制成功', 'success');
   }
 
   const currentImg = imgs[activeImg];

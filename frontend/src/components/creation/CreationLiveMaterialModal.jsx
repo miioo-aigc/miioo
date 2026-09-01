@@ -27,6 +27,7 @@ import { Button } from '../ui';
 import ConfirmDialog from '../ConfirmDialog';
 import DotsLoading from '../DotsLoading';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { showGlobalToast } from '../../stores/toastStore';
 import {
   apiCreateLiveMaterialAuthSession,
   apiGetLiveMaterialAuthSessionStatus,
@@ -353,7 +354,6 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
   const [view, setView] = useState('groups'); // 'groups' | 'assets'
   const [activeGroup, setActiveGroup] = useState(null); // LiveMaterialGroupResponse
   const [uploading, setUploading] = useState(false);
-  const [uploadToast, setUploadToast] = useState(null); // string | null
   const [qrState, setQrState] = useState(null); // null | { phase:'scanning', launchUrl, sessionId } | { phase:'success', newGroup }
   const [pendingGroupName, setPendingGroupName] = useState('');
   const [groupNameOverrides, setGroupNameOverrides] = useState({}); // groupId -> display name（临时覆盖，后端已持久化）
@@ -503,15 +503,13 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
     if (!file || !activeGroup) return;
     // 仅允许图片格式
     if (!file.type.startsWith('image/')) {
-      setUploadToast('仅支持上传图片格式');
-      setTimeout(() => setUploadToast(null), 3000);
+      showGlobalToast('仅支持上传图片格式', 'error');
       e.target.value = '';
       return;
     }
     // 30MB 限制
     if (file.size > 30 * 1024 * 1024) {
-      setUploadToast('图片大小不能超过 30MB');
-      setTimeout(() => setUploadToast(null), 3000);
+      showGlobalToast('图片大小不能超过 30MB', 'error');
       e.target.value = '';
       return;
     }
@@ -521,8 +519,7 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
       setAssetsMap(prev => ({ ...prev, [activeGroup.id]: [asset, ...(prev[activeGroup.id] || [])] }));
       startAssetStatusPolling(activeGroup.id);
     } catch {
-      setUploadToast('上传失败，请重试');
-      setTimeout(() => setUploadToast(null), 3000);
+      showGlobalToast('上传失败，请重试', 'error');
     }
     setUploading(false);
     e.target.value = '';
@@ -757,15 +754,6 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
         </div>
       )}
 
-      {/* Upload error toast */}
-      {uploadToast && createPortal(
-        <div style={{ position: 'fixed', top: '25vh', left: '50%', transform: 'translateX(-50%)', zIndex: 2100, pointerEvents: 'none' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '8px', background: '#1E1E1ECC', backdropFilter: 'blur(20px)', whiteSpace: 'nowrap', fontFamily: FONT, fontSize: '13px', color: '#FF6B6B', border: '1px solid #FF4444' + '33' }}>
-            {uploadToast}
-          </div>
-        </div>,
-        document.body
-      )}
     </div>,
     document.body
   );

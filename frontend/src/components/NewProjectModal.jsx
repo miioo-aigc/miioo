@@ -140,7 +140,7 @@ function StyleLibraryModal({ open, onClose, selectedValue, onSelect }) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-[24px] py-[20px] bg-surface-modal shrink-0">
+        <div className="flex items-center justify-between px-[24px] pt-[20px] pb-[8px] bg-surface-modal shrink-0">
           <span className="text-text-primary text-font-size-16 font-font-weight-medium" style={{ fontFamily: FONT_MEDIUM }}>
             从风格库选择
           </span>
@@ -150,7 +150,7 @@ function StyleLibraryModal({ open, onClose, selectedValue, onSelect }) {
         </div>
 
         {/* 分类 Tab：固定不滚动 */}
-        <div className="px-[24px] pt-[8px] shrink-0 bg-surface-modal">
+        <div className="px-[24px] pt-0 shrink-0 bg-surface-modal">
           <Tabs
             options={LIBRARY_GROUPS.map((g) => ({ value: g.category, label: g.category }))}
             value={activeCategory}
@@ -159,7 +159,7 @@ function StyleLibraryModal({ open, onClose, selectedValue, onSelect }) {
         </div>
 
         {/* 封面网格：独立滚动区 */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-[24px] pt-[8px] pb-[68px]">
+        <div className="flex-1 min-h-0 overflow-y-auto px-[24px] pt-0 pb-[68px]">
           <div className="grid grid-cols-3 gap-[8px]">
             {group.styles.map((s) => {
               const selected = selectedValue === s.value;

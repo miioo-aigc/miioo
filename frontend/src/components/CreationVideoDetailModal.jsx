@@ -6,6 +6,7 @@ import FilePreviewTooltip from './FilePreviewTooltip';
 import AsyncImagePreview from './AsyncImagePreview';
 import { formatReferenceMode } from '../utils/referenceMode';
 import { apiGetLiveMaterialPreviewByRef } from '../api/liveMaterials';
+import { showGlobalToast } from '../stores/toastStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -186,15 +187,14 @@ export default function CreationVideoDetailModal({
   const [volume, setVolume] = useState(0.7);
   const [muted, setMuted] = useState(false);
   const [hovClose, setHovClose] = useState(false);
-  const [toastVisible, setToastVisible] = useState(false);
+  const [toastVisible] = useState(false);
   const videoRef = useRef(null);
   const progressBarRef = useRef(null);
   const volumeBarRef = useRef(null);
   const isDraggingRef = useRef(false);
 
   function handleCopyPrompt() {
-    setToastVisible(true);
-    setTimeout(() => setToastVisible(false), 2500);
+    showGlobalToast('您已复制提示词', 'success');
   }
 
   function fmtTime(secs) {

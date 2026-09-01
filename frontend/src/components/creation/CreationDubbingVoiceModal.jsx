@@ -37,7 +37,7 @@
  *   2026-08-25  收藏 Tab 改为只筛选展示已收藏的官方音色，不再读取创作音频
  *   2026-08-25  按接口文档统一通过 voice_id 调用官方音色 favorite 接口
  *   2026-08-26  音色试听改为单例播放，关闭弹窗时停止并释放音频
- *   2026-08-27  官方音色弹窗打开时跳过旧缓存，避免收藏 Tab 使用过期收藏状态
+ *   2026-09-01  官方音色弹窗恢复本地缓存，收藏成功后即时更新当前列表并失效旧缓存
  *   2026-08-31  语言筛选固定中文第一，其他语言按英文枚举排序并统一中文展示
  *   2026-08-31  语言与口音筛选选项双向联动，但保留两个独立下拉框
  */
@@ -219,7 +219,7 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast,
       }
     });
 
-    apiGetOfficialVoices({ provider: "minimax", skipCache: true })
+    apiGetOfficialVoices({ provider: "minimax" })
       .then((voices) => {
         if (cancelled) return;
         const normalizedVoices = voices

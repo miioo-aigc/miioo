@@ -60,6 +60,7 @@
  *   2026-07-22  主体生成改为发布结构、检查存储用量并轮询剧本任务；完成后强制刷新主体列表并兼容嵌套响应
  *   2026-07-23  持久化主体抽取两阶段任务，刷新浏览器后恢复轮询和加载动画
  *   2026-07-27  主体抽取加载文案优先读取任务轮询 status_message，固定文案作为兜底
+ *   2026-09-01  主体抽取运行锁、加载态和错误态按项目隔离，避免跨项目污染
  *   2026-07-24  持久化分镜生成任务，支持刷新/返回后恢复轮询及失败重试
  *   2026-07-30  覆盖重抽任务提交后立即查询任务状态，并统一兼容嵌套任务 ID
  *   2026-07-06  新增 subject cache 订阅 useEffect，实时同步 sharedChars/sharedScenes/sharedProps
@@ -104,6 +105,7 @@ import WatermarkSettingsModal from '../components/WatermarkSettingsModal';
 import NotificationCenterModal from '../components/NotificationCenterModal';
 import DotsLoading from '../components/DotsLoading';
 import PageErrorBoundary from '../components/feedback/PageErrorBoundary';
+import { showGlobalToast } from '../stores/toastStore';
 import { clearCreationDrafts } from '../components/creation/CreationDraftStorage';
 import { BG_VIDEOS, NAV_ITEMS, BOTTOM_NAV_ITEMS } from '../components/home/HomeNavigationConfig';
 import {
@@ -112,7 +114,6 @@ import {
   MoreOptionsMenu,
   WorkflowHeadbar,
   ApiConfigBubble,
-  HomeToast,
   HomeBackground,
   HomeHeader,
   HomeNavigationRail,
@@ -270,17 +271,16 @@ export default function Home({ onGoToAdmin }) {
     scenes: { nextOffset: null, hasMore: false, loading: true, rawList: [] },
     props:  { nextOffset: null, hasMore: false, loading: true, rawList: [] },
   });
-  const [extractError, setExtractError] = useState(null);
-  const [extractErrorProjectId, setExtractErrorProjectId] = useState(null);
-  const [isExtractingSubjects, setIsExtractingSubjects] = useState(false);
-  const [subjectExtractionStatusMessage, setSubjectExtractionStatusMessage] = useState('');
+  const [extractErrorByProject, setExtractErrorByProject] = useState({});
+  const [subjectExtractionByProject, setSubjectExtractionByProject] = useState({});
+  const [subjectExtractionStatusByProject, setSubjectExtractionStatusByProject] = useState({});
   const [generateError, setGenerateError] = useState(null);
   const [generateErrorProjectId, setGenerateErrorProjectId] = useState(null);
   const [isGeneratingStoryboards, setIsGeneratingStoryboards] = useState(false);
   const [completedEpisodesCount, setCompletedEpisodesCount] = useState(0);
   const [storyboardStatusMessage, setStoryboardStatusMessage] = useState('');
   const generatingStoryboardsRef = useRef(false); // 同步锁，防止并发调用
-  const extractingSubjectsRef = useRef(false); // 同步锁，防止主体页重复发布结构
+  const extractingSubjectsRef = useRef({}); // { projectId: true }，防止同一项目重复发布结构
   // 自上次提取主体后，剧本是否又重新定稿过（用于控制"开始提取主体"按钮行为）
   const [scriptFinalizedSinceExtraction, setScriptFinalizedSinceExtraction] = useState(false);
   const [scriptEpisodes, setScriptEpisodes] = useState([]);
@@ -303,8 +303,6 @@ export default function Home({ onGoToAdmin }) {
   useEffect(() => {
     currentProjectIdRef.current = activeProject?.id || null;
   }, [activeProject?.id]);
-  const [toast, setToast] = useState(null);
-  const toastTimerRef = useRef(null);
   // 跨项目异步操作的 pending 结果暂存
   const pendingExtractionsRef = useRef({}); // { projectId: { chars, scenes, props } }
   const currentProjectIdRef = useRef(null);  // 同步跟踪当前项目
@@ -312,11 +310,11 @@ export default function Home({ onGoToAdmin }) {
   const currentVideoIndexRef = useRef(0);
   const activeProjectIdForExtraction = activeProject?.id;
   const activeProjectNameForExtraction = activeProject?.name;
+  const activeExtractError = extractErrorByProject[activeProject?.id] || null;
+  const activeSubjectExtractionStatusMessage = subjectExtractionStatusByProject[activeProject?.id] || '';
 
   const showToast = useCallback((msg, type = 'warning') => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast({ msg, type });
-    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
+    showGlobalToast(msg, type);
   }, []);
 
   const refreshStorageUsage = useCallback(async () => {
@@ -465,15 +463,17 @@ export default function Home({ onGoToAdmin }) {
       setScriptPhase('initial');
       setScriptHasStarted(false);
       setScriptFinalizedSinceExtraction(false);
+      setForceExtract(false);
       setSharedChars([]);
       setSharedScenes([]);
       setSharedProps([]);
       setEpisodeStatuses({});
       setUnlockedSteps(new Set());
-      if (extractErrorProjectId !== projectId) {
-        setExtractError(null);
-        setExtractErrorProjectId(null);
-      }
+      setExtractErrorByProject((prev) => {
+        const next = { ...prev };
+        delete next[projectId];
+        return next;
+      });
       if (generateErrorProjectId !== projectId) {
         setGenerateError(null);
         setGenerateErrorProjectId(null);
@@ -960,12 +960,16 @@ export default function Home({ onGoToAdmin }) {
 
   // 提取主体回调（由 SubjectPage 在挂载时调用）：发布结构、提交主体抽取并轮询任务
   const handleExtractSubjects = useCallback(async () => {
-    if (extractingSubjectsRef.current) return;
-    extractingSubjectsRef.current = true;
-    setIsExtractingSubjects(true);
     const projectId = activeProjectIdForExtraction;
+    if (!projectId || extractingSubjectsRef.current[projectId]) return;
+    extractingSubjectsRef.current[projectId] = true;
+    setSubjectExtractionByProject((prev) => ({ ...prev, [projectId]: true }));
     const projectName = activeProjectNameForExtraction || projectId;
-    setExtractError(null);
+    setExtractErrorByProject((prev) => {
+      const next = { ...prev };
+      delete next[projectId];
+      return next;
+    });
     try {
       const storedPendingExtraction = readPendingSubjectExtraction(projectId);
       const pendingExtraction = storedPendingExtraction?.status === 'failed' ? null : storedPendingExtraction;
@@ -976,7 +980,7 @@ export default function Home({ onGoToAdmin }) {
         const deadline = Date.now() + 10 * 60 * 1000;
         let task = initialTask;
         let statusMessage = getTaskStatusMessage(task) || pendingExtraction?.statusMessage || '';
-        setSubjectExtractionStatusMessage(statusMessage);
+        setSubjectExtractionStatusByProject((prev) => ({ ...prev, [projectId]: statusMessage }));
         while (Date.now() < deadline) {
           const status = String(task?.status || '').toLowerCase();
           if (['completed', 'succeeded', 'success'].includes(status)) return task;
@@ -988,7 +992,7 @@ export default function Home({ onGoToAdmin }) {
           const nextStatusMessage = getTaskStatusMessage(task);
           if (nextStatusMessage) {
             statusMessage = nextStatusMessage;
-            setSubjectExtractionStatusMessage(statusMessage);
+            setSubjectExtractionStatusByProject((prev) => ({ ...prev, [projectId]: statusMessage }));
           }
           if (statusMessage) {
             writePendingSubjectExtraction(projectId, {
@@ -1102,14 +1106,24 @@ export default function Home({ onGoToAdmin }) {
         createdAt: Date.now(),
       });
       if (currentProjectIdRef.current === projectId) {
-        setExtractError(err?.message || '提取主体失败，请重试');
-        setExtractErrorProjectId(projectId);
+        setExtractErrorByProject((prev) => ({
+          ...prev,
+          [projectId]: err?.message || '提取主体失败，请重试',
+        }));
         showToast(err?.message || '提取主体失败，请重试', 'error');
       }
     } finally {
-      extractingSubjectsRef.current = false;
-      setIsExtractingSubjects(false);
-      setSubjectExtractionStatusMessage('');
+      delete extractingSubjectsRef.current[projectId];
+      setSubjectExtractionByProject((prev) => {
+        const next = { ...prev };
+        delete next[projectId];
+        return next;
+      });
+      setSubjectExtractionStatusByProject((prev) => {
+        const next = { ...prev };
+        delete next[projectId];
+        return next;
+      });
     }
   }, [activeProjectIdForExtraction, activeProjectNameForExtraction, showToast]);
 
@@ -1403,14 +1417,20 @@ export default function Home({ onGoToAdmin }) {
     if (!projectId) return;
     if (pending?.status !== 'failed') {
       const frameId = requestAnimationFrame(() => {
-        setSubjectExtractionStatusMessage(pending?.statusMessage || '');
+        setSubjectExtractionStatusByProject((prev) => ({ ...prev, [projectId]: pending?.statusMessage || '' }));
       });
       return () => cancelAnimationFrame(frameId);
     }
     const frameId = requestAnimationFrame(() => {
-      setExtractError(pending.error || '主体抽取失败，请重试');
-      setExtractErrorProjectId(projectId);
-      setSubjectExtractionStatusMessage('');
+      setExtractErrorByProject((prev) => ({
+        ...prev,
+        [projectId]: pending.error || '主体抽取失败，请重试',
+      }));
+      setSubjectExtractionStatusByProject((prev) => {
+        const next = { ...prev };
+        delete next[projectId];
+        return next;
+      });
     });
     return () => cancelAnimationFrame(frameId);
   }, [activeProject?.id]);
@@ -1428,6 +1448,7 @@ export default function Home({ onGoToAdmin }) {
     setActiveKey(key);
     setActiveProject(null);
     setActiveProjectId(null);
+    setForceExtract(false);
     localStorage.removeItem('miioo_active_project_id');
     localStorage.removeItem('miioo_active_step');
           localStorage.removeItem('miioo_active_key');
@@ -1648,6 +1669,7 @@ export default function Home({ onGoToAdmin }) {
                 onBack={() => {
                   setActiveProject(null);
                   setActiveProjectId(null);
+                  setForceExtract(false);
                   localStorage.removeItem('miioo_active_project_id');
                   localStorage.removeItem('miioo_active_step');
           localStorage.removeItem('miioo_active_key');
@@ -1698,6 +1720,7 @@ export default function Home({ onGoToAdmin }) {
                 onBack={() => {
                   setActiveProject(null);
                   setActiveProjectId(null);
+                  setForceExtract(false);
                   localStorage.removeItem('miioo_active_project_id');
                   localStorage.removeItem('miioo_active_step');
           localStorage.removeItem('miioo_active_key');
@@ -1712,8 +1735,8 @@ export default function Home({ onGoToAdmin }) {
                 props={sharedProps}
                 onPropsChange={setSharedProps}
                 subjectsLoading={subjectPageMeta.chars.loading || subjectPageMeta.scenes.loading || subjectPageMeta.props.loading}
-                isExtractingSubjects={isExtractingSubjects || (readPendingSubjectExtraction(activeProject.id)?.status !== 'failed' && !!readPendingSubjectExtraction(activeProject.id)?.taskId)}
-                subjectExtractionStatusMessage={subjectExtractionStatusMessage}
+                isExtractingSubjects={!!subjectExtractionByProject[activeProject.id] || (readPendingSubjectExtraction(activeProject.id)?.status !== 'failed' && !!readPendingSubjectExtraction(activeProject.id)?.taskId)}
+                subjectExtractionStatusMessage={activeSubjectExtractionStatusMessage}
                 isStoryboardGenerated={unlockedSteps.has('storyboard')}
                 onStartStoryboard={() => {
                   handleUnlockStep('storyboard');
@@ -1724,13 +1747,16 @@ export default function Home({ onGoToAdmin }) {
                 onExtractSubjects={(forceExtract || (readPendingSubjectExtraction(activeProject.id)?.status !== 'failed' && !!readPendingSubjectExtraction(activeProject.id)?.taskId))
                   ? handleExtractSubjects
                   : undefined}
-                onRetryExtractSubjects={extractError ? async () => {
+                onRetryExtractSubjects={activeExtractError ? async () => {
                   clearPendingSubjectExtraction(activeProject.id);
-                  setExtractError(null);
-                  setExtractErrorProjectId(null);
+                  setExtractErrorByProject((prev) => {
+                    const next = { ...prev };
+                    delete next[activeProject.id];
+                    return next;
+                  });
                   return handleExtractSubjects();
                 } : undefined}
-                extractError={extractError}
+                extractError={activeExtractError}
                 onLoadMoreChars={() => loadMoreSubjects('character')}
                 onLoadMoreScenes={() => loadMoreSubjects('scene')}
                 onLoadMoreProps={() => loadMoreSubjects('prop')}
@@ -1848,7 +1874,6 @@ export default function Home({ onGoToAdmin }) {
         onClose={closeStorageReminder}
         onManageAssets={manageStorageAssets}
       />
-      <HomeToast toast={toast} />
     </div>
   );
 }

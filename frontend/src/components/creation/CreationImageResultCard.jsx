@@ -28,6 +28,7 @@ import ConfirmDialog from '../ConfirmDialog';
 import LoadingAnimation from '../LoadingAnimation';
 import AsyncImagePreview from '../AsyncImagePreview';
 import CreationCardActionButton from './CreationCardActionButton';
+import { showGlobalToast } from '../../stores/toastStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -103,7 +104,7 @@ function ImageDetailModal({ card, onClose, onDelete, onDownload, favorited, onTo
   const [starAnim, setStarAnim] = useState(false);
   const [closeHovered, setCloseHovered] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [toastVisible, setToastVisible] = useState(false);
+  const [toastVisible] = useState(false);
 
   function handleStarClick() {
     setStarAnim(true);
@@ -112,8 +113,7 @@ function ImageDetailModal({ card, onClose, onDelete, onDownload, favorited, onTo
   }
 
   function handleCopyPrompt() {
-    setToastVisible(true);
-    setTimeout(() => setToastVisible(false), 2500);
+    showGlobalToast('您已复制提示词', 'success');
   }
 
   return (

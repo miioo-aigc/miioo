@@ -21,6 +21,7 @@ import { apiOneClickSetup, apiCreateModel, apiCreateProvider, apiListModels, api
 import { getToken } from '../api/request.js';
 // 全局 API 卡片背景图（本地打包，保证离线可用）
 import globalApiBg from '../assets/api-global-bg.png';
+import { showGlobalToast } from '../stores/toastStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -220,7 +221,7 @@ function PrimaryButton({ children, className = '', innerClassName = '', onClick,
   );
 }
 
-function Toast({ toasts }) {
+function LegacyToast({ toasts }) {
   return (
     <div style={{ position: 'fixed', top: '25vh', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', pointerEvents: 'none' }}>
       {toasts.map((toast) => (
@@ -254,6 +255,8 @@ function Toast({ toasts }) {
     </div>
   );
 }
+
+void LegacyToast;
 
 // ConfirmDeleteModal 已迁移至 ConfirmDialog 共享组件
 
@@ -959,14 +962,11 @@ function EditModelModal({ draft, onChange, onCancel, onSave, title = '添加模�
 
 export default function ApiConfigModal({ open, onClose, onConfigured }) {
   const [state, setState] = useState(createDefaultState);
-  const [toasts, setToasts] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [bannerData, setBannerData] = useState(null);
 
   const showToast = useCallback((type, message) => {
-    const id = Date.now();
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
+    showGlobalToast(type, message);
   }, []);
 
   const loadModelsFromBackend = useCallback(() => {
@@ -1877,7 +1877,6 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
 
   return (
     <>
-      <Toast toasts={toasts} />
       {confirmDelete && (
         <ConfirmDialog
           title="确定要删除吗？"

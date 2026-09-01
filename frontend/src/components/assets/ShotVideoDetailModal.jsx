@@ -21,6 +21,7 @@ import { useModalSize } from '../../utils/useModalSize';
 import placeholderFlowers from '../../assets/placeholder-flowers.webp';
 import ConfirmDialog from '../ConfirmDialog';
 import { formatReferenceMode } from '../../utils/referenceMode';
+import { showGlobalToast } from '../../stores/toastStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -107,12 +108,9 @@ function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shot
   const [hovDelete, setHovDelete] = useState(false);
   const [pressDelete, setPressDelete] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [copyToast, setCopyToast] = useState(false);
-  const copyToastTimer = useRef(null);
+  const copyToast = null;
   function showCopyToast() {
-    clearTimeout(copyToastTimer.current);
-    setCopyToast(true);
-    copyToastTimer.current = setTimeout(() => setCopyToast(false), 2000);
+    showGlobalToast('提示词复制成功', 'success');
   }
   const videoRef = useRef(null);
   const progressBarRef = useRef(null);

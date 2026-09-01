@@ -30,6 +30,18 @@ const REFERENCE_MODE_LABELS = Object.freeze({
   [VIDEO_REFERENCE_MODES.FRAME]: '首尾帧',
 });
 
+export const SEEDANCE_20_AUDIO_REFERENCE_ERROR_MESSAGE = 'Seedance 2.0 模型不能单独使用音频作为参考素材，请同时上传图片或视频作为参考素材，或者切换seedance 2.5模型创作。';
+
+export function isSeedance20AudioReferenceError(message = '') {
+  return String(message).includes('reference_audio cannot be the only reference input.');
+}
+
+export function getSeedance20AudioReferenceErrorMessage(message = '') {
+  return isSeedance20AudioReferenceError(message)
+    ? SEEDANCE_20_AUDIO_REFERENCE_ERROR_MESSAGE
+    : '';
+}
+
 export function normalizeSupportedGenerationModes(capabilities = {}) {
   const modes = capabilities?.supported_generation_modes;
   if (!Array.isArray(modes)) return [];
@@ -219,7 +231,7 @@ export function resolveVideoGenerationMode({
     && liveMaterialCount === 0
     && !hasFirstFrame
     && !hasLastFrame) {
-    return fail('SEEDANCE_20_AUDIO_REFERENCE_REQUIRED', '当前 Seedance 2.0 不支持仅音频参考，请添加图片或视频素材同时作为参考');
+    return fail('SEEDANCE_20_AUDIO_REFERENCE_REQUIRED', SEEDANCE_20_AUDIO_REFERENCE_ERROR_MESSAGE);
   }
 
   if (audioCount > 0 && !isSeedance) {

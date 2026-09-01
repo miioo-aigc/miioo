@@ -92,7 +92,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ModalCloseBtn } from '../components/storyboard/StoryboardControls';
-import StoryboardToast from '../components/storyboard/StoryboardToast';
+import { showGlobalToast } from '../stores/toastStore';
 import StoryboardHeader from '../components/storyboard/StoryboardHeader';
 import { getEpisodeId } from '../components/storyboard/storyboardControlUtils';
 import { apiUploadStoryboardImage, apiUploadStoryboardVideo, apiGenerateStoryboardImage, apiGenerateStoryboardVideo, apiGenerateStoryboardsFromEpisode, apiGenerateStoryboardsFromFinalScript, apiCreateStoryboard, apiUpdateStoryboard, apiUpdateStoryboardCreationForm, apiDeleteStoryboard, apiReorderStoryboards, apiGetStoryboards, apiBatchDownloadStoryboardImages, apiBatchDownloadStoryboardVideos, apiGetTask, apiListStoryboardMediaCandidates, apiCreateStoryboardMediaCandidate, apiUpdateStoryboardMediaCandidate, apiDownloadStoryboardMediaCandidate } from '../api/storyboard';
@@ -103,7 +103,10 @@ import { apiGetLiveMaterialPreview } from '../api/liveMaterials';
 import DotsLoading from '../components/DotsLoading';
 import { normalizeImageUrl, toAbsoluteUrl } from '../utils/imageUrl';
 import { normalizeStoryboardModelList, normalizeStoryboardDurationOptions } from '../utils/storyboardModelAdapter';
-import { VIDEO_REFERENCE_MODES } from '../utils/videoModelCapabilities';
+import {
+  VIDEO_REFERENCE_MODES,
+  getSeedance20AudioReferenceErrorMessage,
+} from '../utils/videoModelCapabilities';
 import { repairStoryboardPromptBindings } from '../utils/storyboardPromptBindingRepair';
 import {
   extractStoryboardImageUrl,
@@ -373,7 +376,6 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const [generatingVideos, setGeneratingVideos] = useState(false);
   const [generatingImageShotIds, setGeneratingImageShotIds] = useState(new Set());
   const [generatingVideoShotIds, setGeneratingVideoShotIds] = useState(new Set());
-  const [toast, setToast] = useState(null);
   const [showImageModal, setShowImageModal] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [downloadMode, setDownloadMode] = useState(false);
@@ -1331,8 +1333,7 @@ function hasStoryboardMediaHint(shot = {}) {
   }, [projectId, episode, activeEpisodes]);
 
   function showToast(msg, type = 'success') {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 2500);
+    showGlobalToast(msg, type);
   }
 
   // 轮询任务直到完成或超时；视频创作允许等待 3600 秒，分镜生成保持 3000 秒。
@@ -2883,7 +2884,12 @@ function hasStoryboardMediaHint(shot = {}) {
            throw new Error(errMsg);
           } catch (err) {
            console.error('[StoryboardPage] 生成分镜视频失败:', err);
-           throw err;
+           const friendlyMessage = getSeedance20AudioReferenceErrorMessage(
+             err?.rawMessage || err?.message || '',
+           );
+           throw friendlyMessage
+             ? Object.assign(new Error(friendlyMessage), { rawMessage: err?.rawMessage })
+             : err;
           } finally {
            if (taskId) removePendingTask(projectId, taskId);
            removePendingCandidate(taskId || pendingClientId, shot.id);
@@ -2896,7 +2902,6 @@ function hasStoryboardMediaHint(shot = {}) {
     )}
       </StoryboardCreationPanel>
     )}
-    <StoryboardToast toast={toast} />
   </>
   );
 }

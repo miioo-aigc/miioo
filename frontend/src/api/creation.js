@@ -113,6 +113,12 @@ async function fetchCreationPollData(pollUrl, { signal, retryState }) {
         message = rawBody;
       }
     }
+    const friendlyMessage = getSeedance20AudioReferenceErrorMessage(message);
+    if (friendlyMessage) {
+      const error = createPollResponseError(friendlyMessage, pollRes.status);
+      error.rawMessage = message;
+      throw error;
+    }
     throw createPollResponseError(message, pollRes.status);
   }
   if (!rawBody) {
@@ -266,7 +272,12 @@ export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = 
 
     if (status === 'failed' || status === 'error') {
       const rawMsg = pollData.error_msg || pollData.errorMsg || '';
-      let userMessage;
+      let userMessage = getSeedance20AudioReferenceErrorMessage(rawMsg);
+      if (userMessage) {
+        const err = new Error(userMessage);
+        err.rawMessage = rawMsg;
+        throw err;
+      }
       if (rawMsg.includes('copyright')) {
         userMessage = '生成内容可能涉及版权限制，请修改素材或创作描述后重试';
       } else if (rawMsg.includes('sensitive') || rawMsg.includes('policy')) {
@@ -286,7 +297,7 @@ export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = 
 import { authFetch } from './request.js';
 import { toAbsoluteUrl } from '../utils/imageUrl.js';
 import { captureVideoLastFrame } from '../utils/videoUtils';
-import { assertVideoRequestCapabilities } from '../utils/videoModelCapabilities';
+import { assertVideoRequestCapabilities, getSeedance20AudioReferenceErrorMessage } from '../utils/videoModelCapabilities';
 
 // ── 创作会话（Session）───────────────────────────────────────────────────────
 
@@ -875,7 +886,12 @@ export async function apiPollVideoTask(taskId, timeoutMs = CREATION_VIDEO_POLL_T
     }
     if (status === 'failed' || status === 'error') {
       const rawMsg = pollData.error_msg || pollData.errorMsg || '';
-      let userMessage;
+      let userMessage = getSeedance20AudioReferenceErrorMessage(rawMsg);
+      if (userMessage) {
+        const err = new Error(userMessage);
+        err.rawMessage = rawMsg;
+        throw err;
+      }
       if (rawMsg.includes('copyright')) {
         userMessage = '生成的视频内容可能涉及版权限制，请修改素材或创作描述后重试';
       } else if (rawMsg.includes('sensitive') || rawMsg.includes('policy')) {
@@ -924,7 +940,12 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
       }
       if (status === 'failed' || status === 'error') {
         const rawMsg = pollData.error_msg || pollData.errorMsg || '';
-        let userMessage;
+        let userMessage = getSeedance20AudioReferenceErrorMessage(rawMsg);
+        if (userMessage) {
+          const err = new Error(userMessage);
+          err.rawMessage = rawMsg;
+          throw err;
+        }
         if (rawMsg.includes('copyright')) {
           userMessage = '生成的视频内容可能涉及版权限制，请修改素材或创作描述后重试';
         } else if (rawMsg.includes('sensitive') || rawMsg.includes('policy')) {

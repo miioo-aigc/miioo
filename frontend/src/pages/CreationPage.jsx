@@ -108,7 +108,6 @@ import {
 } from '../utils/creationTaskAdapter';
 import { invalidate, peekCacheEntry, setCache } from '../utils/cache';
 import {
-  CreationToast,
   CreationInputCard,
   CreationPageOverlays,
   CreationWorkspace,
@@ -117,6 +116,7 @@ import {
 } from '../components/creation';
 import { filenameFromPrompt } from '../utils/creationFilename';
 import { downloadBlob } from '../utils/downloadBlob';
+import { showGlobalToast } from '../stores/toastStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -149,12 +149,8 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   } = useCreationStore();
   const generations = generationsByTab[activeTab] ?? [];
 
-  // Toast state
-  const [toasts, setToasts] = useState([]);
   const showToast = (type, message) => {
-    const id = Date.now();
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
+    showGlobalToast(type, message);
   };
 
 
@@ -719,7 +715,6 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
      * └────────────────────────────────────────────────────────────────────────┘
      */
     <>
-      <CreationToast toasts={toasts} />
       <CreationPageOverlays
         batchDeleteConfirm={batchDeleteConfirm}
         onBatchDeleteConfirm={() => { setBatchDeleteConfirm(false); deleteSelected(); }}

@@ -33,7 +33,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Tabs from '../ui/Tabs';
 import ConfirmDialog from '../ConfirmDialog';
 import CreationLiveMaterialModal from '../creation/CreationLiveMaterialModal';
-import CreationToast from '../creation/CreationToast';
+import { showGlobalToast } from '../../stores/toastStore';
 import { AssetsProjectRenameModal } from './AssetsProjectModals';
 import {
   apiDeleteLiveMaterialGroup,
@@ -168,24 +168,20 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
   const [folderAssets, setFolderAssets] = useState([]);
   const [folderAssetsLoading, setFolderAssetsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [toast, setToast] = useState(null);
   const [resolutionDialogOpen, setResolutionDialogOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState(null);
   const [assetDeleteTarget, setAssetDeleteTarget] = useState(null);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [deletingAsset, setDeletingAsset] = useState(false);
   const [notice, setNotice] = useState(null);
-  const toastTimerRef = useRef(null);
   const assetPollRef = useRef(null);
   const assetPollTargetRef = useRef(null);
   const assetPollRequestRef = useRef(false);
   const uploadedAssetNamesRef = useRef(new Map());
   const uploadedAssetPostersRef = useRef(new Map());
 
-  const showToast = useCallback((message, type = 'error', duration = 3000) => {
-    clearTimeout(toastTimerRef.current);
-    setToast({ id: Date.now(), message, type });
-    toastTimerRef.current = setTimeout(() => setToast(null), duration);
+  const showToast = useCallback((message, type = 'error', duration) => {
+    showGlobalToast(message, type, duration);
   }, []);
 
   const handleTabChange = (value) => {
@@ -571,7 +567,6 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
   };
 
   useEffect(() => () => {
-    clearTimeout(toastTimerRef.current);
     stopAssetStatusPolling();
     uploadedAssetNamesRef.current.clear();
     uploadedAssetPostersRef.current.clear();
@@ -687,7 +682,6 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
         onClose={() => setAssetPickerOpen(false)}
         onConfirm={handleSelectLibraryAssets}
       />
-      <CreationToast toasts={toast ? [toast] : []} />
     </section>
   );
 }

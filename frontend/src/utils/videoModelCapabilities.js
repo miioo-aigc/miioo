@@ -146,8 +146,12 @@ export function shouldConfirmFrameModeForImageReference({
 }
 
 /**
- * 当前全能参考没有图片、视频或音频素材能力、但模型提供首尾帧能力时，
- * 应在保留该模型前请求用户确认切换首尾帧。
+ * 当前模型的全能参考只有纯文本生成、但模型提供首尾帧能力时，
+ * 应在保留首尾帧图片前请求用户确认，不允许把图片带入全能参考。
+ *
+ * generation_reference_mode_map 的 null 表示该生成模式没有素材绑定；
+ * 但门禁还必须纳入 full/reference_subjects/video_ref/video_edit 等全能参考
+ * 生成模式，不能只统计 null value。
  */
 export function shouldConfirmFrameModeForAllReferenceMedia({
   capabilities = {},
@@ -155,18 +159,21 @@ export function shouldConfirmFrameModeForAllReferenceMedia({
 } = {}) {
   if (referenceMode !== VIDEO_REFERENCE_MODES.ALL) return false;
 
-  const supportedModes = new Set(normalizeSupportedGenerationModes(capabilities));
   const mapping = resolveGenerationReferenceModeMap({ capabilities });
-  const knownModes = new Set([
-    ...supportedModes,
-    ...Object.keys(mapping || {}),
-  ]);
-  const supportsMediaInAllMode = [...ALL_REFERENCE_GENERATION_MODES]
-    .some((mode) => mode !== 'text_to_video' && knownModes.has(mode));
-  const supportsFrameMode = [...FRAME_GENERATION_MODES]
-    .some((mode) => knownModes.has(mode));
+  if (!mapping) return false;
 
-  return !supportsMediaInAllMode && supportsFrameMode;
+  const mappedModes = new Set(Object.keys(mapping));
+  const supportedModes = normalizeSupportedGenerationModes(capabilities);
+  const availableModes = supportedModes.length > 0
+    ? supportedModes.filter((mode) => mappedModes.has(mode))
+    : [...mappedModes];
+  const allReferenceModes = availableModes.filter((mode) => ALL_REFERENCE_GENERATION_MODES.has(mode));
+  const supportsTextOnlyAllReference = allReferenceModes.length === 1
+    && allReferenceModes[0] === 'text_to_video';
+  const supportsFrameMode = [...FRAME_GENERATION_MODES]
+    .some((mode) => availableModes.includes(mode));
+
+  return supportsTextOnlyAllReference && supportsFrameMode;
 }
 
 function fail(code, message) {

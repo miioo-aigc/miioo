@@ -28,6 +28,7 @@
  *               创作页专项能力展示不受影响
  *   2026-08-28  分镜全能参考复用 HappyHorse 动态素材能力：主体与参考图合并计数，
  *               含视频时切换 video-edit 上限，上传/资产库/生成前统一校验并保护缺失路由
+ *   2026-09-02  首尾帧已有图片切换至不支持图片参考的全能参考时拦截切换，复用提醒弹窗
  *   2026-08-28  当前分镜视频仅使用全能参考与首尾帧；已下线多帧模式不再参与素材分流或生成参数
  *   2026-08-17  Seedance 真人保留 live_material 参数，虚拟人像保留 asset_ref_url 服务商引用；
  *               主体参考从主体列表补全认证身份且同步过程不丢失；全能参考显式传 generate_mode='full'
@@ -55,6 +56,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ShotViewerModal from '../ShotViewerModal';
+import ConfirmDialog from '../ConfirmDialog';
 import { apiListModels } from '../../api/config';
 import { apiGetVideoLastFrame, apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { normalizeImageUrl } from '../../utils/imageUrl';
@@ -83,6 +85,7 @@ import {
   resolveVideoGenerationMode,
   resolveVideoReferenceMode,
   resolveVideoReferenceModeFallback,
+  shouldConfirmFrameModeForAllReferenceMedia,
 } from '../../utils/videoModelCapabilities';
 import { resolveVideoModelRoute } from '../../utils/videoModelAdapter';
 import {
@@ -260,6 +263,7 @@ export default function GenerateVideoPanel({
   const [refAudios, setRefAudios] = useState(() => normalizeStoryboardReferenceGroups({ audios: formState?.refAudios }).audios);
   const [refFirstFrame, setRefFirstFrame] = useState(() => formState?.refFirstFrame || null);
   const [refLastFrame, setRefLastFrame] = useState(() => formState?.refLastFrame || null);
+  const [pendingReferenceModeChange, setPendingReferenceModeChange] = useState(null);
   const [loading, setLoading] = useState(false);
   const [viewerShot, setViewerShot] = useState(null);
 
@@ -438,6 +442,42 @@ export default function GenerateVideoPanel({
   const imageCountLabel = maxRefImages != null ? `${imageCount}/${maxRefImages}` : null;
   const videoCountLabel = maxRefVideos != null ? `${refVideos.length}/${maxRefVideos}` : null;
   const audioCountLabel = maxRefAudios != null ? `${refAudios.length}/${maxRefAudios}` : null;
+
+  const handleReferenceModeChange = (nextMode) => {
+    if (nextMode === referenceMode) return;
+
+    const hasFrameImage = Boolean(refFirstFrame || refLastFrame);
+    const shouldBlockFrameImageSwitch = referenceMode === VIDEO_REFERENCE_MODES.FRAME
+      && nextMode === VIDEO_REFERENCE_MODES.ALL
+      && hasFrameImage
+      && shouldConfirmFrameModeForAllReferenceMedia({
+        capabilities: baseVideoCaps,
+        referenceMode: VIDEO_REFERENCE_MODES.ALL,
+      });
+
+    if (shouldBlockFrameImageSwitch) {
+      setPendingReferenceModeChange({ nextMode });
+      return;
+    }
+
+    setReferenceMode(nextMode);
+  };
+
+  // 兜底拦截恢复态、父级写回或其他状态路径带来的非法组合，避免首尾帧图片
+  // 在全能参考模式下先渲染成普通参考图，再等待生成前校验。
+  useEffect(() => {
+    if (referenceMode !== VIDEO_REFERENCE_MODES.ALL || (!refFirstFrame && !refLastFrame)) return;
+    if (!shouldConfirmFrameModeForAllReferenceMedia({
+      capabilities: baseVideoCaps,
+      referenceMode: VIDEO_REFERENCE_MODES.ALL,
+    })) return;
+
+    const rollbackTimer = setTimeout(() => {
+      setReferenceMode(VIDEO_REFERENCE_MODES.FRAME);
+      setPendingReferenceModeChange({ nextMode: VIDEO_REFERENCE_MODES.ALL });
+    }, 0);
+    return () => clearTimeout(rollbackTimer);
+  }, [baseVideoCaps, refFirstFrame, refLastFrame, referenceMode]);
 
   function toReferenceValidationFile(item, type) {
     if (type === 'video') return { ...item, type: item?.type?.startsWith('video/') ? item.type : 'video/mp4' };
@@ -773,7 +813,7 @@ export default function GenerateVideoPanel({
               options={availableReferenceModes.map((item) => item.label)}
               onChange={(label) => {
                 const selected = availableReferenceModes.find((item) => item.label === label);
-                if (selected) setReferenceMode(selected.value);
+                if (selected) handleReferenceModeChange(selected.value);
               }}
               disabled={modelsLoading || availableReferenceModes.length === 0}
             />
@@ -889,6 +929,20 @@ export default function GenerateVideoPanel({
             if (newSettled && viewerShot.videoUrl) onSettleVideo?.(viewerShot.videoUrl);
             // 同步弹窗内的 finalized，保证再次打开状态正确
             setViewerShot((prev) => prev ? { ...prev, finalized: newSettled } : prev);
+          }}
+        />
+      )}
+      {pendingReferenceModeChange && (
+        <ConfirmDialog
+          title="提醒"
+          description={<>当前模型的全能参考模式暂时不支持参考图片/视频/音频素材，你可以「切换至首尾帧」继续使用当前模型，也可以「取消」并保留上次模型选项。<br />图生视频能力正在加紧接入中，敬请期待。</>}
+          cancelText="取消"
+          confirmText="切换至首尾帧"
+          confirmVariant="orange"
+          onCancel={() => setPendingReferenceModeChange(null)}
+          onConfirm={() => {
+            setReferenceMode(VIDEO_REFERENCE_MODES.FRAME);
+            setPendingReferenceModeChange(null);
           }}
         />
       )}

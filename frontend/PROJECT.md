@@ -1,5 +1,13 @@
 # miioo 项目进度管理文档
 
+## 2026-09-02 创作视频首尾帧切换全能参考门禁修复
+
+- 修复创作-视频页面从首尾帧模式切换到全能参考时的状态迁移漏洞：当当前首尾帧已有图片，且模型的 `generation_reference_mode_map` 对应的全能参考生成能力严格只有 `text_to_video`、同时支持首尾帧时，切换会在图片迁移前被拦截并弹出提醒。
+- 命中门禁后不执行首尾帧图片到普通参考素材的迁移，不切换到全能参考，原首尾帧模式和图片保持不变；分镜页面与创作-视频页面均接入同一能力判断。
+- 能力判断以 `supported_generation_modes` 与 `generation_reference_mode_map` 的交集为准：存在 `full`、`reference_subjects`、`video_ref`、`video_edit` 等其他全能参考能力时不拦截；没有首尾帧能力时也不拦截。
+- 涉及文件：`src/components/creation/CreationInputCard.jsx`、`src/components/storyboard/GenerateVideoPanel.jsx`、`src/utils/videoModelCapabilities.js`。
+- 验证：创作-视频页面已启动本地开发服务器并完成门禁流程验证；定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过。构建仅保留既有分块体积提醒，架构检查仅保留既有规模提醒。
+
 ## 2026-08-28 视频模型映射下线能力收口
 
 - 创作页和分镜页的视频模型列表在聚合前过滤明确无能力的模型：后端显式返回 `supported_generation_modes: []`，或显式返回空的 `generation_reference_mode_map` / `generationReferenceModeMap` 时不展示；字段缺失仍保留，避免把配置缺失误判为下线。

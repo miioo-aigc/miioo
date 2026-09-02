@@ -38,6 +38,7 @@
  *   2026-08-27  资产库已添加素材回传选择器并禁用，避免图片或视频重复添加
  *   2026-08-28  全能参考仅支持文生但支持首尾帧的模型，在添加图片时确认切换，避免发送后才提示不支持
  *   2026-08-28  切换至纯文生全能参考模型时，确认后静默保留前两张图片为首尾帧；取消不提交模型切换
+ *   2026-09-02  创作页首尾帧已有图片切换至不支持图片参考的全能参考时拦截切换
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -137,6 +138,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   const [liveMaterialModalOpen, setLiveMaterialModalOpen] = useState(false);
   const [pendingFrameModeImages, setPendingFrameModeImages] = useState(null);
   const [pendingModelChange, setPendingModelChange] = useState(null);
+  const [pendingReferenceModeChange, setPendingReferenceModeChange] = useState(null);
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
   const [selectedVoiceSource, setSelectedVoiceSource] = useState('');
   const [selectedVoiceId, setSelectedVoiceId] = useState('');
@@ -481,6 +483,22 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   }, [currentModel, genType]);
 
   const handleRefModeChange = useCallback((newRefMode) => {
+    const currentFiles = getCurrentFiles();
+    const hasFrameImage = Boolean(currentFiles.firstFrameFile || currentFiles.lastFrameFile);
+    const shouldBlockFrameImageSwitch = genType === 'video'
+      && refMode === VIDEO_REFERENCE_MODES.FRAME
+      && newRefMode === VIDEO_REFERENCE_MODES.ALL
+      && hasFrameImage
+      && shouldConfirmFrameModeForAllReferenceMedia({
+        capabilities: currentModel?.capabilities || capabilitiesMap?.[model] || {},
+        referenceMode: VIDEO_REFERENCE_MODES.ALL,
+      });
+
+    if (shouldBlockFrameImageSwitch) {
+      setPendingReferenceModeChange({ nextRefMode: newRefMode });
+      return false;
+    }
+
     if (genType === 'video' && newRefMode !== VIDEO_REFERENCE_MODES.FRAME
       && !moveFrameFilesToFiles()) {
       return false;
@@ -491,7 +509,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     }
     setRefMode(newRefMode);
     return true;
-  }, [genType, moveFilesToFrameFiles, moveFrameFilesToFiles, setRefMode]);
+  }, [capabilitiesMap, currentModel, genType, getCurrentFiles, model, moveFilesToFrameFiles, moveFrameFilesToFiles, refMode, setRefMode]);
 
   const handleModelChange = useCallback((nextModel) => {
     if (nextModel === model) return;
@@ -567,6 +585,8 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
     const modelChanged = previousModelRef.current && previousModelRef.current !== model;
     previousModelRef.current = model;
     if (!fallbackMode || fallbackMode === refMode) return;
+    // 模型能力变化后需要在 effect 中同步回退到可用模式；门禁仍在切换前执行。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     const switched = handleRefModeChange(fallbackMode);
     if (!switched) return;
     if (modelChanged && refMode) {
@@ -1141,6 +1161,20 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
           confirmVariant="orange"
           onCancel={() => setPendingModelChange(null)}
           onConfirm={confirmModelChangeToFrameMode}
+        />
+      )}
+      {pendingReferenceModeChange && !pendingModelChange && !pendingFrameModeImages && (
+        <ConfirmDialog
+          title="提醒"
+          description={<>当前模型的全能参考模式暂时不支持参考图片/视频/音频素材，请切换至首尾帧继续使用当前图片。<br />图生视频能力正在加紧接入中，敬请期待。</>}
+          cancelText="取消"
+          confirmText="切换至首尾帧"
+          confirmVariant="orange"
+          onCancel={() => setPendingReferenceModeChange(null)}
+          onConfirm={() => {
+            setRefMode(VIDEO_REFERENCE_MODES.FRAME);
+            setPendingReferenceModeChange(null);
+          }}
         />
       )}
     </>

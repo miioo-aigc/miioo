@@ -216,10 +216,11 @@ function StyleLibraryModal({ open, onClose, selectedValue, onSelect }) {
 }
 
 function sanitizeInput(val) {
-  val = val.replace(/[^a-zA-Z0-9一-龥_.  -]/g, '');
-  val = val.replace(/^[_. -]+/, '');
-  val = val.replace(/([_ .-])\1+/g, '$1');
-  return val;
+  // 项目名称允许常规标点，仅过滤不可见控制字符，避免输入法和粘贴内容被误删。
+  return Array.from(val).filter((char) => {
+    const code = char.charCodeAt(0);
+    return !((code >= 0 && code <= 8) || (code >= 11 && code <= 12) || (code >= 14 && code <= 31) || (code >= 127 && code <= 159));
+  }).join('');
 }
 
 // 项目描述允许自然语言中的常用标点，仅过滤不可见控制字符；保留换行、回车和制表符。

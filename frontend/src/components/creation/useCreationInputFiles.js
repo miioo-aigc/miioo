@@ -6,6 +6,7 @@ import {
   getModelReferenceLimits,
   getReferenceLimitMessage,
   getReferenceLimitLabels,
+  isAudioFile,
   isFileOverLimit,
   isImageFile,
   isVideoFile,
@@ -56,6 +57,9 @@ function getFileIdentity(file) {
  *
  * 负责文件列表、首尾帧、模型素材上限和本地 Blob URL 生命周期；
  * 不负责提示词 DOM、资产字段适配、生成请求或业务 Store。
+ *
+ * ─── 更新记录 ──────────────────────────────────────────
+ *   2026-09-02  切换至首尾帧时仅保留图片素材，丢弃视频等非图片素材并提示用户
  */
 export function useCreationInputFiles({
   model,
@@ -232,7 +236,14 @@ export function useCreationInputFiles({
   }, [setFrameFile]);
 
   const moveFilesToFrameFiles = useCallback(() => {
-    const imageFiles = filesRef.current.filter(isImageFile);
+    const currentFiles = filesRef.current;
+    // 资产视频可能带有图片封面地址，必须优先排除视频/音频，避免封面被当作首帧图片。
+    const imageFiles = currentFiles.filter((file) => isImageFile(file) && !isVideoFile(file) && !isAudioFile(file));
+    const discardedFiles = currentFiles.filter((file) => !imageFiles.includes(file));
+    if (discardedFiles.length > 0) {
+      setFiles(imageFiles);
+      onToastRef.current?.('warning', '首尾帧模式，只允许传入图片素材，非图片素材已移除');
+    }
     if (imageFiles.length === 0) return true;
 
     const emptySlots = [];

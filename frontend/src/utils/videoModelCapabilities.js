@@ -3,6 +3,7 @@
  *
  * 2026-08-25  删除模型名称硬编码兜底，完整依赖后端 generation_reference_mode_map；保留 Seedance 全能参考固定走 full。
  * 2026-08-31  Seedance 2.0 仅音频参考增加发送前拦截，Seedance 2.5 保持支持。
+ * 2026-09-02  按具体参考素材能力分流，移除“多种素材类型统一走 full”的旧推导。
  */
 const ALL_REFERENCE_GENERATION_MODES = new Set([
   'full',
@@ -247,12 +248,9 @@ export function resolveVideoGenerationMode({
 
   if (isSeedance) return ensureSupported('full');
 
-  const mediaTypeCount = [imageCount > 0, videoCount > 0, audioCount > 0, liveMaterialCount > 0]
-    .filter(Boolean).length;
   if (videoCount > 0 && supportedModes.has('video_edit')) return success('video_edit');
-  if (mediaTypeCount > 1) return ensureSupported('full');
+  if (videoCount > 0 && supportedModes.has('video_ref')) return success('video_ref');
   if (videoCount > 0) {
-    if (supportedModes.has('video_ref')) return success('video_ref');
     if (supportedModes.has('full')) return success('full');
     return fail('VIDEO_NOT_SUPPORTED', '当前模型不支持视频参考，请调整素材或更换模型');
   }

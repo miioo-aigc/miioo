@@ -54,7 +54,7 @@ export async function apiUpdateLiveMaterialGroup(groupId, { name, description } 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, description }),
   });
-  if (!res.ok) throw new Error(`更新素材组失败: ${res.status}`);
+  if (!res.ok) throw await createLiveMaterialApiError(res, '更新素材组失败');
   return res.json();
 }
 

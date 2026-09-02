@@ -26,7 +26,7 @@
  *   2026-07-27  详情页素材卡片增加悬停预览、删除确认和删除后列表同步
  *   2026-08-17  文件夹上传入口增加本地上传/资产库选择，并限制资产库选择为图片和视频
  *   2026-08-17  资产库导入优先下载原图地址，避免将 AVIF 缩略图上传至 Seedance
- *   2026-08-27  仅对供应商线路配置导致的 400 错误展示 Notice，其他错误继续使用 Toast
+ *   2026-09-02  素材组新增、重命名、删除的 400 错误透传 detail，并通过确认型 Notice 展示
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -59,11 +59,11 @@ const SUB_TABS = [
   { value: 'real', label: '真人人像' },
   { value: 'virtual', label: '虚拟人像' },
 ];
-const SUPPLIER_ROUTE_ERROR_DETAIL = '素材库尚未绑定供应商线路，请到 OneLinkAI 后台 API Key 编辑页面设置『只用供应商』后重试';
 const VIDEO_POSTER_STORAGE_KEY = 'seedance-video-posters';
 
-function isSupplierRouteError(error) {
-  return error?.status === 400 && error?.detail === SUPPLIER_ROUTE_ERROR_DETAIL;
+function getBadRequestDetail(error) {
+  if (error?.status !== 400) return '';
+  return error.detail || error.message || '请求失败（400）';
 }
 
 function getStoredVideoPoster(assetId) {
@@ -500,6 +500,14 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
       setRenameValue('');
     } catch (error) {
       console.warn('[SeedanceAssetLibraryPanel] 保存真人素材库名称失败', error);
+      const detail = getBadRequestDetail(error);
+      if (detail) {
+        setRenameTarget(null);
+        setRenameValue('');
+        setNotice({ title: '重命名失败', message: detail });
+      } else {
+        showToast('重命名素材组失败，请重试');
+      }
     }
   };
 
@@ -513,9 +521,10 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
       setDeleteTarget(null);
     } catch (error) {
       console.warn('[SeedanceAssetLibraryPanel] 删除真人素材库失败', error);
-      if (isSupplierRouteError(error)) {
+      const detail = getBadRequestDetail(error);
+      if (detail) {
         setDeleteTarget(null);
-        setNotice({ title: '删除失败', message: error.detail });
+        setNotice({ title: '删除失败', message: detail });
       } else {
         showToast('删除素材组失败，请重试');
       }
@@ -550,8 +559,9 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
       setRenameValue('');
     } catch (error) {
       console.warn('[SeedanceAssetLibraryPanel] 创建AIGC素材组失败', error);
-      if (isSupplierRouteError(error)) {
-        setNotice({ title: '新建失败', message: error.detail });
+      const detail = getBadRequestDetail(error);
+      if (detail) {
+        setNotice({ title: '新建失败', message: detail });
       } else {
         showToast('新建素材组失败，请重试');
       }

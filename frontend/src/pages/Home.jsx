@@ -66,6 +66,7 @@
  *   2026-07-06  新增 subject cache 订阅 useEffect，实时同步 sharedChars/sharedScenes/sharedProps
  *   2026-07-31  主体缓存订阅接受空列表结果，确保主体音色解绑状态不会被旧缓存保留
  *   2026-07-28  剧集进度改按工作流解锁状态展示，视频生成数量不再等同于“剪辑中”
+ *   2026-09-02  修复项目详情 URL 刷新时解析失败及异步加载期间被覆盖的问题
  *   2026-07-28  接入存储空间展示、容量提醒、资产库跳转及写入后的全满警告
  *   2026-08-04  同一项目在主体页与分镜页之间切换时复用分镜缓存，避免无条件清理后重复请求
  *   2026-08-04  资产概况剧本进度卡片跳转到对应分集分镜
@@ -146,7 +147,8 @@ function readWorkspaceRoute() {
   if (pathname === '/workspace/create') return { key: 'create' };
   if (pathname === '/workspace/assets') return { key: 'assets' };
 
-  const match = pathname.match(/^\/workspace\/project\/([^/]+)(?:\/([^/]+))?$/);
+  // 详情页历史上已写入 /project/:id/:step，兼容旧的 /workspace/project/:id/:step。
+  const match = pathname.match(/^\/(?:workspace\/)?project\/([^/]+)(?:\/([^/]+))?$/);
   if (match && match[1]) {
     return {
       key: 'project',
@@ -457,7 +459,7 @@ export default function Home({ onGoToAdmin }) {
     try {
       // 0. 切换项目前先清空旧项目所有数据状态，避免闪现旧数据
       setActiveProject(null);
-      setActiveStep('script');
+      setActiveStep(requestedStep || 'script');
       setScriptContent('');
       setScriptEpisodes([]);
       setScriptPhase('initial');
@@ -654,6 +656,10 @@ export default function Home({ onGoToAdmin }) {
       return;
     }
     if (activeKey === 'project') {
+      // 项目详情正在异步恢复时，保留地址栏中已经解析出的详情 URL，
+      // 避免 activeProject 尚未到达时先被改写成项目列表地址。
+      const currentRoute = readWorkspaceRoute();
+      if (!activeProject?.id && currentRoute.key === 'project' && currentRoute.projectId) return;
       if (activeProject?.id) {
         updateWorkspaceUrl({ key: activeKey, projectId: activeProject.id, step: activeStep });
       } else {

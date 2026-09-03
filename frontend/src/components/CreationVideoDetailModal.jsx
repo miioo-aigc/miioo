@@ -1,3 +1,18 @@
+/**
+ * @file CreationVideoDetailModal.jsx
+ * @structure-index
+ *
+ * ─── 辅助组件与工具 ─────────────────────────────── L1–L140
+ *   formatVideoDuration / ReferenceVideoCard / CopyPromptButton 详情字段与参考素材展示
+ *
+ * ─── 创作视频详情弹窗 ───────────────────────────── L166–L642
+ *   CreationVideoDetailModal                        视频预览、详情信息和操作回调
+ *   视频播放区                                      保留创作页播放状态与自动播放逻辑，使用原生 controls 展示控制组件
+ *
+ * ─── 更新记录 ─────────────────────────────────────
+ *   2026-09-03                                       视频控制组件样式对齐分镜详情弹窗，保留创作页业务架构
+ */
+
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
@@ -182,56 +197,40 @@ export default function CreationVideoDetailModal({
   const [isPlaying, setIsPlaying] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [videoDuration, setVideoDuration] = useState(0);
-  const [volume, setVolume] = useState(0.7);
-  const [muted, setMuted] = useState(false);
   const [hovClose, setHovClose] = useState(false);
   const [toastVisible] = useState(false);
   const videoRef = useRef(null);
-  const progressBarRef = useRef(null);
-  const volumeBarRef = useRef(null);
-  const isDraggingRef = useRef(false);
 
   function handleCopyPrompt() {
     showGlobalToast('您已复制提示词', 'success');
-  }
-
-  function fmtTime(secs) {
-    if (!isFinite(secs) || secs < 0) return '0:00';
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
   }
 
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
 
-    const onTimeUpdate = () => setCurrentTime(vid.currentTime);
-    const onLoaded = () => {
-      setVideoDuration(vid.duration);
-      vid.volume = volume;
-      vid.muted = muted;
-      console.log('Video loaded:', vid.duration, vid.videoWidth, vid.videoHeight);
-    };
+    const onLoaded = () => console.log('Video loaded:', vid.duration, vid.videoWidth, vid.videoHeight);
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
     const onEnded = () => setIsPlaying(false);
     const onError = (e) => {
       console.error('Video error:', e, vid.error);
     };
 
-    vid.addEventListener('timeupdate', onTimeUpdate);
     vid.addEventListener('loadedmetadata', onLoaded);
+    vid.addEventListener('play', onPlay);
+    vid.addEventListener('pause', onPause);
     vid.addEventListener('ended', onEnded);
     vid.addEventListener('error', onError);
 
     return () => {
-      vid.removeEventListener('timeupdate', onTimeUpdate);
       vid.removeEventListener('loadedmetadata', onLoaded);
+      vid.removeEventListener('play', onPlay);
+      vid.removeEventListener('pause', onPause);
       vid.removeEventListener('ended', onEnded);
       vid.removeEventListener('error', onError);
     };
-  }, [volume, muted, videoUrl]);
+  }, [videoUrl]);
 
   // 弹窗打开后自动播放视频
   useEffect(() => {
@@ -242,7 +241,7 @@ export default function CreationVideoDetailModal({
     };
     vid.addEventListener('canplay', onCanPlay, { once: true });
     return () => vid.removeEventListener('canplay', onCanPlay);
-  }, [videoUrl, muted]);
+  }, [videoUrl]);
 
   function togglePlay() {
     const vid = videoRef.current;
@@ -251,48 +250,6 @@ export default function CreationVideoDetailModal({
     else { vid.pause(); setIsPlaying(false); }
   }
 
-  function seekFromEvent(e, bar) {
-    const rect = bar.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const vid = videoRef.current;
-    if (vid && isFinite(vid.duration)) {
-      vid.currentTime = ratio * vid.duration;
-      setCurrentTime(vid.currentTime);
-    }
-  }
-
-  function handleProgressMouseDown(e) {
-    isDraggingRef.current = true;
-    seekFromEvent(e, progressBarRef.current);
-    const onMove = (ev) => { if (isDraggingRef.current) seekFromEvent(ev, progressBarRef.current); };
-    const onUp = () => { isDraggingRef.current = false; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }
-
-  function handleVolumeClick(e) {
-    if (!volumeBarRef.current) return;
-    const rect = volumeBarRef.current.getBoundingClientRect();
-    const v = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    setVolume(v);
-    setMuted(v === 0);
-    if (videoRef.current) {
-      videoRef.current.volume = v;
-      videoRef.current.muted = v === 0;
-      console.log('Volume set to:', v);
-    }
-  }
-
-  // 点击音量图标：一键静音 / 恢复声音
-  function toggleMute() {
-    setMuted((prev) => {
-      const next = !prev;
-      if (videoRef.current) videoRef.current.muted = next;
-      return next;
-    });
-  }
-
-  const progressPct = videoDuration > 0 ? (currentTime / videoDuration) * 100 : 0;
   const isFrameReference = refMode === 'frame'
     || ['first_frame', 'last_frame', 'start_end', 'multiframe'].includes(refMode);
   const firstFrameImage = firstFrame || refImages.find((image) => (
@@ -354,95 +311,34 @@ export default function CreationVideoDetailModal({
                     ref={videoRef}
                     src={videoUrl}
                     poster={posterUrl || undefined}
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
                     preload="metadata"
                     playsInline
-                    onClick={togglePlay}
+                    controls
                   />
                 ) : (
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF66', fontFamily: FONT, fontSize: '14px' }}>
                     视频加载失败
                   </div>
                 )}
-                <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(in oklab 180deg, oklab(0% 0 0 / 0%) 40%, oklab(0% 0 0 / 40%) 100%)' }} />
-                {!isPlaying && (
+                <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(in oklab 180deg, oklab(0% 0 0 / 0%) 40%, oklab(0% 0 0 / 40%) 100%)', pointerEvents: 'none' }} />
                 <button
                   type="button"
                   className="flex items-center justify-center rounded-[50%] relative shrink-0 [backdrop-filter:blur(8px)] bg-[#FFFFFF1F] border border-solid border-[#FFFFFF33] size-[56px]"
                   style={{ cursor: 'pointer' }}
                   onClick={togglePlay}
                 >
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: '0' }}>
-                    <path d="M7 5L16 10L7 15V5Z" fill="#FFFFFF" />
-                  </svg>
+                  {isPlaying ? (
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+                      <rect x="4" y="4" width="4" height="12" rx="1" fill="#FFFFFF" />
+                      <rect x="12" y="4" width="4" height="12" rx="1" fill="#FFFFFF" />
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+                      <path d="M7 5L16 10L7 15V5Z" fill="#FFFFFF" />
+                    </svg>
+                  )}
                 </button>
-                )}
-              </div>
-            </div>
-            {/* Controls bar */}
-            <div className="flex flex-col shrink-0 pt-[14px] pb-[16px] gap-[10px] bg-[#111111] px-[16px]">
-              <div className="flex items-center justify-between gap-[24px]">
-                <div className="flex items-center gap-[16px]">
-                  <button
-                    type="button"
-                    className="flex items-center justify-center rounded-[50%] shrink-0 bg-[#FFFFFF1A] border border-solid border-[#FFFFFF26] size-[32px]"
-                    style={{ cursor: 'pointer' }}
-                    onClick={togglePlay}
-                  >
-                    {isPlaying ? (
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-                        <rect x="2" y="2" width="3" height="10" rx="0.5" fill="#FFFFFF" />
-                        <rect x="9" y="2" width="3" height="10" rx="0.5" fill="#FFFFFF" />
-                      </svg>
-                    ) : (
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: '0' }}>
-                        <path d="M5 3L12 7L5 11V3Z" fill="#FFFFFF" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-                <div className="flex items-center gap-[10px] flex-1">
-                  <div className="tracking-[0.01em] shrink-0 w-[36px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-xs/4">
-                    {fmtTime(currentTime)}
-                  </div>
-                  <div
-                    ref={progressBarRef}
-                    className="grow shrink basis-[0%] h-[3px] rounded-xs bg-[#FFFFFF1F]"
-                    style={{ cursor: 'pointer' }}
-                    onMouseDown={handleProgressMouseDown}
-                  >
-                    <div className="h-full rounded-xs relative bg-[#FFFFFFB3]" style={{ width: `${progressPct}%` }}>
-                      <div className="-right-[5px] top-[50%] rounded-[50%] absolute [box-shadow:#00000080_0px_0px_4px] bg-white size-[10px]" style={{ translate: '0px -50%' }} />
-                    </div>
-                  </div>
-                  <div className="tracking-[0.01em] shrink-0 w-[36px] text-right inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF40] text-xs/4">
-                    {fmtTime(videoDuration)}
-                  </div>
-                </div>
-                <div className="flex items-center gap-[8px]">
-                  <svg
-                    width="16" height="16" viewBox="0 0 16 16" fill="none"
-                    style={{ opacity: '0.4', flexShrink: '0', cursor: 'pointer' }}
-                    onClick={toggleMute}
-                    role="button"
-                    aria-label={muted ? '取消静音' : '静音'}
-                  >
-                    <path d="M3 6H1V10H3L7 13V3L3 6Z" fill="#FFFFFF" />
-                    {muted ? (
-                      <path d="M10 6L14 10M14 6L10 10" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
-                    ) : (
-                      <path d="M10 5C11.1 6.1 11.1 9.9 10 11M12.5 3C14.7 5.2 14.7 10.8 12.5 13" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
-                    )}
-                  </svg>
-                  <div
-                    ref={volumeBarRef}
-                    className="w-[60px] h-[3px] rounded-xs shrink-0 bg-[#FFFFFF1F]"
-                    style={{ cursor: 'pointer' }}
-                    onClick={handleVolumeClick}
-                  >
-                    <div className="h-full rounded-xs bg-[#FFFFFF99]" style={{ width: `${muted ? 0 : volume * 100}%` }} />
-                  </div>
-                </div>
               </div>
             </div>
           </div>

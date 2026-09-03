@@ -1,5 +1,14 @@
 # miioo 项目进度管理文档
 
+## 2026-09-03 创作视频列表与资产库数量不一致修复
+
+- 修复创作 → 视频列表比资产库 → 创作资产 → 视频列表少一条记录的问题。
+- 根因包含两层：创作页请求额外传入 `exclude_hidden=true`，与资产库查询口径不同；创作页又按视频地址、预览地址、封面地址等媒体别名去重，把共用媒体地址的不同视频记录错误合并。
+- 创作视频列表现与资产库统一查询口径；视频历史仅按后端记录 `id` 去重，没有后端 ID 的不同视频不会因媒体地址相同而被吞掉。图片和配音仍保留原媒体别名去重规则，刷新后的执行中任务 loading 占位恢复逻辑不变。
+- 涉及文件：`src/pages/CreationPage.jsx`、`src/stores/creationStore.js`、`src/utils/creationHistoryAdapter.js`。
+- 验证：`npm run lint`、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；仅保留项目既有警告和提示。
+- 详细说明见 [`docs/creation-video-list-consistency-fix-2026-09-03.md`](./docs/creation-video-list-consistency-fix-2026-09-03.md)。
+
 ## 2026-09-02 创作视频首尾帧切换全能参考门禁修复
 
 - 修复创作-视频页面从首尾帧模式切换到全能参考时的状态迁移漏洞：当当前首尾帧已有图片，且模型的 `generation_reference_mode_map` 对应的全能参考生成能力严格只有 `text_to_video`、同时支持首尾帧时，切换会在图片迁移前被拦截并弹出提醒。
@@ -34,7 +43,7 @@
 - 当 HappyHorse 聚合模型缺少 `video-edit` 子模型时，参考视频入口不展示，上传/资产库选择会被拒绝；即使异常状态残留视频，生成前也不允许将请求错误回退到 `r2v`、`i2v` 或其他子模型。
 - 本次仅覆盖分镜全能参考普通素材；首尾帧模式按既定边界不纳入 HappyHorse 动态素材判断，HappyHorse 不支持音频上传，音频不参与该逻辑。
 - 涉及文件：`src/components/storyboard/GenerateVideoPanel.jsx`、`src/components/storyboard/ReferenceMediaEditor.jsx`、`src/components/storyboard/StoryboardUploadSlots.jsx`、`src/components/creation/CreationFileUtils.js`。
-- 验证：今天的目标文件定向 ESLint、`npm run build`、`npm run check:architecture` 和 `git diff --check` 已通过；构建仅保留既有大体积分包提醒，架构检查仅保留既有文件规模提醒。
+- 验证：2026-08-28 的目标文件定向 ESLint、`npm run build`、`npm run check:architecture` 和 `git diff --check` 已通过；构建仅保留既有大体积分包提醒，架构检查仅保留既有文件规模提醒。
 - 详细规则和维护边界见 [`docs/happyhorse-creation-upload-limits-2026-08-27.md`](./docs/happyhorse-creation-upload-limits-2026-08-27.md)。
 
 ## 2026-08-27 Seedance 视频素材输入卡片破图与重复添加修复
@@ -730,7 +739,7 @@
 - **2026-07-23 主体删除与下载命名修复**：主体删除改为直接调用 OpenAPI 定义的主体专用 `DELETE /api/projects/{project_id}/subjects/{subject_id}`，不再先删除绑定资产，避免资产删除接口对主体关联资产返回 500；删除失败时透传后端详情。主体卡片下载文件名统一为 `项目名称_主体类型_主体名称.jpg`，并清理文件名非法字符。
 - **2026-07-23 主体候选图首次展示去重修复**：批量生成结果写入主体编辑弹窗缓存时按归一化图片地址去重；首次打开弹窗消费缓存、批量任务结束替换占位图时再次兜底去重，避免同一张候选图因重复任务回调被展示两次。
 - **2026-07-23 主体抽取刷新恢复修复**：发布剧本结构和主体抽取两阶段任务均持久化任务 ID与结构版本；浏览器刷新后按项目恢复主体抽取活动状态，主体页面持续显示加载动画并继续轮询原任务，任务完成后清理持久化记录并刷新三类主体列表，失败时清理失效任务标记。
-- **2026-07-27 主体抽取状态文案修复**：加载动画下方优先展示发布结构和主体抽取任务轮询返回的 `status_message`；最近文案随待处理任务快照持久化，刷新恢复时继续显示。接口没有返回状态文案时，沿用主体页原固定轮换文案作为兜底。
+- **2026-07-27 主体抽取状态文案修复**：加载动画下方优先展示发布结构和主体抽取任务轮询返回的 `status_message`；最新文案随待处理任务快照持久化，刷新恢复时继续显示。接口没有返回状态文案时，沿用主体页原固定轮换文案作为兜底。
 - **2026-07-24 Seedance2.0素材库首版 UI**：资产库新增与项目资产、创作资产平级的「Seedance2.0素材库」Tab，包含「真人人像」「虚拟人像」子 Tab；真人人像先接入设计稿示例文件夹网格和「录入新的真人」入口。文件夹卡片抽离为 `SeedanceFolderCard`，默认最多展示两张中层预览图，支持名称省略、悬停编辑和删除按钮；当前数据为设计稿示例数据，真实录入、编辑、删除接口待后续接入。
 
 ---

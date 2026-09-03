@@ -85,6 +85,7 @@
  *   2026-08-11  修复不同创作 Tab 的生成禁用状态串扰，输入区按当前创作类型隔离
  *   2026-08-19  新增音频详情状态与回调接线；音色快照和媒体元数据由独立弹窗展示
  *   2026-08-21  音频详情打开后调用 AudioClip 详情接口补全配音参数
+ *   2026-09-03  修复创作视频列表与资产库查询口径、视频记录去重规则不一致
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -217,7 +218,10 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         // 第 1 页始终向服务端拉取最新数据，再写回本地缓存：
         // 本地缓存只用于「秒开」(hydrateHistoryFromCache)，不能作为权威数据。
         // 否则刚创作完成、但缓存尚未包含的新内容会在刷新后被旧缓存覆盖而「凭空消失」。
-        const networkResp = await apiMap[tab]({ page: 1, page_size: PAGE_SIZE, exclude_hidden: true });
+        const requestParams = { page: 1, page_size: PAGE_SIZE };
+        // 视频列表需要与资产库保持「全部创作资产」的查询口径；图片和配音仍保留创作页的隐藏历史规则。
+        if (tab !== 'video') requestParams.exclude_hidden = true;
+        const networkResp = await apiMap[tab](requestParams);
         pageResp = networkResp;
         const resp = tab === 'video' ? buildCreationHistoryCachePayload(tab, networkResp) : networkResp;
         setCache(cacheKey, resp, { medium: 'local' });
@@ -234,7 +238,9 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
           return;
         }
       } else {
-        pageResp = await apiMap[tab]({ page: nextPage, page_size: PAGE_SIZE, exclude_hidden: true });
+        const requestParams = { page: nextPage, page_size: PAGE_SIZE };
+        if (tab !== 'video') requestParams.exclude_hidden = true;
+        pageResp = await apiMap[tab](requestParams);
         list = getCreationHistoryList(pageResp);
       }
 

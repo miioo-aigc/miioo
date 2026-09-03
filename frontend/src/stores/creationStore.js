@@ -10,6 +10,14 @@ function getCardMediaAliases(card) {
   });
 }
 
+function getHistoryDeduplicationAliases(tab, card) {
+  if (tab === 'video') {
+    const id = card?.id;
+    return id == null || id === '' ? [] : [`id:${String(id)}`];
+  }
+  return getCardMediaAliases(card);
+}
+
 function mergeGenerations(previous, current) {
   return {
     ...previous,
@@ -48,13 +56,13 @@ export const useCreationStore = create(
       mergeHistoryGenerations: (tab, newGenerations) =>
         set((state) => {
           const existing = state.generationsByTab[tab] ?? [];
-          const next = dedupeByMediaAliases(existing, (generation) => getCardMediaAliases(generation.cards?.[0]), mergeGenerations);
+          const next = dedupeByMediaAliases(existing, (generation) => getHistoryDeduplicationAliases(tab, generation.cards?.[0]), mergeGenerations);
           const locationsById = new Map();
           const locationsByMedia = new Map();
           next.forEach((generation, generationIndex) => {
             generation.cards.forEach((card, cardIndex) => {
               if (card.id) locationsById.set(String(card.id), { generationIndex, cardIndex });
-              getCardMediaAliases(card).forEach((mediaKey) => locationsByMedia.set(mediaKey, { generationIndex, cardIndex }));
+              getHistoryDeduplicationAliases(tab, card).forEach((mediaKey) => locationsByMedia.set(mediaKey, { generationIndex, cardIndex }));
             });
           });
 
@@ -62,7 +70,7 @@ export const useCreationStore = create(
           newGenerations.forEach((generation) => {
             const unmatchedCards = [];
             generation.cards.forEach((card) => {
-              const location = (card.id && locationsById.get(String(card.id))) || getCardMediaAliases(card)
+              const location = (card.id && locationsById.get(String(card.id))) || getHistoryDeduplicationAliases(tab, card)
                 .map((mediaKey) => locationsByMedia.get(mediaKey)).find(Boolean);
               if (!location) {
                 unmatchedCards.push(card);
@@ -81,12 +89,12 @@ export const useCreationStore = create(
                   : item),
               };
               if (card.id) locationsById.set(String(card.id), location);
-              getCardMediaAliases(currentCard).concat(getCardMediaAliases(card)).forEach((mediaKey) => locationsByMedia.set(mediaKey, location));
+              getHistoryDeduplicationAliases(tab, currentCard).concat(getHistoryDeduplicationAliases(tab, card)).forEach((mediaKey) => locationsByMedia.set(mediaKey, location));
             });
             if (unmatchedCards.length > 0) toAdd.push({ ...generation, cards: unmatchedCards });
           });
 
-          const merged = dedupeByMediaAliases([...toAdd.reverse(), ...next], (generation) => getCardMediaAliases(generation.cards?.[0]), mergeGenerations);
+          const merged = dedupeByMediaAliases([...toAdd.reverse(), ...next], (generation) => getHistoryDeduplicationAliases(tab, generation.cards?.[0]), mergeGenerations);
           if (merged.length === existing.length && merged.every((generation, index) => generation === existing[index])) return {};
           // 后端返回最新在前，反转后放到数组头部（老的在前），reverse 展示时新内容仍排第一
           return {
@@ -97,18 +105,25 @@ export const useCreationStore = create(
           };
         }),
 
-      // 第 1 页权威覆盖：直接用服务端返回的最新一页替换当前 tab 列表（而非合并）。
+      // 第 1 页以服务端返回的最新一页为主体覆盖当前 tab，但保留本地仍在执行的任务。
       // 仅用于第 1 页加载完成。因为前面 hydrateHistoryFromCache 已从旧缓存写入旧数据，
       // 若此处再走 mergeHistoryGenerations，新内容会被前置到旧列表之后，
       // 经 display 的 reverse 后落到末尾（第二行第一个），排序错乱。
+      // 刷新恢复任务与历史请求并行，不能让历史响应覆盖恢复出的 loading 占位卡。
       // 约定入参 generations 已是 store 顺序（越靠后越新）：调用方传入 normalized.reverse()。
       setHistoryPage1: (tab, generations) =>
-        set((state) => ({
-          generationsByTab: {
-            ...state.generationsByTab,
-            [tab]: generations,
-          },
-        })),
+        set((state) => {
+          const existing = state.generationsByTab[tab] ?? [];
+          const pendingGenerations = existing.filter((generation) =>
+            generation.cards?.some((card) => card.status === 'loading')
+          );
+          return {
+            generationsByTab: {
+              ...state.generationsByTab,
+              [tab]: [...generations, ...pendingGenerations],
+            },
+          };
+        }),
 
       updateHistoryMeta: (tab, patch) =>
         set((state) => ({
@@ -137,7 +152,7 @@ export const useCreationStore = create(
           const item = { ...generation, createdAt: generation.createdAt || new Date().toISOString() };
           const generations = dedupeByMediaAliases(
             [...(state.generationsByTab[tab] ?? []), item],
-            (entry) => getCardMediaAliases(entry.cards?.[0]),
+            (entry) => getHistoryDeduplicationAliases(tab, entry.cards?.[0]),
             mergeGenerations,
           );
           return {

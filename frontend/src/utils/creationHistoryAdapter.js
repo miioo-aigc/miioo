@@ -88,6 +88,39 @@ export function dedupeByMediaAliases(list, getAliases, mergeItem = (previous) =>
 }
 
 export function dedupeCreationHistoryList(list, type) {
+  // 视频列表中不同记录可能共用封面或预览地址，媒体地址不能作为视频记录的唯一键。
+  // 只有后端记录 ID 相同才视为同一条，避免创作页少展示真实视频。
+  if (type === 'video') {
+    const result = [];
+    const indexesById = new Map();
+    (Array.isArray(list) ? list : []).forEach((item) => {
+      const id = item?.id ?? item?.video_id ?? item?.videoId;
+      if (id == null || id === '') {
+        result.push(item);
+        return;
+      }
+      const key = String(id);
+      const existingIndex = indexesById.get(key);
+      if (existingIndex == null) {
+        indexesById.set(key, result.length);
+        result.push(item);
+        return;
+      }
+      result[existingIndex] = {
+        ...result[existingIndex],
+        ...item,
+        id: result[existingIndex]?.id || item?.id,
+        asset_id: result[existingIndex]?.asset_id || result[existingIndex]?.assetId || item?.asset_id || item?.assetId,
+        prompt: result[existingIndex]?.prompt || result[existingIndex]?.input_prompt || result[existingIndex]?.inputPrompt
+          ? (result[existingIndex].prompt || result[existingIndex].input_prompt || result[existingIndex].inputPrompt)
+          : (item?.prompt || item?.input_prompt || item?.inputPrompt || ''),
+        input_prompt: result[existingIndex]?.input_prompt || result[existingIndex]?.inputPrompt || item?.input_prompt || item?.inputPrompt || '',
+        metadata_json: result[existingIndex]?.metadata_json || item?.metadata_json,
+      };
+    });
+    return result;
+  }
+
   return dedupeByMediaAliases(list, (item) => getCreationMediaAliases(item, type), (previous, current) => ({
     ...previous,
     ...current,

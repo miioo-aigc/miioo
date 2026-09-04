@@ -15,6 +15,10 @@ function firstValue(...values) {
   return values.find((value) => value !== undefined && value !== null && value !== '') ?? '';
 }
 
+function hasFavoriteField(value) {
+  return ['is_favorite', 'is_liked', 'is_starred'].some((field) => Object.prototype.hasOwnProperty.call(value || {}, field));
+}
+
 export function getAudioAssetMetadata(asset) {
   return readMetadata(asset?.metadata_json || asset?.metadataJson || asset?.metadata);
 }
@@ -43,9 +47,10 @@ export function normalizeAudioAssetDetail(asset) {
     speed: firstValue(asset?.speed, metadata.speed),
     pitch: firstValue(asset?.pitch, metadata.pitch),
     volume: firstValue(asset?.volume, metadata.volume),
-    advancedEnabled: firstValue(asset?.advanced_mode_enabled, asset?.advanced_enabled, asset?.advancedEnabled, metadata.advanced_mode_enabled, metadata.advanced_enabled, metadata.advancedEnabled),
+    advancedEnabled: firstValue(asset?.is_advanced_mode, asset?.advanced_mode_enabled, asset?.advanced_enabled, asset?.advancedEnabled, metadata.advanced_mode_enabled, metadata.advanced_enabled, metadata.advancedEnabled),
     createdAt: firstValue(asset?.created_at, asset?.createdAt),
     favorited: Boolean(firstValue(asset?.is_starred, asset?.is_favorite, asset?.isLiked)),
+    favoriteStatusLoaded: hasFavoriteField(asset),
     clipId: firstValue(asset?.clip_id, asset?.clipId, metadata.clip_id, metadata.clipId),
   };
 }
@@ -68,8 +73,9 @@ export function normalizeCreationAudioDetail(detail, fallback = {}) {
     speed: firstValue(detail?.speed, fallback.speed),
     pitch: firstValue(detail?.pitch, fallback.pitch),
     volume: firstValue(detail?.volume, fallback.volume),
-    advancedEnabled: firstValue(detail?.advanced_mode_enabled, detail?.advanced_enabled, detail?.advancedEnabled, fallback.advancedEnabled),
+    advancedEnabled: firstValue(detail?.is_advanced_mode, detail?.advanced_mode_enabled, detail?.advanced_enabled, detail?.advancedEnabled, fallback.advancedEnabled),
     createdAt: firstValue(detail?.human_created_at, detail?.created_at, detail?.createdAt, fallback.createdAt),
-    favorited: Boolean(firstValue(detail?.is_favorite, detail?.is_liked, fallback.favorited)),
+    favorited: Boolean(firstValue(detail?.is_favorite, detail?.is_liked, detail?.is_starred, fallback.favorited)),
+    favoriteStatusLoaded: hasFavoriteField(detail) || fallback.favoriteStatusLoaded === true,
   };
 }

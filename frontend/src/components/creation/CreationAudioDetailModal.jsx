@@ -4,12 +4,14 @@
  *
  * 独立负责配音结果详情展示、音频播放、波形进度和媒体动作；页面只注入数据与回调。
  * 音色名称以后端返回的音色名称为准。
+ * 收藏按钮复用配音结果卡 StarIcon，收藏状态仅影响图标，不改变文字颜色。
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { useModalSize } from '../../utils/useModalSize';
 import ConfirmDialog from '../ConfirmDialog';
 import CreationDubbingPromptPreview from './CreationDubbingPromptPreview';
+import { StarIcon } from './CreationAudioResultCard';
 import { stopVoicePreview } from '../../utils/voicePreviewPlayer';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -245,7 +247,17 @@ export default function CreationAudioDetailModal({
                 <section style={{ paddingTop: '16px' }}><div style={{ color: '#FFFFFF99', fontFamily: FONT, fontSize: '11px', marginBottom: '8px' }}>创作时间</div><div style={{ color: '#FFFFFF66', fontFamily: FONT, fontSize: '12px' }}>{formatCreatedAt(createdAt)}</div></section>
               </div>
               <div style={{ display: 'flex', gap: '8px', padding: '16px 20px 20px', borderTop: '1px solid #FFFFFF0A', flexShrink: 0 }}>
-                <button type="button" onClick={() => { setStarAnim(true); setTimeout(() => setStarAnim(false), 300); onFavorite?.(); }} style={{ flex: 1, height: '40px', borderRadius: '8px', border: '1px solid #FFFFFF1F', background: '#FFFFFF14', color: favorited ? '#F0B429' : '#FFFFFF99', cursor: 'pointer', transform: starAnim ? 'scale(1.08)' : 'none' }}>☆ 收藏</button>
+                <button
+                  type="button"
+                  aria-label={favorited ? '取消收藏' : '收藏'}
+                  onClick={() => { setStarAnim(true); setTimeout(() => setStarAnim(false), 300); onFavorite?.(); }}
+                  style={{ flex: 1, height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', borderRadius: '8px', border: '1px solid #FFFFFF1F', background: '#FFFFFF14', color: '#FFFFFF99', cursor: 'pointer', lineHeight: '16px' }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '16px', transform: starAnim ? 'scale(1.08)' : 'none', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)' }}>
+                    <StarIcon filled={favorited} strokeColor="rgba(255,255,255,0.6)" />
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', height: '16px', lineHeight: '16px' }}>收藏</span>
+                </button>
                 <button type="button" onClick={onDownload} style={{ flex: 1, height: '40px', borderRadius: '8px', border: '1px solid #FFFFFF1F', background: '#FFFFFF14', color: '#FFFFFF99', cursor: 'pointer' }}>↓ 下载</button>
                 <button type="button" onClick={() => setConfirmDelete(true)} style={{ flex: 1, height: '40px', borderRadius: '8px', border: '1px solid #FFFFFF1F', background: '#FFFFFF14', color: '#FFFFFF99', cursor: 'pointer' }}>删除</button>
               </div>

@@ -172,7 +172,11 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   }
 
   function openAudioDetail(card) {
-    setAudioDetail(card);
+    setAudioDetail({
+      ...card,
+      favorited: favorites.has(card.id),
+      favoriteStatusLoaded: false,
+    });
     const audioId = card.backendId || card.audioId || card.id;
     if (!audioId) return;
     apiGetCreationAudio(audioId).then((detail) => {
@@ -182,6 +186,9 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
           ? normalizeCreationAudioDetail(detail, current)
           : current;
       });
+      if (Object.prototype.hasOwnProperty.call(detail || {}, 'is_favorite')) {
+        storeSyncFavorites([{ key: card.id, isFavorite: Boolean(detail.is_favorite) }]);
+      }
     }).catch((error) => {
       console.warn('[AssetsCreativePanel] 获取创作音频详情失败，保留列表详情:', error);
     });
@@ -433,6 +440,9 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   function toggleStar(cardKey, backendId, cardType) {
     const isLiked = favorites.has(cardKey);
     storeToggleFavorite(cardKey);
+    setAudioDetail((current) => current?.id === cardKey
+      ? { ...current, favorited: !isLiked, favoriteStatusLoaded: true }
+      : current);
     showToast(isLiked ? '取消收藏' : '收藏成功');
     if (!backendId) return;
     const type = cardType || activeType;
@@ -441,7 +451,12 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
       : type === 'audio'
         ? apiToggleAudioFavorite(backendId)
         : apiToggleImageFavorite(backendId, !isLiked);
-    apiCall.catch(() => storeToggleFavorite(cardKey)); // rollback on failure
+    apiCall.catch(() => {
+      storeToggleFavorite(cardKey);
+      setAudioDetail((current) => current?.id === cardKey
+        ? { ...current, favorited: isLiked, favoriteStatusLoaded: true }
+        : current);
+    }); // rollback on failure
   }
 
   async function deleteSingle(card) {
@@ -628,7 +643,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
             deleteSingle(audioDetail);
             setAudioDetail(null);
           }}
-          favorited={favorites.has(audioDetail.id)}
+          favorited={audioDetail.favoriteStatusLoaded ? audioDetail.favorited : favorites.has(audioDetail.id)}
           onFavorite={() => toggleStar(audioDetail.id, audioDetail.backendId, audioDetail.type)}
         />,
         document.body

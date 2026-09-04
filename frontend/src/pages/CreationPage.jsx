@@ -86,6 +86,9 @@
  *   2026-08-19  新增音频详情状态与回调接线；音色快照和媒体元数据由独立弹窗展示
  *   2026-08-21  音频详情打开后调用 AudioClip 详情接口补全配音参数
  *   2026-09-03  修复创作视频列表与资产库查询口径、视频记录去重规则不一致
+ *   2026-09-04  配音详情收藏状态改用详情接口 is_favorite 字段，并同步本地收藏状态
+ *   2026-09-04  配音详情高级模式改用详情接口 is_advanced_mode 字段
+ *   2026-09-04  修复图片创作任务刷新恢复过早清理快照，支持多次刷新持续轮询
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -132,6 +135,16 @@ const SESSION_KEY = 'miioo_creation_session_id';
 const PENDING_CREATION_TASKS_KEY = 'miioo_pending_tasks';
 const _sessionIdRef = { current: localStorage.getItem(SESSION_KEY) };
 const _sessionInitRef = { current: false };
+
+function removePendingCreationTask(genId) {
+  try {
+    const pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
+    const remaining = pending.filter((task) => task?.genId !== genId);
+    localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(remaining));
+  } catch {
+    // 任务快照清理失败不阻断已经完成的创作结果展示。
+  }
+}
 
 export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured = true, onShowNoModelNotice }) {  const [activeTab, setActiveTab] = useState('image');
   const saveActiveDraftRef = useRef(null);
@@ -332,9 +345,6 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     }
     if (!pending.length) return;
 
-    // 清掉已恢复的，避免重复
-    localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify([]));
-
     pending
       .map(normalizeCreationPendingTask)
       .filter(Boolean)
@@ -359,22 +369,26 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
           if (!mediaUrls.length) {
             showToast('error', '生成失败，请稍后重试');
             storeDeleteGeneration(tab, genId);
+            removePendingCreationTask(genId);
             return;
           }
           storeDeleteGeneration(tab, genId);
           addGeneration(tab, generation);
           if (cardIds?.length) storeUpdateCardIds(tab, genId, cardIds);
+          removePendingCreationTask(genId);
           // 新创作完成 → 清除历史缓存，下次刷新时能拿到新数据
           invalidate(`creation_history:${tab}:`, 'local');
         })
         .catch((err) => {
           showToast('error', err?.message || '生成失败，请稍后重试');
           storeDeleteGeneration(tab, genId);
+          removePendingCreationTask(genId);
         })
         .finally(() => {
           decrementActive(genType === 'video' ? 'video' : (genType === 'dubbing' || genType === 'music') ? genType : 'image');
         });
     });
+  // 快照保留到轮询终态，确保用户再次刷新时仍可恢复任务。
   // 仅在登录状态变化时执行，避免未登录首次挂载消费任务快照。
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn]);
@@ -389,6 +403,9 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     const wasFav = favorites.has(cardKey);
     // Optimistically update local state first
     storeToggleFavorite(cardKey);
+    setAudioDetailModal((current) => current?.key === cardKey
+      ? { ...current, favorited: !wasFav, favoriteStatusLoaded: true }
+      : current);
     showToast('success', wasFav ? '取消收藏' : '收藏成功');
     // Find the card to get its backend ID and type
     const lastDash = cardKey.lastIndexOf('-');
@@ -404,7 +421,12 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
           : apiToggleImageFavorite(card.id, !wasFav);
       apiCall
         .then(() => storeConfirmFavoriteToggle(cardKey))
-        .catch(() => storeRollbackFavoriteToggle(cardKey));
+        .catch(() => {
+          storeRollbackFavoriteToggle(cardKey);
+          setAudioDetailModal((current) => current?.key === cardKey
+            ? { ...current, favorited: wasFav, favoriteStatusLoaded: true }
+            : current);
+        });
     } else {
       storeConfirmFavoriteToggle(cardKey);
     }
@@ -670,7 +692,11 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   };
 
   const handleAudioCardClick = (card) => {
-    setAudioDetailModal(card);
+    setAudioDetailModal({
+      ...card,
+      favorited: favorites.has(card.key),
+      favoriteStatusLoaded: false,
+    });
     const audioId = card.audioId || card.backendId || card.id;
     if (!audioId) return;
     apiGetCreationAudio(audioId).then((detail) => {
@@ -680,6 +706,9 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
           ? normalizeCreationAudioDetail(detail, current)
           : current;
       });
+      if (Object.prototype.hasOwnProperty.call(detail || {}, 'is_favorite')) {
+        storeSyncFavorites([{ key: card.key, isFavorite: Boolean(detail.is_favorite) }]);
+      }
     }).catch((error) => {
       console.warn('[CreationPage] 获取创作音频详情失败，保留列表详情:', error);
     });
@@ -745,7 +774,11 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
           handleDeleteCard(audioDetailModal.genId, audioDetailModal.cardIndex);
           setAudioDetailModal(null);
         }}
-        audioDetailFavorited={audioDetailModal ? favorites.has(audioDetailModal.key) : false}
+        audioDetailFavorited={audioDetailModal
+          ? audioDetailModal.favoriteStatusLoaded
+            ? audioDetailModal.favorited
+            : favorites.has(audioDetailModal.key)
+          : false}
         onAudioDetailFavorite={() => handleToggleFavorite(audioDetailModal.key)}
       />
       <CreationWorkspace

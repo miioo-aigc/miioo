@@ -30,6 +30,7 @@
  *   2026-08-21  创作历史配音台词复用提示词预览，展示停顿、语气词和情绪高亮
  *   2026-08-25  创作历史占位卡复用 LoadingAnimation，宽度 88px、高度按比例自适应
  *   2026-08-31  配音结果卡接入共享播放器，保证同时只播放一段音频
+ *   2026-09-04  导出 StarIcon，供配音详情弹窗复用统一收藏图标
  */
 
 import { useEffect, useState } from 'react';
@@ -53,7 +54,7 @@ const WAVEFORM_HEIGHTS = [
   11, 22, 17, 15, 24, 13, 18, 10, 21, 16,
 ];
 
-function StarIcon({ filled = false, strokeColor = '#FFFFFF' }) {
+export function StarIcon({ filled = false, strokeColor = '#FFFFFF' }) {
   return (
     <svg width="16" height="16" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
       <path

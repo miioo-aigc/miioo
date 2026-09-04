@@ -48,6 +48,8 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-09-04  台词分配移除语速/音量，新增角色与旁白音色选择；普通角色复用主体音色接口，旁白使用项目级音色设置，
+ *               台词保存同步写入 dialogues_json 与 narration_segments
  *   2026-08-28  分镜视频模型筛选改由可展示参考模式判断；不再读取已废弃的 reference_modes，
  *               已下线多帧模式不进入新建分镜视频请求
  *   2026-08-21  分镜视频创作复用创作页模型能力路由：按 UI 参考模式分流首尾帧素材，
@@ -96,7 +98,8 @@ import { showGlobalToast } from '../stores/toastStore';
 import StoryboardHeader from '../components/storyboard/StoryboardHeader';
 import { getEpisodeId } from '../components/storyboard/storyboardControlUtils';
 import { apiUploadStoryboardImage, apiUploadStoryboardVideo, apiGenerateStoryboardImage, apiGenerateStoryboardVideo, apiGenerateStoryboardsFromEpisode, apiGenerateStoryboardsFromFinalScript, apiCreateStoryboard, apiUpdateStoryboard, apiUpdateStoryboardCreationForm, apiDeleteStoryboard, apiReorderStoryboards, apiGetStoryboards, apiBatchDownloadStoryboardImages, apiBatchDownloadStoryboardVideos, apiGetTask, apiListStoryboardMediaCandidates, apiCreateStoryboardMediaCandidate, apiUpdateStoryboardMediaCandidate, apiDownloadStoryboardMediaCandidate } from '../api/storyboard';
-import { apiGetEpisodes, normalizeEpisodeListResponse } from '../api/subject';
+import { apiGetEpisodes, normalizeEpisodeListResponse, apiUpdateSubject } from '../api/subject';
+import { apiGetProjectVoiceSettings, apiUpdateProjectVoiceSettings } from '../api/project';
 import { apiUploadCreationImage } from '../api/creation';
 import { apiListModels } from '../api/config';
 import { apiGetLiveMaterialPreview } from '../api/liveMaterials';
@@ -307,7 +310,48 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     const currentEpisodeRaw = raw.filter((item) => (item.episode_id ?? item.episodeId) === episodeId);
     return normalizeStoryboardList(currentEpisodeRaw, storyboardSubjects, 0, projectId).slice(0, STORYBOARD_PAGE_SIZE);
   });
-  const [globalVoiceParams, setGlobalVoiceParams] = useState({});
+  const [narratorVoice, setNarratorVoice] = useState(null);
+  const [voiceOverrides, setVoiceOverrides] = useState({});
+
+  const globalVoiceParams = useMemo(() => {
+    const subjectVoices = {};
+    chars.forEach((character) => {
+      if (character?.name && character?.voice_id) {
+        subjectVoices[character.name] = {
+          voice_id: character.voice_id,
+          voice_name: character.voice_name || character.voiceName || character.voice_id,
+          voice_preview_url: character.voice_preview_url || character.voicePreviewUrl || null,
+        };
+      }
+    });
+    return { ...subjectVoices, ...(narratorVoice ? { 旁白: narratorVoice } : {}), ...voiceOverrides };
+  }, [chars, narratorVoice, voiceOverrides]);
+
+  useEffect(() => {
+    if (!projectId) {
+      return undefined;
+    }
+    let cancelled = false;
+    apiGetProjectVoiceSettings(projectId)
+      .then((settings) => {
+        if (cancelled) return;
+        const narrator = settings?.narrator_voice || settings?.narratorVoice;
+        const narratorId = settings?.narrator_voice_id || settings?.narratorVoiceId || narrator?.voice_id || narrator?.voiceId;
+        if (narratorId) {
+          setNarratorVoice({
+            voice_id: narratorId,
+            voice_name: settings?.narrator_voice_name || settings?.narratorVoiceName || narrator?.voice_name || narrator?.voiceName || narratorId,
+            voice_preview_url: settings?.narrator_voice_preview_url || settings?.narratorVoicePreviewUrl || narrator?.voice_preview_url || narrator?.voicePreviewUrl || null,
+          });
+        } else {
+          setNarratorVoice(null);
+        }
+      })
+      .catch((error) => {
+        console.warn('[StoryboardPage] 获取旁白全局音色失败:', error);
+      });
+    return () => { cancelled = true; };
+  }, [projectId]);
   const [episode, setEpisode] = useState(() => {
     const idx = (initialEpisodeIndex != null && initialEpisodeIndex >= 0 && initialEpisodeIndex < activeEpisodes.length)
       ? initialEpisodeIndex : 0;
@@ -1335,6 +1379,35 @@ function hasStoryboardMediaHint(shot = {}) {
   function showToast(msg, type = 'success') {
     showGlobalToast(msg, type);
   }
+
+  const handleStoryboardVoiceChange = useCallback(async (role, voice, character) => {
+    const voiceId = voice?.voice_id || null;
+    try {
+      if (role === '旁白') {
+        await apiUpdateProjectVoiceSettings(projectId, { narrator_voice_id: voiceId });
+      } else if (character?.id) {
+        await apiUpdateSubject(projectId, character.id, { voice_id: voiceId });
+      } else {
+        throw new Error('未找到对应的配音角色');
+      }
+      const nextVoice = voice ? {
+        voice_id: voiceId,
+        voice_name: voice.voice_name || voiceId,
+        voice_preview_url: voice.voice_preview_url || null,
+      } : null;
+      setVoiceOverrides((previous) => ({
+        ...previous,
+        [role]: nextVoice,
+      }));
+      if (role === '旁白') setNarratorVoice(nextVoice);
+      showToast('音色保存成功');
+      return true;
+    } catch (error) {
+      console.error('[StoryboardPage] 保存全局音色失败:', error);
+      showToast(error?.message || (role === '旁白' ? '旁白音色保存失败，请稍后重试' : '角色音色保存失败，请稍后重试'), 'error');
+      return false;
+    }
+  }, [projectId]);
 
   // 轮询任务直到完成或超时；视频创作允许等待 3600 秒，分镜生成保持 3000 秒。
   // isSuccessPayload: 可选谓词，若返回 true 则即使 status 为 running 也停止轮询
@@ -2459,7 +2532,7 @@ function hasStoryboardMediaHint(shot = {}) {
               onUploadImage={handleShotImageUpload}
               onUploadVideo={handleShotVideoUpload}
               globalVoiceParams={globalVoiceParams}
-              onSaveGlobalVoice={(role, params) => setGlobalVoiceParams((prev) => ({ ...prev, [role]: params }))}
+              onVoiceChange={handleStoryboardVoiceChange}
               generatingImage={generatingImageShotIds.has(shot.id)}
               generatingVideo={generatingVideoShotIds.has(shot.id)}
               genImageHistoryMap={genImageHistoryMap}

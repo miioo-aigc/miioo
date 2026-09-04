@@ -30,6 +30,7 @@
  *   2026-07-31  音色卡片支持再次点击取消选择
  *   2026-07-31  增加音色卡片悬停态，无预览链接的音色不可选择
  *   2026-07-31  按系统音色库分页契约加载完整列表，兼容 zh-CN 和缺失语言字段
+ *   2026-09-04  导出主体页试听波形组件，供台词分配音色输入框复用
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DotsLoading from '../DotsLoading';
@@ -59,7 +60,7 @@ function HeadphoneIcon({ color = '#2DC3E1' }) {
   );
 }
 
-function PlayingWaveIcon({ color = '#2DC3E1', size = 16 }) {
+export function PlayingWaveIcon({ color = '#2DC3E1', size = 16 }) {
   return (
     <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', flexShrink: 0 }} aria-hidden="true">
       {[

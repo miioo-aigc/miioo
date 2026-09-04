@@ -40,6 +40,8 @@
  *   2026-09-01  官方音色弹窗恢复本地缓存，收藏成功后即时更新当前列表并失效旧缓存
  *   2026-08-31  语言筛选固定中文第一，其他语言按英文枚举排序并统一中文展示
  *   2026-08-31  语言与口音筛选选项双向联动，但保留两个独立下拉框
+ *   2026-09-04  支持通过 zIndex 覆盖弹窗层级，供台词分配弹窗中的二级音色弹窗置于上层；
+ *               截断 Portal 事件冒泡，避免点击音色卡片误关闭外层台词弹窗
  *   2026-09-01  选择音色弹窗每次打开默认展开筛选条件，仍支持手动收起
  */
 import { createPortal } from "react-dom";
@@ -118,7 +120,7 @@ export function DubbingVoiceFileCard({ voiceName, onRemove, onOpenModal }) {
   );
 }
 
-export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast, currentVoice }) {
+export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast, currentVoice, zIndex = 110 }) {
   const [activeTab, setActiveTab] = useState("official");
   const [hoveredTab, setHoveredTab] = useState("");
   const [searchValue, setSearchValue] = useState("");
@@ -291,7 +293,7 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast,
   if (!open) return null;
 
   return createPortal(
-    <div style={{ position: "fixed", inset: 0, zIndex: 110, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
+    <div onClick={(event) => event.stopPropagation()} style={{ position: "fixed", inset: 0, zIndex, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
       <div role="dialog" aria-modal="true" aria-labelledby="dubbing-voice-modal-title" style={{ width: "min(800px, calc(100vw - 48px))", height: "min(600px, calc(100vh - 48px))", display: "flex", flexDirection: "column", overflow: "hidden", border: "1px solid #FFFFFF14", borderRadius: "8px", background: "#161616", boxSizing: "border-box" }}>
         <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", padding: "16px 24px", flexShrink: 0, background: "#161616" }}>
           <h2 id="dubbing-voice-modal-title" style={{ flex: 1, margin: 0, color: "#FFFFFF", fontFamily: FONT_MEDIUM, fontSize: "16px", fontWeight: 500, lineHeight: "20px" }}>选择音色</h2>

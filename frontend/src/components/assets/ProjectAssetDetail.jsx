@@ -12,6 +12,8 @@ export default function ProjectAssetDetail({
   name,
   description,
   url,
+  favorited = false,
+  onToggleFavorite,
   asset = {},
   images = [],
   onClose,
@@ -83,6 +85,8 @@ export default function ProjectAssetDetail({
         name={name}
         description={description}
         images={images}
+        favorited={favorited}
+        onToggleFavorite={onToggleFavorite}
         onShowToast={onShowToast}
         onDownload={onDownload}
         onDeleteImage={(imageId) => {
@@ -109,6 +113,9 @@ export default function ProjectAssetDetail({
         createdAt: asset.created_at,
       }}
       onClose={onClose}
+      onDownload={onDownload}
+      favorited={favorited}
+      onToggleFavorite={onToggleFavorite}
       onDelete={() => {
         onClose?.();
         onDelete?.();

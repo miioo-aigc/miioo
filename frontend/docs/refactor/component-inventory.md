@@ -307,7 +307,7 @@
 ## 2026-08-06 四类详情图弹窗尺寸规则统一
 
 - 详情弹窗统一使用 `3:2` 宽高比，按视口的 `90%` 计算显示尺寸，最小尺寸保持 `1200×800`；`src/utils/useModalSize.js` 返回基准宽高和整体缩放比例。
-- `MediaDetailModal` 覆盖主体页面和分镜页面的通用媒体详情入口；`StoryboardMediaDetailModal` 覆盖分镜页面及资产库分镜详情；`CreationImageResultCard` 内部图片详情弹窗覆盖创作页面；`ImageDetailModal`、`AssetDetailModal`、`SubjectAssetDetailModal` 和 `ShotDetailModal` 覆盖资产库图片、创作资产、主体资产和分镜图片详情。
+- `MediaDetailModal` 覆盖主体页面和分镜页面的通用媒体详情入口；`StoryboardMediaDetailModal` 覆盖分镜页面及资产库分镜详情；`ImageDetailModal` 统一覆盖创作页面和资产库创作资产的图片详情；`SubjectAssetDetailModal` 覆盖资产库主体多图详情，其他分镜图片详情继续使用对应业务弹窗。
 - 各详情弹窗将整体内容应用 `transform: scale(...)`，保留原有基准布局的内部比例和交互；相关视频详情查看组件同步接入尺寸工具，避免共享入口产生不一致。
 - 本次只调整弹窗尺寸计算和展示缩放，不改变详情数据边界、API、Store、下载、删除、定稿或播放副作用。
 - 验证：`npm run lint`、`npm run build`、`npm run check:architecture`、`git diff --check` 均通过；仅保留已有构建分块体积和文件规模提醒。
@@ -1134,7 +1134,7 @@
 
 - `AssetCardCreativeDetail` 已接入 `AssetCard`，负责创作资产图片/视频详情弹窗的类型分发和 props 组装。
 - 页面继续负责详情打开状态、项目资产详情 API、删除后关闭、收藏回调和业务数据；组件不调用 API、不读取 Store。
-- `ImageDetailModal` 在页面中仍被项目资产卡片使用，因此保留页面导入，不做无依据的删除。
+- `ImageDetailModal` 由资产库创作资产和创作页面图片结果卡片共同使用，作为图片详情的共享入口保留；项目资产单图分支也通过 `ProjectAssetDetail` 复用该组件。
 - 当前页面实际 `3441` 行；架构脚本计 `3442` 行。项目资产镜头详情弹窗本体、通用详情弹窗和筛选/分页编排仍待后续处理。
 
 ## 2026-07-15 AssetsPage 项目资产详情组合迁移记录

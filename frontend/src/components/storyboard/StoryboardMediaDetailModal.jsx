@@ -736,7 +736,7 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
           </div>
           <aside style={{ width: '280px', flex: '0 0 280px', minHeight: 0, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #FFFFFF0F', background: '#161616' }}>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px' }}>
                 <span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>是否定稿</span>
                 {readOnlyFinalize ? (
                   finalized ? (
@@ -767,8 +767,8 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
 
               {prompt && <>
                 <div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} />
-                <div style={{ padding: '16px 20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', gap: '8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', padding: '12px 20px', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                     <span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>提示词</span>
                     <CopyPromptButton prompt={prompt} />
                   </div>
@@ -801,8 +801,8 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
                       <ReferenceMediaSection title="参考音频" items={referenceGroups.audios} kind="audio" />
                     </>
                   )}
-              {normalizedParameterEntries.length > 0 && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>生成参数</span><div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>{normalizedParameterEntries.map((entry) => <div key={entry.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}><span style={{ color: '#FFFFFF66', font: `11px/15px ${FONT}` }}>{entry.label}</span><span style={{ color: '#FFFFFFCC', font: `12px/18px ${FONT}`, wordBreak: 'break-word', whiteSpace: entry.value.includes('\n') ? 'pre-wrap' : 'normal', textAlign: 'right' }}>{entry.value}</span></div>)}</div></div></>}
-              {activeMedia.created_at && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ padding: '16px 20px' }}><span style={{ display: 'block', marginBottom: '8px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>生成时间</span><span style={{ color: '#FFFFFF66', font: `12px/16px ${FONT}` }}>{formatDate(activeMedia.created_at)}</span></div></>}
+              {normalizedParameterEntries.length > 0 && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px 20px' }}><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>生成参数</span><div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>{normalizedParameterEntries.map((entry) => <div key={entry.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}><span style={{ color: '#FFFFFF66', font: `11px/15px ${FONT}` }}>{entry.label}</span><span style={{ color: '#FFFFFFCC', font: `12px/18px ${FONT}`, wordBreak: 'break-word', whiteSpace: entry.value.includes('\n') ? 'pre-wrap' : 'normal', textAlign: 'right' }}>{entry.value}</span></div>)}</div></div></>}
+              {activeMedia.created_at && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ display: 'flex', flexDirection: 'row', gap: '4px', padding: '16px 20px', justifyContent: 'flex-start', alignItems: 'center' }}><span style={{ flex: '1 1 0px', color: '#FFFFFF99', font: `12px/14px ${FONT}`, letterSpacing: '0.06em', textTransform: 'uppercase' }}>生成时间</span><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}`, letterSpacing: '0.01em' }}>{formatDate(activeMedia.created_at)}</span></div></>}
             </div>
             <div style={{ flexShrink: 0, padding: '12px 20px 20px', borderTop: '1px solid #FFFFFF0A' }}><button type="button" onClick={() => onDownload?.(activeMedia)} style={{ width: '100%', height: '40px', borderRadius: '8px', border: '1px solid #FFFFFF1F', background: '#FFFFFF14', color: '#FFFFFF99', cursor: 'pointer', font: `13px/16px ${FONT}` }}>下载</button></div>
           </aside>

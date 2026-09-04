@@ -47,9 +47,11 @@ export default function AssetsProjectGrid({
           name={asset.name}
           desc={asset.description}
           url={asset.url || null}
+          starred={asset.starred}
           selected={isSelected}
           batchMode={batchMode}
           onSelect={() => onSelect(asset.id)}
+          onStar={() => onStar(asset.id)}
           onDownload={(downloadId = asset.id, downloadName = asset.name, downloadAssetRecord = asset) => (
             onDownload(downloadId, downloadName, downloadAssetRecord)
           )}

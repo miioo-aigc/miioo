@@ -1,5 +1,18 @@
 # miioo 项目进度管理文档
 
+## 2026-09-04 分镜台词分配音色与角色选择流程完善
+
+- 台词分配弹窗移除语速、音量字段及对应状态、滑块和保存逻辑；底部操作统一改为“取消”和“确定”。“确定”保存当前分镜的配音角色、音色和台词，“取消”放弃本次台词编辑。
+- 在配音角色下方新增“选择音色”字段，未选择音色时展示“请选择音色”和“选择”按钮，已选择音色时展示耳机图标、音色名称和“重选”按钮；按钮复用现有 `Button` 组件，并将设计稿中的 Tailwind 数字缩写转换为明确的 px 值，修正按钮内外层尺寸不一致问题。
+- “选择/重选”复用主体页角色 Tab 的音色选择弹窗；二级弹窗支持传入 `zIndex` 并通过 Portal 事件隔离，确保位于台词分配弹窗上层，点击音色卡片不会误关闭一级弹窗。
+- 台词分配中的配音角色下拉复用通用 `Select` 组件；补充受控展开能力，未选择角色点击音色按钮时先提示“请先选择配音角色”，再主动打开角色菜单；Select 的默认选中项改用白色点击态，不再使用蓝色高亮。
+- 选择角色后会带入该角色已有的全局默认音色；重新选择音色成功后，一级台词分配弹窗保持当前角色、台词和新的音色，不再因二级弹窗关闭或接口更新而重置。
+- 普通角色音色通过主体更新接口持久化；固定角色“旁白”不创建虚拟主体，改用项目级音色设置接口读取和更新。新增前端 API 适配：`GET/PATCH /api/projects/{projectId}/voice-settings`，具体字段、兼容规则和后端验收项见 [`docs/integration/storyboard-dialogue-voice-contract.md`](./docs/integration/storyboard-dialogue-voice-contract.md)。
+- 台词结构化数据新增并兼容 `role_type`、`subject_id`、`voice_id`、`voice_name`、`voice_preview_url`；普通角色标记为 `subject` 并保存主体 ID，旁白标记为 `narrator` 且 `subject_id` 为 `null`。读取时兼容历史 `narration_segments.value`，统一归一为 `lines`；保存时同步写入 `dialogues_json` 和 `gen_params.narration_segments`，继续保留旧 `voiceover` 兼容字段。
+- 已选择音色的输入框补充整体底色和边框悬停态，但蓝色高亮只在耳机图标或音色名称本身悬停时触发，不覆盖输入框空白区域。耳机按钮可点击播放/暂停试听，复用全局单例播放器和主体页 `PlayingWaveIcon` 播放动画；耳机和名称分别维护悬停状态，避免高亮状态干扰试听点击。
+- 相关文件：`src/pages/StoryboardPage.jsx`、`src/components/storyboard/NarrationCol.jsx`、`src/components/storyboard/StoryboardShotRowContent.jsx`、`src/components/storyboard/VoiceDubModal.jsx`、`src/components/creation/CreationDubbingVoiceModal.jsx`、`src/components/subject/SubjectVoiceSelectModal.jsx`、`src/components/ui/Select.jsx`、`src/api/project.js`、`src/utils/storyboardDataAdapter.js`、`src/utils/voicePreviewPlayer.js`。
+- 验证：目标文件定向 ESLint、`npm run build`、`git diff --check` 通过；构建仅保留项目既有 chunk 体积提示。架构检查仍有仓库既有文件命名问题：`src/components/assets/seedanceUploadValidation.js` 文件名未使用大驼峰，非本次改动引入。
+
 ## 2026-09-04 图片创作任务多次刷新后加载动画与轮询丢失修复
 
 - 修复图片创作任务首次刷新后看似可以继续轮询，但第二次、第三次刷新后加载动画和轮询接口不再出现的问题。
@@ -254,7 +267,7 @@
 
 - 统一主体页面、分镜页面、创作页面和资产库的图片详情弹窗尺寸：宽高比固定为 `3:2`，按视口尺寸计算，最大占屏幕 `90%`，最小保持 `1200×800`。
 - 弹窗采用 `1200×800` 作为基准布局尺寸，通过整体 `transform: scale(...)` 等比放大内部内容，保证标题、图片预览、信息面板、缩略图和操作区同步缩放。
-- 统一尺寸计算收口至 `src/utils/useModalSize.js`；主体详情复用 `MediaDetailModal`，分镜详情复用 `StoryboardMediaDetailModal`，创作图片详情使用 `CreationImageResultCard` 内部详情弹窗，资产库图片详情覆盖 `ImageDetailModal`、`AssetDetailModal`、`SubjectAssetDetailModal` 和 `ShotDetailModal`。
+- 统一尺寸计算收口至 `src/utils/useModalSize.js`；主体详情复用 `MediaDetailModal`，分镜详情复用 `StoryboardMediaDetailModal`，创作页面与资产库创作资产的图片详情统一复用 `ImageDetailModal`，资产库主体和分镜图片详情继续使用各自业务弹窗。
 - 相关视频详情弹窗同步接入同一尺寸工具，避免共用详情入口出现尺寸规则不一致；不改变原有数据、下载、删除、定稿和播放行为。
 - 已完成 `npm run lint`、`npm run build`、`npm run check:architecture` 和 `git diff --check` 验证；构建仅保留已有分块体积提醒，架构检查仅保留既有规模提醒。
 

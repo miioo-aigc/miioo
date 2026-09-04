@@ -2,7 +2,8 @@
  * Storyboard 前后端数据映射与主体参考图补全。
  * 仅处理纯数据，不读取 React 状态，也不执行 API 或缓存副作用。
  *
- * 更新记录：2026-08-17 刷新恢复创作面板参考主体时保留项目资产与 Seedance 素材的预览、身份和服务商引用，
+ * 更新记录：2026-09-04 台词兼容 role_type、subject_id、voice 字段，并将历史 narration_segments.value 归一为 lines；
+ *              2026-08-17 刷新恢复创作面板参考主体时保留项目资产与 Seedance 素材的预览、身份和服务商引用，
  *              并以主体列表补全缺失的认证身份；
  *              2026-08-06 主体参考刷新时按显式主体 ID 过滤旧 subject_references/mainRefs，并增加最新快照保护；
  *              2026-08-05 普通参考图序列化时保留 asset_id，统一本地上传与资产库选择的持久化身份；
@@ -285,18 +286,28 @@ export function normalizeStoryboard(be, fallbackContext = {}) {
     }
   };
   const genParams = parseObject(be.gen_params ?? be.genParams);
-  const hasNarrationSegments = (value) => (
-    Array.isArray(value) && value.some((segment) => (
-      segment && typeof segment === 'object' && String(segment.lines ?? '').trim()
-    ))
-  );
-  const structuredNarrationSegments = hasNarrationSegments(be.dialogues_json)
-    ? be.dialogues_json
-    : (hasNarrationSegments(be.narration?.segments)
-      ? be.narration.segments
-      : (hasNarrationSegments(genParams.narration_segments)
-        ? genParams.narration_segments
-        : null));
+  const normalizeNarrationSegments = (value) => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter((segment) => segment && typeof segment === 'object')
+      .map((segment) => ({
+        ...segment,
+        role: segment.role ?? '',
+        role_type: segment.role_type ?? (segment.role === '旁白' ? 'narrator' : 'subject'),
+        subject_id: segment.subject_id ?? segment.subjectId ?? null,
+        voice_id: segment.voice_id ?? segment.voiceId ?? segment.voice?.voice_id ?? segment.voice?.voiceId ?? null,
+        voice_name: segment.voice_name ?? segment.voiceName ?? segment.voice?.voice_name ?? segment.voice?.voiceName ?? null,
+        voice_preview_url: segment.voice_preview_url ?? segment.voicePreviewUrl ?? segment.voice?.voice_preview_url ?? segment.voice?.voicePreviewUrl ?? null,
+        lines: segment.lines ?? segment.value ?? '',
+      }))
+      .filter((segment) => String(segment.lines).trim());
+  };
+  const structuredSources = [
+    normalizeNarrationSegments(be.dialogues_json),
+    normalizeNarrationSegments(be.narration?.segments),
+    normalizeNarrationSegments(genParams.narration_segments),
+  ];
+  const structuredNarrationSegments = structuredSources.find((segments) => segments.length > 0) || null;
   const subjectRefs = parseObject(be.subject_refs_json ?? be.subjectRefsJson);
   const generationRefs = parseObject(be.generation_refs_json ?? be.generationRefsJson);
   const hasDirectSubjectFields = Array.isArray(be.character_ids)
@@ -630,6 +641,11 @@ export function toBackendStoryboard(shot) {
   const narrationSegments = Array.isArray(shot.narration?.segments)
     ? shot.narration.segments.map((segment) => ({
         role: segment?.role ?? '',
+        role_type: segment?.role_type ?? (segment?.role === '旁白' ? 'narrator' : 'subject'),
+        subject_id: segment?.subject_id ?? segment?.subjectId ?? null,
+        voice_id: segment?.voice_id ?? segment?.voiceId ?? segment?.voice?.voice_id ?? null,
+        voice_name: segment?.voice_name ?? segment?.voiceName ?? segment?.voice?.voice_name ?? null,
+        voice_preview_url: segment?.voice_preview_url ?? segment?.voicePreviewUrl ?? segment?.voice?.voice_preview_url ?? null,
         lines: segment?.lines ?? '',
       }))
     : [];

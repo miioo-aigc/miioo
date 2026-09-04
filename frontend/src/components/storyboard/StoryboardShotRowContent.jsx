@@ -20,7 +20,6 @@ export default function StoryboardShotRowContent({
   insertBefore,
   insertAfter,
   globalVoiceParams,
-  onSaveGlobalVoice,
   projectId,
   generatingImage,
   generatingVideo,
@@ -39,6 +38,7 @@ export default function StoryboardShotRowContent({
   onUploadMainRef,
   onConfirmMainRefAssets,
   durationOptions = [],
+  onVoiceChange,
 }) {
   return (
     <StoryboardShotRow
@@ -71,7 +71,7 @@ export default function StoryboardShotRowContent({
         onChange={onChange}
         chars={chars}
         globalVoiceParams={globalVoiceParams}
-        onSaveGlobalVoice={onSaveGlobalVoice}
+        onVoiceChange={onVoiceChange}
       />
       <MainRefColWrapper
         shot={shot}

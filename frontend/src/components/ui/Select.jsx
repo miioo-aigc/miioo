@@ -21,6 +21,8 @@
  *   2026-07-23  增加实例级隐藏触发器描边配置
  *   2026-08-18  增加仅触发器模式、前置图标和触发回调，支持菜单待接入场景
  *   2026-08-19  增加自定义菜单宽度、语义角色和实例样式，支持复合交互内容
+ *   2026-09-04  增加可选受控展开状态，支持业务在提示后主动打开选择菜单
+ *   2026-09-04  默认选中项改用白色点击态，不再使用蓝色高亮
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -182,8 +184,8 @@ export default function Select({
   loading = false,
   loadingText = '加载中…',
   disabled = false,
-  selectedOptionColor = '#2DC3E1',
-  selectedOptionBackground = 'rgba(45,195,225,0.08)',
+  selectedOptionColor = '#FFFFFF',
+  selectedOptionBackground = 'rgba(255,255,255,0.08)',
   optionHoverBackground = 'rgba(255,255,255,0.06)',
   menuMaxHeight = '300px',
   menuPlacement = 'down',
@@ -196,6 +198,8 @@ export default function Select({
   openMixBlendMode,
   hideTriggerBorder = false,
   triggerOnly = false,
+  open: controlledOpen,
+  onOpenChange,
   startIcon,
   triggerStyle,
   displayTextStyle,
@@ -204,13 +208,20 @@ export default function Select({
 }) {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState(null);
   const triggerRef = useRef(null);
   const dropdownRef = useRef(null);
   const hasOptions = options.length > 0;
   const hasMenuContent = typeof menuContent === 'function';
   const isDisabled = disabled || loading || (!triggerOnly && !hasOptions && !hasMenuContent);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+
+  function setOpen(nextOpen) {
+    if (!isControlled) setInternalOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  }
 
   useEffect(() => {
     if (!open) return undefined;
@@ -222,13 +233,14 @@ export default function Select({
         && dropdownRef.current
         && !dropdownRef.current.contains(event.target)
       ) {
-        setOpen(false);
+        if (!isControlled) setInternalOpen(false);
+        onOpenChange?.(false);
       }
     }
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
+  }, [isControlled, onOpenChange, open]);
 
   const selectStyle = {
     display: 'flex', alignItems: 'center', height: '36px', width, borderRadius: '8px', padding: '0 12px', gap: '8px',

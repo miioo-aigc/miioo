@@ -21,6 +21,7 @@
  *     onDownload?: (imageId?, fileUrl?) => void  下载回调
  *     onDeleteImage?: (imageId) => void 删除回调
  *     onPrimaryChange?: (image, nextValue) => void 定稿开关回调
+ *     onToggleFavorite?: (image) => void 收藏回调（图片模式顶部操作，可选）
  *     showPrimaryBadge?: boolean              是否显示缩略图定稿标签（默认显示）
  *     shotNumber?: string              分镜名称
  *     generatedAt?: string            AI 生成时间
@@ -32,6 +33,7 @@
  *   2026-07-28  主体详情图定稿状态改用 Toggle，定稿唯一性由主体页动作链路保证
  *   2026-07-28  主体详情图隐藏缩略图定稿标签，保留其他页面默认展示
  *   2026-08-06  详情弹窗统一使用 3:2、90% 视口和 1200×800 最小尺寸，并整体等比缩放
+ *   2026-09-04  图片模式右栏采用顶部操作、中间滚动、底部图片编辑固定布局，视频模式保留原操作区
  */
 
 import { useState } from 'react';
@@ -44,6 +46,40 @@ import { showGlobalToast } from '../stores/toastStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
+
+function PanelAction({ icon, label, onClick, active = false }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={active}
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', minWidth: '24px', height: '24px', padding: 0, border: 0, borderRadius: '7px', backgroundColor: hovered ? '#FFFFFF14' : '#161616', cursor: 'pointer', transition: 'background-color 0.12s' }}
+    >
+      {icon}
+    </button>
+  );
+}
+
+function EditTool({ label, icon }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ display: 'flex', flex: '1 1 0%', minWidth: 0, height: '64px', padding: '12px 8px', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', border: 0, borderRadius: '6px', backgroundColor: hovered ? '#FFFFFF14' : '#FFFFFF0D', color: '#FFFFFFCC', cursor: 'pointer', transition: 'background-color 0.12s' }}
+    >
+      {icon}
+      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{label}</span>
+    </button>
+  );
+}
 
 export default function MediaDetailModal({
   activeIndex = 0,
@@ -62,6 +98,7 @@ export default function MediaDetailModal({
   onDownload,
   onDeleteImage,
   onPrimaryChange,
+  onToggleFavorite,
   showPrimaryBadge = true,
 }) {
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
@@ -73,6 +110,7 @@ export default function MediaDetailModal({
   const [hovDelete, setHovDelete] = useState(false);
   const [pressDelete, setPressDelete] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [starAnim, setStarAnim] = useState(false);
   const copyToast = null;
   function showCopyToast() {
     showGlobalToast('提示词复制成功', 'success');
@@ -97,6 +135,13 @@ export default function MediaDetailModal({
   const canShowGenerationInfo = isAiGenerated || currentSource === 'asset-library';
   // 来源标签
   const sourceLabel = currentSource === 'local-upload' ? '本地上传' : currentSource === 'asset-library' ? '资产库' : '';
+  const isImageMode = mode === 'image';
+
+  function handleFavorite() {
+    setStarAnim(true);
+    setTimeout(() => setStarAnim(false), 300);
+    onToggleFavorite?.(currentImg);
+  }
 
   return (
     <>
@@ -225,14 +270,40 @@ export default function MediaDetailModal({
 
             {/* Right: info panel — 对齐 ShotDetailModal 高度约束 */}
             <div style={{
-              width: '280px', display: 'flex', flexDirection: 'column',
+              width: isImageMode ? '340px' : '280px', display: 'flex', flexDirection: 'column',
               height: `${modalH - 60}px`, flexShrink: 0,
               backgroundColor: '#161616', borderLeft: '1px solid #FFFFFF0F',
             }}>
+              {isImageMode && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, padding: '12px 20px', borderBottom: '1px solid #FFFFFF0A', backgroundColor: '#161616' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <PanelAction
+                      label="收藏"
+                      active={false}
+                      onClick={handleFavorite}
+                      icon={<div style={{ display: 'flex', transform: starAnim ? 'scale(1.25)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)' }}><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1.667L5.962 5.826L1.333 6.497L4.686 9.775L3.885 14.333L8 12.14L12.115 14.333L11.32 9.775L14.667 6.497L10.064 5.826L8 1.667Z" stroke="#FFFFFFCC" strokeLinejoin="round" /></svg></div>}
+                    />
+                    {showDownload && (
+                      <PanelAction
+                        label="下载"
+                        onClick={() => onDownload?.(currentImg?.id, currentImg?.fileUrl ?? currentImg?.url)}
+                        icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8.003 11.3V2M4 7.333L8 11.333L12 7.333M4 14H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                      />
+                    )}
+                  </div>
+                  {showDelete && (
+                    <PanelAction
+                      label="删除"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      icon={<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.625 2.916V12.834H11.375V2.916H2.625Z" stroke="#FFFFFFCC" strokeLinejoin="round" /><path d="M5.834 5.834V9.625M8.166 5.834V9.625M1.166 2.916H12.834M4.666 2.916L5.626 1.166H8.393L9.334 2.916H4.666Z" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                    />
+                  )}
+                </div>
+              )}
               {/* Scrollable content */}
               <div style={{ flexGrow: 1, flexShrink: 1, flexBasis: '0%', overflowY: 'auto', minHeight: 0 }}>
                 {/* Primary status */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px' }}>
                   <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>是否定稿</span>
                   {onPrimaryChange ? (
                     <Toggle
@@ -365,27 +436,42 @@ export default function MediaDetailModal({
                 {isAiGenerated && (currentImg?.created_at || generatedAt) && (
                   <>
                     <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
-                    <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '4px' }}>
-                      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>AI 生成时间</span>
-                      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF66' }}>{generatedAt || currentImg.created_at}</span>
+                    <div style={{ display: 'flex', flexDirection: 'row', padding: '16px 20px', gap: '4px', justifyContent: 'flex-start', alignItems: 'center' }}>
+                      <span style={{ flex: '1 1 0px', fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>AI 生成时间</span>
+                      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>{generatedAt || currentImg.created_at}</span>
+                    </div>
+                  </>
+                )}
+
+                {/* 非 AI 生成的来源标识 */}
+                {!isAiGenerated && (
+                  <>
+                    <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
+                      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>来源</span>
+                      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{sourceLabel}</span>
                     </div>
                   </>
                 )}
               </div>
 
-              {/* 非 AI 生成的来源标识 */}
-              {!isAiGenerated && (
-                <>
-                  <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
-                    <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>来源</span>
-                    <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{sourceLabel}</span>
+              {isImageMode ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flexShrink: 0, width: '340px', padding: '16px 20px 24px', boxSizing: 'border-box', borderTop: '1px solid #FFFFFF0D', backgroundColor: '#161616' }}>
+                  <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>图片编辑</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px', width: '100%' }}>
+                    <EditTool label="多机位" icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="4" width="9" height="8" rx="1.5" stroke="#FFFFFFCC" /><path d="M10 6.5L14.5 4.5V11.5L10 9.5V6.5Z" stroke="#FFFFFFCC" strokeLinejoin="round" /></svg>} />
+                    <EditTool label="局部重绘" icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 13L10.8 5.2L13 7.4L5.2 15.2H3V13Z" stroke="#FFFFFFCC" strokeLinejoin="round" /><path d="M9.5 6.5L11.5 8.5M3 15H13" stroke="#FFFFFFCC" strokeLinecap="round" /></svg>} />
+                    <EditTool label="智能超清" icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 6V3H6M10 3H13V6M13 10V13H10M6 13H3V10" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /><path d="M8 4.5V11.5M4.5 8H11.5" stroke="#FFFFFFCC" strokeLinecap="round" /></svg>} />
+                    <EditTool label="消除笔" icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M9.5 3L13 6.5L6.5 13H3V9.5L9.5 3Z" stroke="#FFFFFFCC" strokeLinejoin="round" /><path d="M7 5.5L10.5 9M3 13H13" stroke="#FFFFFFCC" strokeLinecap="round" /></svg>} />
                   </div>
-                </>
-              )}
-
-              {/* Sticky buttons */}
-              <div style={{ flexShrink: 0, paddingTop: '12px', paddingBottom: '20px', paddingLeft: '20px', paddingRight: '20px', borderTop: '1px solid #FFFFFF0A', display: 'flex', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px', width: '100%' }}>
+                    <EditTool label="扩图" icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3.5" y="3.5" width="9" height="9" rx="0.5" stroke="#FFFFFFCC" strokeDasharray="2 1.5" /><path d="M1.5 1.5L3.5 3.5M14.5 1.5L12.5 3.5M1.5 14.5L3.5 12.5M14.5 14.5L12.5 12.5" stroke="#FFFFFFCC" strokeLinecap="round" /></svg>} />
+                    <EditTool label="裁剪" icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3V13H13M5 5H11V11H5V5Z" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /></svg>} />
+                    <EditTool label="翻转" icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2V14" stroke="#FFFFFFCC" strokeLinecap="round" strokeDasharray="2 1.5" /><path d="M2 5L5.5 8L2 11V5ZM14 5L10.5 8L14 11V5Z" fill="#FFFFFFCC" fillOpacity="0.6" /></svg>} />
+                    <div style={{ width: '100%', height: '64px', opacity: 0 }} />
+                  </div>
+                </div>
+              ) : <div style={{ flexShrink: 0, paddingTop: '12px', paddingBottom: '20px', paddingLeft: '20px', paddingRight: '20px', borderTop: '1px solid #FFFFFF0A', display: 'flex', gap: '8px' }}>
                 {showDelete && (
                   <button
                     type="button"
@@ -437,7 +523,7 @@ export default function MediaDetailModal({
                     <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>下载</span>
                   </button>
                 )}
-              </div>
+              </div>}
             </div>
           </div>
         </div>

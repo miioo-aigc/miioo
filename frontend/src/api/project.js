@@ -46,6 +46,26 @@ export async function apiGetProject(projectId) {
   );
 }
 
+export async function apiGetProjectVoiceSettings(projectId) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/voice-settings`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) await throwResponseError(res, `获取项目音色设置失败（${res.status}）`);
+  return res.json();
+}
+
+export async function apiUpdateProjectVoiceSettings(projectId, data) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/voice-settings`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) await throwResponseError(res, `更新项目音色设置失败（${res.status}）`);
+  const updated = await res.json();
+  invalidate(K.project(projectId));
+  return updated;
+}
+
 export async function apiCreateProject({ name, description, aspect_ratio, visual_style, visual_style_prompt, creation_mode, project_type, cover_url }) {
   const res = await authFetch(`${BASE}/api/projects`, {
     method: 'POST',

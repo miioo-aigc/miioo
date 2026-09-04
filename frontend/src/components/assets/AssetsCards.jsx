@@ -8,7 +8,6 @@ import AssetCardMedia from './AssetCardMedia';
 import AssetCardCreativeDetail from './AssetCardCreativeDetail';
 import ProjectAssetDetail from './ProjectAssetDetail';
 import SubjectAssetDetailModal from './SubjectAssetDetailModal';
-import AssetDetailModal from './AssetDetailModal';
 import ShotDetailModal from './ShotDetailModal';
 import ShotVideoDetailModal from './ShotVideoDetailModal';
 
@@ -137,16 +136,28 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
       />
     )}
     {detailOpen && assetType !== 'shot' && assetType !== 'shot_video' && !showStar && (
-      <AssetDetailModal onClose={() => setDetailOpen(false)} onDownload={onDownload}
-        name={detailData?.name ?? name} description={detailData?.description} prompt={detailData?.input_prompt ?? detailData?.prompt} model={detailData?.model}
-        ratio={detailData?.ratio} resolution={detailData?.resolution} generatedAt={detailData?.generatedAt} images={detailData?.images}
+      <ShotDetailModal
+        onClose={() => setDetailOpen(false)}
+        onDownload={onDownload}
+        onDelete={() => { setDetailOpen(false); onDelete?.(); }}
+        shotNumber={detailData?.shotNumber ?? detailData?.name ?? name}
+        prompt={detailData?.input_prompt ?? detailData?.prompt}
+        model={detailData?.model}
+        resolution={detailData?.resolution}
+        generatedAt={detailData?.generatedAt ?? detailData?.created_at}
+        images={(detailData?.images ?? []).map((image) => ({
+          ...image,
+          src: image.src ?? image.fileUrl ?? image.file_url ?? image.url,
+          finalized: image.finalized ?? image.is_finalized ?? image.is_primary ?? false,
+        }))}
+        refImages={detailData?.refImages}
       />
     )}
     </>
   );
 }
 
-export function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownload, onDelete, onSelect, onShowToast, onOpenDetail, asset = {}, category = '' }) {
+export function ProjectAssetCard({ name, desc, url, starred = false, selected, batchMode, onDownload, onDelete, onSelect, onStar, onShowToast, onOpenDetail, asset = {}, category = '' }) {
   const [hov, setHov] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
 
@@ -321,6 +332,8 @@ export function ProjectAssetCard({ name, desc, url, selected, batchMode, onDownl
         url={url}
         asset={asset}
         images={images}
+        favorited={starred}
+        onToggleFavorite={onStar}
         onClose={() => setDetailOpen(false)}
         onDownload={(imageId) => {
           const image = images.find((item) => String(item.id) === String(imageId));

@@ -13,7 +13,6 @@ export { default as AssetCardCreativeDetail } from './AssetCardCreativeDetail';
 export { default as ProjectAssetDetail } from './ProjectAssetDetail';
 export { default as AssetsScrollableContent } from './AssetsScrollableContent';
 export { default as SubjectAssetDetailModal } from './SubjectAssetDetailModal';
-export { default as AssetDetailModal } from './AssetDetailModal';
 export { default as ShotDetailModal } from './ShotDetailModal';
 export { default as ShotVideoDetailModal } from './ShotVideoDetailModal';
 export { default as AssetsAudioCard } from './AssetsAudioCard';

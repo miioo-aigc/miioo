@@ -405,7 +405,7 @@ function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shot
           }}>
             <div style={{ flexGrow: 1, flexShrink: 1, flexBasis: '0%', overflowY: 'auto', minHeight: 0 }}>
               {/* Finalized status */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px' }}>
                 <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>是否定稿</span>
                 {isFinalized ? (
                   <div style={{
@@ -434,7 +434,7 @@ function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shot
               {/* Creation mode — if refMode provided */}
               {(refModeLabel || refMode) && (
                 <>
-                  <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', padding: '12px 20px', gap: '8px' }}>
                     <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>创作模式</span>
                     <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>
                       {formatReferenceMode(refMode, refModeLabel)}
@@ -488,7 +488,7 @@ function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shot
 
               {refMode === 'frame_ref' && (firstFrame || lastFrame) && (
                 <>
-                  <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', padding: '12px 20px', gap: '8px' }}>
                     <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>关键帧</span>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       {firstFrame && (
@@ -558,7 +558,7 @@ function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shot
               )}
 
               {/* Generation params */}
-              <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', padding: '12px 20px', gap: '12px' }}>
                 <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>生成参数</span>
                 {[
                   { label: '模型', value: model ?? MOCK_SHOT_VIDEO_DETAIL.model },
@@ -576,9 +576,9 @@ function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shot
               <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
 
               {/* AI generated time */}
-              <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '4px' }}>
-                <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>AI 生成时间</span>
-                <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF66' }}>{generatedAt ?? MOCK_SHOT_VIDEO_DETAIL.generatedAt}</span>
+              <div style={{ display: 'flex', flexDirection: 'row', padding: '16px 20px', gap: '4px', justifyContent: 'flex-start', alignItems: 'center' }}>
+                <span style={{ flex: '1 1 0px', fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>AI 生成时间</span>
+                <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>{generatedAt ?? MOCK_SHOT_VIDEO_DETAIL.generatedAt}</span>
               </div>
             </div>
 

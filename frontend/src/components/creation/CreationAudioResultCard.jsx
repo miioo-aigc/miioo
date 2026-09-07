@@ -30,7 +30,7 @@
  *   2026-08-21  创作历史配音台词复用提示词预览，展示停顿、语气词和情绪高亮
  *   2026-08-25  创作历史占位卡复用 LoadingAnimation，宽度 88px、高度按比例自适应
  *   2026-08-31  配音结果卡接入共享播放器，保证同时只播放一段音频
- *   2026-09-04  导出 StarIcon，供配音详情弹窗复用统一收藏图标
+ *   2026-09-04  收藏和删除图标统一复用 ui 公共组件
  */
 
 import { useEffect, useState } from 'react';
@@ -39,6 +39,7 @@ import ConfirmDialog from '../ConfirmDialog';
 import LoadingAnimation from '../LoadingAnimation';
 import CreationCardActionButton from './CreationCardActionButton';
 import CreationDubbingPromptPreview from './CreationDubbingPromptPreview';
+import { DeleteIcon, FavoriteIcon } from '../ui';
 import {
   getActiveVoicePreviewKey,
   stopVoicePreview,
@@ -53,20 +54,6 @@ const WAVEFORM_HEIGHTS = [
   13, 18, 10, 21, 16, 23, 12, 19, 14, 20,
   11, 22, 17, 15, 24, 13, 18, 10, 21, 16,
 ];
-
-export function StarIcon({ filled = false, strokeColor = '#FFFFFF' }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-      <path
-        d="M7 1.5l1.545 3.13 3.455.503-2.5 2.436.59 3.44L7 9.369l-3.09 1.64.59-3.44L2 5.133l3.455-.503L7 1.5z"
-        fill={filled ? '#F0B429' : 'none'}
-        stroke={filled ? '#F0B429' : strokeColor}
-        strokeWidth="1.1"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 export default function CreationAudioResultCard({
   id = '',
@@ -196,7 +183,7 @@ export default function CreationAudioResultCard({
             aria-label={favorited ? '取消收藏' : '收藏配音'}
             style={{ position: 'absolute', top: '8px', right: '8px', width: '24px', height: '24px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#00000080', border: 'none', cursor: 'pointer', transform: starAnim ? 'scale(1.4)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', zIndex: 1 }}
           >
-            <StarIcon filled={favorited} />
+            <FavoriteIcon filled={favorited} />
           </button>
         )}
 
@@ -211,7 +198,7 @@ export default function CreationAudioResultCard({
               <CreationCardActionButton
                 tooltip="删除"
                 onClick={() => setConfirmDelete(true)}
-                icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3.333V14.667H13V3.333H3Z" stroke="#FFFFFF" strokeLinejoin="round" /><path d="M6.667 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M9.333 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M1.333 3.333H14.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#FFFFFF" strokeLinejoin="round" /></svg>}
+                icon={<DeleteIcon size={16} color="#FFFFFF" />}
               />
             </div>
           </>

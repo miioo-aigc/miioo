@@ -11,8 +11,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useModalSize } from '../../utils/useModalSize';
 import ConfirmDialog from '../ConfirmDialog';
 import CreationDubbingPromptPreview from './CreationDubbingPromptPreview';
-import { StarIcon } from './CreationAudioResultCard';
+import { DeleteIcon, FavoriteIcon } from '../ui';
 import { stopVoicePreview } from '../../utils/voicePreviewPlayer';
+import CopyPromptButton from '../ui/CopyPromptButton';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const WAVEFORM = [14, 22, 11, 18, 28, 16, 24, 10, 19, 26, 13, 21, 30, 15, 23, 12, 20, 27, 14, 22, 10, 18, 26, 16, 24, 12, 20, 29, 15, 23, 11, 19, 27, 14, 22, 10, 18, 25, 13, 21, 29, 16, 24, 12, 20, 28, 15, 23];
@@ -25,10 +26,6 @@ function PanelAction({ icon, label, onClick, active = false }) {
 
 function DownloadIcon() {
   return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><path d="M13.506 11.439C14.601 10.668 15.071 9.277 14.667 8C14.262 6.723 13.024 6.024 11.684 6.025H10.911C10.405 4.054 8.736 2.599 6.715 2.366C4.693 2.133 2.737 3.171 1.796 4.975C0.856 6.78 1.125 8.977 2.474 10.501" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /><path d="M8.003 13.667L8 7.667" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /><path d="M10.121 11.545L8 13.667L5.879 11.545" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-
-function DeleteIcon() {
-  return <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.625 2.916V12.834H11.375V2.916H2.625Z" stroke="#FFFFFFCC" strokeLinejoin="round" /><path d="M5.834 5.834V9.625M8.166 5.834V9.625M1.166 2.916H12.834M4.666 2.916L5.626 1.166H8.393L9.334 2.916H4.666Z" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function formatTime(value) {
@@ -87,7 +84,6 @@ export default function CreationAudioDetailModal({
   const [muted, setMuted] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
-  const [copyPromptState, setCopyPromptState] = useState('default');
   const [promptCopied, setPromptCopied] = useState(false);
   const copyPromptTimerRef = useRef(null);
 
@@ -144,18 +140,6 @@ export default function CreationAudioDetailModal({
   }, [playbackVolume, muted, audioUrl]);
 
   useEffect(() => () => clearTimeout(copyPromptTimerRef.current), []);
-
-  async function handleCopyPrompt() {
-    if (!prompt) return;
-    try {
-      await navigator.clipboard.writeText(prompt);
-      setPromptCopied(true);
-      clearTimeout(copyPromptTimerRef.current);
-      copyPromptTimerRef.current = setTimeout(() => setPromptCopied(false), 1600);
-    } catch (error) {
-      console.warn('[CreationAudioDetailModal] 复制提示词失败:', error);
-    }
-  }
 
   function togglePlay() {
     const audio = audioRef.current;
@@ -229,45 +213,28 @@ export default function CreationAudioDetailModal({
                     label="收藏"
                     active={favorited}
                     onClick={() => { setStarAnim(true); setTimeout(() => setStarAnim(false), 300); onFavorite?.(); }}
-                    icon={<div style={{ transform: starAnim ? 'scale(1.25)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', display: 'flex' }}><StarIcon filled={favorited} strokeColor="rgba(255,255,255,0.8)" /></div>}
+                    icon={<div style={{ transform: starAnim ? 'scale(1.25)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', display: 'flex' }}><FavoriteIcon filled={favorited} color="rgba(255,255,255,0.8)" /></div>}
                   />
                   <PanelAction label="下载" onClick={onDownload} icon={<DownloadIcon />} />
                 </div>
-                <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon />} />
+                <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon size={14} />} />
               </div>
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                 {DETAIL_PANEL_DIVIDER}
                 <section style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 20px', flexShrink: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                     <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>提示词</div>
-                    <button
-                      type="button"
-                      aria-label="复制提示词"
-                      title={promptCopied ? '已复制' : '复制提示词'}
+                    <CopyPromptButton
+                      text={prompt}
                       disabled={!prompt}
-                      onClick={handleCopyPrompt}
-                      onMouseEnter={() => setCopyPromptState('hover')}
-                      onMouseLeave={() => setCopyPromptState('default')}
-                      onMouseDown={() => setCopyPromptState('pressed')}
-                      onMouseUp={() => setCopyPromptState('hover')}
-                      style={{
-                        padding: 0,
-                        margin: 0,
-                        border: 0,
-                        background: 'transparent',
-                        cursor: prompt ? 'pointer' : 'default',
-                        display: 'flex',
-                        alignItems: 'center',
-                        color: !prompt ? '#FFFFFF1F' : copyPromptState === 'pressed' ? '#FFFFFF99' : copyPromptState === 'hover' ? '#FFFFFFCC' : '#FFFFFF66',
-                        transition: 'color 120ms ease',
-                        flexShrink: 0,
+                      title={promptCopied ? '已复制' : '复制提示词'}
+                      onCopy={() => {
+                        setPromptCopied(true);
+                        clearTimeout(copyPromptTimerRef.current);
+                        copyPromptTimerRef.current = setTimeout(() => setPromptCopied(false), 1600);
                       }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                        <path d="M4.33337 4.14383V2.60413C4.33337 2.08636 4.75311 1.66663 5.27087 1.66663H13.3959C13.9136 1.66663 14.3334 2.08636 14.3334 2.60413V10.7291C14.3334 11.2469 13.9136 11.6666 13.3959 11.6666H11.8388" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                        <path d="M10.7291 4.33337H2.60413C2.08636 4.33337 1.66663 4.75311 1.66663 5.27087V13.3959C1.66663 13.9136 2.08636 14.3334 2.60413 14.3334H10.7291C11.2469 14.3334 11.6666 13.9136 11.6666 13.3959V5.27087C11.6666 4.75311 11.2469 4.33337 10.7291 4.33337Z" stroke="currentColor" strokeLinejoin="round" />
-                      </svg>
-                    </button>
+                      onError={(error) => console.warn('[CreationAudioDetailModal] 复制提示词失败:', error)}
+                    />
                   </div>
                   <CreationDubbingPromptPreview prompt={prompt} advancedEnabled={advancedEnabled} style={{ lineHeight: '20px', letterSpacing: '0.01em' }} />
                 </section>

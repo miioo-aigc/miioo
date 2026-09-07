@@ -22,6 +22,21 @@ function getSourceUrl(media) {
   return normalizeImageUrl(media?.url || media?.image_url || media?.imageUrl || '');
 }
 
+function LoadingPreview({ style }) {
+  return (
+    <div
+      style={{
+        ...style,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <DotsLoading size={4} color="#2DC3E1" gap={3} />
+    </div>
+  );
+}
+
 export default function StoryboardMediaPreview({ media, alt = '', style, loading = 'lazy' }) {
   const video = isVideoMedia(media);
   const previewUrl = getPreviewUrl(media);
@@ -73,7 +88,7 @@ export default function StoryboardMediaPreview({ media, alt = '', style, loading
   const resolvedPreview = previewUrl || capturedFrame;
   if (resolvedPreview) return <img src={resolvedPreview} alt={alt} loading={loading} style={style} />;
   if (video && sourceUrl && captureFailed) return <video src={sourceUrl} muted playsInline preload="metadata" poster={capturedFrame || undefined} style={style} />;
-  if (video && sourceUrl) return <DotsLoading size={4} color="#2DC3E1" gap={3} />;
+  if (video && sourceUrl) return <LoadingPreview style={style} />;
   if (!video && sourceUrl) return <img src={sourceUrl} alt={alt} loading={loading} style={style} />;
-  return <DotsLoading size={4} color="#2DC3E1" gap={3} />;
+  return <LoadingPreview style={style} />;
 }

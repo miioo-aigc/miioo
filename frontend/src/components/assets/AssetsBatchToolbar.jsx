@@ -18,6 +18,7 @@
 
 import { useState } from 'react';
 import Checkbox from '../Checkbox';
+import { DeleteIcon } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -132,15 +133,6 @@ function DownloadIcon() {
   );
 }
 
-function TrashIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <path d="M3 3.333V14.667H13V3.333H3Z" stroke="#F75F5F" strokeLinejoin="round" />
-      <path d="M6.667 6.667V11M9.333 6.667V11M1.333 3.333H14.667M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#F75F5F" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function ToolbarLabel({ children, color = '#FFFFFF' }) {
   return <span style={{ fontFamily: FONT, fontSize: '14px', color, whiteSpace: 'nowrap' }}>{children}</span>;
 }
@@ -207,7 +199,7 @@ export default function AssetsBatchToolbar({
           <ToolbarLabel>下载</ToolbarLabel>
         </BatchToolbarButton>
         <PlainToolbarButton onClick={onDelete}>
-          <TrashIcon />
+          <DeleteIcon size={16} color="#F75F5F" />
           <ToolbarLabel color="#F75F5F">删除</ToolbarLabel>
         </PlainToolbarButton>
         <PlainToolbarButton onClick={onCancel}>

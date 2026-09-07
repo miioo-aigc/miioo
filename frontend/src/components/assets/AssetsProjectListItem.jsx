@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { DeleteIcon } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -18,15 +19,6 @@ function CopyIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
       <rect x="5.667" y="5.667" width="8.667" height="8.667" rx="1.5" stroke="rgba(255,255,255,0.8)" strokeLinejoin="round" />
       <path d="M10.333 5.667V4C10.333 3.079 9.587 2.333 8.667 2.333H4C3.079 2.333 2.333 3.079 2.333 4V8.667C2.333 9.587 3.079 10.333 4 10.333H5.667" stroke="rgba(255,255,255,0.8)" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <path d="M3 3.333V14.667H13V3.333H3Z" stroke="#F75F5F" strokeLinejoin="round" />
-      <path d="M6.667 6.667V11M9.333 6.667V11M1.333 3.333H14.667M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#F75F5F" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -83,7 +75,7 @@ export default function AssetsProjectListItem({
     { label: '重命名', icon: <RenameIcon />, action: onRename },
     { label: '复制项目', icon: <CopyIcon />, action: onCopy },
     { label: '下载项目', icon: <DownloadIcon />, action: onDownload },
-    { label: '删除', icon: <TrashIcon />, action: onDelete, danger: true },
+    { label: '删除', icon: <DeleteIcon size={16} color="#F75F5F" />, action: onDelete, danger: true },
   ];
 
   function handleMenuAction(action) {

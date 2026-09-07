@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+export { RatioIcon } from '../ui/RatioIcon';
 
 export const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -118,28 +119,5 @@ export function DropdownItem({ label, selected, onClick, icon }) {
         whiteSpace: 'nowrap',
       }}>{label}</span>
     </button>
-  );
-}
-
-export function RatioIcon({ rw = 16, rh = 9, selected = false }) {
-  const maxW = 16, maxH = 12;
-  // 竖屏比例（宽 < 高）以「横屏等价比例」的宽高置换来绘制：
-  // 先按横屏方向拟合到 16×12，再整体转置，使其与横屏成对一致（如 3:4 即为 4:3 的宽高置换）。
-  const portrait = rh > rw;
-  const baseW = portrait ? rh : rw;
-  const baseH = portrait ? rw : rh;
-  const scale = Math.min(maxW / baseW, maxH / baseH);
-  const wBase = Math.round(baseW * scale);
-  const hBase = Math.round(baseH * scale);
-  const w = portrait ? hBase : wBase;
-  const h = portrait ? wBase : hBase;
-  return (
-    <div style={{
-      width: `${w}px`,
-      height: `${h}px`,
-      borderRadius: '2px',
-      flexShrink: 0,
-      boxShadow: selected ? '#FFFFFF 0px 0px 0px 1px inset' : '#FFFFFF66 0px 0px 0px 1px inset',
-    }} />
   );
 }

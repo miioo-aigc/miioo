@@ -35,7 +35,7 @@
  */
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Button, TextButton } from '../ui';
+import { Button, TextButton, DeleteIcon } from '../ui';
 import ConfirmDialog from '../ConfirmDialog';
 import ScriptEditor from './ScriptEditor';
 import ScriptResplitModal from './ScriptResplitModal';
@@ -49,16 +49,6 @@ function SparkleIcon() {
 
 function EditIcon() {
   return <svg width="16" height="16" viewBox="0 0 88 82" fill="none" aria-hidden="true"><path d="M74 74H47c-1.2 0-1.9-1.6-1.9-4s.8-4.1 1.9-4.1h27c1.2 0 1.9 2 1.9 4.1S75.2 74 74 74ZM12.4 74c-.4 0-.8-.4-1.1-.4-.4-.4-.4-.8-.4-1.2l2.7-13c0-.4.4-.8 1.1-1.2.4 0 1.2 0 1.5.4l9.6 10.1c.4.4.4.8.4 1.6 0 .4-.4.8-1.2 1.2L12.4 74ZM34.3 61.9c-.4 0-.8 0-1.2-.4L22.7 51.4c-.4-.4-.4-.8-.4-1.2s0-.8.4-1.2L63 9.3c.4-.4.8-.4 1.2-.4.4 0 .8 0 1.2.4l10.4 10.1c.4.4.4.8.4 1.2s0 .8-.4 1.2L35.4 61.5c-.4.4-.8.4-1.1.4Z" fill="currentColor"/></svg>;
-}
-
-function DeleteIcon() {
-  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M3 3.33337V14.6667H13V3.33337H3Z" stroke="currentColor" strokeLinejoin="round" />
-    <path d="M6.66663 6.66663V11" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M9.33337 6.66663V11" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M1.33337 3.33337H14.6667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M5.33337 3.33337L6.42971 1.33337H9.59241L10.6667 3.33337H5.33337Z" stroke="currentColor" strokeLinejoin="round" />
-  </svg>;
 }
 
 function getEpisodeContent(episode) {
@@ -246,7 +236,7 @@ export default function ScriptEpisodeOutline({ episodes = [], revision = 0, sele
           {isEditing ? <><Button type="button" variant="secondary" onClick={() => { setIsEditing(false); setDraft(getEpisodeContent(selectedEpisode)); }} disabled={actionLoading}>取消</Button><Button type="button" variant="primary" loading={actionLoading} onClick={saveDraft}>保存</Button></> : <>
             <Button type="button" variant="secondary" icon={<SparkleIcon />} onClick={() => setRewriteOpen(true)} disabled={actionLoading} contentClassName="!whitespace-nowrap">AI重写本集</Button>
             <Button type="button" variant="secondary" icon={<EditIcon />} onClick={() => { setDraft(getEpisodeContent(selectedEpisode)); setIsEditing(true); }} disabled={actionLoading} contentClassName="!whitespace-nowrap">编辑</Button>
-            <Button type="button" variant="danger" icon={<DeleteIcon />} onClick={() => requestDeleteEpisode(selectedEpisode)} disabled={actionLoading} contentClassName="!whitespace-nowrap">删除本集</Button>
+            <Button type="button" variant="danger" icon={<DeleteIcon size={16} color="currentColor" />} onClick={() => requestDeleteEpisode(selectedEpisode)} disabled={actionLoading} contentClassName="!whitespace-nowrap">删除本集</Button>
           </>}
         </div>}
       </div>

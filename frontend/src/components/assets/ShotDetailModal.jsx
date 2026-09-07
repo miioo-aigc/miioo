@@ -21,6 +21,8 @@ import { createPortal } from 'react-dom';
 import { useModalSize } from '../../utils/useModalSize';
 import placeholderFlowers from '../../assets/placeholder-flowers.webp';
 import ConfirmDialog from '../ConfirmDialog';
+import CopyPromptButton from '../ui/CopyPromptButton';
+import { DeleteIcon } from '../ui';
 import { showGlobalToast } from '../../stores/toastStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -214,19 +216,20 @@ export default function ShotDetailModal({ onClose, onDownload, onDelete, onShowT
                   <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                       <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>提示词</span>
-                      <button
+                      <CopyPromptButton text={currentPrompt} onCopy={handleCopyPrompt} />
+                      {globalThis.__MIIOO_LEGACY_COPY_BUTTON__ === true ? <button
                         type="button"
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '4px', background: 'none', border: 'none', cursor: 'pointer', padding: 0, opacity: 0.6, transition: 'opacity 0.12s' }}
-                        onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; }}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', minWidth: '24px', height: '24px', borderRadius: '6px', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, transition: 'background 0.12s' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#FFFFFF14'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                         onClick={handleCopyPrompt}
                         title="复制提示词"
                       >
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-                          <path d="M4.33337 4.14383V2.60413C4.33337 2.08636 4.75311 1.66663 5.27087 1.66663H13.3959C13.9136 1.66663 14.3334 2.08636 14.3334 2.60413V10.7291C14.3334 11.2469 13.9136 11.6666 13.3959 11.6666H11.8388" stroke="white" strokeOpacity="0.6" strokeLinecap="round" strokeLinejoin="round"/>
-                          <path d="M10.7291 4.33337H2.60413C2.08636 4.33337 1.66663 4.75311 1.66663 5.27087V13.3959C1.66663 13.9136 2.08636 14.3334 2.60413 14.3334H10.7291C11.2469 14.3334 11.6666 13.9136 11.6666 13.3959V5.27087C11.6666 4.75311 11.2469 4.33337 10.7291 4.33337Z" stroke="white" strokeOpacity="0.6" strokeLinejoin="round"/>
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                          <path d="M4.33337 4.14383V2.60413C4.33337 2.08636 4.75311 1.66663 5.27087 1.66663H13.3959C13.9136 1.66663 14.3334 2.08636 14.3334 2.60413V10.7291C14.3334 11.2469 13.9136 11.6666 13.3959 11.6666H11.8388" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M10.7291 4.33337H2.60413C2.08636 4.33337 1.66663 4.75311 1.66663 5.27087V13.3959C1.66663 13.9136 2.08636 14.3334 2.60413 14.3334H10.7291C11.2469 14.3334 11.6666 13.9136 11.6666 13.3959V5.27087C11.6666 4.75311 11.2469 4.33337 10.7291 4.33337Z" stroke="#FFFFFFCC" strokeLinejoin="round"/>
                         </svg>
-                      </button>
+                      </button> : null}
                     </div>
                     <p style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC', margin: 0 }}>{currentPrompt}</p>
                   </div>
@@ -284,13 +287,7 @@ export default function ShotDetailModal({ onClose, onDownload, onDelete, onShowT
                   onMouseUp={() => setPressDelete(false)}
                   onClick={() => setShowDeleteConfirm(true)}
                 >
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-                    <path d="M2.333 3.667V12.333C2.333 12.784 2.716 13.167 3.167 13.167H10.833C11.284 13.167 11.667 12.784 11.667 12.333V3.667" stroke="#FF6B6B" strokeLinejoin="round" />
-                    <path d="M5.333 6V10.667" stroke="#FF6B6B" strokeLinecap="round" />
-                    <path d="M8.667 6V10.667" stroke="#FF6B6B" strokeLinecap="round" />
-                    <path d="M1 3.667H13" stroke="#FF6B6B" strokeLinecap="round" />
-                    <path d="M4.333 3.667L5.15 1.333H8.85L9.667 3.667" stroke="#FF6B6B" strokeLinejoin="round" />
-                  </svg>
+                  <DeleteIcon size={14} color="#FF6B6B" />
                   <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FF6B6B' }}>删除</span>
                 </button>
               )}

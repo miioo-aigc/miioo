@@ -25,6 +25,7 @@ import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '../ui';
 import ConfirmDialog from '../ConfirmDialog';
+import { DeleteIcon } from '../ui';
 import DotsLoading from '../DotsLoading';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { showGlobalToast } from '../../stores/toastStore';
@@ -172,13 +173,7 @@ function GroupCard({ displayName, preview, CELL, CELL_H, FONT, onClick, onSaveNa
                 cursor: 'pointer', transition: 'background 0.12s',
               }}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 3.333V14.667H13V3.333H3Z" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-                <path d="M6.667 6.667V11" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-                <path d="M9.333 6.667V11" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-                <path d="M1.333 3.333H14.667" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-                <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-              </svg>
+              <DeleteIcon size={16} color={delHov ? '#FF4444' : '#FFFFFF'} />
             </div>
           </div>
         )}
@@ -251,13 +246,7 @@ function AssetCard({ asset, label, isApproved, isSel, CELL, CELL_H, FONT, onClic
               onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
               style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#00000099', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 3.333V14.667H13V3.333H3Z" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-                <path d="M6.667 6.667V11" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-                <path d="M9.333 6.667V11" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-                <path d="M1.333 3.333H14.667" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-                <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-              </svg>
+              <DeleteIcon size={16} color={delHov ? '#FF4444' : '#FFFFFF'} />
             </div>
           </div>
         )}
@@ -304,13 +293,7 @@ function AssetCard({ asset, label, isApproved, isSel, CELL, CELL_H, FONT, onClic
               onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
               style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#00000099', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'background 0.12s' }}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 3.333V14.667H13V3.333H3Z" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-                <path d="M6.667 6.667V11" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-                <path d="M9.333 6.667V11" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-                <path d="M1.333 3.333H14.667" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-                <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke={delHov ? '#FF4444' : '#FFFFFF'} strokeLinejoin="round" style={{ transition: 'stroke 0.12s' }} />
-              </svg>
+              <DeleteIcon size={16} color={delHov ? '#FF4444' : '#FFFFFF'} />
             </div>
           </div>
         )}

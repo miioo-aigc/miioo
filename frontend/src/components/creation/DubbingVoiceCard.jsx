@@ -16,6 +16,7 @@
  */
 import { useEffect, useState } from "react";
 import { getActiveVoicePreviewKey, stopVoicePreview, subscribeVoicePreview, toggleVoicePreview } from "../../utils/voicePreviewPlayer";
+import { FavoriteIcon } from "../ui";
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -26,10 +27,6 @@ function PlayIcon() {
 
 function PauseIcon() {
   return <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="5" y="4" width="3" height="12" rx="1" fill="#FFFFFFCC" /><rect x="12" y="4" width="3" height="12" rx="1" fill="#FFFFFFCC" /></svg>;
-}
-
-function StarIcon({ active = false }) {
-  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m8 1.714 1.829 3.657 4 .572-2.858 2.857.686 4L8 10.857l-3.657 1.943.686-4-2.858-2.857 4-.572L8 1.714Z" fill={active ? "#F0B429" : "none"} stroke={active ? "#F0B429" : "#FFFFFF99"} strokeLinejoin="round" /></svg>;
 }
 
 function RadioIcon({ selected, hovered }) {
@@ -78,7 +75,7 @@ export default function DubbingVoiceCard({ voice, selected = false, favorited = 
         <div style={{ display: "flex", alignItems: "center", gap: "8px", alignSelf: "stretch", minWidth: 0 }}>
           <span style={{ flex: "0 1 auto", minWidth: 0, overflow: "hidden", color: "#FFFFFF", fontFamily: FONT_MEDIUM, fontSize: "14px", fontWeight: 500, lineHeight: "17px", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{voice.name}</span>
           <span style={{ flex: "0 1 auto", minWidth: 0, overflow: "hidden", color: "#FFFFFFCC", fontFamily: FONT, fontSize: "14px", fontWeight: 300, lineHeight: "17px", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{voice.mood}</span>
-          <button type="button" aria-label={favorited ? "取消收藏" : "收藏音色"} aria-pressed={favorited} disabled={favoriteLoading} onClick={(event) => { event.stopPropagation(); if (!favoriteLoading) onFavoriteToggle?.(voice); }} onMouseEnter={() => setStarHovered(true)} onMouseLeave={() => setStarHovered(false)} style={{ width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, border: 0, borderRadius: "4px", flexShrink: 0, background: starHovered ? "#FFFFFF0D" : "transparent", cursor: favoriteLoading ? "wait" : "pointer", opacity: favoriteLoading ? 0.6 : 1, transition: "background 120ms, opacity 120ms" }}><StarIcon active={favorited} /></button>
+          <button type="button" aria-label={favorited ? "取消收藏" : "收藏音色"} aria-pressed={favorited} disabled={favoriteLoading} onClick={(event) => { event.stopPropagation(); if (!favoriteLoading) onFavoriteToggle?.(voice); }} onMouseEnter={() => setStarHovered(true)} onMouseLeave={() => setStarHovered(false)} style={{ width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, border: 0, borderRadius: "4px", flexShrink: 0, background: starHovered ? "#FFFFFF0D" : "transparent", cursor: favoriteLoading ? "wait" : "pointer", opacity: favoriteLoading ? 0.6 : 1, transition: "background 120ms, opacity 120ms" }}><FavoriteIcon size={16} filled={favorited} color="#FFFFFF99" /></button>
           <span aria-hidden="true" style={{ flex: 1, minWidth: 0 }} />
         </div>
         <div aria-label="音色标签" onWheel={handleHorizontalWheel} style={{ display: "flex", alignItems: "flex-start", gap: "6px", alignSelf: "stretch", overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none", whiteSpace: "nowrap" }}>{voice.tags.map((tag) => <span key={tag} style={{ display: "flex", alignItems: "center", height: "18px", padding: "0 6px", borderRadius: "4px", flexShrink: 0, background: "#FFFFFF0D", color: "#FFFFFF99", fontFamily: FONT, fontSize: "12px", lineHeight: "16px", whiteSpace: "nowrap" }}>{tag}</span>)}</div>

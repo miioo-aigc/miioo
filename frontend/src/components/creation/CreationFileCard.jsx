@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import FilePreviewTooltip from '../FilePreviewTooltip';
 import { formatFileSize, isImageFile, isVideoFile, truncateFileName } from './CreationFileUtils';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { DeleteIcon } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -83,7 +84,7 @@ export default function CreationFileCard({ file, onRemove, disabled = false, onI
 
   const removeButton = (
     <button type="button" onClick={(event) => { event.stopPropagation(); onRemove(); }} style={{ position: 'absolute', display: 'flex', alignItems: 'center', justifyContent: 'center', top: '-5px', right: '-5px', width: '16px', height: '16px', borderRadius: '9999px', background: '#505151', border: 'none', cursor: 'pointer', padding: 0, zIndex: 1 }}>
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.667 4.667L11.333 11.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4.667 11.333L11.333 4.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      <DeleteIcon size={16} color="#FFFFFF" aria-hidden="true" />
     </button>
   );
 
@@ -147,7 +148,7 @@ export default function CreationFileCard({ file, onRemove, disabled = false, onI
         </div>
         {hovered && !disabled && (
           <button type="button" onClick={(event) => { event.stopPropagation(); onRemove(); }} style={{ position: 'absolute', display: 'flex', alignItems: 'center', justifyContent: 'center', top: '4px', right: '4px', width: '16px', height: '16px', borderRadius: '9999px', background: '#505151', border: 'none', cursor: 'pointer', padding: 0, zIndex: 1 }}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.667 4.667L11.333 11.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4.667 11.333L11.333 4.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <DeleteIcon size={16} color="#FFFFFF" aria-hidden="true" />
           </button>
         )}
       </div>

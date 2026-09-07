@@ -27,6 +27,7 @@ import SeedanceAssetCard from './assets/SeedanceAssetCard';
 import { isSeedanceModel } from '../utils/seedanceModel';
 import DotsLoading from './DotsLoading';
 import CreationAudioResultCard from './creation/CreationAudioResultCard';
+import { FavoriteIcon } from './ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -270,9 +271,7 @@ function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onM
         {/* 收藏图标（仅创作资产有 starred 字段时显示） */}
         {asset.starred && (
           <div style={{ position: 'absolute', top: '8px', right: '8px' }}>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M7 1.5l1.545 3.13 3.455.503-2.5 2.436.59 3.44L7 9.369l-3.09 1.64.59-3.44L2 5.133l3.455-.503L7 1.5z" fill="#F0B429" stroke="#F0B429" strokeWidth="1.1" strokeLinejoin="round" />
-            </svg>
+            <FavoriteIcon size={14} filled color="#FFFFFFCC" />
           </div>
         )}
       </div>

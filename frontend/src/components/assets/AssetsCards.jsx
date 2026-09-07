@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { apiGetAssetDetail, apiGetShotDetail, apiGetShotVideoDetail } from '../../api/assets';
-import { apiGetCreationVideo } from '../../api/creation';
+import { apiGetCreationVideo, apiBasicEditCreationImage } from '../../api/creation';
 import { mergeCreationVideoDetail } from '../../utils/creationDetailAdapter';
 import ImageDetailModal from '../ImageDetailModal';
 import AssetsMoreMenu from './AssetsMoreMenu';
@@ -20,6 +20,8 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailData, setDetailData] = useState(null);
   const [creativeDetailAsset, setCreativeDetailAsset] = useState(null);
+  const [croppedImage, setCroppedImage] = useState(null);
+  const [creativeCroppedImage, setCreativeCroppedImage] = useState(null);
 
   function handleOpen() {
     if (batchMode) { onSelect?.(); return; }
@@ -110,18 +112,20 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
     {detailOpen && creativeDetailAsset && (asset.type === 'image' || asset.type === 'video') && (
       <AssetCardCreativeDetail
         asset={creativeDetailAsset}
-        url={url}
+        url={creativeCroppedImage || url}
         starred={starred}
         onClose={() => { setDetailOpen(false); setCreativeDetailAsset(null); }}
         onDownload={onDownload}
         onDelete={() => { setDetailOpen(false); setCreativeDetailAsset(null); onDelete?.(); }}
         onFavorite={() => onStar?.()}
+        onBasicEdit={(edit) => apiBasicEditCreationImage(creativeDetailAsset.backendId || creativeDetailAsset.id, edit)}
+        onCreateImage={(image) => { setCreativeCroppedImage(image.fileUrl); setCreativeDetailAsset((current) => current ? { ...current, imageUrl: image.fileUrl, url: image.fileUrl, isNew: true } : current); }}
       />
     )}
     {detailOpen && assetType !== 'shot' && assetType !== 'shot_video' && !asset.type && showStar && (
       <ImageDetailModal
        card={{
-         imageUrl: url || detailData?.url,
+         imageUrl: croppedImage || url || detailData?.url,
           prompt: detailData?.input_prompt ?? detailData?.prompt,
          model: detailData?.model,
           ratio: detailData?.ratio,
@@ -133,6 +137,7 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
         onDelete={() => { setDetailOpen(false); onDelete?.(); }}
         favorited={starred}
         onToggleFavorite={() => onStar?.()}
+        onCreateImage={(image) => setCroppedImage(image.fileUrl)}
       />
     )}
     {detailOpen && assetType !== 'shot' && assetType !== 'shot_video' && !showStar && (
@@ -160,8 +165,9 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
 export function ProjectAssetCard({ name, desc, url, starred = false, selected, batchMode, onDownload, onDelete, onSelect, onStar, onShowToast, onOpenDetail, asset = {}, category = '' }) {
   const [hov, setHov] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [localImages, setLocalImages] = useState([]);
 
-  const images = asset.images ?? [];
+  const images = [...(asset.images ?? []), ...localImages];
   const isVideo = category === 'storyboard'
     ? asset.assetType === 'video'
     : category === 'storyboard_video';
@@ -195,6 +201,7 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
         style={{
           width: '100%',
           aspectRatio: cardAspectRatio,
+          boxSizing: 'border-box',
           borderRadius: '12px',
           overflow: 'hidden',
           backgroundColor: '#1A1A1A',
@@ -230,7 +237,7 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
             <video
               ref={videoRef}
               src={asset.videoUrl}
-              style={{ width: '100%', height: '100%', objectFit: storyboardMediaFit ? 'contain' : 'cover', display: 'block' }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
               muted
               playsInline
               loop
@@ -242,8 +249,8 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
                 width: '100%',
                 height: '100%',
                 backgroundImage: `url(${url})`,
-                backgroundSize: storyboardMediaFit ? 'contain' : 'cover',
-                backgroundRepeat: storyboardMediaFit ? 'no-repeat' : undefined,
+                backgroundSize: 'cover',
+                backgroundRepeat: 'no-repeat',
                 backgroundPosition: '50%',
               }}
             />
@@ -341,6 +348,7 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
         }}
         onDelete={onDelete}
         onShowToast={onShowToast}
+        onCreateImage={(image) => setLocalImages((current) => [...current, image])}
         SubjectAssetDetailModal={SubjectAssetDetailModal}
         ShotDetailModal={ShotDetailModal}
         ShotVideoDetailModal={ShotVideoDetailModal}

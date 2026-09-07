@@ -1,19 +1,6 @@
 import { useEffect, useRef } from 'react';
 import AssetsMoreMenu from './AssetsMoreMenu';
-
-function StarIcon({ filled = false }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-      <path
-        d="M7 1.5l1.545 3.13 3.455.503-2.5 2.436.59 3.44L7 9.369l-3.09 1.64.59-3.44L2 5.133l3.455-.503L7 1.5z"
-        fill={filled ? '#F0B429' : 'none'}
-        stroke={filled ? '#F0B429' : 'rgba(255,255,255,0.6)'}
-        strokeWidth="1.1"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
+import { FavoriteIcon } from '../ui';
 
 function SelectedMark() {
   return (
@@ -125,7 +112,7 @@ export default function AssetCardMedia({
             }}
             onClick={onStar}
           >
-            <StarIcon filled={starred} />
+            <FavoriteIcon size={14} filled={starred} color="rgba(255,255,255,0.6)" />
           </button>
         </div>
       )}

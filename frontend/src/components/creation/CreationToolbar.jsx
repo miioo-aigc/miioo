@@ -14,7 +14,7 @@
  *   2026-07-15  批量操作、清空历史、全选、下载、删除和取消按钮统一复用 components/ui/Button
  */
 import { useState } from 'react';
-import { Button } from '../ui';
+import { Button, DeleteIcon } from '../ui';
 
 /**
  * 创作页顶部工具栏。
@@ -97,7 +97,7 @@ function ClearIcon() {
 }
 
 function SelectedActions({ font, selectedCount, onSelectAll, onDownload, onDelete, onCancel }) {
-  return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingLeft: '24px', paddingRight: '32px', gap: '16px', flex: 1, paddingTop: '6px', paddingBottom: '6px' }}><span style={{ fontFamily: font, fontSize: '14px', color: '#FFFFFF99' }}>已选 {selectedCount} 项</span><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><CreationGhostBtn onClick={onSelectAll} font={font}><SelectAllIcon /><span>全选</span></CreationGhostBtn><CreationGhostBtn onClick={onDownload} font={font}><DownloadIcon /><span>下载</span></CreationGhostBtn><CreationPlainBtn onClick={onDelete} font={font} danger><DeleteIcon /><span>删除</span></CreationPlainBtn><CreationPlainBtn onClick={onCancel} font={font}><span>取消</span></CreationPlainBtn></div></div>;
+  return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingLeft: '24px', paddingRight: '32px', gap: '16px', flex: 1, paddingTop: '6px', paddingBottom: '6px' }}><span style={{ fontFamily: font, fontSize: '14px', color: '#FFFFFF99' }}>已选 {selectedCount} 项</span><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><CreationGhostBtn onClick={onSelectAll} font={font}><SelectAllIcon /><span>全选</span></CreationGhostBtn><CreationGhostBtn onClick={onDownload} font={font}><DownloadIcon /><span>下载</span></CreationGhostBtn><CreationPlainBtn onClick={onDelete} font={font} danger><DeleteIcon size={16} color="#F75F5F" /><span>删除</span></CreationPlainBtn><CreationPlainBtn onClick={onCancel} font={font}><span>取消</span></CreationPlainBtn></div></div>;
 }
 
 function SelectAllIcon() {
@@ -108,9 +108,6 @@ function DownloadIcon() {
   return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, rotate: '180deg', transformOrigin: '50% 50%' }}><path d="M8.003 4.7V14" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 8.667L8 4.667L12 8.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 2H12" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-function DeleteIcon() {
-  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><path d="M3 3.333V14.667H13V3.333H3Z" stroke="#F75F5F" strokeLinejoin="round" /><path d="M6.667 6.667V11M9.333 6.667V11" stroke="#F75F5F" strokeLinecap="round" strokeLinejoin="round" /><path d="M1.333 3.333H14.667M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#F75F5F" strokeLinejoin="round" /></svg>;
-}
 
 export default function CreationToolbar({ tabs, activeTab, onTabChange, batchMode, selectedCount, onEnterBatch, onSelectAll, onDownload, onDelete, onCancelBatch, onClearHistory, font, fontMedium }) {
   return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><CreationTabBar tabs={tabs} activeTab={activeTab} onChange={onTabChange} font={font} fontMedium={fontMedium} />{batchMode ? <SelectedActions font={font} selectedCount={selectedCount} onSelectAll={onSelectAll} onDownload={onDownload} onDelete={onDelete} onCancel={onCancelBatch} /> : <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1, justifyContent: 'flex-end', paddingRight: '24px', paddingTop: '6px', paddingBottom: '6px' }}><ClearHistoryButton onClick={onClearHistory} font={font} /><BatchButton onClick={onEnterBatch} font={font} /></div>}</div>;

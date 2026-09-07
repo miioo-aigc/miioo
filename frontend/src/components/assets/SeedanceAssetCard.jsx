@@ -7,6 +7,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { createVideoFirstFrame } from './SeedanceUploadValidation';
 import DotsLoading from '../DotsLoading';
+import { DeleteIcon } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -82,9 +83,6 @@ function PreviewIcon() {
   return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6.667 2.667H3.333a.666.666 0 0 0-.666.666v3.334M9.333 13.333h3.334a.666.666 0 0 0 .666-.666V9.333M3 3l4 4M13 13l-4-4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" /><path d="M9.333 2.667h3.334a.666.666 0 0 1 .666.666v3.334M6.667 13.333H3.333a.666.666 0 0 1-.666-.666V9.333M13 3 9 7M3 13l4-4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-function DeleteIcon() {
-  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 3.333V14.667H13V3.333H3Z" stroke="currentColor" strokeLinejoin="round" /><path d="M6.667 6.667V11M9.333 6.667V11M1.333 3.333H14.667M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
 
 const SeedanceAssetCard = memo(function SeedanceAssetCard({
   asset,

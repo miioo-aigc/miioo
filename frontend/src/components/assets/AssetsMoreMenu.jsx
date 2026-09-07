@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import ConfirmDialog from '../ConfirmDialog';
+import { DeleteIcon } from '../ui';
 
 function DownloadIcon() {
   return (
@@ -7,15 +8,6 @@ function DownloadIcon() {
       <path d="M2.667 11.333V13.333H13.333V11.333" stroke="#FFFFFF" strokeLinecap="round" />
       <path d="M8 2.667V10.667" stroke="#FFFFFF" strokeLinecap="round" />
       <path d="M5 7.667L8 10.667L11 7.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <path d="M3 3.333V14.667H13V3.333H3Z" stroke="currentColor" strokeLinejoin="round" />
-      <path d="M6.667 6.667V11M9.333 6.667V11M1.333 3.333H14.667M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -55,7 +47,7 @@ export default function AssetsMoreMenu({ onDownload, onDelete }) {
 
   const items = [
     { label: '下载', icon: <DownloadIcon />, action: () => { onDownload?.(); setOpen(false); } },
-    { label: '删除', icon: <TrashIcon />, action: () => { setOpen(false); setShowConfirm(true); }, danger: true },
+    { label: '删除', icon: <DeleteIcon size={16} color="currentColor" />, action: () => { setOpen(false); setShowConfirm(true); }, danger: true },
   ];
 
   return (

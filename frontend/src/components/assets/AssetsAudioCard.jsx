@@ -4,8 +4,8 @@
  *
  * ─── 原子展示 ───────────────────────────────────────────────────────
  *   <WaveformBars>                  音频波形条
- *   <DownloadIcon> / <TrashIcon>    操作图标
- *   <StarIcon>                      收藏图标
+ *   <DownloadIcon> / <DeleteIcon>   操作图标
+ *   <FavoriteIcon>                  收藏图标
  *
  * ─── 业务域组件 ────────────────────────────────────────────────────
  *   <AssetsAudioCard>               音频资产卡片、播放态和操作出口
@@ -16,6 +16,7 @@
  */
 
 import { useState } from 'react';
+import { DeleteIcon, FavoriteIcon } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -25,32 +26,6 @@ function DownloadIcon({ color = 'currentColor' }) {
       <path d="M2.667 11.333V13.333H13.333V11.333" stroke={color} strokeLinecap="round" strokeLinejoin="round" />
       <path d="M8 2.667V10.667" stroke={color} strokeLinecap="round" />
       <path d="M5 7.667L8 10.667L11 7.667" stroke={color} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function TrashIcon({ color = 'currentColor' }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <path d="M3 3.333V14.667H13V3.333H3Z" stroke={color} strokeLinejoin="round" />
-      <path d="M6.667 6.667V11" stroke={color} strokeLinecap="round" />
-      <path d="M9.333 6.667V11" stroke={color} strokeLinecap="round" />
-      <path d="M1.333 3.333H14.667" stroke={color} strokeLinecap="round" />
-      <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke={color} strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function StarIcon({ filled = false }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-      <path
-        d="M7 1.5l1.545 3.13 3.455.503-2.5 2.436.59 3.44L7 9.369l-3.09 1.64.59-3.44L2 5.133l3.455-.503L7 1.5z"
-        fill={filled ? '#F0B429' : 'none'}
-        stroke={filled ? '#F0B429' : 'rgba(255,255,255,0.6)'}
-        strokeWidth="1.1"
-        strokeLinejoin="round"
-      />
     </svg>
   );
 }
@@ -210,7 +185,7 @@ export default function AssetsAudioCard({
               }}
               onClick={handleStar}
             >
-              <StarIcon filled={starred} />
+              <FavoriteIcon size={14} filled={starred} color="rgba(255,255,255,0.6)" />
             </button>
             <button
               type="button"
@@ -224,7 +199,7 @@ export default function AssetsAudioCard({
               style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
               onClick={(event) => { event.stopPropagation(); onDelete?.(); }}
             >
-              <TrashIcon color="#FFFFFF66" />
+              <DeleteIcon size={16} color="#FFFFFF66" />
             </button>
           </div>
         )}

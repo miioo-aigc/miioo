@@ -15,6 +15,7 @@ import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MediaHoverPreview } from './MainRefCol';
 import FileUploadButton from '../ui/FileUploadButton';
+import { DeleteIcon } from '../ui';
 
 export default function ReferenceImageField({
   images = [],
@@ -70,7 +71,7 @@ export default function ReferenceImageField({
             <div key={getRenderKey(image, index)} onMouseEnter={(event) => handleMouseEnter(event, image)} onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}>
               <img src={image.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               <button type="button" aria-label="删除参考图" onClick={() => { handleMouseLeave(); onRemove?.(image.id); }} style={{ position: 'absolute', top: '4px', right: '4px', width: '18px', height: '18px', border: 0, borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 2L8 8M8 2L2 8" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" /></svg>
+                <DeleteIcon size={16} color="#FFFFFF" aria-hidden="true" />
               </button>
             </div>
           ))}

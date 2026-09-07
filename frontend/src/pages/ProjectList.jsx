@@ -6,7 +6,7 @@
  *   FONT / FONT_MEDIUM              页面字体常量                         L36
  *
  * ─── 图标组件 ───────────────────────────────────────────────────────
- *   SearchIcon / PlusIcon / MoreIcon / PencilIcon / CopyIcon / TrashIcon / CloseIcon
+ *   SearchIcon / PlusIcon / MoreIcon / PencilIcon / CopyIcon / DeleteIcon / CloseIcon
  *                                                                        L41–L98
  *
  * ─── 菜单与弹窗组件 ────────────────────────────────────────────────
@@ -37,7 +37,7 @@ import { useState, useRef, useEffect } from 'react';
 import defaultCover from '../assets/project-default-cover.png';
 import { formatRelativeTime } from '../utils/formatTime';
 import { normalizeImageUrl } from '../utils/imageUrl';
-import { Button, ButtonGroup, DropdownMenu, IconButton, TextButton } from '../components/ui';
+import { Button, ButtonGroup, DeleteIcon, DropdownMenu, IconButton, TextButton } from '../components/ui';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -90,18 +90,6 @@ function CopyIcon() {
   );
 }
 
-function TrashIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-      <path d="M3 3.33337V14.6667H13V3.33337H3Z" stroke="currentColor" strokeLinejoin="round"/>
-      <path d="M6.66663 6.66663V11" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M9.33337 6.66663V11" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M1.33337 3.33337H14.6667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M5.33337 3.33337L6.42971 1.33337H9.59241L10.6667 3.33337H5.33337Z" stroke="currentColor" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
 function CloseIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -121,7 +109,7 @@ function MoreMenu({ onRename, onCopy, onDelete, onClose }) {
       items={[
         { key: 'rename', icon: <PencilIcon />, label: '重命名', onClick: onRename },
         { key: 'copy', icon: <CopyIcon />, label: '复制项目', onClick: onCopy },
-        { key: 'delete', icon: <TrashIcon />, label: '删除', danger: true, onClick: onDelete },
+        { key: 'delete', icon: <DeleteIcon size={16} color="currentColor" />, label: '删除', danger: true, onClick: onDelete },
       ]}
     />
   );

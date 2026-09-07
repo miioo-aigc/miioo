@@ -24,6 +24,8 @@ import AsyncImagePreview from './AsyncImagePreview';
 import { formatReferenceMode } from '../utils/referenceMode';
 import { apiGetLiveMaterialPreviewByRef } from '../api/liveMaterials';
 import { showGlobalToast } from '../stores/toastStore';
+import CopyPromptButton from './ui/CopyPromptButton';
+import { DeleteIcon, FavoriteIcon } from './ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -114,14 +116,15 @@ function ReferenceVideoCard({ vidUrl }) {
 }
 
 // Confirm delete modal component
-function CopyPromptButton({ text, onCopy }) {
+// eslint-disable-next-line no-unused-vars
+function CopyPromptButtonLegacy({ text, onCopy }) {
   const [hovCopy, setHovCopy] = useState(false);
   const [pressCopy, setPressCopy] = useState(false);
-  const copyColor = pressCopy ? '#FFFFFF99' : hovCopy ? '#FFFFFFCC' : '#FFFFFF66';
+  const copyColor = pressCopy ? '#FFFFFF99' : '#FFFFFFCC';
   return (
     <button
       type="button"
-      style={{ padding: 0, margin: 0, border: 0, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: copyColor, transition: 'color 120ms ease', flexShrink: 0 }}
+      style={{ width: '24px', minWidth: '24px', height: '24px', padding: 0, margin: 0, border: 0, borderRadius: '6px', background: hovCopy ? '#FFFFFF14' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: copyColor, transition: 'color 120ms ease, background 120ms ease', flexShrink: 0 }}
       onMouseEnter={() => setHovCopy(true)}
       onMouseLeave={() => { setHovCopy(false); setPressCopy(false); }}
       onMouseDown={() => setPressCopy(true)}
@@ -131,7 +134,7 @@ function CopyPromptButton({ text, onCopy }) {
         onCopy?.();
       }}
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M4.33337 4.14383V2.60413C4.33337 2.08636 4.75311 1.66663 5.27087 1.66663H13.3959C13.9136 1.66663 14.3334 2.08636 14.3334 2.60413V10.7291C14.3334 11.2469 13.9136 11.6666 13.3959 11.6666H11.8388" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"/>
         <path d="M10.7291 4.33337H2.60413C2.08636 4.33337 1.66663 4.75311 1.66663 5.27087V13.3959C1.66663 13.9136 2.08636 14.3334 2.60413 14.3334H10.7291C11.2469 14.3334 11.6666 13.9136 11.6666 13.3959V5.27087C11.6666 4.75311 11.2469 4.33337 10.7291 4.33337Z" stroke="currentColor" strokeLinejoin="round"/>
       </svg>
@@ -188,20 +191,8 @@ function EditTool({ label, icon }) {
   );
 }
 
-function StarIcon({ filled = false }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-      <path d="M7 1.5l1.545 3.13 3.455.503-2.5 2.436.59 3.44L7 9.369l-3.09 1.64.59-3.44L2 5.133l3.455-.503L7 1.5z" fill={filled ? '#F0B429' : 'none'} stroke={filled ? '#F0B429' : '#FFFFFFCC'} strokeWidth="1.1" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function DownloadIcon() {
   return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><path d="M13.506 11.439C14.601 10.668 15.071 9.277 14.667 8C14.262 6.723 13.024 6.024 11.684 6.025H10.911C10.405 4.054 8.736 2.599 6.715 2.366C4.693 2.133 2.737 3.171 1.796 4.975C0.856 6.78 1.125 8.977 2.474 10.501" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /><path d="M8.003 13.667L8 7.667" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /><path d="M10.121 11.545L8 13.667L5.879 11.545" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-
-function DeleteIcon() {
-  return <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.625 2.916V12.834H11.375V2.916H2.625Z" stroke="#FFFFFFCC" strokeLinejoin="round" /><path d="M5.834 5.834V9.625M8.166 5.834V9.625M1.166 2.916H12.834M4.666 2.916L5.626 1.166H8.393L9.334 2.916H4.666Z" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 // ConfirmDeleteModal 已迁移至 ConfirmDialog 共享组件
@@ -458,13 +449,13 @@ export default function CreationVideoDetailModal({
                   }}
                   icon={(
                     <div style={{ display: 'flex', transform: starAnim ? 'scale(1.25)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)' }}>
-                      <StarIcon filled={favorited} />
+                      <FavoriteIcon filled={favorited} />
                     </div>
                   )}
                 />
                 <PanelAction label="下载" onClick={onDownload} icon={<DownloadIcon />} />
               </div>
-              <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon />} />
+              <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon size={14} />} />
             </div>
 
             {/* Scrollable content area */}

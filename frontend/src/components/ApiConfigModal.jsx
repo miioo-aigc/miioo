@@ -22,6 +22,7 @@ import { getToken } from '../api/request.js';
 // 全局 API 卡片背景图（本地打包，保证离线可用）
 import globalApiBg from '../assets/api-global-bg.png';
 import { showGlobalToast } from '../stores/toastStore';
+import { DeleteIcon } from './ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -153,17 +154,6 @@ function PlusIcon({ className = 'h-[16px] w-[16px] text-white-80' }) {
   );
 }
 
-function TrashIcon({ stroke = '#D13A3B' }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: '0' }}>
-      <path d="M3 3.333V14.667H13V3.333H3Z" stroke={stroke} strokeLinejoin="round" />
-      <path d="M6.667 6.667V11" stroke={stroke} strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.333 6.667V11" stroke={stroke} strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M1.333 3.333H14.667" stroke={stroke} strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke={stroke} strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 function EditIcon() {
   return (
@@ -706,7 +696,7 @@ const ModelCard = forwardRef(function ModelCard({ model, onToggle, onDelete, onS
               className="transition-opacity hover:opacity-70 active:opacity-40"
               aria-label="删除模型"
             >
-              <TrashIcon stroke="#D13A3B" />
+              <DeleteIcon size={16} color="#D13A3B" />
             </button>
           )}
         </div>

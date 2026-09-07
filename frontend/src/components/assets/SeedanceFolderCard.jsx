@@ -6,6 +6,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { DeleteIcon } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FRONT_FILL_DEFAULT = 'M3.786 11.385L13.773 132.094C14.098 136.021 16.671 138.999 19.739 138.999H233.407C236.412 136.138 238.953 136.138 239.353 132.304L251.938 11.665C252.245 8.722 251.55 5.752 250.031 3.516C248.511 1.281 246.316 -0.001 244.009 -0.001H11.741C9.472 -0.001 7.309 1.239 5.792 3.411C4.275 5.583 3.546 8.481 3.786 11.385Z';
@@ -17,9 +18,6 @@ function EditIcon() {
   return <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.333 14H14.333" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" /><path d="M3.667 8.907V11.333H6.106L13 4.436L10.565 2L3.667 8.907Z" fill="none" stroke="currentColor" strokeLinejoin="round" /></svg>;
 }
 
-function DeleteIcon() {
-  return <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.333V14.667H13V3.333H3Z" fill="none" stroke="currentColor" strokeLinejoin="round" /><path d="M6.667 6.667V11M9.333 6.667V11M1.333 3.333H14.667M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" fill="none" stroke="currentColor" strokeLinejoin="round" /></svg>;
-}
 
 function interpolatePath(from, to, progress) {
   const fromNumbers = from.match(/-?\d*\.?\d+/g).map(Number);

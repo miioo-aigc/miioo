@@ -2,6 +2,7 @@ const BASE = import.meta.env.VITE_API_BASE_URL;
 const CREATION_DEFAULT_POLL_TIMEOUT_MS = 1800000;
 const CREATION_VIDEO_POLL_TIMEOUT_MS = 3600000;
 const CREATION_AUDIO_POLL_TIMEOUT_MS = 600000;
+const CREATION_BASIC_EDIT_POLL_TIMEOUT_MS = 600000;
 const CREATION_POLL_INTERVAL_MS = 3000;
 const CREATION_POLL_TRANSIENT_FAILURE_LIMIT = 5;
 const CREATION_POLL_TRANSIENT_STATUSES = new Set([502, 503, 504]);
@@ -143,6 +144,7 @@ async function fetchCreationPollData(pollUrl, { signal, retryState }) {
 }
 
 function getImageUrls(image) {
+  if (typeof image === 'string') return { previewUrl: image, downloadUrl: image };
   const previewUrl = image?.preview_url
     || image?.previewUrl
     || image?.reference_frame_url
@@ -158,6 +160,72 @@ function getImageUrls(image) {
     || image?.originalUrl
     || previewUrl;
   return { previewUrl, downloadUrl };
+}
+
+function getBasicEditImageResult(pollData) {
+  const candidates = [
+    ...(Array.isArray(pollData?.results) ? pollData.results : []),
+    ...(Array.isArray(pollData?.images) ? pollData.images : []),
+    pollData?.result,
+    pollData?.image,
+  ].filter(Boolean);
+  return candidates.find((item) => {
+    const urls = getImageUrls(item);
+    return urls.previewUrl || urls.downloadUrl;
+  }) || candidates[0] || null;
+}
+
+function getBasicEditTaskId(data) {
+  return data?.task_id || data?.taskId || data?.id || data?.task?.task_id || data?.task?.taskId || null;
+}
+
+function normalizeBasicEditImage(image) {
+  if (!image) return null;
+  if (typeof image === 'string') {
+    return {
+      preview_url: image,
+      previewUrl: image,
+      original_url: image,
+      originalUrl: image,
+      download_url: image,
+      downloadUrl: image,
+    };
+  }
+  const urls = getImageUrls(image);
+  return {
+    ...image,
+    preview_url: image.preview_url || urls.previewUrl || null,
+    previewUrl: image.previewUrl || urls.previewUrl || null,
+    original_url: image.original_url || urls.downloadUrl || null,
+    originalUrl: image.originalUrl || urls.downloadUrl || null,
+    download_url: image.download_url || urls.downloadUrl || null,
+    downloadUrl: image.downloadUrl || urls.downloadUrl || null,
+  };
+}
+
+async function pollBasicEditCreationImageTask(taskId, { signal } = {}) {
+  if (!taskId) throw new Error('图片编辑任务缺少任务 ID');
+  const start = Date.now();
+  const retryState = { consecutiveFailures: 0 };
+  const pollUrl = `${BASE}/api/creation/tasks/${encodeURIComponent(taskId)}`;
+
+  while (Date.now() - start < CREATION_BASIC_EDIT_POLL_TIMEOUT_MS) {
+    await waitForPollInterval(signal);
+    throwIfAborted(signal);
+    const pollData = await fetchCreationPollData(pollUrl, { signal, retryState });
+    if (!pollData) continue;
+    const status = String(pollData.status || '').toLowerCase();
+    if (status === 'failed' || status === 'error') {
+      throw new Error(pollData.error_msg || pollData.errorMsg || pollData.message || '图片编辑失败');
+    }
+    if (status === 'done' || status === 'completed' || status === 'success' || status === 'partial') {
+      const image = normalizeBasicEditImage(getBasicEditImageResult(pollData));
+      if (image) return image;
+      if (status === 'partial') continue;
+      throw new Error('图片编辑任务已完成，但未返回新图片');
+    }
+  }
+  throw new Error('图片编辑超过 600 秒，已停止轮询');
 }
 
 /**
@@ -295,6 +363,7 @@ export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = 
 
 
 import { authFetch } from './request.js';
+import { throwResponseError } from './error.js';
 import { toAbsoluteUrl } from '../utils/imageUrl.js';
 import { captureVideoLastFrame } from '../utils/videoUtils';
 import { assertVideoRequestCapabilities, getSeedance20AudioReferenceErrorMessage } from '../utils/videoModelCapabilities';
@@ -417,6 +486,26 @@ export async function apiGetCreationImage(imageId) {
     headers: { 'Content-Type': 'application/json' },
   });
   return res.json();
+}
+
+/**
+ * 保存创作图片的基础裁剪结果。服务端会保留原资产，并创建新的编辑结果资产。
+ * crop 坐标均为相对于原图的 0 到 1 比例值。
+ */
+export async function apiBasicEditCreationImage(imageId, { operations = ['crop'], crop, signal } = {}) {
+  if (!imageId) throw new Error('缺少创作图片 ID');
+  const res = await authFetch(`${BASE}/api/creation/images/${encodeURIComponent(imageId)}/basic-edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ operations, crop }),
+    signal,
+  });
+  if (!res.ok) await throwResponseError(res, `保存图片编辑结果失败（${res.status}）`);
+  const data = await res.json();
+  if (res.status === 202) {
+    return pollBasicEditCreationImageTask(getBasicEditTaskId(data), { signal });
+  }
+  return normalizeBasicEditImage(data);
 }
 
 export async function apiGenerateCreationImages(data) {

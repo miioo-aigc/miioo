@@ -1,4 +1,4 @@
-import { Button } from '../components/ui';
+import { Button, DeleteIcon } from '../components/ui';
 
 const FONT = "'Alibaba PuHuiTi 2.0', system-ui, sans-serif";
 
@@ -6,14 +6,6 @@ function PlusIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M3 4h10M6 4V3h4v1M5 4l.5 9h5L11 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -45,7 +37,7 @@ const VARIANTS = [
     name: 'Danger',
     desc: '单层 · 红色填充 · 不可逆危险操作',
     label: '删除',
-    icon: <TrashIcon />,
+    icon: <DeleteIcon size={16} color="currentColor" />,
   },
 ];
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { RatioIcon, FONT } from './CreationSelectorPrimitives';
+import { FONT } from './CreationSelectorPrimitives';
+import { RatioIcon } from '../ui/RatioIcon';
 
 // ─── Params selector (ratio + resolution + count) ─────────────────────────────
 export function ParamsSelector({ ratio, resolution, count, onRatioChange, onResolutionChange, onCountChange, disabled,

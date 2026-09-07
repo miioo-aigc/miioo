@@ -2,12 +2,13 @@ import { createPortal } from 'react-dom';
 import { useRef, useState } from 'react';
 import Checkbox from '../Checkbox';
 import { useStoryboardShotRowActions } from './StoryboardShotRowContext';
+import { DeleteIcon } from '../ui';
 
 const NUMBER_BTNS = [
   { key: 'drag', icon: <IconDrag />, label: '拖拽移动分镜' },
   { key: 'add', icon: <IconAdd />, label: '下方添加空分镜' },
   { key: 'copy', icon: <IconCopy />, label: '复制当前分镜' },
-  { key: 'delete', icon: <IconDelete />, label: '删除分镜' },
+  { key: 'delete', icon: <DeleteIcon size={16} color="#FFFFFF" />, label: '删除分镜' },
 ];
 
 function IconDrag() {
@@ -20,10 +21,6 @@ function IconAdd() {
 
 function IconCopy() {
   return <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.333 4.144V2.604C4.333 2.086 4.753 1.667 5.271 1.667H13.396C13.914 1.667 14.333 2.086 14.333 2.604V10.729C14.333 11.247 13.914 11.667 13.396 11.667H11.839M10.729 4.333H2.604C2.086 4.333 1.667 4.753 1.667 5.271V13.396C1.667 13.914 2.086 14.333 2.604 14.333H10.729C11.247 14.333 11.667 13.914 11.667 13.396V5.271C11.667 4.753 11.247 4.333 10.729 4.333Z" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-}
-
-function IconDelete() {
-  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3.333V14.667H13V3.333H3ZM6.667 6.667V11M9.333 6.667V11M1.333 3.333H14.667M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 }
 
 function CardActionBtn({ btn, index, onAdd, onCopy, onDeleteRequest, onDragHandlePress }) {

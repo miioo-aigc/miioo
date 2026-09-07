@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { RatioIcon, FONT } from './CreationSelectorPrimitives';
+import { FONT } from './CreationSelectorPrimitives';
+import { RatioIcon } from '../ui/RatioIcon';
 
 // ─── Video params selector (ratio + resolution + duration) ────────────────────
 export function VideoParamsSelector({ ratio, resolution, duration, onRatioChange, onResolutionChange, onDurationChange, disabled,

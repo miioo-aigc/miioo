@@ -20,6 +20,7 @@ export default function ProjectAssetDetail({
   onDownload,
   onDelete,
   onShowToast,
+  onCreateImage,
   SubjectAssetDetailModal,
   ShotDetailModal,
   ShotVideoDetailModal,
@@ -97,6 +98,7 @@ export default function ProjectAssetDetail({
             onDelete?.(imageId);
           }
         }}
+        onCreateImage={onCreateImage}
       />
     );
   }
@@ -120,6 +122,7 @@ export default function ProjectAssetDetail({
         onClose?.();
         onDelete?.();
       }}
+      onCreateImage={onCreateImage}
     />
   );
 }

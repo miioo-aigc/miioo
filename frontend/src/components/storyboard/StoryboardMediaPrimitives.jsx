@@ -12,13 +12,14 @@
  */
 import { useState } from 'react';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { DeleteIcon } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 export function MediaRemoveButton({ onClick }) {
   return (
     <button type="button" aria-label="删除媒体" onClick={onClick} style={{ position: 'absolute', top: '4px', right: '4px', width: '18px', height: '18px', border: 0, borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 2L8 8M8 2L2 8" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" /></svg>
+      <DeleteIcon size={16} color="#FFFFFF" aria-hidden="true" />
     </button>
   );
 }

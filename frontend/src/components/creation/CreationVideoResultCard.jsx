@@ -27,22 +27,9 @@ import ConfirmDialog from '../ConfirmDialog';
 import DotsLoading from '../DotsLoading';
 import LoadingAnimation from '../LoadingAnimation';
 import CreationCardActionButton from './CreationCardActionButton';
+import { DeleteIcon, FavoriteIcon } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
-
-function StarIcon({ filled = false, strokeColor = '#FFFFFF' }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-      <path
-        d="M7 1.5l1.545 3.13 3.455.503-2.5 2.436.59 3.44L7 9.369l-3.09 1.64.59-3.44L2 5.133l3.455-.503L7 1.5z"
-        fill={filled ? '#F0B429' : 'none'}
-        stroke={filled ? '#F0B429' : strokeColor}
-        strokeWidth="1.1"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 export default function CreationVideoResultCard({ status, videoUrl, posterUrl = '', onReEdit, onUseAsFirstFrame, onDownload, onDelete, onCardClick, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
 
@@ -158,7 +145,7 @@ export default function CreationVideoResultCard({ status, videoUrl, posterUrl = 
                 transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)',
               }}
             >
-              <StarIcon filled={favorited} />
+              <FavoriteIcon filled={favorited} />
             </button>
 
             {/* Bottom-right: action buttons */}
@@ -205,15 +192,7 @@ export default function CreationVideoResultCard({ status, videoUrl, posterUrl = 
               <CreationCardActionButton
                 tooltip="删除"
                 onClick={() => setConfirmDelete(true)}
-                icon={
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M3 3.333V14.667H13V3.333H3Z" stroke="#FFFFFF" strokeLinejoin="round" />
-                    <path d="M6.667 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M9.333 6.667V11" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M1.333 3.333H14.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#FFFFFF" strokeLinejoin="round" />
-                  </svg>
-                }
+                icon={<DeleteIcon size={16} color="#FFFFFF" />}
               />
             </div>
           </>

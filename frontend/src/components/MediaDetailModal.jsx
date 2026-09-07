@@ -43,6 +43,8 @@ import ConfirmDialog from './ConfirmDialog';
 import Toggle from './Toggle';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { showGlobalToast } from '../stores/toastStore';
+import CopyPromptButton from './ui/CopyPromptButton';
+import { FavoriteIcon, DeleteIcon } from './ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -281,7 +283,7 @@ export default function MediaDetailModal({
                       label="收藏"
                       active={false}
                       onClick={handleFavorite}
-                      icon={<div style={{ display: 'flex', transform: starAnim ? 'scale(1.25)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)' }}><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1.667L5.962 5.826L1.333 6.497L4.686 9.775L3.885 14.333L8 12.14L12.115 14.333L11.32 9.775L14.667 6.497L10.064 5.826L8 1.667Z" stroke="#FFFFFFCC" strokeLinejoin="round" /></svg></div>}
+                      icon={<div style={{ display: 'flex', transform: starAnim ? 'scale(1.25)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)' }}><FavoriteIcon /></div>}
                     />
                     {showDownload && (
                       <PanelAction
@@ -295,7 +297,7 @@ export default function MediaDetailModal({
                     <PanelAction
                       label="删除"
                       onClick={() => setShowDeleteConfirm(true)}
-                      icon={<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.625 2.916V12.834H11.375V2.916H2.625Z" stroke="#FFFFFFCC" strokeLinejoin="round" /><path d="M5.834 5.834V9.625M8.166 5.834V9.625M1.166 2.916H12.834M4.666 2.916L5.626 1.166H8.393L9.334 2.916H4.666Z" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                        icon={<DeleteIcon size={14} />}
                     />
                   )}
                 </div>
@@ -359,7 +361,8 @@ export default function MediaDetailModal({
                     <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                         <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>提示词</span>
-                        <button
+                        <CopyPromptButton text={currentImg.input_prompt ?? currentImg.prompt} onCopy={showCopyToast} />
+                        {/* Shared copy button above is the active control. */}{globalThis.__MIIOO_LEGACY_COPY_BUTTON__ === true ? <button
                           type="button"
                           style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -379,7 +382,7 @@ export default function MediaDetailModal({
                             <path d="M4.33337 4.14383V2.60413C4.33337 2.08636 4.75311 1.66663 5.27087 1.66663H13.3959C13.9136 1.66663 14.3334 2.08636 14.3334 2.60413V10.7291C14.3334 11.2469 13.9136 11.6666 13.3959 11.6666H11.8388" stroke="white" strokeOpacity="0.6" strokeLinecap="round" strokeLinejoin="round"/>
                             <path fillRule="evenodd" clipRule="evenodd" d="M1.66663 5.27083V13.3958C1.66663 13.9136 2.08636 14.3333 2.60413 14.3333H10.7291C11.2469 14.3333 11.6666 13.9136 11.6666 13.3958V5.27083C11.6666 4.75307 11.2469 4.33333 10.7291 4.33333H2.60413C2.08636 4.33333 1.66663 4.75307 1.66663 5.27083Z" stroke="white" strokeOpacity="0.6" strokeLinejoin="round"/>
                           </svg>
-                        </button>
+                        </button> : null}
                       </div>
                       <p style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC', margin: 0 }}>{currentImg.input_prompt ?? currentImg.prompt}</p>
                     </div>

@@ -626,6 +626,9 @@ export async function apiCreateStoryboardMediaCandidate(projectId, storyboardId,
 }
 
 export async function apiUpdateStoryboardMediaCandidate(projectId, storyboardId, mediaId, data) {
+  if (!isBackendStoryboardId(mediaId)) {
+    throw new Error('分镜候选媒体缺少有效的媒体 ID');
+  }
   const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}/media-candidates/${mediaId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -637,6 +640,9 @@ export async function apiUpdateStoryboardMediaCandidate(projectId, storyboardId,
 }
 
 export async function apiDeleteStoryboardMediaCandidate(projectId, storyboardId, mediaId) {
+  if (!isBackendStoryboardId(mediaId)) {
+    throw new Error('分镜候选媒体缺少有效的媒体 ID');
+  }
   const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}/media-candidates/${mediaId}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
@@ -646,6 +652,9 @@ export async function apiDeleteStoryboardMediaCandidate(projectId, storyboardId,
 }
 
 export async function apiDownloadStoryboardMediaCandidate(projectId, storyboardId, mediaId) {
+  if (!isBackendStoryboardId(mediaId)) {
+    throw new Error('分镜候选媒体缺少有效的媒体 ID');
+  }
   const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}/media-candidates/${mediaId}/download`, {
     headers: { 'Content-Type': 'application/json' },
   });

@@ -1,5 +1,5 @@
-import AssetsAudioCard from './AssetsAudioCard';
 import { AssetCard, ProjectAssetCard } from './AssetsCards';
+import ProjectAudioGroups from './ProjectAudioGroups';
 
 /**
  * 项目资产卡片网格。
@@ -19,26 +19,23 @@ export default function AssetsProjectGrid({
   onOpenAudioDetail,
   onOpenStoryboardDetail,
 }) {
+  if (activeCategory === 'audio') {
+    return (
+      <ProjectAudioGroups
+        assets={assets}
+        batchMode={batchMode}
+        selected={selected}
+        onSelect={onSelect}
+        onStar={onStar}
+        onDownload={onDownload}
+        onDelete={onDelete}
+        onOpenAudioDetail={onOpenAudioDetail}
+      />
+    );
+  }
+
   return assets.map((asset) => {
     const isSelected = batchMode && selected.has(asset.id);
-
-    if (activeCategory === 'audio') {
-      return (
-        <AssetsAudioCard
-          key={asset.id}
-          name={asset.name}
-          duration={asset.duration}
-          starred={asset.starred}
-          selected={isSelected}
-          batchMode={batchMode}
-          onSelect={() => onSelect(asset.id)}
-          onStar={() => onStar(asset.id)}
-          onDownload={() => onDownload(asset.id, asset.name)}
-          onDelete={() => onDelete(asset.id)}
-          onOpen={() => onOpenAudioDetail?.(asset)}
-        />
-      );
-    }
 
     if (subjectCardCategories.has(activeCategory)) {
       return (

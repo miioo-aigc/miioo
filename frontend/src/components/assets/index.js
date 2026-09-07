@@ -21,3 +21,4 @@ export { default as AssetsCreativePanel } from './AssetsCreativePanel';
 export { AssetCard, ProjectAssetCard } from './AssetsCards';
 export { AssetsProjectRenameModal } from './AssetsProjectModals';
 export { default as AssetsProjectGrid } from './AssetsProjectGrid';
+export { default as ProjectAudioGroups } from './ProjectAudioGroups';

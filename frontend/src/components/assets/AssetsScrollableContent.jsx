@@ -24,11 +24,11 @@ export default function AssetsScrollableContent({
         alignItems: 'center',
         justifyContent: 'center',
       }
-    : isAudio
+      : isAudio
       ? {
           display: 'flex',
           flexDirection: 'column',
-          gap: '8px',
+          gap: '32px',
         }
       : {
           display: 'grid',
@@ -49,8 +49,8 @@ export default function AssetsScrollableContent({
         overflowY: 'auto',
         paddingTop: '16px',
         paddingBottom: '24px',
-        paddingLeft: '24px',
-        paddingRight: '24px',
+        paddingLeft: isAudio ? '32px' : '24px',
+        paddingRight: isAudio ? '32px' : '24px',
         ...layoutStyle,
       }}
     >

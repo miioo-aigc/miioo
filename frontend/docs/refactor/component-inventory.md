@@ -249,6 +249,13 @@
 - `shot` 只用于镜头编号和媒体归属判断，不再参与右侧提示词、参考素材或生成参数展示。
 - 验证：目标文件定向 ESLint、`npm run build`、`npm run check:architecture`、`git diff --check` 通过；组件当前 773 行，属于业务区块提示线，职责仍集中于统一分镜媒体详情展示。
 
+## 2026-09-07 分镜媒体详情右侧信息区复刻
+
+- `StoryboardMediaDetailModal.jsx` 保留原有左侧媒体预览、视频原生控件、候选缩略图切换和定稿角标结构，仅将右侧信息区抽离为 `StoryboardMediaDetailPanel.jsx`。
+- 资产库项目资产分镜 Tab 与分镜页面分镜列表继续共用该弹窗；右侧按当前媒体类型分别复刻创作页图片、视频详情布局，统一为 `340px` 宽度及顶部操作、中间滚动、底部编辑固定区。
+- 视频首尾帧模式沿用双列帧参考布局；普通参考图、参考视频、参考音频及图片参考图使用四列正方形网格和 `8px` 间距，参考音频名称为 `12px`。
+- 右侧保留当前媒体自身的数据提取边界；外层弹窗继续使用 `16px` 圆角与 `overflow: hidden` 裁剪内容区，底部固定区间距为 `8px`、顶部内边距为 `12px`。
+
 ## 2026-08-10 剧本生成中保留输入并拦截发送
 
 - `InputCard` 在生成中不再禁用文本输入；根据是否有待发送文字分别呈现暂停按钮或箭头。
@@ -512,8 +519,8 @@
 
 - 文件：`src/components/storyboard/StoryboardMediaDetailModal.jsx`。
 - 职责：统一查看分镜图片和视频候选媒体，不再由两套图片/视频详情弹窗分别维护视觉和状态。
-- 布局：弹窗主体为左右结构；左侧上方是当前媒体预览，左侧下方是当前镜头的混合候选缩略图列表；右侧是定稿开关、镜头编号、内容类型、来源、提示词、生成时间和下载动作。
-- 交互：候选缩略图点击切换当前媒体；视频使用原生播放控件；定稿切换通过页面传入的 `onFinalizeChange` 真实调用后端；下载通过页面传入的 `onDownload` 走受控下载接口并保留直链回退。
+- 布局：弹窗主体为左右结构；左侧保持当前媒体预览、视频原生播放控件和当前镜头的混合候选缩略图列表；右侧由 `StoryboardMediaDetailPanel.jsx` 按图片、视频类型复刻创作页详情信息布局。
+- 交互：候选缩略图点击切换当前媒体；左侧视频继续使用原生播放控件；右侧下载通过页面传入的 `onDownload` 走受控下载接口，收藏和删除通过可选显式回调接线。
 - 边界：组件不读取 API、Store 或页面状态，不自行拼接业务请求地址；通过 Portal 渲染到 `document.body`，避免被页面内容区裁剪。
 
 ### 分镜候选数据边界
@@ -1223,7 +1230,7 @@
 ## 2026-07-16 AssetsProjectPanel 业务区块继续收敛记录
 
 - 新增 `AssetsProjectModals.jsx`，抽离项目重命名和项目删除弹窗；弹窗只接收值、显示名称和确认/关闭回调，不调用项目 API。
-- 新增 `AssetsProjectGrid.jsx`，统一按项目资产类别选择 `AssetsAudioCard`、`ProjectAssetCard` 和 `AssetCard`，卡片操作通过显式 props 返回面板。
+- 新增 `AssetsProjectGrid.jsx`，统一按项目资产类别选择 `ProjectAudioGroups`、`ProjectAssetCard` 和 `AssetCard`，卡片操作通过显式 props 返回面板。
 - `AssetsProjectPanel.jsx` 从 `784` 行降至 `506` 行；项目 API、筛选分页、批量删除/下载、详情数据和 Toast 副作用继续保留在业务面板。
 - 验证：资产域定向 ESLint `0 errors / 0 warnings`；`npm run build`、`npm run check:architecture`、`git diff --check` 均通过。当前架构告警只剩 `CreationPage`、`Home`、`StoryboardPage`、`SubjectPage`。
 - 后续不为降低行数强行搬动项目 API 和状态；先评估剩余项目动作、筛选分页和批量副作用是否形成稳定可复用边界，再进入其他页面规模告警。
@@ -1231,7 +1238,7 @@
 ## 2026-07-16 AssetsPage 音频卡片与静态收尾记录
 
 - 新增 `src/components/assets/AssetsAudioCard.jsx`，迁移音频资产卡片、波形条、播放视觉态、收藏动画和下载/删除操作展示；页面仅传入名称、时长、收藏/批量状态和显式回调。
-- `src/components/assets/index.js` 已新增 `AssetsAudioCard` 目录导出；项目资产和创作资产的音频分支均改为使用该组件。
+- `src/components/assets/index.js` 已新增 `ProjectAudioGroups` 目录导出；项目资产音频复用 `CreationAudioResultCard`，创作资产音频继续使用同一张卡片。
 - 页面不再声明或调用旧 `AudioCard`、`WaveformBars`；迁移后曾发现两处残留 `<AudioCard>` 调用并已修复，随后定向 ESLint 复验通过，避免把导入缺失伪装成构建完成。
 - 同轮清理未接入的历史 mock、收藏筛选控件、无效页面 props，并修正资产加载 effect/ref 的引用边界；API 请求、分页观察器、Store、Toast 和删除/下载副作用仍保留在页面面板。
 - 验证：目标文件和资产组件定向 ESLint `0 errors / 0 warnings`；`npm run build`、`npm run check:architecture`、`git diff --check` 均通过。架构检查仍只报告历史页面规模告警。
@@ -1830,7 +1837,7 @@
 - `AssetPickerModal` 中项目资产的“分镜图”和“分镜视频”合并为一个“分镜”Tab；项目资产请求按图片、视频媒体类型分别分页读取后合并，并按媒体地址去重。
 - 合并后的分镜 Tab 仍以独立资产卡片平铺展示，图片卡片和视频卡片各自占一个网格项，沿用角色、场景、道具卡片的完整上下结构，不使用分镜专用紧凑卡片或按镜头聚合。
 - `accept="image"`、`accept="video"` 保持媒体类型限制；`accept="media"` 和 `accept="all"` 在同一分镜 Tab 中同时展示图片与视频。
-- 资产库分镜卡片打开详情时复用 `src/components/storyboard/StoryboardMediaDetailModal.jsx`，支持图片预览、视频播放、候选缩略图切换和定稿状态展示；分镜页面与资产库共用同一套详情展示结构。
+- 资产库分镜卡片打开详情时复用 `src/components/storyboard/StoryboardMediaDetailModal.jsx`，支持图片预览、视频播放、候选缩略图切换和定稿角标展示；分镜页面与资产库共用原有左侧结构，并按媒体类型复用创作页风格的右侧信息区。
 
 ## 2026-07-29 项目资产分镜卡片展示细化
 
@@ -1840,7 +1847,7 @@
 - 资产库加载分镜时复用 `normalizeStoryboard`，兼容后端原始 snake_case 字段与分镜页使用的嵌套媒体字段；点击卡片继续打开 `StoryboardMediaDetailModal`，不改变图片查看、视频播放、定稿切换和下载行为。
 - `AssetsScrollableContent` 为项目资产网格显式设置 `gridAutoRows: max-content`，`ProjectAssetCard` 设为按自身高度参与布局，修复约 `1500px` 内容宽度下分镜卡片第一行与第二行重叠的问题；角色、场景、道具等卡片沿用原有列宽和卡片比例。
 - 分镜资产卡片生成前会过滤没有 `url`、`file_url` 或 `fileUrl` 的候选媒体；没有真实媒体的镜头直接从“分镜”Tab列表移除，列表为空时显示空态，不再显示空卡片。
-- 资产库打开 `StoryboardMediaDetailModal` 时传入只读定稿状态参数，弹窗将定稿 Toggle 替换为“定稿/未定稿”标签；分镜页面调用不传该参数，继续支持定稿修改。
+- 资产库与分镜页面打开 `StoryboardMediaDetailModal` 时，候选媒体的定稿状态继续由左侧候选卡角标表达；右侧信息区不再承载定稿修改控件。
 - 资产库分镜卡片媒体层的图片背景和视频统一使用 `contain`，成片 Tab 的视频也使用 `contain`，保证不同画幅素材完整可见；角色、场景、道具卡片恢复原有 `cover` 图片填充，创作资产视频保持原有 `cover`。
 
 
@@ -2168,3 +2175,9 @@
 - `src/api/creation.js` 为视频创作新增独立的 `3600000ms` 轮询上限，覆盖创作页首次生成和刷新恢复；图片仍使用 `1800000ms`，配音仍使用 `600000ms`。
 - `src/pages/StoryboardPage.jsx` 的单镜头创作视频轮询改为 `1200` 次、每次 `3000ms`，总计 `3600` 秒；分镜图生成、按集生成分镜和重新分镜仍保持原 `3000` 秒。
 - 验证范围：视频轮询调用链、定向 ESLint、构建、架构检查和 `git diff --check`。
+
+## 2026-09-07 分镜候选定稿媒体 ID 修复
+
+- 修复分镜主记录兼容媒体与后端候选按 URL 合并时，`storyboardImage` / `storyboardVideo` 的临时 ID 覆盖后端候选 UUID，导致定稿接口返回 `media_id 格式不合法` 的问题；候选展示现在以后端持久化记录为最终字段来源。
+- 定稿动作在提交前按媒体地址和稳定身份查找真实候选；只有兼容媒体存在时，先通过 `POST media-candidates` 幂等创建候选并取得 UUID，再提交定稿状态。设置和取消定稿都以接口成功结果更新页面状态，失败时不再留下乐观假状态。
+- `src/api/storyboard.js` 对候选更新、删除和下载统一增加媒体 UUID 前置校验，避免临时 ID、媒体 URL 或兼容拼接 ID 再次进入后端路径参数。

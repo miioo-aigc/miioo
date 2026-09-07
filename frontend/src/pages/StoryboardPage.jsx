@@ -2,7 +2,7 @@
  * @file StoryboardPage.jsx
  * @structure-index
  *
- * ─── 全局常量与工具函数 ───────────────────────────────────── L95–L143
+ * ─── 全局常量与工具函数 ───────────────────────────────────── L119–L270
  *   normalizeStoryboard / normalizeStoryboardList / toBackendStoryboard  utils/storyboardDataAdapter.js
  *   buildStoryboardPrompt                      utils/buildStoryboardPrompt.js
  *   enrichMainRefs / buildStoryboardRefFromAsset         适配工具：主体参考图补全与资产映射
@@ -11,7 +11,7 @@
  *   storyboardCandidateAdapter.js              候选媒体字段与生成参数适配
  *   storyboardShotUtils.js                     镜头数组插入、删除、排序与重编号
  *
- * ─── 页面内稳定组件 ───────────────────────────────────────── L144–L265
+ * ─── 页面内稳定组件 ───────────────────────────────────────── 外置于 components/storyboard/
  *   EpisodeSelector / ModalCloseBtn             components/storyboard/StoryboardControls.jsx
  *   ParamSelect / ParamTrigger / DescriptionCol  components/storyboard/DescriptionCol.jsx
  *   CharTag / AddSlotBtn                       components/storyboard/NarrationAtoms.jsx
@@ -38,9 +38,10 @@
  *   GenerateImagePanel                         components/storyboard/GenerateImagePanel.jsx
  *   GenerateVideoPanel / ReferenceMediaEditor  components/storyboard/
  *
- * ─── 主页面入口 ──────────────────────────────────────────── L233–L2886
- *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化；L337 按镜头最新快照保存队列
- *   [持久化动作] L544 enqueueStoryboardSave：同一镜头串行提交最新 PATCH 快照
+ * ─── 主页面入口 ──────────────────────────────────────────── L271–L3005
+ *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化；L295 镜头状态，L1476 任务恢复
+ *   [持久化动作] L667 enqueueStoryboardSave；L925–L1002 候选加载、保存与复制
+ *   [候选定稿] L2014 handleFinalizeToggle：确保真实候选 UUID 后提交定稿状态
  *   [加载与错误态] LoadingAnimation、DotsLoading、失败操作和统计
  *   [镜头 CRUD] 上传、编辑、复制、删除、排序
  *   [渲染] 状态结果、内容区（列表/时间轴）、生成面板和 Toast
@@ -48,6 +49,7 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-09-07  修复兼容分镜媒体覆盖后端候选 UUID：后端候选合并优先，并在定稿前确保候选已持久化
  *   2026-09-04  台词分配移除语速/音量，新增角色与旁白音色选择；普通角色复用主体音色接口，旁白使用项目级音色设置，
  *               台词保存同步写入 dialogues_json 与 narration_segments
  *   2026-08-28  分镜视频模型筛选改由可展示参考模式判断；不再读取已废弃的 reference_modes，
@@ -2014,17 +2016,41 @@ function hasStoryboardMediaHint(shot = {}) {
     const current = finalizedMediaMap[shot.id];
     const shouldFinalize = typeof requestedFinalized === 'boolean'
       ? requestedFinalized
-      : current?.id !== media.id;
-    const nextFinalized = shouldFinalize ? media : null;
-    setFinalizedMediaMap((prev) => ({ ...prev, [shot.id]: nextFinalized }));
-    setCandidateMediaMap((prev) => ({
-      ...prev,
-      [shot.id]: (prev[shot.id] || []).map((item) => ({ ...item, is_finalized: nextFinalized?.id === item.id })),
-    }));
+      : !areStoryboardMediaSame(current, media);
     try {
-      if (media.id && !String(media.id).startsWith('blob:')) {
-        await apiUpdateStoryboardMediaCandidate(projectId, shot.id, media.id, { is_finalized: !!nextFinalized });
+      const persistedMatch = (candidateMediaMap[shot.id] || []).find((candidate) => (
+        isBackendStoryboardId(candidate?.id) && areStoryboardMediaSame(candidate, media)
+      ));
+      const persistedCurrent = isBackendStoryboardId(current?.id) && areStoryboardMediaSame(current, media)
+        ? current
+        : null;
+      let persistedMedia = persistedMatch
+        || persistedCurrent
+        || (isBackendStoryboardId(media?.id) ? media : null);
+      if (!persistedMedia) {
+        persistedMedia = await saveCandidateMedia(shot.id, media);
       }
+      if (!isBackendStoryboardId(persistedMedia?.id)) {
+        throw new Error('保存候选媒体失败，暂时无法更新定稿');
+      }
+
+      const updatedMedia = await apiUpdateStoryboardMediaCandidate(
+        projectId,
+        shot.id,
+        persistedMedia.id,
+        { is_finalized: shouldFinalize },
+      );
+      const nextFinalized = shouldFinalize ? { ...media, ...persistedMedia, ...updatedMedia, is_finalized: true } : null;
+      setFinalizedMediaMap((prev) => ({ ...prev, [shot.id]: nextFinalized }));
+      setCandidateMediaMap((prev) => ({
+        ...prev,
+        [shot.id]: mergeStoryboardMediaItems(prev[shot.id] || [], [
+          { ...persistedMedia, ...updatedMedia, is_finalized: shouldFinalize },
+        ]).map((item) => ({
+          ...item,
+          is_finalized: nextFinalized ? areStoryboardMediaSame(item, nextFinalized) : false,
+        })),
+      }));
       if (nextFinalized) {
         const isVideo = nextFinalized.media_type === 'video';
         updateShot(shot.id, {
@@ -2043,7 +2069,6 @@ function hasStoryboardMediaHint(shot = {}) {
       await refreshCandidateForShot(shot);
     } catch (error) {
       showToast(error.message || '保存定稿失败', 'error');
-      setFinalizedMediaMap((prev) => ({ ...prev, [shot.id]: current || null }));
     }
   }
 
@@ -2338,8 +2363,8 @@ function hasStoryboardMediaHint(shot = {}) {
   const getCreationCandidates = (shotId) => mergeStoryboardMediaItems(
     pendingCandidateMap[shotId] || [],
     mergeStoryboardMediaItems(
-      candidateMediaMap[shotId] || [],
       fallbackCandidates(shots.find((shot) => shot.id === shotId)),
+      candidateMediaMap[shotId] || [],
     ),
   );
   const currentShotImages = useMemo(() => {

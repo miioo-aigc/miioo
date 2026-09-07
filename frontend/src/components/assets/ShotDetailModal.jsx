@@ -238,11 +238,11 @@ export default function ShotDetailModal({ onClose, onDownload, onDelete, onShowT
                 <>
                   <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
                     <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>参考图</span>
-                    <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px', width: '100%', minWidth: 0 }}>
                       {refImgs.map((ref, idx) => (
                         <div
                           key={ref.id ?? idx}
-                          style={{ borderRadius: '4px', overflow: 'hidden', width: '80px', height: '56px', flexShrink: 0, backgroundColor: '#FFFFFF14', border: '1px solid #FFFFFF33', backgroundImage: `url(${ref.url})`, backgroundSize: 'cover', backgroundPosition: '50%' }}
+                          style={{ borderRadius: '4px', overflow: 'hidden', width: '100%', aspectRatio: '1 / 1', backgroundColor: '#FFFFFF14', border: '1px solid #FFFFFF33', backgroundImage: `url(${ref.url})`, backgroundSize: 'cover', backgroundPosition: '50%' }}
                           title={ref.title}
                         />
                       ))}
@@ -269,11 +269,11 @@ export default function ShotDetailModal({ onClose, onDownload, onDelete, onShowT
 
               <div style={{ display: 'flex', flexDirection: 'row', padding: '16px 20px', gap: '4px', justifyContent: 'flex-start', alignItems: 'center' }}>
                 <span style={{ flex: '1 1 0px', fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>AI 生成时间</span>
-                <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>{(currentImg?.generatedAt || generatedAt) ?? MOCK_SHOT_DETAIL.generatedAt}</span>
+                <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{(currentImg?.generatedAt || generatedAt) ?? MOCK_SHOT_DETAIL.generatedAt}</span>
               </div>
             </div>
 
-            <div style={{ flexShrink: 0, paddingTop: '12px', paddingBottom: '20px', paddingLeft: '20px', paddingRight: '20px', borderTop: '1px solid #FFFFFF0A', display: 'flex', gap: '8px' }}>
+            <div style={{ flexShrink: 0, paddingTop: '16px', paddingBottom: '20px', paddingLeft: '20px', paddingRight: '20px', borderTop: '1px solid #FFFFFF0A', display: 'flex', gap: '8px' }}>
               {onDelete && (
                 <button
                   type="button"

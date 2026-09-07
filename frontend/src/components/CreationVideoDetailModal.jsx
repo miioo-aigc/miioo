@@ -2,14 +2,16 @@
  * @file CreationVideoDetailModal.jsx
  * @structure-index
  *
- * ─── 辅助组件与工具 ─────────────────────────────── L1–L140
- *   formatVideoDuration / ReferenceVideoCard / CopyPromptButton 详情字段与参考素材展示
+ * ─── 辅助组件与工具 ─────────────────────────────── L1–L207
+ *   formatVideoDuration / ReferenceVideoCard / CopyPromptButton / PanelAction / EditTool 详情字段、参考素材与操作按钮
  *
- * ─── 创作视频详情弹窗 ───────────────────────────── L166–L642
+ * ─── 创作视频详情弹窗 ───────────────────────────── L209–L770
  *   CreationVideoDetailModal                        视频预览、详情信息和操作回调
- *   视频播放区                                      保留创作页播放状态与自动播放逻辑，使用原生 controls 展示控制组件
+ *   视频播放区                                      点击画面切换播放状态，中央反馈显示 0.5 秒后隐藏，保留原生 controls
+ *   右侧信息区                                      顶部操作、中间滚动、底部视频编辑固定布局
  *
  * ─── 更新记录 ─────────────────────────────────────
+ *   2026-09-07                                       中央播放状态短暂显示 0.5 秒；外层圆角裁剪；右栏改为固定布局；更新视频编辑按钮图标
  *   2026-09-03                                       视频控制组件样式对齐分镜详情弹窗，保留创作页业务架构
  */
 
@@ -83,7 +85,7 @@ function ReferenceVideoCard({ vidUrl }) {
     <>
       <div
         ref={cardRef}
-        className="rounded-md overflow-clip h-[84px] w-[calc(47.49%)] bg-[#FFFFFF14] border border-solid border-[#FFFFFF14] cursor-pointer"
+        className="rounded-md overflow-clip w-full aspect-square bg-[#FFFFFF14] border border-solid border-[#FFFFFF14] cursor-pointer"
         style={previewUrl ? { backgroundImage: `url(${previewUrl})`, backgroundSize: 'cover', backgroundPosition: '50%' } : {}}
         onMouseEnter={() => {
           hoverTimerRef.current = setTimeout(() => {
@@ -135,6 +137,71 @@ function CopyPromptButton({ text, onCopy }) {
       </svg>
     </button>
   );
+}
+
+function PanelAction({ icon, label, onClick, active = false }) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={active}
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: '24px', minWidth: '24px', height: '24px', padding: 0,
+        border: 0, borderRadius: '7px',
+        backgroundColor: hovered ? '#FFFFFF14' : '#161616',
+        cursor: 'pointer', transition: 'background-color 0.12s',
+      }}
+    >
+      {icon}
+    </button>
+  );
+}
+
+function EditTool({ label, icon }) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', flex: '1 1 0%', minWidth: 0, height: '64px', padding: '12px 8px',
+        flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px',
+        border: 0, borderRadius: '6px', backgroundColor: hovered ? '#FFFFFF14' : '#FFFFFF0D',
+        color: '#FFFFFFCC', cursor: 'pointer', transition: 'background-color 0.12s',
+      }}
+    >
+      {icon}
+      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function StarIcon({ filled = false }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+      <path d="M7 1.5l1.545 3.13 3.455.503-2.5 2.436.59 3.44L7 9.369l-3.09 1.64.59-3.44L2 5.133l3.455-.503L7 1.5z" fill={filled ? '#F0B429' : 'none'} stroke={filled ? '#F0B429' : '#FFFFFFCC'} strokeWidth="1.1" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><path d="M13.506 11.439C14.601 10.668 15.071 9.277 14.667 8C14.262 6.723 13.024 6.024 11.684 6.025H10.911C10.405 4.054 8.736 2.599 6.715 2.366C4.693 2.133 2.737 3.171 1.796 4.975C0.856 6.78 1.125 8.977 2.474 10.501" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /><path d="M8.003 13.667L8 7.667" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /><path d="M10.121 11.545L8 13.667L5.879 11.545" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function DeleteIcon() {
+  return <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.625 2.916V12.834H11.375V2.916H2.625Z" stroke="#FFFFFFCC" strokeLinejoin="round" /><path d="M5.834 5.834V9.625M8.166 5.834V9.625M1.166 2.916H12.834M4.666 2.916L5.626 1.166H8.393L9.334 2.916H4.666Z" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 // ConfirmDeleteModal 已迁移至 ConfirmDialog 共享组件
@@ -195,11 +262,13 @@ export default function CreationVideoDetailModal({
 
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackFeedbackVisible, setPlaybackFeedbackVisible] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [hovClose, setHovClose] = useState(false);
   const [toastVisible] = useState(false);
   const videoRef = useRef(null);
+  const playbackFeedbackTimerRef = useRef(null);
 
   function handleCopyPrompt() {
     showGlobalToast('您已复制提示词', 'success');
@@ -232,6 +301,10 @@ export default function CreationVideoDetailModal({
     };
   }, [videoUrl]);
 
+  useEffect(() => () => {
+    clearTimeout(playbackFeedbackTimerRef.current);
+  }, []);
+
   // 弹窗打开后自动播放视频
   useEffect(() => {
     const vid = videoRef.current;
@@ -246,8 +319,24 @@ export default function CreationVideoDetailModal({
   function togglePlay() {
     const vid = videoRef.current;
     if (!vid) return;
-    if (vid.paused) { vid.play(); setIsPlaying(true); }
-    else { vid.pause(); setIsPlaying(false); }
+
+    const shouldPlay = vid.paused;
+    clearTimeout(playbackFeedbackTimerRef.current);
+    setIsPlaying(shouldPlay);
+    setPlaybackFeedbackVisible(true);
+    playbackFeedbackTimerRef.current = setTimeout(() => {
+      setPlaybackFeedbackVisible(false);
+    }, 500);
+
+    if (shouldPlay) {
+      vid.play().catch(() => {
+        setIsPlaying(false);
+        setPlaybackFeedbackVisible(false);
+      });
+      return;
+    }
+
+    vid.pause();
   }
 
   const isFrameReference = refMode === 'frame'
@@ -274,7 +363,7 @@ export default function CreationVideoDetailModal({
       onClick={onClose}
     >
       <div
-        className="flex flex-col rounded-2xl h-fit [box-shadow:#00000099_-10px_24px_64px] bg-[#161616] border border-solid border-[#FFFFFF14]" style={{ width: `${modalW}px`, height: `${modalH}px`, transform: `scale(${modalScale})`, transformOrigin: 'center center' }}
+        className="flex flex-col overflow-hidden rounded-2xl h-fit [box-shadow:#00000099_-10px_24px_64px] bg-[#161616] border border-solid border-[#FFFFFF14]" style={{ width: `${modalW}px`, height: `${modalH}px`, transform: `scale(${modalScale})`, transformOrigin: 'center center' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -322,29 +411,62 @@ export default function CreationVideoDetailModal({
                   </div>
                 )}
                 <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(in oklab 180deg, oklab(0% 0 0 / 0%) 40%, oklab(0% 0 0 / 40%) 100%)', pointerEvents: 'none' }} />
-                <button
-                  type="button"
-                  className="flex items-center justify-center rounded-[50%] relative shrink-0 [backdrop-filter:blur(8px)] bg-[#FFFFFF1F] border border-solid border-[#FFFFFF33] size-[56px]"
-                  style={{ cursor: 'pointer' }}
-                  onClick={togglePlay}
-                >
-                  {isPlaying ? (
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
-                      <rect x="4" y="4" width="4" height="12" rx="1" fill="#FFFFFF" />
-                      <rect x="12" y="4" width="4" height="12" rx="1" fill="#FFFFFF" />
-                    </svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
-                      <path d="M7 5L16 10L7 15V5Z" fill="#FFFFFF" />
-                    </svg>
-                  )}
-                </button>
+                {videoUrl && (
+                  <button
+                    type="button"
+                    aria-label={isPlaying ? '暂停视频' : '播放视频'}
+                    className="absolute inset-x-0 top-0 bottom-[48px]"
+                    style={{ cursor: 'pointer', padding: 0, border: 'none', background: 'transparent' }}
+                    onClick={togglePlay}
+                  />
+                )}
+                {playbackFeedbackVisible && (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center"
+                    style={{ pointerEvents: 'none' }}
+                    aria-hidden="true"
+                  >
+                    <div className="flex items-center justify-center rounded-[50%] [backdrop-filter:blur(8px)] bg-[#FFFFFF1F] border border-solid border-[#FFFFFF33] size-[56px]">
+                      {isPlaying ? (
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+                          <rect x="4" y="4" width="4" height="12" rx="1" fill="#FFFFFF" />
+                          <rect x="12" y="4" width="4" height="12" rx="1" fill="#FFFFFF" />
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+                          <path d="M7 5L16 10L7 15V5Z" fill="#FFFFFF" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
           {/* Right: params panel */}
-          <div className="w-[280px] flex flex-col min-h-0 h-full shrink-0 bg-[#161616] border-l border-l-solid border-l-[#FFFFFF0F]">
+          <div className="w-[340px] flex flex-col min-h-0 h-full shrink-0 bg-[#161616] border-l border-l-solid border-l-[#FFFFFF0F]">
+            <div className="flex items-center justify-between shrink-0 py-[12px] px-[20px] bg-[#161616] border-b border-b-solid border-b-[#FFFFFF0A]">
+              <div className="flex items-center gap-[8px]">
+                <PanelAction
+                  label="收藏"
+                  active={favorited}
+                  onClick={() => {
+                    setStarAnim(true);
+                    setTimeout(() => setStarAnim(false), 300);
+                    onFavorite?.();
+                  }}
+                  icon={(
+                    <div style={{ display: 'flex', transform: starAnim ? 'scale(1.25)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)' }}>
+                      <StarIcon filled={favorited} />
+                    </div>
+                  )}
+                />
+                <PanelAction label="下载" onClick={onDownload} icon={<DownloadIcon />} />
+              </div>
+              <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon />} />
+            </div>
+
             {/* Scrollable content area */}
             <div className="flex-1 overflow-y-auto min-h-0">
               <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
@@ -414,7 +536,7 @@ export default function CreationVideoDetailModal({
                       <div className="tracking-[0.66px] uppercase inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[11px]/[14px]">
                         参考图
                       </div>
-                      <div className="flex items-start gap-[12px] self-stretch flex-wrap">
+                      <div className="grid grid-cols-4 gap-[8px] self-stretch">
                         {refImages.map((img, i) => {
                           const imgUrl = typeof img === 'string' ? img : (img.url || img.previewUrl || '');
                           return (
@@ -423,7 +545,7 @@ export default function CreationVideoDetailModal({
                               src={imgUrl}
                               alt="参考图"
                               resolveSrc={apiGetLiveMaterialPreviewByRef}
-                              style={{ width: '47.49%' }}
+                              style={{ width: '100%', height: 'auto', aspectRatio: '1' }}
                             />
                           );
                         })}
@@ -438,7 +560,7 @@ export default function CreationVideoDetailModal({
                       <div className="tracking-[0.66px] uppercase inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[11px]/[14px]">
                         参考视频
                       </div>
-                      <div className="flex items-start gap-[12px] self-stretch flex-wrap">
+                      <div className="grid grid-cols-4 gap-[8px] self-stretch">
                         {refVideos.map((vid, i) => {
                           const vidUrl = typeof vid === 'string' ? vid : (vid.url || vid.previewUrl || '');
                           return vidUrl ? <ReferenceVideoCard key={i} vidUrl={vidUrl} /> : null;
@@ -454,10 +576,10 @@ export default function CreationVideoDetailModal({
                       <div className="tracking-[0.66px] uppercase inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[11px]/[14px]">
                         参考音频
                       </div>
-                      <div className="flex items-start gap-[12px] self-stretch flex-wrap">
+                      <div className="grid grid-cols-4 gap-[8px] self-stretch">
                         {refAudios.map((audio, i) => (
-                          <div key={i} className="flex flex-col items-start gap-[2px] px-[8px] py-[6px] overflow-clip rounded-lg w-[calc(47.699%)] h-[84px] justify-between bg-[#1D1E1E] border border-solid border-[#FFFFFF14]">
-                            <div className="text-[14px] leading-[150%] self-stretch flex-1 font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-white">
+                          <div key={i} className="flex flex-col items-start gap-[2px] px-[8px] py-[6px] overflow-clip rounded-lg w-full aspect-square justify-between bg-[#1D1E1E] border border-solid border-[#FFFFFF14]">
+                            <div className="text-[12px] leading-[150%] self-stretch flex-1 overflow-hidden font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-white">
                               {(typeof audio === 'string' ? 'audio.mp3' : (audio.name || 'audio.mp3'))}
                             </div>
                             <div className="text-[12px] leading-[150%] self-stretch font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF66]">
@@ -544,11 +666,11 @@ export default function CreationVideoDetailModal({
             {createdAt && (
               <>
                 <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
-                <div className="flex flex-col w-[280px] h-[66px] py-[16px] px-[20px] gap-[4px] shrink-0 bg-[#161616]">
-                  <div className="tracking-[0.66px] uppercase font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[11px]/[14px]">
+                <div className="flex flex-row items-center justify-start w-[340px] py-[16px] px-[20px] gap-[4px] shrink-0 bg-[#161616]">
+                  <div className="flex-1 tracking-[0.72px] uppercase font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[12px]/[14px]">
                     AI 生成时间
                   </div>
-                  <div className="tracking-[0.12px] font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF66] text-xs/4">
+                  <div className="tracking-[0.12px] font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFFCC] text-[12px]/[16px]">
                     {createdAt}
                   </div>
                 </div>
@@ -558,60 +680,61 @@ export default function CreationVideoDetailModal({
               <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
             </div>
 
-            {/* Fixed action buttons at bottom */}
-            <div className="flex items-start gap-[16px] w-full box-border bg-[#161616] px-[20px] pt-[16px] pb-[20px] shrink-0 border-t border-t-solid border-t-[#FFFFFF0A]">
-              <button
-                type="button"
-                className="flex items-center justify-center w-full h-[40px] rounded-lg gap-[4px] bg-[#FFFFFF14] border border-solid border-[#FFFFFF1F]"
-                style={{ cursor: 'pointer', transform: starAnim ? 'scale(1.1)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)' }}
-                onClick={() => {
-                  setStarAnim(true);
-                  setTimeout(() => setStarAnim(false), 300);
-                  onFavorite?.();
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: '0' }}>
-                  <path d="M8 1.667L5.962 5.826L1.333 6.497L4.686 9.775L3.885 14.333L8 12.14L12.115 14.333L11.32 9.775L14.667 6.497L10.064 5.826L8 1.667Z"
-                    fill={favorited ? '#F0B429' : 'none'}
-                    stroke={favorited ? '#F0B429' : '#FFFFFF99'}
-                    strokeLinejoin="round" />
-                </svg>
-                <div className="tracking-[0.13px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[13px]/4">
-                  收藏
-                </div>
-              </button>
-              <button
-                type="button"
-                className="flex items-center justify-center w-full h-[40px] rounded-lg gap-[4px] bg-[#FFFFFF14] border border-solid border-[#FFFFFF1F]"
-                style={{ cursor: 'pointer' }}
-                onClick={onDownload}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: '0' }}>
-                  <path d="M8.003 11.3V2" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M4 7.333L8 11.333L12 7.333" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M4 14H12" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <div className="tracking-[0.13px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[13px]/4">
-                  下载
-                </div>
-              </button>
-              <button
-                type="button"
-                className="flex items-center justify-center w-full h-[40px] rounded-lg gap-[4px] bg-[#FFFFFF14] border border-solid border-[#FFFFFF1F]"
-                style={{ cursor: 'pointer' }}
-                onClick={() => setConfirmDelete(true)}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: '0' }}>
-                  <path d="M3 3.333V14.667H13V3.333H3Z" stroke="#FFFFFF99" strokeLinejoin="round" />
-                  <path d="M6.667 6.667V11" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M9.333 6.667V11" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M1.333 3.333H14.667" stroke="#FFFFFF99" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M5.333 3.333L6.43 1.333H9.592L10.667 3.333H5.333Z" stroke="#FFFFFF99" strokeLinejoin="round" />
-                </svg>
-                <div className="tracking-[0.13px] inline-block font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFF99] text-[13px]/4">
-                  删除
-                </div>
-              </button>
+            <div
+              style={{
+                display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0,
+                width: '100%', padding: '16px 20px 16px', boxSizing: 'border-box',
+                borderTop: '1px solid #FFFFFF0D', backgroundColor: '#161616',
+              }}
+            >
+              <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>
+                视频编辑
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px', width: '100%' }}>
+                <EditTool
+                  label="智能超清"
+                  icon={(
+                    <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" style={{ width: '16px', height: '16px', flexShrink: 0 }}>
+                      <path d="M447.849 45.176a53.489 53.489 0 0 1 0 106.978H226.424c-49.393 0-89.33 39.936-89.33 89.33l0.121 122.88c393.276 37.466 594.04 216.666 602.353 537.6h58.067c46.622 0 84.871-35.6 88.967-81.198l0.362-8.132V527.12a53.368 53.368 0 0 1 106.857 0v285.515c0 108.424-87.823 196.307-196.307 196.307h-571.09A196.247 196.247 0 0 1 30.057 812.634v-571.09A196.367 196.367 0 0 1 226.363 45.176H447.85z m-153.24 581.271a32.407 32.407 0 0 0-32.406 32.407v64.873H197.33v-64.873a32.407 32.407 0 0 0-64.873 0v194.62a32.407 32.407 0 0 0 64.873 0V788.6h64.873v64.874a32.407 32.407 0 0 0 64.874 0v-194.56a32.407 32.407 0 0 0-32.467-32.467z m162.215 0H391.95a32.407 32.407 0 0 0-32.286 29.094l-0.18 3.313v194.62c0 17.95 14.516 32.467 32.466 32.467h64.874a97.28 97.28 0 0 0 97.28-97.34v-64.874c0-53.73-43.55-97.28-97.28-97.28z m0 64.873c17.89 0 32.406 14.517 32.406 32.407V788.6a32.407 32.407 0 0 1-32.406 32.467h-32.467V691.32zM812.994 0a22.89 22.89 0 0 1 21.264 14.456l11.384 27.709c19.276 46.742 55.658 84.269 101.798 104.93l32.407 14.456a23.853 23.853 0 0 1 0 43.37l-34.334 15.3A197.15 197.15 0 0 0 845.22 322.017l-11.204 25.359a22.89 22.89 0 0 1-42.165 0l-11.083-25.48A196.97 196.97 0 0 0 680.477 220.22l-34.274-15.3a23.974 23.974 0 0 1 0-43.369l32.347-14.456a197.15 197.15 0 0 0 101.677-104.99l11.445-27.649A22.89 22.89 0 0 1 812.995 0z" fill="#FFFFFF99" />
+                    </svg>
+                  )}
+                />
+                <EditTool
+                  label="去字幕"
+                  icon={(
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                      <path d="M2 11V13C2 13.5523 2.44772 14 3 14H5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M11 14H13C13.5523 14 14 13.5523 14 13V11" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M14 5V3C14 2.44772 13.5523 2 13 2H11" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M2 5V3C2 2.44772 2.44772 2 3 2H5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M8 5V11.6667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M5.66663 5H7.99996H10.3333" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                />
+                <EditTool
+                  label="选帧"
+                  icon={(
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                      <path opacity="0.6" d="M8.38096 12.3819L2.51207 13.6294L0.640869 4.82605L3.57531 4.20231L4.30892 4.04638" stroke="currentColor" strokeLinejoin="round" />
+                      <path opacity="0.8" d="M7.5 12H4.5V3H10.5V3.79344" stroke="currentColor" strokeLinejoin="round" />
+                      <rect x="9.78113" y="3.27368" width="6" height="9" transform="rotate(18 9.78113 3.27368)" stroke="currentColor" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                />
+                <EditTool
+                  label="剪辑"
+                  icon={(
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                      <path d="M14.3333 5.66667V3H11.3333M14.3333 5.66667V10.3333M14.3333 5.66667H11.3333M11.3333 3V5.66667M11.3333 3H9.99996M14.3333 10.3333V13H11.3333M14.3333 10.3333H11.3333M11.3333 5.66667H9.99996M1.66663 5.66667V3H4.66663M1.66663 5.66667V10.3333M1.66663 5.66667H4.66663M4.66663 3V5.66667M4.66663 3H5.99996M1.66663 10.3333V13H4.66663M1.66663 10.3333H4.66663M4.66663 5.66667H5.99996M4.66663 13V10.3333M4.66663 13H5.99996M4.66663 10.3333H5.99996M11.3333 13V10.3333M11.3333 13H9.99996M11.3333 10.3333H9.99996" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M8 2.33337V3.66671" stroke="currentColor" strokeLinecap="round" />
+                      <path d="M8 5.66663V6.99996" stroke="currentColor" strokeLinecap="round" />
+                      <path d="M8 9V10.3333" stroke="currentColor" strokeLinecap="round" />
+                      <path d="M8 12.3334V13.6667" stroke="currentColor" strokeLinecap="round" />
+                    </svg>
+                  )}
+                />
+              </div>
             </div>
           </div>
         </div>

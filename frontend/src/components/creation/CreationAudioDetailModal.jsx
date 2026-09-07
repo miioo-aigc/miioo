@@ -4,7 +4,7 @@
  *
  * 独立负责配音结果详情展示、音频播放、波形进度和媒体动作；页面只注入数据与回调。
  * 音色名称以后端返回的音色名称为准。
- * 收藏按钮复用配音结果卡 StarIcon，收藏状态仅影响图标，不改变文字颜色。
+ * 右侧信息区完整对齐图片详情弹窗，保留配音业务字段和高级提示词预览。
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -16,6 +16,20 @@ import { stopVoicePreview } from '../../utils/voicePreviewPlayer';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const WAVEFORM = [14, 22, 11, 18, 28, 16, 24, 10, 19, 26, 13, 21, 30, 15, 23, 12, 20, 27, 14, 22, 10, 18, 26, 16, 24, 12, 20, 29, 15, 23, 11, 19, 27, 14, 22, 10, 18, 25, 13, 21, 29, 16, 24, 12, 20, 28, 15, 23];
+const DETAIL_PANEL_DIVIDER = <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px', flexShrink: 0 }} />;
+
+function PanelAction({ icon, label, onClick, active = false }) {
+  const [hovered, setHovered] = useState(false);
+  return <button type="button" aria-label={label} aria-pressed={active} onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', minWidth: '24px', height: '24px', padding: 0, border: 0, borderRadius: '7px', backgroundColor: hovered ? '#FFFFFF14' : '#161616', cursor: 'pointer', transition: 'background-color 0.12s' }}>{icon}</button>;
+}
+
+function DownloadIcon() {
+  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><path d="M13.506 11.439C14.601 10.668 15.071 9.277 14.667 8C14.262 6.723 13.024 6.024 11.684 6.025H10.911C10.405 4.054 8.736 2.599 6.715 2.366C4.693 2.133 2.737 3.171 1.796 4.975C0.856 6.78 1.125 8.977 2.474 10.501" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /><path d="M8.003 13.667L8 7.667" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /><path d="M10.121 11.545L8 13.667L5.879 11.545" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function DeleteIcon() {
+  return <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.625 2.916V12.834H11.375V2.916H2.625Z" stroke="#FFFFFFCC" strokeLinejoin="round" /><path d="M5.834 5.834V9.625M8.166 5.834V9.625M1.166 2.916H12.834M4.666 2.916L5.626 1.166H8.393L9.334 2.916H4.666Z" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
 
 function formatTime(value) {
   if (!Number.isFinite(value) || value < 0) return '0:00';
@@ -31,14 +45,16 @@ function formatDuration(value) {
 function formatCreatedAt(value) {
   if (!value) return '暂无';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 function ValueRow({ label, value }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', fontFamily: FONT, fontSize: '12px', lineHeight: '16px' }}>
-      <span style={{ color: '#FFFFFF99', flexShrink: 0 }}>{label}</span>
-      <span style={{ color: '#FFFFFFCC', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value || '暂无'}</span>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>{label}</span>
+      <span style={{ minWidth: 0, fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value || '暂无'}</span>
     </div>
   );
 }
@@ -206,11 +222,24 @@ export default function CreationAudioDetailModal({
               </div>
               <audio ref={audioRef} src={audioUrl} preload="metadata" />
             </div>
-            <div style={{ width: '280px', display: 'flex', flexDirection: 'column', minHeight: 0, flexShrink: 0, background: '#161616', borderLeft: '1px solid #FFFFFF0F', color: '#FFFFFF' }}>
-              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px' }}>
-                <section style={{ paddingBottom: '16px', borderBottom: '1px solid #FFFFFF0A' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '10px' }}>
-                    <div style={{ color: '#FFFFFF99', fontFamily: FONT, fontSize: '11px', lineHeight: '14px' }}>提示词</div>
+            <div style={{ width: '340px', display: 'flex', flexDirection: 'column', minHeight: 0, flexShrink: 0, background: '#161616', borderLeft: '1px solid #FFFFFF0F', color: '#FFFFFF', position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, padding: '12px 20px', borderBottom: '1px solid #FFFFFF0A', backgroundColor: '#161616' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <PanelAction
+                    label="收藏"
+                    active={favorited}
+                    onClick={() => { setStarAnim(true); setTimeout(() => setStarAnim(false), 300); onFavorite?.(); }}
+                    icon={<div style={{ transform: starAnim ? 'scale(1.25)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', display: 'flex' }}><StarIcon filled={favorited} strokeColor="rgba(255,255,255,0.8)" /></div>}
+                  />
+                  <PanelAction label="下载" onClick={onDownload} icon={<DownloadIcon />} />
+                </div>
+                <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon />} />
+              </div>
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                {DETAIL_PANEL_DIVIDER}
+                <section style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 20px', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>提示词</div>
                     <button
                       type="button"
                       aria-label="复制提示词"
@@ -229,8 +258,8 @@ export default function CreationAudioDetailModal({
                         cursor: prompt ? 'pointer' : 'default',
                         display: 'flex',
                         alignItems: 'center',
-                        color: !prompt ? '#FFFFFF1F' : copyPromptState === 'pressed' ? '#2DC3E1' : copyPromptState === 'hover' ? '#FFFFFF99' : '#FFFFFF66',
-                        transition: 'color 120ms',
+                        color: !prompt ? '#FFFFFF1F' : copyPromptState === 'pressed' ? '#FFFFFF99' : copyPromptState === 'hover' ? '#FFFFFFCC' : '#FFFFFF66',
+                        transition: 'color 120ms ease',
                         flexShrink: 0,
                       }}
                     >
@@ -240,26 +269,30 @@ export default function CreationAudioDetailModal({
                       </svg>
                     </button>
                   </div>
-                  <CreationDubbingPromptPreview prompt={prompt} advancedEnabled={advancedEnabled} />
+                  <CreationDubbingPromptPreview prompt={prompt} advancedEnabled={advancedEnabled} style={{ lineHeight: '20px', letterSpacing: '0.01em' }} />
                 </section>
-                <section style={{ padding: '16px 0', borderBottom: '1px solid #FFFFFF0A' }}><div style={{ color: '#FFFFFF99', fontFamily: FONT, fontSize: '11px', marginBottom: '12px' }}>音色参考</div><div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}><ValueRow label="音色名称" value={voiceDisplayName} /><ValueRow label="音色来源" value={voiceOriginDisplayName} /></div></section>
-                <section style={{ padding: '16px 0', borderBottom: '1px solid #FFFFFF0A' }}><div style={{ color: '#FFFFFF99', fontFamily: FONT, fontSize: '11px', marginBottom: '12px' }}>生成参数</div><div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}><ValueRow label="模型" value={model} /><ValueRow label="语速" value={speed == null ? '' : `${Number(speed).toFixed(2)}x`} /><ValueRow label="声调" value={pitch == null ? '' : String(Math.round(pitch))} /><ValueRow label="音量" value={volume == null ? '' : Number(volume).toFixed(2)} /><ValueRow label="高级模式" value={advancedEnabled ? '已开启' : '未开启'} /><ValueRow label="音频时长" value={formatDuration(audioDuration)} /></div></section>
-                <section style={{ paddingTop: '16px' }}><div style={{ color: '#FFFFFF99', fontFamily: FONT, fontSize: '11px', marginBottom: '8px' }}>创作时间</div><div style={{ color: '#FFFFFF66', fontFamily: FONT, fontSize: '12px' }}>{formatCreatedAt(createdAt)}</div></section>
-              </div>
-              <div style={{ display: 'flex', gap: '8px', padding: '16px 20px 20px', borderTop: '1px solid #FFFFFF0A', flexShrink: 0 }}>
-                <button
-                  type="button"
-                  aria-label={favorited ? '取消收藏' : '收藏'}
-                  onClick={() => { setStarAnim(true); setTimeout(() => setStarAnim(false), 300); onFavorite?.(); }}
-                  style={{ flex: 1, height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', borderRadius: '8px', border: '1px solid #FFFFFF1F', background: '#FFFFFF14', color: '#FFFFFF99', cursor: 'pointer', lineHeight: '16px' }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '16px', transform: starAnim ? 'scale(1.08)' : 'none', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)' }}>
-                    <StarIcon filled={favorited} strokeColor="rgba(255,255,255,0.6)" />
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', height: '16px', lineHeight: '16px' }}>收藏</span>
-                </button>
-                <button type="button" onClick={onDownload} style={{ flex: 1, height: '40px', borderRadius: '8px', border: '1px solid #FFFFFF1F', background: '#FFFFFF14', color: '#FFFFFF99', cursor: 'pointer' }}>↓ 下载</button>
-                <button type="button" onClick={() => setConfirmDelete(true)} style={{ flex: 1, height: '40px', borderRadius: '8px', border: '1px solid #FFFFFF1F', background: '#FFFFFF14', color: '#FFFFFF99', cursor: 'pointer' }}>删除</button>
+                {DETAIL_PANEL_DIVIDER}
+                <section style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px 20px', flexShrink: 0 }}>
+                  <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>音色参考</div>
+                  <ValueRow label="音色名称" value={voiceDisplayName} />
+                  <ValueRow label="音色来源" value={voiceOriginDisplayName} />
+                </section>
+                {DETAIL_PANEL_DIVIDER}
+                <section style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px 20px', flexShrink: 0 }}>
+                  <div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>生成参数</div>
+                  <ValueRow label="模型" value={model} />
+                  <ValueRow label="语速" value={speed == null ? '' : `${Number(speed).toFixed(2)}x`} />
+                  <ValueRow label="声调" value={pitch == null ? '' : String(Math.round(pitch))} />
+                  <ValueRow label="音量" value={volume == null ? '' : Number(volume).toFixed(2)} />
+                  <ValueRow label="高级模式" value={advancedEnabled ? '已开启' : '未开启'} />
+                  <ValueRow label="音频时长" value={formatDuration(audioDuration)} />
+                </section>
+                {DETAIL_PANEL_DIVIDER}
+                <section style={{ display: 'flex', flexDirection: 'row', gap: '4px', padding: '16px 20px', justifyContent: 'flex-start', alignItems: 'center', flexShrink: 0 }}>
+                  <span style={{ flex: '1 1 0px', fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>创作时间</span>
+                  <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{formatCreatedAt(createdAt)}</span>
+                </section>
+                {DETAIL_PANEL_DIVIDER}
               </div>
             </div>
           </div>

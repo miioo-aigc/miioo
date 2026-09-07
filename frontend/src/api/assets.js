@@ -497,6 +497,9 @@ function normalizeAsset(item) {
       ? null
       : (normalizeImageUrl(item.preview_url || item.previewUrl || item.file_url) || null),
     downloadUrl: item.download_url || item.downloadUrl || item.file_url || null,
+    audioUrl: item.asset_type === 'audio'
+      ? (normalizeImageUrl(item.audio_url || item.audioUrl || item.file_url || meta.audio_url || meta.audioUrl) || null)
+      : null,
     posterUrl: isVideo ? (normalizeImageUrl(item.poster_url || item.posterUrl) || null) : null,
     previewVideoUrl: isVideo
       ? (normalizeImageUrl(item.preview_video_url || item.previewVideoUrl || item.file_url) || null)
@@ -505,8 +508,16 @@ function normalizeAsset(item) {
     largeUrl: !isVideo ? (normalizeImageUrl(item.large_url || item.largeUrl) || null) : null,
     starred: item.is_starred ?? false,
     description: item.description ?? '',
-    prompt: item.prompt ?? '',
+    prompt: item.prompt ?? item.input_prompt ?? item.inputPrompt ?? meta.prompt ?? meta.text ?? '',
     input_prompt: item.input_prompt ?? '',
+    advancedEnabled: item.is_advanced_mode
+      ?? item.advanced_mode_enabled
+      ?? item.advanced_enabled
+      ?? item.advancedEnabled
+      ?? meta.advanced_mode_enabled
+      ?? meta.advanced_enabled
+      ?? meta.advancedEnabled
+      ?? false,
     model: item.model ?? '',
     ratio: item.ratio || meta.ratio || '',
     resolution: item.resolution ?? meta.resolution ?? item.size ?? '',
@@ -519,11 +530,11 @@ function normalizeAsset(item) {
     source_type: item.source_type ?? item.sourceType ?? null,
     metadata_json: metadata ?? null,
     // 分镜专用字段
-    shot_number: meta.shot_number ?? null,
+    shot_number: item.shot_number ?? item.shotNumber ?? meta.shot_number ?? meta.shotNumber ?? null,
     storyboard_id: meta.storyboard_id ?? null,
-    episode_number: meta.episode_number ?? null,
+    episode_number: item.episode_number ?? item.episodeNumber ?? meta.episode_number ?? meta.episodeNumber ?? null,
     // 分集展示字段（用于区分不同集的同编号分镜，避免跨集合并）
-    episodeLabel: item.episode_label ?? item.episodeLabel ?? meta.episode_label ?? null,
+    episodeLabel: item.episode_label ?? item.episodeLabel ?? meta.episode_label ?? meta.episodeLabel ?? null,
     duration: meta.duration ?? item.duration ?? null,
     refImages: (() => {
       // API 返回 reference_image_urls (string[])，兼容旧字段 ref_images (object[])

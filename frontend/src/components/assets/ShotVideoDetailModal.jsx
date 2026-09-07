@@ -453,13 +453,13 @@ function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shot
                     <>
                       <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '16px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', gap: '10px' }}>
                         <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>参考图</span>
-                        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px', width: '100%', minWidth: 0 }}>
                           {refImages.map((ref, idx) => (
                             <div
                               key={idx}
                               style={{
                                 borderRadius: '4px', overflow: 'hidden',
-                                width: '80px', height: '56px', flexShrink: 0,
+                                width: '100%', aspectRatio: '1 / 1',
                                 backgroundColor: '#FFFFFF14',
                                 border: '1px solid #FFFFFF33',
                                 backgroundImage: `url(${ref.url || ref})`,
@@ -583,7 +583,7 @@ function ShotVideoDetailModal({ onClose, onDownload, onDelete, onShowToast, shot
             </div>
 
             {/* Sticky buttons */}
-            <div style={{ flexShrink: 0, paddingTop: '12px', paddingBottom: '20px', paddingLeft: '20px', paddingRight: '20px', borderTop: '1px solid #FFFFFF0A', display: 'flex', gap: '8px' }}>
+            <div style={{ flexShrink: 0, paddingTop: '16px', paddingBottom: '20px', paddingLeft: '20px', paddingRight: '20px', borderTop: '1px solid #FFFFFF0A', display: 'flex', gap: '8px' }}>
               {onDelete && (
                 <button
                   type="button"

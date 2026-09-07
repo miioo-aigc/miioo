@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import Toggle from '../Toggle';
+import StoryboardMediaDetailPanel from './StoryboardMediaDetailPanel';
 import { useModalSize } from '../../utils/useModalSize';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { formatReferenceMode } from '../../utils/referenceMode';
@@ -470,68 +470,11 @@ function isLocalUploadMedia(media, metadata) {
   return origin === 'local-upload';
 }
 
-function ReferenceImageSection({ title, items = [] }) {
-  if (!items.length) return null;
-  return (
-    <>
-      <div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} />
-      <div style={{ padding: '16px 20px' }}>
-        <span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>{title}</span>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-          {items.map((item, index) => (
-            <div key={`${item.url}-${index}`} style={{ width: 'calc((100% - 16px) / 3)', aspectRatio: '1', flexShrink: 0, boxSizing: 'border-box', overflow: 'hidden', borderRadius: '4px', border: '1px solid #FFFFFF33', background: '#FFFFFF14' }}>
-              <img src={item.url} alt={item.name || title} style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} />
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
-
-function ReferenceMediaSection({ title, items = [], kind = 'video' }) {
-  if (!items.length) return null;
-  return (
-    <>
-      <div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} />
-      <div style={{ padding: '16px 20px' }}>
-        <span style={{ display: 'block', marginBottom: '10px', color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>{title}</span>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {items.map((item, index) => (
-            kind === 'video'
-              ? <video key={`${item.url}-${index}`} src={item.url} controls preload="metadata" style={{ width: '100%', maxHeight: '120px', borderRadius: '4px', background: '#0D0D0D', display: 'block' }} />
-              : <audio key={`${item.url}-${index}`} src={item.url} controls preload="none" style={{ width: '100%', height: '36px', display: 'block' }} />
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
-
 function CloseButton({ onClick }) {
   return (
     <button type="button" aria-label="关闭" onClick={onClick} style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, borderRadius: '6px', padding: 0, background: 'transparent', cursor: 'pointer' }}>
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path d="M12 4L4 12M4 4L12 12" stroke="#FFFFFF99" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    </button>
-  );
-}
-
-function CopyPromptButton({ prompt }) {
-  return (
-    <button
-      type="button"
-      aria-label="复制提示词"
-      title="复制提示词"
-      onClick={() => navigator.clipboard.writeText(prompt)}
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', flexShrink: 0, borderRadius: '4px', border: 'none', padding: 0, background: 'none', color: '#FFFFFF99', cursor: 'pointer', transition: 'color 120ms ease' }}
-      onMouseEnter={(event) => { event.currentTarget.style.color = '#FFFFFF'; }}
-      onMouseLeave={(event) => { event.currentTarget.style.color = '#FFFFFF99'; }}
-    >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
-        <path d="M4.33337 4.14383V2.60413C4.33337 2.08636 4.75311 1.66663 5.27087 1.66663H13.3959C13.9136 1.66663 14.3334 2.08636 14.3334 2.60413V10.7291C14.3334 11.2469 13.9136 11.6666 13.3959 11.6666H11.8388" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M10.7291 4.33337H2.60413C2.08636 4.33337 1.66663 4.75311 1.66663 5.27087V13.3959C1.66663 13.9136 2.08636 14.3334 2.60413 14.3334H10.7291C11.2469 14.3334 11.6666 13.9136 11.6666 13.3959V5.27087C11.6666 4.75311 11.2469 4.33337 10.7291 4.33337Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </button>
   );
@@ -597,7 +540,7 @@ function CandidateThumbnail({ media, active, onClick }) {
   );
 }
 
-export default function StoryboardMediaDetailModal({ shot, candidates = [], media, onClose, onFinalizeChange, onDownload, readOnlyFinalize = false }) {
+export default function StoryboardMediaDetailModal({ shot, candidates = [], media, onClose, onDownload, onDelete, onFavorite }) {
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const items = useMemo(() => {
     const source = candidates.length ? candidates : media ? [media] : [];
@@ -608,11 +551,9 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
   const activeMedia = items.find((item) => (item.id || item.url) === activeKey) || items[0] || media;
   const video = isVideoMedia(activeMedia);
   const activePoster = mediaPreviewUrl(activeMedia);
-  const finalized = !!activeMedia?.is_finalized;
 
   if (!activeMedia) return null;
 
-  const label = `分镜${String(shot?.number ?? '').padStart(2, '0')}`;
   const metadata = parseMetadata(activeMedia);
   const detailParameterContainers = [
     activeMedia?.params, activeMedia?.parameters, activeMedia?.generation, activeMedia?.options,
@@ -734,78 +675,19 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
               {items.map((item) => <CandidateThumbnail key={item.id || item.url} media={item} active={(item.id || item.url) === (activeMedia.id || activeMedia.url)} onClick={() => setActiveKey(item.id || item.url)} />)}
             </div>
           </div>
-          <aside style={{ width: '280px', flex: '0 0 280px', minHeight: 0, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #FFFFFF0F', background: '#161616' }}>
-            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px' }}>
-                <span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>是否定稿</span>
-                {readOnlyFinalize ? (
-                  finalized ? (
-                    <span style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      height: '18px',
-                      padding: '2px 4px',
-                      borderRadius: '2px',
-                      backgroundColor: '#4AC981',
-                      boxShadow: '#FFFFFF14 0 0 0 1px inset',
-                      color: '#0A0A0A',
-                      font: `500 12px/14px ${FONT}`,
-                    }}>
-                      定稿
-                    </span>
-                  ) : (
-                    <span style={{ color: '#FFFFFF66', font: `12px/16px ${FONT}` }}>未定稿</span>
-                  )
-                ) : (
-                  <Toggle value={finalized} onChange={(value) => onFinalizeChange?.(activeMedia, value)} />
-                )}
-              </div>
-              <div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} />
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px' }}><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>分镜编号</span><span style={{ color: '#FFFFFFCC', font: `12px/16px ${FONT}` }}>{label}</span></div>
-              <div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} />
-              <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>内容类型</span><span style={{ color: '#FFFFFFCC', font: `12px/16px ${FONT}`, textAlign: 'right' }}>{video ? '视频' : '图片'}</span></div>
-
-              {prompt && <>
-                <div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} />
-                <div style={{ display: 'flex', flexDirection: 'column', padding: '12px 20px', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                    <span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>提示词</span>
-                    <CopyPromptButton prompt={prompt} />
-                  </div>
-                  <p style={{ margin: 0, color: '#FFFFFFCC', font: `12px/20px ${FONT}`, wordBreak: 'break-word' }}>{prompt}</p>
-                </div>
-              </>}
-              {frameReferenceMode
-                ? (
-                  <>
-                    <ReferenceImageSection title="首帧图" items={referenceGroups.firstFrames} />
-                    <ReferenceImageSection title="尾帧图" items={referenceGroups.lastFrames} />
-                  </>
-                )
-                : fullReferenceMode
-                  ? (
-                    <>
-                      <ReferenceImageSection title="参考主体" items={referenceGroups.subjects} />
-                      <ReferenceImageSection title="参考图" items={referenceGroups.references} />
-                      <ReferenceMediaSection title="参考视频" items={referenceGroups.videos} kind="video" />
-                      <ReferenceMediaSection title="参考音频" items={referenceGroups.audios} kind="audio" />
-                    </>
-                  )
-                  : (
-                    <>
-                      <ReferenceImageSection title="首帧图" items={referenceGroups.firstFrames} />
-                      <ReferenceImageSection title="尾帧图" items={referenceGroups.lastFrames} />
-                      <ReferenceImageSection title="参考主体" items={referenceGroups.subjects} />
-                      <ReferenceImageSection title="参考图" items={referenceGroups.references} />
-                      <ReferenceMediaSection title="参考视频" items={referenceGroups.videos} kind="video" />
-                      <ReferenceMediaSection title="参考音频" items={referenceGroups.audios} kind="audio" />
-                    </>
-                  )}
-              {normalizedParameterEntries.length > 0 && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px 20px' }}><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}` }}>生成参数</span><div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>{normalizedParameterEntries.map((entry) => <div key={entry.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}><span style={{ color: '#FFFFFF66', font: `11px/15px ${FONT}` }}>{entry.label}</span><span style={{ color: '#FFFFFFCC', font: `12px/18px ${FONT}`, wordBreak: 'break-word', whiteSpace: entry.value.includes('\n') ? 'pre-wrap' : 'normal', textAlign: 'right' }}>{entry.value}</span></div>)}</div></div></>}
-              {activeMedia.created_at && <><div style={{ height: '1px', margin: '0 20px', background: '#FFFFFF0A' }} /><div style={{ display: 'flex', flexDirection: 'row', gap: '4px', padding: '16px 20px', justifyContent: 'flex-start', alignItems: 'center' }}><span style={{ flex: '1 1 0px', color: '#FFFFFF99', font: `12px/14px ${FONT}`, letterSpacing: '0.06em', textTransform: 'uppercase' }}>生成时间</span><span style={{ color: '#FFFFFF99', font: `12px/16px ${FONT}`, letterSpacing: '0.01em' }}>{formatDate(activeMedia.created_at)}</span></div></>}
-            </div>
-            <div style={{ flexShrink: 0, padding: '12px 20px 20px', borderTop: '1px solid #FFFFFF0A' }}><button type="button" onClick={() => onDownload?.(activeMedia)} style={{ width: '100%', height: '40px', borderRadius: '8px', border: '1px solid #FFFFFF1F', background: '#FFFFFF14', color: '#FFFFFF99', cursor: 'pointer', font: `13px/16px ${FONT}` }}>下载</button></div>
-          </aside>
+          <StoryboardMediaDetailPanel
+            key={activeMedia.id || activeMedia.url}
+            video={video}
+            media={activeMedia}
+            prompt={prompt}
+            frameReferenceMode={frameReferenceMode}
+            referenceGroups={referenceGroups}
+            parameterEntries={normalizedParameterEntries}
+            createdAt={formatDate(activeMedia.created_at || activeMedia.createdAt)}
+            onDownload={onDownload}
+            onDelete={onDelete}
+            onFavorite={onFavorite}
+          />
         </div>
       </div>
     </div>,

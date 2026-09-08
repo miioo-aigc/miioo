@@ -21,6 +21,7 @@ export default function ProjectAssetDetail({
   onDelete,
   onShowToast,
   onCreateImage,
+  onGenerateImage,
   SubjectAssetDetailModal,
   ShotDetailModal,
   ShotVideoDetailModal,
@@ -105,6 +106,7 @@ export default function ProjectAssetDetail({
 
   return (
     <ImageDetailModal
+      onGenerateImage={onGenerateImage}
       card={{
         imageUrl: asset.fileUrl || asset.url || url,
         prompt: asset.input_prompt ?? asset.prompt,

@@ -10,11 +10,14 @@ import ProjectAssetDetail from './ProjectAssetDetail';
 import SubjectAssetDetailModal from './SubjectAssetDetailModal';
 import ShotDetailModal from './ShotDetailModal';
 import ShotVideoDetailModal from './ShotVideoDetailModal';
+import { useMultiAngleResults } from '../image-edit/useMultiAngleResults';
+import CreationImageResultCard from '../creation/CreationImageResultCard';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 export function AssetCard({ name, url = null, starred = false, selected = false, batchMode = false, showStar = false, assetType = 'asset', videoObjectFit = 'cover', onDownload, onDelete, onStar, onSelect, asset = {} }) {
+  const angleResults = useMultiAngleResults(`asset:${asset.id || asset.backendId || url}`, { project_id: asset.project_id, session_id: asset.session_id });
   const [hov, setHov] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -111,6 +114,7 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
     )}
     {detailOpen && creativeDetailAsset && (asset.type === 'image' || asset.type === 'video') && (
       <AssetCardCreativeDetail
+        onGenerateImage={angleResults.generate}
         asset={creativeDetailAsset}
         url={creativeCroppedImage || url}
         starred={starred}
@@ -124,6 +128,7 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
     )}
     {detailOpen && assetType !== 'shot' && assetType !== 'shot_video' && !asset.type && showStar && (
       <ImageDetailModal
+        onGenerateImage={angleResults.generate}
        card={{
          imageUrl: croppedImage || url || detailData?.url,
           prompt: detailData?.input_prompt ?? detailData?.prompt,
@@ -158,11 +163,13 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
         refImages={detailData?.refImages}
       />
     )}
+    {angleResults.results.map((result) => <CreationImageResultCard key={result.id} {...result} onGenerateImage={angleResults.generate} onDelete={() => angleResults.remove(result.id)} />)}
     </>
   );
 }
 
 export function ProjectAssetCard({ name, desc, url, starred = false, selected, batchMode, onDownload, onDelete, onSelect, onStar, onShowToast, onOpenDetail, asset = {}, category = '' }) {
+  const angleResults = useMultiAngleResults(`project:${asset.project_id || ''}:${asset.id || url}`, { project_id: asset.project_id, session_id: asset.session_id });
   const [hov, setHov] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [localImages, setLocalImages] = useState([]);
@@ -332,6 +339,7 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
       </div>
 
       <ProjectAssetDetail
+        onGenerateImage={angleResults.generate}
         open={detailOpen}
         category={category}
         name={name}
@@ -353,6 +361,7 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
         ShotDetailModal={ShotDetailModal}
         ShotVideoDetailModal={ShotVideoDetailModal}
       />
+      {angleResults.results.map((result) => <CreationImageResultCard key={result.id} {...result} onGenerateImage={angleResults.generate} onDelete={() => angleResults.remove(result.id)} />)}
     </>
   );
 }

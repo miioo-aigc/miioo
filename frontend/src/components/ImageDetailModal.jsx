@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { createContext, useContext, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ConfirmDialog from './ConfirmDialog';
 import AsyncImagePreview from './AsyncImagePreview';
@@ -6,11 +6,13 @@ import { apiGetLiveMaterialPreviewByRef } from '../api/liveMaterials';
 import { useModalSize } from '../utils/useModalSize';
 import { showGlobalToast } from '../stores/toastStore';
 import ImageCropModal from './ImageCropModal';
+import MultiAngleModal from './image-edit/MultiAngleModal';
 import CopyPromptButton from './ui/CopyPromptButton';
 import { FavoriteIcon, DeleteIcon, CropIcon } from './ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
+const MultiAngleAction = createContext(null);
 
 // eslint-disable-next-line no-unused-vars
 function LegacyCopyPromptButton({ text, onCopy }) {
@@ -26,6 +28,8 @@ function PanelAction({ icon, label, onClick, active = false }) {
 }
 
 function EditTool({ label, icon, onClick }) {
+  const openMultiAngle = useContext(MultiAngleAction);
+  if (label === '多机位') onClick = openMultiAngle;
   const [hovered, setHovered] = useState(false);
   const renderedIcon = label === '裁剪' ? <CropIcon size={16} /> : icon;
   return <button type="button" aria-label={label} title={label} onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: 'flex', flex: '1 1 0%', minWidth: 0, height: '64px', padding: '12px 8px', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', border: 0, borderRadius: '6px', backgroundColor: hovered ? '#FFFFFF14' : '#FFFFFF0D', color: '#FFFFFFCC', cursor: 'pointer', transition: 'background-color 0.12s' }}>{renderedIcon}<span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{label}</span></button>;
@@ -62,12 +66,13 @@ function DownloadIcon() {
   return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><path d="M13.506 11.439C14.601 10.668 15.071 9.277 14.667 8C14.262 6.723 13.024 6.024 11.684 6.025H10.911C10.405 4.054 8.736 2.599 6.715 2.366C4.693 2.133 2.737 3.171 1.796 4.975C0.856 6.78 1.125 8.977 2.474 10.501" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /><path d="M8.003 13.667L8 7.667" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /><path d="M10.121 11.545L8 13.667L5.879 11.545" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-export default function ImageDetailModal({ card, imageId, onBasicEdit, onClose, onDelete, onDownload, favorited = false, onToggleFavorite, onCreateImage }) {
+export default function ImageDetailModal({ card, imageId, onBasicEdit, onClose, onDelete, onDownload, favorited = false, onToggleFavorite, onCreateImage, onGenerateImage }) {
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const [starAnim, setStarAnim] = useState(false);
   const [closeHovered, setCloseHovered] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
+  const [multiAngleOpen, setMultiAngleOpen] = useState(false);
 
   const handleStarClick = () => {
     setStarAnim(true);
@@ -76,11 +81,13 @@ export default function ImageDetailModal({ card, imageId, onBasicEdit, onClose, 
   };
   const handleCopyPrompt = () => showGlobalToast('您已复制提示词', 'success');
 
+  if (multiAngleOpen) return <MultiAngleModal card={card} onGenerate={onGenerateImage} onClose={() => { setMultiAngleOpen(false); onClose?.(); }} />;
+
   if (cropOpen) {
     return <ImageCropModal imageUrl={card.imageUrl} imageId={imageId} onBasicEdit={onBasicEdit} onClose={() => { setCropOpen(false); onClose?.(); }} onSave={async (image) => { onCreateImage?.(image); }} />;
   }
 
-  return <>
+  return <MultiAngleAction.Provider value={() => setMultiAngleOpen(true)}>
     {createPortal(<div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }} onClick={onClose}>
       <div style={{ width: `${modalW}px`, height: `${modalH}px`, transform: `scale(${modalScale})`, transformOrigin: 'center center', borderRadius: '16px', border: '1px solid #FFFFFF14', backgroundColor: '#161616', boxShadow: '#00000099 -10px 24px 64px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={(event) => event.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', backgroundColor: '#161616', flexShrink: 0 }}><span style={{ fontFamily: FONT_MEDIUM, fontSize: '16px', fontWeight: 500, lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFF' }}>查看详情</span><div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '6px', background: closeHovered ? '#FFFFFF14' : 'transparent', transition: 'background 120ms' }} onClick={onClose} onMouseEnter={() => setCloseHovered(true)} onMouseLeave={() => setCloseHovered(false)}><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12 4L4 12M4 4L12 12" stroke={closeHovered ? '#FFFFFF' : '#FFFFFF99'} strokeWidth="1.5" strokeLinecap="round" /></svg></div></div>
@@ -102,5 +109,5 @@ export default function ImageDetailModal({ card, imageId, onBasicEdit, onClose, 
       </div>
     </div>, document.body)}
     {confirmDelete && <ConfirmDialog title="确认删除" description="删除后无法恢复，确定要删除这张图片吗？" confirmText="删除" onConfirm={() => { setConfirmDelete(false); onDelete?.(); }} onCancel={() => setConfirmDelete(false)} zIndex={1100} />}
-  </>;
+  </MultiAngleAction.Provider>;
 }

@@ -13,6 +13,7 @@
  *   完成卡写入图片、视频和配音记录 ID，供页面调用正式下载接口。
  *   视频结果同时保留后端返回的封面地址，详情弹窗使用 poster 展示。
  *   2026-09-08 新生成图片独立透传原图地址，避免参考图使用下载入口。
+ *   2026-09-08 多机位通过 onSubmitted/onSubmissionError 区分提交与生成终态。
  */
 
 import { useCallback, useRef } from 'react';
@@ -272,7 +273,7 @@ export function useCreationGeneration({
 
   const generateCreation = useCallback(async (params) => {
     const controller = new AbortController();
-    const currentTab = activeTab;
+    const currentTab = getCreationTab(params.genType || activeTab);
     const genType = params.genType || 'image';
     const request = {
       controller,
@@ -347,6 +348,7 @@ export function useCreationGeneration({
             tab: currentTab,
             params,
           }));
+          params.onSubmitted?.({ taskId });
         },
       });
       if (request.cancelled || controller.signal.aborted) throw createAbortError();
@@ -415,6 +417,7 @@ export function useCreationGeneration({
       if (cancelled) {
         params.onCancel?.();
       } else {
+        params.onSubmissionError?.(error);
         showToast('error', error?.message || '生成失败，请稍后重试');
         params.onFail?.(params.prompt);
       }

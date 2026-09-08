@@ -33,6 +33,7 @@
  *   2026-08-18  配音高级模式下输入框保持下边缘并向内容区上方和两侧展开
  *   2026-08-26  视频结果卡和详情弹窗透传视频封面地址
  *   2026-09-08  用作参考图提交原图；缺少可用原图时提示并阻止追加
+ *   2026-09-08  多机位复用 onGenerate 创建独立任务，收到任务编号后关闭编辑弹窗
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -313,6 +314,9 @@ export default function CreationResultState({
               <CreationImageResultCard
                 key={key}
                 {...cardProps}
+                onGenerateImage={(params) => new Promise((resolve, reject) => {
+                  onGenerate({ ...params, onSubmitted: resolve, onSubmissionError: reject, onCancel: () => reject(new Error('创作请求已取消')) });
+                })}
                 batchMode={batchMode}
                 isSelected={batchMode && selected?.has(key)}
                 onToggleSelect={() => onToggleSelect?.(key)}

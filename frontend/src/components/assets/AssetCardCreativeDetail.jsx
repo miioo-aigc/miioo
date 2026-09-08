@@ -5,7 +5,7 @@ import CreationVideoDetailModal from '../CreationVideoDetailModal';
  * 创作资产卡片的详情弹窗组合。
  * 只接收卡片数据和业务回调，不负责请求、下载命名、收藏状态存储或删除 API。
  */
-export default function AssetCardCreativeDetail({ asset = {}, url, starred = false, onClose, onDownload, onDelete, onFavorite, onCreateImage, onBasicEdit }) {
+export default function AssetCardCreativeDetail({ asset = {}, url, starred = false, onClose, onDownload, onDelete, onFavorite, onCreateImage, onBasicEdit, onGenerateImage }) {
   if (asset.type === 'video') {
     return (
       <CreationVideoDetailModal
@@ -34,10 +34,12 @@ export default function AssetCardCreativeDetail({ asset = {}, url, starred = fal
   if (asset.type === 'image') {
     return (
       <ImageDetailModal
+        onGenerateImage={onGenerateImage}
         imageId={asset.backendId || asset.id}
         onBasicEdit={onBasicEdit}
         card={{
           imageUrl: asset.imageUrl || url,
+          originalUrl: asset.originalUrl || asset.original_url,
           prompt: asset.input_prompt ?? asset.prompt,
           model: asset.model,
           ratio: asset.ratio,

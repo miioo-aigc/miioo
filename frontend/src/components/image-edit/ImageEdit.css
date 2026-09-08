@@ -1,0 +1,34 @@
+.image-edit-overlay { position:fixed; inset:0; z-index:1100; display:flex; align-items:center; justify-content:center; background:#0009; backdrop-filter:blur(12px); }
+.image-edit-shell { flex-shrink:0; display:flex; flex-direction:column; overflow:hidden; border:1px solid #ffffff14; border-radius:16px; background:#161616; color:#fff; box-shadow:-10px 24px 64px #0009; letter-spacing:0; }
+.image-edit-header { height:60px; padding:20px 24px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; border-bottom:1px solid #ffffff14; font-size:16px; line-height:20px; }
+.image-edit-header button,.angle-arrow { display:flex; align-items:center; justify-content:center; border:0; padding:0; color:#ffffffcc; background:transparent; cursor:pointer; }
+.image-edit-header button { width:24px; height:24px; }
+.image-edit-footer { height:72px; padding:16px 24px; display:flex; align-items:center; justify-content:flex-end; gap:12px; flex-shrink:0; border-top:1px solid #ffffff0a; }
+.image-edit-footer .image-edit-reset { height:40px; padding:0 12px; gap:4px; }
+.image-edit-footer .image-edit-reset .image-edit-reset-content { color:#ffffffcc; font-size:13px; line-height:16px; font-weight:400; gap:4px; }
+.image-edit-footer .image-edit-reset:hover:not(:disabled) .image-edit-reset-content { color:#ffffff; }
+.multi-angle-body { display:flex; flex:1; min-height:0; overflow:auto; }
+.angle-stage { position:relative; flex:1; min-width:0; min-height:300px; background:var(--color-surface-toolbar); overflow:hidden; }
+.angle-canvas { position:absolute; inset:0; touch-action:none; cursor:grab; }
+.angle-canvas:active { cursor:grabbing; }
+.angle-canvas canvas { width:100%; height:100%; display:block; }
+.angle-source { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:23%; height:32%; object-fit:contain; pointer-events:none; transition:opacity 120ms; }
+.angle-arrow { position:absolute; width:32px; height:32px; border-radius:6px; z-index:3; }
+.angle-arrow:hover,.image-edit-header button:hover { background:#ffffff14; }
+.angle-arrow:disabled { opacity:.25; cursor:default; }
+.angle-panel { width:244px; flex-shrink:0; padding:16px 20px; display:flex; flex-direction:column; gap:24px; background:#161616; border-left:1px solid #ffffff14; }
+.angle-panel fieldset { border:0; margin:0; padding:0; min-width:0; }
+.angle-panel legend,.angle-slider label { font-size:14px; line-height:16px; color:#ffffffcc; margin-bottom:12px; }
+.angle-presets { display:grid; grid-template-columns:repeat(3,60px); gap:12px; }
+.angle-preset { width:60px; height:60px; padding:0; border:0; border-radius:6px; background:#ffffff0d; color:#ffffffcc; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; font-size:12px; line-height:12px; cursor:pointer; }
+.angle-preset[aria-pressed=true],.angle-preset:hover { background:#ffffff1a; color:#fff; }
+.angle-preset-icon { position:relative; width:20px; height:20px; border:1.5px solid currentColor; border-radius:3px; }
+.angle-preset-icon i { position:absolute; width:4px; height:4px; border-radius:2px; background:var(--color-brand-main,#2dc3e1); }
+.angle-slider { display:flex; flex-direction:column; }
+.angle-slider-row { display:flex; align-items:center; gap:4px; height:20px; }
+.angle-slider output { width:48px; flex-shrink:0; text-align:right; font-size:14px; font-variant-numeric:tabular-nums; }
+.angle-slider input { appearance:none; width:100%; min-width:0; height:3px; border-radius:2px; cursor:pointer; margin:0; }
+.angle-slider input::-webkit-slider-thumb { appearance:none; width:14px; height:14px; border:2px solid #2dc3e1; border-radius:50%; background:#fff; box-shadow:0 2px 6px #0006; }
+.angle-slider input::-moz-range-thumb { width:10px; height:10px; border:2px solid #2dc3e1; border-radius:50%; background:#fff; }
+.angle-panel:disabled { opacity:.6; }
+.image-edit-shell button:focus-visible,.image-edit-shell input:focus-visible { outline:2px solid #2dc3e1; outline-offset:3px; }

@@ -19,6 +19,7 @@
  *   2026-08-18  详情参考图改用固定加载槽，加载或失败均不影响字段显示
  *   2026-08-25  创作历史占位卡复用 LoadingAnimation，宽度 88px、高度按比例自适应
  *   2026-09-04  图片详情统一复用共享 ImageDetailModal
+ *   2026-09-08  显式透传多机位创作回调，结果仍由来源列表管理
  */
 
 import { useState } from 'react';
@@ -30,7 +31,7 @@ import { DeleteIcon, FavoriteIcon } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
-export default function CreationImageResultCard({ status, imageUrl, originalUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt, onReEdit, onUseAsRef, onDownload, onDelete, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite }) {
+export default function CreationImageResultCard({ status, imageUrl, originalUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt, onReEdit, onUseAsRef, onDownload, onDelete, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite, onGenerateImage }) {
   const [hovered, setHovered] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
@@ -63,7 +64,7 @@ export default function CreationImageResultCard({ status, imageUrl, originalUrl,
       </div>
 
       {confirmDelete && <ConfirmDialog title="确认删除" description="删除后无法恢复，确定要删除这张图片吗？" confirmText="删除" onConfirm={() => { setConfirmDelete(false); onDelete?.(); }} onCancel={() => setConfirmDelete(false)} zIndex={1100} />}
-      {detailOpen && <ImageDetailModal card={{ imageUrl, originalUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt }} onClose={() => setDetailOpen(false)} onDelete={onDelete} onDownload={onDownload} favorited={favorited} onToggleFavorite={() => onToggleFavorite?.()} />}
+      {detailOpen && <ImageDetailModal card={{ imageUrl, originalUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt }} onGenerateImage={onGenerateImage} onClose={() => setDetailOpen(false)} onDelete={onDelete} onDownload={onDownload} favorited={favorited} onToggleFavorite={() => onToggleFavorite?.()} />}
     </>
   );
 }

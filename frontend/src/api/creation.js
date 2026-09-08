@@ -144,7 +144,7 @@ async function fetchCreationPollData(pollUrl, { signal, retryState }) {
 }
 
 function getImageUrls(image) {
-  if (typeof image === 'string') return { previewUrl: image, downloadUrl: image };
+  if (typeof image === 'string') return { previewUrl: image, originalUrl: image, downloadUrl: image };
   const previewUrl = image?.preview_url
     || image?.previewUrl
     || image?.reference_frame_url
@@ -159,7 +159,8 @@ function getImageUrls(image) {
     || image?.original_url
     || image?.originalUrl
     || previewUrl;
-  return { previewUrl, downloadUrl };
+  const originalUrl = image?.original_url || image?.originalUrl || image?.file_url || image?.fileUrl || '';
+  return { previewUrl, originalUrl, downloadUrl };
 }
 
 function getBasicEditImageResult(pollData) {
@@ -196,8 +197,8 @@ function normalizeBasicEditImage(image) {
     ...image,
     preview_url: image.preview_url || urls.previewUrl || null,
     previewUrl: image.previewUrl || urls.previewUrl || null,
-    original_url: image.original_url || urls.downloadUrl || null,
-    originalUrl: image.originalUrl || urls.downloadUrl || null,
+    original_url: urls.originalUrl || null,
+    originalUrl: urls.originalUrl || null,
     download_url: image.download_url || urls.downloadUrl || null,
     downloadUrl: image.downloadUrl || urls.downloadUrl || null,
   };
@@ -313,6 +314,7 @@ export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = 
         return {
           images: imageUrls.map(({ previewUrl }) => previewUrl),
           imageDownloadUrls: imageUrls.map(({ downloadUrl }) => downloadUrl),
+          imageOriginalUrls: imageUrls.map(({ originalUrl }) => originalUrl),
           cardIds: imgs.map((img) => img.id),
           referenceImages: pollData.reference_images || pollData.referenceImages || [],
         };
@@ -1390,6 +1392,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
             return {
               images: imageUrls.map(({ previewUrl }) => previewUrl),
               imageDownloadUrls: imageUrls.map(({ downloadUrl }) => downloadUrl),
+              imageOriginalUrls: imageUrls.map(({ originalUrl }) => originalUrl),
               cardIds: imgs.map((img) => img.id),
               referenceImages: pollData.reference_images || pollData.referenceImages || [],
             };
@@ -1409,6 +1412,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
       taskId: taskIds[0],
       images: allImages,
       imageDownloadUrls: allImageDownloadUrls,
+      imageOriginalUrls: pollResults.flatMap((r) => r.imageOriginalUrls || []),
       cardIds: allCardIds,
       referenceImages,
     };

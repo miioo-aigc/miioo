@@ -12,6 +12,7 @@
  *   取消只中断前端请求和轮询，后端任务是否停止取决于后端取消能力。
  *   完成卡写入图片、视频和配音记录 ID，供页面调用正式下载接口。
  *   视频结果同时保留后端返回的封面地址，详情弹窗使用 poster 展示。
+ *   2026-09-08 新生成图片独立透传原图地址，避免参考图使用下载入口。
  */
 
 import { useCallback, useRef } from 'react';
@@ -185,7 +186,7 @@ function createGenerationPlaceholder({ genId, shotId, params, countNum, isVideoG
   };
 }
 
-function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, imageDownloadUrls, audioIds, isVideoGen, isAudioGen }) {
+function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, imageOriginalUrls, audioIds, isVideoGen, isAudioGen }) {
   const genMeta = {
     prompt: params.prompt || '',
     model: params.model || '',
@@ -245,7 +246,7 @@ function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, i
       type: isVideoGen ? 'video' : isAudioGen ? 'audio' : 'image',
       status: 'done',
       imageUrl: isAudioGen ? null : (isVideoGen ? null : url),
-      originalUrl: !isVideoGen && !isAudioGen ? (imageDownloadUrls?.[index] || url) : undefined,
+      originalUrl: !isVideoGen && !isAudioGen ? (imageOriginalUrls?.[index] || url) : undefined,
       videoUrl: isVideoGen ? url : null,
       posterUrl: isVideoGen
         ? (normalizeImageUrl(result.posterUrl) || result.posterUrl || undefined)
@@ -352,21 +353,21 @@ export function useCreationGeneration({
       const rawMediaUrls = isVideoGen ? (result.videos ?? []) : isAudioGen ? (result.audios ?? []) : (result.images ?? []);
       const audioIds = isAudioGen ? (result.audioIds || []) : [];
       let mediaUrls;
-      let imageDownloadUrls = [];
+      let imageOriginalUrls = [];
       if (!isVideoGen && !isAudioGen) {
         const imageEntries = rawMediaUrls
           .map((url, index) => {
             const previewUrl = normalizeImageUrl(url) || url;
-            const rawDownloadUrl = result.imageDownloadUrls?.[index] || previewUrl;
+            const rawOriginalUrl = result.imageOriginalUrls?.[index] || '';
             return {
               previewUrl,
-              downloadUrl: normalizeImageUrl(rawDownloadUrl) || rawDownloadUrl,
+              originalUrl: normalizeImageUrl(rawOriginalUrl) || rawOriginalUrl,
             };
           })
           .filter(({ previewUrl }) => Boolean(previewUrl))
           .filter((entry, index, entries) => entries.findIndex((item) => item.previewUrl === entry.previewUrl) === index);
         mediaUrls = imageEntries.map(({ previewUrl }) => previewUrl);
-        imageDownloadUrls = imageEntries.map(({ downloadUrl }) => downloadUrl);
+        imageOriginalUrls = imageEntries.map(({ originalUrl }) => originalUrl);
       } else {
         mediaUrls = [...new Set(rawMediaUrls.map((url) => normalizeImageUrl(url) || url).filter(Boolean))];
       }
@@ -385,7 +386,7 @@ export function useCreationGeneration({
         params,
         result,
         mediaUrls,
-        imageDownloadUrls,
+        imageOriginalUrls,
         audioIds,
         isVideoGen,
         isAudioGen,

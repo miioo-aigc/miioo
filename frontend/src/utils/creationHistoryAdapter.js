@@ -6,6 +6,7 @@
  *   getCreationHistoryList       兼容数组、list、items 和 data 响应
  *   dedupeCreationHistoryList    按媒体地址去重并优先保留非空创作提示词
  *   normalizeCreationHistoryItem 将历史记录转换为创作页 generation
+ *   2026-09-08 原图字段不再使用受控下载地址，缓存兼容 originalUrl。
  *
  * ─── 缓存适配 ───────────────────────────────────────────────
  *   pickCreationHistoryCacheItem 保留缓存所需的轻量字段
@@ -142,7 +143,7 @@ export function normalizeCreationHistoryItem(item, type) {
       : (item.audio_url || item.audioUrl || item.original_url || item.file_url || item.url || item.thumbnail_url || item.thumbnailUrl || '');
   const url = normalizeImageUrl(rawUrl) || '';
   const rawOriginalUrl = type === 'image'
-    ? (item.download_url || item.downloadUrl || item.original_url || item.originalUrl || item.file_url || item.fileUrl || rawUrl)
+    ? (item.original_url || item.originalUrl || item.file_url || item.fileUrl || rawUrl)
     : rawUrl;
   const originalUrl = normalizeImageUrl(rawOriginalUrl) || url;
   const rawThumbUrl = type === 'image'
@@ -275,7 +276,7 @@ export function pickCreationHistoryCacheItem(item, tab) {
       ...base,
       preview_url: item.preview_url || item.previewUrl || item.thumbnail_url || item.thumbnailUrl || item.original_url || item.file_url || item.url || '',
       download_url: item.download_url || item.downloadUrl || item.original_url || item.originalUrl || item.file_url || item.url || '',
-      original_url: item.original_url || item.file_url || item.url || '',
+      original_url: item.original_url || item.originalUrl || item.file_url || item.fileUrl || item.url || '',
       thumbnail_url: item.thumbnail_url || item.thumbnailUrl || item.original_url || item.file_url || item.url || '',
       reference_images: Array.isArray(item.reference_images)
         ? item.reference_images.map((image) => (typeof image === 'string'

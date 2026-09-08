@@ -1,5 +1,16 @@
 # miioo 项目进度管理文档
 
+## 2026-09-08 图片创作“用作参考图”地址混用修复
+
+- 状态：Suzy 已实际验证修复通过。历史图片卡片用作参考图后，生成请求使用原始图片地址，不再使用 AVIF 预览图或受控下载入口。
+- 根因有两层：按钮回填原先直接取展示字段 `card.imageUrl`；历史与生成结果适配又把 `download_url` 优先写入 `originalUrl`，导致第一轮仅改按钮取值后仍提交 `/api/media/downloads/…`。
+- 最终修复：历史记录优先读取 `original_url`/`originalUrl`；轮询结果独立透传 `imageOriginalUrls`；新生成卡片与任务恢复消费原图数组；历史轻量缓存兼容驼峰原图字段。下载地址仍独立保留，预览展示不改。
+- 回填素材的 `url` 使用原图、`previewUrl` 使用展示图；拦截 AVIF、`/derived/assets/` 和 `/api/media/downloads/`，无可用来源时提示并停止追加。旧草稿中的错误地址不会自动迁移，复测时需刷新列表并删除旧附件后重新添加。
+- 经验：不能根据字段名称假定字段内容正确，必须追踪“接口原始字段 → 数据适配 → 缓存/任务恢复 → 卡片 → 输入附件 → 请求体”；测试必须同时提供不同的原图、预览图、下载地址，避免只有原图字段的简化用例掩盖优先级问题。改后缀不等于转码，浏览器能展示或下载也不代表模型能使用。
+- 涉及文件：`src/api/creation.js`、`src/utils/creationHistoryAdapter.js`、`src/utils/creationTaskAdapter.js`、`src/utils/creationDetailAdapter.js`、`src/components/creation/useCreationGeneration.js`、`src/components/creation/CreationResultState.jsx`；回归测试：`scripts/creation-image-reference.test.mjs`。
+- 验证：8 项回归测试、修改文件定向 ESLint、生产构建、`git diff --check` 通过。全仓 ESLint 被既有 `AssetsCards.jsx:177` 未使用变量阻塞，`PanelPromptInput.jsx:317` 存在依赖警告；架构检查被既有 `seedanceUploadValidation.js` 命名问题阻塞。不能将这些检查记录为全仓通过。
+- 跨项目同步步骤、字段示例、修复边界和验收清单见 [图片参考素材地址修复指南](./docs/creation-image-reference-original-url-fix-2026-09-08.md)。
+
 ## 2026-09-04 分镜台词分配音色与角色选择流程完善
 
 - 台词分配弹窗移除语速、音量字段及对应状态、滑块和保存逻辑；底部操作统一改为“取消”和“确定”。“确定”保存当前分镜的配音角色、音色和台词，“取消”放弃本次台词编辑。

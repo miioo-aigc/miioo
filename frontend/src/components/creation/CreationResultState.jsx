@@ -32,6 +32,7 @@
  *   2026-08-07  配音结果纳入图片/视频结果网格：列宽最小 240px、宽度随容器适配、卡片比例 16:9
  *   2026-08-18  配音高级模式下输入框保持下边缘并向内容区上方和两侧展开
  *   2026-08-26  视频结果卡和详情弹窗透传视频封面地址
+ *   2026-09-08  用作参考图提交原图；缺少可用原图时提示并阻止追加
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -320,7 +321,12 @@ export default function CreationResultState({
                   setPrefillVersion((v) => v + 1);
                 }}
                 onUseAsRef={() => {
-                  setPrefillData(buildCreationImageReferencePrefill(card));
+                  const referencePrefill = buildCreationImageReferencePrefill(card);
+                  if (!referencePrefill) {
+                    showToast('error', '未找到可用原图，请上传原图作为参考素材');
+                    return;
+                  }
+                  setPrefillData(referencePrefill);
                   setPrefillVersion((v) => v + 1);
                 }}
                 favorited={favorites?.has(key)}

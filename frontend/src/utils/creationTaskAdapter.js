@@ -7,6 +7,7 @@
  *   createCreationTaskPlaceholder 生成恢复中的占位 generation
  *   createCreationTaskResult      将轮询结果转换为完成的 generation
  *   视频结果保留封面地址，供结果卡和详情弹窗使用
+ *   2026-09-08 图片原图读取独立字段，不使用下载入口。
  *
  * ─── 依赖边界 ───────────────────────────────────────────────
  *   只接收任务快照和轮询结果并返回新对象；不调用 API、Store、缓存、Toast 或 React 状态。
@@ -44,9 +45,9 @@ function getResultUrl(value) {
     || '';
 }
 
-function getImageDownloadUrl(value, fallback) {
+function getImageOriginalUrl(value, fallback) {
   if (!value || typeof value !== 'object') return fallback;
-  return value.download_url || value.downloadUrl || value.original_url || value.originalUrl || fallback;
+  return value.original_url || value.originalUrl || value.file_url || value.fileUrl || fallback;
 }
 
 function normalizeReferenceImage(value) {
@@ -185,7 +186,7 @@ export function normalizeCreationTaskResult(result, task) {
         status: 'done',
         imageUrl: task.genType === 'image' ? url : null,
         originalUrl: task.genType === 'image'
-          ? (result?.imageDownloadUrls?.[index] || getImageDownloadUrl(rawMedia[index], url) || url)
+          ? (result?.imageOriginalUrls?.[index] || getImageOriginalUrl(rawMedia[index], url) || url)
           : undefined,
         videoUrl: task.genType === 'video' ? url : null,
         posterUrl: task.genType === 'video'

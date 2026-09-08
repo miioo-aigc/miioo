@@ -5,12 +5,14 @@
  * ─── 视频详情适配 ─────────────────────────────────────────
  *   normalizeCreationVideoDetailMedia 将详情中的 asset_bindings 转为结果弹窗素材
  *   mergeCreationVideoDetail 将详情字段合并到已打开的轻量卡片
+ *   buildCreationImageReferencePrefill 分离原图提交地址与预览地址；无可用原图时返回 null
  *
  * ─── 依赖边界 ─────────────────────────────────────────────
  *   只接收详情数据并返回新对象；不调用 API、Store、缓存或 React 状态。
+ *   2026-09-08 修复用作参考图误传派生预览图。
  */
 
-import { normalizeImageUrl } from './imageUrl';
+import { isSafeImageUrl, normalizeImageUrl } from './imageUrl';
 
 function bindingUrl(binding, ...keys) {
   for (const key of keys) {
@@ -268,6 +270,18 @@ export function buildCreationImageReeditPrefill(card) {
 }
 
 export function buildCreationImageReferencePrefill(card) {
+  // 历史适配可能把展示图兜底到 originalUrl，因此原图字段也必须检查。
+  const sourceUrl = [card.originalUrl, card.imageUrl].find((url) => {
+    if (!url) return false;
+    try {
+      const pathname = new URL(url, 'https://localhost').pathname;
+      return isSafeImageUrl(pathname) && !pathname.startsWith('/api/media/downloads/');
+    } catch {
+      return false;
+    }
+  });
+  if (!sourceUrl) return null;
+
   const promptName = (card.prompt || '')
     .replace(/[\\/:*?"<>|\r\n\t]/g, '')
     .trim()
@@ -276,8 +290,8 @@ export function buildCreationImageReferencePrefill(card) {
   return {
     appendFiles: [{
       name: `${promptName}.png`,
-      url: card.imageUrl,
-      previewUrl: card.imageUrl,
+      url: sourceUrl,
+      previewUrl: card.imageUrl || sourceUrl,
       assetId: card.assetId || card.id || undefined,
       isAsset: true,
       size: 0,

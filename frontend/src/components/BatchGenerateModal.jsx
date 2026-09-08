@@ -23,6 +23,7 @@
  *   handleConfirm                    保持批量生成确认参数结构不变
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-09-08  增加单图参数模式，复用参数选择及样式，不提供批量选项
  *   2026-07-15  复用 components/ui/Select，移除批量生成弹窗内重复选择器
  *   2026-07-22  批量生成弹窗内模型、比例和分辨率选择器改为填满父级宽度
  *   2026-07-22  批量生成角色弹窗的多视图生成方式调整为首位
@@ -35,6 +36,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 // 模型能力直接从后端 capabilities 获取
 import { apiListModels } from '../api/config';
 import { Select } from './ui';
+import { imageRatios } from '../utils/ImageGenerationParams';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -104,13 +106,13 @@ function RadioGroup({ label, value, options, onChange }) {
   );
 }
 
-export default function BatchGenerateModal({ open, onClose, onConfirm, generating = false, activeTab = 'char' }) {
+export default function BatchGenerateModal({ open, onClose, onConfirm, generating = false, activeTab = 'char', parametersOnly = false, availableModels, initialParams }) {
   // ── 从后端拉取模型列表，与本地能力表合并 ──────────────────────
-  const [modelList, setModelList] = useState(FALLBACK_MODELS);
-  const [modelsLoading, setModelsLoading] = useState(true);
+  const [modelList, setModelList] = useState(availableModels || FALLBACK_MODELS);
+  const [modelsLoading, setModelsLoading] = useState(!availableModels);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || availableModels) return;
     (async () => {
       try {
         const data = await apiListModels({ category: 'image' });
@@ -137,7 +139,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
         setModelsLoading(false);
       }
     })();
-  }, [open]);
+  }, [open, availableModels]);
 
   const defaultModel = modelList.find(m => m.is_default) || modelList[0];
   const [model, setModel] = useState(defaultModel?.value || '');
@@ -174,9 +176,8 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
       const currentResSupported = resList.includes(resolution);
       const newRes = currentResSupported ? resolution : resList[0];
       setResolution(newRes);
-      const resRatios = selected?.resolutionSizeMap?.[newRes];
-      if (resRatios) {
-        const ratioKeys = Object.keys(resRatios);
+      const ratioKeys = imageRatios(selected, newRes);
+      if (ratioKeys.length) {
         if (currentResSupported && ratioKeys.includes(ratio)) {
           setRatio(ratio);
         } else {
@@ -196,9 +197,8 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
   const handleResolutionChange = useCallback((newRes) => {
     setResolution(newRes);
     const selected = modelList.find(m => m.value === model);
-   const resRatios = selected?.resolutionSizeMap?.[newRes];
-   if (resRatios) {
-     const validRatios = Object.keys(resRatios);
+   const validRatios = imageRatios(selected, newRes);
+   if (validRatios.length) {
      if (!validRatios.includes(ratio)) {
        setRatio(validRatios[0]);
      }
@@ -212,6 +212,15 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
   }, [model, ratio, modelList]);
 
   const resetForm = useCallback(() => {
+    if (parametersOnly) {
+      const selected = modelList.find((m) => m.value === initialParams?.model) || modelList.find((m) => m.is_default) || modelList[0];
+      const res = selected?.resolutions.includes(initialParams?.resolution) ? initialParams.resolution : selected?.resolutions[0];
+      const ratios = imageRatios(selected, res);
+      setModel(selected?.value || '');
+      setResolution(res || '');
+      setRatio(ratios.includes(initialParams?.ratio) ? initialParams.ratio : (ratios[0] || ''));
+      return;
+    }
     setRatio('16:9');
     const first = modelList.find(m => m.is_default) || modelList[0];
     if (!first) return;
@@ -230,7 +239,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
     }
     setMode('three_view');
     setOnlyUndrafted(true);
-  }, [modelList]);
+  }, [modelList, parametersOnly, initialParams]);
 
   // 每次打开弹窗时，重置为第一个模型的默认值，画面比例优先使用 16:9。
   useEffect(() => {
@@ -243,22 +252,24 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
   useEffect(() => {
     if (!open) return undefined;
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose?.();
+      if (e.key === 'Escape' && !generating) onClose?.();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose]);
+  }, [open, onClose, generating]);
 
   if (!open) return null;
 
   const handleConfirm = async () => {
-    await onConfirm?.({ model, ratio, resolution, mode, only_undrafted: onlyUndrafted });
+    if (parametersOnly && (!resolutionOptions.some((o) => o.value === resolution) || !ratioOptions.some((o) => o.value === ratio))) return;
+    await onConfirm?.(parametersOnly ? { model, ratio, resolution } : { model, ratio, resolution, mode, only_undrafted: onlyUndrafted });
     // onClose 由父组件在成功后自行调用，避免异步请求未完成就关闭弹窗
   };
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[#00000066] backdrop-blur-[4px]"
+      style={parametersOnly ? { zIndex: 1200 } : undefined}
       onClick={onClose}
     >
       <div
@@ -269,7 +280,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
         {/* Header */}
         <div className="flex items-center gap-[16px] justify-between w-full py-[16px] bg-[#161616] rounded-t-2xl px-[24px]">
           <div className="flex-1 text-base/5 font-medium text-white" style={{ fontFamily: FONT_MEDIUM }}>
-            批量生成
+            {parametersOnly ? '创作参数' : '批量生成'}
           </div>
           <button
             type="button"
@@ -325,7 +336,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
             openMixBlendMode="lighten"
             onChange={handleResolutionChange}
           />
-          {activeTab === 'char' && (
+          {!parametersOnly && activeTab === 'char' && (
             <RadioGroup label="生成方式" value={mode} options={GENERATION_MODES} onChange={setMode} />
           )}
         </div>
@@ -333,7 +344,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
         {/* Footer */}
         <div className="flex items-center gap-[16px] justify-between w-full bg-[#161616] py-[16px] px-[24px] rounded-b-2xl">
           {/* 左侧：仅生成未定稿 checkbox（角色/场景/道具通用） */}
-          <label
+          {!parametersOnly && <label
             onClick={() => setOnlyUndrafted(v => !v)}
             className="flex items-center gap-[4px] cursor-pointer select-none"
           >
@@ -359,8 +370,8 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
             <span className="text-sm/[18px] text-[#FFFFFFCC]" style={{ fontFamily: FONT }}>
               {activeTab === 'scene' ? '仅生成未定稿场景' : activeTab === 'prop' ? '仅生成未定稿道具' : '仅生成未定稿角色'}
             </span>
-          </label>
-          <div className="flex items-center gap-[16px]">
+          </label>}
+          <div className="flex items-center gap-[16px]" style={parametersOnly ? { marginLeft: 'auto' } : undefined}>
           <button
             type="button"
             onClick={onClose}
@@ -372,7 +383,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={generating || modelsLoading}
+            disabled={generating || modelsLoading || (parametersOnly && (!model || !resolutionOptions.some((o) => o.value === resolution) || !ratioOptions.some((o) => o.value === ratio)))}
             className="flex items-center h-[36px] shrink-0 rounded-lg px-[16px] gap-[4px] bg-[#2DC3E1] bg-origin-border border border-solid border-[#FFFFFF33] outline outline-1 outline-[#00000080] transition-colors hover:bg-[#53D3ED] active:bg-[#139EBA] disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ backgroundImage: ACCENT_BUTTON_GRADIENT }}
           >

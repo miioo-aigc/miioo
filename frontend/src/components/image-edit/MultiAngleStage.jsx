@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
 import { normalizeAngles } from '../../utils/MultiAngle';
 
@@ -48,7 +49,7 @@ export default function MultiAngleStage({ imageUrl, angles, onChange, disabled }
     scene.add(light);
     const camera = new THREE.Group();
     const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x45494f, metalness: .6, roughness: .35 });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(.48, .32, .22), bodyMaterial);
+    const body = new THREE.Mesh(new RoundedBoxGeometry(.48, .32, .22, 4, .025), bodyMaterial);
     camera.add(body);
     const lens = new THREE.Mesh(new THREE.CylinderGeometry(.12, .14, .22, 32), bodyMaterial);
     lens.rotation.x = Math.PI / 2;

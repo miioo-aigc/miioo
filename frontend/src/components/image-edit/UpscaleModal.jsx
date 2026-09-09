@@ -1,27 +1,10 @@
 import { useState } from 'react';
 import ImageEditChrome from './ImageEditChrome';
-import Button from '../ui/Button';
+import { QualityOption, UpscaleFooter } from './UpscaleControls';
 import { showGlobalToast } from '../../stores/toastStore';
 import './Upscale.css';
 
 const QUALITY_OPTIONS = ['2K', '3K', '4K'];
-
-function QualityOption({ value, selected, onClick }) {
-  return <Button
-    variant="secondary"
-    size="large"
-    className="upscale-quality-option"
-    aria-pressed={selected}
-    onClick={() => onClick(value)}
-  >{value}</Button>;
-}
-
-function UpscaleFooter({ onClose, onSubmit, disabled }) {
-  return <footer className="upscale-footer">
-    <Button variant="secondary" size="large" onClick={onClose}>取消</Button>
-    <Button variant="primary" size="large" disabled={disabled} onClick={onSubmit}>AI生成</Button>
-  </footer>;
-}
 
 export default function UpscaleModal({ card, onClose }) {
   const [quality, setQuality] = useState('2K');

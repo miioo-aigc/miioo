@@ -194,6 +194,8 @@ export function mergeCreationVideoDetail(card, detail) {
     ...media,
     videoUrl,
     posterUrl,
+    downloadUrl: normalizeImageUrl(detail?.download_url || detail?.downloadUrl || card.downloadUrl || card.download_url),
+    originalUrl: normalizeImageUrl(detail?.original_url || detail?.originalUrl || card.originalUrl || card.original_url),
     promptHTML: detail?.prompt_raw || detail?.promptResolved || card.promptHTML,
     refModeLabel: readReferenceModeLabel(detail) || card.refModeLabel,
   };

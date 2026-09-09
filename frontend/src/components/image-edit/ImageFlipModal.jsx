@@ -26,7 +26,7 @@ function ToolButton({ label, icon, onClick, selected }) {
   >{cloneElement(icon, { color: active ? '#FFFFFF' : '#FFFFFFCC' })}</button>;
 }
 
-export default function ImageFlipModal({ imageUrl, onClose, onSave }) {
+export default function ImageFlipModal({ imageUrl, onClose, onSave, onComplete = onClose }) {
   const { width: modalW, height: modalH } = useModalSize();
   const editorRef = useRef(null);
   const [editState, setEditState] = useState({ imageSize: { width: 0, height: 0 } });
@@ -63,8 +63,9 @@ export default function ImageFlipModal({ imageUrl, onClose, onSave }) {
         isNew: true,
         source: 'frontend-flip',
       };
-      await onSave?.(localImage);
-      onClose?.();
+      if (!onSave) throw new Error('当前列表未连接保存回调');
+      await onSave(localImage);
+      onComplete?.();
     } catch (error) {
       console.error('[ImageFlipModal] 生成翻转图片失败:', error);
       showGlobalToast('翻转失败，请重试', 'error');

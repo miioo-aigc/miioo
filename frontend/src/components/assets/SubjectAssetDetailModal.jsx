@@ -2,10 +2,10 @@
  * @file SubjectAssetDetailModal.jsx
  * @structure-index
  *
- * ─── 依赖与常量 ─────────────────── L8–L80
+ * ─── 依赖与常量 ─────────────────── L20–L80
  *   useModalSize / placeholder / ConfirmDialog / FONT     弹窗基础依赖与字体常量
  *
- * ─── 主体资产详情弹窗 ───────────── L82–L430
+ * ─── 主体资产详情弹窗 ───────────── L82–L437
  *   [状态] 当前图片、悬浮态、收藏动效、删除确认、复制提示
  *   [交互] 缩略图切换、提示词复制、删除确认、下载和关闭
  *   [回调] 通过 props 接收关闭、下载、收藏、删除和提示反馈回调
@@ -15,15 +15,17 @@
  *   2026-08-06  详情弹窗统一使用 3:2、90% 视口和 1200×800 最小尺寸，并整体等比缩放
  *   2026-09-04  项目资产主体详情右栏改为顶部操作、中间滚动、底部图片编辑固定布局
  *   2026-09-07  接入图片裁剪替换弹窗，前端生成新图片对象并追加到当前卡片
+ *   2026-09-09  图片编辑关闭或取消返回详情，编辑完成保持原关闭行为
  */
 
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalSize } from '../../utils/useModalSize';
 import placeholderFlowers from '../../assets/placeholder-flowers.webp';
 import ConfirmDialog from '../ConfirmDialog';
 import { showGlobalToast } from '../../stores/toastStore';
-import ImageCropModal from '../ImageCropModal';
+import LocalImageEditor from '../image-edit/LocalImageEditor';
+import { ImageEditContext } from '../image-edit/ImageEditContext';
 import CopyPromptButton from '../ui/CopyPromptButton';
 import { FavoriteIcon, DeleteIcon } from '../ui';
 
@@ -54,6 +56,7 @@ function PanelAction({ icon, label, onClick, active = false, danger = false }) {
 
 function EditTool({ label, icon, onClick }) {
   const [hovered, setHovered] = useState(false);
+  const edit = useContext(ImageEditContext);
   return (
     <button
       type="button"
@@ -61,7 +64,7 @@ function EditTool({ label, icon, onClick }) {
       title={label}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={onClick}
+      onClick={edit ? () => edit(label) : onClick}
       style={{
         display: 'flex', flex: '1 1 0%', minWidth: 0, height: '64px', padding: '12px 8px',
         flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px',
@@ -84,7 +87,8 @@ export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteI
   const [hovClose, setHovClose] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [cropOpen, setCropOpen] = useState(false);
+  const setCropOpen = () => setEditMode('裁剪');
+  const [editMode, setEditMode] = useState(null);
   const copyToast = null;
   function showCopyToast() {
     showGlobalToast('提示词复制成功', 'success');
@@ -93,12 +97,10 @@ export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteI
   const currentImg = imgs[activeImg];
   const isPrimary = currentImg?.is_primary ?? false;
   const refImages = currentImg?.refImages ?? [];
-
-  if (cropOpen) {
-    return <ImageCropModal imageUrl={currentImg?.fileUrl ?? currentImg?.url ?? placeholderFlowers} onClose={() => { setCropOpen(false); onClose?.(); }} onSave={async (image) => { onCreateImage?.(image); }} />;
-  }
+  if (editMode) return <LocalImageEditor mode={editMode} card={{ ...currentImg, imageUrl: currentImg?.fileUrl ?? currentImg?.url }} onSave={onCreateImage} onClose={() => setEditMode(null)} onComplete={() => { setEditMode(null); onClose?.(); }} />;
 
   return (
+    <ImageEditContext.Provider value={setEditMode}>
     <div
       style={{
         position: 'fixed',
@@ -430,5 +432,6 @@ export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteI
         document.body
       )}
     </div>
+    </ImageEditContext.Provider>
   );
 }

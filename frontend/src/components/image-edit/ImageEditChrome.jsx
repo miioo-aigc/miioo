@@ -21,7 +21,7 @@ export function ImageEditFooter({ onReset, onClose, onSubmit, busy, disabled, la
   </footer>;
 }
 
-export default function ImageEditChrome({ title, children, onClose, busy, footer, baseWidth = 1200, baseHeight = 800 }) {
+export default function ImageEditChrome({ title, children, onClose, busy, footer, baseWidth = 1200, baseHeight = 800, zIndex }) {
   const { width, height, scale } = useModalSize(baseWidth, baseHeight);
   const headerHeight = 60;
   const footerHeight = 72;
@@ -42,7 +42,7 @@ export default function ImageEditChrome({ title, children, onClose, busy, footer
     if (event.shiftKey && (document.activeElement === first || document.activeElement === root.current)) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
   };
-  return createPortal(<div className="image-edit-overlay" onClick={() => !busy && onClose()}>
+  return createPortal(<div className="image-edit-overlay" style={{ zIndex }} onClick={() => !busy && onClose()} onKeyDown={(event) => event.stopPropagation()}>
     <section ref={root} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className="image-edit-shell" style={{ width: `${width * scale}px`, height: `${displayHeight}px` }} onKeyDown={handleKey} onClick={(event) => event.stopPropagation()}>
       <div className="image-edit-fixed-header" style={{ width: `${width * scale}px`, height: `${headerHeight}px` }}>
         <ImageEditHeader title={title} onClose={onClose} busy={busy} />

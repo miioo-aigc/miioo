@@ -1,0 +1,34 @@
+.trim-body { display: flex; flex: 1; min-height: 0; flex-direction: column; color: var(--color-text-secondary); font-size: 14px; letter-spacing: 0; }
+.trim-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: var(--color-surface-toolbar); overflow: hidden; }
+.trim-stage video { width: 100%; height: 100%; object-fit: contain; }
+.trim-playback { display: flex; align-items: center; flex-shrink: 0; gap: 16px; height: 40px; padding: 0 24px; background: var(--color-surface-toolbar); }
+.trim-playback span { white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
+.trim-playback button, .trim-steppers button { display: flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 0; border: 0; background: transparent; color: var(--color-text-primary); cursor: pointer; }
+.trim-playback button { width: 28px; height: 28px; }
+.trim-playback button:disabled, .trim-steppers button:disabled { opacity: .35; cursor: default; }
+.trim-editor { flex-shrink: 0; padding: 16px 24px; background: var(--color-surface-toolbar); }
+.trim-timeline-scroll { overflow-x: auto; padding: 0; scrollbar-width: thin; }
+.trim-timeline { position: relative; height: 68px; min-width: 100%; background: var(--color-surface-toolbar); border: 1px solid var(--color-stroke-accent); border-radius: 8px; overflow: hidden; box-sizing: border-box; }
+.trim-frames { position: absolute; inset: 0; display: flex; pointer-events: none; }
+.trim-frames img { flex: 1; min-width: 0; width: 4.166667%; height: 100%; object-fit: cover; }
+.trim-frame-status { position: absolute; inset: 0; display: flex; justify-content: center; align-items: center; font-size: 12px; }
+.trim-dim { position: absolute; top: 0; bottom: 0; background: var(--color-surface-overlay); pointer-events: none; }
+.trim-selection { position: absolute; top: 0; bottom: 0; border-top: 2px solid var(--color-brand-main); border-bottom: 2px solid var(--color-brand-main); pointer-events: none; }
+.trim-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--color-text-primary); pointer-events: none; }
+.trim-handle { position: absolute; top: 0; height: 100%; width: 12px; border: 0; padding: 0; background: var(--color-brand-main); cursor: ew-resize; touch-action: none; }
+.trim-handle-end { transform: translateX(-100%); border-radius: 0 6px 6px 0; }
+.trim-handle-start { border-radius: 6px 0 0 6px; }
+.trim-handle span { display: block; margin: auto; width: 2px; height: 20px; border-radius: 2px; background: var(--color-text-primary); }
+.trim-fields { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin-top: 16px; }
+.trim-range-fields, .trim-duration { display: flex; align-items: flex-start; gap: 8px; }
+.trim-range-fields > span, .trim-duration > span { line-height: 36px; white-space: nowrap; font-size: 12px; }
+.trim-time-field { width: 150px; }
+.trim-time-field > div, .trim-duration > label > div { height: 32px; }
+.trim-time-field input, .trim-duration-input { font-variant-numeric: tabular-nums; min-width: 0; font-size: 12px; font-weight: 400; color: rgba(255, 255, 255, 0.8); }
+.trim-fields input:not([type="range"]):focus, .trim-fields input:not([type="range"]):focus-visible { outline: none; box-shadow: none; }
+.trim-duration > label { width: 116px; }
+.trim-duration-input { appearance: textfield; }
+.trim-duration-input::-webkit-inner-spin-button { appearance: none; }
+.trim-steppers { display: flex; flex-direction: column; margin-left: 6px; }
+.trim-steppers button { height: 14px; width: 16px; }
+.trim-zoom { width: 160px; height: 36px; margin-left: auto; display: flex; align-items: center; }

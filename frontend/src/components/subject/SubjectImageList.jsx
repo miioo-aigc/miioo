@@ -33,6 +33,9 @@ import AssetPickerModal from '../AssetPickerModal';
 import Checkbox from '../Checkbox';
 import DotsLoading from '../DotsLoading';
 import MediaDetailModal from '../MediaDetailModal';
+import useLocalImageEdits from '../../hooks/useLocalImageEdits';
+import { downloadLocalImage } from '../../stores/LocalImageEdits';
+import { showGlobalToast } from '../../stores/toastStore';
 import { IconButton, FileUploadButton, Tooltip } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -189,7 +192,7 @@ function ImageItem({ settled, imageUrl, uploading = false, onView, onSettledChan
 export default function SubjectImageList({
   projectId,
   subject,
-  generatedImages = [],
+  generatedImages: originalImages = [],
   candidateImagesLoading = false,
   promptText,
   selectedModel,
@@ -200,9 +203,18 @@ export default function SubjectImageList({
   onOpenDetail,
   onCloseDetail,
   onUpload,
-  onDownload,
-  onSettledChange,
+  onDownload: downloadOriginal,
+  onSettledChange: settleOriginal,
 }) {
+  const edits = useLocalImageEdits(`subject:${projectId}:${subject?.id}`);
+  const generatedImages = [...originalImages, ...edits.images];
+  const onDownload = (id, ...args) => {
+    const local = edits.images.find((image) => String(image.id) === String(id));
+    return local ? downloadLocalImage(local) : downloadOriginal?.(id, ...args);
+  };
+  const onSettledChange = (image, ...args) => image.localEdit
+    ? showGlobalToast('本地编辑图片暂不支持同步定稿', 'info')
+    : settleOriginal?.(image, ...args);
   const excludedAssetIds = generatedImages
     .filter((image) => image?.source === 'asset-library' || image?.detailSource === 'asset-library')
     .map((image) => image.sourceAssetId
@@ -250,6 +262,7 @@ export default function SubjectImageList({
             const target = generatedImages.find((item) => String(item.id) === String(image?.id));
             if (target) onSettledChange?.(target, generatedImages.indexOf(target), nextValue);
           }}
+          onCreateImage={edits.save}
         />
       )}
       <ImageItemUpload

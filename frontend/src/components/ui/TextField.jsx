@@ -141,7 +141,7 @@ export default function TextField({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         className={`${fieldBaseClass} ${fieldLayoutClass} ${fieldSizeClass} ${bgClass} ${borderClass}`}
-        style={{ ...glowStyle, ...(multiline ? { height: multilineHeight, boxSizing: 'border-box' } : {}) }}
+        style={{ ...glowStyle, boxSizing: 'border-box', ...(multiline ? { height: multilineHeight } : {}) }}
       >
         {renderControl()}
         {!multiline && renderSuffixOrCounter()}

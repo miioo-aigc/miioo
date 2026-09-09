@@ -10,7 +10,7 @@ export default function StoryboardFinalizedTimeline({ projectRatio = '16:9', sho
   const items = shots.map((shot) => ({ shot, media: finalizedMap[shot.id] || null, loading: mediaLoadingMap[shot.id] === true }));
   const cardSize = getStoryboardTimelineCardSize(projectRatio);
   return (
-    <div style={{ width: '100%', minWidth: 0, display: 'flex', gap: '10px', overflow: 'auto hidden', alignItems: 'center', justifyContent: 'flex-start' }}>
+    <div style={{ width: '100%', minWidth: 0, minHeight: `${cardSize.height + 2}px`, padding: '1px', boxSizing: 'border-box', display: 'flex', gap: '10px', overflowX: 'auto', overflowY: 'visible', alignItems: 'center', justifyContent: 'flex-start' }}>
       {items.map(({ shot, media, loading }, index) => <StoryboardFinalizedCard key={shot.id || `timeline-shot-${shot.number || index + 1}-${index}`} shot={shot} media={media} loading={loading} cardSize={cardSize} selected={selectedShotId === shot.id} onSelect={() => onSelectShot?.(shot.id)} onCreate={() => onCreate?.(shot)} onPreview={onPreview} onDownload={onDownload} />)}
     </div>
   );

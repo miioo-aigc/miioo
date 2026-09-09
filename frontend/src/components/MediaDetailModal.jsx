@@ -1,7 +1,7 @@
 /**
  * 结构索引
  * ========
- *   组件 MediaDetailModal       通用媒体详情弹窗（图片/视频）     L88–L566
+ *   组件 MediaDetailModal       通用媒体详情弹窗（图片/视频）     L93–L574
  *     - 复用自 AssetsPage 的 SubjectAssetDetailModal
  *     - 左侧：大图/视频预览 + 缩略图列表（始终显示，不设数量下限）
  *     - 右侧：创作信息面板（名称/描述/提示词/参数/按钮）
@@ -36,11 +36,14 @@
  *   2026-09-04  图片模式右栏采用顶部操作、中间滚动、底部图片编辑固定布局，视频模式保留原操作区
  *   2026-09-09  局部重绘、智能超清、裁剪、翻转图标对齐创作页，功能逻辑不变
  *   2026-09-09  图片模式按标题栏剩余高度分配左右栏，完整保留底部内边距；视频布局不变
+ *   2026-09-09  图片编辑关闭或取消返回详情，编辑完成保持原关闭行为
  */
 
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
+import LocalImageEditor from './image-edit/LocalImageEditor';
+import { ImageEditContext } from './image-edit/ImageEditContext';
 import ConfirmDialog from './ConfirmDialog';
 import Toggle from './Toggle';
 import { normalizeImageUrl } from '../utils/imageUrl';
@@ -68,8 +71,9 @@ function PanelAction({ icon, label, onClick, active = false }) {
   );
 }
 
-function EditTool({ label, icon }) {
+function EditTool({ label, icon, onClick }) {
   const [hovered, setHovered] = useState(false);
+  const edit = useContext(ImageEditContext);
   return (
     <button
       type="button"
@@ -77,6 +81,7 @@ function EditTool({ label, icon }) {
       title={label}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={edit ? () => edit(label) : onClick}
       style={{ display: 'flex', flex: '1 1 0%', minWidth: 0, height: '64px', padding: '12px 8px', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', border: 0, borderRadius: '6px', backgroundColor: hovered ? '#FFFFFF14' : '#FFFFFF0D', color: '#FFFFFFCC', cursor: 'pointer', transition: 'background-color 0.12s' }}
     >
       {icon}
@@ -103,6 +108,7 @@ export default function MediaDetailModal({
   onDeleteImage,
   onPrimaryChange,
   onToggleFavorite,
+  onCreateImage,
   showPrimaryBadge = true,
 }) {
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
@@ -114,6 +120,7 @@ export default function MediaDetailModal({
   const [hovDelete, setHovDelete] = useState(false);
   const [pressDelete, setPressDelete] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [editMode, setEditMode] = useState(null);
   const [starAnim, setStarAnim] = useState(false);
   const copyToast = null;
   function showCopyToast() {
@@ -121,6 +128,7 @@ export default function MediaDetailModal({
   }
 
   const currentImg = imgs[activeImg];
+  if (editMode) return <LocalImageEditor mode={editMode} card={{ ...currentImg, imageUrl: currentImg?.fileUrl ?? currentImg?.url }} onClose={() => setEditMode(null)} onComplete={() => { setEditMode(null); onClose?.(); }} onSave={onCreateImage} />;
   const isPrimary = currentImg?.is_primary ?? false;
   const currentSource = currentImg?.detailSource || currentImg?.source || source;
   const refImages = (currentSource === 'local-upload' ? [] : (currentImg?.refImages ?? [])).map((ref) => {
@@ -148,7 +156,7 @@ export default function MediaDetailModal({
   }
 
   return (
-    <>
+    <ImageEditContext.Provider value={mode === 'image' ? setEditMode : null}>
       <div
         style={{
           position: 'fixed',
@@ -561,6 +569,6 @@ export default function MediaDetailModal({
         </div>,
         document.body
       )}
-    </>
+    </ImageEditContext.Provider>
   );
 }

@@ -92,6 +92,10 @@ export default function ProjectAssetDetail({
         onShowToast={onShowToast}
         onDownload={onDownload}
         onDeleteImage={(imageId) => {
+          if (images.find((image) => image.id === imageId)?.localEdit) {
+            onDelete?.(imageId);
+            return;
+          }
           if (images.length === 1) {
             onClose?.();
             onDelete?.();

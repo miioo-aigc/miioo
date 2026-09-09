@@ -1,4 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { VideoEditContext } from '../video-edit/VideoEditContext';
+import VideoUpscaleModal from '../video-edit/VideoUpscaleModal';
+import VideoSubtitleModal from '../video-edit/VideoSubtitleModal';
+import VideoTrimModal from '../video-edit/VideoTrimModal';
+import VideoFrameModal from '../video-edit/VideoFrameModal';
+import LocalImageEditor from '../image-edit/LocalImageEditor';
+import { ImageEditContext } from '../image-edit/ImageEditContext';
+import useLocalImageEdits from '../../hooks/useLocalImageEdits';
+import { downloadLocalImage } from '../../stores/LocalImageEdits';
+import { showGlobalToast } from '../../stores/toastStore';
 import { createPortal } from 'react-dom';
 import StoryboardMediaDetailPanel from './StoryboardMediaDetailPanel';
 import { useModalSize } from '../../utils/useModalSize';
@@ -540,14 +550,21 @@ function CandidateThumbnail({ media, active, onClick }) {
   );
 }
 
-export default function StoryboardMediaDetailModal({ shot, candidates = [], media, onClose, onDownload, onDelete, onFavorite }) {
+export default function StoryboardMediaDetailModal({ projectId, shot, candidates = [], media, onClose, onDownload, onDelete, onFavorite }) {
+  const edits = useLocalImageEdits(`storyboard:${projectId || shot?.project_id}:${shot?.id}`);
+  const [editMode, setEditMode] = useState(null);
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const items = useMemo(() => {
-    const source = candidates.length ? candidates : media ? [media] : [];
+    const source = [...(candidates.length ? candidates : media ? [media] : []), ...edits.images];
     return source.filter((item, index, list) => item && (item.id || item.url) && list.findIndex((candidate) => (candidate.id || candidate.url) === (item.id || item.url)) === index);
-  }, [candidates, media]);
+  }, [candidates, media, edits.images]);
   const initial = media?.id || media?.url;
   const [activeKey, setActiveKey] = useState(initial);
+  const [upscaleOpen, setUpscaleOpen] = useState(false);
+  const [subtitleOpen, setSubtitleOpen] = useState(false);
+  const [trimOpen, setTrimOpen] = useState(false);
+  const [frameOpen, setFrameOpen] = useState(false);
+  const videoRef = useRef(null);
   const activeMedia = items.find((item) => (item.id || item.url) === activeKey) || items[0] || media;
   const video = isVideoMedia(activeMedia);
   const activePoster = mediaPreviewUrl(activeMedia);
@@ -568,6 +585,7 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
     || activeMedia?.detail_source;
   const normalizedSource = normalizeMediaSource(sourceValue);
   const activeUrl = activeMedia?.url || activeMedia?.file_url || activeMedia?.fileUrl;
+  if (editMode && !video) return <LocalImageEditor mode={editMode} card={{ ...activeMedia, imageUrl: activeUrl }} onSave={edits.save} onClose={() => setEditMode(null)} onComplete={() => { setEditMode(null); onClose?.(); }} />;
   const isShotMedia = [shot?.storyboardImage?.url, shot?.storyboardVideo?.url]
     .filter(Boolean)
     .some((url) => url === activeUrl);
@@ -660,6 +678,7 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
   }
 
   return createPortal(
+    <>
     <div style={{ position: 'fixed', inset: 0, zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.60)', backdropFilter: 'blur(12px)' }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.(); }}>
       <div style={{ width: `${modalW}px`, height: `${modalH}px`, transform: `scale(${modalScale})`, transformOrigin: 'center center', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '16px', background: '#161616', border: '1px solid #FFFFFF14', boxShadow: '-10px 24px 64px #00000099' }} onMouseDown={(event) => event.stopPropagation()}>
         <header style={{ height: '60px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', background: '#161616' }}>
@@ -669,12 +688,20 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
           <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', background: '#0D0D0D' }}>
             <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', background: '#0A0A0A' }}>
-              {video ? <video key={activeMedia.id || activeMedia.url} src={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url)} poster={activePoster || undefined} controls autoPlay playsInline style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : <img src={mediaImageUrl(activeMedia)} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}
+              {video ? <video ref={videoRef} key={activeMedia.id || activeMedia.url} src={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)} poster={activePoster || undefined} controls autoPlay playsInline style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : <img src={mediaImageUrl(activeMedia)} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}
             </div>
             <div style={{ flexShrink: 0, minHeight: '108px', padding: '16px', display: 'flex', gap: '12px', overflowX: 'auto', borderTop: '1px solid #FFFFFF0F', background: '#161616' }}>
               {items.map((item) => <CandidateThumbnail key={item.id || item.url} media={item} active={(item.id || item.url) === (activeMedia.id || activeMedia.url)} onClick={() => setActiveKey(item.id || item.url)} />)}
             </div>
           </div>
+          <VideoEditContext.Provider value={video ? (mode) => {
+            videoRef.current?.pause();
+            if (mode === '去字幕') setSubtitleOpen(true);
+            else if (mode === '剪辑') setTrimOpen(true);
+            else if (mode === '选帧') setFrameOpen(true);
+            else if (mode === '智能超清') setUpscaleOpen(true);
+          } : null}>
+          <ImageEditContext.Provider value={video ? null : setEditMode}>
           <StoryboardMediaDetailPanel
             key={activeMedia.id || activeMedia.url}
             video={video}
@@ -684,13 +711,39 @@ export default function StoryboardMediaDetailModal({ shot, candidates = [], medi
             referenceGroups={referenceGroups}
             parameterEntries={normalizedParameterEntries}
             createdAt={formatDate(activeMedia.created_at || activeMedia.createdAt)}
-            onDownload={onDownload}
-            onDelete={onDelete}
-            onFavorite={onFavorite}
+            onDownload={(item) => item.localEdit ? downloadLocalImage(item) : onDownload?.(item)}
+            onDelete={(item) => item.localEdit ? edits.remove(item.id) : onDelete?.(item)}
+            onFavorite={(item, next) => item.localEdit ? showGlobalToast('本地编辑图片暂不支持同步收藏', 'info') : onFavorite?.(item, next)}
           />
+          </ImageEditContext.Provider>
+          </VideoEditContext.Provider>
         </div>
       </div>
-    </div>,
+    </div>
+    {video && trimOpen && <VideoTrimModal
+      key={activeMedia.id || activeMedia.url}
+      videoUrl={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)}
+      posterUrl={activePoster}
+      onClose={() => setTrimOpen(false)}
+    />}
+    {video && frameOpen && <VideoFrameModal
+      key={activeMedia.id || activeMedia.url}
+      videoUrl={normalizeImageUrl(activeMedia.download_url || activeMedia.downloadUrl || activeMedia.original_url || activeMedia.originalUrl || activeMedia.video_url || activeMedia.videoUrl || activeMedia.url)}
+      onClose={() => setFrameOpen(false)}
+    />}
+    {video && subtitleOpen && <VideoSubtitleModal
+      key={activeMedia.id || activeMedia.url}
+      videoUrl={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)}
+      posterUrl={activePoster}
+      onClose={() => setSubtitleOpen(false)}
+    />}
+    {video && upscaleOpen && <VideoUpscaleModal
+      key={activeMedia.id || activeMedia.url}
+      videoUrl={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)}
+      posterUrl={activePoster}
+      onClose={() => setUpscaleOpen(false)}
+    />}
+    </>,
     document.body,
   );
 }

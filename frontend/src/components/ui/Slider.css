@@ -1,0 +1,4 @@
+.shared-slider { appearance: none; width: 100%; min-width: 0; height: 3px; border-radius: 2px; cursor: pointer; margin: 0; }
+.shared-slider::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; border: 2px solid var(--color-brand-main); border-radius: 50%; background: var(--color-text-primary); box-shadow: 0 2px 6px #0006; }
+.shared-slider::-moz-range-thumb { width: 10px; height: 10px; border: 2px solid var(--color-brand-main); border-radius: 50%; background: var(--color-text-primary); }
+.shared-slider:disabled { opacity: .4; cursor: default; }

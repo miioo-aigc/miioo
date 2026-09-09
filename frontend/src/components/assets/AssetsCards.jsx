@@ -12,6 +12,8 @@ import ShotDetailModal from './ShotDetailModal';
 import ShotVideoDetailModal from './ShotVideoDetailModal';
 import { useMultiAngleResults } from '../image-edit/useMultiAngleResults';
 import CreationImageResultCard from '../creation/CreationImageResultCard';
+import useLocalImageEdits from '../../hooks/useLocalImageEdits';
+import { downloadLocalImage } from '../../stores/LocalImageEdits';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -23,8 +25,7 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailData, setDetailData] = useState(null);
   const [creativeDetailAsset, setCreativeDetailAsset] = useState(null);
-  const [croppedImage, setCroppedImage] = useState(null);
-  const [creativeCroppedImage, setCreativeCroppedImage] = useState(null);
+  const edits = useLocalImageEdits(`creation:${asset.backendId || asset.id || asset.originalUrl || asset.imageUrl || url}`);
 
   function handleOpen() {
     if (batchMode) { onSelect?.(); return; }
@@ -116,21 +117,21 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
       <AssetCardCreativeDetail
         onGenerateImage={angleResults.generate}
         asset={creativeDetailAsset}
-        url={creativeCroppedImage || url}
+        url={url}
         starred={starred}
         onClose={() => { setDetailOpen(false); setCreativeDetailAsset(null); }}
         onDownload={onDownload}
         onDelete={() => { setDetailOpen(false); setCreativeDetailAsset(null); onDelete?.(); }}
         onFavorite={() => onStar?.()}
         onBasicEdit={(edit) => apiBasicEditCreationImage(creativeDetailAsset.backendId || creativeDetailAsset.id, edit)}
-        onCreateImage={(image) => { setCreativeCroppedImage(image.fileUrl); setCreativeDetailAsset((current) => current ? { ...current, imageUrl: image.fileUrl, url: image.fileUrl, isNew: true } : current); }}
+        onCreateImage={edits.save}
       />
     )}
     {detailOpen && assetType !== 'shot' && assetType !== 'shot_video' && !asset.type && showStar && (
       <ImageDetailModal
         onGenerateImage={angleResults.generate}
        card={{
-         imageUrl: croppedImage || url || detailData?.url,
+         imageUrl: url || detailData?.url,
           prompt: detailData?.input_prompt ?? detailData?.prompt,
          model: detailData?.model,
           ratio: detailData?.ratio,
@@ -142,7 +143,7 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
         onDelete={() => { setDetailOpen(false); onDelete?.(); }}
         favorited={starred}
         onToggleFavorite={() => onStar?.()}
-        onCreateImage={(image) => setCroppedImage(image.fileUrl)}
+        onCreateImage={edits.save}
       />
     )}
     {detailOpen && assetType !== 'shot' && assetType !== 'shot_video' && !showStar && (
@@ -163,6 +164,7 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
         refImages={detailData?.refImages}
       />
     )}
+    {edits.images.map((image) => <CreationImageResultCard key={image.id} {...image} editScope={edits.scope} onDownload={() => downloadLocalImage(image)} onDelete={() => edits.remove(image.id)} />)}
     {angleResults.results.map((result) => <CreationImageResultCard key={result.id} {...result} onGenerateImage={angleResults.generate} onDelete={() => angleResults.remove(result.id)} />)}
     </>
   );
@@ -172,16 +174,17 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
   const angleResults = useMultiAngleResults(`project:${asset.project_id || ''}:${asset.id || url}`, { project_id: asset.project_id, session_id: asset.session_id });
   const [hov, setHov] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [localImages, setLocalImages] = useState([]);
+  const edits = useLocalImageEdits(category === 'storyboard'
+    ? `storyboard:${asset.project_id}:${asset.storyboard?.id || asset.id}`
+    : `subject:${asset.project_id}:${asset.subject_id || asset.id}`);
 
-  const images = [...(asset.images ?? []), ...localImages];
+  const images = [...(asset.images ?? []), ...edits.images];
   const isVideo = category === 'storyboard'
     ? asset.assetType === 'video'
     : category === 'storyboard_video';
   const videoRef = useRef(null);
 
   const isStoryboard = category === 'storyboard' || category === 'storyboard_img' || category === 'storyboard_video';
-  const storyboardMediaFit = category === 'storyboard';
   const cardAspectRatio = isStoryboard ? '16/9' : '200/246';
 
   // 视频悬停播放
@@ -352,15 +355,17 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
         onClose={() => setDetailOpen(false)}
         onDownload={(imageId) => {
           const image = images.find((item) => String(item.id) === String(imageId));
+          if (image?.localEdit) return downloadLocalImage(image);
           onDownload?.(image?.id ?? imageId, name, image || asset);
         }}
-        onDelete={onDelete}
+        onDelete={(id) => edits.images.some((image) => image.id === id) ? edits.remove(id) : onDelete?.(id)}
         onShowToast={onShowToast}
-        onCreateImage={(image) => setLocalImages((current) => [...current, image])}
+        onCreateImage={edits.save}
         SubjectAssetDetailModal={SubjectAssetDetailModal}
         ShotDetailModal={ShotDetailModal}
         ShotVideoDetailModal={ShotVideoDetailModal}
       />
+      {edits.images.map((image) => <CreationImageResultCard key={image.id} {...image} editScope={edits.scope} onDownload={() => downloadLocalImage(image)} onDelete={() => edits.remove(image.id)} />)}
       {angleResults.results.map((result) => <CreationImageResultCard key={result.id} {...result} onGenerateImage={angleResults.generate} onDelete={() => angleResults.remove(result.id)} />)}
     </>
   );

@@ -24,7 +24,7 @@ function ToolButton({ label, icon, disabled, onClick, selected }) {
   return <button type="button" aria-label={label} aria-pressed={selected} title={label} disabled={disabled} onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setPressed(false); }} onMouseDown={() => setPressed(true)} onMouseUp={() => setPressed(false)} style={{ width: '32px', height: '32px', padding: 0, border: 0, borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: disabled ? '#FFFFFF33' : active ? '#FFFFFF' : '#FFFFFFCC', background: disabled ? 'transparent' : pressed || selected ? '#FFFFFF1A' : hovered ? '#FFFFFF0D' : 'transparent', cursor: disabled ? 'not-allowed' : 'pointer', transition: 'background-color 120ms ease, color 120ms ease' }}>{cloneElement(icon, { color: disabled ? '#FFFFFF33' : active ? '#FFFFFF' : '#FFFFFFCC' })}</button>;
 }
 
-export default function ImageCropModal({ imageUrl, imageId, onBasicEdit, onClose, onSave }) {
+export default function ImageCropModal({ imageUrl, onClose, onSave, onComplete = onClose }) {
   const { width: modalW, height: modalH } = useModalSize();
   const editorRef = useRef(null);
   const [editState, setEditState] = useState({ imageSize: { width: 0, height: 0 }, crop: { x: 0, y: 0, width: 1, height: 1 }, zoom: 1, panX: 0, panY: 0 });
@@ -50,17 +50,12 @@ export default function ImageCropModal({ imageUrl, imageId, onBasicEdit, onClose
       const outputWidth = isQuarterTurn ? imageSize.height : imageSize.width;
       const outputHeight = isQuarterTurn ? imageSize.width : imageSize.height;
       const localImage = { id: `local-crop-${Date.now()}`, fileUrl: objectUrl, url: objectUrl, src: objectUrl, blob, width: Math.round(outputWidth * crop.width), height: Math.round(outputHeight * crop.height), is_primary: false, isNew: true, source: 'frontend-crop' };
-      // 当前接口未声明旋转、翻转操作值，不能用仅裁剪的远端结果替换本地完整编辑结果。
-      const canUseRemoteCrop = cropEnabled && rotation % 360 === 0 && !flipX && !flipY && zoom === 1 && panX === 0 && panY === 0;
-      const savedImage = imageId && onBasicEdit && canUseRemoteCrop
-        ? await onBasicEdit({ operations: ['crop'], crop })
-        : null;
-      const remoteUrl = savedImage?.preview_url || savedImage?.previewUrl || savedImage?.original_url || savedImage?.originalUrl || savedImage?.url || savedImage?.file_url || savedImage?.fileUrl;
-      await onSave?.(remoteUrl ? { ...savedImage, fileUrl: remoteUrl, url: remoteUrl, src: remoteUrl, isNew: true } : localImage);
-      onClose?.();
+      if (!onSave) throw new Error('当前列表未连接保存回调');
+      await onSave(localImage);
+      onComplete?.();
     } catch (error) {
       console.error('[ImageCropModal] 生成裁剪图片失败:', error);
-      showGlobalToast('裁剪失败，请重试', 'error');
+      showGlobalToast('裁剪或本地保存失败，请重试', 'error');
     } finally { setSaving(false); }
   };
 

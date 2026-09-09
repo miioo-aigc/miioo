@@ -10,6 +10,7 @@ export default function AssetCardCreativeDetail({ asset = {}, url, starred = fal
     return (
       <CreationVideoDetailModal
         videoUrl={asset.videoUrl}
+        originalVideoUrl={asset.downloadUrl || asset.download_url || asset.originalUrl || asset.original_url || asset.videoUrl}
         prompt={asset.prompt}
         model={asset.model}
         ratio={asset.ratio}

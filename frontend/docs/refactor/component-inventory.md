@@ -1,12 +1,26 @@
 # 组件重构盘点基线
 
+## 2026-09-09 视频选帧
+
+- `video-edit/VideoFrameModal.jsx` 接收 `videoUrl` 和 `onClose`，复用公共默认外壳、按钮、图标按钮和共享滑杆；详情入口只编排打开状态和源地址。
+- `useFrameSelection.js` 管理解码线程、定位合并、过期帧过滤、下载与卸载释放；`FrameDecoderWorker.js` 使用 Mediabunny 按需解码并导出原分辨率 PNG；`FrameIndex.js` 负责展示时间排序和时间定位。
+- 选帧不上传、不写回视频或图片列表，测试与资源约束见[视频编辑进度表](../video-edit-modal-progress.md)。
+
+## 2026-09-09 视频剪辑前端
+
+- `video-edit/VideoTrimModal.jsx` 负责单区间状态、预览生命周期与前端保存提示；`VideoTrimTimeline.jsx` 负责缩略帧时间轴与拖动，`VideoTrimFields.jsx` 负责范围、时长及缩放控件，`TrimRange.js` 负责十分秒精度的纯范围约束。
+- `useVideoThumbnails.js` 独立抽取真实视频帧并清理媒体事件；抽帧不可用时降级展示，不伪造帧。
+- 从多机位滑杆提取 `ui/Slider.jsx` 与样式，供多机位和剪辑复用；无业务依赖。范围与时长输入复用 `ui/TextField.jsx`。
+- 创作与分镜详情只编排弹窗入口，不承载剪辑实现；公共外壳使用默认尺寸，保存不请求后端、不输出新视频。
+- 范围测试见 `scripts/video-trim.test.mjs`；浏览器验收限制和后续事项见[视频编辑进度表](../video-edit-modal-progress.md)。
+
 ## 2026-09-09 图片详情编辑弹窗统一外壳与进度表
 
-- 仅针对 `src/components/ImageDetailModal.jsx` 的图片编辑入口整理进度，不扩展到其他媒体或资产详情入口；完整表格见[`图片详情编辑弹窗进度表`](../image-edit-modal-progress.md)。
+- 图片编辑范围扩展至六条图片详情入口；`LocalImageEditor` 复用既有编辑组件，`ImageEditContext` 为详情工具按钮提供回调，`useLocalImageEdits` 与 `LocalImageEdits` 负责来源列表订阅和 IndexedDB 图片实体持久化。完整表格见[`图片详情编辑弹窗进度表`](../image-edit-modal-progress.md)。
 - `src/components/image-edit/ImageEditChrome.jsx` 统一承载图片裁剪、多机位、局部重绘、消除笔和智能超清的 Portal、遮罩、尺寸缩放、自适应、标题、关闭和焦点管理。
 - 公共尺寸基准为 `1200×800`；智能超清按设计稿使用 `1200×900`。尺寸计算继续收口在 `src/utils/useModalSize.js`。
 - 底部按钮只复用通用 `Button` 和视觉规范，不统一业务按钮组合：裁剪为“重置、取消、保存”，多机位/局部重绘/消除笔为“重置、取消、AI生成”，智能超清为“取消、AI生成”。
-- 当前扩图仍只有图片详情入口展示；翻转已新增 `src/components/image-edit/ImageFlipModal.jsx`，复用图片编辑外壳和图片变换预览，保存时生成本地 PNG 并新增图片。
+- 翻转已新增 `src/components/image-edit/ImageFlipModal.jsx`，复用图片编辑外壳和图片变换预览，保存时生成本地 PNG 并新增图片；裁剪与翻转均等待本地持久保存完成后返回列表。全部图片编辑暂不调用后端能力。
 - 扩图新增 `src/components/image-edit/OutpaintModal.jsx`，复用图片编辑外壳；扩图区域使用 CSS 像素格绘制，默认原比例与原图宽高 `1.5x`，固定比例切换和八方向锁定比例扩展均在前端完成，生成按钮暂以服务未接入提示收口。
 
 ## 2026-09-09 图片详情局部重绘与消除笔前端初版
@@ -2204,3 +2218,19 @@
 - 修复分镜主记录兼容媒体与后端候选按 URL 合并时，`storyboardImage` / `storyboardVideo` 的临时 ID 覆盖后端候选 UUID，导致定稿接口返回 `media_id 格式不合法` 的问题；候选展示现在以后端持久化记录为最终字段来源。
 - 定稿动作在提交前按媒体地址和稳定身份查找真实候选；只有兼容媒体存在时，先通过 `POST media-candidates` 幂等创建候选并取得 UUID，再提交定稿状态。设置和取消定稿都以接口成功结果更新页面状态，失败时不再留下乐观假状态。
 - `src/api/storyboard.js` 对候选更新、删除和下载统一增加媒体 UUID 前置校验，避免临时 ID、媒体 URL 或兼容拼接 ID 再次进入后端路径参数。
+# 2026-09-09 视频智能超清组件记录
+
+## 视频去字幕补充
+
+- `video-edit/VideoSubtitleModal.jsx`：接收 `videoUrl`、`posterUrl`、`onClose`，持有播放、媒体尺寸、加载状态和遮罩状态；组合公共外壳与基础按钮，不读详情闭包，不调用处理接口。
+- `video-edit/SubtitleMask.jsx`：八向拖拽和键盘缩放，通过 `value`、`onChange`、`frameRef` 明确传递选区与真实画面边界。
+- `video-edit/SubtitleMaskGeometry.js`：归一化选区的纯计算与越界限制，9 项测试覆盖默认选区和八方向缩放。
+- 创作详情直接接线；分镜 `VideoEditContext` 回调改为接收功能名称，原智能超清入口同步适配，选帧和剪辑保持未接入。
+- 复用评估：扩图现有手柄锁比例且围绕中心缩放，与字幕自由矩形不符，因此新增视频域选区组件，不修改扩图逻辑；底部通过现有 `Button` 组合设计稿按钮。
+- 验证与公共小屏限制见 `docs/video-edit-modal-progress.md`，不宣称已完成后端或全场景验收。
+
+- `video-edit/VideoUpscaleModal.jsx`：视频预览、画质局部状态、加载失败禁用及生成占位反馈；输入仅为视频地址、封面地址和关闭回调，不读取详情页闭包或调用生成 API。
+- `image-edit/UpscaleControls.jsx`：图片与视频共用画质按钮和底部按钮；保持图片选项与尺寸不变。
+- `ui/VideoPlaybackControls.jsx`：纯展示播放点击层和中央状态反馈，接收播放状态、反馈可见性与切换回调；原生视频 controls 和播放器 ref 仍归使用方。
+- 创作详情保留原播放事件、定时器及自动播放副作用，新增打开编辑前暂停；分镜详情负责视频 ref、弹窗开关，通过 `VideoEditContext` 向面板工具按钮提供打开回调，图片分支不提供回调。
+- 外壳增加可选层级参数以兼容分镜详情叠层；视频不传基准尺寸。定向 ESLint、构建通过；全仓历史阻塞和浏览器待验收项见 `docs/video-edit-modal-progress.md`。

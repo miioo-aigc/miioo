@@ -9,7 +9,7 @@ import { apiListModels } from '../../api/config';
 import { imageModelOptions, matchImageParams } from '../../utils/ImageGenerationParams';
 import BatchGenerateModal from '../BatchGenerateModal';
 
-export default function MultiAngleModal({ card, onClose, onGenerate }) {
+export default function MultiAngleModal({ card, onClose, onGenerate, localOnly = true, onComplete = onClose }) {
   const [angles, setAngles] = useState({ horizontal: 0, vertical: 0 });
   const [busy, setBusy] = useState(false);
   const [parameterModels, setParameterModels] = useState(null);
@@ -17,6 +17,7 @@ export default function MultiAngleModal({ card, onClose, onGenerate }) {
   const reset = () => setAngles({ horizontal: 0, vertical: 0 });
   const submit = async (confirmedParams) => {
     if (submitting.current) return;
+    if (localOnly) { showGlobalToast('多机位生成服务暂未接入', 'info'); return; }
     const reference = buildCreationImageReferencePrefill(card);
     if (!reference) { showGlobalToast('未找到可用原图，请先上传原图', 'error'); return; }
     if (!onGenerate) { showGlobalToast('当前列表暂不支持新增创作任务', 'error'); return; }
@@ -34,7 +35,7 @@ export default function MultiAngleModal({ card, onClose, onGenerate }) {
       }
       await onGenerate({ files: reference.appendFiles.map((file) => ({ ...file, type: 'image/png' })), genType: 'image', count: 1, ...params, prompt: buildMultiAnglePrompt(angles.horizontal, angles.vertical), promptHTML: '' });
       showGlobalToast('创作请求发送成功，正在原列表生成图片', 'success');
-      onClose();
+      onComplete();
     } catch (error) { showGlobalToast(error.message || '创作请求发送失败，请重试', 'error'); }
     finally { submitting.current = false; setBusy(false); }
   };

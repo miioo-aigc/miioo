@@ -102,14 +102,14 @@ export default function ImageDetailModal({ card, imageId, onBasicEdit, onClose, 
   };
   const handleCopyPrompt = () => showGlobalToast('您已复制提示词', 'success');
 
-  if (multiAngleOpen) return <MultiAngleModal card={card} onGenerate={onGenerateImage} onClose={() => { setMultiAngleOpen(false); onClose?.(); }} />;
-  if (inpaintMode) return <InpaintModal card={card} mode={inpaintMode} onClose={() => { setInpaintMode(null); onClose?.(); }} />;
-  if (upscaleOpen) return <UpscaleModal card={card} onClose={() => { setUpscaleOpen(false); onClose?.(); }} />;
-  if (flipOpen) return <ImageFlipModal imageUrl={card.imageUrl} onClose={() => { setFlipOpen(false); onClose?.(); }} onSave={async (image) => { onCreateImage?.(image); }} />;
-  if (outpaintOpen) return <OutpaintModal card={card} onClose={() => { setOutpaintOpen(false); onClose?.(); }} />;
+  if (multiAngleOpen) return <MultiAngleModal card={card} onGenerate={onGenerateImage} onClose={() => setMultiAngleOpen(false)} onComplete={() => { setMultiAngleOpen(false); onClose?.(); }} />;
+  if (inpaintMode) return <InpaintModal card={card} mode={inpaintMode} onClose={() => setInpaintMode(null)} />;
+  if (upscaleOpen) return <UpscaleModal card={card} onClose={() => setUpscaleOpen(false)} />;
+  if (flipOpen) return <ImageFlipModal imageUrl={card.imageUrl} onClose={() => setFlipOpen(false)} onComplete={() => { setFlipOpen(false); onClose?.(); }} onSave={onCreateImage} />;
+  if (outpaintOpen) return <OutpaintModal card={card} onClose={() => setOutpaintOpen(false)} />;
 
   if (cropOpen) {
-    return <ImageCropModal imageUrl={card.imageUrl} imageId={imageId} onBasicEdit={onBasicEdit} onClose={() => { setCropOpen(false); onClose?.(); }} onSave={async (image) => { onCreateImage?.(image); }} />;
+    return <ImageCropModal imageUrl={card.imageUrl} imageId={imageId} onBasicEdit={onBasicEdit} onClose={() => setCropOpen(false)} onComplete={() => { setCropOpen(false); onClose?.(); }} onSave={onCreateImage} />;
   }
 
   return <OutpaintAction.Provider value={() => setOutpaintOpen(true)}><FlipAction.Provider value={() => setFlipOpen(true)}><UpscaleAction.Provider value={() => setUpscaleOpen(true)}><InpaintAction.Provider value={setInpaintMode}><MultiAngleAction.Provider value={() => setMultiAngleOpen(true)}>

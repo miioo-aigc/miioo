@@ -7,13 +7,13 @@
  *
  * ─── 状态与数据流 ───────────────────────────────────
  *   项目、当前分类、资产数据、批量选择和弹窗状态                  L61–L96
- *   首屏/追加分页、主体元数据覆盖和项目列表加载                    L118–L213
+ *   首屏/追加分页、主体元数据覆盖和项目列表加载                    L251–L431
  *
  * ─── 业务动作 ───────────────────────────────────────
- *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L226–L356
+ *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L432–L639
  *
  * ─── 页面组合 ───────────────────────────────────────
- *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L357–L486
+ *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L640–L830
  *
  * ─── 更新记录 ───────────────────────────────────────
  *   2026-07-16  页面入口收敛；补充资产选择引用；抽离项目重命名/删除弹窗和资产卡片网格
@@ -758,6 +758,7 @@ export default function AssetsProjectPanel() {
       {storyboardDetail && (
         <StoryboardMediaDetailModal
           shot={storyboardDetail.shot}
+          projectId={activeProject}
           candidates={storyboardDetail.candidates}
           media={storyboardDetail.media}
           onClose={() => setStoryboardDetail(null)}

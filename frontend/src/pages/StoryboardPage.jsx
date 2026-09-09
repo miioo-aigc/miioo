@@ -38,7 +38,7 @@
  *   GenerateImagePanel                         components/storyboard/GenerateImagePanel.jsx
  *   GenerateVideoPanel / ReferenceMediaEditor  components/storyboard/
  *
- * ─── 主页面入口 ──────────────────────────────────────────── L271–L3005
+ * ─── 主页面入口 ──────────────────────────────────────────── L273–L3012
  *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化；L295 镜头状态，L1476 任务恢复
  *   [持久化动作] L667 enqueueStoryboardSave；L925–L1002 候选加载、保存与复制
  *   [候选定稿] L2014 handleFinalizeToggle：确保真实候选 UUID 后提交定稿状态
@@ -213,6 +213,7 @@ import { buildStoryboardCandidatePayload, normalizeSavedStoryboardCandidate } fr
 import { areStoryboardMediaSame, mergeStoryboardMediaItems } from '../utils/storyboardMediaDedup';
 import { insertStoryboardShot, moveStoryboardShot, removeStoryboardShot, renumberStoryboardShots } from '../utils/storyboardShotUtils';
 import useStoryboardTaskRecovery from '../hooks/useStoryboardTaskRecovery';
+import { loadLocalImages, useLocalImageEditStore } from '../stores/LocalImageEdits';
 import { enrichMainRefs, isBackendStoryboardId, makeStoryboardShot, normalizeStoryboard, normalizeStoryboardList, setStoryboardSubjectSnapshot, toBackendStoryboard } from '../utils/storyboardDataAdapter';
 import buildStoryboardPrompt from '../utils/buildStoryboardPrompt';
 import { addPendingTask, removePendingTask } from '../utils/taskPersistence';
@@ -270,6 +271,7 @@ const EPISODES = ['第一集', '第二集'];
 const STORYBOARD_PAGE_SIZE = 10;
 
 export default function StoryboardPage({ projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onGenerateStoryboards, onRetryGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0, statusMessage = '' }) {
+  const localImageScopes = useLocalImageEditStore((state) => state.byScope);
 
   // 分镜主体参考可能同时包含角色、场景和道具；旁白列仍只使用 chars。
   const storyboardSubjects = useMemo(() => {
@@ -313,6 +315,9 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     return normalizeStoryboardList(currentEpisodeRaw, storyboardSubjects, 0, projectId).slice(0, STORYBOARD_PAGE_SIZE);
   });
   const [narratorVoice, setNarratorVoice] = useState(null);
+  useEffect(() => {
+    shots.forEach((shot) => { loadLocalImages(`storyboard:${projectId}:${shot.id}`).catch(console.error); });
+  }, [projectId, shots]);
   const [voiceOverrides, setVoiceOverrides] = useState({});
 
   const globalVoiceParams = useMemo(() => {
@@ -2013,6 +2018,7 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   async function handleFinalizeToggle(shot, media, requestedFinalized) {
+    if (media?.localEdit) { showGlobalToast('本地编辑图片暂不支持同步定稿', 'info'); return; }
     const current = finalizedMediaMap[shot.id];
     const shouldFinalize = typeof requestedFinalized === 'boolean'
       ? requestedFinalized
@@ -2361,7 +2367,7 @@ function hasStoryboardMediaHint(shot = {}) {
     shots.map((shot) => [shot.id, isMediaLoading(shot)]),
   );
   const getCreationCandidates = (shotId) => mergeStoryboardMediaItems(
-    pendingCandidateMap[shotId] || [],
+    [...(pendingCandidateMap[shotId] || []), ...(localImageScopes[`storyboard:${projectId}:${shotId}`] || [])],
     mergeStoryboardMediaItems(
       fallbackCandidates(shots.find((shot) => shot.id === shotId)),
       candidateMediaMap[shotId] || [],
@@ -2624,6 +2630,7 @@ function hasStoryboardMediaHint(shot = {}) {
     />
     {timelinePreviewMedia ? (
       <StoryboardMediaDetailModal
+        projectId={projectId}
         key={`${timelinePreviewMedia.shot?.id || 'shot'}-${timelinePreviewMedia.media?.id || timelinePreviewMedia.media?.url || 'media'}`}
         shot={timelinePreviewMedia.shot}
         media={timelinePreviewMedia.media}

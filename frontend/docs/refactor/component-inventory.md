@@ -1,5 +1,22 @@
 # 组件重构盘点基线
 
+## 2026-09-09 图片详情编辑弹窗统一外壳与进度表
+
+- 仅针对 `src/components/ImageDetailModal.jsx` 的图片编辑入口整理进度，不扩展到其他媒体或资产详情入口；完整表格见[`图片详情编辑弹窗进度表`](../image-edit-modal-progress.md)。
+- `src/components/image-edit/ImageEditChrome.jsx` 统一承载图片裁剪、多机位、局部重绘、消除笔和智能超清的 Portal、遮罩、尺寸缩放、自适应、标题、关闭和焦点管理。
+- 公共尺寸基准为 `1200×800`；智能超清按设计稿使用 `1200×900`。尺寸计算继续收口在 `src/utils/useModalSize.js`。
+- 底部按钮只复用通用 `Button` 和视觉规范，不统一业务按钮组合：裁剪为“重置、取消、保存”，多机位/局部重绘/消除笔为“重置、取消、AI生成”，智能超清为“取消、AI生成”。
+- 当前扩图仍只有图片详情入口展示；翻转已新增 `src/components/image-edit/ImageFlipModal.jsx`，复用图片编辑外壳和图片变换预览，保存时生成本地 PNG 并新增图片。
+- 扩图新增 `src/components/image-edit/OutpaintModal.jsx`，复用图片编辑外壳；扩图区域使用 CSS 像素格绘制，默认原比例与原图宽高 `1.5x`，固定比例切换和八方向锁定比例扩展均在前端完成，生成按钮暂以服务未接入提示收口。
+
+## 2026-09-09 图片详情局部重绘与消除笔前端初版
+
+- `src/components/image-edit/InpaintModal.jsx` 负责局部重绘和消除笔弹窗编排、编辑状态、历史记录、校验和生成占位反馈；通过 `mode` 复用同一套编辑能力，消除笔模式只切换标题并隐藏提示词输入框；复用 `ImageEditChrome` 与 `ImageEditFooter`，不包含后端请求。
+- `src/components/image-edit/InpaintToolbar.jsx` 负责笔刷、擦除、移动、笔刷尺寸、缩放和撤销/重做工具；`src/components/image-edit/InpaintStage.jsx` 负责原图展示、蒙版画布绘制、移动缩放和蒙版导出能力；`Inpaint.css` 仅承载局部重绘域样式。
+- `src/components/ImageDetailModal.jsx` 只保留入口状态和弹窗切换编排；局部重绘与多机位均从共享图片详情入口进入，关闭行为遵循现有详情弹窗规则。
+- 生成服务暂未接入。当前前端生成动作仅校验“存在蒙版”，局部重绘额外校验“提示词非空”，通过后按模式显示服务未接入提示，不会发起网络请求。
+- 验收已覆盖三种视口、实时绘制、擦除、撤销/重做、分支截断、缩放、移动、提示词、生成校验、重置和关闭；小屏尺寸继承多机位弹窗的固定1200px画布裁切规则。
+
 ## 2026-08-28 视频模型映射下线能力收口
 
 - `videoModelAdapter.js` 在模型菜单聚合前过滤明确无能力的视频模型：`supported_generation_modes` 明确为空数组，或 snake_case/camelCase 的生成模式映射明确为空对象时不展示；能力字段缺失继续保留给后续校验处理。

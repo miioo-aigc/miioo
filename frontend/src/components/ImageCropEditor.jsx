@@ -91,7 +91,7 @@ function getResizeCrop(startCrop, handle, dx, dy, ratio, imageWidth, imageHeight
   return clampCrop({ x, y, width, height }, ratio, imageWidth, imageHeight);
 }
 
-const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, onRatioChange, onImageLoad, onChange, cropEnabled = true, rotation = 0, flipX = false, flipY = false }, ref) {
+const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, onRatioChange, onImageLoad, onChange, cropEnabled = true, rotation = 0, flipX = false, flipY = false, imageAlt = '待裁剪图片' }, ref) {
   const stageRef = useRef(null);
   const imageRef = useRef(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
@@ -264,13 +264,18 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
     height: handle.length === 2 ? '10px' : handle === 'w' || handle === 'e' ? '24px' : '5px',
     left: handle.includes('w') ? '-2px' : handle.includes('e') ? 'calc(100% - 3px)' : 'calc(50% - 12px)',
     top: handle.includes('n') ? '-2px' : handle.includes('s') ? 'calc(100% - 3px)' : 'calc(50% - 12px)',
+    ...(handle.length === 2 ? {
+      left: handle.includes('w') ? '-0.5px' : 'calc(100% + 0.5px)',
+      top: handle.includes('n') ? '-0.5px' : 'calc(100% + 0.5px)',
+      transform: 'translate(-50%, -50%)',
+    } : {}),
     background: '#2DC3E1', borderRadius: '2px', cursor: handle.length === 2 ? `${handle}-resize` : `${handle}-resize`,
   });
   const showGrid = Boolean(interaction && interaction.kind !== 'pan');
 
   return (
     <div ref={stageRef} onPointerDown={(event) => event.button === 1 && beginInteraction(event, 'pan')} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', touchAction: 'none' }}>
-      {imageUrl ? <img ref={imageRef} src={imageUrl} alt="待裁剪图片" crossOrigin="anonymous" onLoad={handleImageLoad} style={imageStyle} /> : null}
+      {imageUrl ? <img ref={imageRef} src={imageUrl} alt={imageAlt} crossOrigin="anonymous" onLoad={handleImageLoad} style={imageStyle} /> : null}
       {cropEnabled && <>
       <div style={{ ...cropStyle, zIndex: 4, border: '1px solid #2DC3E1', boxSizing: 'border-box', cursor: 'move' }} onPointerDown={(event) => event.button === 0 && beginInteraction(event, 'move')}>
         {showGrid ? <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'linear-gradient(to right, transparent 33.333%, #2DC3E199 33.333%, #2DC3E199 calc(33.333% + 1px), transparent calc(33.333% + 1px), transparent 66.666%, #2DC3E199 66.666%, #2DC3E199 calc(66.666% + 1px), transparent calc(66.666% + 1px)), linear-gradient(to bottom, transparent 33.333%, #2DC3E199 33.333%, #2DC3E199 calc(33.333% + 1px), transparent calc(33.333% + 1px), transparent 66.666%, #2DC3E199 66.666%, #2DC3E199 calc(66.666% + 1px), transparent calc(66.666% + 1px))' }} /> : null}

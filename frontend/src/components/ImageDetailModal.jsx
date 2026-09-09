@@ -7,12 +7,20 @@ import { useModalSize } from '../utils/useModalSize';
 import { showGlobalToast } from '../stores/toastStore';
 import ImageCropModal from './ImageCropModal';
 import MultiAngleModal from './image-edit/MultiAngleModal';
+import InpaintModal from './image-edit/InpaintModal';
+import UpscaleModal from './image-edit/UpscaleModal';
+import ImageFlipModal from './image-edit/ImageFlipModal';
+import OutpaintModal from './image-edit/OutpaintModal';
 import CopyPromptButton from './ui/CopyPromptButton';
 import { FavoriteIcon, DeleteIcon, CropIcon } from './ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const MultiAngleAction = createContext(null);
+const InpaintAction = createContext(null);
+const UpscaleAction = createContext(null);
+const FlipAction = createContext(null);
+const OutpaintAction = createContext(null);
 
 // eslint-disable-next-line no-unused-vars
 function LegacyCopyPromptButton({ text, onCopy }) {
@@ -29,7 +37,16 @@ function PanelAction({ icon, label, onClick, active = false }) {
 
 function EditTool({ label, icon, onClick }) {
   const openMultiAngle = useContext(MultiAngleAction);
+  const openInpaint = useContext(InpaintAction);
+  const openUpscale = useContext(UpscaleAction);
+  const openFlip = useContext(FlipAction);
+  const openOutpaint = useContext(OutpaintAction);
   if (label === '多机位') onClick = openMultiAngle;
+  if (label === '局部重绘') onClick = () => openInpaint('inpaint');
+  if (label === '消除笔') onClick = () => openInpaint('eraser');
+  if (label === '智能超清') onClick = openUpscale;
+  if (label === '翻转') onClick = openFlip;
+  if (label === '扩图') onClick = openOutpaint;
   const [hovered, setHovered] = useState(false);
   const renderedIcon = label === '裁剪' ? <CropIcon size={16} /> : icon;
   return <button type="button" aria-label={label} title={label} onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: 'flex', flex: '1 1 0%', minWidth: 0, height: '64px', padding: '12px 8px', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', border: 0, borderRadius: '6px', backgroundColor: hovered ? '#FFFFFF14' : '#FFFFFF0D', color: '#FFFFFFCC', cursor: 'pointer', transition: 'background-color 0.12s' }}>{renderedIcon}<span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{label}</span></button>;
@@ -73,6 +90,10 @@ export default function ImageDetailModal({ card, imageId, onBasicEdit, onClose, 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
   const [multiAngleOpen, setMultiAngleOpen] = useState(false);
+  const [inpaintMode, setInpaintMode] = useState(null);
+  const [upscaleOpen, setUpscaleOpen] = useState(false);
+  const [flipOpen, setFlipOpen] = useState(false);
+  const [outpaintOpen, setOutpaintOpen] = useState(false);
 
   const handleStarClick = () => {
     setStarAnim(true);
@@ -82,18 +103,22 @@ export default function ImageDetailModal({ card, imageId, onBasicEdit, onClose, 
   const handleCopyPrompt = () => showGlobalToast('您已复制提示词', 'success');
 
   if (multiAngleOpen) return <MultiAngleModal card={card} onGenerate={onGenerateImage} onClose={() => { setMultiAngleOpen(false); onClose?.(); }} />;
+  if (inpaintMode) return <InpaintModal card={card} mode={inpaintMode} onClose={() => { setInpaintMode(null); onClose?.(); }} />;
+  if (upscaleOpen) return <UpscaleModal card={card} onClose={() => { setUpscaleOpen(false); onClose?.(); }} />;
+  if (flipOpen) return <ImageFlipModal imageUrl={card.imageUrl} onClose={() => { setFlipOpen(false); onClose?.(); }} onSave={async (image) => { onCreateImage?.(image); }} />;
+  if (outpaintOpen) return <OutpaintModal card={card} onClose={() => { setOutpaintOpen(false); onClose?.(); }} />;
 
   if (cropOpen) {
     return <ImageCropModal imageUrl={card.imageUrl} imageId={imageId} onBasicEdit={onBasicEdit} onClose={() => { setCropOpen(false); onClose?.(); }} onSave={async (image) => { onCreateImage?.(image); }} />;
   }
 
-  return <MultiAngleAction.Provider value={() => setMultiAngleOpen(true)}>
+  return <OutpaintAction.Provider value={() => setOutpaintOpen(true)}><FlipAction.Provider value={() => setFlipOpen(true)}><UpscaleAction.Provider value={() => setUpscaleOpen(true)}><InpaintAction.Provider value={setInpaintMode}><MultiAngleAction.Provider value={() => setMultiAngleOpen(true)}>
     {createPortal(<div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }} onClick={onClose}>
-      <div style={{ width: `${modalW}px`, height: `${modalH}px`, transform: `scale(${modalScale})`, transformOrigin: 'center center', borderRadius: '16px', border: '1px solid #FFFFFF14', backgroundColor: '#161616', boxShadow: '#00000099 -10px 24px 64px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={(event) => event.stopPropagation()}>
+      <div style={{ width: `${modalW}px`, height: `${modalH}px`, boxSizing: 'border-box', transform: `scale(${modalScale})`, transformOrigin: 'center center', borderRadius: '16px', border: '1px solid #FFFFFF14', backgroundColor: '#161616', boxShadow: '#00000099 -10px 24px 64px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={(event) => event.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', backgroundColor: '#161616', flexShrink: 0 }}><span style={{ fontFamily: FONT_MEDIUM, fontSize: '16px', fontWeight: 500, lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFF' }}>查看详情</span><div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '6px', background: closeHovered ? '#FFFFFF14' : 'transparent', transition: 'background 120ms' }} onClick={onClose} onMouseEnter={() => setCloseHovered(true)} onMouseLeave={() => setCloseHovered(false)}><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12 4L4 12M4 4L12 12" stroke={closeHovered ? '#FFFFFF' : '#FFFFFF99'} strokeWidth="1.5" strokeLinecap="round" /></svg></div></div>
-        <div style={{ display: 'flex', height: `${modalH - 60}px` }}>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0A0A0A', position: 'relative', overflow: 'hidden' }}>{card.imageUrl && <img src={card.imageUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }} />}</div>
-          <div style={{ width: '340px', flexShrink: 0, backgroundColor: '#161616', borderLeft: '1px solid #FFFFFF0F', display: 'flex', flexDirection: 'column', height: `${modalH - 60}px`, position: 'relative' }}>
+        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+          <div style={{ flex: 1, minWidth: 0, minHeight: 0, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0A0A0A', position: 'relative', overflow: 'hidden' }}>{card.imageUrl && <img src={card.imageUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }} />}</div>
+          <div style={{ width: '340px', flexShrink: 0, minHeight: 0, boxSizing: 'border-box', backgroundColor: '#161616', borderLeft: '1px solid #FFFFFF0F', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, padding: '12px 20px', borderBottom: '1px solid #FFFFFF0A', backgroundColor: '#161616' }}><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><PanelAction label="收藏" active={favorited} onClick={handleStarClick} icon={<div style={{ transform: starAnim ? 'scale(1.25)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', display: 'flex' }}><FavoriteIcon filled={favorited} color="rgba(255,255,255,0.8)" /></div>} /><PanelAction label="下载" onClick={() => (onDownload ? onDownload() : downloadImage(card.imageUrl))} icon={<DownloadIcon />} /></div><PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon size={14} />} /></div>
             <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
               {DETAIL_PANEL_DIVIDER}
@@ -109,5 +134,5 @@ export default function ImageDetailModal({ card, imageId, onBasicEdit, onClose, 
       </div>
     </div>, document.body)}
     {confirmDelete && <ConfirmDialog title="确认删除" description="删除后无法恢复，确定要删除这张图片吗？" confirmText="删除" onConfirm={() => { setConfirmDelete(false); onDelete?.(); }} onCancel={() => setConfirmDelete(false)} zIndex={1100} />}
-  </MultiAngleAction.Provider>;
+  </MultiAngleAction.Provider></InpaintAction.Provider></UpscaleAction.Provider></FlipAction.Provider></OutpaintAction.Provider>;
 }

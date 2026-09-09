@@ -2,7 +2,7 @@ import StoryboardFinalizedCard from './StoryboardFinalizedCard';
 
 function getStoryboardTimelineCardSize(projectRatio) {
   return String(projectRatio || '').replace(/\s/g, '') === '9:16'
-    ? { width: 426.67, height: 240 }
+    ? { width: 135, height: 240 }
     : { width: 240, height: 135 };
 }
 

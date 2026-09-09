@@ -21,8 +21,12 @@ export function ImageEditFooter({ onReset, onClose, onSubmit, busy, disabled, la
   </footer>;
 }
 
-export default function ImageEditChrome({ title, children, onClose, busy, footer }) {
-  const { width, height, scale } = useModalSize();
+export default function ImageEditChrome({ title, children, onClose, busy, footer, baseWidth = 1200, baseHeight = 800 }) {
+  const { width, height, scale } = useModalSize(baseWidth, baseHeight);
+  const headerHeight = 60;
+  const footerHeight = 72;
+  const scaledAreaHeight = height - headerHeight - footerHeight;
+  const displayHeight = headerHeight + scaledAreaHeight * scale + footerHeight;
   const root = useRef(null);
   useEffect(() => {
     const previous = document.activeElement;
@@ -32,16 +36,21 @@ export default function ImageEditChrome({ title, children, onClose, busy, footer
   const handleKey = (event) => {
     if (event.key === 'Escape' && !busy) onClose();
     if (event.key !== 'Tab') return;
-    const elements = [...root.current.querySelectorAll('button:not(:disabled),input:not(:disabled),[tabindex="0"]')];
+    const elements = [...root.current.querySelectorAll('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]')];
     const first = elements[0];
     const last = elements.at(-1);
     if (event.shiftKey && (document.activeElement === first || document.activeElement === root.current)) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
   };
   return createPortal(<div className="image-edit-overlay" onClick={() => !busy && onClose()}>
-    <section ref={root} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className="image-edit-shell" style={{ width: `${width}px`, height: `${height}px`, transform: `scale(${scale})`, transformOrigin: 'center center' }} onKeyDown={handleKey} onClick={(event) => event.stopPropagation()}>
-      <ImageEditHeader title={title} onClose={onClose} busy={busy} />
-      {children}{footer}
+    <section ref={root} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className="image-edit-shell" style={{ width: `${width * scale}px`, height: `${displayHeight}px` }} onKeyDown={handleKey} onClick={(event) => event.stopPropagation()}>
+      <div className="image-edit-fixed-header" style={{ width: `${width * scale}px`, height: `${headerHeight}px` }}>
+        <ImageEditHeader title={title} onClose={onClose} busy={busy} />
+      </div>
+      <div className="image-edit-scaled-slot" style={{ width: `${width * scale}px`, height: `${scaledAreaHeight * scale}px` }}>
+        <div className="image-edit-scaled-area" style={{ width: `${width}px`, height: `${scaledAreaHeight}px`, transform: `scale(${scale})` }}>{children}</div>
+      </div>
+      {footer}
     </section>
   </div>, document.body);
 }

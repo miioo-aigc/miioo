@@ -119,6 +119,7 @@ export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteI
           flexDirection: 'column',
           width: `${modalW}px`,
           height: `${modalH}px`,
+          boxSizing: 'border-box',
           transform: `scale(${modalScale})`,
           transformOrigin: 'center center',
           borderRadius: '16px',
@@ -160,9 +161,9 @@ export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteI
         </div>
 
         {/* Body */}
-        <div style={{ display: 'flex', height: `${modalH - 60}px`, flex: 1 }}>
+        <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
           {/* Left: preview + thumbnails */}
-          <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, flexShrink: 1, flexBasis: '0%', minWidth: 0, minHeight: 0, backgroundColor: '#0D0D0D' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, flexShrink: 1, flexBasis: '0%', minWidth: 0, minHeight: 0, boxSizing: 'border-box', backgroundColor: '#0D0D0D' }}>
             {/* Main image */}
             <div style={{ flexGrow: 1, flexShrink: 1, flexBasis: '0%', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0, position: 'relative', backgroundColor: '#0A0A0A' }}>
               <img
@@ -175,6 +176,7 @@ export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteI
             {/* Thumbnails strip */}
             <div style={{
               flexShrink: 0,
+              boxSizing: 'border-box',
               paddingTop: '14px', paddingBottom: '16px', paddingLeft: '16px', paddingRight: '16px',
               backgroundColor: '#111111',
             }}>

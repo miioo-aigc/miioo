@@ -1,7 +1,6 @@
 import { cloneElement, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
-import { ImageEditHeader, ImageEditFooter } from './image-edit/ImageEditChrome';
+import ImageEditChrome, { ImageEditFooter } from './image-edit/ImageEditChrome';
 import { CropIcon, RotateCounterClockwiseIcon, RotateClockwiseIcon, FlipHorizontalIcon, FlipVerticalIcon, OriginalRatioIcon, CustomRatioIcon, RatioIcon } from './ui';
 import { showGlobalToast } from '../stores/toastStore';
 import ImageCropEditor from './ImageCropEditor';
@@ -26,7 +25,7 @@ function ToolButton({ label, icon, disabled, onClick, selected }) {
 }
 
 export default function ImageCropModal({ imageUrl, imageId, onBasicEdit, onClose, onSave }) {
-  const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
+  const { width: modalW, height: modalH } = useModalSize();
   const editorRef = useRef(null);
   const [editState, setEditState] = useState({ imageSize: { width: 0, height: 0 }, crop: { x: 0, y: 0, width: 1, height: 1 }, zoom: 1, panX: 0, panY: 0 });
   const [ratio, setRatio] = useState(null);
@@ -72,9 +71,8 @@ export default function ImageCropModal({ imageUrl, imageId, onBasicEdit, onClose
   const stageRatio = isQuarterTurn ? 1 / sourceRatio : sourceRatio;
   const stageWidth = Math.min(stageMaxWidth, stageMaxHeight * stageRatio);
 
-  return createPortal(<div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }} onClick={onClose}>
-    <div style={{ width: `${modalW}px`, height: `${modalH}px`, transform: `scale(${modalScale})`, transformOrigin: 'center center', borderRadius: '16px', overflow: 'hidden', boxShadow: '#00000099 -10px 24px 64px', background: '#161616', border: '1px solid #FFFFFF14', display: 'flex', flexDirection: 'column' }} onClick={(event) => event.stopPropagation()}>
-      <ImageEditHeader title="图片裁剪" onClose={onClose} busy={saving} />
+  return <ImageEditChrome title="图片裁剪" onClose={onClose} busy={saving} footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={handleSave} busy={saving} disabled={!editState.imageSize.width} />}>
+    <div style={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0 }}>
       <div style={{ height: '64px', padding: '16px 24px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#090909', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <ToolButton label="裁剪" icon={<CropIcon size={16} />} selected={cropEnabled} onClick={() => { setCropEnabled((value) => !value); setHoveredRatio(undefined); }} />
@@ -93,7 +91,6 @@ export default function ImageCropModal({ imageUrl, imageId, onBasicEdit, onClose
       <div aria-hidden={!cropEnabled} inert={!cropEnabled} style={{ height: cropEnabled ? '92px' : '0px', flexShrink: 0, overflow: 'hidden', opacity: cropEnabled ? 1 : 0, transition: 'height 240ms ease, opacity 240ms ease', background: '#090909' }}>
         <div style={{ height: '92px', padding: '16px 24px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>{RATIOS.map((item) => { const selected = ratio === item.value; const active = selected || hoveredRatio === item.value; return <button key={item.label} type="button" onClick={() => handleRatio(item.value)} onMouseEnter={() => setHoveredRatio(item.value)} onMouseLeave={() => setHoveredRatio(undefined)} style={{ width: '60px', height: '61px', padding: 0, border: 0, borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', justifyContent: 'center', background: active ? '#FFFFFF1A' : '#FFFFFF0D', color: active ? '#FFFFFF' : '#FFFFFFCC', cursor: 'pointer' }}>{cloneElement(item.icon, { color: active ? '#FFFFFF' : '#FFFFFFCC', selected })}<span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: active ? '#FFFFFF' : '#FFFFFFCC' }}>{item.label}</span></button>; })}</div>
       </div>
-      <ImageEditFooter onReset={reset} onClose={onClose} onSubmit={handleSave} busy={saving} disabled={!editState.imageSize.width} />
     </div>
-  </div>, document.body);
+  </ImageEditChrome>;
 }

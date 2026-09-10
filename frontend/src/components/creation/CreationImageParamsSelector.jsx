@@ -139,7 +139,9 @@ export function ParamsSelector({ ratio, resolution, count, onRatioChange, onReso
                     onMouseEnter={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF14'; }}
                     onMouseLeave={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF0D'; }}
                   >
-                    <RatioIcon rw={opt.w} rh={opt.h} selected={sel} />
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', flexShrink: 0 }}>
+                      <RatioIcon rw={opt.w} rh={opt.h} color="currentColor" />
+                    </span>
                     {opt.label}
                   </button>
                 );

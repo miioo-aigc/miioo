@@ -75,7 +75,7 @@ export default function CreationImageResultCard({ status, imageUrl, originalUrl,
       </div>
 
       {confirmDelete && <ConfirmDialog title="确认删除" description="删除后无法恢复，确定要删除这张图片吗？" confirmText="删除" onConfirm={() => { setConfirmDelete(false); onDelete?.(); }} onCancel={() => setConfirmDelete(false)} zIndex={1100} />}
-      {detailOpen && <ImageDetailModal card={{ imageUrl, originalUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt }} onCreateImage={edits.save} onGenerateImage={onGenerateImage} onClose={() => setDetailOpen(false)} onDelete={onDelete} onDownload={onDownload} favorited={favorited} onToggleFavorite={() => onToggleFavorite?.()} />}
+      {detailOpen && <ImageDetailModal card={{ imageUrl, originalUrl, creationAssetId: backendId, prompt, promptHTML, model, ratio, resolution, refImages, createdAt }} onCreateImage={edits.save} onGenerateImage={onGenerateImage} onClose={() => setDetailOpen(false)} onDelete={onDelete} onDownload={onDownload} favorited={favorited} onToggleFavorite={() => onToggleFavorite?.()} />}
       {!localEdit && (!backendId || cardIndex === 0) && edits.images.map((image) => <CreationImageResultCard key={image.id} {...image} editScope={scope} onDownload={() => downloadLocalImage(image)} onDelete={() => edits.remove(image.id)} />)}
     </>
   );

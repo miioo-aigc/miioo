@@ -5,8 +5,10 @@ import InpaintStage from './InpaintStage';
 import TextField from '../ui/TextField';
 import { showGlobalToast } from '../../stores/toastStore';
 import './Inpaint.css';
+import useImageEditSubmission from '../../hooks/useImageEditSubmission';
 
-export default function InpaintModal({ card, onClose, mode = 'inpaint' }) {
+export default function InpaintModal({ card, onClose, onSave, onComplete = onClose, mode = 'inpaint' }) {
+  const { busy, submit: generate } = useImageEditSubmission({ card, onSave, onComplete });
   const isEraser = mode === 'eraser';
   const [tool, setTool] = useState('brush');
   const [brushSize, setBrushSize] = useState(50);
@@ -36,7 +38,8 @@ export default function InpaintModal({ card, onClose, mode = 'inpaint' }) {
   }
 
   function submit() {
-    if (!editor.current?.exportMask()) {
+    const mask = editor.current?.exportMask();
+    if (!mask) {
       showGlobalToast(isEraser ? '请先涂抹需要消除的区域' : '请先涂抹需要重绘的区域', 'error');
       return;
     }
@@ -44,12 +47,13 @@ export default function InpaintModal({ card, onClose, mode = 'inpaint' }) {
       showGlobalToast('请输入重绘提示词', 'error');
       return;
     }
-    showGlobalToast(`暂未接入${isEraser ? '消除笔' : '局部重绘'}生成服务`, 'info');
+    if (prompt.length > 4000) { showGlobalToast('提示词不能超过4000字', 'error'); return; }
+    generate({ mode, mask, prompt: prompt.trim() });
   }
 
   return (
-    <ImageEditChrome title={isEraser ? '消除笔' : '局部重绘'} onClose={onClose} footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={submit} disabled={!ready} label="AI生成" />}>
-      <div className="inpaint-body">
+    <ImageEditChrome title={isEraser ? '消除笔' : '局部重绘'} onClose={onClose} busy={busy} footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={submit} busy={busy} disabled={!ready} label="AI生成" />}>
+      <div className="inpaint-body" inert={busy}>
         <InpaintToolbar tool={tool} onToolChange={setTool} brushSize={brushSize} onBrushSizeChange={setBrushSize} zoom={zoom} onZoomChange={setZoom} canUndo={history.index > 0} canRedo={history.index < history.strokes.length} onUndo={() => setHistory((value) => ({ ...value, index: Math.max(0, value.index - 1) }))} onRedo={() => setHistory((value) => ({ ...value, index: Math.min(value.strokes.length, value.index + 1) }))} disabled={!ready} />
         <InpaintStage key={`${card.imageUrl}-${revision}`} imageUrl={card.imageUrl} tool={tool} brushSize={brushSize} zoom={zoom} strokes={strokes} onStroke={addStroke} onReady={setReady} editorRef={editor} />
         {!isEraser && <div className="inpaint-prompt">

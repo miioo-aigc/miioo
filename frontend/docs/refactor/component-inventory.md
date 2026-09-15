@@ -1,5 +1,12 @@
 # 组件重构盘点基线
 
+## 2026-09-14 图片编辑接口编排
+
+- `api/ImageEdit.js` 独立处理源图上传、erase/outpainting 提交及结果回读，不改通用生成函数和多机位链路。
+- `hooks/useImageEditSubmission.js` 承担三项编辑的生成状态、防重复、模型准入及保存回调；两个详情入口透传 onSave/onComplete。
+- `LocalImageEdits.js` 支持远端结果和已受理任务记录；`useLocalImageEdits` 的保存函数提供 pending 扩展，恢复任务不重新提交生成。
+- 沿用 ImageEditChrome、ImageEditFooter、现有工具栏和输入组件，没有新增视觉样式。接口分支测试为 `scripts/test-image-edit.mjs`。
+
 ## 2026-09-09 视频选帧
 
 - `video-edit/VideoFrameModal.jsx` 接收 `videoUrl` 和 `onClose`，复用公共默认外壳、按钮、图标按钮和共享滑杆；详情入口只编排打开状态和源地址。

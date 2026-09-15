@@ -41,6 +41,24 @@ function formatVideoDuration(value) {
   return /s$/i.test(text) ? text : `${text}s`;
 }
 
+function formatCreatedAt(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return text;
+
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date).replace(/\//g, '-');
+}
+
 // ConfirmDeleteModal 已迁移至 ConfirmDialog 共享组件
 
 
@@ -646,7 +664,7 @@ export default function CreationVideoDetailModal({
                     AI 生成时间
                   </div>
                   <div className="tracking-[0.12px] font-['AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif] text-[#FFFFFFCC] text-[12px]/[16px]">
-                    {createdAt}
+                    {formatCreatedAt(createdAt)}
                   </div>
                 </div>
               </>

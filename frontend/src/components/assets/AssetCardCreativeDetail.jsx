@@ -41,6 +41,7 @@ export default function AssetCardCreativeDetail({ asset = {}, url, starred = fal
         card={{
           imageUrl: asset.imageUrl || url,
           originalUrl: asset.originalUrl || asset.original_url,
+          creationAssetId: asset.creationAssetId || asset.backendId,
           prompt: asset.input_prompt ?? asset.prompt,
           model: asset.model,
           ratio: asset.ratio,

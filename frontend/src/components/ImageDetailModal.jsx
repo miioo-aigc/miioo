@@ -103,10 +103,10 @@ export default function ImageDetailModal({ card, imageId, onBasicEdit, onClose, 
   const handleCopyPrompt = () => showGlobalToast('您已复制提示词', 'success');
 
   if (multiAngleOpen) return <MultiAngleModal card={card} onGenerate={onGenerateImage} onClose={() => setMultiAngleOpen(false)} onComplete={() => { setMultiAngleOpen(false); onClose?.(); }} />;
-  if (inpaintMode) return <InpaintModal card={card} mode={inpaintMode} onClose={() => setInpaintMode(null)} />;
+  if (inpaintMode) return <InpaintModal card={card} mode={inpaintMode} onSave={onCreateImage} onComplete={onClose} onClose={() => setInpaintMode(null)} />;
   if (upscaleOpen) return <UpscaleModal card={card} onClose={() => setUpscaleOpen(false)} />;
   if (flipOpen) return <ImageFlipModal imageUrl={card.imageUrl} onClose={() => setFlipOpen(false)} onComplete={() => { setFlipOpen(false); onClose?.(); }} onSave={onCreateImage} />;
-  if (outpaintOpen) return <OutpaintModal card={card} onClose={() => setOutpaintOpen(false)} />;
+  if (outpaintOpen) return <OutpaintModal card={card} onSave={onCreateImage} onComplete={onClose} onClose={() => setOutpaintOpen(false)} />;
 
   if (cropOpen) {
     return <ImageCropModal imageUrl={card.imageUrl} imageId={imageId} onBasicEdit={onBasicEdit} onClose={() => setCropOpen(false)} onComplete={() => { setCropOpen(false); onClose?.(); }} onSave={onCreateImage} />;

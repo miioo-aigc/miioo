@@ -6,6 +6,7 @@
  *   扩图比例选择、扩图框预览和锁定比例拖拽
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-09-14  接入扩图任务和原列表保存回调
  *   2026-09-09  初始实现，扩图区域使用 CSS 像素格绘制
  *   2026-09-09  原图固定为展示区面积 10%，统一显示比例，修正锁比例拖拽
  */
@@ -16,6 +17,7 @@ import { OriginalRatioIcon, RatioIcon } from '../ui';
 import { showGlobalToast } from '../../stores/toastStore';
 import './Outpaint.css';
 import './Inpaint.css';
+import useImageEditSubmission from '../../hooks/useImageEditSubmission';
 
 const RATIOS = [
   { label: '原比例', value: null, icon: <OriginalRatioIcon /> },
@@ -132,7 +134,8 @@ function OutpaintStage({ imageUrl, source, canvas, onChange }) {
   </div>;
 }
 
-export default function OutpaintModal({ card, onClose }) {
+export default function OutpaintModal({ card, onClose, onSave, onComplete = onClose }) {
+  const { busy, submit: generate } = useImageEditSubmission({ card, onSave, onComplete });
   const [source, setSource] = useState({ width: 0, height: 0 });
   const [ratio, setRatio] = useState(null);
   const [canvas, setCanvas] = useState({ width: 0, height: 0 });
@@ -160,11 +163,18 @@ export default function OutpaintModal({ card, onClose }) {
       showGlobalToast('未找到可用原图，请关闭后重试', 'error');
       return;
     }
-    showGlobalToast('扩图参数已准备完成，生成服务暂未接入', 'info');
+    if (prompt.length > 4000) { showGlobalToast('提示词不能超过4000字', 'error'); return; }
+    const horizontal = Math.max(0, (canvas.width / source.width - 1) / 2);
+    const vertical = Math.max(0, (canvas.height / source.height - 1) / 2);
+    if (!horizontal && !vertical) { showGlobalToast('请先扩大画布', 'error'); return; }
+    generate({ mode: 'outpaint', prompt: prompt.trim(), expandOptions: {
+      left_expansion_ratio: horizontal, right_expansion_ratio: horizontal,
+      top_expansion_ratio: vertical, bottom_expansion_ratio: vertical,
+    } });
   };
 
-  return <ImageEditChrome title="扩图" onClose={onClose} footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={submit} disabled={!source.width} label="AI生成" />}>
-    <div className="outpaint-body">
+  return <ImageEditChrome title="扩图" onClose={onClose} busy={busy} footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={submit} busy={busy} disabled={!source.width} label="AI生成" />}>
+    <div className="outpaint-body" inert={busy}>
       <OutpaintStage imageUrl={card?.imageUrl} source={source} canvas={canvas} onChange={setCanvas} />
       <div className="outpaint-ratios" role="group" aria-label="选择扩图比例">
         {RATIOS.map((item) => <RatioButton key={item.label} item={item} selected={ratio === item.value} onClick={handleRatioChange} />)}

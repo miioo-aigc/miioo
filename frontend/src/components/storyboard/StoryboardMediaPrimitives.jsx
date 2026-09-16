@@ -3,7 +3,7 @@
  * @structure-index
  *
  * ─── 组件职责 ───────────────────────────────────────────────────────
- *   MediaRemoveButton      媒体卡片删除按钮
+ *   MediaRemoveButton      媒体卡片悬停移除按钮
  *   MediaContent           图片、视频和音频媒体内容展示
  *   ShortcutMediaCard      首尾帧快捷参考卡片
  *
@@ -12,16 +12,12 @@
  */
 import { useState } from 'react';
 import { normalizeImageUrl } from '../../utils/imageUrl';
-import { DeleteIcon } from '../ui';
+import { ReferenceRemoveButton } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-export function MediaRemoveButton({ onClick }) {
-  return (
-    <button type="button" aria-label="删除媒体" onClick={onClick} style={{ position: 'absolute', top: '4px', right: '4px', width: '18px', height: '18px', border: 0, borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-      <DeleteIcon size={16} color="#FFFFFF" aria-hidden="true" />
-    </button>
-  );
+export function MediaRemoveButton({ visible = false, onClick, ariaLabel = '移除参考素材' }) {
+  return <ReferenceRemoveButton visible={visible} onClick={onClick} ariaLabel={ariaLabel} />;
 }
 
 export function MediaContent({ media, className, style }) {

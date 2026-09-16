@@ -7,9 +7,13 @@
  *
  * ─── 依赖边界 ───────────────────────────────────────────────────────
  *   只接收图片地址和删除回调，不调用 API、不读取 Store
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-09-16  复用统一的悬停叉号移除按钮
  */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ReferenceRemoveButton } from '../ui';
 
 function SubjectRefHoverPreview({ url, mouseX, mouseY }) {
   const [size, setSize] = useState(null);
@@ -75,9 +79,7 @@ export default function RefImageItem({ url, onRemove }) {
       <div onMouseEnter={handleMouseEnter} onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} style={{ width: '120px', height: '120px', borderRadius: '8px', overflow: 'hidden', position: 'relative', flexShrink: 0, border: `1px solid ${hovered ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`, transition: 'border-color 120ms', cursor: 'pointer' }}>
         {url && !imageFailed && <img src={url} alt="参考图" onError={() => { setImageFailed(true); setPreviewPos(null); }} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
         {imageFailed && <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF66', fontSize: '12px', backgroundColor: '#FFFFFF0A' }}>图片加载失败</div>}
-        {hovered && <div onClick={(event) => { event.stopPropagation(); clearTimeout(hoverTimerRef.current); setPreviewPos(null); onRemove?.(); }} style={{ position: 'absolute', top: '4px', right: '4px', width: '18px', height: '18px', borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 2L8 8M8 2L2 8" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" /></svg>
-        </div>}
+        <ReferenceRemoveButton visible={hovered} ariaLabel="移除主体参考图" onClick={() => { clearTimeout(hoverTimerRef.current); setPreviewPos(null); onRemove?.(); }} />
       </div>
       {previewPos && url && !imageFailed && createPortal(<SubjectRefHoverPreview url={url} mouseX={previewPos.x} mouseY={previewPos.y} />, document.body)}
     </>

@@ -9,13 +9,14 @@
  *   只接收素材、数量和显式回调；不调用 API、不读取 Store、不处理资产绑定
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-09-16         参考图移除按钮统一为悬停显示的叉号
  *   2026-08-05         参考图展示键兼容重复资产 ID，避免 React 列表键冲突
  */
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MediaHoverPreview } from './MainRefCol';
 import FileUploadButton from '../ui/FileUploadButton';
-import { DeleteIcon } from '../ui';
+import { ReferenceRemoveButton } from '../ui';
 
 export default function ReferenceImageField({
   images = [],
@@ -27,6 +28,7 @@ export default function ReferenceImageField({
 }) {
   const fileRef = useRef(null);
   const [preview, setPreview] = useState(null);
+  const [hoveredIndex, setHoveredIndex] = useState(null);
   const hoverTimerRef = useRef(null);
 
   function handleFileChange(event) {
@@ -68,11 +70,9 @@ export default function ReferenceImageField({
         {canAdd && <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleFileChange} />}
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {images.map((image, index) => (
-            <div key={getRenderKey(image, index)} onMouseEnter={(event) => handleMouseEnter(event, image)} onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}>
+            <div key={getRenderKey(image, index)} onMouseEnter={(event) => { setHoveredIndex(index); handleMouseEnter(event, image); }} onMouseMove={handleMouseMove} onMouseLeave={() => { setHoveredIndex(null); handleMouseLeave(); }} style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}>
               <img src={image.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              <button type="button" aria-label="删除参考图" onClick={() => { handleMouseLeave(); onRemove?.(image.id); }} style={{ position: 'absolute', top: '4px', right: '4px', width: '18px', height: '18px', border: 0, borderRadius: '4px', backgroundColor: 'rgba(0,0,0,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <DeleteIcon size={16} color="#FFFFFF" aria-hidden="true" />
-              </button>
+              <ReferenceRemoveButton visible={hoveredIndex === index} ariaLabel="移除参考图" onClick={() => { handleMouseLeave(); onRemove?.(image.id); }} />
             </div>
           ))}
           {canAdd && (

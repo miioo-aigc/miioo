@@ -16,6 +16,7 @@
  *   素材列表写回、生成请求、Toast 和任务轮询由上层显式回调负责。
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-09-16  参考素材与首尾帧移除按钮统一为悬停显示的叉号
  *   2026-08-17  参考素材选择器接收当前视频模型，Seedance 模型可展示认证素材库
  *   2026-08-28  PanelUploadSlot 支持上传和资产库确认前的业务素材数量校验
  *   2026-07-16  从生成面板上传区迁移完成；由 ReferenceMediaEditor 直接引入并复用
@@ -67,6 +68,7 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
   const fileRef = useRef(null);
   const hoverTimerRef = useRef(null);
   const [hov, setHov] = useState(false);
+  const [mediaHovered, setMediaHovered] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [previewPos, setPreviewPos] = useState(null);
 
@@ -114,13 +116,13 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
           {media ? (
             <div
-              onMouseEnter={startPreview}
+              onMouseEnter={(event) => { setMediaHovered(true); startPreview(event); }}
               onMouseMove={movePreview}
-              onMouseLeave={stopPreview}
+              onMouseLeave={() => { setMediaHovered(false); stopPreview(); }}
               style={{ position: 'relative', width: '100%', aspectRatio: '1', borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)', boxSizing: 'border-box' }}
             >
               <MediaContent media={media} />
-              <MediaRemoveButton onClick={() => { stopPreview(); onRemove?.(); }} />
+              <MediaRemoveButton visible={mediaHovered} ariaLabel={`移除${label || '参考素材'}`} onClick={() => { stopPreview(); onRemove?.(); }} />
             </div>
           ) : (
             <div
@@ -176,6 +178,7 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
   const fileRef = useRef(null);
   const hoverTimerRef = useRef(null);
   const [hov, setHov] = useState(false);
+  const [hoveredMediaIndex, setHoveredMediaIndex] = useState(null);
   const [addHov, setAddHov] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [previewMedia, setPreviewMedia] = useState(null);
@@ -249,9 +252,9 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
         {isMultiMode ? (
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {(mediaList || []).map((item, index) => (
-              <div key={item.id || index} onMouseEnter={(event) => startPreview(event, item)} onMouseMove={movePreview} onMouseLeave={stopPreview} style={{ position: 'relative', width: `${THUMB}px`, height: `${THUMB}px`, borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}>
+              <div key={item.id || index} onMouseEnter={(event) => { setHoveredMediaIndex(index); startPreview(event, item); }} onMouseMove={movePreview} onMouseLeave={() => { setHoveredMediaIndex(null); stopPreview(); }} style={{ position: 'relative', width: `${THUMB}px`, height: `${THUMB}px`, borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}>
                 {renderMedia(item)}
-                <MediaRemoveButton onClick={() => { stopPreview(); onRemoveItem ? onRemoveItem(index) : onRemove?.(); }} />
+                <MediaRemoveButton visible={hoveredMediaIndex === index} ariaLabel={`移除${label || '参考素材'}`} onClick={() => { stopPreview(); onRemoveItem ? onRemoveItem(index) : onRemove?.(); }} />
               </div>
             ))}
             {canAddMore && <div onMouseEnter={() => setAddHov(true)} onMouseLeave={() => setAddHov(false)} style={{ width: `${THUMB}px`, height: `${THUMB}px`, borderRadius: '6px', flexShrink: 0, border: `1px dashed ${addHov ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.08)'}`, backgroundColor: '#1D1E1E', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'border-color 0.12s', cursor: 'pointer' }}>{renderUploadButtons()}</div>}
@@ -259,10 +262,10 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
         ) : (
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {media ? (
-              <div onMouseDown={(event) => { if (onInsert) event.preventDefault(); }} onClick={() => onInsert?.(media)} onMouseEnter={(event) => startPreview(event, media)} onMouseMove={movePreview} onMouseLeave={stopPreview} style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: `1px solid ${onInsert ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.12)'}`, cursor: onInsert ? 'pointer' : 'default' }}>
+              <div onMouseDown={(event) => { if (onInsert) event.preventDefault(); }} onClick={() => onInsert?.(media)} onMouseEnter={(event) => { setHoveredMediaIndex(0); startPreview(event, media); }} onMouseMove={movePreview} onMouseLeave={() => { setHoveredMediaIndex(null); stopPreview(); }} style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: `1px solid ${onInsert ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.12)'}`, cursor: onInsert ? 'pointer' : 'default' }}>
                 {renderMedia(media)}
                 {media.type?.startsWith('audio') && <span style={{ position: 'absolute', bottom: '6px', left: 0, right: 0, paddingInline: '4px', textAlign: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.40)', fontFamily: FONT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{media.name}</span>}
-                <MediaRemoveButton onClick={() => { stopPreview(); onRemove?.(); }} />
+                <MediaRemoveButton visible={hoveredMediaIndex === 0} ariaLabel={`移除${label || '参考素材'}`} onClick={() => { stopPreview(); onRemove?.(); }} />
               </div>
             ) : (
               <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ width: '120px', height: '120px', borderRadius: '6px', flexShrink: 0, border: `1px dashed ${hov ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.08)'}`, backgroundColor: '#1D1E1E', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'border-color 0.12s' }}>{renderUploadButtons()}</div>

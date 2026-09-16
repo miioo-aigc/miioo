@@ -16,6 +16,9 @@
  *   素材列表写回、生成请求、Toast 和任务轮询由上层显式回调负责。
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-09-16  缺失主体占位名称样式对齐设计稿（字号改为 12px）
+ *   2026-09-16  缺失主体占位图标复用主体页面 SubjectTypeIcons（道具用立方体 PropIcon）
+ *   2026-09-16  缺失主体空占位支持悬停删除叉号，tooltip 跟随鼠标移动
  *   2026-09-16  参考素材与首尾帧移除按钮统一为悬停显示的叉号
  *   2026-08-17  参考素材选择器接收当前视频模型，Seedance 模型可展示认证素材库
  *   2026-08-28  PanelUploadSlot 支持上传和资产库确认前的业务素材数量校验
@@ -34,6 +37,8 @@ import { MediaHoverPreview as StoryboardMediaHoverPreview } from './MainRefCol';
 import FileUploadButton from '../ui/FileUploadButton';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { getUploadedImageId, getUploadedImageUrl } from '../../utils/storyboardReferenceAdapter';
+import { CharIcon, SceneIcon, PropIcon } from '../subject/SubjectTypeIcons';
+import Tooltip from '../ui/Tooltip';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -241,6 +246,48 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
     );
   }
 
+  function renderEmptySubject(item, index) {
+    const subjectType = item.subject_type || item.subjectType || item.type;
+    const subjectName = item.name || '未命名主体';
+
+    // 根据主体类型选择对应图标
+    const IconComponent =
+      subjectType === 'char' || subjectType === 'character' ? CharIcon :
+      subjectType === 'scene' ? SceneIcon :
+      subjectType === 'prop' ? PropIcon :
+      null;
+    if (!IconComponent) return null;
+
+    return (
+      <Tooltip label="请去主体页面创作该主体图" followCursor>
+        <div
+          onMouseEnter={() => setHoveredMediaIndex(index)}
+          onMouseLeave={() => setHoveredMediaIndex(null)}
+          style={{
+            position: 'relative',
+            width: `${THUMB}px`,
+            height: `${THUMB}px`,
+            borderRadius: '6px',
+            overflow: 'hidden',
+            flexShrink: 0,
+            border: '1px solid rgba(255,255,255,0.12)',
+            backgroundColor: '#1D1E1E',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '4px',
+          }}
+        >
+          <IconComponent size={24} color="rgba(255,255,255,0.20)" />
+          <span style={{ fontSize: '12px', lineHeight: '18px', color: 'rgba(255,255,255,0.35)', fontFamily: FONT, textAlign: 'center', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subjectName}</span>
+          <MediaRemoveButton visible={hoveredMediaIndex === index} ariaLabel={`移除${subjectName}`} onClick={() => { onRemoveItem ? onRemoveItem(index) : onRemove?.(); }} />
+        </div>
+      </Tooltip>
+    );
+  }
+
+
   return (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignSelf: 'stretch' }}>
@@ -251,12 +298,20 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
         <input ref={fileRef} type="file" accept={accept} style={{ display: 'none' }} onChange={handleFile} />
         {isMultiMode ? (
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            {(mediaList || []).map((item, index) => (
+            {(mediaList || []).map((item, index) => {
+              const isEmptySubject = !item.url && !item.image_url && !item.thumbnail_url && (item.subject_type || item.subjectType || (item.type && ['char', 'scene', 'prop', 'character'].includes(item.type)));
+
+              if (isEmptySubject) {
+                return <div key={item.id || item.subject_id || index}>{renderEmptySubject(item, index)}</div>;
+              }
+
+              return (
               <div key={item.id || index} onMouseEnter={(event) => { setHoveredMediaIndex(index); startPreview(event, item); }} onMouseMove={movePreview} onMouseLeave={() => { setHoveredMediaIndex(null); stopPreview(); }} style={{ position: 'relative', width: `${THUMB}px`, height: `${THUMB}px`, borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}>
                 {renderMedia(item)}
                 <MediaRemoveButton visible={hoveredMediaIndex === index} ariaLabel={`移除${label || '参考素材'}`} onClick={() => { stopPreview(); onRemoveItem ? onRemoveItem(index) : onRemove?.(); }} />
               </div>
-            ))}
+              );
+            })}
             {canAddMore && <div onMouseEnter={() => setAddHov(true)} onMouseLeave={() => setAddHov(false)} style={{ width: `${THUMB}px`, height: `${THUMB}px`, borderRadius: '6px', flexShrink: 0, border: `1px dashed ${addHov ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.08)'}`, backgroundColor: '#1D1E1E', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'border-color 0.12s', cursor: 'pointer' }}>{renderUploadButtons()}</div>}
           </div>
         ) : (

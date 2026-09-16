@@ -1,5 +1,5 @@
 import { authFetch } from './request';
-import { apiUploadCreationImage } from './creation';
+import { mayShowEditPrompt, readEditMetadata } from '../utils/MediaEditPolicy';
 
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
@@ -14,28 +14,19 @@ export async function apiReadEditedImage(id) {
   return request(`/api/creation/images/${encodeURIComponent(id)}`);
 }
 
-// 只信任显式的创作资产编号；主体、分镜和候选图的 id 不能用于 erase。
+// 不把候选记录编号或重新上传的资产伪装成真实源资产。
 export async function apiPrepareEditSource(card) {
-  if (card.creationAssetId) return { id: card.creationAssetId, url: card.originalUrl || card.imageUrl };
-  const response = card.blob ? null : await fetch(card.originalUrl || card.original_url || card.imageUrl);
-  if (response && !response.ok) throw new Error('原图读取失败，请刷新后重试');
-  const blob = card.blob || await response.blob();
-  const uploaded = await apiUploadCreationImage({ file: new File([blob], 'edit-source.png', { type: blob.type || 'image/png' }) });
-  const id = uploaded.asset_id || uploaded.image?.id;
-  const url = uploaded.uploaded_url || uploaded.uploadedUrl || uploaded.image?.original_url;
-  if (!id || !url) throw new Error(typeof uploaded.detail === 'string' ? uploaded.detail : '原图上传未返回有效资产');
+  const id = card.creationAssetId || card.asset_id || card.assetId || card.backendId;
+  const url = card.originalUrl || card.original_url || card.download_url || card.downloadUrl || card.imageUrl;
+  if (typeof id !== 'string' || !id.trim() || /^(local[-_:]|blob:)/.test(id)) throw new Error('当前图片缺少真实源资产编号，无法保存编辑归属');
+  if (!url) throw new Error('未找到可用原图');
   return { id, url };
 }
 
-export async function apiSubmitImageEdit(source, { mode, mask, prompt, model, ratio, resolution, expandOptions }) {
-  if (mode === 'outpaint') return request('/api/creation/images/generate', {
-    prompt: prompt || '自然延展原图画面，保持原图主体、风格和光照一致', model,
-    generation_mode: 'outpainting', expand_options: expandOptions,
-    reference_images: [source.url], count: 1, save_to_assets: true,
-  });
-  return request(`/api/creation/images/${encodeURIComponent(source.id)}/erase`, {
-    mask_data_url: mask, prompt: prompt || null, model, ratio, resolution,
-  });
+export async function apiSubmitImageEdit() {
+  // 现有 erase/generate 契约缺少编辑类型、指定模型与业务归属继承保证。
+  // 保留旧任务回读能力；新请求须等后端契约明确后再开放。
+  throw new Error('图片编辑保存契约尚未接入：需确认指定模型、编辑模式及原资产归属继承，尚未提交生成');
 }
 
 export async function apiResolveImageEdit(accepted, mode) {
@@ -70,5 +61,5 @@ export function normalizeEditedImage(image) {
   const remoteUrl = image.original_url || image.originalUrl;
   const creationAssetId = image.asset_id || image.id;
   if (!remoteUrl || !creationAssetId) throw new Error('编辑结果缺少原图或资产编号');
-  return { remoteUrl, originalUrl: remoteUrl, creationAssetId, backendId: creationAssetId, model: image.model, prompt: image.prompt, ratio: image.aspect_ratio, resolution: image.resolution, source: 'backend-image-edit' };
+  return { ...readEditMetadata(image), metadata_json: image.metadata_json, remoteUrl, originalUrl: remoteUrl, creationAssetId, backendId: creationAssetId, model: image.model, prompt: mayShowEditPrompt(image) ? image.prompt : '', ratio: image.aspect_ratio, resolution: image.resolution, source: 'backend-image-edit' };
 }

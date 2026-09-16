@@ -6,6 +6,7 @@
  *   扩图比例选择、扩图框预览和锁定比例拖拽
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-09-16  扩图方向字段及面积约束统一校验
  *   2026-09-14  接入扩图任务和原列表保存回调
  *   2026-09-09  初始实现，扩图区域使用 CSS 像素格绘制
  *   2026-09-09  原图固定为展示区面积 10%，统一显示比例，修正锁比例拖拽
@@ -18,6 +19,7 @@ import { showGlobalToast } from '../../stores/toastStore';
 import './Outpaint.css';
 import './Inpaint.css';
 import useImageEditSubmission from '../../hooks/useImageEditSubmission';
+import { validateExpansion } from '../../utils/MediaEditPolicy';
 
 const RATIOS = [
   { label: '原比例', value: null, icon: <OriginalRatioIcon /> },
@@ -166,11 +168,13 @@ export default function OutpaintModal({ card, onClose, onSave, onComplete = onCl
     if (prompt.length > 4000) { showGlobalToast('提示词不能超过4000字', 'error'); return; }
     const horizontal = Math.max(0, (canvas.width / source.width - 1) / 2);
     const vertical = Math.max(0, (canvas.height / source.height - 1) / 2);
-    if (!horizontal && !vertical) { showGlobalToast('请先扩大画布', 'error'); return; }
-    generate({ mode: 'outpaint', prompt: prompt.trim(), expandOptions: {
+    const expandOptions = {
       left_expansion_ratio: horizontal, right_expansion_ratio: horizontal,
-      top_expansion_ratio: vertical, bottom_expansion_ratio: vertical,
-    } });
+      up_expansion_ratio: vertical, down_expansion_ratio: vertical,
+    };
+    try { validateExpansion(expandOptions); }
+    catch (error) { showGlobalToast(error.message, 'error'); return; }
+    generate({ mode: 'outpaint', prompt: prompt.trim(), model_requirement: 'Kling v3', expandOptions });
   };
 
   return <ImageEditChrome title="扩图" onClose={onClose} busy={busy} footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={submit} busy={busy} disabled={!source.width} label="AI生成" />}>

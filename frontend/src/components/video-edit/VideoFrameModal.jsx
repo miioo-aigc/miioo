@@ -4,12 +4,28 @@ import ImageEditChrome from '../image-edit/ImageEditChrome';
 import Button from '../ui/Button';
 import VideoFrameTimeline from './VideoFrameTimeline';
 import useFrameSelection from './useFrameSelection';
+import { buildVideoEditRequest } from '../../utils/MediaEditRequest';
+import { showGlobalToast } from '../../stores/toastStore';
 import './VideoFrame.css';
 
-export default function VideoFrameModal({ videoUrl, onClose }) {
+export default function VideoFrameModal({ videoUrl, sourceAsset, onPrepare, onClose }) {
   const canvasRef = useRef(null);
-  const state = useFrameSelection(videoUrl, canvasRef);
-  const { times, index, busy, exporting, error, dimensions, step, seek, download } = state;
+  const state = useFrameSelection(videoUrl, canvasRef, {
+    onExport: async (blob, exportedIndex) => {
+      try {
+        const request = buildVideoEditRequest(sourceAsset, {
+          mode: 'frame_extract',
+          frame_time_seconds: times[exportedIndex],
+          file: new File([blob], `视频选帧-${exportedIndex + 1}.png`, { type: 'image/png' }),
+        });
+        await onPrepare?.(request);
+        showGlobalToast('已准备选帧图片与保存参数，等待后端编辑接口接入', 'info');
+      } catch (exportError) {
+        showGlobalToast(exportError.message || '选帧参数准备失败，请重试', 'error');
+      }
+    },
+  });
+  const { times, index, busy, exporting, error, dimensions, step, seek, download, exportFrame } = state;
   const start = times[0] || 0;
   const end = times.at(-1) || start;
   const time = times[index] || start;
@@ -30,6 +46,7 @@ export default function VideoFrameModal({ videoUrl, onClose }) {
   return <ImageEditChrome title="视频选帧" onClose={onClose} zIndex={1400}
     footer={<footer className="image-edit-footer frame-footer">
       <Button variant="secondary" onClick={onClose}>取消</Button>
+      <Button loading={exporting} disabled={busy || Boolean(error)} onClick={exportFrame}>准备保存</Button>
       <Button icon={<Download size={16} />} loading={exporting} disabled={busy || Boolean(error)} onClick={download}>下载图片</Button>
     </footer>}>
     <div className="frame-body">

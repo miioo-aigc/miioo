@@ -13,6 +13,7 @@ import ImageFlipModal from './image-edit/ImageFlipModal';
 import OutpaintModal from './image-edit/OutpaintModal';
 import CopyPromptButton from './ui/CopyPromptButton';
 import { FavoriteIcon, DeleteIcon, CropIcon } from './ui';
+import { EDIT_MODE_LABELS, mayShowEditPrompt, readEditMetadata } from '../utils/MediaEditPolicy';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -83,7 +84,7 @@ function DownloadIcon() {
   return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><path d="M13.506 11.439C14.601 10.668 15.071 9.277 14.667 8C14.262 6.723 13.024 6.024 11.684 6.025H10.911C10.405 4.054 8.736 2.599 6.715 2.366C4.693 2.133 2.737 3.171 1.796 4.975C0.856 6.78 1.125 8.977 2.474 10.501" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /><path d="M8.003 13.667L8 7.667" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /><path d="M10.121 11.545L8 13.667L5.879 11.545" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-export default function ImageDetailModal({ card, imageId, onBasicEdit, onClose, onDelete, onDownload, favorited = false, onToggleFavorite, onCreateImage, onGenerateImage }) {
+export default function ImageDetailModal({ card, onClose, onDelete, onDownload, favorited = false, onToggleFavorite, onCreateImage }) {
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const [starAnim, setStarAnim] = useState(false);
   const [closeHovered, setCloseHovered] = useState(false);
@@ -94,6 +95,8 @@ export default function ImageDetailModal({ card, imageId, onBasicEdit, onClose, 
   const [upscaleOpen, setUpscaleOpen] = useState(false);
   const [flipOpen, setFlipOpen] = useState(false);
   const [outpaintOpen, setOutpaintOpen] = useState(false);
+  const editMetadata = readEditMetadata(card);
+  const showPrompt = mayShowEditPrompt(card);
 
   const handleStarClick = () => {
     setStarAnim(true);
@@ -102,14 +105,14 @@ export default function ImageDetailModal({ card, imageId, onBasicEdit, onClose, 
   };
   const handleCopyPrompt = () => showGlobalToast('您已复制提示词', 'success');
 
-  if (multiAngleOpen) return <MultiAngleModal card={card} onGenerate={onGenerateImage} onClose={() => setMultiAngleOpen(false)} onComplete={() => { setMultiAngleOpen(false); onClose?.(); }} />;
+  if (multiAngleOpen) return <MultiAngleModal card={card} onClose={() => setMultiAngleOpen(false)} />;
   if (inpaintMode) return <InpaintModal card={card} mode={inpaintMode} onSave={onCreateImage} onComplete={onClose} onClose={() => setInpaintMode(null)} />;
   if (upscaleOpen) return <UpscaleModal card={card} onClose={() => setUpscaleOpen(false)} />;
-  if (flipOpen) return <ImageFlipModal imageUrl={card.imageUrl} onClose={() => setFlipOpen(false)} onComplete={() => { setFlipOpen(false); onClose?.(); }} onSave={onCreateImage} />;
+  if (flipOpen) return <ImageFlipModal imageUrl={card.imageUrl} sourceAsset={card} onClose={() => setFlipOpen(false)} />;
   if (outpaintOpen) return <OutpaintModal card={card} onSave={onCreateImage} onComplete={onClose} onClose={() => setOutpaintOpen(false)} />;
 
   if (cropOpen) {
-    return <ImageCropModal imageUrl={card.imageUrl} imageId={imageId} onBasicEdit={onBasicEdit} onClose={() => setCropOpen(false)} onComplete={() => { setCropOpen(false); onClose?.(); }} onSave={onCreateImage} />;
+    return <ImageCropModal imageUrl={card.imageUrl} sourceAsset={card} onClose={() => setCropOpen(false)} />;
   }
 
   return <OutpaintAction.Provider value={() => setOutpaintOpen(true)}><FlipAction.Provider value={() => setFlipOpen(true)}><UpscaleAction.Provider value={() => setUpscaleOpen(true)}><InpaintAction.Provider value={setInpaintMode}><MultiAngleAction.Provider value={() => setMultiAngleOpen(true)}>
@@ -122,7 +125,8 @@ export default function ImageDetailModal({ card, imageId, onBasicEdit, onClose, 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, padding: '12px 20px', borderBottom: '1px solid #FFFFFF0A', backgroundColor: '#161616' }}><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><PanelAction label="收藏" active={favorited} onClick={handleStarClick} icon={<div style={{ transform: starAnim ? 'scale(1.25)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', display: 'flex' }}><FavoriteIcon filled={favorited} color="rgba(255,255,255,0.8)" /></div>} /><PanelAction label="下载" onClick={() => (onDownload ? onDownload() : downloadImage(card.imageUrl))} icon={<DownloadIcon />} /></div><PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon size={14} />} /></div>
             <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
               {DETAIL_PANEL_DIVIDER}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 20px', flexShrink: 0 }}><div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}><div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>提示词</div><CopyPromptButton text={card.prompt} onCopy={handleCopyPrompt} /></div><div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{card.promptHTML ? <span dangerouslySetInnerHTML={{ __html: card.promptHTML }} /> : (card.prompt || '—')}</div></div>
+              {editMetadata.edit_mode && <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '12px 20px', flexShrink: 0 }}><span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFF99' }}>编辑模式</span><span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>{EDIT_MODE_LABELS[editMetadata.edit_mode] || editMetadata.edit_mode}</span></div>}
+              {showPrompt && <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 20px', flexShrink: 0 }}><div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}><div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>提示词</div><CopyPromptButton text={card.prompt} onCopy={handleCopyPrompt} /></div><div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '20px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{card.promptHTML ? <span dangerouslySetInnerHTML={{ __html: card.promptHTML }} /> : (card.prompt || '—')}</div></div>}
               {card.refImages?.length > 0 && <>{DETAIL_PANEL_DIVIDER}<div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 20px', flexShrink: 0 }}><div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>参考图</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px', width: '100%' }}>{card.refImages.map((img, index) => { const imageUrl = img.url || img.previewUrl || ''; return <AsyncImagePreview key={`${index}-${imageUrl}`} src={imageUrl} alt="参考图" resolveSrc={apiGetLiveMaterialPreviewByRef} style={{ width: '100%', height: 'auto', aspectRatio: '1 / 1' }} />; })}</div></div></>}
               {DETAIL_PANEL_DIVIDER}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px 20px', flexShrink: 0 }}><div style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>生成参数</div>{card.model && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>模型</span><span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{card.model}</span></div>}{card.ratio && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>画面比例</span><span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{card.ratio}</span></div>}{card.resolution && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFF99' }}>分辨率</span><span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{card.resolution}</span></div>}</div>

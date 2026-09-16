@@ -6,8 +6,9 @@ import VideoTrimFields from './VideoTrimFields';
 import { durationTicks, updateTrimRange } from './TrimRange';
 import { showGlobalToast } from '../../stores/toastStore';
 import './VideoTrim.css';
+import { buildVideoEditRequest } from '../../utils/MediaEditRequest';
 
-export default function VideoTrimModal({ videoUrl, posterUrl = '', onClose }) {
+export default function VideoTrimModal({ videoUrl, posterUrl = '', onClose, sourceAsset, onPrepare }) {
   const videoRef = useRef(null);
   const [range, setRange] = useState({ start: 0, end: 0 });
   const [total, setTotal] = useState(0);
@@ -19,6 +20,8 @@ export default function VideoTrimModal({ videoUrl, posterUrl = '', onClose }) {
   const [feedbackVisible, setFeedbackVisible] = useState(false);
   const feedbackTimerRef = useRef(null);
   const available = Boolean(videoUrl && ready && total > 0 && !failed);
+
+  useEffect(() => () => clearTimeout(feedbackTimerRef.current), []);
 
   useEffect(() => {
     if (!playing) return undefined;
@@ -79,8 +82,10 @@ export default function VideoTrimModal({ videoUrl, posterUrl = '', onClose }) {
   function close() { videoRef.current?.pause(); onClose(); }
   function save() {
     if (!available) return;
-    showGlobalToast('剪辑服务暂未接入，尚未生成或保存新视频', 'info');
-    close();
+    try { onPrepare?.(buildVideoEditRequest(sourceAsset, { mode: 'trim', start_time_seconds: range.start / 10, end_time_seconds: range.end / 10 })); }
+    catch (error) { showGlobalToast(error.message, 'error'); return; }
+    showGlobalToast('已准备视频剪辑参数，等待后端编辑接口接入', 'info');
+    // 后端尚无剪辑保存接口，保留用户设置避免误报成功。
   }
 
   return <ImageEditChrome title="视频剪辑" onClose={close} zIndex={1400}

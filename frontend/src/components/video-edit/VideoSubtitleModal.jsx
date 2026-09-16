@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import ImageEditChrome from '../image-edit/ImageEditChrome';
 import Button from '../ui/Button';
-import SubtitleMask from './SubtitleMask';
-import { DEFAULT_SUBTITLE_MASK } from './SubtitleMaskGeometry';
 import { showGlobalToast } from '../../stores/toastStore';
+import { buildVideoEditRequest } from '../../utils/MediaEditRequest';
 import './VideoSubtitle.css';
 
 function formatTime(seconds) {
@@ -12,11 +11,9 @@ function formatTime(seconds) {
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
 }
 
-export default function VideoSubtitleModal({ videoUrl, posterUrl = '', onClose }) {
+export default function VideoSubtitleModal({ videoUrl, posterUrl = '', sourceAsset, onPrepare, onClose }) {
   const videoRef = useRef(null);
   const stageRef = useRef(null);
-  const frameRef = useRef(null);
-  const [mask, setMask] = useState(DEFAULT_SUBTITLE_MASK);
   const [source, setSource] = useState({ width: 0, height: 0 });
   const [area, setArea] = useState({ width: 0, height: 0 });
   const [playing, setPlaying] = useState(false);
@@ -49,10 +46,15 @@ export default function VideoSubtitleModal({ videoUrl, posterUrl = '', onClose }
     onClose();
   }
 
-  function submit() {
+  async function submit() {
     if (!available) return;
-    showGlobalToast('字幕处理区域已准备完成，生成服务暂未接入', 'info');
-    close();
+    try {
+      const request = buildVideoEditRequest(sourceAsset, { mode: 'subtitle_remove' });
+      await onPrepare?.(request);
+      showGlobalToast('已准备整段去字幕参数，等待后端编辑接口接入', 'info');
+    } catch (error) {
+      showGlobalToast(error.message || '去字幕参数准备失败，请重试', 'error');
+    }
   }
 
   return <ImageEditChrome title="去字幕" onClose={close} zIndex={1400} footer={
@@ -63,7 +65,7 @@ export default function VideoSubtitleModal({ videoUrl, posterUrl = '', onClose }
   }>
     <div className="subtitle-body">
       <div ref={stageRef} className="subtitle-stage">
-        {videoUrl && !failed ? <div ref={frameRef} className="subtitle-frame" style={{ width: scale ? source.width * scale : '100%', height: scale ? source.height * scale : '100%' }}>
+        {videoUrl && !failed ? <div className="subtitle-frame" style={{ width: scale ? source.width * scale : '100%', height: scale ? source.height * scale : '100%' }}>
           <video ref={videoRef} src={videoUrl} poster={posterUrl || undefined} autoPlay muted={muted} playsInline preload="auto"
             onLoadedMetadata={(event) => {
               const video = event.currentTarget;
@@ -76,7 +78,6 @@ export default function VideoSubtitleModal({ videoUrl, posterUrl = '', onClose }
           />
           {available && <>
             <button type="button" className="subtitle-play-surface" aria-label={playing ? '暂停视频画面' : '播放视频画面'} onClick={togglePlay} />
-            <SubtitleMask value={mask} onChange={setMask} frameRef={frameRef} />
           </>}
         </div> : <span role="status">视频加载失败，请关闭后重试</span>}
       </div>

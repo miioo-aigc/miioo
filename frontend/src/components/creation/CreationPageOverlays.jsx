@@ -67,6 +67,7 @@ export default function CreationPageOverlays({
 
       {videoDetail && createPortal(
         <CreationVideoDetailModal
+          sourceAsset={videoDetail}
           videoUrl={videoDetail.videoUrl}
           originalVideoUrl={videoDetail.downloadUrl || videoDetail.download_url || videoDetail.originalUrl || videoDetail.original_url || videoDetail.videoUrl}
           posterUrl={videoDetail.posterUrl}

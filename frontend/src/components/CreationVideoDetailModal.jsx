@@ -270,6 +270,7 @@ export default function CreationVideoDetailModal({
   onDelete,
   favorited = false,
   onFavorite,
+  sourceAsset,
 }) {
   console.log('CreationVideoDetailModal props:', { videoUrl, posterUrl, prompt, model, ratio, resolution, duration });
 
@@ -737,10 +738,10 @@ export default function CreationVideoDetailModal({
         </div>
       </div>
     </div>
-    {upscaleOpen && <VideoUpscaleModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} onClose={() => setUpscaleOpen(false)} />}
-    {subtitleOpen && <VideoSubtitleModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} onClose={() => setSubtitleOpen(false)} />}
-    {trimOpen && <VideoTrimModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} onClose={() => setTrimOpen(false)} />}
-    {frameOpen && <VideoFrameModal key={originalVideoUrl || videoUrl} videoUrl={originalVideoUrl || videoUrl} onClose={() => setFrameOpen(false)} />}
+    {upscaleOpen && <VideoUpscaleModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setUpscaleOpen(false)} />}
+    {subtitleOpen && <VideoSubtitleModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setSubtitleOpen(false)} />}
+    {trimOpen && <VideoTrimModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setTrimOpen(false)} />}
+    {frameOpen && <VideoFrameModal key={originalVideoUrl || videoUrl} videoUrl={originalVideoUrl || videoUrl} sourceAsset={sourceAsset} onClose={() => setFrameOpen(false)} />}
     {confirmDelete && (
       <ConfirmDialog
         title="确认删除"

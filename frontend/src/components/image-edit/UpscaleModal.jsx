@@ -2,19 +2,30 @@ import { useState } from 'react';
 import ImageEditChrome from './ImageEditChrome';
 import { QualityOption, UpscaleFooter } from './UpscaleControls';
 import { showGlobalToast } from '../../stores/toastStore';
+import { buildImageEditRequest } from '../../utils/MediaEditRequest';
 import './Upscale.css';
 
 const QUALITY_OPTIONS = ['2K', '3K', '4K'];
 
-export default function UpscaleModal({ card, onClose }) {
+export default function UpscaleModal({ card, onPrepare, onClose }) {
   const [quality, setQuality] = useState('2K');
 
-  function submit() {
+  async function submit() {
     if (!card?.imageUrl) {
       showGlobalToast('未找到可用原图，请关闭后重试', 'error');
       return;
     }
-    showGlobalToast(`已选择${quality}智能超清，生成服务暂未接入`, 'info');
+    try {
+      const request = buildImageEditRequest(card, {
+        mode: 'upscale',
+        model_requirement: 'Seedream 5.0',
+        target_resolution: quality,
+      });
+      await onPrepare?.(request);
+      showGlobalToast(`已准备${quality}图片智能超清参数，等待后端编辑接口接入`, 'info');
+    } catch (error) {
+      showGlobalToast(error.message || '智能超清参数准备失败，请重试', 'error');
+    }
   }
 
   return <ImageEditChrome

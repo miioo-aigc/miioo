@@ -5,6 +5,7 @@ import ImageCropEditor from '../ImageCropEditor';
 import { FlipHorizontalIcon, FlipVerticalIcon, RotateClockwiseIcon, RotateCounterClockwiseIcon } from '../ui';
 import { renderImageCropBlob } from '../../utils/imageCrop';
 import { showGlobalToast } from '../../stores/toastStore';
+import { buildImageEditRequest } from '../../utils/MediaEditRequest';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -26,7 +27,7 @@ function ToolButton({ label, icon, onClick, selected }) {
   >{cloneElement(icon, { color: active ? '#FFFFFF' : '#FFFFFFCC' })}</button>;
 }
 
-export default function ImageFlipModal({ imageUrl, onClose, onSave, onComplete = onClose }) {
+export default function ImageFlipModal({ imageUrl, sourceAsset, onPrepare, onClose }) {
   const { width: modalW, height: modalH } = useModalSize();
   const editorRef = useRef(null);
   const [editState, setEditState] = useState({ imageSize: { width: 0, height: 0 } });
@@ -49,26 +50,15 @@ export default function ImageFlipModal({ imageUrl, onClose, onSave, onComplete =
       const { image, imageSize, crop, zoom, panX, panY } = editorRef.current.getEditState();
       const blob = await renderImageCropBlob({ image, crop, rotation, flipX, flipY, zoom, panX, panY, imageWidth: imageSize.width, imageHeight: imageSize.height });
       if (!blob) throw new Error('翻转结果生成失败');
-      const objectUrl = URL.createObjectURL(blob);
-      const quarterTurn = Math.abs(rotation) % 180 === 90;
-      const localImage = {
-        id: `local-flip-${Date.now()}`,
-        fileUrl: objectUrl,
-        url: objectUrl,
-        src: objectUrl,
-        blob,
-        width: quarterTurn ? imageSize.height : imageSize.width,
-        height: quarterTurn ? imageSize.width : imageSize.height,
-        is_primary: false,
-        isNew: true,
-        source: 'frontend-flip',
-      };
-      if (!onSave) throw new Error('当前列表未连接保存回调');
-      await onSave(localImage);
-      onComplete?.();
+      const request = buildImageEditRequest(sourceAsset, {
+        mode: 'flip',
+        file: new File([blob], '图片翻转.png', { type: 'image/png' }),
+      });
+      await onPrepare?.(request);
+      showGlobalToast('已生成翻转图片并准备保存参数，等待后端保存接口接入', 'info');
     } catch (error) {
       console.error('[ImageFlipModal] 生成翻转图片失败:', error);
-      showGlobalToast('翻转失败，请重试', 'error');
+      showGlobalToast(error.message || '翻转参数准备失败，请重试', 'error');
     } finally {
       setSaving(false);
     }

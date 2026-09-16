@@ -86,7 +86,7 @@ self.onmessage = async ({ data }) => {
     if (data.type === 'export') {
       if (!canvas || running || pending || data.index !== selected) throw new Error('画面尚未就绪，请稍后下载');
       const blob = await canvas.convertToBlob({ type: 'image/png' });
-      self.postMessage({ type: 'export', blob, index: selected });
+      self.postMessage({ type: 'export', blob, index: selected, purpose: data.purpose || 'download' });
     }
   } catch (error) {
     fail(error.message || '视频读取失败，请检查视频地址和跨域权限', data.id);

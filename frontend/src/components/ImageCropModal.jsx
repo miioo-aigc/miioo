@@ -5,6 +5,7 @@ import { CropIcon, RotateCounterClockwiseIcon, RotateClockwiseIcon, FlipHorizont
 import { showGlobalToast } from '../stores/toastStore';
 import ImageCropEditor from './ImageCropEditor';
 import { renderImageCropBlob } from '../utils/imageCrop';
+import { buildImageEditRequest } from '../utils/MediaEditRequest';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const RATIOS = [
@@ -24,7 +25,7 @@ function ToolButton({ label, icon, disabled, onClick, selected }) {
   return <button type="button" aria-label={label} aria-pressed={selected} title={label} disabled={disabled} onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setPressed(false); }} onMouseDown={() => setPressed(true)} onMouseUp={() => setPressed(false)} style={{ width: '32px', height: '32px', padding: 0, border: 0, borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: disabled ? '#FFFFFF33' : active ? '#FFFFFF' : '#FFFFFFCC', background: disabled ? 'transparent' : pressed || selected ? '#FFFFFF1A' : hovered ? '#FFFFFF0D' : 'transparent', cursor: disabled ? 'not-allowed' : 'pointer', transition: 'background-color 120ms ease, color 120ms ease' }}>{cloneElement(icon, { color: disabled ? '#FFFFFF33' : active ? '#FFFFFF' : '#FFFFFFCC' })}</button>;
 }
 
-export default function ImageCropModal({ imageUrl, onClose, onSave, onComplete = onClose }) {
+export default function ImageCropModal({ imageUrl, sourceAsset, onPrepare, onClose }) {
   const { width: modalW, height: modalH } = useModalSize();
   const editorRef = useRef(null);
   const [editState, setEditState] = useState({ imageSize: { width: 0, height: 0 }, crop: { x: 0, y: 0, width: 1, height: 1 }, zoom: 1, panX: 0, panY: 0 });
@@ -45,17 +46,15 @@ export default function ImageCropModal({ imageUrl, onClose, onSave, onComplete =
       const { image, imageSize, crop, zoom, panX, panY } = editorRef.current.getEditState();
       const blob = await renderImageCropBlob({ image, crop, rotation, flipX, flipY, zoom, panX, panY, imageWidth: imageSize.width, imageHeight: imageSize.height });
       if (!blob) throw new Error('裁剪结果生成失败');
-      const objectUrl = URL.createObjectURL(blob);
-      const isQuarterTurn = Math.abs(rotation) % 180 === 90;
-      const outputWidth = isQuarterTurn ? imageSize.height : imageSize.width;
-      const outputHeight = isQuarterTurn ? imageSize.width : imageSize.height;
-      const localImage = { id: `local-crop-${Date.now()}`, fileUrl: objectUrl, url: objectUrl, src: objectUrl, blob, width: Math.round(outputWidth * crop.width), height: Math.round(outputHeight * crop.height), is_primary: false, isNew: true, source: 'frontend-crop' };
-      if (!onSave) throw new Error('当前列表未连接保存回调');
-      await onSave(localImage);
-      onComplete?.();
+      const request = buildImageEditRequest(sourceAsset, {
+        mode: 'crop',
+        file: new File([blob], '图片裁剪.png', { type: 'image/png' }),
+      });
+      await onPrepare?.(request);
+      showGlobalToast('已生成裁剪图片并准备保存参数，等待后端保存接口接入', 'info');
     } catch (error) {
       console.error('[ImageCropModal] 生成裁剪图片失败:', error);
-      showGlobalToast('裁剪或本地保存失败，请重试', 'error');
+      showGlobalToast(error.message || '裁剪参数准备失败，请重试', 'error');
     } finally { setSaving(false); }
   };
 

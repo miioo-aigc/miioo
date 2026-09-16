@@ -48,14 +48,14 @@ export default function InpaintModal({ card, onClose, onSave, onComplete = onClo
       return;
     }
     if (prompt.length > 4000) { showGlobalToast('提示词不能超过4000字', 'error'); return; }
-    generate({ mode, mask, prompt: prompt.trim() });
+    generate({ mode: isEraser ? 'erase' : 'inpaint', mask, model_requirement: 'image-2', ...(!isEraser ? { prompt: prompt.trim() } : {}) });
   }
 
   return (
     <ImageEditChrome title={isEraser ? '消除笔' : '局部重绘'} onClose={onClose} busy={busy} footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={submit} busy={busy} disabled={!ready} label="AI生成" />}>
       <div className="inpaint-body" inert={busy}>
         <InpaintToolbar tool={tool} onToolChange={setTool} brushSize={brushSize} onBrushSizeChange={setBrushSize} zoom={zoom} onZoomChange={setZoom} canUndo={history.index > 0} canRedo={history.index < history.strokes.length} onUndo={() => setHistory((value) => ({ ...value, index: Math.max(0, value.index - 1) }))} onRedo={() => setHistory((value) => ({ ...value, index: Math.min(value.strokes.length, value.index + 1) }))} disabled={!ready} />
-        <InpaintStage key={`${card.imageUrl}-${revision}`} imageUrl={card.imageUrl} tool={tool} brushSize={brushSize} zoom={zoom} strokes={strokes} onStroke={addStroke} onReady={setReady} editorRef={editor} />
+        <InpaintStage key={`${card.imageUrl}-${revision}`} imageUrl={card.originalUrl || card.original_url || card.download_url || card.downloadUrl || card.imageUrl} tool={tool} brushSize={brushSize} zoom={zoom} strokes={strokes} onStroke={addStroke} onReady={setReady} editorRef={editor} />
         {!isEraser && <div className="inpaint-prompt">
           <TextField multiline height="72px" wrapperStyle={{ width: '100%' }} aria-label="重绘提示词" placeholder="请描述想要重新绘制的内容" value={prompt} onChange={(event) => setPrompt(event.target.value)} />
         </div>}

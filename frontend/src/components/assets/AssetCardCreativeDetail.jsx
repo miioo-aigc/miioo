@@ -9,6 +9,7 @@ export default function AssetCardCreativeDetail({ asset = {}, url, starred = fal
   if (asset.type === 'video') {
     return (
       <CreationVideoDetailModal
+        sourceAsset={asset}
         videoUrl={asset.videoUrl}
         originalVideoUrl={asset.downloadUrl || asset.download_url || asset.originalUrl || asset.original_url || asset.videoUrl}
         prompt={asset.prompt}

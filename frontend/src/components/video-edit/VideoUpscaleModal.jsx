@@ -4,10 +4,11 @@ import { QualityOption, UpscaleFooter } from '../image-edit/UpscaleControls';
 import VideoPlaybackControls from '../ui/VideoPlaybackControls';
 import { showGlobalToast } from '../../stores/toastStore';
 import '../image-edit/Upscale.css';
+import { buildVideoEditRequest } from '../../utils/MediaEditRequest';
 
-const QUALITY_OPTIONS = ['1080P', '2K', '4K'];
+const QUALITY_OPTIONS = ['1080P', '4K'];
 
-export default function VideoUpscaleModal({ videoUrl, posterUrl = '', onClose }) {
+export default function VideoUpscaleModal({ videoUrl, posterUrl = '', onClose, sourceAsset, onPrepare }) {
   const [quality, setQuality] = useState('1080P');
   const [isPlaying, setIsPlaying] = useState(false);
   const [feedbackVisible, setFeedbackVisible] = useState(false);
@@ -49,8 +50,10 @@ export default function VideoUpscaleModal({ videoUrl, posterUrl = '', onClose })
       showGlobalToast('未找到可用视频，请关闭后重试', 'error');
       return;
     }
-    showGlobalToast(`已选择${quality}视频智能超清，生成服务暂未接入`, 'info');
-    onClose?.();
+    try { onPrepare?.(buildVideoEditRequest(sourceAsset, { mode: 'upscale', target_resolution: quality })); }
+    catch (error) { showGlobalToast(error.message, 'error'); return; }
+    showGlobalToast(`已准备${quality}视频智能超清参数，等待后端编辑接口接入`, 'info');
+    // 后端尚未提供视频超清保存契约，保留当前选择与上下文。
   }
 
   return <ImageEditChrome title="智能超清" onClose={onClose} zIndex={1400} footer={<UpscaleFooter onClose={onClose} onSubmit={submit} disabled={!videoUrl || failed} />}>

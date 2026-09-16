@@ -724,23 +724,27 @@ export default function StoryboardMediaDetailModal({ projectId, shot, candidates
       key={activeMedia.id || activeMedia.url}
       videoUrl={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)}
       posterUrl={activePoster}
+      sourceAsset={activeMedia}
       onClose={() => setTrimOpen(false)}
     />}
     {video && frameOpen && <VideoFrameModal
       key={activeMedia.id || activeMedia.url}
       videoUrl={normalizeImageUrl(activeMedia.download_url || activeMedia.downloadUrl || activeMedia.original_url || activeMedia.originalUrl || activeMedia.video_url || activeMedia.videoUrl || activeMedia.url)}
+      sourceAsset={activeMedia}
       onClose={() => setFrameOpen(false)}
     />}
     {video && subtitleOpen && <VideoSubtitleModal
       key={activeMedia.id || activeMedia.url}
       videoUrl={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)}
       posterUrl={activePoster}
+      sourceAsset={activeMedia}
       onClose={() => setSubtitleOpen(false)}
     />}
     {video && upscaleOpen && <VideoUpscaleModal
       key={activeMedia.id || activeMedia.url}
       videoUrl={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)}
       posterUrl={activePoster}
+      sourceAsset={activeMedia}
       onClose={() => setUpscaleOpen(false)}
     />}
     </>,

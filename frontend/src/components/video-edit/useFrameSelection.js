@@ -2,17 +2,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { downloadBlob } from '../../utils/downloadBlob';
 import { frameAtTime } from './FrameIndex';
 
-export default function useFrameSelection(url, canvasRef) {
+export default function useFrameSelection(url, canvasRef, { onExport } = {}) {
   const worker = useRef(null);
   const sequence = useRef(0);
   const target = useRef(0);
   const timer = useRef(null);
+  const exportHandler = useRef(onExport);
   const [times, setTimes] = useState([]);
   const [index, setIndex] = useState(0);
   const [busy, setBusy] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const [dimensions, setDimensions] = useState(null);
+
+  useEffect(() => { exportHandler.current = onExport; }, [onExport]);
 
   useEffect(() => {
     const decoder = new Worker(new URL('./FrameDecoderWorker.js', import.meta.url), { type: 'module' });
@@ -48,7 +51,8 @@ export default function useFrameSelection(url, canvasRef) {
         }
         data.bitmap.close();
       } else if (data.type === 'export') {
-        downloadBlob(data.blob, `视频选帧-${data.index + 1}.png`);
+        if (data.purpose === 'prepare') exportHandler.current?.(data.blob, data.index);
+        else downloadBlob(data.blob, `视频选帧-${data.index + 1}.png`);
         setExporting(false);
         clearTimeout(watchdog);
       } else if (data.type === 'error' && (data.id == null || data.id === sequence.current)) {
@@ -97,5 +101,11 @@ export default function useFrameSelection(url, canvasRef) {
     worker.current?.wait();
     worker.current?.postMessage({ type: 'export', index });
   }
-  return { times, index, busy, exporting, error, dimensions, step, seek, download };
+  function exportFrame() {
+    if (busy || exporting || error) return;
+    setExporting(true);
+    worker.current?.wait();
+    worker.current?.postMessage({ type: 'export', index, purpose: 'prepare' });
+  }
+  return { times, index, busy, exporting, error, dimensions, step, seek, download, exportFrame };
 }

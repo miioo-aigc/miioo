@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Download, StepBack, StepForward } from 'lucide-react';
+import { StepBack, StepForward } from 'lucide-react';
 import ImageEditChrome from '../image-edit/ImageEditChrome';
 import Button from '../ui/Button';
 import VideoFrameTimeline from './VideoFrameTimeline';
@@ -46,8 +46,8 @@ export default function VideoFrameModal({ videoUrl, sourceAsset, onPrepare, onCl
   return <ImageEditChrome title="视频选帧" onClose={onClose} zIndex={1400}
     footer={<footer className="image-edit-footer frame-footer">
       <Button variant="secondary" onClick={onClose}>取消</Button>
-      <Button loading={exporting} disabled={busy || Boolean(error)} onClick={exportFrame}>准备保存</Button>
-      <Button icon={<Download size={16} />} loading={exporting} disabled={busy || Boolean(error)} onClick={download}>下载图片</Button>
+      <Button loading={exporting} disabled={busy || Boolean(error)} onClick={download}>下载</Button>
+      <Button loading={exporting} disabled={busy || Boolean(error)} onClick={exportFrame}>保存</Button>
     </footer>}>
     <div className="frame-body">
       <div className="frame-stage" aria-busy={busy}>

@@ -265,8 +265,8 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
     left: handle.includes('w') ? '-2px' : handle.includes('e') ? 'calc(100% - 3px)' : 'calc(50% - 12px)',
     top: handle.includes('n') ? '-2px' : handle.includes('s') ? 'calc(100% - 3px)' : 'calc(50% - 12px)',
     ...(handle.length === 2 ? {
-      left: handle.includes('w') ? '-0.5px' : 'calc(100% + 0.5px)',
-      top: handle.includes('n') ? '-0.5px' : 'calc(100% + 0.5px)',
+      left: handle.includes('w') ? '0px' : '100%',
+      top: handle.includes('n') ? '0px' : '100%',
       transform: 'translate(-50%, -50%)',
     } : {}),
     background: '#2DC3E1', borderRadius: '2px', cursor: handle.length === 2 ? `${handle}-resize` : `${handle}-resize`,

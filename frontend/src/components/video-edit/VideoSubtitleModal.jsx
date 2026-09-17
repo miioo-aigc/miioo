@@ -4,6 +4,8 @@ import ImageEditChrome from '../image-edit/ImageEditChrome';
 import Button from '../ui/Button';
 import { showGlobalToast } from '../../stores/toastStore';
 import { buildVideoEditRequest } from '../../utils/MediaEditRequest';
+import SubtitleMask from './SubtitleMask';
+import { DEFAULT_SUBTITLE_MASK } from './SubtitleMaskGeometry';
 import './VideoSubtitle.css';
 
 function formatTime(seconds) {
@@ -14,8 +16,10 @@ function formatTime(seconds) {
 export default function VideoSubtitleModal({ videoUrl, posterUrl = '', sourceAsset, onPrepare, onClose }) {
   const videoRef = useRef(null);
   const stageRef = useRef(null);
+  const frameRef = useRef(null);
   const [source, setSource] = useState({ width: 0, height: 0 });
   const [area, setArea] = useState({ width: 0, height: 0 });
+  const [subtitleMask, setSubtitleMask] = useState(DEFAULT_SUBTITLE_MASK);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -65,7 +69,7 @@ export default function VideoSubtitleModal({ videoUrl, posterUrl = '', sourceAss
   }>
     <div className="subtitle-body">
       <div ref={stageRef} className="subtitle-stage">
-        {videoUrl && !failed ? <div className="subtitle-frame" style={{ width: scale ? source.width * scale : '100%', height: scale ? source.height * scale : '100%' }}>
+        {videoUrl && !failed ? <div ref={frameRef} className="subtitle-frame" style={{ width: scale ? source.width * scale : '100%', height: scale ? source.height * scale : '100%' }}>
           <video ref={videoRef} src={videoUrl} poster={posterUrl || undefined} autoPlay muted={muted} playsInline preload="auto"
             onLoadedMetadata={(event) => {
               const video = event.currentTarget;
@@ -78,6 +82,7 @@ export default function VideoSubtitleModal({ videoUrl, posterUrl = '', sourceAss
           />
           {available && <>
             <button type="button" className="subtitle-play-surface" aria-label={playing ? '暂停视频画面' : '播放视频画面'} onClick={togglePlay} />
+            <SubtitleMask value={subtitleMask} onChange={setSubtitleMask} frameRef={frameRef} />
           </>}
         </div> : <span role="status">视频加载失败，请关闭后重试</span>}
       </div>

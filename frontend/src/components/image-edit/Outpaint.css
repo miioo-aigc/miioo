@@ -5,13 +5,13 @@
 .outpaint-source { position:absolute; left:50%; top:50%; display:block; max-width:none; object-fit:fill; transform:translate(-50%,-50%); z-index:1; }
 .outpaint-frame-border { position:absolute; inset:0; z-index:2; border:1px solid #2dc3e1; box-sizing:border-box; pointer-events:none; }
 .outpaint-handle { position:absolute; z-index:3; width:10px; height:10px; padding:0; border:0; border-radius:2px; background:#2dc3e1; touch-action:none; }
-.handle-nw { left:0.5px; top:0.5px; transform:translate(-50%,-50%); cursor:nw-resize; }
+.handle-nw { left:0; top:0; transform:translate(-50%,-50%); cursor:nw-resize; }
 .handle-n { left:calc(50% - 12px); top:-2px; width:24px; height:5px; cursor:n-resize; }
-.handle-ne { left:calc(100% - 0.5px); top:0.5px; transform:translate(-50%,-50%); cursor:ne-resize; }
+.handle-ne { left:100%; top:0; transform:translate(-50%,-50%); cursor:ne-resize; }
 .handle-e { left:calc(100% - 3px); top:calc(50% - 12px); width:5px; height:24px; cursor:e-resize; }
-.handle-se { left:calc(100% - 0.5px); top:calc(100% - 0.5px); transform:translate(-50%,-50%); cursor:se-resize; }
+.handle-se { left:100%; top:100%; transform:translate(-50%,-50%); cursor:se-resize; }
 .handle-s { left:calc(50% - 12px); top:calc(100% - 3px); width:24px; height:5px; cursor:s-resize; }
-.handle-sw { left:0.5px; top:calc(100% - 0.5px); transform:translate(-50%,-50%); cursor:sw-resize; }
+.handle-sw { left:0; top:100%; transform:translate(-50%,-50%); cursor:sw-resize; }
 .handle-w { left:-2px; top:calc(50% - 12px); width:5px; height:24px; cursor:w-resize; }
 .outpaint-ratios { height:92px; box-sizing:border-box; padding:16px 24px; display:flex; align-items:center; justify-content:center; gap:12px; flex-shrink:0; background:#090909; }
 .outpaint-ratio-button { width:60px; height:61px; padding:0; border:0; border-radius:6px; display:flex; flex-direction:column; gap:6px; align-items:center; justify-content:center; background:#ffffff0d; color:#ffffffcc; cursor:pointer; font:12px/16px "AlibabaPuHuiTi_2_55_Regular","Alibaba PuHuiTi 2.0",system-ui,sans-serif; }

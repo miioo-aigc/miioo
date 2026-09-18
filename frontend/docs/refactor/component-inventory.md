@@ -1,5 +1,12 @@
 # 组件重构盘点基线
 
+## 2026-09-18 全局 Toast 规则与旧组件清理
+
+- `GlobalToast` 统一限制最大宽度为 `600px`；超长内容改为自动换行，不再单行撑开。
+- Toast 时长继续收口在 `toastStore`：`success/info = 2000ms`、`warning = 3000ms`、`error = 5000ms`；业务方不再传入自定义时长。
+- 删除已无运行时引用的历史局部展示组件：`CreationToast`、`SubjectToast`、`HomeToast`、`StoryboardToast`，并同步移除各业务域入口导出。
+- 四个相关页面结构索引已同步为“旧局部 Toast 已删除、反馈由 `GlobalToast` 承接”；下方历史迁移记录按原样保留，仅作为当时的拆分过程记录。
+
 ## 2026-09-14 图片编辑接口编排
 
 - `api/ImageEdit.js` 独立处理源图上传、erase/outpainting 提交及结果回读，不改通用生成函数和多机位链路。

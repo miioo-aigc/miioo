@@ -1,7 +1,10 @@
 import { createPortal } from 'react-dom';
+import LoadingAnimation from '../LoadingAnimation';
 import { useToastStore } from '../../stores/toastStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
+const DOWNLOAD_ANIMATION_HEIGHT = 24;
+const DOWNLOAD_ANIMATION_WIDTH = DOWNLOAD_ANIMATION_HEIGHT * (1118 / 405);
 
 function ToastIcon({ type }) {
   if (type === 'success') {
@@ -34,14 +37,29 @@ function ToastIcon({ type }) {
 
 export default function GlobalToast() {
   const toast = useToastStore((state) => state.toast);
-  if (!toast) return null;
+  const downloadToasts = useToastStore((state) => state.downloadToasts);
+  const visibleToasts = [
+    ...downloadToasts.map((item) => ({ ...item, kind: 'download' })),
+    ...(toast ? [{ ...toast, kind: 'status' }] : []),
+  ];
+  if (visibleToasts.length === 0) return null;
 
   return createPortal(
-    <div style={{ position: 'fixed', top: '25vh', left: '50%', transform: 'translateX(-50%)', zIndex: 99999, pointerEvents: 'none' }}>
-      <div className="flex items-center gap-[8px] px-[16px] py-[8px] rounded-medium bg-toast-bg backdrop-blur-[20px]" style={{ whiteSpace: 'nowrap', animation: 'slideUpBounce 250ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }}>
-        <ToastIcon type={toast.type} />
-        <span className="text-text-primary text-font-size-16 font-font-weight-regular" style={{ fontFamily: FONT }}>{toast.message}</span>
-      </div>
+    <div style={{ position: 'fixed', top: '25vh', left: '50%', transform: 'translateX(-50%)', zIndex: 99999, maxWidth: '600px', pointerEvents: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+      {visibleToasts.map((item) => {
+        const message = item.kind === 'download' && item.progress !== null
+          ? `${item.message} ${item.progress}%`
+          : item.message;
+
+        return (
+          <div key={item.id} className="flex items-center gap-[8px] px-[16px] py-[8px] rounded-medium bg-toast-bg backdrop-blur-[20px]" style={{ maxWidth: '600px', whiteSpace: 'normal', overflowWrap: 'anywhere', animation: 'slideUpBounce 250ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }}>
+            {item.kind === 'download'
+              ? <LoadingAnimation width={DOWNLOAD_ANIMATION_WIDTH} style={{ height: `${DOWNLOAD_ANIMATION_HEIGHT}px` }} />
+              : <ToastIcon type={item.type} />}
+            <span className="text-text-primary text-font-size-16 font-font-weight-regular" style={{ fontFamily: FONT }}>{message}</span>
+          </div>
+        );
+      })}
     </div>,
     document.body,
   );

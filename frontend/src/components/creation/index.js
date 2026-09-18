@@ -11,7 +11,6 @@ export { default as CreationResultState } from './CreationResultState';
 export { default as CreationEmptyState } from './CreationEmptyState';
 export { default as CreationLoginEmptyState } from './CreationLoginEmptyState';
 export { default as CreationSendButton } from './CreationSendButton';
-export { default as CreationToast } from './CreationToast';
 export { default as CreationUploadArea, UploadPlaceholder } from './CreationUploadArea';
 export { default as CreationParamsControls } from './CreationParamsControls';
 export { CREATION_TABS } from './CreationTabs';

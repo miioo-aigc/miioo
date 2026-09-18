@@ -21,7 +21,7 @@
  *   NarrationColWrapper                         components/storyboard/NarrationCol.jsx
  *   ShotRow                                      页面业务桥接（已迁移至 StoryboardShotRowContent）
  *   ShotNumberColumn                            components/storyboard/ShotNumberColumn.jsx
- *   StoryboardToast / StoryboardHeader            components/storyboard/
+ *   StoryboardHeader                            components/storyboard/
  *   makeStoryboardShot                           utils/storyboardDataAdapter.js
  *   PanelSelect / ModalSelectItem 已迁移至 components/storyboard/PanelSelect.jsx
  *
@@ -44,11 +44,13 @@
  *   [候选定稿] L2014 handleFinalizeToggle：确保真实候选 UUID 后提交定稿状态
  *   [加载与错误态] LoadingAnimation、DotsLoading、失败操作和统计
  *   [镜头 CRUD] 上传、编辑、复制、删除、排序
- *   [渲染] 状态结果、内容区（列表/时间轴）、生成面板和 Toast
- *   [边界] 页面保留 API、轮询循环、状态写回、缓存、持久化、Toast 和页面编排；任务恢复由 useStoryboardTaskRecovery 负责流程，页面通过显式回调接收结果
+ *   [渲染] 状态结果、内容区（列表/时间轴）和生成面板；Toast 展示由 GlobalToast 承接
+ *   [边界] 页面保留 API、轮询循环、状态写回、缓存、持久化和页面编排；任务恢复由 useStoryboardTaskRecovery 负责流程，页面通过显式回调接收结果
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
+ *   2026-09-18  删除已无运行时引用的旧分镜页 Toast 展示；反馈统一由 GlobalToast 承接
  *   2026-09-07  修复兼容分镜媒体覆盖后端候选 UUID：后端候选合并优先，并在定稿前确保候选已持久化
  *   2026-09-04  台词分配移除语速/音量，新增角色与旁白音色选择；普通角色复用主体音色接口，旁白使用项目级音色设置，
  *               台词保存同步写入 dialogues_json 与 narration_segments
@@ -218,6 +220,7 @@ import { enrichMainRefs, isBackendStoryboardId, makeStoryboardShot, normalizeSto
 import buildStoryboardPrompt from '../utils/buildStoryboardPrompt';
 import { addPendingTask, removePendingTask } from '../utils/taskPersistence';
 import { downloadBlob } from '../utils/downloadBlob';
+import { startDownloadFeedback, triggerAnchorDownload } from '../utils/downloadFeedback';
 import { createLatestPersistenceQueue } from '../utils/referenceMediaPersistence';
 import {
   BatchImageModal,
@@ -1722,18 +1725,19 @@ function hasStoryboardMediaHint(shot = {}) {
       return;
     }
 
+    const feedback = startDownloadFeedback();
     const downloads = [];
     if (hasImages) {
       downloads.push({
         filename: 'storyboard-images.zip',
-        promise: apiBatchDownloadStoryboardImages(projectId, ids),
+        promise: apiBatchDownloadStoryboardImages(projectId, ids, { onProgress: feedback.setProgress }),
         label: '图片',
       });
     }
     if (hasVideos) {
       downloads.push({
         filename: 'storyboard-videos.zip',
-        promise: apiBatchDownloadStoryboardVideos(projectId, ids),
+        promise: apiBatchDownloadStoryboardVideos(projectId, ids, { onProgress: feedback.setProgress }),
         label: '视频',
       });
     }
@@ -1750,11 +1754,43 @@ function hasStoryboardMediaHint(shot = {}) {
     });
 
     if (successCount === downloads.length) {
-      showToast('分镜素材下载成功', 'success');
+      await feedback.complete('分镜素材下载成功');
     } else if (successCount > 0) {
-      showToast('部分分镜素材下载成功', 'warning');
+      await feedback.complete('部分分镜素材下载成功', 'warning');
     } else {
-      showToast('批量下载分镜素材失败', 'error');
+      await feedback.fail('批量下载分镜素材失败');
+    }
+  }
+
+  async function downloadCandidateMedia(media, shot) {
+    const feedback = startDownloadFeedback();
+    const fallbackUrl = normalizeImageUrl(media?.downloadUrl || media?.download_url || media?.url);
+    try {
+      if (media?.id && !String(media.id).startsWith('blob:')) {
+        const blob = await apiDownloadStoryboardMediaCandidate(
+          projectId,
+          shot.id,
+          media.id,
+          { onProgress: feedback.setProgress },
+        );
+        downloadBlob(blob, media.name || `storyboard-${media.id}`);
+        await feedback.complete('下载成功');
+        return;
+      }
+      if (!fallbackUrl) {
+        await feedback.fail('下载链接不存在');
+        return;
+      }
+      triggerAnchorDownload(fallbackUrl, media.name || `storyboard-${media?.id || 'media'}`);
+      await feedback.complete('下载已开始');
+    } catch (error) {
+      console.warn('[StoryboardPage] 候选媒体受控下载失败，回退直链:', error);
+      if (!fallbackUrl) {
+        await feedback.fail('下载失败，请重试');
+        return;
+      }
+      triggerAnchorDownload(fallbackUrl, media.name || `storyboard-${media?.id || 'media'}`);
+      await feedback.complete('下载已开始');
     }
   }
 
@@ -2474,21 +2510,7 @@ function hasStoryboardMediaHint(shot = {}) {
           onSelectShot={selectActiveShot}
           onCreate={openCreationPanel}
           onPreview={(media, shot) => openTimelinePreview(media, shot)}
-          onDownload={async (media, shot) => {
-            try {
-              if (media?.id && !String(media.id).startsWith('blob:')) {
-                const blob = await apiDownloadStoryboardMediaCandidate(projectId, shot.id, media.id);
-                downloadBlob(blob, media.name || `storyboard-${media.id}`);
-                return;
-              }
-            } catch (error) {
-              console.warn('[StoryboardPage] 候选媒体受控下载失败，回退直链:', error);
-            }
-            const link = document.createElement('a');
-            link.href = normalizeImageUrl(media?.downloadUrl || media?.download_url || media?.url);
-            link.download = media?.name || `storyboard-${media?.id || 'media'}`;
-            link.click();
-          }}
+          onDownload={(media, shot) => downloadCandidateMedia(media, shot)}
         />}
       >
       {isLoadingEpisode || (!episodeDataReady && shots.length === 0) ? (
@@ -2637,21 +2659,7 @@ function hasStoryboardMediaHint(shot = {}) {
         candidates={timelinePreviewMedia.candidates}
         onClose={() => setTimelinePreviewMedia(null)}
         onFinalizeChange={handleTimelineFinalizeChange}
-        onDownload={async (media) => {
-          try {
-            if (media?.id && !String(media.id).startsWith('blob:')) {
-              const blob = await apiDownloadStoryboardMediaCandidate(projectId, timelinePreviewMedia.shot.id, media.id);
-              downloadBlob(blob, media.name || `storyboard-${media.id}`);
-              return;
-            }
-          } catch (error) {
-            console.warn('[StoryboardPage] 详情媒体受控下载失败，回退直链:', error);
-          }
-          const link = document.createElement('a');
-          link.href = normalizeImageUrl(media?.downloadUrl || media?.download_url || media?.url);
-          link.download = media?.name || `storyboard-${media?.id || 'media'}`;
-          link.click();
-        }}
+        onDownload={(media) => downloadCandidateMedia(media, timelinePreviewMedia.shot)}
       />
     ) : null}
     {creationPanel && (
@@ -2664,21 +2672,7 @@ function hasStoryboardMediaHint(shot = {}) {
         onCandidateMedia={(media) => saveCandidateMedia(creationPanel.shot?.id, media)}
         onFinalizeToggle={(media) => handleFinalizeToggle(creationPanel.shot, media)}
         onPreview={(media) => openTimelinePreview(media, creationPanel.shot)}
-        onDownload={async (media) => {
-          try {
-            if (media?.id && !String(media.id).startsWith('blob:')) {
-              const blob = await apiDownloadStoryboardMediaCandidate(projectId, creationPanel.shot.id, media.id);
-              downloadBlob(blob, media.name || `storyboard-${media.id}`);
-              return;
-            }
-          } catch (error) {
-            console.warn('[StoryboardPage] 候选媒体受控下载失败，回退直链:', error);
-          }
-          const link = document.createElement('a');
-          link.href = normalizeImageUrl(media?.downloadUrl || media?.download_url || media?.url);
-          link.download = media?.name || `storyboard-${media?.id || 'media'}`;
-          link.click();
-        }}
+        onDownload={(media) => downloadCandidateMedia(media, creationPanel.shot)}
         onClose={handleCreationPanelClose}
       >
     {imagePanel && creationPanel.tab === 'image' && (

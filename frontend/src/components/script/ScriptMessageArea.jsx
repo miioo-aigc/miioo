@@ -12,7 +12,7 @@
  *   AssistantMessageContent 解析 AI 对话消息的 Markdown，并保留剧本换行
  *   MessageBubble            区分用户与 AI 消息的气泡展示和加载、失败状态
  *
- * ─── 组件入口 ─────────────────────────────────────────────────────── L118–278
+ * ─── 组件入口 ─────────────────────────────────────────────────────── L118–292
  *   ScriptMessageArea        管理消息滚动跟随及长内容悬浮滚动条
  *
  * ─── 更新记录 ────────────────────────────────────────────────────────
@@ -21,6 +21,7 @@
  *   2026-08-10  手动暂停视为正常状态，保留已输出正文的正常颜色
  *   2026-08-11  对话上下文超过两页时，在屏幕右侧 8px 处显示滚动时可见的悬浮滚动条
  *   2026-08-17  AI 对话消息改为安全渲染 Markdown，避免格式标记直接展示
+ *   2026-09-18  剧本解构成功后，对话底部提供回到剧本编排与确认进入的双入口
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -115,7 +116,7 @@ function MessageBubble({ message, isActive }) {
   );
 }
 
-export default function ScriptMessageArea({ messages = [], activeMessageId = null, hasScript = false, onOpenScript }) {
+export default function ScriptMessageArea({ messages = [], activeMessageId = null, hasScript = false, onOpenScript, hasBackToOutline = false, onBackToOutline }) {
   const scrollRef = useRef(null);
   const contentRef = useRef(null);
   const shouldFollowLatestRef = useRef(true);
@@ -220,7 +221,32 @@ export default function ScriptMessageArea({ messages = [], activeMessageId = nul
           {messages.map((message) => (
             <MessageBubble key={message.id} message={message} isActive={message.id === activeMessageId} />
           ))}
-          {hasScript && onOpenScript && (
+          {hasScript && onOpenScript && hasBackToOutline && onBackToOutline && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 32px' }}>
+              <TextButton
+                type="button"
+                variant="link"
+                onClick={onBackToOutline}
+                className="rounded-[6px] text-[14px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#2DC3E180]"
+                contentClassName="text-[14px] leading-[20px]"
+                style={{ fontFamily: FONT, lineHeight: '20px' }}
+              >
+                回到剧本编排
+              </TextButton>
+              <TextButton
+                type="button"
+                variant="link"
+                icon={<ScriptOutlineIcon />}
+                onClick={onOpenScript}
+                className="rounded-[6px] text-[14px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#2DC3E180]"
+                contentClassName="text-[14px] leading-[20px]"
+                style={{ fontFamily: FONT, lineHeight: '20px' }}
+              >
+                确认内容，重新编排剧本
+              </TextButton>
+            </div>
+          )}
+          {hasScript && onOpenScript && !(hasBackToOutline && onBackToOutline) && (
             <TextButton
               type="button"
               variant="link"

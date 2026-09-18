@@ -10,6 +10,7 @@
  *   2026-07-22  调整解析加载态主体分组标题的水平内边距为 0
  *   2026-07-22  移除解析加载态外层内边距和描边
  *   2026-08-03  为解析加载态的表单骨架补齐 12px 外轮廓圆角
+ *   2026-09-18  修复骨架表单单元格描边叠加，改为外框加单线分隔
  */
 const SHIMMER_STYLE = `
   @keyframes script-outline-shimmer {
@@ -33,9 +34,9 @@ function SkeletonTable({ labels }) {
   return (
     <div style={{ display: 'flex', width: '100%', flexDirection: 'column', overflow: 'hidden', border: '1px solid #3E3D3D', borderRadius: '12px', boxSizing: 'border-box' }}>
       {labels.map((label, index) => (
-        <div key={label} style={{ display: 'flex', minHeight: '48px', marginTop: index === 0 ? 0 : '-1px' }}>
-          <div style={{ width: '160px', flexShrink: 0, display: 'flex', alignItems: 'center', padding: '8px 16px', background: '#222222', border: '1px solid #3E3D3D', color: '#FFFFFFCC', fontSize: '14px', lineHeight: '18px' }}>{label}</div>
-          <div className="script-outline-skeleton-cell" style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center', padding: '12px', overflow: 'hidden', border: '1px solid #3E3D3D', background: '#080808' }}>
+        <div key={label} style={{ display: 'flex', minHeight: '48px', borderTop: index === 0 ? 'none' : '1px solid #3E3D3D' }}>
+          <div style={{ width: '160px', flexShrink: 0, display: 'flex', alignItems: 'center', padding: '8px 16px', background: '#222222', borderRight: '1px solid #3E3D3D', color: '#FFFFFFCC', fontSize: '14px', lineHeight: '18px' }}>{label}</div>
+          <div className="script-outline-skeleton-cell" style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center', padding: '12px', overflow: 'hidden', background: '#080808' }}>
             <div style={{ height: '20px', width: '100%', background: 'linear-gradient(270deg, #222222, #454545, #3F3F3F)', animation: 'script-outline-sweep 2.2s ease-in-out infinite' }} />
             <div aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '42%', background: 'linear-gradient(90deg, transparent, rgba(222,250,255,.32), transparent)', filter: 'blur(12px)', animation: 'script-outline-shimmer 2.6s ease-in-out infinite' }} />
           </div>

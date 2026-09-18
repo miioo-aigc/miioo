@@ -5,6 +5,7 @@ import { normalizeImageUrl } from '../utils/imageUrl.js';
 import { apiGetStoryboards, apiListStoryboardMediaCandidates } from './storyboard.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
+import { readResponseBlobWithProgress } from '../utils/responseBlobProgress';
 
 // subjectType 存在时只失效对应类别的主体缓存（'character'|'scene'|'prop'），
 // 避免删除某一类资产时把三类主体缓存全部清掉。未知/未传时退回前缀失效（全部）。
@@ -454,14 +455,14 @@ export async function apiExtractAssetFrame(assetId, { position }) {
   return res.json();
 }
 
-export async function apiDownloadAsset(assetId, { prefer_origin } = {}) {
+export async function apiDownloadAsset(assetId, { prefer_origin, onProgress } = {}) {
   const params = new URLSearchParams();
   if (prefer_origin !== undefined) params.append('prefer_origin', prefer_origin);
   const query = params.toString();
   const url = query ? `${BASE}/api/assets/${assetId}/download?${query}` : `${BASE}/api/assets/${assetId}/download`;
   const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
   if (!res.ok) throw new Error(`下载资产失败（${res.status}）`);
-  return res.blob();
+  return readResponseBlobWithProgress(res, onProgress);
 }
 
 // ── 项目资产（按 tab key 分组） ────────────────────────────────────────────────

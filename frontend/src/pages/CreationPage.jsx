@@ -22,12 +22,11 @@
  * ─── 页面渲染结构 ────────────────────────────────────── L660–L758
  *   CreationPageOverlays（确认弹窗和媒体详情 Portal）         components/creation/CreationPageOverlays.jsx
  *   CreationWorkspace（主体卡片、工具栏和结果/空态组合）       components/creation/CreationWorkspace.jsx
- *   CreationToast（Toast 展示）                              components/creation/CreationToast.jsx
  *   handleBeforeModelOpen / renderInputCard                     页面级显式接线辅助
  *   页面只负责区块组合和显式 renderInputCard 接线
  *
  * ─── 页面级副作用边界 ──────────────────────────────────
- *   历史 API、Session、刷新任务恢复、模型/参数加载、轮询、缓存、Toast 和 Store 写回均保留在 CreationPage；
+ *   历史 API、Session、刷新任务恢复、模型/参数加载、轮询、缓存和 Store 写回均保留在 CreationPage；Toast 展示统一由 GlobalToast 承接；
  *   生成 API、占位卡和生成结果写回由 useCreationGeneration 负责，页面通过显式依赖接入。
  *   CreationResultState 负责结果展示、分页触发和结果卡回填；结果卡编辑/尾帧操作所需的详情读取 API 由组件显式调用，页面业务状态和生成编排仍由 CreationPage 持有。
  *   CreationEmptyState 只负责空态展示和 CreationInputCard 的显式渲染接线，不调用 API、Store 或生成请求。
@@ -43,6 +42,8 @@
  *   创作下载由页面按卡片记录 ID 调用正式下载接口；直链兼容工具只用于非创作记录。
  *
  * ─── 更新记录 ───────────────────────────────────────────
+ *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
+ *   2026-09-18  删除已无运行时引用的旧创作页 Toast 展示；反馈统一由 GlobalToast 承接
  *   2026-05-28  初始结构索引建立
  *   2026-07-09  新增清空创作历史按钮及后端持久隐藏接口
  *   2026-07-13  修复创作历史刷新、覆盖和排序问题
@@ -67,7 +68,7 @@
  *               刷新恢复音乐任务走通用任务中心 GET /api/tasks/{task_id}；同步全局活跃计数/type 映射为 audio
  *               刷新恢复音乐任务走通用任务中心 GET /api/tasks/{task_id}；同步全局活跃计数/type 映射为 audio
  *   2026-07-16  抽离 CreationSendButton；页面仅通过显式动作 props 接线，当前实际行数 1748，架构统计 1749
- *   2026-07-16  抽离 CreationToast；Toast 状态和定时器仍由页面持有，清理重复确认弹窗，当前实际行数 1700
+ *   2026-07-16  抽离旧 Toast 展示；当时 Toast 状态和定时器仍由页面持有，并清理重复确认弹窗
  *   2026-07-16  抽离 CreationInputSurface；页面保留 InputCard 状态、参数组装、素材状态和失败恢复，当前实际行数 1584
  *   2026-07-16  抽离 CreationPageOverlays；页面保留删除、清空历史、视频下载/删除/收藏副作用
  *   2026-07-16  抽离 CreationInputCard；页面保留生成 API、任务轮询、缓存、Toast 和 Store 副作用，当前实际行数 1093
@@ -120,6 +121,7 @@ import {
 } from '../components/creation';
 import { filenameFromPrompt } from '../utils/creationFilename';
 import { downloadBlob } from '../utils/downloadBlob';
+import { startDownloadFeedback } from '../utils/downloadFeedback';
 import { showGlobalToast } from '../stores/toastStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -558,7 +560,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     setSelected(new Set());
   }
 
-  async function handleDownloadCard(card) {
+  async function handleDownloadCard(card, providedFeedback) {
     const cardId = card?.id || card?.audioId || card?.backendId;
     if (!cardId) {
       showToast('error', '下载信息尚未同步，请刷新后重试');
@@ -572,14 +574,16 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         ? apiDownloadCreationAudio
         : apiDownloadCreationImage;
     const extension = card.type === 'video' || card.videoUrl ? 'mp4' : isAudio ? 'mp3' : 'png';
+    const feedback = providedFeedback || startDownloadFeedback();
 
     try {
-      const blob = await downloadApi(cardId);
+      const blob = await downloadApi(cardId, { onProgress: feedback.setProgress });
       downloadBlob(blob, filenameFromPrompt(card.prompt, extension, isAudio ? 'dubbing' : undefined));
+      if (!providedFeedback) await feedback.complete('下载成功');
       return true;
     } catch (error) {
       console.error('[CreationPage] 创作下载失败:', error);
-      showToast('error', error?.message || '下载失败，请稍后重试');
+      if (!providedFeedback) await feedback.fail(error?.message || '下载失败，请稍后重试');
       return false;
     }
   }
@@ -590,8 +594,21 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         .map((card, index) => ({ ...card, prompt: gen.prompt, key: `${gen.id}-${index}` }))
         .filter((card) => selected.has(card.key))
     );
+    if (selectedCards.length === 0) return;
+
+    const feedback = startDownloadFeedback();
+    const results = [];
     for (const card of selectedCards) {
-      await handleDownloadCard(card);
+      results.push(await handleDownloadCard(card, feedback));
+    }
+
+    const successCount = results.filter(Boolean).length;
+    if (successCount === selectedCards.length) {
+      await feedback.complete('批量下载成功');
+    } else if (successCount > 0) {
+      await feedback.complete('部分资产下载成功', 'warning');
+    } else {
+      await feedback.fail('批量下载失败，请重试');
     }
   }
 

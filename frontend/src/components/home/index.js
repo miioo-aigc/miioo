@@ -6,7 +6,6 @@ export { CreationManualButton, LoginButton } from './HomeHeaderActions';
 export { WorkflowStepTabs } from './WorkflowStepTabs';
 export { WorkflowHeadbar } from './WorkflowHeadbar';
 export { default as ApiConfigBubble } from './ApiConfigBubble';
-export { default as HomeToast } from './HomeToast';
 export { default as HomeLogo } from './HomeLogo';
 export { default as HomeBackground } from './HomeBackground';
 export { default as HomeHeader } from './HomeHeader';

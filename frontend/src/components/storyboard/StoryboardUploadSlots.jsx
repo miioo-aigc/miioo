@@ -16,6 +16,7 @@
  *   素材列表写回、生成请求、Toast 和任务轮询由上层显式回调负责。
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-09-18  角色类缺失占位兼容 role 类型，复用主体页面 CharIcon
  *   2026-09-16  缺失主体占位名称样式对齐设计稿（字号改为 12px）
  *   2026-09-16  缺失主体占位图标复用主体页面 SubjectTypeIcons（道具用立方体 PropIcon）
  *   2026-09-16  缺失主体空占位支持悬停删除叉号，tooltip 跟随鼠标移动
@@ -252,7 +253,7 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
 
     // 根据主体类型选择对应图标
     const IconComponent =
-      subjectType === 'char' || subjectType === 'character' ? CharIcon :
+      subjectType === 'char' || subjectType === 'character' || subjectType === 'role' ? CharIcon :
       subjectType === 'scene' ? SceneIcon :
       subjectType === 'prop' ? PropIcon :
       null;
@@ -299,7 +300,7 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
         {isMultiMode ? (
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {(mediaList || []).map((item, index) => {
-              const isEmptySubject = !item.url && !item.image_url && !item.thumbnail_url && (item.subject_type || item.subjectType || (item.type && ['char', 'scene', 'prop', 'character'].includes(item.type)));
+              const isEmptySubject = !item.url && !item.image_url && !item.thumbnail_url && (item.subject_type || item.subjectType || (item.type && ['char', 'scene', 'prop', 'character', 'role'].includes(item.type)));
 
               if (isEmptySubject) {
                 return <div key={item.id || item.subject_id || index}>{renderEmptySubject(item, index)}</div>;

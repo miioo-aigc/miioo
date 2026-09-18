@@ -7,6 +7,7 @@ import { authFetch, authFetchForm, authFetchStream } from './request.js';
 import { getDisplayErrorMessage, readResponsePayload, throwResponseError } from './error.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
+import { readResponseBlobWithProgress } from '../utils/responseBlobProgress';
 
 // 主体写操作后统一失效该项目的主体缓存 + 概览（概览含主体进度）
 // 主体的候选图/参考图（生成、上传、绑定、设定稿、删除）都会同步影响
@@ -388,12 +389,12 @@ export async function apiBindSubjectReferenceImages(projectId, subjectId, { asse
   return res.json();
 }
 
-export async function apiDownloadSubjectImage(projectId, subjectId, imageId) {
+export async function apiDownloadSubjectImage(projectId, subjectId, imageId, { onProgress } = {}) {
   const res = await authFetch(
     `${BASE}/api/projects/${projectId}/subjects/${subjectId}/images/${imageId}/download`,
     { headers: { 'Content-Type': 'application/json' } }
   );
-  return res.blob();
+  return readResponseBlobWithProgress(res, onProgress);
 }
 
 // ── 批量生成 ──────────────────────────────────────────────────────────────────
@@ -1428,13 +1429,13 @@ export async function apiImportStoryboardXlsx(projectId, file, idempotencyKey) {
  * 下载当前项目持久化的分镜脚本原文件。
  * 工作区响应可能只返回 file_id/file_name，前端仍通过稳定项目接口完成下载。
  */
-export async function apiDownloadStoryboardFile(projectId) {
+export async function apiDownloadStoryboardFile(projectId, { onProgress } = {}) {
   if (!projectId) throw new Error('下载分镜脚本前未获取到项目 ID');
   const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/storyboard-file/download`);
   if (!res.ok) {
     await throwResponseError(res, `下载分镜脚本失败（${res.status}）`);
   }
-  return res.blob();
+  return readResponseBlobWithProgress(res, onProgress);
 }
 
 function firstDefined(source, keys) {

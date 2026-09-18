@@ -11,11 +11,13 @@
  *
  * ─── 业务动作 ───────────────────────────────────────
  *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L432–L639
+ *   下载动作统一启动全局下载 Toast；有流式总长度时展示环形进度
  *
  * ─── 页面组合 ───────────────────────────────────────
  *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L640–L830
  *
  * ─── 更新记录 ───────────────────────────────────────
+ *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-07-16  页面入口收敛；补充资产选择引用；抽离项目重命名/删除弹窗和资产卡片网格
  *   2026-07-17  统一按来源移除资产，并同步清理主体卡片与分页原始数据
  *   2026-07-24 项目列表按创建时间正序，与资产选择弹窗保持一致
@@ -49,6 +51,7 @@ import { normalizeImageUrl } from '../../utils/imageUrl';
 import { normalizeStoryboard } from '../../utils/storyboardDataAdapter';
 import { normalizeAudioAssetDetail, normalizeCreationAudioDetail } from '../../utils/creationAudioDetailAdapter';
 import { showGlobalToast } from '../../stores/toastStore';
+import { startDownloadFeedback } from '../../utils/downloadFeedback';
 import ConfirmDialog from '../ConfirmDialog';
 import { AssetsTabBar } from './AssetsTabs';
 import AssetsBatchToolbar from './AssetsBatchToolbar';
@@ -570,9 +573,10 @@ export default function AssetsProjectPanel() {
   }
 
   async function handleDownloadProject(project) {
+    const feedback = startDownloadFeedback();
     try {
       const filename = `${(project.name || '项目').replace(/[\\/:*?"<>|]/g, '_')}.zip`;
-      const result = await apiDownloadProjectAssets(project.id);
+      const result = await apiDownloadProjectAssets(project.id, { onProgress: feedback.setProgress });
       if (result?.type === 'url') {
         const anchor = document.createElement('a');
         anchor.href = result.value;
@@ -585,40 +589,53 @@ export default function AssetsProjectPanel() {
       } else {
         downloadBlob(result?.value, filename);
       }
-      showToast('项目下载成功', 'success');
+      await feedback.complete('项目下载成功');
     } catch (err) {
       console.error('[ProjectAssetsPanel] 下载项目失败:', err);
-      showToast('项目下载失败，请重试', 'error');
+      await feedback.fail('项目下载失败，请重试');
     }
   }
 
-  async function downloadAsset(assetId, assetName, storyboardAsset = null) {
+  async function downloadAsset(assetId, assetName, storyboardAsset = null, providedFeedback = null) {
+    const feedback = providedFeedback || startDownloadFeedback();
+    let success = false;
     try {
       const activeProjectInfo = projects.find((project) => project.id === activeProject);
       const categoryLabel = PROJECT_CATEGORY_TABS.find((tab) => tab.key === activeCategory)?.label || activeCategory;
       if (activeCategory === 'storyboard' && storyboardAsset?.storyboard) {
         const media = storyboardAsset.candidates?.find((item) => item.id === assetId) || storyboardAsset.candidates?.[0];
         if (media?.id) {
-          const blob = await apiDownloadStoryboardMediaCandidate(activeProject, storyboardAsset.storyboard.id, media.id);
+          const blob = await apiDownloadStoryboardMediaCandidate(
+            activeProject,
+            storyboardAsset.storyboard.id,
+            media.id,
+            { onProgress: feedback.setProgress },
+          );
           downloadBlob(blob, getProjectAssetDownloadFilename({
             projectName: activeProjectInfo?.name,
             categoryLabel,
             assetName,
             extension: getBlobExtension(blob),
           }));
+          if (!providedFeedback) await feedback.complete('下载成功');
+          success = true;
           return;
         }
       }
-      const blob = await apiDownloadAsset(assetId, { prefer_origin: true });
+      const blob = await apiDownloadAsset(assetId, { prefer_origin: true, onProgress: feedback.setProgress });
       downloadBlob(blob, getProjectAssetDownloadFilename({
         projectName: activeProjectInfo?.name,
         categoryLabel,
         assetName,
         extension: getBlobExtension(blob),
       }));
+      if (!providedFeedback) await feedback.complete('下载成功');
+      success = true;
     } catch (err) {
       console.error('下载失败', err);
+      if (!providedFeedback) await feedback.fail('下载失败，请重试');
     }
+    return success;
   }
 
   function getSelectedDownloadItems() {
@@ -632,8 +649,19 @@ export default function AssetsProjectPanel() {
     const items = getSelectedDownloadItems();
     if (items.length === 0) return;
 
+    const feedback = startDownloadFeedback();
+    const results = [];
     for (const item of items) {
-      await downloadAsset(item.id, item.name);
+      results.push(Boolean(await downloadAsset(item.id, item.name, null, feedback)));
+    }
+
+    const successCount = results.filter(Boolean).length;
+    if (successCount === items.length) {
+      await feedback.complete('批量下载成功');
+    } else if (successCount > 0) {
+      await feedback.complete('部分资产下载成功', 'warning');
+    } else {
+      await feedback.fail('批量下载失败，请重试');
     }
   }
 
@@ -764,8 +792,14 @@ export default function AssetsProjectPanel() {
           onClose={() => setStoryboardDetail(null)}
           readOnlyFinalize
           onDownload={async (media) => {
+            const feedback = startDownloadFeedback();
             try {
-              const blob = await apiDownloadStoryboardMediaCandidate(activeProject, storyboardDetail.shot.id, media.id);
+              const blob = await apiDownloadStoryboardMediaCandidate(
+                activeProject,
+                storyboardDetail.shot.id,
+                media.id,
+                { onProgress: feedback.setProgress },
+              );
               const activeProjectInfo = projects.find((project) => project.id === activeProject);
               downloadBlob(blob, getProjectAssetDownloadFilename({
                 projectName: activeProjectInfo?.name,
@@ -773,9 +807,10 @@ export default function AssetsProjectPanel() {
                 assetName: storyboardDetail.name,
                 extension: getBlobExtension(blob),
               }));
+              await feedback.complete('下载成功');
             } catch (error) {
               console.error('[ProjectAssetsPanel] 下载分镜候选媒体失败:', error);
-              showToast('下载失败，请重试', 'error');
+              await feedback.fail('下载失败，请重试');
             }
           }}
         />

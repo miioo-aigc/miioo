@@ -358,7 +358,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
         setResolutionDialogOpen(true);
         return;
       }
-      showToast(validation.error || '当前素材类型暂不支持上传', 'error', 5000);
+      showToast(validation.error || '当前素材类型暂不支持上传', 'error');
       return;
     }
     setUploading(true);

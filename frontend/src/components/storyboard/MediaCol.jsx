@@ -3,6 +3,7 @@ import DotsLoading from '../DotsLoading';
 import MediaDetailModal from '../MediaDetailModal';
 import ShotViewerModal from '../ShotViewerModal';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { downloadUrlWithFeedback } from '../../utils/downloadFeedback';
 
 /**
  * @file MediaCol.jsx
@@ -13,6 +14,10 @@ import { normalizeImageUrl } from '../../utils/imageUrl';
  *
  *   页面级 API、生成任务、轮询、缓存和 Toast 通过 props 传入，组件不读取
  *   StoryboardPage 的闭包变量；媒体业务状态仅保留卡片内部的展示弹窗状态。
+ *   悬停下载和详情弹窗下载统一通过全局下载 Toast/进度反馈承接。
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  */
 
 const FONT = '"Alibaba PuHuiTi 2.0", system-ui, sans-serif';
@@ -81,6 +86,11 @@ export default function MediaCol({
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
   const isEmpty = !media;
+
+  function handleMediaDownload(fileUrl, filename = 'download') {
+    if (!fileUrl) return;
+    downloadUrlWithFeedback(fileUrl, filename);
+  }
 
   function handleFileSelect(event) {
     const file = event.target.files[0];
@@ -243,10 +253,7 @@ export default function MediaCol({
             <MediaIconBtn onClick={(event) => {
               event.stopPropagation();
               if (!media?.url) return;
-              const anchor = document.createElement('a');
-              anchor.href = media.url;
-              anchor.download = media.name || 'download';
-              anchor.click();
+              handleMediaDownload(media.url, media.name || 'download');
             }}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M8 2.667V10" stroke="#FFFFFFCC" strokeLinecap="round" strokeLinejoin="round" />
@@ -287,14 +294,10 @@ export default function MediaCol({
           activeIndex={0}
           onClose={() => setImageDetailOpen(false)}
           onDownload={(imageId, fileUrl) => {
-            const anchor = document.createElement('a');
-            anchor.href = fileUrl || media?.url;
-            anchor.download = `storyboard-image-${imageId || 'download'}.jpg`;
-            anchor.target = '_blank';
-            anchor.rel = 'noopener noreferrer';
-            document.body.appendChild(anchor);
-            anchor.click();
-            document.body.removeChild(anchor);
+            handleMediaDownload(
+              fileUrl || media?.url,
+              `storyboard-image-${imageId || 'download'}.jpg`,
+            );
           }}
         />
       )}

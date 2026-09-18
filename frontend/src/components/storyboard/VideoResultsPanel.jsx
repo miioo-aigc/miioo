@@ -9,11 +9,16 @@
  *
  * ─── 依赖边界 ───────────────────────────────────────────────
  *   通过 props 接收镜头、项目、结果列表、UI 按钮和业务回调；
- *   不读取 GenerateVideoPanel 或 StoryboardPage 的闭包变量。
+ *   不读取 GenerateVideoPanel 或 StoryboardPage 的闭包变量；视频直链
+ *   下载通过全局下载 Toast/进度反馈承接。
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  */
 
 import { apiUploadStoryboardVideo } from '../../api/storyboard';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { downloadUrlWithFeedback } from '../../utils/downloadFeedback';
 import { mergeStoryboardMediaItems } from '../../utils/storyboardMediaDedup';
 import VideoResultCard from './VideoResultCard';
 import VideoUploadCard from './VideoUploadCard';
@@ -64,12 +69,9 @@ export default function VideoResultsPanel({
 }
 
 // 下载属于浏览器副作用，仍由业务结果面板统一编排。
-function handleVideoDownload(videoUrl) {
+async function handleVideoDownload(videoUrl) {
   if (!videoUrl) return;
-  const link = document.createElement('a');
-  link.href = videoUrl;
-  link.download = videoUrl.split('/').pop() || 'video.mp4';
-  link.click();
+  await downloadUrlWithFeedback(videoUrl, videoUrl.split('/').pop() || 'video.mp4');
 }
 
 // 上传 API、资产格式转换和结果写回仍由结果面板负责。

@@ -18,7 +18,6 @@ export { extractSubjectImageResult, getSubjectGenerationErrorMessage } from './S
 export { getSubjectTaskStatus, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult } from './SubjectTaskPolling';
 export { createSubjectImageActionHandlers } from './SubjectImageActions';
 export { default as ConfirmStoryboardModal } from './ConfirmStoryboardModal';
-export { default as SubjectToast } from './SubjectToast';
 export { default as SubjectEmptyIcons } from './SubjectEmptyIcons';
 export { SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError } from './SubjectExtractionState';
 export { default as SubjectEditorSlot } from './SubjectEditorSlot';

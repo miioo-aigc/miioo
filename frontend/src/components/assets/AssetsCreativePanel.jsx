@@ -1,3 +1,18 @@
+/**
+ * @file AssetsCreativePanel.jsx
+ * @structure-index
+ *
+ * ─── 组件职责 ───────────────────────────────────────
+ *   创作资产面板持有筛选、分页、批量选择、详情弹窗和资产 API；
+ *   图片/视频/配音的单项与批量下载统一启动全局下载 Toast。
+ *
+ * ─── 依赖边界 ───────────────────────────────────────
+ *   通过全局 Store、创作 API 和显式 UI 组件组合，不读取页面入口闭包。
+ *
+ * ─── 更新记录 ───────────────────────────────────────
+ *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
+ */
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiGetCreationAudio, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../../api/creation';
@@ -11,6 +26,7 @@ import { downloadBlob } from '../../utils/downloadBlob';
 import { getCreativeAssetDownloadInfo } from '../../utils/creativeAssetDownload';
 import { normalizeCreationAudioDetail } from '../../utils/creationAudioDetailAdapter';
 import { showGlobalToast } from '../../stores/toastStore';
+import { startDownloadFeedback } from '../../utils/downloadFeedback';
 import ConfirmDialog from '../ConfirmDialog';
 import { AssetsTabBar } from './AssetsTabs';
 import AssetsBatchToolbar from './AssetsBatchToolbar';
@@ -486,9 +502,12 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     }));
   }
 
-  function downloadCreativeAsset(card, options) {
+  async function downloadCreativeAsset(card, options, providedFeedback = null) {
     const downloadInfo = getCreativeAssetDownloadInfo(card, options);
-    if (!downloadInfo) return Promise.resolve(false);
+    if (!downloadInfo) {
+      if (!providedFeedback) showToast('下载信息尚未同步，请刷新后重试', 'error');
+      return false;
+    }
 
     const downloadApi = card.type === 'image'
       ? apiDownloadCreationImage
@@ -497,19 +516,21 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         : apiDownloadCreationAudio;
 
     // 创作记录必须走鉴权下载接口，避免将已过期的短时媒体链接保存为文件。
-    if (card.backendId) {
-      return downloadApi(card.backendId)
-        .then((blob) => {
-          downloadBlob(blob, downloadInfo.filename);
-          return true;
-        })
-        .catch((error) => {
-          showToast(error?.message || '下载失败，请稍后重试', 'error');
-          return false;
-        });
+    if (!card.backendId) {
+      if (!providedFeedback) showToast('下载信息尚未同步，请刷新后重试', 'error');
+      return false;
     }
-    showToast('下载信息尚未同步，请刷新后重试', 'error');
-    return Promise.resolve(false);
+
+    const feedback = providedFeedback || startDownloadFeedback();
+    try {
+      const blob = await downloadApi(card.backendId, { onProgress: feedback.setProgress });
+      downloadBlob(blob, downloadInfo.filename);
+      if (!providedFeedback) await feedback.complete('下载成功');
+      return true;
+    } catch (error) {
+      if (!providedFeedback) await feedback.fail(error?.message || '下载失败，请稍后重试');
+      return false;
+    }
   }
 
   async function downloadSelected() {
@@ -517,12 +538,21 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
       .flatMap((day) => day.cards)
       .filter((card) => selected.has(card.id));
 
+    if (selectedCards.length === 0) return;
+
+    const feedback = startDownloadFeedback();
+    const results = [];
     for (const card of selectedCards) {
-      try {
-        await downloadCreativeAsset(card, { batch: true });
-      } catch {
-        // 单项下载失败时继续处理剩余选中项。
-      }
+      results.push(await downloadCreativeAsset(card, { batch: true }, feedback));
+    }
+
+    const successCount = results.filter(Boolean).length;
+    if (successCount === selectedCards.length) {
+      await feedback.complete('批量下载成功');
+    } else if (successCount > 0) {
+      await feedback.complete('部分资产下载成功', 'warning');
+    } else {
+      await feedback.fail('批量下载失败，请重试');
     }
   }
 

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { apiResolveImageEdit, normalizeEditedImage } from '../api/ImageEdit';
 import { showGlobalToast } from './toastStore';
+import { downloadUrlWithFeedback } from '../utils/downloadFeedback';
 
 const EMPTY = [];
 let database;
@@ -88,9 +89,10 @@ export async function removeLocalImage(scope, id) {
   URL.revokeObjectURL(image.url);
 }
 
-export function downloadLocalImage(image) {
-  const anchor = document.createElement('a');
-  anchor.href = image.fileUrl || image.url;
-  anchor.download = `${image.id}.png`;
-  anchor.click();
+export async function downloadLocalImage(image) {
+  const filename = `${image.id}.png`;
+  await downloadUrlWithFeedback(image.fileUrl || image.url, filename, {
+    message: '正在下载',
+    fallbackToAnchor: true,
+  });
 }

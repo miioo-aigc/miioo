@@ -56,10 +56,12 @@
  *     └─ [渲染] loading/error、SubjectWorkspace 和弹窗组合        L1913–L2118
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
+ *   2026-09-18  删除已无运行时引用的旧主体页 Toast 展示；反馈统一由 GlobalToast 承接
  *   2026-07-16  迁移 SubjectExtractionState 至 components/subject/SubjectExtractionState.jsx；页面仅传入加载文案和重试回调
  *   2026-07-16  新增 SubjectEditorSlot 统一三类主体编辑面板接线；页面继续持有列表写回与封面 API 副作用
  *   2026-07-16  迁移 SubjectEmptyIcons 至 components/subject/SubjectEmptyIcons.jsx；页面通过显式 emptyIcons 传递，保留列表状态和业务副作用
- *   2026-07-16  迁移 SubjectToast 至 components/subject/SubjectToast.jsx；主体页和编辑面板继续持有 Toast 状态、定时器与业务触发
+ *   2026-07-16  迁移旧 Toast 展示；当时主体页和编辑面板继续持有 Toast 状态、定时器与业务触发
  *   2026-07-16  迁移 ConfirmStoryboardModal 至 components/subject；页面保留确认状态和重新生成副作用
  *   2026-07-17  迁移 SubjectEditForm，页面保留编辑状态、生成 API、任务轮询和图片副作用
  *   2026-07-24  主体编辑自动保存按变更字段增量提交，收口 PATCH 异常，避免提示词保存连带提交整套生图配置
@@ -144,6 +146,7 @@ import { defaultPromptForTab, findPendingSubjectImage, getPendingGenTabSetter } 
 import { clearSubjectPanelState, readSubjectPanelState, saveSubjectPanelState } from '../utils/subjectPanelStorage';
 import { pendingGenerations } from '../utils/subjectPendingGenerationStore';
 import { downloadBlob } from '../utils/downloadBlob';
+import { startDownloadFeedback } from '../utils/downloadFeedback';
 import { normalizeSubjectImageModels } from '../components/subject/SubjectModelAdapter';
 import { apiBindSubjectFinalAsset, apiListLiveMaterialAssets, apiListLiveMaterialGroups, apiListLiveMaterialSubjectBindings } from '../api/liveMaterials';
 
@@ -1862,6 +1865,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
 
   // ── 下载主体封面图 ────────────────────────────────────────────
   const handleDownloadSubjectImage = async (subjectId) => {
+    const feedback = startDownloadFeedback();
     try {
       const subjectSources = [
         { list: chars, type: 'character' },
@@ -1879,13 +1883,16 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       const targetImg = primaryImg || imgs[0];
       if (!targetImg?.id) {
         console.warn('[SubjectPage] 没有可下载的图片');
+        await feedback.fail('暂无可下载的主体图片', 'warning');
         return;
       }
       // 调用下载 API
-      const blob = await apiDownloadSubjectImage(projectId, subjectId, targetImg.id);
+      const blob = await apiDownloadSubjectImage(projectId, subjectId, targetImg.id, { onProgress: feedback.setProgress });
       downloadBlob(blob, getSubjectDownloadName(projectName, subjectEntry?.subject, subjectEntry?.type));
+      await feedback.complete('下载成功');
     } catch (err) {
       console.error('[SubjectPage] 下载图片失败:', err);
+      await feedback.fail('下载失败，请重试');
     }
   };
 

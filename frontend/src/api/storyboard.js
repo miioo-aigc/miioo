@@ -8,6 +8,7 @@ import { assertVideoRequestCapabilities } from '../utils/videoModelCapabilities'
 import { cached, invalidate, setCache, peekCache } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 import { buildStoryboardSubjectFields, isBackendStoryboardId, isStoryboardSubjectReference, serializeStoryboardReferenceItem } from '../utils/storyboardDataAdapter.js';
+import { readResponseBlobWithProgress } from '../utils/responseBlobProgress';
 
 // 分镜写操作后统一失效该项目的分镜缓存 + 概览（概览含分镜进度）
 function invalidateStoryboards(projectId) {
@@ -651,7 +652,7 @@ export async function apiDeleteStoryboardMediaCandidate(projectId, storyboardId,
   invalidate(K.storyboardMediaCandidates(projectId, storyboardId));
 }
 
-export async function apiDownloadStoryboardMediaCandidate(projectId, storyboardId, mediaId) {
+export async function apiDownloadStoryboardMediaCandidate(projectId, storyboardId, mediaId, { onProgress } = {}) {
   if (!isBackendStoryboardId(mediaId)) {
     throw new Error('分镜候选媒体缺少有效的媒体 ID');
   }
@@ -659,7 +660,7 @@ export async function apiDownloadStoryboardMediaCandidate(projectId, storyboardI
     headers: { 'Content-Type': 'application/json' },
   });
   if (!res.ok) throw new Error(`下载分镜候选媒体失败（HTTP ${res.status}）`);
-  return res.blob();
+  return readResponseBlobWithProgress(res, onProgress);
 }
 
 export async function apiDeleteStoryboard(projectId, storyboardId) {
@@ -903,22 +904,22 @@ export async function apiDownloadStoryboardVideo(projectId, storyboardId) {
   return res.blob();
 }
 
-export async function apiBatchDownloadStoryboardImages(projectId, storyboard_ids) {
+export async function apiBatchDownloadStoryboardImages(projectId, storyboard_ids, { onProgress } = {}) {
   const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/download/images`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storyboard_ids }),
   });
-  return res.blob();
+  return readResponseBlobWithProgress(res, onProgress);
 }
 
-export async function apiBatchDownloadStoryboardVideos(projectId, storyboard_ids) {
+export async function apiBatchDownloadStoryboardVideos(projectId, storyboard_ids, { onProgress } = {}) {
   const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/download/videos`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storyboard_ids }),
   });
-  return res.blob();
+  return readResponseBlobWithProgress(res, onProgress);
 }
 
 // ── 通用文件上传（图片）──────────────────────────────────────────────────────

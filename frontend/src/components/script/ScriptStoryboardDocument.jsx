@@ -5,12 +5,15 @@
  * ─── 组件职责 ───────────────────────────────────────────────────────
  *   只读展示分镜脚本文稿信息和下载动作，不调用 API。
  *   下载动作复用 UI TextButton 的 link 变体。
+ *   稳定地址下载启动全局下载 Toast，父级兜底下载由调用方自行接入反馈。
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-09-18  稳定下载入口接入全局下载 Toast/进度反馈
  *   2026-07-22  下载入口改用 TextButton link 变体，保留后端地址和禁用态
  *   2026-08-06  后端未返回下载地址时允许父级通过稳定接口兜底下载
  */
 import { TextButton } from '../ui';
+import { startDownloadFeedback, triggerAnchorDownload } from '../../utils/downloadFeedback';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -26,6 +29,15 @@ function ExcelIcon() {
 
 export default function ScriptStoryboardDocument({ fileName = '', downloadUrl = '', onDownload }) {
   const canDownload = Boolean(downloadUrl || onDownload);
+  const handleDownload = async () => {
+    if (!downloadUrl) {
+      onDownload?.();
+      return;
+    }
+    const feedback = startDownloadFeedback();
+    triggerAnchorDownload(downloadUrl, fileName);
+    await feedback.complete('下载已开始');
+  };
   return (
     <section style={{ display: 'flex', alignItems: 'flex-start', flexDirection: 'column', gap: '6px', width: '100%', fontFamily: FONT }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: '8px 0', boxSizing: 'border-box' }}>
@@ -39,7 +51,7 @@ export default function ScriptStoryboardDocument({ fileName = '', downloadUrl = 
           type="button"
           variant="link"
           disabled={!canDownload}
-          onClick={() => { if (downloadUrl) window.open(downloadUrl, '_blank', 'noopener,noreferrer'); else onDownload?.(); }}
+          onClick={handleDownload}
           style={{ marginLeft: 'auto', fontFamily: FONT, fontSize: '14px', lineHeight: '20px' }}
           icon={(
             <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg"><path d="M7 2V9M7 9L4 6.5M7 9L10 6.5M2 11H12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>

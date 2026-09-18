@@ -34,7 +34,6 @@ export { default as VoiceDubModal } from './VoiceDubModal';
 export { default as DescriptionCol } from './DescriptionCol';
 export { default as ShotNumberColumn, CardActionBtn } from './ShotNumberColumn';
 export { StoryboardIconPlus } from './StoryboardActionPrimitives';
-export { default as StoryboardToast } from './StoryboardToast';
 export { default as StoryboardHeader } from './StoryboardHeader';
 export { default as StoryboardContentArea } from './StoryboardContentArea';
 export { default as StoryboardEmptyState } from './StoryboardEmptyState';

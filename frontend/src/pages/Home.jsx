@@ -12,7 +12,7 @@
  *   HomeSloganText / StartCreationButton / HomeLogo / HomeBackground / HomeHeader components/home
  *   QRCodePopup / MoreOptionsMenu                                components/home/HomeBottomMenus.jsx
  *   CreationManualButton / LoginButton                          components/home/HomeHeaderActions.jsx
- *   WorkflowHeadbar / ApiConfigBubble / HomeToast / HomeNavigationRail components/home/
+ *   WorkflowHeadbar / ApiConfigBubble / HomeNavigationRail      components/home/
  *
  * ─── 工具函数 ───────────────────────────────────────────────────
  *   normalizeSubjects(items) 主体列表标准化                      utils/subjectAdapter.js
@@ -35,6 +35,7 @@
  *     └─ [渲染] 页面业务模块统一通过 Suspense 按需加载              L1430–L1657
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-09-18  删除已无运行时引用的旧首页 Toast 展示；反馈统一由 GlobalToast 承接
  *   2026-08-12  智能分镜生成任务轮询超时由 500 秒调整为 3000 秒
  *   2026-08-19  主动退出与鉴权失效时清空创作提示词和参考素材草稿
  *   2026-07-16  修复商务合作二维码定位、无 token 初始化和微信回调错误引用；GlobalSettings 按项目 ID 重建草稿
@@ -55,7 +56,7 @@
  *   2026-07-16  迁移 WorkflowStepTabs 及 STEP_TABS 配置至 components/home/WorkflowStepTabs.jsx；页面仍负责步骤状态和切换回调
  *   2026-07-16  迁移 WorkflowHeadbar 至 components/home/WorkflowHeadbar.jsx；认证和工作流回调通过显式 props 传递；补齐管理员入口回调
  *   2026-07-16  迁移 API 配置提示气泡至 components/home/ApiConfigBubble.jsx；页面仅负责显示条件和底部导航动作
- *   2026-07-16  迁移首页 Toast 展示至 components/home/HomeToast.jsx；页面继续持有提示状态、定时器和 showToast
+ *   2026-07-16  迁移首页 Toast 展示；后续改由全局 GlobalToast 承接
  *   2026-07-17  迁移首页主导航与底部快捷导航布局至 components/home/HomeNavigationRail.jsx；页面继续负责导航状态和回调
  *   2026-07-22  主体生成改为发布结构、检查存储用量并轮询剧本任务；完成后强制刷新主体列表并兼容嵌套响应
  *   2026-07-23  持久化主体抽取两阶段任务，刷新浏览器后恢复轮询和加载动画

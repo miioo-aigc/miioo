@@ -1,8 +1,24 @@
+/**
+ * @file ShotViewerModal.jsx
+ * @structure-index
+ *
+ * ─── 组件职责 ───────────────────────────────────────────────
+ *   镜头视频查看弹窗负责播放器、时间轴、音量和定稿操作；
+ *   下载动作通过全局下载 Toast/进度反馈承接。
+ *
+ * ─── 依赖边界 ───────────────────────────────────────────────
+ *   仅依赖镜头数据、通用工具和 UI 组件，不读取页面闭包变量。
+ *
+ * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
+ */
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useModalSize } from '../utils/useModalSize';
 import { createPortal } from 'react-dom';
 import Toggle from './Toggle';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import { downloadUrlWithFeedback } from '../utils/downloadFeedback';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -165,10 +181,7 @@ export default function ShotViewerModal({ shot, onClose, onFinalizeChange }) {
     if (!shot?.videoUrl || downloading) return;
     setDownloading(true);
     try {
-      const a = document.createElement('a');
-      a.href = shot.videoUrl;
-      a.download = shot.filename ?? `shot_${shot.id}.mp4`;
-      a.click();
+      await downloadUrlWithFeedback(shot.videoUrl, shot.filename ?? `shot_${shot.id}.mp4`);
     } finally {
       setDownloading(false);
     }

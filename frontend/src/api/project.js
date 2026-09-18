@@ -4,6 +4,7 @@ import { authFetch, authFetchForm } from './request.js';
 import { throwResponseError } from './error.js';
 import { cached, invalidate, setCache } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
+import { readResponseBlobWithProgress } from '../utils/responseBlobProgress';
 
 export async function apiUploadProjectCover(file) {
   const form = new FormData();
@@ -118,14 +119,14 @@ export async function apiDeleteProject(projectId) {
   invalidate(K.projectsPrefix());
 }
 
-export async function apiDownloadProjectAssets(projectId) {
+export async function apiDownloadProjectAssets(projectId, { onProgress } = {}) {
   const res = await authFetch(`${BASE}/api/projects/${projectId}/assets/download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
   if (!res.ok) throw new Error(`下载项目资产失败（HTTP ${res.status}）`);
 
-  const blob = await res.blob();
+  const blob = await readResponseBlobWithProgress(res, onProgress);
   if (blob.size === 0) throw new Error('下载接口返回了空文件');
 
   const contentType = (res.headers.get('content-type') || '').toLowerCase();

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { downloadBlob } from '../../utils/downloadBlob';
+import { downloadBlobWithFeedback } from '../../utils/downloadFeedback';
 import { frameAtTime } from './FrameIndex';
 
 export default function useFrameSelection(url, canvasRef, { onExport } = {}) {
@@ -52,7 +52,7 @@ export default function useFrameSelection(url, canvasRef, { onExport } = {}) {
         data.bitmap.close();
       } else if (data.type === 'export') {
         if (data.purpose === 'prepare') exportHandler.current?.(data.blob, data.index);
-        else downloadBlob(data.blob, `视频选帧-${data.index + 1}.png`);
+        else downloadBlobWithFeedback(data.blob, `视频选帧-${data.index + 1}.png`).catch(() => {});
         setExporting(false);
         clearTimeout(watchdog);
       } else if (data.type === 'error' && (data.id == null || data.id === sequence.current)) {

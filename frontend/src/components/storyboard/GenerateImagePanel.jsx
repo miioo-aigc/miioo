@@ -11,6 +11,7 @@
  *   参考图状态         负责本地上传、资产库选择、预览和删除
  *   生成结果状态       通过显式回调接收结果列表更新和定稿写回
  *   媒体详情弹窗       负责生成图片详情查看和下载交互
+ *   下载反馈           直链下载统一启动全局下载 Toast/进度反馈
  *
  * ─── 依赖边界 ───────────────────────────────────────────────
  *   页面通过 props 注入页面级 UI、提示词构建器和业务回调；
@@ -18,6 +19,7 @@
  *   不引用页面入口、页面 Store 或页面闭包变量。
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-08-11  手动新增空白分镜保持空提示词，不代入后端返回的默认内容，并跳过异步表单恢复覆盖
  *   2026-08-10  收敛异步恢复 effect 的依赖快照，修复热更新时依赖数组长度变化的 React 警告
  *   2026-08-05  修复异步表单恢复时首次空状态回写，确保上传参考图快照恢复后才触发持久化
@@ -33,6 +35,7 @@ import MediaDetailModal from '../MediaDetailModal';
 import { apiListModels } from '../../api/config';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { downloadUrlWithFeedback } from '../../utils/downloadFeedback';
 import { getReferenceImagePathKey, normalizeStoryboardImageReferences, normalizeStoryboardReferenceGroups } from '../../utils/referenceMediaAdapter';
 import { getUploadedImageId, getUploadedImageUrl } from '../../utils/storyboardReferenceAdapter';
 import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter';
@@ -422,10 +425,7 @@ export default function GenerateImagePanel({
                 }}
                 onDownload={(imageUrl) => {
                   if (!imageUrl) return;
-                  const link = document.createElement('a');
-                  link.href = imageUrl;
-                  link.download = imageUrl.split('/').pop() || 'image.jpg';
-                  link.click();
+                  downloadUrlWithFeedback(imageUrl, imageUrl.split('/').pop() || 'image.jpg');
                 }}
               />
             ))}
@@ -479,14 +479,9 @@ export default function GenerateImagePanel({
           activeIndex={mediaDetailActiveIdx}
           onClose={() => setMediaDetailOpen(false)}
           onDownload={(imageId, fileUrl) => {
-            const a = document.createElement('a');
-            a.href = fileUrl || generatedImages[mediaDetailActiveIdx]?.url;
-            a.download = `storyboard-image-${imageId || 'download'}.jpg`;
-            a.target = '_blank';
-            a.rel = 'noopener noreferrer';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            const imageUrl = fileUrl || generatedImages[mediaDetailActiveIdx]?.url;
+            if (!imageUrl) return;
+            downloadUrlWithFeedback(imageUrl, `storyboard-image-${imageId || 'download'}.jpg`);
           }}
         />
       )}

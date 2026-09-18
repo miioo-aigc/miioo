@@ -5,6 +5,7 @@ import AsyncImagePreview from './AsyncImagePreview';
 import { apiGetLiveMaterialPreviewByRef } from '../api/liveMaterials';
 import { useModalSize } from '../utils/useModalSize';
 import { showGlobalToast } from '../stores/toastStore';
+import { downloadUrlWithFeedback } from '../utils/downloadFeedback';
 import ImageCropModal from './ImageCropModal';
 import MultiAngleModal from './image-edit/MultiAngleModal';
 import InpaintModal from './image-edit/InpaintModal';
@@ -64,20 +65,7 @@ const DETAIL_PANEL_DIVIDER = <div style={{ height: '1px', backgroundColor: '#FFF
 
 async function downloadImage(url) {
   if (!url) return;
-  try {
-    const res = await fetch(url);
-    const blob = await res.blob();
-    const objUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = objUrl;
-    a.download = 'creation.png';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(objUrl);
-  } catch {
-    window.open(url, '_blank');
-  }
+  await downloadUrlWithFeedback(url, 'creation.png');
 }
 
 function DownloadIcon() {

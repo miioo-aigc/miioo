@@ -11,8 +11,10 @@
  * ─── 依赖边界 ───────────────────────────────────────────────────────
  *   仅依赖主体图片 API 和图片地址工具；状态 setter、Toast、封面回调与 Blob 下载由页面显式传入
  *   不引用 React、不创建隐式页面状态、不负责图片列表展示
+ *   下载反馈通过全局下载 Toast/进度反馈统一承接
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-07-15  抽离主体图片上传、下载和定稿动作适配，页面保留状态与反馈副作用
  *   2026-07-22  右侧候选图上传改走通用图片资产接口，不再写入主体参考图关系
  *   2026-07-28  普通项目资产通过 assets PATCH 支持设置/取消定稿，生成图仍走主体候选图接口
@@ -33,6 +35,7 @@ import {
 } from '../../api/subject';
 import { mapSubjectImageResponse } from './SubjectImageMappers';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { startDownloadFeedback } from '../../utils/downloadFeedback';
 
 function resolveSubjectImageId(detail, image) {
   const targetUrl = normalizeImageUrl(image?.rawUrl || image?.url);
@@ -185,13 +188,14 @@ export function createSubjectImageActionHandlers({
   }
 
   async function handleDownload(imageId) {
+    const feedback = startDownloadFeedback();
     try {
-      const blob = await apiDownloadSubjectImage(projectId, subjectId, imageId);
+      const blob = await apiDownloadSubjectImage(projectId, subjectId, imageId, { onProgress: feedback.setProgress });
       triggerBlobDownload(blob, `subject-image-${imageId}.jpg`);
-      showToast('下载成功', 'success');
+      await feedback.complete('下载成功');
     } catch (error) {
       console.error('[SubjectPage] 下载图片失败:', error);
-      showToast('下载失败', 'error');
+      await feedback.fail(error?.message || '下载失败，请重试');
     }
   }
 

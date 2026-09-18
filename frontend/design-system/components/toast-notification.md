@@ -82,6 +82,20 @@ function Toast({ message, type = "success", duration = 2500, onClose }) {
 }
 ```
 
+### 下载中状态
+
+下载类 Toast 在普通状态图标位置复用 `LoadingAnimation`，文案仍使用 16px 主文字色。
+
+| 属性 | 值 |
+|---|---|
+| 加载动画 | `LoadingAnimation` |
+| 动画高度 | 24px |
+| 动画宽度 | 按 `1118 / 405` 等比例自适应 |
+| 布局 | 文案在左，动画在右，间距 `gap-[8px]` |
+| 进度文案 | 有流式总长度时在文案末尾追加 `xx%`；无总长度时不显示百分比 |
+
+下载完成或失败后切回普通 Toast 状态展示，不叠加「下载成功」提示。
+
 ---
 
 ## 二、Notification 通知

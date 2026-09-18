@@ -15,10 +15,11 @@
  * ─── 主页面入口 ───────────────────────────────────────────────────────
  *   export default ScriptPage()                                         L218
  *     ├─ [状态] 受控/非受控 phase、剧本内容、入口文件、模型、集数/时长、消息和编排任务
- *     ├─ [函数] handleSend L997 / handleScriptFileSelect L723 / handleOpenScriptOutline L273 / handleStop L694
+ *     ├─ [函数] handleSend L1017 / handleScriptFileSelect L743 / handleOpenScriptOutline L276 / handleStop L714 / handleBackToConversation L397 / handleBackToScriptOutline L401
  *     └─ [副作用] 工作区加载、编排任务恢复与轮询、流式请求、剧本和分集同步
  *
  * ─── 更新记录 ────────────────────────────────────────────────────────
+ *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-07-15  抽离 InputCard、ScriptEmptyState 及输入区子组件，页面仅保留输入区编排
  *   2026-07-16  补齐流式暂停回调的 setPhase 依赖，避免闭包使用旧阶段更新函数
  *   2026-07-21  重做初始创作入口，输入卡移除上传并增加单集时长，分镜文件仅保留本地状态
@@ -45,12 +46,16 @@
  *   2026-08-10  移除发送前的前端任务拦截，发送直接透传到后端剧本对话接口
  *   2026-08-11  分集/重写任务对齐后端：幂等头、缓存失效、409 提示、localStorage 恢复与轮询清理
  *   2026-08-18  已确认项目收到 SCRIPT_ALREADY_CONFIRMED 时从工作区恢复已有结构，避免重复 confirm
+ *   2026-09-18  编排页左上角新增返回对话按钮，支持从成功编排视图切回对话
+ *   2026-09-18  解构成功后对话底部提供回到剧本编排入口，无需重新确认解构
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiInterruptScriptChatTurn, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiDownloadStoryboardFile, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
 import { Button } from '../components/ui';
 import { InputCard, ScriptEmptyState, ScriptMessageArea, ScriptOutlineLoading, ScriptOutlineWorkspace, ScriptModifyConfirmModal } from '../components/script';
 import { showGlobalToast } from '../stores/toastStore';
+import { downloadBlob } from '../utils/downloadBlob';
+import { startDownloadFeedback, triggerAnchorDownload } from '../utils/downloadFeedback';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -391,6 +396,14 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     timeoutError.isTimeout = true;
     throw timeoutError;
   }, [projectId]);
+
+  const handleBackToConversation = useCallback(() => {
+    setScriptOutlineMode(false);
+  }, []);
+
+  const handleBackToScriptOutline = useCallback(() => {
+    setScriptOutlineMode(true);
+  }, []);
 
   const refreshScriptOutline = useCallback(async () => {
     const structure = await apiGetScriptStructure(projectId);
@@ -806,11 +819,15 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     }
   };
 
-  const handleDownloadTemplate = () => {
-    const anchor = document.createElement('a');
-    anchor.href = '/分镜模板.xlsx';
-    anchor.download = '分镜模板.xlsx';
-    anchor.click();
+  const handleDownloadTemplate = async () => {
+    const feedback = startDownloadFeedback();
+    try {
+      triggerAnchorDownload('/分镜模板.xlsx', '分镜模板.xlsx');
+      await feedback.complete();
+    } catch (error) {
+      console.error('[ScriptPage] 下载分镜模板失败:', error);
+      await feedback.fail('下载失败，请重试');
+    }
   };
 
   const performSend = async (text, model, epCount, duration) => {
@@ -1031,8 +1048,9 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   }, [projectId]);
 
   const handleDownloadScript = useCallback(async () => {
+    const feedback = startDownloadFeedback();
     if (!projectId) {
-      showToast('当前没有可下载的剧本内容', 'warning');
+      await feedback.fail('当前没有可下载的剧本内容', 'warning');
       return;
     }
 
@@ -1040,7 +1058,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       const latestStructure = normalizeScriptStructure(await apiGetScriptStructure(projectId));
       const episodes = latestStructure?.episodes || [];
       if (episodes.length === 0) {
-        showToast('当前没有可下载的分集剧本', 'warning');
+        await feedback.fail('当前没有可下载的分集剧本', 'warning');
         return;
       }
 
@@ -1051,38 +1069,27 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         return `## 第${String(index + 1).padStart(2, '0')}集 ${title}\n\n${episodeContent}`.trim();
       }).join('\n\n---\n\n');
       const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `${sanitizeDownloadName(projectName, projectId || '剧本')}.md`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `${sanitizeDownloadName(projectName, projectId || '剧本')}.md`);
+      await feedback.complete('下载成功');
     } catch (error) {
       console.error('[ScriptPage] 下载分集剧本失败:', error);
-      showToast(error?.message || '下载剧本失败，请重试', 'error');
+      await feedback.fail(error?.message || '下载剧本失败，请重试');
     }
   }, [projectId, projectName]);
 
   const handleDownloadStoryboard = useCallback(async () => {
+    const feedback = startDownloadFeedback();
     if (!projectId) {
-      showToast('当前没有可下载的分镜脚本', 'warning');
+      await feedback.fail('当前没有可下载的分镜脚本', 'warning');
       return;
     }
     try {
-      const blob = await apiDownloadStoryboardFile(projectId);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = storyboardFileName || `${sanitizeDownloadName(projectName, projectId)}.xlsx`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
+      const blob = await apiDownloadStoryboardFile(projectId, { onProgress: feedback.setProgress });
+      downloadBlob(blob, storyboardFileName || `${sanitizeDownloadName(projectName, projectId)}.xlsx`);
+      await feedback.complete('下载成功');
     } catch (error) {
       console.error('[ScriptPage] 下载分镜脚本失败:', error);
-      showToast(error?.message || '下载分镜脚本失败，请重试', 'error');
+      await feedback.fail(error?.message || '下载分镜脚本失败，请重试');
     }
   }, [projectId, projectName, storyboardFileName]);
 
@@ -1136,29 +1143,34 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
             />
           )}
           {!scriptOutlineLoading && !scriptOutlineError && (
-            isSubjectUnlocked && !scriptModificationMode ? (
-              <div style={{ position: 'absolute', top: 0, right: 0, zIndex: 3, display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
-                <Button type="button" variant="secondary" size="large" style={{ height: '32px' }} onClick={handleDownloadScript}>下载剧本</Button>
-                <Button type="button" variant="accent" size="large" style={{ height: '32px' }} onClick={handleRequestModifyScript}>修改剧本</Button>
+            <>
+              <div style={{ position: 'absolute', top: 0, left: 0, zIndex: 3, display: 'flex', alignItems: 'flex-start' }}>
+                <Button type="button" variant="secondary" size="large" style={{ height: '32px' }} onClick={handleBackToConversation}>返回对话</Button>
               </div>
-            ) : (
-              <Button
-                type="button"
-                variant="accent"
-                size="large"
-                icon={(
-                  <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" style={{ overflow: 'visible', flexShrink: 0 }} aria-hidden="true">
-                    <path d="M14 8H2" fill="none" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M10 4L14 8L10 12" fill="none" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-                iconPosition="right"
-                onClick={() => onGoToSubject?.('char')}
-                style={{ position: 'absolute', top: 0, right: 0, zIndex: 3 }}
-              >
-                下一步：生成主体
-              </Button>
-            )
+              {isSubjectUnlocked && !scriptModificationMode ? (
+                <div style={{ position: 'absolute', top: 0, right: 0, zIndex: 3, display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+                  <Button type="button" variant="secondary" size="large" style={{ height: '32px' }} onClick={handleDownloadScript}>下载剧本</Button>
+                  <Button type="button" variant="accent" size="large" style={{ height: '32px' }} onClick={handleRequestModifyScript}>修改剧本</Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="accent"
+                  size="large"
+                  icon={(
+                    <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" style={{ overflow: 'visible', flexShrink: 0 }} aria-hidden="true">
+                      <path d="M14 8H2" fill="none" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M10 4L14 8L10 12" fill="none" stroke="#090909" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                  iconPosition="right"
+                  onClick={() => onGoToSubject?.('char')}
+                  style={{ position: 'absolute', top: 0, right: 0, zIndex: 3 }}
+                >
+                  下一步：生成主体
+                </Button>
+              )}
+            </>
           )}
         </div>
       ) : !hasStarted ? (
@@ -1188,6 +1200,8 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
                   activeMessageId={activeMessageId}
                   hasScript={Boolean(scriptContent)}
                   onOpenScript={handleOpenScriptOutline}
+                  hasBackToOutline={Boolean(scriptOutlineData)}
+                  onBackToOutline={handleBackToScriptOutline}
                 />
               </div>
             </div>

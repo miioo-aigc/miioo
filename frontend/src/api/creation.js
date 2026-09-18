@@ -6,6 +6,7 @@ const CREATION_BASIC_EDIT_POLL_TIMEOUT_MS = 600000;
 const CREATION_POLL_INTERVAL_MS = 3000;
 const CREATION_POLL_TRANSIENT_FAILURE_LIMIT = 5;
 const CREATION_POLL_TRANSIENT_STATUSES = new Set([502, 503, 504]);
+import { readResponseBlobWithProgress } from '../utils/responseBlobProgress';
 
 function isLikelyImageMediaUrl(url) {
   return /\.(?:avif|bmp|gif|jpe?g|png|webp)(?:[?#].*)?$/i.test(String(url || ''));
@@ -543,7 +544,7 @@ async function parseCreationDeleteResponse(res, action) {
   return res.json();
 }
 
-async function parseCreationDownloadResponse(res, action) {
+async function parseCreationDownloadResponse(res, action, onProgress) {
   const contentType = res.headers.get('content-type') || '';
   if (!res.ok) {
     let detail = '';
@@ -564,7 +565,7 @@ async function parseCreationDownloadResponse(res, action) {
     throw new Error(`${action}失败：服务端未返回媒体文件`);
   }
 
-  const blob = await res.blob();
+  const blob = await readResponseBlobWithProgress(res, onProgress);
   if (!blob.size || blob.type.includes('application/json') || blob.type.startsWith('text/')) {
     throw new Error(`${action}失败：服务端未返回有效媒体文件`);
   }
@@ -594,13 +595,13 @@ export async function apiBatchDeleteImages(ids) {
   return parseCreationDeleteResponse(res, '批量删除创作图片');
 }
 
-export async function apiBatchDownloadImages(ids) {
+export async function apiBatchDownloadImages(ids, { onProgress } = {}) {
   const res = await authFetch(`${BASE}/api/creation/images/batch-download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids, asset_ids: ids }),
   });
-  return parseCreationDownloadResponse(res, '批量下载创作图片');
+  return parseCreationDownloadResponse(res, '批量下载创作图片', onProgress);
 }
 
 export async function apiBatchFavoriteImages(ids, liked) {
@@ -612,11 +613,11 @@ export async function apiBatchFavoriteImages(ids, liked) {
   return res.json();
 }
 
-export async function apiDownloadCreationImage(imageId) {
+export async function apiDownloadCreationImage(imageId, { onProgress } = {}) {
   const res = await authFetch(`${BASE}/api/creation/images/${imageId}/download`, {
     headers: { 'Content-Type': 'application/json' },
   });
-  return parseCreationDownloadResponse(res, '下载创作图片');
+  return parseCreationDownloadResponse(res, '下载创作图片', onProgress);
 }
 
 // ── 创作视频 ──────────────────────────────────────────────────────────────────
@@ -685,20 +686,20 @@ export async function apiBatchDeleteVideos(ids) {
   return parseCreationDeleteResponse(res, '批量删除创作视频');
 }
 
-export async function apiBatchDownloadVideos(ids) {
+export async function apiBatchDownloadVideos(ids, { onProgress } = {}) {
   const res = await authFetch(`${BASE}/api/creation/videos/batch-download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids, asset_ids: ids }),
   });
-  return parseCreationDownloadResponse(res, '批量下载创作视频');
+  return parseCreationDownloadResponse(res, '批量下载创作视频', onProgress);
 }
 
-export async function apiDownloadCreationVideo(videoId) {
+export async function apiDownloadCreationVideo(videoId, { onProgress } = {}) {
   const res = await authFetch(`${BASE}/api/creation/videos/${videoId}/download`, {
     headers: { 'Content-Type': 'application/json' },
   });
-  return parseCreationDownloadResponse(res, '下载创作视频');
+  return parseCreationDownloadResponse(res, '下载创作视频', onProgress);
 }
 
 // ── 创作音频 ──────────────────────────────────────────────────────────────────
@@ -820,20 +821,20 @@ export async function apiBatchDeleteAudios(audio_ids) {
   });
 }
 
-export async function apiBatchDownloadAudios(audio_ids) {
+export async function apiBatchDownloadAudios(audio_ids, { onProgress } = {}) {
   const res = await authFetch(`${BASE}/api/creation/audios/batch-download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ audio_ids }),
   });
-  return parseCreationDownloadResponse(res, '批量下载创作音频');
+  return parseCreationDownloadResponse(res, '批量下载创作音频', onProgress);
 }
 
-export async function apiDownloadCreationAudio(audioId) {
+export async function apiDownloadCreationAudio(audioId, { onProgress } = {}) {
   const res = await authFetch(`${BASE}/api/creation/audios/${audioId}/download`, {
     headers: { 'Content-Type': 'application/json' },
   });
-  return parseCreationDownloadResponse(res, '下载创作音频');
+  return parseCreationDownloadResponse(res, '下载创作音频', onProgress);
 }
 
 // ── 创作任务轮询 ──────────────────────────────────────────────────────────────

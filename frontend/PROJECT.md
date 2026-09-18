@@ -1,5 +1,10 @@
 # miioo 项目进度管理文档
 
+## 2026-09-18 全局 Toast 规则与旧组件清理
+
+- 全局 Toast 超长内容自动换行，最大宽度固定为 `600px`；类型时长统一由 `toastStore` 管理：`success/info = 2000ms`、`warning = 3000ms`、`error = 5000ms`。
+- 删除已无运行时引用的 `CreationToast`、`SubjectToast`、`HomeToast` 和 `StoryboardToast`；相关页面反馈统一由 `GlobalToast` 承接。历史迁移记录保留，不作为当前组件现状。
+
 ## 2026-09-14 图片编辑接口接入
 
 - 局部重绘、消除笔接入 erase 同步结果及通用任务回读；扩图接入 outpainting 生成及模型能力筛选。

@@ -3,8 +3,9 @@
  * 负责 fetch、Blob 临时 URL 和浏览器下载生命周期，不包含业务文件名规则。
  */
 import { downloadBlob } from './downloadBlob';
+import { readResponseBlobWithProgress } from './responseBlobProgress';
 
-export async function downloadMediaUrl(url, filename) {
+export async function downloadMediaUrl(url, filename, onProgress) {
   if (!url) return false;
   const response = await fetch(url);
   const contentType = response.headers.get('content-type') || '';
@@ -14,7 +15,7 @@ export async function downloadMediaUrl(url, filename) {
   if (contentType.includes('application/json') || contentType.startsWith('text/')) {
     throw new Error('下载失败：媒体链接已失效');
   }
-  const blob = await response.blob();
+  const blob = await readResponseBlobWithProgress(response, onProgress);
   if (!blob.size || blob.type.includes('application/json') || blob.type.startsWith('text/')) {
     throw new Error('下载失败：未获取到有效媒体文件');
   }

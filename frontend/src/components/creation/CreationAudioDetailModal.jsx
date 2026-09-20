@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useModalSize } from '../../utils/useModalSize';
 import ConfirmDialog from '../ConfirmDialog';
 import CreationDubbingPromptPreview from './CreationDubbingPromptPreview';
-import { DeleteIcon, FavoriteIcon } from '../ui';
+import { DeleteIcon, FavoriteIcon, Tooltip } from '../ui';
 import { stopVoicePreview } from '../../utils/voicePreviewPlayer';
 import CopyPromptButton from '../ui/CopyPromptButton';
 
@@ -21,7 +21,11 @@ const DETAIL_PANEL_DIVIDER = <div style={{ height: '1px', backgroundColor: '#FFF
 
 function PanelAction({ icon, label, onClick, active = false }) {
   const [hovered, setHovered] = useState(false);
-  return <button type="button" aria-label={label} aria-pressed={active} onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', minWidth: '24px', height: '24px', padding: 0, border: 0, borderRadius: '7px', backgroundColor: hovered ? '#FFFFFF14' : '#161616', cursor: 'pointer', transition: 'background-color 0.12s' }}>{icon}</button>;
+  return (
+    <Tooltip label={label}>
+      <button type="button" aria-label={label} aria-pressed={active} onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', minWidth: '24px', height: '24px', padding: 0, border: 0, borderRadius: '7px', backgroundColor: hovered ? '#FFFFFF14' : '#161616', cursor: 'pointer', transition: 'background-color 0.12s' }}>{icon}</button>
+    </Tooltip>
+  );
 }
 
 function DownloadIcon() {

@@ -13,7 +13,7 @@ import UpscaleModal from './image-edit/UpscaleModal';
 import ImageFlipModal from './image-edit/ImageFlipModal';
 import OutpaintModal from './image-edit/OutpaintModal';
 import CopyPromptButton from './ui/CopyPromptButton';
-import { FavoriteIcon, DeleteIcon, CropIcon } from './ui';
+import { FavoriteIcon, DeleteIcon, CropIcon, Tooltip } from './ui';
 import { EDIT_MODE_LABELS, mayShowEditPrompt, readEditMetadata } from '../utils/MediaEditPolicy';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -34,7 +34,11 @@ function LegacyCopyPromptButton({ text, onCopy }) {
 
 function PanelAction({ icon, label, onClick, active = false }) {
   const [hovered, setHovered] = useState(false);
-  return <button type="button" aria-label={label} aria-pressed={active} onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', minWidth: '24px', height: '24px', padding: 0, border: 0, borderRadius: '7px', backgroundColor: hovered ? '#FFFFFF14' : '#161616', cursor: 'pointer', transition: 'background-color 0.12s' }}>{icon}</button>;
+  return (
+    <Tooltip label={label}>
+      <button type="button" aria-label={label} aria-pressed={active} onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', minWidth: '24px', height: '24px', padding: 0, border: 0, borderRadius: '7px', backgroundColor: hovered ? '#FFFFFF14' : '#161616', cursor: 'pointer', transition: 'background-color 0.12s' }}>{icon}</button>
+    </Tooltip>
+  );
 }
 
 function EditTool({ label, icon, onClick }) {

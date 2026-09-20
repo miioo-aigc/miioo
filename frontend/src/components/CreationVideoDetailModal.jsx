@@ -2,10 +2,10 @@
  * @file CreationVideoDetailModal.jsx
  * @structure-index
  *
- * ─── 辅助组件与工具 ─────────────────────────────── L38–L230
+ * ─── 辅助组件与工具 ─────────────────────────────── L38–L232
  *   formatVideoDuration / ReferenceVideoCard / CopyPromptButton / PanelAction / EditTool 详情字段、参考素材与操作按钮
  *
- * ─── 创作视频详情弹窗 ───────────────────────────── L231–L752
+ * ─── 创作视频详情弹窗 ───────────────────────────── L233–L774
  *   CreationVideoDetailModal                        视频预览、详情信息和操作回调
  *   视频播放区                                      点击画面切换播放状态，中央反馈显示 0.5 秒后隐藏，保留原生 controls
  *   右侧信息区                                      顶部操作、中间滚动、底部视频编辑固定布局
@@ -14,6 +14,7 @@
  *   2026-09-07                                       中央播放状态短暂显示 0.5 秒；外层圆角裁剪；右栏改为固定布局；更新视频编辑按钮图标
  *   2026-09-03                                       视频控制组件样式对齐分镜详情弹窗，保留创作页业务架构
  *   2026-09-09                                       接入智能超清、去字幕、剪辑与纯前端选帧；选帧优先读取独立原视频地址，打开前暂停播放
+ *   2026-09-20                                       右侧顶部媒体动作按钮接入设计系统 Tooltip
  */
 
 import { useState, useRef, useEffect } from 'react';
@@ -26,7 +27,7 @@ import { formatReferenceMode } from '../utils/referenceMode';
 import { apiGetLiveMaterialPreviewByRef } from '../api/liveMaterials';
 import { showGlobalToast } from '../stores/toastStore';
 import CopyPromptButton from './ui/CopyPromptButton';
-import { DeleteIcon, FavoriteIcon } from './ui';
+import { DeleteIcon, FavoriteIcon, Tooltip } from './ui';
 import VideoPlaybackControls from './ui/VideoPlaybackControls';
 import VideoUpscaleModal from './video-edit/VideoUpscaleModal';
 import VideoSubtitleModal from './video-edit/VideoSubtitleModal';
@@ -170,23 +171,25 @@ function PanelAction({ icon, label, onClick, active = false }) {
   const [hovered, setHovered] = useState(false);
 
   return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={active}
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        width: '24px', minWidth: '24px', height: '24px', padding: 0,
-        border: 0, borderRadius: '7px',
-        backgroundColor: hovered ? '#FFFFFF14' : '#161616',
-        cursor: 'pointer', transition: 'background-color 0.12s',
-      }}
-    >
-      {icon}
-    </button>
+    <Tooltip label={label}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={active}
+        onClick={onClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: '24px', minWidth: '24px', height: '24px', padding: 0,
+          border: 0, borderRadius: '7px',
+          backgroundColor: hovered ? '#FFFFFF14' : '#161616',
+          cursor: 'pointer', transition: 'background-color 0.12s',
+        }}
+      >
+        {icon}
+      </button>
+    </Tooltip>
   );
 }
 

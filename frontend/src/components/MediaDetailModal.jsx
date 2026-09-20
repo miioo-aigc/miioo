@@ -1,7 +1,7 @@
 /**
  * 结构索引
  * ========
- *   组件 MediaDetailModal       通用媒体详情弹窗（图片/视频）     L93–L574
+ *   组件 MediaDetailModal       通用媒体详情弹窗（图片/视频）     L95–L576
  *     - 复用自 AssetsPage 的 SubjectAssetDetailModal
  *     - 左侧：大图/视频预览 + 缩略图列表（始终显示，不设数量下限）
  *     - 右侧：创作信息面板（名称/描述/提示词/参数/按钮）
@@ -25,6 +25,7 @@
  *     showPrimaryBadge?: boolean              是否显示缩略图定稿标签（默认显示）
  *     shotNumber?: string              分镜名称
  *     generatedAt?: string            AI 生成时间
+ *   2026-09-20  右侧顶部媒体动作按钮接入设计系统 Tooltip
  *   2026-07-03  删除左侧底部 refImages 条（已在右侧信息区展示）；缩略图列表始终显示
  *   2026-07-06  右侧信息区字段对齐 AssetsPage ShotDetailModal：分镜编号横向布局、分镜模式隐藏名称描述、生成参数仅模型+分辨率、时间标签统一"AI 生成时间"
  *   2026-07-06  新增 source prop：区分 AI 生成 / 本地上传 / 资产库，非 AI 图片右侧显示「来源」字段；生成参数和 AI 生成时间仅 AI 生成时展示
@@ -49,7 +50,7 @@ import Toggle from './Toggle';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { showGlobalToast } from '../stores/toastStore';
 import CopyPromptButton from './ui/CopyPromptButton';
-import { FavoriteIcon, DeleteIcon } from './ui';
+import { FavoriteIcon, DeleteIcon, Tooltip } from './ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -57,17 +58,19 @@ const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-u
 function PanelAction({ icon, label, onClick, active = false }) {
   const [hovered, setHovered] = useState(false);
   return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={active}
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', minWidth: '24px', height: '24px', padding: 0, border: 0, borderRadius: '7px', backgroundColor: hovered ? '#FFFFFF14' : '#161616', cursor: 'pointer', transition: 'background-color 0.12s' }}
-    >
-      {icon}
-    </button>
+    <Tooltip label={label}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={active}
+        onClick={onClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', minWidth: '24px', height: '24px', padding: 0, border: 0, borderRadius: '7px', backgroundColor: hovered ? '#FFFFFF14' : '#161616', cursor: 'pointer', transition: 'background-color 0.12s' }}
+      >
+        {icon}
+      </button>
+    </Tooltip>
   );
 }
 

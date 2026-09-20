@@ -3,7 +3,7 @@ import { VideoEditContext } from '../video-edit/VideoEditContext';
 import { ImageEditContext } from '../image-edit/ImageEditContext';
 import ConfirmDialog from '../ConfirmDialog';
 import CopyPromptButton from '../ui/CopyPromptButton';
-import { FavoriteIcon, DeleteIcon } from '../ui';
+import { FavoriteIcon, DeleteIcon, Tooltip } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -12,20 +12,22 @@ const DIVIDER = <div style={{ height: '1px', margin: '0 20px', flexShrink: 0, ba
 function PanelAction({ icon, label, active = false, onClick }) {
   const [hovered, setHovered] = useState(false);
   return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={active}
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', minWidth: '24px', height: '24px',
-        padding: 0, border: 0, borderRadius: '7px', background: hovered ? '#FFFFFF14' : '#161616', cursor: 'pointer',
-      }}
-    >
-      {icon}
-    </button>
+    <Tooltip label={label}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={active}
+        onClick={onClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', minWidth: '24px', height: '24px',
+          padding: 0, border: 0, borderRadius: '7px', background: hovered ? '#FFFFFF14' : '#161616', cursor: 'pointer',
+        }}
+      >
+        {icon}
+      </button>
+    </Tooltip>
   );
 }
 

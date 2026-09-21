@@ -2,7 +2,7 @@
  * @file CreationPage.jsx
  * @structure-index
  *
- * ─── 全局常量与工具函数 ─────────────────────────────── L109–L122
+ * ─── 全局常量与工具函数 ─────────────────────────────── L128–L150
  *   FONT / FONT_MEDIUM、图片下载、动画注入
  *   filenameFromPrompt                                      utils/creationFilename.js
  *   生成类型到任务轮询类型的适配                     utils/creationTaskAdapter.js
@@ -11,15 +11,15 @@
  *   刷新任务快照、占位卡片和轮询结果适配                   utils/creationTaskAdapter.js
  *   视频详情与音频详情字段适配                                    utils/creationDetailAdapter.js / creationAudioDetailAdapter.js
  *
- * ─── 页面入口与状态编排 ──────────────────────────────── L123–L657
- *   CreationPage 状态、Store、历史缓存和分页                       L123–L268
- *   Session 初始化、刷新任务恢复和收藏动作                           L271–L385
- *   模型能力、参数加载、Tab、批量操作和正式下载                       L387–L572
- *   useCreationGeneration 生成请求、占位卡和结果写回                  L575–L590
- *   模型入口检查、输入卡渲染和视频详情回调                            L592–L657
+ * ─── 页面入口与状态编排 ──────────────────────────────── L152–L733
+ *   CreationPage 状态、Store、历史缓存和分页                       L152–L305
+ *   Session 初始化、刷新任务恢复和收藏动作                           L309–L436
+ *   模型能力、参数加载、Tab、批量操作、正式下载和历史清理               L438–L666
+ *   useCreationGeneration 生成请求、占位卡和结果写回                  L668–L681
+ *   模型入口检查、输入卡渲染和媒体详情回调                            L683–L733
  *   CreationInputCard 已迁移至 components/creation/，页面通过 renderInputCard 显式接入
  *
- * ─── 页面渲染结构 ────────────────────────────────────── L660–L758
+ * ─── 页面渲染结构 ────────────────────────────────────── L735–L848
  *   CreationPageOverlays（确认弹窗和媒体详情 Portal）         components/creation/CreationPageOverlays.jsx
  *   CreationWorkspace（主体卡片、工具栏和结果/空态组合）       components/creation/CreationWorkspace.jsx
  *   handleBeforeModelOpen / renderInputCard                     页面级显式接线辅助
@@ -90,6 +90,7 @@
  *   2026-09-04  配音详情收藏状态改用详情接口 is_favorite 字段，并同步本地收藏状态
  *   2026-09-04  配音详情高级模式改用详情接口 is_advanced_mode 字段
  *   2026-09-04  修复图片创作任务刷新恢复过早清理快照，支持多次刷新持续轮询
+ *   2026-09-21  图片历史每页由 18 条改为 6 条；视频、配音及自动补页行为保持不变
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -216,7 +217,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
 
     updateHistoryMeta(tab, { loading: true });
     const nextPage = meta.page + 1;
-    const PAGE_SIZE = tab === 'video' ? 6 : 18;
+    const PAGE_SIZE = (tab === 'image' || tab === 'video') ? 6 : 18;
 
     try {
       let list;

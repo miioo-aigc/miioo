@@ -1,5 +1,14 @@
 # 组件重构盘点基线
 
+## 2026-09-21 输入卡外观层合并
+
+- 检索后确认 `ui/TextField` 为普通表单输入，不适合承载素材和工具栏组合；新增无业务 `ui/ComposerSurface.jsx` 与同名样式文件，由 `CreationInputSurface` 和剧本 `InputCard` 共同使用。
+- 接口盘点：`width` 保留页面宽度；`focused` 由原编辑器焦点回调提供；`disabled` 只控制悬停反馈，`dimmed` 控制透明度；`stretch` 保留创作页自适应高度；`children`/`toolbar` 分别接入编辑器区和工具栏。
+- 公共组件只持有悬停状态，无 API、Store、生成或文本副作用。原有文本、素材、回调、编辑器 ref、模型 API 返回字段和发送参数均未搬动。
+- 移除 `ScriptInputStyles.js` 及导出；两套重复动画改为公共 CSS。基础文字样式集中维护，配音高级字号/行距、素材标签及业务控件样式仍归业务组件。
+- 构建和架构检查通过；全量 lint 0 错误，分镜 `PanelPromptInput.jsx:317` 有既有依赖警告。未登录阻塞浏览器输入卡回归，不能将本次静态检查视为业务验收完成。
+- 项目规则引用的 `docs/architecture/feature-development.md` 当前不存在，本次依据现有组件架构、导入规范、资产清单与设计系统完成归属决策。
+
 ## 2026-09-18 全局 Toast 规则与旧组件清理
 
 - `GlobalToast` 统一限制最大宽度为 `600px`；超长内容改为自动换行，不再单行撑开。

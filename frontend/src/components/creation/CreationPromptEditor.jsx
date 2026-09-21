@@ -4,6 +4,7 @@
  *
  * 组件只负责编辑器 DOM、占位提示和 @素材选择菜单；文件变更、生成请求、
  * 任务轮询与弹窗状态仍由 InputCard 通过 props 提供或处理。
+ * 2026-09-21 基础文字样式接入 ComposerSurface，保留配音排版差异。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -13,8 +14,6 @@ import CreationDubbingInterjectionMenu from './CreationDubbingInterjectionMenu';
 import { DubbingVoiceFileCard } from './CreationDubbingVoiceModal';
 import { UploadPlaceholder } from './CreationUploadArea';
 
-const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
-
 function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled, onDocumentSelect, voiceWrapWidth = 0 }) {
   const documentInputRef = useRef(null);
   const baseStyle = {
@@ -22,10 +21,10 @@ function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled,
     top: 0,
     left: 0,
     pointerEvents: 'none',
-    fontFamily: FONT,
-    fontSize: '14px',
-    lineHeight: '18px',
-    color: '#FFFFFF66',
+    fontFamily: 'var(--composer-font)',
+    fontSize: 'var(--composer-font-size)',
+    lineHeight: 'var(--composer-line-height)',
+    color: 'var(--composer-placeholder-color)',
     userSelect: 'none',
   };
 
@@ -211,7 +210,7 @@ function CreationPromptEditor({
       {!hasContent && <PromptPlaceholder genType={genType} refMode={refMode} dubbingAdvancedEnabled={dubbingAdvancedEnabled} disabled={disabled} onDocumentSelect={onDocumentSelect} voiceWrapWidth={voiceWrapWidth} />}
       <div
         ref={editorRef}
-        className={voiceControl ? 'creation-prompt-editor--voice-wrap' : undefined}
+        className={`composer-surface__editor${voiceControl ? ' creation-prompt-editor--voice-wrap' : ''}`}
         contentEditable={!disabled}
         suppressContentEditableWarning
         style={{
@@ -219,14 +218,7 @@ function CreationPromptEditor({
           '--creation-voice-wrap-height': `${voiceWrapHeight}px`,
           width: '100%',
           height: '100%',
-          resize: 'none',
-          background: 'transparent',
-          border: 'none',
-          outline: 'none',
-          fontFamily: FONT,
-          fontSize: usesAdvancedDubbingTypography ? '16px' : '14px',
-          lineHeight: usesAdvancedDubbingTypography ? '200%' : '18px',
-          color: usesAdvancedDubbingTypography ? '#FFFFFFE6' : '#FFFFFFCC',
+          ...(usesAdvancedDubbingTypography ? { fontSize: '16px', lineHeight: '200%', color: '#FFFFFFE6' } : {}),
           overflowY: 'auto',
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
@@ -299,7 +291,7 @@ function CreationPromptEditor({
               }} />
               <span style={{
                 flex: 1,
-                fontFamily: FONT,
+                fontFamily: 'var(--composer-font)',
                 fontSize: '14px',
                 lineHeight: '18px',
                 color: index === mentionIndex ? '#FFFFFF' : '#FFFFFF99',

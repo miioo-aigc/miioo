@@ -25,7 +25,7 @@ export async function apiCreateLiveMaterialAuthSession({ source, project_id, sto
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ source, project_id, storyboard_id, return_path }),
   });
-  if (!res.ok) throw new Error(`创建认证会话失败: ${res.status}`);
+  if (!res.ok) throw await createLiveMaterialApiError(res, '创建认证会话失败');
   return res.json();
 }
 

@@ -3,14 +3,14 @@
  * @structure-index
  *
  * ─── 组件职责 ─────────────────────────────────────────────────────
- *   LiveMaterialModal 真人素材组、素材选择、扫码授权和上传审核状态展示
- *   GroupCard / AssetCard                                      模态框内部展示与交互卡片
+ *   CreationLiveMaterialModal 真人素材组、素材选择、扫码授权和上传审核状态展示 L333
+ *   GroupCard / AssetCard 模态框内部展示与交互卡片 L64 / L196
  *
  * ─── 数据流与副作用 ─────────────────────────────────────────────
  *   open / initialSelected → 加载素材组并恢复已选素材
  *   onConfirm → 向 InputCard 返回可用于生成请求的真人素材元数据
  *   qrOnly / onCreated → 为资产库复用仅扫码录入流程，不展示素材库管理页
- *   API、认证轮询、上传审核轮询和删除操作均封装在本业务域组件内
+ *   API、认证轮询、上传审核轮询和删除操作均封装在本业务域组件内；认证错误状态 L342，创建与关闭提示 L393 / L435，确认弹窗 L588
  *
  * ─── 引用边界 ─────────────────────────────────────────────────────
  *   通过显式 props 接入页面；不读取 CreationPage 闭包
@@ -18,6 +18,7 @@
  *
  * ─── 更新记录 ─────────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离真人素材入口及弹窗组合
+ *   2026-09-21  创建认证会话失败时仅对 400 且含有效 detail 的响应复用确认弹窗，其他错误保留短提示
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -338,6 +339,7 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
   const [activeGroup, setActiveGroup] = useState(null); // LiveMaterialGroupResponse
   const [uploading, setUploading] = useState(false);
   const [qrState, setQrState] = useState(null); // null | { phase:'scanning', launchUrl, sessionId } | { phase:'success', newGroup }
+  const [authError, setAuthError] = useState(null);
   const [pendingGroupName, setPendingGroupName] = useState('');
   const [groupNameOverrides, setGroupNameOverrides] = useState({}); // groupId -> display name（临时覆盖，后端已持久化）
   const pollTimerRef = useRef(null);
@@ -382,12 +384,14 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
       clearInterval(pollTimerRef.current);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- 关闭弹窗时清理认证子弹窗
       setQrState(null);
+      setAuthError(null);
     }
     return () => clearInterval(pollTimerRef.current);
   }, [open]);
 
 
   const handleAddNew = async () => {
+    setAuthError(null);
     try {
       const session = await apiCreateLiveMaterialAuthSession({ source: qrOnly ? 'assets' : 'creation' });
       const prevIds = new Set(groups.map(g => g.id));
@@ -417,7 +421,20 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
           }
         } catch (error) { console.warn('[CreationLiveMaterialModal] operation failed', error); }
       }, 3000);
-    } catch (error) { console.warn('[CreationLiveMaterialModal] operation failed', error); }
+    } catch (error) {
+      console.warn('[CreationLiveMaterialModal] 创建认证会话失败', error);
+      if (error.status === 400 && error.detail) {
+        setAuthError(error.detail);
+      } else {
+        showGlobalToast('创建认证会话失败，请重试', 'error');
+        if (qrOnly) onClose?.();
+      }
+    }
+  };
+
+  const handleDismissAuthError = () => {
+    setAuthError(null);
+    if (qrOnly) onClose?.();
   };
 
   const handleSaveName = async () => {
@@ -568,6 +585,17 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* Main modal：资产库的 qrOnly 模式只显示下面的扫码弹窗。 */}
+      {authError !== null && (
+        <ConfirmDialog
+          title="创建认证会话失败"
+          description={authError}
+          confirmText="确认"
+          showCancel={false}
+          onConfirm={handleDismissAuthError}
+          onCancel={handleDismissAuthError}
+          zIndex={12000}
+        />
+      )}
       {!qrOnly && <div style={{ width: MODAL_W, height: MODAL_H, background: '#161616', borderRadius: '16px', border: '1px solid #FFFFFF0D', boxShadow: '0 8px 32px #00000099', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* Header — 固定标题 */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', flexShrink: 0 }}>

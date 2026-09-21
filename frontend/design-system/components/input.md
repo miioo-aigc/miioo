@@ -1,5 +1,14 @@
 # Input 输入框组件
 
+## 创作型输入卡公共外观层
+
+创作页与剧本页共用 `src/components/ui/ComposerSurface.jsx`，外观统一在 `ComposerSurface.css` 修改。它不是下文普通表单的 `TextField`，本轮沿用原有 20px 外圆角、19px 内圆角、渐变描边和 110px 编辑区域，不套用普通表单尺寸。
+
+- 公共范围：背景、边框、阴影、聚焦/悬停反馈、禁用透明度、内边距、编辑区域及工具栏布局；基础字体、字号、行距、正文色和占位色通过 `--composer-*` 变量统一维护。
+- `children` 提供编辑区内容，`toolbar` 提供参数控件和发送按钮；公共层不实现输入、提交或权限逻辑，`disabled` 不自动禁用编辑器。
+- 宽度由调用方传入，`stretch` 保留创作输入卡自适应高度，`dimmed` 支持配音高级模式不降低透明度的既有规则。
+- 配音高级文字排版、素材引用标签、各类参数控件与发送按钮仍独立维护；修改这些业务专属外观不属于公共外壳改动。
+
 > 参考 `design-system/tokens.md` 获取所有 token 的完整定义和色值。
 > 图标使用自定义 SVG 组件。
 > 字体：`AlibabaPuHuiTi 2_55 Regular` / `Alibaba PuHuiTi 2.0` / `system-ui` / `sans-serif`。

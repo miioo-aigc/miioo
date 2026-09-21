@@ -17,7 +17,6 @@ export { default as ScriptResplitModal } from './ScriptResplitModal';
 export { default as ScriptRewriteModal } from './ScriptRewriteModal';
 export { default as ScriptActionLoadingOverlay } from './ScriptActionLoadingOverlay';
 export { default as ScriptModifyConfirmModal } from './ScriptModifyConfirmModal';
-export { ensureScriptInputStyle } from './ScriptInputStyles';
 
 export { default as AiThinkingMessage } from './AiThinkingMessage';
 export { default as ScriptPanel } from './ScriptPanel';

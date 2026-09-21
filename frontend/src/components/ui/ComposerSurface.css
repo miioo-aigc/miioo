@@ -1,0 +1,93 @@
+@property --composer-angle {
+  syntax: '<angle>';
+  initial-value: 161.1deg;
+  inherits: false;
+}
+
+@keyframes composer-spin {
+  from { --composer-angle: 161.1deg; }
+  to { --composer-angle: 521.1deg; }
+}
+
+.composer-surface {
+  --composer-font: 'AlibabaPuHuiTi_2_55_Regular', 'Alibaba_PuHuiTi_2.0', system-ui, sans-serif;
+  --composer-font-size: 14px;
+  --composer-line-height: 18px;
+  --composer-text-color: #FFFFFFCC;
+  --composer-placeholder-color: var(--color-text-hint);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 0;
+  border-radius: 20px;
+  padding: 1px;
+  background-image: linear-gradient(in oklab 161.1deg, oklab(86.8% -0.081 -0.057 / 30%) 9.06%, oklab(75.5% -0.102 -0.072 / 25%) 15.35%, oklab(75.5% -0.102 -0.072 / 0%) 52.98%, oklab(100% 0 0 / 5%) 56.39%);
+  box-shadow: -5px -10px 50px #2DC3E11F;
+  overflow: visible;
+}
+
+.composer-surface[data-hovered='true'] {
+  background-image: conic-gradient(from var(--composer-angle), oklab(86.8% -0.081 -0.057 / 30%) 0%, oklab(75.5% -0.102 -0.072 / 25%) 15%, oklab(75.5% -0.102 -0.072 / 0%) 50%, oklab(100% 0 0 / 5%) 55%, oklab(86.8% -0.081 -0.057 / 30%) 100%);
+  animation: composer-spin 4s linear infinite;
+}
+
+.composer-surface[data-focused='true'] {
+  background: var(--color-brand-main);
+  animation: none;
+}
+
+.composer-surface[data-dimmed='true'] { opacity: 0.72; }
+.composer-surface[data-stretch='true'] { height: 100%; box-sizing: border-box; }
+
+.composer-surface__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  border-radius: 19px;
+  padding: 16px 16px 12px;
+  flex: 1;
+  align-self: stretch;
+  background: var(--color-surface-card);
+  overflow: visible;
+}
+
+.composer-surface__body {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  align-self: stretch;
+  height: 110px;
+  flex-shrink: 0;
+  padding: 0;
+  position: relative;
+  overflow: visible;
+}
+
+.composer-surface[data-stretch='true'] > .composer-surface__inner > .composer-surface__body {
+  height: auto;
+  flex: 1 1 110px;
+  min-height: 110px;
+}
+
+.composer-surface__toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  justify-content: space-between;
+  align-self: stretch;
+}
+
+.composer-surface__editor {
+  resize: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: var(--composer-font);
+  font-size: var(--composer-font-size);
+  line-height: var(--composer-line-height);
+  color: var(--composer-text-color);
+}
+
+.composer-surface__editor::placeholder { color: var(--composer-placeholder-color); }

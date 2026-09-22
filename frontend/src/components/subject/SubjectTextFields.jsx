@@ -13,6 +13,7 @@
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 SubjectPage 的 EditSubjectPanel 抽离文本字段组合
  *   2026-07-17  改为复用 components/ui/TextField，保留主体字段标签和保存回调
+ *   2026-09-21  提示词增加 3000 字输入上限及现有 TextField 字数统计
  */
 import TextField from '../ui/TextField';
 
@@ -31,7 +32,7 @@ export default function SubjectTextFields({
     <>
       <TextField label="角色名称" value={name} onChange={onNameChange} onBlur={onNameBlur} />
       <TextField label="描述" value={description} multiline onChange={onDescriptionChange} onBlur={onDescriptionBlur} />
-      <TextField label="提示词" value={prompt} multiline onChange={onPromptChange} onBlur={onPromptBlur} />
+      <TextField label="提示词" value={prompt} multiline maxLength={3000} onChange={onPromptChange} onBlur={onPromptBlur} />
     </>
   );
 }

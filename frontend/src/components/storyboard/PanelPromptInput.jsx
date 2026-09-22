@@ -20,6 +20,7 @@
  *   2026-08-05  修复标签删除后光标跳到段尾，以及展示态首次点击无法激活/光标定位到段尾的问题；保留点击坐标并在编辑态挂载后恢复光标
  *   2026-08-05  参考图标签名称最多展示10个字符，超出部分以省略号显示，底层引用名称保持不变
  *   2026-08-10  首尾帧模式支持纯文本提示词展示与编辑，隔离参考图标签绑定
+ *   2026-09-21  图片、视频提示词输入和计数上限由 1000 统一为 3000 字
  */
 
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
@@ -31,7 +32,7 @@ const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans
 
 // ─── 主体 @ 下拉（角色/场景/道具，用于提示词输入框）─────────────────────────────
 
-const MAX_PROMPT_LEN = 1000;
+const MAX_PROMPT_LEN = 3000;
 
 function truncateMentionName(name, maxLength = 10) {
   const text = String(name ?? '');

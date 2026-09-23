@@ -2,7 +2,10 @@
 
 ## 创作型输入卡公共外观层
 
-创作页与剧本页共用 `src/components/ui/ComposerSurface.jsx`，外观统一在 `ComposerSurface.css` 修改。它不是下文普通表单的 `TextField`，本轮沿用原有 20px 外圆角、19px 内圆角、渐变描边和 110px 编辑区域，不套用普通表单尺寸。
+创作页与剧本页共用 `src/components/ui/ComposerSurface.jsx`，布局样式统一在 `ComposerSurface.css` 修改，边框动效参数在组件中统一维护。它不是下文普通表单的 `TextField`，沿用原有 20px 外圆角、19px 内圆角和 110px 编辑区域，不套用普通表单尺寸。
+
+- 2026-09-23：公共外壳统一使用 `border-beam` 的 `md` 彩色动效，深色主题、强度 0.7，替代原有旋转渐变描边。禁用时关闭动效；聚焦时取消蓝色高亮描边，将全部动效层冻结在当前进度，失焦后继续播放。保留溢出菜单，不改变输入及发送逻辑。
+- `beamActive`、`beamStrength`、`beamColorVariant` 提供动效开关、强度和配色入口；默认值修改一次即可覆盖创作和剧本输入卡。
 
 - 公共范围：背景、边框、阴影、聚焦/悬停反馈、禁用透明度、内边距、编辑区域及工具栏布局；基础字体、字号、行距、正文色和占位色通过 `--composer-*` 变量统一维护。
 - `children` 提供编辑区内容，`toolbar` 提供参数控件和发送按钮；公共层不实现输入、提交或权限逻辑，`disabled` 不自动禁用编辑器。

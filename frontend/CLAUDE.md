@@ -8,7 +8,7 @@
 
 - 技术栈：React 19、Tailwind CSS v4、Vite 8、Zustand。
 - 产品主题：仅深色主题；颜色、圆角、字号和间距优先使用 `src/index.css` 注册的 Token。
-- 当前重构分支：`feat/frontend_V1.1`。
+- 当前重构分支：`feat/frontend_V1.5`。
 - 反馈和交付说明统一使用中文。
 
 ## 2. 目录职责

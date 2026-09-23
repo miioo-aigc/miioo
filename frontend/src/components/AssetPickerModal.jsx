@@ -500,6 +500,7 @@ export default function AssetPickerModal({
   // excludedAssetUrls: string[]  后端暂未返回源资产 ID 时，按媒体地址兜底禁选
   excludedAssetUrls = [],
   model = '',
+  includeSeedanceLibrary = false,
 }) {
   const generationsByTab = useCreationStore((s) => s.generationsByTab);
   const favorites = useCreationStore((s) => s.favorites);
@@ -514,7 +515,7 @@ export default function AssetPickerModal({
   const [seedanceLoading, setSeedanceLoading] = useState(false);
   const [activeSeedanceGroup, setActiveSeedanceGroup] = useState(null);
   const [seedanceSubTab, setSeedanceSubTab] = useState('real');
-  const showSeedanceTab = isSeedanceModel(model);
+  const showSeedanceTab = includeSeedanceLibrary || isSeedanceModel(model);
 
   // 将后端历史记录条目归一化为 picker 卡片格式
   function normalizeCreativeItem(item, type) {

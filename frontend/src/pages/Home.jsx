@@ -3,7 +3,7 @@
  * @structure-index
  *
  * ─── 全局常量 & 配置 ───────────────────────────────────────────────
- *   页面业务模块懒加载                                          L98–L103
+ *   页面业务模块懒加载                                          L125–L130
  *   NAV_ITEMS / BOTTOM_NAV_ITEMS                                  components/home/HomeNavigationConfig.jsx
  *   STEP_TABS / WorkflowStepTabs                                components/home/WorkflowStepTabs.jsx
  *   BG_VIDEOS                                                   components/home/HomeNavigationConfig.jsx
@@ -20,21 +20,22 @@
  *   buildEpisodeStatusMap(overview, episodes) 剧集完成状态适配     utils/episodeStatusAdapter.js
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
- *   export default function Home()                               L105
- *     ├─ [懒加载] 页面业务模块按需加载                             L98–L103
- *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L106–L160
- *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L172 / L179 / L190
- *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L252 / L649 / L659
- *     │           handleExtractSubjects / handleGenerateStoryboards        L704 / L796
+ *   export default function Home()                               L243
+ *     ├─ [懒加载] 页面业务模块按需加载                             L125–L130
+ *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L244–L308
+ *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L322 / L379 / L390
+ *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L453 / L906 / L930
+ *     │           handleExtractSubjects / handleGenerateStoryboards        L972 / L1154
  *     │           handleScriptFinalized / handleNavChange / handleBottomNavChange / handleProjectCreated
- *                                                               L900 / L907 / L942 / L958
- *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L161 / L213 / L227 / L234 / L244
- *     │           微信回调与鉴权初始化                                   L559 / L570
- *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L590 / L753
- *     ├─ [底部导航配置] bottomNavItems / ApiConfigBubble           L926–L940
- *     └─ [渲染] 页面业务模块统一通过 Suspense 按需加载              L1430–L1657
+ *                                                               L1449 / L1456 / L1493 / L1509
+ *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L414 / L428 / L435 / L445
+ *     │           微信回调与鉴权初始化                                   L678 / L742
+ *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L812 / L823 / L844 / L1141
+ *     ├─ [底部导航配置] bottomNavItems                             L1477–L1491
+ *     └─ [渲染] 页面业务模块统一通过 Suspense 按需加载              L1596–L1829
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
+ *   2026-09-22  新增独立画布列表入口；超长入口保留认证、历史与任务恢复集中编排，本次只接路由，验证导航及刷新，不迁移生成流程
  *   2026-09-18  删除已无运行时引用的旧首页 Toast 展示；反馈统一由 GlobalToast 承接
  *   2026-08-12  智能分镜生成任务轮询超时由 500 秒调整为 3000 秒
  *   2026-08-19  主动退出与鉴权失效时清空创作提示词和参考素材草稿
@@ -77,6 +78,7 @@
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiGetProjects, apiUpdateProject, apiCopyProject, apiDeleteProject, apiGetProject, apiGetProjectOverview } from '../api/project';
+import { apiListCanvasDocuments, normalizeCanvasDocument } from '../api/canvas';
 import { getToken, getRefreshToken, refreshAccessToken } from '../api/request';
 import { clearTokens, apiLogout, apiCompleteWechatCallback } from '../api/auth';
 import { apiListProviders } from '../api/config';
@@ -120,6 +122,7 @@ import {
   HomeHeader,
   HomeNavigationRail,
 } from '../components/home';
+import CanvasPage from './CanvasPage';
 
 const ProjectList = lazy(() => import('./ProjectList'));
 const GlobalSettings = lazy(() => import('./GlobalSettings'));
@@ -145,6 +148,9 @@ function readWorkspaceRoute() {
   const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
   if (pathname === '/') return { key: 'home' };
   if (pathname === '/workspace/project') return { key: 'project' };
+  if (pathname === '/workspace/canvas') return { key: 'canvas' };
+  const canvasMatch = pathname.match(/^\/workspace\/canvas\/([^/]+)$/);
+  if (canvasMatch) return { key: 'canvas-detail', canvasId: decodeURIComponent(canvasMatch[1]) };
   if (pathname === '/workspace/create') return { key: 'create' };
   if (pathname === '/workspace/assets') return { key: 'assets' };
 
@@ -161,11 +167,13 @@ function readWorkspaceRoute() {
   return { key: 'home' };
 }
 
-function workspacePath({ key, projectId, step }) {
+function workspacePath({ key, projectId, canvasId, step }) {
   if (key === 'project' && projectId) {
     return `/project/${encodeURIComponent(projectId)}/${STEP_PATHS[step] || STEP_PATHS.script}`;
   }
   if (key === 'project') return '/workspace/project';
+  if (key === 'canvas') return '/workspace/canvas';
+  if (key === 'canvas-detail' && canvasId) return `/workspace/canvas/${encodeURIComponent(canvasId)}`;
   if (key === 'create') return '/workspace/create';
   if (key === 'assets') return '/workspace/assets';
   return '/';
@@ -244,7 +252,7 @@ export default function Home({ onGoToAdmin }) {
     if (initialRoute.key !== 'home') return initialRoute.key;
     // 只有明确保存了非 home 的 activeKey 才恢复，否则默认 home
     const savedKey = localStorage.getItem('miioo_active_key');
-    return savedKey || 'home';
+    return ['project', 'canvas', 'create', 'assets'].includes(savedKey) ? savedKey : 'home';
   });
   const [assetsEntry, setAssetsEntry] = useState({ module: 'project', seedanceTab: 'real' });
   const [bottomActiveKey, setBottomActiveKey] = useState(null);
@@ -259,6 +267,8 @@ export default function Home({ onGoToAdmin }) {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [watermarkSettingsOpen, setWatermarkSettingsOpen] = useState(false);
   const [projects, setProjects] = useState([]);
+  const [canvasProjects, setCanvasProjects] = useState([]);
+  const [canvasRouteId, setCanvasRouteId] = useState(initialRoute.canvasId || null);
   const [activeProject, setActiveProject] = useState(null);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [projectsLoaded, setProjectsLoaded] = useState(() => !getToken());
@@ -430,7 +440,7 @@ export default function Home({ onGoToAdmin }) {
 
   // 监听 activeKey 变化并保存
   useEffect(() => {
-    if (activeKey !== 'home') {
+    if (activeKey !== 'home' && activeKey !== 'canvas-detail') {
       localStorage.setItem('miioo_active_key', activeKey);
     } else {
       // 回到首页时清除缓存，确保刷新不会跳转
@@ -640,6 +650,11 @@ export default function Home({ onGoToAdmin }) {
         loadProjectDetails(route.projectId, route.step || 'script');
         return;
       }
+      if (route.key === 'canvas-detail') {
+        setCanvasRouteId(route.canvasId || null);
+        return;
+      }
+      setCanvasRouteId(null);
       setActiveProject(null);
       setActiveProjectId(null);
       if (route.key !== 'project') setActiveStep('script');
@@ -656,6 +671,14 @@ export default function Home({ onGoToAdmin }) {
       routeSyncReadyRef.current = true;
       return;
     }
+    if (canvasRouteId) {
+      const currentRoute = readWorkspaceRoute();
+      if (currentRoute.key !== 'canvas-detail' || currentRoute.canvasId !== canvasRouteId) {
+        updateWorkspaceUrl({ key: 'canvas-detail', canvasId: canvasRouteId });
+      }
+      return;
+    }
+    if (activeKey === 'canvas-detail') return;
     if (activeKey === 'project') {
       // 项目详情正在异步恢复时，保留地址栏中已经解析出的详情 URL，
       // 避免 activeProject 尚未到达时先被改写成项目列表地址。
@@ -669,7 +692,7 @@ export default function Home({ onGoToAdmin }) {
       return;
     }
     updateWorkspaceUrl({ key: activeKey });
-  }, [activeKey, activeProject?.id, activeStep]);
+  }, [activeKey, activeProject?.id, activeStep, canvasRouteId]);
 
   // 处理微信回调（根路径 ?code=&state=）
   useEffect(() => {
@@ -1453,6 +1476,8 @@ export default function Home({ onGoToAdmin }) {
   const handleNavChange = (key) => {
     if (key === 'assets') setAssetsEntry({ module: 'project', seedanceTab: 'real' });
     setActiveKey(key);
+    setCanvasRouteId(null);
+    if (key === 'canvas') updateWorkspaceUrl({ key: 'canvas' });
     setActiveProject(null);
     setActiveProjectId(null);
     setForceExtract(false);
@@ -1468,6 +1493,22 @@ export default function Home({ onGoToAdmin }) {
       }).catch(() => {});
     }
   };
+
+  const handleCreateCanvas = () => {
+    if (!isLoggedIn) { setLoginOpen(true); return; }
+    showToast('自由画布项目创建能力正在建设中', 'info');
+  };
+
+  useEffect(() => {
+    if (activeKey !== 'canvas' || !isLoggedIn) return;
+    let cancelled = false;
+    apiListCanvasDocuments().then((data) => {
+      if (!cancelled) setCanvasProjects((data?.items || []).map(normalizeCanvasDocument));
+    }).catch((error) => {
+      if (!cancelled) showToast(error?.message || '获取画布列表失败', 'error');
+    });
+    return () => { cancelled = true; };
+  }, [activeKey, isLoggedIn, showToast]);
 
   const showApiBubble = !apiConfigOpen && (!isLoggedIn || (isLoggedIn && !apiConfigured));
 
@@ -1528,6 +1569,14 @@ export default function Home({ onGoToAdmin }) {
   // 在 iframe 内（微信 redirect 回调）不渲染完整 UI，只执行 useEffect 回调逻辑
   if (window.self !== window.top) {
     return null;
+  }
+
+  if (canvasRouteId) {
+    return <CanvasPage canvasId={canvasRouteId} onBackHome={() => {
+      setCanvasRouteId(null);
+      setActiveKey('home');
+      updateWorkspaceUrl({ key: 'home' });
+    }} />;
   }
 
   return (
@@ -1613,6 +1662,18 @@ export default function Home({ onGoToAdmin }) {
                 }} />
               </>
             )}
+            {activeKey === 'canvas' && (
+              <ProjectList
+                key="canvas" title="自由画布项目"
+                projects={canvasProjects}
+                onNewProject={handleCreateCanvas}
+                onOpenProject={(item) => {
+                  setCanvasRouteId(item.id);
+                  setActiveKey('canvas-detail');
+                  updateWorkspaceUrl({ key: 'canvas-detail', canvasId: item.id });
+                }}
+              />
+            )}
             {activeKey === 'project' && isLoadingProject && (
               <div style={{ width: '100%', height: '100%', minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <DotsLoading size={6} color="#2DC3E1" gap={5} />
@@ -1620,6 +1681,7 @@ export default function Home({ onGoToAdmin }) {
             )}
             {activeKey === 'project' && !activeProject && !isLoadingProject && projectsLoaded && (
               <ProjectList
+                key="project" title="工作流项目"
                 projects={projects}
                 onNewProject={() => {
                   if (!isLoggedIn) { setLoginOpen(true); return; }

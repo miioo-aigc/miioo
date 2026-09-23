@@ -1,5 +1,11 @@
 # 组件重构盘点基线
 
+## 2026-09-22 画布列表复用
+
+- 检索后直接复用 `pages/ProjectList.jsx`，未新建重复列表或改动其视觉；Home 仅新增路由和列表编排，导航配置复用现有 `HomeNavigationRail`，图标为用户提供的 `assets/canvas-nav.svg`。
+- 接口盘点：画布传入 `projects=[]`，`onNewProject` 只调用全局提示；不传普通项目的打开、复制、重命名和删除回调，不新增接口或 Store。两个列表使用不同 React key，隔离搜索和弹窗状态。
+- Home 现有认证、历史、缓存与任务恢复仍集中编排，本次不做无关拆分；已校正结构索引。浏览器已验证画布入口、刷新和新建反馈，未验证尚未接入的真实画布项目操作。
+
 ## 2026-09-21 输入卡外观层合并
 
 - 检索后确认 `ui/TextField` 为普通表单输入，不适合承载素材和工具栏组合；新增无业务 `ui/ComposerSurface.jsx` 与同名样式文件，由 `CreationInputSurface` 和剧本 `InputCard` 共同使用。
@@ -2263,3 +2269,12 @@
 - `ui/VideoPlaybackControls.jsx`：纯展示播放点击层和中央状态反馈，接收播放状态、反馈可见性与切换回调；原生视频 controls 和播放器 ref 仍归使用方。
 - 创作详情保留原播放事件、定时器及自动播放副作用，新增打开编辑前暂停；分镜详情负责视频 ref、弹窗开关，通过 `VideoEditContext` 向面板工具按钮提供打开回调，图片分支不提供回调。
 - 外壳增加可选层级参数以兼容分镜详情叠层；视频不传基准尺寸。定向 ESLint、构建通过；全仓历史阻塞和浏览器待验收项见 `docs/video-edit-modal-progress.md`。
+## 2026-09-22 画布外壳组件
+
+- 新增 `src/components/canvas/CanvasProjectHeader.jsx`、`CanvasUserMenu.jsx`、`CanvasCenterPrompt.jsx`、`CanvasCenterActions.jsx` 和 `CanvasToolbar.jsx`，分别承载左上角项目区、右上角用户区、中央空态提示、中央素材/创作入口和底部悬浮工具栏；工具栏图标与分组按 Paper `2IJ6-2` 实现，添加节点图标保留绿青渐变；删除承担整体顶部布局的 `CanvasHeader.jsx`。
+- `CanvasPage.jsx` 继续负责画布详情加载、认证资料、工具状态和动作编排；画布业务组件通过显式 props 接收导航、菜单、开关和动作回调，不读取页面闭包。
+- 左上角项目区和右上角用户区各自绝对定位，不共享顶部横向布局容器，符合 Paper 画板中的两个独立组件层级。
+- 视觉基线按 Paper 稿落地：全局 Logo 使用默认 `66×19.92px`，顶部 `60px` 高、`24px` 水平内边距，中央入口 `16px` 间距和 `12px` 圆角，提示胶囊 `8px 16px`，React Flow 点阵 `gap 16 / size 0.8`，即点阵间距 `16px`、圆点半径 `0.4px`。
+- 编辑区由 `CanvasPage.jsx` 的独立 `surface-toolbar` 背景层兜底，底部工具栏使用 `surface-card`；工具栏固定为 `16px/4px` 内边距、`12px` 项间距、`32px` 点击区和 `16px` SVG 图标，首个添加节点图标使用绿青渐变。
+- `CanvasProjectHeader.jsx` 内的项目名称支持原地编辑，使用 `CanvasProjectName.js` 过滤特殊字符并限制 50 个字；保护中文输入法选字并使用同步提交锁防止重复请求；页面通过 `apiUpdateCanvasDocument` 以 `base_revision + title` 保存，不覆盖 document，失败时恢复旧标题。静态检查与名称校验通过，真实接口及浏览器交互待验证。
+- 由于当前环境无法启动 Vite 监听，浏览器截图、响应式溢出和像素级视觉核验仍待完成；本阶段不包含节点数据、保存、生成或 Agent 能力。

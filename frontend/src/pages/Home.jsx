@@ -125,6 +125,7 @@ const ProjectList = lazy(() => import('./ProjectList'));
 const GlobalSettings = lazy(() => import('./GlobalSettings'));
 const SubjectPage = lazy(() => import('./SubjectPage'));
 const StoryboardPage = lazy(() => import('./StoryboardPage'));
+const EditPage = lazy(() => import('./EditPage'));
 const AssetsPage = lazy(() => import('./AssetsPage'));
 const CreationPage = lazy(() => import('./CreationPage'));
 
@@ -1649,7 +1650,7 @@ export default function Home({ onGoToAdmin }) {
                 }}
               />
             )}
-            {activeKey === 'project' && activeProject && activeStep !== 'subject' && activeStep !== 'storyboard' && (
+            {activeKey === 'project' && activeProject && activeStep !== 'subject' && activeStep !== 'storyboard' && activeStep !== 'edit' && (
               <GlobalSettings
                 key={activeProject.id}
                 projectId={activeProject.id}
@@ -1789,12 +1790,25 @@ export default function Home({ onGoToAdmin }) {
                 episodes={scriptEpisodes}
                 initialEpisodeIndex={storyboardInitialEpisodeIndex}
                 onUnlockStep={handleUnlockStep}
+                onStartEdit={() => {
+                  handleUnlockStep('edit');
+                  setActiveStep('edit');
+                }}
                 onGenerateStoryboards={handleGenerateStoryboards}
                 onRetryGenerateStoryboards={handleRetryGenerateStoryboards}
                 isGenerating={isGeneratingStoryboards}
                 statusMessage={storyboardStatusMessage}
                 completedEpisodesCount={completedEpisodesCount}
                 generateError={generateError}
+              />
+            )}
+            {activeKey === 'project' && activeProject && activeStep === 'edit' && (
+              <EditPage
+                projectId={activeProject.id}
+                projectName={activeProject.name}
+                episodes={scriptEpisodes}
+                onStepChange={setActiveStep}
+                showToast={showToast}
               />
             )}
             {activeKey === 'assets' && (

@@ -1,4 +1,5 @@
 import { PulsingBorder } from '@paper-design/shaders-react';
+import { EditFilmIcon } from '../ui/EditIcons';
 
 const STEP_TABS = [
   {
@@ -147,15 +148,9 @@ const STEP_TABS = [
     key: 'edit',
     label: '剪辑',
     alwaysEnabled: false,
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-        <path d="M14.333 5.667V3H11.333M14.333 5.667V10.333M14.333 5.667H11.333M11.333 3V5.667M11.333 3H10M14.333 10.333V13H11.333M14.333 10.333H11.333M11.333 5.667H10M1.667 5.667V3H4.667M1.667 5.667V10.333M1.667 5.667H4.667M4.667 3V5.667M4.667 3H6M1.667 10.333V13H4.667M1.667 10.333H4.667M4.667 5.667H6M4.667 13V10.333M4.667 13H6M4.667 10.333H6M11.333 13V10.333M11.333 13H10M11.333 10.333H10" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M8 2.333V3.667" stroke="#FFFFFF" strokeLinecap="round" />
-        <path d="M8 5.667V7" stroke="#FFFFFF" strokeLinecap="round" />
-        <path d="M8 9V10.333" stroke="#FFFFFF" strokeLinecap="round" />
-        <path d="M8 12.333V13.667" stroke="#FFFFFF" strokeLinecap="round" />
-      </svg>
-    ),
+    activeWidth: 80,
+    icon: <span className="flex text-white"><EditFilmIcon /></span>,
+    activeIcon: <EditFilmIcon active />,
   },
 ];
 

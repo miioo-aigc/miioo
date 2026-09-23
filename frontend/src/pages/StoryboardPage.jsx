@@ -273,7 +273,7 @@ import {
 const EPISODES = ['第一集', '第二集'];
 const STORYBOARD_PAGE_SIZE = 10;
 
-export default function StoryboardPage({ projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onGenerateStoryboards, onRetryGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0, statusMessage = '' }) {
+export default function StoryboardPage({ projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onStartEdit, onGenerateStoryboards, onRetryGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0, statusMessage = '' }) {
   const localImageScopes = useLocalImageEditStore((state) => state.byScope);
 
   // 分镜主体参考可能同时包含角色、场景和道具；旁白列仍只使用 chars。
@@ -1795,7 +1795,8 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   function handleStartEdit() {
-    showToast('加紧开发中，敬请期待～', 'info');
+    onUnlockStep?.('edit');
+    onStartEdit?.();
   }
 
   function openRegenerateModal() {

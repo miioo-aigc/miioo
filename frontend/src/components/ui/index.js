@@ -17,3 +17,4 @@ export { ReferenceModeIcon } from './ReferenceModeIcon';
 export { FavoriteIcon, DeleteIcon } from './ActionIcons';
 export { CropIcon, RotateCounterClockwiseIcon, RotateClockwiseIcon, FlipHorizontalIcon, FlipVerticalIcon, OriginalRatioIcon, CustomRatioIcon } from './ImageEditIcons';
 export { RatioIcon } from './RatioIcon';
+export { EditFilmIcon, EditExportIcon } from './EditIcons';

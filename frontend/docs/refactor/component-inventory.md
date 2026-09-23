@@ -1,5 +1,27 @@
 # 组件重构盘点基线
 
+## 2026-09-23 剪辑工作台
+
+- EditPage 在现有项目导航内切换草稿列表/CompositionEditorPage，传递项目、工程 ID、当前分集；保留独立 editor 路由兼容。
+- WorkspaceHeader 复用分集选择器及 Button，未保存提示为“有未保存草稿”，保存状态读取真实 store；返回列表前保存未提交修改，保存失败不退出。
+- 工作台沿用右侧32px/底部24px外边距。素材区352px、属性区314px、中间预览自适应，间距12px；全宽时间线314px，小窗口限制高度。素材按视频/图片/音频分类及当前分集筛选，不改变工程时间线。
+
+## 2026-09-22 剪辑入口空态与草稿列表
+
+- `EditDraftCard` 对齐 ProjectList 的标题 14px Medium/1.2 行高、日期 12px/白色40%、间距4px和底部12px内边距；日期共用 formatRelativeTime。更多按钮为28px，悬停/键盘焦点可见，菜单复用 DropdownMenu。
+- `EditDraftManager` 编排重命名、复制时间线和工程参数、删除二次确认，复用 AssetsProjectRenameModal 与 ConfirmDialog；成功后更新列表，删除最后一份草稿回到三选一，失败保留数据并提示。
+
+- 有草稿状态按 Paper 更新为 265×166px、12px 圆角卡片，显示胶片图标、工程名与更新日期；末尾新增同尺寸虚线新建卡片，右上角仅保留下载与导出。新建通过 compositions API 创建独立工程后携带 comp_id 跳转，含重复点击保护及错误反馈。
+
+- 剪辑页分集入口直接复用分镜 `EpisodeSelector`，统一标题格式、箭头、下拉菜单与选中态；选择状态按项目隔离，切集重新加载对应分镜统计及导出/下载素材，草稿仍按现有项目级接口展示。
+
+- 剪辑 Tab 选中宽度统一为 80px；`ui/EditIcons.jsx` 复用 Paper 胶片与导出 SVG，供顶部 Tab 和剪辑按钮共享。选中图标跟随文字青色渐变，普通图标继承文字颜色。
+
+- `edit/EditWorkspace.jsx` 使用项目 compositions 接口判断真实草稿，不再把分镜缩略图标为草稿；保留加载、错误重试和请求取消保护。
+- `edit/EditMethodActions.jsx` 复用 `ui/Button`，按 Paper 空态提供导出剪映格式、批量下载视频、在线剪辑三个入口；已有草稿时放回工具栏。
+- `edit/EditDraftList.jsx` 只接收 `drafts` 和 `onOpen`，展示工程名称，通过 `comp_id` 打开对应工程，不发起创建或写入操作。
+- 保留现有分镜入口、下载接口及编辑器路由；未改动其他未提交页面。项目规则引用的 feature-development.md 仍缺失，依据现有组件资产与设计规范完成归属决策。
+
 ## 2026-09-21 输入卡外观层合并
 
 - 检索后确认 `ui/TextField` 为普通表单输入，不适合承载素材和工具栏组合；新增无业务 `ui/ComposerSurface.jsx` 与同名样式文件，由 `CreationInputSurface` 和剧本 `InputCard` 共同使用。

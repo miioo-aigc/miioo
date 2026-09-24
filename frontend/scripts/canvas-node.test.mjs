@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-test('正文编辑时排除悬停描边并收起创作输入框', () => {
+test('正文编辑时排除悬停描边并保留创作输入框', () => {
   const css = readFileSync(new URL('../src/components/canvas/canvas-nodes.css', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../src/components/canvas/CanvasNodeShell.jsx', import.meta.url), 'utf8');
   assert.ok(css.includes(".canvas-node:hover .canvas-node__frame:not([data-state='editing'])"));
-  assert.match(shell, /selected && data\?\.creationPanelOpen && !data\?\.editing/);
+  assert.match(shell, /selected && data\?\.creationPanelOpen/);
 });
 
 test('文本节点蓝框仅由正文编辑或创作输入聚焦触发', () => {
@@ -141,6 +141,26 @@ test('节点拖动形变幅度足够明显但仍有上限', () => {
   const page = readFileSync(new URL('../src/pages/CanvasPage.jsx', import.meta.url), 'utf8');
   assert.match(page, /Math\.min\(0\.2,/);
   assert.match(page, /stretch \* 0\.24/);
+});
+
+test('节点拖动不使用倾斜，只保留方向性拉伸和反向回弹', () => {
+  const page = readFileSync(new URL('../src/pages/CanvasPage.jsx', import.meta.url), 'utf8');
+  const shell = readFileSync(new URL('../src/components/canvas/CanvasNodeShell.jsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/components/canvas/canvas-nodes.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(page, /dragSkewX|dragSkewY|Math\.min\(2,/);
+  assert.doesNotMatch(shell, /canvas-drag-skew-x|canvas-drag-skew-y/);
+  assert.doesNotMatch(css, /skewX|skewY/);
+  assert.match(css, /scale\(var\(--canvas-drag-scale-x\), var\(--canvas-drag-scale-y\)\)/);
+});
+
+test('文本节点单击等待双击判定后再展开创作框', () => {
+  const page = readFileSync(new URL('../src/pages/CanvasPage.jsx', import.meta.url), 'utf8');
+  const textNode = readFileSync(new URL('../src/components/canvas/TextCanvasNode.jsx', import.meta.url), 'utf8');
+  assert.match(page, /CANVAS_SINGLE_CLICK_DELAY = \d+/);
+  assert.match(page, /setTimeout\(\(\) =>/);
+  assert.match(page, /onCancelPendingClick/);
+  assert.match(textNode, /onCancelPendingClick/);
+  assert.match(textNode, /onEnterEditing/);
 });
 
 test('文本节点文件读取支持 txt、md 和 docx', async () => {

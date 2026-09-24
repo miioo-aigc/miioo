@@ -17,6 +17,7 @@
  *   节点组件只提供本地草稿展示和动作回调；文档保存、连接协议和生成任务另行接入。
  *   2026-09-24：空白面板使用标准双击事件打开菜单，关闭默认双击缩放。
  *   2026-09-24：初始缩放为 100%，新增节点不自动适配视口。
+ *   2026-09-24：节点模型选择保存为本地草稿；文本模型加载由节点外壳负责。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -36,6 +37,9 @@ import AssetPickerModal from '../components/AssetPickerModal';
 import ProfileModal from '../components/ProfileModal';
 import { CanvasNodeAddMenu, canvasNodeTypes, createCanvasNode, getCanvasNodeMenuPosition, updateSelectedNode } from '../components/canvas';
 
+// 浏览器 click 先于 dblclick 触发；保留极短窗口，避免双击时先展开创作框。
+const CANVAS_SINGLE_CLICK_DELAY = 200;
+
 function UnsupportedAction({ onClose }) {
   return <div className="absolute bottom-[92px] left-1/2 z-20 flex w-[280px] -translate-x-1/2 items-center justify-between rounded-[12px] border border-white-10 bg-surface-modal px-[14px] py-[10px] text-[13px] text-text-secondary shadow-[0_8px_28px_rgba(0,0,0,0.35)]"><span>该入口将在后续阶段开放</span><button type="button" className="border-0 bg-transparent p-0 text-text-hint" onClick={onClose} aria-label="关闭提示"><X size={16} /></button></div>;
 }
@@ -54,6 +58,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const [nodeMenu, setNodeMenu] = useState(null);
   const [flowInstance, setFlowInstance] = useState(null);
   const dragPositionsRef = useRef(new Map());
+  const pendingNodeClicksRef = useRef(new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -71,6 +76,11 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     return () => { cancelled = true; };
   }, [canvasId]);
 
+  useEffect(() => () => {
+    pendingNodeClicksRef.current.forEach((timer) => window.clearTimeout(timer));
+    pendingNodeClicksRef.current.clear();
+  }, []);
+
   const notifyUnsupported = useCallback(() => { setNotice(true); window.setTimeout(() => setNotice(false), 2400); }, []);
   const loading = loadedCanvasId !== canvasId;
   const handleLogout = async () => {
@@ -85,6 +95,12 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const handleUnsupported = notifyUnsupported;
   const handleNodesChange = useCallback((changes) => {
     setNodes((current) => applyNodeChanges(changes, current));
+  }, []);
+  const cancelPendingNodeClick = useCallback((nodeId) => {
+    const timer = pendingNodeClicksRef.current.get(nodeId);
+    if (!timer) return;
+    window.clearTimeout(timer);
+    pendingNodeClicksRef.current.delete(nodeId);
   }, []);
   const handleNodeDragStart = useCallback((_, node) => {
     dragPositionsRef.current.set(node.id, node.position);
@@ -115,13 +131,19 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const addNode = useCallback((type, position) => {
     const node = createCanvasNode(type, position || { x: 160 + (nodes.length % 3) * 280, y: 160 + Math.floor(nodes.length / 3) * 300 });
     node.data.onPromptChange = (nodeId, prompt) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt } } : item));
+    node.data.onModelChange = (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item));
     node.data.onContentChange = (nodeId, content) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, content } } : item));
+    node.data.onCancelPendingClick = cancelPendingNodeClick;
+    node.data.onEnterEditing = (nodeId) => {
+      cancelPendingNodeClick(nodeId);
+      setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, selected: true } : { ...item, selected: false }));
+    };
     node.data.onAddReference = () => handleUnsupported();
     node.data.onGenerate = () => handleUnsupported();
     node.data.onLocalUpload = () => handleUnsupported();
     setNodes((current) => updateSelectedNode([...current, node], node.id));
     setNodeMenu(null);
-  }, [handleUnsupported, nodes.length]);
+  }, [cancelPendingNodeClick, handleUnsupported, nodes.length]);
   const handlePaneDoubleClick = useCallback((event) => {
     if (!flowInstance || !event.target.classList.contains('react-flow__pane')) return;
     event.preventDefault();
@@ -129,7 +151,19 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     setNodeMenu({ screen, flowPosition: flowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
   }, [flowInstance]);
   const handleNodeClick = useCallback((_, node) => {
-    setNodes((current) => updateSelectedNode(current, node.id));
+    pendingNodeClicksRef.current.forEach((timer, nodeId) => {
+      window.clearTimeout(timer);
+      pendingNodeClicksRef.current.delete(nodeId);
+    });
+    if (node.type !== 'text') {
+      setNodes((current) => updateSelectedNode(current, node.id));
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      pendingNodeClicksRef.current.delete(node.id);
+      setNodes((current) => updateSelectedNode(current, node.id));
+    }, CANVAS_SINGLE_CLICK_DELAY);
+    pendingNodeClicksRef.current.set(node.id, timer);
   }, []);
   const projectName = canvas?.project_name || canvas?.projectName || '自由画布项目';
 

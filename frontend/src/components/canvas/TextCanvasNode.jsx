@@ -22,6 +22,8 @@ export default function TextCanvasNode({ id, data, selected }) {
   const handleDoubleClick = (event) => {
     if (event.target.closest('button, input')) return;
     event.stopPropagation();
+    data?.onCancelPendingClick?.(id);
+    data?.onEnterEditing?.(id);
     setEditing(true);
   };
   const handleFileChange = async (event) => {

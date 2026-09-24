@@ -2,6 +2,8 @@
  * 生成项目资产下载文件名。只处理命名，不执行下载副作用。
  */
 
+import { audioFilenameFromPrompt } from './creationFilename.js';
+
 const MIME_EXTENSION_MAP = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -28,7 +30,7 @@ export function getProjectAssetDownloadFilename({ projectName, categoryLabel, as
   const baseName = [
     sanitizePart(projectName, '项目'),
     sanitizePart(categoryLabel, '资产'),
-    sanitizePart(assetName, '未命名资产'),
+    categoryLabel === '音频' ? audioFilenameFromPrompt(assetName) : sanitizePart(assetName, '未命名资产'),
   ].join('-');
   const normalizedExtension = String(extension || '').replace(/^\./, '').trim();
   return normalizedExtension ? `${baseName}.${normalizedExtension}` : baseName;

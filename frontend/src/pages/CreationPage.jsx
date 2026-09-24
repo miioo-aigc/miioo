@@ -4,7 +4,7 @@
  *
  * ─── 全局常量与工具函数 ─────────────────────────────── L128–L150
  *   FONT / FONT_MEDIUM、图片下载、动画注入
- *   filenameFromPrompt                                      utils/creationFilename.js
+ *   filenameFromPrompt / audioFilenameFromPrompt              utils/creationFilename.js
  *   生成类型到任务轮询类型的适配                     utils/creationTaskAdapter.js
  *   文件类型常量与判断工具                               components/creation/CreationFileUtils.js
  *   历史响应、记录标准化与缓存载荷适配                     utils/creationHistoryAdapter.js
@@ -91,8 +91,8 @@
  *   2026-09-04  配音详情高级模式改用详情接口 is_advanced_mode 字段
  *   2026-09-04  修复图片创作任务刷新恢复过早清理快照，支持多次刷新持续轮询
  *   2026-09-21  图片历史每页由 18 条改为 6 条；视频、配音及自动补页行为保持不变
+ *   2026-09-24  配音下载命名仅提取正文，过滤情绪、停顿和语气标记
  */
-
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiPollCreationTask, apiPollCreationMusicTask, apiGetCreationVideo, apiGetCreationAudio, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
@@ -120,7 +120,7 @@ import {
   CREATION_TABS,
   useCreationGeneration,
 } from '../components/creation';
-import { filenameFromPrompt } from '../utils/creationFilename';
+import { audioFilenameFromPrompt, filenameFromPrompt } from '../utils/creationFilename';
 import { downloadBlob } from '../utils/downloadBlob';
 import { startDownloadFeedback } from '../utils/downloadFeedback';
 import { showGlobalToast } from '../stores/toastStore';
@@ -579,7 +579,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
 
     try {
       const blob = await downloadApi(cardId, { onProgress: feedback.setProgress });
-      downloadBlob(blob, filenameFromPrompt(card.prompt, extension, isAudio ? 'dubbing' : undefined));
+      downloadBlob(blob, (isAudio ? audioFilenameFromPrompt : filenameFromPrompt)(card.prompt, extension));
       if (!providedFeedback) await feedback.complete('下载成功');
       return true;
     } catch (error) {

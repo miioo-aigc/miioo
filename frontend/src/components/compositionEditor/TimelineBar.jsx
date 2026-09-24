@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
+import TimelineToolbar from './TimelineToolbar';
 import {
   formatTime,
   computeVisualWindows,
@@ -21,7 +22,8 @@ const TRAILING_PAD = 24;
 const TICK_STEPS = [1, 5, 10, 30, 60, 300, 600];
 const TICK_MIN_PX = 60;
 
-const ROW_H = 64;
+const CLIP_H = 64;
+const ROW_H = 20 + CLIP_H + 8;
 const RULER_H = 26;
 
 function MoveUpIcon() {
@@ -201,7 +203,7 @@ export default function TimelineBar() {
     }
   }, [playheadLeft, playing]);
 
-  const renderCard = (win, isAudio, rowHeight) => {
+  const renderCard = (win, isAudio) => {
     const seg = win.seg;
     const selected = seg.id === selectedId;
     const thumb = seg.thumbnailUrl || seg.posterUrl;
@@ -220,7 +222,7 @@ export default function TimelineBar() {
             ? 'bg-white-10 border-stroke-active'
             : 'bg-surface-card border-stroke-normal'
         }`}
-        style={{ left: win.start * zoom, width, height: rowHeight - 8 }}
+        style={{ left: win.start * zoom, width, height: CLIP_H }}
         title={`${seg.name || '片段'} · ${formatTime(seg.duration)}${inPointText}${speedText}`}
       >
         <div className="flex items-center gap-[4px] min-w-0">
@@ -276,9 +278,16 @@ export default function TimelineBar() {
   };
 
   return (
-    <div className="relative h-[314px] max-h-[36vh] min-h-[180px] shrink-0 bg-neutral-200">
+    <div className="relative flex h-full w-full min-h-0 flex-col bg-neutral-200">
+      <TimelineToolbar />
       {/* 滚动容器：承载全部时间线内容，Ctrl/Cmd+滚轮缩放绑定其上 */}
-      <div ref={scrollRef} className="h-full overflow-x-auto overflow-y-hidden">
+      <div className="flex min-h-0 flex-1 overflow-y-auto">
+      <div className="w-[40px] shrink-0 bg-surface-toolbar" style={{ paddingTop: RULER_H, minHeight: RULER_H + ROW_H * 2 }}>
+        {['V1', 'A1'].map((track) => (
+          <div key={track} className="flex items-center justify-center border-t border-stroke-normal text-font-size-12 text-text-hint" style={{ height: ROW_H, paddingTop: 12, fontFamily: FONT_MEDIUM }}>{track}</div>
+        ))}
+      </div>
+      <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto" style={{ minHeight: RULER_H + ROW_H * 2 + 16 }}>
         <div className="relative flex-shrink-0" style={{ width: contentWidth, minWidth: '100%', height: RULER_H + ROW_H * 2 }}>
           {/* 刻度（步进自适应，每格一个刻度 + 标签） */}
           <div className="absolute top-0 left-0 right-0" style={{ height: RULER_H, cursor: 'pointer' }} onClick={clickTrack}>
@@ -297,23 +306,19 @@ export default function TimelineBar() {
 
           {/* V1 轨道 */}
           <div className="absolute top-0 left-0 right-0 border-t border-stroke-normal" style={{ top: RULER_H, height: ROW_H }}>
-            <div className="h-[20px] px-[8px] flex items-center gap-[8px]">
-              <span className="text-font-size-12 text-text-hint" style={{ fontFamily: FONT_MEDIUM }}>V1</span>
-            </div>
+            <div className="h-[20px]" />
             <div className="relative"
               style={{ height: ROW_H - 20 }}
               onClick={clickTrack}>
-              {visualWindows.map((w) => renderCard(w, false, ROW_H - 20))}
+              {visualWindows.map((w) => renderCard(w, false))}
             </div>
           </div>
 
           {/* A1 轨道 */}
           <div className="absolute left-0 right-0 border-t border-stroke-normal" style={{ top: RULER_H + ROW_H, height: ROW_H }}>
-            <div className="h-[20px] px-[8px] flex items-center gap-[8px]">
-              <span className="text-font-size-12 text-text-hint" style={{ fontFamily: FONT_MEDIUM }}>A1</span>
-            </div>
+            <div className="h-[20px]" />
             <div className="relative" style={{ height: ROW_H - 20 }} onClick={clickTrack}>
-              {audioAux.map((w) => renderCard(w, true, ROW_H - 20))}
+              {audioAux.map((w) => renderCard(w, true))}
             </div>
           </div>
 
@@ -323,7 +328,8 @@ export default function TimelineBar() {
       </div>
 
       {/* 缩放控件：固定在 V1 标签行右端，不随横向滚动 */}
-      <div className="absolute flex items-center gap-[2px] pr-[8px]" style={{ top: RULER_H, right: 0, height: 20 }}>
+      </div>
+      <div className="absolute flex items-center gap-[2px] pr-[8px]" style={{ top: 40 + RULER_H, right: 0, height: 20 }}>
         <button type="button" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="缩小" className="p-[1px] text-text-hint hover:text-text-primary cursor-pointer border-0 bg-transparent disabled:text-text-disabled disabled:cursor-not-allowed">
           <ZoomOutIcon />
         </button>

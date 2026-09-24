@@ -109,7 +109,7 @@ export default function PropsPanel() {
 
   if (!selected) {
     return (
-      <aside className="w-[314px] max-w-[25%] min-w-0 shrink-0 flex flex-col bg-neutral-200 overflow-y-auto px-[20px] py-[16px] gap-[24px]">
+      <aside className="w-full min-w-0 flex flex-col bg-neutral-200 overflow-y-auto px-[20px] py-[16px] gap-[24px]">
         {segments.length === 0 ? (
           <div className="text-text-hint text-font-size-14" style={{ fontFamily: FONT }}>
             请从素材库添加素材
@@ -226,7 +226,7 @@ export default function PropsPanel() {
   const audioDetached = isVideo && hasDetachedAudio(selected.id);
 
   return (
-    <aside className="w-[314px] max-w-[25%] min-w-0 shrink-0 flex flex-col bg-neutral-200 overflow-y-auto px-[20px] py-[16px] gap-[20px]">
+    <aside className="w-full min-w-0 flex flex-col bg-neutral-200 overflow-y-auto px-[20px] py-[16px] gap-[20px]">
       <div className="flex items-center gap-[8px]">
         {selected.type === 'video' && selected.posterUrl && (
           <img src={selected.posterUrl} alt="" className="w-[48px] h-[48px] rounded-medium object-cover shrink-0 border border-stroke-normal" />

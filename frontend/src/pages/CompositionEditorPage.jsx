@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiGetAssetsPage } from '../api/assets';
+import { apiGetCompositions } from '../api/compositions';
 import { getErrorMessage } from '../api/error';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import { resolveFinalizedStoryboardAssets, getFinalizedStoryboardMedia, getMissingCompositionAssets, selectFinalizedStoryboardAssets } from '../utils/FinalizedStoryboardAssets';
 import { useCompositionEditorStore } from '../stores/compositionEditorStore';
 import EditorHeader from '../components/compositionEditor/EditorHeader';
 import AssetLibraryPanel from '../components/compositionEditor/AssetLibraryPanel';
@@ -10,6 +11,7 @@ import TimelineBar from '../components/compositionEditor/TimelineBar';
 import PropsPanel from '../components/compositionEditor/PropsPanel';
 import ExportModal from '../components/compositionEditor/ExportModal';
 import WorkspaceHeader from '../components/compositionEditor/WorkspaceHeader';
+import ResizableWorkspace from '../components/compositionEditor/ResizableWorkspace';
 import { Button } from '../components/ui';
 
 const FONT = "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -68,54 +70,44 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
   const isLoaded = useCompositionEditorStore((s) => s.loaded);
   const exportState = useCompositionEditorStore((s) => s.exportState);
 
-  const [album, setAlbum] = useState({ assets: [], loading: false, error: null });
+  const [album, setAlbum] = useState({ assets: [], finalized: [], loading: false, error: null });
 
-  const fetchAlbum = useCallback(async () => {
+  const fetchAlbum = useCallback(async (isCancelled = () => false) => {
     if (!projectId) return;
-    setAlbum({ assets: [], loading: true, error: null });
+    setAlbum({ assets: [], finalized: [], loading: true, error: null });
     try {
-      // 全量分页拉取项目资产（每页 200，上限 50 页），保证搜索池覆盖项目内全部数字资产
-      const PAGE_LIMIT = 200;
-      const MAX_PAGES = 50;
-      const seen = new Set();
-      const rawList = [];
-      let pageCursor;
-      for (let page = 0; page < MAX_PAGES; page += 1) {
-        const result = await apiGetAssetsPage({
-          project_id: projectId,
-          include_deleted: false,
-          scope: 'project',
-          limit: PAGE_LIMIT,
-          ...(pageCursor ? { cursor: pageCursor } : {}),
-        });
-        (result.list || []).forEach((item) => {
-          if (item && item.id && !seen.has(item.id)) {
-            seen.add(item.id);
-            rawList.push(item);
-          }
-        });
-        if (!result.hasMore || !result.nextCursor) break;
-        pageCursor = result.nextCursor;
-      }
-      const list = rawList.map(toEditorAsset);
-      setAlbum({ assets: list, loading: false, error: null });
-      loadAlbum(list);
+      const finalized = await getFinalizedStoryboardMedia(projectId);
+      const { assets, unavailable } = await resolveFinalizedStoryboardAssets(projectId, finalized);
+      const list = [...new Map(assets.map((asset) => [String(asset.id), toEditorAsset(asset)])).values()];
+      if (!isCancelled()) setAlbum({ assets: list, finalized, loading: false, error: null, warning: unavailable ? `${unavailable} 个定稿素材缺少可用资产关联或媒体地址，暂不可添加；其他素材可正常使用。` : null });
+      return list;
     } catch (err) {
-      setAlbum((prev) => ({ ...prev, loading: false, error: getErrorMessage(err, '素材库加载失败') }));
+      if (!isCancelled()) setAlbum((prev) => ({ ...prev, loading: false, error: getErrorMessage(err, '素材库加载失败') }));
+      return [];
     }
-  }, [projectId, loadAlbum]);
+  }, [projectId]);
 
   useEffect(() => {
     if (!projectId) return;
     let cancelled = false;
     (async () => {
-      await new Promise((resolve) => {
-        // 先拉素材，保证 init 反查时间线 clip_id 时 album 已就绪
-        fetchAlbum().finally(resolve);
-      });
-      if (!cancelled) {
+      try {
+        const [assets, compositions] = await Promise.all([fetchAlbum(() => cancelled), apiGetCompositions(projectId)]);
+        if (cancelled) return;
+        const composition = compId ? compositions.find((item) => String(item.id) === String(compId)) : compositions[0];
+        if (compId && !composition) throw new Error('草稿加载失败或已被删除，请返回列表重试');
+        const missingAssets = await getMissingCompositionAssets(composition?.timeline, assets);
+        if (cancelled) return;
+        const restoredAssets = missingAssets.map(toEditorAsset);
+        const allAssets = [...new Map([...assets, ...restoredAssets].map((asset) => [String(asset.id), asset])).values()];
+        loadAlbum(allAssets);
+        setAlbum((previous) => ({
+          ...previous,
+          assets: allAssets,
+          loading: false,
+        }));
         useCompositionEditorStore.setState({ compositionId: null, segments: [], playing: false, dirty: false });
-        await init({ projectId, compId });
+        await init({ projectId, compId, compositions, isCancelled: () => cancelled });
         if (!cancelled) {
           const loadedId = useCompositionEditorStore.getState().compositionId;
           if (!loadedId || (compId && String(loadedId) !== String(compId))) {
@@ -124,12 +116,14 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
             setInitialized(true);
           }
         }
+      } catch (err) {
+        if (!cancelled) setLoadError(getErrorMessage(err, '草稿加载失败，请返回列表重试'));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [projectId, compId, init, fetchAlbum]);
+  }, [projectId, compId, init, fetchAlbum, loadAlbum]);
 
   if (!projectId) {
     return (
@@ -157,7 +151,10 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
       className={embedded ? 'absolute inset-0 flex min-h-0 flex-col overflow-hidden' : 'bg-neutral-400 h-[100vh] w-screen overflow-clip flex flex-col [font-synthesis:none] antialiased'}
       style={{ fontFamily: FONT, ...(embedded ? { marginBottom: '24px', marginRight: '32px' } : {}) }}
     >
-      <section className={embedded ? 'flex min-h-0 flex-1 flex-col gap-[12px] overflow-auto rounded-[16px] border border-stroke-normal bg-[#060606] px-[24px] py-[16px]' : 'flex min-h-0 flex-1 flex-col'}>
+      <section
+        className={embedded ? 'flex min-h-0 flex-1 flex-col gap-[12px] overflow-hidden rounded-[12px] border border-stroke-normal bg-[#060606] px-[24px] py-[16px]' : 'flex min-h-0 flex-1 flex-col'}
+        style={embedded ? { borderRadius: '12px' } : undefined}
+      >
       {embedded ? <WorkspaceHeader projectName={projectName} episodes={episodes} episode={episode} onEpisodeChange={setEpisode} onBack={onBack} showToast={showToast} ready={initialized && isLoaded} /> : <EditorHeader />}
 
       {loadError ? (
@@ -170,16 +167,12 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
           <span className="text-text-hint text-font-size-14">正在加载工程…</span>
         </div>
       ) : (
-        <>
-        <div className="flex min-h-[240px] flex-1 gap-[12px] overflow-hidden">
-          <AssetLibraryPanel albumState={album} onFetch={fetchAlbum} episodeNumber={episode?.episode_number} />
-          <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-neutral-200">
-            <PreviewCanvas />
-          </div>
-          <PropsPanel />
-        </div>
-        <TimelineBar />
-        </>
+        <ResizableWorkspace
+          assets={<AssetLibraryPanel projectId={projectId} albumState={{ ...album, assets: selectFinalizedStoryboardAssets(album.assets, album.finalized, episode?.id) }} onFetch={() => fetchAlbum()} onAssetAdded={(items) => { loadAlbum([...new Map([...useCompositionEditorStore.getState().album, ...items].map((asset) => [asset.id, asset])).values()]); setAlbum((previous) => { const added = new Map(items.map((asset) => [String(asset.id), asset])); return { ...previous, assets: [...added.values(), ...previous.assets.filter((asset) => !added.has(String(asset.id)))] }; }); }} onRemoveAsset={(asset) => { loadAlbum(useCompositionEditorStore.getState().album.filter((item) => String(item.id) !== String(asset.id))); setAlbum((previous) => ({ ...previous, assets: previous.assets.filter((item) => String(item.id) !== String(asset.id)) })); }} />}
+          preview={<PreviewCanvas />}
+          properties={<PropsPanel />}
+          timeline={<TimelineBar />}
+        />
       )}
       </section>
       {exportState.status !== 'idle' && <ExportModal />}

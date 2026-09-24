@@ -3,12 +3,6 @@ import { formatTime, computeVisualWindows, computeAudioWindows, useCompositionEd
 
 const FONT = "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-const RATIO = {
-  '16:9': { w: 640, h: 360 },
-  '9:16': { w: 360, h: 640 },
-  '1:1': { w: 480, h: 480 },
-};
-
 function PlayIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
@@ -91,7 +85,6 @@ function FadeImage({ src, duration, playing, fadeOn, fadeDur }) {
 
 export default function PreviewCanvas() {
   const segments = useCompositionEditorStore((s) => s.segments);
-  const aspectRatio = useCompositionEditorStore((s) => s.aspectRatio);
   const playing = useCompositionEditorStore((s) => s.playing);
   const cursor = useCompositionEditorStore((s) => s.cursor);
   const play = useCompositionEditorStore((s) => s.play);
@@ -119,7 +112,6 @@ export default function PreviewCanvas() {
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const audioUrlRef = useRef(null);
-  const { w, h } = RATIO[aspectRatio] || RATIO['16:9'];
 
   // 播放态驱动视频元素：playing 时真实播放（autoPlay 属性变更不会触发已挂载视频）
   useEffect(() => {
@@ -155,8 +147,26 @@ export default function PreviewCanvas() {
     const offset = active.seg.offset || 0;
     const dur = Number(active.seg.duration) || 0;
     const speed = speedOf(active.seg);
+    let currentWindow = active;
+    for (let nextIndex = activeIndex + 1; nextIndex < windows.length; nextIndex += 1) {
+      const nextWindow = windows[nextIndex];
+      const sourceEnd = (Number(currentWindow.seg.offset) || 0)
+        + Number(currentWindow.seg.duration) * speed;
+      if (nextWindow.seg.type !== 'video'
+        || nextWindow.seg.sourceUrl !== active.seg.sourceUrl
+        || speedOf(nextWindow.seg) !== speed
+        || Math.abs((Number(nextWindow.seg.offset) || 0) - sourceEnd) > 0.000001) break;
+      if (v.currentTime < sourceEnd) break;
+      currentWindow = nextWindow;
+    }
+    if (currentWindow !== active) {
+      const nextCursor = currentWindow.start
+        + (v.currentTime - (Number(currentWindow.seg.offset) || 0)) / speed;
+      onCursorTick(Math.min(nextCursor, currentWindow.end));
+      return;
+    }
     // 段结束：源时间到达窗口末端（offset + duration × speed）即衔接下一段
-    if (dur > 0 && v.currentTime >= offset + dur * speed - 0.08) {
+    if (dur > 0 && v.currentTime >= offset + dur * speed) {
       advanceVisual();
       return;
     }
@@ -259,20 +269,19 @@ export default function PreviewCanvas() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div className="flex-1 flex items-center justify-center overflow-hidden px-[24px] py-[16px] bg-surface-content-area">
-        <div className="relative overflow-hidden rounded-medium bg-neutral-500 flex items-center justify-center"
-          style={{ width: `${w}px`, maxWidth: '100%', maxHeight: '100%', aspectRatio: `${w} / ${h}` }}>
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-surface-content-area">
+        <div className="absolute inset-0 overflow-hidden bg-surface-content-area flex items-center justify-center">
           {!active ? (
             <span className="text-text-hint text-font-size-14" style={{ fontFamily: FONT }}>
               从左侧添加素材开始剪辑
             </span>
           ) : active.seg.type === 'video' && active.seg.sourceUrl ? (
             <video
-              key={`${active.index}`}
+              key={active.seg.sourceUrl}
               ref={videoRef}
               src={active.seg.sourceUrl}
               className="w-full h-full object-contain"
-              muted
+              muted={false}
               playsInline
               onTimeUpdate={handleVideoTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}

@@ -234,7 +234,38 @@ const initialExportState = {
   error: null,
 };
 
-export const useCompositionEditorStore = create((set, get) => ({
+export const useCompositionEditorStore = create((rawSet, get) => {
+  const snapshot = (state) => ({ segments: state.segments, selectedId: state.selectedId });
+  const set = (update) => rawSet((state) => {
+    const next = typeof update === 'function' ? update(state) : update;
+    if (state.loaded && next.segments && next.segments !== state.segments && next.dirty === true) {
+      return { ...next, past: [...state.past, snapshot(state)].slice(-100), future: [] };
+    }
+    return next;
+  });
+  return ({
+  past: [],
+  future: [],
+  undo: () => rawSet((state) => {
+    if (!state.past.length) return {};
+    return { ...state.past.at(-1), past: state.past.slice(0, -1), future: [snapshot(state), ...state.future], dirty: true, dirtyRev: state.dirtyRev + 1, playing: false };
+  }),
+  redo: () => rawSet((state) => {
+    if (!state.future.length) return {};
+    return { ...state.future[0], past: [...state.past, snapshot(state)], future: state.future.slice(1), dirty: true, dirtyRev: state.dirtyRev + 1, playing: false };
+  }),
+  splitSelected: () => {
+    const state = get();
+    const windows = [...computeVisualWindows(state.segments).windows, ...computeAudioWindows(state.segments).windows];
+    const window = windows.find((item) => item.seg.id === state.selectedId);
+    if (!window) return;
+    const duration = state.cursor - window.start;
+    const remainder = window.end - state.cursor;
+    if (!Number.isFinite(duration) || !Number.isFinite(remainder) || duration <= 0 || remainder <= 0) return;
+    const segment = window.seg;
+    const right = { ...segment, id: randomId(), duration: remainder, offset: segment.type === 'image' ? 0 : (Number(segment.offset) || 0) + duration * segmentSpeedOf(segment), ...(segment.type === 'audio' ? { start: state.cursor } : {}) };
+    set({ segments: state.segments.flatMap((item) => item.id === segment.id ? [{ ...item, duration }, right] : [item]), selectedId: right.id, dirty: true, dirtyRev: state.dirtyRev + 1, playing: false });
+  },
   projectId: null,
   compositionId: null,
   name: '未命名成片',
@@ -254,7 +285,7 @@ export const useCompositionEditorStore = create((set, get) => ({
 
   loadAlbum: (assets) => set({ album: Array.isArray(assets) ? assets : [] }),
 
-  init: async ({ projectId, compId } = {}) => {
+  init: async ({ projectId, compId, compositions, isCancelled = () => false } = {}) => {
     if (!projectId) {
       set({ projectId: null, dirty: false, dirtyRev: 0, loaded: true, exportState: { ...initialExportState } });
       return;
@@ -262,9 +293,10 @@ export const useCompositionEditorStore = create((set, get) => ({
     const album = get().album;
     const albumById = new Map(album.map((a) => [a.id, a]));
 
-    set({ projectId, loaded: false });
+    set({ projectId, loaded: false, past: [], future: [] });
     try {
-      const list = await apiGetCompositions(projectId);
+      const list = compositions ?? await apiGetCompositions(projectId);
+      if (isCancelled()) return;
       let comp = null;
       if (compId) comp = list.find((c) => c.id === compId) || null;
       if (!comp) comp = list[0] || null;
@@ -319,10 +351,12 @@ export const useCompositionEditorStore = create((set, get) => ({
           resolution: get().resolution,
           aspectRatio: get().aspectRatio,
         });
+        if (isCancelled()) return;
         set({ compositionId: created.id, name: created.name || '未命名成片' });
       }
       set({ segments, selectedId: null, dirty: false, dirtyRev: 0, saving: false, loaded: true, cursor: 0, playing: false });
     } catch (err) {
+      if (isCancelled()) return;
       console.error('[compositionEditor] 初始化失败', err);
       set({ loaded: true });
     }
@@ -700,7 +734,8 @@ export const useCompositionEditorStore = create((set, get) => ({
 
   onCursorTick: (time) =>
     set({ cursor: clampNumber(time, 0, Number.MAX_SAFE_INTEGER) }),
-}));
+});
+});
 
 // ── 自动保存（防抖）───────────────────────────────────────────────────────────
 // 任何置 dirty 的编辑操作停滞后 AUTO_SAVE_DELAY 自动落盘，无需手动点「保存草稿」。

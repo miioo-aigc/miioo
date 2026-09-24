@@ -1,7 +1,7 @@
 # 待对接后端接口清单
 
 > 文档类型：前端待后端对接能力登记
-> 最后更新：2026-07-20
+> 最后更新：2026-09-23
 > 维护方式：由 Suzy 命令触发，持续追加 / 更新 / 闭环条目
 
 ## 1. 用途
@@ -23,6 +23,15 @@
 - 登记日期
 
 ## 3. 待对接清单
+
+### 剪辑草稿 —— 素材区独立持久化（2026-09-23）
+
+- **状态**：待对接；建议契约待后端确认，尚未实现。
+- **位置**：`src/components/compositionEditor/AssetLibraryPanel.jsx`（addNewAssets）、`src/pages/CompositionEditorPage.jsx`（onAssetAdded / 初始化）、`src/stores/compositionEditorStore.js`（save / init）、`src/api/compositions.js`（请求和响应适配）。
+- **现状/缺口**：手动素材仅存前端 album，草稿接口只保存时间线，没有独立素材引用列表；未加入时间线的素材重开丢失。
+- **需求**：新增有序 `library_asset_ids`（建议名），支持创建、更新、读取和复制；前端添加素材标记 dirty，保存列表并按 ID 恢复，不自动加入时间线。
+- **独立问题**：本地上传/资产库视频主动加入时间线后的“不可用视频素材”校验失败，需另行联调，不能宣称随新增字段解决。
+- **详细契约及验收**：[剪辑草稿素材区持久化后端需求](./backend-composition-library-requirements-2026-09-23.md)。
 
 ### 3.1 新建项目弹窗 —— 创作类型
 

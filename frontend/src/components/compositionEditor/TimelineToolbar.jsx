@@ -1,0 +1,39 @@
+import { Undo2, Redo2, Scissors } from 'lucide-react';
+import { DeleteIcon, IconButton } from '../ui';
+import { computeAudioWindows, computeVisualWindows, useCompositionEditorStore } from '../../stores/compositionEditorStore';
+
+function DetachAudioIcon({ size = 16, style }) {
+  return (<svg width={size} height={size} viewBox="0 0 1024 1024" fill="none" style={style}><path d="M705.706667 616.448c47.061333 0 85.205333 38.144 85.205333 85.205333v154.88a85.205333 85.205333 0 0 1-85.205333 85.205334H292.693333a85.205333 85.205333 0 0 1-85.205333-85.205334v-154.88c0-47.061333 38.144-85.205333 85.205333-85.205333z m0 67.114667H292.693333a18.048 18.048 0 0 0-18.090666 18.090666v154.88c0 9.984 8.106667 18.090667 18.090666 18.090667h413.013334c9.984 0 18.090667-8.106667 18.090666-18.090667v-154.88a18.048 18.048 0 0 0-18.090666-18.090666z m198.784-172.928a33.536 33.536 0 1 1 0 67.114666H93.866667a33.536 33.536 0 1 1 0-67.114666h810.538666zM274.56 133.76c18.56 0 33.578667 15.018667 33.578667 33.578667v242.602666a33.536 33.536 0 1 1-67.114667 0V167.296c0-18.517333 15.018667-33.536 33.536-33.536z m304.64 103.253333c18.517333 0 33.536 15.018667 33.536 33.578667v139.349333a33.536 33.536 0 1 1-67.114667 0V270.549333c0-18.517333 15.018667-33.536 33.578667-33.536z m144.512-51.626666c18.56 0 33.578667 15.018667 33.578667 33.578666v190.976a33.536 33.536 0 1 1-67.114667 0V218.922667c0-18.517333 15.018667-33.536 33.578667-33.536zM434.688 30.506667c18.56 0 33.578667 15.018667 33.578667 33.578666v345.856a33.536 33.536 0 1 1-67.114667 0V64.085333c0-18.517333 15.018667-33.536 33.578667-33.536z" fill="currentColor" /></svg>);
+}
+
+export default function TimelineToolbar() {
+  const state = useCompositionEditorStore();
+  const selected = state.segments.find((item) => item.id === state.selectedId);
+  const window = [...computeVisualWindows(state.segments).windows, ...computeAudioWindows(state.segments).windows].find((item) => item.seg.id === state.selectedId);
+  const canSplit = window && state.cursor > window.start && state.cursor < window.end;
+  const actions = [
+    { label: '撤销', Icon: Undo2, disabled: !state.past.length, onClick: state.undo },
+    { label: '恢复', Icon: Redo2, disabled: !state.future.length, onClick: state.redo },
+    { label: '切割', Icon: Scissors, disabled: !canSplit, onClick: state.splitSelected },
+    { label: '分离音轨', Icon: DetachAudioIcon, disabled: selected?.type !== 'video' || state.hasDetachedAudio(state.selectedId), onClick: () => state.detachAudio(state.selectedId) },
+    { label: '删除', Icon: DeleteIcon, disabled: !selected, onClick: () => state.removeSegment(state.selectedId) },
+  ];
+  return (
+    <div role="toolbar" aria-label="时间线编辑工具" className="flex h-[40px] shrink-0 items-center gap-[8px] border-b border-stroke-normal px-[12px]">
+      {actions.map(({ label, Icon, disabled, onClick }) => (
+        <IconButton
+          key={label}
+          aria-label={label}
+          title={label}
+          icon={<Icon size={16} color="currentColor" style={{ width: 16, height: 16, flexShrink: 0 }} />}
+          size="large"
+          style={{ width: 28, height: 28 }}
+          contentClassName="!px-0 !text-white/80"
+          className="cursor-pointer disabled:cursor-not-allowed disabled:!opacity-50"
+          disabled={disabled || !state.loaded}
+          onClick={onClick}
+        />
+      ))}
+    </div>
+  );
+}

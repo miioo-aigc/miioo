@@ -1,10 +1,10 @@
 import { Check, ArrowLeft } from 'lucide-react';
 import { Button, EditExportIcon } from '../ui';
-import { EpisodeSelector } from '../storyboard/StoryboardControls';
 import { useCompositionEditorStore } from '../../stores/compositionEditorStore';
 import { getErrorMessage } from '../../api/error';
 
-export default function WorkspaceHeader({ projectName, episodes, episode, onEpisodeChange, onBack, showToast, ready }) {
+export default function WorkspaceHeader({ projectName, episode, onBack, showToast, ready }) {
+  const draftName = useCompositionEditorStore((state) => state.name);
   const dirty = useCompositionEditorStore((state) => state.dirty);
   const saving = useCompositionEditorStore((state) => state.saving);
   const save = useCompositionEditorStore((state) => state.save);
@@ -23,18 +23,18 @@ export default function WorkspaceHeader({ projectName, episodes, episode, onEpis
     onBack();
   }
   return (
-    <header className="relative z-20 flex shrink-0 flex-wrap items-center justify-between gap-[12px]">
-      <div className="flex flex-wrap items-center gap-[22px] text-font-size-14 leading-[20px]">
-        <div className="flex items-center gap-[4px]">
-          <span className="text-text-secondary">{projectName}</span><span className="text-text-hint">›</span>
-          <EpisodeSelector episodes={episodes} value={episode} onChange={onEpisodeChange} />
+    <header className="relative z-20 flex shrink-0 items-center justify-between gap-[16px]">
+      <div className="flex min-w-0 items-center gap-[18px]">
+        <Button size="large" className="shrink-0 cursor-pointer" icon={<ArrowLeft size={16} />} onClick={handleBack} disabled={!ready || saving}>返回</Button>
+        <div className="min-w-0 truncate text-[14px] leading-[20px] text-[#FFFFFF99]" style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif" }} title={`${projectName || '项目'} › ${episode?.title || '剧集'} › ${draftName || '草稿'}`}>
+          {projectName || '项目'} › {episode?.title || (episode?.episode_number != null ? `第${episode.episode_number}集` : '剧集')} › {ready ? draftName : '加载中…'}
         </div>
-        <span className="text-white/[0.8]" role="status">{!ready ? '正在加载草稿…' : saving ? '保存中…' : dirty ? '有未保存草稿' : '已保存'}</span>
       </div>
-      <div className="flex items-center gap-[8px]">
-        <Button className="cursor-pointer" icon={<ArrowLeft size={16} />} onClick={handleBack} disabled={!ready || saving}>返回草稿</Button>
-        <Button className="cursor-pointer" icon={<Check size={16} />} onClick={handleSave} loading={saving} disabled={!ready || exporting}>保存草稿</Button>
-        <Button className="cursor-pointer" variant="accent" icon={<EditExportIcon />} onClick={() => startExport()} disabled={!ready || saving || !hasSegments || exporting}>导出成片</Button>
+      <div className="flex shrink-0 items-center gap-[8px]">
+        <Button size="large" className="cursor-pointer" icon={<Check size={16} />} onClick={handleSave} loading={saving} disabled={!ready || exporting} aria-label="保存草稿">
+          {!ready ? '加载中…' : saving ? '保存中…' : dirty ? '保存草稿' : '已保存'}
+        </Button>
+        <Button size="large" className="cursor-pointer" variant="accent" icon={<EditExportIcon />} onClick={() => startExport()} disabled={!ready || saving || !hasSegments || exporting}>导出成片</Button>
       </div>
     </header>
   );

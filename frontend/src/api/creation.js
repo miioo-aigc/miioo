@@ -899,6 +899,7 @@ export async function apiUploadCreationImage({ file, category, asset_name, sessi
     body: form,
     signal,
   });
+  if (!res.ok) await throwResponseError(res, `图片上传失败（${res.status}）`);
   return res.json();
 }
 
@@ -916,6 +917,7 @@ export async function apiUploadCreationVideo({ file, category, asset_name, sessi
     body: form,
     signal,
   });
+  if (!res.ok) await throwResponseError(res, `视频上传失败（${res.status}）`);
   return res.json();
 }
 
@@ -933,6 +935,7 @@ export async function apiUploadCreationAudio({ file, category, asset_name, sessi
     body: form,
     signal,
   });
+  if (!res.ok) await throwResponseError(res, `音频上传失败（${res.status}）`);
   return res.json();
 }
 

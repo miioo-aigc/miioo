@@ -1,5 +1,20 @@
 # 组件重构盘点基线
 
+## 2026-09-24 自由画布节点组件库初版
+
+- 新增 `components/canvas/` 节点公共壳、标题、端口、创作输入面板和文本/图片/视频/音频四类节点；通过 `CanvasNodeTypes.js` 提供稳定的 React Flow `nodeTypes` 映射。
+- `canvasNodeUtils.js` 负责四类节点的默认数据、稳定端口编号和本地草稿标记。节点创建后自动展开创作面板；页面通过 `updateSelectedNode` 保证同一时间只有当前选中节点展开，点击画布空白全部收起。
+- 节点组件只接收数据和回调；添加参考素材、生成、保存和后端持久化没有写入节点内部。`CanvasPage` 当前只维护本地草稿节点，`persistenceState` 明确为 `draft`，不表示服务端保存成功。
+- 组件视觉依据 Paper 自由画布四类节点稿：标题在内容卡上方，内容卡使用 16px 圆角、240px 空态尺寸、媒体按内容比例展示，创作面板宽度 600px。视频真实播放器、音频真实波形、参数选择和状态态样式仍待设计/后端协议补齐。
+- 验证：`scripts/canvas-node.test.mjs` 3 项通过，lint/build/diff check 通过；架构检查仍被既有 `src/components/assets/seedanceUploadValidation.js` 命名阻断。
+
+## 2026-09-24 自由画布空白处添加与文本导入
+
+- 新增 `CanvasNodeAddMenu.jsx` 与 `CanvasNodeAddMenuConfig.js`，工具栏添加菜单和画布空白双击菜单共用同一组四类节点配置，避免入口选项分叉。
+- `CanvasPage` 使用 React Flow `onPaneDoubleClick` 与 `screenToFlowPosition`，在双击位置创建节点；菜单位置按视口边缘限制，节点创建后仍沿用独占创作面板规则。
+- `TextCanvasNode` 按 Paper `2KOE-0` 的空状态加入“双击编辑”、本地上传按钮和格式提示；`CanvasTextFileReader.js` 使用 `mammoth` 读取 `.docx`，直接读取 `.txt/.md`，仅回填本地草稿，不代表已持久化。
+- 验证：节点契约测试 6 项通过，lint 0 错误（保留既有 Hook warning），build 和 diff check 通过；架构检查仍被既有 `seedanceUploadValidation.js` 文件名阻断。浏览器双击、文件选择、中文输入和设计稿像素核验待完成。
+
 ## 2026-09-22 画布列表复用
 
 - 检索后直接复用 `pages/ProjectList.jsx`，未新建重复列表或改动其视觉；Home 仅新增路由和列表编排，导航配置复用现有 `HomeNavigationRail`，图标为用户提供的 `assets/canvas-nav.svg`。
@@ -2278,3 +2293,32 @@
 - 编辑区由 `CanvasPage.jsx` 的独立 `surface-toolbar` 背景层兜底，底部工具栏使用 `surface-card`；工具栏固定为 `16px/4px` 内边距、`12px` 项间距、`32px` 点击区和 `16px` SVG 图标，首个添加节点图标使用绿青渐变。
 - `CanvasProjectHeader.jsx` 内的项目名称支持原地编辑，使用 `CanvasProjectName.js` 过滤特殊字符并限制 50 个字；保护中文输入法选字并使用同步提交锁防止重复请求；页面通过 `apiUpdateCanvasDocument` 以 `base_revision + title` 保存，不覆盖 document，失败时恢复旧标题。静态检查与名称校验通过，真实接口及浏览器交互待验证。
 - 由于当前环境无法启动 Vite 监听，浏览器截图、响应式溢出和像素级视觉核验仍待完成；本阶段不包含节点数据、保存、生成或 Agent 能力。
+
+### 2026-09-24 添加菜单加载兼容修复
+
+动画组件记录：`CanvasCreationPresence` 只负责创作框进入/退出动画与延迟卸载，使用浏览器动画 API，不引入依赖；编辑、生成及草稿仍由原组件持有。展开 300ms、收起 200ms，支持减少动态效果和退出禁用交互。构建、现有 13 项检查通过，浏览器动画待验收。
+
+节点拖动后续记录：`CanvasPage` 按工具模式控制 `nodesDraggable` 与 `panOnDrag`；默认移动工具拖节点，抓手工具移动画布。`CanvasNodeShell` 只消费 `dragging` / `dragRelease` 数据状态，使用 CSS 对卡片做轻微拉伸和松手回弹，不引入 `liquid-gooey`，不改变节点间关系。文本节点普通正文可拖动，textarea 编辑态继续隔离画布事件。15 项定向检查、构建和 lint 通过（保留既有 Hook 警告），浏览器手感及端口视觉待验收。
+
+节点拖动 B 方案修正：拖动状态增加 `onNodeDrag` 方向采样，`CanvasNodeShell` 通过 `--canvas-drag-scale-x/y` 将最近位移转换为方向性轻微拉伸；横向主要拉伸宽度，纵向主要拉伸高度，限制幅度并保持矩形，不增加倾斜和黏连。松手回弹沿当前比例反向恢复。16 项定向检查通过，浏览器实际手感、幅度和端口视觉仍待验收。
+
+节点拖动幅度增强：方向性拉伸上限调整为约 10%，最小幅度约 2%，反向轴补偿约 24%；仍只作用于视觉 frame，不改变 React Flow 节点坐标。定向检查扩展至 17 项并通过，浏览器视觉待验收。
+
+节点拖动幅度调整至 20%：方向性拉伸上限约 20%，位移响应速度同步提高，正矩形及无黏连边界不变。定向测试已更新，浏览器视觉待验收。
+
+编辑联动回归修复：悬停描边排除编辑态卡片，`CanvasNodeShell` 在正文编辑时不渲染创作框，保留节点中的提示词草稿。13 项检查及构建通过，lint 无错误（既有警告 1 项），浏览器视觉待验收。
+
+文本激活态修正：共享外壳新增节点类型标记；文本蓝框仅跟随正文编辑或创作输入焦点，不跟随选中状态。其他类型保持原行为。12 项回归检查、构建通过，lint 无错误（既有警告 1 项），浏览器焦点切换待验收。
+
+上传按钮统一后续记录：四类节点直接复用 `ui/FileUploadButton`，公共组件本身不变。文本保留真实文件解析，媒体空态按钮仅调用页面未开放提示；音频无素材时显示上传空态。删除文本节点重复按钮皮肤，11 项测试、构建通过，lint 无错误（既有警告 1 项）；浏览器交互待验收，媒体上传留待后续。
+
+文本原地编辑后续记录：`TextCanvasNode` 自持临时编辑状态，复用页面的 `onContentChange` 更新正文；共享外壳读取 `editing` 显示激活描边。空白与已有正文可双击编辑、失焦保留，输入与创作提示词分离。10 项测试和构建通过，lint 无错误（既有警告 1 项），浏览器交互待验收；不涉及后端保存和生成。
+
+公共皮肤复用后续记录：`CanvasCreationPanel` 使用 `ui/ComposerSurface` 与 `creation/CreationSendButton`，保留本地草稿与回调边界，删除重复皮肤及发送按钮 CSS。公共组件本身不修改，不影响创作页和剧本页业务。9 项测试、构建通过，lint 无错误（既有警告 1 项）；浏览器视觉待验收。
+
+节点布局后续修正：共享 `.canvas-node` 固定 240px 宽，创作输入框保留 600px 宽并水平居中于卡片；`CanvasPage` 取消自动适配视口，初始 100%，新增节点保留当前缩放。8 项测试及构建通过，lint 无错误（既有警告 1 项）；浏览器视觉待验证。
+
+后续双击回归修正：`CanvasPage` 移除无效 `onPaneDoubleClick`，使用标准 `onDoubleClick` 并筛选空白面板，关闭 `zoomOnDoubleClick`；共用菜单组件不变。7 项节点测试与构建通过，lint 无错误；浏览器工具认证受阻，交互复验待完成。
+
+- `CanvasNodeAddMenu.jsx` 仍是菜单实现；新增 `CanvasNodeAddMenu.js` 仅转发导出，兼容开发页面重命名前的模块地址，不重复实现菜单。
+- 工具栏和画布组件出口显式引用 `.jsx`。原报错 URL、实际组件及首页模块均实测返回有效 JavaScript；6 项节点测试、构建通过，lint 无错误（1 项既有警告）。架构检查仍被既有素材校验文件命名阻塞，浏览器渲染及交互待验证。

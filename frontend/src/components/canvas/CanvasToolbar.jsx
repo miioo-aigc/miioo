@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Tooltip } from '../ui';
+import CanvasNodeAddMenu from './CanvasNodeAddMenu.jsx';
 
 const ICON_PROPS = {
   width: 16,
@@ -121,7 +122,7 @@ function MoveMenu({ activeTool, onToolChange }) {
 }
 
 function AddNodeMenu({ onAddNode }) {
-  return <ToolbarMenu className="w-[144px]"><MenuButton onClick={() => onAddNode?.('text')}>文本</MenuButton><MenuButton onClick={() => onAddNode?.('image')}>图片</MenuButton><MenuButton onClick={() => onAddNode?.('video')}>视频</MenuButton><MenuButton onClick={() => onAddNode?.('audio')}>音频</MenuButton></ToolbarMenu>;
+  return <ToolbarMenu className="w-[144px]"><CanvasNodeAddMenu onAddNode={onAddNode} /></ToolbarMenu>;
 }
 
 export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, nodes = [], canvases = [], activeCanvasId, onSelectCanvas, onCreateCanvas, onOpenAssetPicker, onAddNode, onShare }) {

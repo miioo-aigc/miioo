@@ -10,14 +10,21 @@ test('正文编辑时排除悬停描边并保留创作输入框', () => {
   assert.match(shell, /selected && data\?\.creationPanelOpen/);
 });
 
-test('文本节点蓝框仅由正文编辑或创作输入聚焦触发', () => {
+test('文本节点单选不新增蓝框，保留正文编辑或创作输入聚焦描边', () => {
   const css = readFileSync(new URL('../src/components/canvas/canvas-nodes.css', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../src/components/canvas/CanvasNodeShell.jsx', import.meta.url), 'utf8');
   assert.match(shell, /data-node-type=\{nodeType\}/);
   assert.doesNotMatch(css, /\.canvas-node--selected \.canvas-node__frame/);
-  assert.ok(css.includes(".canvas-node--selected:not([data-node-type='text']) > .canvas-node__frame"));
-  assert.ok(css.includes(".canvas-node[data-node-type='text']:has(.canvas-creation-panel__editor:focus) > .canvas-node__frame"));
+  assert.doesNotMatch(css, /\.canvas-node--selected[^}]*border-color/);
+  assert.ok(css.includes('.canvas-node:has(.canvas-creation-panel__editor:focus) > .canvas-node__frame'));
   assert.ok(css.includes(".canvas-node__frame[data-state='editing']"));
+});
+
+test('新增或单击节点不描边外壳，多选描边仅作用于卡片本体', () => {
+  const css = readFileSync(new URL('../src/components/canvas/canvas-nodes.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(css, /\.react-flow__node\.selected\s*>\s*\.canvas-node\s*\{/);
+  const selector = '.react-flow__nodes:has(> .react-flow__node.selected ~ .react-flow__node.selected) > .react-flow__node.selected > .canvas-node > .canvas-node__frame';
+  assert.ok(css.includes(`${selector} { border-color: var(--color-stroke-active); }`));
 });
 
 test('四类节点直接复用公共上传按钮', () => {
@@ -39,11 +46,45 @@ test('文本卡片原地编辑复用正文并隔离画布键盘事件', () => {
 import {
   CANVAS_NODE_TYPES,
   createCanvasNode,
+  appendCanvasNode,
   getCreationPanelVisibility,
   getCanvasNodeMenuPosition,
 } from '../src/components/canvas/canvasNodeUtils.js';
 import { CANVAS_NODE_MENU_ITEMS } from '../src/components/canvas/CanvasNodeAddMenuConfig.js';
 import { readCanvasTextFile } from '../src/components/canvas/CanvasTextFileReader.js';
+
+test('四种节点分别按当前最大序号递增，删除后不重排、不填中间空号', () => {
+  let nodes = [];
+  for (const [type, label] of Object.entries({ text: '文本', image: '图片', video: '视频', audio: '音频' })) {
+    for (let sequence = 1; sequence <= 3; sequence++) {
+      nodes = appendCanvasNode(nodes, createCanvasNode(type));
+      assert.equal(nodes.at(-1).data.sequence, sequence);
+      assert.equal(nodes.at(-1).data.label, `${label}${sequence}`);
+    }
+    const middle = nodes.find((node) => node.type === type && node.data.sequence === 2);
+    nodes = nodes.filter((node) => node.id !== middle.id);
+    nodes = appendCanvasNode(nodes, createCanvasNode(type));
+    assert.deepEqual(nodes.filter((node) => node.type === type).map((node) => node.data.sequence), [1, 3, 4]);
+    assert.equal(nodes.at(-1).data.label, `${label}4`);
+  }
+});
+
+test('删除最大序号后可复用序号，但不能复用节点身份；删空后从1开始', () => {
+  for (const type of CANVAS_NODE_TYPES) {
+    let nodes = appendCanvasNode([], createCanvasNode(type));
+    nodes = appendCanvasNode(nodes, createCanvasNode(type));
+    const removedId = nodes.at(-1).id;
+    const remaining = nodes.slice(0, 1);
+    nodes = appendCanvasNode(remaining, createCanvasNode(type));
+    assert.equal(nodes.at(-1).data.sequence, 2);
+    assert.notEqual(nodes.at(-1).id, removedId);
+    assert.equal(remaining[0].data.sequence, 1);
+    assert.equal(remaining[0].selected, false);
+    assert.equal(nodes.at(-1).selected, true);
+    nodes = appendCanvasNode([], createCanvasNode(type));
+    assert.equal(nodes.at(-1).data.sequence, 1);
+  }
+});
 
 test('四类节点都有稳定类型、位置和输入输出端口', () => {
   for (const type of CANVAS_NODE_TYPES) {

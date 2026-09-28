@@ -1,5 +1,99 @@
 # 组件重构盘点基线
 
+## 2026-09-28 音频发送校验
+
+- CanvasAudioCreationPanel 调整为音色、台词、模型的校验顺序；空台词调用公共 showGlobalToast，沿用原音色弹窗及确认回调，不自动发送，不新增组件。
+- 补充缺少音色、空白台词、缺少模型、有效发送与确认不发送的回归检查；74 项画布测试、构建通过，交互待手动验收。
+
+## 2026-09-28 跨组选择与解组
+
+- CanvasGroups 扩展跨父级打组、旧组清理、父节点排序及解组纯函数，保留世界坐标；UseCanvasGrouping 接入 Shift + Command/Ctrl + G，输入与弹窗内不触发。
+- CanvasPage 的多选修饰键及点击分支统一支持 Shift、Command、Ctrl；组框选择保留子组合，成员选择转移卡片。实际鼠标与快捷键操作待手动验收。
+
+## 2026-09-28 视频三类素材入口
+
+- CanvasLocalMedia 增加按入口识别真实媒体类型；CanvasLocalUpload 和 CanvasReferenceBar 复用筛选。CanvasAssets 按素材真实类型解析原文件地址；视频入口允许三类，其余节点保持限制。
+- VideoCanvasNode 复用 CanvasVideoPlayer、CanvasAudioPlayer 和图片展示；CanvasReferences 按类型创建节点与输出端口，UseCanvasReferences 透传目标类型至公共资产弹窗。参考栏使用视频缩略预览和音频图标，首尾帧保留图片语义。
+- 音频正文区 120px；65 项画布测试及构建通过，实际本地选择、资产库各来源、播放器拖动和参考槽显示待手动验收。
+
+## 2026-09-28 音频连线展开
+
+- CanvasTextAudio 在正文导入后复用 CanvasGroups.setCanvasSelection，原子更新目标选中与面板展开状态；沿用 CanvasCreationPresence 动画和现有编辑器回填，不新增组件、聚焦或视角副作用。
+- 补充独占展开、节点位置和其他草稿保留测试，62 项画布测试及构建通过；实际交互待手动验收。
+
+## 2026-09-28 单选与多选描边边界
+
+- canvas-nodes.css 移除普通选中外壳描边，通过画布节点容器内至少两个选中节点的条件，仅改变所选卡片本体边框颜色；不修改节点尺寸、标题、面板结构及组合组件。
+- scripts/canvas-node.test.mjs 增加外层描边禁用及多选卡片边界回归检查。52 项画布测试与构建通过，视觉待手动验收。
+
+## 2026-09-28 音频节点高级输入区
+
+- CanvasTextAudio：文本到音频连接校验、正文单次导入、派生连线及断线纯函数；UseCanvasReferences 合并连线并提供 onConnect/isValidConnection，页面仅接线。CanvasNodeShell 以导入版本刷新编辑器并忽略旧文本快照；CreationPromptEditor 通过 allowDocumentUpload 可选属性关闭音频节点上传入口，公共创作默认行为不变。61 项画布测试及构建通过，拖线与回填待手动验收。
+- 发送与光标后续修正：CanvasAudioCreationPanel 点击发送时校验，不再传禁用态；CreationPromptEditor 新增可选 voiceWrapGap（默认 16）和 data-empty，画布音频传 12 并仅在空态用内边距定位光标，避免向正文写入占位字符。57 项画布测试及构建通过，实际光标与绕排待手动验收。
+- 布局后续调整：CanvasAudioCreationPanel 固定两行底栏，模型/声音参数在上，高级工具与右侧发送在下；仅修改画布音频专属样式，公共创作组件不变。正文高度保持 200px，宽度由较宽行决定。52 项画布测试、构建通过，lint 无错误（既有警告 1 项）；架构检查存在既有命名阻塞，视觉待手动验收。
+- CanvasAudioCreationPanel：音频输入编排组件，接收节点 ID、文本、媒体参数、草稿及更新/发送回调；复用 CreationPromptEditor、useCreationPromptInteraction、CreationDubbingAdvancedToolbar、DubbingVoiceModal、CanvasMediaControls 和公共皮肤，不复制高级标签 DOM 实现。
+- CanvasNodeShell 持有 audioDraft（编辑快照、音色、效果器），CanvasCreationPanel 仅分派音频分支；菜单与焦点留在编辑组件。MutationObserver 同步插入、删除、粘贴后的快照，编辑框卸载时清理。
+- CreationPromptEditor 音色绕排测量从屏幕矩形改为 offsetWidth/offsetHeight，避免画布缩放改变占位尺寸；其余创作行为不改。停顿/语气词菜单在画布调用方换算缩放坐标。
+- 新增 3 项静态接线/布局测试，50 项画布测试通过；真实交互仍需手动验收。仅临时草稿和生成回调，不代表保存或生成成功。
+
+## 2026-09-28 画布组合交互
+
+- 检索现有画布组件及设计系统后，无可直接复用的组合容器；新增业务域 CanvasGroupNode，仅接收 data、selected，使用现有深色与描边 Token，20px 圆角；组名放在边框上方。
+- CanvasGroups 负责父子坐标转换、同层分组、8px 包围边界与选中状态纯函数；UseCanvasGrouping 显式接收节点、setter、待处理点击清理回调与启用状态，负责快捷键、组内成员直接选择与拖动交互，不调用 API。
+- CanvasPage 保留节点生命周期和页面编排；CanvasReferences 使用世界坐标创建参考节点，不改变引用身份、端口和回调。组合组件与 Hook 已导出。
+- 55 项画布测试通过，构建和差异检查通过；lint 仅既有警告，架构检查有既有命名阻塞。浏览器及硬件触摸板交互留待手动验收；本地草稿尚未持久化。
+
+## 2026-09-28 画布参考图组件
+
+- 新增 CanvasReferenceBar：组合 CreationUploadMenu、ReferenceRemoveButton、Lucide 添加图标，按 Paper 使用 40px 槽与 8px 间距；仅图片和视频启用，不更改公共输入皮肤。
+- 菜单统一：从 CreationUploadArea 抽出 CreationUploadMenu，共享原有菜单项皮肤与图标，显式接收 onClose、onAssetPick、onLocalUpload；不迁移文件筛选或节点逻辑。画布悬停使用 stroke-accent 中性描边，菜单向上弹出，先资产库后本地上传。41 项画布测试、构建通过，视觉待手动验收。
+- 新增 CanvasReferences 纯函数：引用关系、独立节点编号与位置、派生连线和缩略图。UseCanvasReferences 管理草稿动作及本地临时地址生命周期；页面仅编排资产选择弹窗。
+- CanvasCreationPanel 根据参考模式呈现普通多图或首尾帧，不复制素材数据；源节点删除/替换及引用移除均同步。模式切换不删除额外图片。
+- 新增纯函数回归测试，视觉、原生文件窗口和资产库端到端流程待用户验收。feature-development.md 仍缺失，已检索现有组件清单与设计规范。
+
+## 2026-09-28 画布复用高级配音预览
+
+- CanvasAudioPlayer 台词容器直接组合 creation/CreationDubbingPromptPreview，不新增解析器或标签皮肤；公共组件自动识别高级标记，普通文字及未知标记按原规则保留。
+- 通过继承字号、行高和文字颜色保持画布正文规格，外层保留滚动和画布事件隔离。公共组件及其他调用方未修改。
+- 新增组件接线静态回归测试；35 项画布测试和构建通过，视觉由用户手动验收。
+
+## 2026-09-28 画布音频真实采样律动
+
+- 新增 CanvasAudioWaveform 纯函数和 UseCanvasAudioWaveform Hook；现有音频详情波形为示意，未复制其实现。CanvasAudioPlayer 保持播放逻辑，仅接入 waveformRef 和播放状态。
+- 首次播放获取并离线解码音频，压缩为 5ms 多声道 RMS 包络；每秒最多约 30 次按当前播放位置更新最近约 250ms 的柱条。暂停停止动画帧，卸载取消请求、清理采样引用及事件；不连接 MediaElementSource，避免跨域失败使原音频静音。
+- 跨域/解码失败、超过 32MB 或 10 分钟时不显示假动画。34 项画布测试和构建通过，浏览器运行时由用户验收。
+
+## 2026-09-28 音频卡片两种样式
+
+- 检索现有 CreationAudioResultCard/CreationAudioDetailModal：包含收藏、选择或详情业务，不适合作为画布紧凑播放器直接复用。新增 canvas/CanvasAudioPlayer，仅接收音频地址、名称和台词，保持原生 audio 播放引擎；未更改视频控件。
+- CanvasLocalMedia 统一文件筛选和校验；CanvasAssets 规范化台词并在替换时清理。AssetPickerModal 的创作配音记录透传台词，项目资产保留明确台词字段，不拿通用音乐提示词兜底。
+- 32 项画布测试、构建通过；lint 保留既有警告，架构检查仍有既有命名阻塞。播放、拖动、长台词滚动与视觉由用户手动验收；波形为设计示意，不是音频采样。
+
+## 2026-09-28 节点分类编号
+
+- 扩展现有 `canvasNodeUtils.js`，提供纯函数 `appendCanvasNode(nodes, node)`，按类型读取当前最大 `data.sequence` 并生成标题，保持已有节点编号及内容不变，复用选中与创作框展开逻辑。
+- `CanvasPage` 在函数式状态更新中调用，连续添加读取最新列表；四类卡片继续复用 `data.label`，没有新增展示组件或改变样式。
+- 新增两项行为测试覆盖四类型独立递增、删除中间号、删除最大号及删空重置；合计30项定向测试通过，构建通过。未接保存与旧文档编号迁移，浏览器验收由用户完成。
+
+## 2026-09-28 视频节点拖动与悬停控制条
+
+- 新增 `canvas/CanvasVideoPlayer.jsx`，仅接收 src/poster，保留浏览器原生 controls，不自定义播放控件。节点按媒体地址设置 key，替换资源后重置显隐状态。
+- 透明画面层响应画布拖动；悬停时底部预留 56px 原生控件区域，视频保留 nodrag/nopan，控件点击与键盘事件不传递到节点。默认关闭 controls，悬停或键盘焦点开启。
+- 28 项定向测试（包含静态交互边界断言）及构建通过；lint 无错误、保留既有警告，架构仍被既有文件命名阻断。未进行浏览器运行时验证。
+
+## 2026-09-28 本地媒体预览
+
+- 新增 CanvasLocalUpload / CanvasLocalMedia，复用上传按钮，集中负责文件选择、类型校验与临时地址生命周期；节点外壳持有入口，页面回调仅更新草稿，不上传服务器。
+- 四类节点描边统一由创作输入焦点触发，文本正文编辑蓝框不变；视频保留原生播放控件。
+- 26 项定向测试及构建通过，视觉与系统文件窗口由用户手动验收；既有 lint 警告和架构命名阻断未改动。
+
+## 2026-09-28 媒体节点参数及资产回填
+
+- `CanvasMediaControls` 复用创作五类选择器；`UseCanvasMediaControls` 在节点外壳持有能力、默认模型及参数，面板收起不丢失，但未持久化。`CreationDubbingAdjust` 新增默认开启的 `showAdvanced`，仅画布关闭高级功能。
+- 三类媒体节点复用 `FileUploadButton` 增加资产入口；`CanvasAssets` 负责类型与媒体地址校验及目标节点草稿回填，页面仅编排弹窗和回调。文本节点不添加入口。
+- `AssetPickerModal` 增加可选 `selectionMode`、`assetFilter`；默认仍多选且不附加过滤，不修改其他调用方。保留集中生命周期编排，不在本轮拆分大型弹窗。
+- 25 项测试、构建、lint 无错误；既有 Hook 警告及资产校验文件命名问题保留。手动验收待用户完成，未宣称保存或生成接通。
+
 ## 2026-09-24 文本节点模型选择器
 
 - `CanvasCreationPanel` 文本分支以通用 `Select`（200px × 36px）替换添加参考按钮，移除文本分支的模型占位文字，保留发送按钮；其他节点不变。

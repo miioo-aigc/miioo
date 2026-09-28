@@ -43,6 +43,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [serveAboutPage(), react(), tailwindcss()],
+    optimizeDeps: {
+      include: ['mammoth'],
+    },
     resolve: {
       dedupe: ['react', 'react-dom'],
     },

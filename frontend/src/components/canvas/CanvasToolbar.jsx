@@ -3,7 +3,10 @@
  * @structure-index
  *
  * ─── 交互区 ─────────────────────────────────────────────────────
- *   CanvasToolbar 画布底部悬浮工具栏、菜单和动作出口
+ *   AddNodeMenu 共用添加节点菜单的工具栏定位容器 L127
+ *   CanvasToolbar 画布底部悬浮工具栏、菜单和动作出口 L131
+ * ─── 更新记录 ───────────────────────────────────────────────────
+ *   2026-09-28 统一两个添加入口的完整菜单，工具栏仅负责定位，消除嵌套错位
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -122,7 +125,7 @@ function MoveMenu({ activeTool, onToolChange }) {
 }
 
 function AddNodeMenu({ onAddNode }) {
-  return <ToolbarMenu className="w-[144px]"><CanvasNodeAddMenu onAddNode={onAddNode} /></ToolbarMenu>;
+  return <div className="absolute bottom-[40px] left-1/2 z-30 -translate-x-1/2"><CanvasNodeAddMenu onAddNode={onAddNode} /></div>;
 }
 
 export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, nodes = [], canvases = [], activeCanvasId, onSelectCanvas, onCreateCanvas, onOpenAssetPicker, onAddNode, onShare }) {

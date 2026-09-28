@@ -3,10 +3,12 @@
  * @description 项目资产、创作资产与 Seedance 素材的统一选择弹窗。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   资产卡片、空态与悬浮预览                           L92-L453
- *   弹窗状态、外部数据适配与会话复位                   L455-L753
- *   项目/创作/Seedance 数据请求                        L754-L1102
- *   筛选、选择确认与弹窗渲染                           L1104-L1609
+ *   AssetCard / 空态 / 悬浮预览：资产展示与预览
+ *   AssetPickerModal：状态、数据适配、会话复位及请求
+ *   toggle / handleConfirm / filteredAssets：选择、确认与筛选
+ *   保留集中编排原因：跨来源选择、请求会话和确认补全共用生命周期；本轮不拆分。
+ *   2026-09-28：可选单选模式和调用方过滤器，默认行为不变；回归范围含原多选入口。
+ *   2026-09-28：配音资产透传台词，项目资产仅保留明确台词字段，不把音乐提示词当台词。
  *
  *   2026-08-20  Seedance 视频对齐资产库，通过原生视频短暂解码后停帧展示封面
  */
@@ -501,6 +503,8 @@ export default function AssetPickerModal({
   excludedAssetUrls = [],
   model = '',
   includeSeedanceLibrary = false,
+  selectionMode = 'multiple',
+  assetFilter,
 }) {
   const generationsByTab = useCreationStore((s) => s.generationsByTab);
   const favorites = useCreationStore((s) => s.favorites);
@@ -577,6 +581,7 @@ export default function AssetPickerModal({
       fullUrl: type === 'video' ? (posterUrl || url || item.thumbnail_url || item.thumbnailUrl || '') : url,
       fileUrl: url,
       asset_type: type,
+      transcript: type === 'audio' ? firstValue(item.transcript, item.text, item.prompt, item.input_prompt, metadata.transcript, metadata.text) || '' : undefined,
       starred: item.is_favorite ?? item.is_liked ?? item.isLiked ?? false,
       bgColor: '#252525',
       prompt: firstValue(item.prompt, item.prompt_resolved, item.promptResolved, item.input_prompt, item.inputPrompt, item.prompt_raw, item.promptRaw, metadata.prompt, metadata.prompt_resolved, metadata.promptResolved, metadata.input_prompt, metadata.inputPrompt, metadata.prompt_raw, metadata.promptRaw, mergedParams.prompt, mergedParams.input_prompt, mergedParams.inputPrompt) || '',
@@ -953,6 +958,7 @@ export default function AssetPickerModal({
         ?? false,
       bgColor: '#252525',
       category: a.category,
+      transcript: firstValue(a.transcript, a.text, metadata.transcript, metadata.text) || '',
       asset_type: a.asset_type,
       prompt: firstValue(a.prompt, a.input_prompt, a.inputPrompt, metadata.prompt, metadata.input_prompt, metadata.inputPrompt) || '',
       input_prompt: firstValue(a.input_prompt, a.inputPrompt, a.prompt, metadata.input_prompt, metadata.inputPrompt, metadata.prompt) || '',
@@ -1161,6 +1167,7 @@ export default function AssetPickerModal({
   const toggle = (asset) => {
     if (isPreSelected(asset)) return; // 预选项不可取消
     setSelected((prev) => {
+      if (selectionMode === 'single') return prev.has(asset.id) ? new Set() : new Set([asset.id]);
       const next = new Set(prev);
       next.has(asset.id) ? next.delete(asset.id) : next.add(asset.id);
       return next;
@@ -1282,6 +1289,7 @@ export default function AssetPickerModal({
 
   const rawAssets = getCurrentAssets();
   const filteredAssets = rawAssets.filter(a => {
+    if (assetFilter && !assetFilter(a)) return false;
     if (accept === 'media') {
       const assetType = String(a?.asset_type || a?.assetType || a?.type || '').toLowerCase();
       if (assetType === 'audio' || assetType.startsWith('audio/')) return false;

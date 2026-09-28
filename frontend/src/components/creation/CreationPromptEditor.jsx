@@ -5,6 +5,8 @@
  * 组件只负责编辑器 DOM、占位提示和 @素材选择菜单；文件变更、生成请求、
  * 任务轮询与弹窗状态仍由 InputCard 通过 props 提供或处理。
  * 2026-09-21 基础文字样式接入 ComposerSurface，保留配音排版差异。
+ * 2026-09-28 音色占位测量使用布局尺寸，兼容画布缩放和展开动画。
+ * 2026-09-28 开放音色间距及空态标识，供画布修正空编辑器光标；默认间距不变。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -14,7 +16,7 @@ import CreationDubbingInterjectionMenu from './CreationDubbingInterjectionMenu';
 import { DubbingVoiceFileCard } from './CreationDubbingVoiceModal';
 import { UploadPlaceholder } from './CreationUploadArea';
 
-function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled, onDocumentSelect, voiceWrapWidth = 0 }) {
+function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled, onDocumentSelect, voiceWrapWidth = 0, allowDocumentUpload = true }) {
   const documentInputRef = useRef(null);
   const baseStyle = {
     position: 'absolute',
@@ -51,7 +53,7 @@ function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled,
   if (genType === 'dubbing' && dubbingAdvancedEnabled) {
     return (
       <span style={{ ...baseStyle, left: `${voiceWrapWidth}px`, maxWidth: `calc(100% - ${voiceWrapWidth}px)`, lineHeight: '150%', whiteSpace: 'pre-wrap' }}>
-        请在此输入或者
+        请在此输入{allowDocumentUpload && <>或者
         <button
           type="button"
           disabled={disabled}
@@ -60,9 +62,10 @@ function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled,
         >
           上传
         </button>
+        </>}
         文字内容，生成您的精彩音频。<br />
         左下角支持添加情绪、停顿以及语气词，更多调整可以查看叠加效果器
-        <input
+        {allowDocumentUpload && <input
           ref={documentInputRef}
           type="file"
           accept=".pdf,.docx,.txt,.html"
@@ -74,7 +77,7 @@ function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled,
             event.target.value = '';
             if (file) onDocumentSelect?.(file);
           }}
-        />
+        />}
       </span>
     );
   }
@@ -120,6 +123,8 @@ function CreationPromptEditor({
   onPauseCustomInput,
   onInterjectionSelect,
   voiceControl,
+  allowDocumentUpload = true,
+  voiceWrapGap: requestedVoiceWrapGap = 16,
 }) {
   const usesAdvancedDubbingTypography = genType === 'dubbing' && dubbingAdvancedEnabled;
   const voiceControlRef = useRef(null);
@@ -152,8 +157,8 @@ function CreationPromptEditor({
       return;
     }
     const nextSize = {
-      width: Math.ceil(element.getBoundingClientRect().width),
-      height: Math.ceil(element.getBoundingClientRect().height),
+      width: element.offsetWidth,
+      height: element.offsetHeight,
     };
     setVoiceControlSize((currentSize) => (
       currentSize.width === nextSize.width && currentSize.height === nextSize.height
@@ -176,7 +181,7 @@ function CreationPromptEditor({
     return () => observer.disconnect();
   }, [measureVoiceControl, voiceControl, voiceControl?.voiceId, voiceControl?.voiceName]);
 
-  const voiceWrapGap = voiceControl ? 16 : 0;
+  const voiceWrapGap = voiceControl ? requestedVoiceWrapGap : 0;
   const voiceWrapWidth = voiceControlSize.width + voiceWrapGap;
   const voiceWrapHeight = voiceControlSize.height;
 
@@ -207,10 +212,11 @@ function CreationPromptEditor({
           )}
         </div>
       )}
-      {!hasContent && <PromptPlaceholder genType={genType} refMode={refMode} dubbingAdvancedEnabled={dubbingAdvancedEnabled} disabled={disabled} onDocumentSelect={onDocumentSelect} voiceWrapWidth={voiceWrapWidth} />}
+      {!hasContent && <PromptPlaceholder genType={genType} refMode={refMode} dubbingAdvancedEnabled={dubbingAdvancedEnabled} disabled={disabled} onDocumentSelect={onDocumentSelect} voiceWrapWidth={voiceWrapWidth} allowDocumentUpload={allowDocumentUpload} />}
       <div
         ref={editorRef}
         className={`composer-surface__editor${voiceControl ? ' creation-prompt-editor--voice-wrap' : ''}`}
+        data-empty={!hasContent}
         contentEditable={!disabled}
         suppressContentEditableWarning
         style={{

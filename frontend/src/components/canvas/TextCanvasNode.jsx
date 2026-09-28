@@ -5,6 +5,7 @@ import { readCanvasTextFile } from './CanvasTextFileReader';
 
 export default function TextCanvasNode({ id, data, selected }) {
   const [editing, setEditing] = useState(false);
+  const [fileError, setFileError] = useState('');
   const contentRef = useRef(null);
   const editorRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -30,9 +31,11 @@ export default function TextCanvasNode({ id, data, selected }) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    setFileError('');
     try {
       data?.onContentChange?.(id, await readCanvasTextFile(file));
     } catch (error) {
+      setFileError(`文档读取失败：${error?.message || '请重新选择文件'}`);
       data?.onFileError?.(error);
     }
   };
@@ -51,9 +54,10 @@ export default function TextCanvasNode({ id, data, selected }) {
       /> : data?.content ? data.content : <>
         <span className="canvas-node__text-placeholder">双击编辑</span>
         <FileUploadButton className="canvas-node__upload nodrag nopan" onClick={() => fileInputRef.current?.click()}>本地上传</FileUploadButton>
-        <input ref={fileInputRef} type="file" hidden accept=".docx,.txt,.md" onChange={handleFileChange} />
+        <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
         <span className="canvas-node__upload-hint">支持.docx/.txt/.md</span>
       </>}
+      {fileError && <span role="alert" className="canvas-node__upload-error">{fileError}</span>}
     </div>
   </CanvasNodeShell>;
 }

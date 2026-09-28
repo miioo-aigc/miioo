@@ -29,7 +29,8 @@ export function createCanvasNode(type, position = { x: 0, y: 0 }, id = createId(
     selected: true,
     data: {
       nodeType: type,
-      label: NODE_LABELS[type],
+      label: `${NODE_LABELS[type]}1`,
+      sequence: 1,
       ports: { input: { id: ports.input }, output: { id: ports.output } },
       creationPanelOpen: true,
       persistenceState: 'draft',
@@ -42,6 +43,19 @@ export function createCanvasNode(type, position = { x: 0, y: 0 }, id = createId(
 
 export function getCreationPanelVisibility(node, selectedNodeId) {
   return Boolean(node?.selected && node?.id === selectedNodeId && node?.data?.creationPanelOpen);
+}
+
+export function appendCanvasNode(nodes, node) {
+  const sequence = nodes.reduce((max, item) => (
+    item.type === node.type && Number.isSafeInteger(item.data?.sequence)
+      ? Math.max(max, item.data.sequence)
+      : max
+  ), 0) + 1;
+  const numberedNode = {
+    ...node,
+    data: { ...node.data, sequence, label: `${NODE_LABELS[node.type]}${sequence}` },
+  };
+  return updateSelectedNode([...nodes, numberedNode], node.id);
 }
 
 export function updateSelectedNode(nodes, selectedNodeId) {

@@ -1,11 +1,15 @@
 export { default as AudioCanvasNode } from './AudioCanvasNode';
 export { default as CanvasCreationPanel } from './CanvasCreationPanel';
+export { default as CanvasAudioCreationPanel } from './CanvasAudioCreationPanel';
 export { default as CanvasNodeShell } from './CanvasNodeShell';
 export { default as ImageCanvasNode } from './ImageCanvasNode';
 export { default as TextCanvasNode } from './TextCanvasNode';
 export { default as VideoCanvasNode } from './VideoCanvasNode';
 export { canvasNodeTypes } from './CanvasNodeTypes';
-export { CANVAS_NODE_TYPES, createCanvasNode, getCreationPanelVisibility, updateSelectedNode, getCanvasNodeMenuPosition } from './canvasNodeUtils';
+export { CANVAS_NODE_TYPES, createCanvasNode, appendCanvasNode, getCreationPanelVisibility, updateSelectedNode, getCanvasNodeMenuPosition } from './canvasNodeUtils';
 export { default as CanvasNodeAddMenu } from './CanvasNodeAddMenu.jsx';
 export { CANVAS_NODE_MENU_ITEMS } from './CanvasNodeAddMenuConfig';
 export { readCanvasTextFile } from './CanvasTextFileReader';
+export { default as CanvasReferenceBar } from './CanvasReferenceBar';
+export { default as CanvasGroupNode } from './CanvasGroupNode';
+export { useCanvasGrouping } from './UseCanvasGrouping';

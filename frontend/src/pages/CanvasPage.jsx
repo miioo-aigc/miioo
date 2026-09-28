@@ -3,7 +3,7 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage          画布详情加载、认证资料和画布区块组合
+ *   CanvasPage L57；grouping L77；referenceGraph L84；handleNodesChange L119；addNode L160
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
  *   CanvasProjectHeader components/canvas；左上角品牌与项目名称
@@ -14,10 +14,15 @@
  *   CanvasMiniMap       components/canvas；双层背景的交互预览地图
  *
  * ─── 业务边界 ────────────────────────────────────────────────────
- *   节点组件只提供本地草稿展示和动作回调；文档保存、连接协议和生成任务另行接入。
+ *   节点与参考连线仅为本地草稿；文档保存、后端连接协议和生成任务另行接入。
+ *   2026-09-28：UseCanvasReferences 编排参考图及文本到音频连线，连接时单次导入正文。
  *   2026-09-24：空白面板使用标准双击事件打开菜单，关闭默认双击缩放。
  *   2026-09-24：初始缩放为 100%，新增节点不自动适配视口。
  *   2026-09-24：节点模型选择保存为本地草稿；文本模型加载由节点外壳负责。
+ *   2026-09-28：视频卡片及参考入口支持三类媒体，按真实素材类型回填；其他节点仍按类型筛选。
+ *   2026-09-28：新增节点按当前同类型最大序号加1，编号由画布工具统一处理。
+ *   2026-09-28：接入捏合、框选、修饰键多选和真正组合；组合交互与几何计算独立维护。
+ *   2026-09-28：组内成员直接选择和拖动，不再双击解锁；保留手形工具平移。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -35,7 +40,12 @@ import CanvasToolbar from '../components/canvas/CanvasToolbar';
 import CanvasUserMenu from '../components/canvas/CanvasUserMenu';
 import AssetPickerModal from '../components/AssetPickerModal';
 import ProfileModal from '../components/ProfileModal';
-import { CanvasNodeAddMenu, canvasNodeTypes, createCanvasNode, getCanvasNodeMenuPosition, updateSelectedNode } from '../components/canvas';
+import { applyCanvasAsset, toCanvasAsset } from '../components/canvas/CanvasAssets';
+import { addCanvasReference } from '../components/canvas/CanvasReferences';
+import { useCanvasReferences } from '../components/canvas/UseCanvasReferences';
+import { useCanvasGrouping } from '../components/canvas/UseCanvasGrouping';
+import { fitCanvasGroups, setCanvasSelection } from '../components/canvas/CanvasGroups';
+import { CanvasNodeAddMenu, canvasNodeTypes, createCanvasNode, appendCanvasNode, getCanvasNodeMenuPosition, updateSelectedNode } from '../components/canvas';
 
 // 浏览器 click 先于 dblclick 触发；保留极短窗口，避免双击时先展开创作框。
 const CANVAS_SINGLE_CLICK_DELAY = 200;
@@ -54,11 +64,24 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const [showMiniMap, setShowMiniMap] = useState(false);
   const [notice, setNotice] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const [assetTarget, setAssetTarget] = useState(null);
   const [nodes, setNodes] = useState([]);
   const [nodeMenu, setNodeMenu] = useState(null);
   const [flowInstance, setFlowInstance] = useState(null);
   const dragPositionsRef = useRef(new Map());
   const pendingNodeClicksRef = useRef(new Map());
+  const cancelPendingClicks = useCallback(() => {
+    pendingNodeClicksRef.current.forEach((timer) => window.clearTimeout(timer));
+    pendingNodeClicksRef.current.clear();
+  }, []);
+  const grouping = useCanvasGrouping(nodes, setNodes, cancelPendingClicks, !assetPickerOpen && !profileOpen);
+  const enterNodeRef = useRef(grouping.enterNode);
+  useEffect(() => { enterNodeRef.current = grouping.enterNode; }, [grouping.enterNode]);
+  const openReferencePicker = useCallback((target) => {
+    setAssetTarget(target);
+    setAssetPickerOpen(true);
+  }, []);
+  const referenceGraph = useCanvasReferences(grouping.nodes, setNodes, openReferencePicker);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,8 +117,13 @@ export default function CanvasPage({ canvasId, onBackHome }) {
 
   const handleUnsupported = notifyUnsupported;
   const handleNodesChange = useCallback((changes) => {
-    setNodes((current) => applyNodeChanges(changes, current));
-  }, []);
+    if (changes.some((change) => change.type === 'select')) cancelPendingClicks();
+    setNodes((current) => {
+      let next = applyNodeChanges(changes, current);
+      if (next.filter((node) => node.selected).length !== 1) next = setCanvasSelection(next, next.filter((node) => node.selected).map((node) => node.id));
+      return fitCanvasGroups(next);
+    });
+  }, [cancelPendingClicks]);
   const cancelPendingNodeClick = useCallback((nodeId) => {
     const timer = pendingNodeClicksRef.current.get(nodeId);
     if (!timer) return;
@@ -103,9 +131,10 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     pendingNodeClicksRef.current.delete(nodeId);
   }, []);
   const handleNodeDragStart = useCallback((_, node) => {
+    cancelPendingClicks();
     dragPositionsRef.current.set(node.id, node.position);
     setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, dragging: true, dragRelease: false } } : item));
-  }, []);
+  }, [cancelPendingClicks]);
   const handleNodeDrag = useCallback((_, node) => {
     const previous = dragPositionsRef.current.get(node.id) || node.position;
     const deltaX = node.position.x - previous.x;
@@ -136,25 +165,46 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     node.data.onCancelPendingClick = cancelPendingNodeClick;
     node.data.onEnterEditing = (nodeId) => {
       cancelPendingNodeClick(nodeId);
-      setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, selected: true } : { ...item, selected: false }));
+      enterNodeRef.current(nodeId);
     };
-    node.data.onAddReference = () => handleUnsupported();
     node.data.onGenerate = () => handleUnsupported();
-    node.data.onLocalUpload = () => handleUnsupported();
-    setNodes((current) => updateSelectedNode([...current, node], node.id));
+    node.data.onAssetChange = (nodeId, asset) => setNodes((current) => applyCanvasAsset(current, nodeId, asset));
+    node.data.onSelectAsset = (nodeId, nodeType) => {
+      setAssetTarget({ nodeId, nodeType });
+      setAssetPickerOpen(true);
+    };
+    setNodes((current) => appendCanvasNode(current, node));
     setNodeMenu(null);
   }, [cancelPendingNodeClick, handleUnsupported, nodes.length]);
   const handlePaneDoubleClick = useCallback((event) => {
     if (!flowInstance || !event.target.classList.contains('react-flow__pane')) return;
     event.preventDefault();
+    window.getSelection()?.removeAllRanges();
     const screen = getCanvasNodeMenuPosition(event, { width: window.innerWidth, height: window.innerHeight });
     setNodeMenu({ screen, flowPosition: flowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
   }, [flowInstance]);
-  const handleNodeClick = useCallback((_, node) => {
+  const handleNodeClick = (event, node) => {
     pendingNodeClicksRef.current.forEach((timer, nodeId) => {
       window.clearTimeout(timer);
       pendingNodeClicksRef.current.delete(nodeId);
     });
+    if (activeTool === 'hand') return;
+    const selectionId = grouping.resolveSelectionId(node);
+    if (event.metaKey || event.ctrlKey || event.shiftKey) {
+      setNodes((current) => {
+        const ids = new Set(current.filter((item) => item.selected).map((item) => item.id));
+        if (selectionId !== node.id) {
+          if (ids.has(selectionId)) ids.delete(selectionId);
+          else ids.add(selectionId);
+        }
+        return setCanvasSelection(current, [...ids]);
+      });
+      return;
+    }
+    if (selectionId !== node.id || node.type === 'canvasGroup') {
+      setNodes((current) => setCanvasSelection(current, [selectionId]));
+      return;
+    }
     if (node.type !== 'text') {
       setNodes((current) => updateSelectedNode(current, node.id));
       return;
@@ -164,14 +214,28 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       setNodes((current) => updateSelectedNode(current, node.id));
     }, CANVAS_SINGLE_CLICK_DELAY);
     pendingNodeClicksRef.current.set(node.id, timer);
-  }, []);
+  };
   const projectName = canvas?.project_name || canvas?.projectName || '自由画布项目';
 
   return <div className="relative h-screen w-screen overflow-hidden bg-surface-base text-text-primary [font-synthesis:none] antialiased">
     <CanvasProjectHeader canvasName={projectName} onBackHome={onBackHome} />
     <CanvasUserMenu currentUser={currentUser} onLogout={handleLogout} onOpenProfile={() => setProfileOpen(true)} />
     <div className="absolute inset-0 bg-surface-toolbar">
-      <ReactFlow defaultViewport={{ x: 0, y: 0, zoom: 1 }} nodes={nodes} edges={[]} nodeTypes={canvasNodeTypes} onInit={setFlowInstance} onNodesChange={handleNodesChange} onNodeClick={handleNodeClick} onNodeDragStart={handleNodeDragStart} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop} onDoubleClick={handlePaneDoubleClick} zoomOnDoubleClick={false} nodesDraggable={activeTool !== 'hand'} onPaneClick={() => { setNodeMenu(null); setNodes((current) => current.map((node) => ({ ...node, selected: false, data: { ...node.data, creationPanelOpen: false } }))); }} panOnDrag={activeTool === 'hand'} selectionOnDrag={false} proOptions={{ hideAttribution: true }} className="bg-surface-toolbar">
+      <ReactFlow defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+        nodes={referenceGraph.nodes} edges={referenceGraph.edges} onEdgesChange={referenceGraph.onEdgesChange}
+        nodesConnectable={activeTool !== 'hand'} onConnect={referenceGraph.onConnect} isValidConnection={referenceGraph.isValidConnection} nodeTypes={canvasNodeTypes} onInit={setFlowInstance}
+        onNodesChange={handleNodesChange} onNodeClick={handleNodeClick}
+        onNodeDoubleClick={(event, node) => {
+          if (activeTool !== 'hand' && node.type !== 'canvasGroup' && !event.target.closest('button, input, textarea')) grouping.enterNode(node.id);
+        }}
+        onNodeDragStart={handleNodeDragStart} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop}
+        onDoubleClick={handlePaneDoubleClick} zoomOnDoubleClick={false} zoomOnPinch={true}
+        nodesDraggable={activeTool !== 'hand'}
+        onPaneClick={() => { cancelPendingClicks(); setNodeMenu(null); setNodes((current) => setCanvasSelection(current, [])); }}
+        panOnDrag={activeTool === 'hand'} selectionOnDrag={activeTool === 'select'}
+        multiSelectionKeyCode={['Meta', 'Control', 'Shift']} selectionKeyCode={null}
+        onSelectionStart={() => { cancelPendingClicks(); setNodeMenu(null); setNodes((current) => setCanvasSelection(current, current.filter((node) => node.selected).map((node) => node.id))); }}
+        proOptions={{ hideAttribution: true }} className="bg-surface-toolbar">
         {/* 固定圆点的屏幕半径，间距和位置仍由 React Flow 随视口变化。 */}
         <Background variant="dots" gap={16} size={1} patternClassName="[r:0.5px]" color="rgba(255,255,255,0.16)" />
         {showMiniMap && <CanvasMiniMap />}
@@ -191,9 +255,21 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       onAddNode={addNode}
       onCreateCanvas={handleUnsupported}
       onShare={handleUnsupported}
-      onOpenAssetPicker={() => setAssetPickerOpen(true)}
+      onOpenAssetPicker={() => { setAssetTarget(null); setAssetPickerOpen(true); }}
     />
-    <AssetPickerModal open={assetPickerOpen} onClose={() => setAssetPickerOpen(false)} onConfirm={() => { setAssetPickerOpen(false); handleUnsupported(); }} accept="all" includeSeedanceLibrary />
+    <AssetPickerModal
+      open={assetPickerOpen}
+      onClose={() => { setAssetPickerOpen(false); setAssetTarget(null); }}
+      onConfirm={(assets) => {
+        if (assetTarget?.purpose === 'reference') setNodes((current) => addCanvasReference(current, assetTarget.nodeId, assets[0], assetTarget.mode));
+        else if (assetTarget) setNodes((current) => applyCanvasAsset(current, assetTarget.nodeId, assets[0]));
+        else handleUnsupported();
+      }}
+      accept={assetTarget?.nodeType === 'video' ? 'all' : assetTarget?.nodeType || 'all'}
+      selectionMode={assetTarget ? 'single' : 'multiple'}
+      assetFilter={assetTarget ? (asset) => Boolean(toCanvasAsset(asset, assetTarget.nodeType)) : undefined}
+      includeSeedanceLibrary
+    />
     <ProfileModal open={profileOpen} currentUser={currentUser} onClose={() => setProfileOpen(false)} onLogout={handleLogout} onProfileUpdated={(updated) => setCurrentUser((previous) => ({ ...previous, ...updated }))} />
   </div>;
 }

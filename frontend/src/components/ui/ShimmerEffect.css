@@ -1,0 +1,13 @@
+.shimmer-effect { position: absolute; inset: 0; z-index: 2; border-radius: inherit; overflow: hidden; pointer-events: none; }
+.shimmer-effect__light { position: absolute; inset: 0; width: 42%; background: linear-gradient(90deg, transparent, rgba(222, 250, 255, .32), transparent); filter: blur(12px); animation: shared-shimmer 2.6s ease-in-out infinite; }
+.shimmer-effect--line { inset: auto; top: 50%; left: 50%; width: 52%; height: 2px; overflow: visible; }
+.shimmer-effect--line .shimmer-effect__light { width: 100%; background: linear-gradient(90deg, transparent, rgba(218, 250, 255, .7), transparent); filter: blur(10px); }
+@keyframes shared-shimmer {
+  0% { transform: translateX(-120%); opacity: 0; }
+  12% { opacity: .65; }
+  58% { opacity: .35; }
+  100% { transform: translateX(220%); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-effect__light { animation: none; transform: translateX(70%); opacity: .25; }
+}

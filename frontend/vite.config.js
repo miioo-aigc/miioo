@@ -44,7 +44,21 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [serveAboutPage(), react(), tailwindcss()],
     optimizeDeps: {
-      include: ['mammoth'],
+      // Prebuild lazy script-page dependencies before serving their module URLs.
+      include: [
+        'mammoth',
+        'react-markdown',
+        '@tiptap/react',
+        '@tiptap/extension-document',
+        '@tiptap/extension-paragraph',
+        '@tiptap/extension-text',
+        '@tiptap/extension-heading',
+        '@tiptap/extension-bold',
+        '@tiptap/extension-bullet-list',
+        '@tiptap/extension-ordered-list',
+        '@tiptap/extension-list-item',
+        'tiptap-markdown',
+      ],
     },
     resolve: {
       dedupe: ['react', 'react-dom'],

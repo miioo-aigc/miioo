@@ -3,7 +3,7 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L57；grouping L77；referenceGraph L84；handleNodesChange L119；addNode L160
+ *   CanvasPage L59；grouping L80；referenceGraph L88；handleNodesChange L123；addNode L166
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
  *   CanvasProjectHeader components/canvas；左上角品牌与项目名称
@@ -14,7 +14,7 @@
  *   CanvasMiniMap       components/canvas；双层背景的交互预览地图
  *
  * ─── 业务边界 ────────────────────────────────────────────────────
- *   节点与参考连线仅为本地草稿；文档保存、后端连接协议和生成任务另行接入。
+ *   节点与连线为本地草稿；文本通过通用 LLM 接口生成，文档保存及媒体生成尚未接入。
  *   2026-09-28：UseCanvasReferences 编排参考图及文本到音频连线，连接时单次导入正文。
  *   2026-09-24：空白面板使用标准双击事件打开菜单，关闭默认双击缩放。
  *   2026-09-24：初始缩放为 100%，新增节点不自动适配视口。
@@ -22,7 +22,7 @@
  *   2026-09-28：视频卡片及参考入口支持三类媒体，按真实素材类型回填；其他节点仍按类型筛选。
  *   2026-09-28：新增节点按当前同类型最大序号加1，编号由画布工具统一处理。
  *   2026-09-28：接入捏合、框选、修饰键多选和真正组合；组合交互与几何计算独立维护。
- *   2026-09-28：组内成员直接选择和拖动，不再双击解锁；保留手形工具平移。
+ *   2026-09-28：接入20步历史及5任务并发；拖动和删除按事务记录，发送取消延迟选中。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -44,6 +44,8 @@ import { applyCanvasAsset, toCanvasAsset } from '../components/canvas/CanvasAsse
 import { addCanvasReference } from '../components/canvas/CanvasReferences';
 import { useCanvasReferences } from '../components/canvas/UseCanvasReferences';
 import { useCanvasGrouping } from '../components/canvas/UseCanvasGrouping';
+import { useCanvasTextGeneration } from '../components/canvas/UseCanvasTextGeneration';
+import { useCanvasHistory } from '../components/canvas/UseCanvasHistory';
 import { fitCanvasGroups, setCanvasSelection } from '../components/canvas/CanvasGroups';
 import { CanvasNodeAddMenu, canvasNodeTypes, createCanvasNode, appendCanvasNode, getCanvasNodeMenuPosition, updateSelectedNode } from '../components/canvas';
 
@@ -65,7 +67,6 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const [notice, setNotice] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [assetTarget, setAssetTarget] = useState(null);
-  const [nodes, setNodes] = useState([]);
   const [nodeMenu, setNodeMenu] = useState(null);
   const [flowInstance, setFlowInstance] = useState(null);
   const dragPositionsRef = useRef(new Map());
@@ -74,7 +75,10 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     pendingNodeClicksRef.current.forEach((timer) => window.clearTimeout(timer));
     pendingNodeClicksRef.current.clear();
   }, []);
+  const history = useCanvasHistory(cancelPendingClicks, !assetPickerOpen && !profileOpen);
+  const { nodes, setNodes } = history;
   const grouping = useCanvasGrouping(nodes, setNodes, cancelPendingClicks, !assetPickerOpen && !profileOpen);
+  const generateText = useCanvasTextGeneration(nodes, setNodes, canvasId, cancelPendingClicks);
   const enterNodeRef = useRef(grouping.enterNode);
   useEffect(() => { enterNodeRef.current = grouping.enterNode; }, [grouping.enterNode]);
   const openReferencePicker = useCallback((target) => {
@@ -117,13 +121,13 @@ export default function CanvasPage({ canvasId, onBackHome }) {
 
   const handleUnsupported = notifyUnsupported;
   const handleNodesChange = useCallback((changes) => {
-    if (changes.some((change) => change.type === 'select')) cancelPendingClicks();
+    if (changes.some((change) => change.type === 'select' || change.type === 'remove')) cancelPendingClicks();
     setNodes((current) => {
       let next = applyNodeChanges(changes, current);
       if (next.filter((node) => node.selected).length !== 1) next = setCanvasSelection(next, next.filter((node) => node.selected).map((node) => node.id));
       return fitCanvasGroups(next);
-    });
-  }, [cancelPendingClicks]);
+    }, { record: changes.some((change) => !['select', 'dimensions'].includes(change.type)) });
+  }, [cancelPendingClicks, setNodes]);
   const cancelPendingNodeClick = useCallback((nodeId) => {
     const timer = pendingNodeClicksRef.current.get(nodeId);
     if (!timer) return;
@@ -132,9 +136,10 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   }, []);
   const handleNodeDragStart = useCallback((_, node) => {
     cancelPendingClicks();
+    history.begin();
     dragPositionsRef.current.set(node.id, node.position);
     setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, dragging: true, dragRelease: false } } : item));
-  }, [cancelPendingClicks]);
+  }, [cancelPendingClicks, history, setNodes]);
   const handleNodeDrag = useCallback((_, node) => {
     const previous = dragPositionsRef.current.get(node.id) || node.position;
     const deltaX = node.position.x - previous.x;
@@ -151,12 +156,13 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       ...item,
       data: { ...item.data, dragging: true, dragRelease: false, dragScaleX, dragScaleY },
     } : item));
-  }, []);
+  }, [setNodes]);
   const handleNodeDragStop = useCallback((_, node) => {
     setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, dragging: false, dragRelease: true } } : item));
     dragPositionsRef.current.delete(node.id);
+    history.end();
     window.setTimeout(() => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, dragRelease: false, dragScaleX: 1, dragScaleY: 1 } } : item)), 280);
-  }, []);
+  }, [history, setNodes]);
   const addNode = useCallback((type, position) => {
     const node = createCanvasNode(type, position || { x: 160 + (nodes.length % 3) * 280, y: 160 + Math.floor(nodes.length / 3) * 300 });
     node.data.onPromptChange = (nodeId, prompt) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt } } : item));
@@ -175,7 +181,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     };
     setNodes((current) => appendCanvasNode(current, node));
     setNodeMenu(null);
-  }, [cancelPendingNodeClick, handleUnsupported, nodes.length]);
+  }, [cancelPendingNodeClick, handleUnsupported, nodes.length, setNodes]);
   const handlePaneDoubleClick = useCallback((event) => {
     if (!flowInstance || !event.target.classList.contains('react-flow__pane')) return;
     event.preventDefault();
@@ -184,6 +190,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     setNodeMenu({ screen, flowPosition: flowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
   }, [flowInstance]);
   const handleNodeClick = (event, node) => {
+    if (event.target.closest('.canvas-creation-panel')) return;
     pendingNodeClicksRef.current.forEach((timer, nodeId) => {
       window.clearTimeout(timer);
       pendingNodeClicksRef.current.delete(nodeId);
@@ -222,9 +229,16 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     <CanvasUserMenu currentUser={currentUser} onLogout={handleLogout} onOpenProfile={() => setProfileOpen(true)} />
     <div className="absolute inset-0 bg-surface-toolbar">
       <ReactFlow defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-        nodes={referenceGraph.nodes} edges={referenceGraph.edges} onEdgesChange={referenceGraph.onEdgesChange}
+        nodes={referenceGraph.nodes.map((node) => node.type === 'text' ? { ...node, data: { ...node.data, onGenerate: generateText,
+          onContentChange: (nodeId, content) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, content } } : item)),
+          onPromptChange: (nodeId, prompt) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt } } : item)),
+          onModelChange: (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item)),
+          onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode,
+        } } : node)} edges={referenceGraph.edges} onEdgesChange={referenceGraph.onEdgesChange}
         nodesConnectable={activeTool !== 'hand'} onConnect={referenceGraph.onConnect} isValidConnection={referenceGraph.isValidConnection} nodeTypes={canvasNodeTypes} onInit={setFlowInstance}
         onNodesChange={handleNodesChange} onNodeClick={handleNodeClick}
+        onBeforeDelete={async ({ nodes: removedNodes, edges: removedEdges }) => { cancelPendingClicks(); if (removedNodes.length || removedEdges.length) history.begin(); return true; }}
+        onDelete={() => history.end()}
         onNodeDoubleClick={(event, node) => {
           if (activeTool !== 'hand' && node.type !== 'canvasGroup' && !event.target.closest('button, input, textarea')) grouping.enterNode(node.id);
         }}
@@ -255,6 +269,10 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       onAddNode={addNode}
       onCreateCanvas={handleUnsupported}
       onShare={handleUnsupported}
+      canUndo={history.canUndo}
+      canRedo={history.canRedo}
+      onUndo={() => { cancelPendingClicks(); history.undo(); }}
+      onRedo={() => { cancelPendingClicks(); history.redo(); }}
       onOpenAssetPicker={() => { setAssetTarget(null); setAssetPickerOpen(true); }}
     />
     <AssetPickerModal

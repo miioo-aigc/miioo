@@ -11,14 +11,11 @@
  *   2026-07-22  移除解析加载态外层内边距和描边
  *   2026-08-03  为解析加载态的表单骨架补齐 12px 外轮廓圆角
  *   2026-09-18  修复骨架表单单元格描边叠加，改为外框加单线分隔
+ *   2026-09-28  横向扫光复用公共 ShimmerEffect，骨架布局和呼吸效果不变
  */
+import { ShimmerEffect } from '../ui';
+
 const SHIMMER_STYLE = `
-  @keyframes script-outline-shimmer {
-    0% { transform: translateX(-120%); opacity: 0; }
-    12% { opacity: .65; }
-    58% { opacity: .35; }
-    100% { transform: translateX(220%); opacity: 0; }
-  }
   @keyframes script-outline-sweep {
     0%, 100% { opacity: .08; }
     50% { opacity: .26; }
@@ -38,7 +35,7 @@ function SkeletonTable({ labels }) {
           <div style={{ width: '160px', flexShrink: 0, display: 'flex', alignItems: 'center', padding: '8px 16px', background: '#222222', borderRight: '1px solid #3E3D3D', color: '#FFFFFFCC', fontSize: '14px', lineHeight: '18px' }}>{label}</div>
           <div className="script-outline-skeleton-cell" style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center', padding: '12px', overflow: 'hidden', background: '#080808' }}>
             <div style={{ height: '20px', width: '100%', background: 'linear-gradient(270deg, #222222, #454545, #3F3F3F)', animation: 'script-outline-sweep 2.2s ease-in-out infinite' }} />
-            <div aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '42%', background: 'linear-gradient(90deg, transparent, rgba(222,250,255,.32), transparent)', filter: 'blur(12px)', animation: 'script-outline-shimmer 2.6s ease-in-out infinite' }} />
+            <ShimmerEffect />
           </div>
         </div>
       ))}
@@ -84,7 +81,7 @@ export default function ScriptOutlineLoading({ finalSectionTitle = '分集剧情
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 0', color: '#FFFFFF', fontSize: '18px', lineHeight: '22px', fontWeight: 600 }}><span style={{ width: '2px', height: '18px', background: '#FFFFFF' }} />{finalSectionTitle}（0）</div>
           <div style={{ height: '60px', overflow: 'hidden', padding: '12px', border: '1px solid #3E3D3D', borderRadius: '12px', background: '#080808', boxSizing: 'border-box' }}><div style={{ height: '20px', background: 'linear-gradient(270deg, #222222, #454545, #3F3F3F)', animation: 'script-outline-sweep 2.2s ease-in-out infinite' }} /></div>
         </section>
-        <div aria-hidden="true" style={{ position: 'absolute', top: '50%', left: '50%', width: '52%', height: '2px', transform: 'translate(-50%, -50%)', background: 'linear-gradient(90deg, transparent, rgba(218,250,255,.7), transparent)', filter: 'blur(10px)', animation: 'script-outline-shimmer 2.6s ease-in-out infinite' }} />
+        <ShimmerEffect variant="line" />
       </div>
     </>
   );

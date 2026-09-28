@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import CanvasNodeShell from './CanvasNodeShell';
 import FileUploadButton from '../ui/FileUploadButton';
 import { readCanvasTextFile } from './CanvasTextFileReader';
+import CanvasTextResult from './CanvasTextResult';
 
 export default function TextCanvasNode({ id, data, selected }) {
   const [editing, setEditing] = useState(false);
@@ -51,12 +52,13 @@ export default function TextCanvasNode({ id, data, selected }) {
         onBlur={() => setEditing(false)}
         onKeyDown={(event) => event.stopPropagation()}
         onKeyUp={(event) => event.stopPropagation()}
-      /> : data?.content ? data.content : <>
+      /> : !data?.content && <>
         <span className="canvas-node__text-placeholder">双击编辑</span>
         <FileUploadButton className="canvas-node__upload nodrag nopan" onClick={() => fileInputRef.current?.click()}>本地上传</FileUploadButton>
         <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
         <span className="canvas-node__upload-hint">支持.docx/.txt/.md</span>
       </>}
+      <CanvasTextResult content={data?.content} generating={data?.generating} editing={editing} />
       {fileError && <span role="alert" className="canvas-node__upload-error">{fileError}</span>}
     </div>
   </CanvasNodeShell>;

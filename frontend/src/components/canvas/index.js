@@ -13,3 +13,4 @@ export { readCanvasTextFile } from './CanvasTextFileReader';
 export { default as CanvasReferenceBar } from './CanvasReferenceBar';
 export { default as CanvasGroupNode } from './CanvasGroupNode';
 export { useCanvasGrouping } from './UseCanvasGrouping';
+export { useCanvasTextGeneration } from './UseCanvasTextGeneration';

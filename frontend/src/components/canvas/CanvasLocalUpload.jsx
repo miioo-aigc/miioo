@@ -1,15 +1,11 @@
-/** 本地媒体入口：只生成临时预览，不上传；地址由组件生命周期回收。 */
-import { useEffect, useRef, useState } from 'react';
+/** 本地媒体入口：临时地址交由画布历史持有，退出画布时回收。 */
+import { useRef, useState } from 'react';
 import FileUploadButton from '../ui/FileUploadButton';
 import { getCanvasMediaAccept, getCanvasMediaFileType } from './CanvasLocalMedia';
 
 export default function CanvasLocalUpload({ nodeType, onAssetChange, hidden = false }) {
   const inputRef = useRef(null);
-  const previewRef = useRef(null);
   const [error, setError] = useState('');
-  useEffect(() => () => {
-    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
-  }, []);
 
   const handleChange = (event) => {
     const file = event.target.files?.[0];
@@ -21,10 +17,7 @@ export default function CanvasLocalUpload({ nodeType, onAssetChange, hidden = fa
       return;
     }
     const url = URL.createObjectURL(file);
-    const previous = previewRef.current;
-    previewRef.current = url;
     onAssetChange?.({ name: file.name, asset_type: type, url, source: 'local-preview' });
-    if (previous) URL.revokeObjectURL(previous);
     setError('');
   };
 

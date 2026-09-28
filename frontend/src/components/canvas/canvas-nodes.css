@@ -1,4 +1,5 @@
 .canvas-node { width: 240px; color: var(--color-text-primary); font-family: inherit; }
+.canvas-node__text-result { flex-shrink: 0; }
 .canvas-group { position: relative; width: 100%; height: 100%; box-sizing: border-box; border: 1px solid var(--color-stroke-normal); border-radius: 20px; background: var(--color-white-5); }
 .canvas-group[data-selected='true'] { border-color: var(--color-stroke-active); }
 .canvas-group__name { position: absolute; bottom: calc(100% + 8px); left: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-secondary); font-size: 12px; line-height: 16px; }
@@ -8,6 +9,9 @@
 .react-flow__selection { border: 1px solid var(--color-stroke-active); background: var(--color-tag-bg-blue); }
 .canvas-node__header { display: flex; align-items: center; gap: 4px; height: 16px; margin-bottom: 8px; color: var(--color-text-secondary); font-size: 12px; line-height: 16px; }
 .canvas-node__frame { --canvas-drag-scale-x: 1; --canvas-drag-scale-y: 1; position: relative; display: flex; width: 240px; min-height: 240px; box-sizing: border-box; align-items: center; justify-content: center; overflow: visible; border: 1px solid var(--color-stroke-normal); border-radius: 16px; outline: 1px solid var(--color-stroke-outline); background: var(--color-surface-content-area); transition: border-color 160ms ease; }
+/* 保留内容布局与本地素材生命周期，生成时只展示外壳、端口及加载动画。 */
+.canvas-node__frame[aria-busy='true'] > :not(.canvas-node__port):not(.canvas-node__loading) { visibility: hidden; pointer-events: none; }
+.canvas-node__loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .canvas-node__frame[data-dragging='true'] { transform: scale(var(--canvas-drag-scale-x), var(--canvas-drag-scale-y)); transition: transform 120ms ease-out, border-color 160ms ease; transform-origin: center; }
 .canvas-node__frame[data-drag-release='true'] { animation: canvas-node-drag-release 280ms cubic-bezier(0.22, 1.35, 0.36, 1); }
 @keyframes canvas-node-drag-release { 0% { transform: scale(var(--canvas-drag-scale-x), var(--canvas-drag-scale-y)); } 58% { transform: scale(calc(1 - (var(--canvas-drag-scale-x) - 1) * 0.32), calc(1 - (var(--canvas-drag-scale-y) - 1) * 0.32)); } 100% { transform: scale(1); } }

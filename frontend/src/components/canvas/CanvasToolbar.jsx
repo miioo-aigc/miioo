@@ -3,14 +3,15 @@
  * @structure-index
  *
  * ─── 交互区 ─────────────────────────────────────────────────────
- *   AddNodeMenu 共用添加节点菜单的工具栏定位容器 L127
- *   CanvasToolbar 画布底部悬浮工具栏、菜单和动作出口 L131
+ *   AddNodeMenu 共用添加节点菜单的工具栏定位容器 L128
+ *   CanvasToolbar 画布底部悬浮工具栏、菜单和动作出口 L132
  * ─── 更新记录 ───────────────────────────────────────────────────
- *   2026-09-28 统一两个添加入口的完整菜单，工具栏仅负责定位，消除嵌套错位
+ *   2026-09-28 复用图标按钮新增撤销重做；统一添加菜单，工具栏仅负责定位
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Tooltip } from '../ui';
+import { IconButton, Tooltip } from '../ui';
+import { Undo2, Redo2 } from 'lucide-react';
 import CanvasNodeAddMenu from './CanvasNodeAddMenu.jsx';
 
 const ICON_PROPS = {
@@ -128,7 +129,7 @@ function AddNodeMenu({ onAddNode }) {
   return <div className="absolute bottom-[40px] left-1/2 z-30 -translate-x-1/2"><CanvasNodeAddMenu onAddNode={onAddNode} /></div>;
 }
 
-export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, nodes = [], canvases = [], activeCanvasId, onSelectCanvas, onCreateCanvas, onOpenAssetPicker, onAddNode, onShare }) {
+export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, nodes = [], canvases = [], activeCanvasId, onSelectCanvas, onCreateCanvas, onOpenAssetPicker, onAddNode, onShare, canUndo, canRedo, onUndo, onRedo }) {
   const [openMenu, setOpenMenu] = useState(null);
   const [nodeQuery, setNodeQuery] = useState('');
   const [nodeType, setNodeType] = useState('all');
@@ -153,6 +154,8 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
 
   return (
     <div ref={toolbarRef} className="absolute bottom-[24px] left-1/2 z-20 flex -translate-x-1/2 items-center gap-[12px] overflow-visible rounded-full border border-stroke-normal bg-surface-content-area px-[16px] py-[4px] outline outline-1 outline-black-90">
+      <Tooltip label="撤销" placement="top"><span><IconButton aria-label="撤销" variant="link" className="!size-[32px] rounded-full hover:bg-white-5" contentClassName="!text-text-secondary" disabled={!canUndo} onClick={onUndo}><Undo2 size={16} /></IconButton></span></Tooltip>
+      <Tooltip label="重做" placement="top"><span><IconButton aria-label="重做" variant="link" className="!size-[32px] rounded-full hover:bg-white-5" contentClassName="!text-text-secondary" disabled={!canRedo} onClick={onRedo}><Redo2 size={16} /></IconButton></span></Tooltip>
       {TOOL_ITEMS.map(({ key, label, icon: Icon, separated }) => {
         const selected = key === 'move' ? activeTool === 'hand' : key === 'map' ? showMiniMap : openMenu === key;
         return (

@@ -19,17 +19,18 @@ export default function TimelineToolbar() {
     { label: '删除', Icon: DeleteIcon, disabled: !selected, onClick: () => state.removeSegment(state.selectedId) },
   ];
   return (
-    <div role="toolbar" aria-label="时间线编辑工具" className="flex h-[40px] shrink-0 items-center gap-[8px] border-b border-stroke-normal px-[12px]">
+    <div role="toolbar" aria-label="时间线编辑工具" className="flex h-[40px] shrink-0 items-center gap-[10px] border-b border-stroke-normal px-[12px]">
       {actions.map(({ label, Icon, disabled, onClick }) => (
         <IconButton
           key={label}
           aria-label={label}
           title={label}
           icon={<Icon size={16} color="currentColor" style={{ width: 16, height: 16, flexShrink: 0 }} />}
-          size="large"
-          style={{ width: 28, height: 28 }}
-          contentClassName="!px-0 !text-white/80"
-          className="cursor-pointer disabled:cursor-not-allowed disabled:!opacity-50"
+          variant="secondary"
+          size="small"
+          style={{ width: 24, height: 24, padding: 0, border: 'none', borderRadius: 6, boxShadow: 'none', backgroundImage: 'none' }}
+          className="cursor-pointer !bg-transparent enabled:hover:!bg-white-10 enabled:active:!bg-white-10 disabled:!bg-transparent"
+          contentClassName="!text-white-80 group-enabled:group-hover:!text-white group-enabled:group-active:!text-white group-disabled:!text-white-30"
           disabled={disabled || !state.loaded}
           onClick={onClick}
         />

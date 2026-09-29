@@ -211,6 +211,7 @@
      阴影 Shadow
      ---------------------------------------------------------- */
   --color-shadow: rgba(0, 0, 0, 0.40);
+  --color-timeline-drag-shadow: rgba(45, 195, 225, 0.32);
   --color-glow: rgba(45, 195, 225, 0.10);
 
   /* ----------------------------------------------------------
@@ -964,4 +965,24 @@ body {
   width: var(--creation-voice-wrap-width, 0px);
   height: var(--creation-voice-wrap-height, 0px);
   pointer-events: none;
+}
+
+.timeline-scrollbar {
+  scrollbar-color: rgba(255, 255, 255, 0.28) rgba(255, 255, 255, 0.04);
+  scrollbar-width: auto;
+}
+.timeline-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.timeline-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+.timeline-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.28);
+}
+.timeline-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.42);
 }

@@ -218,7 +218,7 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
                       <img
                         src={thumb}
                         alt=""
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-contain"
                         loading="lazy"
                         onError={(e) => { e.currentTarget.style.display = 'none'; }}
                       />

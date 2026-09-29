@@ -91,6 +91,26 @@ export default function PreviewCanvas() {
   const pause = useCompositionEditorStore((s) => s.pause);
   const seek = useCompositionEditorStore((s) => s.seek);
   const onCursorTick = useCompositionEditorStore((s) => s.onCursorTick);
+  const trackSettings = useCompositionEditorStore((s) => s.trackSettings);
+  const v1Settings = trackSettings.V1;
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.code !== 'Space' || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select, [role="textbox"], [role="dialog"], [role="alertdialog"]'))) return;
+      if (document.querySelector('[aria-modal="true"], dialog[open]')) return;
+      const state = useCompositionEditorStore.getState();
+      if (!state.loaded) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.repeat) return;
+      if (state.playing) state.pause();
+      else state.play();
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, []);
 
   const { windows, total } = useMemo(() => computeVisualWindows(segments), [segments]);
   const activeIndex = activeIndexFor(windows, cursor, total);
@@ -275,18 +295,21 @@ export default function PreviewCanvas() {
             <span className="text-text-hint text-font-size-14" style={{ fontFamily: FONT }}>
               从左侧添加素材开始剪辑
             </span>
-          ) : active.seg.type === 'video' && active.seg.sourceUrl ? (
+          ) : active.seg.type === 'video' && active.seg.sourceUrl && !v1Settings.hidden ? (
             <video
               key={active.seg.sourceUrl}
               ref={videoRef}
               src={active.seg.sourceUrl}
               className="w-full h-full object-contain"
-              muted={false}
+              muted={v1Settings.volume <= 0}
+              volume={v1Settings.volume}
               playsInline
               onTimeUpdate={handleVideoTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
               onEnded={handleVideoEnded}
             />
+          ) : active.seg.type === 'video' && v1Settings.hidden ? (
+            <div className="h-full w-full bg-surface-content-area" aria-label="V1 轨道已隐藏" />
           ) : (
             <FadeImage
               key={active.seg.id}

@@ -171,7 +171,7 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
           assets={<AssetLibraryPanel projectId={projectId} albumState={{ ...album, assets: selectFinalizedStoryboardAssets(album.assets, album.finalized, episode?.id) }} onFetch={() => fetchAlbum()} onAssetAdded={(items) => { loadAlbum([...new Map([...useCompositionEditorStore.getState().album, ...items].map((asset) => [asset.id, asset])).values()]); setAlbum((previous) => { const added = new Map(items.map((asset) => [String(asset.id), asset])); return { ...previous, assets: [...added.values(), ...previous.assets.filter((asset) => !added.has(String(asset.id)))] }; }); }} onRemoveAsset={(asset) => { loadAlbum(useCompositionEditorStore.getState().album.filter((item) => String(item.id) !== String(asset.id))); setAlbum((previous) => ({ ...previous, assets: previous.assets.filter((item) => String(item.id) !== String(asset.id)) })); }} />}
           preview={<PreviewCanvas />}
           properties={<PropsPanel />}
-          timeline={<TimelineBar />}
+          timeline={<TimelineBar showToast={showToast} />}
         />
       )}
       </section>

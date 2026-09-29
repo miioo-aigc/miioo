@@ -1,4 +1,4 @@
-import { Check, ArrowLeft } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { Button, EditExportIcon } from '../ui';
 import { useCompositionEditorStore } from '../../stores/compositionEditorStore';
 import { getErrorMessage } from '../../api/error';
@@ -25,7 +25,7 @@ export default function WorkspaceHeader({ projectName, episode, onBack, showToas
   return (
     <header className="relative z-20 flex shrink-0 items-center justify-between gap-[16px]">
       <div className="flex min-w-0 items-center gap-[18px]">
-        <Button size="large" className="shrink-0 cursor-pointer" icon={<ArrowLeft size={16} />} onClick={handleBack} disabled={!ready || saving}>返回</Button>
+        <Button variant="secondary" size="large" style={{ height: '32px' }} className="shrink-0 cursor-pointer" onClick={handleBack} disabled={!ready || saving}>返回</Button>
         <div className="min-w-0 truncate text-[14px] leading-[20px] text-[#FFFFFF99]" style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif" }} title={`${projectName || '项目'} › ${episode?.title || '剧集'} › ${draftName || '草稿'}`}>
           {projectName || '项目'} › {episode?.title || (episode?.episode_number != null ? `第${episode.episode_number}集` : '剧集')} › {ready ? draftName : '加载中…'}
         </div>

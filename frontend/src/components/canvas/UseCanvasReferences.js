@@ -19,11 +19,17 @@ export function useCanvasReferences(nodes, setNodes, openPicker) {
   const removeReference = useCallback((nodeId, sourceId) => {
     setNodes((current) => removeCanvasReference(current, nodeId, sourceId));
   }, [setNodes]);
+  const connectNodes = useCallback((current, connection) => (
+    isCanvasTextConnection(current, connection)
+      ? connectCanvasText(current, connection)
+      : connectTextToAudio(current, connection)
+  ), []);
   return {
     nodes: nodes.map((node) => ({ ...node, data: { ...node.data, references: getCanvasReferences(nodes, node.id), onAddReference: addReference, onRemoveReference: removeReference } })),
     edges: [...getCanvasReferenceEdges(nodes), ...getTextAudioEdges(nodes), ...getCanvasTextEdges(nodes)],
     isValidConnection: (connection) => isTextAudioConnection(nodes, connection) || isCanvasTextConnection(nodes, connection),
-    onConnect: (connection) => setNodes((current) => isCanvasTextConnection(current, connection) ? connectCanvasText(current, connection) : connectTextToAudio(current, connection)),
+    connectNodes,
+    onConnect: (connection) => setNodes((current) => connectNodes(current, connection)),
     onEdgesChange: (changes) => {
       const removed = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id));
       if (!removed.size) return;

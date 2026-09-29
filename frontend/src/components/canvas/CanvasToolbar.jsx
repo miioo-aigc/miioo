@@ -7,12 +7,15 @@
  *   CanvasToolbar 画布底部悬浮工具栏、菜单和动作出口 L132
  * ─── 更新记录 ───────────────────────────────────────────────────
  *   2026-09-28 复用图标按钮新增撤销重做；统一添加菜单，工具栏仅负责定位
+ *   2026-09-29 撤销重做移动到搜索前，仅在至少一个历史动作可用时显示
+ *   2026-09-29 分割线右侧工具默认折叠为更多按钮，展开和收起使用 Gooey 风格过渡
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { IconButton, Tooltip } from '../ui';
-import { Undo2, Redo2 } from 'lucide-react';
+import { MoreHorizontal, PanelRightClose, Redo2, Undo2 } from 'lucide-react';
 import CanvasNodeAddMenu from './CanvasNodeAddMenu.jsx';
+import './CanvasToolbar.css';
 
 const ICON_PROPS = {
   width: 16,
@@ -66,7 +69,10 @@ const TOOL_ITEMS = [
   { key: 'move', label: '移动', icon: PointerIcon },
   { key: 'assets', label: '从资产库选择', icon: AssetLibraryIcon },
   { key: 'canvases', label: '画布列表', icon: NodeListIcon },
-  { key: 'search', label: '搜索节点', icon: SearchIcon, separated: true },
+];
+
+const COLLAPSIBLE_TOOL_ITEMS = [
+  { key: 'search', label: '搜索节点', icon: SearchIcon },
   { key: 'map', label: '预览地图', icon: MiniMapIcon },
   { key: 'share', label: '分享', icon: ShareNodesIcon },
 ];
@@ -131,6 +137,7 @@ function AddNodeMenu({ onAddNode }) {
 
 export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, nodes = [], canvases = [], activeCanvasId, onSelectCanvas, onCreateCanvas, onOpenAssetPicker, onAddNode, onShare, canUndo, canRedo, onUndo, onRedo }) {
   const [openMenu, setOpenMenu] = useState(null);
+  const [rightToolsExpanded, setRightToolsExpanded] = useState(false);
   const [nodeQuery, setNodeQuery] = useState('');
   const [nodeType, setNodeType] = useState('all');
   const toolbarRef = useRef(null);
@@ -152,26 +159,33 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
     setOpenMenu((current) => (current === key ? null : key));
   };
 
+  const renderTool = ({ key, label, icon: Icon }) => {
+    const selected = key === 'move' ? activeTool === 'hand' : key === 'map' ? showMiniMap : openMenu === key;
+    return <div key={key} className="relative flex size-[32px] shrink-0 items-center justify-center">
+      {openMenu === key && key === 'add' && <AddNodeMenu onAddNode={(type) => { onAddNode?.(type); setOpenMenu(null); }} />}
+      {openMenu === key && key === 'move' && <MoveMenu activeTool={activeTool} onToolChange={(tool) => { onToolChange(tool); setOpenMenu(null); }} />}
+      {openMenu === key && key === 'canvases' && <CanvasListMenu canvases={canvases} activeCanvasId={activeCanvasId} onSelectCanvas={(id) => { onSelectCanvas?.(id); setOpenMenu(null); }} onCreateCanvas={() => { onCreateCanvas?.(); setOpenMenu(null); }} />}
+      {openMenu === key && key === 'search' && <SearchPanel nodes={nodes} query={nodeQuery} type={nodeType} onQueryChange={setNodeQuery} onTypeChange={setNodeType} />}
+      {openMenu === key && key === 'share' && <ShareMenu onShare={(action) => { onShare?.(action); setOpenMenu(null); }} />}
+      <Tooltip label={label} placement="top" offset={8}><button type="button" title={label} aria-label={label} aria-pressed={selected} onClick={() => handleToolClick(key)} className={`flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 transition-colors ${selected ? 'bg-white-10' : 'hover:bg-white-5'}`}><Icon size={16} strokeWidth={1.7} /></button></Tooltip>
+    </div>;
+  };
+
   return (
     <div ref={toolbarRef} className="absolute bottom-[24px] left-1/2 z-20 flex -translate-x-1/2 items-center gap-[12px] overflow-visible rounded-full border border-stroke-normal bg-surface-content-area px-[16px] py-[4px] outline outline-1 outline-black-90">
-      <Tooltip label="撤销" placement="top"><span><IconButton aria-label="撤销" variant="link" className="!size-[32px] rounded-full hover:bg-white-5" contentClassName="!text-text-secondary" disabled={!canUndo} onClick={onUndo}><Undo2 size={16} /></IconButton></span></Tooltip>
-      <Tooltip label="重做" placement="top"><span><IconButton aria-label="重做" variant="link" className="!size-[32px] rounded-full hover:bg-white-5" contentClassName="!text-text-secondary" disabled={!canRedo} onClick={onRedo}><Redo2 size={16} /></IconButton></span></Tooltip>
-      {TOOL_ITEMS.map(({ key, label, icon: Icon, separated }) => {
-        const selected = key === 'move' ? activeTool === 'hand' : key === 'map' ? showMiniMap : openMenu === key;
-        return (
-          <div key={key} className="flex items-center gap-[12px]">
-            {separated && <div className="h-[16px] w-px shrink-0 rounded-full bg-stroke-normal" />}
-            <div className="relative flex size-[32px] shrink-0 items-center justify-center">
-        {openMenu === key && key === 'add' && <AddNodeMenu onAddNode={(type) => { onAddNode?.(type); setOpenMenu(null); }} />}
-        {openMenu === key && key === 'move' && <MoveMenu activeTool={activeTool} onToolChange={(tool) => { onToolChange(tool); setOpenMenu(null); }} />}
-        {openMenu === key && key === 'canvases' && <CanvasListMenu canvases={canvases} activeCanvasId={activeCanvasId} onSelectCanvas={(id) => { onSelectCanvas?.(id); setOpenMenu(null); }} onCreateCanvas={() => { onCreateCanvas?.(); setOpenMenu(null); }} />}
-        {openMenu === key && key === 'search' && <SearchPanel nodes={nodes} query={nodeQuery} type={nodeType} onQueryChange={setNodeQuery} onTypeChange={setNodeType} />}
-        {openMenu === key && key === 'share' && <ShareMenu onShare={(action) => { onShare?.(action); setOpenMenu(null); }} />}
-            <Tooltip label={label} placement="top" offset={8}><button type="button" title={label} aria-label={label} aria-pressed={selected} onClick={() => handleToolClick(key)} className={`flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 transition-colors ${selected ? 'bg-white-10' : 'hover:bg-white-5'}`}><Icon size={16} strokeWidth={1.7} /></button></Tooltip>
-            </div>
-          </div>
-        );
-      })}
+      {TOOL_ITEMS.map(renderTool)}
+      <div className="h-[16px] w-px shrink-0 rounded-full bg-stroke-normal" />
+      {!rightToolsExpanded && <Tooltip label="更多工具" placement="top" offset={8}><button type="button" aria-label="展开更多工具" title="展开更多工具" onClick={() => setRightToolsExpanded(true)} className="flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 hover:bg-white-5"><MoreHorizontal size={16} strokeWidth={1.7} color="var(--color-white-80)" /></button></Tooltip>}
+      <div className={`canvas-toolbar__right-tools ${rightToolsExpanded ? 'canvas-toolbar__right-tools--expanded' : ''}`} aria-hidden={!rightToolsExpanded}>
+        <div className="canvas-toolbar__right-tools-content">
+          {rightToolsExpanded && (canUndo || canRedo) && <>
+            <Tooltip label="撤销" placement="top"><span><IconButton aria-label="撤销" variant="link" className="!size-[32px] rounded-full hover:bg-white-5" contentClassName="!text-text-secondary" disabled={!canUndo} onClick={onUndo}><Undo2 size={16} /></IconButton></span></Tooltip>
+            <Tooltip label="重做" placement="top"><span><IconButton aria-label="重做" variant="link" className="!size-[32px] rounded-full hover:bg-white-5" contentClassName="!text-text-secondary" disabled={!canRedo} onClick={onRedo}><Redo2 size={16} /></IconButton></span></Tooltip>
+          </>}
+          {COLLAPSIBLE_TOOL_ITEMS.map(renderTool)}
+          {rightToolsExpanded && <Tooltip label="收起工具" placement="top" offset={8}><button type="button" aria-label="收起工具" title="收起工具" onClick={() => { setOpenMenu(null); setRightToolsExpanded(false); }} className="flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 hover:bg-white-5"><PanelRightClose size={16} strokeWidth={1.7} color="var(--color-white-80)" /></button></Tooltip>}
+        </div>
+      </div>
     </div>
   );
 }

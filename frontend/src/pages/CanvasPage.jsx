@@ -3,7 +3,7 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L59；grouping L80；referenceGraph L88；handleNodesChange L123；addNode L166
+ *   CanvasPage L59；grouping L80；referenceGraph L88；handleNodesChange L123；addNode L166；connection flow L210；connection hover L230
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
  *   CanvasProjectHeader components/canvas；左上角品牌与项目名称
@@ -21,6 +21,7 @@
  *   2026-09-24：节点模型选择保存为本地草稿；文本模型加载由节点外壳负责。
  *   2026-09-28：视频卡片及参考入口支持三类媒体，按真实素材类型回填；其他节点仍按类型筛选。
  *   2026-09-28：新增节点按当前同类型最大序号加1，编号由画布工具统一处理。
+ *   2026-09-29：连接端口拆分为贴边真实锚点与 44px 独立命中层；只高亮当前悬停的合法目标卡片。
  *   2026-09-28：接入捏合、框选、修饰键多选和真正组合；组合交互与几何计算独立维护。
  *   2026-09-28：接入20步历史及5任务并发；拖动和删除按事务记录，发送取消延迟选中。
  */
@@ -47,7 +48,7 @@ import { useCanvasGrouping } from '../components/canvas/UseCanvasGrouping';
 import { useCanvasTextGeneration } from '../components/canvas/UseCanvasTextGeneration';
 import { useCanvasHistory } from '../components/canvas/UseCanvasHistory';
 import { fitCanvasGroups, setCanvasSelection } from '../components/canvas/CanvasGroups';
-import { CanvasNodeAddMenu, canvasNodeTypes, createCanvasNode, appendCanvasNode, getCanvasNodeMenuPosition, updateSelectedNode } from '../components/canvas';
+import { CanvasNodeAddMenu, CANVAS_NODE_MENU_ITEMS, canvasNodeTypes, createCanvasNode, appendCanvasNode, getCanvasNodeMenuPosition, updateSelectedNode } from '../components/canvas';
 
 // 浏览器 click 先于 dblclick 触发；保留极短窗口，避免双击时先展开创作框。
 const CANVAS_SINGLE_CLICK_DELAY = 200;
@@ -69,6 +70,10 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const [assetTarget, setAssetTarget] = useState(null);
   const [nodeMenu, setNodeMenu] = useState(null);
   const [flowInstance, setFlowInstance] = useState(null);
+  const [connectingNodeId, setConnectingNodeId] = useState(null);
+  const [connectingHandleType, setConnectingHandleType] = useState('');
+  const [connectionTargetId, setConnectionTargetId] = useState(null);
+  const [pendingConnection, setPendingConnection] = useState(null);
   const dragPositionsRef = useRef(new Map());
   const pendingNodeClicksRef = useRef(new Map());
   const cancelPendingClicks = useCallback(() => {
@@ -86,6 +91,14 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     setAssetPickerOpen(true);
   }, []);
   const referenceGraph = useCanvasReferences(grouping.nodes, setNodes, openReferencePicker);
+
+  const clearPendingConnection = useCallback(() => {
+    setPendingConnection(null);
+    setConnectingNodeId(null);
+    setConnectingHandleType('');
+    setConnectionTargetId(null);
+    setNodeMenu(null);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,7 +176,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     history.end();
     window.setTimeout(() => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, dragRelease: false, dragScaleX: 1, dragScaleY: 1 } } : item)), 280);
   }, [history, setNodes]);
-  const addNode = useCallback((type, position) => {
+  const addNode = useCallback((type, position, connection = null) => {
     const node = createCanvasNode(type, position || { x: 160 + (nodes.length % 3) * 280, y: 160 + Math.floor(nodes.length / 3) * 300 });
     node.data.onPromptChange = (nodeId, prompt) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt } } : item));
     node.data.onModelChange = (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item));
@@ -179,9 +192,13 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       setAssetTarget({ nodeId, nodeType });
       setAssetPickerOpen(true);
     };
-    setNodes((current) => appendCanvasNode(current, node));
+    setNodes((current) => {
+      const next = appendCanvasNode(current, node);
+      return connection ? referenceGraph.connectNodes(next, { ...connection, target: node.id }) : next;
+    });
     setNodeMenu(null);
-  }, [cancelPendingNodeClick, handleUnsupported, nodes.length, setNodes]);
+    setPendingConnection(null);
+  }, [cancelPendingNodeClick, handleUnsupported, nodes.length, referenceGraph, setNodes]);
   const handlePaneDoubleClick = useCallback((event) => {
     if (!flowInstance || !event.target.classList.contains('react-flow__pane')) return;
     event.preventDefault();
@@ -189,6 +206,73 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     const screen = getCanvasNodeMenuPosition(event, { width: window.innerWidth, height: window.innerHeight });
     setNodeMenu({ screen, flowPosition: flowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
   }, [flowInstance]);
+  const getConnectionTarget = useCallback((event) => {
+    if (!event || typeof event.clientX !== 'number' || typeof event.clientY !== 'number') return null;
+    const element = document.elementFromPoint(event.clientX, event.clientY);
+    const nodeElement = element?.closest?.('.react-flow__node[data-id]');
+    return nodeElement?.getAttribute('data-id') || null;
+  }, []);
+  const handleConnectStart = useCallback((_, { nodeId, handleType }) => {
+    setNodeMenu(null);
+    setPendingConnection(null);
+    setConnectingNodeId(nodeId);
+    setConnectingHandleType(handleType || '');
+    setConnectionTargetId(null);
+  }, []);
+  const resolveConnectionTarget = useCallback((event) => {
+    const targetId = getConnectionTarget(event);
+    const source = connectingNodeId && grouping.nodes.find((node) => node.id === connectingNodeId);
+    const target = grouping.nodes.find((node) => node.id === targetId);
+    if (!source || !target || target.id === source.id || connectingHandleType !== 'source') return null;
+    const connection = { source: source.id, sourceHandle: 'text-output', target: target.id, targetHandle: target.data?.ports?.input?.id };
+    return referenceGraph.isValidConnection(connection) ? target.id : null;
+  }, [connectingHandleType, connectingNodeId, getConnectionTarget, grouping.nodes, referenceGraph]);
+  useEffect(() => {
+    if (!connectingNodeId) return undefined;
+    const handlePointerMove = (event) => setConnectionTargetId(resolveConnectionTarget(event));
+    window.addEventListener('pointermove', handlePointerMove);
+    return () => window.removeEventListener('pointermove', handlePointerMove);
+  }, [connectingNodeId, resolveConnectionTarget]);
+  const handleConnectEnd = useCallback((event, connectionState) => {
+    const source = typeof connectionState?.from === 'string' ? connectionState.from : connectionState?.fromNode?.id || connectingNodeId;
+    const sourceHandle = connectionState?.fromHandle?.id || (connectingHandleType === 'source' ? 'text-output' : '');
+    const targetFromState = typeof connectionState?.to === 'string' ? connectionState.to : connectionState?.to?.id || connectionState?.toNode?.id;
+    const targetId = targetFromState || getConnectionTarget(event);
+    const target = grouping.nodes.find((node) => node.id === targetId);
+    const connection = { source, sourceHandle, target: target?.id, targetHandle: target?.data?.ports?.input?.id };
+    if (source && target && target.id !== source && referenceGraph.isValidConnection(connection)) {
+      if (!connectionState?.isValid) referenceGraph.onConnect(connection);
+      clearPendingConnection();
+      return;
+    }
+    if (!source || connectingHandleType !== 'source' || target) {
+      clearPendingConnection();
+      return;
+    }
+    const clientX = event?.clientX ?? connectionState?.pointer?.x ?? 0;
+    const clientY = event?.clientY ?? connectionState?.pointer?.y ?? 0;
+    setPendingConnection({
+      source,
+      sourceHandle,
+      screen: getCanvasNodeMenuPosition({ clientX, clientY }, { width: window.innerWidth, height: window.innerHeight }),
+      flowPosition: flowInstance?.screenToFlowPosition({ x: clientX, y: clientY }) || { x: 0, y: 0 },
+    });
+    setConnectingNodeId(null);
+    setConnectingHandleType('');
+  }, [clearPendingConnection, connectingHandleType, connectingNodeId, flowInstance, getConnectionTarget, grouping.nodes, referenceGraph]);
+  const pendingSource = pendingConnection && grouping.nodes.find((node) => node.id === pendingConnection.source);
+  const pendingMenuItems = pendingSource
+    ? CANVAS_NODE_MENU_ITEMS.filter((item) => pendingSource.type === 'text'
+      && (item.value === 'text' || (item.value === 'audio' && Boolean(pendingSource.data?.content?.trim()))))
+    : [];
+  useEffect(() => {
+    if (!pendingConnection) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') clearPendingConnection();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [clearPendingConnection, pendingConnection]);
   const handleNodeClick = (event, node) => {
     if (event.target.closest('.canvas-creation-panel')) return;
     pendingNodeClicksRef.current.forEach((timer, nodeId) => {
@@ -229,14 +313,15 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     <CanvasUserMenu currentUser={currentUser} onLogout={handleLogout} onOpenProfile={() => setProfileOpen(true)} />
     <div className="absolute inset-0 bg-surface-toolbar">
       <ReactFlow defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-        nodes={referenceGraph.nodes.map((node) => node.type === 'text' ? { ...node, data: { ...node.data, onGenerate: generateText,
+        nodes={referenceGraph.nodes.map((node) => ({ ...node, data: { ...node.data, connectionTarget: node.id === connectionTargetId, connectingType: node.id === connectingNodeId ? connectingHandleType : '', ...(node.type === 'text' ? { onGenerate: generateText,
           onContentChange: (nodeId, content) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, content } } : item)),
           onPromptChange: (nodeId, prompt) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt } } : item)),
           onModelChange: (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item)),
-          onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode,
-        } } : node)} edges={referenceGraph.edges} onEdgesChange={referenceGraph.onEdgesChange}
+          onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : {}) } }))} edges={referenceGraph.edges} onEdgesChange={referenceGraph.onEdgesChange}
         nodesConnectable={activeTool !== 'hand'} onConnect={referenceGraph.onConnect} isValidConnection={referenceGraph.isValidConnection} nodeTypes={canvasNodeTypes} onInit={setFlowInstance}
         onNodesChange={handleNodesChange} onNodeClick={handleNodeClick}
+        onConnectStart={handleConnectStart}
+        onConnectEnd={handleConnectEnd}
         onBeforeDelete={async ({ nodes: removedNodes, edges: removedEdges }) => { cancelPendingClicks(); if (removedNodes.length || removedEdges.length) history.begin(); return true; }}
         onDelete={() => history.end()}
         onNodeDoubleClick={(event, node) => {
@@ -245,7 +330,12 @@ export default function CanvasPage({ canvasId, onBackHome }) {
         onNodeDragStart={handleNodeDragStart} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop}
         onDoubleClick={handlePaneDoubleClick} zoomOnDoubleClick={false} zoomOnPinch={true}
         nodesDraggable={activeTool !== 'hand'}
-        onPaneClick={() => { cancelPendingClicks(); setNodeMenu(null); setNodes((current) => setCanvasSelection(current, [])); }}
+        onPaneClick={() => {
+          cancelPendingClicks();
+          if (pendingConnection) { clearPendingConnection(); return; }
+          setNodeMenu(null);
+          setNodes((current) => setCanvasSelection(current, []));
+        }}
         panOnDrag={activeTool === 'hand'} selectionOnDrag={activeTool === 'select'}
         multiSelectionKeyCode={['Meta', 'Control', 'Shift']} selectionKeyCode={null}
         onSelectionStart={() => { cancelPendingClicks(); setNodeMenu(null); setNodes((current) => setCanvasSelection(current, current.filter((node) => node.selected).map((node) => node.id))); }}
@@ -254,7 +344,9 @@ export default function CanvasPage({ canvasId, onBackHome }) {
         <Background variant="dots" gap={16} size={1} patternClassName="[r:0.5px]" color="rgba(255,255,255,0.16)" />
         {showMiniMap && <CanvasMiniMap />}
       </ReactFlow>
-      {nodeMenu && <div className="pointer-events-none absolute inset-0 z-30"><div className="pointer-events-auto absolute" style={{ left: nodeMenu.screen.left, top: nodeMenu.screen.top }}><CanvasNodeAddMenu onAddNode={(type) => addNode(type, nodeMenu.flowPosition)} /></div></div>}
+      {(nodeMenu || pendingConnection) && <div className="pointer-events-none absolute inset-0 z-30"><div className="pointer-events-auto absolute" style={{ left: (pendingConnection || nodeMenu).screen.left, top: (pendingConnection || nodeMenu).screen.top }}><CanvasNodeAddMenu items={pendingConnection ? pendingMenuItems : CANVAS_NODE_MENU_ITEMS} onAddNode={(type) => pendingConnection
+        ? addNode(type, pendingConnection.flowPosition, pendingConnection)
+        : addNode(type, nodeMenu.flowPosition)} /></div></div>}
     </div>
     {loading && <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 text-[14px] text-text-hint">正在加载画布...</div>}
     {!loading && error && <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 text-[14px] text-text-danger">{error}</div>}

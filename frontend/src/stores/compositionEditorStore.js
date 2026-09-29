@@ -306,6 +306,19 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     const windows = computeAudioWindows(state.segments).windows;
     const source = windows.find((window) => window.seg.id === id);
     if (!source || source.start === start) return null;
+    if (state.trackSettings.A1?.excludeGaps) {
+      const ordered = windows.filter((window) => window.seg.id !== id).sort((a, b) => a.start - b.start);
+      const target = ordered.findIndex((window) => start < window.end);
+      ordered.splice(target < 0 ? ordered.length : target, 0, source);
+      let cursor = 0;
+      const audio = ordered.map(({ seg }) => {
+        const next = { ...seg, start: cursor };
+        cursor += Number(seg.duration) || 0;
+        return next;
+      });
+      let index = 0;
+      return state.segments.map((segment) => segment.type === 'audio' ? audio[index++] : segment);
+    }
     if (windows.some((window) => window.seg.id !== id && start < window.end && start + Number(source.seg.duration) > window.start)) return null;
     const positions = new Map(windows.map((window) => [window.seg.id, window.start]));
     return state.segments.map((segment) => segment.type === 'audio'
@@ -356,7 +369,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   exportState: { ...initialExportState },
   playing: false,
   cursor: 0,
-  trackSettings: { V1: { hidden: false, volume: 1, excludeGaps: false }, A1: { hidden: false, volume: 1, excludeGaps: false }, S1: { hidden: false } },
+  trackSettings: { V1: { hidden: false, volume: 1, excludeGaps: true }, A1: { hidden: false, volume: 1, excludeGaps: false }, S1: { hidden: false } },
   zoom: 24, // 时间线缩放：pxPerSecond（会话级，不持久化）
 
   loadAlbum: (assets) => set({ album: Array.isArray(assets) ? assets : [] }),
@@ -364,14 +377,17 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     const current = state.trackSettings[track] || {};
     const nextTrack = { ...current, ...patch };
     const nextSettings = { ...state.trackSettings, [track]: nextTrack };
-    if (track !== 'V1' || current.excludeGaps === nextTrack.excludeGaps || !nextTrack.excludeGaps) {
+    if (!['V1', 'A1'].includes(track) || current.excludeGaps === nextTrack.excludeGaps || !nextTrack.excludeGaps) {
       return { trackSettings: nextSettings };
     }
     let cursor = 0;
+    const audio = computeAudioWindows(state.segments).windows.sort((a, b) => a.start - b.start);
+    let audioIndex = 0;
     const segments = state.segments.map((segment) => {
-      if (segment.type !== 'video' && segment.type !== 'image') return segment;
-      const next = { ...segment, start: cursor };
-      cursor += Number(segment.duration) || 0;
+      if (track === 'A1' ? segment.type !== 'audio' : segment.type !== 'video' && segment.type !== 'image') return segment;
+      const source = track === 'A1' ? audio[audioIndex++].seg : segment;
+      const next = { ...source, start: cursor };
+      cursor += Number(source.duration) || 0;
       return next;
     });
     return { trackSettings: nextSettings, segments, dirty: true, dirtyRev: state.dirtyRev + 1, playing: false };
@@ -558,9 +574,10 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     if (!segments) return {};
     return { segments, selectedId: id, dirty: true, dirtyRev: state.dirtyRev + 1, playing: false };
   }),
-  previewAudioSegment: (id, start) => rawSet((state) => {
-    const segments = moveAudioSegments(state, id, start);
-    return segments ? { segments, selectedId: id, dirty: true, playing: false } : {};
+  previewAudioSegment: (id, start, before) => rawSet((state) => {
+    const base = before ? { ...state, segments: before.segments } : state;
+    const segments = moveAudioSegments(base, id, start) ?? base.segments;
+    return { segments, selectedId: id, playing: false };
   }),
   commitAudioSegment: (id, before) => rawSet((state) => {
     if (!before || state.segments === before.segments || JSON.stringify(state.segments) === JSON.stringify(before.segments)) return {};
@@ -614,11 +631,11 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       return changed ? { segments, dirty: true, dirtyRev: state.dirtyRev + 1 } : {};
     }),
 
-  /** 分离视频段原声：在 A1 生成对齐该视频段的音频段（视频段本身不变） */
+  /** 分离视频段原声：原视频关闭音频，在 A1 生成对齐的独立音频段。 */
   detachAudio: (segmentId) => {
     const state = get();
     const seg = state.segments.find((s) => s.id === segmentId);
-    if (!seg || seg.type !== 'video') return;
+    if (!seg || seg.type !== 'video' || seg.hasAudio === false || state.hasDetachedAudio(segmentId)) return;
     // 视频段当前时间线起点（V1 串行窗口）
     const { windows } = computeVisualWindows(state.segments);
     const win = windows.find((w) => w.seg.id === segmentId);
@@ -647,7 +664,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
           break;
         }
       }
-      const next = [...st.segments];
+      const next = st.segments.map((segment) => segment.id === segmentId ? { ...segment, hasAudio: false } : segment);
       next.splice(insertAt, 0, audioSegment);
       return { segments: next, dirty: true, dirtyRev: st.dirtyRev + 1, playing: false };
     });
@@ -658,6 +675,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     const state = get();
     const seg = state.segments.find((s) => s.id === segmentId);
     if (!seg || seg.type !== 'video') return false;
+    if (seg.hasAudio === false) return true;
     const { windows } = computeVisualWindows(state.segments);
     const win = windows.find((w) => w.seg.id === segmentId);
     if (!win) return false;

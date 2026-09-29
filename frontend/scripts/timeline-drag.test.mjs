@@ -6,6 +6,11 @@ const server = await createServer({ server: { middlewareMode: true, hmr: false, 
 after(() => server.close());
 const { useCompositionEditorStore: store, computeVisualWindows } = await server.ssrLoadModule('/src/stores/compositionEditorStore.js');
 
+test('V1 吸附默认开启，A1 默认保持关闭', () => {
+  assert.equal(store.getInitialState().trackSettings.V1.excludeGaps, true);
+  assert.equal(store.getInitialState().trackSettings.A1.excludeGaps, false);
+});
+
 function setup(snap = false) {
   const segments = [
     { id: 'a', type: 'video', start: 0, duration: 3 },
@@ -19,6 +24,41 @@ function setup(snap = false) {
 }
 
 const positions = () => computeVisualWindows(store.getState().segments).windows.map(({ seg, start }) => [seg.id, start]);
+
+test('分离音频关闭原视频声音且只生成一次，允许切换选中并整体撤销', () => {
+  const before = setup();
+  store.setState({ segments: before.segments.map((seg) => ({ ...seg, assetId: seg.id })) });
+  const original = store.getState().segments;
+  store.getState().detachAudio('a');
+  assert.equal(store.getState().segments.find((seg) => seg.id === 'a').hasAudio, false);
+  assert.equal(store.getState().segments.length, original.length + 1);
+  store.getState().detachAudio('a');
+  assert.equal(store.getState().segments.length, original.length + 1);
+  store.getState().select('c');
+  assert.equal(store.getState().selectedId, 'c');
+  store.getState().undo();
+  assert.deepEqual(store.getState().segments, original);
+  store.getState().redo();
+  assert.equal(store.getState().segments.find((seg) => seg.id === 'a').hasAudio, false);
+});
+
+test('A1 吸附独立补齐和拖拽重排，视觉轨道不变，支持整次撤销', () => {
+  const original = setup();
+  store.setState({ segments: [...original.segments, { id: 'audio2', type: 'audio', start: 20, duration: 3 }], trackSettings: { V1: { excludeGaps: true }, A1: { excludeGaps: false, volume: 1, hidden: false } } });
+  store.getState().setTrackSetting('A1', { excludeGaps: true });
+  const before = { segments: store.getState().segments, selectedId: 'audio' };
+  assert.deepEqual(before.segments.filter((s) => s.type === 'audio').map((s) => s.start), [0, 9]);
+  for (const start of [15, 20, 20]) store.getState().previewAudioSegment('audio', start, before);
+  assert.deepEqual(store.getState().segments.filter((s) => s.type === 'audio').map((s) => [s.id, s.start]), [['audio2', 0], ['audio', 3]]);
+  assert.deepEqual(positions(), [['a', 0], ['b', 3], ['c', 6]]);
+  store.getState().commitAudioSegment('audio', before);
+  store.getState().undo();
+  assert.deepEqual(store.getState().segments, before.segments);
+  store.getState().setTrackSetting('A1', { hidden: true, volume: 0 });
+  assert.equal(store.getState().trackSettings.A1.hidden, true);
+  assert.equal(store.getState().trackSettings.A1.volume, 0);
+  assert.equal(store.getState().trackSettings.V1.excludeGaps, true);
+});
 
 test('无首尾感应目标时，重叠拖动不推动后续片段，自由空隙可落位', () => {
   const before = setup();

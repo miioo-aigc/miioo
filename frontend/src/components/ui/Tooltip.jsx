@@ -16,18 +16,23 @@
  *   2026-08-21  支持按使用场景配置提示面板描边颜色
  *   2026-08-21  支持在指定最大宽度内自然换行
  *   2026-09-16  支持 followCursor 模式，提示跟随鼠标移动
+ *   2026-09-29  支持可选显示延迟，移开及卸载时清理定时器
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-export default function Tooltip({ label, children, offset = 4, color = '#FFFFFF', borderColor, multiline = false, placement = 'top', fontSize = 12, lineHeight = 16, maxWidth, followCursor = false }) {
+export default function Tooltip({ label, children, offset = 4, color = '#FFFFFF', borderColor, multiline = false, placement = 'top', fontSize = 12, lineHeight = 16, maxWidth, followCursor = false, delay = 0 }) {
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState(null);
+  const timerRef = useRef(null);
+  useEffect(() => () => window.clearTimeout(timerRef.current), []);
 
   function handleMouseEnter(event) {
-    setVisible(true);
+    window.clearTimeout(timerRef.current);
+    if (delay > 0) timerRef.current = window.setTimeout(() => setVisible(true), delay);
+    else setVisible(true);
     if (followCursor) {
       setPosition({ left: event.clientX, top: event.clientY });
       return;
@@ -42,6 +47,7 @@ export default function Tooltip({ label, children, offset = 4, color = '#FFFFFF'
   }
 
   function handleMouseLeave() {
+    window.clearTimeout(timerRef.current);
     setVisible(false);
     setPosition(null);
   }

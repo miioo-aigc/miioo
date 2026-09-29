@@ -3,14 +3,14 @@
  * @structure-index
  *
  * 时间线结构：素材展示辅助组件 L51；状态与缩放 L99；拖拽预览与提交 L159；
- * 定位与播放游标 L271；片段卡片 L326；轨道布局与工具栏 L389。
+ * 定位与播放游标 L308；片段卡片 L363；轨道布局与工具栏 L426。
  *
- * 更新记录：2026-09-29 修复累计位移；插入光标改为原始片段首尾 8px 感应定位。
+ * 更新记录：2026-09-29 抽离 TrackControls；修复长按后 click 冒泡到轨道导致取消选中。
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import TimelineToolbar from './TimelineToolbar';
-import { ZoomIn, ZoomOut, Eye, EyeOff, Volume2, VolumeX, BetweenHorizontalStart } from 'lucide-react';
-import { IconButton } from '../ui';
+import { ZoomIn, ZoomOut } from 'lucide-react';
+import TrackControls from './TrackControls';
 import {
   formatTime,
   computeVisualWindows,
@@ -205,7 +205,7 @@ export default function TimelineBar({ showToast }) {
     event.preventDefault();
     const drag = pointerDragRef.current;
     const content = scrollRef.current?.firstElementChild;
-    if (!drag || !content) return;
+    if (!drag?.active || !content) return;
     if (event.clientY < drag.trackTop || event.clientY > drag.trackBottom) return;
     const pointerTime = (event.clientX - content.getBoundingClientRect().left) / zoom;
     const raw = pointerTime - drag.grabOffset;
@@ -218,7 +218,7 @@ export default function TimelineBar({ showToast }) {
       suppressClickRef.current = true;
       setInsertionIndex(drag.insertionIndex);
       setDraggingStart(Math.max(0, raw));
-      if (drag.isAudio) useCompositionEditorStore.getState().previewAudioSegment(drag.id, start);
+      if (drag.isAudio) useCompositionEditorStore.getState().previewAudioSegment(drag.id, start, drag.before);
       else useCompositionEditorStore.getState().previewVisualSegment(drag.id, start, drag.before, insertion);
     }
   };
@@ -226,6 +226,7 @@ export default function TimelineBar({ showToast }) {
   const finishVisualPointerDrag = (event) => {
     const drag = pointerDragRef.current;
     if (!drag) return;
+    drag.cleanup();
     updateVisualPointerDrag(event);
     if (drag.moved) {
       const store = useCompositionEditorStore.getState();
@@ -241,7 +242,7 @@ export default function TimelineBar({ showToast }) {
   };
 
   const startTrackPointerDrag = (event, seg, win, isAudio) => {
-    if (event.button !== 0 || event.target.closest('button')) return;
+    if (event.button !== 0 || event.target.closest('button') || pointerDragRef.current) return;
     event.preventDefault();
     event.stopPropagation();
     const content = scrollRef.current?.firstElementChild;
@@ -249,20 +250,56 @@ export default function TimelineBar({ showToast }) {
     const rect = event.currentTarget.getBoundingClientRect();
     const trackRect = event.currentTarget.parentElement?.getBoundingClientRect();
     pointerDragRef.current = { id: seg.id, isAudio, duration: win.end - win.start, grabOffset: (event.clientX - rect.left) / zoom, start: win.start, currentStart: win.start, startX: event.clientX, startY: event.clientY, moved: false, before: { segments: useCompositionEditorStore.getState().segments, selectedId }, trackTop: trackRect?.top ?? 0, trackBottom: trackRect?.bottom ?? window.innerHeight };
+    const drag = pointerDragRef.current;
+    const pointerId = event.pointerId;
+    suppressClickRef.current = false;
     select(seg.id);
-    const move = (moveEvent) => updateVisualPointerDrag(moveEvent);
+    const move = (moveEvent) => {
+      if (moveEvent.pointerId === pointerId) updateVisualPointerDrag(moveEvent);
+    };
     const up = (upEvent) => {
+      if (upEvent.pointerId !== pointerId) return;
       finishVisualPointerDrag(upEvent);
+    };
+    const cancel = (cancelEvent) => {
+      if (cancelEvent.type !== 'blur' && cancelEvent.pointerId !== pointerId) return;
+      drag.cleanup();
+      if (drag.moved) useCompositionEditorStore.setState({ segments: drag.before.segments });
+      pointerDragRef.current = null;
+      setDraggingId(null);
+      setInsertionIndex(null);
+      setDraggingIsAudio(false);
+      setDraggingStart(null);
+    };
+    const timer = window.setTimeout(() => {
+      if (pointerDragRef.current !== drag) return;
+      drag.active = true;
+      suppressClickRef.current = true;
+      setDraggingId(seg.id);
+      setDraggingIsAudio(isAudio);
+      useCompositionEditorStore.getState().pause();
+    }, 100);
+    drag.cleanup = () => {
+      window.clearTimeout(timer);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('blur', cancel);
     };
-    setDraggingId(seg.id);
     setInsertionIndex(null);
-    setDraggingIsAudio(isAudio);
-    useCompositionEditorStore.getState().pause();
     window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up, { once: true });
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    window.addEventListener('blur', cancel);
   };
+
+  useEffect(() => () => {
+    const drag = pointerDragRef.current;
+    if (!drag) return;
+    drag.cleanup();
+    if (drag.moved) useCompositionEditorStore.setState({ segments: drag.before.segments });
+    pointerDragRef.current = null;
+  }, []);
 
   // 缩放控件动作（setZoom 内部统一钳 4~240）
   const zoomIn = () => setZoom(zoom * ZOOM_FACTOR);
@@ -337,7 +374,7 @@ export default function TimelineBar({ showToast }) {
         key={seg.id}
         draggable={false}
         onPointerDown={(event) => { if (draggableSegment) startTrackPointerDrag(event, seg, win, isAudio); }}
-        onClick={(event) => { if (suppressClickRef.current) { suppressClickRef.current = false; return; } event.stopPropagation(); select(seg.id); seekAtPointer(event.clientX); }}
+        onClick={(event) => { event.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } select(seg.id); seekAtPointer(event.clientX); }}
         className={`group absolute top-0 overflow-hidden rounded-medium border-2 flex flex-col justify-between !cursor-default ${
           selected
             ? 'bg-white-10 border-stroke-active'
@@ -347,7 +384,7 @@ export default function TimelineBar({ showToast }) {
           left: (dragging && !isAudio && draggingStart != null ? draggingStart : win.start) * zoom,
           width,
           height: isAudio ? AUDIO_CLIP_H : CLIP_H,
-          opacity: !isAudio && trackSettings.V1.hidden ? 0.2 : 1,
+          opacity: trackSettings[isAudio ? 'A1' : seg.type === 'subtitle' ? 'S1' : 'V1'].hidden ? 0.2 : 1,
           zIndex: dragging ? 50 : selected ? 20 : 1,
           transform: dragging ? 'translateY(-12px)' : undefined,
           borderColor: dragging ? 'var(--color-brand-main)' : undefined,
@@ -395,11 +432,7 @@ export default function TimelineBar({ showToast }) {
         {[['V1', VIDEO_ROW_H], ['A1', AUDIO_ROW_H], ['S1', VIDEO_ROW_H]].map(([track, height]) => (
           <div key={track} className="group relative flex items-center justify-start gap-[6px] pl-[8px] text-font-size-12 text-text-hint" style={{ height, fontFamily: FONT_MEDIUM }}>
             {track}
-            {track === 'V1' && <span className="flex items-center gap-[4px]">
-              <IconButton aria-label="隐藏视频轨道" title="隐藏视频轨道" variant="link" size="small" onClick={() => { const hidden = !trackSettings.V1.hidden; setTrackSetting('V1', { hidden }); showToast?.(hidden ? '轨道已隐藏' : '取消轨道隐藏', 'success'); }} icon={<span className={trackSettings.V1.hidden ? 'text-brand-main' : 'text-white-60'}>{trackSettings.V1.hidden ? <EyeOff size={16} /> : <Eye size={16} />}</span>} style={{ width: 24, height: 24, padding: 0, border: 'none', boxShadow: 'none' }} />
-              <IconButton aria-label={trackSettings.V1.volume > 0 ? '静音视频轨道' : '取消视频轨道静音'} title={trackSettings.V1.volume > 0 ? '静音视频轨道' : '取消视频轨道静音'} variant="link" size="small" onClick={() => { const muted = trackSettings.V1.volume > 0; setTrackSetting('V1', { volume: muted ? 0 : 1 }); showToast?.(muted ? '轨道已静音' : '已取消轨道静音', 'success'); }} icon={<span className={trackSettings.V1.volume <= 0 ? 'text-brand-main' : 'text-white-60'}>{trackSettings.V1.volume > 0 ? <Volume2 size={16} /> : <VolumeX size={16} />}</span>} style={{ width: 24, height: 24, padding: 0, border: 'none', boxShadow: 'none' }} />
-              <IconButton aria-label="轨道吸附" title="轨道吸附" variant="link" size="small" onClick={() => { const enabled = !trackSettings.V1.excludeGaps; setTrackSetting('V1', { excludeGaps: enabled }); showToast?.(enabled ? '轨道吸附已开启' : '轨道吸附已关闭', 'success'); }} icon={<span className={trackSettings.V1.excludeGaps ? 'text-brand-main' : 'text-white-60'}><BetweenHorizontalStart size={16} /></span>} style={{ width: 24, height: 24, padding: 0, border: 'none', boxShadow: 'none' }} />
-            </span>}
+            {track !== 'S1' && <TrackControls track={track} settings={trackSettings[track]} onChange={setTrackSetting} showToast={showToast} />}
           </div>
         ))}
       </div>

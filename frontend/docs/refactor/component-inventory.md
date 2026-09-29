@@ -2307,3 +2307,6 @@
 - `ui/VideoPlaybackControls.jsx`：纯展示播放点击层和中央状态反馈，接收播放状态、反馈可见性与切换回调；原生视频 controls 和播放器 ref 仍归使用方。
 - 创作详情保留原播放事件、定时器及自动播放副作用，新增打开编辑前暂停；分镜详情负责视频 ref、弹窗开关，通过 `VideoEditContext` 向面板工具按钮提供打开回调，图片分支不提供回调。
 - 外壳增加可选层级参数以兼容分镜详情叠层；视频不传基准尺寸。定向 ESLint、构建通过；全仓历史阻塞和浏览器待验收项见 `docs/video-edit-modal-progress.md`。
+# 2026-09-29 增补：轨道控制
+
+- `src/components/compositionEditor/TrackControls.jsx`：V1/A1 共用的隐藏、静音、吸附按钮组；复用 IconButton 和 Tooltip，状态与回调由 TimelineBar 显式传入。已接入，浏览器验收待完成。

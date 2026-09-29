@@ -20,7 +20,7 @@
  *   buildEpisodeStatusMap(overview, episodes) 剧集完成状态适配     utils/episodeStatusAdapter.js
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
- *   export default function Home()                               L105
+ *   export default function Home()                               L242
  *     ├─ [懒加载] 页面业务模块按需加载                             L98–L103
  *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L106–L160
  *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L172 / L179 / L190
@@ -150,12 +150,12 @@ function readWorkspaceRoute() {
   if (pathname === '/workspace/assets') return { key: 'assets' };
 
   // 详情页历史上已写入 /project/:id/:step，兼容旧的 /workspace/project/:id/:step。
-  const match = pathname.match(/^\/(?:workspace\/)?project\/([^/]+)(?:\/([^/]+))?$/);
+  const match = pathname.match(/^\/(?:workspace\/)?project\/([^/]+)(?:\/(edit)\/editor|\/([^/]+))?$/);
   if (match && match[1]) {
     return {
       key: 'project',
       projectId: decodeURIComponent(match[1]),
-      step: PATH_STEPS[match[2]] || 'script',
+      step: PATH_STEPS[match[2] || match[3]] || 'script',
     };
   }
 
@@ -174,6 +174,7 @@ function workspacePath({ key, projectId, step }) {
 
 function updateWorkspaceUrl(route, { replace = false } = {}) {
   const nextPath = workspacePath(route);
+  if (route.step === 'edit' && window.location.pathname.replace(/\/+$/, '') === `${nextPath}/editor`) return;
   if (window.location.pathname === nextPath) return;
   window.history[replace ? 'replaceState' : 'pushState']({}, '', nextPath);
 }

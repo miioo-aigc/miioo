@@ -301,7 +301,7 @@ export default function PreviewCanvas() {
               ref={videoRef}
               src={active.seg.sourceUrl}
               className="w-full h-full object-contain"
-              muted={v1Settings.volume <= 0}
+              muted={v1Settings.volume <= 0 || active.seg.hasAudio === false}
               volume={v1Settings.volume}
               playsInline
               onTimeUpdate={handleVideoTimeUpdate}
@@ -361,7 +361,7 @@ export default function PreviewCanvas() {
       </div>
 
       {/* 音轨播放层：隐藏 audio 承载 A1 音频（含分离出的视频原声），视频保持静音 */}
-      <audio ref={audioRef} preload="auto" hidden onLoadedMetadata={handleAudioLoadedMetadata} />
+      <audio ref={audioRef} preload="auto" hidden muted={trackSettings.A1.hidden || trackSettings.A1.volume <= 0} onLoadedMetadata={handleAudioLoadedMetadata} />
     </div>
   );
 }

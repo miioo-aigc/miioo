@@ -25,12 +25,17 @@ import './canvas-nodes.css';
 export default function CanvasNodeShell({ nodeType, title, selected = false, data, children, onPromptChange, onAddReference, onGenerate }) {
   const [modelState, setModelState] = useState({ options: [], loading: true, error: false });
   const [audioDraft, setAudioDraft] = useState({});
-  const mediaControls = useCanvasMediaControls(nodeType, data?.model, (value) => data?.onModelChange?.(data?.nodeId, value));
+  const mediaControls = useCanvasMediaControls(nodeType, data?.model, (value) => data?.onModelChange?.(data?.nodeId, value), (value) => data?.onGenerationModeChange?.(data?.nodeId, value));
   useEffect(() => {
     if (nodeType === 'image' && Number.isInteger(mediaControls.imageReferenceLimit)) {
       data?.onImageReferenceLimitChange?.(data?.nodeId, mediaControls.imageReferenceLimit);
     }
   }, [data?.nodeId, data?.onImageReferenceLimitChange, mediaControls.imageReferenceLimit, nodeType]);
+  useEffect(() => {
+    if (nodeType !== 'video' || !mediaControls.videoCapabilities) return;
+    data?.onVideoCapabilitiesChange?.(data?.nodeId, mediaControls.videoCapabilities);
+    if (!data?.generationMode && mediaControls.refMode) data?.onGenerationModeChange?.(data?.nodeId, mediaControls.refMode);
+  }, [data?.generationMode, data?.nodeId, data?.onGenerationModeChange, data?.onVideoCapabilitiesChange, mediaControls.refMode, mediaControls.videoCapabilities, nodeType]);
   useEffect(() => {
     if (nodeType !== 'text') return;
     let cancelled = false;
@@ -45,7 +50,7 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
   return <div className={`canvas-node ${selected ? 'canvas-node--selected' : ''}`} data-node-type={nodeType}>
     <CanvasNodeHeader nodeType={nodeType} title={title} />
     <div className="canvas-node__frame" aria-busy={Boolean(data?.generating)} data-state={data?.editing ? 'editing' : 'default'} data-connection-target={data?.connectionTarget ? 'true' : 'false'} data-dragging={data?.dragging ? 'true' : 'false'} data-drag-release={data?.dragRelease ? 'true' : 'false'} style={{ '--canvas-drag-scale-x': data?.dragScaleX || 1, '--canvas-drag-scale-y': data?.dragScaleY || 1 }}>
-      <CanvasNodePorts ports={data?.ports} connectingType={data?.connectingType} nodeActive={Boolean(selected || data?.editing || data?.generating)} />
+      <CanvasNodePorts ports={data?.ports} connectingType={data?.connectingType} nodeActive={Boolean(selected || data?.editing || data?.generating)} onUpstreamConnectStart={(event) => data?.onUpstreamConnectStart?.(data?.nodeId, event)} />
       {nodeType !== 'text' && <div className="canvas-node__local-upload-slot" hidden={Boolean(data?.asset?.url || data?.transcript)}>
         <CanvasLocalUpload nodeType={nodeType} onAssetChange={(asset) => data?.onAssetChange?.(data.nodeId, asset)} />
       </div>}

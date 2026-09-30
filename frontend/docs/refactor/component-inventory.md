@@ -1,5 +1,24 @@
 # 组件重构盘点基线
 
+## 2026-09-30 画布节点上传入口字号
+
+- `src/components/ui/FileUploadButton.jsx`：保留公共上传按钮 12px、白色 40% 的默认文字样式，新增可被业务容器覆盖的字号、行高及默认文字色 CSS 变量。
+- `src/components/canvas/canvas-nodes.css`：在 `.canvas-node` 范围内将上传按钮文字覆盖为 14px/18px、默认白色 60%，覆盖文本、图片、视频、音频节点卡片内的本地上传与资产库入口，不影响画布输入框添加菜单和其他页面。
+- 验证：构建、画布资产定向测试、定向 ESLint 和 `git diff --check` 通过；视觉待用户手动验收。
+
+## 2026-09-30 画布 Seedance 编辑参数（待用户手动验收）
+
+- CanvasVideoModels 新增 Seedance 编辑模式识别和控件派生值：只对 video_ref / video_edit 限制比例 adaptive、时长 -1；唯一选项不覆盖底层原选择，退出恢复合法原值，否则回退默认项或首项。
+- UseCanvasMediaControls 保留共享参数状态及原始模型配置，只在返回画布控件时应用覆盖；分辨率与共享创作、分镜模块不变。CanvasVideoGeneration 在生成计划中再次规范请求参数，避免旧参数发送。
+- 增加选项、恢复、非目标模型隔离、请求快照与菜单摘要测试；140 项画布测试、构建通过，代码检查 0 错误、3 项既有警告。架构检查仍被既有 seedanceUploadValidation.js 命名阻断；未打开浏览器，实际交互与真实请求待用户验收。
+
+## 2026-09-30 画布视频菜单展示（待用户手动验收）
+
+- CanvasVideoModels 集中维护模式中文名称、智能比例标签和时长显示格式；展示格式不改变选项值及请求值。
+- CanvasVideoModeIcons 承载用户提供的图标几何，CanvasVideoModeIconConfig 独立导出模式映射；CanvasMediaControls 注入画布专用图标及参数展示，不向共享组件加入画布业务依赖。
+- CreationRefModeSelector 新增可选 iconMap、menuWidth；CreationVideoParamsSelector 新增可选 ratioLabel、formatDuration。未传入时保持原有默认展示与回调值。
+- 135 项画布测试及构建通过，代码检查无错误、3 项现有依赖警告；架构检查仍被既有 seedanceUploadValidation.js 文件命名阻断。未打开浏览器，待用户手动验收。
+
 ## 2026-09-29 图片与视频节点引用编辑器（本轮待手动验收）
 
 - 新增 CanvasMediaPromptEditor，复用 CreationPromptEditor/useCreationPromptInteraction；适配画布缩放、中文组词、节点草稿快照和失效标签清理。新增 CanvasPromptReferences 适配候选素材，合并添加参考、图片手动连线和当前图片节点自身素材，排除未关联素材。
@@ -2513,3 +2532,14 @@
 - `CanvasPage` 的文本来源连线菜单固定展示四类节点；`CanvasTextAudio` 继续负责音频正文自动导入，文本、图片、视频不回填输入框。
 - 新增 `CanvasTextVideo`，保存文本到视频的素材来源、派生边和断线动作；不复制文本正文到视频提示词。
 - 本轮画布测试、构建、lint 和差异检查通过；未自动打开浏览器，待用户手动验收。
+## 2026-09-30 画布视频模型清单适配（待用户手动验收）
+
+- `CanvasVideoModels` 集中维护画布专用的视频模型展示顺序、展示名称、少量模式名称覆盖以及“模型 + 模式”占位符；后端模型 ID、能力值和请求值保持不变。
+- `CanvasCreationPanel` 仅在视频节点查询清单占位符，`CanvasMediaPromptEditor` 通过可选 `placeholderText` 传给共享 `CreationPromptEditor`；图片节点仍使用原有富文本占位提示，创作页和分镜页不读取画布配置。
+- 已新增全部 15 个模型的排序与名称、清单内全部模型模式占位符、模式显示、回退和接线隔离测试；画布测试共 146 项通过，未自动打开浏览器，待用户手动验收。
+
+## 2026-09-30 画布视频素材边界校验（待用户手动验收）
+
+- `CanvasVideoGeneration` 统一处理画布视频媒体计数、后端能力上限、模式精确数量、总媒体数和 Seedance 音频唯一素材规则；文本来源不计入总素材上限。
+- `UseCanvasReferences` 与 `CanvasPage` 在本地上传、资产库添加时即时拦截超限媒体；`CanvasMediaPromptEditor` 通过共享 Hook 的可选 `canInsertMention` 回调拦截超限 `@` 引用，创作发送前再次执行最终校验。
+- 视频连线保持可编辑，超限边按连接顺序标红；新增 HappyHorse 1.0 视频编辑的单视频最终校验及 HappyHorse 1.1 参考生视频清单适配。定向测试 24 项通过，lint 无错误但保留 3 项既有警告，构建通过；架构检查仍受既有命名问题阻断。

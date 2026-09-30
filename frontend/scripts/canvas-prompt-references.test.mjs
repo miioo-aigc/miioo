@@ -43,7 +43,22 @@ test('复用创作编辑器并保留草稿、缩放定位、中文组词与失�
   assert.match(source, /onCompositionEnd/);
   assert.match(source, /ids\.has\(tag\.dataset\.fileRef\)/);
   assert.match(source, /restoreContent\(\{ text: prompt, html: snapshot\?\.html/);
+  assert.match(source, /validateCanvasVideoMedia/);
+  assert.match(source, /canInsertMention/);
+  assert.match(source, /querySelectorAll\('\[data-file-ref\]'\)/);
+  const interaction = readFileSync(new URL('../src/components/creation/useCreationPromptInteraction.js', import.meta.url), 'utf8');
+  assert.match(interaction, /canInsertMention\(file, replacingFileRef, editorRef\.current\)/);
   const panel = readFileSync(new URL('../src/components/canvas/CanvasCreationPanel.jsx', import.meta.url), 'utf8');
   assert.match(panel, /promptHTML: snapshot\?\.html/);
   assert.match(panel, /onPromptChange\?\.\(snapshot.requestText, snapshot\)/);
+});
+
+test('画布视频节点将模型模式占位符传给共享编辑器，图片节点保留原占位符', () => {
+  const panel = readFileSync(new URL('../src/components/canvas/CanvasCreationPanel.jsx', import.meta.url), 'utf8');
+  const editor = readFileSync(new URL('../src/components/canvas/CanvasMediaPromptEditor.jsx', import.meta.url), 'utf8');
+  const shared = readFileSync(new URL('../src/components/creation/CreationPromptEditor.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /getCanvasVideoPromptPlaceholder\(c\?\.model, c\?\.refMode\)/);
+  assert.match(panel, /placeholder=\{nodeType === 'video' \? placeholder : undefined\}/);
+  assert.match(editor, /placeholderText=\{placeholder\}/);
+  assert.match(shared, /customText=\{placeholderText\}/);
 });

@@ -17,6 +17,7 @@ import CreationSendButton from '../creation/CreationSendButton';
 import CanvasReferenceBar from './CanvasReferenceBar';
 import CanvasAudioCreationPanel from './CanvasAudioCreationPanel';
 import CanvasMediaPromptEditor from './CanvasMediaPromptEditor';
+import { getCanvasVideoPromptPlaceholder } from './CanvasVideoModels';
 
 export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', promptSnapshot, references = [], model = '', modelState = { options: [], loading: false }, generating = false, generationError = '', mediaControls, audioDraft, onAudioDraftChange, onModelChange, onPromptChange, onGenerate, onAddReference, onRemoveReference }) {
   const [focused, setFocused] = useState(false);
@@ -33,23 +34,33 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', pro
   if (nodeType === 'audio') return <CanvasAudioCreationPanel nodeId={nodeId} prompt={prompt} controls={mediaControls} draft={audioDraft} onDraftChange={onAudioDraftChange} onPromptChange={onPromptChange} onGenerate={onGenerate} />;
   const textNode = nodeType === 'text';
   const selectedModel = getCanvasTextModelValue(modelState.options, model);
-  const placeholder = nodeType === 'audio' ? '输入文字，生成音频' : '描述你想要创作的内容';
   const c = mediaControls;
+  const placeholder = nodeType === 'video'
+    ? getCanvasVideoPromptPlaceholder(c?.model, c?.refMode)
+    : nodeType === 'audio' ? '输入文字，生成音频' : '描述你想要创作的内容';
   const mediaParams = nodeType === 'image' ? { ratio: c?.ratio, resolution: c?.resolution, count: c?.count }
     : nodeType === 'video' ? { ratio: c?.videoRatio, resolution: c?.videoResolution, duration: c?.videoDuration, refMode: c?.refMode, soundEnabled: c?.soundEnabled }
       : { speed: c?.dubbingSpeed, pitch: c?.dubbingPitch, volume: c?.dubbingVolume };
 
   const hasReferences = nodeType === 'image' || nodeType === 'video';
   const referenceMode = nodeType === 'video' ? c?.refMode : 'all';
-  const activeReferences = referenceMode === 'frame' ? references.filter((reference) => reference.slot < 2 && reference.asset.asset_type === 'image') : references;
+  const activeReferences = referenceMode === 'text_to_video'
+    ? []
+    : referenceMode === 'first_frame'
+      ? references.filter((reference) => reference.slot < 1 && reference.asset.asset_type === 'image')
+    : referenceMode === 'start_end'
+      ? references.filter((reference) => reference.slot < 2 && reference.asset.asset_type === 'image')
+      : references;
   const send = (snapshot = mediaSnapshotRef.current) => {
     if (generating || composingRef.current) return;
     onGenerate?.({ nodeId, prompt: hasReferences ? snapshot?.requestText ?? draft : draft,
-      references: activeReferences, model: textNode ? selectedModel : c.model,
-      ...(!textNode ? { promptHTML: snapshot?.html, params: mediaParams, imageReferenceLimit: c?.imageReferenceLimit } : {}),
+      references: activeReferences, model: textNode ? selectedModel : (nodeType === 'video' ? c.requestModel : c.model),
+      ...(!textNode ? { promptHTML: snapshot?.html, params: mediaParams, imageReferenceLimit: c?.imageReferenceLimit,
+        capabilities: c?.videoCapabilities, generationMode: c?.refMode } : {}),
     });
   };
-  return <section className="canvas-creation-panel nodrag nowheel" data-references={hasReferences} aria-label="节点创作输入" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
+  const videoTextMode = nodeType === 'video' && referenceMode === 'text_to_video';
+  return <section className="canvas-creation-panel nodrag nowheel" data-references={hasReferences} data-video-text-mode={videoTextMode} aria-label="节点创作输入" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
     <ComposerSurface width="100%" focused={focused} toolbar={<>
       {textNode ? <Select
         value={selectedModel}
@@ -65,9 +76,11 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', pro
         <CreationSendButton onClick={() => send()} />
       </div>
     </>}>
-      {hasReferences && <CanvasReferenceBar nodeType={nodeType} references={references} mode={referenceMode} onAdd={onAddReference} onRemove={onRemoveReference} />}
+      {hasReferences && <CanvasReferenceBar nodeType={nodeType} references={references} mode={referenceMode} collapsed={videoTextMode} onAdd={onAddReference} onRemove={onRemoveReference} />}
       {hasReferences ? <CanvasMediaPromptEditor
         nodeType={nodeType} mode={referenceMode} references={activeReferences}
+        model={c?.model} capabilities={c?.videoCapabilities}
+        placeholder={nodeType === 'video' ? placeholder : undefined}
         prompt={prompt} snapshot={promptSnapshot} composingRef={composingRef}
         onFocusChange={setFocused} onSend={send}
         onChange={(snapshot) => {

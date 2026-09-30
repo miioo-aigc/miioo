@@ -5,7 +5,7 @@ import { ReferenceRemoveButton } from '../ui';
 import CreationUploadMenu from '../creation/CreationUploadMenu';
 import { getCanvasMediaAccept, getCanvasMediaFileType } from './CanvasLocalMedia';
 
-export default function CanvasReferenceBar({ nodeType = 'image', references = [], mode, onAdd, onRemove }) {
+export default function CanvasReferenceBar({ nodeType = 'image', references = [], mode, collapsed = false, onAdd, onRemove }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(null);
   const [error, setError] = useState('');
@@ -15,8 +15,8 @@ export default function CanvasReferenceBar({ nodeType = 'image', references = []
   const full = frame && [0, 1].every((slot) => references.some((reference) => reference.slot === slot && isFrameImage(reference)));
   const slots = frame ? [0, 1].map((slot) => references.find((reference) => reference.slot === slot && isFrameImage(reference)) || { slot }) : references;
   const inactive = frame ? references.filter((reference) => !isFrameImage(reference)) : [];
-  return <div className="canvas-reference-bar nodrag nopan nowheel" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
-    <div className="canvas-reference-bar__menu">
+  return <div className={`canvas-reference-bar nodrag nopan nowheel${collapsed ? ' canvas-reference-bar--collapsed' : ''}`} onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
+    <div className={`canvas-reference-bar__menu${collapsed ? ' canvas-reference-bar__menu--collapsed' : ''}`}>
       <button type="button" className="canvas-reference-bar__slot" aria-label="添加参考素材" title="添加参考素材" aria-haspopup="menu" aria-expanded={open}
         onClick={() => setOpen(!open)}><Plus size={14} /></button>
       {open && <CreationUploadMenu onClose={() => setOpen(false)}

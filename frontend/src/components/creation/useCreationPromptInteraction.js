@@ -234,6 +234,7 @@ export function useCreationPromptInteraction({
   prefillData = null,
   dubbingAdvancedEnabled = false,
   onTextChange,
+  canInsertMention,
 }) {
   const [focused, setFocused] = useState(false);
   const [hasContent, setHasContent] = useState(false);
@@ -916,6 +917,8 @@ export function useCreationPromptInteraction({
   }, [buildTagElement]);
 
   const insertMention = useCallback((file) => {
+    const replacingFileRef = mentionTargetTag?.dataset?.fileRef || '';
+    if (canInsertMention && !canInsertMention(file, replacingFileRef, editorRef.current)) return false;
     setMentionOpen(false);
     const targetTag = mentionTargetTag;
     if (targetTag) {
@@ -924,19 +927,19 @@ export function useCreationPromptInteraction({
       setMentionTargetTag(null);
       editorRef.current?.focus();
       setHasContent(true);
-      return;
+      return true;
     }
     const savedRange = mentionAnchorRange;
-    if (!savedRange) return;
+    if (!savedRange) return false;
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(savedRange);
     const range = selection.getRangeAt(0);
     const textNode = range.startContainer;
-    if (textNode.nodeType !== Node.TEXT_NODE) return;
+    if (textNode.nodeType !== Node.TEXT_NODE) return false;
     const textBefore = textNode.textContent.slice(0, range.startOffset);
     const atIdx = textBefore.lastIndexOf('@');
-    if (atIdx === -1) return;
+    if (atIdx === -1) return false;
     const deleteRange = document.createRange();
     deleteRange.setStart(textNode, atIdx);
     deleteRange.setEnd(textNode, range.startOffset);
@@ -950,7 +953,8 @@ export function useCreationPromptInteraction({
     selection.addRange(afterRange);
     editorRef.current?.focus();
     setHasContent(true);
-  }, [buildTagElement, mentionAnchorRange, mentionTargetTag]);
+    return true;
+  }, [buildTagElement, canInsertMention, mentionAnchorRange, mentionTargetTag]);
 
   const handleInput = useCallback(() => {
     const editor = editorRef.current;

@@ -9,6 +9,14 @@
 
 ## 一、组件概述
 
+### 画布视频业务选择器适配（2026-09-30）
+
+- 画布 Seedance 的“视频编辑”（video_ref / video_edit）参数面板仅提供“智能”比例（adaptive）与 -1 时长；摘要和菜单均不为 -1 追加 s，分辨率选项保持原样。退出编辑模式恢复原合法选择，否则回退合法默认项或首项。限制在画布业务适配层实现，不写入共享选择器默认规则。
+
+- CreationRefModeSelector 支持可选 iconMap 和 menuWidth，默认沿用原图标与 112px 面板宽度；画布传入专用模式图标并使用 max-content 宽度。
+- CreationVideoParamsSelector 支持可选 ratioLabel 和 formatDuration，仅改变摘要及选项的展示文字，选择回调仍返回原始值；未传入时保持原展示。
+- 画布视频图标统一为 16px，默认整体透明度 0.6、激活时为 1；首帧左亮右暗，尾帧左暗右亮，首尾帧双侧亮。该适配不改变通用 Select 或其他页面默认行为。
+
 Select 由两部分组成：**触发器 Trigger** + **下拉面板 Dropdown**。
 
 触发器形式不固定，常见的有三种：

@@ -5,15 +5,28 @@ import CreationPromptEditor from '../creation/CreationPromptEditor';
 import { useCreationPromptInteraction } from '../creation/useCreationPromptInteraction';
 import { showGlobalToast } from '../../stores/toastStore';
 import { getCanvasPromptFiles } from './CanvasPromptReferences';
+import { validateCanvasVideoMedia } from './CanvasVideoGeneration';
 
-export default function CanvasMediaPromptEditor({ nodeType, mode, references, prompt, snapshot, onChange, onFocusChange, onSend, composingRef }) {
+export default function CanvasMediaPromptEditor({ nodeType, mode, model, capabilities, placeholder, references, prompt, snapshot, onChange, onFocusChange, onSend, composingRef }) {
   const files = getCanvasPromptFiles(references, nodeType, mode);
   const [prefillData] = useState(() => ({ prompt, promptHTML: snapshot?.html, files }));
   const { zoom } = useViewport();
+  const canInsertMention = useCallback((file, replacingFileRef = '', editor) => {
+    if (nodeType !== 'video') return true;
+    const selectedIds = Array.from(editor?.querySelectorAll('[data-file-ref]') || [])
+      .map((tag) => tag.dataset.fileRef)
+      .filter((id) => id && id !== replacingFileRef);
+    if (!selectedIds.includes(file._uid)) selectedIds.push(file._uid);
+    const types = selectedIds.map((id) => files.find((item) => item._uid === id)?.asset_type).filter(Boolean);
+    const validation = validateCanvasVideoMedia(types, capabilities, model, mode);
+    if (!validation.allowed) showGlobalToast('warning', validation.message);
+    return validation.allowed;
+  }, [capabilities, files, mode, model, nodeType]);
   const editor = useCreationPromptInteraction({
     files, genType: nodeType, refMode: mode, prefillVersion: 1, prefillData,
     showToast: (type, message) => showGlobalToast(type, message),
     handleFileSelect: () => showGlobalToast('warning', '请通过添加按钮上传参考素材'),
+    canInsertMention,
   });
   const { editorRef, getPromptSnapshot, restoreContent, handleInput } = editor;
   const latest = useRef(onChange);
@@ -60,6 +73,7 @@ export default function CanvasMediaPromptEditor({ nodeType, mode, references, pr
     onKeyDown={(event) => event.stopPropagation()} onKeyUp={(event) => event.stopPropagation()}>
     <CreationPromptEditor
       editorRef={editorRef} files={files} genType={nodeType} refMode={mode} showFileCards={false}
+      placeholderText={placeholder}
       hasContent={editor.hasContent}
       onInput={() => { if (!composingRef.current) { editor.handleInput(); sync(); } }}
       onBeforeInput={editor.handleBeforeInput} onPaste={editor.handlePaste}
@@ -69,7 +83,7 @@ export default function CanvasMediaPromptEditor({ nodeType, mode, references, pr
       mentionOpen={editor.mentionOpen} mentionQuery={editor.mentionQuery}
       mentionPos={{ top: editor.mentionPos.top / zoom, left: editor.mentionPos.left / zoom }}
       mentionMenuRef={editor.mentionMenuRef} mentionIndex={editor.mentionIndex}
-      onMentionSelect={(file) => { editor.insertMention(file); sync(); }}
+      onMentionSelect={(file) => { if (editor.insertMention(file)) sync(); }}
       onMentionIndexChange={editor.setMentionIndex}
     />
   </div>;

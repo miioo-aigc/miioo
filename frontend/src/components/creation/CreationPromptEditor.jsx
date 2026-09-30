@@ -17,7 +17,7 @@ import CreationDubbingInterjectionMenu from './CreationDubbingInterjectionMenu';
 import { DubbingVoiceFileCard } from './CreationDubbingVoiceModal';
 import { UploadPlaceholder } from './CreationUploadArea';
 
-function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled, onDocumentSelect, voiceWrapWidth = 0, allowDocumentUpload = true }) {
+function PromptPlaceholder({ genType, refMode, customText, dubbingAdvancedEnabled, disabled, onDocumentSelect, voiceWrapWidth = 0, allowDocumentUpload = true }) {
   const documentInputRef = useRef(null);
   const baseStyle = {
     position: 'absolute',
@@ -30,6 +30,8 @@ function PromptPlaceholder({ genType, refMode, dubbingAdvancedEnabled, disabled,
     color: 'var(--composer-placeholder-color)',
     userSelect: 'none',
   };
+
+  if (customText) return <span style={{ ...baseStyle, whiteSpace: 'pre-wrap' }}>{customText}</span>;
 
   if (genType === 'image') {
     return (
@@ -127,6 +129,7 @@ function CreationPromptEditor({
   allowDocumentUpload = true,
   voiceWrapGap: requestedVoiceWrapGap = 16,
   showFileCards = true,
+  placeholderText,
 }) {
   const usesAdvancedDubbingTypography = genType === 'dubbing' && dubbingAdvancedEnabled;
   const voiceControlRef = useRef(null);
@@ -214,7 +217,7 @@ function CreationPromptEditor({
           )}
         </div>
       )}
-      {!hasContent && <PromptPlaceholder genType={genType} refMode={refMode} dubbingAdvancedEnabled={dubbingAdvancedEnabled} disabled={disabled} onDocumentSelect={onDocumentSelect} voiceWrapWidth={voiceWrapWidth} allowDocumentUpload={allowDocumentUpload} />}
+      {!hasContent && <PromptPlaceholder genType={genType} refMode={refMode} customText={placeholderText} dubbingAdvancedEnabled={dubbingAdvancedEnabled} disabled={disabled} onDocumentSelect={onDocumentSelect} voiceWrapWidth={voiceWrapWidth} allowDocumentUpload={allowDocumentUpload} />}
       <div
         ref={editorRef}
         className={`composer-surface__editor${voiceControl ? ' creation-prompt-editor--voice-wrap' : ''}`}

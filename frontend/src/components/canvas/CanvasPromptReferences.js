@@ -5,6 +5,12 @@ export function getCanvasPromptReferences(nodes, targetId) {
   for (const sourceId of target?.data.imageSourceIds || []) {
     if (!inputs.some((input) => input.sourceId === sourceId)) inputs.push({ sourceId, slot: inputs.length });
   }
+  for (const sourceId of target?.data.videoSourceIds || []) {
+    if (!inputs.some((input) => input.sourceId === sourceId)) inputs.push({ sourceId, slot: inputs.length });
+  }
+  for (const sourceId of target?.data.textSourceIds || []) {
+    if (!inputs.some((input) => input.sourceId === sourceId)) inputs.push({ sourceId, slot: inputs.length });
+  }
   if (target?.type === 'image' && target.data.asset?.url && !inputs.some((input) => input.sourceId === target.id)) {
     inputs.push({ sourceId: target.id, slot: inputs.length });
   }

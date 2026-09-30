@@ -32,7 +32,7 @@ export default function CanvasReferenceBar({ nodeType = 'image', references = []
               : <img src={reference.asset.url} alt={label} draggable={false} />)}
           {frame && <span className="canvas-reference-bar__label">{label}</span>}
         </div>
-        {reference.id && <ReferenceRemoveButton visible={hovered === reference.id} ariaLabel={`移除${label}`} onClick={() => onRemove?.(reference.id)} />}
+        {reference.id && !reference.isCurrentNode && <ReferenceRemoveButton visible={hovered === reference.id} ariaLabel={`移除${label}`} onClick={() => onRemove?.(reference.id)} />}
       </div>;
     })}
     <input ref={inputRef} type="file" hidden accept={getCanvasMediaAccept(nodeType === 'video' ? 'all' : 'image')} onChange={(event) => {

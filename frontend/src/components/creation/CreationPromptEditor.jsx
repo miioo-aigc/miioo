@@ -7,6 +7,7 @@
  * 2026-09-21 基础文字样式接入 ComposerSurface，保留配音排版差异。
  * 2026-09-28 音色占位测量使用布局尺寸，兼容画布缩放和展开动画。
  * 2026-09-28 开放音色间距及空态标识，供画布修正空编辑器光标；默认间距不变。
+ * 2026-09-29 showFileCards 允许画布复用编辑与引用菜单，参考素材栏由画布单独编排。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -125,6 +126,7 @@ function CreationPromptEditor({
   voiceControl,
   allowDocumentUpload = true,
   voiceWrapGap: requestedVoiceWrapGap = 16,
+  showFileCards = true,
 }) {
   const usesAdvancedDubbingTypography = genType === 'dubbing' && dubbingAdvancedEnabled;
   const voiceControlRef = useRef(null);
@@ -187,7 +189,7 @@ function CreationPromptEditor({
 
   return (
     <>
-      {files.length > 0 && (
+      {showFileCards && files.length > 0 && (
         <div style={{ position: 'absolute', left: 0, right: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '8px', bottom: 'calc(100% + 24px)' }}>
           {files.map((file, index) => renderFileCard(file, index))}
         </div>

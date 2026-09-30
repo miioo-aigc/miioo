@@ -17,7 +17,7 @@ test('节点生成时隐藏内部内容但保留布局与端口，发送按钮�
   assert.match(read('LoadingAnimation.jsx'), /aspectRatio: '1118 \/ 405'/);
   const panel = read('canvas/CanvasCreationPanel.jsx');
   assert.doesNotMatch(panel, /<CreationSendButton[^>]*(?:loading|disabled)=/);
-  assert.match(panel, /!generating && !composingRef.current/);
+  assert.match(panel, /if \(generating \|\| composingRef.current\) return/);
 });
 
 test('剧本复用公共扫光，效果不拦截鼠标且支持减少动态效果', () => {

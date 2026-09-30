@@ -34,6 +34,8 @@
 .canvas-node__port--active::before { border-color: var(--color-brand-main); background-color: var(--color-surface-base); background-image: linear-gradient(var(--color-blue-alpha-10)); }
 .canvas-node__port--active::after { background: var(--color-brand-main); }
 .react-flow__connectionline path { stroke: var(--color-brand-main); stroke-width: 2px; }
+.react-flow__edge.canvas-edge--overflow path { animation: canvas-edge-overflow 420ms steps(2, end) 3; stroke: var(--color-text-danger); stroke-width: 2px; }
+@keyframes canvas-edge-overflow { 0%, 49% { stroke: var(--color-text-danger); } 50%, 100% { stroke: var(--color-white-100); } }
 .canvas-node__empty-state { display: flex; width: 100%; min-height: 240px; align-items: center; justify-content: center; padding: 12px; box-sizing: border-box; color: var(--color-text-hint); font-size: 13px; text-align: center; }
 .canvas-node__empty { color: var(--color-text-hint); }
 .canvas-node__empty-state { flex-direction: column; gap: 8px; }
@@ -82,6 +84,9 @@
 .canvas-creation-panel__editor { width: 100%; align-self: stretch; box-sizing: border-box; }
 .canvas-creation-panel[data-references='true'] .composer-surface__body { flex-direction: column; height: auto; gap: 8px; }
 .canvas-creation-panel[data-references='true'] .canvas-creation-panel__editor { height: 64px; flex-shrink: 0; }
+.canvas-media-prompt-editor { position: relative; display: flex; width: 100%; height: 64px; flex-shrink: 0; }
+.canvas-media-prompt-editor > div > span { max-width: 100%; flex-wrap: wrap; }
+.canvas-node:has(.canvas-media-prompt-editor .composer-surface__editor:focus) > .canvas-node__frame { border-color: var(--color-stroke-active); }
 .canvas-reference-bar { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; width: 100%; padding-bottom: 4px; user-select: none; }
 .canvas-reference-bar__menu, .canvas-reference-bar__item { position: relative; flex-shrink: 0; }
 .canvas-reference-bar__slot { position: relative; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; overflow: hidden; border: 1px dashed var(--color-stroke-normal); border-radius: var(--radius-medium); background: #FFFFFF08; color: var(--color-text-hint); }

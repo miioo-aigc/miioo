@@ -1363,6 +1363,9 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
       count: countNum,
       imageCount: countNum,
       reference_images: refUrls.length > 0 ? refUrls : undefined,
+      reference_materials: Array.isArray(params.referenceMaterials) && params.referenceMaterials.length > 0
+        ? params.referenceMaterials
+        : undefined,
       category: params.category || undefined,
       asset_name: params.asset_name || undefined,
       watermark: params.watermark || undefined,

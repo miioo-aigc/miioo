@@ -1,7 +1,8 @@
 /**
  * @file CanvasCreationPanel.jsx
  * @structure-index
- * CanvasCreationPanel L19：公共创作皮肤、提示词、参考图栏与发送动作。
+ * CanvasCreationPanel L21：公共创作皮肤、提示词、参考图栏与发送动作。
+ * 2026-09-29：图片与视频复用创作页占位提示及素材引用编辑器。
  * 2026-09-28：中文组词保留本地草稿，确认后同步；隔离画布键盘事件。
  * 2026-09-28：音频委托独立高级编辑组件，草稿由外壳持有。
  * 2026-09-28：视频支持三类参考素材，首尾帧发送仅携带前两槽图片。
@@ -15,13 +16,15 @@ import { getCanvasTextModelValue } from './CanvasTextModels';
 import CreationSendButton from '../creation/CreationSendButton';
 import CanvasReferenceBar from './CanvasReferenceBar';
 import CanvasAudioCreationPanel from './CanvasAudioCreationPanel';
+import CanvasMediaPromptEditor from './CanvasMediaPromptEditor';
 
-export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', references = [], model = '', modelState = { options: [], loading: false }, generating = false, generationError = '', mediaControls, audioDraft, onAudioDraftChange, onModelChange, onPromptChange, onGenerate, onAddReference, onRemoveReference }) {
+export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', promptSnapshot, references = [], model = '', modelState = { options: [], loading: false }, generating = false, generationError = '', mediaControls, audioDraft, onAudioDraftChange, onModelChange, onPromptChange, onGenerate, onAddReference, onRemoveReference }) {
   const [focused, setFocused] = useState(false);
   const [draft, setDraft] = useState(prompt);
   const [lastPrompt, setLastPrompt] = useState(prompt);
   const [composing, setComposing] = useState(false);
   const composingRef = useRef(false);
+  const mediaSnapshotRef = useRef(promptSnapshot);
   // 外部导入仍同步到编辑器，输入法组词期间不覆盖本地文字。
   if (lastPrompt !== prompt && !composing) {
     setLastPrompt(prompt);
@@ -39,6 +42,13 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', ref
   const hasReferences = nodeType === 'image' || nodeType === 'video';
   const referenceMode = nodeType === 'video' ? c?.refMode : 'all';
   const activeReferences = referenceMode === 'frame' ? references.filter((reference) => reference.slot < 2 && reference.asset.asset_type === 'image') : references;
+  const send = (snapshot = mediaSnapshotRef.current) => {
+    if (generating || composingRef.current) return;
+    onGenerate?.({ nodeId, prompt: hasReferences ? snapshot?.requestText ?? draft : draft,
+      references: activeReferences, model: textNode ? selectedModel : c.model,
+      ...(!textNode ? { promptHTML: snapshot?.html, params: mediaParams, imageReferenceLimit: c?.imageReferenceLimit } : {}),
+    });
+  };
   return <section className="canvas-creation-panel nodrag nowheel" data-references={hasReferences} aria-label="节点创作输入" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
     <ComposerSurface width="100%" focused={focused} toolbar={<>
       {textNode ? <Select
@@ -52,11 +62,20 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', ref
         onChange={onModelChange}
       /> : <CanvasMediaControls nodeType={nodeType} controls={mediaControls} />}
       <div className="canvas-creation-panel__actions">
-        <CreationSendButton onClick={() => { if (!generating && !composingRef.current) onGenerate?.({ nodeId, prompt: draft, references: activeReferences, model: textNode ? selectedModel : c.model, ...(!textNode ? { params: mediaParams } : {}) }); }} />
+        <CreationSendButton onClick={() => send()} />
       </div>
     </>}>
       {hasReferences && <CanvasReferenceBar nodeType={nodeType} references={references} mode={referenceMode} onAdd={onAddReference} onRemove={onRemoveReference} />}
-      <textarea
+      {hasReferences ? <CanvasMediaPromptEditor
+        nodeType={nodeType} mode={referenceMode} references={activeReferences}
+        prompt={prompt} snapshot={promptSnapshot} composingRef={composingRef}
+        onFocusChange={setFocused} onSend={send}
+        onChange={(snapshot) => {
+          mediaSnapshotRef.current = snapshot;
+          setDraft(snapshot.requestText);
+          onPromptChange?.(snapshot.requestText, snapshot);
+        }}
+      /> : <textarea
         className="composer-surface__editor canvas-creation-panel__editor"
         aria-label="创作描述"
         value={draft}
@@ -82,7 +101,7 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', ref
         }}
         placeholder={placeholder}
         rows={2}
-      />
+      />}
     </ComposerSurface>
     {generationError && <p role="alert" className="text-[12px] text-text-danger">{generationError}</p>}
   </section>;

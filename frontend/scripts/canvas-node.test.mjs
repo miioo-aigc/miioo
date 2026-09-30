@@ -158,6 +158,23 @@ test('移动工具拖节点，抓手工具只移动画布', () => {
   assert.match(page, /onNodeDragStop=\{handleNodeDragStop\}/);
 });
 
+test('触控板双指手势缩放并自由方向平移画布', () => {
+  const page = readFileSync(new URL('../src/pages/CanvasPage.jsx', import.meta.url), 'utf8');
+  assert.match(page, /PanOnScrollMode/);
+  assert.match(page, /zoomOnPinch=\{true\}/);
+  assert.match(page, /panOnScroll=\{true\}/);
+  assert.match(page, /panOnScrollMode=\{PanOnScrollMode\.Free\}/);
+  assert.match(page, /panOnScrollSpeed=\{0\.5\}/);
+});
+
+test('触控板手势在普通节点卡片上继续传递，编辑滚动区保持隔离', () => {
+  const page = readFileSync(new URL('../src/pages/CanvasPage.jsx', import.meta.url), 'utf8');
+  assert.match(page, /onWheelCapture=\{handleCanvasWheelCapture\}/);
+  assert.match(page, /target\.closest\('\.nowheel'\)/);
+  assert.match(page, /nodeElement\.classList\.remove\('nopan'\)/);
+  assert.match(page, /nodeElement\.classList\.add\('nopan'\)/);
+});
+
 test('节点拖动状态提供轻微拉伸和回弹动效', () => {
   const shell = readFileSync(new URL('../src/components/canvas/CanvasNodeShell.jsx', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../src/components/canvas/canvas-nodes.css', import.meta.url), 'utf8');

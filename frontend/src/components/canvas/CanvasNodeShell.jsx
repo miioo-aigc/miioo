@@ -27,6 +27,11 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
   const [audioDraft, setAudioDraft] = useState({});
   const mediaControls = useCanvasMediaControls(nodeType, data?.model, (value) => data?.onModelChange?.(data?.nodeId, value));
   useEffect(() => {
+    if (nodeType === 'image' && Number.isInteger(mediaControls.imageReferenceLimit)) {
+      data?.onImageReferenceLimitChange?.(data?.nodeId, mediaControls.imageReferenceLimit);
+    }
+  }, [data?.nodeId, data?.onImageReferenceLimitChange, mediaControls.imageReferenceLimit, nodeType]);
+  useEffect(() => {
     if (nodeType !== 'text') return;
     let cancelled = false;
     apiListModels({ category: 'chat' }).then((list) => {
@@ -54,16 +59,18 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
       nodeId={data?.nodeId}
       nodeType={nodeType}
       prompt={data?.prompt}
+      promptSnapshot={data?.promptSnapshot}
       references={data?.references}
+      imageReferenceLimit={data?.imageReferenceLimit}
       model={data?.model}
       modelState={modelState}
       generating={data?.generating}
       generationError={data?.generationError}
-      mediaControls={mediaControls}
+      mediaControls={{ ...mediaControls, imageReferenceLimit: data?.imageReferenceLimit }}
       audioDraft={audioDraft.importVersion === (data?.promptImportVersion || 0) ? audioDraft : { ...audioDraft, snapshot: undefined }}
       onAudioDraftChange={(update) => setAudioDraft((current) => ({ ...(typeof update === 'function' ? update(current) : update), importVersion: data?.promptImportVersion || 0 }))}
       onModelChange={(value) => data?.onModelChange?.(data?.nodeId, value)}
-      onPromptChange={(value) => onPromptChange?.(data?.nodeId, value)}
+      onPromptChange={(value, snapshot) => onPromptChange?.(data?.nodeId, value, snapshot)}
       onAddReference={(source, mode, file) => onAddReference?.(data?.nodeId, source, mode, file)}
       onRemoveReference={(sourceId) => data?.onRemoveReference?.(data?.nodeId, sourceId)}
       onGenerate={(payload) => onGenerate?.(payload)}

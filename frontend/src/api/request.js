@@ -26,6 +26,7 @@ function withAuth(options = {}) {
   const headers = options.headers || {};
   return {
     ...options,
+    credentials: 'include',
     headers: {
       ...headers,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -50,33 +51,50 @@ function cloneFormData(fd) {
 }
 
 
-export async function refreshAccessToken() {
+async function refreshAccessTokenResult() {
   if (refreshPromise) return refreshPromise;
 
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return { ok: false, shouldLogout: true };
+
   refreshPromise = (async () => {
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) return false;
     try {
       const res = await fetch(`${BASE}/api/auth/refresh`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        return { ok: false, shouldLogout: [400, 401, 403].includes(res.status), status: res.status };
+      }
       const data = await res.json();
       if (data.access_token) {
         setTokens(data.access_token, data.refresh_token);
-        return true;
+        return { ok: true, shouldLogout: false };
       }
-      return false;
+      return { ok: false, shouldLogout: false };
     } catch {
-      return false;
+      return { ok: false, shouldLogout: false };
     } finally {
       refreshPromise = null;
     }
   })();
 
   return refreshPromise;
+}
+
+// 首页静默刷新仍使用布尔结果，失败分类仅供请求层处理 401。
+export async function refreshAccessToken() {
+  return (await refreshAccessTokenResult()).ok;
+}
+
+function handleRefreshFailure(result) {
+  if (result.shouldLogout) {
+    clearTokens();
+    window.dispatchEvent(new CustomEvent('auth:logout'));
+  }
+  throw createUnauthorizedError();
 }
 
 async function ensureAccessToken() {
@@ -110,14 +128,12 @@ export async function authFetch(url, options = {}) {
     throw err;
   }
   if (res.status === 401) {
-    const ok = await refreshAccessToken();
-    if (ok) {
+    const result = await refreshAccessTokenResult();
+    if (result.ok) {
       const retryOpts = formClone ? { ...options, body: cloneFormData(formClone) } : options;
       return fetch(url, withAuth(retryOpts));
     }
-    clearTokens();
-    window.dispatchEvent(new CustomEvent('auth:logout'));
-    throw new Error('Unauthorized');
+    handleRefreshFailure(result);
   }
   const isStorageReminderAck = url.includes('/storage-usage/reminders/ack');
   if (res.ok && !isStorageReminderAck && !['GET', 'HEAD', 'OPTIONS'].includes((options.method || 'GET').toUpperCase())) {
@@ -134,14 +150,9 @@ export async function authFetchForm(url, options = {}) {
 
   // 克隆 FormData，防止首次 fetch 消费后 401 重试时 body 为空
   const formClone = options.body instanceof FormData ? cloneFormData(options.body) : null;
-  const token = getToken();
-  const headers = {
-    ...(options.headers || {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
   let res;
   try {
-    res = await fetch(url, { ...options, headers });
+    res = await fetch(url, withAuth(options));
   } catch (networkErr) {
     const err = new Error(networkErr.message || 'Network request failed');
     err.isNetworkError = true;
@@ -149,20 +160,12 @@ export async function authFetchForm(url, options = {}) {
     throw err;
   }
   if (res.status === 401) {
-    const ok = await refreshAccessToken();
-    if (ok) {
-      const newToken = getToken();
-      return fetch(url, {
-        ...(formClone ? { ...options, body: cloneFormData(formClone) } : options),
-        headers: {
-          ...(options.headers || {}),
-          ...(newToken ? { Authorization: `Bearer ${newToken}` } : {}),
-        },
-      });
+    const result = await refreshAccessTokenResult();
+    if (result.ok) {
+      const retryOpts = formClone ? { ...options, body: cloneFormData(formClone) } : options;
+      return fetch(url, withAuth(retryOpts));
     }
-    clearTokens();
-    window.dispatchEvent(new CustomEvent('auth:logout'));
-    throw new Error('Unauthorized');
+    handleRefreshFailure(result);
   }
   const isStorageReminderAck = url.includes('/storage-usage/reminders/ack');
   if (res.ok && !isStorageReminderAck && !['GET', 'HEAD', 'OPTIONS'].includes((options.method || 'GET').toUpperCase())) {
@@ -191,8 +194,8 @@ export async function authFetchStream(url, options = {}) {
     throw err;
   }
   if (res.status === 401) {
-    const ok = await refreshAccessToken();
-    if (ok) {
+    const result = await refreshAccessTokenResult();
+    if (result.ok) {
       try {
         return await fetch(url, withAuth(options));
       } catch (retryErr) {
@@ -202,9 +205,7 @@ export async function authFetchStream(url, options = {}) {
         throw err;
       }
     }
-    clearTokens();
-    window.dispatchEvent(new CustomEvent('auth:logout'));
-    throw new Error('Unauthorized');
+    handleRefreshFailure(result);
   }
   return res;
 }

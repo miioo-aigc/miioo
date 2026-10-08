@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { apiResolveImageEdit, normalizeEditedImage } from '../api/ImageEdit';
 import { showGlobalToast } from './toastStore';
 import { downloadUrlWithFeedback } from '../utils/downloadFeedback';
+import { bindImageEditResult } from '../api/ImageEditSave';
 
 const EMPTY = [];
 let database;
@@ -52,7 +53,7 @@ export async function saveLocalImage(scope, image) {
   if (!scope || (!(image.blob instanceof Blob) && !image.remoteUrl)) throw new Error('缺少图片或列表归属');
   await loadLocalImages(scope);
   // 只持久化实体和必要元数据，不保存刷新后失效的临时地址。
-  const record = { id: image.pendingRecordId || `local-edit-${crypto.randomUUID()}`, scope, blob: image.blob, remoteUrl: image.remoteUrl, originalUrl: image.originalUrl, creationAssetId: image.creationAssetId, backendId: image.backendId, model: image.model, prompt: image.prompt, ratio: image.ratio, resolution: image.resolution, width: image.width, height: image.height, source: image.source, created_at: new Date().toISOString() };
+  const record = { id: image.pendingRecordId || `local-edit-${crypto.randomUUID()}`, scope, blob: image.blob, remoteUrl: image.remoteUrl, originalUrl: image.originalUrl, creationAssetId: image.creationAssetId, backendId: image.backendId, model: image.model, prompt: image.prompt, ratio: image.ratio, resolution: image.resolution, width: image.width, height: image.height, source: image.source, metadata_json: image.metadata_json, edit_type: image.edit_type, edit_mode: image.edit_mode, source_asset_id: image.source_asset_id, created_at: new Date().toISOString() };
   await transact('readwrite', (store) => store.put(record));
   const result = materialize(record);
   useLocalImageEditStore.setState((state) => ({ byScope: { ...state.byScope, [scope]: [...localImagesFor(state, scope).filter((item) => item.id !== result.id), result] } }));
@@ -62,10 +63,22 @@ export async function saveLocalImage(scope, image) {
 function resumePendingImage(record) {
   if (!resumptions.has(record.id)) resumptions.set(record.id, (async () => {
     try {
-      const result = normalizeEditedImage(await apiResolveImageEdit(record.accepted, record.mode));
+      const image = record.image || await apiResolveImageEdit(record.accepted, record.mode);
+      // 生成结果与绑定结果分阶段落盘，保存失败后无需重新生成。
+      record.image = image;
+      await transact('readwrite', (store) => store.put(record));
+      const edited = record.destination ? { ...image, edit_type: 'image_edit', edit_mode: record.mode, source_asset_id: record.sourceId } : image;
+      const result = record.boundResult || (record.destination ? await bindImageEditResult(edited, record.destination) : normalizeEditedImage(edited));
+      record.boundResult = result;
+      await transact('readwrite', (store) => store.put(record));
       return await saveLocalImage(record.scope, { ...result, pendingRecordId: record.id });
     } catch (error) {
       if (error.terminal) await transact('readwrite', (store) => store.delete(record.id));
+      if (record.image && !error.terminal) {
+        error.message = `图片已生成，保存未完成：${error.message}`;
+        const url = record.image.original_url || record.image.originalUrl;
+        if (url) error.preview = { originalUrl: url };
+      }
       throw error;
     } finally { resumptions.delete(record.id); }
   })());
@@ -74,8 +87,12 @@ function resumePendingImage(record) {
 
 export async function savePendingImage(scope, pending) {
   await loadLocalImages(scope);
-  const taskId = pending.accepted.task_id || pending.accepted.taskId || pending.accepted.id;
-  const record = { id: `pending-edit:${scope}:${taskId}`, scope, pending: true, ...pending, created_at: new Date().toISOString() };
+  const taskId = pending.accepted?.task_id || pending.accepted?.taskId || pending.accepted?.id || pending.image?.asset_id || pending.image?.id;
+  if (!taskId) throw new Error('保存编辑任务失败：缺少任务或资产编号');
+  const id = `pending-edit:${scope}:${taskId}`;
+  const existing = await transact('readonly', (store) => store.get(id));
+  if (existing && !existing.pending) return materialize(existing);
+  const record = existing || { id, scope, pending: true, ...pending, created_at: new Date().toISOString() };
   await transact('readwrite', (store) => store.put(record));
   return resumePendingImage(record);
 }

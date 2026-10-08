@@ -99,12 +99,12 @@ export default function ImageDetailModal({ card, onClose, onDelete, onDownload, 
 
   if (multiAngleOpen) return <MultiAngleModal card={card} onClose={() => setMultiAngleOpen(false)} />;
   if (inpaintMode) return <InpaintModal card={card} mode={inpaintMode} onSave={onCreateImage} onComplete={onClose} onClose={() => setInpaintMode(null)} />;
-  if (upscaleOpen) return <UpscaleModal card={card} onClose={() => setUpscaleOpen(false)} />;
-  if (flipOpen) return <ImageFlipModal imageUrl={card.imageUrl} sourceAsset={card} onClose={() => setFlipOpen(false)} />;
+  if (upscaleOpen) return <UpscaleModal card={card} onSave={onCreateImage} onComplete={onClose} onClose={() => setUpscaleOpen(false)} />;
+  if (flipOpen) return <ImageFlipModal imageUrl={card.imageUrl} sourceAsset={card} onSave={onCreateImage} onComplete={onClose} onClose={() => setFlipOpen(false)} />;
   if (outpaintOpen) return <OutpaintModal card={card} onSave={onCreateImage} onComplete={onClose} onClose={() => setOutpaintOpen(false)} />;
 
   if (cropOpen) {
-    return <ImageCropModal imageUrl={card.imageUrl} sourceAsset={card} onClose={() => setCropOpen(false)} />;
+    return <ImageCropModal imageUrl={card.imageUrl} sourceAsset={card} onSave={onCreateImage} onComplete={onClose} onClose={() => setCropOpen(false)} />;
   }
 
   return <OutpaintAction.Provider value={() => setOutpaintOpen(true)}><FlipAction.Provider value={() => setFlipOpen(true)}><UpscaleAction.Provider value={() => setUpscaleOpen(true)}><InpaintAction.Provider value={setInpaintMode}><MultiAngleAction.Provider value={() => setMultiAngleOpen(true)}>

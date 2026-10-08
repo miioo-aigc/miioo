@@ -6,9 +6,10 @@ import TextField from '../ui/TextField';
 import { showGlobalToast } from '../../stores/toastStore';
 import './Inpaint.css';
 import useImageEditSubmission from '../../hooks/useImageEditSubmission';
+import ImageEditComparison from './ImageEditComparison';
 
 export default function InpaintModal({ card, onClose, onSave, onComplete = onClose, mode = 'inpaint' }) {
-  const { busy, submit: generate } = useImageEditSubmission({ card, onSave, onComplete });
+  const { busy, submit: generate, comparison } = useImageEditSubmission({ card, onSave, onComplete, keepOpen: true });
   const isEraser = mode === 'eraser';
   const [tool, setTool] = useState('brush');
   const [brushSize, setBrushSize] = useState(50);
@@ -38,6 +39,7 @@ export default function InpaintModal({ card, onClose, onSave, onComplete = onClo
   }
 
   function submit() {
+    if (comparison.retrySave) { generate(); return; }
     const mask = editor.current?.exportMask();
     if (!mask) {
       showGlobalToast(isEraser ? '请先涂抹需要消除的区域' : '请先涂抹需要重绘的区域', 'error');
@@ -52,11 +54,15 @@ export default function InpaintModal({ card, onClose, onSave, onComplete = onClo
   }
 
   return (
-    <ImageEditChrome title={isEraser ? '消除笔' : '局部重绘'} onClose={onClose} busy={busy} footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={submit} busy={busy} disabled={!ready} label="AI生成" />}>
-      <div className="inpaint-body" inert={busy}>
+    <ImageEditChrome title={isEraser ? '消除笔' : '局部重绘'} onClose={onClose} busy={busy} allowCloseWhileBusy footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={submit} busy={busy} allowCloseWhileBusy disabled={!ready && !comparison.retrySave} label={comparison.retrySave ? '重试任务保存' : 'AI生成'} />}>
+      <div className="inpaint-body">
+        <div inert={busy}>
         <InpaintToolbar tool={tool} onToolChange={setTool} brushSize={brushSize} onBrushSizeChange={setBrushSize} zoom={zoom} onZoomChange={setZoom} canUndo={history.index > 0} canRedo={history.index < history.strokes.length} onUndo={() => setHistory((value) => ({ ...value, index: Math.max(0, value.index - 1) }))} onRedo={() => setHistory((value) => ({ ...value, index: Math.min(value.strokes.length, value.index + 1) }))} disabled={!ready} />
+        </div>
+        <ImageEditComparison comparison={comparison} busy={busy} onRetry={() => generate()}>
         <InpaintStage key={`${card.imageUrl}-${revision}`} imageUrl={card.originalUrl || card.original_url || card.download_url || card.downloadUrl || card.imageUrl} tool={tool} brushSize={brushSize} zoom={zoom} strokes={strokes} onStroke={addStroke} onReady={setReady} editorRef={editor} />
-        {!isEraser && <div className="inpaint-prompt">
+        </ImageEditComparison>
+        {!isEraser && <div className="inpaint-prompt" inert={busy}>
           <TextField multiline height="72px" wrapperStyle={{ width: '100%' }} aria-label="重绘提示词" placeholder="请描述想要重新绘制的内容" value={prompt} onChange={(event) => setPrompt(event.target.value)} />
         </div>}
       </div>

@@ -4,35 +4,22 @@ import ImageEditChrome from '../image-edit/ImageEditChrome';
 import Button from '../ui/Button';
 import VideoFrameTimeline from './VideoFrameTimeline';
 import useFrameSelection from './useFrameSelection';
-import { buildVideoEditRequest } from '../../utils/MediaEditRequest';
-import { showGlobalToast } from '../../stores/toastStore';
+import useVideoEditSubmission from '../../hooks/useVideoEditSubmission';
 import './VideoFrame.css';
 
-export default function VideoFrameModal({ videoUrl, sourceAsset, onPrepare, onClose }) {
+export default function VideoFrameModal({ videoUrl, sourceAsset, onClose }) {
   const canvasRef = useRef(null);
-  const state = useFrameSelection(videoUrl, canvasRef, {
-    onExport: async (blob, exportedIndex) => {
-      try {
-        const request = buildVideoEditRequest(sourceAsset, {
-          mode: 'frame_extract',
-          frame_time_seconds: times[exportedIndex],
-          file: new File([blob], `视频选帧-${exportedIndex + 1}.png`, { type: 'image/png' }),
-        });
-        await onPrepare?.(request);
-        showGlobalToast('已准备选帧图片与保存参数，等待后端编辑接口接入', 'info');
-      } catch (exportError) {
-        showGlobalToast(exportError.message || '选帧参数准备失败，请重试', 'error');
-      }
-    },
-  });
-  const { times, index, busy, exporting, error, dimensions, step, seek, download, exportFrame } = state;
+  const submission = useVideoEditSubmission(sourceAsset, onClose);
+  const state = useFrameSelection(videoUrl, canvasRef);
+  const { times, index, busy, exporting, error, dimensions, step, seek, download } = state;
   const start = times[0] || 0;
   const end = times.at(-1) || start;
   const time = times[index] || start;
-  const disabled = !times.length || exporting;
+  const disabled = !times.length || exporting || submission.busy;
 
   useEffect(() => {
     function keydown(event) {
+      if (submission.busy) return;
       if (event.altKey || event.ctrlKey || event.metaKey || event.target.closest('textarea,select,[contenteditable="true"],input:not([type="range"])')) return;
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       event.preventDefault();
@@ -41,13 +28,13 @@ export default function VideoFrameModal({ videoUrl, sourceAsset, onPrepare, onCl
     }
     document.addEventListener('keydown', keydown, true);
     return () => document.removeEventListener('keydown', keydown, true);
-  }, [step]);
+  }, [step, submission.busy]);
 
-  return <ImageEditChrome title="视频选帧" onClose={onClose} zIndex={1400}
+  return <ImageEditChrome title="视频选帧" onClose={onClose} busy={submission.busy} zIndex={1400}
     footer={<footer className="image-edit-footer frame-footer">
-      <Button variant="secondary" onClick={onClose}>取消</Button>
-      <Button loading={exporting} disabled={busy || Boolean(error)} onClick={download}>下载</Button>
-      <Button loading={exporting} disabled={busy || Boolean(error)} onClick={exportFrame}>保存</Button>
+      <Button variant="secondary" disabled={submission.busy} onClick={onClose}>取消</Button>
+      <Button loading={exporting} disabled={busy || Boolean(error) || submission.busy} onClick={download}>下载</Button>
+      <Button loading={submission.busy} disabled={disabled || busy || Boolean(error)} onClick={() => submission.submit({ mode: 'frame_extract', timestamp: times[index] })}>保存</Button>
     </footer>}>
     <div className="frame-body">
       <div className="frame-stage" aria-busy={busy}>

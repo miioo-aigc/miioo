@@ -1,0 +1,15 @@
+.edit-comparison { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0fr); flex: 1; min-height: 0; min-width: 0; overflow: hidden; background: var(--color-surface-toolbar); transition: grid-template-columns 320ms ease; }
+.edit-comparison.is-active { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.edit-comparison-source, .edit-comparison-result { position: relative; display: flex; min-width: 0; min-height: 0; overflow: hidden; }
+.edit-comparison-result { opacity: 0; transition: opacity 320ms ease; }
+.edit-comparison.is-active .edit-comparison-result { opacity: 1; border-left: 1px solid var(--color-stroke-normal); }
+.edit-comparison-label { position: absolute; top: 12px; left: 12px; pointer-events: none; padding: 4px 8px; color: var(--color-text-secondary); background: var(--color-surface-overlay); font-size: var(--font-size-12); border-radius: var(--radius-small); }
+.edit-comparison-image { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
+.edit-comparison-image img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; }
+.edit-comparison-message { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; color: var(--color-text-secondary); font-size: var(--font-size-14); text-align: center; overflow-wrap: anywhere; }
+.edit-comparison-message.is-overlay { background: var(--color-surface-overlay); }
+.edit-comparison-zoom { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 4px; background: var(--color-surface-modal); border: 1px solid var(--color-stroke-normal); border-radius: 8px; }
+.edit-comparison-zoom output { width: 48px; text-align: center; font-size: var(--font-size-12); font-variant-numeric: tabular-nums; }
+.edit-comparison-spinner { animation: edit-comparison-spin 1s linear infinite; }
+@keyframes edit-comparison-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .edit-comparison, .edit-comparison-result { transition: none; } .edit-comparison-spinner { animation: none; } }

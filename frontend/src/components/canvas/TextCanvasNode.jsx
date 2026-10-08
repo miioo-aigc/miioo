@@ -10,16 +10,40 @@ export default function TextCanvasNode({ id, data, selected }) {
   const contentRef = useRef(null);
   const editorRef = useRef(null);
   const fileInputRef = useRef(null);
+  const composingRef = useRef(false);
+  const contentChangeRef = useRef(data?.onContentChange);
+
+  useEffect(() => {
+    contentChangeRef.current = data?.onContentChange;
+  }, [data?.onContentChange]);
 
   useEffect(() => {
     if (!editing) return;
     editorRef.current?.focus();
     const handleOutsidePointer = (event) => {
-      if (!contentRef.current?.contains(event.target)) setEditing(false);
+      if (!contentRef.current?.contains(event.target)) {
+        contentChangeRef.current?.(id, editorRef.current?.value ?? '');
+        composingRef.current = false;
+        setEditing(false);
+      }
     };
     document.addEventListener('pointerdown', handleOutsidePointer, true);
     return () => document.removeEventListener('pointerdown', handleOutsidePointer, true);
-  }, [editing]);
+  }, [editing, id]);
+
+  const handleContentChange = (event) => {
+    if (composingRef.current || event.nativeEvent?.isComposing) return;
+    data?.onContentChange?.(id, event.currentTarget.value);
+  };
+  const handleCompositionEnd = (event) => {
+    composingRef.current = false;
+    data?.onContentChange?.(id, event.currentTarget.value);
+  };
+  const handleBlur = (event) => {
+    composingRef.current = false;
+    data?.onContentChange?.(id, event.currentTarget.value);
+    setEditing(false);
+  };
 
   const handleDoubleClick = (event) => {
     if (event.target.closest('button, input')) return;
@@ -47,9 +71,12 @@ export default function TextCanvasNode({ id, data, selected }) {
         ref={editorRef}
         className="canvas-node__text-editor nodrag nowheel nopan"
         aria-label="文本节点正文"
-        value={data?.content || ''}
-        onChange={(event) => data?.onContentChange?.(id, event.target.value)}
-        onBlur={() => setEditing(false)}
+        // 编辑期间由浏览器维护正文，避免画布数据回传重置输入法的组合文本。
+        defaultValue={data?.content || ''}
+        onChange={handleContentChange}
+        onCompositionStart={() => { composingRef.current = true; }}
+        onCompositionEnd={handleCompositionEnd}
+        onBlur={handleBlur}
         onKeyDown={(event) => event.stopPropagation()}
         onKeyUp={(event) => event.stopPropagation()}
       /> : !data?.content && <>

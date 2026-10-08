@@ -264,6 +264,7 @@ async function pollBasicEditCreationImageTask(taskId, { signal } = {}) {
  *   2026-08-07  配音生成支持再次点击发送按钮停止前端请求和轮询；后端任务取消能力仍由后端接口决定
  *   2026-08-21  配音同步/异步请求透传高级参数，并识别 speech-* MiniMax 长文本模型
  *   2026-08-21  普通配音模式将 speed / pitch / volume 归一到 voice_setting.speed / pitch / vol
+ *   2026-10-08  配音分支增加画布参考音频全量 attachments 及临时地址上传；其他入口保持原行为。
  */
 
 function isMiniMaxSpeechModel(model) {
@@ -1181,8 +1182,21 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
   if (isDubbing) {
     // 上传参考音频文件
     let referenceAudioUrl;
+    const audioAttachments = [];
     const audioFiles = params.files ? (Array.isArray(params.files) ? params.files : [params.files]) : [];
     for (const f of audioFiles) {
+      if (params.canvasAudioReferences) {
+        let url = f?.url;
+        if (f instanceof File || url?.startsWith('blob:')) {
+          const file = f instanceof File ? f : new File([await (await fetch(url, { signal })).blob()], f.name || 'reference.wav');
+          const uploaded = await apiUploadCreationAudio({ file, category: 'reference', ...uploadContext, signal });
+          url = uploaded.uploaded_url || uploaded.uploadedUrl;
+        }
+        if (!url) throw new Error('参考音频上传失败');
+        referenceAudioUrl ||= url;
+        audioAttachments.push({ asset_type: 'audio', url, role: 'reference_audio', source: 'canvas' });
+        continue;
+      }
       if (f && typeof f === 'object' && !(f instanceof File) && f.url) {
         referenceAudioUrl = f.url;
         break;
@@ -1209,6 +1223,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
         ?? params.advanced_enabled
         ?? false,
       reference_audio_url: referenceAudioUrl || undefined,
+      ...(params.canvasAudioReferences ? { attachments: audioAttachments } : {}),
       voice_setting: normalizeDubbingVoiceSetting(params),
       voice_modify: params.voice_modify || undefined,
       audio_setting: params.audio_setting || undefined,

@@ -81,6 +81,8 @@ export default function InpaintStage({ imageUrl, tool, brushSize, zoom, strokes,
       const context = output.getContext('2d');
       context.fillStyle = '#000';
       context.fillRect(0, 0, output.width, output.height);
+      // 后端按透明度识别编辑区：从不透明保留区中扣除实际笔画。
+      context.globalCompositeOperation = 'destination-out';
       context.drawImage(source, 0, 0);
       return output.toDataURL('image/png');
     },

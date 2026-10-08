@@ -1,5 +1,20 @@
 # 组件重构盘点基线
 
+## 2026-10-08 画布音频连线
+
+- CanvasLeftConnection 统一解析左侧拖拽方向，优先上游、反向输出兜底；页面悬停和松手提交共用，继续复用已有类型及能力校验。2026-10-08 用户确认本项修复验收通过。
+- 扩展 CanvasTextAudio 的单次追加行为；新增 CanvasAudioGeneration 纯状态规则和 UseCanvasAudioGeneration 请求生命周期。
+- CanvasPage 仅注入音频生成回调；复用现有音频输入框、连线校验、加载层及任务登记，不新增通用界面组件。
+- 详细边界与待验收内容见 [画布音频连线](../canvas-audio-connections.md)。
+
+## 2026-10-08 视频编辑接口接入
+
+- 三个视频编辑弹窗复用 `useVideoEditSubmission`，请求适配集中于 `api/VideoEdit.js`，不在页面或基础UI内调用业务接口。
+- 输入为真实源资产及显式剪辑时间、抽帧时间、目标分辨率和媒体时长；输出为新资产。剪辑/抽帧同步返回，超清复用任务等待器并回读视频卡片。
+- 复用 `ImageEditChrome`、`Button`、现有底部动作；超清底部新增可选busy参数，保留并行图片编辑工作的标签及关闭文案。
+- 成功更新创作Store，资产面板订阅明确的完成事件更新本地列表；不回写原素材、不绑定分镜定稿。分镜归属完整验收不在本轮范围。
+- 定向检查、模拟测试、构建、架构检查通过，真实接口与视觉待用户手动验证。
+
 ## 2026-09-30 画布节点上传入口字号
 
 - `src/components/ui/FileUploadButton.jsx`：保留公共上传按钮 12px、白色 40% 的默认文字样式，新增可被业务容器覆盖的字号、行高及默认文字色 CSS 变量。
@@ -207,6 +222,7 @@
 ## 2026-09-24 自由画布空白处添加与文本导入
 
 - 新增 `CanvasNodeAddMenu.jsx` 与 `CanvasNodeAddMenuConfig.js`，工具栏添加菜单和画布空白双击菜单共用同一组四类节点配置，避免入口选项分叉。
+- 2026-10-08：`CanvasNodeIcon.jsx` 统一卡片标题和添加节点菜单的四类图标；工具栏、空白双击、连线释放菜单共用，菜单图标为 16px，图文间距为 6px，选项筛选及添加回调不变。
 - `CanvasPage` 使用 React Flow `onPaneDoubleClick` 与 `screenToFlowPosition`，在双击位置创建节点；菜单位置按视口边缘限制，节点创建后仍沿用独占创作面板规则。
 - `TextCanvasNode` 按 Paper `2KOE-0` 的空状态加入“双击编辑”、本地上传按钮和格式提示；`CanvasTextFileReader.js` 使用 `mammoth` 读取 `.docx`，直接读取 `.txt/.md`，仅回填本地草稿，不代表已持久化。
 - 验证：节点契约测试 6 项通过，lint 0 错误（保留既有 Hook warning），build 和 diff check 通过；架构检查仍被既有 `seedanceUploadValidation.js` 文件名阻断。浏览器双击、文件选择、中文输入和设计稿像素核验待完成。
@@ -2543,3 +2559,17 @@
 - `CanvasVideoGeneration` 统一处理画布视频媒体计数、后端能力上限、模式精确数量、总媒体数和 Seedance 音频唯一素材规则；文本来源不计入总素材上限。
 - `UseCanvasReferences` 与 `CanvasPage` 在本地上传、资产库添加时即时拦截超限媒体；`CanvasMediaPromptEditor` 通过共享 Hook 的可选 `canInsertMention` 回调拦截超限 `@` 引用，创作发送前再次执行最终校验。
 - 视频连线保持可编辑，超限边按连接顺序标红；新增 HappyHorse 1.0 视频编辑的单视频最终校验及 HappyHorse 1.1 参考生视频清单适配。定向测试 24 项通过，lint 无错误但保留 3 项既有警告，构建通过；架构检查仍受既有命名问题阻断。
+## 2026-10-08 图片编辑左右对比（待手动验收）
+
+- 新增 image-edit/ImageEditComparison.jsx 与样式：展示层接收 comparison、busy、onRetry、可选同步 view/onViewChange 和原图编辑 children，不调用业务接口；复用 IconButton、Button、lucide 图标。
+- InpaintModal、OutpaintModal、UpscaleModal 使用同一分栏；工具栏与表单留在原弹窗编排层；超清复用 ComparisonImage 查看原图与结果。未替换多机位、裁剪、翻转。
+- useImageEditSubmission 可选 keepOpen，保留固定源图、最新结果、错误及恢复动作；默认关闭行为兼容原调用方。LocalImageEdits 负责生成和绑定检查点，不将生命周期绑定到弹窗。
+- ImageEditChrome/Footer 新增可选 allowCloseWhileBusy，默认行为不变，焦点循环排除 inert 区域；UpscaleFooter 新增可选按钮文案，视频调用方保持默认。
+- 新增 scripts/test-image-edit-comparison.mjs；视觉和真实业务保存仍待用户手动验证。
+
+## 2026-10-08 图片编辑接口适配（待真实联调）
+
+- 复用现有六项编辑弹窗和 useImageEditSubmission，补齐超清、裁剪、翻转保存回调；多机位不变。
+- ImageEdit.js 负责编辑端点与字段转换；ImageEditTasks.js 负责事件唤醒及统一查询；ImageEditSave.js 负责上传、源业务归属验证与候选绑定。
+- LocalImageEdits 保留历史结果，新增已受理任务的目标归属恢复及编辑元数据；本地回显仅为缓存，不替代云端绑定。
+- 构建与架构检查通过；占位卡、去重及六入口云端行为仍未验收，不标记阶段完成。

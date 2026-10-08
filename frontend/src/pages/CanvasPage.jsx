@@ -3,18 +3,18 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L93；grouping L120；referenceGraph L130；handleNodesChange L174；addNode L236；connection flow L283–433；反向上游连接 L296–400；React Flow viewport L496–537
+ *   CanvasPage L98；grouping L126；referenceGraph L137；handleNodesChange L182；addNode L244；连线起点 L298；反向上游连接 L306；连线结束 L407；React Flow L508
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
  *   CanvasProjectHeader components/canvas；左上角品牌与项目名称
  *   CanvasUserMenu      components/canvas；右上角用户信息与菜单
  *   CanvasCenterPrompt  components/canvas；中央空态提示
- *   CanvasCenterActions components/canvas；中央素材与创作入口
  *   CanvasToolbar       components/canvas；底部画布工具栏
  *   CanvasMiniMap       components/canvas；双层背景的交互预览地图
  *
  * ─── 业务边界 ────────────────────────────────────────────────────
- *   节点与连线为本地草稿；文本通过通用 LLM 接口生成，文档保存及媒体生成尚未接入。
+ *   节点与连线为本地草稿；文本、图片、视频和音频生成已接入，文档保存尚未接入。
+ *   2026-10-08：音频文本按连线顺序追加；音频任务独立编排，请求前建立结果节点及直连素材关系。
  *   2026-09-28：UseCanvasReferences 编排参考图及文本到音频连线，连接时单次导入正文。
  *   2026-09-24：空白面板使用标准双击事件打开菜单，关闭默认双击缩放。
  *   2026-09-24：初始缩放为 100%，新增节点不自动适配视口。
@@ -28,6 +28,9 @@
  *   2026-09-29：图片参考按模型 max_reference_images 能力允许图片连线；未声明能力或达到上限时拒绝并提示。
  *   2026-09-30：左侧端口支持反向拖拽，为当前节点添加上游节点；复用统一连接校验和新增节点菜单。
  *   2026-09-30：反向连线预览改用画布容器坐标，补充指针取消、失焦、Esc 和鼠标左键生命周期清理。
+ *   2026-10-08：移除空画布中央四个操作按钮，保留空态提示与底部工具栏。
+ *   2026-10-08：连线拖拽目标区分可连接与不可连接状态，分别反馈蓝色和红色描边。
+ *   2026-10-08：左侧拖拽优先添加上游，不合法时校验反向输出；悬停与提交复用相同方向解析。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -39,7 +42,6 @@ import '@xyflow/react/dist/style.css';
 import { apiGetCanvasDocument } from '../api/canvas';
 import { apiGetCurrentUser } from '../api/user';
 import { apiLogout, clearTokens } from '../api/auth';
-import CanvasCenterActions from '../components/canvas/CanvasCenterActions';
 import CanvasCenterPrompt from '../components/canvas/CanvasCenterPrompt';
 import CanvasProjectHeader from '../components/canvas/CanvasProjectHeader';
 import CanvasToolbar from '../components/canvas/CanvasToolbar';
@@ -58,6 +60,8 @@ import { useCanvasHistory } from '../components/canvas/UseCanvasHistory';
 import { fitCanvasGroups, setCanvasSelection } from '../components/canvas/CanvasGroups';
 import { CanvasNodeAddMenu, CANVAS_NODE_MENU_ITEMS, canvasNodeTypes, createCanvasNode, appendCanvasNode, getCanvasNodeMenuPosition, updateSelectedNode } from '../components/canvas';
 import CanvasConnectionEdge from '../components/canvas/CanvasConnectionEdge';
+import { useCanvasAudioGeneration } from '../components/canvas/UseCanvasAudioGeneration';
+import { resolveCanvasLeftConnection } from '../components/canvas/CanvasLeftConnection';
 
 // 浏览器 click 先于 dblclick 触发；保留极短窗口，避免双击时先展开创作框。
 const CANVAS_SINGLE_CLICK_DELAY = 200;
@@ -107,6 +111,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const [connectingNodeId, setConnectingNodeId] = useState(null);
   const [connectingHandleType, setConnectingHandleType] = useState('');
   const [connectionTargetId, setConnectionTargetId] = useState(null);
+  const [connectionTargetStatus, setConnectionTargetStatus] = useState('');
   const [pendingConnection, setPendingConnection] = useState(null);
   const [upstreamConnection, setUpstreamConnection] = useState(null);
   const canvasContainerRef = useRef(null);
@@ -122,6 +127,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const generateText = useCanvasTextGeneration(nodes, setNodes, canvasId, cancelPendingClicks);
   const generateImage = useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks);
   const generateVideo = useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks);
+  const generateAudio = useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks);
   const enterNodeRef = useRef(grouping.enterNode);
   useEffect(() => { enterNodeRef.current = grouping.enterNode; }, [grouping.enterNode]);
   const openReferencePicker = useCallback((target) => {
@@ -135,6 +141,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     setConnectingNodeId(null);
     setConnectingHandleType('');
     setConnectionTargetId(null);
+    setConnectionTargetStatus('');
     setNodeMenu(null);
     setUpstreamConnection(null);
   }, []);
@@ -251,6 +258,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       if (type === 'text') return generateText(payload);
       if (type === 'image') return generateImage(payload);
       if (type === 'video') return generateVideo(payload);
+      if (type === 'audio') return generateAudio(payload);
       return handleUnsupported();
     };
     node.data.onAssetChange = (nodeId, asset) => setNodes((current) => applyCanvasAsset(current, nodeId, asset));
@@ -273,7 +281,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     });
     setNodeMenu(null);
     setPendingConnection(null);
-  }, [cancelPendingNodeClick, generateImage, generateText, generateVideo, handleGenerationModeChange, handleImageReferenceLimitChange, handleUnsupported, handleVideoCapabilitiesChange, nodes.length, referenceGraph, setNodes]);
+  }, [cancelPendingNodeClick, generateAudio, generateImage, generateText, generateVideo, handleGenerationModeChange, handleImageReferenceLimitChange, handleUnsupported, handleVideoCapabilitiesChange, nodes.length, referenceGraph, setNodes]);
   const handlePaneDoubleClick = useCallback((event) => {
     if (!flowInstance || !event.target.classList.contains('react-flow__pane')) return;
     event.preventDefault();
@@ -293,6 +301,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     setConnectingNodeId(nodeId);
     setConnectingHandleType(handleType || '');
     setConnectionTargetId(null);
+    setConnectionTargetStatus('');
   }, []);
   const handleUpstreamConnectStart = useCallback((nodeId, event) => {
     if (activeTool === 'hand' || event.button !== 0) return;
@@ -302,6 +311,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     setConnectingNodeId(null);
     setConnectingHandleType('');
     setConnectionTargetId(null);
+    setConnectionTargetStatus('');
     const rect = canvasContainerRef.current?.getBoundingClientRect();
     setUpstreamConnection({ nodeId, pointerId: event.pointerId,
       pointer: { x: event.clientX, y: event.clientY },
@@ -309,46 +319,37 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       end: { x: event.clientX - (rect?.left || 0), y: event.clientY - (rect?.top || 0) },
     });
   }, [activeTool, cancelPendingClicks]);
-  const resolveConnectionTarget = useCallback((event) => {
-    const targetId = getConnectionTarget(event);
-    const source = connectingNodeId && grouping.nodes.find((node) => node.id === connectingNodeId);
-    const target = grouping.nodes.find((node) => node.id === targetId);
-    if (!source || !target || target.id === source.id || connectingHandleType !== 'source') return null;
-    const connection = { source: source.id, sourceHandle: `${source.type}-output`, target: target.id, targetHandle: target.data?.ports?.input?.id };
-    return referenceGraph.isValidConnection(connection) ? target.id : null;
-  }, [connectingHandleType, connectingNodeId, getConnectionTarget, grouping.nodes, referenceGraph]);
   useEffect(() => {
     if (!connectingNodeId) return undefined;
-    const handlePointerMove = (event) => setConnectionTargetId(resolveConnectionTarget(event));
+    const handlePointerMove = (event) => {
+      const targetId = getConnectionTarget(event);
+      const source = grouping.nodes.find((node) => node.id === connectingNodeId);
+      const target = grouping.nodes.find((node) => node.id === targetId);
+      if (!source || !target || target.id === source.id || connectingHandleType !== 'source') {
+        setConnectionTargetId(null);
+        setConnectionTargetStatus('');
+        return;
+      }
+      const connection = { source: source.id, sourceHandle: `${source.type}-output`, target: target.id, targetHandle: target.data?.ports?.input?.id };
+      setConnectionTargetId(target.id);
+      setConnectionTargetStatus(referenceGraph.isValidConnection(connection) ? 'valid' : 'invalid');
+    };
     window.addEventListener('pointermove', handlePointerMove);
     return () => window.removeEventListener('pointermove', handlePointerMove);
-  }, [connectingNodeId, resolveConnectionTarget]);
+  }, [connectingHandleType, connectingNodeId, getConnectionTarget, grouping.nodes, referenceGraph]);
   const resolveUpstreamTarget = useCallback((event, currentNodeId) => {
     const targetId = getConnectionTarget(event);
     const currentNode = grouping.nodes.find((node) => node.id === currentNodeId);
     const sourceNode = grouping.nodes.find((node) => node.id === targetId);
-    if (!currentNode || !sourceNode || sourceNode.id === currentNode.id) return null;
-    const connection = {
-      source: sourceNode.id,
-      sourceHandle: `${sourceNode.type}-output`,
-      target: currentNode.id,
-      targetHandle: currentNode.data?.ports?.input?.id,
-    };
-    return referenceGraph.isValidConnection(connection) ? sourceNode.id : null;
+    return resolveCanvasLeftConnection(currentNode, sourceNode, referenceGraph.isValidConnection);
   }, [getConnectionTarget, grouping.nodes, referenceGraph]);
   const finishUpstreamConnection = useCallback((event) => {
     if (!upstreamConnection) return;
     const currentNode = grouping.nodes.find((node) => node.id === upstreamConnection.nodeId);
     const hoveredId = getConnectionTarget(event);
-    const sourceNode = grouping.nodes.find((node) => node.id === resolveUpstreamTarget(event, upstreamConnection.nodeId));
-    if (currentNode && sourceNode) {
-      const connection = {
-        source: sourceNode.id,
-        sourceHandle: `${sourceNode.type}-output`,
-        target: currentNode.id,
-        targetHandle: currentNode.data?.ports?.input?.id,
-      };
-      if (referenceGraph.isValidConnection(connection)) referenceGraph.onConnect(connection);
+    const connection = resolveUpstreamTarget(event, upstreamConnection.nodeId);
+    if (connection) {
+      referenceGraph.onConnect(connection);
       clearPendingConnection();
       return;
     }
@@ -378,7 +379,11 @@ export default function CanvasPage({ canvasId, onBackHome }) {
         pointer: { x: event.clientX, y: event.clientY },
         end: { x: event.clientX - (rect?.left || 0), y: event.clientY - (rect?.top || 0) },
       } : current);
-      setConnectionTargetId(resolveUpstreamTarget(event, upstreamConnection.nodeId));
+      const connection = resolveUpstreamTarget(event, upstreamConnection.nodeId);
+      const hoveredId = getConnectionTarget(event);
+      const targetId = hoveredId === upstreamConnection.nodeId ? null : hoveredId;
+      setConnectionTargetId(targetId || null);
+      setConnectionTargetStatus(targetId ? (connection ? 'valid' : 'invalid') : '');
     };
     const handlePointerUp = (event) => {
       if (event.pointerId === upstreamConnection.pointerId) finishUpstreamConnection(event);
@@ -398,7 +403,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       window.removeEventListener('blur', clearPendingConnection);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [clearPendingConnection, finishUpstreamConnection, resolveUpstreamTarget, upstreamConnection]);
+  }, [clearPendingConnection, finishUpstreamConnection, getConnectionTarget, resolveUpstreamTarget, upstreamConnection]);
   const handleConnectEnd = useCallback((event, connectionState) => {
     const source = typeof connectionState?.from === 'string' ? connectionState.from : connectionState?.fromNode?.id || connectingNodeId;
     const sourceNode = grouping.nodes.find((node) => node.id === source);
@@ -431,6 +436,8 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     });
     setConnectingNodeId(null);
     setConnectingHandleType('');
+    setConnectionTargetId(null);
+    setConnectionTargetStatus('');
   }, [clearPendingConnection, connectingHandleType, connectingNodeId, flowInstance, getConnectionTarget, grouping.nodes, referenceGraph]);
   const pendingSource = pendingConnection?.direction === 'upstream'
     ? grouping.nodes.find((node) => node.id === pendingConnection.currentNodeId)
@@ -500,11 +507,11 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     <div ref={canvasContainerRef} className="absolute inset-0 bg-surface-toolbar">
       <ReactFlow defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         onWheelCapture={handleCanvasWheelCapture}
-        nodes={referenceGraph.nodes.map((node) => ({ ...node, data: { ...node.data, connectionTarget: node.id === connectionTargetId, connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
+        nodes={referenceGraph.nodes.map((node) => ({ ...node, data: { ...node.data, connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
           onContentChange: (nodeId, content) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, content } } : item)),
           onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)),
           onModelChange: (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item)),
-          onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : node.type === 'image' ? { onGenerate: generateImage } : node.type === 'video' ? { onGenerate: generateVideo } : {}) } }))} edges={referenceGraph.edges} edgeTypes={CANVAS_EDGE_TYPES} onEdgesChange={referenceGraph.onEdgesChange}
+          onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : node.type === 'image' ? { onGenerate: generateImage } : node.type === 'video' ? { onGenerate: generateVideo } : node.type === 'audio' ? { onGenerate: generateAudio } : {}) } }))} edges={referenceGraph.edges} edgeTypes={CANVAS_EDGE_TYPES} onEdgesChange={referenceGraph.onEdgesChange}
         nodesConnectable={activeTool !== 'hand'} onConnect={referenceGraph.onConnect} isValidConnection={referenceGraph.isValidConnection} nodeTypes={canvasNodeTypes} onInit={setFlowInstance}
         onNodesChange={handleNodesChange} onNodeClick={handleNodeClick}
         onConnectStart={handleConnectStart}
@@ -539,7 +546,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     </div>
     {loading && <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 text-[14px] text-text-hint">正在加载画布...</div>}
     {!loading && error && <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 text-[14px] text-text-danger">{error}</div>}
-    {!loading && !error && canvas && nodes.length === 0 && <main className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-[16px] pb-[20px]"><CanvasCenterPrompt /><CanvasCenterActions onAction={notifyUnsupported} /></main>}
+    {!loading && !error && canvas && nodes.length === 0 && <main className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-[16px] pb-[20px]"><CanvasCenterPrompt /></main>}
     {notice && <UnsupportedAction onClose={() => setNotice(false)} />}
     <CanvasToolbar
       activeTool={activeTool}

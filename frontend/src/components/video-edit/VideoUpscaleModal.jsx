@@ -4,11 +4,12 @@ import { QualityOption, UpscaleFooter } from '../image-edit/UpscaleControls';
 import VideoPlaybackControls from '../ui/VideoPlaybackControls';
 import { showGlobalToast } from '../../stores/toastStore';
 import '../image-edit/Upscale.css';
-import { buildVideoEditRequest } from '../../utils/MediaEditRequest';
+import useVideoEditSubmission from '../../hooks/useVideoEditSubmission';
 
 const QUALITY_OPTIONS = ['1080P', '4K'];
 
-export default function VideoUpscaleModal({ videoUrl, posterUrl = '', onClose, sourceAsset, onPrepare }) {
+export default function VideoUpscaleModal({ videoUrl, posterUrl = '', onClose, sourceAsset }) {
+  const submission = useVideoEditSubmission(sourceAsset, onClose);
   const [quality, setQuality] = useState('1080P');
   const [isPlaying, setIsPlaying] = useState(false);
   const [feedbackVisible, setFeedbackVisible] = useState(false);
@@ -50,13 +51,10 @@ export default function VideoUpscaleModal({ videoUrl, posterUrl = '', onClose, s
       showGlobalToast('未找到可用视频，请关闭后重试', 'error');
       return;
     }
-    try { onPrepare?.(buildVideoEditRequest(sourceAsset, { mode: 'upscale', target_resolution: quality })); }
-    catch (error) { showGlobalToast(error.message, 'error'); return; }
-    showGlobalToast(`已准备${quality}视频智能超清参数，等待后端编辑接口接入`, 'info');
-    // 后端尚未提供视频超清保存契约，保留当前选择与上下文。
+    submission.submit({ mode: 'upscale', resolution: quality, duration: videoRef.current?.duration });
   }
 
-  return <ImageEditChrome title="智能超清" onClose={onClose} zIndex={1400} footer={<UpscaleFooter onClose={onClose} onSubmit={submit} disabled={!videoUrl || failed} />}>
+  return <ImageEditChrome title="智能超清" onClose={onClose} busy={submission.busy} zIndex={1400} footer={<UpscaleFooter busy={submission.busy} onClose={onClose} onSubmit={submit} disabled={!videoUrl || failed} />}>
     <div className="upscale-body">
       <div className="upscale-stage">
         {videoUrl && !failed ? <>
@@ -71,7 +69,7 @@ export default function VideoUpscaleModal({ videoUrl, posterUrl = '', onClose, s
       <div className="upscale-toolbar">
         <span className="upscale-current-quality">当前画质：{dimensions || '未知'}</span>
         <div className="upscale-quality-options" role="group" aria-label="选择输出画质">
-          {QUALITY_OPTIONS.map((value) => <QualityOption key={value} value={value} selected={quality === value} onClick={setQuality} />)}
+          {QUALITY_OPTIONS.map((value) => <QualityOption key={value} value={value} selected={quality === value} onClick={(next) => { if (!submission.busy) setQuality(next); }} />)}
         </div>
       </div>
     </div>

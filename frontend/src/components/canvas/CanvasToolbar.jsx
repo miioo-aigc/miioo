@@ -3,17 +3,18 @@
  * @structure-index
  *
  * ─── 交互区 ─────────────────────────────────────────────────────
- *   AddNodeMenu 共用添加节点菜单的工具栏定位容器 L128
- *   CanvasToolbar 画布底部悬浮工具栏、菜单和动作出口 L132
+ *   AddNodeMenu 共用添加节点菜单的工具栏定位容器 L135
+ *   CanvasToolbar 画布底部悬浮工具栏、菜单和动作出口 L139
  * ─── 更新记录 ───────────────────────────────────────────────────
  *   2026-09-28 复用图标按钮新增撤销重做；统一添加菜单，工具栏仅负责定位
  *   2026-09-29 撤销重做移动到搜索前，仅在至少一个历史动作可用时显示
  *   2026-09-29 分割线右侧工具默认折叠为更多按钮，展开和收起使用 Gooey 风格过渡
+ *   2026-10-08 收起工具按钮改用左尖括号图标
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { IconButton, Tooltip } from '../ui';
-import { MoreHorizontal, PanelRightClose, Redo2, Undo2 } from 'lucide-react';
+import { ChevronLeft, MoreHorizontal, Redo2, Undo2 } from 'lucide-react';
 import CanvasNodeAddMenu from './CanvasNodeAddMenu.jsx';
 import './CanvasToolbar.css';
 
@@ -183,7 +184,7 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
             <Tooltip label="重做" placement="top"><span><IconButton aria-label="重做" variant="link" className="!size-[32px] rounded-full hover:bg-white-5" contentClassName="!text-text-secondary" disabled={!canRedo} onClick={onRedo}><Redo2 size={16} /></IconButton></span></Tooltip>
           </>}
           {COLLAPSIBLE_TOOL_ITEMS.map(renderTool)}
-          {rightToolsExpanded && <Tooltip label="收起工具" placement="top" offset={8}><button type="button" aria-label="收起工具" title="收起工具" onClick={() => { setOpenMenu(null); setRightToolsExpanded(false); }} className="flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 hover:bg-white-5"><PanelRightClose size={16} strokeWidth={1.7} color="var(--color-white-80)" /></button></Tooltip>}
+          {rightToolsExpanded && <Tooltip label="收起工具" placement="top" offset={8}><button type="button" aria-label="收起工具" title="收起工具" onClick={() => { setOpenMenu(null); setRightToolsExpanded(false); }} className="flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 hover:bg-white-5"><ChevronLeft size={16} strokeWidth={1.7} color="var(--color-white-80)" /></button></Tooltip>}
         </div>
       </div>
     </div>

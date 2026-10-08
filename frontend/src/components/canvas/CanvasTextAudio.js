@@ -5,7 +5,6 @@ export function isTextAudioConnection(nodes, connection) {
   const source = nodes.find((node) => node.id === connection.source);
   const target = nodes.find((node) => node.id === connection.target);
   return ['text', 'audio'].includes(source?.type) && target?.type === 'audio' && source.id !== target.id
-    && (source.type !== 'text' || Boolean(source.data.content?.trim()))
     && (!connection.sourceHandle || connection.sourceHandle === `${source.type}-output`)
     && (!connection.targetHandle || connection.targetHandle === 'audio-input');
 }
@@ -20,7 +19,8 @@ export function connectTextToAudio(nodes, connection) {
     ...node.data,
     audioSourceIds: sourceIds,
     ...(source.type === 'text' ? {
-      prompt: source.data.content,
+      prompt: [node.data.prompt, source.data.content].filter((text) => text?.trim()).join('\n'),
+      promptSnapshot: undefined,
       textSourceId: source.id,
       promptImportVersion: (node.data.promptImportVersion || 0) + 1,
     } : {}),

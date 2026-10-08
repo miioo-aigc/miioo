@@ -10,6 +10,7 @@
  *   通过全局 Store、创作 API 和显式 UI 组件组合，不读取页面入口闭包。
  *
  * ─── 更新记录 ───────────────────────────────────────
+ *   2026-10-08  视频编辑完成事件按产物类型写入本地列表，不替换原资产
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  */
 
@@ -353,6 +354,19 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   }, [isLoggedIn, storeSyncFavorites]);
 
   // 登录后 / 切换 tab 时，若当前 tab 未初始化则拉第一页
+  useEffect(() => {
+    const saved = ({ detail: { result, type } }) => {
+      const generation = normalizeHistoryItem(result, type);
+      setCreationGenerationsByTab((previous) => ({
+        ...previous,
+        [type]: [...previous[type].filter((item) => item.cards[0]?.id !== result.id), generation],
+      }));
+    };
+    window.addEventListener('miioo:video-edit-saved', saved);
+    return () => window.removeEventListener('miioo:video-edit-saved', saved);
+  }, []);
+
+  // 首屏数据读取仍由面板负责，编辑事件不改变筛选条件。
   useEffect(() => {
     if (!isLoggedIn) return;
     const meta = creationHistoryMetaRef.current[activeType];

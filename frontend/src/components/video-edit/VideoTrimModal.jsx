@@ -6,10 +6,11 @@ import VideoTrimFields from './VideoTrimFields';
 import { durationTicks, updateTrimRange } from './TrimRange';
 import { showGlobalToast } from '../../stores/toastStore';
 import './VideoTrim.css';
-import { buildVideoEditRequest } from '../../utils/MediaEditRequest';
+import useVideoEditSubmission from '../../hooks/useVideoEditSubmission';
 
-export default function VideoTrimModal({ videoUrl, posterUrl = '', onClose, sourceAsset, onPrepare }) {
+export default function VideoTrimModal({ videoUrl, posterUrl = '', onClose, sourceAsset }) {
   const videoRef = useRef(null);
+  const submission = useVideoEditSubmission(sourceAsset, onClose);
   const [range, setRange] = useState({ start: 0, end: 0 });
   const [total, setTotal] = useState(0);
   const [time, setTime] = useState(0);
@@ -19,7 +20,7 @@ export default function VideoTrimModal({ videoUrl, posterUrl = '', onClose, sour
   const [playing, setPlaying] = useState(false);
   const [feedbackVisible, setFeedbackVisible] = useState(false);
   const feedbackTimerRef = useRef(null);
-  const available = Boolean(videoUrl && ready && total > 0 && !failed);
+  const available = Boolean(videoUrl && ready && total > 0 && !failed && !submission.busy);
 
   useEffect(() => () => clearTimeout(feedbackTimerRef.current), []);
 
@@ -82,14 +83,12 @@ export default function VideoTrimModal({ videoUrl, posterUrl = '', onClose, sour
   function close() { videoRef.current?.pause(); onClose(); }
   function save() {
     if (!available) return;
-    try { onPrepare?.(buildVideoEditRequest(sourceAsset, { mode: 'trim', start_time_seconds: range.start / 10, end_time_seconds: range.end / 10 })); }
-    catch (error) { showGlobalToast(error.message, 'error'); return; }
-    showGlobalToast('已准备视频剪辑参数，等待后端编辑接口接入', 'info');
-    // 后端尚无剪辑保存接口，保留用户设置避免误报成功。
+    videoRef.current?.pause();
+    submission.submit({ mode: 'trim', start_time: range.start / 10, end_time: range.end / 10, duration: videoRef.current.duration });
   }
 
-  return <ImageEditChrome title="视频剪辑" onClose={close} zIndex={1400}
-    footer={<ImageEditFooter onReset={reset} onClose={close} onSubmit={save} disabled={!available} />}>
+  return <ImageEditChrome title="视频剪辑" onClose={close} busy={submission.busy} zIndex={1400}
+    footer={<ImageEditFooter onReset={reset} onClose={close} onSubmit={save} busy={submission.busy} disabled={!available} />}>
     <div className="trim-body">
       <div className="trim-stage">
         {videoUrl && !failed ? <><video ref={videoRef} src={videoUrl} poster={posterUrl || undefined} playsInline preload="auto" controls

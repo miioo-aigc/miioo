@@ -22,3 +22,12 @@ export function applyCanvasAsset(nodes, nodeId, selectedAsset) {
     ? { ...item, data: { ...item.data, asset, ...(item.type === 'audio' ? { transcript: getCanvasAudioTranscript(asset) } : {}), persistenceState: 'draft' } }
     : item);
 }
+
+export function planCanvasAssetImport(assets, center) {
+  const valid = assets.map((asset) => toCanvasAsset(asset, 'video')).filter(Boolean);
+  return valid.map((asset, index) => ({
+    asset,
+    type: asset.asset_type,
+    position: { x: center.x - 120 + index * 48, y: center.y - 100 + index * 48 },
+  }));
+}

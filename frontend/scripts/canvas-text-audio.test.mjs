@@ -2,6 +2,63 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { connectTextToAudio, getTextAudioEdges, disconnectTextAudio, isTextAudioConnection } from '../src/components/canvas/CanvasTextAudio.js';
+import { createCanvasHistory } from '../src/components/canvas/CanvasHistory.js';
+
+const updateContent = (history, id, content) => history.setNodes((current) => current.map((node) => node.id === id
+  ? { ...node, data: { ...node.data, content } } : node));
+const audioData = (history) => history.getSnapshot().nodes.find((node) => node.id === 'audio').data;
+
+test('空文本先连线，后续正文及清空均同步，撤销重做包含音频台词', () => {
+  const current = nodes();
+  current[0].data.content = '';
+  const history = createCanvasHistory(connectTextToAudio(current, { source: 'text', target: 'audio' }));
+  updateContent(history, 'text', '后输入');
+  assert.equal(audioData(history).prompt, '旧内容\n后输入');
+  updateContent(history, 'text', '第二版');
+  assert.equal(audioData(history).prompt, '旧内容\n第二版');
+  history.undo();
+  assert.equal(audioData(history).prompt, '旧内容\n后输入');
+  history.redo();
+  assert.equal(audioData(history).prompt, '旧内容\n第二版');
+  updateContent(history, 'text', '');
+  assert.equal(audioData(history).prompt, '旧内容');
+});
+
+test('音频台词独立编辑或添加高级标记后，不被上游更新覆盖', () => {
+  for (const prompt of ['手动编辑', '{happy}正文{/happy}', '正文<#0.5#>', '']) {
+    const history = createCanvasHistory(connectTextToAudio(nodes(), { source: 'text', target: 'audio' }));
+    history.setNodes((current) => current.map((node) => node.id === 'audio' ? { ...node, data: { ...node.data, prompt } } : node));
+    const version = audioData(history).promptImportVersion;
+    updateContent(history, 'text', '新的上游文字');
+    assert.equal(audioData(history).prompt, prompt);
+    assert.equal(audioData(history).textSync.edited, true);
+    assert.equal(audioData(history).promptImportVersion, version);
+  }
+});
+
+test('多来源按连线顺序同步，断线及删除保留文字，重连追加', () => {
+  const current = [...nodes(), { id: 'second', type: 'text', data: { content: '第二来源' } }];
+  const history = createCanvasHistory(connectTextToAudio(connectTextToAudio(current,
+    { source: 'text', target: 'audio' }), { source: 'second', target: 'audio' }));
+  updateContent(history, 'text', '第一来源更新');
+  assert.equal(audioData(history).prompt, '旧内容\n第一来源更新\n第二来源');
+  history.setNodes((items) => disconnectTextAudio(items, 'audio', 'text'));
+  updateContent(history, 'text', '断线后修改');
+  assert.equal(audioData(history).prompt, '旧内容\n第一来源更新\n第二来源');
+  history.setNodes((items) => connectTextToAudio(items, { source: 'text', target: 'audio' }));
+  assert.equal(audioData(history).prompt, '旧内容\n第一来源更新\n第二来源\n断线后修改');
+  history.setNodes((items) => items.filter((node) => node.id !== 'second'));
+  updateContent(history, 'text', '重连后更新');
+  assert.equal(audioData(history).prompt, '旧内容\n第一来源更新\n第二来源\n重连后更新');
+});
+
+test('占位状态使用实际配音正文，预填和后续编辑均检查且不将挂载当作用户修改', () => {
+  const source = readFileSync(new URL('../src/components/canvas/CanvasAudioCreationPanel.jsx', import.meta.url), 'utf8');
+  assert.match(source, /hasContent=\{hasText\}/);
+  assert.match(source, /setHasText\(Boolean\(snapshot.requestText\?\.trim\(\)\)\)/);
+  assert.match(source, /queueMicrotask\(\(\) => \{ if \(active\) syncDraft\(\); \}\)/);
+  assert.match(source, /lastRequestTextRef.current !== snapshot.requestText/);
+});
 
 const nodes = () => [
   { id: 'text', type: 'text', data: { content: '正文', prompt: '不是正文' } },

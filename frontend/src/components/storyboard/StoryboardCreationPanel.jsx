@@ -8,6 +8,7 @@
  *   页签状态           维护图片/视频页签并通知页面记忆最近使用的页签
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-10-08         编辑任务候选占位复用 LoadingAnimation
  *   2026-07-23         按 Paper 设计稿重写创作弹窗布局和候选区样式
  */
 
@@ -20,6 +21,7 @@ import { normalizeImageUrl } from '../../utils/imageUrl';
 import { ModalCloseBtn } from './StoryboardControls';
 import FileUploadButton from '../ui/FileUploadButton';
 import DotsLoading from '../DotsLoading';
+import LoadingAnimation from '../LoadingAnimation';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -106,7 +108,7 @@ function CandidateItem({ item, onSelect, onPreview, onDownload }) {
         role="status"
         style={{ width: '100px', height: '100px', position: 'relative', overflow: 'hidden', flexShrink: 0, borderRadius: '6px', border: '1px solid rgba(45,195,225,0.45)', background: '#1D1E1E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
-        <DotsLoading size={5} color="#2DC3E1" gap={4} />
+        {item.localEdit ? <LoadingAnimation width={88} /> : <DotsLoading size={5} color="#2DC3E1" gap={4} />}
       </div>
     );
   }

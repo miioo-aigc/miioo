@@ -1,4 +1,5 @@
 /** 画布编辑历史：字段差异避免撤销位置时覆盖异步结果；运行态不进入历史。 */
+import { syncCanvasAudioText } from './CanvasTextAudio.js';
 const transient = new Set(['selected', 'measured', 'dragging', 'resizing', 'creationPanelOpen', 'editing',
   'generating', 'generationPending', 'generationError', 'generationRequestId', 'dragRelease', 'dragScaleX', 'dragScaleY']);
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -109,7 +110,8 @@ export function createCanvasHistory(initial = []) {
     getSnapshot: () => state,
     subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
     setNodes: (update, options = {}) => {
-      const next = typeof update === 'function' ? update(nodes) : update;
+      // 来源正文与音频派生台词在同一历史步骤更新，撤销时不会再次触发同步。
+      const next = syncCanvasAudioText(typeof update === 'function' ? update(nodes) : update);
       for (const node of next) {
         if (node.data.asset?.url?.startsWith('blob:')) previewUrls.add(node.data.asset.url);
       }

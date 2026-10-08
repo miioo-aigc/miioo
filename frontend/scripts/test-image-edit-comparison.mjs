@@ -53,18 +53,18 @@ assert.equal(render().comparison.result.imageUrl, 'task-2');
 failSave = true;
 await render().submit({ mode: 'outpaint' });
 assert.equal(render().comparison.result.imageUrl, 'task-2');
-assert.equal(render().comparison.retrySave, true);
+assert.equal(render().comparison.retrySave, false);
 failSave = false;
-await render().submit();
-assert.equal(calls.length, 3);
-assert.equal(render().comparison.result.imageUrl, 'task-3');
+await render().submit({ mode: 'outpaint' });
+assert.equal(calls.length, 4);
+assert.equal(render().comparison.result.imageUrl, 'task-4');
 
 failSave = true; terminal = true;
 await render().submit({ mode: 'outpaint' });
 assert.equal(render().comparison.retrySave, false);
 failSave = false;
 await render().submit({ mode: 'outpaint', prompt: '终态失败后的新尝试' });
-assert.equal(calls.length, 5);
+assert.equal(calls.length, 6);
 
 release = true;
 const pending = render().submit({ mode: 'upscale' });
@@ -72,7 +72,7 @@ while (release === true) await Promise.resolve();
 assert.equal(render().busy, true);
 assert.equal(render().comparison.active, true);
 await render().submit({ mode: 'upscale' });
-assert.equal(calls.length, 6);
+assert.equal(calls.length, 7);
 // 不再渲染弹窗，已启动的保存仍会完成。
 release(); release = null;
 await pending;

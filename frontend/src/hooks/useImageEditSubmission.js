@@ -42,7 +42,7 @@ export default function useImageEditSubmission({ card, onSave, onComplete, keepO
       showGlobalToast('编辑图片已保存', 'success');
       if (!keepOpen) onComplete?.();
     } catch (error) {
-      if (error.terminal) pending.current = null;
+      if (error.terminal || (pending.current && !pending.current.uncertain)) pending.current = null;
       setComparison((value) => ({ ...value, result: error.preview || value.result, error: error.message || '图片编辑失败，请重试', retrySave: Boolean(pending.current?.accepted || pending.current?.image) }));
       showGlobalToast(error.message || '图片编辑失败，请重试', 'error');
     } finally {

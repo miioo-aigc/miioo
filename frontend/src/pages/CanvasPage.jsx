@@ -3,7 +3,7 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L98；grouping L126；referenceGraph L137；handleNodesChange L182；addNode L244；连线起点 L298；反向上游连接 L306；连线结束 L407；React Flow L508
+ *   CanvasPage L100；grouping L128；referenceGraph L139；handleNodesChange L194；addNode L256；连线起点 L310；反向上游连接 L318；连线结束 L419；React Flow L520
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
  *   CanvasProjectHeader components/canvas；左上角品牌与项目名称
@@ -30,7 +30,8 @@
  *   2026-09-30：反向连线预览改用画布容器坐标，补充指针取消、失焦、Esc 和鼠标左键生命周期清理。
  *   2026-10-08：移除空画布中央四个操作按钮，保留空态提示与底部工具栏。
  *   2026-10-08：连线拖拽目标区分可连接与不可连接状态，分别反馈蓝色和红色描边。
- *   2026-10-08：左侧拖拽优先添加上游，不合法时校验反向输出；悬停与提交复用相同方向解析。
+ *   2026-10-08：左侧拖拽优先添加上游，不合法时校验反向输出；手动接线与拖线新建统一触发一次流光。
+ *   2026-10-08：工具栏资产批量导入当前视口并合并历史；V/H 工具切换隔离编辑和弹窗。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -48,7 +49,8 @@ import CanvasToolbar from '../components/canvas/CanvasToolbar';
 import CanvasUserMenu from '../components/canvas/CanvasUserMenu';
 import AssetPickerModal from '../components/AssetPickerModal';
 import ProfileModal from '../components/ProfileModal';
-import { applyCanvasAsset, toCanvasAsset } from '../components/canvas/CanvasAssets';
+import { applyCanvasAsset, planCanvasAssetImport, toCanvasAsset } from '../components/canvas/CanvasAssets';
+import { getCanvasToolShortcut } from '../components/canvas/CanvasToolShortcuts';
 import { addCanvasReference } from '../components/canvas/CanvasReferences';
 import { useCanvasReferences } from '../components/canvas/UseCanvasReferences';
 import { useCanvasGrouping } from '../components/canvas/UseCanvasGrouping';
@@ -169,6 +171,16 @@ export default function CanvasPage({ canvasId, onBackHome }) {
 
   const notifyUnsupported = useCallback(() => { setNotice(true); window.setTimeout(() => setNotice(false), 2400); }, []);
   const loading = loadedCanvasId !== canvasId;
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      const tool = getCanvasToolShortcut(event, !loading && !error && !assetPickerOpen && !profileOpen);
+      if (!tool) return;
+      event.preventDefault();
+      setActiveTool(tool);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [loading, error, assetPickerOpen, profileOpen]);
   const handleLogout = async () => {
     try {
       await apiLogout();
@@ -241,7 +253,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       ? { ...item, data: { ...item.data, generationMode } }
       : item));
   }, [setNodes]);
-  const addNode = useCallback((type, position, connection = null) => {
+  const addNode = useCallback((type, position, connection = null, asset = null) => {
     const node = createCanvasNode(type, position || { x: 160 + (nodes.length % 3) * 280, y: 160 + Math.floor(nodes.length / 3) * 300 });
     node.data.onPromptChange = (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item));
     node.data.onModelChange = (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item));
@@ -266,19 +278,19 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       setAssetTarget({ nodeId, nodeType });
       setAssetPickerOpen(true);
     };
-    setNodes((current) => {
+    if (!connection) setNodes((current) => {
       const next = appendCanvasNode(current, node);
-      if (!connection) return next;
-      if (connection.direction === 'upstream') {
-        return referenceGraph.connectNodes(next, {
+      return asset ? applyCanvasAsset(next, node.id, asset) : next;
+    });
+    else {
+      const resolvedConnection = connection.direction === 'upstream' ? {
           source: node.id,
           sourceHandle: `${node.type}-output`,
           target: connection.currentNodeId,
           targetHandle: connection.targetHandle,
-        });
-      }
-      return referenceGraph.connectNodes(next, { ...connection, target: node.id });
-    });
+        } : { ...connection, target: node.id };
+      referenceGraph.onConnect(resolvedConnection, node);
+    }
     setNodeMenu(null);
     setPendingConnection(null);
   }, [cancelPendingNodeClick, generateAudio, generateImage, generateText, generateVideo, handleGenerationModeChange, handleImageReferenceLimitChange, handleUnsupported, handleVideoCapabilitiesChange, nodes.length, referenceGraph, setNodes]);
@@ -577,7 +589,20 @@ export default function CanvasPage({ canvasId, onBackHome }) {
           return addCanvasReference(current, assetTarget.nodeId, assets[0], assetTarget.mode);
         });
         else if (assetTarget) setNodes((current) => applyCanvasAsset(current, assetTarget.nodeId, assets[0]));
-        else handleUnsupported();
+        else {
+          const rect = canvasContainerRef.current?.getBoundingClientRect();
+          if (!flowInstance || !rect) return;
+          const center = flowInstance.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+          const imports = planCanvasAssetImport(assets, center);
+          cancelPendingClicks();
+          history.begin();
+          try {
+            imports.forEach(({ type, position, asset }) => addNode(type, position, null, asset));
+          } finally {
+            history.end();
+          }
+          if (imports.length < assets.length) showGlobalToast('warning', '部分资产缺少可用媒体地址，已跳过');
+        }
       }}
       accept={assetTarget?.nodeType === 'video' ? 'all' : assetTarget?.nodeType || 'all'}
       selectionMode={assetTarget ? 'single' : 'multiple'}

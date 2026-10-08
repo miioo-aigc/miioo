@@ -1,5 +1,7 @@
 /** 参考图草稿动作；临时地址由画布历史持有，撤销删除后仍可预览。 */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { appendCanvasNode } from './canvasNodeUtils';
+import { CANVAS_CARD_PULSE_DURATION, getCanvasPulseTiming } from './CanvasPulseMotion';
 import { showGlobalToast } from '../../stores/toastStore';
 import { addCanvasReference, getCanvasReferenceEdges, removeCanvasReference } from './CanvasReferences';
 import { getCanvasPromptReferences } from './CanvasPromptReferences';
@@ -10,6 +12,26 @@ import { canConnectCanvasImage, connectCanvasImage, disconnectCanvasImage, getCa
 import { canConnectCanvasVideo, connectCanvasVideo, disconnectCanvasVideo, getCanvasVideoEdges, isCanvasVideoConnection, validateCanvasVideoReferenceAddition } from './CanvasVideoGeneration';
 
 export function useCanvasReferences(nodes, setNodes, openPicker) {
+  const [pulses, setPulses] = useState([]);
+  useEffect(() => {
+    const timers = pulses.map((pulse) => {
+      const expiresAt = pulse.startedAt === null ? pulse.createdAt + 5000 : pulse.startedAt + pulse.edgeDuration + CANVAS_CARD_PULSE_DURATION + 350;
+      return setTimeout(() => setPulses((current) => current.filter((item) => item.id !== pulse.id)), Math.max(0, expiresAt - performance.now()));
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [pulses]);
+  const onPulseMeasure = useCallback((pulseId, pathLength, kind) => {
+    if (!Number.isFinite(pathLength) || pathLength <= 0) return;
+    const startedAt = performance.now();
+    setPulses((current) => current.map((pulse) => {
+      const field = kind === 'card' ? 'cardLength' : 'edgeLength';
+      if (pulse.id !== pulseId || pulse[field] === pathLength) return pulse;
+      const measured = { ...pulse, [field]: pathLength };
+      const timing = getCanvasPulseTiming(measured.edgeLength, measured.cardLength);
+      if (!timing) return measured;
+      return { ...measured, ...timing, startedAt: pulse.startedAt ?? startedAt };
+    }));
+  }, []);
   const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
   const addReference = useCallback((nodeId, source, mode, file) => {
     const nodeType = nodes.find((node) => node.id === nodeId)?.type;
@@ -87,16 +109,26 @@ export function useCanvasReferences(nodes, setNodes, openPicker) {
   }, [graphEdges, hoveredEdgeId]);
   const edges = graphEdges.map((edge) => ({ ...edge, type: 'canvasConnection', data: {
     ...edge.data,
+    pulses: pulses.filter((pulse) => pulse.source === edge.source && pulse.target === edge.target),
+    onPulseMeasure,
     highlighted: highlightedEdgeIds.has(edge.id),
     onHover: setHoveredEdgeId,
     onDelete: (edgeId) => removeEdges([edgeId]),
   } }));
   return {
-    nodes: nodes.map((node) => ({ ...node, data: { ...node.data, references: getCanvasPromptReferences(nodes, node.id), onAddReference: addReference, onRemoveReference: removeReference } })),
+    nodes: nodes.map((node) => ({ ...node, data: { ...node.data, onPulseMeasure, connectionPulses: pulses.filter((pulse) => pulse.target === node.id && graphEdges.some((edge) => edge.source === pulse.source && edge.target === pulse.target)), references: getCanvasPromptReferences(nodes, node.id), onAddReference: addReference, onRemoveReference: removeReference } })),
     edges,
     isValidConnection: isConnectionValid,
     connectNodes,
-    onConnect: (connection) => setNodes((current) => connectNodes(current, connection)),
+    onConnect: (connection, addedNode = null) => {
+      const candidates = addedNode ? appendCanvasNode(nodes, addedNode) : nodes;
+      const exists = graphEdges.some((edge) => edge.source === connection.source && edge.target === connection.target);
+      if (!exists && isConnectionValid(connection, candidates)) {
+        const pulse = { id: crypto.randomUUID(), source: connection.source, target: connection.target, createdAt: performance.now(), startedAt: null, edgeDuration: null };
+        setPulses((current) => [...current, pulse]);
+      }
+      setNodes((current) => connectNodes(addedNode ? appendCanvasNode(current, addedNode) : current, connection));
+    },
     onEdgesChange: (changes) => {
       removeEdges(changes.filter((change) => change.type === 'remove').map((change) => change.id));
     },

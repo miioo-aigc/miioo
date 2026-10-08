@@ -14,18 +14,20 @@ import { useMultiAngleResults } from '../image-edit/useMultiAngleResults';
 import CreationImageResultCard from '../creation/CreationImageResultCard';
 import useLocalImageEdits from '../../hooks/useLocalImageEdits';
 import { downloadLocalImage } from '../../stores/LocalImageEdits';
+import { visibleCreationEdits } from '../creation/CreationEditResults';
+import { creationEditScope } from '../creation/CreationEditResults';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-export function AssetCard({ name, url = null, starred = false, selected = false, batchMode = false, showStar = false, assetType = 'asset', videoObjectFit = 'cover', onDownload, onDelete, onStar, onSelect, asset = {} }) {
+export function AssetCard({ name, url = null, starred = false, selected = false, batchMode = false, showStar = false, assetType = 'asset', videoObjectFit = 'cover', onDownload, onDelete, onStar, onSelect, asset = {}, listedImages = [] }) {
   const angleResults = useMultiAngleResults(`asset:${asset.id || asset.backendId || url}`, { project_id: asset.project_id, session_id: asset.session_id });
   const [hov, setHov] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailData, setDetailData] = useState(null);
   const [creativeDetailAsset, setCreativeDetailAsset] = useState(null);
-  const edits = useLocalImageEdits(`creation:${asset.backendId || asset.id || asset.originalUrl || asset.imageUrl || url}`);
+  const edits = useLocalImageEdits(creationEditScope(asset));
 
   function handleOpen() {
     if (batchMode) { onSelect?.(); return; }
@@ -164,7 +166,7 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
         refImages={detailData?.refImages}
       />
     )}
-    {edits.images.map((image) => <CreationImageResultCard key={image.id} {...image} editScope={edits.scope} onDownload={() => downloadLocalImage(image)} onDelete={() => edits.remove(image.id)} />)}
+    {visibleCreationEdits(edits.images, listedImages).map((image) => <CreationImageResultCard key={image.id} {...image} editScope={edits.scope} onDownload={() => downloadLocalImage(image)} onDelete={() => edits.remove(image.id)} />)}
     {angleResults.results.map((result) => <CreationImageResultCard key={result.id} {...result} onGenerateImage={angleResults.generate} onDelete={() => angleResults.remove(result.id)} />)}
     </>
   );

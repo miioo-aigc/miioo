@@ -1,7 +1,7 @@
 /**
  * @file CanvasNodeShell.jsx
  * @structure-index
- * CanvasNodeShell L26：节点标题、卡片、端口和创作面板组合；模型加载及卸载保护。
+ * CanvasNodeShell L28：节点标题、卡片、端口和创作面板组合；模型加载及卸载保护。
  * 2026-09-28：结果卡片生成时隐藏内部内容，居中复用高度 32px 的公共加载动画；保留布局、端口及发送保护。
  * 2026-09-29：端口默认隐藏，卡片悬停显示，端口悬停放大，拖拽连线期间保持激活并置于媒体内容上层；合法目标卡片显示接收描边。
  * 2026-09-28：常驻外壳保留高级音频草稿，收起编辑器不清空音色或效果器。
@@ -10,6 +10,7 @@
  * 2026-09-28：媒体参数由外壳持有，创作框收起不丢失；仅当前节点生命周期内保留。
  * 2026-09-28：复用 chat 模型接口，透传文本生成状态、失败反馈及模型草稿。
  * 2026-10-08：透传连线目标合法性，显示蓝色或红色描边。
+ * 2026-10-08：手动接线成功后沿卡片边界播放一次双路流光。
  */
 import { useEffect, useState } from 'react';
 import { apiListModels } from '../../api/config';
@@ -21,6 +22,7 @@ import CanvasNodeHeader from './CanvasNodeHeader';
 import CanvasNodePorts from './CanvasNodePorts';
 import CanvasLocalUpload from './CanvasLocalUpload';
 import LoadingAnimation from '../LoadingAnimation';
+import CanvasNodeConnectionPulse from './CanvasConnectionPulse';
 import './canvas-nodes.css';
 
 export default function CanvasNodeShell({ nodeType, title, selected = false, data, children, onPromptChange, onAddReference, onGenerate }) {
@@ -52,6 +54,7 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
     <CanvasNodeHeader nodeType={nodeType} title={title} />
     <div className="canvas-node__frame" aria-busy={Boolean(data?.generating)} data-state={data?.editing ? 'editing' : 'default'} data-connection-target={data?.connectionTarget ? 'true' : 'false'} data-connection-target-status={data?.connectionTargetStatus || ''} data-dragging={data?.dragging ? 'true' : 'false'} data-drag-release={data?.dragRelease ? 'true' : 'false'} style={{ '--canvas-drag-scale-x': data?.dragScaleX || 1, '--canvas-drag-scale-y': data?.dragScaleY || 1 }}>
       <CanvasNodePorts ports={data?.ports} connectingType={data?.connectingType} nodeActive={Boolean(selected || data?.editing || data?.generating)} onUpstreamConnectStart={(event) => data?.onUpstreamConnectStart?.(data?.nodeId, event)} />
+      {data?.connectionPulses?.length > 0 && <CanvasNodeConnectionPulse pulses={data.connectionPulses} onMeasure={data.onPulseMeasure} />}
       {nodeType !== 'text' && <div className="canvas-node__local-upload-slot" hidden={Boolean(data?.asset?.url || data?.transcript)}>
         <CanvasLocalUpload nodeType={nodeType} onAssetChange={(asset) => data?.onAssetChange?.(data.nodeId, asset)} />
       </div>}

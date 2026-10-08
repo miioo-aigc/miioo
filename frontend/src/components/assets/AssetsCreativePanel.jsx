@@ -376,6 +376,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   }, [isLoggedIn, activeType, loadHistoryPage]);
 
   const generations = creationGenerationsByTab[activeType] ?? [];
+  const listedImages = activeType === 'image' ? generations.flatMap((generation) => generation.cards || []) : [];
   const activeHistoryMeta = creationHistoryMeta[activeType];
   const days = generationsToDays(generations).map((day) => favoritesOnly
     ? { ...day, cards: day.cards.filter((card) => favorites.has(card.id)) }
@@ -641,6 +642,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
                     onDownload={() => downloadCreativeAsset(card)}
                     onDelete={() => deleteSingle(card)}
                     asset={card}
+                    listedImages={listedImages}
                   />
                 );
               })}

@@ -21,7 +21,9 @@ const NO_FILES = [];
 export default function CanvasAudioCreationPanel({ nodeId, prompt = '', controls, draft, onDraftChange, onPromptChange, onGenerate }) {
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [hasText, setHasText] = useState(Boolean(prompt.trim()));
   const [prefillData] = useState(() => ({ prompt, promptHTML: draft?.snapshot?.html }));
+  const lastRequestTextRef = useRef(prompt.trim());
   const { zoom } = useViewport();
   const showToast = useCallback((_type, message) => setFeedback(message), []);
   const editor = useCreationPromptInteraction({
@@ -39,16 +41,23 @@ export default function CanvasAudioCreationPanel({ nodeId, prompt = '', controls
 
   const syncDraft = useCallback(() => {
     const snapshot = getPromptSnapshot();
+    setHasText(Boolean(snapshot.requestText?.trim()));
     latest.current.onDraftChange((current) => current?.snapshot?.html === snapshot.html
       ? current : { ...current, snapshot });
-    latest.current.onPromptChange?.(snapshot.requestText);
+    if (lastRequestTextRef.current !== snapshot.requestText) {
+      lastRequestTextRef.current = snapshot.requestText;
+      latest.current.onPromptChange?.(snapshot.requestText);
+    }
   }, [getPromptSnapshot]);
 
   useEffect(() => {
     const element = editorRef.current;
     const observer = new MutationObserver(syncDraft);
     observer.observe(element, { childList: true, subtree: true, characterData: true });
-    return () => observer.disconnect();
+    let active = true;
+    // 预填发生在订阅之前，首次读取等待本轮编辑器 DOM 初始化结束。
+    queueMicrotask(() => { if (active) syncDraft(); });
+    return () => { active = false; observer.disconnect(); };
   }, [editorRef, syncDraft]);
 
   const updateEffects = (patch) => onDraftChange((current) => ({ ...current, effects: { ...effects, ...patch } }));
@@ -89,7 +98,7 @@ export default function CanvasAudioCreationPanel({ nodeId, prompt = '', controls
       <CreationPromptEditor
         voiceWrapGap={12}
         editorRef={editorRef} files={NO_FILES} genType="dubbing" dubbingAdvancedEnabled
-        hasContent={editor.hasContent} allowDocumentUpload={false}
+        hasContent={hasText} allowDocumentUpload={false}
         onInput={() => { editor.handleInput(); syncDraft(); }}
         onBeforeInput={editor.handleBeforeInput} onPaste={editor.handlePaste}
         onKeyDown={(event) => editor.handleKeyDown(event, send)}

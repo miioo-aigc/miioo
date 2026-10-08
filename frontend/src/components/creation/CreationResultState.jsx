@@ -34,6 +34,7 @@
  *   2026-08-26  视频结果卡和详情弹窗透传视频封面地址
  *   2026-09-08  用作参考图提交原图；缺少可用原图时提示并阻止追加
  *   2026-09-08  多机位复用 onGenerate 创建独立任务，收到任务编号后关闭编辑弹窗
+ *   2026-10-08  编辑占位进入既有 generations 数据流，复用最新优先展示
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -50,6 +51,7 @@ import CreationAudioResultCard from './CreationAudioResultCard';
 import CreationImageResultCard from './CreationImageResultCard';
 import CreationVideoResultCard from './CreationVideoResultCard';
 import CreationInputDock from './CreationInputDock';
+import { creationEditScope, creationImageIdentity } from './CreationEditResults';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 export default function CreationResultState({
@@ -121,7 +123,7 @@ export default function CreationResultState({
       lastFrameUrl: gen.lastFrameUrl,
       createdAt: gen.createdAt,
       _needsDetail: gen._needsDetail,
-      backendId: gen.backendId,
+      backendId: card.type === 'image' ? creationImageIdentity(card) || gen.backendId : gen.backendId,
     }))
   );
 
@@ -317,6 +319,7 @@ export default function CreationResultState({
                 onGenerateImage={(params) => new Promise((resolve, reject) => {
                   onGenerate({ ...params, onSubmitted: resolve, onSubmissionError: reject, onCancel: () => reject(new Error('创作请求已取消')) });
                 })}
+                editScope={creationEditScope(card)}
                 batchMode={batchMode}
                 isSelected={batchMode && selected?.has(key)}
                 onToggleSelect={() => onToggleSelect?.(key)}

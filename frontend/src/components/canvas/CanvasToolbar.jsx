@@ -10,6 +10,7 @@
  *   2026-09-29 撤销重做移动到搜索前，仅在至少一个历史动作可用时显示
  *   2026-09-29 分割线右侧工具默认折叠为更多按钮，展开和收起使用 Gooey 风格过渡
  *   2026-10-08 收起工具按钮改用左尖括号图标
+ *   2026-10-08 修正收起间距，隐藏搜索和分享，移除画布列表标题并显示工具快捷键
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -73,9 +74,9 @@ const TOOL_ITEMS = [
 ];
 
 const COLLAPSIBLE_TOOL_ITEMS = [
-  { key: 'search', label: '搜索节点', icon: SearchIcon },
+  { key: 'search', label: '搜索节点', icon: SearchIcon, hidden: true },
   { key: 'map', label: '预览地图', icon: MiniMapIcon },
-  { key: 'share', label: '分享', icon: ShareNodesIcon },
+  { key: 'share', label: '分享', icon: ShareNodesIcon, hidden: true },
 ];
 
 const NODE_TYPES = [
@@ -117,7 +118,6 @@ function matchesNode(node, query, type) {
 function CanvasListMenu({ canvases, activeCanvasId, onSelectCanvas, onCreateCanvas }) {
   const items = canvases.length ? canvases : [{ id: activeCanvasId || 'current', name: '画布1' }];
   return <ToolbarMenu className="w-[176px]">
-    <div className="px-[10px] py-[6px] text-[12px] text-text-hint">当前项目画布</div>
     {items.map((canvas) => <MenuButton key={canvas.id} active={canvas.id === activeCanvasId} onClick={() => onSelectCanvas?.(canvas.id)}>{canvas.name || '未命名画布'}</MenuButton>)}
     <div className="my-[4px] h-px bg-stroke-normal" />
     <MenuButton onClick={onCreateCanvas}>＋ 新增画布</MenuButton>
@@ -129,7 +129,7 @@ function ShareMenu({ onShare }) {
 }
 
 function MoveMenu({ activeTool, onToolChange }) {
-  return <ToolbarMenu className="w-[144px]"><MenuButton active={activeTool === 'select'} onClick={() => onToolChange('select')}>移动</MenuButton><MenuButton active={activeTool === 'hand'} onClick={() => onToolChange('hand')}>抓手工具</MenuButton></ToolbarMenu>;
+  return <ToolbarMenu className="w-[144px]">{[{ tool: 'select', label: '移动', key: 'V' }, { tool: 'hand', label: '抓手工具', key: 'H' }].map((item) => <MenuButton key={item.tool} active={activeTool === item.tool} onClick={() => onToolChange(item.tool)}><span className="flex w-full items-center justify-between gap-[12px]"><span>{item.label}</span><span className="text-text-hint">{item.key}</span></span></MenuButton>)}</ToolbarMenu>;
 }
 
 function AddNodeMenu({ onAddNode }) {
@@ -177,13 +177,13 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
       {TOOL_ITEMS.map(renderTool)}
       <div className="h-[16px] w-px shrink-0 rounded-full bg-stroke-normal" />
       {!rightToolsExpanded && <Tooltip label="更多工具" placement="top" offset={8}><button type="button" aria-label="展开更多工具" title="展开更多工具" onClick={() => setRightToolsExpanded(true)} className="flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 hover:bg-white-5"><MoreHorizontal size={16} strokeWidth={1.7} color="var(--color-white-80)" /></button></Tooltip>}
-      <div className={`canvas-toolbar__right-tools ${rightToolsExpanded ? 'canvas-toolbar__right-tools--expanded' : ''}`} aria-hidden={!rightToolsExpanded}>
+      <div className={`canvas-toolbar__right-tools ${rightToolsExpanded ? 'canvas-toolbar__right-tools--expanded' : ''}`} aria-hidden={!rightToolsExpanded} inert={!rightToolsExpanded}>
         <div className="canvas-toolbar__right-tools-content">
           {rightToolsExpanded && (canUndo || canRedo) && <>
             <Tooltip label="撤销" placement="top"><span><IconButton aria-label="撤销" variant="link" className="!size-[32px] rounded-full hover:bg-white-5" contentClassName="!text-text-secondary" disabled={!canUndo} onClick={onUndo}><Undo2 size={16} /></IconButton></span></Tooltip>
             <Tooltip label="重做" placement="top"><span><IconButton aria-label="重做" variant="link" className="!size-[32px] rounded-full hover:bg-white-5" contentClassName="!text-text-secondary" disabled={!canRedo} onClick={onRedo}><Redo2 size={16} /></IconButton></span></Tooltip>
           </>}
-          {COLLAPSIBLE_TOOL_ITEMS.map(renderTool)}
+          {COLLAPSIBLE_TOOL_ITEMS.filter((item) => !item.hidden).map(renderTool)}
           {rightToolsExpanded && <Tooltip label="收起工具" placement="top" offset={8}><button type="button" aria-label="收起工具" title="收起工具" onClick={() => { setOpenMenu(null); setRightToolsExpanded(false); }} className="flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 hover:bg-white-5"><ChevronLeft size={16} strokeWidth={1.7} color="var(--color-white-80)" /></button></Tooltip>}
         </div>
       </div>

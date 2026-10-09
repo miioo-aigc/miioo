@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "check:architecture": "node scripts/check-architecture.mjs"
+    "check:architecture": "node scripts/check-architecture.mjs",
+    "check:dev-cold-start": "node --test scripts/dev-cold-start.test.mjs && node scripts/check-dev-cold-start.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^2.1.177",
@@ -25,7 +26,9 @@
     "@tiptap/extension-paragraph": "3.23.4",
     "@tiptap/extension-text": "3.23.4",
     "@tiptap/react": "3.23.4",
+    "@xyflow/react": "^12.11.6",
     "ass-compiler": "^0.1.16",
+    "border-beam": "^1.4.1",
     "lucide-react": "^1.42.0",
     "mammoth": "^1.12.1",
     "mediabunny": "^1.56.0",
@@ -45,6 +48,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "acorn": "^8.18.0",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",

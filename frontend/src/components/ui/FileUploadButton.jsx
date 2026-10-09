@@ -35,8 +35,14 @@ export default function FileUploadButton({ children, onClick, disabled = false, 
         height: '22px', paddingInline: '6px', borderRadius: '6px',
         backgroundColor: pressed ? '#1a1a1a' : hovered ? '#222323' : '#161616',
         border: '1px solid rgba(255,255,255,0.08)', outline: '1px solid #00000080',
-        cursor: isDisabled ? 'not-allowed' : 'pointer', fontSize: '12px', lineHeight: '14px',
-        color: isDisabled ? 'rgba(255,255,255,0.24)' : hovered ? 'rgba(255,255,255,0.70)' : 'rgba(255,255,255,0.40)',
+        cursor: isDisabled ? 'not-allowed' : 'pointer',
+        fontSize: 'var(--file-upload-button-font-size, 12px)',
+        lineHeight: 'var(--file-upload-button-line-height, 14px)',
+        color: isDisabled
+          ? 'rgba(255,255,255,0.24)'
+          : hovered
+            ? 'rgba(255,255,255,0.70)'
+            : 'var(--file-upload-button-text-color, rgba(255,255,255,0.40))',
         fontFamily: FONT, whiteSpace: 'nowrap', transition: 'background-color 0.10s, color 0.10s',
         opacity: isDisabled ? 0.65 : 1,
         ...style,

@@ -264,6 +264,7 @@ async function pollBasicEditCreationImageTask(taskId, { signal } = {}) {
  *   2026-08-07  配音生成支持再次点击发送按钮停止前端请求和轮询；后端任务取消能力仍由后端接口决定
  *   2026-08-21  配音同步/异步请求透传高级参数，并识别 speech-* MiniMax 长文本模型
  *   2026-08-21  普通配音模式将 speed / pitch / volume 归一到 voice_setting.speed / pitch / vol
+ *   2026-10-08  配音分支增加画布参考音频全量 attachments 及临时地址上传；其他入口保持原行为。
  */
 
 function isMiniMaxSpeechModel(model) {
@@ -1084,8 +1085,9 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
   }
   const refUrls = [];
   const refAssetIds = [];
-  let uploadedRefVideoUrl;
-  let uploadedRefAudioUrl;
+  const uploadedRefVideos = [];
+  const uploadedRefAudios = [];
+  const uploadedMediaReferences = [];
 
   for (const f of files) {
     // 已经有 URL 的资产（如「用作参考图」、资产库选择的素材），直接分类使用
@@ -1095,9 +1097,11 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
       const isVid = mime.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|wmv|flv)$/.test(name);
       const isAud = mime.startsWith('audio/') || /\.(mp3|wav|aac|ogg|flac|m4a|wma)$/.test(name);
       if (isVid) {
-        uploadedRefVideoUrl = f.url;
+        uploadedRefVideos.push(f.url);
+        uploadedMediaReferences.push({ asset_type: 'video', url: f.url, asset_id: f.assetId || f.backendId || f.asset_id });
       } else if (isAud) {
-        uploadedRefAudioUrl = f.url;
+        uploadedRefAudios.push(f.url);
+        uploadedMediaReferences.push({ asset_type: 'audio', url: f.url, asset_id: f.assetId || f.backendId || f.asset_id });
       } else {
         // 图片资产
         refUrls.push(f.url);
@@ -1105,6 +1109,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
         // 确保不同来源（项目/全局/创作资产、直接上传）的参考图都能正确绑定到后端
         const aid = f.assetId || f.backendId || f.asset_id;
         if (aid) refAssetIds.push(aid);
+        uploadedMediaReferences.push({ asset_type: 'image', url: f.url, asset_id: aid });
       }
       continue;
     }
@@ -1116,16 +1121,25 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
       if (isVid) {
         const result = await apiUploadCreationVideo({ file: f, category: 'reference', ...uploadContext, signal });
         const url = result.uploaded_url || result.uploadedUrl || '';
-        if (url) uploadedRefVideoUrl = url;
+        if (url) {
+          uploadedRefVideos.push(url);
+          uploadedMediaReferences.push({ asset_type: 'video', url });
+        }
       } else if (isAud) {
         const result = await apiUploadCreationAudio({ file: f, category: 'reference', ...uploadContext, signal });
         const url = result.uploaded_url || result.uploadedUrl || '';
-        if (url) uploadedRefAudioUrl = url;
+        if (url) {
+          uploadedRefAudios.push(url);
+          uploadedMediaReferences.push({ asset_type: 'audio', url });
+        }
       } else {
         // 图片
         const result = await apiUploadCreationImage({ file: f, category: 'reference', ...uploadContext, signal });
         const url = result.uploaded_url || result.uploadedUrl || '';
-        if (url) refUrls.push(url);
+        if (url) {
+          refUrls.push(url);
+          uploadedMediaReferences.push({ asset_type: 'image', url });
+        }
         // 兜底取 asset_id：优先顶层（CreationImageUploadResponse.asset_id），再兜底 image.asset_id
         const assetId = result?.asset_id || result?.image?.asset_id;
         if (assetId) refAssetIds.push(assetId);
@@ -1171,8 +1185,21 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
   if (isDubbing) {
     // 上传参考音频文件
     let referenceAudioUrl;
+    const audioAttachments = [];
     const audioFiles = params.files ? (Array.isArray(params.files) ? params.files : [params.files]) : [];
     for (const f of audioFiles) {
+      if (params.canvasAudioReferences) {
+        let url = f?.url;
+        if (f instanceof File || url?.startsWith('blob:')) {
+          const file = f instanceof File ? f : new File([await (await fetch(url, { signal })).blob()], f.name || 'reference.wav');
+          const uploaded = await apiUploadCreationAudio({ file, category: 'reference', ...uploadContext, signal });
+          url = uploaded.uploaded_url || uploaded.uploadedUrl;
+        }
+        if (!url) throw new Error('参考音频上传失败');
+        referenceAudioUrl ||= url;
+        audioAttachments.push({ asset_type: 'audio', url, role: 'reference_audio', source: 'canvas' });
+        continue;
+      }
       if (f && typeof f === 'object' && !(f instanceof File) && f.url) {
         referenceAudioUrl = f.url;
         break;
@@ -1199,6 +1226,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
         ?? params.advanced_enabled
         ?? false,
       reference_audio_url: referenceAudioUrl || undefined,
+      ...(params.canvasAudioReferences ? { attachments: audioAttachments } : {}),
       voice_setting: normalizeDubbingVoiceSetting(params),
       voice_modify: params.voice_modify || undefined,
       audio_setting: params.audio_setting || undefined,
@@ -1366,6 +1394,9 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
       count: countNum,
       imageCount: countNum,
       reference_images: refUrls.length > 0 ? refUrls : undefined,
+      reference_materials: Array.isArray(params.referenceMaterials) && params.referenceMaterials.length > 0
+        ? params.referenceMaterials
+        : undefined,
       category: params.category || undefined,
       asset_name: params.asset_name || undefined,
       watermark: params.watermark || undefined,
@@ -1424,39 +1455,22 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
 
   // ── 视频生成 ────────────────────────────────────────────────────────────
   const liveMaterialParam = params.liveMaterialParam || null;
-  const hasRefMedia = refUrls.length > 0 || refAssetIds.length > 0 || uploadedRefVideoUrl || uploadedRefAudioUrl || (liveMaterialParam && liveMaterialParam.length > 0);
+  const uploadedRefVideoUrl = uploadedRefVideos[0];
+  const uploadedRefAudioUrl = uploadedRefAudios[0];
+  const hasRefMedia = uploadedMediaReferences.length > 0 || (liveMaterialParam && liveMaterialParam.length > 0);
   const effectiveGenerationMode = params.generation_mode;
   const effectiveReferenceMode = params.reference_mode;
 
   // ── @ 数字资产绑定（attachments）────────────────────────────────────────
   // 后端视频生成消费 @ 参考图的真正入口是 attachments（CreationAssetBinding[]），
   // 而非 reference_image_urls（该字段后端不存在）。这里把图片/视频/音频参考统一组装为绑定。
-  const attachments = [];
-  refUrls.forEach((url, i) => {
-    attachments.push({
-      asset_id: refAssetIds[i] || undefined,
-      asset_type: 'image',
-      url: toAbsoluteUrl(url),
-      role: 'reference',
-      source: 'mention',
-    });
-  });
-  if (uploadedRefVideoUrl) {
-    attachments.push({
-      asset_type: 'video',
-      url: toAbsoluteUrl(uploadedRefVideoUrl),
-      role: 'reference',
-      source: 'mention',
-    });
-  }
-  if (uploadedRefAudioUrl) {
-    attachments.push({
-      asset_type: 'audio',
-      url: toAbsoluteUrl(uploadedRefAudioUrl),
-      role: 'reference',
-      source: 'mention',
-    });
-  }
+  const attachments = uploadedMediaReferences.map((reference) => ({
+    asset_id: reference.asset_id || undefined,
+    asset_type: reference.asset_type,
+    url: toAbsoluteUrl(reference.url),
+    role: 'reference',
+    source: 'mention',
+  }));
 
   const body = {
     prompt: params.prompt,
@@ -1480,6 +1494,10 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
     last_frame_asset_id: lastFrameAssetId || params.last_frame_asset_id || undefined,
     // 参考资源：@ 数字资产绑定通过 attachments 传递（后端真正消费的入口）
     attachments: attachments.length > 0 ? attachments : undefined,
+    // 文本上游按直连顺序结构化传递，不在前端拼接；视频素材仍按 attachments 传递。
+    reference_materials: Array.isArray(params.referenceMaterials) && params.referenceMaterials.length > 0
+      ? params.referenceMaterials
+      : undefined,
     // asset_id 双通道兜底（后端 reference_image_asset_ids 仍支持）
     reference_image_asset_ids: refAssetIds.length > 0 ? refAssetIds : undefined,
     // 视频/音频参考的独立 URL 字段（兼容后端既有取数口径）
@@ -1515,8 +1533,8 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
   return {
     taskId, videos, cardIds, posterUrl,
     referenceImages: refUrls,
-    referenceVideos: uploadedRefVideoUrl ? [uploadedRefVideoUrl] : [],
-    referenceAudios: uploadedRefAudioUrl ? [uploadedRefAudioUrl] : [],
+    referenceVideos: uploadedRefVideos,
+    referenceAudios: uploadedRefAudios,
     refMode: params.refMode || undefined,
     referenceModeLabel,
     firstFrameUrl: firstFrameUrl || undefined,

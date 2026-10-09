@@ -5,7 +5,7 @@ import { RatioIcon } from '../ui/RatioIcon';
 // ─── Video params selector (ratio + resolution + duration) ────────────────────
 export function VideoParamsSelector({ ratio, resolution, duration, onRatioChange, onResolutionChange, onDurationChange, disabled,
   ratioOptions = [], resolutionOptions = [], durationOptions = [], resolutionRatios = {},
-  soundEnabled = true, onSoundChange }) {
+  soundEnabled = true, onSoundChange, ratioLabel = ratio, formatDuration = (value) => value }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const isActive = open || hovered;
@@ -107,10 +107,10 @@ export function VideoParamsSelector({ ratio, resolution, duration, onRatioChange
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <RatioIcon rw={ratioOptions.find((r) => r.value === ratio)?.w ?? 16} rh={ratioOptions.find((r) => r.value === ratio)?.h ?? 9} selected />
-          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>{ratio}</span>
+          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>{ratioLabel}</span>
         </div>
         <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>{resolution}</span>
-        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>{duration}</span>
+        <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>{formatDuration(duration)}</span>
         {soundEnabled ? (
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
             <path d="M2 5.5H4.5L8 2.5V13.5L4.5 10.5H2V5.5Z" stroke="#FFFFFFCC" strokeWidth="1.2" strokeLinejoin="round" fill="none"/>
@@ -199,7 +199,7 @@ export function VideoParamsSelector({ ratio, resolution, duration, onRatioChange
                     onMouseEnter={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF14'; }}
                     onMouseLeave={(e) => { if (!sel) e.currentTarget.style.background = '#FFFFFF0D'; }}
                   >
-                    {opt}
+                    {formatDuration(opt)}
                   </button>
                 );
               })}

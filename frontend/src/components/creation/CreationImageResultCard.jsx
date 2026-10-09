@@ -20,6 +20,7 @@
  *   2026-08-25  创作历史占位卡复用 LoadingAnimation，宽度 88px、高度按比例自适应
  *   2026-09-04  图片详情统一复用共享 ImageDetailModal
  *   2026-09-08  显式透传多机位创作回调，结果仍由来源列表管理
+ *   2026-10-08  编辑结果通过创作 Store 新增占位；卡片不再附带渲染结果
  */
 
 import { useState } from 'react';
@@ -28,13 +29,12 @@ import LoadingAnimation from '../LoadingAnimation';
 import CreationCardActionButton from './CreationCardActionButton';
 import ImageDetailModal from '../ImageDetailModal';
 import useLocalImageEdits from '../../hooks/useLocalImageEdits';
-import { downloadLocalImage } from '../../stores/LocalImageEdits';
 import { showGlobalToast } from '../../stores/toastStore';
 import { DeleteIcon, FavoriteIcon } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
-export default function CreationImageResultCard({ status, imageUrl, originalUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt, onReEdit, onUseAsRef, onDownload, onDelete, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite, onGenerateImage, editScope, localEdit = false, backendId, cardIndex = 0 }) {
+export default function CreationImageResultCard({ status, imageUrl, originalUrl, prompt, promptHTML, model, ratio, resolution, refImages, createdAt, onReEdit, onUseAsRef, onDownload, onDelete, batchMode = false, isSelected = false, onToggleSelect, favorited = false, onToggleFavorite, onGenerateImage, editScope, localEdit = false, backendId }) {
   const [hovered, setHovered] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
@@ -76,7 +76,6 @@ export default function CreationImageResultCard({ status, imageUrl, originalUrl,
 
       {confirmDelete && <ConfirmDialog title="确认删除" description="删除后无法恢复，确定要删除这张图片吗？" confirmText="删除" onConfirm={() => { setConfirmDelete(false); onDelete?.(); }} onCancel={() => setConfirmDelete(false)} zIndex={1100} />}
       {detailOpen && <ImageDetailModal card={{ imageUrl, originalUrl, creationAssetId: backendId, prompt, promptHTML, model, ratio, resolution, refImages, createdAt }} onCreateImage={edits.save} onGenerateImage={onGenerateImage} onClose={() => setDetailOpen(false)} onDelete={onDelete} onDownload={onDownload} favorited={favorited} onToggleFavorite={() => onToggleFavorite?.()} />}
-      {!localEdit && (!backendId || cardIndex === 0) && edits.images.map((image) => <CreationImageResultCard key={image.id} {...image} editScope={scope} onDownload={() => downloadLocalImage(image)} onDelete={() => edits.remove(image.id)} />)}
     </>
   );
 }

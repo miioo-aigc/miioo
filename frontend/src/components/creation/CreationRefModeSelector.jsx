@@ -106,12 +106,12 @@ const REF_MODE_ICON_MAP = {
 };
 
 // ─── Reference mode selector ──────────────────────────────────────────────────
-export function RefModeSelector({ value, onChange, disabled, options = [] }) {
+export function RefModeSelector({ value, onChange, disabled, options = [], iconMap = REF_MODE_ICON_MAP, menuWidth = '112px' }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const dropdownRef = useRef(null);
   const selectedOpt = options.find((o) => o.value === value) ?? options[0];
-  const selectedIcons = REF_MODE_ICON_MAP[selectedOpt?.value] ?? REF_MODE_ICON_MAP.all;
+  const selectedIcons = iconMap[selectedOpt?.value] ?? REF_MODE_ICON_MAP[selectedOpt?.value] ?? REF_MODE_ICON_MAP.all;
   const isActive = open || hovered;
 
   useEffect(() => {
@@ -174,7 +174,7 @@ export function RefModeSelector({ value, onChange, disabled, options = [] }) {
           background: '#1D1E1E',
           border: '1px solid #FFFFFF0D',
           boxShadow: '0px 4px 16px #00000066',
-          width: '112px',
+          width: menuWidth,
           padding: '4px',
           display: 'flex',
           flexDirection: 'column',
@@ -182,7 +182,7 @@ export function RefModeSelector({ value, onChange, disabled, options = [] }) {
         }}>
           {options.map((opt) => {
             const sel = opt.value === value;
-            const icons = REF_MODE_ICON_MAP[opt.value] ?? REF_MODE_ICON_MAP.all;
+            const icons = iconMap[opt.value] ?? REF_MODE_ICON_MAP[opt.value] ?? REF_MODE_ICON_MAP.all;
             return (
               <RefModeDropdownItem
                 key={opt.value}

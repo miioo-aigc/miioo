@@ -4,7 +4,7 @@
  *
  * ─── 列表响应适配 ───────────────────────────────────────────
  *   getCreationHistoryList       兼容数组、list、items 和 data 响应
- *   dedupeCreationHistoryList    按媒体地址去重并优先保留非空创作提示词
+ *   dedupeCreationHistoryList    按资产身份/媒体地址去重并优先保留详情完整记录
  *   normalizeCreationHistoryItem 将历史记录转换为创作页 generation
  *   2026-09-08 原图字段不再使用受控下载地址，缓存兼容 originalUrl。
  *

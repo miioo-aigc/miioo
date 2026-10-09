@@ -14,6 +14,7 @@
  *   图片上传、下载、定稿和 Toast 由页面通过回调负责；不引用页面、API、Store 或路由
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-10-08  图片编辑任务显示加载占位，复用 LoadingAnimation
  *   2026-07-15  从 SubjectPage 抽离主体编辑区右侧图片列表及图片卡片
  *   2026-07-15  保持页面负责上传、下载、定稿 API 和 Toast 行为
  *   2026-07-22  移除候选图悬停放大和下载按钮的黑色外描边
@@ -32,6 +33,7 @@ import { useRef, useState } from 'react';
 import AssetPickerModal from '../AssetPickerModal';
 import Checkbox from '../Checkbox';
 import DotsLoading from '../DotsLoading';
+import LoadingAnimation from '../LoadingAnimation';
 import MediaDetailModal from '../MediaDetailModal';
 import useLocalImageEdits from '../../hooks/useLocalImageEdits';
 import { downloadLocalImage } from '../../stores/LocalImageEdits';
@@ -146,7 +148,7 @@ function ImageActionButton({ children, ariaLabel, tooltip, onClick }) {
   );
 }
 
-function ImageItem({ settled, imageUrl, uploading = false, onView, onSettledChange, onDownload }) {
+function ImageItem({ settled, imageUrl, uploading = false, pending = false, onView, onSettledChange, onDownload }) {
   const [hovered, setHovered] = useState(false);
   const borderColor = settled ? '#2DC3E1' : hovered ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)';
 
@@ -165,7 +167,7 @@ function ImageItem({ settled, imageUrl, uploading = false, onView, onSettledChan
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {imageUrl && !uploading
           ? <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          : <DotsLoading size={4} color="#2DC3E1" gap={3} />}
+          : pending ? <LoadingAnimation width={88} /> : <DotsLoading size={4} color="#2DC3E1" gap={3} />}
       </div>
 
       {!uploading && (
@@ -284,6 +286,7 @@ export default function SubjectImageList({
           imageUrl={image.url}
           settled={image.settled}
           uploading={image.uploading}
+          pending={image.pending}
           onView={() => onOpenDetail?.(index)}
           onDownload={() => onDownload?.(image.id)}
           onSettledChange={(newSettled) => onSettledChange?.(image, index, newSettled)}

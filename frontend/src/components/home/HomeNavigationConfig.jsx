@@ -3,6 +3,7 @@
  */
 
 import { QRCodePopup } from './HomeBottomMenus';
+import canvasNavIcon from '../../assets/canvas-nav.svg';
 
 const ICON_STYLE = { flexShrink: '0' };
 
@@ -17,6 +18,11 @@ const NAV_ITEMS = [
         <path d="M3 14H13" stroke="#FFFFFF" strokeLinecap="round" />
       </svg>
     ),
+  },
+  {
+    key: 'canvas',
+    label: '画布',
+    icon: <img src={canvasNavIcon} width="16" height="16" alt="" style={ICON_STYLE} />,
   },
   {
     key: 'project',

@@ -3,31 +3,32 @@
  * @structure-index
  *
  * ─── 全局常量 & 工具函数 ────────────────────────────────────────────
- *   FONT / FONT_MEDIUM              页面字体常量                         L36
+ *   FONT / FONT_MEDIUM              页面字体常量                         L43–L44
  *
  * ─── 图标组件 ───────────────────────────────────────────────────────
- *   SearchIcon / PlusIcon / MoreIcon / PencilIcon / CopyIcon / DeleteIcon / CloseIcon
- *                                                                        L41–L98
+ *   SearchIcon / PlusIcon / MoreIcon / PencilIcon / CopyIcon / CloseIcon（DeleteIcon 从 ui 导入）
+ *                                                                        L48–L100
  *
  * ─── 菜单与弹窗组件 ────────────────────────────────────────────────
- *   MoreMenu                         项目操作菜单                         L115
- *   RenameModal                      项目重命名弹窗                       L130
+ *   MoreMenu                         项目操作菜单                         L104
+ *   RenameModal                      项目重命名弹窗                       L120
  *   ConfirmDialog                    删除确认弹窗                         页面底部组合
  *
  * ─── 结果/状态展示组件 ─────────────────────────────────────────────
- *   NewProjectCard                   新建项目卡片                         L319
- *   ProjectCard                      项目卡片与更多操作                   L359
+ *   NewProjectCard                   新建项目卡片                         L251
+ *   ProjectCard                      项目卡片与更多操作                   L291
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────────
- *   export default ProjectList()     搜索、项目筛选和弹窗编排             L488
- *     ├─ [状态] searchValue / searchFocused / searchHovered              L489–L491
- *     ├─ [状态] renameTarget / deleteTarget                               L492–L493
- *     └─ [函数] filtered             根据项目名称过滤列表                  L495
- *
+ *   export default ProjectList()     搜索、项目筛选和弹窗编排             L420
+ *     ├─ [状态] searchValue / searchFocused / searchHovered              L421–L423
+ *     ├─ [状态] renameTarget / deleteTarget                               L424–L425
+ *     └─ [函数] filtered             根据项目名称过滤列表                  L427
+ *   2026-09-22  标题通过 title 参数传入，区分自由画布项目与工作流项目
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-22  项目删除二次确认改用标准 ConfirmDialog
  *   2026-07-22  移除更多操作下拉菜单选项的黑色描边
  *   2026-07-22  按标准元素修正更多操作菜单项内边距和高度
+ *   2026-09-22  项目卡片更多操作菜单按最长菜单项内容自适应宽度
  *   2026-07-22  按反馈将项目卡片标题信息列间距调整为 4px
  *   2026-07-15  抽离通用按钮组件并迁移弹窗操作按钮
  *   2026-07-15  将项目操作菜单项迁移到 Button 基础能力
@@ -104,7 +105,8 @@ function CloseIcon() {
 function MoreMenu({ onRename, onCopy, onDelete, onClose }) {
   return (
     <DropdownMenu
-      width="178px"
+      width="max-content"
+      className="whitespace-nowrap"
       onClose={onClose}
       items={[
         { key: 'rename', icon: <PencilIcon />, label: '重命名', onClick: onRename },
@@ -293,6 +295,7 @@ function ProjectCard({ project, onRename, onCopy, onDelete, onOpen }) {
   const [pressed, setPressed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const moreRef = useRef(null);
+  const canOperate = Boolean(onRename || onCopy || onDelete);
 
   function handleMoreClick(e) {
     e.stopPropagation();
@@ -380,7 +383,7 @@ function ProjectCard({ project, onRename, onCopy, onDelete, onOpen }) {
             {formatRelativeTime(project.created_at || project.updated_at || project.date)}
           </span>
         </div>
-        {(hovered || menuOpen) && (
+        {canOperate && (hovered || menuOpen) && (
           <div ref={moreRef} style={{ position: 'relative', flexShrink: 0, marginLeft: '8px' }}>
             <div
               onClick={handleMoreClick}
@@ -417,7 +420,7 @@ function ProjectCard({ project, onRename, onCopy, onDelete, onOpen }) {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function ProjectList({ projects = [], onNewProject, onRenameProject, onCopyProject, onDeleteProject, onOpenProject }) {
+export default function ProjectList({ title = '所有项目', projects = [], onNewProject, onRenameProject, onCopyProject, onDeleteProject, onOpenProject }) {
   const [searchValue, setSearchValue] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchHovered, setSearchHovered] = useState(false);
@@ -454,7 +457,7 @@ export default function ProjectList({ projects = [], onNewProject, onRenameProje
             marginBottom: '16px',
           }}
         >
-          <span style={{ fontFamily: FONT_MEDIUM, fontSize: '16px', color: '#FFFFFF' }}>所有项目</span>
+          <span style={{ fontFamily: FONT_MEDIUM, fontSize: '16px', color: '#FFFFFF' }}>{title}</span>
           <div
             style={{
               display: 'flex',

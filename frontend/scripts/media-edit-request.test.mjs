@@ -28,7 +28,7 @@ test('视频编辑遵守已确认模型与输出类型边界', () => {
   const asset = { asset_id: 'video-1', business_context: { storyboard_id: 'shot-1' } };
   const upscale = buildVideoEditRequest(asset, { mode: 'upscale', target_resolution: '1080P' });
   assert.equal(upscale.model, null);
-  assert.equal(upscale.model_requirement, 'HappyHorse 1.1');
+  assert.equal(upscale.model_requirement, 'HappyHorse 1.0');
   assert.deepEqual(upscale.business_context, { storyboard_id: 'shot-1' });
   const subtitle = buildVideoEditRequest(asset, { mode: 'subtitle_remove', prompt: '不能发送' });
   assert.equal(subtitle.model, 'happyhorse-1.0-video-edit');

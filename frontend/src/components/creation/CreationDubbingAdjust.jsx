@@ -144,7 +144,8 @@ function DubbingRangeControl({ config, value, onChange }) {
   );
 }
 
-export function DubbingAdjust({ speed, pitch, volume, onSpeedChange, onPitchChange, onVolumeChange, advancedEnabled = false, onAdvancedChange, promptCharacterCount = 0, hasTextSelection = false, onEmotionClick, onPauseClick, onInterjectionClick, effects, onEffectToneChange, onEffectToggle, disabled }) {
+// 2026-09-28：画布可隐藏高级入口；默认保留创作页面原有行为。
+export function DubbingAdjust({ speed, pitch, volume, onSpeedChange, onPitchChange, onVolumeChange, showAdvanced = true, advancedEnabled = false, onAdvancedChange, promptCharacterCount = 0, hasTextSelection = false, onEmotionClick, onPauseClick, onInterjectionClick, effects, onEffectToneChange, onEffectToggle, disabled }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const values = { speed, pitch, volume };
@@ -182,16 +183,16 @@ export function DubbingAdjust({ speed, pitch, volume, onSpeedChange, onPitchChan
         </svg>
       </button>
 
-      {advancedEnabled && (
+      {showAdvanced && advancedEnabled && (
         <CreationDubbingAdvancedToolbar hasTextSelection={hasTextSelection} onEmotionClick={onEmotionClick} onPauseClick={onPauseClick} onInterjectionClick={onInterjectionClick} effects={effects} onEffectToneChange={onEffectToneChange} onEffectToggle={onEffectToggle} disabled={disabled} />
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', height: '32px', paddingLeft: '12px', paddingRight: '6px', borderRadius: '8px', background: '#1D1E1E', border: '1px solid #FFFFFF14', outline: '1px solid #00000080', flexShrink: 0, opacity: disabled ? 0.45 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
+      {showAdvanced && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', height: '32px', paddingLeft: '12px', paddingRight: '6px', borderRadius: '8px', background: '#1D1E1E', border: '1px solid #FFFFFF14', outline: '1px solid #00000080', flexShrink: 0, opacity: disabled ? 0.45 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
         <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC', whiteSpace: 'nowrap' }}>高级模式</span>
         <Toggle value={advancedEnabled} onChange={onAdvancedChange} />
-      </div>
+      </div>}
 
-      {advancedEnabled && (
+      {showAdvanced && advancedEnabled && (
         <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC', whiteSpace: 'nowrap', flexShrink: 0 }}>
           字数：{Math.max(0, Number(promptCharacterCount) || 0)}/3000
         </span>

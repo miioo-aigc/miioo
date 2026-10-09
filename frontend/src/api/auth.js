@@ -5,6 +5,7 @@ export { clearTokens } from './request.js';
 
 export async function apiSendCode(phone) {
   const res = await fetch(`${BASE}/api/auth/send-code`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone }),
@@ -21,6 +22,7 @@ export async function apiSendCode(phone) {
 
 export async function apiLogin({ phone, password }) {
   const res = await fetch(`${BASE}/api/auth/login`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, password }),
@@ -32,6 +34,7 @@ export async function apiLogin({ phone, password }) {
 
 export async function apiVerifyCodeLogin({ phone, code }) {
   const res = await fetch(`${BASE}/api/auth/verify-code-login`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, code }),
@@ -43,6 +46,7 @@ export async function apiVerifyCodeLogin({ phone, code }) {
 
 export async function apiRegister({ phone, password, nickname }) {
   const res = await fetch(`${BASE}/api/auth/register`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, password, nickname }),
@@ -86,7 +90,7 @@ export async function apiGetWechatQrCode() {
       expire_seconds: 120,
     };
   }
-  const res = await fetch(`${BASE}/api/auth/wechat/qrcode`);
+  const res = await fetch(`${BASE}/api/auth/wechat/qrcode`, { credentials: 'include' });
   if (!res.ok) {
     let detail = res.statusText;
     try { const body = await res.json(); detail = body?.detail || body?.message || detail; } catch { /* 忽略非 JSON 错误响应 */ }
@@ -113,7 +117,7 @@ export async function apiPollWechatQrCodeStatus(qrcodeId) {
   if (import.meta.env.VITE_USE_MOCK === 'true') {
     return { status: 'pending' };
   }
-  const res = await fetch(`${BASE}/api/auth/wechat/poll/${encodeURIComponent(qrcodeId)}`);
+  const res = await fetch(`${BASE}/api/auth/wechat/poll/${encodeURIComponent(qrcodeId)}`, { credentials: 'include' });
   if (!res.ok) {
     let detail = res.statusText;
     try { const body = await res.json(); detail = body?.detail || body?.message || detail; } catch { /* 忽略非 JSON 错误响应 */ }
@@ -136,6 +140,7 @@ export async function apiCompleteWechatCallback({ code, state }) {
     };
   }
   const res = await fetch(`${BASE}/api/auth/wechat/callback/complete`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code, state }),
@@ -161,6 +166,7 @@ export async function apiConfirmWechatLogin({ session_id, phone, sms_code }) {
     return { access_token: 'mock-token', refresh_token: 'mock-refresh' };
   }
   const res = await fetch(`${BASE}/api/auth/wechat/confirm`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id, phone, sms_code }),

@@ -97,14 +97,14 @@ export default function ImageDetailModal({ card, onClose, onDelete, onDownload, 
   };
   const handleCopyPrompt = () => showGlobalToast('您已复制提示词', 'success');
 
-  if (multiAngleOpen) return <MultiAngleModal card={card} onClose={() => setMultiAngleOpen(false)} />;
-  if (inpaintMode) return <InpaintModal card={card} mode={inpaintMode} onSave={onCreateImage} onComplete={onClose} onClose={() => setInpaintMode(null)} />;
-  if (upscaleOpen) return <UpscaleModal card={card} onClose={() => setUpscaleOpen(false)} />;
-  if (flipOpen) return <ImageFlipModal imageUrl={card.imageUrl} sourceAsset={card} onClose={() => setFlipOpen(false)} />;
-  if (outpaintOpen) return <OutpaintModal card={card} onSave={onCreateImage} onComplete={onClose} onClose={() => setOutpaintOpen(false)} />;
+  if (multiAngleOpen) return <MultiAngleModal card={card} onClose={onClose} />;
+  if (inpaintMode) return <InpaintModal card={card} mode={inpaintMode} onSave={onCreateImage} onComplete={onClose} onClose={onClose} />;
+  if (upscaleOpen) return <UpscaleModal card={card} onSave={onCreateImage} onComplete={onClose} onClose={onClose} />;
+  if (flipOpen) return <ImageFlipModal imageUrl={card.imageUrl} sourceAsset={card} onSave={onCreateImage} onComplete={onClose} onClose={onClose} />;
+  if (outpaintOpen) return <OutpaintModal card={card} onSave={onCreateImage} onComplete={onClose} onClose={onClose} />;
 
   if (cropOpen) {
-    return <ImageCropModal imageUrl={card.imageUrl} sourceAsset={card} onClose={() => setCropOpen(false)} />;
+    return <ImageCropModal imageUrl={card.imageUrl} sourceAsset={card} onSave={onCreateImage} onComplete={onClose} onClose={onClose} />;
   }
 
   return <OutpaintAction.Provider value={() => setOutpaintOpen(true)}><FlipAction.Provider value={() => setFlipOpen(true)}><UpscaleAction.Provider value={() => setUpscaleOpen(true)}><InpaintAction.Provider value={setInpaintMode}><MultiAngleAction.Provider value={() => setMultiAngleOpen(true)}>

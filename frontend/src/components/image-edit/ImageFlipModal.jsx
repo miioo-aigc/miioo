@@ -5,7 +5,7 @@ import ImageCropEditor from '../ImageCropEditor';
 import { FlipHorizontalIcon, FlipVerticalIcon, RotateClockwiseIcon, RotateCounterClockwiseIcon } from '../ui';
 import { renderImageCropBlob } from '../../utils/imageCrop';
 import { showGlobalToast } from '../../stores/toastStore';
-import { buildImageEditRequest } from '../../utils/MediaEditRequest';
+import useImageEditSubmission from '../../hooks/useImageEditSubmission';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -27,7 +27,8 @@ function ToolButton({ label, icon, onClick, selected }) {
   >{cloneElement(icon, { color: active ? '#FFFFFF' : '#FFFFFFCC' })}</button>;
 }
 
-export default function ImageFlipModal({ imageUrl, sourceAsset, onPrepare, onClose }) {
+export default function ImageFlipModal({ imageUrl, sourceAsset, onSave, onClose, onComplete = onClose }) {
+  const { submit: saveEdit } = useImageEditSubmission({ card: sourceAsset, onSave, onComplete });
   const { width: modalW, height: modalH } = useModalSize();
   const editorRef = useRef(null);
   const [editState, setEditState] = useState({ imageSize: { width: 0, height: 0 } });
@@ -50,12 +51,10 @@ export default function ImageFlipModal({ imageUrl, sourceAsset, onPrepare, onClo
       const { image, imageSize, crop, zoom, panX, panY } = editorRef.current.getEditState();
       const blob = await renderImageCropBlob({ image, crop, rotation, flipX, flipY, zoom, panX, panY, imageWidth: imageSize.width, imageHeight: imageSize.height });
       if (!blob) throw new Error('翻转结果生成失败');
-      const request = buildImageEditRequest(sourceAsset, {
+      await saveEdit({
         mode: 'flip',
         file: new File([blob], '图片翻转.png', { type: 'image/png' }),
       });
-      await onPrepare?.(request);
-      showGlobalToast('已生成翻转图片并准备保存参数，等待后端保存接口接入', 'info');
     } catch (error) {
       console.error('[ImageFlipModal] 生成翻转图片失败:', error);
       showGlobalToast(error.message || '翻转参数准备失败，请重试', 'error');

@@ -3,7 +3,7 @@ import { validateExpansion } from './MediaEditPolicy.js';
 const INVALID_ID = /^(local[-_:]|blob:)/;
 
 export function validateSourceAsset(asset) {
-  const id = asset?.source_asset_id || asset?.creationAssetId || asset?.asset_id || asset?.assetId || asset?.backendId;
+  const id = asset?.creationAssetId || asset?.asset_id || asset?.assetId || asset?.backendId || asset?.source_asset_id;
   if (typeof id !== 'string' || !id.trim() || INVALID_ID.test(id)) throw new Error('当前素材缺少真实源资产编号');
   return id;
 }
@@ -45,7 +45,7 @@ export function buildVideoEditRequest(asset, options = {}) {
   if (request.edit_mode === 'trim' && (!Number.isFinite(request.start_time_seconds) || !Number.isFinite(request.end_time_seconds) || request.start_time_seconds < 0 || request.end_time_seconds <= request.start_time_seconds)) throw new Error('剪辑结束时间必须晚于开始时间');
   if (request.edit_mode === 'upscale') {
     if (!['1080P', '4K'].includes(request.target_resolution)) throw new Error('视频超清仅支持1080P和4K');
-    request.model_requirement = request.target_resolution === '1080P' ? 'HappyHorse 1.1' : 'Seedance 2.0';
+    request.model_requirement = request.target_resolution === '1080P' ? 'HappyHorse 1.0' : 'Seedance 2.0';
   }
   if (request.edit_mode === 'subtitle_remove') { request.model = 'happyhorse-1.0-video-edit'; request.processing_scope = 'full_video'; }
   request.video = asset.originalUrl || asset.original_url || asset.videoUrl || asset.video_url;

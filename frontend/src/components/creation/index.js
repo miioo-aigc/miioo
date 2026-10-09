@@ -12,6 +12,7 @@ export { default as CreationEmptyState } from './CreationEmptyState';
 export { default as CreationLoginEmptyState } from './CreationLoginEmptyState';
 export { default as CreationSendButton } from './CreationSendButton';
 export { default as CreationUploadArea, UploadPlaceholder } from './CreationUploadArea';
+export { default as CreationUploadMenu } from './CreationUploadMenu';
 export { default as CreationParamsControls } from './CreationParamsControls';
 export { CREATION_TABS } from './CreationTabs';
 export { Dropdown, GenTypeDropdownItem, DropdownItem, RatioIcon } from './CreationSelectorPrimitives';

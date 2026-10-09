@@ -10,17 +10,18 @@
  *
  * ─── 更新记录 ──────────────────────────────────────────────────
  *   2026-07-16  从 Home.jsx 抽离品牌 SVG；保持尺寸、路径和点击行为不变
+ *   2026-09-22  新增 width / height 参数，支持画布顶部设计稿尺寸
  */
 
-export default function HomeLogo({ clickable = false, onClick }) {
+export default function HomeLogo({ clickable = false, onClick, width = 66, height = 19.92 }) {
   return (
     <svg
-      width="66"
-      height="19.92"
+      width={width}
+      height={height}
       viewBox="0 0 947 286"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      style={{ flex: '0 1 auto', width: '66px', cursor: clickable ? 'pointer' : 'default' }}
+      style={{ flex: '0 1 auto', width: `${width}px`, height: `${height}px`, cursor: clickable ? 'pointer' : 'default' }}
       aria-label="miioo"
       role={clickable ? 'button' : undefined}
       onClick={clickable ? onClick : undefined}

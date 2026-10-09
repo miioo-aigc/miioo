@@ -3,15 +3,18 @@
  * @structure-index
  *
  * ─── 通用配置组件 ────────────────────────────────────────────────
- *   ConfigModelModal()       服务商 API Key、模型 Tab 与保存操作      L718
- *   PrimaryButton()          弹窗主按钮视觉和禁用状态                 L206
+ *   ConfigModelModal()       服务商 API Key、模型 Tab 与保存操作      L714
+ *   PrimaryButton()          弹窗主按钮视觉和禁用状态                 L199
  *
  * ─── 页面级状态与动作 ────────────────────────────────────────────
- *   ApiConfigModal()         API 配置弹窗状态、服务商请求和子弹窗编排 L953
- *   saveOneLinkConfig()      OneLinkAI 配置保存与空值保护             L1546
+ *   ApiConfigModal()         API 配置弹窗状态、服务商请求和子弹窗编排 L956
+ *   saveOneLinkConfig()      OneLinkAI 配置保存与测试通过校验         L1559
  *
  * ─── 更新记录 ───────────────────────────────────────────────────
  *   2026-08-26  OneLinkAI API Key 清空时禁用保存并显示原因 Tooltip
+ *   2026-09-28  严格校验连接结果，新密钥测试通过后才允许保存；忽略过期测试
+ *   保留原因：本次仅修复 OneLinkAI 校验，不迁移服务商编排和历史弹窗 UI。
+ *   后续拆分边界：配置子弹窗；验证范围：测试、输入变更、保存及请求竞态。
  */
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Toggle from './Toggle';
@@ -954,6 +957,11 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   const [state, setState] = useState(createDefaultState);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [bannerData, setBannerData] = useState(null);
+  const oneLinkTestRequest = useRef(0);
+
+  useEffect(() => () => {
+    oneLinkTestRequest.current += 1;
+  }, [open]);
 
   const showToast = useCallback((type, message) => {
     showGlobalToast(type, message);
@@ -1103,15 +1111,16 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   }, []);
 
   const testConnection = useCallback(async () => {
+    const requestId = ++oneLinkTestRequest.current;
+    setState((current) => ({ ...current, apiTested: false }));
     try {
       // key 来自后端（脱敏值），直接让后端用已存的 key 测试
       if (state.onelinkKeyIsFromServer && state.onelinkProviderId) {
         const result = await apiTestConnection(state.onelinkProviderId);
-        if (result?.test_success === false) {
-          showToast('error', result?.test_message || '连接失败，请检查API是否正确');
-        } else {
-          showToast('success', '连接成功！');
-        }
+        if (requestId !== oneLinkTestRequest.current) return;
+        const passed = result?.success === true;
+        setState((current) => ({ ...current, apiTested: passed }));
+        showToast(passed ? 'success' : 'error', passed ? '连接成功！' : '当前key不可用');
         return;
       }
 
@@ -1121,19 +1130,24 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
         return;
       }
       const result = await apiOneClickSetup({ api_key: keyToTest });
+      if (requestId !== oneLinkTestRequest.current) return;
+      const passed = result?.success !== undefined
+        ? result.success === true
+        : result?.test_success === true;
 
       // oneclick-setup 已将模型写入后端，直接从 /api/models 拉取带真实 id 的完整数据
-      if (result.test_success || (result.models && result.models.length > 0)) {
+      if (passed) {
+        setState((current) => ({
+          ...current,
+          apiTested: true,
+          onelinkProviderId: result.provider?.id || current.onelinkProviderId,
+        }));
         loadModelsFromBackend();
-        setState((current) => ({ ...current, apiTested: true }));
       }
 
-      if (result.test_success) {
-        showToast('success', '连接成功！');
-      } else {
-        showToast('error', result.test_message || '连接失败，请检查API是否正确');
-      }
+      showToast(passed ? 'success' : 'error', passed ? '连接成功！' : '当前key不可用');
     } catch (error) {
+      if (requestId !== oneLinkTestRequest.current) return;
       console.error('测试连接失败:', error);
       const msg = error?.message && !error.message.startsWith('请求失败') && error.message !== 'Unauthorized'
         ? error.message
@@ -1153,6 +1167,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   }, [open, initializeFromBackend]);
 
   function resetState() {
+    oneLinkTestRequest.current += 1;
     setState(createDefaultState);
   }
 
@@ -1162,6 +1177,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   }
 
   function closeChild() {
+    oneLinkTestRequest.current += 1;
     setState((current) => ({
       ...current,
       childView: null,
@@ -1179,6 +1195,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
         return;
       }
       setState(createDefaultState);
+      oneLinkTestRequest.current += 1;
       onClose?.();
     };
 
@@ -1540,7 +1557,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   };
 
   const saveOneLinkConfig = () => {
-    if (!state.onelinkApiKeyActual.trim()) return;
+    if (!state.onelinkApiKeyActual.trim() || !state.apiTested) return;
     setState((current) => ({ ...current, mainConfigured: true, onelinkEnabled: true, childView: null }));
     onConfigured?.();
   };
@@ -1781,6 +1798,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             apiValue={state.onelinkApiKey}
             apiPlaceholder="输入你的API"
             onApiChange={(event) => {
+              oneLinkTestRequest.current += 1;
               const inputValue = event.target.value;
               const maskedValue = inputValue.length > 7
                 ? `${inputValue.slice(0, 3)}${'*'.repeat(Math.max(7, inputValue.length - 7))}${inputValue.slice(-4)}`
@@ -1790,6 +1808,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
                 onelinkApiKeyActual: inputValue,
                 onelinkApiKey: maskedValue,
                 onelinkKeyIsFromServer: false,
+                apiTested: false,
               }));
             }}
             activeTab={state.activeModelTab}
@@ -1798,8 +1817,8 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             onAddModel={() => updateState('childView', 'edit-onelink-model')}
             onCancel={closeChild}
             onSave={saveOneLinkConfig}
-            saveDisabled={!state.onelinkApiKeyActual.trim()}
-            saveDisabledTooltip="API Key不允许为空"
+            saveDisabled={!state.onelinkApiKeyActual.trim() || !state.apiTested}
+            saveDisabledTooltip={state.onelinkApiKeyActual.trim() ? '请先测试连接并通过后保存' : 'API Key不允许为空'}
             onToggleModel={toggleOnelinkModel}
             onDeleteModel={(id) => requestDelete('onelinkModel', id)}
             onSetDefaultModel={setDefaultOnelinkModel}

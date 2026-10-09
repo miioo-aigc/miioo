@@ -10,7 +10,7 @@ export default function useLocalImageEdits(scope) {
   return {
     scope,
     images,
-    save: Object.assign((image) => saveLocalImage(scope, image), { pending: (pending) => savePendingImage(scope, pending) }),
+    save: Object.assign((image) => saveLocalImage(scope, image), { scope, pending: (pending) => savePendingImage(scope, pending) }),
     remove: (id) => removeLocalImage(scope, id).catch(() => showGlobalToast('本地图片删除失败，请重试', 'error')),
   };
 }

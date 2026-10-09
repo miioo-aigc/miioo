@@ -6,6 +6,7 @@
  *   扩图比例选择、扩图框预览和锁定比例拖拽
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-10-08  接入原图固定的左右生成对比，工具栏保留完整宽度
  *   2026-09-17  拖拽阶段限制四方向 [0,2] 与总面积 3 倍；滚轮缩放重算上限并自动收缩
  *   2026-09-17  图片视觉尺寸仅在滚轮时变化，拖拽编辑框不再带动图片放大
  *   2026-09-16  扩图方向字段及面积约束统一校验
@@ -22,6 +23,7 @@ import './Outpaint.css';
 import './Inpaint.css';
 import useImageEditSubmission from '../../hooks/useImageEditSubmission';
 import { validateExpansion } from '../../utils/MediaEditPolicy';
+import ImageEditComparison from './ImageEditComparison';
 
 const RATIOS = [
   { label: '原比例', value: null, icon: <OriginalRatioIcon /> },
@@ -110,6 +112,7 @@ function OutpaintStage({ imageUrl, source, canvas, onChange }) {
   const stageRef = useRef(null);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [imageZoom, setImageZoom] = useState(1);
+  const previousZoom = useRef(imageZoom);
   const interactionRef = useRef(null);
   const targetRatio = getRatio(canvas, source);
 
@@ -163,6 +166,9 @@ function OutpaintStage({ imageUrl, source, canvas, onChange }) {
   // 滚轮缩小后，旧编辑框可能超过“以当前显示图片计算”的新上限；此时锁定比例自动收缩。
   useEffect(() => {
     if (!frame || !canvas.width || !source.width) return undefined;
+    // 分栏只改变展示尺寸，不改变已选扩图范围；仅实际滚轮缩放触发收缩。
+    if (previousZoom.current === imageZoom) return undefined;
+    previousZoom.current = imageZoom;
     const ratio = getRatio(canvas, source);
     const { displayedSource } = getDisplayState(frame, imageZoom);
     const minimumWidth = Math.max(
@@ -224,7 +230,7 @@ function OutpaintStage({ imageUrl, source, canvas, onChange }) {
 }
 
 export default function OutpaintModal({ card, onClose, onSave, onComplete = onClose }) {
-  const { busy, submit: generate } = useImageEditSubmission({ card, onSave, onComplete });
+  const { busy, submit: generate, comparison } = useImageEditSubmission({ card, onSave, onComplete, keepOpen: true });
   const [source, setSource] = useState({ width: 0, height: 0 });
   const [ratio, setRatio] = useState(null);
   const [canvas, setCanvas] = useState({ width: 0, height: 0 });
@@ -248,6 +254,7 @@ export default function OutpaintModal({ card, onClose, onSave, onComplete = onCl
   };
 
   const submit = () => {
+    if (comparison.retrySave) { generate(); return; }
     if (!card?.imageUrl || !source.width) {
       showGlobalToast('未找到可用原图，请关闭后重试', 'error');
       return;
@@ -264,13 +271,15 @@ export default function OutpaintModal({ card, onClose, onSave, onComplete = onCl
     generate({ mode: 'outpaint', prompt: prompt.trim(), model_requirement: 'Kling v3', expandOptions });
   };
 
-  return <ImageEditChrome title="扩图" onClose={onClose} busy={busy} footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={submit} busy={busy} disabled={!source.width} label="AI生成" />}>
-    <div className="outpaint-body" inert={busy}>
+  return <ImageEditChrome title="扩图" onClose={onClose} busy={busy} allowCloseWhileBusy footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={submit} busy={busy} allowCloseWhileBusy disabled={!source.width && !comparison.retrySave} label={comparison.retrySave ? '重试任务保存' : 'AI生成'} />}>
+    <div className="outpaint-body">
+      <ImageEditComparison comparison={comparison} busy={busy} onRetry={() => generate()}>
       <OutpaintStage imageUrl={card?.imageUrl} source={source} canvas={canvas} onChange={setCanvas} />
-      <div className="outpaint-ratios" role="group" aria-label="选择扩图比例">
+      </ImageEditComparison>
+      <div className="outpaint-ratios" role="group" aria-label="选择扩图比例" inert={busy}>
         {RATIOS.map((item) => <RatioButton key={item.label} item={item} selected={ratio === item.value} onClick={handleRatioChange} />)}
       </div>
-      <div className="inpaint-prompt outpaint-prompt">
+      <div className="inpaint-prompt outpaint-prompt" inert={busy}>
         <TextField multiline height="72px" wrapperStyle={{ width: '100%' }} aria-label="扩图提示词" placeholder="请描述想要扩展的内容" value={prompt} onChange={(event) => setPrompt(event.target.value)} />
       </div>
       <img className="outpaint-image-loader" src={card?.imageUrl} alt="" onLoad={handleLoad} onError={() => setSource({ width: 0, height: 0 })} />

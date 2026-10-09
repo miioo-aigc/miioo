@@ -2,15 +2,17 @@
  * @file TimelineBar.jsx
  * @structure-index
  *
- * 时间线结构：素材展示辅助组件 L51；状态与缩放 L99；拖拽预览与提交 L159；
- * 定位与播放游标 L308；片段卡片 L363；轨道布局与工具栏 L426。
+ * 时间线结构：素材展示辅助组件 L54；状态与缩放 L115；拖拽预览与提交 L208；
+ * 定位与播放游标 L388；片段卡片 L443；轨道布局与工具栏 L510。
  *
- * 更新记录：2026-09-29 抽离 TrackControls；修复长按后 click 冒泡到轨道导致取消选中。
+ * 更新记录：2026-10-09 增强时间刻度对比度；吸顶刻度内补齐手柄到轨道游标线连接段。
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import TimelineToolbar from './TimelineToolbar';
 import { ZoomIn, ZoomOut } from 'lucide-react';
 import TrackControls from './TrackControls';
+import MainTrackButton from './MainTrackButton';
+import SubtitleTrimHandles from './SubtitleTrimHandles';
 import {
   formatTime,
   computeVisualWindows,
@@ -35,6 +37,7 @@ const TICK_MIN_PX = 60;
 
 const CLIP_H = 80;
 const AUDIO_CLIP_H = 56;
+const SUBTITLE_CLIP_H = 40;
 const TRACK_TOP_GAP = 4;
 const VIDEO_ROW_H = TRACK_TOP_GAP + CLIP_H;
 const AUDIO_ROW_H = TRACK_TOP_GAP + AUDIO_CLIP_H;
@@ -56,14 +59,23 @@ function ZoomOutIcon() {
   return <ZoomOut size={16} />;
 }
 
-function VideoFilmstrip({ src, poster, offset = 0, duration = 0 }) {
+function VideoFilmstrip({ src, poster, offset = 0, duration = 0, speed = 1 }) {
   const frameCount = 5;
   const videoRefs = useRef([]);
+  const [readyFrames, setReadyFrames] = useState(() => new Set());
   const setFrame = (index, event) => {
     const video = event.currentTarget;
-    const frameTime = Math.max(0, Number(offset) + (Number(duration) || 0) * (index + 0.5) / frameCount);
-    if (video.readyState >= 1) video.currentTime = frameTime;
+    const sourceStart = Math.max(0, Number(offset) || 0);
+    const sourceDuration = Math.max(0, (Number(duration) || 0) * (Number(speed) > 0 ? Number(speed) : 1));
+    const frameTime = sourceStart + sourceDuration * (index + 0.5) / frameCount;
+    if (video.readyState >= 1) video.currentTime = Math.max(0, frameTime);
   };
+  const markReady = (index) => setReadyFrames((previous) => {
+    if (previous.has(index)) return previous;
+    const next = new Set(previous);
+    next.add(index);
+    return next;
+  });
   return (
     <div className="pointer-events-none absolute inset-x-0 top-[18px] bottom-[16px] z-0 flex bg-[#262626]" aria-hidden="true">
       {Array.from({ length: frameCount }, (_, index) => (
@@ -74,9 +86,13 @@ function VideoFilmstrip({ src, poster, offset = 0, duration = 0 }) {
           poster={poster || undefined}
           muted
           playsInline
-          preload="metadata"
+          preload="auto"
           onLoadedMetadata={(event) => setFrame(index, event)}
+          onLoadedData={(event) => setFrame(index, event)}
+          onSeeked={() => markReady(index)}
+          onError={() => markReady(index)}
           className="h-full min-w-0 flex-1 object-cover"
+          style={{ opacity: readyFrames.has(index) ? 1 : 0 }}
         />
       ))}
     </div>
@@ -105,6 +121,8 @@ export default function TimelineBar({ showToast }) {
   const seek = useCompositionEditorStore((s) => s.seek);
   const setZoom = useCompositionEditorStore((s) => s.setZoom);
   const trackSettings = useCompositionEditorStore((s) => s.trackSettings);
+  const mainTracks = useCompositionEditorStore((s) => s.mainTracks);
+  const setMainTrack = useCompositionEditorStore((s) => s.setMainTrack);
   const setTrackSetting = useCompositionEditorStore((s) => s.setTrackSetting);
 
   const scrollRef = useRef(null);
@@ -113,10 +131,41 @@ export default function TimelineBar({ showToast }) {
   const pendingScrollRef = useRef(null);
 
   const playing = useCompositionEditorStore((s) => s.playing);
+  const pointerDragRef = useRef(null);
+  const [draggingId, setDraggingId] = useState(null);
+  const [targetTrack, setTargetTrack] = useState(null);
+  const [dragLayout, setDragLayout] = useState(null);
+  const [showNewTrack, setShowNewTrack] = useState(null);
+  const layoutSegments = draggingId ? dragLayout.segments : segments;
 
   const { windows: visualWindows } = computeVisualWindows(segments);
   const { windows: audioAux } = computeAudioWindows(segments);
   const { windows: subtitleAux } = computeSubtitleWindows(segments);
+  const visualTracks = [...new Set(['V1', ...layoutSegments.filter((seg) => seg.type === 'video' || seg.type === 'image').map((seg) => seg.track || 'V1')])]
+    .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+  const audioTracks = [...new Set(['A1', ...layoutSegments.filter((seg) => seg.type === 'audio').map((seg) => seg.track || 'A1')])]
+    .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+  const subtitleTracks = [...new Set(['S1', ...layoutSegments.filter((seg) => seg.type === 'subtitle').map((seg) => seg.track || 'S1')])];
+  const trackRows = [[subtitleTracks, 'S', 'subtitle'], [visualTracks, 'V', 'visual'], [audioTracks, 'A', 'audio']].flatMap(([tracks, prefix, type]) => {
+    const max = Math.max(...tracks.map((track) => Number(track.slice(1))), ...Object.keys(trackSettings).filter((track) => track.startsWith(prefix)).map((track) => Number(track.slice(1))));
+    return Array.from({ length: max }, (_, index) => {
+      const track = `${prefix}${index + 1}`;
+      if (!tracks.includes(track)) return [];
+      if (!layoutSegments.some((seg) => (prefix === 'V' ? seg.type === 'video' || seg.type === 'image' : seg.type === type) && (seg.track || `${prefix}1`) === track)) return [];
+      const height = prefix === 'S' ? TRACK_TOP_GAP + SUBTITLE_CLIP_H : prefix === 'A' ? AUDIO_ROW_H : VIDEO_ROW_H;
+      const row = { track, type, height };
+      return draggingId && showNewTrack?.after === track && max < 6
+        ? [row, { track: `${prefix}${max + 1}`, type, height, isNew: true }] : [row];
+    }).flat();
+  });
+  const rowTop = (index) => RULER_H + trackRows.slice(0, index).reduce((total, row) => total + row.height, 0);
+  const trackHeight = trackRows.reduce((total, row) => total + row.height, 0);
+  // 图标列仅跟随偏移，不使用独立 scrollTop，避免两列滚动范围不同导致钳制错位。
+  useLayoutEffect(() => {
+    if (trackLabelRef.current && scrollRef.current) {
+      trackLabelRef.current.style.transform = `translateY(${-scrollRef.current.scrollTop}px)`;
+    }
+  });
   // 总时长口径统一走 store 的 computeTotalDuration（V1 可视总长 / A1 最末端取大）
   const timeMax = Math.max(computeTotalDuration(segments), 0.001);
   const contentWidth = Math.max(320, Math.round(timeMax * zoom) + TRAILING_PAD);
@@ -156,16 +205,12 @@ export default function TimelineBar({ showToast }) {
     container.scrollLeft = Math.min(Math.max(0, target), maxScroll);
   }, [zoom]);
 
-  const pointerDragRef = useRef(null);
   const suppressClickRef = useRef(false);
-  const [draggingId, setDraggingId] = useState(null);
   const [insertionIndex, setInsertionIndex] = useState(null);
-  const [draggingIsAudio, setDraggingIsAudio] = useState(false);
   const [draggingStart, setDraggingStart] = useState(null);
 
   const getInsertionTarget = (pointerTime, drag) => {
-    if (drag.isAudio) return null;
-    const windows = computeVisualWindows(drag.before.segments).windows.filter((window) => window.seg.id !== drag.id);
+    const windows = (drag.prefix === 'S' ? computeSubtitleWindows : drag.isAudio ? computeAudioWindows : computeVisualWindows)(drag.before.segments, drag.targetTrack).windows.filter((window) => window.seg.id !== drag.id);
     let target = null;
     windows.forEach((window, index) => {
       [{ time: window.start, index }, { time: window.end, index: index + 1 }].forEach((edge) => {
@@ -185,7 +230,7 @@ export default function TimelineBar({ showToast }) {
     if (event.altKey) return start;
     const threshold = Math.min(0.1, 8 / zoom);
     const candidates = [{ time: cursor, priority: 0 }, { time: 0, priority: 2 }];
-    const windows = drag.isAudio ? audioAux : visualWindows;
+    const windows = drag.prefix === 'S' ? subtitleAux : drag.isAudio ? audioAux : visualWindows;
     windows.forEach((window) => {
       if (window.seg.id === drag.id) return;
       candidates.push({ time: window.start, priority: 1 }, { time: window.end, priority: 1 });
@@ -206,7 +251,36 @@ export default function TimelineBar({ showToast }) {
     const drag = pointerDragRef.current;
     const content = scrollRef.current?.firstElementChild;
     if (!drag?.active || !content) return;
-    if (event.clientY < drag.trackTop || event.clientY > drag.trackBottom) return;
+    const rows = [...content.querySelectorAll('[data-drop-track]')];
+    const prefix = drag.prefix;
+    const existingRows = rows.filter((element) => element.dataset.dropTrack.startsWith(prefix) && element.dataset.newTrack !== 'true');
+    const viewport = scrollRef.current.getBoundingClientRect();
+    const inside = event.clientX >= viewport.left && event.clientX <= viewport.right
+      && event.clientY >= viewport.top && event.clientY <= viewport.bottom;
+    const anchor = inside && existingRows.length < 6 ? existingRows.find((element) => {
+      const boundary = element.getBoundingClientRect().bottom;
+      const expanded = drag.newTrackAfter === element.dataset.dropTrack;
+      return event.clientY >= boundary - 16 && event.clientY <= boundary + (expanded ? (drag.isAudio ? AUDIO_ROW_H : VIDEO_ROW_H) : 16);
+    }) : null;
+    drag.newTrackAfter = anchor?.dataset.dropTrack || null;
+    setShowNewTrack(anchor ? { after: drag.newTrackAfter } : null);
+    const boundary = anchor?.getBoundingClientRect().bottom;
+    const row = rows.find((element) => {
+      const rect = element.getBoundingClientRect();
+      return element.dataset.newTrack !== 'true' && event.clientY >= rect.top && event.clientY < rect.bottom;
+    });
+    const newTrackTarget = anchor && event.clientY >= boundary;
+    const track = !inside ? null : newTrackTarget
+      ? `${prefix}${existingRows.length + 1}` : row?.dataset.dropTrack;
+    drag.insertAt = newTrackTarget ? Number(anchor.dataset.dropTrack.slice(1)) + 1 : null;
+    if (!track || !track.startsWith(prefix)) {
+      drag.valid = false;
+      setInsertionIndex(null);
+      return;
+    }
+    drag.valid = true;
+    drag.targetTrack = track;
+    setTargetTrack(track);
     const pointerTime = (event.clientX - content.getBoundingClientRect().left) / zoom;
     const raw = pointerTime - drag.grabOffset;
     const insertion = getInsertionTarget(pointerTime, drag);
@@ -218,8 +292,7 @@ export default function TimelineBar({ showToast }) {
       suppressClickRef.current = true;
       setInsertionIndex(drag.insertionIndex);
       setDraggingStart(Math.max(0, raw));
-      if (drag.isAudio) useCompositionEditorStore.getState().previewAudioSegment(drag.id, start, drag.before);
-      else useCompositionEditorStore.getState().previewVisualSegment(drag.id, start, drag.before, insertion);
+      useCompositionEditorStore.getState().previewTrackSegment(drag.id, track, start, drag.before, insertion);
     }
   };
 
@@ -230,14 +303,15 @@ export default function TimelineBar({ showToast }) {
     updateVisualPointerDrag(event);
     if (drag.moved) {
       const store = useCompositionEditorStore.getState();
-      if (drag.isAudio) store.commitAudioSegment(drag.id, drag.before);
-      else store.commitVisualSegment(drag.id, drag.before);
+      if (drag.valid) store.commitTrackDrag(drag.id, drag.before, drag.insertAt);
+      else useCompositionEditorStore.setState({ segments: drag.before.segments });
     }
     if (!drag.moved) select(drag.id);
     pointerDragRef.current = null;
     setDraggingId(null);
+    setShowNewTrack(false);
     setInsertionIndex(null);
-    setDraggingIsAudio(false);
+    setTargetTrack(null);
     setDraggingStart(null);
   };
 
@@ -251,7 +325,11 @@ export default function TimelineBar({ showToast }) {
     const trackRect = event.currentTarget.parentElement?.getBoundingClientRect();
     pointerDragRef.current = { id: seg.id, isAudio, duration: win.end - win.start, grabOffset: (event.clientX - rect.left) / zoom, start: win.start, currentStart: win.start, startX: event.clientX, startY: event.clientY, moved: false, before: { segments: useCompositionEditorStore.getState().segments, selectedId }, trackTop: trackRect?.top ?? 0, trackBottom: trackRect?.bottom ?? window.innerHeight };
     const drag = pointerDragRef.current;
+    drag.before.trackSettings = useCompositionEditorStore.getState().trackSettings;
+    drag.before.mainTracks = useCompositionEditorStore.getState().mainTracks;
+    drag.prefix = seg.type === 'subtitle' ? 'S' : isAudio ? 'A' : 'V';
     const pointerId = event.pointerId;
+    drag.targetTrack = seg.track || `${drag.prefix}1`;
     suppressClickRef.current = false;
     select(seg.id);
     const move = (moveEvent) => {
@@ -267,16 +345,18 @@ export default function TimelineBar({ showToast }) {
       if (drag.moved) useCompositionEditorStore.setState({ segments: drag.before.segments });
       pointerDragRef.current = null;
       setDraggingId(null);
+      setShowNewTrack(false);
       setInsertionIndex(null);
-      setDraggingIsAudio(false);
+      setTargetTrack(null);
       setDraggingStart(null);
     };
     const timer = window.setTimeout(() => {
       if (pointerDragRef.current !== drag) return;
       drag.active = true;
+      setDragLayout({ segments: drag.before.segments, isAudio });
       suppressClickRef.current = true;
       setDraggingId(seg.id);
-      setDraggingIsAudio(isAudio);
+      setTargetTrack(drag.targetTrack);
       useCompositionEditorStore.getState().pause();
     }, 100);
     drag.cleanup = () => {
@@ -364,7 +444,8 @@ export default function TimelineBar({ showToast }) {
     const seg = win.seg;
     const selected = seg.id === selectedId;
     const dragging = seg.id === draggingId;
-    const draggableSegment = seg.type !== 'subtitle';
+    const draggableSegment = true;
+    const track = seg.track || (isAudio ? 'A1' : seg.type === 'subtitle' ? 'S1' : 'V1');
     const thumb = seg.thumbnailUrl || seg.posterUrl;
     const width = Math.max(28, Math.round((win.end - win.start) * zoom));
     const speed = Number(seg.speed);
@@ -373,6 +454,7 @@ export default function TimelineBar({ showToast }) {
       <div
         key={seg.id}
         draggable={false}
+        onDoubleClick={() => { if (seg.type === 'subtitle') document.getElementById('subtitle-text-editor')?.focus(); }}
         onPointerDown={(event) => { if (draggableSegment) startTrackPointerDrag(event, seg, win, isAudio); }}
         onClick={(event) => { event.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } select(seg.id); seekAtPointer(event.clientX); }}
         className={`group absolute top-0 overflow-hidden rounded-medium border-2 flex flex-col justify-between !cursor-default ${
@@ -381,10 +463,11 @@ export default function TimelineBar({ showToast }) {
             : 'bg-[#262626] border-transparent hover:bg-[#2d2d2d]'
         }`}
         style={{
-          left: (dragging && !isAudio && draggingStart != null ? draggingStart : win.start) * zoom,
+          left: (dragging && draggingStart != null ? draggingStart : win.start) * zoom,
           width,
-          height: isAudio ? AUDIO_CLIP_H : CLIP_H,
-          opacity: trackSettings[isAudio ? 'A1' : seg.type === 'subtitle' ? 'S1' : 'V1'].hidden ? 0.2 : 1,
+          height: seg.type === 'subtitle' ? SUBTITLE_CLIP_H : isAudio ? AUDIO_CLIP_H : CLIP_H,
+          backgroundColor: isAudio ? 'var(--color-timeline-audio-bg)' : undefined,
+          opacity: trackSettings[track]?.hidden ? 0.2 : 1,
           zIndex: dragging ? 50 : selected ? 20 : 1,
           transform: dragging ? 'translateY(-12px)' : undefined,
           borderColor: dragging ? 'var(--color-brand-main)' : undefined,
@@ -393,25 +476,26 @@ export default function TimelineBar({ showToast }) {
         }}
         title={`${seg.name || '片段'}${speedText}`}
       >
-        {seg.type === 'video' && seg.sourceUrl && <VideoFilmstrip src={seg.sourceUrl} poster={thumb} offset={seg.offset} duration={seg.duration} />}
+        {seg.type === 'video' && seg.sourceUrl && <VideoFilmstrip key={`${seg.id}-${seg.offset}-${seg.duration}-${seg.speed || 1}`} src={seg.sourceUrl} poster={thumb} offset={seg.offset} duration={seg.duration} speed={seg.speed} />}
         {seg.type === 'image' && thumb && <ImageFilmstrip src={thumb} />}
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-white/0 transition-colors group-hover:bg-white/10" />
-        <div className="absolute inset-x-0 top-0 z-10 flex h-[18px] min-w-0 items-center gap-[4px] px-[6px] !cursor-default">
+        {seg.type !== 'subtitle' && <div className="absolute inset-x-0 top-0 z-10 flex h-[18px] min-w-0 items-center gap-[4px] px-[6px] !cursor-default">
           <span className="truncate text-[11px] text-white-60" style={{ fontFamily: FONT }}>
             {seg.name || '片段'}
           </span>
           <span className="ml-auto shrink-0 text-[11px] text-white-60" style={{ fontFamily: FONT }}>{formatTime(seg.duration)}</span>
-        </div>
+        </div>}
 
-        {isAudio && <div className="absolute inset-x-[6px] top-[22px] bottom-[6px] text-white opacity-20" aria-hidden="true">
+        {isAudio && <div className="absolute inset-x-[6px] top-[22px] bottom-[6px] text-timeline-audio-waveform" aria-hidden="true">
           <PreviewWaveform values={Array.isArray(seg.waveform) && seg.waveform.length > 0 ? seg.waveform : PREVIEW_WAVEFORM} />
         </div>}
 
-        {seg.type === 'video' && seg.hasAudio !== false && <div className="absolute inset-x-[6px] bottom-[2px] z-10 flex h-[14px] items-center gap-[2px] text-white opacity-20" aria-hidden="true">
+        {seg.type === 'video' && seg.hasAudio !== false && <div className="absolute inset-x-[6px] bottom-[2px] z-10 flex h-[14px] items-center gap-[2px] text-timeline-audio-waveform" aria-hidden="true">
           <PreviewWaveform values={Array.isArray(seg.waveform) && seg.waveform.length > 0 ? seg.waveform : PREVIEW_WAVEFORM} />
         </div>}
 
-        {seg.type === 'subtitle' && <div className="absolute inset-0 flex items-center justify-center bg-purple-500/20 px-[6px] pt-[16px] text-center text-font-size-12 text-white">{seg.text || seg.name || '字幕'}</div>}
+        {seg.type === 'subtitle' && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-purple-500/20 px-[6px] text-center text-[11px] text-white"><span className="truncate">{seg.text || '字幕'}</span></div>}
+        {seg.type === 'subtitle' && selected && <SubtitleTrimHandles segment={seg} zoom={zoom} />}
 
         <div className="absolute inset-x-[6px] bottom-[3px] flex items-center justify-between gap-[2px]">
           <span className="text-font-size-12 text-text-hint whitespace-nowrap" style={{ fontFamily: FONT }}>
@@ -425,70 +509,58 @@ export default function TimelineBar({ showToast }) {
 
   return (
     <div className="relative flex h-full w-full min-h-0 select-none flex-col bg-neutral-200">
-      <div className="shrink-0 pr-[208px]"><TimelineToolbar /></div>
+      <div className="shrink-0 pr-[208px]"><TimelineToolbar showToast={showToast} /></div>
       {/* 滚动容器：承载全部时间线内容，Ctrl/Cmd+滚轮缩放绑定其上 */}
       <div className="flex h-full min-h-0 flex-1 overflow-hidden">
-      <div ref={trackLabelRef} className="w-[124px] shrink-0 overflow-hidden bg-neutral-200" style={{ paddingTop: RULER_H, height: '100%' }}>
-        {[['V1', VIDEO_ROW_H], ['A1', AUDIO_ROW_H], ['S1', VIDEO_ROW_H]].map(([track, height]) => (
-          <div key={track} className="group relative flex items-center justify-start gap-[6px] pl-[8px] text-font-size-12 text-text-hint" style={{ height, fontFamily: FONT_MEDIUM }}>
-            {track}
-            {track !== 'S1' && <TrackControls track={track} settings={trackSettings[track]} onChange={setTrackSetting} showToast={showToast} />}
+      <div className="relative w-[124px] shrink-0 overflow-hidden bg-neutral-200">
+      <div className="absolute inset-x-0 top-0 z-[60] bg-neutral-200" style={{ height: RULER_H }} />
+      <div ref={trackLabelRef} style={{ paddingTop: RULER_H, willChange: 'transform' }}>
+        {trackRows.map(({ track, height, isNew }) => (
+          <div key={track} className="group relative flex items-center justify-start gap-[6px] pl-[8px] text-font-size-12 text-text-hint" style={{ height, paddingTop: TRACK_TOP_GAP, boxSizing: 'border-box', fontFamily: FONT_MEDIUM }}>
+            {!isNew && (track[0] !== 'S' || segments.some((seg) => seg.type === 'subtitle' && (seg.track || 'S1') === track)) && <MainTrackButton track={track} active={mainTracks[track[0]] === track} onChange={setMainTrack} />}
+            {isNew && `+ ${track[0]}${Number(showNewTrack.after.slice(1)) + 1}`}
+            {!isNew && (track[0] !== 'S' || segments.some((seg) => seg.type === 'subtitle' && (seg.track || 'S1') === track)) && <TrackControls track={track} settings={trackSettings[track] || { hidden: false, volume: 1, excludeGaps: false }} onChange={setTrackSetting} showToast={showToast} />}
           </div>
         ))}
       </div>
-      <div ref={scrollRef} className="timeline-scrollbar h-full min-h-0 min-w-0 flex-1 overflow-auto" onScroll={(event) => { if (trackLabelRef.current) trackLabelRef.current.scrollTop = event.currentTarget.scrollTop; }} style={{ scrollbarGutter: 'stable both-edges' }}>
-        <div className="relative flex-shrink-0" style={{ width: contentWidth, minWidth: '100%', minHeight: RULER_H + VIDEO_ROW_H + AUDIO_ROW_H + VIDEO_ROW_H + 16, height: RULER_H + VIDEO_ROW_H + AUDIO_ROW_H + VIDEO_ROW_H + 16 }}>
+      </div>
+      <div ref={scrollRef} className="timeline-scrollbar h-full min-h-0 min-w-0 flex-1 overflow-auto" onScroll={(event) => { if (trackLabelRef.current) trackLabelRef.current.style.transform = `translateY(${-event.currentTarget.scrollTop}px)`; }} style={{ scrollbarGutter: 'stable both-edges' }}>
+        <div className="relative flex-shrink-0" style={{ width: contentWidth, minWidth: '100%', minHeight: RULER_H + trackHeight + 16, height: RULER_H + trackHeight + 16 }}>
           {/* 刻度（步进自适应，每格一个刻度 + 标签） */}
-          <div className="absolute top-0 left-0 right-0" style={{ height: RULER_H, cursor: 'pointer' }} onClick={clickTrack}>
-            {minorTicks.map((time) => <div key={time} className="absolute top-0 h-[3px] w-px bg-white-30" style={{ left: time * zoom }} />)}
+          <div className="sticky top-0 z-[60] bg-neutral-200" style={{ height: RULER_H, cursor: 'pointer' }} onClick={clickTrack}>
+            {minorTicks.map((time) => <div key={time} className="absolute top-0 h-[5px] w-px bg-white/45" style={{ left: time * zoom }} />)}
             {tickMarks.map((t) => (
               <div key={t} className="absolute top-0 flex flex-col justify-between items-start" style={{ left: t * zoom, width: tickStep * zoom, height: RULER_H }}>
-                <div className="h-[8px] w-px bg-white-50" />
-                <span className="-translate-y-[4px] pl-[4px] text-[11px] text-white-60" style={{ fontFamily: FONT }}>
+                <div className="h-[10px] w-px bg-white-70" />
+                <span className="-translate-y-[4px] pl-[4px] text-[11px] text-white/75" style={{ fontFamily: FONT }}>
                   {formatTick(t)}
                 </span>
               </div>
             ))}
+            <div aria-hidden="true" className="pointer-events-none absolute top-[18px] bottom-0 w-[2px] bg-[#CCCCCC]" style={{ left: playheadLeft, transform: 'translateX(-1px)' }} />
+            <div className="absolute inset-0 cursor-grab touch-none active:cursor-grabbing" onPointerDown={dragPlayhead} onPointerMove={movePlayhead} onPointerUp={endPlayheadDrag} onPointerCancel={endPlayheadDrag} aria-label="拖动播放游标" />
+            <button type="button" aria-label="播放游标手柄" className="absolute top-0 flex h-[24px] w-[24px] cursor-grab touch-none items-start justify-center border-0 bg-transparent p-0 active:cursor-grabbing focus-visible:outline focus-visible:outline-1 focus-visible:outline-white-60" style={{ left: playheadLeft, transform: 'translateX(-50%)' }} onPointerDown={dragPlayhead} onPointerMove={movePlayhead} onPointerUp={endPlayheadDrag} onPointerCancel={endPlayheadDrag}>
+              <span className="pointer-events-none h-[18px] w-[12px] rounded-b-[6px] bg-[#CCCCCC]" />
+            </button>
           </div>
 
-          {/* V1 轨道 */}
-          <div className="absolute top-0 left-0 right-0" style={{ top: RULER_H, height: VIDEO_ROW_H }}>
-            <div className="relative"
-              style={{ height: CLIP_H, marginTop: TRACK_TOP_GAP }}
-              onClick={(event) => { event.stopPropagation(); select(null); }}
-              >
-              {visualWindows.map((w) => renderCard(w, false))}
-              {draggingId && !draggingIsAudio && visualWindows.length > 1 && insertionIndex != null && (
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute top-[-4px] z-40 h-[88px] w-[2px] rounded-full bg-brand-main shadow-[0_0_8px_var(--color-brand-main)] transition-[left] duration-300 ease-linear"
-                  style={{ left: getInsertionLeft(insertionIndex) }}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* A1 轨道 */}
-          <div className="absolute left-0 right-0" style={{ top: RULER_H + VIDEO_ROW_H, height: AUDIO_ROW_H }}>
-            <div className="relative" style={{ height: AUDIO_CLIP_H, marginTop: TRACK_TOP_GAP }} onClick={(event) => { event.stopPropagation(); select(null); }}
-              >
-              {audioAux.map((w) => renderCard(w, true))}
-            </div>
-          </div>
-
-          {/* S1 字幕轨道：展示后端已返回的字幕时间线片段 */}
-          <div className="absolute left-0 right-0" style={{ top: RULER_H + VIDEO_ROW_H + AUDIO_ROW_H, height: VIDEO_ROW_H }}>
-            <div className="relative" style={{ height: CLIP_H, marginTop: TRACK_TOP_GAP }} onClick={(event) => { event.stopPropagation(); select(null); }}>
-              {subtitleAux.map((w) => renderCard(w, false))}
-            </div>
-          </div>
+          {trackRows.map(({ track, type, isNew }, index) => {
+            const rowWindows = type === 'visual'
+              ? computeVisualWindows(segments, track).windows
+              : type === 'audio' ? computeAudioWindows(segments, track).windows : subtitleAux.filter((window) => (window.seg.track || 'S1') === track);
+            const cardHeight = type === 'subtitle' ? SUBTITLE_CLIP_H : type === 'audio' ? AUDIO_CLIP_H : CLIP_H;
+            return <div key={track} data-drop-track={track} data-new-track={Boolean(isNew)} className={`absolute left-0 right-0 ${isNew ? 'border border-dashed border-stroke-active' : ''} ${targetTrack === track ? 'bg-tag-bg-blue' : ''}`} style={{ top: rowTop(index), height: trackRows[index].height }}>
+              <div className="relative" style={{ height: cardHeight, marginTop: TRACK_TOP_GAP }} onClick={(event) => { event.stopPropagation(); select(null); }}>
+                {rowWindows.map((window) => renderCard(window, type === 'audio'))}
+                {track === targetTrack && draggingId && insertionIndex != null && (
+                  <div aria-hidden="true" className="pointer-events-none absolute top-[-4px] z-40 h-[88px] w-[2px] rounded-full bg-brand-main shadow-[0_0_8px_var(--color-brand-main)] transition-[left] duration-300 ease-linear" style={{ left: getInsertionLeft(insertionIndex) }} />
+                )}
+              </div>
+            </div>;
+          })}
 
           {/* 游标线 */}
-          <div className="absolute top-0 bottom-0 z-30 w-[2px] bg-[#999999] pointer-events-none" style={{ left: playheadLeft, transform: 'translateX(-1px)' }} />
-          <div className="absolute left-0 right-0 top-0 z-20 h-[26px] cursor-grab touch-none active:cursor-grabbing" onPointerDown={dragPlayhead} onPointerMove={movePlayhead} onPointerUp={endPlayheadDrag} onPointerCancel={endPlayheadDrag} aria-label="拖动播放游标" />
-          <button type="button" aria-label="播放游标手柄" className="absolute top-0 z-40 flex h-[24px] w-[24px] cursor-grab touch-none items-start justify-center border-0 bg-transparent p-0 active:cursor-grabbing focus-visible:outline focus-visible:outline-1 focus-visible:outline-white-60" style={{ left: playheadLeft, transform: 'translateX(-50%)' }} onPointerDown={dragPlayhead} onPointerMove={movePlayhead} onPointerUp={endPlayheadDrag} onPointerCancel={endPlayheadDrag}>
-            <span className="pointer-events-none h-[18px] w-[12px] rounded-b-[6px] bg-[#999999]" />
-          </button>
+          <div className="absolute top-0 bottom-0 z-30 w-[2px] bg-[#CCCCCC] pointer-events-none" style={{ left: playheadLeft, transform: 'translateX(-1px)' }} />
         </div>
       </div>
 

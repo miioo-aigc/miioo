@@ -7,6 +7,9 @@ export default function EditDraftCard({ draft, index, disabled, onOpen, onRename
   const [menuOpen, setMenuOpen] = useState(false);
   const name = draft.name || '草稿' + String(index + 1).padStart(2, '0');
   const unavailable = disabled || !draft.id;
+  const savedAt = draft.updatedAt || draft.createdAt;
+  const savedDate = savedAt ? new Date(savedAt) : null;
+  const validSavedDate = savedDate && Number.isFinite(savedDate.getTime());
   return (
     <div className="group relative aspect-[3/2] w-full min-w-0 rounded-[8px] border border-stroke-normal bg-[#1D1E1E] transition-[border-color,transform] duration-150 hover:border-white/[0.22]" style={{ zIndex: menuOpen ? 1 : undefined }}>
       <div role="button" tabIndex={unavailable ? -1 : 0} aria-label={'打开草稿：' + name} onClick={() => !unavailable && onOpen(draft.id)} onKeyDown={(event) => { if (!unavailable && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen(draft.id); } }} className="absolute inset-0 cursor-pointer overflow-hidden rounded-[8px] text-left focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-brand-main" style={{ opacity: unavailable ? 0.5 : 1 }}>
@@ -20,7 +23,7 @@ export default function EditDraftCard({ draft, index, disabled, onOpen, onRename
         <span className="absolute inset-x-0 bottom-0 flex min-w-0 items-end justify-between gap-[8px] p-[12px]">
           <span className="flex min-w-0 flex-1 flex-col gap-[4px]">
             <span title={name} style={{ fontFamily: "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif", fontSize: '14px', lineHeight: '1.2', color: '#FFFFFF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-            <span style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif", fontSize: '12px', color: '#FFFFFF66' }}>{formatRelativeTime(draft.createdAt || draft.updatedAt)}</span>
+            <span title={validSavedDate ? `最近保存：${savedDate.toLocaleString('zh-CN', { hour12: false })}` : '最近保存时间未知'} style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif", fontSize: '12px', color: '#FFFFFF66' }}>最近保存：{validSavedDate ? formatRelativeTime(savedAt) : '未知'}</span>
           </span>
           <span className="relative z-10 h-[28px] w-[28px] shrink-0">
             <button type="button" aria-label={'更多操作：' + name} aria-haspopup="menu" aria-expanded={menuOpen} disabled={unavailable} onClick={(event) => { event.stopPropagation(); setMenuOpen((value) => !value); }} className="flex h-[28px] w-[28px] cursor-pointer items-center justify-center rounded-[6px] bg-black/[0.4] text-text-primary opacity-0 transition-opacity hover:bg-black/[0.55] group-hover:opacity-100 group-focus-within:opacity-100 disabled:cursor-not-allowed" style={menuOpen ? { opacity: 1, background: 'rgba(0,0,0,0.65)' } : undefined}>

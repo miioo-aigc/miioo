@@ -13,6 +13,7 @@ import ExportModal from '../components/compositionEditor/ExportModal';
 import WorkspaceHeader from '../components/compositionEditor/WorkspaceHeader';
 import ResizableWorkspace from '../components/compositionEditor/ResizableWorkspace';
 import { Button } from '../components/ui';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const FONT = "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -69,6 +70,17 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
   const loadAlbum = useCompositionEditorStore((s) => s.loadAlbum);
   const isLoaded = useCompositionEditorStore((s) => s.loaded);
   const exportState = useCompositionEditorStore((s) => s.exportState);
+  const storeAlbum = useCompositionEditorStore((s) => s.album);
+  const [pendingRemoval, setPendingRemoval] = useState(null);
+  const removeAsset = (asset) => {
+    useCompositionEditorStore.getState().removeAsset(asset.id);
+    setPendingRemoval(null);
+  };
+  const requestRemoval = (asset) => {
+    const count = useCompositionEditorStore.getState().segments.filter((segment) => String(segment.assetId) === String(asset.id)).length;
+    if (count) setPendingRemoval({ asset, count });
+    else removeAsset(asset);
+  };
 
   const [album, setAlbum] = useState({ assets: [], finalized: [], loading: false, error: null });
 
@@ -168,7 +180,7 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
         </div>
       ) : (
         <ResizableWorkspace
-          assets={<AssetLibraryPanel projectId={projectId} albumState={{ ...album, assets: selectFinalizedStoryboardAssets(album.assets, album.finalized, episode?.id) }} onFetch={() => fetchAlbum()} onAssetAdded={(items) => { loadAlbum([...new Map([...useCompositionEditorStore.getState().album, ...items].map((asset) => [asset.id, asset])).values()]); setAlbum((previous) => { const added = new Map(items.map((asset) => [String(asset.id), asset])); return { ...previous, assets: [...added.values(), ...previous.assets.filter((asset) => !added.has(String(asset.id)))] }; }); }} onRemoveAsset={(asset) => { loadAlbum(useCompositionEditorStore.getState().album.filter((item) => String(item.id) !== String(asset.id))); setAlbum((previous) => ({ ...previous, assets: previous.assets.filter((item) => String(item.id) !== String(asset.id)) })); }} />}
+          assets={<AssetLibraryPanel projectId={projectId} albumState={{ ...album, assets: selectFinalizedStoryboardAssets(storeAlbum, album.finalized, episode?.id) }} onFetch={() => fetchAlbum()} onAssetAdded={(items) => { loadAlbum([...new Map([...useCompositionEditorStore.getState().album, ...items].map((asset) => [asset.id, asset])).values()]); }} onRemoveAsset={requestRemoval} />}
           preview={<PreviewCanvas />}
           properties={<PropsPanel />}
           timeline={<TimelineBar showToast={showToast} />}
@@ -176,6 +188,13 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
       )}
       </section>
       {exportState.status !== 'idle' && <ExportModal />}
+      {pendingRemoval && <ConfirmDialog
+        title="删除素材"
+        description={`当前素材「${pendingRemoval.asset.name || '未命名素材'}」已应用到轨道中，共关联 ${pendingRemoval.count} 个片段。删除后，将从素材区移除该素材，并同步删除当前工程所有轨道中的关联片段。资产库原文件和其他草稿不受影响。确定删除吗？`}
+        confirmText="删除素材及关联片段"
+        onConfirm={() => removeAsset(pendingRemoval.asset)}
+        onCancel={() => setPendingRemoval(null)}
+      />}
     </div>
   );
 }

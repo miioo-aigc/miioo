@@ -93,7 +93,7 @@ export default function ResizableWorkspace({ assets, preview, properties, timeli
       {separator('left')}
       <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-neutral-200" style={{ pointerEvents: dragging ? 'none' : undefined }}>{preview}</div>
       {separator('right')}
-      <div className="flex min-h-0 min-w-0 overflow-hidden">{properties}</div>
+      <div className="flex min-h-0 min-w-0 overflow-hidden bg-neutral-200 py-[12px]">{properties}</div>
       {separator('bottom')}
       <div className="flex min-h-0 min-w-0 overflow-hidden" style={{ gridColumn: '1 / -1' }}>{timeline}</div>
     </div>

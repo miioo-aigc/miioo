@@ -212,6 +212,8 @@
      ---------------------------------------------------------- */
   --color-shadow: rgba(0, 0, 0, 0.40);
   --color-timeline-drag-shadow: rgba(45, 195, 225, 0.32);
+  --color-timeline-audio-bg: #163D58;
+  --color-timeline-audio-waveform: #0095C7;
   --color-glow: rgba(45, 195, 225, 0.10);
 
   /* ----------------------------------------------------------

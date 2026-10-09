@@ -423,3 +423,6 @@ function Textarea({ placeholder = "hint", value = "", disabled = false, state = 
   onChange={(e) => setDesc(e.target.value)}
 />
 ```
+# 多行垂直缩放补充（2026-10-09）
+
+`TextField` 的 `resizable` 默认 `false`，配合 `multiline` 开启时，在输入框右下角提供原生垂直缩放手柄。默认高度仍由 `height` 决定，缩放范围为 80–480px；不改变宽度，不影响其他调用方。

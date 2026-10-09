@@ -1,5 +1,49 @@
 # 组件重构盘点基线
 
+## 2026-10-09 播放控制栏
+
+- 新增 PlaybackControls.jsx/CSS，props 为 playing/cursor/total/onToggle/onRestart/onSeek，复用 Tooltip 与 lucide 图标；PreviewCanvas 保留媒体生命周期，仅接线，不新增副作用。
+
+## 2026-10-09 草稿名称编辑
+
+- DraftNameEditor 接收 name/disabled/onCommit，管理本地编辑草稿并复用 TextField；WorkspaceHeader 负责 Store 接线，不增加 API 或副作用。
+
+## 2026-10-09 工程信息
+
+- 新增 compositionEditor/ProjectInfo，仅接收 segments 并复用总时长计算函数，展示总时长及四类片段数量，无 API、Store 订阅或副作用；PropsPanel 负责数据传入。
+
+## 2026-10-09 字幕入口与属性精简
+
+- PropertySlider 新增可选 precision，字幕采用一位小数输入和步长 1；单位默认内置覆盖各片段属性。Store 的 addSubtitle 根据主字幕轨决定追加位置；TimelineBar 过滤空 V/A 行，保留编号。
+
+- PropertySlider 新增可选 inlineSlider/compact 模式，字幕复用基础 Slider 与现有历史回调，实现同行滑轨与紧凑时间字段；其他调用方默认保持不变。
+
+- PropertySlider 新增可选 leftAligned，字幕固定标题列左对齐；SubtitleProperties 的 StyleSection 负责开关与二级样式展开，SubtitlePreview 独立处理描边/背景 alpha，其他属性区默认布局不变。
+
+- PropertySlider 增加默认关闭的 unitInside/hideLabel，供字幕单位内置与字体字号同行使用；视频音频默认布局不变。字幕对齐采用 lucide 按钮组，空字幕轨隐藏控制入口。
+
+- TextField 新增默认关闭的 resizable 多行垂直缩放参数，字幕内容启用；SubtitleProperties 内 ColorField 统一颜色与独立开关，SubtitlePreview 将对齐与位置锚点分离。
+
+- 后续调整：SubtitleProperties 增加总时长、限定色块点击范围，背景改色同步启用背景；TimelineBar 恢复紫色覆盖并保留统一选中描边。新增 Store 回归覆盖时长、背景序列化与撤销。
+
+- SubtitleLibraryPanel 仅负责新建/导入入口及处理反馈，不展示轨道字幕列表。
+- SubtitleProperties 复用 PropertySlider 新增的可选 inputOnly/integer 模式，统一左右布局、整数显示与步进器；默认模式不变，视频音频继续使用原滑块。
+- TimelineBar 字幕卡片仅展示居中文字，共享选中态与拖拽样式；验收状态见剪辑模块进度文档。
+
+## 2026-10-08 剪辑属性滑块
+
+- `AssetLibraryPanel` 允许重复添加同一资产，已添加标签只读展示；`TimelineBar` 根据片段 `track` 动态生成 V/A 轨道行，`computeVisualWindows` / `computeAudioWindows` 支持按轨道过滤。
+
+- `TimelineToolbar` 新增两个裁剪动作及业务 Store `trimSelected`，三枚时间线图标使用 `compositionEditor` 业务资产目录中的用户 SVG；按钮 Tooltip 与现有工具栏保持 250ms 延迟。
+
+- 时间线工具栏五个操作按钮复用 `ui/Tooltip`，与 `TrackControls` 统一悬停提示时机（250ms），不改变操作回调和禁用逻辑。
+
+- 后续交互调整：`PropsPanel` 移除入点属性控件和入点操作按钮，保留片段时长、音量、倍速等在线编辑属性；底层源素材偏移仍由 Store 和切割流程维护。
+
+- 新增 `compositionEditor/PropertySlider.jsx`：统一标签、右上数值草稿与上下步进按钮、Slider 和三点刻度；props 显式传入范围、单位、禁用态、提交/预览回调和滑块事务事件，无 Store/API 副作用。
+- PropsPanel 移除本地 NumberField，时长与入点共用新控件；AudioVolumeControl 复用同一布局，保留音量事务和卸载提交。基础 Slider 不变，未影响其他业务域。
+- 构建、定向 lint、Store 回归通过；浏览器登录限制下未完成真实编辑器验收，详见剪辑专项进度文档。
+
 > 剪辑模块的持续拆分和验收状态统一维护在 [`docs/edit-module-progress.md`](../edit-module-progress.md)。下方剪辑历史记录只描述已发生的变更，不代表剪辑模块整体已经完成。
 
 ## 2026-09-29 剪辑模块进度文档建立
@@ -2310,3 +2354,20 @@
 # 2026-09-29 增补：轨道控制
 
 - `src/components/compositionEditor/TrackControls.jsx`：V1/A1 共用的隐藏、静音、吸附按钮组；复用 IconButton 和 Tooltip，状态与回调由 TimelineBar 显式传入。已接入，浏览器验收待完成。
+# 2026-10-08 增补：音频片段音量
+
+- `src/components/compositionEditor/AudioVolumeControl.jsx`：音频片段音量滑块、百分比输入及单次交互提交，复用 Slider；PropsPanel 显式传入 segment，Store 提供预览及历史动作，PreviewCanvas 应用媒体音量。浏览器试听和 UI 验收待完成。
+# 2026-10-08 剪辑多轨增量
+
+- 2026-10-09 字幕第一阶段：新增 SubtitleLibraryPanel（读取文件、列表、添加）、SubtitleProperties（文字/样式事务）、SubtitlePreview（画面定位）、SubtitleTrimHandles（边缘修剪）；解析和冲突分配在 utils/SubtitleImport，持久化/历史集中 Store。复用 Tabs、Button、TextField、Select。29 项回归通过，浏览器和后端保存/渲染仍待验收。
+
+- 2026-10-09：MainTrackButton 高亮态提示“取消主轨道”，复用原回调切换设置/取消；Store 按类型隔离并维护撤销记录。
+
+- 2026-10-09 后续调整：MainTrackButton 改为 TextButton + Tooltip，直接展示可点击轨道编号，不再使用独立 Pin 图标。默认主轨为空，未设置时新增素材回退第一轨。
+
+- 2026-10-09：新增 `MainTrackButton`，只消费 track/active/onChange，复用 IconButton、Tooltip 和 Pin 图标；TimelineBar 编排 V/A/S 轨间落点与六轨上限，Store 统一主轨和插轨历史。TrackControls 扩展字幕隐藏/吸附，不提供无意义静音。22 项回归通过，浏览器待验收。
+
+- `TimelineBar` 负责跨轨指针坐标、固定新轨落点和卡片展示，Store 负责按轨道预览与提交；组件仍属时间线单一业务边界，后续可独立提取指针交互 Hook。
+- `CompositionEditorPage` 复用 `ConfirmDialog`，仅编排待删除素材、关联数量与 Store 删除动作；素材列表以 Store 为展示来源，支持撤销恢复。
+- 新增 `compositionEditor/PreviewAudioLayer.jsx`：单条额外音轨媒体生命周期、源时间同步及 Gain 音量，props 为 active/cursor/playing/settings，不访问页面闭包。
+- 已完成构建及 20 项 Store 测试；浏览器多轨和真实媒体验收待完成，不将剪辑模块标记整体完成。

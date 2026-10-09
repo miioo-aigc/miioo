@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { allocateSubtitles, DEFAULT_SUBTITLE_STYLE } from '../utils/SubtitleImport';
 import {
   apiGetCompositions,
   apiCreateComposition,
@@ -49,6 +50,7 @@ export function assetTypeToSegment(asset) {
   const type = asset?.asset_type || asset?.type;
   if (type === 'video') return 'video';
   if (type === 'audio') return 'audio';
+  if (type === 'subtitle') return 'subtitle';
   return 'image';
 }
 
@@ -64,52 +66,58 @@ export function clampNewDuration(asset) {
  * 计算可视化片段（video/image）在主时间线上的窗口，按数组顺序连续排列。
  * 音频不占可视化窗口。返回 { windows, total }。
  */
-export function computeVisualWindows(segments = []) {
+export function computeVisualWindows(segments = [], track = null) {
   const windows = [];
-  let cursor = 0;
+  const cursors = new Map();
   segments.forEach((seg) => {
-    if (seg?.type !== 'video' && seg?.type !== 'image') return;
+    if ((seg?.type !== 'video' && seg?.type !== 'image') || (track && (seg.track || 'V1') !== track)) return;
     const duration = Math.max(0, Number(seg.duration) || 0);
+    const lane = seg.track || 'V1';
+    const cursor = cursors.get(lane) || 0;
     const explicit = Number(seg?.start);
     // V1 片段按时间顺序排列，异常的重叠起点向后推到上一片段结束，避免卡片视觉叠层。
     const start = Number.isFinite(explicit) && explicit >= cursor ? explicit : cursor;
     windows.push({ seg, start, end: start + duration, index: windows.length });
-    cursor = start + duration;
+    cursors.set(lane, start + duration);
   });
-  return { windows, total: cursor };
+  return { windows, total: Math.max(0, ...cursors.values()) };
 }
 
 /**
  * 计算 A1 音频段窗口：start = seg.start ?? 串行游标（尊重显式起点，允许间隙），
  * 游标推进到 start + duration。total 为 A1 最末端（各段 end 的最大值）。
  */
-export function computeAudioWindows(segments = []) {
+export function computeAudioWindows(segments = [], track = null) {
   const windows = [];
-  let cursor = 0;
+  const cursors = new Map();
   let total = 0;
   segments.forEach((seg) => {
-    if (seg?.type !== 'audio') return;
+    if (seg?.type !== 'audio' || (track && (seg.track || 'A1') !== track)) return;
     const duration = Math.max(0, Number(seg.duration) || 0);
+    const lane = seg.track || 'A1';
+    const cursor = cursors.get(lane) || 0;
     const explicit = Number(seg?.start);
     const start = Number.isFinite(explicit) && explicit >= 0 ? explicit : cursor;
     const end = start + duration;
     windows.push({ seg, start, end, index: windows.length });
-    cursor = end;
+    cursors.set(lane, end);
     if (end > total) total = end;
   });
   return { windows, total };
 }
 
-export function computeSubtitleWindows(segments = []) {
+export function computeSubtitleWindows(segments = [], track = null) {
   const windows = [];
-  let cursor = 0;
+  const cursors = new Map();
   segments.forEach((seg) => {
-    if (seg?.type !== 'subtitle') return;
+    if (seg?.type !== 'subtitle' || (track && (seg.track || 'S1') !== track)) return;
+    const lane = seg.track || 'S1';
+    const cursor = cursors.get(lane) || 0;
     const duration = Math.max(0, Number(seg.duration) || 0);
     const explicit = Number(seg.start);
     const start = Number.isFinite(explicit) && explicit >= 0 ? explicit : cursor;
     windows.push({ seg, start, end: start + duration, index: windows.length });
-    cursor = start + duration;
+    cursors.set(lane, start + duration);
   });
   return { windows, total: windows.reduce((max, item) => Math.max(max, item.end), 0) };
 }
@@ -125,22 +133,11 @@ export function computeTotalDuration(segments = []) {
 /** 把片段序列化成后端时间线协议 */
 export function serializeTimeline(segments = []) {
   const items = [];
-  let vStart = 0;
-  let aStart = 0;
+  const starts = new Map([...computeVisualWindows(segments).windows, ...computeAudioWindows(segments).windows, ...computeSubtitleWindows(segments).windows].map((window) => [window.seg.id, window.start]));
   segments.forEach((seg) => {
     const duration = Math.max(0, Number(seg.duration) || 0);
-    const track = seg?.type === 'audio' ? 'A1' : seg?.type === 'subtitle' ? 'S1' : 'V1';
-    let start;
-    if (track === 'A1' || track === 'S1') {
-      // 音频段允许显式 start（对齐分离音频位置）；尊重显式值不钳制，
-      // 显式 start 早于游标造成重叠时由后端保存校验暴露错误。
-      const explicit = Number(seg?.start);
-      start = Number.isFinite(explicit) && explicit >= 0 ? explicit : aStart;
-      if (track === 'A1') aStart = start + duration;
-    } else {
-      start = vStart;
-      vStart += duration;
-    }
+    const track = seg?.track || (seg?.type === 'audio' ? 'A1' : seg?.type === 'subtitle' ? 'S1' : 'V1');
+    const start = starts.get(seg.id) || 0;
     const item = {
       type: seg?.type || 'image',
       clip_id: seg?.assetId,
@@ -149,6 +146,11 @@ export function serializeTimeline(segments = []) {
       offset: Number(seg?.offset) || 0,
       track,
     };
+    if (seg.type === 'subtitle') {
+      delete item.clip_id;
+      item.text = seg.text || '';
+      item.style = seg.style || DEFAULT_SUBTITLE_STYLE;
+    }
     if (track === 'S1') item.start = start;
     // speed 仅 video/audio 段输出（图片恒 1，后端对 image 忽略 speed）
     if (seg?.type === 'video' || seg?.type === 'audio') {
@@ -206,11 +208,11 @@ export function offsetClampOf(seg) {
  */
 function normalizeSegmentExtras(item, type) {
   if (type === 'image') {
-    return { speed: 1, transition: item?.transition === 'none' ? 'none' : 'fade' };
+    return { start: Number.isFinite(Number(item?.start)) ? Math.max(0, Number(item.start)) : undefined, speed: 1, transition: item?.transition === 'none' ? 'none' : 'fade' };
   }
   const speed = Number(item?.speed);
   const extras = { speed: Number.isFinite(speed) && speed > 0 ? clampNumber(speed, 0.5, 4) : 1 };
-  if (type === 'audio') {
+  if (type === 'audio' || type === 'video' || type === 'subtitle') {
     const start = Number(item?.start);
     extras.start = Number.isFinite(start) && start >= 0 ? start : undefined;
   }
@@ -254,7 +256,7 @@ const initialExportState = {
 };
 
 export const useCompositionEditorStore = create((rawSet, get) => {
-  const snapshot = (state) => ({ segments: state.segments, selectedId: state.selectedId });
+  const snapshot = (state) => ({ segments: state.segments, selectedId: state.selectedId, album: state.album, trackSettings: state.trackSettings, mainTracks: state.mainTracks });
   const moveVisualSegments = (state, id, start, insertion) => {
     if (!Number.isFinite(start) || start < 0) return null;
     const windows = computeVisualWindows(state.segments).windows;
@@ -344,6 +346,14 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   }),
   splitSelected: () => {
     const state = get();
+    const subtitle = state.segments.find((seg) => seg.id === state.selectedId && seg.type === 'subtitle');
+    if (subtitle) {
+      const left = state.cursor - subtitle.start;
+      if (left <= 0 || left >= subtitle.duration) return;
+      const right = { ...subtitle, id: randomId(), start: state.cursor, duration: subtitle.duration - left };
+      set({ segments: state.segments.flatMap((seg) => seg.id === subtitle.id ? [{ ...seg, duration: left }, right] : [seg]), selectedId: right.id, dirty: true, dirtyRev: state.dirtyRev + 1, playing: false });
+      return;
+    }
     const windows = [...computeVisualWindows(state.segments).windows, ...computeAudioWindows(state.segments).windows];
     const window = windows.find((item) => item.seg.id === state.selectedId);
     if (!window) return;
@@ -353,6 +363,22 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     const segment = window.seg;
     const right = { ...segment, id: randomId(), duration: remainder, offset: segment.type === 'image' ? 0 : (Number(segment.offset) || 0) + duration * segmentSpeedOf(segment), ...(segment.type === 'audio' ? { start: state.cursor } : {}) };
     set({ segments: state.segments.flatMap((item) => item.id === segment.id ? [{ ...item, duration }, right] : [item]), selectedId: right.id, dirty: true, dirtyRev: state.dirtyRev + 1, playing: false });
+  },
+  trimSelected: (side) => {
+    const state = get();
+    const windows = [...computeVisualWindows(state.segments).windows, ...computeAudioWindows(state.segments).windows];
+    const window = windows.find((item) => item.seg.id === state.selectedId);
+    if (!window || !['left', 'right'].includes(side)) return;
+    const left = state.cursor - window.start;
+    const right = window.end - state.cursor;
+    if (!(left > 0 && right > 0)) return;
+    const segment = window.seg;
+    const speed = segmentSpeedOf(segment);
+    const patch = side === 'left'
+      ? { offset: segment.type === 'image' ? 0 : (Number(segment.offset) || 0) + left * speed, duration: right }
+      : { duration: left };
+    const nextSegments = state.segments.map((item) => item.id === segment.id ? { ...item, ...patch, ...(segment.type === 'audio' && side === 'left' ? { start: state.cursor } : {}) } : item);
+    set({ segments: nextSegments, selectedId: segment.id, dirty: true, dirtyRev: state.dirtyRev + 1, playing: false, cursor: side === 'left' ? state.cursor : window.start });
   },
   projectId: null,
   compositionId: null,
@@ -370,22 +396,136 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   playing: false,
   cursor: 0,
   trackSettings: { V1: { hidden: false, volume: 1, excludeGaps: true }, A1: { hidden: false, volume: 1, excludeGaps: false }, S1: { hidden: false } },
+  mainTracks: { V: null, A: null, S: null },
+  setMainTrack: (track) => rawSet((state) => {
+    if (!/^[VAS][1-6]$/.test(track)) return {};
+    return { mainTracks: { ...state.mainTracks, [track[0]]: state.mainTracks[track[0]] === track ? null : track },
+      trackSettings: { ...state.trackSettings, [track]: state.trackSettings[track] || { hidden: false, volume: 1, excludeGaps: false } },
+      past: [...state.past, snapshot(state)].slice(-100), future: [] };
+  }),
+  commitTrackDrag: (id, before, insertAt = null) => rawSet((state) => {
+    if (!before || state.segments === before.segments) return {};
+    let segments = state.segments;
+    let trackSettings = { ...state.trackSettings };
+    let mainTracks = { ...state.mainTracks };
+    if (insertAt) {
+      const moved = segments.find((segment) => segment.id === id);
+      if (!moved || !Number.isInteger(insertAt) || insertAt < 1 || insertAt > 6) return { segments: before.segments };
+      const prefix = moved.track[0];
+      const existingNumbers = [...before.segments.map((segment) => segment.track || (segment.type === 'audio' ? 'A1' : segment.type === 'subtitle' ? 'S1' : 'V1')), ...Object.keys(before.trackSettings || state.trackSettings)]
+        .filter((track) => track.startsWith(prefix)).map((track) => Number(track.slice(1)));
+      if (Math.max(1, ...existingNumbers) >= 6) return { segments: before.segments };
+      const temporary = moved.track;
+      const rename = (track) => track === temporary ? `${prefix}${insertAt}`
+        : track.startsWith(prefix) && Number(track.slice(1)) >= insertAt ? `${prefix}${Number(track.slice(1)) + 1}` : track;
+      segments = segments.map((segment) => ({ ...segment, track: rename(segment.track || (segment.type === 'audio' ? 'A1' : segment.type === 'subtitle' ? 'S1' : 'V1')) }));
+      trackSettings = Object.fromEntries(Object.entries(before.trackSettings || state.trackSettings).map(([track, settings]) => [rename(track), settings]));
+      // Preserve empty source tracks as well as their settings when numbering shifts.
+      before.segments.forEach((segment) => {
+        const old = segment.track || (segment.type === 'audio' ? 'A1' : segment.type === 'subtitle' ? 'S1' : 'V1');
+        trackSettings[rename(old)] ??= { hidden: false, volume: 1, excludeGaps: false };
+      });
+      trackSettings[`${prefix}${insertAt}`] = { hidden: false, volume: 1, excludeGaps: false };
+      mainTracks = Object.fromEntries(Object.entries(mainTracks).map(([type, track]) => [type, track ? rename(track) : null]));
+    }
+    return { segments, trackSettings, mainTracks, past: [...state.past, before].slice(-100), future: [], selectedId: id, dirty: true, dirtyRev: state.dirtyRev + 1 };
+  }),
   zoom: 24, // 时间线缩放：pxPerSecond（会话级，不持久化）
 
   loadAlbum: (assets) => set({ album: Array.isArray(assets) ? assets : [] }),
+  importSubtitles: (cues) => {
+    const state = get();
+    if (!cues.length || cues.some((cue) => !Number.isFinite(cue.start) || !Number.isFinite(cue.duration) || cue.start < 0 || cue.duration <= 0)) throw new Error('字幕时间无效');
+    const added = allocateSubtitles(state.segments, cues, state.mainTracks.S).map((cue) => ({ ...cue, id: randomId(), type: 'subtitle', name: cue.text, offset: 0, style: { ...DEFAULT_SUBTITLE_STYLE, ...cue.style } }));
+    set({ segments: [...state.segments, ...added], selectedId: added[0].id, playing: false, dirty: true, dirtyRev: state.dirtyRev + 1 });
+  },
+  addSubtitle: () => {
+    const state = get();
+    if (state.mainTracks.S) {
+      const windows = computeSubtitleWindows(state.segments).windows.filter(({ seg }) => (seg.track || 'S1') === state.mainTracks.S);
+      const start = Math.max(0, ...windows.map((window) => window.end));
+      state.importSubtitles([{ text: '请输入字幕', start, duration: 3 }]);
+      return;
+    }
+    const end = computeTotalDuration(state.segments);
+    state.importSubtitles([{ text: '请输入字幕', start: state.cursor, duration: end > state.cursor ? Math.min(3, end - state.cursor) : 3 }]);
+  },
+  previewSubtitle: (id, patch) => rawSet((state) => {
+    const source = state.segments.find((seg) => seg.id === id && seg.type === 'subtitle');
+    if (!source) return {};
+    const next = { ...source, ...patch, style: { ...DEFAULT_SUBTITLE_STYLE, ...source.style, ...patch.style } };
+    if (!Number.isFinite(next.start) || !Number.isFinite(next.duration) || next.start < 0 || next.duration <= 0) return {};
+    if (state.segments.some((seg) => seg.id !== id && seg.type === 'subtitle' && (seg.track || 'S1') === (next.track || 'S1') && next.start < seg.start + seg.duration && next.start + next.duration > seg.start)) return {};
+    return { segments: state.segments.map((seg) => seg.id === id ? next : seg), playing: false };
+  }),
+  applySubtitleStyle: (id) => set((state) => {
+    const source = state.segments.find((seg) => seg.id === id && seg.type === 'subtitle');
+    if (!source) return {};
+    return { segments: state.segments.map((seg) => seg.type === 'subtitle' && (seg.track || 'S1') === (source.track || 'S1') ? { ...seg, style: { ...source.style } } : seg), dirty: true, dirtyRev: state.dirtyRev + 1 };
+  }),
+  removeAsset: (assetId) => set((state) => {
+    const matches = (segment) => String(segment.assetId) === String(assetId);
+    const segments = state.segments.filter((segment) => !matches(segment));
+    return {
+      album: state.album.filter((asset) => String(asset.id) !== String(assetId)),
+      segments,
+      selectedId: state.segments.some((segment) => segment.id === state.selectedId && matches(segment)) ? null : state.selectedId,
+      playing: false, dirty: true, dirtyRev: state.dirtyRev + 1,
+    };
+  }),
+  previewTrackSegment: (id, targetTrack, start, before, insertion = null) => rawSet((state) => {
+    const base = before.segments;
+    const source = base.find((segment) => segment.id === id);
+    if (!source || !Number.isFinite(start) || start < 0) return {};
+    const audio = source.type === 'audio';
+    if (!(audio ? /^A[1-6]$/ : source.type === 'subtitle' ? /^S[1-6]$/ : /^V[1-6]$/).test(targetTrack)) return {};
+    const laneOf = (segment) => segment.track || (segment.type === 'audio' ? 'A1' : segment.type === 'subtitle' ? 'S1' : 'V1');
+    const sourceTrack = laneOf(source);
+    const windowsFor = audio ? computeAudioWindows : source.type === 'subtitle' ? computeSubtitleWindows : computeVisualWindows;
+    const snap = (track) => state.trackSettings[track]?.excludeGaps ?? false;
+    const target = windowsFor(base, targetTrack).windows.filter((window) => window.seg.id !== id).sort((a, b) => a.start - b.start);
+    if (!snap(targetTrack) && !insertion && target.some((window) => start < window.end && start + source.duration > window.start)) {
+      return { segments: base, selectedId: id, playing: false };
+    }
+    const index = insertion?.index ?? target.findIndex((window) => start < window.end);
+    target.splice(index < 0 ? target.length : index, 0, { seg: { ...source, track: targetTrack }, start });
+    let cursor = 0;
+    const arranged = target.map((window) => {
+      const nextStart = snap(targetTrack) ? cursor : Math.max(cursor, window.start);
+      cursor = nextStart + Number(window.seg.duration);
+      return { ...window.seg, start: nextStart };
+    });
+    const sourceStarts = new Map();
+    if (sourceTrack !== targetTrack) {
+      let end = 0;
+      windowsFor(base, sourceTrack).windows.filter((window) => window.seg.id !== id).forEach((window) => {
+        sourceStarts.set(window.seg.id, snap(sourceTrack) ? end : window.start);
+        end += Number(window.seg.duration);
+      });
+    }
+    const segments = base.filter((segment) => segment.id !== id && laneOf(segment) !== targetTrack)
+      .map((segment) => sourceStarts.has(segment.id) ? { ...segment, start: sourceStarts.get(segment.id) } : segment);
+    segments.push(...arranged);
+    const unchanged = base.length === segments.length && base.every((segment) => {
+      const next = segments.find((item) => item.id === segment.id);
+      const original = windowsFor(base, laneOf(segment)).windows.find((window) => window.seg.id === segment.id);
+      return next && laneOf(next) === laneOf(segment) && (original?.start ?? segment.start) === (next.start ?? original?.start);
+    });
+    return { segments: unchanged ? base : segments, selectedId: id, playing: false };
+  }),
   setTrackSetting: (track, patch) => set((state) => {
     const current = state.trackSettings[track] || {};
     const nextTrack = { ...current, ...patch };
     const nextSettings = { ...state.trackSettings, [track]: nextTrack };
-    if (!['V1', 'A1'].includes(track) || current.excludeGaps === nextTrack.excludeGaps || !nextTrack.excludeGaps) {
+    if (!/^[VAS][1-6]$/.test(track) || current.excludeGaps === nextTrack.excludeGaps || !nextTrack.excludeGaps) {
       return { trackSettings: nextSettings };
     }
     let cursor = 0;
-    const audio = computeAudioWindows(state.segments).windows.sort((a, b) => a.start - b.start);
+    const audio = computeAudioWindows(state.segments, track).windows.sort((a, b) => a.start - b.start);
     let audioIndex = 0;
     const segments = state.segments.map((segment) => {
-      if (track === 'A1' ? segment.type !== 'audio' : segment.type !== 'video' && segment.type !== 'image') return segment;
-      const source = track === 'A1' ? audio[audioIndex++].seg : segment;
+      if ((segment.track || (segment.type === 'audio' ? 'A1' : segment.type === 'subtitle' ? 'S1' : 'V1')) !== track) return segment;
+      const source = track.startsWith('A') ? audio[audioIndex++].seg : segment;
       const next = { ...source, start: cursor };
       cursor += Number(source.duration) || 0;
       return next;
@@ -416,7 +556,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     const album = get().album;
     const albumById = new Map(album.map((a) => [a.id, a]));
 
-    set({ projectId, loaded: false, past: [], future: [] });
+    set({ projectId, loaded: false, past: [], future: [], mainTracks: { V: null, A: null, S: null }, trackSettings: { V1: { hidden: false, volume: 1, excludeGaps: true }, A1: { hidden: false, volume: 1, excludeGaps: false }, S1: { hidden: false, excludeGaps: false } } });
     try {
       const list = compositions ?? await apiGetCompositions(projectId);
       if (isCancelled()) return;
@@ -433,6 +573,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
           aspectRatio: comp.aspectRatio || comp.aspect_ratio || '16:9',
         });
         segments = (Array.isArray(comp.timeline) ? comp.timeline : []).map((item) => {
+          if (item.type === 'subtitle') return { id: randomId(), type: 'subtitle', text: item.text || '', name: item.text || '字幕', start: Math.max(0, Number(item.start) || 0), duration: Math.max(0.001, Number(item.duration) || 3), track: item.track || 'S1', offset: 0, style: { ...DEFAULT_SUBTITLE_STYLE, ...item.style } };
           const asset = albumById.get(item.clip_id);
           if (asset) {
             const type = item.type || assetTypeToSegment(asset);
@@ -503,7 +644,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       sourceDuration,
       speed: 1, // 倍速默认 1（图片恒 1）
       transition: type === 'image' ? 'fade' : undefined, // 转场仅图片段
-      track: type === 'audio' ? 'A1' : 'V1',
+      track: get().mainTracks[type === 'audio' ? 'A' : type === 'subtitle' ? 'S' : 'V'] || (type === 'audio' ? 'A1' : type === 'subtitle' ? 'S1' : 'V1'),
     };
     set((state) => ({
       segments: [...state.segments, segment],
@@ -582,6 +723,37 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   commitAudioSegment: (id, before) => rawSet((state) => {
     if (!before || state.segments === before.segments || JSON.stringify(state.segments) === JSON.stringify(before.segments)) return {};
     return { past: [...state.past, before].slice(-100), future: [], selectedId: id, dirty: true, dirtyRev: state.dirtyRev + 1 };
+  }),
+
+  previewAudioVolume: (id, value) => rawSet((state) => {
+    if (!Number.isFinite(value)) return {};
+    const volume = Math.max(0, Math.min(2, value));
+    return { segments: state.segments.map((segment) => segment.id === id && segment.type === 'audio'
+      && (segment.volume ?? 1) !== volume ? { ...segment, volume } : segment) };
+  }),
+  commitAudioVolume: (before) => rawSet((state) => {
+    if (!before || state.segments.every((segment, index) => (segment.volume ?? 1) === (before.segments[index]?.volume ?? 1))) return {};
+    // 音量仅用于当前会话预览，不向尚未约定的后端协议写入字段。
+    return { past: [...state.past, before].slice(-100), future: [] };
+  }),
+
+  setSegmentInPoint: (id) => set((state) => {
+    const windows = [...computeVisualWindows(state.segments).windows, ...computeAudioWindows(state.segments).windows];
+    const window = windows.find((item) => item.seg.id === id);
+    if (!window || !['video', 'audio'].includes(window.seg.type)
+      || state.cursor <= window.start || state.cursor >= window.end) return {};
+    const source = window.seg;
+    const offset = (Number(source.offset) || 0) + (state.cursor - window.start) * segmentSpeedOf(source);
+    const remaining = Number(source.sourceDuration) > 0
+      ? (Number(source.sourceDuration) - offset) / segmentSpeedOf(source)
+      : Number(source.duration);
+    // 不回退用户选定的入点，也不把不足最小时长的尾部强行扩展到源文件之外。
+    if (remaining < 0.5) return {};
+    const duration = Math.min(Number(source.duration), remaining);
+    return {
+      segments: state.segments.map((segment) => segment.id === id ? { ...segment, offset, duration } : segment),
+      cursor: window.start, playing: false, dirty: true, dirtyRev: state.dirtyRev + 1,
+    };
   }),
 
   updateSegment: (id, patch) =>
@@ -890,7 +1062,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
 
   play: () =>
     set((state) => {
-      const { total } = computeVisualWindows(state.segments);
+      const total = computeTotalDuration(state.segments);
       if (total <= 0) return { playing: false };
       // 已在末尾则从头播放
       if (state.cursor >= total) return { cursor: 0, playing: true };

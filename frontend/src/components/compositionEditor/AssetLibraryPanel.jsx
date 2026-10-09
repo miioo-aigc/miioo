@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Tabs, DropdownMenu, DeleteIcon } from '../ui';
 import AssetPickerModal from '../AssetPickerModal';
+import SubtitleLibraryPanel from './SubtitleLibraryPanel';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { apiGetAssetDetail } from '../../api/assets';
 import { normalizeImageUrl } from '../../utils/imageUrl';
@@ -12,9 +13,8 @@ const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-u
 
 function AudioIcon({ color = 'currentColor' }) {
   return (
-    <svg width="20" height="20" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <path d="M8 2.667L3.333 5.333V10.667L8 13.333L12.667 10.667V5.333L8 2.667Z" stroke={color} strokeWidth="1.2" strokeLinejoin="round" />
-      <path d="M8 6V9.667" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
+    <svg width="24" height="24" viewBox="0 0 1024 1024" fill={color} style={{ flexShrink: 0 }} aria-hidden="true">
+      <path d="M96 336h64v384H96zM0 451h64v186H0zM224 272h64v512h-64zM352 448h64v160h-64zM480 400h64v256h-64zM608 336h64v384h-64zM736 464h64v128h-64zM864 400h64v256h-64zM960 448h64v160h-64z" />
     </svg>
   );
 }
@@ -30,8 +30,6 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
   const scrollRef = useRef(null);
   const visiblePendingAssets = pendingAssets.filter((item) => item.type === mediaType);
   const addAsset = useCompositionEditorStore((s) => s.addAsset);
-  const removeSegment = useCompositionEditorStore((s) => s.removeSegment);
-  const select = useCompositionEditorStore((s) => s.select);
   const segments = useCompositionEditorStore((s) => s.segments);
 
   const addedSet = useMemo(
@@ -43,11 +41,6 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
     && (episodeNumber == null || asset.episode_number == null || String(asset.episode_number) === String(episodeNumber)));
 
   const handleClick = (asset) => {
-    if (addedSet.has(asset.id)) {
-      const segment = segments.find((item) => item.assetId === asset.id);
-      if (segment) select(segment.id);
-      return;
-    }
     addAsset(asset);
   };
 
@@ -110,8 +103,8 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
   return (
     <aside className="w-full min-w-0 flex flex-col gap-[8px] bg-neutral-200 overflow-hidden px-[12px] py-[8px]">
       <div className="flex min-w-0 items-center justify-between gap-[8px]">
-        <Tabs options={[{ value: 'video', label: '视频' }, { value: 'image', label: '图片' }, { value: 'audio', label: '音频' }]} value={mediaType} onChange={setMediaType} gap="12px" variant="plain-ghost" />
-        <div className="relative shrink-0">
+        <Tabs options={[{ value: 'video', label: '视频' }, { value: 'image', label: '图片' }, { value: 'audio', label: '音频' }, { value: 'subtitle', label: '字幕' }]} value={mediaType} onChange={setMediaType} gap="12px" variant="plain-ghost" />
+        <div className={`relative shrink-0 ${mediaType === 'subtitle' ? 'hidden' : ''}`}>
           <input ref={fileInputRef} type="file" accept={mediaType === 'video' ? 'video/*' : mediaType === 'audio' ? 'audio/*' : 'image/*'} className="hidden" onChange={handleUpload} />
           <button type="button" onClick={() => setMenuOpen((open) => !open)} disabled={uploading} className="flex h-[28px] cursor-pointer items-center justify-center gap-[4px] rounded-[4px] px-[6px] text-[14px] leading-[16px] text-text-secondary hover:bg-white-10 disabled:cursor-not-allowed disabled:opacity-50">
             <span>添加素材</span>
@@ -149,7 +142,8 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
         }}
       />
       {uploadError && <div role="alert" className="text-text-danger text-[12px]">{uploadError}</div>}
-      <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto mr-[-6px] pr-[12px] [&::-webkit-scrollbar]:w-[6px] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/30" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.3) transparent', scrollbarGutter: 'stable' }}>
+      {mediaType === 'subtitle' && <SubtitleLibraryPanel />}
+      <div ref={scrollRef} className={`min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto mr-[-6px] pr-[12px] ${mediaType === 'subtitle' ? 'hidden' : ''}`} style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.3) transparent', scrollbarGutter: 'stable' }}>
         {albumState.warning && !albumState.loading && (
           <div role="status" className="px-[8px] py-[12px] text-text-secondary text-font-size-12">
             {albumState.warning}
@@ -208,7 +202,7 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
                   }}
                   role="button"
                   tabIndex={0}
-                  title={`${added ? '定位时间线：' : '添加到时间线：'}${asset.name || '未命名素材'}${asset.duration != null ? ` · ${formatTime(asset.duration)}` : ''}`}
+                  title={`添加到时间线：${asset.name || '未命名素材'}${asset.duration != null ? ` · ${formatTime(asset.duration)}` : ''}`}
                   className={`group relative flex min-w-0 w-full flex-col items-start gap-[6px] cursor-pointer text-left ${added ? 'text-brand-main' : ''}`}
                 >
                   <span className="relative flex items-center justify-center w-full aspect-video rounded-[8px] bg-neutral-500 overflow-hidden shrink-0 border border-white-10 transition-colors group-hover:border-white-30">
@@ -228,15 +222,13 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
                       </span>
                     )}
                     {added && (
-                      <button type="button" aria-label="取消添加到时间线" onClick={(event) => { event.stopPropagation(); segments.filter((segment) => segment.assetId === asset.id).forEach((segment) => removeSegment(segment.id)); }} className="group/tag absolute left-[8px] top-[8px] flex h-[24px] cursor-pointer items-center gap-[4px] rounded-[4px] bg-transparent bg-gradient-to-b from-[rgba(0,0,0,0.6)] to-[rgba(0,0,0,0.6)] px-[8px] text-[12px] text-[#2DC3E1] transition-colors hover:bg-[rgba(0,0,0,0.65)] hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand-main" style={{ fontFamily: FONT_MEDIUM }}>
+                      <span aria-label="已添加到时间线" className="absolute left-[8px] top-[8px] flex h-[24px] items-center gap-[4px] rounded-[4px] bg-transparent bg-gradient-to-b from-[rgba(0,0,0,0.6)] to-[rgba(0,0,0,0.6)] px-[8px] text-[12px] text-[#2DC3E1]" style={{ fontFamily: FONT_MEDIUM }}>
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                           <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5" />
-                          <path className="group-hover/tag:hidden" d="M5.25 8.1L7.1 9.85L10.8 6.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          <path className="hidden group-hover/tag:block" d="M5.7 5.7L10.3 10.3M10.3 5.7L5.7 10.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          <path d="M5.25 8.1L7.1 9.85L10.8 6.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
-                        <span className="group-hover/tag:hidden">已添加</span>
-                        <span className="hidden group-hover/tag:inline">取消添加</span>
-                      </button>
+                        <span>已添加</span>
+                      </span>
                     )}
                     {asset.duration != null && (
                       <span className="absolute right-[8px] top-[8px] flex h-[24px] items-center rounded-[4px] bg-transparent bg-gradient-to-b from-[rgba(0,0,0,0.6)] to-[rgba(0,0,0,0.6)] px-[8px] text-[12px] text-[rgba(255,255,255,0.8)]" style={{ fontFamily: FONT }}>

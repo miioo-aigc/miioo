@@ -4,7 +4,7 @@
  *
  * ─── 组件职责 ───────────────────────────────────────────────────────
  *   TextField 提供无业务的单行/多行受控文本输入视觉和交互
- *   支持字数统计(maxLength)、错误态(error/errorMsg)、后缀插槽(suffix)、字符过滤(sanitize)、多行高度覆盖(height)
+ *   支持字数统计、错误态、后缀插槽、字符过滤、多行高度；2026-10-09 新增可选垂直缩放 resizable。
  *
  * ─── 依赖边界 ───────────────────────────────────────────────────────
  *   只接收字段值、标签和事件回调，不调用 API、不读取 Store
@@ -33,6 +33,7 @@ export default function TextField({
   multiline = false,
   maxLength,
   height,
+  resizable = false,
   error = false,
   errorMsg,
   suffix,
@@ -68,11 +69,11 @@ export default function TextField({
   const fieldLayoutClass = multiline ? 'flex-col' : 'flex-row items-center';
   const multilineHeight = height ?? '120px';
   const fieldSizeClass = multiline
-    ? `relative px-[12px] py-[9px] h-[${multilineHeight}]`
+    ? 'relative px-[12px] py-[9px]'
     : 'h-[36px] px-[12px]';
 
   const inputClass =
-    'flex-1 w-full bg-transparent border-0 outline-none text-font-size-14 text-input-text-content placeholder:text-input-text-hint';
+    'flex-1 min-h-0 w-full bg-transparent border-0 outline-none text-font-size-14 text-input-text-content placeholder:text-input-text-hint';
   // showCounter 必须在使用前声明，避免 const 暂时性死区（TDZ）报错
   const showCounter = typeof maxLength === 'number';
   // 多行带字数统计时，右下角计数会覆盖文字，预留底部内边距避免遮挡
@@ -141,7 +142,7 @@ export default function TextField({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         className={`${fieldBaseClass} ${fieldLayoutClass} ${fieldSizeClass} ${bgClass} ${borderClass}`}
-        style={{ ...glowStyle, boxSizing: 'border-box', ...(multiline ? { height: multilineHeight } : {}) }}
+        style={{ ...glowStyle, boxSizing: 'border-box', ...(multiline ? { height: multilineHeight, ...(resizable ? { resize: 'vertical', overflow: 'auto', minHeight: 80, maxHeight: 480 } : {}) } : {}) }}
       >
         {renderControl()}
         {!multiline && renderSuffixOrCounter()}

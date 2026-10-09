@@ -3,13 +3,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { appendCanvasNode } from './canvasNodeUtils';
 import { CANVAS_CARD_PULSE_DURATION, getCanvasPulseTiming } from './CanvasPulseMotion';
 import { showGlobalToast } from '../../stores/toastStore';
-import { addCanvasReference, getCanvasReferenceEdges, removeCanvasReference } from './CanvasReferences';
+import { getCanvasReferenceEdges, removeCanvasReference } from './CanvasReferences';
+import { planCanvasReferenceBatch } from './CanvasReferenceBatch';
+import { prepareCanvasMediaAsset } from './CanvasMediaSize';
 import { getCanvasPromptReferences } from './CanvasPromptReferences';
 import { connectTextToAudio, disconnectTextAudio, getTextAudioEdges, isTextAudioConnection } from './CanvasTextAudio';
 import { getCanvasMediaFileType } from './CanvasLocalMedia';
 import { connectCanvasText, disconnectCanvasText, getCanvasTextEdges, isCanvasTextConnection } from './CanvasTextGeneration';
 import { canConnectCanvasImage, connectCanvasImage, disconnectCanvasImage, getCanvasImageEdges, isCanvasImageConnection } from './CanvasImageGeneration';
-import { canConnectCanvasVideo, connectCanvasVideo, disconnectCanvasVideo, getCanvasVideoEdges, isCanvasVideoConnection, validateCanvasVideoReferenceAddition } from './CanvasVideoGeneration';
+import { canConnectCanvasVideo, connectCanvasVideo, disconnectCanvasVideo, getCanvasVideoEdges, isCanvasVideoConnection } from './CanvasVideoGeneration';
 
 export function useCanvasReferences(nodes, setNodes, openPicker) {
   const [pulses, setPulses] = useState([]);
@@ -33,19 +35,22 @@ export function useCanvasReferences(nodes, setNodes, openPicker) {
     }));
   }, []);
   const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
-  const addReference = useCallback((nodeId, source, mode, file) => {
+  const addReference = useCallback(async (nodeId, source, mode, file) => {
     const nodeType = nodes.find((node) => node.id === nodeId)?.type;
     if (!['image', 'video'].includes(nodeType)) return;
     if (source === 'library') { openPicker({ nodeId, nodeType, purpose: 'reference', mode }); return; }
     if (!file) return;
-    const type = getCanvasMediaFileType(file, nodeType);
-    if (!type) return;
-    const validation = nodeType === 'video'
-      ? validateCanvasVideoReferenceAddition(nodes, nodeId, { asset_type: type })
-      : { allowed: true };
-    if (!validation.allowed) { showGlobalToast('warning', validation.message); return; }
-    const url = URL.createObjectURL(file);
-    setNodes((current) => addCanvasReference(current, nodeId, { name: file.name, url, asset_type: type, source: 'local-preview' }, mode));
+    const files = Array.isArray(file) ? file : [file];
+    if (files.some((item) => !getCanvasMediaFileType(item, nodeType))) return;
+    const assets = await Promise.all(files.map((item) => prepareCanvasMediaAsset({ name: item.name, url: URL.createObjectURL(item), asset_type: getCanvasMediaFileType(item, nodeType), source: 'local-preview' })));
+    setNodes((current) => {
+      const result = planCanvasReferenceBatch(current, nodeId, assets, mode);
+      if (!result.allowed) {
+        assets.forEach((asset) => URL.revokeObjectURL(asset.url));
+        showGlobalToast('warning', result.message);
+      }
+      return result.nodes;
+    });
   }, [nodes, openPicker, setNodes]);
   const removeReference = useCallback((nodeId, sourceId) => {
     setNodes((current) => disconnectCanvasImage(removeCanvasReference(current, nodeId, sourceId), nodeId, sourceId));
@@ -78,7 +83,10 @@ export function useCanvasReferences(nodes, setNodes, openPicker) {
     setNodes((current) => getTextAudioEdges(current).reduce((next, edge) => removed.has(edge.id) ? disconnectTextAudio(next, edge.target, edge.source) : next, current));
   }, [setNodes]);
   const graphEdges = useMemo(() => [
-    ...getCanvasReferenceEdges(nodes).filter((edge) => nodes.find((node) => node.id === edge.target)?.type !== 'video'),
+    ...getCanvasReferenceEdges(nodes).filter((edge) => {
+      const target = nodes.find((node) => node.id === edge.target);
+      return target?.type !== 'video' && !(target?.data.imageSourceIds || []).includes(edge.source);
+    }),
     ...getTextAudioEdges(nodes), ...getCanvasTextEdges(nodes), ...getCanvasImageEdges(nodes), ...getCanvasVideoEdges(nodes),
   ], [nodes]);
   const highlightedEdgeIds = useMemo(() => {

@@ -2,15 +2,17 @@
 import { appendCanvasNode, createCanvasNode, updateSelectedNode } from './canvasNodeUtils.js';
 import { toCanvasAsset } from './CanvasAssets.js';
 import { getCanvasAbsolutePosition } from './CanvasGroups.js';
+import { getCanvasAssetNodeSize } from './CanvasMediaSize.js';
 
 const REFERENCE_NODE_GAP = 80;
 const MAX_REFERENCE_NODE_GAP = 400;
 const REFERENCE_NODE_SIZE = { width: 240, height: 240 };
 
 function getNodeSize(node) {
+  const fallback = getCanvasAssetNodeSize(node?.data?.asset);
   return {
-    width: node?.measured?.width || node?.width || 240,
-    height: node?.measured?.height || node?.height || 240,
+    width: node?.measured?.width || node?.width || fallback.width,
+    height: node?.measured?.height || node?.height || fallback.height,
   };
 }
 
@@ -21,20 +23,20 @@ function overlaps(first, second) {
     && first.position.y + first.size.height > second.position.y;
 }
 
-export function getCanvasReferenceNodePosition(nodes, target) {
+export function getCanvasReferenceNodePosition(nodes, target, sourceSize = REFERENCE_NODE_SIZE) {
   const targetPosition = getCanvasAbsolutePosition(nodes, target);
   const targetSize = getNodeSize(target);
   const occupied = nodes.filter((node) => node.id !== target.id && node.type !== 'canvasGroup')
     .map((node) => ({ position: getCanvasAbsolutePosition(nodes, node), size: getNodeSize(node) }));
 
-  const isAvailable = (position) => !occupied.some((other) => overlaps({ position, size: REFERENCE_NODE_SIZE }, other));
+  const isAvailable = (position) => ![...occupied, { position: targetPosition, size: targetSize }].some((other) => overlaps({ position, size: sourceSize }, other));
   const getCandidates = (gap) => [
     // 左侧和上侧是默认阅读方向，优先于右侧和下侧。
-    { x: targetPosition.x - REFERENCE_NODE_SIZE.width - gap, y: targetPosition.y },
-    { x: targetPosition.x, y: targetPosition.y - REFERENCE_NODE_SIZE.height - gap },
-    { x: targetPosition.x - REFERENCE_NODE_SIZE.width - gap, y: targetPosition.y - REFERENCE_NODE_SIZE.height - gap },
-    { x: targetPosition.x + targetSize.width + gap, y: targetPosition.y - REFERENCE_NODE_SIZE.height - gap },
-    { x: targetPosition.x - REFERENCE_NODE_SIZE.width - gap, y: targetPosition.y + targetSize.height + gap },
+    { x: targetPosition.x - sourceSize.width - gap, y: targetPosition.y },
+    { x: targetPosition.x, y: targetPosition.y - sourceSize.height - gap },
+    { x: targetPosition.x - sourceSize.width - gap, y: targetPosition.y - sourceSize.height - gap },
+    { x: targetPosition.x + targetSize.width + gap, y: targetPosition.y - sourceSize.height - gap },
+    { x: targetPosition.x - sourceSize.width - gap, y: targetPosition.y + targetSize.height + gap },
     { x: targetPosition.x + targetSize.width + gap, y: targetPosition.y },
     { x: targetPosition.x, y: targetPosition.y + targetSize.height + gap },
     { x: targetPosition.x + targetSize.width + gap, y: targetPosition.y + targetSize.height + gap },
@@ -72,7 +74,7 @@ export function addCanvasReference(nodes, targetId, selectedAsset, mode = 'all')
   let slot = asset.asset_type === 'image' ? 0 : 2;
   while (references.some((reference) => reference.slot === slot)) slot += 1;
   if (frameImage && slot >= 2) return nodes;
-  const position = getCanvasReferenceNodePosition(nodes, target);
+  const position = getCanvasReferenceNodePosition(nodes, target, getCanvasAssetNodeSize(asset));
   const source = createCanvasNode(asset.asset_type, position);
   // 复用页面提供的节点动作，不能复制目标节点的内容、编辑态或参数。
   for (const key of ['onPromptChange', 'onModelChange', 'onContentChange', 'onCancelPendingClick', 'onEnterEditing', 'onGenerate', 'onAssetChange', 'onSelectAsset']) {

@@ -1,0 +1,4 @@
+.canvas-editable-name { display: inline-block; min-width: 0; max-width: 100%; vertical-align: top; }
+.canvas-editable-name > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-editable-name:has(input) { width: 180px; overflow: visible; }
+.canvas-editable-name input { display: block; box-sizing: border-box; width: 100%; height: 16px; margin: 0; padding: 0; border: 0; border-radius: var(--radius-small); outline: 1px solid var(--color-stroke-active); background: var(--color-surface-card); color: inherit; font: inherit; letter-spacing: 0; }

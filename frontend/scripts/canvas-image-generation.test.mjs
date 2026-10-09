@@ -35,6 +35,7 @@ test('图片参考上限读取后端字段 max_reference_images', () => {
 
 test('历史图片连线仍按直连素材识别，未声明能力按零张处理', () => {
   const nodes = [node('image', 'i1'), node('image', 'i2'), node('text', 't'), node('image', 'target', ['i1', 't', 'i2'])];
+  nodes.at(-1).data.asset = null;
   assert.deepEqual(getCanvasImageReferenceStatus(nodes, 'target', 1), { imageSourceIds: ['i1', 'i2'], overflowSourceIds: ['i2'], canGenerate: false });
   assert.deepEqual(getCanvasImageReferenceStatus(nodes, 'target', undefined), { imageSourceIds: ['i1', 'i2'], overflowSourceIds: ['i1', 'i2'], canGenerate: false });
   assert.equal(getCanvasImageReferenceStatus(nodes, 'target', 2).canGenerate, true);
@@ -87,4 +88,11 @@ test('图片节点已有图片时，图片创作计划会把自身图片作为�
   const plan = planCanvasImageGeneration([target], 'target', '保持构图并优化细节', 'image-model', { imageReferenceLimit: 1 });
   assert.deepEqual(plan.sources.map((source) => source.id), ['target']);
   assert.deepEqual(plan.sources[0].asset, target.data.asset);
+  assert.throws(() => planCanvasImageGeneration([target], 'target', '创作', 'image-model', { imageReferenceLimit: 0 }), /超过/);
+  const empty = node('image', 'empty');
+  empty.data.asset = null;
+  target.data.imageSourceIds = ['empty'];
+  assert.equal(canConnectCanvasImage([target, empty, node('image', 'new')], { source: 'new', target: 'target' }, 2), false);
+  assert.deepEqual(getCanvasImageReferenceStatus([target, empty], 'target', 1).overflowSourceIds, ['empty']);
+  assert.throws(() => planCanvasImageGeneration([target, empty], 'target', '创作', 'image-model', { imageReferenceLimit: 1 }), /超过/);
 });

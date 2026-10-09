@@ -8,8 +8,10 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-22  按标准菜单元素新增通用下拉菜单组件
+ *   2026-10-09  二级菜单支持可视项上限、滚动与视口边缘避让
  */
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 
@@ -24,18 +26,34 @@ function ChevronRightIcon() {
 function DropdownMenuItem({ item, onClose, openSubmenuKey, onOpenSubmenu }) {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
+  const [childSubmenuKey, setChildSubmenuKey] = useState(null);
+  const [submenuPosition, setSubmenuPosition] = useState({ left: 0, top: 0 });
+  const itemRef = useRef(null);
   const disabled = item.disabled === true;
   const submenuItems = Array.isArray(item.items) ? item.items : null;
   const hasSubmenu = submenuItems?.length > 0;
   const itemKey = item.key || item.label;
   const submenuOpen = openSubmenuKey === itemKey;
   const active = hovered || pressed;
+  const submenuWidth = item.submenuWidth || 178;
+  const submenuHeight = Math.min(submenuItems?.length || 0, item.submenuMaxVisible || Infinity) * 34 + 10;
+
+  function openSubmenu() {
+    if (disabled || !hasSubmenu) { onOpenSubmenu?.(null); return; }
+    const rect = itemRef.current.getBoundingClientRect();
+    setSubmenuPosition({
+      left: Math.max(8, rect.right + 5 + submenuWidth <= window.innerWidth - 8 ? rect.right + 5 : rect.left - submenuWidth - 5),
+      top: Math.max(8, Math.min(rect.top - 5, window.innerHeight - Math.min(submenuHeight, window.innerHeight - 16) - 8)),
+    });
+    onOpenSubmenu?.(itemKey);
+  }
 
   function handleClick(event) {
     event.stopPropagation();
     if (disabled) return;
     if (hasSubmenu) {
-      onOpenSubmenu?.(submenuOpen ? null : itemKey);
+      if (submenuOpen) onOpenSubmenu?.(null);
+      else openSubmenu();
       return;
     }
     onClose?.();
@@ -44,8 +62,9 @@ function DropdownMenuItem({ item, onClose, openSubmenuKey, onOpenSubmenu }) {
 
   return (
     <div
+      ref={itemRef}
       style={{ position: 'relative' }}
-      onMouseEnter={() => !disabled && hasSubmenu && onOpenSubmenu?.(itemKey)}
+      onMouseEnter={openSubmenu}
     >
       <button
         type="button"
@@ -68,7 +87,7 @@ function DropdownMenuItem({ item, onClose, openSubmenuKey, onOpenSubmenu }) {
           transition: 'background-color 120ms, color 120ms',
         }}
         onMouseEnter={() => !disabled && setHovered(true)}
-        onFocus={() => !disabled && hasSubmenu && onOpenSubmenu?.(itemKey)}
+        onFocus={openSubmenu}
         onMouseLeave={() => {
           setHovered(false);
           setPressed(false);
@@ -85,15 +104,21 @@ function DropdownMenuItem({ item, onClose, openSubmenuKey, onOpenSubmenu }) {
           </span>
         )}
       </button>
-      {hasSubmenu && submenuOpen && (
+      {hasSubmenu && submenuOpen && createPortal(
         <div
           role="menu"
+          onMouseDown={(event) => event.stopPropagation()}
+          onMouseEnter={(event) => event.stopPropagation()}
+          onFocus={(event) => event.stopPropagation()}
           style={{
-            position: 'absolute',
-            top: '-5px',
-            left: 'calc(100% + 4px)',
-            zIndex: 1,
-            width: '178px',
+            position: 'fixed',
+            ...submenuPosition,
+            zIndex: 110,
+            width: submenuWidth,
+            maxWidth: 'calc(100vw - 16px)',
+            maxHeight: Math.min(submenuHeight, window.innerHeight - 16),
+            overflowY: 'auto',
+            overscrollBehavior: 'contain',
             boxSizing: 'border-box',
             backgroundColor: '#161616',
             border: '1px solid rgba(255,255,255,0.05)',
@@ -107,11 +132,11 @@ function DropdownMenuItem({ item, onClose, openSubmenuKey, onOpenSubmenu }) {
               key={submenuItem.key || submenuItem.label || index}
               item={submenuItem}
               onClose={onClose}
-              openSubmenuKey={openSubmenuKey}
-              onOpenSubmenu={onOpenSubmenu}
+              openSubmenuKey={childSubmenuKey}
+              onOpenSubmenu={setChildSubmenuKey}
             />
           ))}
-        </div>
+        </div>, document.body
       )}
     </div>
   );

@@ -3,14 +3,18 @@
  * @structure-index
  *
  * ─── 展示层 ─────────────────────────────────────────────────────
- *   CanvasProjectHeader 画布左上角品牌、项目名称和项目入口
+ *   CanvasProjectHeader 画布左上角品牌、项目名称和项目入口 L16
+ *   2026-10-09 名称编辑与项目菜单拆分，动作由页面显式回调提供；直接指定箭头图标白色80%
  */
 
 import { useEffect, useRef, useState } from 'react';
 import HomeLogo from '../home/HomeLogo';
+import { DropdownMenu } from '../ui';
+import { ChevronDown } from 'lucide-react';
 import { normalizeProjectName, PROJECT_NAME_MAX_LENGTH, validateProjectName } from './CanvasProjectName';
 
-export default function CanvasProjectHeader({ canvasName, onBackHome, onRename }) {
+export default function CanvasProjectHeader({ canvasName, onBackHome, onBackProjects, onRename, onImport, onUnsupported }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(canvasName || '未命名项目');
   const [saving, setSaving] = useState(false);
@@ -29,6 +33,7 @@ export default function CanvasProjectHeader({ canvasName, onBackHome, onRename }
 
   const startEditing = () => {
     if (savingRef.current) return;
+    setMenuOpen(false);
     setDraftName(originalName);
     setError('');
     setEditing(true);
@@ -109,13 +114,22 @@ export default function CanvasProjectHeader({ canvasName, onBackHome, onRename }
           {error && <span role="alert" className="absolute top-[26px] whitespace-nowrap text-[12px] text-text-danger">{error}</span>}
         </div>
       ) : (
-        <button type="button" onClick={onRename ? startEditing : undefined} title={onRename ? '编辑项目名称' : '项目名称暂待后端接入'} disabled={!onRename} className={`flex items-center gap-[6px] border-0 bg-transparent p-0 text-left ${onRename ? 'cursor-pointer' : 'cursor-default'}`}>
+        <button type="button" onClick={onRename ? startEditing : undefined} title={onRename ? '编辑项目名称' : '项目名称暂待后端接入'} disabled={!onRename} className={`flex items-center border-0 bg-transparent p-0 text-left ${onRename ? 'cursor-pointer' : 'cursor-default'}`}>
           <span className="max-w-[220px] truncate text-[14px] leading-[18px] text-text-primary">{originalName}</span>
-          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className="shrink-0">
-            <path d="M12 6L8 10L4 6" fill="none" stroke="var(--color-white-60)" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
         </button>
       )}
+      <div className="relative -ml-[10px] flex items-center">
+        <button type="button" aria-label="项目菜单" aria-haspopup="menu" aria-expanded={menuOpen} onMouseDown={(event) => event.stopPropagation()} onClick={() => setMenuOpen((open) => !open)} className="flex size-[18px] cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-white-80 hover:text-text-primary">
+          <ChevronDown size={16} strokeWidth={1} style={{ color: 'var(--color-white-80)' }} />
+        </button>
+        {menuOpen && <DropdownMenu width="200px" onClose={() => setMenuOpen(false)} style={{ top: 'calc(100% + 8px)', bottom: 'auto', left: 0, right: 'auto', marginBottom: 0 }} items={[
+          { key: 'new', label: '新建项目', onClick: onUnsupported },
+          { key: 'copy', label: '复制项目', onClick: onUnsupported },
+          { key: 'import', label: '导入画布文件', onClick: onImport },
+          { key: 'back', label: '返回全部项目', onClick: onBackProjects },
+          { key: 'delete', label: '删除项目', danger: true, onClick: onUnsupported },
+        ]} />}
+      </div>
     </div>
   );
 }

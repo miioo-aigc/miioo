@@ -1,0 +1,70 @@
+/** 文件选择、下载与异步保护；页面只提供真实草稿及历史写入回调。 */
+import { useEffect, useRef, useState } from 'react';
+import { CANVAS_FILE_LIMIT, mergeCanvasFile, parseCanvasFile, serializeCanvasFile } from './CanvasFile';
+import { showGlobalToast } from '../../stores/toastStore';
+
+export function useCanvasFileActions({ nodes, setNodes, name, flowInstance, canvasId }) {
+  const inputRef = useRef(null);
+  const busy = useRef(false);
+  const scope = useRef(null);
+  const [focusIds, setFocusIds] = useState(null);
+  useEffect(() => {
+    const token = {};
+    scope.current = token;
+    return () => { scope.current = null; };
+  }, [canvasId]);
+  useEffect(() => {
+    if (!focusIds || !flowInstance) return;
+    const frame = requestAnimationFrame(() => {
+      flowInstance.fitView({ nodes: focusIds.map((id) => ({ id })), padding: 0.2, maxZoom: 1, duration: 300 });
+      setFocusIds(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusIds, flowInstance, nodes]);
+  const run = async (action) => {
+    if (busy.current) return;
+    busy.current = true;
+    const token = scope.current;
+    try { await action(() => scope.current === token); }
+    catch (error) { if (scope.current === token) showGlobalToast(error.message || '文件操作失败', 'error'); }
+    finally { busy.current = false; }
+  };
+  return {
+    inputRef,
+    open: () => { if (!busy.current) inputRef.current?.click(); },
+    importFile: (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+      return run(async (active) => {
+        if (file.size > CANVAS_FILE_LIMIT) throw new Error('画布文件不能超过100MB');
+        const imported = parseCanvasFile(await file.text());
+        if (!active()) return;
+        if (!imported.length) throw new Error('画布文件中没有可导入的节点');
+        let ids = [];
+        setNodes((current) => {
+          const merged = mergeCanvasFile(current, imported);
+          ids = merged.slice(current.length).filter((node) => !node.parentId).map((node) => node.id);
+          return merged;
+        });
+        setFocusIds(ids);
+        showGlobalToast('画布文件已合并导入', 'success');
+      });
+    },
+    share: (action) => {
+      if (action !== 'export-canvas') { showGlobalToast('复制画布链接暂未开放', 'info'); return; }
+      return run(async (active) => {
+        const text = await serializeCanvasFile(nodes, name);
+        if (!active()) return;
+        const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${name.replace(/[<>:"/\\|?*]/g, '_')}.miioo.json`;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+    },
+  };
+}

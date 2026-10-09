@@ -66,7 +66,7 @@ export default function TextCanvasNode({ id, data, selected }) {
   };
 
   return <CanvasNodeShell nodeType="text" title={data?.label || '文本'} selected={selected} data={{ ...data, nodeId: id, editing }} onPromptChange={data?.onPromptChange} onAddReference={data?.onAddReference} onGenerate={data?.onGenerate}>
-    <div ref={contentRef} className={`canvas-node__text-content ${editing ? 'nodrag nowheel nopan' : ''}`} onDoubleClick={handleDoubleClick}>
+    <div ref={contentRef} className={`canvas-node__text-content ${editing ? 'nodrag nowheel nopan' : data?.content ? 'nowheel' : ''}`} onDoubleClick={handleDoubleClick}>
       {editing ? <textarea
         ref={editorRef}
         className="canvas-node__text-editor nodrag nowheel nopan"

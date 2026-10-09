@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { groupCanvasNodes, setCanvasSelection, ungroupCanvasNodes } from './CanvasGroups';
 import { copyCanvasNodes, pasteCanvasNodes, deleteCanvasNodes, moveCanvasNodesOut, setCanvasGroupsStacked } from './CanvasNodeActions';
 import { getCanvasGroupFocus } from './CanvasGroupFocus';
+import { canMoveCanvasNodesInto, canvasTransferRoots, moveCanvasNodesInto } from './CanvasGroupTransfer';
+import { showGlobalToast } from '../../stores/toastStore';
 
 export function useCanvasNodeActions({ nodes, setNodes, enabled, cancelPendingClicks, flowInstance, containerRef, dialog, setDialog }) {
   const [menu, setMenu] = useState(null);
@@ -25,10 +27,17 @@ export function useCanvasNodeActions({ nodes, setNodes, enabled, cancelPendingCl
   const closeMenu = useCallback(() => setMenu(null), []);
   const closeDialog = useCallback(() => setDialog(null), [setDialog]);
 
-  const execute = useCallback((action) => {
+  const execute = useCallback((action, targetId) => {
     cancelPendingClicks();
     const selected = nodes.filter((node) => node.selected);
     const ids = selected.map((node) => node.id);
+    if (action === 'moveInto' && canMoveCanvasNodesInto(nodes, ids, targetId)) {
+      const target = nodes.find((node) => node.id === targetId);
+      const moved = canvasTransferRoots(nodes, ids).filter((node) => node.parentId !== targetId);
+      setNodes((current) => moveCanvasNodesInto(current, ids, targetId));
+      const label = moved.length === 1 ? moved[0].data.label : `${moved[0].data.label}等${moved.length}项`;
+      showGlobalToast(`${label}已经移入${target.data.label}`, 'success');
+    }
     if (action === 'copy') { setClipboard(copyCanvasNodes(nodes)); pasteCount.current = 0; }
     if (action === 'paste' || action === 'duplicate') {
       const contents = action === 'duplicate' ? copyCanvasNodes(nodes) : clipboard;
@@ -48,7 +57,14 @@ export function useCanvasNodeActions({ nodes, setNodes, enabled, cancelPendingCl
     if (action === 'ungroup') setNodes(ungroupCanvasNodes);
     if (action === 'stack' || action === 'unstack') setNodes((current) => setCanvasGroupsStacked(current, ids, action === 'stack'));
     if (action === 'unstack') setFocusGroupId(selected.find((node) => node.type === 'canvasGroup')?.id || null);
-    if (action === 'moveOut') setNodes((current) => moveCanvasNodesOut(current, ids));
+    if (action === 'moveOut') {
+      const messages = selected.flatMap((node) => {
+        const parent = nodes.find((group) => group.id === node.parentId);
+        return parent ? [`${node.data.label}已经移出${parent.data.label}`] : [];
+      });
+      setNodes((current) => moveCanvasNodesOut(current, ids));
+      if (messages.length) showGlobalToast(messages.join('；'), 'success');
+    }
     if (action === 'rename' && selected.length === 1) setDialog({ type: 'rename', ids, value: selected[0].data.label });
     if (action === 'delete' && ids.length) setDialog({ type: 'delete', ids, group: selected.some((node) => node.type === 'canvasGroup') });
     setMenu(null);

@@ -1,5 +1,5 @@
 export const PROJECT_NAME_MAX_LENGTH = 50;
-const PROJECT_NAME_CHARACTER_PATTERN = /^[\p{L}\p{N}\p{P}\p{Zs}]$/u;
+const PROJECT_NAME_CHARACTER_PATTERN = /^[\p{Script=Han}a-zA-Z0-9 ，。！？、；：“”‘’（）【】《》〈〉「」『』…—,.!?;:'"()[\]{}_\-/]$/u;
 
 export function normalizeProjectName(value) {
   return Array.from(String(value ?? ''))

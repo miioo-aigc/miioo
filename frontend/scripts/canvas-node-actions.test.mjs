@@ -20,6 +20,17 @@ const fixture = () => [
   { id: 'outside', type: 'text', position: { x: 900, y: 0 }, data: { label: '外部', textSourceIds: ['a'] } },
 ];
 
+test('形变预览使用组内相对位置、卡片高度及嵌套世界坐标，不改写成员', () => {
+  const nodes = fixture();
+  nodes.push({ id: 'inner', type: 'canvasGroup', parentId: 'g', position: { x: 40, y: 60 }, data: {} });
+  nodes[1].parentId = 'inner';
+  nodes[1].measured = { width: 240, height: 344 };
+  const before = structuredClone(nodes);
+  const member = getCanvasStackPresentation(nodes, []).nodes[0].data.stackMembers.find((item) => item.id === 'a');
+  assert.deepEqual({ x: member.x, y: member.y, width: member.width, height: member.height }, { x: 48, y: 92, width: 240, height: 320 });
+  assert.deepEqual(nodes, before);
+});
+
 test('复制组包含后代、内部连线重映射，不复制任务或外部连线', () => {
   const nodes = fixture(), clipboard = copyCanvasNodes(nodes);
   let counter = 0;
@@ -67,7 +78,9 @@ test('堆叠只改变展示，隐藏内部连线并将外部连线接到组', ()
   const edges = [{ id: 'inner', source: 'a', target: 'b' }, { id: 'outer', source: 'a', target: 'outside' }];
   const view = getCanvasStackPresentation(stacked, edges);
   assert.equal(view.nodes[1].hidden, true);
-  assert.equal(view.nodes[0].style.width, 270);
+  assert.equal(view.nodes[0].style.width, 300);
+  assert.equal(view.nodes[0].style.height, 300);
+  assert.deepEqual(view.nodes[0].measured, { width: 300, height: 300 });
   assert.equal(stacked[0].style.width, 600);
   assert.deepEqual(stacked[1].position, nodes[1].position);
   assert.equal(view.edges[0].hidden, true);

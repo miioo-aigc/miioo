@@ -21,8 +21,14 @@ function createHandlers() {
 
 const event = (value, isComposing = false) => ({ currentTarget: { value }, nativeEvent: { isComposing } });
 
-test('非编辑正文放行画布滚动，编辑状态保留输入框滚动隔离', () => {
-  assert.match(source, /canvas-node__text-content \$\{editing \? 'nodrag nowheel nopan' : ''\}/);
+test('有正文时保留滚动隔离，只有非编辑空节点放行画布滚动', () => {
+  const expression = source.match(/canvas-node__text-content \$\{([^}]+)\}/)?.[1];
+  assert.ok(expression);
+  const classes = new Function('editing', 'data', `return ${expression};`);
+  for (const content of ['', undefined, '一行正文', '第一行\n第二行']) {
+    assert.equal(classes(false, { content }), content ? 'nowheel' : '');
+    assert.equal(classes(true, { content }), 'nodrag nowheel nopan');
+  }
   const textarea = source.match(/<textarea[\s\S]*?\/>/)?.[0];
   assert.ok(textarea);
   assert.match(textarea, /className="canvas-node__text-editor nodrag nowheel nopan"/);

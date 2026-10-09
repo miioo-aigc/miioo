@@ -1,8 +1,8 @@
 .canvas-connection-pulse { pointer-events: none; }
-.canvas-connection-pulse__layer { fill: none; stroke: var(--color-brand-main); stroke-width: 2; stroke-linecap: round; opacity: 0; }
+.canvas-connection-pulse__layer { fill: none; stroke: var(--color-white-40); stroke-width: 2; stroke-linecap: round; opacity: 0; }
 .canvas-connection-pulse__layer--0 { stroke-width: 5; filter: blur(3px); }
-.canvas-connection-pulse__layer--1 { stroke: var(--color-blue-alpha-60); }
-.canvas-connection-pulse__layer--2 { stroke: var(--color-blue-100); }
+.canvas-connection-pulse__layer--1 { stroke: var(--color-white-60); }
+.canvas-connection-pulse__layer--2 { stroke: var(--color-white-80); }
 .canvas-connection-pulse__layer--3 { stroke: var(--color-white-100); }
 .canvas-node-connection-pulse { position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); overflow: visible; z-index: 9; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {

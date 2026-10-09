@@ -42,7 +42,7 @@ export function copyCanvasNodes(nodes) {
   }));
 }
 
-export function pasteCanvasNodes(nodes, clipboard, position, makeId = () => crypto.randomUUID()) {
+export function pasteCanvasNodes(nodes, clipboard, position, makeId = () => crypto.randomUUID(), options = {}) {
   if (!clipboard.length) return nodes;
   const mapping = new Map(clipboard.map((node) => [node.id, `canvas-${node.type}-${makeId()}`]));
   const roots = clipboard.filter((node) => !node.parentId);
@@ -51,7 +51,7 @@ export function pasteCanvasNodes(nodes, clipboard, position, makeId = () => cryp
     parentId: mapping.get(node.parentId),
     position: node.parentId ? { ...node.position } : { x: node.position.x - origin.x + position.x, y: node.position.y - origin.y + position.y },
     data: { ...remapSources(structuredClone(node.data), (id) => mapping.get(id)),
-      label: `${node.data.label} 副本`, creationPanelOpen: false, persistenceState: 'draft' },
+      label: options.preserveLabels ? node.data.label : `${node.data.label} 副本`, creationPanelOpen: false, persistenceState: 'draft' },
   }));
   return setCanvasSelection([...nodes, ...copies], copies.filter((node) => !node.parentId).map((node) => node.id));
 }
@@ -96,12 +96,20 @@ export function getCanvasStackPresentation(nodes, edges) {
     return result;
   };
   const owners = new Map(nodes.map((node) => [node.id, owner(node)]));
+  const members = new Map(nodes.filter((node) => node.type === 'canvasGroup')
+    .map((node) => [node.id, canvasDescendantIds(nodes, [node.id])]));
   return {
     nodes: nodes.map((node) => ({ ...node, hidden: Boolean(owners.get(node.id)),
-      ...(node.type === 'canvasGroup' && node.data.stacked ? {
-        style: { ...node.style, width: 270, height: 180 },
-        measured: { width: 270, height: 180 },
-        data: { ...node.data, stackMembers: nodes.filter((child) => owners.get(child.id) === node.id && child.type !== 'canvasGroup').map((child) => ({ id: child.id, type: child.type, label: child.data.label, asset: child.data.asset, content: child.data.content })) },
+      ...(node.type === 'canvasGroup' ? {
+        ...(node.data.stacked ? { style: { ...node.style, width: 300, height: 300 }, measured: { width: 300, height: 300 } } : {}),
+        data: { ...node.data, expandedWidth: node.style?.width, expandedHeight: node.style?.height,
+          stackMembers: nodes.filter((child) => members.get(node.id).has(child.id) && child.type !== 'canvasGroup').map((child) => {
+            const position = getCanvasAbsolutePosition(nodes, child);
+            const origin = getCanvasAbsolutePosition(nodes, node);
+            return { id: child.id, type: child.type, label: child.data.label, asset: child.data.asset, content: child.data.content,
+              x: position.x - origin.x, y: position.y - origin.y + 24,
+              width: child.measured?.width || 240, height: Math.max(1, (child.measured?.height || 264) - 24) };
+          }) },
       } : {}),
     })),
     edges: edges.map((edge) => {

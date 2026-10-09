@@ -20,6 +20,7 @@
  *   buildEpisodeStatusMap(overview, episodes) 剧集完成状态适配     utils/episodeStatusAdapter.js
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
+ *   2026-10-09 画布项目菜单返回自由画布列表，保留品牌图标返回首页；仅新增导航接线
  *   export default function Home()                               L243
  *     ├─ [懒加载] 页面业务模块按需加载                             L125–L130
  *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L244–L308
@@ -1576,6 +1577,10 @@ export default function Home({ onGoToAdmin }) {
       setCanvasRouteId(null);
       setActiveKey('home');
       updateWorkspaceUrl({ key: 'home' });
+    }} onBackProjects={() => {
+      setCanvasRouteId(null);
+      setActiveKey('canvas');
+      updateWorkspaceUrl({ key: 'canvas' });
     }} />;
   }
 

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiGenerateCreation } from '../../api/creation';
 import { showGlobalToast } from '../../stores/toastStore';
 import { createCanvasTextRequests } from './CanvasTextRequests';
+import { createCanvasProgressHandler } from './CanvasGenerationProgress';
 import { planCanvasAudioGeneration, beginCanvasAudioGeneration, finishCanvasAudioGeneration } from './CanvasAudioGeneration';
 
 export function useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks) {
@@ -21,7 +22,7 @@ export function useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks) {
     try {
       const files = plan.sources.filter((source) => source.type === 'audio' && source.asset?.url).map((source) => source.asset);
       const result = await apiGenerateCreation({ ...plan.params, genType: 'dubbing', prompt: plan.prompt,
-        model: plan.model, files, canvasAudioReferences: true }, { signal: controller.signal });
+        model: plan.model, files, canvasAudioReferences: true }, { signal: controller.signal, onProgress: createCanvasProgressHandler(setNodes, plan.requestId, controller.signal) });
       const url = result?.audios?.[0];
       if (!url) throw new Error('音频生成未返回有效结果');
       if (!controller.signal.aborted) setNodes((current) => finishCanvasAudioGeneration(current, plan,

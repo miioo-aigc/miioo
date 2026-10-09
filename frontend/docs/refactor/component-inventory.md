@@ -1,22 +1,44 @@
 # 组件重构盘点基线
 
-## 2026-10-08 创作资产图片去重同步（待手动验收）
+## 2026-10-09 文件夹堆叠与聚焦（待用户手动验收）
+
+- `CanvasGroupNode` 复用 `SeedanceFolderCard`，新增可选 `presentationOnly` 隔离资产库打开交互；默认行为不变，预览支持文本／音频。
+- `UseCanvasNodeActions` 处理组双击与展开后聚焦，动画帧在卸载或依赖变化时清理；`CanvasGroupFocus` 纯函数计算世界中心与只缩小不放大的缩放比例。
+- 文件夹固定 270×180，展开仍使用真实组尺寸；组外连线沿用渲染层端点映射。新增聚焦计算测试，等待用户视觉验收。
+
+## 2026-10-09 画布右键操作与堆叠（待用户手动验收）
+
+- `CanvasNodeActions`：复制／粘贴、引用重映射、递归删除、移出组和堆叠展示纯函数；不直接调用业务接口。
+- `UseCanvasNodeActions`：菜单位置、会话剪贴板、快捷键与动作分发；显式接收 nodes、setNodes、flowInstance、containerRef、enabled、cancelPendingClicks 及弹窗状态。菜单和键盘共用入口，数据变更使用已有历史 setter。
+- `CanvasNodeActionOverlays`：复用 DropdownMenu、ConfirmDialog 和已有 AssetsProjectRenameModal；通过显式回调通知业务，不访问页面闭包。未新增基础 UI。
+- `CanvasGroupNode`：堆叠预览和不可连接的展示端口；原成员数据、位置与真实连线保持不变。画布页仅接线并派生渲染对象，堆叠测量不覆盖历史中的组尺寸。
+- 用户确认保留撤销／重做，堆叠为 ⌘⌥G／⌘⌥⇧G；组内节点“移出组”位于删除前，删除组与节点均二次确认。
+- 合计 52 项动作、分组、历史、节点及引用测试通过；构建、架构检查通过，代码检查仅三条既有警告。页面约 630 行，保留页面级生成、历史及连线编排，新增菜单展示和操作逻辑未堆入页面。视觉交互等待用户验收。规则引用的 `docs/architecture/feature-development.md` 当前缺失，本次按已有组件清单、架构规则和设计系统完成检索复用。
+
+## 2026-10-09 文本节点触控板平移修复（用户验收通过）
+
+- `TextCanvasNode` 仅在编辑状态为正文容器保留 `nodrag nowheel nopan`，非编辑正文复用画布已有滚轮捕获逻辑，实现悬停时触控板平移；输入框自身的滚动隔离与中文组合输入逻辑不变。
+- `scripts/canvas-text-input.test.mjs` 补充两种状态的隔离标记回归检查；与节点测试共 29 项通过，构建、架构检查和差异检查通过，代码检查仅 3 条既有警告。
+- Suzy 于 2026-10-09 确认本项验证通过；不扩大工具栏或其他画布功能验收范围。
+
+## 2026-10-08 创作资产图片去重同步（用户验收通过）
 
 - `AssetsCreativePanel` 将当前已加载的创作图片列表传入 `AssetCard`；`AssetCard` 复用创作页 `visibleCreationEdits` 过滤已经存在于后端历史的本地编辑结果。
 - 资产库原有分页历史合并保持不变，避免将无法确认身份的图片仅凭展示地址强行合并。
+- Suzy 于 2026-10-08 确认资产库创作资产图片去重验证通过；本次仅更新验收记录，不扩大其他入口验收范围。
 
 ## 2026-10-08 编辑占位接入创作记录（替代下节卡片附带渲染）
 
 - CreationImageEdits 在编辑发布时调用既有 addGeneration，完成原位更新、失败删除；CreationResultState 保持原 reverse 顺序，CreationImageResultCard 不再递归展示结果。
 - ImageDetailModal 编辑关闭回调统一回到列表；ImageEditComparison 图片加载复用 DotsLoading，不改变生成中动画。
-- 新增 test-creation-edit-store.mjs 验证普通新增与编辑新增混合顺序、成功替换、刷新资产去重及失败删除；视觉待手动验收。
+- 新增 test-creation-edit-store.mjs 验证普通新增与编辑新增混合顺序、成功替换、刷新资产去重及失败删除；Suzy 于 2026-10-08 确认创作列表占位位置、即时更新、刷新去重、两层弹窗关闭及圆点加载验证通过。
 
-## 2026-10-08 创作图片编辑即时结果与去重
+## 2026-10-08 创作图片编辑即时结果与去重（历史实现，卡片附带渲染已由上节替代）
 
 - `CreationResultState` 保留图片逐卡资产编号，传入全列表身份信息和同源唯一展示标记；不改变视频、音频的编号与回调。
 - `CreationImageResultCard` 移除首卡限制，继续订阅既有编辑 Store，待办与成功结果即时展示；不增加第二套任务或保存机制。
 - `CreationEditResults.js` 集中处理源图归属和编辑结果去重，按资产编号或明确原图地址匹配后端历史，不通过缩略图文件名猜测身份。
-- 新增 `scripts/test-creation-edit-results.mjs`，覆盖即时结果、待办、刷新资产去重、缩略图差异和多图归属。真实入口待手动验收。
+- 新增 `scripts/test-creation-edit-results.mjs`，覆盖即时结果、待办、刷新资产去重、缩略图差异和多图归属。当前列表接入与验收状态以上方“编辑占位接入创作记录”为准。
 
 ## 2026-10-08 图片编辑任务占位（待用户手动验收）
 
@@ -96,7 +118,7 @@
 ## 2026-09-29 画布触控板交互（待用户手动验收）
 
 - `CanvasPage` 保留 React Flow 原生 `zoomOnPinch`，新增 `panOnScroll`、`PanOnScrollMode.Free` 和 `panOnScrollSpeed`，支持触控板双指捏合缩放及上下左右平移，节点、连线和组合跟随统一视口变换。
-- 输入框、正文滚动区、音频台词区和媒体控件沿用 `nowheel`/`nopan` 隔离画布手势；本次不新增自定义滚轮监听。
+- 输入框、编辑中的正文、音频台词区和媒体控件沿用 `nowheel`/`nopan` 隔离画布手势；文本节点非编辑正文于 2026-10-09 调整为放行画布手势，不新增自定义滚轮监听。
 - 画布定向测试、构建和差异检查待本次命令完成；触控板实际手感由用户手动验收。
 - 针对可拖动节点自动添加 `nopan` 的 React Flow 行为，`CanvasPage` 在普通卡片滚轮捕获阶段临时放行画布手势，输入区域仍保持 `nowheel` 隔离；不改变节点拖动与连接交互。
 

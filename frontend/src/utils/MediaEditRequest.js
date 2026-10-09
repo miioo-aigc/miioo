@@ -27,7 +27,7 @@ export function buildImageEditRequest(asset, options = {}) {
   if (!['inpaint', 'outpaint'].includes(edit_mode)) delete request.prompt;
   request.image = asset.originalUrl || asset.original_url || asset.download_url || asset.downloadUrl || asset.imageUrl;
   if (edit_mode === 'multi_angle') {
-    request.model = 'sp-gpt-image-2';
+    request.model = 'gpt-image-2';
     request.internal_prompt = input.internal_prompt;
   }
   if (edit_mode === 'inpaint' && !request.prompt?.trim()) throw new Error('请输入重绘提示词');

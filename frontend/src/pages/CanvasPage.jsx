@@ -3,7 +3,7 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L100；grouping L128；referenceGraph L139；handleNodesChange L194；addNode L256；连线起点 L310；反向上游连接 L318；连线结束 L419；React Flow L520
+ *   CanvasPage L104；grouping L133；referenceGraph L147；handleNodesChange L203；addNode L266；连线起点 L320；反向上游连接 L328；连线结束 L429；React Flow L530
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
  *   CanvasProjectHeader components/canvas；左上角品牌与项目名称
@@ -13,6 +13,7 @@
  *   CanvasMiniMap       components/canvas；双层背景的交互预览地图
  *
  * ─── 业务边界 ────────────────────────────────────────────────────
+ *   2026-10-09：节点右键操作接入历史；组堆叠复用文件夹，双击切换，展开平滑聚焦且不主动放大。
  *   节点与连线为本地草稿；文本、图片、视频和音频生成已接入，文档保存尚未接入。
  *   2026-10-08：音频文本按连线顺序追加；音频任务独立编排，请求前建立结果节点及直连素材关系。
  *   2026-09-28：UseCanvasReferences 编排参考图及文本到音频连线，连接时单次导入正文。
@@ -64,6 +65,9 @@ import { CanvasNodeAddMenu, CANVAS_NODE_MENU_ITEMS, canvasNodeTypes, createCanva
 import CanvasConnectionEdge from '../components/canvas/CanvasConnectionEdge';
 import { useCanvasAudioGeneration } from '../components/canvas/UseCanvasAudioGeneration';
 import { resolveCanvasLeftConnection } from '../components/canvas/CanvasLeftConnection';
+import { useCanvasNodeActions } from '../components/canvas/UseCanvasNodeActions';
+import { getCanvasStackPresentation } from '../components/canvas/CanvasNodeActions';
+import CanvasNodeActionOverlays from '../components/canvas/CanvasNodeActionOverlays';
 
 // 浏览器 click 先于 dblclick 触发；保留极短窗口，避免双击时先展开创作框。
 const CANVAS_SINGLE_CLICK_DELAY = 200;
@@ -116,6 +120,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const [connectionTargetStatus, setConnectionTargetStatus] = useState('');
   const [pendingConnection, setPendingConnection] = useState(null);
   const [upstreamConnection, setUpstreamConnection] = useState(null);
+  const [actionDialog, setActionDialog] = useState(null);
   const canvasContainerRef = useRef(null);
   const dragPositionsRef = useRef(new Map());
   const pendingNodeClicksRef = useRef(new Map());
@@ -123,9 +128,12 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     pendingNodeClicksRef.current.forEach((timer) => window.clearTimeout(timer));
     pendingNodeClicksRef.current.clear();
   }, []);
-  const history = useCanvasHistory(cancelPendingClicks, !assetPickerOpen && !profileOpen);
+  const history = useCanvasHistory(cancelPendingClicks, !assetPickerOpen && !profileOpen && !actionDialog);
   const { nodes, setNodes } = history;
-  const grouping = useCanvasGrouping(nodes, setNodes, cancelPendingClicks, !assetPickerOpen && !profileOpen);
+  const grouping = useCanvasGrouping(nodes, setNodes, cancelPendingClicks, false);
+  const nodeActions = useCanvasNodeActions({ nodes, setNodes, cancelPendingClicks, flowInstance,
+    containerRef: canvasContainerRef, enabled: loadedCanvasId === canvasId && !error && !assetPickerOpen && !profileOpen,
+    dialog: actionDialog, setDialog: setActionDialog });
   const generateText = useCanvasTextGeneration(nodes, setNodes, canvasId, cancelPendingClicks);
   const generateImage = useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks);
   const generateVideo = useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks);
@@ -137,6 +145,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     setAssetPickerOpen(true);
   }, []);
   const referenceGraph = useCanvasReferences(grouping.nodes, setNodes, openReferencePicker);
+  const presentation = getCanvasStackPresentation(referenceGraph.nodes, referenceGraph.edges);
 
   const clearPendingConnection = useCallback(() => {
     setPendingConnection(null);
@@ -173,14 +182,14 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const loading = loadedCanvasId !== canvasId;
   useEffect(() => {
     const onKeyDown = (event) => {
-      const tool = getCanvasToolShortcut(event, !loading && !error && !assetPickerOpen && !profileOpen);
+      const tool = getCanvasToolShortcut(event, !loading && !error && !assetPickerOpen && !profileOpen && !actionDialog);
       if (!tool) return;
       event.preventDefault();
       setActiveTool(tool);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [loading, error, assetPickerOpen, profileOpen]);
+  }, [loading, error, assetPickerOpen, profileOpen, actionDialog]);
   const handleLogout = async () => {
     try {
       await apiLogout();
@@ -194,7 +203,8 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const handleNodesChange = useCallback((changes) => {
     if (changes.some((change) => change.type === 'select' || change.type === 'remove')) cancelPendingClicks();
     setNodes((current) => {
-      let next = applyNodeChanges(changes, current);
+      const persistedChanges = changes.filter((change) => !(change.type === 'dimensions' && current.find((node) => node.id === change.id)?.data.stacked));
+      let next = applyNodeChanges(persistedChanges, current);
       if (next.filter((node) => node.selected).length !== 1) next = setCanvasSelection(next, next.filter((node) => node.selected).map((node) => node.id));
       return fitCanvasGroups(next);
     }, { record: changes.some((change) => !['select', 'dimensions'].includes(change.type)) });
@@ -517,13 +527,17 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     <CanvasProjectHeader canvasName={projectName} onBackHome={onBackHome} />
     <CanvasUserMenu currentUser={currentUser} onLogout={handleLogout} onOpenProfile={() => setProfileOpen(true)} />
     <div ref={canvasContainerRef} className="absolute inset-0 bg-surface-toolbar">
-      <ReactFlow defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+      <ReactFlow defaultViewport={{ x: 0, y: 0, zoom: 1 }} minZoom={0.01}
         onWheelCapture={handleCanvasWheelCapture}
-        nodes={referenceGraph.nodes.map((node) => ({ ...node, data: { ...node.data, connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
+        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
           onContentChange: (nodeId, content) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, content } } : item)),
           onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)),
           onModelChange: (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item)),
-          onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : node.type === 'image' ? { onGenerate: generateImage } : node.type === 'video' ? { onGenerate: generateVideo } : node.type === 'audio' ? { onGenerate: generateAudio } : {}) } }))} edges={referenceGraph.edges} edgeTypes={CANVAS_EDGE_TYPES} onEdgesChange={referenceGraph.onEdgesChange}
+          onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : node.type === 'image' ? { onGenerate: generateImage } : node.type === 'video' ? { onGenerate: generateVideo } : node.type === 'audio' ? { onGenerate: generateAudio } : {}) } }))} edges={presentation.edges} edgeTypes={CANVAS_EDGE_TYPES} onEdgesChange={referenceGraph.onEdgesChange}
+        deleteKeyCode={null}
+        onNodeContextMenu={(event, node) => { clearPendingConnection(); nodeActions.onContextMenu(event, node); }}
+        onSelectionContextMenu={(event, selectedNodes) => { if (selectedNodes[0]) { clearPendingConnection(); nodeActions.onContextMenu(event, selectedNodes[0]); } }}
+        onMoveStart={nodeActions.closeMenu}
         nodesConnectable={activeTool !== 'hand'} onConnect={referenceGraph.onConnect} isValidConnection={referenceGraph.isValidConnection} nodeTypes={canvasNodeTypes} onInit={setFlowInstance}
         onNodesChange={handleNodesChange} onNodeClick={handleNodeClick}
         onConnectStart={handleConnectStart}
@@ -531,6 +545,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
         onBeforeDelete={async ({ nodes: removedNodes, edges: removedEdges }) => { cancelPendingClicks(); if (removedNodes.length || removedEdges.length) history.begin(); return true; }}
         onDelete={() => history.end()}
         onNodeDoubleClick={(event, node) => {
+          if (node.type === 'canvasGroup') { nodeActions.onGroupDoubleClick(event, node); return; }
           if (activeTool !== 'hand' && node.type !== 'canvasGroup' && !event.target.closest('button, input, textarea')) grouping.enterNode(node.id);
         }}
         onNodeDragStart={handleNodeDragStart} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop}
@@ -610,5 +625,8 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       includeSeedanceLibrary
     />
     <ProfileModal open={profileOpen} currentUser={currentUser} onClose={() => setProfileOpen(false)} onLogout={handleLogout} onProfileUpdated={(updated) => setCurrentUser((previous) => ({ ...previous, ...updated }))} />
+    <CanvasNodeActionOverlays menu={nodeActions.menu} dialog={nodeActions.dialog} nodes={nodes}
+      canPaste={nodeActions.clipboard.length > 0} onAction={nodeActions.execute} onCloseMenu={nodeActions.closeMenu}
+      onCloseDialog={nodeActions.closeDialog} onNameChange={nodeActions.setName} onConfirm={nodeActions.confirm} />
   </div>;
 }

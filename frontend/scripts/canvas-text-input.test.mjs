@@ -21,6 +21,13 @@ function createHandlers() {
 
 const event = (value, isComposing = false) => ({ currentTarget: { value }, nativeEvent: { isComposing } });
 
+test('非编辑正文放行画布滚动，编辑状态保留输入框滚动隔离', () => {
+  assert.match(source, /canvas-node__text-content \$\{editing \? 'nodrag nowheel nopan' : ''\}/);
+  const textarea = source.match(/<textarea[\s\S]*?\/>/)?.[0];
+  assert.ok(textarea);
+  assert.match(textarea, /className="canvas-node__text-editor nodrag nowheel nopan"/);
+});
+
 test('编辑正文不再受画布回传值控制，保留组合输入事件', () => {
   const textarea = source.match(/<textarea[\s\S]*?\/>/)?.[0];
   assert.ok(textarea);

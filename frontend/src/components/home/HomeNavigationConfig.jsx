@@ -20,11 +20,6 @@ const NAV_ITEMS = [
     ),
   },
   {
-    key: 'canvas',
-    label: '画布',
-    icon: <img src={canvasNavIcon} width="16" height="16" alt="" style={ICON_STYLE} />,
-  },
-  {
     key: 'project',
     label: '项目',
     icon: (
@@ -50,6 +45,11 @@ const NAV_ITEMS = [
         </defs>
       </svg>
     ),
+  },
+  {
+    key: 'canvas',
+    label: '画布',
+    icon: <img src={canvasNavIcon} width="16" height="16" alt="" style={ICON_STYLE} />,
   },
   {
     key: 'assets',

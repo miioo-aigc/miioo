@@ -73,9 +73,10 @@ async function refreshAccessTokenResult() {
         setTokens(data.access_token, data.refresh_token);
         return { ok: true, shouldLogout: false };
       }
-      return { ok: false, shouldLogout: false };
-    } catch {
-      return { ok: false, shouldLogout: false };
+      return { ok: false, shouldLogout: false, status: 502 };
+    } catch (cause) {
+      return { ok: false, shouldLogout: false, cause,
+        status: cause instanceof SyntaxError ? 502 : undefined };
     } finally {
       refreshPromise = null;
     }
@@ -93,13 +94,20 @@ function handleRefreshFailure(result) {
   if (result.shouldLogout) {
     clearTokens();
     window.dispatchEvent(new CustomEvent('auth:logout'));
+    throw createUnauthorizedError();
   }
-  throw createUnauthorizedError();
+  const error = new Error('登录服务暂时不可用，请稍后重试');
+  error.status = result.status;
+  error.isNetworkError = !result.status;
+  error.cause = result.cause;
+  throw error;
 }
 
 async function ensureAccessToken() {
   if (getToken()) return true;
-  return refreshAccessToken();
+  const result = await refreshAccessTokenResult();
+  if (!result.ok) handleRefreshFailure(result);
+  return true;
 }
 
 function createUnauthorizedError() {

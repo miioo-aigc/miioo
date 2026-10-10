@@ -1,6 +1,7 @@
 /**
  * @file CreationPage.jsx
  * @structure-index
+ *   2026-10-09：选帧查看导航由 viewSavedImage 副作用承接，保存草稿后切到图片并关闭视频详情。
  *
  * ─── 全局常量与工具函数 ─────────────────────────────── L128–L150
  *   FONT / FONT_MEDIUM、图片下载、动画注入
@@ -502,6 +503,21 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   };
 
   // Tab 和 genType 完全对应，切一个另一个跟着变
+  useEffect(() => {
+    const viewSavedImage = () => {
+      if (window.location.pathname !== '/workspace/create' || new URLSearchParams(window.location.search).get('tab') !== 'image') return;
+      saveActiveDraftRef.current?.();
+      setActiveTab('image');
+      setGenType('image');
+      setBatchMode(false);
+      setSelected(new Set());
+      setVideoDetailModal(null);
+    };
+    viewSavedImage();
+    window.addEventListener('popstate', viewSavedImage);
+    return () => window.removeEventListener('popstate', viewSavedImage);
+  }, []);
+
   const handleTabChange = (tab) => {
     saveActiveDraftRef.current?.();
     setActiveTab(tab);

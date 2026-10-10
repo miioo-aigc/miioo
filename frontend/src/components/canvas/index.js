@@ -2,6 +2,7 @@ export { default as AudioCanvasNode } from './AudioCanvasNode';
 export { default as CanvasCreationPanel } from './CanvasCreationPanel';
 export { default as CanvasAudioCreationPanel } from './CanvasAudioCreationPanel';
 export { default as CanvasNodeShell } from './CanvasNodeShell';
+export { default as CanvasNodeToolbar } from './CanvasNodeToolbar';
 export { default as ImageCanvasNode } from './ImageCanvasNode';
 export { default as TextCanvasNode } from './TextCanvasNode';
 export { default as VideoCanvasNode } from './VideoCanvasNode';

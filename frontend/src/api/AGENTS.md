@@ -33,6 +33,7 @@ export async function apiXxx(params) {
 ```
 
 - `VITE_USE_MOCK=true` 才允许返回 mock；mock 只能存在于 API 层或明确的接口适配工具。
+- 2026-10-10 画布开发入口例外：`CanvasDevelopment.js` 仅在 `import.meta.env.DEV` 下默认提供内存模拟，`VITE_CANVAS_DEV_MOCK=false` 可关闭；不影响其他业务、不持久化、不在真实请求失败后降级模拟，正式环境禁止使用。
 - mock 字段必须尽量与真实响应一致，不能为了方便页面渲染创建另一套结构。
 - 环境变量放在本地环境文件，不提交真实密钥。
 - 业务组件只有在明确属于动作组件、且 API 边界已经记录时才可以直接调用业务 API；基础 UI 禁止调用。

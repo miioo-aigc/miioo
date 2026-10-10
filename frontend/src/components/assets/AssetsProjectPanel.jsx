@@ -37,7 +37,8 @@ import { apiGetProjectAssetsPage, groupByCategory, calcProjectAssetsLimit, apiGe
 import { apiGetCreationAudio } from '../../api/creation';
 import { apiGetSubjects, apiGetSubjectDetail, apiGetEpisodes } from '../../api/subject';
 import { apiGetProjects, apiDeleteProject, apiUpdateProject, apiCopyProject, apiDownloadProjectAssets } from '../../api/project';
-import { apiGetStoryboards, apiListStoryboardMediaCandidates, apiDownloadStoryboardMediaCandidate } from '../../api/storyboard';
+import { apiGetStoryboards, apiListStoryboardMediaCandidates, apiCreateStoryboardMediaCandidate, apiDownloadStoryboardMediaCandidate } from '../../api/storyboard';
+import { buildStoryboardCandidatePayload } from '../../utils/storyboardCandidateAdapter';
 import { invalidate } from '../../utils/cache';
 import { K } from '../../utils/cacheKeys';
 import { useAssetFilter } from '../../hooks/useAssetFilter';
@@ -216,6 +217,33 @@ export default function AssetsProjectPanel() {
 
   function showToast(msg, type = 'success') {
     showGlobalToast(msg, type);
+  }
+
+  async function saveStoryboardFrame(result) {
+    const shot = storyboardDetail?.shot;
+    const storyboardId = shot?.backendId || shot?.id;
+    const imageUrl = result?.original_url || result?.originalUrl || result?.image_url || result?.imageUrl;
+    const assetId = result?.asset_id || result?.assetId || result?.id;
+    if (!storyboardId || !imageUrl || !assetId) {
+      showGlobalToast('选帧结果缺少分镜关联信息，请稍后重试', 'error');
+      return;
+    }
+    try {
+      const { payload } = buildStoryboardCandidatePayload({
+        url: imageUrl,
+        thumbnail_url: imageUrl,
+        media_type: 'image',
+        source: 'ai-generated',
+        asset_id: assetId,
+        metadata: { storyboard_id: String(storyboardId), candidate_source: 'video-frame-extract' },
+      });
+      await apiCreateStoryboardMediaCandidate(activeProject, storyboardId, payload);
+      showGlobalToast('选帧图片已经保存成功，请查看', 'success');
+      setStoryboardDetail((current) => current ? { ...current, candidates: [...(current.candidates || []), payload] } : current);
+      await loadFirstPage(activeProject, 'storyboard');
+    } catch (error) {
+      showGlobalToast(error.message || '选帧图片保存到分镜失败，请稍后重试', 'error');
+    }
   }
 
   // 资产库卡片的名称/描述以「主体」为准，而非资产记录自身。
@@ -790,6 +818,7 @@ export default function AssetsProjectPanel() {
           candidates={storyboardDetail.candidates}
           media={storyboardDetail.media}
           onClose={() => setStoryboardDetail(null)}
+          onFrameSaved={saveStoryboardFrame}
           readOnlyFinalize
           onDownload={async (media) => {
             const feedback = startDownloadFeedback();

@@ -3,17 +3,17 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L114；grouping L148；referenceGraph L162；handleNodesChange L225；addNode L288；批量导入 L329；连线起点 L385；反向上游连接 L393；连线结束 L494；React Flow L595
+ *   CanvasPage L119；grouping L156；referenceGraph L170；handleNodesChange L233；addNode L296；批量导入 L337；连线起点 L393；反向上游连接 L401；连线结束 L502；React Flow L605
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
- *   CanvasProjectHeader components/canvas；左上角品牌、会话内项目重命名与项目菜单（2026-10-09）
+ *   CanvasProjectHeader components/canvas；2026-10-10 接通开发态新建项目回调；模拟详情跳过用户接口，重命名仍为会话内。
  *   CanvasUserMenu      components/canvas；右上角用户信息与菜单
  *   CanvasCenterPrompt  components/canvas；中央空态提示
- *   CanvasToolbar       components/canvas；底部画布工具栏
+ *   CanvasToolbar       components/canvas；底部画布工具栏；2026-10-10 文本节点更多入口复用右键菜单，仅选当前卡片。
  *   CanvasMiniMap       components/canvas；双层背景的交互预览地图
  *
  * ─── 业务边界 ────────────────────────────────────────────────────
- *   2026-10-09：中央搜索通过独立组件与 Hook 编排；搜索组内节点自动展开祖先组、居中并选中。
+ *   2026-10-10：图片、视频、音频共用工具栏；CanvasVideoEditor 复用四项编辑弹窗，后台结果新增对应媒体节点并保留源节点。
  *   2026-10-09：名称双击原地重命名接入历史，右键与快捷键弹窗保留；组合双击切换、展开平滑聚焦。
  *   节点与连线为本地草稿；文本、图片、视频和音频生成已接入，文档保存尚未接入。
  *   2026-10-08：音频文本按连线顺序追加；音频任务独立编排，请求前建立结果节点及直连素材关系。
@@ -46,6 +46,7 @@ import { X } from 'lucide-react';
 import { showGlobalToast } from '../stores/toastStore';
 import '@xyflow/react/dist/style.css';
 import { apiGetCanvasDocument } from '../api/canvas';
+import { isDevelopmentCanvas } from '../api/CanvasDevelopment';
 import { apiGetCurrentUser } from '../api/user';
 import { apiLogout, clearTokens } from '../api/auth';
 import CanvasCenterPrompt from '../components/canvas/CanvasCenterPrompt';
@@ -78,6 +79,10 @@ import { resolveCanvasLeftConnection } from '../components/canvas/CanvasLeftConn
 import { useCanvasNodeActions } from '../components/canvas/UseCanvasNodeActions';
 import { getCanvasStackPresentation } from '../components/canvas/CanvasNodeActions';
 import CanvasNodeActionOverlays from '../components/canvas/CanvasNodeActionOverlays';
+import LocalImageEditor from '../components/image-edit/LocalImageEditor';
+import { useCanvasImageEdits } from '../components/canvas/UseCanvasImageEdits';
+import { useCanvasVideoEdits } from '../components/canvas/UseCanvasVideoEdits';
+import CanvasVideoEditor from '../components/canvas/CanvasVideoEditor';
 
 // 浏览器 click 先于 dblclick 触发；保留极短窗口，避免双击时先展开创作框。
 const CANVAS_SINGLE_CLICK_DELAY = 200;
@@ -111,7 +116,7 @@ function UnsupportedAction({ onClose }) {
   return <div className="absolute bottom-[92px] left-1/2 z-20 flex w-[280px] -translate-x-1/2 items-center justify-between rounded-[12px] border border-white-10 bg-surface-modal px-[14px] py-[10px] text-[13px] text-text-secondary shadow-[0_8px_28px_rgba(0,0,0,0.35)]"><span>该入口将在后续阶段开放</span><button type="button" className="border-0 bg-transparent p-0 text-text-hint" onClick={onClose} aria-label="关闭提示"><X size={16} /></button></div>;
 }
 
-export default function CanvasPage({ canvasId, onBackHome, onBackProjects }) {
+export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCreateProject }) {
   const [canvas, setCanvas] = useState(null);
   const [currentUser, setCurrentUser] = useState({});
   const [profileOpen, setProfileOpen] = useState(false);
@@ -124,6 +129,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects }) {
   const [assetTarget, setAssetTarget] = useState(null);
   const [nodeMenu, setNodeMenu] = useState(null);
   const [flowInstance, setFlowInstance] = useState(null);
+  const [viewportZoom, setViewportZoom] = useState(1);
   const [connectingNodeId, setConnectingNodeId] = useState(null);
   const [connectingHandleType, setConnectingHandleType] = useState('');
   const [connectionTargetId, setConnectionTargetId] = useState(null);
@@ -142,6 +148,8 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const history = useCanvasHistory(cancelPendingClicks, !assetPickerOpen && !profileOpen && !actionDialog && !searchOpen);
   const { nodes, setNodes } = history;
+  const imageEdits = useCanvasImageEdits({ nodes, setNodes, canvasId, cancelPendingClicks });
+  const videoEdits = useCanvasVideoEdits({ nodes, setNodes, canvasId, cancelPendingClicks });
   const projectName = canvas?.project_name || canvas?.projectName || '自由画布项目';
   const canvasFiles = useCanvasFileActions({ nodes, setNodes, name: projectName, flowInstance, canvasId });
   const search = useCanvasSearch({ nodes, setNodes, flowInstance, containerRef: canvasContainerRef, cancelPendingClicks, open: searchOpen, setOpen: setSearchOpen });
@@ -174,7 +182,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects }) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.allSettled([apiGetCanvasDocument(canvasId), apiGetCurrentUser()]).then(([documentResult, userResult]) => {
+    Promise.allSettled([apiGetCanvasDocument(canvasId), isDevelopmentCanvas(canvasId) ? Promise.resolve({}) : apiGetCurrentUser()]).then(([documentResult, userResult]) => {
       if (cancelled) return;
       if (documentResult.status === 'rejected') {
         setError(documentResult.reason?.message || '画布加载失败，请返回重试');
@@ -588,17 +596,21 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects }) {
   }, []);
 
   return <div className="relative h-screen w-screen overflow-hidden bg-surface-base text-text-primary [font-synthesis:none] antialiased">
+    {imageEdits.editor && <LocalImageEditor key={`${imageEdits.editor.card.imageUrl}:${imageEdits.editor.mode}`} {...imageEdits.editor} onClose={imageEdits.close} />}
+    {videoEdits.editor && <CanvasVideoEditor key={`${videoEdits.editor.videoUrl}:${videoEdits.editor.mode}`} editor={videoEdits.editor} onClose={videoEdits.close} />}
     <CanvasFileInput inputRef={canvasFiles.inputRef} onChange={canvasFiles.importFile} />
-    <CanvasProjectHeader canvasName={projectName} onBackHome={onBackHome} onBackProjects={onBackProjects} onImport={canvasFiles.open} onUnsupported={handleUnsupported} onRename={(name) => setCanvas((current) => ({ ...current, project_name: name }))} />
+    <CanvasProjectHeader canvasName={projectName} onBackHome={onBackHome} onBackProjects={onBackProjects} onCreateProject={onCreateProject} onImport={canvasFiles.open} onUnsupported={handleUnsupported} onRename={(name) => setCanvas((current) => ({ ...current, project_name: name }))} />
     <CanvasUserMenu currentUser={currentUser} onLogout={handleLogout} onOpenProfile={() => setProfileOpen(true)} />
     <div ref={canvasContainerRef} className="absolute inset-0 bg-surface-toolbar">
       <ReactFlow defaultViewport={{ x: 0, y: 0, zoom: 1 }} minZoom={0.01}
         onWheelCapture={handleCanvasWheelCapture}
-        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
+        onMove={(_, viewport) => setViewportZoom(viewport.zoom)}
+        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, viewportZoom, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
+          onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); },
           onContentChange: (nodeId, content) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, content } } : item)),
           onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)),
           onModelChange: (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item)),
-          onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : node.type === 'image' ? { onGenerate: generateImage } : node.type === 'video' ? { onGenerate: generateVideo } : node.type === 'audio' ? { onGenerate: generateAudio } : {}) } }))} edges={presentation.edges} edgeTypes={CANVAS_EDGE_TYPES} onEdgesChange={referenceGraph.onEdgesChange}
+          onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : node.type === 'image' ? { onGenerate: generateImage, onImageEdit: imageEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); } } : node.type === 'video' ? { onGenerate: generateVideo, onVideoEdit: videoEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); } } : node.type === 'audio' ? { onGenerate: generateAudio, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); } } : {}) } }))} edges={presentation.edges} edgeTypes={CANVAS_EDGE_TYPES} onEdgesChange={referenceGraph.onEdgesChange}
         deleteKeyCode={null}
         onNodeContextMenu={(event, node) => { clearPendingConnection(); nodeActions.onContextMenu(event, node); }}
         onSelectionContextMenu={(event, selectedNodes) => { if (selectedNodes[0]) { clearPendingConnection(); nodeActions.onContextMenu(event, selectedNodes[0]); } }}

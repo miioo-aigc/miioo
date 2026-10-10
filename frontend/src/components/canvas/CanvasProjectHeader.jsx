@@ -4,7 +4,7 @@
  *
  * ─── 展示层 ─────────────────────────────────────────────────────
  *   CanvasProjectHeader 画布左上角品牌、项目名称和项目入口 L16
- *   2026-10-09 名称编辑与项目菜单拆分，动作由页面显式回调提供；直接指定箭头图标白色80%
+ *   2026-10-10 新建项目接收显式回调；未提供时保留原暂不支持行为。名称和菜单样式不变。
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -13,7 +13,7 @@ import { DropdownMenu } from '../ui';
 import { ChevronDown } from 'lucide-react';
 import { normalizeProjectName, PROJECT_NAME_MAX_LENGTH, validateProjectName } from './CanvasProjectName';
 
-export default function CanvasProjectHeader({ canvasName, onBackHome, onBackProjects, onRename, onImport, onUnsupported }) {
+export default function CanvasProjectHeader({ canvasName, onBackHome, onBackProjects, onRename, onImport, onUnsupported, onCreateProject }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(canvasName || '未命名项目');
@@ -123,7 +123,7 @@ export default function CanvasProjectHeader({ canvasName, onBackHome, onBackProj
           <ChevronDown size={16} strokeWidth={1} style={{ color: 'var(--color-white-80)' }} />
         </button>
         {menuOpen && <DropdownMenu width="200px" onClose={() => setMenuOpen(false)} style={{ top: 'calc(100% + 8px)', bottom: 'auto', left: 0, right: 'auto', marginBottom: 0 }} items={[
-          { key: 'new', label: '新建项目', onClick: onUnsupported },
+          { key: 'new', label: '新建项目', onClick: onCreateProject || onUnsupported },
           { key: 'copy', label: '复制项目', onClick: onUnsupported },
           { key: 'import', label: '导入画布文件', onClick: onImport },
           { key: 'back', label: '返回全部项目', onClick: onBackProjects },

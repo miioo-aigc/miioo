@@ -967,6 +967,31 @@ function hasStoryboardMediaHint(shot = {}) {
     }
   }
 
+  async function saveExtractedFrame(shot, result) {
+    const shotId = shot?.backendId || shot?.id;
+    const imageUrl = result?.original_url || result?.originalUrl || result?.image_url || result?.imageUrl;
+    const assetId = result?.asset_id || result?.assetId || result?.id;
+    if (!isBackendStoryboardId(shotId) || !imageUrl || !assetId) {
+      showGlobalToast('选帧结果缺少分镜关联信息，请稍后重试', 'error');
+      return;
+    }
+    const candidate = await saveCandidateMedia(shotId, {
+      id: assetId,
+      url: imageUrl,
+      thumbnail_url: imageUrl,
+      media_type: 'image',
+      source: 'ai-generated',
+      asset_id: assetId,
+      metadata: { storyboard_id: String(shotId), candidate_source: 'video-frame-extract' },
+    });
+    if (!candidate) {
+      showGlobalToast('选帧图片保存到分镜失败，请稍后重试', 'error');
+      return;
+    }
+    await refreshCandidateForShot(shot);
+    showGlobalToast('选帧图片已经保存成功，请查看', 'success');
+  }
+
   async function copyPersistedCandidateMedia(sourceShot, targetShotId) {
     const sourceShotId = sourceShot?.backendId || sourceShot?.id;
     let persistedCandidates = [];
@@ -2660,6 +2685,7 @@ function hasStoryboardMediaHint(shot = {}) {
         onClose={() => setTimelinePreviewMedia(null)}
         onFinalizeChange={handleTimelineFinalizeChange}
         onDownload={(media) => downloadCandidateMedia(media, timelinePreviewMedia.shot)}
+        onFrameSaved={(result) => saveExtractedFrame(timelinePreviewMedia.shot, result)}
       />
     ) : null}
     {creationPanel && (

@@ -1,4 +1,24 @@
 .canvas-node { --file-upload-button-font-size: 14px; --file-upload-button-line-height: 18px; --file-upload-button-text-color: rgba(255, 255, 255, 0.60); position: relative; width: 240px; color: var(--color-text-primary); font-family: inherit; }
+/* 以卡片上沿定位：固定24px标题区，加8px工具栏间距。 */
+.canvas-node__toolbar-scale { position: absolute; z-index: 12; top: 24px; left: 50%; width: 152px; height: 42px; transform: translateX(-50%) scale(var(--canvas-inverse-zoom, 1)) translateY(calc(-100% - 32px)); transform-origin: top center; }
+.canvas-node__toolbar { display: flex; width: 152px; height: 42px; box-sizing: border-box; align-items: center; justify-content: center; gap: 12px; border: 1px solid var(--color-stroke-normal); border-radius: 22px; outline: 1px solid var(--color-stroke-outline); background: var(--color-surface-toolbar); box-shadow: 0 4px 16px var(--color-shadow); }
+.canvas-node__toolbar-button { width: 32px !important; height: 32px !important; border-radius: 50% !important; color: var(--color-white-80); }
+.canvas-node__toolbar-button:hover:not(:disabled) { background: var(--color-white-5); color: var(--color-text-primary); }
+.canvas-node__toolbar-button:active:not(:disabled) { color: var(--color-white-60); }
+.canvas-node__toolbar-button:disabled { color: var(--color-white-40); opacity: 1; }
+.canvas-node__toolbar-icon { color: inherit !important; }
+/* 实心超清图标仅在默认态补偿视觉重量，其他状态保持统一色值。 */
+.canvas-node[data-node-type='image'] .canvas-node__toolbar-button[aria-label='智能超清']:not(:hover):not(:active):not(:disabled) svg,
+.canvas-node[data-node-type='video'] .canvas-node__toolbar-button[aria-label='智能超清']:not(:hover):not(:active):not(:disabled) svg { opacity: 0.75; }
+.canvas-node__toolbar-presence { width: 100%; transform-origin: bottom center; transform: scale(0.3); opacity: 0; }
+.canvas-node[data-node-type='text'] .canvas-node__toolbar-scale,
+.canvas-node[data-node-type='text'] .canvas-node__toolbar { width: 196px; }
+.canvas-node[data-node-type='image'] .canvas-node__toolbar-scale,
+.canvas-node[data-node-type='image'] .canvas-node__toolbar { width: 416px; }
+.canvas-node[data-node-type='video'] .canvas-node__toolbar-scale,
+.canvas-node[data-node-type='video'] .canvas-node__toolbar { width: 284px; }
+.canvas-node[data-node-type='audio'] .canvas-node__toolbar-scale,
+.canvas-node[data-node-type='audio'] .canvas-node__toolbar { width: 108px; }
 .canvas-node__text-result { flex-shrink: 0; }
 .canvas-group { position: relative; width: 100%; height: 100%; box-sizing: border-box; border: 1px solid var(--color-stroke-normal); border-radius: 20px; background: var(--color-white-5); }
 .canvas-group__name { position: absolute; bottom: calc(100% + 8px); left: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-secondary); font-size: 12px; line-height: 16px; }
@@ -17,7 +37,9 @@
 /* 多选只强调卡片本体；普通单选不增加外壳描边。 */
 .react-flow__nodes:has(> .react-flow__node.selected ~ .react-flow__node.selected) > .react-flow__node.selected > .canvas-node > .canvas-node__frame { border-color: var(--color-stroke-active); }
 .react-flow__selection { border: 1px solid var(--color-stroke-active); background: var(--color-tag-bg-blue); }
-.canvas-node__header { display: flex; align-items: center; gap: 4px; height: 16px; margin-bottom: 8px; color: var(--color-text-secondary); font-size: 12px; line-height: 16px; }
+.canvas-node__header-slot { position: relative; height: 24px; }
+.canvas-node__header { position: absolute; top: 24px; left: 0; display: flex; align-items: center; gap: 4px; width: calc(100% * var(--canvas-header-zoom, 1)); height: 16px; transform: scale(var(--canvas-header-inverse-zoom, 1)) translateY(-24px); transform-origin: top left; color: var(--color-text-secondary); font-size: 12px; line-height: 16px; }
+.canvas-node__header .canvas-editable-name { flex: 1; min-width: 0; }
 .canvas-node__frame { --canvas-drag-scale-x: 1; --canvas-drag-scale-y: 1; position: relative; display: flex; width: 240px; min-height: 240px; box-sizing: border-box; align-items: center; justify-content: center; overflow: visible; border: 1px solid var(--color-stroke-normal); border-radius: 16px; outline: 1px solid var(--color-stroke-outline); background: var(--color-surface-content-area); transition: border-color 160ms ease; }
 /* 保留内容布局与本地素材生命周期，生成时只展示外壳、端口及加载动画。 */
 .canvas-node__frame[aria-busy='true'] > :not(.canvas-node__port):not(.canvas-node__loading) { visibility: hidden; pointer-events: none; }
@@ -85,7 +107,7 @@
 .canvas-node__waveform { display: flex; height: 32px; min-height: 20px; align-items: flex-end; gap: 2px; overflow: hidden; }
 .canvas-node__waveform i { display: block; width: 2px; flex: 0 0 2px; border-radius: 4px; background: var(--color-white-10); }
 .canvas-node__waveform[data-active='true'] i { background: var(--color-brand-main); }
-.canvas-creation-panel { position: relative; left: 50%; transform: translateX(-50%); width: 600px; box-sizing: border-box; margin-top: 8px; }
+.canvas-creation-panel { position: relative; left: 50%; transform: translateX(-50%); width: 600px; box-sizing: border-box; margin-top: 0; }
 .canvas-audio-creation-panel { width: max-content; }
 .canvas-audio-creation-panel .composer-surface__toolbar { flex-direction: column; align-items: stretch; gap: var(--spacing-8); }
 .canvas-audio-creation-panel__advanced-row { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-32); }
@@ -97,6 +119,7 @@
 .canvas-audio-creation-panel .creation-prompt-editor--voice-wrap[data-empty='true']::before { display: none; }
 .canvas-node:has(.canvas-audio-creation-panel .composer-surface__editor:focus) > .canvas-node__frame { border-color: var(--color-stroke-active); }
 .canvas-creation-presence { width: 240px; transform-origin: top center; transform: scale(0.3); opacity: 0; }
+.canvas-creation-scale { width: 240px; padding-top: 8px; transform: scale(var(--canvas-inverse-zoom, 1)); transform-origin: top center; }
 .canvas-creation-presence[inert] { pointer-events: none; }
 .canvas-creation-panel__editor { width: 100%; align-self: stretch; box-sizing: border-box; }
 .canvas-creation-panel[data-references='true'] .composer-surface__body { flex-direction: column; height: auto; gap: 8px; }

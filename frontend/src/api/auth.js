@@ -3,6 +3,21 @@ const BASE = import.meta.env.VITE_API_BASE_URL;
 import { setTokens, clearTokens as _clearTokens, authFetch } from './request.js';
 export { clearTokens } from './request.js';
 
+async function readAuthResponse(res) {
+  if (!res.ok) {
+    const error = new Error(res.status >= 500
+      ? `登录服务暂时不可用（${res.status}），请稍后重试`
+      : `认证请求失败（${res.status}）`);
+    error.status = res.status;
+    try {
+      const data = await res.json();
+      if (res.status < 500 && typeof data.detail === 'string') error.message = data.detail;
+    } catch { /* 网关可能返回 HTML，仍保留真实状态码。 */ }
+    throw error;
+  }
+  return res.json();
+}
+
 export async function apiSendCode(phone) {
   const res = await fetch(`${BASE}/api/auth/send-code`, {
     credentials: 'include',
@@ -27,7 +42,7 @@ export async function apiLogin({ phone, password }) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, password }),
   });
-  const data = await res.json();
+  const data = await readAuthResponse(res);
   if (data.access_token) setTokens(data.access_token, data.refresh_token);
   return data;
 }
@@ -39,7 +54,7 @@ export async function apiVerifyCodeLogin({ phone, code }) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, code }),
   });
-  const data = await res.json();
+  const data = await readAuthResponse(res);
   if (data.access_token) setTokens(data.access_token, data.refresh_token);
   return data;
 }
@@ -51,7 +66,7 @@ export async function apiRegister({ phone, password, nickname }) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, password, nickname }),
   });
-  const data = await res.json();
+  const data = await readAuthResponse(res);
   if (data.access_token) setTokens(data.access_token, data.refresh_token);
   return data;
 }
@@ -67,7 +82,7 @@ export async function apiGetCurrentUser() {
   const res = await authFetch(`${BASE}/api/auth/me`, {
     headers: { 'Content-Type': 'application/json' },
   });
-  return res.json();
+  return readAuthResponse(res);
 }
 
 // ── legacy aliases kept for existing callers ──────────────────────────────────

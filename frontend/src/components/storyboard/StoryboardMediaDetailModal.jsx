@@ -550,7 +550,7 @@ function CandidateThumbnail({ media, active, onClick }) {
   );
 }
 
-export default function StoryboardMediaDetailModal({ projectId, shot, candidates = [], media, onClose, onDownload, onDelete, onFavorite }) {
+export default function StoryboardMediaDetailModal({ projectId, shot, candidates = [], media, onClose, onDownload, onDelete, onFavorite, onFrameSaved }) {
   const edits = useLocalImageEdits(`storyboard:${projectId || shot?.project_id}:${shot?.id}`);
   const [editMode, setEditMode] = useState(null);
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
@@ -726,12 +726,16 @@ export default function StoryboardMediaDetailModal({ projectId, shot, candidates
       posterUrl={activePoster}
       sourceAsset={activeMedia}
       onClose={() => setTrimOpen(false)}
+      onCloseDetail={onClose}
     />}
     {video && frameOpen && <VideoFrameModal
       key={activeMedia.id || activeMedia.url}
-      videoUrl={normalizeImageUrl(activeMedia.download_url || activeMedia.downloadUrl || activeMedia.original_url || activeMedia.originalUrl || activeMedia.video_url || activeMedia.videoUrl || activeMedia.url)}
+      videoUrl={normalizeImageUrl(activeMedia.preview_video_url || activeMedia.previewVideoUrl || activeMedia.url)}
+      originalVideoUrl={normalizeImageUrl(activeMedia.download_url || activeMedia.downloadUrl || activeMedia.original_url || activeMedia.originalUrl || activeMedia.video_url || activeMedia.videoUrl || activeMedia.url)}
       sourceAsset={activeMedia}
       onClose={() => setFrameOpen(false)}
+      onSaved={onFrameSaved}
+      persistToCreation={!onFrameSaved}
     />}
     {video && subtitleOpen && <VideoSubtitleModal
       key={activeMedia.id || activeMedia.url}

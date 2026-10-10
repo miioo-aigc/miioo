@@ -2,6 +2,7 @@ const BASE = import.meta.env.VITE_API_BASE_URL;
 
 import { authFetch } from './request.js';
 import { normalizeImageUrl } from '../utils/imageUrl.js';
+import { mayShowEditPrompt, readEditMetadata } from '../utils/MediaEditPolicy.js';
 import { apiGetStoryboards, apiListStoryboardMediaCandidates } from './storyboard.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
@@ -484,6 +485,7 @@ function normalizeAsset(item) {
     : (metadata || {});
   const isVideo = item.asset_type === 'video';
   return {
+    ...readEditMetadata(item),
     id: item.id,
     assetType: item.asset_type ?? null,
     name: item.name,
@@ -509,8 +511,8 @@ function normalizeAsset(item) {
     largeUrl: !isVideo ? (normalizeImageUrl(item.large_url || item.largeUrl) || null) : null,
     starred: item.is_starred ?? false,
     description: item.description ?? '',
-    prompt: item.prompt ?? item.input_prompt ?? item.inputPrompt ?? meta.prompt ?? meta.text ?? '',
-    input_prompt: item.input_prompt ?? '',
+    prompt: mayShowEditPrompt(item) ? (item.prompt ?? item.input_prompt ?? item.inputPrompt ?? meta.prompt ?? meta.text ?? '') : '',
+    input_prompt: mayShowEditPrompt(item) ? (item.input_prompt ?? '') : '',
     advancedEnabled: item.is_advanced_mode
       ?? item.advanced_mode_enabled
       ?? item.advanced_enabled

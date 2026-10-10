@@ -163,6 +163,17 @@ export const useCreationStore = create(
           };
         }),
 
+      replaceGeneration: (tab, genId, generation) =>
+        set((state) => {
+          const existing = state.generationsByTab[tab] ?? [];
+          const items = existing.some((item) => item.id === genId)
+            ? existing.map((item) => item.id === genId ? generation : item)
+            : [...existing, generation];
+          return { generationsByTab: { ...state.generationsByTab, [tab]: dedupeByMediaAliases(
+            items, (entry) => getHistoryDeduplicationAliases(tab, entry.cards?.[0]), mergeGenerations,
+          ) } };
+        }),
+
       updateCardIds: (tab, genId, cardIds) =>
         set((state) => ({
           generationsByTab: {

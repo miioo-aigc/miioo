@@ -35,6 +35,7 @@
  *   2026-09-08  用作参考图提交原图；缺少可用原图时提示并阻止追加
  *   2026-09-08  多机位复用 onGenerate 创建独立任务，收到任务编号后关闭编辑弹窗
  *   2026-10-08  编辑占位进入既有 generations 数据流，复用最新优先展示
+ *   2026-10-10  创作视频详情补齐新生成卡片的真实资产编号，保留历史编号与全局校验
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -51,7 +52,7 @@ import CreationAudioResultCard from './CreationAudioResultCard';
 import CreationImageResultCard from './CreationImageResultCard';
 import CreationVideoResultCard from './CreationVideoResultCard';
 import CreationInputDock from './CreationInputDock';
-import { creationEditScope, creationImageIdentity } from './CreationEditResults';
+import { creationEditScope, creationImageIdentity, creationVideoIdentity } from './CreationEditResults';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 export default function CreationResultState({
@@ -123,7 +124,8 @@ export default function CreationResultState({
       lastFrameUrl: gen.lastFrameUrl,
       createdAt: gen.createdAt,
       _needsDetail: gen._needsDetail,
-      backendId: card.type === 'image' ? creationImageIdentity(card) || gen.backendId : gen.backendId,
+      backendId: card.type === 'image' ? creationImageIdentity(card) || gen.backendId
+        : card.type === 'video' ? creationVideoIdentity(card, gen) : gen.backendId,
     }))
   );
 

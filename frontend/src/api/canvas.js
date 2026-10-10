@@ -1,5 +1,6 @@
 import { authFetch } from './request.js';
 import { throwResponseError } from './error.js';
+import { getDevelopmentCanvas, isDevelopmentCanvas } from './CanvasDevelopment.js';
 
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
@@ -26,6 +27,7 @@ export async function apiCreateCanvasDocument({ title = '未命名画布', clien
 }
 
 export async function apiGetCanvasDocument(canvasId) {
+  if (isDevelopmentCanvas(canvasId)) return getDevelopmentCanvas(canvasId);
   const response = await authFetch(canvasUrl(`/${encodeURIComponent(canvasId)}`), { headers: { 'Content-Type': 'application/json' } });
   if (!response.ok) await throwResponseError(response, `获取画布详情失败（${response.status}）`);
   return response.json();

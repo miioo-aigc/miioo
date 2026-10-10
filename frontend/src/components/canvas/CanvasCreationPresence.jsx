@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export default function CanvasCreationPresence({ open, children }) {
+export default function CanvasCreationPresence({ open, children, className = 'canvas-creation-presence' }) {
   const [present, setPresent] = useState(open);
   const elementRef = useRef(null);
   if (open && !present) setPresent(true);
@@ -32,7 +32,7 @@ export default function CanvasCreationPresence({ open, children }) {
   }, [open, present]);
 
   if (!present) return null;
-  return <div className="canvas-creation-presence" ref={elementRef} inert={!open} aria-hidden={!open}>
+  return <div className={className} ref={elementRef} inert={!open} aria-hidden={!open}>
     {children}
   </div>;
 }

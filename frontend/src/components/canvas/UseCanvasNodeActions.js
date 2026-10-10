@@ -107,6 +107,12 @@ export function useCanvasNodeActions({ nodes, setNodes, enabled, cancelPendingCl
       if (node.data.stacked) setFocusGroupId(node.id);
     },
     setName: (value) => setDialog((current) => ({ ...current, value })),
+    onMore: (nodeId, rect) => {
+      if (!enabled || dialog) return;
+      cancelPendingClicks();
+      setNodes((current) => setCanvasSelection(current, [nodeId], true), { record: false });
+      setMenu({ id: nodeId, x: rect.right - 200, y: rect.bottom + 8 });
+    },
     onContextMenu: (event, node) => {
       if (!enabled || dialog || event.target.closest?.('input, textarea, [contenteditable="true"]')) return;
       event.preventDefault();

@@ -29,6 +29,7 @@ export function buildImageEditRequest(asset, options = {}) {
   if (edit_mode === 'multi_angle') {
     request.model = 'gpt-image-2';
     request.internal_prompt = input.internal_prompt;
+    request.multi_angle_options = input.multi_angle_options;
   }
   if (edit_mode === 'inpaint' && !request.prompt?.trim()) throw new Error('请输入重绘提示词');
   if (['inpaint', 'erase'].includes(edit_mode) && !request.mask) throw new Error('缺少编辑蒙版');

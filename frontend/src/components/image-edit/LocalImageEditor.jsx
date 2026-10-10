@@ -10,7 +10,7 @@ export default function LocalImageEditor({ mode, card, onClose, onSave, onComple
     const Editor = mode === '裁剪' ? ImageCropModal : ImageFlipModal;
     return <Editor imageUrl={card.imageUrl} sourceAsset={card} onSave={onSave} onComplete={onComplete} onClose={onClose} />;
   }
-  if (mode === '多机位') return <MultiAngleModal card={card} onClose={onClose} onComplete={onComplete} />;
+  if (mode === '多机位') return <MultiAngleModal card={card} onSave={onSave} onClose={onClose} onComplete={onComplete} />;
   if (mode === '局部重绘' || mode === '消除笔') return <InpaintModal card={card} mode={mode === '消除笔' ? 'eraser' : 'inpaint'} onClose={onClose} onSave={onSave} onComplete={onComplete} />;
   if (mode === '智能超清') return <UpscaleModal card={card} onSave={onSave} onComplete={onComplete} onClose={onClose} />;
   if (mode === '扩图') return <OutpaintModal card={card} onClose={onClose} onSave={onSave} onComplete={onComplete} />;

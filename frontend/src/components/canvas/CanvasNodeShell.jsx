@@ -1,7 +1,9 @@
 /**
  * @file CanvasNodeShell.jsx
  * @structure-index
- * CanvasNodeShell L30：节点标题、卡片、端口和创作面板组合；模型加载及卸载保护。
+ * CanvasNodeShell L33：节点标题、卡片、端口、顶部工具栏和创作面板组合；模型加载及卸载保护。
+ * 2026-10-10：标题接收视口缩放保持固定尺寸；工具栏与输入框共用激活条件及显隐动画。
+ * 2026-10-10：激活节点显示固定屏幕尺寸的顶部工具栏；下方创作面板按视口缩放反向补偿。
  * 2026-10-09：图片与视频主体采用等面积尺寸，最长边限制为480px。
  * 2026-10-09：生成态改用 Paper 动态背景及循环进度文字；保留布局、端口及发送保护。
  * 2026-09-29：端口默认隐藏，卡片悬停显示，端口悬停放大，拖拽连线期间保持激活并置于媒体内容上层；合法目标卡片显示接收描边。
@@ -24,6 +26,7 @@ import CanvasNodePorts from './CanvasNodePorts';
 import CanvasLocalUpload from './CanvasLocalUpload';
 import CanvasGenerationLoading from './CanvasGenerationLoading';
 import CanvasNodeConnectionPulse from './CanvasConnectionPulse';
+import CanvasNodeToolbar from './CanvasNodeToolbar';
 import './canvas-nodes.css';
 import { useCanvasMediaSize } from './UseCanvasMediaSize';
 
@@ -54,7 +57,8 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
   }, [nodeType]);
   const creationOpen = Boolean(selected && data?.creationPanelOpen);
   return <div className={`canvas-node ${selected ? 'canvas-node--selected' : ''}`} data-node-type={nodeType} data-media-sized={Boolean(mediaSize)} style={mediaSize ? { '--canvas-media-width': `${mediaSize.width}px`, '--canvas-media-height': `${mediaSize.height}px` } : undefined}>
-    <CanvasNodeHeader nodeType={nodeType} title={title} onRename={data?.onRename} onStart={data?.onRenameStart} />
+    <div className="canvas-node__toolbar-scale" inert={!creationOpen} style={{ '--canvas-inverse-zoom': 1 / (data?.viewportZoom || 1) }}><CanvasCreationPresence open={creationOpen} className="canvas-node__toolbar-presence"><CanvasNodeToolbar nodeType={nodeType} content={data?.content} asset={data?.asset} onAction={data?.onToolbarAction} onMore={data?.onMore} /></CanvasCreationPresence></div>
+    <CanvasNodeHeader nodeType={nodeType} title={title} zoom={data?.viewportZoom || 1} onRename={data?.onRename} onStart={data?.onRenameStart} />
     <div className="canvas-node__frame" aria-busy={Boolean(data?.generating)} data-state={data?.editing ? 'editing' : 'default'} data-connection-target={data?.connectionTarget ? 'true' : 'false'} data-connection-target-status={data?.connectionTargetStatus || ''} data-dragging={data?.dragging ? 'true' : 'false'} data-drag-release={data?.dragRelease ? 'true' : 'false'} style={{ '--canvas-drag-scale-x': data?.dragScaleX || 1, '--canvas-drag-scale-y': data?.dragScaleY || 1 }}>
       <CanvasNodePorts ports={data?.ports} connectingType={data?.connectingType} nodeActive={Boolean(selected || data?.editing || data?.generating)} onUpstreamConnectStart={(event) => data?.onUpstreamConnectStart?.(data?.nodeId, event)} />
       {data?.connectionPulses?.length > 0 && <CanvasNodeConnectionPulse pulses={data.connectionPulses} onMeasure={data.onPulseMeasure} />}
@@ -64,7 +68,7 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
       {children}
       {data?.generating && <CanvasGenerationLoading key={data.generationRequestId} message={data.generationMessageRequestId === data.generationRequestId ? data.generationMessage : undefined} />}
     </div>
-    <CanvasCreationPresence open={creationOpen}><CanvasCreationPanel
+    <CanvasCreationPresence open={creationOpen}><div className="canvas-creation-scale" style={{ '--canvas-inverse-zoom': 1 / (data?.viewportZoom || 1) }}><CanvasCreationPanel
       key={data?.promptImportVersion || 0}
       nodeId={data?.nodeId}
       nodeType={nodeType}
@@ -84,6 +88,6 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
       onAddReference={(source, mode, file) => onAddReference?.(data?.nodeId, source, mode, file)}
       onRemoveReference={(sourceId) => data?.onRemoveReference?.(data?.nodeId, sourceId)}
       onGenerate={(payload) => onGenerate?.(payload)}
-    /></CanvasCreationPresence>
+    /></div></CanvasCreationPresence>
   </div>;
 }

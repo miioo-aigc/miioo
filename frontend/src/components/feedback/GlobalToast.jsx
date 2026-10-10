@@ -56,7 +56,14 @@ export default function GlobalToast() {
             {item.kind === 'download'
               ? <LoadingAnimation width={DOWNLOAD_ANIMATION_WIDTH} style={{ height: `${DOWNLOAD_ANIMATION_HEIGHT}px` }} />
               : <ToastIcon type={item.type} />}
-            <span className="text-text-primary text-font-size-16 font-font-weight-regular" style={{ fontFamily: FONT }}>{message}</span>
+            <span className="text-text-primary text-font-size-16 font-font-weight-regular" style={{ fontFamily: FONT }}>{message}{item.action && <a href={item.action.href}
+              style={{ pointerEvents: 'auto', color: 'var(--color-text-accent)', textDecoration: 'underline', textUnderlineOffset: '3px' }}
+              onClick={(event) => {
+                if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                item.action.onClick?.();
+                useToastStore.getState().hideToast();
+              }}>{item.action.label}</a>}</span>
           </div>
         );
       })}

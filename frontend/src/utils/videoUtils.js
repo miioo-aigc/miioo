@@ -1,3 +1,5 @@
+import { toVideoMediaUrl } from './VideoMediaUrl';
+
 /**
  * 在前端使用 <video> + <canvas> 抽取视频的最后一帧为 PNG Blob
  * @param {string} videoUrl 视频 CDN URL
@@ -10,7 +12,7 @@ export function captureVideoLastFrame(videoUrl) {
     video.muted = true;
     video.playsInline = true;
     video.preload = 'auto';
-    video.src = videoUrl;
+    video.src = toVideoMediaUrl(videoUrl);
 
     let cleanup = () => {
       video.removeAttribute('src');

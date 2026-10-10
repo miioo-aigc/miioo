@@ -6,6 +6,17 @@ import { validateSourceAsset } from '../utils/MediaEditRequest';
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 export function videoEditPayload(options) {
+  if (options.mode === 'subtitle_remove') {
+    if (!Number.isFinite(options.duration) || options.duration <= 0) throw new Error('尚未读取到视频时长，请稍后重试');
+    if (options.duration < 3) throw new Error('去字幕要求源视频至少3秒（上游限制）');
+    const { x, y, width, height } = options.region || {};
+    if (![x, y, width, height].every(Number.isFinite)
+      || x < 0 || y < 0 || x > 1 || y > 1 || width <= 0 || height <= 0 || width > 1 || height > 1
+      || x + width > 1 + 1e-6 || y + height > 1 + 1e-6) {
+      throw new Error('字幕区域无效，请在视频画面内重新调整');
+    }
+    return { endpoint: 'subtitle-remove', body: { model: 'happyhorse-1.0-video-edit', region: { x, y, width, height } } };
+  }
   if (options.mode === 'frame_extract') {
     if (!Number.isFinite(options.timestamp) || options.timestamp < 0) throw new Error('未找到有效的选帧时间');
     return { endpoint: 'extract-frame', body: { timestamp: options.timestamp, format: 'png' } };
@@ -35,8 +46,14 @@ export async function submitVideoEdit(source, options) {
   const data = await response.json();
   if (!response.ok) throw Object.assign(new Error(getDisplayErrorMessage(data, `视频编辑失败（${response.status}）`)), {
     rejected: (response.status >= 400 && response.status < 500)
+      || (endpoint === 'subtitle-remove' && response.status === 501)
       || (endpoint === 'upscale' && response.status === 503 && String(data.detail).includes('编排')),
   });
+  if (response.status === 202) {
+    const taskId = data.task_id || data.taskId || data.id;
+    if (!taskId) throw new Error('后端已受理但未返回任务编号，请核查任务，不要重复提交');
+    return { ...data, task_id: taskId };
+  }
   return data;
 }
 

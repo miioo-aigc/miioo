@@ -1,5 +1,25 @@
 # 组件重构盘点基线
 
+- 2026-10-10：CanvasNodeToolbar 扩展视频与音频；VideoEditIcon 从创作视频详情抽取共用；CanvasVideoEditor 组合四项现有弹窗，UseCanvasVideoEdits 接收后台结果并新增媒体节点。VideoEditSubmissionContext 提供可选宿主提交入口，未提供时保持原创作流程；画布按画布和节点编号隔离任务，不写入创作占位。无新增基础 UI，待手动验收。
+
+- 2026-10-10：复用 ProjectList、CanvasProjectHeader 和 CanvasPage，新建项目由 Home 显式传递回调；CanvasDevelopment 在 API 层维护开发态内存项目，真实接口不降级。CanvasPage 按编号重建隔离节点和历史，模拟详情不等待真实用户请求；不新增 UI，不持久化，待手动验收。
+- 本轮验证：新建入口测试 4/4 通过，完整画布测试 213/214 通过；`scripts/canvas-shimmer.test.mjs:9` 仍断言旧 LoadingAnimation 导入，与现有 CanvasGenerationLoading 不符，本轮未修改该实现。构建、架构检查通过，lint 无错误、3 项既有警告。Home 保留现有认证/历史/工作流编排，本次仅新增路由接线，不混入模拟存储或新 UI。
+
+- 2026-10-10：VideoTrimModal 通过提交开始回调关闭双层详情；videoEditStore 复用创作占位并在剪辑失败时删除占位。新增业务组件 VideoEditNotice，常驻 App 并复用 ConfirmDialog 单按钮通知，队列由现有视频任务 Store 管理；不新增通用弹窗样式。待用户手动验收。
+
+- 2026-10-10：去字幕/超清复用现有创作视频卡片加载与失败态；videoEditStore 编排占位，creationStore.replaceGeneration 原位更新并按媒体去重；CreationVideoDetailModal 显式传 onCloseDetail。用户验收通过生成、关闭、占位、结果更新流程；去字幕效果未通过，新视频仍有字幕，原因待排查。分镜归属不变。
+
+- 2026-10-09：VideoSubtitleModal 复用 VideoEditComparison、useVideoEditSubmission、videoEditStore，不新增请求管理器；VideoEdit API 校验区域和时长，兼容202任务编号回退；遮罩几何不变，处理中禁止改框，关闭不取消任务。历史验收记录以2026-10-10反馈为准，去字幕效果未通过。
+
+- 2026-10-09：GlobalToast/toastStore 扩展可选 action（链接、文案与点击回调），普通提示时长不变；VideoFrameDestination 统一选帧结果导航白名单。详情宿主显式传来源，Home 接收历史导航并重建资产面板，CreationPage 保留草稿后切换图片并关闭视频详情。
+- 2026-10-09：用户手动验收通过选帧保存后的来源感知跳转；本次仅同步验收记录，不修改功能代码。
+
+## 2026-10-09 视频超清结果分栏（待手动验收）
+
+- 新增 video-edit/VideoEditComparison，复用图片分栏样式、LoadingAnimation、DotsLoading 与 Button；接收 submission、onRetry、children，不请求业务 API。
+- 新增 videoEditStore 承接原提交 Hook 的任务回读和资产写回，按来源与编辑类型隔离状态；Hook 只订阅与保护卸载后的回调。选帧显式传入 frame_extract，剪辑保持默认 trim。
+- VideoUpscaleModal 成功后不关闭；复用 ImageEditChrome 的 allowCloseWhileBusy，UpscaleFooter 同名开关默认关闭，保留其他调用方原行为。
+
 ## 2026-10-09 画布媒体等面积尺寸（用户手动验收通过）
 
 - 新增 CanvasMediaSize 与 UseCanvasMediaSize，统一等面积尺寸、480px最长边及缺失宽高读取；复用 CanvasNodeShell，不新增卡片组件。
@@ -2751,3 +2771,9 @@
 - ImageEdit.js 负责编辑端点与字段转换；ImageEditTasks.js 负责事件唤醒及统一查询；ImageEditSave.js 负责上传、源业务归属验证与候选绑定。
 - LocalImageEdits 保留历史结果，新增已受理任务的目标归属恢复及编辑元数据；本地回显仅为缓存，不替代云端绑定。
 - 构建与架构检查通过；占位卡、去重及六入口云端行为仍未验收，不标记阶段完成。
+## 2026-10-10 图片节点工具栏（待手动验收）
+
+- 扩展 CanvasNodeToolbar，复用 IconButton、Tooltip、下载及更多图标；图片九项动作沿用已验收外壳。
+- ImageEditIcon 从 ImageDetailModal 原图标机械抽取，两处共享，裁剪继续使用既有 CropIcon，图标继承按钮状态颜色。
+- UseCanvasImageEdits 负责编辑入口和异步结果接收，CanvasImageEdits 负责原图适配、新节点编号及位置避让；LocalImageEditor 和 LocalImageEdits 的弹窗、任务保存、轮询直接复用。
+- 不新增后端协议：编辑仍要求真实源资产和现有创作归属，未支持的来源明确报错；结果加入画布草稿历史，离开画布不写入其他画布。刷新后的画布恢复仍待整体保存链路。

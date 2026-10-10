@@ -1,5 +1,23 @@
 # 组件重构盘点基线
 
+## 2026-10-10 画布媒体预览与播放（用户验收通过）
+
+- `CanvasMediaPreview` 为画布独立媒体预览组件，通过 Portal 在顶层显示媒体和模糊蒙版，不复用业务详情弹窗。负责最大80vw × 80vh展示、固定关闭按钮、空白/Esc关闭及视频自动播放和静音降级。
+- `CanvasVideoPlayer` 负责无控制条卡片、300毫秒悬停播放及移出/按下/失焦/打开详情暂停；`CanvasPage` 负责工具栏与双击入口、预览状态，并在双击时传递视频进度、音量与静音状态。详情保留原生播放控制，按钮和连接端口不触发卡片预览。
+- Suzy 已手动验收通过。实现阶段构建、架构、差异检查通过，lint 无错误、3条既有警告；本轮仅同步文档，不自动打开浏览器，不涉及新增接口或画布持久化。
+
+## 2026-10-10 裁剪、翻转结果保存（用户验收通过）
+
+- 复用 `ImageCropModal`、`ImageFlipModal` 和浏览器出图算法，不修改界面、不新增组件、不将几何变换交给后端。
+- `ImageEditSave.uploadImageEditFile` 改用 `/api/creation/images/edit-result`，接收文件、源资产编号和编辑类型，直接消费同步资产卡；`useImageEditSubmission` 负责传参，`LocalImageEdits` 保留后端类型并复用原列表及候选绑定。
+- 新增 `scripts/image-edit-save.test.mjs` 覆盖请求字段、文件内容、两种模式、无效输入和失败响应；原图片编辑接口测试、构建、架构检查、差异检查通过，lint 无错误、3 条既有警告。Suzy 已确认验收通过，不代表其他编辑能力或画布链路验收。
+
+- 2026-10-10：删除规则及提示样式已通过用户手动验收。`CanvasNodeActions.hasCanvasDeletionTasks` 检查选中项及嵌套成员的生成/排队状态；`UseCanvasNodeActions` 普通删除直接执行，任务删除复用确认弹窗，替代此前空节点判断。删除 toast 复用全局 action；`CanvasHistory.getUndoToken` 防止过期操作误撤销其他编辑。`toastStore` / `GlobalToast` 新增可选 `mutedText`，普通删除提示为“删除成功，可以撤销 ⌘Z 找回”，快捷键前后各一个空格，仅快捷键使用 `--color-white-60`，其他提示不受影响。本次仅同步文档，未重新执行功能测试或浏览器验证。
+
+- 2026-10-10：`UseCanvasReferences` 在拖线新建时显式保留媒体关系；`CanvasNewConnection` 负责能力就绪后的原因校验，复用图片/视频现有规则。`CanvasNodeShell` 等待模型加载完成再回填能力；红线悬停不被白色高亮覆盖。无新增基础 UI，待手动验收。
+
+- 2026-10-10：`CanvasNodeToolbar`、图片/视频/音频节点工具栏及相关编辑编排已完成用户手动验收。四类节点工具栏入口、固定屏幕尺寸、同步动画、四态图标颜色和当前卡片更多菜单已统一；图片/视频结果节点保留源节点。真实后端编辑任务、资产落库和画布保存恢复仍待联调，不将本记录视为完整画布交付。
+- 2026-10-10：前端验证记录：`node --test scripts/canvas-media-toolbar.test.mjs scripts/canvas-node-toolbar.test.mjs` 通过，`git diff --check` 通过；此前构建和架构检查通过，lint 无错误但保留 3 条既有 Hook 依赖警告。未自动打开浏览器，视觉验收由用户手动完成。
 - 2026-10-10：CanvasNodeToolbar 扩展视频与音频；VideoEditIcon 从创作视频详情抽取共用；CanvasVideoEditor 组合四项现有弹窗，UseCanvasVideoEdits 接收后台结果并新增媒体节点。VideoEditSubmissionContext 提供可选宿主提交入口，未提供时保持原创作流程；画布按画布和节点编号隔离任务，不写入创作占位。无新增基础 UI，待手动验收。
 
 - 2026-10-10：复用 ProjectList、CanvasProjectHeader 和 CanvasPage，新建项目由 Home 显式传递回调；CanvasDevelopment 在 API 层维护开发态内存项目，真实接口不降级。CanvasPage 按编号重建隔离节点和历史，模拟详情不等待真实用户请求；不新增 UI，不持久化，待手动验收。

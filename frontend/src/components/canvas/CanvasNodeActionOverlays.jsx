@@ -45,9 +45,9 @@ export default function CanvasNodeActionOverlays({ menu, dialog, nodes, canPaste
       left: Math.max(8, Math.min(menu.x, window.innerWidth - 208)),
       top: Math.max(8, Math.min(menu.y, window.innerHeight - (items.length * 34 + 18))),
     }} />, document.body)}
-    {dialog?.type === 'delete' && <ConfirmDialog title={dialog.group ? '删除组' : '删除节点'}
-      description={dialog.group ? '确认删除所选组及组内所有节点？相关连线也将删除，此操作可以撤销。' : '确认删除所选节点？相关连线也将删除，此操作可以撤销。'}
-      confirmText="删除" onConfirm={onConfirm} onCancel={onCloseDialog} />}
+    {dialog?.type === 'delete' && <ConfirmDialog title="AI创作任务执行中，确定要删除吗？"
+      description="所选节点或组内存在执行中或排队中的任务。撤销仅恢复画布中的节点，不能保证找回本次生成结果。"
+      confirmText="仍然删除" onConfirm={onConfirm} onCancel={onCloseDialog} />}
     {dialog?.type === 'rename' && <AssetsProjectRenameModal title="重命名" nameLabel="名称" value={dialog.value} onChange={onNameChange} onClose={onCloseDialog} onConfirm={onConfirm} />}
   </>;
 }

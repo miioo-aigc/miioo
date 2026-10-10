@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { copyCanvasNodes, pasteCanvasNodes, deleteCanvasNodes, moveCanvasNodesOut, setCanvasGroupsStacked, getCanvasStackPresentation } from '../src/components/canvas/CanvasNodeActions.js';
+import { copyCanvasNodes, pasteCanvasNodes, deleteCanvasNodes, hasCanvasDeletionTasks, moveCanvasNodesOut, setCanvasGroupsStacked, getCanvasStackPresentation } from '../src/components/canvas/CanvasNodeActions.js';
 import { createCanvasHistory } from '../src/components/canvas/CanvasHistory.js';
 import { getCanvasGroupFocus } from '../src/components/canvas/CanvasGroupFocus.js';
 
@@ -19,6 +19,54 @@ const fixture = () => [
   { id: 'b', type: 'image', parentId: 'g', position: { x: 280, y: 8 }, data: { label: '图片', imageSourceIds: ['a', 'outside'] } },
   { id: 'outside', type: 'text', position: { x: 900, y: 0 }, data: { label: '外部', textSourceIds: ['a'] } },
 ];
+
+test('四类普通节点不论有无内容均免确认，运行和排队需要确认', () => {
+  for (const type of ['text', 'image', 'video', 'audio']) {
+    for (const data of [{}, { content: '正文' }, { prompt: '提示词' }, { asset: { url: '/media' } }]) {
+      assert.equal(hasCanvasDeletionTasks([{ id: 'a', type, data }], ['a']), false);
+    }
+    for (const data of [{ generating: true }, { generationPending: true }]) {
+      assert.equal(hasCanvasDeletionTasks([{ id: 'a', type, data }], ['a']), true);
+    }
+  }
+});
+
+test('批量和嵌套组检查任务后代，组外运行任务不影响删除', () => {
+  const nodes = fixture();
+  assert.equal(hasCanvasDeletionTasks(nodes, ['g']), true);
+  assert.equal(hasCanvasDeletionTasks(nodes, ['b', 'outside']), false);
+  nodes.push({ id: 'inner', parentId: 'g', type: 'canvasGroup', data: {} });
+  nodes[1].parentId = 'inner';
+  nodes[1].data = { generationPending: true };
+  assert.equal(hasCanvasDeletionTasks(nodes, ['g']), true);
+  nodes[1].data = {};
+  assert.equal(hasCanvasDeletionTasks(nodes, ['g']), false);
+});
+
+test('删除撤销令牌随历史变化，异步非历史更新不使其失效', () => {
+  const history = createCanvasHistory(fixture());
+  history.setNodes((nodes) => deleteCanvasNodes(nodes, ['a']));
+  const token = history.getUndoToken();
+  assert.ok(token);
+  history.setNodes((nodes) => nodes.map((node) => ({ ...node, selected: true })), { record: false });
+  assert.equal(history.getUndoToken(), token);
+  history.undo();
+  assert.notEqual(history.getUndoToken(), token);
+  assert.ok(history.getSnapshot().nodes.some((node) => node.id === 'a'));
+  history.dispose();
+});
+
+test('删除已连接的空节点会清理下游引用，不修改原始快照', () => {
+  const nodes = fixture();
+  nodes[1].data = { label: '空节点', prompt: '' };
+  nodes[2].data.imageSourceIds = ['a'];
+  assert.equal(hasCanvasDeletionTasks(nodes, ['a']), false);
+  const result = deleteCanvasNodes(nodes, ['a']);
+  assert.equal(result.some((node) => node.id === 'a'), false);
+  assert.deepEqual(result.find((node) => node.id === 'b').data.imageSourceIds, []);
+  assert.deepEqual(result.find((node) => node.id === 'outside').data.textSourceIds, []);
+  assert.deepEqual(nodes[2].data.imageSourceIds, ['a']);
+});
 
 test('形变预览使用组内相对位置、卡片高度及嵌套世界坐标，不改写成员', () => {
   const nodes = fixture();

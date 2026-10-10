@@ -3,13 +3,14 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L119；grouping L156；referenceGraph L170；handleNodesChange L233；addNode L296；批量导入 L337；连线起点 L393；反向上游连接 L401；连线结束 L502；React Flow L605
+ *   CanvasPage L121；grouping L159；referenceGraph L173；mediaPreview L141；handleNodesChange L236；addNode L299；批量导入 L340；连线起点 L396；反向上游连接 L404；连线结束 L505；React Flow L608
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
- *   CanvasProjectHeader components/canvas；2026-10-10 接通开发态新建项目回调；模拟详情跳过用户接口，重命名仍为会话内。
+ *   CanvasProjectHeader components/canvas；2026-10-10 接通开发态新建项目回调；模拟详情跳过用户接口，重命名仍为会话内。删除接入撤销，仅运行/排队任务确认。
  *   CanvasUserMenu      components/canvas；右上角用户信息与菜单
  *   CanvasCenterPrompt  components/canvas；中央空态提示
  *   CanvasToolbar       components/canvas；底部画布工具栏；2026-10-10 文本节点更多入口复用右键菜单，仅选当前卡片。
+ *   CanvasMediaPreview  components/canvas；2026-10-10 图片/视频双击打开悬浮预览，视频接续进度；固定关闭按钮与模糊遮罩。
  *   CanvasMiniMap       components/canvas；双层背景的交互预览地图
  *
  * ─── 业务边界 ────────────────────────────────────────────────────
@@ -79,6 +80,7 @@ import { resolveCanvasLeftConnection } from '../components/canvas/CanvasLeftConn
 import { useCanvasNodeActions } from '../components/canvas/UseCanvasNodeActions';
 import { getCanvasStackPresentation } from '../components/canvas/CanvasNodeActions';
 import CanvasNodeActionOverlays from '../components/canvas/CanvasNodeActionOverlays';
+import CanvasMediaPreview from '../components/canvas/CanvasMediaPreview';
 import LocalImageEditor from '../components/image-edit/LocalImageEditor';
 import { useCanvasImageEdits } from '../components/canvas/UseCanvasImageEdits';
 import { useCanvasVideoEdits } from '../components/canvas/UseCanvasVideoEdits';
@@ -136,6 +138,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
   const [connectionTargetStatus, setConnectionTargetStatus] = useState('');
   const [pendingConnection, setPendingConnection] = useState(null);
   const [upstreamConnection, setUpstreamConnection] = useState(null);
+  const [mediaPreview, setMediaPreview] = useState(null);
   const [actionDialog, setActionDialog] = useState(null);
   const canvasContainerRef = useRef(null);
   const importAssetsRef = useRef(null);
@@ -154,7 +157,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
   const canvasFiles = useCanvasFileActions({ nodes, setNodes, name: projectName, flowInstance, canvasId });
   const search = useCanvasSearch({ nodes, setNodes, flowInstance, containerRef: canvasContainerRef, cancelPendingClicks, open: searchOpen, setOpen: setSearchOpen });
   const grouping = useCanvasGrouping(nodes, setNodes, cancelPendingClicks, false);
-  const nodeActions = useCanvasNodeActions({ nodes, setNodes, cancelPendingClicks, flowInstance,
+  const nodeActions = useCanvasNodeActions({ nodes, setNodes, undo: history.undo, getUndoToken: history.getUndoToken, cancelPendingClicks, flowInstance,
     containerRef: canvasContainerRef, enabled: loadedCanvasId === canvasId && !error && !assetPickerOpen && !profileOpen && !searchOpen,
     dialog: actionDialog, setDialog: setActionDialog });
   const generateText = useCanvasTextGeneration(nodes, setNodes, canvasId, cancelPendingClicks);
@@ -610,7 +613,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
           onContentChange: (nodeId, content) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, content } } : item)),
           onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)),
           onModelChange: (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item)),
-          onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : node.type === 'image' ? { onGenerate: generateImage, onImageEdit: imageEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); } } : node.type === 'video' ? { onGenerate: generateVideo, onVideoEdit: videoEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); } } : node.type === 'audio' ? { onGenerate: generateAudio, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); } } : {}) } }))} edges={presentation.edges} edgeTypes={CANVAS_EDGE_TYPES} onEdgesChange={referenceGraph.onEdgesChange}
+          onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : node.type === 'image' ? { onGenerate: generateImage, onImageEdit: imageEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); }, onPreview: (asset) => setMediaPreview({ asset, nodeType: node.type }) } : node.type === 'video' ? { onGenerate: generateVideo, onVideoEdit: videoEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); }, onPreview: (asset) => setMediaPreview({ asset, nodeType: node.type }) } : node.type === 'audio' ? { onGenerate: generateAudio, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); } } : {}) } }))} edges={presentation.edges} edgeTypes={CANVAS_EDGE_TYPES} onEdgesChange={referenceGraph.onEdgesChange}
         deleteKeyCode={null}
         onNodeContextMenu={(event, node) => { clearPendingConnection(); nodeActions.onContextMenu(event, node); }}
         onSelectionContextMenu={(event, selectedNodes) => { if (selectedNodes[0]) { clearPendingConnection(); nodeActions.onContextMenu(event, selectedNodes[0]); } }}
@@ -623,6 +626,17 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
         onDelete={() => history.end()}
         onNodeDoubleClick={(event, node) => {
           if (node.type === 'canvasGroup') { nodeActions.onGroupDoubleClick(event, node); return; }
+          if (activeTool !== 'hand' && ['image', 'video'].includes(node.type) && node.data.asset?.url
+            && node.data.asset.asset_type !== 'audio' && event.target.closest('.canvas-node__frame')
+            && !event.target.closest('button, input, textarea, .canvas-node__port')) {
+            event.stopPropagation();
+            cancelPendingClicks();
+            const video = event.target.closest('.canvas-node__frame').querySelector('video');
+            const playback = video ? { time: video.currentTime, muted: video.muted, volume: video.volume } : null;
+            video?.pause();
+            setMediaPreview({ asset: node.data.asset, nodeType: node.type, playback });
+            return;
+          }
           if (activeTool !== 'hand' && node.type !== 'canvasGroup' && !event.target.closest('button, input, textarea')) grouping.enterNode(node.id);
         }}
         onNodeDragStart={handleNodeDragStart} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop}
@@ -691,6 +705,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       includeSeedanceLibrary
     />
     <ProfileModal open={profileOpen} currentUser={currentUser} onClose={() => setProfileOpen(false)} onLogout={handleLogout} onProfileUpdated={(updated) => setCurrentUser((previous) => ({ ...previous, ...updated }))} />
+    {mediaPreview && <CanvasMediaPreview asset={mediaPreview.asset} nodeType={mediaPreview.nodeType} playback={mediaPreview.playback} onClose={() => setMediaPreview(null)} />}
     <CanvasNodeActionOverlays menu={nodeActions.menu} dialog={nodeActions.dialog} nodes={nodes}
       canPaste={nodeActions.clipboard.length > 0} onAction={nodeActions.execute} onCloseMenu={nodeActions.closeMenu}
       onCloseDialog={nodeActions.closeDialog} onNameChange={nodeActions.setName} onConfirm={nodeActions.confirm} />

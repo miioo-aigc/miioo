@@ -32,7 +32,7 @@ export const useToastStore = create((set, get) => ({
     const timer = setTimeout(() => {
       if (get().toast?.id === id) set({ toast: null, timer: null });
     }, duration);
-    set({ toast: { id, type, message, action }, timer });
+    set({ toast: { id, type, message, action, mutedText: options.mutedText }, timer });
   },
   hideToast: () => {
     if (get().timer) clearTimeout(get().timer);

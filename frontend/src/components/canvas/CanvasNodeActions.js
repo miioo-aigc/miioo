@@ -56,6 +56,12 @@ export function pasteCanvasNodes(nodes, clipboard, position, makeId = () => cryp
   return setCanvasSelection([...nodes, ...copies], copies.filter((node) => !node.parentId).map((node) => node.id));
 }
 
+/** 删除组时同时检查嵌套成员，排队中的结果同样需要确认。 */
+export function hasCanvasDeletionTasks(nodes, ids) {
+  const removed = canvasDescendantIds(nodes, ids);
+  return nodes.some((node) => removed.has(node.id) && (node.data?.generating || node.data?.generationPending));
+}
+
 export function deleteCanvasNodes(nodes, ids) {
   const removed = canvasDescendantIds(nodes, ids);
   let next = nodes.filter((node) => !removed.has(node.id));

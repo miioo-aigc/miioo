@@ -1,12 +1,12 @@
 /** 菜单与快捷键共用动作入口；弹窗状态隔离画布快捷键。 */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { groupCanvasNodes, setCanvasSelection, ungroupCanvasNodes } from './CanvasGroups';
-import { copyCanvasNodes, pasteCanvasNodes, deleteCanvasNodes, moveCanvasNodesOut, setCanvasGroupsStacked } from './CanvasNodeActions';
+import { copyCanvasNodes, pasteCanvasNodes, deleteCanvasNodes, hasCanvasDeletionTasks, moveCanvasNodesOut, setCanvasGroupsStacked } from './CanvasNodeActions';
 import { getCanvasGroupFocus } from './CanvasGroupFocus';
 import { canMoveCanvasNodesInto, canvasTransferRoots, moveCanvasNodesInto } from './CanvasGroupTransfer';
 import { showGlobalToast } from '../../stores/toastStore';
 
-export function useCanvasNodeActions({ nodes, setNodes, enabled, cancelPendingClicks, flowInstance, containerRef, dialog, setDialog }) {
+export function useCanvasNodeActions({ nodes, setNodes, undo, getUndoToken, enabled, cancelPendingClicks, flowInstance, containerRef, dialog, setDialog }) {
   const [menu, setMenu] = useState(null);
   const [clipboard, setClipboard] = useState([]);
   const pasteCount = useRef(0);
@@ -26,6 +26,18 @@ export function useCanvasNodeActions({ nodes, setNodes, enabled, cancelPendingCl
   }, [focusGroupId, flowInstance, nodes, containerRef]);
   const closeMenu = useCallback(() => setMenu(null), []);
   const closeDialog = useCallback(() => setDialog(null), [setDialog]);
+  const deleteNodes = useCallback((ids, hasTasks = false) => {
+    setNodes((current) => deleteCanvasNodes(current, ids));
+    const token = getUndoToken();
+    showGlobalToast('success', hasTasks ? '删除成功，撤销仅恢复节点，不保证找回生成结果。' : '删除成功，可以撤销 ⌘Z 找回', {
+      mutedText: hasTasks ? undefined : '⌘Z',
+      action: { label: '撤销', onClick: () => {
+        if (!token || token !== getUndoToken()) return;
+        cancelPendingClicks();
+        undo();
+      } },
+    });
+  }, [setNodes, getUndoToken, cancelPendingClicks, undo]);
 
   const execute = useCallback((action, targetId) => {
     cancelPendingClicks();
@@ -66,9 +78,12 @@ export function useCanvasNodeActions({ nodes, setNodes, enabled, cancelPendingCl
       if (messages.length) showGlobalToast(messages.join('；'), 'success');
     }
     if (action === 'rename' && selected.length === 1) setDialog({ type: 'rename', ids, value: selected[0].data.label });
-    if (action === 'delete' && ids.length) setDialog({ type: 'delete', ids, group: selected.some((node) => node.type === 'canvasGroup') });
+    if (action === 'delete' && ids.length) {
+      if (hasCanvasDeletionTasks(nodes, ids)) setDialog({ type: 'delete', ids });
+      else deleteNodes(ids);
+    }
     setMenu(null);
-  }, [cancelPendingClicks, nodes, clipboard, containerRef, menu, flowInstance, setNodes, setDialog]);
+  }, [cancelPendingClicks, nodes, clipboard, containerRef, menu, flowInstance, setNodes, setDialog, deleteNodes]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -122,7 +137,7 @@ export function useCanvasNodeActions({ nodes, setNodes, enabled, cancelPendingCl
     },
     confirm: () => {
       if (!dialog) return;
-      if (dialog.type === 'delete') setNodes((current) => deleteCanvasNodes(current, dialog.ids));
+      if (dialog.type === 'delete') deleteNodes(dialog.ids, hasCanvasDeletionTasks(nodes, dialog.ids));
       else if (dialog.value.trim()) setNodes((current) => current.map((node) => dialog.ids.includes(node.id)
         ? { ...node, data: { ...node.data, label: dialog.value.trim() } } : node));
       setDialog(null);

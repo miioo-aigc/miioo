@@ -1,38 +1,65 @@
 /**
  * @file CanvasVideoPlayer.jsx
  * @structure-index
- * CanvasVideoPlayer：保留原生视频控件，仅管理显隐与画面拖动区域。
- * 2026-09-28：悬停开启原生 controls，透明画面层响应节点拖动，底部留给原生控件。
+ * CanvasVideoPlayer：管理延迟悬停播放及画面拖动区域，不显示卡片控制条。
+ * 2026-10-10：优先有声播放，权限拦截后降级静音；移出、按下、失焦和打开详情暂停。
  */
-import { useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 export default function CanvasVideoPlayer({ src, poster }) {
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const controlsVisible = hovered || focused;
+  const videoRef = useRef(null);
+  const timerRef = useRef(null);
+  const attemptRef = useRef(0);
+  const stop = () => {
+    clearTimeout(timerRef.current);
+    attemptRef.current += 1;
+    videoRef.current?.pause();
+  };
+  useEffect(() => {
+    const video = videoRef.current;
+    const pause = () => {
+      clearTimeout(timerRef.current);
+      attemptRef.current += 1;
+      video.pause();
+    };
+    document.addEventListener('pointerdown', pause, true);
+    document.addEventListener('canvas-media-preview-open', pause);
+    window.addEventListener('blur', pause);
+    return () => {
+      pause();
+      document.removeEventListener('pointerdown', pause, true);
+      document.removeEventListener('canvas-media-preview-open', pause);
+      window.removeEventListener('blur', pause);
+    };
+  }, []);
+  const start = (event) => {
+    stop();
+    if (event.buttons || document.querySelector('[role="dialog"]')) return;
+    const attempt = attemptRef.current;
+    timerRef.current = setTimeout(async () => {
+      const video = videoRef.current;
+      if (!video || document.querySelector('[role="dialog"]')) return;
+      video.muted = false;
+      try { await video.play(); } catch (error) {
+        if (attempt !== attemptRef.current || error.name !== 'NotAllowedError') return;
+        video.muted = true;
+        try { await video.play(); } catch { /* 保留静态画面。 */ }
+      }
+      if (attempt !== attemptRef.current) video.pause();
+    }, 300);
+  };
   return <div
     className="canvas-video"
-    data-controls-visible={controlsVisible}
-    onMouseEnter={() => setHovered(true)}
-    onMouseLeave={() => setHovered(false)}
-    onFocus={(event) => {
-      if (event.target.matches(':focus-visible')) setFocused(true);
-    }}
-    onBlur={(event) => {
-      if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
-    }}
+    onPointerEnter={start}
+    onPointerLeave={stop}
   >
     <video
-      className="canvas-node__media nodrag nopan"
+      ref={videoRef}
+      className="canvas-node__media"
       src={src}
       poster={poster}
-      muted
       playsInline
       preload="metadata"
-      controls={controlsVisible}
-      onClick={(event) => event.stopPropagation()}
-      onDoubleClick={(event) => event.stopPropagation()}
-      onKeyDown={(event) => event.stopPropagation()}
     />
     <div className="canvas-video__drag-surface" aria-hidden="true" />
   </div>;

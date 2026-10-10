@@ -147,8 +147,9 @@ export function canConnectCanvasVideo(nodes, connection, capabilities) {
     target.data.model, caps.selectedGenerationMode || target.data.generationMode).allowed;
 }
 
-export function connectCanvasVideo(nodes, connection, capabilities) {
-  if (!canConnectCanvasVideo(nodes, connection, capabilities)) return nodes;
+export function connectCanvasVideo(nodes, connection, capabilities, { retainInvalid = false } = {}) {
+  if (!isCanvasVideoConnection(nodes, connection)
+    || (!retainInvalid && !canConnectCanvasVideo(nodes, connection, capabilities))) return nodes;
   return setCanvasSelection(nodes.map((node) => node.id === connection.target ? {
     ...node, data: { ...node.data, videoSourceIds: [...new Set([...getCanvasVideoSourceIds(node), connection.source])], persistenceState: 'draft' },
   } : node), [connection.target], true);

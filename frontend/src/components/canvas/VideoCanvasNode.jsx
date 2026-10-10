@@ -15,7 +15,7 @@ export default function VideoCanvasNode({ id, data, selected }) {
     }
     data?.onVideoEdit?.(id, action);
   };
-  return <CanvasNodeShell nodeType="video" title={data?.label || '视频'} selected={selected} data={{ ...data, nodeId: id, onToolbarAction: handleToolbarAction }} onPromptChange={data?.onPromptChange} onAddReference={data?.onAddReference} onGenerate={data?.onGenerate}>
+  return <CanvasNodeShell nodeType="video" title={data?.label || '视频'} selected={selected} data={{ ...data, nodeId: id, onToolbarAction: handleToolbarAction, onPreview: data?.onPreview }} onPromptChange={data?.onPromptChange} onAddReference={data?.onAddReference} onGenerate={data?.onGenerate}>
     {asset?.url ? asset.asset_type === 'image'
       ? <img className="canvas-node__media" src={asset.url} alt={asset.name || '参考图片'} draggable={false} />
       : asset.asset_type === 'audio'

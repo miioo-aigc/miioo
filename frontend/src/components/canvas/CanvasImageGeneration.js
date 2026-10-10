@@ -60,8 +60,9 @@ export function getCanvasImageConnectionError(nodes, connection, limit) {
   return '';
 }
 
-export function connectCanvasImage(nodes, connection, limit) {
-  if (!canConnectCanvasImage(nodes, connection, limit)) return nodes;
+export function connectCanvasImage(nodes, connection, limit, { retainInvalid = false } = {}) {
+  if (!isCanvasImageConnection(nodes, connection)
+    || (!retainInvalid && !canConnectCanvasImage(nodes, connection, limit))) return nodes;
   return setCanvasSelection(nodes.map((node) => node.id === connection.target ? {
     ...node,
     data: { ...node.data, imageSourceIds: [...new Set([...(node.data.imageSourceIds || []), connection.source])], persistenceState: 'draft' },

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   apiDeleteAdminApiConfigBannerImage,
   apiGetAdminApiConfigBanner,
@@ -133,6 +133,8 @@ export default function AdminDisplaySettingsPage({
   const [qrSnapshot, setQrSnapshot] = useState({ imageUrl: '', isEnabled: false, updatedAt: null });
   const [cardItems, setCardItems] = useState([]);
   const [savingKey, setSavingKey] = useState('');
+  const pendingCards = useRef(new Set());
+  const [savingCards, setSavingCards] = useState(new Set());
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -242,11 +244,12 @@ export default function AdminDisplaySettingsPage({
   };
 
   const handleToggleCardVisibility = async (item, nextVisible) => {
-    const previousItems = cardItems;
+    if (pendingCards.current.has(item.key)) return;
+    pendingCards.current.add(item.key);
+    setSavingCards(new Set(pendingCards.current));
     setCardItems((current) => current.map((entry) => (
       entry.key === item.key ? { ...entry, isVisible: nextVisible } : entry
     )));
-    setSavingKey(`card:${item.key}`);
     try {
       const updated = await apiUpdateAdminCardVisibility(item.key, { is_visible: nextVisible });
       setCardItems((current) => sortCardItems(current.map((entry) => (
@@ -260,10 +263,11 @@ export default function AdminDisplaySettingsPage({
       ))));
       showToast?.(`${CARD_META[item.key]?.label || item.key} 卡片已${nextVisible ? '显示' : '隐藏'}`, 'success');
     } catch (error) {
-      setCardItems(previousItems);
+      setCardItems((current) => current.map((entry) => entry.key === item.key ? item : entry));
       showToast?.(getErrorMessage(error, '卡片显示配置更新失败'), 'error');
     } finally {
-      setSavingKey('');
+      pendingCards.current.delete(item.key);
+      setSavingCards(new Set(pendingCards.current));
     }
   };
 
@@ -324,7 +328,7 @@ export default function AdminDisplaySettingsPage({
             <CardVisibilityItem
               key={item.key}
               item={item}
-              saving={loading || savingKey === `card:${item.key}`}
+              saving={loading || savingCards.has(item.key)}
               onToggle={handleToggleCardVisibility}
             />
           ))}

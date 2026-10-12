@@ -4,7 +4,7 @@
     "id": "PRJ-001",
     "name": "miioo",
     "target": "/Users/suzylee/Desktop/miioo-v1.5/frontend",
-    "mode": "audit_plan",
+    "mode": "implement",
     "review_depth": "full",
     "access_mode": "source_only",
     "baseline": {
@@ -2075,7 +2075,7 @@
       "category": "状态与交互",
       "severity": "P2",
       "confidence": "confirmed",
-      "status": "open",
+      "status": "fixed_unverified",
       "owner": "前端开发",
       "page_ids": [
         "PAGE-008"
@@ -2114,7 +2114,7 @@
       "category": "状态与交互",
       "severity": "P2",
       "confidence": "confirmed",
-      "status": "open",
+      "status": "fixed_unverified",
       "owner": "前端开发",
       "page_ids": [
         "PAGE-015"
@@ -2153,7 +2153,7 @@
       "category": "状态与交互",
       "severity": "P2",
       "confidence": "confirmed",
-      "status": "open",
+      "status": "fixed_unverified",
       "owner": "前端开发",
       "page_ids": [
         "PAGE-017"
@@ -2192,7 +2192,7 @@
       "category": "状态与交互",
       "severity": "P2",
       "confidence": "confirmed",
-      "status": "open",
+      "status": "fixed_unverified",
       "owner": "前端开发",
       "page_ids": [
         "PAGE-018"
@@ -2270,7 +2270,7 @@
       "category": "状态与交互",
       "severity": "P2",
       "confidence": "confirmed",
-      "status": "open",
+      "status": "fixed_unverified",
       "owner": "前端开发",
       "page_ids": [
         "PAGE-009"
@@ -2348,7 +2348,7 @@
       "category": "状态与交互",
       "severity": "P2",
       "confidence": "confirmed",
-      "status": "open",
+      "status": "fixed_unverified",
       "owner": "前端开发",
       "page_ids": [
         "PAGE-015"
@@ -2426,7 +2426,7 @@
       "category": "状态与交互",
       "severity": "P2",
       "confidence": "confirmed",
-      "status": "open",
+      "status": "fixed_unverified",
       "owner": "前端开发",
       "page_ids": [
         "PAGE-002"
@@ -2465,7 +2465,7 @@
       "category": "状态与交互",
       "severity": "P2",
       "confidence": "confirmed",
-      "status": "open",
+      "status": "fixed_unverified",
       "owner": "前端开发",
       "page_ids": [
         "PAGE-005"
@@ -2557,7 +2557,7 @@
       ],
       "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
       "risk": "断网、无权限或服务端失败时，界面表现像删除成功；重新加载后资产可能再次出现。批量部分成功无法告诉用户失败项。",
-      "status": "planned",
+      "status": "implemented",
       "evidence_ids": []
     },
     {
@@ -2586,7 +2586,7 @@
       ],
       "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
       "risk": "创作通知的慢响应可能覆盖系统通知；旧请求先结束可能提前关闭加载态；接口失败显示“暂无通知”，无法区分真正为空。",
-      "status": "planned",
+      "status": "implemented",
       "evidence_ids": []
     },
     {
@@ -2615,7 +2615,7 @@
       ],
       "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
       "risk": "先操作甲、再成功操作乙，甲随后失败时，会把乙已成功保存的状态在界面中回滚；单一忙碌标识也可能提前解除其他请求的禁用态。",
-      "status": "planned",
+      "status": "implemented",
       "evidence_ids": []
     },
     {
@@ -2644,7 +2644,7 @@
       ],
       "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
       "risk": "列表响应后到时，下拉菜单可能只剩当前页或当前筛选中的服务商；100 条预热也不能保证覆盖全部服务商。",
-      "status": "planned",
+      "status": "implemented",
       "evidence_ids": []
     },
     {
@@ -2702,7 +2702,7 @@
       ],
       "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
       "risk": "甲项目慢请求可能在切换乙后覆盖同分类列表，标题和卡片归属不一致。是否会进一步写错对象需要逐个操作回调补证，不作已确认数据损坏结论。",
-      "status": "planned",
+      "status": "implemented",
       "evidence_ids": []
     },
     {
@@ -2760,7 +2760,7 @@
       ],
       "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
       "risk": "慢网下用户设置被旧值覆盖；批量服务商部分失败仍假成功。首个服务商代表全局设置的产品语义尚待确认。",
-      "status": "planned",
+      "status": "implemented",
       "evidence_ids": []
     },
     {
@@ -2818,7 +2818,7 @@
       ],
       "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
       "risk": "错误验证码或网络失败时用户没有明确失败反馈，等待中可重复提交。不能将“验证码发送按钮已有 catch”当作登录提交已处理。",
-      "status": "planned",
+      "status": "implemented",
       "evidence_ids": []
     },
     {
@@ -2847,7 +2847,7 @@
       ],
       "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
       "risk": "无法恢复已有剧本时用户不能区分“项目没有剧本”和“读取失败”；重新操作可能基于不完整状态。实际覆盖数据风险尚未证实。",
-      "status": "planned",
+      "status": "implemented",
       "evidence_ids": []
     }
   ],

@@ -155,15 +155,17 @@ export async function apiUpdateModel(modelId, data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+  if (!res.ok) throw new Error('更新模型失败，请重试');
   invalidate('models:');
   return res.json();
 }
 
 export async function apiDeleteModel(modelId) {
-  await authFetch(`${BASE}/api/models/${modelId}`, {
+  const res = await authFetch(`${BASE}/api/models/${modelId}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });
+  if (!res.ok) throw new Error('删除模型失败，请重试');
   invalidate('models:');
 }
 

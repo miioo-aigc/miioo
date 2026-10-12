@@ -1,6 +1,7 @@
 /**
  * @file StoryboardPage.jsx
  * @structure-index
+ *   2026-10-12：排序请求移出状态更新函数，串行提交并校验分集归属；失败提示刷新核对。
  *
  * ─── 全局常量与工具函数 ───────────────────────────────────── L119–L270
  *   normalizeStoryboard / normalizeStoryboardList / toBackendStoryboard  utils/storyboardDataAdapter.js
@@ -2301,31 +2302,57 @@ function hasStoryboardMediaHint(shot = {}) {
       .catch((err) => console.error('[StoryboardPage] 视频上传失败:', err));
   }
 
+  const orderingPending = useRef(false);
+  const orderingScope = useRef(0);
+  useEffect(() => {
+    const scope = ++orderingScope.current;
+    return () => { orderingScope.current = scope + 1; };
+  }, [projectId, episode]);
+
+  async function persistShotOrder(next, scope) {
+    try {
+      await apiReorderStoryboards(projectId, next.map((shot) => shot.id));
+      if (scope !== orderingScope.current) return;
+      const byId = new Map(shotsRef.current.map((shot) => [shot.id, shot]));
+      const merged = next.map((shot) => byId.get(shot.id) || shot);
+      shotsRef.current = renumberStoryboardShots(merged);
+      setShots(shotsRef.current);
+    } catch {
+      showToast('排序保存失败，请刷新当前分集核对结果后重试', 'error');
+    }
+  }
+
   function addShotAfter(id) {
+    if (orderingPending.current) return;
+    orderingPending.current = true;
+    const scope = orderingScope.current;
     const idx = shots.findIndex((s) => s.id === id);
     const newShot = makeStoryboardShot(idx + 2);
 
     apiCreateStoryboard(projectId, { ...toBackendStoryboard(newShot), episode_id: getEpisodeId(episode) })
-      .then((created) => {
+      .then(async (created) => {
+        if (scope !== orderingScope.current) return;
         const shotWithRealId = {
           ...enrichMainRefs(normalizeStoryboard(created), storyboardSubjects),
           // 手动新增的空白分镜应保持空白，打开创作面板时前端主动清空后端返回的默认提示词。
           isManualBlank: true,
         };
         initializeShotMediaState(shotWithRealId.id);
-        setShots((prev) => {
-          const reordered = insertStoryboardShot(prev, idx + 1, shotWithRealId);
-          const orderedIds = reordered.map(s => s.id);
-          apiReorderStoryboards(projectId, orderedIds).catch(console.error);
-          return reordered;
-        });
+        const reordered = insertStoryboardShot(shotsRef.current, idx + 1, shotWithRealId);
+        shotsRef.current = renumberStoryboardShots([...shotsRef.current, shotWithRealId]);
+        setShots(shotsRef.current);
+        await persistShotOrder(reordered, scope);
       })
       .catch((err) => {
         console.error('[StoryboardPage] 创建分镜失败:', err);
-      });
+        showToast('创建分镜失败，请重试', 'error');
+      }).finally(() => { orderingPending.current = false; });
   }
 
   function copyShot(id) {
+    if (orderingPending.current) return;
+    orderingPending.current = true;
+    const scope = orderingScope.current;
     const idx = shots.findIndex((s) => s.id === id);
     const original = shots[idx];
     const copy = {
@@ -2338,47 +2365,51 @@ function hasStoryboardMediaHint(shot = {}) {
 
     apiCreateStoryboard(projectId, { ...toBackendStoryboard(copy), episode_id: getEpisodeId(episode) })
       .then(async (created) => {
+        if (scope !== orderingScope.current) return;
         // 合并原始富数据 + 后端生成的 ID
         const shotWithRealId = { ...copy, ...enrichMainRefs(normalizeStoryboard(created), storyboardSubjects) };
         initializeShotMediaState(shotWithRealId.id);
-        setShots((prev) => {
-          const reordered = insertStoryboardShot(prev, idx + 1, shotWithRealId);
-          const orderedIds = reordered.map(s => s.id);
-          apiReorderStoryboards(projectId, orderedIds).catch(console.error);
-          return reordered;
-        });
+        const reordered = insertStoryboardShot(shotsRef.current, idx + 1, shotWithRealId);
+        shotsRef.current = renumberStoryboardShots([...shotsRef.current, shotWithRealId]);
+        setShots(shotsRef.current);
+        await persistShotOrder(reordered, scope);
         // 仅复制已持久化的候选媒体；正在生成中的本地占位不含 URL，不会写入新分镜。
         await copyPersistedCandidateMedia(original, shotWithRealId.id);
       })
       .catch((err) => {
         console.error('[StoryboardPage] 复制分镜失败:', err);
-      });
+        showToast('复制分镜未完成，请刷新核对后重试', 'error');
+      }).finally(() => { orderingPending.current = false; });
   }
 
   function deleteShot(id) {
+    if (orderingPending.current) return;
+    orderingPending.current = true;
+    const scope = orderingScope.current;
     apiDeleteStoryboard(projectId, id)
-      .then(() => {
-        setShots((prev) => {
-          const reordered = removeStoryboardShot(prev, id);
-
-          // 使用原子操作更新所有分镜的顺序
-          const orderedIds = reordered.map(s => s.id);
-          apiReorderStoryboards(projectId, orderedIds).catch(console.error);
-
-          return reordered;
-        });
+      .then(async () => {
+        if (scope !== orderingScope.current) return;
+        const reordered = removeStoryboardShot(shotsRef.current, id);
+        shotsRef.current = reordered;
+        setShots(reordered);
+        await persistShotOrder(reordered, scope);
       })
       .catch((err) => {
         console.error('[StoryboardPage] 删除分镜失败:', err);
-      });
+        showToast('删除分镜失败，请重试', 'error');
+      }).finally(() => { orderingPending.current = false; });
   }
 
   function addNewShot() {
+    if (orderingPending.current) return;
+    orderingPending.current = true;
+    const scope = orderingScope.current;
     const newNumber = shots.length + 1;
     const newShot = makeStoryboardShot(newNumber);
 
     apiCreateStoryboard(projectId, { ...toBackendStoryboard(newShot), episode_id: getEpisodeId(episode) })
       .then((created) => {
+        if (scope !== orderingScope.current) return;
         const shotWithRealId = {
           ...enrichMainRefs(normalizeStoryboard(created), storyboardSubjects),
           // 手动新增的空白分镜应保持空白，打开创作面板时前端主动清空后端返回的默认提示词。
@@ -2386,23 +2417,24 @@ function hasStoryboardMediaHint(shot = {}) {
         };
         initializeShotMediaState(shotWithRealId.id);
         setHasManuallyInteracted(true);
-        setShots((prev) => renumberStoryboardShots([...prev, shotWithRealId]));
+        shotsRef.current = renumberStoryboardShots([...shotsRef.current, shotWithRealId]);
+        setShots(shotsRef.current);
       })
       .catch((err) => {
         console.error('[StoryboardPage] 创建分镜失败:', err);
-      });
+      }).finally(() => { orderingPending.current = false; });
   }
 
-  function handleDrop(targetId) {
+  async function handleDrop(targetId) {
     if (!dragId || dragId === targetId) { setDragId(null); setOverId(null); return; }
-    setShots((prev) => {
-      const reordered = moveStoryboardShot(prev, dragId, targetId);
-      if (reordered === prev) return prev;
-      apiReorderStoryboards(projectId, reordered.map(s => s.id)).catch(console.error);
-      return reordered;
-    });
+    if (orderingPending.current) { setDragId(null); setOverId(null); return; }
+    orderingPending.current = true;
+    const scope = orderingScope.current;
+    const reordered = moveStoryboardShot(shotsRef.current, dragId, targetId);
     setDragId(null);
     setOverId(null);
+    try { await persistShotOrder(reordered, scope); }
+    finally { orderingPending.current = false; }
   }
 
   // 判断是否显示 loading / 错误态

@@ -70,6 +70,7 @@ export async function apiGetNotifications({ is_read, type } = {}) {
   const res = await authFetch(url, {
     headers: { 'Content-Type': 'application/json' },
   });
+  if (!res.ok) throw new Error('加载消息失败，请重试');
   const data = await res.json();
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.items)) return data.items;
@@ -176,48 +177,65 @@ export async function apiUnbindWechat() {
 }
 
 export async function apiSendPhoneCode(phone) {
-  await authFetch(`${BASE}/api/auth/send-code`, {
+  const res = await authFetch(`${BASE}/api/auth/send-code`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone }),
   });
+  await requirePhoneSuccess(res);
+}
+
+async function requirePhoneSuccess(res) {
+  const data = await res.json().catch(() => null);
+  if (!res.ok || data?.success === false) {
+    const message = typeof data?.detail === 'string' ? data.detail : '手机操作失败，请重试';
+    const error = new Error(message);
+    error.status = res.status;
+    throw error;
+  }
+  return data;
 }
 
 export async function apiVerifyPhoneCode(phone, code) {
   try {
-    await authFetch(`${BASE}/api/auth/verify-code-login`, {
+    const res = await authFetch(`${BASE}/api/auth/verify-code-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone, code }),
     });
-    return { valid: true };
+    const data = await requirePhoneSuccess(res);
+    return { valid: Boolean(data?.access_token) };
   } catch {
     return { valid: false };
   }
 }
 
-// TODO: 后端换绑手机接口待落地，暂时 mock
 export async function apiRebindPhone(newPhone, code) {
   if (import.meta.env.VITE_USE_MOCK === 'true') {
     return { success: true };
   }
-  return authFetch(`${BASE}/api/users/me/phone/rebind`, {
+  const res = await authFetch(`${BASE}/api/users/me/phone/rebind`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone: newPhone, code }),
   });
+  const data = await requirePhoneSuccess(res);
+  if (!data || data.phone !== newPhone) throw new Error('换绑结果未确认，请重新读取个人资料');
+  return data;
 }
 
 export async function apiSendPhoneUnbindCode() {
-  await authFetch(`${BASE}/api/users/me/phone/unbind/send-code`, {
+  const res = await authFetch(`${BASE}/api/users/me/phone/unbind/send-code`, {
     method: 'POST',
   });
+  await requirePhoneSuccess(res);
 }
 
 export async function apiUnbindPhone(code) {
-  await authFetch(`${BASE}/api/users/me/phone/unbind`, {
+  const res = await authFetch(`${BASE}/api/users/me/phone/unbind`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }),
   });
+  await requirePhoneSuccess(res);
 }

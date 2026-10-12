@@ -13,12 +13,13 @@
  *   ScriptOutlineLoading / ScriptOutlineWorkspace / ScriptEpisodeOutline / ScriptStoryboardDocument / ScriptModifyConfirmModal src/components/script/
  *
  * ─── 主页面入口 ───────────────────────────────────────────────────────
- *   export default ScriptPage()                                         L218
+ *   export default ScriptPage()                                         L227
  *     ├─ [状态] 受控/非受控 phase、剧本内容、入口文件、模型、集数/时长、消息和编排任务
  *     ├─ [函数] handleSend L1017 / handleScriptFileSelect L743 / handleOpenScriptOutline L276 / handleStop L714 / handleBackToConversation L397 / handleBackToScriptOutline L401
  *     └─ [副作用] 工作区加载、编排任务恢复与轮询、流式请求、剧本和分集同步
  *
  * ─── 更新记录 ────────────────────────────────────────────────────────
+ *   2026-10-12  工作区读取增加错误提示、重试与卸载/切项目失效保护。
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-07-15  抽离 InputCard、ScriptEmptyState 及输入区子组件，页面仅保留输入区编排
  *   2026-07-16  补齐流式暂停回调的 setPhase 依赖，避免闭包使用旧阶段更新函数
@@ -245,6 +246,8 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   const [episodeCount, setEpisodeCount] = useState(null);
   const [episodeDuration, setEpisodeDuration] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [workspaceError, setWorkspaceError] = useState('');
+  const [workspaceRetry, setWorkspaceRetry] = useState(0);
   const [activeMessageId, setActiveMessageId] = useState(null);
   const [scriptOutlineMode, setScriptOutlineMode] = useState(false);
   const [scriptOutlineLoading, setScriptOutlineLoading] = useState(false);
@@ -533,9 +536,11 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   // 页面加载时从后端恢复剧本和编排任务；受控模式只恢复编排状态，不接管父页面的旧剧本状态。
   useEffect(() => {
     if (!projectId) return;
-
+    let active = true;
     apiGetScriptWorkspace(projectId)
       .then((data) => {
+        if (!active) return;
+        setWorkspaceError('');
         const content = data?.script?.content || data?.content;
         const sourceType = data?.script?.source_type || data?.script?.sourceType || data?.source_type || data?.sourceType || '';
         const isStoryboardUpload = isStoryboardScriptSource(data)
@@ -603,13 +608,14 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       })
       .catch((err) => {
         console.error('[ScriptPage] 加载剧本失败:', err);
-        throw err;
+        if (active) setWorkspaceError('剧本读取失败，当前内容已保留，请重试');
       })
       // 新的对话工作流在用户点击“确认初稿，进入剧本编排”后才确认结构。
       // 这里不能再自动调用旧 finalize，否则会在用户点击确认前改写
       // script.draft_revision，导致 confirm 使用旧版本号返回 409。
       ;
-  }, [projectId, isControlled, setScriptContent, setPhase, setHasStarted, setOutlineType]);
+    return () => { active = false; };
+  }, [projectId, isControlled, setScriptContent, setPhase, setHasStarted, setOutlineType, workspaceRetry]);
 
   // 编排确认任务轮询：页面卸载、任务终态或超过最大等待时间时立即清理。
   useEffect(() => {
@@ -1095,6 +1101,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
 
   return (
     <>
+    {workspaceError && <div role="alert">{workspaceError} <button type="button" onClick={() => { setWorkspaceError(''); setWorkspaceRetry((value) => value + 1); }}>重新读取</button></div>}
     <div
       ref={scriptContentContainerRef}
       style={{

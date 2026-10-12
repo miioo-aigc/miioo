@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiGetNotifications } from '../api/user';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -192,9 +192,13 @@ export default function NotificationCenterModal({ open, onClose, showToast }) {
   const [notifications, setNotifications] = useState([]);
   const [detailItem, setDetailItem] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const requestId = useRef(0);
 
   const loadNotifications = useCallback(async () => {
+    const id = ++requestId.current;
     setLoading(true);
+    setLoadError(false);
     try {
       // type: 'creation_log' / 'system_notice' / 'team_collab'
       const typeMap = {
@@ -203,12 +207,13 @@ export default function NotificationCenterModal({ open, onClose, showToast }) {
         team: 'team_collab',
       };
       const data = await apiGetNotifications({ type: typeMap[activeTab] });
+      if (id !== requestId.current) return;
       setNotifications(data);
     } catch (error) {
       console.error('加载消息失败:', error);
-      setNotifications([]);
+      if (id === requestId.current) setLoadError(true);
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
   }, [activeTab]);
 
@@ -217,6 +222,11 @@ export default function NotificationCenterModal({ open, onClose, showToast }) {
     // 打开弹窗时主动触发外部通知请求；请求内部负责异步状态更新。
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadNotifications();
+    return () => {
+      // 重试也会推进序号，关闭时必须失效所有在途请求。
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      requestId.current++;
+    };
   }, [open, loadNotifications]);
 
   const handleTabClick = (tab) => {
@@ -271,6 +281,8 @@ export default function NotificationCenterModal({ open, onClose, showToast }) {
               <div className="flex items-center justify-center flex-1">
                 <span className="text-[#FFFFFF99] text-sm">加载中...</span>
               </div>
+            ) : loadError ? (
+              <button type="button" onClick={loadNotifications}>加载失败，点击重试</button>
             ) : notifications.length === 0 ? (
               <NotificationEmptyState />
             ) : (

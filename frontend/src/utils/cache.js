@@ -149,9 +149,7 @@ function fetchAndStore(key, fetcher, medium, prevEntry, equals, onUpdate, serial
 
   const startEpoch = epoch;
 
-  const p = (async () => {
-    try {
-      const data = await fetcher();
+  const p = Promise.resolve().then(fetcher).then((data) => {
       // 若在请求期间发生了 invalidate（epoch 已递增），丢弃本次结果，不覆盖新数据
       if (startEpoch !== epoch) return data;
       const changed = !prevEntry || !isEqual(prevEntry.d, data, equals);
@@ -161,10 +159,9 @@ function fetchAndStore(key, fetcher, medium, prevEntry, equals, onUpdate, serial
         onUpdate?.(data);
       }
       return data;
-    } finally {
-      inflight.delete(key);
-    }
-  })();
+  }).finally(() => {
+    if (inflight.get(key) === p) inflight.delete(key);
+  });
 
   inflight.set(key, p);
   return p;
@@ -263,6 +260,8 @@ export function peekCacheEntry(key, medium = 'memory') {
  * 清空本应用所有缓存（登出时调用）。
  */
 export function clearAllCache() {
+  epoch++;
+  inflight.clear();
   memStore.clear();
   for (const store of [localStorage, sessionStorage]) {
     try {

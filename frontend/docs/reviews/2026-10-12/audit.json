@@ -1,0 +1,2937 @@
+{
+  "schema_version": "1.0",
+  "project": {
+    "id": "PRJ-001",
+    "name": "miioo",
+    "target": "/Users/suzylee/Desktop/miioo-v1.5/frontend",
+    "mode": "audit_plan",
+    "review_depth": "full",
+    "access_mode": "source_only",
+    "baseline": {
+      "source_ref": "2c513f7 加审查时工作区修改；图片编辑另有并行用户修改",
+      "runtime_ref": "未运行浏览器",
+      "observed_at": "2026-10-12T03:04:06.933Z"
+    },
+    "inventory_status": "discovering",
+    "inventory_sources": [
+      {
+        "kind": "source",
+        "locator": "src/App.jsx、src/main.jsx、模块检查记录.md；组件候选见 discovery-candidates.json",
+        "evidence_ids": []
+      }
+    ],
+    "scope": "除自由画布和剪辑外全部功能；首轮关键路径检查，逐组件实例发现与深查尚未完成",
+    "out_of_scope": [
+      {
+        "surface": "自由画布",
+        "reason": "用户明确排除",
+        "authority": "本次用户请求"
+      },
+      {
+        "surface": "剪辑",
+        "reason": "用户明确排除",
+        "authority": "本次用户请求"
+      }
+    ],
+    "production_profile": {
+      "audience": "AI 视频创作者及管理员",
+      "risk": "账号、项目资产与收费生成",
+      "supported_environments": "unknown",
+      "release": "unknown"
+    },
+    "assumptions": [
+      "运行验收由 Suzy 手动完成；不访问真实写删与收费接口；不修改业务代码"
+    ]
+  },
+  "pages": [
+    {
+      "id": "PAGE-001",
+      "route": "模块入口（非 URL）：首页与导航",
+      "title": "首页与导航",
+      "source_locator": "src/pages/Home.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-002",
+      "route": "模块入口（非 URL）：登录与账号会话",
+      "title": "登录与账号会话",
+      "source_locator": "src/components/LoginModal.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-003",
+      "route": "模块入口（非 URL）：项目管理",
+      "title": "项目管理",
+      "source_locator": "src/pages/ProjectList.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-004",
+      "route": "模块入口（非 URL）：项目全局设置",
+      "title": "项目全局设置",
+      "source_locator": "src/pages/GlobalSettings.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-005",
+      "route": "模块入口（非 URL）：剧本",
+      "title": "剧本",
+      "source_locator": "src/pages/ScriptPage.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-006",
+      "route": "模块入口（非 URL）：主体与音色",
+      "title": "主体与音色",
+      "source_locator": "src/pages/SubjectPage.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-007",
+      "route": "模块入口（非 URL）：分镜与生成",
+      "title": "分镜与生成",
+      "source_locator": "src/pages/StoryboardPage.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-008",
+      "route": "模块入口（非 URL）：创作",
+      "title": "创作",
+      "source_locator": "src/pages/CreationPage.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-009",
+      "route": "模块入口（非 URL）：项目资产",
+      "title": "项目资产",
+      "source_locator": "src/components/assets/AssetsProjectPanel.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-010",
+      "route": "模块入口（非 URL）：创作资产",
+      "title": "创作资产",
+      "source_locator": "src/components/assets/AssetsCreativePanel.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-011",
+      "route": "模块入口（非 URL）：素材库",
+      "title": "素材库",
+      "source_locator": "src/components/assets/SeedanceAssetLibraryPanel.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-012",
+      "route": "模块入口（非 URL）：图片编辑与资源选择",
+      "title": "图片编辑与资源选择",
+      "source_locator": "src/components/image-edit/LocalImageEditor.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-013",
+      "route": "模块入口（非 URL）：接口与模型配置",
+      "title": "接口与模型配置",
+      "source_locator": "src/components/ApiConfigModal.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-014",
+      "route": "模块入口（非 URL）：个人资料",
+      "title": "个人资料",
+      "source_locator": "src/components/ProfileModal.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-015",
+      "route": "模块入口（非 URL）：通知水印与存储",
+      "title": "通知水印与存储",
+      "source_locator": "src/components/WatermarkSettingsModal.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-016",
+      "route": "模块入口（非 URL）：管理员总览",
+      "title": "管理员总览",
+      "source_locator": "src/pages/AdminConsolePage.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-017",
+      "route": "模块入口（非 URL）：管理员展示配置",
+      "title": "管理员展示配置",
+      "source_locator": "src/components/admin/AdminDisplaySettingsPage.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-018",
+      "route": "模块入口（非 URL）：管理员模型开放",
+      "title": "管理员模型开放",
+      "source_locator": "src/components/admin/AdminModelVisibilityPage.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-019",
+      "route": "模块入口（非 URL）：管理员音色库",
+      "title": "管理员音色库",
+      "source_locator": "src/components/admin/AdminVoiceLibraryPage.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-020",
+      "route": "模块入口（非 URL）：管理员账号管理",
+      "title": "管理员账号管理",
+      "source_locator": "src/components/admin/AdminAccountManagementPage.jsx",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-021",
+      "route": "模块入口（非 URL）：公共页面与帮助",
+      "title": "公共页面与帮助",
+      "source_locator": "public/about/index.html",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    },
+    {
+      "id": "PAGE-022",
+      "route": "模块入口（非 URL）：共享组件缓存与请求",
+      "title": "共享组件缓存与请求",
+      "source_locator": "src/utils/cache.js",
+      "entry_conditions": [
+        "由首页、弹窗或管理台进入；具体条件尚待逐实例登记"
+      ],
+      "variants": [
+        "正常、空态、加载、失败、离开返回；子分支尚未完整展开"
+      ],
+      "evidence_ids": [],
+      "scope_status": "in_scope"
+    }
+  ],
+  "definitions": [],
+  "instances": [],
+  "scenarios": [
+    {
+      "id": "SCN-001",
+      "title": "登出后在途请求可以重新写入旧会话缓存：手动复验",
+      "page_ids": [
+        "PAGE-022"
+      ],
+      "instance_ids": [],
+      "preconditions": [
+        "使用本地或测试数据，具备控制错误响应或延迟的条件"
+      ],
+      "steps": [
+        "延迟账号甲的查询，退出或触发鉴权失效，登录账号乙，再释放甲响应；乙的缓存、页面、订阅回调均不得收到甲数据。另测旧请求结束不破坏乙的并发去重。"
+      ],
+      "expected": [
+        "清空时切断旧代际请求的缓存写回和通知，清理去重表；旧请求结束时只能移除它自身的登记，不能删除新请求。调用方还需校验会话身份后再写入页面状态。"
+      ],
+      "context": {
+        "role": "测试用户",
+        "data": "测试项目和资产，不使用真实敏感信息",
+        "network": "正常、失败和受控延迟",
+        "viewport": "用户实际桌面环境，尚未运行验证",
+        "input": "按验收步骤操作",
+        "lifecycle": "按验收步骤刷新或切换"
+      },
+      "risk": "high",
+      "status": "blocked",
+      "evidence_ids": [],
+      "finding_ids": [
+        "FND-001"
+      ],
+      "reason": "用户要求不打开浏览器；待 Suzy 手动验证"
+    },
+    {
+      "id": "SCN-002",
+      "title": "创作单项和批量删除静默失败却移除本地卡片：手动复验",
+      "page_ids": [
+        "PAGE-008"
+      ],
+      "instance_ids": [],
+      "preconditions": [
+        "使用本地或测试数据，具备控制错误响应或延迟的条件"
+      ],
+      "steps": [
+        "单项返回 500、批量部分失败、断网、重复点击；失败卡片仍可见且可重试，成功项刷新后不恢复，选择状态与实际结果一致。"
+      ],
+      "expected": [
+        "按资产 ID 记录结果，成功后移除对应卡片，失败保留并提示；提供提交中状态和重复提交保护。若保留乐观删除，必须有逐项回滚与错误反馈。"
+      ],
+      "context": {
+        "role": "测试用户",
+        "data": "测试项目和资产，不使用真实敏感信息",
+        "network": "正常、失败和受控延迟",
+        "viewport": "用户实际桌面环境，尚未运行验证",
+        "input": "按验收步骤操作",
+        "lifecycle": "按验收步骤刷新或切换"
+      },
+      "risk": "normal",
+      "status": "blocked",
+      "evidence_ids": [],
+      "finding_ids": [
+        "FND-002"
+      ],
+      "reason": "用户要求不打开浏览器；待 Suzy 手动验证"
+    },
+    {
+      "id": "SCN-003",
+      "title": "通知列表缺少请求身份校验，失败被显示为空列表：手动复验",
+      "page_ids": [
+        "PAGE-015"
+      ],
+      "instance_ids": [],
+      "preconditions": [
+        "使用本地或测试数据，具备控制错误响应或延迟的条件"
+      ],
+      "steps": [
+        "创作通知延迟 3 秒，系统通知延迟 0.2 秒，立即切换到系统；最终仅显示系统通知。再测关闭重开、500 和空数组三种情况。"
+      ],
+      "expected": [
+        "分类与打开周期共同限定请求归属，仅当前请求更新状态；区分空态、错误及重试。"
+      ],
+      "context": {
+        "role": "测试用户",
+        "data": "测试项目和资产，不使用真实敏感信息",
+        "network": "正常、失败和受控延迟",
+        "viewport": "用户实际桌面环境，尚未运行验证",
+        "input": "按验收步骤操作",
+        "lifecycle": "按验收步骤刷新或切换"
+      },
+      "risk": "normal",
+      "status": "blocked",
+      "evidence_ids": [],
+      "finding_ids": [
+        "FND-003"
+      ],
+      "reason": "用户要求不打开浏览器；待 Suzy 手动验证"
+    },
+    {
+      "id": "SCN-004",
+      "title": "管理员卡片显示开关的失败回滚覆盖其他并发操作：手动复验",
+      "page_ids": [
+        "PAGE-017"
+      ],
+      "instance_ids": [],
+      "preconditions": [
+        "使用本地或测试数据，具备控制错误响应或延迟的条件"
+      ],
+      "steps": [
+        "甲延迟失败、乙先成功，乙最终状态及刷新后的状态一致；同项不能重复提交，失败项可重试。"
+      ],
+      "expected": [
+        "按卡片键管理忙碌状态及请求版本，失败只回滚该项；或明确采用整组串行提交。"
+      ],
+      "context": {
+        "role": "测试管理员",
+        "data": "测试项目和资产，不使用真实敏感信息",
+        "network": "正常、失败和受控延迟",
+        "viewport": "用户实际桌面环境，尚未运行验证",
+        "input": "按验收步骤操作",
+        "lifecycle": "按验收步骤刷新或切换"
+      },
+      "risk": "normal",
+      "status": "blocked",
+      "evidence_ids": [],
+      "finding_ids": [
+        "FND-004"
+      ],
+      "reason": "用户要求不打开浏览器；待 Suzy 手动验证"
+    },
+    {
+      "id": "SCN-005",
+      "title": "模型开放筛选项由两个不同范围的响应互相覆盖：手动复验",
+      "page_ids": [
+        "PAGE-018"
+      ],
+      "instance_ids": [],
+      "preconditions": [
+        "使用本地或测试数据，具备控制错误响应或延迟的条件"
+      ],
+      "steps": [
+        "准备跨页、跨服务商数据，交换两次请求返回顺序，搜索和切换分类后，下拉选项仍完整且稳定。"
+      ],
+      "expected": [
+        "筛选选项使用独立完整服务商来源，不由当前页列表回写；服务端无完整来源时明确分页收集策略。"
+      ],
+      "context": {
+        "role": "测试管理员",
+        "data": "测试项目和资产，不使用真实敏感信息",
+        "network": "正常、失败和受控延迟",
+        "viewport": "用户实际桌面环境，尚未运行验证",
+        "input": "按验收步骤操作",
+        "lifecycle": "按验收步骤刷新或切换"
+      },
+      "risk": "normal",
+      "status": "blocked",
+      "evidence_ids": [],
+      "finding_ids": [
+        "FND-005"
+      ],
+      "reason": "用户要求不打开浏览器；待 Suzy 手动验证"
+    },
+    {
+      "id": "SCN-006",
+      "title": "手机号验证与换绑把 HTTP 失败当作成功：手动复验",
+      "page_ids": [
+        "PAGE-014"
+      ],
+      "instance_ids": [],
+      "preconditions": [
+        "使用本地或测试数据，具备控制错误响应或延迟的条件"
+      ],
+      "steps": [
+        "验证、换绑、解绑分别返回 400/422/500 时不得进入成功步骤或更新资料；成功后重新读取账号手机号一致。慢网重复点击不得重复发送。核对真实接口是否应使用专用验证端点，不代替后端权限审查。"
+      ],
+      "expected": [
+        "接口适配层统一检查 HTTP 状态并解析业务结果；页面只在服务端确认后更新资料，并补发送中、验证中和失败重试状态。"
+      ],
+      "context": {
+        "role": "测试用户",
+        "data": "测试项目和资产，不使用真实敏感信息",
+        "network": "正常、失败和受控延迟",
+        "viewport": "用户实际桌面环境，尚未运行验证",
+        "input": "按验收步骤操作",
+        "lifecycle": "按验收步骤刷新或切换"
+      },
+      "risk": "high",
+      "status": "blocked",
+      "evidence_ids": [],
+      "finding_ids": [
+        "FND-006"
+      ],
+      "reason": "用户要求不打开浏览器；待 Suzy 手动验证"
+    },
+    {
+      "id": "SCN-007",
+      "title": "项目资产响应没有项目身份隔离：手动复验",
+      "page_ids": [
+        "PAGE-009"
+      ],
+      "instance_ids": [],
+      "preconditions": [
+        "使用本地或测试数据，具备控制错误响应或延迟的条件"
+      ],
+      "steps": [
+        "甲首屏慢、乙首屏快，以及甲加载更多时切乙两组场景，最终只显示乙数据，选择、详情和操作参数均属于乙。"
+      ],
+      "expected": [
+        "展示数据按项目与分类共同存储，或者在首屏和加载更多的所有异步阶段结束后校验请求代际；切换时清理旧选择及详情。"
+      ],
+      "context": {
+        "role": "测试用户",
+        "data": "测试项目和资产，不使用真实敏感信息",
+        "network": "正常、失败和受控延迟",
+        "viewport": "用户实际桌面环境，尚未运行验证",
+        "input": "按验收步骤操作",
+        "lifecycle": "按验收步骤刷新或切换"
+      },
+      "risk": "normal",
+      "status": "blocked",
+      "evidence_ids": [],
+      "finding_ids": [
+        "FND-007"
+      ],
+      "reason": "用户要求不打开浏览器；待 Suzy 手动验证"
+    },
+    {
+      "id": "SCN-008",
+      "title": "分镜重排在状态更新函数中执行网络副作用：手动复验",
+      "page_ids": [
+        "PAGE-007"
+      ],
+      "instance_ids": [],
+      "preconditions": [
+        "使用本地或测试数据，具备控制错误响应或延迟的条件"
+      ],
+      "steps": [
+        "严格模式下一次操作只有一次预期重排提交；连续拖动、重排失败、复制成功但重排失败均有确定反馈，重新进入顺序与服务端一致。"
+      ],
+      "expected": [
+        "纯排序函数只返回数据；事件编排层或明确的串行保存队列负责重排请求、版本校验和失败反馈。保持当前页面集中编排的合理边界，不机械拆文件。"
+      ],
+      "context": {
+        "role": "测试用户",
+        "data": "测试项目和资产，不使用真实敏感信息",
+        "network": "正常、失败和受控延迟",
+        "viewport": "用户实际桌面环境，尚未运行验证",
+        "input": "按验收步骤操作",
+        "lifecycle": "按验收步骤刷新或切换"
+      },
+      "risk": "normal",
+      "status": "blocked",
+      "evidence_ids": [],
+      "finding_ids": [
+        "FND-008"
+      ],
+      "reason": "用户要求不打开浏览器；待 Suzy 手动验证"
+    },
+    {
+      "id": "SCN-009",
+      "title": "水印设置读取覆盖草稿，保存未校验接口失败：手动复验",
+      "page_ids": [
+        "PAGE-015"
+      ],
+      "instance_ids": [],
+      "preconditions": [
+        "使用本地或测试数据，具备控制错误响应或延迟的条件"
+      ],
+      "steps": [
+        "延迟读取后先尝试编辑；单个服务商 PATCH 返回 500；GET 返回 500；必须不覆盖已编辑值、不提示假成功，重新打开与实际保存结果一致。"
+      ],
+      "expected": [
+        "区分读取、编辑、保存状态；校验每个响应并汇总部分成功项，失败保留草稿与重试入口。只在真实保存成功时提示已生效。"
+      ],
+      "context": {
+        "role": "测试用户",
+        "data": "测试项目和资产，不使用真实敏感信息",
+        "network": "正常、失败和受控延迟",
+        "viewport": "用户实际桌面环境，尚未运行验证",
+        "input": "按验收步骤操作",
+        "lifecycle": "按验收步骤刷新或切换"
+      },
+      "risk": "normal",
+      "status": "blocked",
+      "evidence_ids": [],
+      "finding_ids": [
+        "FND-009"
+      ],
+      "reason": "用户要求不打开浏览器；待 Suzy 手动验证"
+    },
+    {
+      "id": "SCN-010",
+      "title": "模型配置的开关、默认值和删除存在副作用与假成功：手动复验",
+      "page_ids": [
+        "PAGE-013"
+      ],
+      "instance_ids": [],
+      "preconditions": [
+        "使用本地或测试数据，具备控制错误响应或延迟的条件"
+      ],
+      "steps": [
+        "开关、默认、删除分别模拟失败及连续操作，失败可见并恢复真实状态；重开配置后结果一致，严格模式不重复提交。"
+      ],
+      "expected": [
+        "更新函数保持纯计算，事件层按模型 ID 管理请求和回滚；默认模型涉及同分类多项，要按分类版本控制并确认后端唯一性契约。"
+      ],
+      "context": {
+        "role": "测试用户",
+        "data": "测试项目和资产，不使用真实敏感信息",
+        "network": "正常、失败和受控延迟",
+        "viewport": "用户实际桌面环境，尚未运行验证",
+        "input": "按验收步骤操作",
+        "lifecycle": "按验收步骤刷新或切换"
+      },
+      "risk": "normal",
+      "status": "blocked",
+      "evidence_ids": [],
+      "finding_ids": [
+        "FND-010"
+      ],
+      "reason": "用户要求不打开浏览器；待 Suzy 手动验证"
+    },
+    {
+      "id": "SCN-011",
+      "title": "手机号登录失败没有面向用户的错误处理：手动复验",
+      "page_ids": [
+        "PAGE-002"
+      ],
+      "instance_ids": [],
+      "preconditions": [
+        "使用本地或测试数据，具备控制错误响应或延迟的条件"
+      ],
+      "steps": [
+        "错误验证码、500、断网均有可见提示并可重试；慢请求连续点击只提交一次，成功后登录状态正常恢复。"
+      ],
+      "expected": [
+        "登录事件层捕获错误并展示可理解提示，增加请求中状态与重复提交保护，成功后才关闭弹窗。"
+      ],
+      "context": {
+        "role": "测试用户",
+        "data": "测试项目和资产，不使用真实敏感信息",
+        "network": "正常、失败和受控延迟",
+        "viewport": "用户实际桌面环境，尚未运行验证",
+        "input": "按验收步骤操作",
+        "lifecycle": "按验收步骤刷新或切换"
+      },
+      "risk": "normal",
+      "status": "blocked",
+      "evidence_ids": [],
+      "finding_ids": [
+        "FND-011"
+      ],
+      "reason": "用户要求不打开浏览器；待 Suzy 手动验证"
+    },
+    {
+      "id": "SCN-012",
+      "title": "剧本工作区加载失败被重新抛出，没有恢复入口：手动复验",
+      "page_ids": [
+        "PAGE-005"
+      ],
+      "instance_ids": [],
+      "preconditions": [
+        "使用本地或测试数据，具备控制错误响应或延迟的条件"
+      ],
+      "steps": [
+        "有剧本项目首次读取返回 500，必须明确显示读取失败且可重试；重试成功恢复原稿，不自动生成或清空原稿。"
+      ],
+      "expected": [
+        "读取状态单独建模，失败保留可重试入口；首次读取未确定前避免以空态开放有覆盖风险的动作。另行校验项目切换时旧响应身份。"
+      ],
+      "context": {
+        "role": "测试用户",
+        "data": "测试项目和资产，不使用真实敏感信息",
+        "network": "正常、失败和受控延迟",
+        "viewport": "用户实际桌面环境，尚未运行验证",
+        "input": "按验收步骤操作",
+        "lifecycle": "按验收步骤刷新或切换"
+      },
+      "risk": "normal",
+      "status": "blocked",
+      "evidence_ids": [],
+      "finding_ids": [
+        "FND-012"
+      ],
+      "reason": "用户要求不打开浏览器；待 Suzy 手动验证"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "EV-001",
+      "kind": "source",
+      "locator": "`src/utils/cache.js` 的 `clearAllCache`、`fetchAndStore`；调用方 `src/api/request.js` 的 `clearTokens`。",
+      "observed_at": "2026-10-12T03:04:06.933Z",
+      "baseline_ref": "2c513f7 加审查时工作区修改；图片编辑另有并行用户修改",
+      "summary": "清空函数只删除已有缓存，不递增 `epoch`，不清空 `inflight`；清空前发起的请求仍通过代际判断并写入缓存。Node 测试在清空后释放旧请求，`peekCache` 返回旧会话数据。"
+    },
+    {
+      "id": "EV-002",
+      "kind": "source",
+      "locator": "`src/pages/CreationPage.jsx:552` 的 `deleteSelected`、`:640` 的 `handleDeleteCard`。",
+      "observed_at": "2026-10-12T03:04:06.933Z",
+      "baseline_ref": "2c513f7 加审查时工作区修改；图片编辑另有并行用户修改",
+      "summary": "删除 API 使用空 `catch`，不等待完成即调用 `deleteSelectedCards` 或 `storeDeleteCard` 并失效历史缓存。"
+    },
+    {
+      "id": "EV-003",
+      "kind": "source",
+      "locator": "`src/components/NotificationCenterModal.jsx:197`，`loadNotifications` 和打开弹窗的副作用。",
+      "observed_at": "2026-10-12T03:04:06.933Z",
+      "baseline_ref": "2c513f7 加审查时工作区修改；图片编辑另有并行用户修改",
+      "summary": "每次分类请求都无条件写入同一个 `notifications` 和 `loading`；无请求序号或清理。失败分支清空列表，未设置错误状态。"
+    },
+    {
+      "id": "EV-004",
+      "kind": "source",
+      "locator": "`src/components/admin/AdminDisplaySettingsPage.jsx` 的 `handleToggleCardVisibility`、`CardVisibilityItem`。",
+      "observed_at": "2026-10-12T03:04:06.933Z",
+      "baseline_ref": "2c513f7 加审查时工作区修改；图片编辑另有并行用户修改",
+      "summary": "回滚保存整个 `previousItems`，失败时整表替换；`savingKey` 只记录一个正在操作的卡片，其他卡片仍可提交。"
+    },
+    {
+      "id": "EV-005",
+      "kind": "source",
+      "locator": "`src/components/admin/AdminModelVisibilityPage.jsx:77` 和 `:89`。",
+      "observed_at": "2026-10-12T03:04:06.933Z",
+      "baseline_ref": "2c513f7 加审查时工作区修改；图片编辑另有并行用户修改",
+      "summary": "当前列表第一页从 `payload.list` 提取服务商选项；另一个请求从前 100 条模型提取选项，两者都直接覆盖同一状态。前者受搜索、服务商和类型筛选限制。"
+    },
+    {
+      "id": "EV-006",
+      "kind": "source",
+      "locator": "`src/api/user.js:178` 至 `:225`，调用方 `src/components/ProfileModal.jsx:397` 和 `:459`。",
+      "observed_at": "2026-10-12T03:04:06.933Z",
+      "baseline_ref": "2c513f7 加审查时工作区修改；图片编辑另有并行用户修改",
+      "summary": "`authFetch` 对普通 400/422/500 返回 Response，不自动抛错。`apiVerifyPhoneCode` 不检查 `res.ok` 就返回 `{ valid: true }`；`apiRebindPhone` 直接返回 Response，调用方只判断是否为 null。因此业务错误响应仍会进入下一步或调用 `onBind(newPhone)`。发送验证码、解绑接口也未检查状态码。"
+    },
+    {
+      "id": "EV-007",
+      "kind": "source",
+      "locator": "`src/components/assets/AssetsProjectPanel.jsx:282` 的 `loadFirstPage`、`:380` 的 `loadMorePage`、`:412` 的切换副作用。",
+      "observed_at": "2026-10-12T03:04:06.933Z",
+      "baseline_ref": "2c513f7 加审查时工作区修改；图片编辑另有并行用户修改",
+      "summary": "分页元数据按项目与分类区分，但展示数据只写入 `assetsMap[category]`；请求完成不检查当前项目。清理只取消尚未执行的动画帧，不能阻止已发出的请求写回。"
+    },
+    {
+      "id": "EV-008",
+      "kind": "source",
+      "locator": "`src/pages/StoryboardPage.jsx:2316`、`:2344`、`:2361`、`:2398`；`src/main.jsx:7` 启用严格模式。",
+      "observed_at": "2026-10-12T03:04:06.933Z",
+      "baseline_ref": "2c513f7 加审查时工作区修改；图片编辑另有并行用户修改",
+      "summary": "新增、复制、删除和拖动的 `setShots(prev => ...)` 内调用重排 API；失败仅 `console.error`。React 状态更新函数应为纯计算，严格模式开发检查可能重复执行该函数。"
+    },
+    {
+      "id": "EV-009",
+      "kind": "source",
+      "locator": "`src/components/WatermarkSettingsModal.jsx:34`、`:51`；`src/api/settings.js:8`、`:22`。",
+      "observed_at": "2026-10-12T03:04:06.933Z",
+      "baseline_ref": "2c513f7 加审查时工作区修改；图片编辑另有并行用户修改",
+      "summary": "初次 GET 未完成时开关和保存已可用，返回后直接覆盖草稿；GET/PATCH 都不检查 `res.ok`，PATCH 的普通 HTTP 错误仍使 `Promise.all` 成功结束，弹窗提示保存成功。"
+    },
+    {
+      "id": "EV-010",
+      "kind": "source",
+      "locator": "`src/components/ApiConfigModal.jsx:1463` 的 `toggleEditProviderModel`、`:1481` 的 `setDefaultEditProviderModel`、`:1502` 的 `deleteEditProviderModel`。",
+      "observed_at": "2026-10-12T03:04:06.933Z",
+      "baseline_ref": "2c513f7 加审查时工作区修改；图片编辑另有并行用户修改",
+      "summary": "网络请求位于 `setState` 更新函数内，立即修改模型展示；错误只记录控制台，无逐项回滚或用户反馈。"
+    },
+    {
+      "id": "EV-011",
+      "kind": "source",
+      "locator": "`src/components/LoginModal.jsx:425` 的 `handleLogin`；`src/api/auth.js:4` 的 `readAuthResponse`。",
+      "observed_at": "2026-10-12T03:04:06.933Z",
+      "baseline_ref": "2c513f7 加审查时工作区修改；图片编辑另有并行用户修改",
+      "summary": "接口对错误验证码及服务异常抛错，点击处理函数直接 await，没有 catch、错误状态或提交锁；登录按钮也未传入提交中禁用状态。"
+    },
+    {
+      "id": "EV-012",
+      "kind": "source",
+      "locator": "`src/pages/ScriptPage.jsx:534` 工作区加载副作用、`:603` 错误分支。",
+      "observed_at": "2026-10-12T03:04:06.933Z",
+      "baseline_ref": "2c513f7 加审查时工作区修改；图片编辑另有并行用户修改",
+      "summary": "加载 catch 只打印错误后再次 throw，整条 Promise 没有下游 catch，也未设置工作区读取错误态。此问题与已有的编排任务轮询错误处理不同。"
+    }
+  ],
+  "checks": [
+    {
+      "id": "CHK-0001",
+      "scope": "project",
+      "target_id": "PRJ-001",
+      "dimension": "reproducibility",
+      "question": "待细化：PRJ-001 的 reproducibility 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0002",
+      "scope": "project",
+      "target_id": "PRJ-001",
+      "dimension": "architecture",
+      "question": "待细化：PRJ-001 的 architecture 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0003",
+      "scope": "project",
+      "target_id": "PRJ-001",
+      "dimension": "security_boundaries",
+      "question": "待细化：PRJ-001 的 security_boundaries 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0004",
+      "scope": "project",
+      "target_id": "PRJ-001",
+      "dimension": "delivery_observability",
+      "question": "待细化：PRJ-001 的 delivery_observability 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-F-001",
+      "scope": "page",
+      "target_id": "PAGE-022",
+      "dimension": "state_coverage",
+      "question": "源码是否处理：登出后在途请求可以重新写入旧会话缓存",
+      "status": "failed",
+      "evidence_ids": [
+        "EV-001"
+      ],
+      "scenario_ids": [
+        "SCN-001"
+      ],
+      "finding_ids": [
+        "FND-001"
+      ],
+      "reason": "源码缺口确认，实际端到端影响见手动验收边界"
+    },
+    {
+      "id": "CHK-F-002",
+      "scope": "page",
+      "target_id": "PAGE-008",
+      "dimension": "state_coverage",
+      "question": "源码是否处理：创作单项和批量删除静默失败却移除本地卡片",
+      "status": "failed",
+      "evidence_ids": [
+        "EV-002"
+      ],
+      "scenario_ids": [
+        "SCN-002"
+      ],
+      "finding_ids": [
+        "FND-002"
+      ],
+      "reason": "源码缺口确认，实际端到端影响见手动验收边界"
+    },
+    {
+      "id": "CHK-F-003",
+      "scope": "page",
+      "target_id": "PAGE-015",
+      "dimension": "state_coverage",
+      "question": "源码是否处理：通知列表缺少请求身份校验，失败被显示为空列表",
+      "status": "failed",
+      "evidence_ids": [
+        "EV-003"
+      ],
+      "scenario_ids": [
+        "SCN-003"
+      ],
+      "finding_ids": [
+        "FND-003"
+      ],
+      "reason": "源码缺口确认，实际端到端影响见手动验收边界"
+    },
+    {
+      "id": "CHK-F-004",
+      "scope": "page",
+      "target_id": "PAGE-017",
+      "dimension": "state_coverage",
+      "question": "源码是否处理：管理员卡片显示开关的失败回滚覆盖其他并发操作",
+      "status": "failed",
+      "evidence_ids": [
+        "EV-004"
+      ],
+      "scenario_ids": [
+        "SCN-004"
+      ],
+      "finding_ids": [
+        "FND-004"
+      ],
+      "reason": "源码缺口确认，实际端到端影响见手动验收边界"
+    },
+    {
+      "id": "CHK-F-005",
+      "scope": "page",
+      "target_id": "PAGE-018",
+      "dimension": "state_coverage",
+      "question": "源码是否处理：模型开放筛选项由两个不同范围的响应互相覆盖",
+      "status": "failed",
+      "evidence_ids": [
+        "EV-005"
+      ],
+      "scenario_ids": [
+        "SCN-005"
+      ],
+      "finding_ids": [
+        "FND-005"
+      ],
+      "reason": "源码缺口确认，实际端到端影响见手动验收边界"
+    },
+    {
+      "id": "CHK-F-006",
+      "scope": "page",
+      "target_id": "PAGE-014",
+      "dimension": "state_coverage",
+      "question": "源码是否处理：手机号验证与换绑把 HTTP 失败当作成功",
+      "status": "failed",
+      "evidence_ids": [
+        "EV-006"
+      ],
+      "scenario_ids": [
+        "SCN-006"
+      ],
+      "finding_ids": [
+        "FND-006"
+      ],
+      "reason": "源码缺口确认，实际端到端影响见手动验收边界"
+    },
+    {
+      "id": "CHK-F-007",
+      "scope": "page",
+      "target_id": "PAGE-009",
+      "dimension": "state_coverage",
+      "question": "源码是否处理：项目资产响应没有项目身份隔离",
+      "status": "failed",
+      "evidence_ids": [
+        "EV-007"
+      ],
+      "scenario_ids": [
+        "SCN-007"
+      ],
+      "finding_ids": [
+        "FND-007"
+      ],
+      "reason": "源码缺口确认，实际端到端影响见手动验收边界"
+    },
+    {
+      "id": "CHK-F-008",
+      "scope": "page",
+      "target_id": "PAGE-007",
+      "dimension": "state_coverage",
+      "question": "源码是否处理：分镜重排在状态更新函数中执行网络副作用",
+      "status": "failed",
+      "evidence_ids": [
+        "EV-008"
+      ],
+      "scenario_ids": [
+        "SCN-008"
+      ],
+      "finding_ids": [
+        "FND-008"
+      ],
+      "reason": "源码缺口确认，实际端到端影响见手动验收边界"
+    },
+    {
+      "id": "CHK-F-009",
+      "scope": "page",
+      "target_id": "PAGE-015",
+      "dimension": "state_coverage",
+      "question": "源码是否处理：水印设置读取覆盖草稿，保存未校验接口失败",
+      "status": "failed",
+      "evidence_ids": [
+        "EV-009"
+      ],
+      "scenario_ids": [
+        "SCN-009"
+      ],
+      "finding_ids": [
+        "FND-009"
+      ],
+      "reason": "源码缺口确认，实际端到端影响见手动验收边界"
+    },
+    {
+      "id": "CHK-F-010",
+      "scope": "page",
+      "target_id": "PAGE-013",
+      "dimension": "state_coverage",
+      "question": "源码是否处理：模型配置的开关、默认值和删除存在副作用与假成功",
+      "status": "failed",
+      "evidence_ids": [
+        "EV-010"
+      ],
+      "scenario_ids": [
+        "SCN-010"
+      ],
+      "finding_ids": [
+        "FND-010"
+      ],
+      "reason": "源码缺口确认，实际端到端影响见手动验收边界"
+    },
+    {
+      "id": "CHK-F-011",
+      "scope": "page",
+      "target_id": "PAGE-002",
+      "dimension": "state_coverage",
+      "question": "源码是否处理：手机号登录失败没有面向用户的错误处理",
+      "status": "failed",
+      "evidence_ids": [
+        "EV-011"
+      ],
+      "scenario_ids": [
+        "SCN-011"
+      ],
+      "finding_ids": [
+        "FND-011"
+      ],
+      "reason": "源码缺口确认，实际端到端影响见手动验收边界"
+    },
+    {
+      "id": "CHK-F-012",
+      "scope": "page",
+      "target_id": "PAGE-005",
+      "dimension": "state_coverage",
+      "question": "源码是否处理：剧本工作区加载失败被重新抛出，没有恢复入口",
+      "status": "failed",
+      "evidence_ids": [
+        "EV-012"
+      ],
+      "scenario_ids": [
+        "SCN-012"
+      ],
+      "finding_ids": [
+        "FND-012"
+      ],
+      "reason": "源码缺口确认，实际端到端影响见手动验收边界"
+    },
+    {
+      "id": "CHK-0005",
+      "scope": "page",
+      "target_id": "PAGE-001",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-001 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0006",
+      "scope": "page",
+      "target_id": "PAGE-001",
+      "dimension": "state_coverage",
+      "question": "待细化：PAGE-001 的 state_coverage 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0007",
+      "scope": "page",
+      "target_id": "PAGE-001",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-001 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0008",
+      "scope": "page",
+      "target_id": "PAGE-001",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-001 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0009",
+      "scope": "page",
+      "target_id": "PAGE-002",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-002 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0010",
+      "scope": "page",
+      "target_id": "PAGE-002",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-002 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0011",
+      "scope": "page",
+      "target_id": "PAGE-002",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-002 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0012",
+      "scope": "page",
+      "target_id": "PAGE-003",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-003 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0013",
+      "scope": "page",
+      "target_id": "PAGE-003",
+      "dimension": "state_coverage",
+      "question": "待细化：PAGE-003 的 state_coverage 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0014",
+      "scope": "page",
+      "target_id": "PAGE-003",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-003 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0015",
+      "scope": "page",
+      "target_id": "PAGE-003",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-003 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0016",
+      "scope": "page",
+      "target_id": "PAGE-004",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-004 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0017",
+      "scope": "page",
+      "target_id": "PAGE-004",
+      "dimension": "state_coverage",
+      "question": "待细化：PAGE-004 的 state_coverage 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0018",
+      "scope": "page",
+      "target_id": "PAGE-004",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-004 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0019",
+      "scope": "page",
+      "target_id": "PAGE-004",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-004 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0020",
+      "scope": "page",
+      "target_id": "PAGE-005",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-005 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0021",
+      "scope": "page",
+      "target_id": "PAGE-005",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-005 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0022",
+      "scope": "page",
+      "target_id": "PAGE-005",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-005 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0023",
+      "scope": "page",
+      "target_id": "PAGE-006",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-006 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0024",
+      "scope": "page",
+      "target_id": "PAGE-006",
+      "dimension": "state_coverage",
+      "question": "待细化：PAGE-006 的 state_coverage 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0025",
+      "scope": "page",
+      "target_id": "PAGE-006",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-006 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0026",
+      "scope": "page",
+      "target_id": "PAGE-006",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-006 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0027",
+      "scope": "page",
+      "target_id": "PAGE-007",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-007 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0028",
+      "scope": "page",
+      "target_id": "PAGE-007",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-007 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0029",
+      "scope": "page",
+      "target_id": "PAGE-007",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-007 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0030",
+      "scope": "page",
+      "target_id": "PAGE-008",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-008 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0031",
+      "scope": "page",
+      "target_id": "PAGE-008",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-008 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0032",
+      "scope": "page",
+      "target_id": "PAGE-008",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-008 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0033",
+      "scope": "page",
+      "target_id": "PAGE-009",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-009 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0034",
+      "scope": "page",
+      "target_id": "PAGE-009",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-009 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0035",
+      "scope": "page",
+      "target_id": "PAGE-009",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-009 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0036",
+      "scope": "page",
+      "target_id": "PAGE-010",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-010 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0037",
+      "scope": "page",
+      "target_id": "PAGE-010",
+      "dimension": "state_coverage",
+      "question": "待细化：PAGE-010 的 state_coverage 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0038",
+      "scope": "page",
+      "target_id": "PAGE-010",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-010 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0039",
+      "scope": "page",
+      "target_id": "PAGE-010",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-010 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0040",
+      "scope": "page",
+      "target_id": "PAGE-011",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-011 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0041",
+      "scope": "page",
+      "target_id": "PAGE-011",
+      "dimension": "state_coverage",
+      "question": "待细化：PAGE-011 的 state_coverage 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0042",
+      "scope": "page",
+      "target_id": "PAGE-011",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-011 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0043",
+      "scope": "page",
+      "target_id": "PAGE-011",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-011 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0044",
+      "scope": "page",
+      "target_id": "PAGE-012",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-012 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0045",
+      "scope": "page",
+      "target_id": "PAGE-012",
+      "dimension": "state_coverage",
+      "question": "待细化：PAGE-012 的 state_coverage 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0046",
+      "scope": "page",
+      "target_id": "PAGE-012",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-012 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0047",
+      "scope": "page",
+      "target_id": "PAGE-012",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-012 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0048",
+      "scope": "page",
+      "target_id": "PAGE-013",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-013 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0049",
+      "scope": "page",
+      "target_id": "PAGE-013",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-013 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0050",
+      "scope": "page",
+      "target_id": "PAGE-013",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-013 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0051",
+      "scope": "page",
+      "target_id": "PAGE-014",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-014 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0052",
+      "scope": "page",
+      "target_id": "PAGE-014",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-014 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0053",
+      "scope": "page",
+      "target_id": "PAGE-014",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-014 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0054",
+      "scope": "page",
+      "target_id": "PAGE-015",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-015 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0055",
+      "scope": "page",
+      "target_id": "PAGE-015",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-015 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0056",
+      "scope": "page",
+      "target_id": "PAGE-015",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-015 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0057",
+      "scope": "page",
+      "target_id": "PAGE-016",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-016 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0058",
+      "scope": "page",
+      "target_id": "PAGE-016",
+      "dimension": "state_coverage",
+      "question": "待细化：PAGE-016 的 state_coverage 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0059",
+      "scope": "page",
+      "target_id": "PAGE-016",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-016 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0060",
+      "scope": "page",
+      "target_id": "PAGE-016",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-016 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0061",
+      "scope": "page",
+      "target_id": "PAGE-017",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-017 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0062",
+      "scope": "page",
+      "target_id": "PAGE-017",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-017 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0063",
+      "scope": "page",
+      "target_id": "PAGE-017",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-017 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0064",
+      "scope": "page",
+      "target_id": "PAGE-018",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-018 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0065",
+      "scope": "page",
+      "target_id": "PAGE-018",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-018 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0066",
+      "scope": "page",
+      "target_id": "PAGE-018",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-018 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0067",
+      "scope": "page",
+      "target_id": "PAGE-019",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-019 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0068",
+      "scope": "page",
+      "target_id": "PAGE-019",
+      "dimension": "state_coverage",
+      "question": "待细化：PAGE-019 的 state_coverage 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0069",
+      "scope": "page",
+      "target_id": "PAGE-019",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-019 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0070",
+      "scope": "page",
+      "target_id": "PAGE-019",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-019 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0071",
+      "scope": "page",
+      "target_id": "PAGE-020",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-020 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0072",
+      "scope": "page",
+      "target_id": "PAGE-020",
+      "dimension": "state_coverage",
+      "question": "待细化：PAGE-020 的 state_coverage 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0073",
+      "scope": "page",
+      "target_id": "PAGE-020",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-020 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0074",
+      "scope": "page",
+      "target_id": "PAGE-020",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-020 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0075",
+      "scope": "page",
+      "target_id": "PAGE-021",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-021 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0076",
+      "scope": "page",
+      "target_id": "PAGE-021",
+      "dimension": "state_coverage",
+      "question": "待细化：PAGE-021 的 state_coverage 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0077",
+      "scope": "page",
+      "target_id": "PAGE-021",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-021 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0078",
+      "scope": "page",
+      "target_id": "PAGE-021",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-021 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0079",
+      "scope": "page",
+      "target_id": "PAGE-022",
+      "dimension": "routing_history",
+      "question": "待细化：PAGE-022 的 routing_history 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0080",
+      "scope": "page",
+      "target_id": "PAGE-022",
+      "dimension": "responsive_content",
+      "question": "待细化：PAGE-022 的 responsive_content 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "CHK-0081",
+      "scope": "page",
+      "target_id": "PAGE-022",
+      "dimension": "journey_integration",
+      "question": "待细化：PAGE-022 的 journey_integration 在哪些条件下满足哪些具体预期？",
+      "status": "not_checked",
+      "evidence_ids": [],
+      "scenario_ids": [],
+      "finding_ids": [],
+      "reason": ""
+    }
+  ],
+  "findings": [
+    {
+      "id": "FND-001",
+      "title": "登出后在途请求可以重新写入旧会话缓存",
+      "category": "状态与交互",
+      "severity": "P1",
+      "confidence": "confirmed",
+      "status": "open",
+      "owner": "前端开发",
+      "page_ids": [
+        "PAGE-022"
+      ],
+      "instance_ids": [],
+      "definition_ids": [],
+      "check_ids": [
+        "CHK-F-001"
+      ],
+      "scenario_ids": [
+        "SCN-001"
+      ],
+      "evidence_ids": [
+        "EV-001"
+      ],
+      "actual": "清空函数只删除已有缓存，不递增 `epoch`，不清空 `inflight`；清空前发起的请求仍通过代际判断并写入缓存。Node 测试在清空后释放旧请求，`peekCache` 返回旧会话数据。",
+      "expected": "清空时切断旧代际请求的缓存写回和通知，清理去重表；旧请求结束时只能移除它自身的登记，不能删除新请求。调用方还需校验会话身份后再写入页面状态。",
+      "impact": "同一文档内鉴权失效后重新登录，旧数据可能重新进入共享缓存；是否实际显示取决于缓存键、请求时序和页面重载。不能据此声称已发生线上数据泄露。",
+      "root_cause": "清空函数只删除已有缓存，不递增 `epoch`，不清空 `inflight`；清空前发起的请求仍通过代际判断并写入缓存。Node 测试在清空后释放旧请求，`peekCache` 返回旧会话数据。",
+      "root_cause_confidence": "confirmed",
+      "remediation": "清空时切断旧代际请求的缓存写回和通知，清理去重表；旧请求结束时只能移除它自身的登记，不能删除新请求。调用方还需校验会话身份后再写入页面状态。",
+      "regression_test": "延迟账号甲的查询，退出或触发鉴权失效，登录账号乙，再释放甲响应；乙的缓存、页面、订阅回调均不得收到甲数据。另测旧请求结束不破坏乙的并发去重。",
+      "reproduction": {
+        "preconditions": [
+          "源码检查；实际运行按手动验收条件进行"
+        ],
+        "steps": [
+          "延迟账号甲的查询，退出或触发鉴权失效，登录账号乙，再释放甲响应；乙的缓存、页面、订阅回调均不得收到甲数据。另测旧请求结束不破坏乙的并发去重。"
+        ]
+      },
+      "resolution_evidence_ids": []
+    },
+    {
+      "id": "FND-002",
+      "title": "创作单项和批量删除静默失败却移除本地卡片",
+      "category": "状态与交互",
+      "severity": "P2",
+      "confidence": "confirmed",
+      "status": "open",
+      "owner": "前端开发",
+      "page_ids": [
+        "PAGE-008"
+      ],
+      "instance_ids": [],
+      "definition_ids": [],
+      "check_ids": [
+        "CHK-F-002"
+      ],
+      "scenario_ids": [
+        "SCN-002"
+      ],
+      "evidence_ids": [
+        "EV-002"
+      ],
+      "actual": "删除 API 使用空 `catch`，不等待完成即调用 `deleteSelectedCards` 或 `storeDeleteCard` 并失效历史缓存。",
+      "expected": "按资产 ID 记录结果，成功后移除对应卡片，失败保留并提示；提供提交中状态和重复提交保护。若保留乐观删除，必须有逐项回滚与错误反馈。",
+      "impact": "断网、无权限或服务端失败时，界面表现像删除成功；重新加载后资产可能再次出现。批量部分成功无法告诉用户失败项。",
+      "root_cause": "删除 API 使用空 `catch`，不等待完成即调用 `deleteSelectedCards` 或 `storeDeleteCard` 并失效历史缓存。",
+      "root_cause_confidence": "confirmed",
+      "remediation": "按资产 ID 记录结果，成功后移除对应卡片，失败保留并提示；提供提交中状态和重复提交保护。若保留乐观删除，必须有逐项回滚与错误反馈。",
+      "regression_test": "单项返回 500、批量部分失败、断网、重复点击；失败卡片仍可见且可重试，成功项刷新后不恢复，选择状态与实际结果一致。",
+      "reproduction": {
+        "preconditions": [
+          "源码检查；实际运行按手动验收条件进行"
+        ],
+        "steps": [
+          "单项返回 500、批量部分失败、断网、重复点击；失败卡片仍可见且可重试，成功项刷新后不恢复，选择状态与实际结果一致。"
+        ]
+      },
+      "resolution_evidence_ids": []
+    },
+    {
+      "id": "FND-003",
+      "title": "通知列表缺少请求身份校验，失败被显示为空列表",
+      "category": "状态与交互",
+      "severity": "P2",
+      "confidence": "confirmed",
+      "status": "open",
+      "owner": "前端开发",
+      "page_ids": [
+        "PAGE-015"
+      ],
+      "instance_ids": [],
+      "definition_ids": [],
+      "check_ids": [
+        "CHK-F-003"
+      ],
+      "scenario_ids": [
+        "SCN-003"
+      ],
+      "evidence_ids": [
+        "EV-003"
+      ],
+      "actual": "每次分类请求都无条件写入同一个 `notifications` 和 `loading`；无请求序号或清理。失败分支清空列表，未设置错误状态。",
+      "expected": "分类与打开周期共同限定请求归属，仅当前请求更新状态；区分空态、错误及重试。",
+      "impact": "创作通知的慢响应可能覆盖系统通知；旧请求先结束可能提前关闭加载态；接口失败显示“暂无通知”，无法区分真正为空。",
+      "root_cause": "每次分类请求都无条件写入同一个 `notifications` 和 `loading`；无请求序号或清理。失败分支清空列表，未设置错误状态。",
+      "root_cause_confidence": "confirmed",
+      "remediation": "分类与打开周期共同限定请求归属，仅当前请求更新状态；区分空态、错误及重试。",
+      "regression_test": "创作通知延迟 3 秒，系统通知延迟 0.2 秒，立即切换到系统；最终仅显示系统通知。再测关闭重开、500 和空数组三种情况。",
+      "reproduction": {
+        "preconditions": [
+          "源码检查；实际运行按手动验收条件进行"
+        ],
+        "steps": [
+          "创作通知延迟 3 秒，系统通知延迟 0.2 秒，立即切换到系统；最终仅显示系统通知。再测关闭重开、500 和空数组三种情况。"
+        ]
+      },
+      "resolution_evidence_ids": []
+    },
+    {
+      "id": "FND-004",
+      "title": "管理员卡片显示开关的失败回滚覆盖其他并发操作",
+      "category": "状态与交互",
+      "severity": "P2",
+      "confidence": "confirmed",
+      "status": "open",
+      "owner": "前端开发",
+      "page_ids": [
+        "PAGE-017"
+      ],
+      "instance_ids": [],
+      "definition_ids": [],
+      "check_ids": [
+        "CHK-F-004"
+      ],
+      "scenario_ids": [
+        "SCN-004"
+      ],
+      "evidence_ids": [
+        "EV-004"
+      ],
+      "actual": "回滚保存整个 `previousItems`，失败时整表替换；`savingKey` 只记录一个正在操作的卡片，其他卡片仍可提交。",
+      "expected": "按卡片键管理忙碌状态及请求版本，失败只回滚该项；或明确采用整组串行提交。",
+      "impact": "先操作甲、再成功操作乙，甲随后失败时，会把乙已成功保存的状态在界面中回滚；单一忙碌标识也可能提前解除其他请求的禁用态。",
+      "root_cause": "回滚保存整个 `previousItems`，失败时整表替换；`savingKey` 只记录一个正在操作的卡片，其他卡片仍可提交。",
+      "root_cause_confidence": "confirmed",
+      "remediation": "按卡片键管理忙碌状态及请求版本，失败只回滚该项；或明确采用整组串行提交。",
+      "regression_test": "甲延迟失败、乙先成功，乙最终状态及刷新后的状态一致；同项不能重复提交，失败项可重试。",
+      "reproduction": {
+        "preconditions": [
+          "源码检查；实际运行按手动验收条件进行"
+        ],
+        "steps": [
+          "甲延迟失败、乙先成功，乙最终状态及刷新后的状态一致；同项不能重复提交，失败项可重试。"
+        ]
+      },
+      "resolution_evidence_ids": []
+    },
+    {
+      "id": "FND-005",
+      "title": "模型开放筛选项由两个不同范围的响应互相覆盖",
+      "category": "状态与交互",
+      "severity": "P2",
+      "confidence": "confirmed",
+      "status": "open",
+      "owner": "前端开发",
+      "page_ids": [
+        "PAGE-018"
+      ],
+      "instance_ids": [],
+      "definition_ids": [],
+      "check_ids": [
+        "CHK-F-005"
+      ],
+      "scenario_ids": [
+        "SCN-005"
+      ],
+      "evidence_ids": [
+        "EV-005"
+      ],
+      "actual": "当前列表第一页从 `payload.list` 提取服务商选项；另一个请求从前 100 条模型提取选项，两者都直接覆盖同一状态。前者受搜索、服务商和类型筛选限制。",
+      "expected": "筛选选项使用独立完整服务商来源，不由当前页列表回写；服务端无完整来源时明确分页收集策略。",
+      "impact": "列表响应后到时，下拉菜单可能只剩当前页或当前筛选中的服务商；100 条预热也不能保证覆盖全部服务商。",
+      "root_cause": "当前列表第一页从 `payload.list` 提取服务商选项；另一个请求从前 100 条模型提取选项，两者都直接覆盖同一状态。前者受搜索、服务商和类型筛选限制。",
+      "root_cause_confidence": "confirmed",
+      "remediation": "筛选选项使用独立完整服务商来源，不由当前页列表回写；服务端无完整来源时明确分页收集策略。",
+      "regression_test": "准备跨页、跨服务商数据，交换两次请求返回顺序，搜索和切换分类后，下拉选项仍完整且稳定。",
+      "reproduction": {
+        "preconditions": [
+          "源码检查；实际运行按手动验收条件进行"
+        ],
+        "steps": [
+          "准备跨页、跨服务商数据，交换两次请求返回顺序，搜索和切换分类后，下拉选项仍完整且稳定。"
+        ]
+      },
+      "resolution_evidence_ids": []
+    },
+    {
+      "id": "FND-006",
+      "title": "手机号验证与换绑把 HTTP 失败当作成功",
+      "category": "状态与交互",
+      "severity": "P1",
+      "confidence": "confirmed",
+      "status": "open",
+      "owner": "前端开发",
+      "page_ids": [
+        "PAGE-014"
+      ],
+      "instance_ids": [],
+      "definition_ids": [],
+      "check_ids": [
+        "CHK-F-006"
+      ],
+      "scenario_ids": [
+        "SCN-006"
+      ],
+      "evidence_ids": [
+        "EV-006"
+      ],
+      "actual": "`authFetch` 对普通 400/422/500 返回 Response，不自动抛错。`apiVerifyPhoneCode` 不检查 `res.ok` 就返回 `{ valid: true }`；`apiRebindPhone` 直接返回 Response，调用方只判断是否为 null。因此业务错误响应仍会进入下一步或调用 `onBind(newPhone)`。发送验证码、解绑接口也未检查状态码。",
+      "expected": "接口适配层统一检查 HTTP 状态并解析业务结果；页面只在服务端确认后更新资料，并补发送中、验证中和失败重试状态。",
+      "impact": "错误验证码被前端当成通过，换绑失败仍可能显示新手机号；实际后端资料未更改。发送验证码失败也可能启动成功倒计时。",
+      "root_cause": "`authFetch` 对普通 400/422/500 返回 Response，不自动抛错。`apiVerifyPhoneCode` 不检查 `res.ok` 就返回 `{ valid: true }`；`apiRebindPhone` 直接返回 Response，调用方只判断是否为 null。因此业务错误响应仍会进入下一步或调用 `onBind(newPhone)`。发送验证码、解绑接口也未检查状态码。",
+      "root_cause_confidence": "confirmed",
+      "remediation": "接口适配层统一检查 HTTP 状态并解析业务结果；页面只在服务端确认后更新资料，并补发送中、验证中和失败重试状态。",
+      "regression_test": "验证、换绑、解绑分别返回 400/422/500 时不得进入成功步骤或更新资料；成功后重新读取账号手机号一致。慢网重复点击不得重复发送。核对真实接口是否应使用专用验证端点，不代替后端权限审查。",
+      "reproduction": {
+        "preconditions": [
+          "源码检查；实际运行按手动验收条件进行"
+        ],
+        "steps": [
+          "验证、换绑、解绑分别返回 400/422/500 时不得进入成功步骤或更新资料；成功后重新读取账号手机号一致。慢网重复点击不得重复发送。核对真实接口是否应使用专用验证端点，不代替后端权限审查。"
+        ]
+      },
+      "resolution_evidence_ids": []
+    },
+    {
+      "id": "FND-007",
+      "title": "项目资产响应没有项目身份隔离",
+      "category": "状态与交互",
+      "severity": "P2",
+      "confidence": "confirmed",
+      "status": "open",
+      "owner": "前端开发",
+      "page_ids": [
+        "PAGE-009"
+      ],
+      "instance_ids": [],
+      "definition_ids": [],
+      "check_ids": [
+        "CHK-F-007"
+      ],
+      "scenario_ids": [
+        "SCN-007"
+      ],
+      "evidence_ids": [
+        "EV-007"
+      ],
+      "actual": "分页元数据按项目与分类区分，但展示数据只写入 `assetsMap[category]`；请求完成不检查当前项目。清理只取消尚未执行的动画帧，不能阻止已发出的请求写回。",
+      "expected": "展示数据按项目与分类共同存储，或者在首屏和加载更多的所有异步阶段结束后校验请求代际；切换时清理旧选择及详情。",
+      "impact": "甲项目慢请求可能在切换乙后覆盖同分类列表，标题和卡片归属不一致。是否会进一步写错对象需要逐个操作回调补证，不作已确认数据损坏结论。",
+      "root_cause": "分页元数据按项目与分类区分，但展示数据只写入 `assetsMap[category]`；请求完成不检查当前项目。清理只取消尚未执行的动画帧，不能阻止已发出的请求写回。",
+      "root_cause_confidence": "confirmed",
+      "remediation": "展示数据按项目与分类共同存储，或者在首屏和加载更多的所有异步阶段结束后校验请求代际；切换时清理旧选择及详情。",
+      "regression_test": "甲首屏慢、乙首屏快，以及甲加载更多时切乙两组场景，最终只显示乙数据，选择、详情和操作参数均属于乙。",
+      "reproduction": {
+        "preconditions": [
+          "源码检查；实际运行按手动验收条件进行"
+        ],
+        "steps": [
+          "甲首屏慢、乙首屏快，以及甲加载更多时切乙两组场景，最终只显示乙数据，选择、详情和操作参数均属于乙。"
+        ]
+      },
+      "resolution_evidence_ids": []
+    },
+    {
+      "id": "FND-008",
+      "title": "分镜重排在状态更新函数中执行网络副作用",
+      "category": "状态与交互",
+      "severity": "P2",
+      "confidence": "confirmed",
+      "status": "open",
+      "owner": "前端开发",
+      "page_ids": [
+        "PAGE-007"
+      ],
+      "instance_ids": [],
+      "definition_ids": [],
+      "check_ids": [
+        "CHK-F-008"
+      ],
+      "scenario_ids": [
+        "SCN-008"
+      ],
+      "evidence_ids": [
+        "EV-008"
+      ],
+      "actual": "新增、复制、删除和拖动的 `setShots(prev => ...)` 内调用重排 API；失败仅 `console.error`。React 状态更新函数应为纯计算，严格模式开发检查可能重复执行该函数。",
+      "expected": "纯排序函数只返回数据；事件编排层或明确的串行保存队列负责重排请求、版本校验和失败反馈。保持当前页面集中编排的合理边界，不机械拆文件。",
+      "impact": "可能重复提交排序；接口失败时界面仍保留未持久化顺序，刷新后恢复旧顺序。不能据此声称生产环境每次一定发双请求。",
+      "root_cause": "新增、复制、删除和拖动的 `setShots(prev => ...)` 内调用重排 API；失败仅 `console.error`。React 状态更新函数应为纯计算，严格模式开发检查可能重复执行该函数。",
+      "root_cause_confidence": "confirmed",
+      "remediation": "纯排序函数只返回数据；事件编排层或明确的串行保存队列负责重排请求、版本校验和失败反馈。保持当前页面集中编排的合理边界，不机械拆文件。",
+      "regression_test": "严格模式下一次操作只有一次预期重排提交；连续拖动、重排失败、复制成功但重排失败均有确定反馈，重新进入顺序与服务端一致。",
+      "reproduction": {
+        "preconditions": [
+          "源码检查；实际运行按手动验收条件进行"
+        ],
+        "steps": [
+          "严格模式下一次操作只有一次预期重排提交；连续拖动、重排失败、复制成功但重排失败均有确定反馈，重新进入顺序与服务端一致。"
+        ]
+      },
+      "resolution_evidence_ids": []
+    },
+    {
+      "id": "FND-009",
+      "title": "水印设置读取覆盖草稿，保存未校验接口失败",
+      "category": "状态与交互",
+      "severity": "P2",
+      "confidence": "confirmed",
+      "status": "open",
+      "owner": "前端开发",
+      "page_ids": [
+        "PAGE-015"
+      ],
+      "instance_ids": [],
+      "definition_ids": [],
+      "check_ids": [
+        "CHK-F-009"
+      ],
+      "scenario_ids": [
+        "SCN-009"
+      ],
+      "evidence_ids": [
+        "EV-009"
+      ],
+      "actual": "初次 GET 未完成时开关和保存已可用，返回后直接覆盖草稿；GET/PATCH 都不检查 `res.ok`，PATCH 的普通 HTTP 错误仍使 `Promise.all` 成功结束，弹窗提示保存成功。",
+      "expected": "区分读取、编辑、保存状态；校验每个响应并汇总部分成功项，失败保留草稿与重试入口。只在真实保存成功时提示已生效。",
+      "impact": "慢网下用户设置被旧值覆盖；批量服务商部分失败仍假成功。首个服务商代表全局设置的产品语义尚待确认。",
+      "root_cause": "初次 GET 未完成时开关和保存已可用，返回后直接覆盖草稿；GET/PATCH 都不检查 `res.ok`，PATCH 的普通 HTTP 错误仍使 `Promise.all` 成功结束，弹窗提示保存成功。",
+      "root_cause_confidence": "confirmed",
+      "remediation": "区分读取、编辑、保存状态；校验每个响应并汇总部分成功项，失败保留草稿与重试入口。只在真实保存成功时提示已生效。",
+      "regression_test": "延迟读取后先尝试编辑；单个服务商 PATCH 返回 500；GET 返回 500；必须不覆盖已编辑值、不提示假成功，重新打开与实际保存结果一致。",
+      "reproduction": {
+        "preconditions": [
+          "源码检查；实际运行按手动验收条件进行"
+        ],
+        "steps": [
+          "延迟读取后先尝试编辑；单个服务商 PATCH 返回 500；GET 返回 500；必须不覆盖已编辑值、不提示假成功，重新打开与实际保存结果一致。"
+        ]
+      },
+      "resolution_evidence_ids": []
+    },
+    {
+      "id": "FND-010",
+      "title": "模型配置的开关、默认值和删除存在副作用与假成功",
+      "category": "状态与交互",
+      "severity": "P2",
+      "confidence": "confirmed",
+      "status": "open",
+      "owner": "前端开发",
+      "page_ids": [
+        "PAGE-013"
+      ],
+      "instance_ids": [],
+      "definition_ids": [],
+      "check_ids": [
+        "CHK-F-010"
+      ],
+      "scenario_ids": [
+        "SCN-010"
+      ],
+      "evidence_ids": [
+        "EV-010"
+      ],
+      "actual": "网络请求位于 `setState` 更新函数内，立即修改模型展示；错误只记录控制台，无逐项回滚或用户反馈。",
+      "expected": "更新函数保持纯计算，事件层按模型 ID 管理请求和回滚；默认模型涉及同分类多项，要按分类版本控制并确认后端唯一性契约。",
+      "impact": "关闭模型、设为默认或删除失败时，界面与实际可用配置不一致；严格模式有重复请求风险。",
+      "root_cause": "网络请求位于 `setState` 更新函数内，立即修改模型展示；错误只记录控制台，无逐项回滚或用户反馈。",
+      "root_cause_confidence": "confirmed",
+      "remediation": "更新函数保持纯计算，事件层按模型 ID 管理请求和回滚；默认模型涉及同分类多项，要按分类版本控制并确认后端唯一性契约。",
+      "regression_test": "开关、默认、删除分别模拟失败及连续操作，失败可见并恢复真实状态；重开配置后结果一致，严格模式不重复提交。",
+      "reproduction": {
+        "preconditions": [
+          "源码检查；实际运行按手动验收条件进行"
+        ],
+        "steps": [
+          "开关、默认、删除分别模拟失败及连续操作，失败可见并恢复真实状态；重开配置后结果一致，严格模式不重复提交。"
+        ]
+      },
+      "resolution_evidence_ids": []
+    },
+    {
+      "id": "FND-011",
+      "title": "手机号登录失败没有面向用户的错误处理",
+      "category": "状态与交互",
+      "severity": "P2",
+      "confidence": "confirmed",
+      "status": "open",
+      "owner": "前端开发",
+      "page_ids": [
+        "PAGE-002"
+      ],
+      "instance_ids": [],
+      "definition_ids": [],
+      "check_ids": [
+        "CHK-F-011"
+      ],
+      "scenario_ids": [
+        "SCN-011"
+      ],
+      "evidence_ids": [
+        "EV-011"
+      ],
+      "actual": "接口对错误验证码及服务异常抛错，点击处理函数直接 await，没有 catch、错误状态或提交锁；登录按钮也未传入提交中禁用状态。",
+      "expected": "登录事件层捕获错误并展示可理解提示，增加请求中状态与重复提交保护，成功后才关闭弹窗。",
+      "impact": "错误验证码或网络失败时用户没有明确失败反馈，等待中可重复提交。不能将“验证码发送按钮已有 catch”当作登录提交已处理。",
+      "root_cause": "接口对错误验证码及服务异常抛错，点击处理函数直接 await，没有 catch、错误状态或提交锁；登录按钮也未传入提交中禁用状态。",
+      "root_cause_confidence": "confirmed",
+      "remediation": "登录事件层捕获错误并展示可理解提示，增加请求中状态与重复提交保护，成功后才关闭弹窗。",
+      "regression_test": "错误验证码、500、断网均有可见提示并可重试；慢请求连续点击只提交一次，成功后登录状态正常恢复。",
+      "reproduction": {
+        "preconditions": [
+          "源码检查；实际运行按手动验收条件进行"
+        ],
+        "steps": [
+          "错误验证码、500、断网均有可见提示并可重试；慢请求连续点击只提交一次，成功后登录状态正常恢复。"
+        ]
+      },
+      "resolution_evidence_ids": []
+    },
+    {
+      "id": "FND-012",
+      "title": "剧本工作区加载失败被重新抛出，没有恢复入口",
+      "category": "状态与交互",
+      "severity": "P2",
+      "confidence": "confirmed",
+      "status": "open",
+      "owner": "前端开发",
+      "page_ids": [
+        "PAGE-005"
+      ],
+      "instance_ids": [],
+      "definition_ids": [],
+      "check_ids": [
+        "CHK-F-012"
+      ],
+      "scenario_ids": [
+        "SCN-012"
+      ],
+      "evidence_ids": [
+        "EV-012"
+      ],
+      "actual": "加载 catch 只打印错误后再次 throw，整条 Promise 没有下游 catch，也未设置工作区读取错误态。此问题与已有的编排任务轮询错误处理不同。",
+      "expected": "读取状态单独建模，失败保留可重试入口；首次读取未确定前避免以空态开放有覆盖风险的动作。另行校验项目切换时旧响应身份。",
+      "impact": "无法恢复已有剧本时用户不能区分“项目没有剧本”和“读取失败”；重新操作可能基于不完整状态。实际覆盖数据风险尚未证实。",
+      "root_cause": "加载 catch 只打印错误后再次 throw，整条 Promise 没有下游 catch，也未设置工作区读取错误态。此问题与已有的编排任务轮询错误处理不同。",
+      "root_cause_confidence": "confirmed",
+      "remediation": "读取状态单独建模，失败保留可重试入口；首次读取未确定前避免以空态开放有覆盖风险的动作。另行校验项目切换时旧响应身份。",
+      "regression_test": "有剧本项目首次读取返回 500，必须明确显示读取失败且可重试；重试成功恢复原稿，不自动生成或清空原稿。",
+      "reproduction": {
+        "preconditions": [
+          "源码检查；实际运行按手动验收条件进行"
+        ],
+        "steps": [
+          "有剧本项目首次读取返回 500，必须明确显示读取失败且可重试；重试成功恢复原稿，不自动生成或清空原稿。"
+        ]
+      },
+      "resolution_evidence_ids": []
+    }
+  ],
+  "component_blueprints": [],
+  "component_plans": [],
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "修复：登出后在途请求可以重新写入旧会话缓存",
+      "phase": 1,
+      "owner": "前端开发",
+      "scope_ids": [
+        "PAGE-022"
+      ],
+      "finding_ids": [
+        "FND-001"
+      ],
+      "depends_on": [],
+      "change_locations": [
+        "`src/utils/cache.js` 的 `clearAllCache`、`fetchAndStore`；调用方 `src/api/request.js` 的 `clearTokens`。"
+      ],
+      "implementation_steps": [
+        "清空时切断旧代际请求的缓存写回和通知，清理去重表；旧请求结束时只能移除它自身的登记，不能删除新请求。调用方还需校验会话身份后再写入页面状态。"
+      ],
+      "acceptance_criteria": [
+        "延迟账号甲的查询，退出或触发鉴权失效，登录账号乙，再释放甲响应；乙的缓存、页面、订阅回调均不得收到甲数据。另测旧请求结束不破坏乙的并发去重。"
+      ],
+      "verification_scenario_ids": [
+        "SCN-001"
+      ],
+      "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
+      "risk": "同一文档内鉴权失效后重新登录，旧数据可能重新进入共享缓存；是否实际显示取决于缓存键、请求时序和页面重载。不能据此声称已发生线上数据泄露。",
+      "status": "planned",
+      "evidence_ids": []
+    },
+    {
+      "id": "TASK-002",
+      "title": "修复：创作单项和批量删除静默失败却移除本地卡片",
+      "phase": 2,
+      "owner": "前端开发",
+      "scope_ids": [
+        "PAGE-008"
+      ],
+      "finding_ids": [
+        "FND-002"
+      ],
+      "depends_on": [],
+      "change_locations": [
+        "`src/pages/CreationPage.jsx:552` 的 `deleteSelected`、`:640` 的 `handleDeleteCard`。"
+      ],
+      "implementation_steps": [
+        "按资产 ID 记录结果，成功后移除对应卡片，失败保留并提示；提供提交中状态和重复提交保护。若保留乐观删除，必须有逐项回滚与错误反馈。"
+      ],
+      "acceptance_criteria": [
+        "单项返回 500、批量部分失败、断网、重复点击；失败卡片仍可见且可重试，成功项刷新后不恢复，选择状态与实际结果一致。"
+      ],
+      "verification_scenario_ids": [
+        "SCN-002"
+      ],
+      "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
+      "risk": "断网、无权限或服务端失败时，界面表现像删除成功；重新加载后资产可能再次出现。批量部分成功无法告诉用户失败项。",
+      "status": "planned",
+      "evidence_ids": []
+    },
+    {
+      "id": "TASK-003",
+      "title": "修复：通知列表缺少请求身份校验，失败被显示为空列表",
+      "phase": 2,
+      "owner": "前端开发",
+      "scope_ids": [
+        "PAGE-015"
+      ],
+      "finding_ids": [
+        "FND-003"
+      ],
+      "depends_on": [],
+      "change_locations": [
+        "`src/components/NotificationCenterModal.jsx:197`，`loadNotifications` 和打开弹窗的副作用。"
+      ],
+      "implementation_steps": [
+        "分类与打开周期共同限定请求归属，仅当前请求更新状态；区分空态、错误及重试。"
+      ],
+      "acceptance_criteria": [
+        "创作通知延迟 3 秒，系统通知延迟 0.2 秒，立即切换到系统；最终仅显示系统通知。再测关闭重开、500 和空数组三种情况。"
+      ],
+      "verification_scenario_ids": [
+        "SCN-003"
+      ],
+      "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
+      "risk": "创作通知的慢响应可能覆盖系统通知；旧请求先结束可能提前关闭加载态；接口失败显示“暂无通知”，无法区分真正为空。",
+      "status": "planned",
+      "evidence_ids": []
+    },
+    {
+      "id": "TASK-004",
+      "title": "修复：管理员卡片显示开关的失败回滚覆盖其他并发操作",
+      "phase": 2,
+      "owner": "前端开发",
+      "scope_ids": [
+        "PAGE-017"
+      ],
+      "finding_ids": [
+        "FND-004"
+      ],
+      "depends_on": [],
+      "change_locations": [
+        "`src/components/admin/AdminDisplaySettingsPage.jsx` 的 `handleToggleCardVisibility`、`CardVisibilityItem`。"
+      ],
+      "implementation_steps": [
+        "按卡片键管理忙碌状态及请求版本，失败只回滚该项；或明确采用整组串行提交。"
+      ],
+      "acceptance_criteria": [
+        "甲延迟失败、乙先成功，乙最终状态及刷新后的状态一致；同项不能重复提交，失败项可重试。"
+      ],
+      "verification_scenario_ids": [
+        "SCN-004"
+      ],
+      "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
+      "risk": "先操作甲、再成功操作乙，甲随后失败时，会把乙已成功保存的状态在界面中回滚；单一忙碌标识也可能提前解除其他请求的禁用态。",
+      "status": "planned",
+      "evidence_ids": []
+    },
+    {
+      "id": "TASK-005",
+      "title": "修复：模型开放筛选项由两个不同范围的响应互相覆盖",
+      "phase": 2,
+      "owner": "前端开发",
+      "scope_ids": [
+        "PAGE-018"
+      ],
+      "finding_ids": [
+        "FND-005"
+      ],
+      "depends_on": [],
+      "change_locations": [
+        "`src/components/admin/AdminModelVisibilityPage.jsx:77` 和 `:89`。"
+      ],
+      "implementation_steps": [
+        "筛选选项使用独立完整服务商来源，不由当前页列表回写；服务端无完整来源时明确分页收集策略。"
+      ],
+      "acceptance_criteria": [
+        "准备跨页、跨服务商数据，交换两次请求返回顺序，搜索和切换分类后，下拉选项仍完整且稳定。"
+      ],
+      "verification_scenario_ids": [
+        "SCN-005"
+      ],
+      "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
+      "risk": "列表响应后到时，下拉菜单可能只剩当前页或当前筛选中的服务商；100 条预热也不能保证覆盖全部服务商。",
+      "status": "planned",
+      "evidence_ids": []
+    },
+    {
+      "id": "TASK-006",
+      "title": "修复：手机号验证与换绑把 HTTP 失败当作成功",
+      "phase": 1,
+      "owner": "前端开发",
+      "scope_ids": [
+        "PAGE-014"
+      ],
+      "finding_ids": [
+        "FND-006"
+      ],
+      "depends_on": [],
+      "change_locations": [
+        "`src/api/user.js:178` 至 `:225`，调用方 `src/components/ProfileModal.jsx:397` 和 `:459`。"
+      ],
+      "implementation_steps": [
+        "接口适配层统一检查 HTTP 状态并解析业务结果；页面只在服务端确认后更新资料，并补发送中、验证中和失败重试状态。"
+      ],
+      "acceptance_criteria": [
+        "验证、换绑、解绑分别返回 400/422/500 时不得进入成功步骤或更新资料；成功后重新读取账号手机号一致。慢网重复点击不得重复发送。核对真实接口是否应使用专用验证端点，不代替后端权限审查。"
+      ],
+      "verification_scenario_ids": [
+        "SCN-006"
+      ],
+      "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
+      "risk": "错误验证码被前端当成通过，换绑失败仍可能显示新手机号；实际后端资料未更改。发送验证码失败也可能启动成功倒计时。",
+      "status": "planned",
+      "evidence_ids": []
+    },
+    {
+      "id": "TASK-007",
+      "title": "修复：项目资产响应没有项目身份隔离",
+      "phase": 2,
+      "owner": "前端开发",
+      "scope_ids": [
+        "PAGE-009"
+      ],
+      "finding_ids": [
+        "FND-007"
+      ],
+      "depends_on": [],
+      "change_locations": [
+        "`src/components/assets/AssetsProjectPanel.jsx:282` 的 `loadFirstPage`、`:380` 的 `loadMorePage`、`:412` 的切换副作用。"
+      ],
+      "implementation_steps": [
+        "展示数据按项目与分类共同存储，或者在首屏和加载更多的所有异步阶段结束后校验请求代际；切换时清理旧选择及详情。"
+      ],
+      "acceptance_criteria": [
+        "甲首屏慢、乙首屏快，以及甲加载更多时切乙两组场景，最终只显示乙数据，选择、详情和操作参数均属于乙。"
+      ],
+      "verification_scenario_ids": [
+        "SCN-007"
+      ],
+      "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
+      "risk": "甲项目慢请求可能在切换乙后覆盖同分类列表，标题和卡片归属不一致。是否会进一步写错对象需要逐个操作回调补证，不作已确认数据损坏结论。",
+      "status": "planned",
+      "evidence_ids": []
+    },
+    {
+      "id": "TASK-008",
+      "title": "修复：分镜重排在状态更新函数中执行网络副作用",
+      "phase": 2,
+      "owner": "前端开发",
+      "scope_ids": [
+        "PAGE-007"
+      ],
+      "finding_ids": [
+        "FND-008"
+      ],
+      "depends_on": [],
+      "change_locations": [
+        "`src/pages/StoryboardPage.jsx:2316`、`:2344`、`:2361`、`:2398`；`src/main.jsx:7` 启用严格模式。"
+      ],
+      "implementation_steps": [
+        "纯排序函数只返回数据；事件编排层或明确的串行保存队列负责重排请求、版本校验和失败反馈。保持当前页面集中编排的合理边界，不机械拆文件。"
+      ],
+      "acceptance_criteria": [
+        "严格模式下一次操作只有一次预期重排提交；连续拖动、重排失败、复制成功但重排失败均有确定反馈，重新进入顺序与服务端一致。"
+      ],
+      "verification_scenario_ids": [
+        "SCN-008"
+      ],
+      "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
+      "risk": "可能重复提交排序；接口失败时界面仍保留未持久化顺序，刷新后恢复旧顺序。不能据此声称生产环境每次一定发双请求。",
+      "status": "planned",
+      "evidence_ids": []
+    },
+    {
+      "id": "TASK-009",
+      "title": "修复：水印设置读取覆盖草稿，保存未校验接口失败",
+      "phase": 2,
+      "owner": "前端开发",
+      "scope_ids": [
+        "PAGE-015"
+      ],
+      "finding_ids": [
+        "FND-009"
+      ],
+      "depends_on": [],
+      "change_locations": [
+        "`src/components/WatermarkSettingsModal.jsx:34`、`:51`；`src/api/settings.js:8`、`:22`。"
+      ],
+      "implementation_steps": [
+        "区分读取、编辑、保存状态；校验每个响应并汇总部分成功项，失败保留草稿与重试入口。只在真实保存成功时提示已生效。"
+      ],
+      "acceptance_criteria": [
+        "延迟读取后先尝试编辑；单个服务商 PATCH 返回 500；GET 返回 500；必须不覆盖已编辑值、不提示假成功，重新打开与实际保存结果一致。"
+      ],
+      "verification_scenario_ids": [
+        "SCN-009"
+      ],
+      "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
+      "risk": "慢网下用户设置被旧值覆盖；批量服务商部分失败仍假成功。首个服务商代表全局设置的产品语义尚待确认。",
+      "status": "planned",
+      "evidence_ids": []
+    },
+    {
+      "id": "TASK-010",
+      "title": "修复：模型配置的开关、默认值和删除存在副作用与假成功",
+      "phase": 2,
+      "owner": "前端开发",
+      "scope_ids": [
+        "PAGE-013"
+      ],
+      "finding_ids": [
+        "FND-010"
+      ],
+      "depends_on": [],
+      "change_locations": [
+        "`src/components/ApiConfigModal.jsx:1463` 的 `toggleEditProviderModel`、`:1481` 的 `setDefaultEditProviderModel`、`:1502` 的 `deleteEditProviderModel`。"
+      ],
+      "implementation_steps": [
+        "更新函数保持纯计算，事件层按模型 ID 管理请求和回滚；默认模型涉及同分类多项，要按分类版本控制并确认后端唯一性契约。"
+      ],
+      "acceptance_criteria": [
+        "开关、默认、删除分别模拟失败及连续操作，失败可见并恢复真实状态；重开配置后结果一致，严格模式不重复提交。"
+      ],
+      "verification_scenario_ids": [
+        "SCN-010"
+      ],
+      "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
+      "risk": "关闭模型、设为默认或删除失败时，界面与实际可用配置不一致；严格模式有重复请求风险。",
+      "status": "planned",
+      "evidence_ids": []
+    },
+    {
+      "id": "TASK-011",
+      "title": "修复：手机号登录失败没有面向用户的错误处理",
+      "phase": 2,
+      "owner": "前端开发",
+      "scope_ids": [
+        "PAGE-002"
+      ],
+      "finding_ids": [
+        "FND-011"
+      ],
+      "depends_on": [],
+      "change_locations": [
+        "`src/components/LoginModal.jsx:425` 的 `handleLogin`；`src/api/auth.js:4` 的 `readAuthResponse`。"
+      ],
+      "implementation_steps": [
+        "登录事件层捕获错误并展示可理解提示，增加请求中状态与重复提交保护，成功后才关闭弹窗。"
+      ],
+      "acceptance_criteria": [
+        "错误验证码、500、断网均有可见提示并可重试；慢请求连续点击只提交一次，成功后登录状态正常恢复。"
+      ],
+      "verification_scenario_ids": [
+        "SCN-011"
+      ],
+      "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
+      "risk": "错误验证码或网络失败时用户没有明确失败反馈，等待中可重复提交。不能将“验证码发送按钮已有 catch”当作登录提交已处理。",
+      "status": "planned",
+      "evidence_ids": []
+    },
+    {
+      "id": "TASK-012",
+      "title": "修复：剧本工作区加载失败被重新抛出，没有恢复入口",
+      "phase": 2,
+      "owner": "前端开发",
+      "scope_ids": [
+        "PAGE-005"
+      ],
+      "finding_ids": [
+        "FND-012"
+      ],
+      "depends_on": [],
+      "change_locations": [
+        "`src/pages/ScriptPage.jsx:534` 工作区加载副作用、`:603` 错误分支。"
+      ],
+      "implementation_steps": [
+        "读取状态单独建模，失败保留可重试入口；首次读取未确定前避免以空态开放有覆盖风险的动作。另行校验项目切换时旧响应身份。"
+      ],
+      "acceptance_criteria": [
+        "有剧本项目首次读取返回 500，必须明确显示读取失败且可重试；重试成功恢复原稿，不自动生成或清空原稿。"
+      ],
+      "verification_scenario_ids": [
+        "SCN-012"
+      ],
+      "rollback": "按问题小批改动；任何回滚须另获用户授权，保留用户并行修改",
+      "risk": "无法恢复已有剧本时用户不能区分“项目没有剧本”和“读取失败”；重新操作可能基于不完整状态。实际覆盖数据风险尚未证实。",
+      "status": "planned",
+      "evidence_ids": []
+    }
+  ],
+  "release_gates": [
+    {
+      "id": "GATE-001",
+      "name": "核心旅程、异常恢复及关键可访问性已验证",
+      "required": true,
+      "status": "not_checked",
+      "evidence_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "GATE-002",
+      "name": "身份、对象、租户与字段权限在受信任边界执行",
+      "required": true,
+      "status": "not_checked",
+      "evidence_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "GATE-003",
+      "name": "写操作的一致性、重试、取消与结果未知语义已验证",
+      "required": true,
+      "status": "not_checked",
+      "evidence_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "GATE-004",
+      "name": "生产构建、配置与依赖安装可复现",
+      "required": true,
+      "status": "not_checked",
+      "evidence_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "GATE-005",
+      "name": "目标环境下的性能、布局与长时间使用符合约定",
+      "required": true,
+      "status": "not_checked",
+      "evidence_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "GATE-006",
+      "name": "错误可诊断，监控与日志数据满足隐私约定",
+      "required": true,
+      "status": "not_checked",
+      "evidence_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "GATE-007",
+      "name": "发布、新旧版本兼容与恢复路径已验证",
+      "required": true,
+      "status": "not_checked",
+      "evidence_ids": [],
+      "reason": ""
+    },
+    {
+      "id": "GATE-008",
+      "name": "审查范围、基线一致性及尚存风险已明确",
+      "required": true,
+      "status": "not_checked",
+      "evidence_ids": [],
+      "reason": ""
+    }
+  ],
+  "progress": {
+    "current_page": null,
+    "completed_batches": [
+      "22 个模块入口/关键路径首轮检查；非逐组件完成",
+      "12 项问题及修复验收已登记"
+    ],
+    "next_actions": [
+      "按模块检查记录.md 补完每个模块未完成源码分支",
+      "将候选逐项核对为 DEF/CMP 并建立实例蓝图；不可将空组件台账解释为没有组件",
+      "Suzy 手动验收后补运行证据"
+    ],
+    "unresolved_access": [
+      "无浏览器验证（用户要求）",
+      "后端权限及真实接口语义未验证"
+    ],
+    "last_updated": "2026-10-12T03:04:17+00:00"
+  }
+}

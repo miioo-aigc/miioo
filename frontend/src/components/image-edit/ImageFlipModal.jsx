@@ -82,8 +82,8 @@ export default function ImageFlipModal({ imageUrl, sourceAsset, onSave, onClose,
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <ToolButton label="向左旋转" icon={<RotateCounterClockwiseIcon size={16} />} onClick={() => setRotation((value) => value - 90)} />
           <ToolButton label="向右旋转" icon={<RotateClockwiseIcon size={16} />} onClick={() => setRotation((value) => value + 90)} />
-          <ToolButton label="水平翻转" icon={<FlipHorizontalIcon size={16} />} selected={flipX} onClick={() => setFlipX((value) => !value)} />
-          <ToolButton label="垂直翻转" icon={<FlipVerticalIcon size={16} />} selected={flipY} onClick={() => setFlipY((value) => !value)} />
+          <ToolButton label="水平翻转" icon={<FlipHorizontalIcon size={16} />} selected={Math.abs(rotation) % 180 === 90 ? flipY : flipX} onClick={() => (Math.abs(rotation) % 180 === 90 ? setFlipY : setFlipX)((value) => !value)} />
+          <ToolButton label="垂直翻转" icon={<FlipVerticalIcon size={16} />} selected={Math.abs(rotation) % 180 === 90 ? flipX : flipY} onClick={() => (Math.abs(rotation) % 180 === 90 ? setFlipX : setFlipY)((value) => !value)} />
         </div>
         <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '18px', color: '#FFFFFF99' }}>
           图片大小：{editState.imageSize.width ? `${Math.round((Math.abs(rotation) % 180 === 90 ? editState.imageSize.height : editState.imageSize.width))} × ${Math.round((Math.abs(rotation) % 180 === 90 ? editState.imageSize.width : editState.imageSize.height))}` : '—'}

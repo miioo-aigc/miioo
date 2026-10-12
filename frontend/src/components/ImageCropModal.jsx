@@ -71,8 +71,8 @@ export default function ImageCropModal({ imageUrl, sourceAsset, onSave, onClose,
           <ToolButton label="裁剪" icon={<CropIcon size={16} />} selected={cropEnabled} onClick={() => { setCropEnabled((value) => !value); setHoveredRatio(undefined); }} />
           <ToolButton label="向左旋转" icon={<RotateCounterClockwiseIcon size={16} />} onClick={() => setRotation((value) => value - 90)} />
           <ToolButton label="向右旋转" icon={<RotateClockwiseIcon size={16} />} onClick={() => setRotation((value) => value + 90)} />
-          <ToolButton label="水平翻转" icon={<FlipHorizontalIcon size={16} />} onClick={() => setFlipX((value) => !value)} />
-          <ToolButton label="垂直翻转" icon={<FlipVerticalIcon size={16} />} onClick={() => setFlipY((value) => !value)} />
+          <ToolButton label="水平翻转" icon={<FlipHorizontalIcon size={16} />} onClick={() => (isQuarterTurn ? setFlipY : setFlipX)((value) => !value)} />
+          <ToolButton label="垂直翻转" icon={<FlipVerticalIcon size={16} />} onClick={() => (isQuarterTurn ? setFlipX : setFlipY)((value) => !value)} />
         </div>
         <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '18px', color: '#FFFFFF99' }}>{cropEnabled ? '裁剪区域大小' : '图片大小'}：{editState.imageSize.width ? `${Math.round((isQuarterTurn ? editState.imageSize.height : editState.imageSize.width) * (cropEnabled ? editState.crop.width : 1))} × ${Math.round((isQuarterTurn ? editState.imageSize.width : editState.imageSize.height) * (cropEnabled ? editState.crop.height : 1))}` : '—'}</span>
       </div>

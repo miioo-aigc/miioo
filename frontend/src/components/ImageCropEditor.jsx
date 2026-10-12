@@ -58,37 +58,41 @@ function clampCrop(crop, ratio, imageWidth, imageHeight) {
 function getResizeCrop(startCrop, handle, dx, dy, ratio, imageWidth, imageHeight) {
   const next = { ...startCrop };
   const isCorner = handle.length === 2;
-  if (!isCorner) {
+  if (ratio === 'custom') {
     if (handle.includes('w')) { next.x = startCrop.x + dx; next.width = startCrop.width - dx; }
     if (handle.includes('e')) next.width = startCrop.width + dx;
     if (handle.includes('n')) { next.y = startCrop.y + dy; next.height = startCrop.height - dy; }
     if (handle.includes('s')) next.height = startCrop.height + dy;
-    return clampCrop(next, 'custom', imageWidth, imageHeight);
+    const right = startCrop.x + startCrop.width;
+    const bottom = startCrop.y + startCrop.height;
+    if (handle.includes('w')) { next.x = clamp(next.x, 0, right - MIN_CROP_SIZE); next.width = right - next.x; }
+    if (handle.includes('e')) next.width = clamp(next.width, MIN_CROP_SIZE, 1 - startCrop.x);
+    if (handle.includes('n')) { next.y = clamp(next.y, 0, bottom - MIN_CROP_SIZE); next.height = bottom - next.y; }
+    if (handle.includes('s')) next.height = clamp(next.height, MIN_CROP_SIZE, 1 - startCrop.y);
+    return next;
   }
 
   const directionX = handle.includes('w') ? -1 : 1;
   const directionY = handle.includes('n') ? -1 : 1;
   const sourceRatio = imageWidth / imageHeight;
-  const cropRatio = ratio && ratio !== 'custom' ? ratio : (sourceRatio * startCrop.width) / startCrop.height;
-  const requestedWidth = startCrop.width + (directionX * dx);
-  const requestedHeight = startCrop.height + (directionY * dy);
-  let width = Math.max(MIN_CROP_SIZE, requestedWidth);
-  let height = width * sourceRatio / cropRatio;
-  if (requestedHeight > requestedWidth) {
-    height = Math.max(MIN_CROP_SIZE, requestedHeight);
-    width = height * cropRatio / sourceRatio;
-  }
-  if (startCrop.x + (directionX < 0 ? startCrop.width - width : width) > 1) {
-    width = directionX < 0 ? startCrop.x + startCrop.width : 1 - startCrop.x;
-    height = width * sourceRatio / cropRatio;
-  }
-  if (startCrop.y + (directionY < 0 ? startCrop.height - height : height) > 1) {
-    height = directionY < 0 ? startCrop.y + startCrop.height : 1 - startCrop.y;
-    width = height * cropRatio / sourceRatio;
-  }
-  const x = directionX < 0 ? startCrop.x + startCrop.width - width : startCrop.x;
-  const y = directionY < 0 ? startCrop.y + startCrop.height - height : startCrop.y;
-  return clampCrop({ x, y, width, height }, ratio, imageWidth, imageHeight);
+  const normalizedRatio = (ratio || sourceRatio) / sourceRatio;
+  const horizontal = handle.includes('w') || handle.includes('e');
+  const vertical = handle.includes('n') || handle.includes('s');
+  const anchorX = horizontal ? startCrop.x + (directionX < 0 ? startCrop.width : 0) : startCrop.x + startCrop.width / 2;
+  const anchorY = vertical ? startCrop.y + (directionY < 0 ? startCrop.height : 0) : startCrop.y + startCrop.height / 2;
+  const maxWidth = horizontal ? (directionX < 0 ? anchorX : 1 - anchorX) : 1;
+  const maxHeight = vertical ? (directionY < 0 ? anchorY : 1 - anchorY) : 1;
+  // 边缘优先围绕原中点伸缩，触边后平移联动轴；始终从拖动起点计算以支持原路回退。
+  const widthDelta = isCorner
+    ? (directionX * dx * imageWidth ** 2 + directionY * dy * imageHeight ** 2 / normalizedRatio) / (imageWidth ** 2 + imageHeight ** 2 / normalizedRatio ** 2)
+    : horizontal ? directionX * dx : directionY * dy * normalizedRatio;
+  const maximum = Math.min(maxWidth, maxHeight * normalizedRatio);
+  const minimum = Math.min(maximum, Math.max(MIN_CROP_SIZE, MIN_CROP_SIZE * normalizedRatio));
+  const width = clamp(startCrop.width + widthDelta, minimum, maximum);
+  const height = width / normalizedRatio;
+  const x = horizontal ? anchorX - (directionX < 0 ? width : 0) : clamp(anchorX - width / 2, 0, 1 - width);
+  const y = vertical ? anchorY - (directionY < 0 ? height : 0) : clamp(anchorY - height / 2, 0, 1 - height);
+  return { x, y, width, height };
 }
 
 const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, onRatioChange, onImageLoad, onChange, cropEnabled = true, rotation = 0, flipX = false, flipY = false, imageAlt = '待裁剪图片' }, ref) {
@@ -202,12 +206,7 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
         setCrop(clampCrop({ ...interaction.crop, x: interaction.crop.x + dx, y: interaction.crop.y + dy }, orientedRatio, orientedSize.width, orientedSize.height));
         return;
       }
-      const nextRatio = interaction.kind === 'edge' ? 'custom' : orientedRatio;
-      if (interaction.kind === 'edge' && ratio !== 'custom') {
-        internalRatioChange.current = true;
-        onRatioChange?.('custom', true);
-      }
-      setCrop(getResizeCrop(interaction.crop, interaction.handle, dx, dy, nextRatio, orientedSize.width, orientedSize.height));
+      setCrop(getResizeCrop(interaction.crop, interaction.handle, dx, dy, orientedRatio, orientedSize.width, orientedSize.height));
     };
     const end = () => setInteraction(null);
     window.addEventListener('pointermove', move);

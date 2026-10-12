@@ -65,6 +65,13 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
+        '^/__dev-media/media/origin/': {
+          target: 'https://www.chengxvblog.top',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/__dev-media/, ''),
+          timeout: 0,
+          proxyTimeout: 300000,
+        },
         '/uploads': {
           target: apiTarget,
           changeOrigin: true,
@@ -77,6 +84,17 @@ export default defineConfig(({ mode }) => {
           headers: directTarget ? { Host: new URL(target).host } : undefined,
           timeout: 0,
           proxyTimeout: 300000,
+          configure(proxy) {
+            proxy.on('proxyRes', (response) => {
+              response.headers['x-miioo-dev-proxy'] = 'upstream-response'
+              if (response.statusCode >= 500) {
+                console.warn(`[开发代理] 上游返回 ${response.statusCode}，目标 ${new URL(apiTarget).origin}`)
+              }
+            })
+            proxy.on('error', (error) => {
+              console.error(`[开发代理] 连接失败 ${error.code || 'UNKNOWN'}，目标 ${new URL(apiTarget).origin}`)
+            })
+          },
         },
       },
     },

@@ -5,11 +5,12 @@ import VideoPlaybackControls from '../ui/VideoPlaybackControls';
 import { showGlobalToast } from '../../stores/toastStore';
 import '../image-edit/Upscale.css';
 import useVideoEditSubmission from '../../hooks/useVideoEditSubmission';
+import VideoEditComparison from './VideoEditComparison';
 
 const QUALITY_OPTIONS = ['1080P', '4K'];
 
-export default function VideoUpscaleModal({ videoUrl, posterUrl = '', onClose, sourceAsset }) {
-  const submission = useVideoEditSubmission(sourceAsset, onClose);
+export default function VideoUpscaleModal({ videoUrl, posterUrl = '', onClose, sourceAsset, onCloseDetail }) {
+  const submission = useVideoEditSubmission(sourceAsset, undefined, 'upscale');
   const [quality, setQuality] = useState('1080P');
   const [isPlaying, setIsPlaying] = useState(false);
   const [feedbackVisible, setFeedbackVisible] = useState(false);
@@ -54,8 +55,15 @@ export default function VideoUpscaleModal({ videoUrl, posterUrl = '', onClose, s
     submission.submit({ mode: 'upscale', resolution: quality, duration: videoRef.current?.duration });
   }
 
-  return <ImageEditChrome title="智能超清" onClose={onClose} busy={submission.busy} zIndex={1400} footer={<UpscaleFooter busy={submission.busy} onClose={onClose} onSubmit={submit} disabled={!videoUrl || failed} />}>
+  function close() {
+    videoRef.current?.pause();
+    onClose();
+    if (submission.active) onCloseDetail?.();
+  }
+
+  return <ImageEditChrome title="智能超清" onClose={close} busy={submission.busy} allowCloseWhileBusy zIndex={1400} footer={<UpscaleFooter busy={submission.busy} allowCloseWhileBusy closeLabel="关闭" onClose={close} onSubmit={submit} disabled={!videoUrl || failed} />}>
     <div className="upscale-body">
+      <VideoEditComparison submission={submission} onRetry={submit}>
       <div className="upscale-stage">
         {videoUrl && !failed ? <>
           <video ref={videoRef} src={videoUrl} poster={posterUrl || undefined} preload="metadata" playsInline controls autoPlay muted
@@ -66,6 +74,7 @@ export default function VideoUpscaleModal({ videoUrl, posterUrl = '', onClose, s
           <VideoPlaybackControls isPlaying={isPlaying} feedbackVisible={feedbackVisible} onToggle={togglePlay} />
         </> : <span role="status">视频加载失败，请关闭后重试</span>}
       </div>
+      </VideoEditComparison>
       <div className="upscale-toolbar">
         <span className="upscale-current-quality">当前画质：{dimensions || '未知'}</span>
         <div className="upscale-quality-options" role="group" aria-label="选择输出画质">

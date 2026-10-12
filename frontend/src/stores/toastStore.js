@@ -22,15 +22,17 @@ export const useToastStore = create((set, get) => ({
   toast: null,
   timer: null,
   downloadToasts: [],
-  showToast: (first, second) => {
-    const { type, message, duration } = normalizeToastArgs(first, second);
+  showToast: (first, second, options = {}) => {
+    const { type, message, duration: defaultDuration } = normalizeToastArgs(first, second);
+    const action = options?.action;
+    const duration = action ? 8000 : defaultDuration;
     if (!message) return;
     if (get().timer) clearTimeout(get().timer);
     const id = ++nextToastId;
     const timer = setTimeout(() => {
       if (get().toast?.id === id) set({ toast: null, timer: null });
     }, duration);
-    set({ toast: { id, type, message }, timer });
+    set({ toast: { id, type, message, action, mutedText: options.mutedText }, timer });
   },
   hideToast: () => {
     if (get().timer) clearTimeout(get().timer);

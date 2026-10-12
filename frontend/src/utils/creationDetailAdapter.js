@@ -193,6 +193,7 @@ export function mergeCreationVideoDetail(card, detail) {
     ...card,
     ...media,
     videoUrl,
+    previewVideoUrl: normalizeImageUrl(detail?.preview_video_url || detail?.previewVideoUrl || card.preview_video_url || card.previewVideoUrl),
     posterUrl,
     downloadUrl: normalizeImageUrl(detail?.download_url || detail?.downloadUrl || card.downloadUrl || card.download_url),
     originalUrl: normalizeImageUrl(detail?.original_url || detail?.originalUrl || card.originalUrl || card.original_url),

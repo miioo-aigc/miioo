@@ -4,6 +4,7 @@ import { apiGenerateCreation } from '../../api/creation';
 import { showGlobalToast } from '../../stores/toastStore';
 import { applyCanvasImageResult, beginCanvasImageGeneration, planCanvasImageGeneration, recoverCanvasImageGenerationFailure } from './CanvasImageGeneration';
 import { createCanvasTextRequests } from './CanvasTextRequests';
+import { createCanvasProgressHandler } from './CanvasGenerationProgress';
 
 export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks) {
   const [requests] = useState(createCanvasTextRequests);
@@ -22,8 +23,9 @@ export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks) {
     cancelPendingClicks();
     setNodes((current) => beginCanvasImageGeneration(current, plan));
     const imageReferences = plan.sources.filter((source) => source.type === 'image').map((source) => source.asset).filter((asset) => asset?.url);
+    const referenceMaterials = plan.sources.filter((source) => source.type === 'text' ? source.content?.trim() : source.asset?.url);
     try {
-      const result = await apiGenerateCreation({ genType: 'image', prompt: plan.prompt, model: plan.model, files: imageReferences, referenceMaterials: plan.sources, ...plan.params }, { signal: controller.signal });
+      const result = await apiGenerateCreation({ genType: 'image', prompt: plan.prompt, model: plan.model, files: imageReferences, referenceMaterials, ...plan.params }, { signal: controller.signal, onProgress: createCanvasProgressHandler(setNodes, plan.requestId, controller.signal) });
       const imageUrl = result?.images?.[0] || result?.imageDownloadUrls?.[0] || result?.imageOriginalUrls?.[0];
       const asset = imageUrl ? { url: imageUrl, asset_type: 'image', source: 'ai-generated' } : null;
       if (!asset?.url) throw new Error('图片生成未返回有效结果');

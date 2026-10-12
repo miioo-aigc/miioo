@@ -88,23 +88,187 @@
 - `edit/EditDraftList.jsx` 只接收 `drafts` 和 `onOpen`，展示工程名称，通过 `comp_id` 打开对应工程，不发起创建或写入操作。
 - 保留现有分镜入口、下载接口及编辑器路由；未改动其他未提交页面。项目规则引用的 feature-development.md 仍缺失，依据现有组件资产与设计规范完成归属决策。
 
-## 2026-10-08 创作资产图片去重同步（待手动验收）
+## 2026-10-10 画布媒体预览与播放（用户验收通过）
+
+- `CanvasMediaPreview` 为画布独立媒体预览组件，通过 Portal 在顶层显示媒体和模糊蒙版，不复用业务详情弹窗。负责最大80vw × 80vh展示、固定关闭按钮、空白/Esc关闭及视频自动播放和静音降级。
+- `CanvasVideoPlayer` 负责无控制条卡片、300毫秒悬停播放及移出/按下/失焦/打开详情暂停；`CanvasPage` 负责工具栏与双击入口、预览状态，并在双击时传递视频进度、音量与静音状态。详情保留原生播放控制，按钮和连接端口不触发卡片预览。
+- Suzy 已手动验收通过。实现阶段构建、架构、差异检查通过，lint 无错误、3条既有警告；本轮仅同步文档，不自动打开浏览器，不涉及新增接口或画布持久化。
+
+## 2026-10-10 裁剪、翻转结果保存（用户验收通过）
+
+- 复用 `ImageCropModal`、`ImageFlipModal` 和浏览器出图算法，不修改界面、不新增组件、不将几何变换交给后端。
+- `ImageEditSave.uploadImageEditFile` 改用 `/api/creation/images/edit-result`，接收文件、源资产编号和编辑类型，直接消费同步资产卡；`useImageEditSubmission` 负责传参，`LocalImageEdits` 保留后端类型并复用原列表及候选绑定。
+- 新增 `scripts/image-edit-save.test.mjs` 覆盖请求字段、文件内容、两种模式、无效输入和失败响应；原图片编辑接口测试、构建、架构检查、差异检查通过，lint 无错误、3 条既有警告。Suzy 已确认验收通过，不代表其他编辑能力或画布链路验收。
+
+- 2026-10-10：删除规则及提示样式已通过用户手动验收。`CanvasNodeActions.hasCanvasDeletionTasks` 检查选中项及嵌套成员的生成/排队状态；`UseCanvasNodeActions` 普通删除直接执行，任务删除复用确认弹窗，替代此前空节点判断。删除 toast 复用全局 action；`CanvasHistory.getUndoToken` 防止过期操作误撤销其他编辑。`toastStore` / `GlobalToast` 新增可选 `mutedText`，普通删除提示为“删除成功，可以撤销 ⌘Z 找回”，快捷键前后各一个空格，仅快捷键使用 `--color-white-60`，其他提示不受影响。本次仅同步文档，未重新执行功能测试或浏览器验证。
+
+- 2026-10-10：`UseCanvasReferences` 在拖线新建时显式保留媒体关系；`CanvasNewConnection` 负责能力就绪后的原因校验，复用图片/视频现有规则。`CanvasNodeShell` 等待模型加载完成再回填能力；红线悬停不被白色高亮覆盖。无新增基础 UI，待手动验收。
+
+- 2026-10-10：`CanvasNodeToolbar`、图片/视频/音频节点工具栏及相关编辑编排已完成用户手动验收。四类节点工具栏入口、固定屏幕尺寸、同步动画、四态图标颜色和当前卡片更多菜单已统一；图片/视频结果节点保留源节点。真实后端编辑任务、资产落库和画布保存恢复仍待联调，不将本记录视为完整画布交付。
+- 2026-10-10：前端验证记录：`node --test scripts/canvas-media-toolbar.test.mjs scripts/canvas-node-toolbar.test.mjs` 通过，`git diff --check` 通过；此前构建和架构检查通过，lint 无错误但保留 3 条既有 Hook 依赖警告。未自动打开浏览器，视觉验收由用户手动完成。
+- 2026-10-10：CanvasNodeToolbar 扩展视频与音频；VideoEditIcon 从创作视频详情抽取共用；CanvasVideoEditor 组合四项现有弹窗，UseCanvasVideoEdits 接收后台结果并新增媒体节点。VideoEditSubmissionContext 提供可选宿主提交入口，未提供时保持原创作流程；画布按画布和节点编号隔离任务，不写入创作占位。无新增基础 UI，待手动验收。
+
+- 2026-10-10：复用 ProjectList、CanvasProjectHeader 和 CanvasPage，新建项目由 Home 显式传递回调；CanvasDevelopment 在 API 层维护开发态内存项目，真实接口不降级。CanvasPage 按编号重建隔离节点和历史，模拟详情不等待真实用户请求；不新增 UI，不持久化，待手动验收。
+- 本轮验证：新建入口测试 4/4 通过，完整画布测试 213/214 通过；`scripts/canvas-shimmer.test.mjs:9` 仍断言旧 LoadingAnimation 导入，与现有 CanvasGenerationLoading 不符，本轮未修改该实现。构建、架构检查通过，lint 无错误、3 项既有警告。Home 保留现有认证/历史/工作流编排，本次仅新增路由接线，不混入模拟存储或新 UI。
+
+- 2026-10-10：VideoTrimModal 通过提交开始回调关闭双层详情；videoEditStore 复用创作占位并在剪辑失败时删除占位。新增业务组件 VideoEditNotice，常驻 App 并复用 ConfirmDialog 单按钮通知，队列由现有视频任务 Store 管理；不新增通用弹窗样式。待用户手动验收。
+
+- 2026-10-10：去字幕/超清复用现有创作视频卡片加载与失败态；videoEditStore 编排占位，creationStore.replaceGeneration 原位更新并按媒体去重；CreationVideoDetailModal 显式传 onCloseDetail。用户验收通过生成、关闭、占位、结果更新流程；去字幕效果未通过，新视频仍有字幕，原因待排查。分镜归属不变。
+
+- 2026-10-09：VideoSubtitleModal 复用 VideoEditComparison、useVideoEditSubmission、videoEditStore，不新增请求管理器；VideoEdit API 校验区域和时长，兼容202任务编号回退；遮罩几何不变，处理中禁止改框，关闭不取消任务。历史验收记录以2026-10-10反馈为准，去字幕效果未通过。
+
+- 2026-10-09：GlobalToast/toastStore 扩展可选 action（链接、文案与点击回调），普通提示时长不变；VideoFrameDestination 统一选帧结果导航白名单。详情宿主显式传来源，Home 接收历史导航并重建资产面板，CreationPage 保留草稿后切换图片并关闭视频详情。
+- 2026-10-09：用户手动验收通过选帧保存后的来源感知跳转；本次仅同步验收记录，不修改功能代码。
+
+## 2026-10-09 视频超清结果分栏（待手动验收）
+
+- 新增 video-edit/VideoEditComparison，复用图片分栏样式、LoadingAnimation、DotsLoading 与 Button；接收 submission、onRetry、children，不请求业务 API。
+- 新增 videoEditStore 承接原提交 Hook 的任务回读和资产写回，按来源与编辑类型隔离状态；Hook 只订阅与保护卸载后的回调。选帧显式传入 frame_extract，剪辑保持默认 trim。
+- VideoUpscaleModal 成功后不关闭；复用 ImageEditChrome 的 allowCloseWhileBusy，UpscaleFooter 同名开关默认关闭，保留其他调用方原行为。
+
+## 2026-10-09 画布媒体等面积尺寸（用户手动验收通过）
+
+- 新增 CanvasMediaSize 与 UseCanvasMediaSize，统一等面积尺寸、480px最长边及缺失宽高读取；复用 CanvasNodeShell，不新增卡片组件。
+- CanvasImportLayout、CanvasAssets、CanvasReferences 使用真实尺寸计算排列与避让；CanvasPage 保留导入事务与聚焦编排。AssetPickerModal 支持等待异步确认，本地上传调用方同步等待导入结果。
+- 常见比例、极端比例及混合比例无重叠布局已增加自动测试；实现阶段42项相关测试通过，用户于2026-10-09手动验收通过。本次仅同步验收记录，不修改功能代码。
+
+## 2026-10-09 导入分列布局修正（用户手动验收通过）
+
+- CanvasImportLayout 复用实际媒体尺寸，改为每列独立累计高度，纵向间距 32px；保留列宽计算、右侧避让和真实边界聚焦。
+- CanvasProjectHeader 直接指定箭头图标白色 80%；不调整图标尺寸和线宽。分享菜单宽度与右侧导入规则已由用户验收。
+- 14 项定向测试、构建和架构检查通过；用户于 2026-10-09 手动验收通过，未进行自动浏览器验证。本次仅登记验收，不修改代码或重跑测试。
+
+## 2026-10-09 画布菜单与导入布局调整（历史实现，以上方验收记录为准）
+
+- CanvasToolbar 分享菜单使用内容自适应宽度；CanvasProjectHeader 箭头默认白色 80%，保留悬停态。名称规则已由用户验收通过，本轮不修改。
+- CanvasImportLayout 将网格间距改为 32px，选中项优先作为右侧定位锚点，无选中项时使用全部内容边界；整块避让仅向右移动，空画布保持居中。继续复用既有绝对坐标计算和导入调用，无新增组件。
+- 10 项定向测试通过，覆盖选中优先、未选中远处节点、只向右避让、空画布居中、网格间距及菜单配置；构建和架构检查通过。
+
+## 2026-10-09 画布文件操作（待用户手动验收）
+
+- 新增 `CanvasFile.js` 负责版本化文件序列化、解析校验和合并布局；`UseCanvasFileActions.js` 负责文件选择、下载、异步生命周期和导入后聚焦；`CanvasFileInput.jsx` 仅负责隐藏文件输入。
+- 复用 `CanvasNodeActions` 的复制/粘贴重映射能力，并增加保留原名称选项；页面一次写入历史，未引入项目级持久化。
+- 修复 `CanvasToolbar.css` 展开工具内容裁剪分享菜单；项目标题菜单导入项改为“导入画布文件”。
+- `CanvasProjectName.js` 使用常用标点白名单，禁止特殊符号并保留 50 字上限。验证范围为文件导入导出和当前会话名称状态。
+
+## 2026-10-09 画布分享与项目菜单（待用户手动验收）
+
+- CanvasToolbar 与 CanvasProjectHeader 复用 DropdownMenu，面板宽 200px；名称编辑和箭头菜单分离，无新增基础组件。
+- CanvasPage 只接入会话内名称更新和动作回调；Home 新增返回自由画布项目列表的导航回调，保留品牌返回首页行为。Home 继续集中编排导航与项目生命周期，本轮不迁移已有大型页面；验证范围为导航接线与构建。
+- 项目名称不持久化；新建、复制、导入、删除、分享导出均为未开放提示。此记录覆盖早期 CanvasProjectHeader 已接保存接口的历史描述，以当前边界为准。
+- 搜索文本图标 currentColor 修复已由用户手动验收。
+
+## 2026-10-09 画布批量导入素材（用户验收通过）
+
+- 复用 AssetPickerModal、CanvasLocalUpload、CanvasReferenceBar 和既有节点定位；新增 CanvasReferenceBatch 纯计算模块，统一图片、视频参考的整批校验与导入。
+- AssetPickerModal 新增可选 validateSelection，未传时其他页面行为不变；确认返回 false 保留弹窗。保留原集中生命周期，不拆分跨来源请求。
+- CanvasPage 只编排导入、节点创建及历史；节点回调通过引用使用当前导入动作，避免旧节点闭包读取过期画布。
+- 2026-10-09 新增 CanvasImportLayout，负责自适应网格、整块空白区域查找、边界及输入框状态保留；复用组合绝对坐标。工具栏批量添加后通过既有视口接口平滑聚焦，不移动已有节点、不自动创建组合。基础多选及本次优化已由用户手动验收通过。
+- 图片批量参考同时接入 imageSourceIds，参与生成并避免重复渲染连线；本地拒绝时回收临时地址，已导入地址仍由历史持有。
+- 定向测试覆盖参考限额、混合媒体、首尾帧、生成引用、整批撤销重做、网格避让及输入框状态保留；2026-10-09 用户确认验收通过。
+
+## 2026-10-09 右键批量归组（用户验收通过）
+
+- 复用 DropdownMenu 的二级菜单，扩展 submenuMaxVisible/submenuWidth 配置及浮层边缘避让，滚动面板不会裁剪子菜单；未新增基础菜单组件。
+- CanvasGroupTransfer 承担选中根项去重、循环校验和批量归组纯计算；UseCanvasNodeActions 接收目标组 ID 并复用历史及全局提示；CanvasNodeActionOverlays 只组装菜单。
+- 保留节点引用及目标堆叠状态，清理移空旧组；11 项分组测试通过，用户已确认交互验收通过。
+- UseCanvasNodeActions 的移出组动作复用全局成功提示，操作前读取原组名称；不改变移出几何与历史逻辑，2026-10-09 用户确认提示补充验收通过。
+
+## 2026-10-09 图片、视频与音频节点图标替换（用户验收通过）
+
+- `CanvasNodeIcon` 的图片、视频及音频分支替换为用户指定图形路径，通过 `currentColor` 保留调用位置的颜色及悬停规则；文本图标不变，节点标题与 `CanvasNodeAddMenu` 继续共用组件。
+- 2026-10-09 图标线宽统一（用户验收通过）：图片、视频及音频描边统一为 1，与文本图标一致；形状、颜色及 16px 尺寸不变。构建、架构和差异检查通过，代码检查无错误、保留 3 条既有警告；本次验收覆盖四类节点类型图标，不扩大到操作图标或其他画布功能。
+- 24 项节点测试、构建和架构检查通过；Suzy 已于 2026-10-09 手动验收通过。
+
+## 2026-10-09 画布中央搜索（手动验收未通过）
+
+- 新增 `CanvasSearchModal`、`UseCanvasSearch` 与 `CanvasSearch`：分别负责搜索界面、展开/定位编排、筛选及坐标纯计算；工具栏只发出打开回调，页面只接线并隔离快捷键。
+- 复用节点图标、组展开与选择工具、画布绝对坐标计算及视口接口。检索现有 Tabs/TextField/ConfirmDialog：其固定字号、输入外框、标题和确认操作不符合此设计，搜索专属布局留在画布业务组件，不新增通用组件或修改公共皮肤。
+- 新增 `Command/Ctrl+F` 快捷键打开搜索弹窗，文本输入、弹窗内输入和修饰键组合不抢占该快捷键。
+- Suzy 手动验收未通过，具体视觉或交互问题待下一轮反馈后修正；不扩大到其他画布功能。
+- 页面仍集中保留历史、任务和连线生命周期，本次不混入业务区块实现。覆盖名称筛选、高亮、嵌套堆叠展开、单选及坐标计算测试。
+
+## 2026-10-09 恢复工具栏搜索与分享（待用户手动验收）
+
+- `CanvasToolbar` 移除搜索和分享配置的临时隐藏标记，恢复更多工具展开区原有入口；菜单、回调和布局保持不变，同步更新工具栏测试。本项替代此前临时隐藏决定。
+
+> 画布当前阶段以 [专项计划](../superpowers/plans/2026-09-22-node-workflow.md#当前阶段计划表2026-10-09-校准) 为准。下文是按日期保留的组件变更记录，旧回调占位、文件夹外观及待验收描述需结合后续替代与验收记录阅读，不能作为当前整体状态。
+
+## 2026-10-09 画布流光颜色（用户验收通过）
+
+- `canvas-connection-pulse.css` 将连线和卡片共用的四层流光改为白色 40%/60%/80%/100%，复用现有颜色变量；不更改速度、拖尾长度、时序、连接有效性提示或选中态。
+- Suzy 已确认白色效果验收通过。构建、架构及差异检查通过，代码检查无错误、保留三条既有警告；无新增组件或依赖。
+
+## 2026-10-09 节点与组合名称原地编辑（用户验收通过）
+
+- 新增画布业务组件 `CanvasEditableName`，由 `CanvasNodeHeader` 和 `CanvasGroupNode` 共用，负责局部编辑状态、聚焦全选、中文组合输入保护及画布事件隔离；单行输入保持名称字号与位置。
+- `CanvasPage` 仅注入取消延迟点击和保存名称回调；保存一次写入历史，空白、未修改或取消不写入。右键菜单及快捷键仍使用原重命名弹窗。
+- 新增 `scripts/canvas-editable-name.test.mjs`，与节点、节点动作测试共 34 项通过；构建、架构及差异检查通过，代码检查仅 3 条既有警告。Suzy 于 2026-10-09 确认本次原地重命名验收通过，不扩大其他功能或后端保存的验收范围。
+
+## 2026-10-09 画布生成态组件（用户验收通过）
+
+- 新增业务组件 `canvas/CanvasGenerationLoading`：接收 message，复用已有 Paper 着色器依赖，按设计稿展示动态背景；内部循环 mask-reveal-up 文案，卸载清理动画和定时器，减少动态效果时静态展示。
+- `CanvasNodeShell` 统一接入四类节点，不再使用中央 LoadingAnimation；公共 LoadingAnimation 及其他使用方不变。
+- 新增 `CanvasGenerationProgress`：文案校验/兜底和按请求更新进度；图片、视频、异步配音通过 apiGenerateCreation 可选 onProgress 回调接入，不改变既有调用方。
+- 后端消息字段尚未写入当前 OpenAPI，文本无中间进度；未返回 message 时使用兜底。36 项定向测试、构建、架构检查通过；完整 lint 0 错误、3 条既有警告。Suzy 于 2026-10-09 确认本次生成态动画验收通过；后端真实 message 返回仍待确认，其他功能验收状态不变。
+
+## 2026-10-09 堆叠形变更新（用户验收通过）
+
+- `CanvasGroupNode` 统一两态组框与组名，浏览器动画驱动组框尺寸、成员预览的位置与旋转，保留快速反向切换的当前展示状态。
+- `CanvasGroupStackPreview` 保留成员预览供双向动画使用，静态最多显示三层；`CanvasNodeActions` 派生相对组的卡片坐标和尺寸（扣除 24px 节点标题区），含嵌套组坐标转换。
+- 外框尺寸改为 300px 方形，卡片保持 240px 并重新居中；取代下节原设计外框尺寸。补充嵌套成员形变坐标测试，真实节点数据不变。25 项相关测试、构建、架构检查通过，本次修改的定向代码检查无警告；Suzy 于 2026-10-09 确认尺寸、组名保留及双向形变验收通过，其他功能验收状态不变。
+
+## 2026-10-09 画布旋转叠卡（待用户手动验收）
+
+- 新增画布专属 `CanvasGroupStackPreview`，负责成员的非交互式叠卡预览，不挂载节点编辑器、上传或音视频控制器。
+- `CanvasGroupNode` 使用叠卡代替文件夹，保留现有组框形变与成员渐显；`CanvasNodeActions` 派生展示尺寸按 Paper 源码修正为 322.61574268341064px 方形，不改变真实坐标或连接。
+- 外层组框使用 5% 白色背景、8% 白色描边及 20px 圆角；内部 240px 卡片使用不透明内容区底色、16px 圆角，按设计 0°、8°、16° 旋转和偏移。下方文件夹展示为已替代的历史方案，资产库组件继续保留。24 项相关测试及构建通过，等待手动验收。
+
+## 2026-10-09 文件夹轻量形变（待用户手动验收）
+
+- `CanvasGroupNode` 保留文件夹与组框展示层，使用 300ms 浏览器动画切换尺寸与透明度；动画清理和减少动态效果判断在组件内完成，不写入历史。
+- `CanvasNodeActions` 为组派生原尺寸及成员预览，展开成员仅做透明度过渡；节点位置、端口与连线仍由原画布数据维护。
+- 定向代码检查、构建和 24 项动作／分组／历史测试通过，动画视觉等待用户手动验收。
+
+## 2026-10-09 文件夹堆叠与聚焦（待用户手动验收）
+
+- `CanvasGroupNode` 复用 `SeedanceFolderCard`，新增可选 `presentationOnly` 隔离资产库打开交互；默认行为不变，预览支持文本／音频。
+- `UseCanvasNodeActions` 处理组双击与展开后聚焦，动画帧在卸载或依赖变化时清理；`CanvasGroupFocus` 纯函数计算世界中心与只缩小不放大的缩放比例。
+- 文件夹固定 270×180，展开仍使用真实组尺寸；组外连线沿用渲染层端点映射。新增聚焦计算测试，等待用户视觉验收。
+
+## 2026-10-09 画布右键操作与堆叠（待用户手动验收）
+
+- `CanvasNodeActions`：复制／粘贴、引用重映射、递归删除、移出组和堆叠展示纯函数；不直接调用业务接口。
+- `UseCanvasNodeActions`：菜单位置、会话剪贴板、快捷键与动作分发；显式接收 nodes、setNodes、flowInstance、containerRef、enabled、cancelPendingClicks 及弹窗状态。菜单和键盘共用入口，数据变更使用已有历史 setter。
+- `CanvasNodeActionOverlays`：复用 DropdownMenu、ConfirmDialog 和已有 AssetsProjectRenameModal；通过显式回调通知业务，不访问页面闭包。未新增基础 UI。
+- `CanvasGroupNode`：堆叠预览和不可连接的展示端口；原成员数据、位置与真实连线保持不变。画布页仅接线并派生渲染对象，堆叠测量不覆盖历史中的组尺寸。
+- 用户确认保留撤销／重做，堆叠为 ⌘⌥G／⌘⌥⇧G；组内节点“移出组”位于删除前，删除组与节点均二次确认。
+- 合计 52 项动作、分组、历史、节点及引用测试通过；构建、架构检查通过，代码检查仅三条既有警告。页面约 630 行，保留页面级生成、历史及连线编排，新增菜单展示和操作逻辑未堆入页面。视觉交互等待用户验收。规则引用的 `docs/architecture/feature-development.md` 当前缺失，本次按已有组件清单、架构规则和设计系统完成检索复用。
+
+## 2026-10-09 文本节点触控板优先级调整（用户验收通过）
+
+- `TextCanvasNode` 编辑状态保留 `nodrag nowheel nopan`，非编辑且有内容时保留 `nowheel`，仅非编辑空节点放行画布手势。正文不足一屏或滚动到边缘时也不带动画布；输入框滚动隔离与中文组合输入逻辑不变。
+- `scripts/canvas-text-input.test.mjs` 补充两种状态的隔离标记回归检查；与节点测试共 29 项通过，构建、架构检查和差异检查通过，代码检查仅 3 条既有警告。
+- 上一版“所有非编辑正文放行画布”由上述规则替代。更新后的 29 项测试、构建和架构检查通过，Suzy 于 2026-10-09 确认新规则验证通过，不扩大其他功能验收范围。
+
+## 2026-10-08 创作资产图片去重同步（用户验收通过）
 
 - `AssetsCreativePanel` 将当前已加载的创作图片列表传入 `AssetCard`；`AssetCard` 复用创作页 `visibleCreationEdits` 过滤已经存在于后端历史的本地编辑结果。
 - 资产库原有分页历史合并保持不变，避免将无法确认身份的图片仅凭展示地址强行合并。
+- Suzy 于 2026-10-08 确认资产库创作资产图片去重验证通过；本次仅更新验收记录，不扩大其他入口验收范围。
 
 ## 2026-10-08 编辑占位接入创作记录（替代下节卡片附带渲染）
 
 - CreationImageEdits 在编辑发布时调用既有 addGeneration，完成原位更新、失败删除；CreationResultState 保持原 reverse 顺序，CreationImageResultCard 不再递归展示结果。
 - ImageDetailModal 编辑关闭回调统一回到列表；ImageEditComparison 图片加载复用 DotsLoading，不改变生成中动画。
-- 新增 test-creation-edit-store.mjs 验证普通新增与编辑新增混合顺序、成功替换、刷新资产去重及失败删除；视觉待手动验收。
+- 新增 test-creation-edit-store.mjs 验证普通新增与编辑新增混合顺序、成功替换、刷新资产去重及失败删除；Suzy 于 2026-10-08 确认创作列表占位位置、即时更新、刷新去重、两层弹窗关闭及圆点加载验证通过。
 
-## 2026-10-08 创作图片编辑即时结果与去重
+## 2026-10-08 创作图片编辑即时结果与去重（历史实现，卡片附带渲染已由上节替代）
 
 - `CreationResultState` 保留图片逐卡资产编号，传入全列表身份信息和同源唯一展示标记；不改变视频、音频的编号与回调。
 - `CreationImageResultCard` 移除首卡限制，继续订阅既有编辑 Store，待办与成功结果即时展示；不增加第二套任务或保存机制。
 - `CreationEditResults.js` 集中处理源图归属和编辑结果去重，按资产编号或明确原图地址匹配后端历史，不通过缩略图文件名猜测身份。
-- 新增 `scripts/test-creation-edit-results.mjs`，覆盖即时结果、待办、刷新资产去重、缩略图差异和多图归属。真实入口待手动验收。
+- 新增 `scripts/test-creation-edit-results.mjs`，覆盖即时结果、待办、刷新资产去重、缩略图差异和多图归属。当前列表接入与验收状态以上方“编辑占位接入创作记录”为准。
 
 ## 2026-10-08 图片编辑任务占位（待用户手动验收）
 
@@ -184,7 +348,7 @@
 ## 2026-09-29 画布触控板交互（待用户手动验收）
 
 - `CanvasPage` 保留 React Flow 原生 `zoomOnPinch`，新增 `panOnScroll`、`PanOnScrollMode.Free` 和 `panOnScrollSpeed`，支持触控板双指捏合缩放及上下左右平移，节点、连线和组合跟随统一视口变换。
-- 输入框、正文滚动区、音频台词区和媒体控件沿用 `nowheel`/`nopan` 隔离画布手势；本次不新增自定义滚轮监听。
+- 输入框、有内容或编辑中的正文、音频台词区和媒体控件沿用 `nowheel`/`nopan` 隔离画布手势；文本节点仅非编辑空态放行画布手势，不新增自定义滚轮监听。
 - 画布定向测试、构建和差异检查待本次命令完成；触控板实际手感由用户手动验收。
 - 针对可拖动节点自动添加 `nopan` 的 React Flow 行为，`CanvasPage` 在普通卡片滚轮捕获阶段临时放行画布手势，输入区域仍保持 `nowheel` 隔离；不改变节点拖动与连接交互。
 
@@ -2734,3 +2898,9 @@
 - ImageEdit.js 负责编辑端点与字段转换；ImageEditTasks.js 负责事件唤醒及统一查询；ImageEditSave.js 负责上传、源业务归属验证与候选绑定。
 - LocalImageEdits 保留历史结果，新增已受理任务的目标归属恢复及编辑元数据；本地回显仅为缓存，不替代云端绑定。
 - 构建与架构检查通过；占位卡、去重及六入口云端行为仍未验收，不标记阶段完成。
+## 2026-10-10 图片节点工具栏（待手动验收）
+
+- 扩展 CanvasNodeToolbar，复用 IconButton、Tooltip、下载及更多图标；图片九项动作沿用已验收外壳。
+- ImageEditIcon 从 ImageDetailModal 原图标机械抽取，两处共享，裁剪继续使用既有 CropIcon，图标继承按钮状态颜色。
+- UseCanvasImageEdits 负责编辑入口和异步结果接收，CanvasImageEdits 负责原图适配、新节点编号及位置避让；LocalImageEditor 和 LocalImageEdits 的弹窗、任务保存、轮询直接复用。
+- 不新增后端协议：编辑仍要求真实源资产和现有创作归属，未支持的来源明确报错；结果加入画布草稿历史，离开画布不写入其他画布。刷新后的画布恢复仍待整体保存链路。

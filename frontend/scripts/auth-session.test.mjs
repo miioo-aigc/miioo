@@ -63,7 +63,11 @@ for (const method of methods) {
       const state = await load((url) => url.endsWith('/auth/refresh')
         ? (recover ? json({ access_token: 'new-access' }) : failure())
         : json({}, 401));
-      await assert.rejects(state.api[method]('/api/projects'));
+      await assert.rejects(state.api[method]('/api/projects'), (error) => {
+        assert.notEqual(error.status, 401);
+        if (/^\d+$/.test(name)) assert.equal(error.status, Number(name));
+        return true;
+      });
       assert.equal(state.api.getToken(), 'old-access');
       assert.equal(state.api.getRefreshToken(), 'old-refresh');
       assert.equal(state.localStorage.getItem('miioo_cache:projects'), 'cached');
@@ -166,3 +170,25 @@ test('主动退出即使网络失败仍清理凭证和缓存', async () => {
   assert.equal(state.api.getRefreshToken(), null);
   assert.equal(state.localStorage.getItem('miioo_cache:projects'), null);
 });
+
+for (const method of methods) {
+  test(`${method} 只有续期凭证时502不伪装为401`, async () => {
+    const state = await load(() => json({}, 502));
+    state.localStorage.removeItem('token');
+    await assert.rejects(state.api[method]('/api/projects'), { status: 502 });
+    assert.equal(state.api.getRefreshToken(), 'old-refresh');
+    assert.deepEqual(state.events, []);
+    assert.equal(state.calls.length, 1);
+  });
+}
+
+for (const name of ['apiLogin', 'apiVerifyCodeLogin', 'apiRegister', 'apiGetCurrentUser']) {
+  for (const body of ['<html>Bad Gateway</html>', JSON.stringify({ detail: 'upstream unavailable' })]) {
+    test(`${name} 网关错误保留502且不覆盖会话：${body[0]}`, async () => {
+      const state = await load(() => new Response(body, { status: 502 }));
+      await assert.rejects(state.auth[name]({}), { status: 502 });
+      assert.equal(state.api.getToken(), 'old-access');
+      assert.deepEqual(state.events, []);
+    });
+  }
+}

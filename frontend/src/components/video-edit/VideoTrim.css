@@ -10,7 +10,7 @@
 .trim-timeline-scroll { overflow-x: auto; padding: 0; scrollbar-width: thin; }
 .trim-timeline { position: relative; height: 68px; min-width: 100%; background: var(--color-surface-toolbar); border: 1px solid var(--color-stroke-accent); border-radius: 8px; overflow: hidden; box-sizing: border-box; }
 .trim-frames { position: absolute; inset: 0; display: flex; pointer-events: none; }
-.trim-frames img { flex: 1; min-width: 0; width: 4.166667%; height: 100%; object-fit: cover; }
+.trim-frames img { flex: 0 0 calc(100% / 24); min-width: 0; width: calc(100% / 24); height: 100%; object-fit: cover; }
 .trim-frame-status { position: absolute; inset: 0; display: flex; justify-content: center; align-items: center; font-size: 12px; }
 .trim-dim { position: absolute; top: 0; bottom: 0; background: var(--color-surface-overlay); pointer-events: none; }
 .trim-selection { position: absolute; top: 0; bottom: 0; border-top: 2px solid var(--color-brand-main); border-bottom: 2px solid var(--color-brand-main); pointer-events: none; }

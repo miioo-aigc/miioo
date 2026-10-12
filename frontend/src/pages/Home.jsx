@@ -1,9 +1,10 @@
 /**
  * @file Home.jsx
  * @structure-index
+ *   2026-10-10：handleCreateCanvas L1507；开发态内存列表 L1520；按画布编号重建页面 L1597，正式环境边界不变。
  *
  * ─── 全局常量 & 配置 ───────────────────────────────────────────────
- *   页面业务模块懒加载                                          L128–L134
+ *   页面业务模块懒加载                                          L132–L138
  *   NAV_ITEMS / BOTTOM_NAV_ITEMS                                  components/home/HomeNavigationConfig.jsx
  *   STEP_TABS / WorkflowStepTabs                                components/home/WorkflowStepTabs.jsx
  *   BG_VIDEOS                                                   components/home/HomeNavigationConfig.jsx
@@ -20,19 +21,20 @@
  *   buildEpisodeStatusMap(overview, episodes) 剧集完成状态适配     utils/episodeStatusAdapter.js
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
- *   export default function Home()                               L251
- *     ├─ [懒加载] 页面业务模块按需加载                             L128–L134
- *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L252–L316
- *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L332 / L389 / L400
- *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L463 / L929 / L953
- *     │           handleExtractSubjects / handleGenerateStoryboards        L995 / L1177
+ *   2026-10-09 画布项目菜单返回自由画布列表，保留品牌图标返回首页；仅新增导航接线
+ *   export default function Home()                               L255
+ *     ├─ [懒加载] 页面业务模块按需加载                             L132–L138
+ *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L256–L320
+ *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L336 / L393 / L404
+ *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L467 / L936 / L960
+ *     │           handleExtractSubjects / handleGenerateStoryboards        L1002 / L1184
  *     │           handleScriptFinalized / handleNavChange / handleBottomNavChange / handleProjectCreated
- *                                                               L1472 / L1479 / L1534 / L1550
- *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L424 / L438 / L445 / L455
- *     │           微信回调与鉴权初始化                                   L701 / L765
- *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L835 / L846 / L867 / L1164
- *     ├─ [底部导航配置] bottomNavItems                             L1518–L1532
- *     └─ [渲染] 页面业务模块统一通过 Suspense 按需加载              L1585–L1964
+ *                                                               L1479 / L1486 / L1553 / L1569
+ *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L428 / L442 / L449 / L459
+ *     │           微信回调与鉴权初始化                                   L708 / L772
+ *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L842 / L853 / L874 / L1171
+ *     ├─ [底部导航配置] bottomNavItems                             L1537
+ *     └─ [渲染] 页面业务模块统一通过 Suspense 按需加载              L1608
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-09-22  新增独立画布列表入口；超长入口保留认证、历史与任务恢复集中编排，本次只接路由，验证导航及刷新，不迁移生成流程
@@ -75,11 +77,13 @@
  *   2026-07-31  项目列表加载动画占满内容区并垂直、水平居中显示
  *   2026-07-01  初始结构索引建立
  *   2026-10-09  合并 V1.5 画布与剪辑入口，保留双方业务接线并校正结构索引
+ *   2026-10-12  同步 V1.5 最新画布导航，保留剪辑入口并校正合并后的索引
  */
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiGetProjects, apiUpdateProject, apiCopyProject, apiDeleteProject, apiGetProject, apiGetProjectOverview } from '../api/project';
 import { apiListCanvasDocuments, normalizeCanvasDocument } from '../api/canvas';
+import { canvasDevelopmentEnabled, createDevelopmentCanvasProject, listDevelopmentCanvasProjects } from '../api/CanvasDevelopment';
 import { getToken, getRefreshToken, refreshAccessToken } from '../api/request';
 import { clearTokens, apiLogout, apiCompleteWechatCallback } from '../api/auth';
 import { apiListProviders } from '../api/config';
@@ -257,7 +261,7 @@ export default function Home({ onGoToAdmin }) {
     const savedKey = localStorage.getItem('miioo_active_key');
     return ['project', 'canvas', 'create', 'assets'].includes(savedKey) ? savedKey : 'home';
   });
-  const [assetsEntry, setAssetsEntry] = useState({ module: 'project', seedanceTab: 'real' });
+  const [assetsEntry, setAssetsEntry] = useState({ module: initialRoute.key === 'assets' && new URLSearchParams(window.location.search).get('module') === 'creative' ? 'creative' : 'project', seedanceTab: 'real' });
   const [bottomActiveKey, setBottomActiveKey] = useState(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [apiConfigOpen, setApiConfigOpen] = useState(false);
@@ -645,6 +649,9 @@ export default function Home({ onGoToAdmin }) {
   useEffect(() => {
     const handlePopState = () => {
       const route = readWorkspaceRoute();
+      if (route.key === 'assets' && new URLSearchParams(window.location.search).get('module') === 'creative') {
+        setAssetsEntry({ module: 'creative', seedanceTab: 'real', requestId: Date.now() });
+      }
       setActiveKey(route.key);
       if (route.key === 'project' && route.projectId) {
         setActiveProject(null);
@@ -1498,11 +1505,23 @@ export default function Home({ onGoToAdmin }) {
   };
 
   const handleCreateCanvas = () => {
+    if (canvasDevelopmentEnabled) {
+      const document = createDevelopmentCanvasProject();
+      setCanvasProjects(listDevelopmentCanvasProjects());
+      setCanvasRouteId(document.id);
+      setActiveKey('canvas-detail');
+      updateWorkspaceUrl({ key: 'canvas-detail', canvasId: document.id });
+      return;
+    }
     if (!isLoggedIn) { setLoginOpen(true); return; }
     showToast('自由画布项目创建能力正在建设中', 'info');
   };
 
   useEffect(() => {
+    if (activeKey === 'canvas' && canvasDevelopmentEnabled) {
+      setCanvasProjects(listDevelopmentCanvasProjects());
+      return;
+    }
     if (activeKey !== 'canvas' || !isLoggedIn) return;
     let cancelled = false;
     apiListCanvasDocuments().then((data) => {
@@ -1575,10 +1594,14 @@ export default function Home({ onGoToAdmin }) {
   }
 
   if (canvasRouteId) {
-    return <CanvasPage canvasId={canvasRouteId} onBackHome={() => {
+    return <CanvasPage key={canvasRouteId} canvasId={canvasRouteId} onCreateProject={canvasDevelopmentEnabled ? handleCreateCanvas : undefined} onBackHome={() => {
       setCanvasRouteId(null);
       setActiveKey('home');
       updateWorkspaceUrl({ key: 'home' });
+    }} onBackProjects={() => {
+      setCanvasRouteId(null);
+      setActiveKey('canvas');
+      updateWorkspaceUrl({ key: 'canvas' });
     }} />;
   }
 
@@ -1877,6 +1900,7 @@ export default function Home({ onGoToAdmin }) {
             )}
             {activeKey === 'assets' && (
               <AssetsPage
+                key={assetsEntry.requestId || 'assets'}
                 projects={projects}
                 isLoggedIn={isLoggedIn}
                 initialModule={assetsEntry.module}

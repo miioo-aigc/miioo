@@ -23,7 +23,7 @@ export default function CanvasConnectionEdge({ id, sourceX, sourceY, targetX, ta
   return <g onPointerEnter={() => setEdgeHover(true)} onPointerLeave={() => setEdgeHover(false)}>
     <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
     <path d={edgePath} fill="none" stroke="transparent" strokeWidth="20" className="react-flow__edge-interaction" />
-    {highlighted && <path d={edgePath} fill="none" stroke="var(--color-white-50)" strokeWidth="2" className="pointer-events-none" />}
+    {highlighted && !data?.overflow && <path d={edgePath} fill="none" stroke="var(--color-white-50)" strokeWidth="2" className="pointer-events-none" />}
     {data?.pulses?.map((pulse) => <CanvasPulsePath key={pulse.id} path={edgePath} pulse={pulse} onMeasure={data.onPulseMeasure} />)}
     <EdgeLabelRenderer>
       <div className={`nodrag nopan pointer-events-auto absolute transition-opacity ${hovered ? 'opacity-100' : 'pointer-events-none opacity-0'}`}

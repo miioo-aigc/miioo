@@ -1,5 +1,7 @@
-import { ALL_FORMATS, Input, UrlSource, EncodedPacketSink, VideoSampleSink } from 'mediabunny';
+import { ALL_FORMATS, Input, EncodedPacketSink, VideoSampleSink } from 'mediabunny';
 import { orderedFrameTimes } from './FrameIndex';
+import { createFrameMediaSource } from './FrameMediaSource';
+import { toVideoMediaUrl } from '../../utils/VideoMediaUrl';
 
 let input;
 let sink;
@@ -8,6 +10,7 @@ let canvas;
 let selected = -1;
 let pending = null;
 let running = false;
+let previewSourceUrl;
 
 function fail(message, id) {
   const localized = /^[\u4e00-\u9fff]/u.test(message || '') ? message : '视频处理失败，请检查视频格式、网络和跨域权限后重试';
@@ -17,16 +20,13 @@ function fail(message, id) {
 async function open(url, baseUrl) {
   if (!url || typeof url !== 'string') throw new Error('未找到可用的视频地址');
   // Workers have no window; the decoder's full-response fallback requires an absolute URL.
-  const sourceUrl = new URL(url, baseUrl).href;
+  const sourceUrl = new URL(toVideoMediaUrl(url), baseUrl).href;
+  previewSourceUrl = sourceUrl;
   if (!self.VideoDecoder || !self.OffscreenCanvas) {
     throw new Error('当前浏览器不支持逐帧解码，请使用新版电脑浏览器');
   }
-  input = new Input({ formats: ALL_FORMATS, source: new UrlSource(sourceUrl, {
-    maxCacheSize: 32 * 1024 * 1024,
-    parallelism: 1,
-    getRetryDelay: (attempt) => attempt < 2 ? 1 : null,
-    handleUnhandledError: () => fail('视频读取失败，请检查网络后重试'),
-  }) });
+  const source = await createFrameMediaSource(sourceUrl, () => fail('视频读取失败，请检查网络后重试'));
+  input = new Input({ formats: ALL_FORMATS, source });
   const track = await input.getPrimaryVideoTrack();
   if (!track || !await track.canDecode()) throw new Error('当前浏览器无法解码此视频格式');
   const packets = new EncodedPacketSink(track);
@@ -76,6 +76,29 @@ async function drain() {
   }
 }
 
+async function exportOriginal(data) {
+  const url = new URL(toVideoMediaUrl(data.originalUrl), data.baseUrl).href;
+  if (url === previewSourceUrl) return canvas.convertToBlob({ type: 'image/png' });
+  let originalInput;
+  let sample;
+  try {
+    const source = await createFrameMediaSource(url);
+    originalInput = new Input({ formats: ALL_FORMATS, source });
+    const track = await originalInput.getPrimaryVideoTrack();
+    if (!track || !await track.canDecode()) throw new Error('当前浏览器无法解码原视频格式');
+    sample = await new VideoSampleSink(track).getSample(times[data.index]);
+    if (!sample) throw new Error('原视频中未找到对应时间的画面');
+    const originalCanvas = new OffscreenCanvas(sample.displayWidth, sample.displayHeight);
+    const context = originalCanvas.getContext('2d');
+    if (!context) throw new Error('无法创建原画图片画布');
+    sample.draw(context, 0, 0);
+    return await originalCanvas.convertToBlob({ type: 'image/png' });
+  } finally {
+    sample?.close();
+    originalInput?.dispose();
+  }
+}
+
 self.onmessage = async ({ data }) => {
   try {
     if (data.type === 'open') await open(data.url, data.baseUrl);
@@ -85,7 +108,8 @@ self.onmessage = async ({ data }) => {
     }
     if (data.type === 'export') {
       if (!canvas || running || pending || data.index !== selected) throw new Error('画面尚未就绪，请稍后下载');
-      const blob = await canvas.convertToBlob({ type: 'image/png' });
+      if (!data.originalUrl) throw new Error('未找到原视频地址，无法下载原画图片');
+      const blob = await exportOriginal(data);
       self.postMessage({ type: 'export', blob, index: selected, purpose: data.purpose || 'download' });
     }
   } catch (error) {

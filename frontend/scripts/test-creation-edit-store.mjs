@@ -46,3 +46,14 @@ sync(pending);
 remove(pending);
 assert.equal(state.generationsByTab.image.length, 3);
 console.log('创作编辑接入测试通过：复用新增入口、倒序首位、完成原位更新、后续普通创作顺序、刷新去重、失败移除和入口隔离');
+
+const videoPending = { id: 'video-edit-task', cards: [{ id: null, type: 'video', status: 'loading' }] };
+state.addGeneration('video', { id: 'source-video', cards: [{ id: 'source-video', status: 'done' }] });
+state.replaceGeneration('video', videoPending.id, videoPending);
+state.setHistoryPage1('video', [{ id: 'source-video', cards: [{ id: 'source-video', status: 'done' }] }]);
+assert.equal(state.generationsByTab.video[1].id, videoPending.id);
+state.addGeneration('video', { id: 'later-task', cards: [{ status: 'loading' }] });
+state.replaceGeneration('video', videoPending.id, { ...videoPending, cards: [{ id: 'result-video', status: 'done' }] });
+assert.deepEqual(Array.from(state.generationsByTab.video, (item) => item.id), ['source-video', 'video-edit-task', 'later-task']);
+assert.equal(state.generationsByTab.video[1].cards[0].id, 'result-video');
+console.log('视频占位原位替换与历史加载保留测试通过');

@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import ImageEditChrome from '../image-edit/ImageEditChrome';
 import Button from '../ui/Button';
-import { showGlobalToast } from '../../stores/toastStore';
-import { buildVideoEditRequest } from '../../utils/MediaEditRequest';
+import useVideoEditSubmission from '../../hooks/useVideoEditSubmission';
+import VideoEditComparison from './VideoEditComparison';
 import SubtitleMask from './SubtitleMask';
 import { DEFAULT_SUBTITLE_MASK } from './SubtitleMaskGeometry';
 import './VideoSubtitle.css';
@@ -13,7 +13,8 @@ function formatTime(seconds) {
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
 }
 
-export default function VideoSubtitleModal({ videoUrl, posterUrl = '', sourceAsset, onPrepare, onClose }) {
+export default function VideoSubtitleModal({ videoUrl, posterUrl = '', sourceAsset, onClose, onCloseDetail }) {
+  const submission = useVideoEditSubmission(sourceAsset, undefined, 'subtitle_remove');
   const videoRef = useRef(null);
   const stageRef = useRef(null);
   const frameRef = useRef(null);
@@ -48,26 +49,22 @@ export default function VideoSubtitleModal({ videoUrl, posterUrl = '', sourceAss
   function close() {
     videoRef.current?.pause();
     onClose();
+    if (submission.active) onCloseDetail?.();
   }
 
-  async function submit() {
+  function submit() {
     if (!available) return;
-    try {
-      const request = buildVideoEditRequest(sourceAsset, { mode: 'subtitle_remove' });
-      await onPrepare?.(request);
-      showGlobalToast('已准备整段去字幕参数，等待后端编辑接口接入', 'info');
-    } catch (error) {
-      showGlobalToast(error.message || '去字幕参数准备失败，请重试', 'error');
-    }
+    submission.submit({ mode: 'subtitle_remove', duration: videoRef.current?.duration, region: { ...subtitleMask } });
   }
 
-  return <ImageEditChrome title="去字幕" onClose={close} zIndex={1400} footer={
+  return <ImageEditChrome title="去字幕" onClose={close} busy={submission.busy} allowCloseWhileBusy zIndex={1400} footer={
     <footer className="subtitle-footer">
-      <Button variant="secondary" size="large" onClick={close}>取消</Button>
-      <Button variant="primary" size="large" onClick={submit} disabled={!available}>AI生成</Button>
+      <Button variant="secondary" size="large" onClick={close}>关闭</Button>
+      <Button variant="primary" size="large" onClick={submit} loading={submission.busy} disabled={!available || submission.busy}>AI生成</Button>
     </footer>
   }>
     <div className="subtitle-body">
+      <VideoEditComparison submission={submission} onRetry={() => submission.submit({ mode: 'subtitle_remove' })}>
       <div ref={stageRef} className="subtitle-stage">
         {videoUrl && !failed ? <div ref={frameRef} className="subtitle-frame" style={{ width: scale ? source.width * scale : '100%', height: scale ? source.height * scale : '100%' }}>
           <video ref={videoRef} src={videoUrl} poster={posterUrl || undefined} autoPlay muted={muted} playsInline preload="auto"
@@ -82,10 +79,11 @@ export default function VideoSubtitleModal({ videoUrl, posterUrl = '', sourceAss
           />
           {available && <>
             <button type="button" className="subtitle-play-surface" aria-label={playing ? '暂停视频画面' : '播放视频画面'} onClick={togglePlay} />
-            <SubtitleMask value={subtitleMask} onChange={setSubtitleMask} frameRef={frameRef} />
+            <div inert={submission.busy}><SubtitleMask value={subtitleMask} onChange={setSubtitleMask} frameRef={frameRef} /></div>
           </>}
         </div> : <span role="status">视频加载失败，请关闭后重试</span>}
       </div>
+      </VideoEditComparison>
       <div className="subtitle-playback">
         <button type="button" aria-label={playing ? '暂停视频' : '播放视频'} title={playing ? '暂停视频' : '播放视频'} disabled={!available} onClick={togglePlay}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
         <span>{formatTime(time)} / {formatTime(duration)}</span>

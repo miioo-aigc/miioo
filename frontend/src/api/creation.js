@@ -265,6 +265,7 @@ async function pollBasicEditCreationImageTask(taskId, { signal } = {}) {
  *   2026-08-21  配音同步/异步请求透传高级参数，并识别 speech-* MiniMax 长文本模型
  *   2026-08-21  普通配音模式将 speed / pitch / volume 归一到 voice_setting.speed / pitch / vol
  *   2026-10-08  配音分支增加画布参考音频全量 attachments 及临时地址上传；其他入口保持原行为。
+ *   2026-10-09  apiGenerateCreation 增加可选 onProgress，透传轮询 message；未返回时由画布兜底。
  */
 
 function isMiniMaxSpeechModel(model) {
@@ -1005,7 +1006,7 @@ export async function apiPollVideoTask(taskId, timeoutMs = CREATION_VIDEO_POLL_T
 
 // ── Legacy：apiGenerateCreation（兼容旧调用，内部拆分图片/视频分支）──────────
 
-export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}) {
+export async function apiGenerateCreation(params, { onTaskCreated, onProgress, signal } = {}) {
   const isDubbing = params.genType === 'dubbing';
   const isVideo = params.genType === 'video';
   const isMusic = params.genType === 'music';
@@ -1028,6 +1029,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, signal } = {}
       throwIfAborted(signal);
       const pollData = await fetchCreationPollData(pollUrl, { signal, retryState });
       if (!pollData) continue;
+      if (!signal?.aborted) onProgress?.({ message: pollData.message });
       const status = pollData.status;
       if (status === 'done' || status === 'completed' || status === 'success' || status === 'partial') {
         // partial=true 字段表示部分图片完成，继续轮询直到全部完成（针对图片多张生成）

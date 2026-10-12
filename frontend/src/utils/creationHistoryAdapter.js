@@ -6,7 +6,7 @@
  *   getCreationHistoryList       兼容数组、list、items 和 data 响应
  *   dedupeCreationHistoryList    按资产身份/媒体地址去重并优先保留详情完整记录
  *   normalizeCreationHistoryItem 将历史记录转换为创作页 generation
- *   2026-09-08 原图字段不再使用受控下载地址，缓存兼容 originalUrl。
+ *   2026-10-10 保留预览视频字段供选帧快速读取；原视频字段保持独立。
  *
  * ─── 缓存适配 ───────────────────────────────────────────────
  *   pickCreationHistoryCacheItem 保留缓存所需的轻量字段
@@ -234,6 +234,7 @@ export function normalizeCreationHistoryItem(item, type) {
       originalUrl: type === 'image' ? originalUrl : null,
       thumbnailUrl: type === 'image' ? thumbnailUrl : null,
       videoUrl: type === 'video' ? url : null,
+      previewVideoUrl: type === 'video' ? normalizeImageUrl(item.preview_video_url || item.previewVideoUrl) : null,
       audioUrl: type === 'audio' ? url : null,
       audioId: type === 'audio' ? (item.id || item.audio_id || item.audioId || null) : undefined,
       posterUrl: type === 'video' ? posterUrl : undefined,

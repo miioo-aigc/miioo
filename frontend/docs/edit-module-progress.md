@@ -4,6 +4,13 @@
 > 建立日期：2026-09-29
 > 适用范围：`src/pages/EditPage.jsx`、`src/pages/CompositionEditorPage.jsx`、`src/components/edit/`、`src/components/compositionEditor/`、`src/stores/compositionEditorStore.js`
 
+### 2026-10-09 后端交接审查
+
+- 新增 [`backend-edit-module-handoff.md`](./backend-edit-module-handoff.md)，完成剪辑模块前端代码、请求字段、时间线协议、渲染任务和已有后端待办的集中审查。
+- 已明确 P0：时间线四类条目正式 schema、多轨渲染、字幕保存与烧录、offset/speed/transition/音量/视频原声在最终成片中生效、分离音频协议。
+- 已明确 P1：素材区独立持久化、资产可用性错误定位、轨道设置持久化边界、导出任务契约；P2：剪映格式导出边界。
+- 状态：交接文档完成；后端联调未开始，剪辑模块整体仍未完成。
+
 ## 1. 总体状态
 
 ### 2026-10-09 使用指定播放图标

@@ -47,7 +47,7 @@ function cleanSmallGroups(nodes, candidates) {
   return next;
 }
 
-function orderParentsFirst(nodes) {
+export function orderParentsFirst(nodes) {
   const ordered = [];
   const visited = new Set();
   const byId = new Map(nodes.map((node) => [node.id, node]));

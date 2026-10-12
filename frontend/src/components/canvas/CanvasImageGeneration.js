@@ -31,8 +31,9 @@ export function getCanvasImageReferenceStatus(nodes, targetId, limit) {
     .filter((id) => ['text', 'image'].includes(findNode(nodes, id)?.type));
   const imageSourceIds = sourceIds.filter((id) => findNode(nodes, id)?.type === 'image');
   const effectiveLimit = Number.isInteger(limit) && limit >= 0 ? limit : imageReferenceLimit(target);
-  const overflowSourceIds = imageSourceIds.slice(effectiveLimit);
-  return { imageSourceIds, overflowSourceIds, canGenerate: overflowSourceIds.length === 0 };
+  const ownCount = target?.data?.asset?.url ? 1 : 0;
+  const overflowSourceIds = imageSourceIds.slice(Math.max(0, effectiveLimit - ownCount));
+  return { imageSourceIds, overflowSourceIds, canGenerate: imageSourceIds.length + ownCount <= effectiveLimit };
 }
 
 export function hasUnsupportedCanvasImageReferences(nodes, targetId) {
@@ -45,7 +46,8 @@ export function canConnectCanvasImage(nodes, connection, limit) {
   const sourceIds = target?.data?.imageSourceIds || [];
   if (sourceIds.includes(connection.source)) return true;
   if (findNode(nodes, connection.source)?.type !== 'image') return true;
-  return getCanvasImageReferenceStatus(nodes, target.id, limit).imageSourceIds.length < (Number.isInteger(limit) && limit >= 0 ? limit : imageReferenceLimit(target));
+  const ownCount = target.data.asset?.url ? 1 : 0;
+  return getCanvasImageReferenceStatus(nodes, target.id, limit).imageSourceIds.length + ownCount < (Number.isInteger(limit) && limit >= 0 ? limit : imageReferenceLimit(target));
 }
 
 export function getCanvasImageConnectionError(nodes, connection, limit) {
@@ -58,8 +60,9 @@ export function getCanvasImageConnectionError(nodes, connection, limit) {
   return '';
 }
 
-export function connectCanvasImage(nodes, connection, limit) {
-  if (!canConnectCanvasImage(nodes, connection, limit)) return nodes;
+export function connectCanvasImage(nodes, connection, limit, { retainInvalid = false } = {}) {
+  if (!isCanvasImageConnection(nodes, connection)
+    || (!retainInvalid && !canConnectCanvasImage(nodes, connection, limit))) return nodes;
   return setCanvasSelection(nodes.map((node) => node.id === connection.target ? {
     ...node,
     data: { ...node.data, imageSourceIds: [...new Set([...(node.data.imageSourceIds || []), connection.source])], persistenceState: 'draft' },

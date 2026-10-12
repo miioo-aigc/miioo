@@ -55,6 +55,7 @@ test('Seedance 编辑请求强制使用智能与 -1，即便传入了旧参数',
 
 test('视频节点接受文本、图片、视频、音频，拒绝反向连接和错误端口', () => {
   const nodes = [node('text', 'text'), node('image', 'image'), node('video', 'video'), node('audio', 'audio'), node('video', 'target')];
+  nodes.at(-1).data.asset = null;
   for (const source of ['text', 'image', 'video', 'audio']) {
     assert.equal(canConnectCanvasVideo(nodes, { source, target: 'target' }, capabilities), true);
   }
@@ -62,18 +63,20 @@ test('视频节点接受文本、图片、视频、音频，拒绝反向连接�
   assert.equal(canConnectCanvasVideo(nodes, { source: 'image', target: 'target', targetHandle: 'text-input' }, capabilities), false);
 });
 
-test('媒体连线不因模式上限被拒绝，超出的后续连线标红且发送失败', () => {
+test('媒体新增按能力拦截，历史超限连线保留标红且发送失败', () => {
   const text = node('text', 'text');
   const image1 = node('image', 'image1');
   const image2 = node('image', 'image2');
   const emptyTarget = node('video', 'empty-target');
   const firstFrameTarget = node('video', 'first-target', ['image1'], {
-    model: 'video-model', generationMode: 'first_frame', videoCapabilities: capabilities,
+    asset: null, model: 'video-model', generationMode: 'first_frame', videoCapabilities: capabilities,
   });
   assert.equal(canConnectCanvasVideo([text, image1, emptyTarget], { source: 'text', target: 'empty-target' }, { ...capabilities, selectedGenerationMode: 'text_to_video' }), true);
-  assert.equal(canConnectCanvasVideo([text, image1, emptyTarget], { source: 'image1', target: 'empty-target' }, { ...capabilities, selectedGenerationMode: 'text_to_video' }), true);
-  assert.equal(canConnectCanvasVideo([text, image1, image2, firstFrameTarget], { source: 'image2', target: 'first-target' }, { ...capabilities, selectedGenerationMode: 'first_frame' }), true);
-  const connected = connectCanvasVideo([text, image1, image2, firstFrameTarget], { source: 'image2', target: 'first-target' });
+  assert.equal(canConnectCanvasVideo([text, image1, emptyTarget], { source: 'image1', target: 'empty-target' }, { ...capabilities, selectedGenerationMode: 'text_to_video' }), false);
+  assert.equal(canConnectCanvasVideo([text, image1, image2, firstFrameTarget], { source: 'image2', target: 'first-target' }, { ...capabilities, selectedGenerationMode: 'first_frame' }), false);
+  const initial = [text, image1, image2, firstFrameTarget];
+  assert.equal(connectCanvasVideo(initial, { source: 'image2', target: 'first-target' }), initial);
+  const connected = [text, image1, image2, { ...firstFrameTarget, data: { ...firstFrameTarget.data, videoSourceIds: ['image1', 'image2'] } }];
   assert.deepEqual(getCanvasVideoReferenceStatus(connected, 'first-target').overflowSourceIds, ['image2']);
   assert.equal(getCanvasVideoEdges(connected).find((edge) => edge.source === 'image2').data.overflow, true);
   assert.throws(() => planCanvasVideoGeneration(connected, 'first-target', '生成视频', 'video-model', {
@@ -114,11 +117,27 @@ test('模型专属最终约束校验视频数量和音频唯一素材', () => {
 
 test('视频素材上限按媒体类型和总媒体数计算，文本不计入总数，超限按连接顺序标记', () => {
   const nodes = [node('text', 'text'), node('image', 'image1'), node('image', 'image2'), node('video', 'video1'), node('audio', 'audio1'), node('video', 'target', ['text', 'image1', 'image2', 'video1', 'audio1'])];
+  nodes.at(-1).data.asset = null;
   const status = getCanvasVideoReferenceStatus(nodes, 'target', capabilities);
   assert.deepEqual(status.mediaSourceIds, ['image1', 'image2', 'video1', 'audio1']);
   assert.deepEqual(status.overflowSourceIds, ['audio1']);
   assert.equal(status.canGenerate, false);
   assert.equal(getCanvasVideoEdges(nodes).find((edge) => edge.source === 'audio1').data.overflow, true);
+});
+
+test('空媒体占名额；其他类型超限不阻止仍有名额的媒体与文本', () => {
+  const caps = { ...capabilities, max_reference_images: 1, max_total_attachments: 5 };
+  const target = node('video', 'target', ['i1', 'i2'], { asset: null, videoCapabilities: caps, generationMode: 'reference_subjects' });
+  const nodes = [node('image', 'i1', [], { asset: null }), node('image', 'i2', [], { asset: null }),
+    node('image', 'i3'), node('audio', 'a'), node('text', 't'), target];
+  assert.equal(canConnectCanvasVideo(nodes, { source: 'i3', target: 'target' }), false);
+  assert.equal(canConnectCanvasVideo(nodes, { source: 'a', target: 'target' }), true);
+  assert.equal(canConnectCanvasVideo(nodes, { source: 't', target: 'target' }), true);
+  assert.equal(validateCanvasVideoReferenceAddition(nodes, 'target', { asset_type: 'audio' }).allowed, true);
+  assert.throws(() => planCanvasVideoGeneration(nodes, 'target', '创作', 'model', { capabilities: caps, generationMode: 'reference_subjects' }), /最多支持/);
+  target.data.videoSourceIds = ['i1'];
+  assert.doesNotThrow(() => planCanvasVideoGeneration(nodes, 'target', '创作', 'model', { capabilities: caps, generationMode: 'reference_subjects' }));
+  assert.equal(canConnectCanvasVideo(nodes, { source: 'a', target: 'target' }, { ...caps, max_total_attachments: 1 }), false);
 });
 
 test('视频请求模式使用映射值，文生视频明确发送 reference_mode null', () => {

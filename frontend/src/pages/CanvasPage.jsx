@@ -3,21 +3,24 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L100；grouping L128；referenceGraph L139；handleNodesChange L194；addNode L256；连线起点 L310；反向上游连接 L318；连线结束 L419；React Flow L520
+ *   CanvasPage L121；grouping L159；referenceGraph L173；mediaPreview L141；handleNodesChange L236；addNode L299；批量导入 L340；连线起点 L396；反向上游连接 L404；连线结束 L505；React Flow L608
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
- *   CanvasProjectHeader components/canvas；左上角品牌与项目名称
+ *   CanvasProjectHeader components/canvas；2026-10-10 接通开发态新建项目回调；模拟详情跳过用户接口，重命名仍为会话内。删除接入撤销，仅运行/排队任务确认。
  *   CanvasUserMenu      components/canvas；右上角用户信息与菜单
  *   CanvasCenterPrompt  components/canvas；中央空态提示
- *   CanvasToolbar       components/canvas；底部画布工具栏
+ *   CanvasToolbar       components/canvas；底部画布工具栏；2026-10-10 文本节点更多入口复用右键菜单，仅选当前卡片。
+ *   CanvasMediaPreview  components/canvas；2026-10-10 图片/视频双击打开悬浮预览，视频接续进度；固定关闭按钮与模糊遮罩。
  *   CanvasMiniMap       components/canvas；双层背景的交互预览地图
  *
  * ─── 业务边界 ────────────────────────────────────────────────────
+ *   2026-10-10：图片、视频、音频共用工具栏；CanvasVideoEditor 复用四项编辑弹窗，后台结果新增对应媒体节点并保留源节点。
+ *   2026-10-09：名称双击原地重命名接入历史，右键与快捷键弹窗保留；组合双击切换、展开平滑聚焦。
  *   节点与连线为本地草稿；文本、图片、视频和音频生成已接入，文档保存尚未接入。
  *   2026-10-08：音频文本按连线顺序追加；音频任务独立编排，请求前建立结果节点及直连素材关系。
  *   2026-09-28：UseCanvasReferences 编排参考图及文本到音频连线，连接时单次导入正文。
  *   2026-09-24：空白面板使用标准双击事件打开菜单，关闭默认双击缩放。
- *   2026-09-24：初始缩放为 100%，新增节点不自动适配视口。
+ *   2026-09-24：初始缩放为 100%，单个新增节点不自动适配视口。
  *   2026-09-24：节点模型选择保存为本地草稿；文本模型加载由节点外壳负责。
  *   2026-09-28：视频卡片及参考入口支持三类媒体，按真实素材类型回填；其他节点仍按类型筛选。
  *   2026-09-28：新增节点按当前同类型最大序号加1，编号由画布工具统一处理。
@@ -32,38 +35,56 @@
  *   2026-10-08：连线拖拽目标区分可连接与不可连接状态，分别反馈蓝色和红色描边。
  *   2026-10-08：左侧拖拽优先添加上游，不合法时校验反向输出；手动接线与拖线新建统一触发一次流光。
  *   2026-10-08：工具栏资产批量导入当前视口并合并历史；V/H 工具切换隔离编辑和弹窗。
+ *   2026-10-09：资产与本地文件多选，填充首项并创建其余节点；参考批量校验，整批撤销。
+ *   2026-10-09：工具栏批量导入整块避让并聚焦，批量操作保留原输入框状态；媒体预读尺寸，按实际卡片边界排列及聚焦。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getCanvasAssetNodeSize, prepareCanvasMediaAsset } from '../components/canvas/CanvasMediaSize';
 import { applyNodeChanges, Background, PanOnScrollMode, ReactFlow } from '@xyflow/react';
 import CanvasMiniMap from '../components/canvas/CanvasMiniMap';
 import { X } from 'lucide-react';
 import { showGlobalToast } from '../stores/toastStore';
 import '@xyflow/react/dist/style.css';
 import { apiGetCanvasDocument } from '../api/canvas';
+import { isDevelopmentCanvas } from '../api/CanvasDevelopment';
 import { apiGetCurrentUser } from '../api/user';
 import { apiLogout, clearTokens } from '../api/auth';
 import CanvasCenterPrompt from '../components/canvas/CanvasCenterPrompt';
 import CanvasProjectHeader from '../components/canvas/CanvasProjectHeader';
+import CanvasFileInput from '../components/canvas/CanvasFileInput';
+import { useCanvasFileActions } from '../components/canvas/UseCanvasFileActions';
 import CanvasToolbar from '../components/canvas/CanvasToolbar';
+import CanvasSearchModal from '../components/canvas/CanvasSearchModal';
+import { useCanvasSearch } from '../components/canvas/UseCanvasSearch';
 import CanvasUserMenu from '../components/canvas/CanvasUserMenu';
 import AssetPickerModal from '../components/AssetPickerModal';
 import ProfileModal from '../components/ProfileModal';
 import { applyCanvasAsset, planCanvasAssetImport, toCanvasAsset } from '../components/canvas/CanvasAssets';
 import { getCanvasToolShortcut } from '../components/canvas/CanvasToolShortcuts';
-import { addCanvasReference } from '../components/canvas/CanvasReferences';
+import { getCanvasReferenceNodePosition } from '../components/canvas/CanvasReferences';
+import { planCanvasReferenceBatch } from '../components/canvas/CanvasReferenceBatch';
+import { getCanvasImportBounds, preserveCanvasImportPanels } from '../components/canvas/CanvasImportLayout';
+import { getCanvasMediaFileType } from '../components/canvas/CanvasLocalMedia';
 import { useCanvasReferences } from '../components/canvas/UseCanvasReferences';
 import { useCanvasGrouping } from '../components/canvas/UseCanvasGrouping';
 import { useCanvasTextGeneration } from '../components/canvas/UseCanvasTextGeneration';
 import { useCanvasImageGeneration } from '../components/canvas/UseCanvasImageGeneration';
 import { useCanvasVideoGeneration } from '../components/canvas/UseCanvasVideoGeneration';
-import { validateCanvasVideoReferenceAddition } from '../components/canvas/CanvasVideoGeneration';
 import { useCanvasHistory } from '../components/canvas/UseCanvasHistory';
 import { fitCanvasGroups, setCanvasSelection } from '../components/canvas/CanvasGroups';
 import { CanvasNodeAddMenu, CANVAS_NODE_MENU_ITEMS, canvasNodeTypes, createCanvasNode, appendCanvasNode, getCanvasNodeMenuPosition, updateSelectedNode } from '../components/canvas';
 import CanvasConnectionEdge from '../components/canvas/CanvasConnectionEdge';
 import { useCanvasAudioGeneration } from '../components/canvas/UseCanvasAudioGeneration';
 import { resolveCanvasLeftConnection } from '../components/canvas/CanvasLeftConnection';
+import { useCanvasNodeActions } from '../components/canvas/UseCanvasNodeActions';
+import { getCanvasStackPresentation } from '../components/canvas/CanvasNodeActions';
+import CanvasNodeActionOverlays from '../components/canvas/CanvasNodeActionOverlays';
+import CanvasMediaPreview from '../components/canvas/CanvasMediaPreview';
+import LocalImageEditor from '../components/image-edit/LocalImageEditor';
+import { useCanvasImageEdits } from '../components/canvas/UseCanvasImageEdits';
+import { useCanvasVideoEdits } from '../components/canvas/UseCanvasVideoEdits';
+import CanvasVideoEditor from '../components/canvas/CanvasVideoEditor';
 
 // 浏览器 click 先于 dblclick 触发；保留极短窗口，避免双击时先展开创作框。
 const CANVAS_SINGLE_CLICK_DELAY = 200;
@@ -97,7 +118,7 @@ function UnsupportedAction({ onClose }) {
   return <div className="absolute bottom-[92px] left-1/2 z-20 flex w-[280px] -translate-x-1/2 items-center justify-between rounded-[12px] border border-white-10 bg-surface-modal px-[14px] py-[10px] text-[13px] text-text-secondary shadow-[0_8px_28px_rgba(0,0,0,0.35)]"><span>该入口将在后续阶段开放</span><button type="button" className="border-0 bg-transparent p-0 text-text-hint" onClick={onClose} aria-label="关闭提示"><X size={16} /></button></div>;
 }
 
-export default function CanvasPage({ canvasId, onBackHome }) {
+export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCreateProject }) {
   const [canvas, setCanvas] = useState(null);
   const [currentUser, setCurrentUser] = useState({});
   const [profileOpen, setProfileOpen] = useState(false);
@@ -110,22 +131,35 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const [assetTarget, setAssetTarget] = useState(null);
   const [nodeMenu, setNodeMenu] = useState(null);
   const [flowInstance, setFlowInstance] = useState(null);
+  const [viewportZoom, setViewportZoom] = useState(1);
   const [connectingNodeId, setConnectingNodeId] = useState(null);
   const [connectingHandleType, setConnectingHandleType] = useState('');
   const [connectionTargetId, setConnectionTargetId] = useState(null);
   const [connectionTargetStatus, setConnectionTargetStatus] = useState('');
   const [pendingConnection, setPendingConnection] = useState(null);
   const [upstreamConnection, setUpstreamConnection] = useState(null);
+  const [mediaPreview, setMediaPreview] = useState(null);
+  const [actionDialog, setActionDialog] = useState(null);
   const canvasContainerRef = useRef(null);
+  const importAssetsRef = useRef(null);
   const dragPositionsRef = useRef(new Map());
   const pendingNodeClicksRef = useRef(new Map());
   const cancelPendingClicks = useCallback(() => {
     pendingNodeClicksRef.current.forEach((timer) => window.clearTimeout(timer));
     pendingNodeClicksRef.current.clear();
   }, []);
-  const history = useCanvasHistory(cancelPendingClicks, !assetPickerOpen && !profileOpen);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const history = useCanvasHistory(cancelPendingClicks, !assetPickerOpen && !profileOpen && !actionDialog && !searchOpen);
   const { nodes, setNodes } = history;
-  const grouping = useCanvasGrouping(nodes, setNodes, cancelPendingClicks, !assetPickerOpen && !profileOpen);
+  const imageEdits = useCanvasImageEdits({ nodes, setNodes, canvasId, cancelPendingClicks });
+  const videoEdits = useCanvasVideoEdits({ nodes, setNodes, canvasId, cancelPendingClicks });
+  const projectName = canvas?.project_name || canvas?.projectName || '自由画布项目';
+  const canvasFiles = useCanvasFileActions({ nodes, setNodes, name: projectName, flowInstance, canvasId });
+  const search = useCanvasSearch({ nodes, setNodes, flowInstance, containerRef: canvasContainerRef, cancelPendingClicks, open: searchOpen, setOpen: setSearchOpen });
+  const grouping = useCanvasGrouping(nodes, setNodes, cancelPendingClicks, false);
+  const nodeActions = useCanvasNodeActions({ nodes, setNodes, undo: history.undo, getUndoToken: history.getUndoToken, cancelPendingClicks, flowInstance,
+    containerRef: canvasContainerRef, enabled: loadedCanvasId === canvasId && !error && !assetPickerOpen && !profileOpen && !searchOpen,
+    dialog: actionDialog, setDialog: setActionDialog });
   const generateText = useCanvasTextGeneration(nodes, setNodes, canvasId, cancelPendingClicks);
   const generateImage = useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks);
   const generateVideo = useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks);
@@ -137,6 +171,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     setAssetPickerOpen(true);
   }, []);
   const referenceGraph = useCanvasReferences(grouping.nodes, setNodes, openReferencePicker);
+  const presentation = getCanvasStackPresentation(referenceGraph.nodes, referenceGraph.edges);
 
   const clearPendingConnection = useCallback(() => {
     setPendingConnection(null);
@@ -150,7 +185,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.allSettled([apiGetCanvasDocument(canvasId), apiGetCurrentUser()]).then(([documentResult, userResult]) => {
+    Promise.allSettled([apiGetCanvasDocument(canvasId), isDevelopmentCanvas(canvasId) ? Promise.resolve({}) : apiGetCurrentUser()]).then(([documentResult, userResult]) => {
       if (cancelled) return;
       if (documentResult.status === 'rejected') {
         setError(documentResult.reason?.message || '画布加载失败，请返回重试');
@@ -173,14 +208,21 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const loading = loadedCanvasId !== canvasId;
   useEffect(() => {
     const onKeyDown = (event) => {
-      const tool = getCanvasToolShortcut(event, !loading && !error && !assetPickerOpen && !profileOpen);
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f'
+        && !event.altKey && !event.shiftKey
+        && !event.target.closest?.('input, textarea, select, [contenteditable="true"]')) {
+        event.preventDefault();
+        search.show();
+        return;
+      }
+      const tool = getCanvasToolShortcut(event, !loading && !error && !assetPickerOpen && !profileOpen && !actionDialog && !searchOpen);
       if (!tool) return;
       event.preventDefault();
       setActiveTool(tool);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [loading, error, assetPickerOpen, profileOpen]);
+  }, [loading, error, assetPickerOpen, profileOpen, actionDialog, searchOpen, search]);
   const handleLogout = async () => {
     try {
       await apiLogout();
@@ -194,7 +236,8 @@ export default function CanvasPage({ canvasId, onBackHome }) {
   const handleNodesChange = useCallback((changes) => {
     if (changes.some((change) => change.type === 'select' || change.type === 'remove')) cancelPendingClicks();
     setNodes((current) => {
-      let next = applyNodeChanges(changes, current);
+      const persistedChanges = changes.filter((change) => !(change.type === 'dimensions' && current.find((node) => node.id === change.id)?.data.stacked));
+      let next = applyNodeChanges(persistedChanges, current);
       if (next.filter((node) => node.selected).length !== 1) next = setCanvasSelection(next, next.filter((node) => node.selected).map((node) => node.id));
       return fitCanvasGroups(next);
     }, { record: changes.some((change) => !['select', 'dimensions'].includes(change.type)) });
@@ -273,7 +316,7 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       if (type === 'audio') return generateAudio(payload);
       return handleUnsupported();
     };
-    node.data.onAssetChange = (nodeId, asset) => setNodes((current) => applyCanvasAsset(current, nodeId, asset));
+    node.data.onAssetChange = (nodeId, asset) => importAssetsRef.current?.(Array.isArray(asset) ? asset : [asset], { nodeId });
     node.data.onSelectAsset = (nodeId, nodeType) => {
       setAssetTarget({ nodeId, nodeType });
       setAssetPickerOpen(true);
@@ -294,6 +337,49 @@ export default function CanvasPage({ canvasId, onBackHome }) {
     setNodeMenu(null);
     setPendingConnection(null);
   }, [cancelPendingNodeClick, generateAudio, generateImage, generateText, generateVideo, handleGenerationModeChange, handleImageReferenceLimitChange, handleUnsupported, handleVideoCapabilitiesChange, nodes.length, referenceGraph, setNodes]);
+  const importAssets = useCallback(async (assets, target = null) => {
+    assets = await Promise.all(assets.map((asset) => prepareCanvasMediaAsset(toCanvasAsset(asset, 'video') || asset)));
+    if (!canvasContainerRef.current) return false;
+    const current = history.getSnapshot().nodes;
+    if (target?.purpose === 'reference') {
+      const result = planCanvasReferenceBatch(current, target.nodeId, assets, target.mode);
+      if (!result.allowed) { showGlobalToast('warning', result.message); return false; }
+      cancelPendingClicks();
+      setNodes(result.nodes);
+      return true;
+    }
+    const anchor = current.find((node) => node.id === target?.nodeId);
+    if (target && !anchor) return false;
+    const valid = assets.map((asset) => toCanvasAsset(asset, anchor?.type || 'video')).filter(Boolean);
+    if (!valid.length) return false;
+    const rect = canvasContainerRef.current?.getBoundingClientRect();
+    if (!anchor && (!flowInstance || !rect)) return false;
+    cancelPendingClicks();
+    history.begin();
+    let importBounds = null;
+    try {
+      if (anchor) {
+        setNodes((items) => applyCanvasAsset(items, anchor.id, valid[0]));
+        valid.slice(1).forEach((asset) => {
+          const position = getCanvasReferenceNodePosition(history.getSnapshot().nodes, anchor, getCanvasAssetNodeSize(asset));
+          addNode(asset.asset_type, position, null, asset);
+        });
+      } else {
+        const center = flowInstance.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+        const imports = planCanvasAssetImport(valid, center, current);
+        imports.forEach(({ type, position, asset }) => addNode(type, position, null, asset));
+        if (valid.length > 1) importBounds = getCanvasImportBounds(imports.map((item) => ({ ...item.position, ...getCanvasAssetNodeSize(item.asset) })));
+      }
+      if (valid.length > 1) setNodes((items) => preserveCanvasImportPanels(current, items));
+    } finally { history.end(); }
+    if (importBounds) {
+      const zoom = Math.max(0.01, Math.min(1, (rect.width - 96) / importBounds.width, (rect.height - 160) / importBounds.height));
+      flowInstance.setCenter(importBounds.x + importBounds.width / 2, importBounds.y + importBounds.height / 2, { zoom, duration: 300 });
+    }
+    if (valid.length < assets.length) showGlobalToast('warning', '部分资产缺少可用媒体地址，已跳过');
+    return true;
+  }, [history, setNodes, cancelPendingClicks, addNode, flowInstance]);
+  useEffect(() => { importAssetsRef.current = importAssets; }, [importAssets]);
   const handlePaneDoubleClick = useCallback((event) => {
     if (!flowInstance || !event.target.classList.contains('react-flow__pane')) return;
     event.preventDefault();
@@ -511,19 +597,27 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       if (nodeElement.isConnected) nodeElement.classList.add('nopan');
     });
   }, []);
-  const projectName = canvas?.project_name || canvas?.projectName || '自由画布项目';
 
   return <div className="relative h-screen w-screen overflow-hidden bg-surface-base text-text-primary [font-synthesis:none] antialiased">
-    <CanvasProjectHeader canvasName={projectName} onBackHome={onBackHome} />
+    {imageEdits.editor && <LocalImageEditor key={`${imageEdits.editor.card.imageUrl}:${imageEdits.editor.mode}`} {...imageEdits.editor} onClose={imageEdits.close} />}
+    {videoEdits.editor && <CanvasVideoEditor key={`${videoEdits.editor.videoUrl}:${videoEdits.editor.mode}`} editor={videoEdits.editor} onClose={videoEdits.close} />}
+    <CanvasFileInput inputRef={canvasFiles.inputRef} onChange={canvasFiles.importFile} />
+    <CanvasProjectHeader canvasName={projectName} onBackHome={onBackHome} onBackProjects={onBackProjects} onCreateProject={onCreateProject} onImport={canvasFiles.open} onUnsupported={handleUnsupported} onRename={(name) => setCanvas((current) => ({ ...current, project_name: name }))} />
     <CanvasUserMenu currentUser={currentUser} onLogout={handleLogout} onOpenProfile={() => setProfileOpen(true)} />
     <div ref={canvasContainerRef} className="absolute inset-0 bg-surface-toolbar">
-      <ReactFlow defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+      <ReactFlow defaultViewport={{ x: 0, y: 0, zoom: 1 }} minZoom={0.01}
         onWheelCapture={handleCanvasWheelCapture}
-        nodes={referenceGraph.nodes.map((node) => ({ ...node, data: { ...node.data, connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
+        onMove={(_, viewport) => setViewportZoom(viewport.zoom)}
+        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, viewportZoom, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
+          onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); },
           onContentChange: (nodeId, content) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, content } } : item)),
           onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)),
           onModelChange: (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item)),
-          onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : node.type === 'image' ? { onGenerate: generateImage } : node.type === 'video' ? { onGenerate: generateVideo } : node.type === 'audio' ? { onGenerate: generateAudio } : {}) } }))} edges={referenceGraph.edges} edgeTypes={CANVAS_EDGE_TYPES} onEdgesChange={referenceGraph.onEdgesChange}
+          onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : node.type === 'image' ? { onGenerate: generateImage, onImageEdit: imageEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); }, onPreview: (asset) => setMediaPreview({ asset, nodeType: node.type }) } : node.type === 'video' ? { onGenerate: generateVideo, onVideoEdit: videoEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); }, onPreview: (asset) => setMediaPreview({ asset, nodeType: node.type }) } : node.type === 'audio' ? { onGenerate: generateAudio, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); } } : {}) } }))} edges={presentation.edges} edgeTypes={CANVAS_EDGE_TYPES} onEdgesChange={referenceGraph.onEdgesChange}
+        deleteKeyCode={null}
+        onNodeContextMenu={(event, node) => { clearPendingConnection(); nodeActions.onContextMenu(event, node); }}
+        onSelectionContextMenu={(event, selectedNodes) => { if (selectedNodes[0]) { clearPendingConnection(); nodeActions.onContextMenu(event, selectedNodes[0]); } }}
+        onMoveStart={nodeActions.closeMenu}
         nodesConnectable={activeTool !== 'hand'} onConnect={referenceGraph.onConnect} isValidConnection={referenceGraph.isValidConnection} nodeTypes={canvasNodeTypes} onInit={setFlowInstance}
         onNodesChange={handleNodesChange} onNodeClick={handleNodeClick}
         onConnectStart={handleConnectStart}
@@ -531,6 +625,18 @@ export default function CanvasPage({ canvasId, onBackHome }) {
         onBeforeDelete={async ({ nodes: removedNodes, edges: removedEdges }) => { cancelPendingClicks(); if (removedNodes.length || removedEdges.length) history.begin(); return true; }}
         onDelete={() => history.end()}
         onNodeDoubleClick={(event, node) => {
+          if (node.type === 'canvasGroup') { nodeActions.onGroupDoubleClick(event, node); return; }
+          if (activeTool !== 'hand' && ['image', 'video'].includes(node.type) && node.data.asset?.url
+            && node.data.asset.asset_type !== 'audio' && event.target.closest('.canvas-node__frame')
+            && !event.target.closest('button, input, textarea, .canvas-node__port')) {
+            event.stopPropagation();
+            cancelPendingClicks();
+            const video = event.target.closest('.canvas-node__frame').querySelector('video');
+            const playback = video ? { time: video.currentTime, muted: video.muted, volume: video.volume } : null;
+            video?.pause();
+            setMediaPreview({ asset: node.data.asset, nodeType: node.type, playback });
+            return;
+          }
           if (activeTool !== 'hand' && node.type !== 'canvasGroup' && !event.target.closest('button, input, textarea')) grouping.enterNode(node.id);
         }}
         onNodeDragStart={handleNodeDragStart} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop}
@@ -565,50 +671,43 @@ export default function CanvasPage({ canvasId, onBackHome }) {
       onToolChange={setActiveTool}
       showMiniMap={showMiniMap}
       onMiniMapChange={setShowMiniMap}
-      nodes={nodes}
+      onOpenSearch={() => { nodeActions.closeMenu(); setNodeMenu(null); search.show(); }}
       onAddNode={addNode}
       onCreateCanvas={handleUnsupported}
-      onShare={handleUnsupported}
+      onShare={canvasFiles.share}
       canUndo={history.canUndo}
       canRedo={history.canRedo}
       onUndo={() => { cancelPendingClicks(); history.undo(); }}
       onRedo={() => { cancelPendingClicks(); history.redo(); }}
       onOpenAssetPicker={() => { setAssetTarget(null); setAssetPickerOpen(true); }}
+      onLocalUpload={async (files) => {
+        if (files.some((file) => !getCanvasMediaFileType(file, 'all'))) {
+          showGlobalToast('warning', '请选择有效的图片、视频或音频文件');
+          return;
+        }
+        const assets = files.map((file) => ({ name: file.name, asset_type: getCanvasMediaFileType(file, 'all'), url: URL.createObjectURL(file), source: 'local-preview' }));
+        if (!await importAssets(assets)) assets.forEach((asset) => URL.revokeObjectURL(asset.url));
+      }}
     />
+    {search.open && <CanvasSearchModal nodes={nodes} onClose={search.close} onSelect={search.select} />}
     <AssetPickerModal
       open={assetPickerOpen}
       onClose={() => { setAssetPickerOpen(false); setAssetTarget(null); }}
-      onConfirm={(assets) => {
-        if (assetTarget?.purpose === 'reference') setNodes((current) => {
-          const target = current.find((node) => node.id === assetTarget.nodeId);
-          const asset = toCanvasAsset(assets[0], target?.type);
-          const validation = target?.type === 'video'
-            ? validateCanvasVideoReferenceAddition(current, assetTarget.nodeId, asset)
-            : { allowed: true };
-          if (!validation.allowed) { showGlobalToast('warning', validation.message); return current; }
-          return addCanvasReference(current, assetTarget.nodeId, assets[0], assetTarget.mode);
-        });
-        else if (assetTarget) setNodes((current) => applyCanvasAsset(current, assetTarget.nodeId, assets[0]));
-        else {
-          const rect = canvasContainerRef.current?.getBoundingClientRect();
-          if (!flowInstance || !rect) return;
-          const center = flowInstance.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
-          const imports = planCanvasAssetImport(assets, center);
-          cancelPendingClicks();
-          history.begin();
-          try {
-            imports.forEach(({ type, position, asset }) => addNode(type, position, null, asset));
-          } finally {
-            history.end();
-          }
-          if (imports.length < assets.length) showGlobalToast('warning', '部分资产缺少可用媒体地址，已跳过');
-        }
-      }}
+      onConfirm={(assets) => importAssets(assets, assetTarget)}
+      validateSelection={assetTarget?.purpose === 'reference' ? (assets) => {
+        const result = planCanvasReferenceBatch(history.getSnapshot().nodes, assetTarget.nodeId, assets, assetTarget.mode);
+        if (!result.allowed) showGlobalToast('warning', result.message);
+        return result.allowed;
+      } : undefined}
       accept={assetTarget?.nodeType === 'video' ? 'all' : assetTarget?.nodeType || 'all'}
-      selectionMode={assetTarget ? 'single' : 'multiple'}
+      selectionMode="multiple"
       assetFilter={assetTarget ? (asset) => Boolean(toCanvasAsset(asset, assetTarget.nodeType)) : undefined}
       includeSeedanceLibrary
     />
     <ProfileModal open={profileOpen} currentUser={currentUser} onClose={() => setProfileOpen(false)} onLogout={handleLogout} onProfileUpdated={(updated) => setCurrentUser((previous) => ({ ...previous, ...updated }))} />
+    {mediaPreview && <CanvasMediaPreview asset={mediaPreview.asset} nodeType={mediaPreview.nodeType} playback={mediaPreview.playback} onClose={() => setMediaPreview(null)} />}
+    <CanvasNodeActionOverlays menu={nodeActions.menu} dialog={nodeActions.dialog} nodes={nodes}
+      canPaste={nodeActions.clipboard.length > 0} onAction={nodeActions.execute} onCloseMenu={nodeActions.closeMenu}
+      onCloseDialog={nodeActions.closeDialog} onNameChange={nodeActions.setName} onConfirm={nodeActions.confirm} />
   </div>;
 }

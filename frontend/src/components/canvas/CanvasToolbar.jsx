@@ -3,19 +3,23 @@
  * @structure-index
  *
  * ─── 交互区 ─────────────────────────────────────────────────────
- *   AddNodeMenu 共用添加节点菜单的工具栏定位容器 L135
- *   CanvasToolbar 画布底部悬浮工具栏、菜单和动作出口 L139
+ *   AddNodeMenu 共用添加节点菜单的工具栏定位容器 L115
+ *   CanvasToolbar 画布底部悬浮工具栏、菜单和动作出口 L119
  * ─── 更新记录 ───────────────────────────────────────────────────
+ *   2026-10-09 分享复用标准菜单，宽度自适应内容，提供复制画布链接和导出画布入口
+ *   2026-10-09 搜索改为独立中央弹窗，仅通过 onOpenSearch 通知页面
  *   2026-09-28 复用图标按钮新增撤销重做；统一添加菜单，工具栏仅负责定位
  *   2026-09-29 撤销重做移动到搜索前，仅在至少一个历史动作可用时显示
  *   2026-09-29 分割线右侧工具默认折叠为更多按钮，展开和收起使用 Gooey 风格过渡
  *   2026-10-08 收起工具按钮改用左尖括号图标
- *   2026-10-08 修正收起间距，隐藏搜索和分享，移除画布列表标题并显示工具快捷键
+ *   2026-10-09 恢复更多工具中的搜索和分享；保留收起间距、精简画布列表和工具快捷键
+ *   2026-10-09 本地媒体多选入口，复用原生文件选择及页面批量导入动作
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { IconButton, Tooltip } from '../ui';
-import { ChevronLeft, MoreHorizontal, Redo2, Undo2 } from 'lucide-react';
+import { DropdownMenu, IconButton, Tooltip } from '../ui';
+import { ChevronLeft, MoreHorizontal, Redo2, Undo2, Upload } from 'lucide-react';
+import { getCanvasMediaAccept } from './CanvasLocalMedia';
 import CanvasNodeAddMenu from './CanvasNodeAddMenu.jsx';
 import './CanvasToolbar.css';
 
@@ -70,21 +74,14 @@ const TOOL_ITEMS = [
   { key: 'add', label: '添加节点', icon: GradientAddIcon },
   { key: 'move', label: '移动', icon: PointerIcon },
   { key: 'assets', label: '从资产库选择', icon: AssetLibraryIcon },
+  { key: 'upload', label: '从本地上传', icon: Upload },
   { key: 'canvases', label: '画布列表', icon: NodeListIcon },
 ];
 
 const COLLAPSIBLE_TOOL_ITEMS = [
-  { key: 'search', label: '搜索节点', icon: SearchIcon, hidden: true },
+  { key: 'search', label: '搜索节点', icon: SearchIcon },
   { key: 'map', label: '预览地图', icon: MiniMapIcon },
-  { key: 'share', label: '分享', icon: ShareNodesIcon, hidden: true },
-];
-
-const NODE_TYPES = [
-  { value: 'all', label: '全部类型' },
-  { value: 'text', label: '文本' },
-  { value: 'image', label: '图片' },
-  { value: 'video', label: '视频' },
-  { value: 'audio', label: '音频' },
+  { key: 'share', label: '分享', icon: ShareNodesIcon },
 ];
 
 function ToolbarMenu({ children, className = '' }) {
@@ -93,26 +90,6 @@ function ToolbarMenu({ children, className = '' }) {
 
 function MenuButton({ children, onClick, active = false }) {
   return <button type="button" onClick={onClick} className={`flex min-h-[32px] w-full cursor-pointer items-center rounded-[6px] border-0 px-[10px] py-[6px] text-left text-[13px] leading-[18px] transition-colors ${active ? 'bg-white-10 text-text-primary' : 'bg-transparent text-text-secondary hover:bg-white-5 hover:text-text-primary'}`}>{children}</button>;
-}
-
-function SearchPanel({ nodes, query, type, onQueryChange, onTypeChange }) {
-  return (
-    <ToolbarMenu className="w-[248px] p-[8px]">
-      <input autoFocus value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="搜索节点名称" className="mb-[8px] h-[32px] w-full rounded-[6px] border border-stroke-normal bg-input-bg-normal px-[10px] text-[13px] text-text-primary outline-none placeholder:text-text-hint focus:border-stroke-active" />
-      <div className="mb-[6px] flex gap-[4px] overflow-x-auto">
-        {NODE_TYPES.map((item) => <button key={item.value} type="button" onClick={() => onTypeChange(item.value)} className={`shrink-0 rounded-[4px] border-0 px-[8px] py-[4px] text-[12px] ${type === item.value ? 'bg-white-10 text-text-primary' : 'bg-transparent text-text-hint hover:bg-white-5'}`}>{item.label}</button>)}
-      </div>
-      <div className="max-h-[160px] overflow-y-auto text-[12px] text-text-hint">
-        {nodes.length === 0 ? '暂无节点' : `${nodes.filter((node) => matchesNode(node, query, type)).length} 个匹配节点`}
-      </div>
-    </ToolbarMenu>
-  );
-}
-
-function matchesNode(node, query, type) {
-  const name = String(node?.data?.label || node?.data?.name || node?.type || '').toLowerCase();
-  const nodeType = String(node?.data?.nodeType || node?.type || '').toLowerCase();
-  return (!query || name.includes(query.trim().toLowerCase())) && (type === 'all' || nodeType === type);
 }
 
 function CanvasListMenu({ canvases, activeCanvasId, onSelectCanvas, onCreateCanvas }) {
@@ -124,8 +101,11 @@ function CanvasListMenu({ canvases, activeCanvasId, onSelectCanvas, onCreateCanv
   </ToolbarMenu>;
 }
 
-function ShareMenu({ onShare }) {
-  return <ToolbarMenu className="w-[160px]"><MenuButton onClick={() => onShare?.('copy-link')}>复制分享链接</MenuButton><MenuButton onClick={() => onShare?.('export-nodes')}>导出节点</MenuButton></ToolbarMenu>;
+function ShareMenu({ onShare, onClose }) {
+  return <DropdownMenu width="max-content" onClose={onClose} style={{ bottom: '40px', left: '50%', right: 'auto', transform: 'translateX(-50%)', marginBottom: 0, whiteSpace: 'nowrap' }} items={[
+    { key: 'copy-link', label: '复制画布链接', onClick: () => onShare?.('copy-link') },
+    { key: 'export-canvas', label: '导出画布', onClick: () => onShare?.('export-canvas') },
+  ]} />;
 }
 
 function MoveMenu({ activeTool, onToolChange }) {
@@ -136,12 +116,11 @@ function AddNodeMenu({ onAddNode }) {
   return <div className="absolute bottom-[40px] left-1/2 z-30 -translate-x-1/2"><CanvasNodeAddMenu onAddNode={onAddNode} /></div>;
 }
 
-export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, nodes = [], canvases = [], activeCanvasId, onSelectCanvas, onCreateCanvas, onOpenAssetPicker, onAddNode, onShare, canUndo, canRedo, onUndo, onRedo }) {
+export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, onOpenSearch, canvases = [], activeCanvasId, onSelectCanvas, onCreateCanvas, onOpenAssetPicker, onLocalUpload, onAddNode, onShare, canUndo, canRedo, onUndo, onRedo }) {
   const [openMenu, setOpenMenu] = useState(null);
   const [rightToolsExpanded, setRightToolsExpanded] = useState(false);
-  const [nodeQuery, setNodeQuery] = useState('');
-  const [nodeType, setNodeType] = useState('all');
   const toolbarRef = useRef(null);
+  const uploadRef = useRef(null);
 
   useEffect(() => {
     const handlePointerDown = (event) => {
@@ -157,6 +136,8 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
       return;
     }
     if (key === 'assets') { setOpenMenu(null); onOpenAssetPicker?.(); return; }
+    if (key === 'upload') { setOpenMenu(null); uploadRef.current?.click(); return; }
+    if (key === 'search') { setOpenMenu(null); onOpenSearch?.(); return; }
     setOpenMenu((current) => (current === key ? null : key));
   };
 
@@ -166,8 +147,7 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
       {openMenu === key && key === 'add' && <AddNodeMenu onAddNode={(type) => { onAddNode?.(type); setOpenMenu(null); }} />}
       {openMenu === key && key === 'move' && <MoveMenu activeTool={activeTool} onToolChange={(tool) => { onToolChange(tool); setOpenMenu(null); }} />}
       {openMenu === key && key === 'canvases' && <CanvasListMenu canvases={canvases} activeCanvasId={activeCanvasId} onSelectCanvas={(id) => { onSelectCanvas?.(id); setOpenMenu(null); }} onCreateCanvas={() => { onCreateCanvas?.(); setOpenMenu(null); }} />}
-      {openMenu === key && key === 'search' && <SearchPanel nodes={nodes} query={nodeQuery} type={nodeType} onQueryChange={setNodeQuery} onTypeChange={setNodeType} />}
-      {openMenu === key && key === 'share' && <ShareMenu onShare={(action) => { onShare?.(action); setOpenMenu(null); }} />}
+      {openMenu === key && key === 'share' && <ShareMenu onShare={onShare} onClose={() => setOpenMenu(null)} />}
       <Tooltip label={label} placement="top" offset={8}><button type="button" title={label} aria-label={label} aria-pressed={selected} onClick={() => handleToolClick(key)} className={`flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 transition-colors ${selected ? 'bg-white-10' : 'hover:bg-white-5'}`}><Icon size={16} strokeWidth={1.7} /></button></Tooltip>
     </div>;
   };
@@ -175,6 +155,11 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
   return (
     <div ref={toolbarRef} className="absolute bottom-[24px] left-1/2 z-20 flex -translate-x-1/2 items-center gap-[12px] overflow-visible rounded-full border border-stroke-normal bg-surface-content-area px-[16px] py-[4px] outline outline-1 outline-black-90">
       {TOOL_ITEMS.map(renderTool)}
+      <input ref={uploadRef} type="file" hidden multiple accept={getCanvasMediaAccept('all')} onChange={(event) => {
+        const files = Array.from(event.target.files || []);
+        event.target.value = '';
+        if (files.length) onLocalUpload?.(files);
+      }} />
       <div className="h-[16px] w-px shrink-0 rounded-full bg-stroke-normal" />
       {!rightToolsExpanded && <Tooltip label="更多工具" placement="top" offset={8}><button type="button" aria-label="展开更多工具" title="展开更多工具" onClick={() => setRightToolsExpanded(true)} className="flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 hover:bg-white-5"><MoreHorizontal size={16} strokeWidth={1.7} color="var(--color-white-80)" /></button></Tooltip>}
       <div className={`canvas-toolbar__right-tools ${rightToolsExpanded ? 'canvas-toolbar__right-tools--expanded' : ''}`} aria-hidden={!rightToolsExpanded} inert={!rightToolsExpanded}>

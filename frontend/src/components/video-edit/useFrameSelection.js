@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { downloadBlobWithFeedback } from '../../utils/downloadFeedback';
 import { frameAtTime } from './FrameIndex';
 
-export default function useFrameSelection(url, canvasRef, { onExport } = {}) {
+export default function useFrameSelection(url, canvasRef, { onExport, originalUrl = url } = {}) {
   const worker = useRef(null);
   const sequence = useRef(0);
   const target = useRef(0);
@@ -29,7 +29,7 @@ export default function useFrameSelection(url, canvasRef, { onExport } = {}) {
         setExporting(false);
         decoder.terminate();
         worker.current = null;
-      }, 30000);
+      }, 5 * 60 * 1000);
     };
     wait();
     decoder.onmessage = ({ data }) => {
@@ -99,13 +99,13 @@ export default function useFrameSelection(url, canvasRef, { onExport } = {}) {
     if (busy || exporting || error) return;
     setExporting(true);
     worker.current?.wait();
-    worker.current?.postMessage({ type: 'export', index });
+    worker.current?.postMessage({ type: 'export', index, originalUrl, baseUrl: document.baseURI });
   }
   function exportFrame() {
     if (busy || exporting || error) return;
     setExporting(true);
     worker.current?.wait();
-    worker.current?.postMessage({ type: 'export', index, purpose: 'prepare' });
+    worker.current?.postMessage({ type: 'export', index, purpose: 'prepare', originalUrl, baseUrl: document.baseURI });
   }
   return { times, index, busy, exporting, error, dimensions, step, seek, download, exportFrame };
 }

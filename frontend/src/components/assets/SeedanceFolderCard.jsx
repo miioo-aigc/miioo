@@ -7,6 +7,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { DeleteIcon } from '../ui';
+import { FileText, Music2 } from 'lucide-react';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FRONT_FILL_DEFAULT = 'M3.786 11.385L13.773 132.094C14.098 136.021 16.671 138.999 19.739 138.999H233.407C236.412 136.138 238.953 136.138 239.353 132.304L251.938 11.665C252.245 8.722 251.55 5.752 250.031 3.516C248.511 1.281 246.316 -0.001 244.009 -0.001H11.741C9.472 -0.001 7.309 1.239 5.792 3.411C4.275 5.583 3.546 8.481 3.786 11.385Z';
@@ -98,6 +99,12 @@ function getPreviewData(preview) {
 }
 
 function FolderPreview({ preview, className, style }) {
+  if (preview?.type === 'text' || preview?.type === 'audio') {
+    const Icon = preview.type === 'audio' ? Music2 : FileText;
+    return <div className={`${className} overflow-hidden bg-surface-card p-[12px] text-text-secondary`} style={style}>
+      <Icon size={20} /><p className="mt-[8px] line-clamp-4 whitespace-pre-wrap text-[12px]">{preview.content || preview.label}</p>
+    </div>;
+  }
   const data = getPreviewData(preview);
   if (!data?.url) return null;
   const url = normalizeImageUrl(data.url);
@@ -142,7 +149,7 @@ function getPreviewTransform(index, previewCount, isHovered) {
   return `translate(${translateX}px, ${translateY}px) rotate(${rotate}deg)`;
 }
 
-export default function SeedanceFolderCard({ name, count = 0, images = [], onOpen, onEdit, onDelete }) {
+export default function SeedanceFolderCard({ name, count = 0, images = [], onOpen, onEdit, onDelete, presentationOnly = false }) {
   const previews = images.slice(0, 2);
   const canManage = Boolean(onEdit || onDelete);
   const instanceId = useId().replace(/:/g, '');
@@ -169,7 +176,7 @@ export default function SeedanceFolderCard({ name, count = 0, images = [], onOpe
   }, [isHovered]);
 
   return (
-    <article className="group aspect-[3/2] w-full min-w-[216px] max-w-[270px] min-h-0 cursor-pointer" role="button" tabIndex={0} style={{ fontFamily: FONT }} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen?.(); } }} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} onFocus={() => setIsHovered(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsHovered(false); }}>
+    <article className="group aspect-[3/2] w-full min-w-[216px] max-w-[270px] min-h-0 cursor-pointer" role={presentationOnly ? undefined : 'button'} tabIndex={presentationOnly ? undefined : 0} style={{ fontFamily: FONT }} onClick={presentationOnly ? undefined : onOpen} onKeyDown={presentationOnly ? undefined : (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen?.(); } }} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} onFocus={() => setIsHovered(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsHovered(false); }}>
       <div className="relative h-full w-full overflow-hidden">
         <BackFolder id={instanceId} />
         {previews.length > 1 ? (

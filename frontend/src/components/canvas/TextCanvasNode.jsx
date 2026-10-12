@@ -52,6 +52,32 @@ export default function TextCanvasNode({ id, data, selected }) {
     data?.onEnterEditing?.(id);
     setEditing(true);
   };
+  const startEditing = () => {
+    data?.onCancelPendingClick?.(id);
+    data?.onEnterEditing?.(id);
+    setEditing(true);
+  };
+  const handleToolbarAction = (action) => {
+    if (action === 'edit') {
+      startEditing();
+      return;
+    }
+    if (!data?.content?.trim()) return;
+    if (action === 'copy') {
+      navigator.clipboard?.writeText(data?.content || '');
+      return;
+    }
+    if (action === 'download') {
+      const url = URL.createObjectURL(new Blob([data?.content || ''], { type: 'text/plain;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${data?.label || '文本节点'}.txt`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  };
   const handleFileChange = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -65,8 +91,8 @@ export default function TextCanvasNode({ id, data, selected }) {
     }
   };
 
-  return <CanvasNodeShell nodeType="text" title={data?.label || '文本'} selected={selected} data={{ ...data, nodeId: id, editing }} onPromptChange={data?.onPromptChange} onAddReference={data?.onAddReference} onGenerate={data?.onGenerate}>
-    <div ref={contentRef} className={`canvas-node__text-content ${editing ? 'nodrag nowheel nopan' : 'nowheel'}`} onDoubleClick={handleDoubleClick}>
+  return <CanvasNodeShell nodeType="text" title={data?.label || '文本'} selected={selected} data={{ ...data, nodeId: id, editing, onToolbarAction: handleToolbarAction }} onPromptChange={data?.onPromptChange} onAddReference={data?.onAddReference} onGenerate={data?.onGenerate}>
+    <div ref={contentRef} className={`canvas-node__text-content ${editing ? 'nodrag nowheel nopan' : data?.content ? 'nowheel' : ''}`} onDoubleClick={handleDoubleClick}>
       {editing ? <textarea
         ref={editorRef}
         className="canvas-node__text-editor nodrag nowheel nopan"

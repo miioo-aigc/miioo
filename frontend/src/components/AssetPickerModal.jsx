@@ -9,6 +9,7 @@
  *   保留集中编排原因：跨来源选择、请求会话和确认补全共用生命周期；本轮不拆分。
  *   2026-09-28：可选单选模式和调用方过滤器，默认行为不变；回归范围含原多选入口。
  *   2026-09-28：配音资产透传台词，项目资产仅保留明确台词字段，不把音乐提示词当台词。
+ *   2026-10-09：可选批量选择校验，等待异步确认结束后关闭，确认失败保留弹窗；默认不影响其他调用方。
  *
  *   2026-08-20  Seedance 视频对齐资产库，通过原生视频短暂解码后停帧展示封面
  */
@@ -505,6 +506,7 @@ export default function AssetPickerModal({
   includeSeedanceLibrary = false,
   selectionMode = 'multiple',
   assetFilter,
+  validateSelection,
 }) {
   const generationsByTab = useCreationStore((s) => s.generationsByTab);
   const favorites = useCreationStore((s) => s.favorites);
@@ -1166,6 +1168,11 @@ export default function AssetPickerModal({
 
   const toggle = (asset) => {
     if (isPreSelected(asset)) return; // 预选项不可取消
+    if (!selected.has(asset.id) && validateSelection) {
+      const all = [...Object.values(projectAssetsMap).flatMap((p) => Object.values(p).flat()), ...Object.values(creativeAssets).flat(), ...seedanceAssets];
+      const byId = new Map(all.map((item) => [item.id, item]));
+      if (!validateSelection([...selected].map((id) => byId.get(id)).filter(Boolean).concat(asset))) return;
+    }
     setSelected((prev) => {
       if (selectionMode === 'single') return prev.has(asset.id) ? new Set() : new Set([asset.id]);
       const next = new Set(prev);
@@ -1248,8 +1255,12 @@ export default function AssetPickerModal({
         setConfirming(false);
       }
     }
-    onConfirm?.(selectedAssets);
-    handleRequestClose();
+    if (validateSelection && !validateSelection(selectedAssets)) return;
+    setConfirming(true);
+    try {
+      if (await onConfirm?.(selectedAssets) === false) return;
+      handleRequestClose();
+    } finally { setConfirming(false); }
   };
 
   const handleSelectProject = (p) => {

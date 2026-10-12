@@ -108,6 +108,7 @@ export function createCanvasHistory(initial = []) {
   };
   return {
     getSnapshot: () => state,
+    getUndoToken: () => past.at(-1),
     subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
     setNodes: (update, options = {}) => {
       // 来源正文与音频派生台词在同一历史步骤更新，撤销时不会再次触发同步。

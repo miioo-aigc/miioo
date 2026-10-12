@@ -10,7 +10,7 @@ export function getCanvasMediaAccept(type) {
 }
 
 export function getCanvasMediaFileType(file, nodeType) {
-  return (nodeType === 'video' ? ['image', 'video', 'audio'] : [nodeType])
+  return (['video', 'all'].includes(nodeType) ? ['image', 'video', 'audio'] : [nodeType])
     .find((type) => isCanvasMediaFile(file, type)) || null;
 }
 

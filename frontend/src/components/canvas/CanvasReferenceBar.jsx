@@ -35,15 +35,14 @@ export default function CanvasReferenceBar({ nodeType = 'image', references = []
         {reference.id && !reference.isCurrentNode && <ReferenceRemoveButton visible={hovered === reference.id} ariaLabel={`移除${label}`} onClick={() => onRemove?.(reference.id)} />}
       </div>;
     })}
-    <input ref={inputRef} type="file" hidden accept={getCanvasMediaAccept(nodeType === 'video' ? 'all' : 'image')} onChange={(event) => {
-      const file = event.target.files?.[0];
+    <input ref={inputRef} type="file" multiple hidden accept={getCanvasMediaAccept(nodeType === 'video' ? 'all' : 'image')} onChange={(event) => {
+      const files = Array.from(event.target.files || []);
       event.target.value = '';
-      if (!file) return;
-      const type = getCanvasMediaFileType(file, nodeType);
-      if (!type) { setError(nodeType === 'video' ? '请选择有效的图片、视频或音频文件' : '请选择有效的图片文件'); return; }
-      if (full && type === 'image') { setError('首尾帧已填满，请先移除需要替换的图片'); return; }
+      if (!files.length) return;
+      if (files.some((file) => !getCanvasMediaFileType(file, nodeType))) { setError(nodeType === 'video' ? '请选择有效的图片、视频或音频文件' : '请选择有效的图片文件'); return; }
+      if (full && files.some((file) => getCanvasMediaFileType(file, nodeType) === 'image')) { setError('首尾帧已填满，请先移除需要替换的图片'); return; }
       setError('');
-      onAdd?.('local', mode, file);
+      onAdd?.('local', mode, files);
     }} />
     {error && <span role="alert" className="canvas-node__upload-error">{error}</span>}
   </div>;

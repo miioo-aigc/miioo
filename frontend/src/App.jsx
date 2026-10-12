@@ -4,6 +4,7 @@ const CompositionEditorPage = lazy(() => import('./pages/CompositionEditorPage')
 const AdminConsolePage = lazy(() => import('./pages/AdminConsolePage'))
 import LiquidGlassDefs from './components/LiquidGlassDefs'
 import GlobalToast from './components/feedback/GlobalToast'
+import VideoEditNotice from './components/video-edit/VideoEditNotice'
 import { showGlobalToast } from './stores/toastStore'
 import { apiGetCurrentUser } from './api/user'
 
@@ -40,6 +41,7 @@ function App() {
           />
         </Suspense>
         <GlobalToast />
+        <VideoEditNotice />
       </>
     )
   }
@@ -55,6 +57,7 @@ function App() {
         )}
       </Suspense>
       <GlobalToast />
+      <VideoEditNotice />
     </>
   )
 }

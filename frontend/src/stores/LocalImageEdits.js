@@ -90,7 +90,7 @@ function resumePendingImage(record) {
         record.saveAttempts = (record.saveAttempts || 0) + 1;
         try {
           await transact('readwrite', (store) => store.put(record));
-          const edited = record.destination ? { ...image, edit_type: 'image_edit', edit_mode: record.mode, source_asset_id: record.sourceId } : image;
+          const edited = record.destination ? { ...image, edit_type: image.edit_type || 'image_edit', edit_mode: image.edit_mode || record.mode, source_asset_id: image.source_asset_id || record.sourceId } : image;
           record.boundResult ||= record.destination ? await bindImageEditResult(edited, record.destination) : normalizeEditedImage(edited);
           await transact('readwrite', (store) => store.put(record));
           return await saveLocalImage(record.scope, { ...record.boundResult, pendingRecordId: record.id });

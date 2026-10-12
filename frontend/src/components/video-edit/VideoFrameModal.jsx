@@ -2,15 +2,22 @@ import { useEffect, useRef } from 'react';
 import { StepBack, StepForward } from 'lucide-react';
 import ImageEditChrome from '../image-edit/ImageEditChrome';
 import Button from '../ui/Button';
+import LoadingAnimation from '../LoadingAnimation';
 import VideoFrameTimeline from './VideoFrameTimeline';
 import useFrameSelection from './useFrameSelection';
 import useVideoEditSubmission from '../../hooks/useVideoEditSubmission';
+import { videoFrameDestination } from '../../utils/VideoFrameDestination';
 import './VideoFrame.css';
 
-export default function VideoFrameModal({ videoUrl, sourceAsset, onClose }) {
+export default function VideoFrameModal({ videoUrl, originalVideoUrl, sourceAsset, onClose, onSaved, persistToCreation = true, resultDestination = '' }) {
   const canvasRef = useRef(null);
-  const submission = useVideoEditSubmission(sourceAsset, onClose);
-  const state = useFrameSelection(videoUrl, canvasRef);
+  const destination = useRef(videoFrameDestination(resultDestination || ''));
+  const submission = useVideoEditSubmission(sourceAsset, (result) => {
+    onSaved?.(result);
+    onClose?.();
+  }, 'frame_extract');
+  const previewUrl = sourceAsset?.preview_video_url || sourceAsset?.previewVideoUrl || videoUrl;
+  const state = useFrameSelection(previewUrl, canvasRef, { originalUrl: originalVideoUrl || videoUrl });
   const { times, index, busy, exporting, error, dimensions, step, seek, download } = state;
   const start = times[0] || 0;
   const end = times.at(-1) || start;
@@ -34,12 +41,17 @@ export default function VideoFrameModal({ videoUrl, sourceAsset, onClose }) {
     footer={<footer className="image-edit-footer frame-footer">
       <Button variant="secondary" disabled={submission.busy} onClick={onClose}>取消</Button>
       <Button loading={exporting} disabled={busy || Boolean(error) || submission.busy} onClick={download}>下载</Button>
-      <Button loading={submission.busy} disabled={disabled || busy || Boolean(error)} onClick={() => submission.submit({ mode: 'frame_extract', timestamp: times[index] })}>保存</Button>
+      <Button loading={submission.busy} disabled={disabled || busy || Boolean(error)} onClick={() => submission.submit({ mode: 'frame_extract', timestamp: times[index], resultHref: destination.current, persistToCreation, suppressSuccessToast: Boolean(onSaved) })}>保存</Button>
     </footer>}>
     <div className="frame-body">
       <div className="frame-stage" aria-busy={busy}>
         <canvas ref={canvasRef} aria-label="选中的视频画面" style={{ visibility: dimensions ? 'visible' : 'hidden' }} />
-        {(busy || error) && <div className="frame-status" role="status">{error || (times.length ? '正在定位画面…' : '正在读取视频…')}</div>}
+        {(busy || error) && <div className="frame-status" role="status">
+          {error || (times.length ? '正在定位画面…' : <div className="frame-reading">
+            <LoadingAnimation width={88} />
+            <span>正在读取视频</span>
+          </div>)}
+        </div>}
       </div>
       <div className="frame-controls">
         <div className="frame-toolbar">
@@ -50,7 +62,7 @@ export default function VideoFrameModal({ videoUrl, sourceAsset, onClose }) {
           <span>{times.length ? `第 ${index + 1} / ${times.length} 帧` : '—'}</span>
           <span className="frame-dimensions">{dimensions ? `${dimensions.width} × ${dimensions.height}` : ''}</span>
         </div>
-        <VideoFrameTimeline videoUrl={videoUrl} start={start} end={end} time={time} index={index}
+        <VideoFrameTimeline videoUrl={previewUrl} start={start} end={end} time={time} index={index}
           disabled={disabled || times.length < 2} onSeek={seek} />
         <div className="frame-times"><span>{(time - start).toFixed(3)} 秒</span><span>{(end - start).toFixed(3)} 秒</span></div>
       </div>

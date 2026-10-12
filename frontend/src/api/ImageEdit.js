@@ -29,6 +29,18 @@ export async function apiSubmitImageEdit(source, options = {}) {
   const id = source?.id;
   if (!id || /^(local[-_:]|blob:)/.test(id)) throw new Error('当前图片缺少真实源资产编号');
   const path = `/api/creation/images/${encodeURIComponent(id)}`;
+  if (mode === 'multi_angle') {
+    if (!options.internal_prompt?.trim()) throw new Error('缺少多机位编辑指令');
+    const context = options.business_context || {};
+    return request('/api/creation/images/generate', {
+      edit_type: 'image_edit', edit_mode: 'multi_angle', source_asset_id: id,
+      image: source.url, internal_prompt: options.internal_prompt.trim(),
+      model: 'gpt-image-2', count: 1, multi_angle_options: options.multi_angle_options,
+      business_context: { project_id: context.project_id, session_id: context.session_id, shot_id: context.shot_id },
+      idempotency_key: options.idempotency_key,
+      save_to_assets: true, inherit_project_style: false,
+    });
+  }
   if (mode === 'erase' || mode === 'inpaint') {
     if (!options.mask?.startsWith('data:image/png;base64,')) throw new Error('缺少有效的 PNG 编辑蒙版');
     if (mode === 'inpaint' && !options.prompt?.trim()) throw new Error('请输入重绘提示词');

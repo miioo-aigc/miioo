@@ -2,20 +2,23 @@
  * @file CreationVideoDetailModal.jsx
  * @structure-index
  *
- * ─── 辅助组件与工具 ─────────────────────────────── L38–L232
+ * ─── 辅助组件与工具 ─────────────────────────────── L43–L255
  *   formatVideoDuration / ReferenceVideoCard / CopyPromptButton / PanelAction / EditTool 详情字段、参考素材与操作按钮
  *
- * ─── 创作视频详情弹窗 ───────────────────────────── L233–L774
+ * ─── 创作视频详情弹窗 ───────────────────────────── L256–L753
  *   CreationVideoDetailModal                        视频预览、详情信息和操作回调
  *   视频播放区                                      点击画面切换播放状态，中央反馈显示 0.5 秒后隐藏，保留原生 controls
  *   右侧信息区                                      顶部操作、中间滚动、底部视频编辑固定布局
  *
  * ─── 更新记录 ─────────────────────────────────────
+ *   2026-10-10                                       四项编辑图标抽为 VideoEditIcon，与画布复用；选帧预览与原画下载分离
  *   2026-09-07                                       中央播放状态短暂显示 0.5 秒；外层圆角裁剪；右栏改为固定布局；更新视频编辑按钮图标
  *   2026-09-03                                       视频控制组件样式对齐分镜详情弹窗，保留创作页业务架构
  *   2026-09-09                                       接入智能超清、去字幕、剪辑与纯前端选帧；选帧优先读取独立原视频地址，打开前暂停播放
  *   2026-09-20                                       右侧顶部媒体动作按钮接入设计系统 Tooltip
+ *   2026-10-09                                       参考视频抽帧使用本地媒体代理，生产地址保持不变
  */
+import VideoEditIcon from './video-edit/VideoEditIcon';
 
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -33,6 +36,7 @@ import VideoUpscaleModal from './video-edit/VideoUpscaleModal';
 import VideoSubtitleModal from './video-edit/VideoSubtitleModal';
 import VideoTrimModal from './video-edit/VideoTrimModal';
 import VideoFrameModal from './video-edit/VideoFrameModal';
+import { toVideoMediaUrl } from '../utils/VideoMediaUrl';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -98,7 +102,7 @@ function ReferenceVideoCard({ vidUrl }) {
     video.addEventListener('loadeddata', handleLoadedData);
     video.addEventListener('seeked', handleSeeked);
     video.addEventListener('error', handleError);
-    video.src = vidUrl;
+    video.src = toVideoMediaUrl(vidUrl);
     return () => {
       cancelled = true;
       clearTimeout(timeoutId);
@@ -274,6 +278,7 @@ export default function CreationVideoDetailModal({
   favorited = false,
   onFavorite,
   sourceAsset,
+  frameResultDestination = null,
 }) {
   console.log('CreationVideoDetailModal props:', { videoUrl, posterUrl, prompt, model, ratio, resolution, duration });
 
@@ -691,49 +696,22 @@ export default function CreationVideoDetailModal({
                 <EditTool
                   label="智能超清"
                   onClick={() => { videoRef.current?.pause(); setUpscaleOpen(true); }}
-                  icon={(
-                    <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" style={{ width: '16px', height: '16px', flexShrink: 0 }}>
-                      <path d="M447.849 45.176a53.489 53.489 0 0 1 0 106.978H226.424c-49.393 0-89.33 39.936-89.33 89.33l0.121 122.88c393.276 37.466 594.04 216.666 602.353 537.6h58.067c46.622 0 84.871-35.6 88.967-81.198l0.362-8.132V527.12a53.368 53.368 0 0 1 106.857 0v285.515c0 108.424-87.823 196.307-196.307 196.307h-571.09A196.247 196.247 0 0 1 30.057 812.634v-571.09A196.367 196.367 0 0 1 226.363 45.176H447.85z m-153.24 581.271a32.407 32.407 0 0 0-32.406 32.407v64.873H197.33v-64.873a32.407 32.407 0 0 0-64.873 0v194.62a32.407 32.407 0 0 0 64.873 0V788.6h64.873v64.874a32.407 32.407 0 0 0 64.874 0v-194.56a32.407 32.407 0 0 0-32.467-32.467z m162.215 0H391.95a32.407 32.407 0 0 0-32.286 29.094l-0.18 3.313v194.62c0 17.95 14.516 32.467 32.466 32.467h64.874a97.28 97.28 0 0 0 97.28-97.34v-64.874c0-53.73-43.55-97.28-97.28-97.28z m0 64.873c17.89 0 32.406 14.517 32.406 32.407V788.6a32.407 32.407 0 0 1-32.406 32.467h-32.467V691.32zM812.994 0a22.89 22.89 0 0 1 21.264 14.456l11.384 27.709c19.276 46.742 55.658 84.269 101.798 104.93l32.407 14.456a23.853 23.853 0 0 1 0 43.37l-34.334 15.3A197.15 197.15 0 0 0 845.22 322.017l-11.204 25.359a22.89 22.89 0 0 1-42.165 0l-11.083-25.48A196.97 196.97 0 0 0 680.477 220.22l-34.274-15.3a23.974 23.974 0 0 1 0-43.369l32.347-14.456a197.15 197.15 0 0 0 101.677-104.99l11.445-27.649A22.89 22.89 0 0 1 812.995 0z" fill="#FFFFFF99" />
-                    </svg>
-                  )}
+                  icon={<VideoEditIcon label="智能超清" />}
                 />
                 <EditTool
                   label="去字幕"
                   onClick={() => { videoRef.current?.pause(); setSubtitleOpen(true); }}
-                  icon={(
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-                      <path d="M2 11V13C2 13.5523 2.44772 14 3 14H5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M11 14H13C13.5523 14 14 13.5523 14 13V11" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M14 5V3C14 2.44772 13.5523 2 13 2H11" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M2 5V3C2 2.44772 2.44772 2 3 2H5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M8 5V11.6667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M5.66663 5H7.99996H10.3333" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
+                  icon={<VideoEditIcon label="去字幕" />}
                 />
                 <EditTool
                   label="选帧"
                   onClick={() => { videoRef.current?.pause(); setFrameOpen(true); }}
-                  icon={(
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-                      <path opacity="0.6" d="M8.38096 12.3819L2.51207 13.6294L0.640869 4.82605L3.57531 4.20231L4.30892 4.04638" stroke="currentColor" strokeLinejoin="round" />
-                      <path opacity="0.8" d="M7.5 12H4.5V3H10.5V3.79344" stroke="currentColor" strokeLinejoin="round" />
-                      <rect x="9.78113" y="3.27368" width="6" height="9" transform="rotate(18 9.78113 3.27368)" stroke="currentColor" strokeLinejoin="round" />
-                    </svg>
-                  )}
+                  icon={<VideoEditIcon label="选帧" />}
                 />
                 <EditTool
                   label="剪辑"
                   onClick={() => { videoRef.current?.pause(); setTrimOpen(true); }}
-                  icon={(
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-                      <path d="M14.3333 5.66667V3H11.3333M14.3333 5.66667V10.3333M14.3333 5.66667H11.3333M11.3333 3V5.66667M11.3333 3H9.99996M14.3333 10.3333V13H11.3333M14.3333 10.3333H11.3333M11.3333 5.66667H9.99996M1.66663 5.66667V3H4.66663M1.66663 5.66667V10.3333M1.66663 5.66667H4.66663M4.66663 3V5.66667M4.66663 3H5.99996M1.66663 10.3333V13H4.66663M1.66663 10.3333H4.66663M4.66663 5.66667H5.99996M4.66663 13V10.3333M4.66663 13H5.99996M4.66663 10.3333H5.99996M11.3333 13V10.3333M11.3333 13H9.99996M11.3333 10.3333H9.99996" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M8 2.33337V3.66671" stroke="currentColor" strokeLinecap="round" />
-                      <path d="M8 5.66663V6.99996" stroke="currentColor" strokeLinecap="round" />
-                      <path d="M8 9V10.3333" stroke="currentColor" strokeLinecap="round" />
-                      <path d="M8 12.3334V13.6667" stroke="currentColor" strokeLinecap="round" />
-                    </svg>
-                  )}
+                  icon={<VideoEditIcon label="剪辑" />}
                 />
               </div>
             </div>
@@ -741,10 +719,10 @@ export default function CreationVideoDetailModal({
         </div>
       </div>
     </div>
-    {upscaleOpen && <VideoUpscaleModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setUpscaleOpen(false)} />}
-    {subtitleOpen && <VideoSubtitleModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setSubtitleOpen(false)} />}
-    {trimOpen && <VideoTrimModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setTrimOpen(false)} />}
-    {frameOpen && <VideoFrameModal key={originalVideoUrl || videoUrl} videoUrl={originalVideoUrl || videoUrl} sourceAsset={sourceAsset} onClose={() => setFrameOpen(false)} />}
+    {upscaleOpen && <VideoUpscaleModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setUpscaleOpen(false)} onCloseDetail={onClose} />}
+    {subtitleOpen && <VideoSubtitleModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setSubtitleOpen(false)} onCloseDetail={onClose} />}
+    {trimOpen && <VideoTrimModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setTrimOpen(false)} onCloseDetail={onClose} />}
+    {frameOpen && <VideoFrameModal key={originalVideoUrl || videoUrl} videoUrl={videoUrl} originalVideoUrl={originalVideoUrl || videoUrl} sourceAsset={sourceAsset} resultDestination={frameResultDestination} onClose={() => setFrameOpen(false)} />}
     {confirmDelete && (
       <ConfirmDialog
         title="确认删除"

@@ -2,6 +2,12 @@ export function creationImageIdentity(card) {
   return card.creationAssetId || card.assetId || card.backendId || card.id;
 }
 
+export function creationVideoIdentity(card, generation) {
+  // 创作完成卡片的 id 来自后端视频资产；生成记录自身的 id 不是资产编号。
+  return card.creationAssetId || card.asset_id || card.assetId || card.backendId
+    || card.source_asset_id || generation.backendId || (card.status === 'done' ? card.id : undefined);
+}
+
 export function creationEditScope(card) {
   return `creation:${creationImageIdentity(card) || card.originalUrl || card.imageUrl}`;
 }

@@ -18,9 +18,10 @@ test('隐藏提示词模式不会进入请求', () => {
 test('拒绝本地伪资产编号', () => assert.throws(() => validateSourceAsset({ asset_id: 'local-1' })));
 
 test('多机位只使用确认模型并将提示词标记为内部字段', () => {
-  const request = buildImageEditRequest({ asset_id: 'asset-1' }, { mode: 'multi_angle', internal_prompt: '内部角度描述' });
-  assert.equal(request.model, 'sp-gpt-image-2');
+  const request = buildImageEditRequest({ asset_id: 'asset-1' }, { mode: 'multi_angle', internal_prompt: '内部角度描述', multi_angle_options: { horizontal: 90, vertical: 0 } });
+  assert.equal(request.model, 'gpt-image-2');
   assert.equal(request.internal_prompt, '内部角度描述');
+  assert.deepEqual(request.multi_angle_options, { horizontal: 90, vertical: 0 });
   assert.equal(request.prompt, undefined);
 });
 

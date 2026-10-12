@@ -7,10 +7,13 @@ import { durationTicks, updateTrimRange } from './TrimRange';
 import { showGlobalToast } from '../../stores/toastStore';
 import './VideoTrim.css';
 import useVideoEditSubmission from '../../hooks/useVideoEditSubmission';
+import { normalizeImageUrl } from '../../utils/imageUrl';
+import { toVideoMediaUrl } from '../../utils/VideoMediaUrl';
 
-export default function VideoTrimModal({ videoUrl, posterUrl = '', onClose, sourceAsset }) {
+export default function VideoTrimModal({ videoUrl, posterUrl = '', onClose, onCloseDetail, sourceAsset }) {
+  const previewUrl = toVideoMediaUrl(normalizeImageUrl(sourceAsset?.preview_video_url || sourceAsset?.previewVideoUrl || videoUrl));
   const videoRef = useRef(null);
-  const submission = useVideoEditSubmission(sourceAsset, onClose);
+  const submission = useVideoEditSubmission(sourceAsset);
   const [range, setRange] = useState({ start: 0, end: 0 });
   const [total, setTotal] = useState(0);
   const [time, setTime] = useState(0);
@@ -20,7 +23,7 @@ export default function VideoTrimModal({ videoUrl, posterUrl = '', onClose, sour
   const [playing, setPlaying] = useState(false);
   const [feedbackVisible, setFeedbackVisible] = useState(false);
   const feedbackTimerRef = useRef(null);
-  const available = Boolean(videoUrl && ready && total > 0 && !failed && !submission.busy);
+  const available = Boolean(previewUrl && ready && total > 0 && !failed && !submission.busy);
 
   useEffect(() => () => clearTimeout(feedbackTimerRef.current), []);
 
@@ -84,14 +87,17 @@ export default function VideoTrimModal({ videoUrl, posterUrl = '', onClose, sour
   function save() {
     if (!available) return;
     videoRef.current?.pause();
-    submission.submit({ mode: 'trim', start_time: range.start / 10, end_time: range.end / 10, duration: videoRef.current.duration });
+    submission.submit({ mode: 'trim', start_time: range.start / 10, end_time: range.end / 10, duration: videoRef.current.duration }, () => {
+      onClose();
+      onCloseDetail?.();
+    });
   }
 
   return <ImageEditChrome title="视频剪辑" onClose={close} busy={submission.busy} zIndex={1400}
     footer={<ImageEditFooter onReset={reset} onClose={close} onSubmit={save} busy={submission.busy} disabled={!available} />}>
     <div className="trim-body">
       <div className="trim-stage">
-        {videoUrl && !failed ? <><video ref={videoRef} src={videoUrl} poster={posterUrl || undefined} playsInline preload="auto" controls
+        {previewUrl && !failed ? <><video ref={videoRef} src={previewUrl} poster={posterUrl || undefined} playsInline preload="auto" controls
           onLoadedMetadata={(event) => {
             const ticks = durationTicks(event.currentTarget.duration);
             setTotal(ticks);
@@ -108,7 +114,7 @@ export default function VideoTrimModal({ videoUrl, posterUrl = '', onClose, sour
           }} /><VideoPlaybackControls isPlaying={playing} feedbackVisible={feedbackVisible} onToggle={togglePlay} /></> : <span role="status">视频无法加载或时长不足0.1秒</span>}
       </div>
       <div className="trim-editor">
-        <VideoTrimTimeline videoUrl={videoUrl} total={total} range={range} zoom={zoom} time={time} disabled={!available} onChange={change} onSeek={seek} />
+        <VideoTrimTimeline videoUrl={previewUrl} total={total} range={range} zoom={zoom} time={time} disabled={!available} onChange={change} onSeek={seek} />
         <VideoTrimFields range={range} total={total} zoom={zoom} disabled={!available} onZoom={setZoom} onChange={change} />
       </div>
     </div>

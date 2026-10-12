@@ -24,7 +24,7 @@ export function readEditMetadata(asset = {}) {
   }
   const mode = asset.edit_mode || asset.editMode || metadata?.edit_mode || metadata?.editMode;
   const type = asset.edit_type || asset.editType || metadata?.edit_type || metadata?.editType;
-  return { edit_mode: mode, edit_type: type, source_asset_id: asset.source_asset_id || metadata?.source_asset_id };
+  return { edit_mode: mode, edit_type: type, source_asset_id: asset.source_asset_id || asset.parent_asset_id || metadata?.source_asset_id || metadata?.parent_asset_id };
 }
 
 export function mayShowEditPrompt(asset) {

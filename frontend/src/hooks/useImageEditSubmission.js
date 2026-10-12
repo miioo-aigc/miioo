@@ -28,7 +28,7 @@ export default function useImageEditSubmission({ card, onSave, onComplete, keepO
       if (!work.accepted && !work.image) {
         work.uncertain = true;
         if (work.request.file) {
-          work.image = await uploadImageEditFile(work.request.file, work.destination);
+          work.image = await uploadImageEditFile(work.request.file, { sourceAssetId: work.source.id, editMode: work.request.edit_mode });
         } else {
           work.accepted = await apiSubmitImageEdit(work.source, { ...work.request, business_context: work.destination });
         }

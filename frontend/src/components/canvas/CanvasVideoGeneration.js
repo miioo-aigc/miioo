@@ -79,7 +79,18 @@ export function validateCanvasVideoReferenceAddition(nodes, targetId, asset) {
     return source?.data.asset?.asset_type || source?.type;
   }).filter((type) => MEDIA_TYPES.includes(type));
   if (target.data.asset?.url) existingTypes.push(target.data.asset.asset_type || 'video');
-  return validateCanvasVideoMedia([...existingTypes, asset.asset_type], target.data.videoCapabilities, target.data.model, target.data.generationMode);
+  return validateVideoAddition(existingTypes, asset.asset_type, target.data.videoCapabilities, target.data.model, target.data.generationMode);
+}
+
+// 新增只检查候选类型及总名额，不因其他类型已有超限而拒绝。
+function validateVideoAddition(types, type, capabilities, model, mode) {
+  const rule = getCanvasVideoMediaRule(capabilities, model, mode);
+  const count = types.filter((existing) => existing === type).length;
+  if (count >= rule.limits[type]) return { allowed: false, message: rule.limits[type] === 0
+    ? `当前参考模式不支持${TYPE_LABELS[type]}素材`
+    : `当前参考模式最多支持${rule.limits[type]}${type === 'image' ? '张' : '条'}${TYPE_LABELS[type]}素材` };
+  if (types.length >= rule.totalLimit) return { allowed: false, message: '参考素材总数已达到当前模型上限' };
+  return { allowed: true, message: '' };
 }
 
 export function getCanvasVideoSourceIds(target) {
@@ -104,6 +115,9 @@ export function getCanvasVideoReferenceStatus(nodes, targetId, capabilities, sou
   const mode = caps.selectedGenerationMode || target?.data.generationMode;
   const rule = getCanvasVideoMediaRule(caps, target?.data.model, mode);
   const counts = { image: 0, video: 0, audio: 0 };
+  const ownType = target?.data.asset?.url ? target.data.asset.asset_type || 'video' : null;
+  if (MEDIA_TYPES.includes(ownType)) counts[ownType] += 1;
+  const ownCount = MEDIA_TYPES.includes(ownType) ? 1 : 0;
   const mediaSourceIds = [];
   const overflowSourceIds = [];
   for (const id of sourceIds || getCanvasVideoSourceIds(target)) {
@@ -112,17 +126,30 @@ export function getCanvasVideoReferenceStatus(nodes, targetId, capabilities, sou
     if (!Object.hasOwn(counts, type)) continue;
     mediaSourceIds.push(id);
     counts[type] += 1;
-    if (counts[type] > rule.limits[type] || mediaSourceIds.length > rule.totalLimit) overflowSourceIds.push(id);
+    if (counts[type] > rule.limits[type] || mediaSourceIds.length + ownCount > rule.totalLimit) overflowSourceIds.push(id);
   }
-  return { mediaSourceIds, overflowSourceIds, canGenerate: overflowSourceIds.length === 0 };
+  return { mediaSourceIds, overflowSourceIds, canGenerate: overflowSourceIds.length === 0
+    && ownCount <= rule.totalLimit && (!ownCount || rule.limits[ownType] >= 1) };
 }
 
-export function canConnectCanvasVideo(nodes, connection) {
-  return isCanvasVideoConnection(nodes, connection);
+export function canConnectCanvasVideo(nodes, connection, capabilities) {
+  if (!isCanvasVideoConnection(nodes, connection)) return false;
+  const target = find(nodes, connection.target);
+  const source = find(nodes, connection.source);
+  if (source.type === 'text' || getCanvasVideoSourceIds(target).includes(source.id)) return true;
+  const caps = capabilities || target.data.videoCapabilities || {};
+  const types = getCanvasVideoSourceIds(target).map((id) => {
+    const item = find(nodes, id);
+    return item?.data.asset?.asset_type || item?.type;
+  }).filter((type) => MEDIA_TYPES.includes(type));
+  if (target.data.asset?.url) types.push(target.data.asset.asset_type || 'video');
+  return validateVideoAddition(types, source.data.asset?.asset_type || source.type, caps,
+    target.data.model, caps.selectedGenerationMode || target.data.generationMode).allowed;
 }
 
-export function connectCanvasVideo(nodes, connection, capabilities) {
-  if (!canConnectCanvasVideo(nodes, connection, capabilities)) return nodes;
+export function connectCanvasVideo(nodes, connection, capabilities, { retainInvalid = false } = {}) {
+  if (!isCanvasVideoConnection(nodes, connection)
+    || (!retainInvalid && !canConnectCanvasVideo(nodes, connection, capabilities))) return nodes;
   return setCanvasSelection(nodes.map((node) => node.id === connection.target ? {
     ...node, data: { ...node.data, videoSourceIds: [...new Set([...getCanvasVideoSourceIds(node), connection.source])], persistenceState: 'draft' },
   } : node), [connection.target], true);
@@ -173,6 +200,9 @@ export function planCanvasVideoGeneration(nodes, nodeId, prompt, model, params =
     label: source.data.label, content: source.type === 'text' ? source.data.content : undefined, asset: source.data.asset || undefined,
   }));
   const images = sources.filter((source) => source.type === 'image' && source.asset?.url);
+  const occupancy = validateCanvasVideoMedia(sources.filter((source) => MEDIA_TYPES.includes(source.type)).map((source) => source.type),
+    capabilities, model, mode);
+  if (!occupancy.allowed) throw new Error(occupancy.message);
   const mediaValidation = validateCanvasVideoMedia(
     sources.filter((source) => MEDIA_TYPES.includes(source.type) && source.asset?.url).map((source) => source.type),
     capabilities, model, mode, { final: true },

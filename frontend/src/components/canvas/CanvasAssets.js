@@ -1,4 +1,6 @@
 /** 画布资产适配：保留来源信息，仅回填当前节点的前端草稿。 */
+import { planCanvasImportPositions } from './CanvasImportLayout.js';
+import { getCanvasAssetNodeSize } from './CanvasMediaSize.js';
 export function getCanvasAudioTranscript(asset) {
   if (!asset || asset.source === 'local-preview') return '';
   return typeof asset.transcript === 'string' ? asset.transcript.trim() : '';
@@ -23,11 +25,12 @@ export function applyCanvasAsset(nodes, nodeId, selectedAsset) {
     : item);
 }
 
-export function planCanvasAssetImport(assets, center) {
+export function planCanvasAssetImport(assets, center, nodes = []) {
   const valid = assets.map((asset) => toCanvasAsset(asset, 'video')).filter(Boolean);
+  const positions = valid.length > 1 ? planCanvasImportPositions(valid.length, center, nodes, valid.map(getCanvasAssetNodeSize)) : [{ x: center.x - 120, y: center.y - 100 }];
   return valid.map((asset, index) => ({
     asset,
     type: asset.asset_type,
-    position: { x: center.x - 120 + index * 48, y: center.y - 100 + index * 48 },
+    position: positions[index],
   }));
 }

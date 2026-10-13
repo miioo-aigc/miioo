@@ -1,10 +1,11 @@
-/** 堆叠成员的只读预览；不挂载节点编辑器或上传交互。 */
+/** 堆叠成员的只读预览；2026-10-13：内层承载悬停旋转，与外层展开动画隔离。 */
 import { Music2 } from 'lucide-react';
 
+// 240px 卡片旋转后的中心统一对齐 312px 外框中心 (156, 156)。
 const CARD_TRANSFORMS = [
-  'translate(30px, 30px)',
-  'translate(47.857px, 14.456px) rotate(8deg)',
-  'translate(67.702px, 1.548px) rotate(16deg)',
+  'translate(36px, 36px)',
+  'translate(53.869px, 20.467px) rotate(8deg)',
+  'translate(73.725px, 7.572px) rotate(16deg)',
 ];
 
 function MemberPreview({ member }) {
@@ -25,7 +26,7 @@ export default function CanvasGroupStackPreview({ members = [] }) {
     {cards.map((member, index) => <div key={member.id} className="canvas-stack-preview__card"
       data-stack-member={member.id}
       style={{ transform: CARD_TRANSFORMS[Math.max(0, index - Math.max(0, cards.length - 3))], opacity: index < cards.length - 3 ? 0 : 1 }}>
-      <MemberPreview member={member} />
+      <div className="canvas-stack-preview__surface"><MemberPreview member={member} /></div>
     </div>)}
   </div>;
 }

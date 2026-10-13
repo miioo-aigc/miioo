@@ -10,6 +10,7 @@
  *   通过全局 Store、创作 API 和显式 UI 组件组合，不读取页面入口闭包。
  *
  * ─── 更新记录 ───────────────────────────────────────
+ *   2026-10-12  订阅视频编辑任务占位，复用视频加载卡；完成后仍写入本地历史
  *   2026-10-08  视频编辑完成事件按产物类型写入本地列表，不替换原资产
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  */
@@ -18,6 +19,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiGetCreationAudio, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../../api/creation';
 import { useCreationStore } from '../../stores/creationStore';
+import { useVideoEditStore } from '../../stores/videoEditStore';
+import CreationVideoResultCard from '../creation/CreationVideoResultCard';
 import { useAssetSelection } from '../../hooks/useAssetSelection';
 import { generationsToDays } from '../../utils/creativeDaysAdapter';
 import { normalizeImageUrl } from '../../utils/imageUrl';
@@ -44,6 +47,7 @@ const CREATIVE_TYPE_TABS = [
 ];
 
 export default function AssetsCreativePanel({ isLoggedIn }) {
+  const videoEditTasks = useVideoEditStore((state) => state.tasks);
   const [activeType, setActiveType] = useState('image');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const {
@@ -375,7 +379,9 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     }
   }, [isLoggedIn, activeType, loadHistoryPage]);
 
-  const generations = creationGenerationsByTab[activeType] ?? [];
+  const pendingVideos = activeType === 'video' && isLoggedIn
+    ? Object.values(videoEditTasks).filter((task) => task.busy && task.placeholder).map((task) => task.placeholder) : [];
+  const generations = [...pendingVideos, ...(creationGenerationsByTab[activeType] ?? [])];
   const listedImages = activeType === 'image' ? generations.flatMap((generation) => generation.cards || []) : [];
   const activeHistoryMeta = creationHistoryMeta[activeType];
   const days = generationsToDays(generations).map((day) => favoritesOnly
@@ -416,7 +422,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   }, [activeType, activeHistoryMeta?.hasMore, activeHistoryMeta?.initialized, activeHistoryMeta?.loading, generations.length, loadHistoryPage]);
 
   function selectAll() {
-    const allIds = days.flatMap((d) => d.cards.map((c) => c.id));
+    const allIds = days.flatMap((d) => d.cards.filter((c) => c.status !== 'loading').map((c) => c.id));
     selectAllAssets(allIds);
   }
 
@@ -610,6 +616,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
               {day.cards.map((card) => {
+                if (card.status === 'loading') return <CreationVideoResultCard key={card.id} status="loading" />;
                 const isStarred = favorites.has(card.id);
                 return activeType === 'dubbing' ? (
                   <CreationAudioResultCard

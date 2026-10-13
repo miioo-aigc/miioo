@@ -16,6 +16,8 @@ import useLocalImageEdits from '../../hooks/useLocalImageEdits';
 import { downloadLocalImage } from '../../stores/LocalImageEdits';
 import { visibleCreationEdits } from '../creation/CreationEditResults';
 import { creationEditScope } from '../creation/CreationEditResults';
+import { mergeProjectSubjectImages } from './ProjectSubjectImages';
+import { getAssetSubjectType } from '../../utils/assetsBatchAdapter';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -180,7 +182,10 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
     ? `storyboard:${asset.project_id}:${asset.storyboard?.id || asset.id}`
     : `subject:${asset.project_id}:${asset.subject_id || asset.id}`);
 
-  const images = [...(asset.images ?? []), ...edits.images];
+  const isSubject = Boolean(getAssetSubjectType(category));
+  const images = isSubject
+    ? mergeProjectSubjectImages(asset.images, edits.images)
+    : [...(asset.images ?? []), ...edits.images];
   const isVideo = category === 'storyboard'
     ? asset.assetType === 'video'
     : category === 'storyboard_video';
@@ -367,7 +372,7 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
         ShotDetailModal={ShotDetailModal}
         ShotVideoDetailModal={ShotVideoDetailModal}
       />
-      {edits.images.map((image) => <CreationImageResultCard key={image.id} {...image} editScope={edits.scope} onDownload={() => downloadLocalImage(image)} onDelete={() => edits.remove(image.id)} />)}
+      {!isStoryboard && !isSubject && edits.images.map((image) => <CreationImageResultCard key={image.id} {...image} editScope={edits.scope} onDownload={() => downloadLocalImage(image)} onDelete={() => edits.remove(image.id)} />)}
       {angleResults.results.map((result) => <CreationImageResultCard key={result.id} {...result} onGenerateImage={angleResults.generate} onDelete={() => angleResults.remove(result.id)} />)}
     </>
   );

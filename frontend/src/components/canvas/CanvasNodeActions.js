@@ -107,7 +107,7 @@ export function getCanvasStackPresentation(nodes, edges) {
   return {
     nodes: nodes.map((node) => ({ ...node, hidden: Boolean(owners.get(node.id)),
       ...(node.type === 'canvasGroup' ? {
-        ...(node.data.stacked ? { style: { ...node.style, width: 300, height: 300 }, measured: { width: 300, height: 300 } } : {}),
+        ...(node.data.stacked ? { style: { ...node.style, width: 312, height: 312 }, measured: { width: 312, height: 312 } } : {}),
         data: { ...node.data, expandedWidth: node.style?.width, expandedHeight: node.style?.height,
           stackMembers: nodes.filter((child) => members.get(node.id).has(child.id) && child.type !== 'canvasGroup').map((child) => {
             const position = getCanvasAbsolutePosition(nodes, child);

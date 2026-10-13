@@ -2,10 +2,10 @@
  * @file SubjectAssetDetailModal.jsx
  * @structure-index
  *
- * ─── 依赖与常量 ─────────────────── L20–L80
+ * ─── 依赖与常量、局部控件 ───────── L22–L81
  *   useModalSize / placeholder / ConfirmDialog / FONT     弹窗基础依赖与字体常量
  *
- * ─── 主体资产详情弹窗 ───────────── L82–L437
+ * ─── 主体资产详情弹窗 ───────────── L84
  *   [状态] 当前图片、悬浮态、收藏动效、删除确认、复制提示
  *   [交互] 缩略图切换、提示词复制、删除确认、下载和关闭
  *   [回调] 通过 props 接收关闭、下载、收藏、删除和提示反馈回调
@@ -16,6 +16,7 @@
  *   2026-09-04  项目资产主体详情右栏改为顶部操作、中间滚动、底部图片编辑固定布局
  *   2026-09-07  接入图片裁剪替换弹窗，前端生成新图片对象并追加到当前卡片
  *   2026-09-09  图片编辑关闭或取消返回详情，编辑完成保持原关闭行为
+ *   2026-10-13  创建时间统一按东八区显示到秒
  */
 
 import { useContext, useState } from 'react';
@@ -28,6 +29,7 @@ import LocalImageEditor from '../image-edit/LocalImageEditor';
 import { ImageEditContext } from '../image-edit/ImageEditContext';
 import CopyPromptButton from '../ui/CopyPromptButton';
 import { FavoriteIcon, DeleteIcon } from '../ui';
+import { formatEastEightDateTime } from '../../utils/formatTime';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -372,7 +374,7 @@ export default function SubjectAssetDetailModal({ onClose, onDownload, onDeleteI
                   <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px' }} />
                   <div style={{ display: 'flex', flexDirection: 'row', padding: '16px 20px', gap: '4px', justifyContent: 'flex-start', alignItems: 'center' }}>
                     <span style={{ flex: '1 1 0px', fontFamily: FONT, fontSize: '12px', lineHeight: '14px', letterSpacing: '0.06em', textTransform: 'uppercase', color: '#FFFFFF99' }}>创建时间</span>
-                    <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{currentImg.created_at}</span>
+                    <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', letterSpacing: '0.01em', color: '#FFFFFFCC' }}>{formatEastEightDateTime(currentImg.created_at)}</span>
                   </div>
                 </>
               )}

@@ -1,6 +1,7 @@
 /**
  * @file Home.jsx
  * @structure-index
+ *   2026-10-12：登录用户确认后恢复已受理的视频编辑任务；保留认证与恢复的页面编排边界。
  *   2026-10-10：handleCreateCanvas L1503；开发态内存列表 L1516；按画布编号重建页面 L1593，正式环境边界不变。
  *
  * ─── 全局常量 & 配置 ───────────────────────────────────────────────
@@ -89,6 +90,7 @@ import { apiAcknowledgeStorageReminder, apiGetCurrentUser, apiGetNotifications, 
 import { apiGetSubjects, apiGetSubjectsPage, apiGetEpisodes, apiGetScriptWorkspace, apiGetScriptStructure, apiFinalizeScriptWorkspace, apiPublishScriptStructure, apiExtractSubjectsByEpisodes, apiGetScriptTask } from '../api/subject';
 import { apiGetStoryboards, apiGenerateStoryboardsFromFinalScript, apiGenerateStoryboardsFromEpisode, apiGetTask } from '../api/storyboard';
 import { invalidate } from '../utils/cache';
+import { recoverVideoEdits, useVideoEditStore } from '../stores/videoEditStore';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { normalizeSubjects } from '../utils/subjectAdapter';
 import { normalizeProjectList } from '../utils/projectAdapter';
@@ -309,6 +311,10 @@ export default function Home({ onGoToAdmin }) {
   // Tracks which non-alwaysEnabled steps have ever had content — once unlocked, stays unlocked
   const [unlockedSteps, setUnlockedSteps] = useState(new Set());
   const [currentUser, setCurrentUser] = useState({});
+  useEffect(() => {
+    if (isLoggedIn && currentUser.id) recoverVideoEdits(currentUser.id);
+    else useVideoEditStore.setState({ ownerId: null });
+  }, [isLoggedIn, currentUser.id]);
   const [storageUsage, setStorageUsage] = useState(null);
   const [storageReminder, setStorageReminder] = useState(null);
   const acknowledgedStorageReminderRef = useRef(null);

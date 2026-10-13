@@ -65,6 +65,13 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
+        '^/__image-media/media/origin/': {
+          target: 'https://www.chengxvblog.top',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/__image-media/, ''),
+          timeout: 0,
+          proxyTimeout: 300000,
+        },
         '^/__dev-media/media/origin/': {
           target: 'https://www.chengxvblog.top',
           changeOrigin: true,

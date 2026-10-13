@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import ImageEditChrome from '../image-edit/ImageEditChrome';
 import Button from '../ui/Button';
 import useVideoEditSubmission from '../../hooks/useVideoEditSubmission';
@@ -7,11 +6,6 @@ import VideoEditComparison from './VideoEditComparison';
 import SubtitleMask from './SubtitleMask';
 import { DEFAULT_SUBTITLE_MASK } from './SubtitleMaskGeometry';
 import './VideoSubtitle.css';
-
-function formatTime(seconds) {
-  const safe = Number.isFinite(seconds) ? Math.floor(seconds) : 0;
-  return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
-}
 
 export default function VideoSubtitleModal({ videoUrl, posterUrl = '', sourceAsset, onClose, onCloseDetail }) {
   const submission = useVideoEditSubmission(sourceAsset, undefined, 'subtitle_remove');
@@ -21,14 +15,10 @@ export default function VideoSubtitleModal({ videoUrl, posterUrl = '', sourceAss
   const [source, setSource] = useState({ width: 0, height: 0 });
   const [area, setArea] = useState({ width: 0, height: 0 });
   const [subtitleMask, setSubtitleMask] = useState(DEFAULT_SUBTITLE_MASK);
-  const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(true);
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
-  const [time, setTime] = useState(0);
-  const [duration, setDuration] = useState(0);
   const available = Boolean(videoUrl && ready && !failed && source.width && source.height);
-  const scale = source.width && source.height ? Math.min(area.width / source.width, area.height / source.height) : 0;
+  const scale = source.width && source.height ? Math.min(area.width / source.width, Math.max(0, area.height - 64) / source.height) : 0;
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -38,13 +28,6 @@ export default function VideoSubtitleModal({ videoUrl, posterUrl = '', sourceAss
     observer.observe(stage);
     return () => observer.disconnect();
   }, []);
-
-  function togglePlay() {
-    const video = videoRef.current;
-    if (!video || !available) return;
-    if (video.paused) video.play().catch(() => setPlaying(false));
-    else video.pause();
-  }
 
   function close() {
     videoRef.current?.pause();
@@ -66,30 +49,22 @@ export default function VideoSubtitleModal({ videoUrl, posterUrl = '', sourceAss
     <div className="subtitle-body">
       <VideoEditComparison submission={submission} onRetry={() => submission.submit({ mode: 'subtitle_remove' })}>
       <div ref={stageRef} className="subtitle-stage">
-        {videoUrl && !failed ? <div ref={frameRef} className="subtitle-frame" style={{ width: scale ? source.width * scale : '100%', height: scale ? source.height * scale : '100%' }}>
-          <video ref={videoRef} src={videoUrl} poster={posterUrl || undefined} autoPlay muted={muted} playsInline preload="auto"
+        {videoUrl && !failed ? <>
+          <video className="subtitle-source-video" ref={videoRef} src={videoUrl} poster={posterUrl || undefined} autoPlay muted controls playsInline preload="auto"
             onLoadedMetadata={(event) => {
               const video = event.currentTarget;
               setSource({ width: video.videoWidth, height: video.videoHeight });
-              setDuration(Number.isFinite(video.duration) ? video.duration : 0);
             }}
-            onLoadedData={() => setReady(true)} onError={() => { setFailed(true); setPlaying(false); }}
-            onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)}
-            onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)}
+            onLoadedData={() => setReady(true)} onError={() => setFailed(true)}
           />
-          {available && <>
-            <button type="button" className="subtitle-play-surface" aria-label={playing ? '暂停视频画面' : '播放视频画面'} onClick={togglePlay} />
-            <div inert={submission.busy}><SubtitleMask value={subtitleMask} onChange={setSubtitleMask} frameRef={frameRef} /></div>
-          </>}
-        </div> : <span role="status">视频加载失败，请关闭后重试</span>}
+          {available && <div className="subtitle-mask-area">
+            <div ref={frameRef} className="subtitle-frame" style={{ width: source.width * scale, height: source.height * scale }} inert={submission.busy}>
+              <SubtitleMask value={subtitleMask} onChange={setSubtitleMask} frameRef={frameRef} />
+            </div>
+          </div>}
+        </> : <span role="status">视频加载失败，请关闭后重试</span>}
       </div>
       </VideoEditComparison>
-      <div className="subtitle-playback">
-        <button type="button" aria-label={playing ? '暂停视频' : '播放视频'} title={playing ? '暂停视频' : '播放视频'} disabled={!available} onClick={togglePlay}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
-        <span>{formatTime(time)} / {formatTime(duration)}</span>
-        <input type="range" aria-label="视频播放进度" min="0" max={duration || 1} step="0.01" value={Math.min(time, duration || 1)} disabled={!available || !duration} onChange={(event) => { const next = Number(event.target.value); videoRef.current.currentTime = next; setTime(next); }} />
-        <button type="button" aria-label={muted ? '取消静音' : '静音'} title={muted ? '取消静音' : '静音'} disabled={!available} onClick={() => setMuted(!muted)}>{muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
-      </div>
     </div>
   </ImageEditChrome>;
 }

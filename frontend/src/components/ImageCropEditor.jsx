@@ -1,4 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
+import { toImageMediaUrl } from '../utils/ImageMediaUrl';
+import DotsLoading from './DotsLoading';
 const MIN_CROP_SIZE = 0.08;
 const MAX_ZOOM = 4;
 
@@ -95,7 +97,7 @@ function getResizeCrop(startCrop, handle, dx, dy, ratio, imageWidth, imageHeight
   return { x, y, width, height };
 }
 
-const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, onRatioChange, onImageLoad, onChange, cropEnabled = true, rotation = 0, flipX = false, flipY = false, imageAlt = '待裁剪图片' }, ref) {
+const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, onRatioChange, onImageLoad, onChange, onReady, cropEnabled = true, rotation = 0, flipX = false, flipY = false, imageAlt = '待裁剪图片' }, ref) {
   const stageRef = useRef(null);
   const imageRef = useRef(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
@@ -104,12 +106,25 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [interaction, setInteraction] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const [hasPresented, setHasPresented] = useState(false);
   const internalRatioChange = useRef(false);
   const previousRotation = useRef(rotation);
   const previousRatio = useRef(ratio);
   const suspendedCrop = useRef(false);
   const orientedSize = getOrientedSize(imageSize, rotation);
   const orientedRatio = getOrientedRatio(ratio);
+  // 等真实尺寸传回弹窗并完成布局测量后再展示，避免首帧使用临时容器比例。
+  const previewReady = hasPresented || (imageSize.width > 0 && imageSize.height > 0
+    && stageSize.width > 0 && stageSize.height > 0
+    && Math.abs(stageSize.width - stageSize.height * orientedSize.width / orientedSize.height) < 2);
+
+  useEffect(() => {
+    if (previewReady) {
+      setHasPresented(true);
+      onReady?.(true);
+    }
+  }, [onReady, previewReady]);
 
   useLayoutEffect(() => {
     const stage = stageRef.current;
@@ -228,14 +243,14 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
     onImageLoad?.(size);
   };
   const beginInteraction = (event, kind, handle) => {
-    if (!cropEnabled) return;
+    if (!cropEnabled || !previewReady) return;
     event.preventDefault();
     event.stopPropagation();
     setInteraction({ kind, handle, startX: event.clientX, startY: event.clientY, crop, pan });
   };
   useEffect(() => {
     const stage = stageRef.current;
-    if (!stage || !cropEnabled) return undefined;
+    if (!stage || !cropEnabled || !previewReady) return undefined;
 
     // React 的 onWheel 事件可能由被动委托监听器触发，滚轮缩放需要由编辑器接管默认滚动。
     const handleWheel = (event) => {
@@ -245,7 +260,7 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
 
     stage.addEventListener('wheel', handleWheel, { passive: false });
     return () => stage.removeEventListener('wheel', handleWheel);
-  }, [cropEnabled]);
+  }, [cropEnabled, previewReady]);
   const displayZoom = cropEnabled ? zoom : 1;
   const displayPan = cropEnabled ? pan : { x: 0, y: 0 };
   const imageStyle = {
@@ -253,6 +268,7 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
     height: stageSize.width && stageSize.height && Math.abs(rotation) % 180 === 90 ? `${stageSize.width}px` : `${stageSize.height}px`,
     maxWidth: 'none', maxHeight: 'none', minWidth: '0', minHeight: '0',
     objectFit: 'fill', display: 'block', position: 'absolute', left: '50%', top: '50%',
+    visibility: previewReady && !failed ? 'visible' : 'hidden',
     transform: `translate(-50%, -50%) translate(${displayPan.x * stageSize.width}px, ${displayPan.y * stageSize.height}px) rotate(${rotation}deg) scale(${(flipX ? -1 : 1) * displayZoom}, ${(flipY ? -1 : 1) * displayZoom})`,
   };
   const cropStyle = { position: 'absolute', left: `${crop.x * 100}%`, top: `${crop.y * 100}%`, width: `${crop.width * 100}%`, height: `${crop.height * 100}%` };
@@ -274,8 +290,9 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
 
   return (
     <div ref={stageRef} onPointerDown={(event) => event.button === 1 && beginInteraction(event, 'pan')} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', touchAction: 'none' }}>
-      {imageUrl ? <img ref={imageRef} src={imageUrl} alt={imageAlt} crossOrigin="anonymous" onLoad={handleImageLoad} style={imageStyle} /> : null}
-      {cropEnabled && <>
+      {imageUrl ? <img ref={imageRef} src={toImageMediaUrl(imageUrl)} alt={imageAlt} crossOrigin="anonymous" onLoad={handleImageLoad} onError={() => setFailed(true)} style={imageStyle} /> : null}
+      {(!previewReady || failed) && <div role="status" aria-label={failed ? '图片加载失败' : '图片加载中'} className="text-text-secondary text-font-size-12" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{failed ? '图片加载失败，请关闭后重试' : <DotsLoading />}</div>}
+      {cropEnabled && previewReady && !failed && <>
       <div style={{ ...cropStyle, zIndex: 4, border: '1px solid #2DC3E1', boxSizing: 'border-box', cursor: 'move' }} onPointerDown={(event) => event.button === 0 && beginInteraction(event, 'move')}>
         {showGrid ? <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'linear-gradient(to right, transparent 33.333%, #2DC3E199 33.333%, #2DC3E199 calc(33.333% + 1px), transparent calc(33.333% + 1px), transparent 66.666%, #2DC3E199 66.666%, #2DC3E199 calc(66.666% + 1px), transparent calc(66.666% + 1px)), linear-gradient(to bottom, transparent 33.333%, #2DC3E199 33.333%, #2DC3E199 calc(33.333% + 1px), transparent calc(33.333% + 1px), transparent 66.666%, #2DC3E199 66.666%, #2DC3E199 calc(66.666% + 1px), transparent calc(66.666% + 1px))' }} /> : null}
         {handles.map((handle) => <span key={handle} onPointerDown={(event) => beginInteraction(event, handle.length === 2 ? 'corner' : 'edge', handle)} style={handleStyle(handle)} />)}

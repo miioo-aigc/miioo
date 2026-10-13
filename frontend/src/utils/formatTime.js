@@ -1,3 +1,23 @@
+const eastEightFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Etc/GMT-8',
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+});
+
+export function formatEastEightDateTime(value) {
+  if (typeof value !== 'string' || !value.trim()) return '未知';
+  let timestamp = value.trim().replace(' ', 'T');
+  // 接口的无时区日期时间已是东八区，不能使用浏览器本地时区解析。
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(timestamp)) {
+    timestamp += '+08:00';
+  }
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/i.test(timestamp)) return '未知';
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return '未知';
+  const parts = Object.fromEntries(eastEightFormatter.formatToParts(date).map(({ type, value: part }) => [type, part]));
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
 /**
  * 将 ISO 时间戳格式化为友好的相对时间
  * @param {string} isoString - ISO 格式时间字符串

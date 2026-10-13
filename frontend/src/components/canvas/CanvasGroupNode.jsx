@@ -1,17 +1,26 @@
-/** 组合边框与堆叠预览；堆叠不改写成员坐标。 */
+/** 组合边框与堆叠预览；堆叠不改写成员坐标。2026-10-13：单组选中清理框选覆盖层，描边区分悬停和选中。 */
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
+import { Handle, Position, useStore, useStoreApi, useUpdateNodeInternals } from '@xyflow/react';
 import CanvasGroupStackPreview from './CanvasGroupStackPreview';
 import CanvasEditableName from './CanvasEditableName';
 
 export default function CanvasGroupNode({ id, data, selected }) {
   const updateNodeInternals = useUpdateNodeInternals();
+  const store = useStoreApi();
+  const hasSingleGroupSelection = useStore((state) => state.nodesSelectionActive
+    && state.nodes.some((node) => node.id === id && node.selected)
+    && !state.nodes.some((node) => node.id !== id && node.selected));
+  useLayoutEffect(() => {
+    // 单组选中由组合自身描边反馈；仅关闭框选覆盖层，不清除节点选中状态。
+    if (hasSingleGroupSelection) store.setState({ nodesSelectionActive: false });
+  }, [hasSingleGroupSelection, store]);
   const rootRef = useRef(null);
   const stackRef = useRef(null);
   const frameRef = useRef(null);
   const previousStacked = useRef(Boolean(data.stacked));
   const interrupted = useRef(new Map());
   const stacked = Boolean(data.stacked);
+  const zoom = data.viewportZoom || 1;
   const membersSnapshot = JSON.stringify(data.stackMembers || []);
   useLayoutEffect(() => {
     const changed = previousStacked.current !== stacked;
@@ -19,7 +28,7 @@ export default function CanvasGroupNode({ id, data, selected }) {
     if (!changed || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const interruptedFrames = interrupted.current;
     const options = { duration: 300, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' };
-    const small = { width: '300px', height: '300px', opacity: 1, borderRadius: '20px' };
+    const small = { width: '312px', height: '312px', opacity: 1, borderRadius: '20px' };
     const large = { width: `${data.expandedWidth || 270}px`, height: `${data.expandedHeight || 180}px`, opacity: 1, borderRadius: '20px' };
     const animations = [];
     const tracked = [];
@@ -66,6 +75,8 @@ export default function CanvasGroupNode({ id, data, selected }) {
       <Handle type="target" position={Position.Left} id="stack-input" isConnectable={false} style={{ opacity: 0 }} />
       <Handle type="source" position={Position.Right} id="stack-output" isConnectable={false} style={{ opacity: 0 }} />
     </> : null}
-    <CanvasEditableName className="canvas-group__name" name={data.label} onRename={data.onRename} onStart={data.onRenameStart} />
+    <div className="canvas-group__name" style={{ '--canvas-group-name-zoom': zoom, '--canvas-group-name-inverse-zoom': 1 / zoom }}>
+      <CanvasEditableName name={data.label} onRename={data.onRename} onStart={data.onRenameStart} />
+    </div>
   </div>;
 }

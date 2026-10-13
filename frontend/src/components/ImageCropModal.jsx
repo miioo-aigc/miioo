@@ -37,6 +37,7 @@ export default function ImageCropModal({ imageUrl, sourceAsset, onSave, onClose,
   const [flipY, setFlipY] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hoveredRatio, setHoveredRatio] = useState(undefined);
+  const [previewReady, setPreviewReady] = useState(false);
   const reset = () => { editorRef.current?.reset(); setRotation(0); setFlipX(false); setFlipY(false); };
   const handleRatio = (nextRatio) => { setRatio(nextRatio); setHoveredRatio(undefined); };
 
@@ -59,10 +60,10 @@ export default function ImageCropModal({ imageUrl, sourceAsset, onSave, onClose,
 
   const stageMaxWidth = modalW - 48;
   const stageMaxHeight = modalH - (cropEnabled ? 288 : 196);
-  const sourceRatio = editState.imageSize.width && editState.imageSize.height ? editState.imageSize.width / editState.imageSize.height : 1;
+  const sourceRatio = editState.imageSize.width && editState.imageSize.height ? editState.imageSize.width / editState.imageSize.height : null;
   const isQuarterTurn = Math.abs(rotation) % 180 === 90;
-  const stageRatio = isQuarterTurn ? 1 / sourceRatio : sourceRatio;
-  const stageWidth = Math.min(stageMaxWidth, stageMaxHeight * stageRatio);
+  const stageRatio = sourceRatio ? (isQuarterTurn ? 1 / sourceRatio : sourceRatio) : undefined;
+  const stageWidth = stageRatio ? Math.min(stageMaxWidth, stageMaxHeight * stageRatio) : stageMaxWidth;
 
   return <ImageEditChrome title="图片裁剪" onClose={onClose} busy={saving} footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={handleSave} busy={saving} disabled={!editState.imageSize.width} />}>
     <div style={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0 }}>
@@ -77,8 +78,8 @@ export default function ImageCropModal({ imageUrl, sourceAsset, onSave, onClose,
         <span style={{ fontFamily: FONT, fontSize: '13px', lineHeight: '18px', color: '#FFFFFF99' }}>{cropEnabled ? '裁剪区域大小' : '图片大小'}：{editState.imageSize.width ? `${Math.round((isQuarterTurn ? editState.imageSize.height : editState.imageSize.width) * (cropEnabled ? editState.crop.width : 1))} × ${Math.round((isQuarterTurn ? editState.imageSize.width : editState.imageSize.height) * (cropEnabled ? editState.crop.height : 1))}` : '—'}</span>
       </div>
       <div style={{ flex: 1, minHeight: 0, background: '#0A0A0A', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '0 24px' }}>
-        <div style={{ width: `${stageWidth}px`, aspectRatio: stageRatio, transition: 'width 240ms ease', position: 'relative', flexShrink: 0 }}>
-          <ImageCropEditor ref={editorRef} imageUrl={imageUrl} cropEnabled={cropEnabled} ratio={ratio} rotation={rotation} flipX={flipX} flipY={flipY} onRatioChange={handleRatio} onChange={setEditState} />
+        <div style={{ width: `${stageWidth}px`, height: stageRatio ? undefined : `${stageMaxHeight}px`, aspectRatio: stageRatio, transition: previewReady ? 'width 240ms ease' : 'none', position: 'relative', flexShrink: 0 }}>
+          <ImageCropEditor ref={editorRef} imageUrl={imageUrl} cropEnabled={cropEnabled} ratio={ratio} rotation={rotation} flipX={flipX} flipY={flipY} onRatioChange={handleRatio} onChange={setEditState} onReady={setPreviewReady} />
         </div>
       </div>
       <div aria-hidden={!cropEnabled} inert={!cropEnabled} style={{ height: cropEnabled ? '92px' : '0px', flexShrink: 0, overflow: 'hidden', opacity: cropEnabled ? 1 : 0, transition: 'height 240ms ease, opacity 240ms ease', background: '#090909' }}>

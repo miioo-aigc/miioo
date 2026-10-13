@@ -2,10 +2,11 @@
  * @file Home.jsx
  * @structure-index
  *   2026-10-12：登录用户确认后恢复已受理的视频编辑任务；保留认证与恢复的页面编排边界。
- *   2026-10-10：handleCreateCanvas L1503；开发态内存列表 L1516；按画布编号重建页面 L1593，正式环境边界不变。
+ *   2026-10-13：公告提醒 L1946 主动查看全部进入消息中心 L1947 系统页签；按用户隔离已读状态。
+ *   2026-10-10：handleCreateCanvas L1511；开发态内存列表 L1524；正式环境边界不变。
  *
  * ─── 全局常量 & 配置 ───────────────────────────────────────────────
- *   页面业务模块懒加载                                          L130–L135
+ *   页面业务模块懒加载                                          L134–L139
  *   NAV_ITEMS / BOTTOM_NAV_ITEMS                                  components/home/HomeNavigationConfig.jsx
  *   STEP_TABS / WorkflowStepTabs                                components/home/WorkflowStepTabs.jsx
  *   BG_VIDEOS                                                   components/home/HomeNavigationConfig.jsx
@@ -23,19 +24,19 @@
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
  *   2026-10-09 画布项目菜单返回自由画布列表，保留品牌图标返回首页；仅新增导航接线
- *   export default function Home()                               L251
- *     ├─ [懒加载] 页面业务模块按需加载                             L130–L135
- *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L252–L318
- *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L332 / L389 / L400
- *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L463 / L932 / L956
- *     │           handleExtractSubjects / handleGenerateStoryboards        L998 / L1180
+ *   export default function Home()                               L255
+ *     ├─ [懒加载] 页面业务模块按需加载                             L134–L139
+ *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L256–L315
+ *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L340 / L397 / L408
+ *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L471 / L940 / L964
+ *     │           handleExtractSubjects / handleGenerateStoryboards        L1006 / L1188
  *     │           handleScriptFinalized / handleNavChange / handleBottomNavChange / handleProjectCreated
- *                                                               L1475 / L1482 / L1549 / L1565
- *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L424 / L438 / L445 / L455
- *     │           微信回调与鉴权初始化                                   L704 / L768
- *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L838 / L849 / L870 / L1167
- *     ├─ [底部导航配置] bottomNavItems                             L1533
- *     └─ [渲染] 页面业务模块统一通过 Suspense 按需加载              L1664
+ *                                                               L1483 / L1490 / L1557 / L1573
+ *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L432 / L446 / L453 / L463
+ *     │           微信回调与鉴权初始化                                   L712 / L776
+ *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L846 / L857 / L878 / L1175
+ *     ├─ [底部导航配置] bottomNavItems                             L1541
+ *     └─ [渲染] 页面业务模块统一通过 Suspense 按需加载              L1672
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-09-22  新增独立画布列表入口；超长入口保留认证、历史与任务恢复集中编排，本次只接路由，验证导航及刷新，不迁移生成流程
@@ -112,6 +113,7 @@ import StorageUsageReminderModal from '../components/StorageUsageReminderModal';
 import NewProjectModal from '../components/NewProjectModal';
 import WatermarkSettingsModal from '../components/WatermarkSettingsModal';
 import NotificationCenterModal from '../components/NotificationCenterModal';
+import SystemAnnouncementModal from '../components/announcements/SystemAnnouncementModal';
 import DotsLoading from '../components/DotsLoading';
 import PageErrorBoundary from '../components/feedback/PageErrorBoundary';
 import { showGlobalToast } from '../stores/toastStore';
@@ -1941,8 +1943,11 @@ export default function Home({ onGoToAdmin }) {
           onClose={() => setNoModelNoticeOpen(false)}
         />
       )}
+      {isLoggedIn && currentUser.id && <SystemAnnouncementModal key={currentUser.id} userId={currentUser.id} showToast={showToast} onViewAll={() => setNotificationCenterOpen('system')} />}
       <NotificationCenterModal
-        open={notificationCenterOpen}
+        key={`${isLoggedIn}:${currentUser.id || ''}:${notificationCenterOpen}`}
+        userId={isLoggedIn ? currentUser.id : null}
+        open={Boolean(notificationCenterOpen)} initialTab={notificationCenterOpen === 'system' ? 'system' : 'creation'}
         onClose={() => setNotificationCenterOpen(false)}
         showToast={showToast}
       />

@@ -60,6 +60,7 @@ export function TextInput({
   type = 'text',
   accept,
   min,
+  maxLength,
   disabled = false,
   onKeyDown,
 }) {
@@ -68,6 +69,7 @@ export function TextInput({
       value={value}
       type={type}
       min={min}
+      maxLength={maxLength}
       accept={accept}
       disabled={disabled}
       onKeyDown={onKeyDown}

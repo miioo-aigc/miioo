@@ -1,5 +1,9 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
+export { apiGetAdminAnnouncements, apiCreateAdminAnnouncement, apiUpdateAdminAnnouncement,
+  apiPublishAdminAnnouncement, apiDeleteAdminAnnouncement } from './Announcements.js';
+export { apiGetAdminOperationLogs } from './OperationLogs.js';
+
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
 import { normalizeImageUrl } from '../utils/imageUrl.js';

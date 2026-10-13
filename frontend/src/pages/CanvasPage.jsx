@@ -3,7 +3,7 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L121；grouping L159；referenceGraph L173；mediaPreview L141；handleNodesChange L236；addNode L299；批量导入 L340；连线起点 L396；反向上游连接 L404；连线结束 L505；React Flow L608
+ *   CanvasPage L125；grouping L166；referenceGraph L180；mediaPreview L147；文档加载 L193；handleNodesChange L248；addNode L311；批量导入 L356；连线起点 L495；反向上游连接 L503；连线结束 L604；React Flow L707
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
  *   CanvasProjectHeader components/canvas；2026-10-10 接通开发态新建项目回调；模拟详情跳过用户接口，重命名仍为会话内。删除接入撤销，仅运行/排队任务确认。
@@ -16,7 +16,8 @@
  * ─── 业务边界 ────────────────────────────────────────────────────
  *   2026-10-10：图片、视频、音频共用工具栏；CanvasVideoEditor 复用四项编辑弹窗，后台结果新增对应媒体节点并保留源节点。
  *   2026-10-09：名称双击原地重命名接入历史，右键与快捷键弹窗保留；组合双击切换、展开平滑聚焦。
- *   节点与连线为本地草稿；文本、图片、视频和音频生成已接入，文档保存尚未接入。
+ *   节点与连线支持文档读取；本地上传完成后尝试保存，完整持久化流程仍待验收。
+ *   2026-10-13：初始化仅依赖画布编号与稳定 setNodes，避免 history 包装对象变化导致重复加载；不调整上传流程。
  *   2026-10-08：音频文本按连线顺序追加；音频任务独立编排，请求前建立结果节点及直连素材关系。
  *   2026-09-28：UseCanvasReferences 编排参考图及文本到音频连线，连接时单次导入正文。
  *   2026-09-24：空白面板使用标准双击事件打开菜单，关闭默认双击缩放。
@@ -47,7 +48,8 @@ import CanvasMiniMap from '../components/canvas/CanvasMiniMap';
 import { X } from 'lucide-react';
 import { showGlobalToast } from '../stores/toastStore';
 import '@xyflow/react/dist/style.css';
-import { apiGetCanvasDocument } from '../api/canvas';
+import { apiGetCanvasDocument, apiUpdateCanvasDocument } from '../api/canvas';
+import { uploadCanvasAsset } from '../api/canvasAssets';
 import { isDevelopmentCanvas } from '../api/CanvasDevelopment';
 import { apiGetCurrentUser } from '../api/user';
 import { apiLogout, clearTokens } from '../api/auth';
@@ -86,6 +88,7 @@ import LocalImageEditor from '../components/image-edit/LocalImageEditor';
 import { useCanvasImageEdits } from '../components/canvas/UseCanvasImageEdits';
 import { useCanvasVideoEdits } from '../components/canvas/UseCanvasVideoEdits';
 import CanvasVideoEditor from '../components/canvas/CanvasVideoEditor';
+import { readCanvasDocument, serializeCanvasDocument } from '../components/canvas/CanvasDocument';
 
 // 浏览器 click 先于 dblclick 触发；保留极短窗口，避免双击时先展开创作框。
 const CANVAS_SINGLE_CLICK_DELAY = 200;
@@ -133,6 +136,8 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
   const [nodeMenu, setNodeMenu] = useState(null);
   const [flowInstance, setFlowInstance] = useState(null);
   const [viewportZoom, setViewportZoom] = useState(1);
+  const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+  const [canvasRevision, setCanvasRevision] = useState(null);
   const [connectingNodeId, setConnectingNodeId] = useState(null);
   const [connectingHandleType, setConnectingHandleType] = useState('');
   const [connectionTargetId, setConnectionTargetId] = useState(null);
@@ -143,6 +148,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
   const [actionDialog, setActionDialog] = useState(null);
   const canvasContainerRef = useRef(null);
   const importAssetsRef = useRef(null);
+  const uploadFilesRef = useRef(null);
   const dragPositionsRef = useRef(new Map());
   const pendingNodeClicksRef = useRef(new Map());
   const cancelPendingClicks = useCallback(() => {
@@ -193,12 +199,17 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       } else {
         setError('');
         setCanvas(documentResult.value);
+        const document = readCanvasDocument(documentResult.value);
+        setNodes(document.nodes, { record: false });
+        setViewport(document.viewport);
+        setViewportZoom(document.viewport.zoom || 1);
+        setCanvasRevision(documentResult.value?.revision || null);
       }
       if (userResult.status === 'fulfilled') setCurrentUser(userResult.value || {});
       setLoadedCanvasId(canvasId);
     });
     return () => { cancelled = true; };
-  }, [canvasId]);
+  }, [canvasId, setNodes]);
 
   useEffect(() => () => {
     pendingNodeClicksRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -317,7 +328,11 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       if (type === 'audio') return generateAudio(payload);
       return handleUnsupported();
     };
-    node.data.onAssetChange = (nodeId, asset) => importAssetsRef.current?.(Array.isArray(asset) ? asset : [asset], { nodeId });
+    node.data.onAssetChange = (nodeId, asset) => {
+      const assets = Array.isArray(asset) ? asset : [asset];
+      const files = assets.map((item) => item.file).filter(Boolean);
+      return files.length ? uploadFilesRef.current?.(files, { nodeId }) : importAssetsRef.current?.(assets, { nodeId });
+    };
     node.data.onSelectAsset = (nodeId, nodeType) => {
       setAssetTarget({ nodeId, nodeType });
       setAssetPickerOpen(true);
@@ -390,6 +405,80 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     return true;
   }, [history, setNodes, cancelPendingClicks, addNode, flowInstance]);
   useEffect(() => { importAssetsRef.current = importAssets; }, [importAssets]);
+  const persistCanvas = useCallback(async () => {
+    if (!canvasId || isDevelopmentCanvas(canvasId) || !Number.isInteger(canvasRevision)) return false;
+    const snapshot = history.getSnapshot();
+    if (snapshot.nodes.some((node) => {
+      const asset = node.data?.asset;
+      return asset && (!asset.asset_id || asset.uploadStatus === 'uploading' || asset.uploadStatus === 'error');
+    })) return false;
+    const result = await apiUpdateCanvasDocument(canvasId, {
+      baseRevision: canvasRevision,
+      document: serializeCanvasDocument(snapshot.nodes, referenceGraph.edges, viewport),
+      clientSavedAt: new Date().toISOString(),
+    });
+    if (Number.isInteger(result?.revision)) setCanvasRevision(result.revision);
+    return true;
+  }, [canvasId, canvasRevision, history, referenceGraph.edges, viewport]);
+  const uploadFiles = useCallback(async (files, target = null) => {
+    const validFiles = files.filter((file) => getCanvasMediaFileType(file, 'all'));
+    if (!validFiles.length) {
+      showGlobalToast('warning', '请选择有效的图片、视频或音频文件');
+      return;
+    }
+    if (validFiles.length !== files.length) showGlobalToast('warning', '已跳过不支持的文件');
+    const assets = validFiles.map((file) => ({
+      name: file.name,
+      asset_type: getCanvasMediaFileType(file, 'all'),
+      url: URL.createObjectURL(file),
+      previewUrl: null,
+      source: 'local-upload',
+      uploadStatus: 'uploading',
+      uploadError: null,
+      file,
+    }));
+    const imported = await importAssets(assets, target);
+    if (!imported) {
+      assets.forEach((asset) => URL.revokeObjectURL(asset.url));
+      return;
+    }
+    const importedNodes = history.getSnapshot().nodes.filter((node) => assets.some((asset) => node.data?.asset?.url === asset.url));
+    await Promise.all(assets.map(async (asset) => {
+      const node = importedNodes.find((item) => item.data?.asset?.url === asset.url);
+      if (!node) return;
+      try {
+        const uploaded = await uploadCanvasAsset(asset.file, asset.asset_type, { projectId: canvas?.project_id, });
+        setNodes((current) => current.map((item) => item.id === node.id
+          ? { ...item, data: { ...item.data, asset: { ...item.data.asset, ...uploaded, file: undefined } } }
+          : item));
+      } catch (uploadError) {
+        setNodes((current) => current.map((item) => item.id === node.id
+          ? { ...item, data: { ...item.data, asset: { ...item.data.asset, uploadStatus: 'error', uploadError: uploadError.message } } }
+          : item));
+        showGlobalToast('error', `${asset.name} 上传失败：${uploadError.message}`);
+      } finally {
+        URL.revokeObjectURL(asset.url);
+      }
+    }));
+    try {
+      await persistCanvas();
+    } catch (saveError) {
+      showGlobalToast('error', `素材已上传，但画布保存失败：${saveError.message}`);
+    }
+  }, [canvas, history, importAssets, persistCanvas, setNodes]);
+  useEffect(() => { uploadFilesRef.current = uploadFiles; }, [uploadFiles]);
+  const handleCanvasDrop = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const files = [...(event.dataTransfer?.files || [])];
+    if (files.length) uploadFiles(files);
+  }, [uploadFiles]);
+  const handleCanvasDragOver = useCallback((event) => {
+    if (event.dataTransfer?.types?.includes('Files')) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+    }
+  }, []);
   const handlePaneDoubleClick = useCallback((event) => {
     if (!flowInstance || !event.target.classList.contains('react-flow__pane')) return;
     event.preventDefault();
@@ -615,9 +704,10 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     <CanvasProjectHeader canvasName={projectName} onBackHome={onBackHome} onBackProjects={onBackProjects} onCreateProject={onCreateProject} onImport={canvasFiles.open} onUnsupported={handleUnsupported} onRename={(name) => setCanvas((current) => ({ ...current, project_name: name }))} />
     <CanvasUserMenu currentUser={currentUser} onLogout={handleLogout} onOpenProfile={() => setProfileOpen(true)} />
     <div ref={canvasContainerRef} className="absolute inset-0 bg-surface-toolbar">
-      <ReactFlow defaultViewport={{ x: 0, y: 0, zoom: 1 }} minZoom={0.01}
+      <ReactFlow defaultViewport={viewport} minZoom={0.01}
+        onDragOver={handleCanvasDragOver} onDrop={handleCanvasDrop}
         onWheelCapture={handleCanvasWheelCapture}
-        onMove={(_, viewport) => setViewportZoom(viewport.zoom)}
+        onMove={(_, nextViewport) => { setViewport(nextViewport); setViewportZoom(nextViewport.zoom); }}
         nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, viewportZoom, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
           onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); },
           onContentChange: (nodeId, content) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, content } } : item)),
@@ -690,14 +780,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       onUndo={() => { cancelPendingClicks(); history.undo(); }}
       onRedo={() => { cancelPendingClicks(); history.redo(); }}
       onOpenAssetPicker={() => { setAssetTarget(null); setAssetPickerOpen(true); }}
-      onLocalUpload={async (files) => {
-        if (files.some((file) => !getCanvasMediaFileType(file, 'all'))) {
-          showGlobalToast('warning', '请选择有效的图片、视频或音频文件');
-          return;
-        }
-        const assets = files.map((file) => ({ name: file.name, asset_type: getCanvasMediaFileType(file, 'all'), url: URL.createObjectURL(file), source: 'local-preview' }));
-        if (!await importAssets(assets)) assets.forEach((asset) => URL.revokeObjectURL(asset.url));
-      }}
+      onLocalUpload={uploadFiles}
     />
     {search.open && <CanvasSearchModal nodes={nodes} onClose={search.close} onSelect={search.select} />}
     <AssetPickerModal

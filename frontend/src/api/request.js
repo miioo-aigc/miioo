@@ -10,12 +10,26 @@ export function getRefreshToken() {
   return localStorage.getItem('refresh_token');
 }
 
+let authGeneration = 0;
+
+function ensureSameAuthSession(generation) {
+  if (authGeneration !== generation) {
+    throw createUnauthorizedError();
+  }
+}
+
 export function setTokens(accessToken, refreshToken) {
+  authGeneration++;
+  writeTokens(accessToken, refreshToken);
+}
+
+function writeTokens(accessToken, refreshToken) {
   localStorage.setItem('token', accessToken);
   if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
 }
 
 export function clearTokens() {
+  authGeneration++;
   localStorage.removeItem('token');
   localStorage.removeItem('refresh_token');
   clearAllCache(); // 任何登出路径都清空业务缓存，防止跨用户数据残留
@@ -36,6 +50,7 @@ function withAuth(options = {}) {
 
 // 防止并发请求同时触发多次刷新
 let refreshPromise = null;
+let refreshGeneration = -1;
 function cloneFormData(fd) {
   const c = new FormData();
   for (const [k, v] of fd.entries()) {
@@ -51,12 +66,14 @@ function cloneFormData(fd) {
 }
 
 
-async function refreshAccessTokenResult() {
-  if (refreshPromise) return refreshPromise;
+async function refreshAccessTokenResult(generation = authGeneration) {
+  ensureSameAuthSession(generation);
+  if (refreshPromise && refreshGeneration === generation) return refreshPromise;
 
   const refreshToken = getRefreshToken();
   if (!refreshToken) return { ok: false, shouldLogout: true };
 
+  refreshGeneration = generation;
   refreshPromise = (async () => {
     try {
       const res = await fetch(`${BASE}/api/auth/refresh`, {
@@ -65,12 +82,14 @@ async function refreshAccessTokenResult() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
+      ensureSameAuthSession(generation);
       if (!res.ok) {
         return { ok: false, shouldLogout: [400, 401, 403].includes(res.status), status: res.status };
       }
       const data = await res.json();
+      ensureSameAuthSession(generation);
       if (data.access_token) {
-        setTokens(data.access_token, data.refresh_token);
+        writeTokens(data.access_token, data.refresh_token);
         return { ok: true, shouldLogout: false };
       }
       return { ok: false, shouldLogout: false, status: 502 };
@@ -78,7 +97,7 @@ async function refreshAccessTokenResult() {
       return { ok: false, shouldLogout: false, cause,
         status: cause instanceof SyntaxError ? 502 : undefined };
     } finally {
-      refreshPromise = null;
+      if (refreshGeneration === generation) refreshPromise = null;
     }
   })();
 
@@ -87,10 +106,13 @@ async function refreshAccessTokenResult() {
 
 // 首页静默刷新仍使用布尔结果，失败分类仅供请求层处理 401。
 export async function refreshAccessToken() {
-  return (await refreshAccessTokenResult()).ok;
+  const generation = authGeneration;
+  const result = await refreshAccessTokenResult(generation);
+  return generation === authGeneration && result.ok;
 }
 
-function handleRefreshFailure(result) {
+function handleRefreshFailure(result, generation) {
+  ensureSameAuthSession(generation);
   if (result.shouldLogout) {
     clearTokens();
     window.dispatchEvent(new CustomEvent('auth:logout'));
@@ -103,10 +125,12 @@ function handleRefreshFailure(result) {
   throw error;
 }
 
-async function ensureAccessToken() {
+async function ensureAccessToken(generation) {
+  ensureSameAuthSession(generation);
   if (getToken()) return true;
-  const result = await refreshAccessTokenResult();
-  if (!result.ok) handleRefreshFailure(result);
+  const result = await refreshAccessTokenResult(generation);
+  ensureSameAuthSession(generation);
+  if (!result.ok) handleRefreshFailure(result, generation);
   return true;
 }
 
@@ -118,9 +142,12 @@ function createUnauthorizedError() {
 
 // 带自动刷新的 fetch，供所有需要鉴权的 API 使用
 export async function authFetch(url, options = {}) {
-  if (!(await ensureAccessToken())) {
+  const generation = authGeneration;
+  if (!(await ensureAccessToken(generation))) {
     throw createUnauthorizedError();
   }
+  ensureSameAuthSession(generation);
+  const requestToken = getToken();
 
   // 克隆 FormData，防止首次 fetch 消费后 401 重试时 body 为空
   const formClone = options.body instanceof FormData ? cloneFormData(options.body) : null;
@@ -135,13 +162,17 @@ export async function authFetch(url, options = {}) {
     err.cause = networkErr;
     throw err;
   }
+  ensureSameAuthSession(generation);
   if (res.status === 401) {
-    const result = await refreshAccessTokenResult();
+    const result = getToken() !== requestToken ? { ok: true } : await refreshAccessTokenResult(generation);
+    ensureSameAuthSession(generation);
     if (result.ok) {
       const retryOpts = formClone ? { ...options, body: cloneFormData(formClone) } : options;
-      return fetch(url, withAuth(retryOpts));
+      const retryResponse = await fetch(url, withAuth(retryOpts));
+      ensureSameAuthSession(generation);
+      return retryResponse;
     }
-    handleRefreshFailure(result);
+    handleRefreshFailure(result, generation);
   }
   const isStorageReminderAck = url.includes('/storage-usage/reminders/ack');
   if (res.ok && !isStorageReminderAck && !['GET', 'HEAD', 'OPTIONS'].includes((options.method || 'GET').toUpperCase())) {
@@ -152,9 +183,12 @@ export async function authFetch(url, options = {}) {
 
 // 不带 Content-Type 的 authFetch，用于 FormData 上传
 export async function authFetchForm(url, options = {}) {
-  if (!(await ensureAccessToken())) {
+  const generation = authGeneration;
+  if (!(await ensureAccessToken(generation))) {
     throw createUnauthorizedError();
   }
+  ensureSameAuthSession(generation);
+  const requestToken = getToken();
 
   // 克隆 FormData，防止首次 fetch 消费后 401 重试时 body 为空
   const formClone = options.body instanceof FormData ? cloneFormData(options.body) : null;
@@ -167,13 +201,17 @@ export async function authFetchForm(url, options = {}) {
     err.cause = networkErr;
     throw err;
   }
+  ensureSameAuthSession(generation);
   if (res.status === 401) {
-    const result = await refreshAccessTokenResult();
+    const result = getToken() !== requestToken ? { ok: true } : await refreshAccessTokenResult(generation);
+    ensureSameAuthSession(generation);
     if (result.ok) {
       const retryOpts = formClone ? { ...options, body: cloneFormData(formClone) } : options;
-      return fetch(url, withAuth(retryOpts));
+      const retryResponse = await fetch(url, withAuth(retryOpts));
+      ensureSameAuthSession(generation);
+      return retryResponse;
     }
-    handleRefreshFailure(result);
+    handleRefreshFailure(result, generation);
   }
   const isStorageReminderAck = url.includes('/storage-usage/reminders/ack');
   if (res.ok && !isStorageReminderAck && !['GET', 'HEAD', 'OPTIONS'].includes((options.method || 'GET').toUpperCase())) {
@@ -185,9 +223,12 @@ export async function authFetchForm(url, options = {}) {
 // Streaming fetch — 与 authFetch 相同的鉴权 + 401 重试逻辑，
 // 但直接返回 Response 对象，由调用方自行读取流式 body
 export async function authFetchStream(url, options = {}) {
-  if (!(await ensureAccessToken())) {
+  const generation = authGeneration;
+  if (!(await ensureAccessToken(generation))) {
     throw createUnauthorizedError();
   }
+  ensureSameAuthSession(generation);
+  const requestToken = getToken();
 
   let res;
   try {
@@ -201,19 +242,25 @@ export async function authFetchStream(url, options = {}) {
     err.cause = networkErr;
     throw err;
   }
+  ensureSameAuthSession(generation);
   if (res.status === 401) {
-    const result = await refreshAccessTokenResult();
+    const result = getToken() !== requestToken ? { ok: true } : await refreshAccessTokenResult(generation);
+    ensureSameAuthSession(generation);
     if (result.ok) {
       try {
-        return await fetch(url, withAuth(options));
+        const retryResponse = await fetch(url, withAuth(options));
+        ensureSameAuthSession(generation);
+        return retryResponse;
       } catch (retryErr) {
+        ensureSameAuthSession(generation);
+        if (retryErr.name === 'AbortError') throw retryErr;
         const err = new Error(retryErr.message || 'Network request failed after token refresh');
         err.isNetworkError = true;
         err.cause = retryErr;
         throw err;
       }
     }
-    handleRefreshFailure(result);
+    handleRefreshFailure(result, generation);
   }
   return res;
 }

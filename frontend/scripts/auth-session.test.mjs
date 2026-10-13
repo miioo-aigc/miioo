@@ -48,6 +48,96 @@ async function load(fetcher) {
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
 const methods = ['authFetch', 'authFetchForm', 'authFetchStream'];
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+for (const method of methods) {
+  test(`${method} 重试期间换号拒绝旧响应且不误报网络错误`, async () => {
+    let finish;
+    const state = await load((url, options) => {
+      if (url.endsWith('/auth/refresh')) return json({ access_token: 'renewed' });
+      if (options.headers.Authorization === 'Bearer renewed') return new Promise((resolve) => { finish = resolve; });
+      return json({}, 401);
+    });
+    const pending = state.api[method]('/items');
+    const rejected = assert.rejects(pending, (error) => error.status === 401 && !error.isNetworkError);
+    await tick();
+    state.api.setTokens('account-b', 'refresh-b');
+    finish(json({ secret: 'old-account' }));
+    await rejected;
+    assert.equal(state.api.getToken(), 'account-b');
+    assert.deepEqual(state.events, []);
+  });
+  for (const status of [200, 401]) {
+    test(`${method} 刷新中换号不写回也不登出新账号 ${status}`, async () => {
+      let finish;
+      const state = await load((url) => url.endsWith('/auth/refresh')
+        ? new Promise((resolve) => { finish = resolve; }) : json({}, 401));
+      const pending = state.api[method]('/api/items');
+      const rejected = assert.rejects(pending);
+      await tick();
+      state.api.setTokens('account-b', 'refresh-b');
+      finish(json({ access_token: 'stale', refresh_token: 'stale-refresh' }, status));
+      await rejected;
+      assert.equal(state.api.getToken(), 'account-b');
+      assert.equal(state.api.getRefreshToken(), 'refresh-b');
+      assert.deepEqual(state.events, []);
+      assert.equal(state.calls.length, 2);
+    });
+  }
+  test(`${method} 迟到401在正常令牌轮换后使用新令牌重试`, async () => {
+    let finishOld;
+    const state = await load((url, options) => {
+      if (url.endsWith('/auth/refresh')) return json({ access_token: 'new-access', refresh_token: 'rotated' });
+      if (url.endsWith('/slow') && options.headers.Authorization === 'Bearer old-access') return new Promise((resolve) => { finishOld = resolve; });
+      return json({}, options.headers.Authorization === 'Bearer new-access' ? 200 : 401);
+    });
+    const slow = state.api[method]('/slow');
+    await tick();
+    await state.api[method]('/fast');
+    finishOld(json({}, 401));
+    assert.equal((await slow).status, 200);
+    assert.equal(state.calls.filter((call) => call.url.endsWith('/auth/refresh')).length, 1);
+  });
+  test(`${method} ensure等待阶段换号不发送旧业务请求`, async () => {
+    let finish;
+    const state = await load(() => new Promise((resolve) => { finish = resolve; }));
+    state.localStorage.removeItem('token');
+    const pending = state.api[method]('/old-write', { method: 'POST' });
+    const rejected = assert.rejects(pending);
+    await tick();
+    state.api.clearTokens();
+    state.api.setTokens('account-b', 'refresh-b');
+    finish(json({ access_token: 'old-renewed' }));
+    await rejected;
+    assert.equal(state.calls.length, 1);
+    assert.equal(state.api.getToken(), 'account-b');
+  });
+  test(`${method} 首次响应返回前换号拒绝旧响应`, async () => {
+    let finish;
+    const state = await load(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = state.api[method]('/items');
+    const rejected = assert.rejects(pending);
+    await tick();
+    state.api.setTokens('account-b', 'refresh-b');
+    finish(json({ secret: 'old-account' }));
+    await rejected;
+  });
+}
+test('旧账号刷新完成不清除新账号刷新锁，也不覆盖新令牌', async () => {
+  const finishes = [];
+  const state = await load(() => new Promise((resolve) => finishes.push(resolve)));
+  const old = state.api.refreshAccessToken();
+  state.api.setTokens('account-b', 'refresh-b');
+  const current = state.api.refreshAccessToken();
+  finishes[0](json({ access_token: 'stale' }));
+  assert.equal(await old, false);
+  const joined = state.api.refreshAccessToken();
+  assert.equal(state.calls.length, 2);
+  finishes[1](json({ access_token: 'renewed-b', refresh_token: 'rotated-b' }));
+  assert.equal(await current, true);
+  assert.equal(await joined, true);
+  assert.equal(state.api.getToken(), 'renewed-b');
+  assert.equal(state.api.getRefreshToken(), 'rotated-b');
+});
 const temporaryFailures = [
   ...[500, 502, 503, 504, 429, 422].map((status) => [String(status), () => json({}, status)]),
   ['断网', () => { throw new TypeError('Failed to fetch'); }],

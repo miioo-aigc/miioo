@@ -1,5 +1,7 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
+export { apiGetUserAnnouncements, apiGetLatestAnnouncementPopup, apiMarkAnnouncementRead } from './Announcements.js';
+
 import { authFetch } from './request.js';
 
 export async function apiUpdateProfile({ nickname, avatar_url }) {
@@ -61,17 +63,29 @@ export async function apiAcknowledgeStorageReminder(reminderVersion) {
   });
 }
 
-export async function apiGetNotifications({ is_read, type } = {}) {
+export async function apiGetNotifications({ is_read, type, page, pageSize = 10, signal } = {}) {
   const params = new URLSearchParams();
   if (is_read !== undefined) params.append('is_read', is_read);
   if (type) params.append('type', type);
+  if (page !== undefined) {
+    params.set('page', page);
+    params.set('page_size', pageSize);
+  }
   const query = params.toString();
   const url = query ? `${BASE}/api/notifications?${query}` : `${BASE}/api/notifications`;
   const res = await authFetch(url, {
+    signal,
     headers: { 'Content-Type': 'application/json' },
   });
   if (!res.ok) throw new Error('加载消息失败，请重试');
   const data = await res.json();
+  if (page !== undefined) {
+    const list = Array.isArray(data) ? data : (data.list || data.items || []);
+    return {
+      list: list.map((item) => ({ ...item, unread: item.unread ?? !item.is_read })),
+      hasMore: data.has_more ?? data.hasMore ?? (typeof data.total === 'number' ? page * pageSize < data.total : list.length === pageSize),
+    };
+  }
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.items)) return data.items;
   if (Array.isArray(data?.list)) return data.list;
@@ -86,10 +100,11 @@ export async function apiGetUnreadCount() {
 }
 
 export async function apiMarkNotificationRead(notificationId) {
-  await authFetch(`${BASE}/api/notifications/${notificationId}/read`, {
+  const response = await authFetch(`${BASE}/api/notifications/${encodeURIComponent(notificationId)}/read`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
   });
+  if (!response.ok) throw new Error('标记消息已读失败，请重试');
 }
 
 export async function apiMarkAllNotificationsRead() {

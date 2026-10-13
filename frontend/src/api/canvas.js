@@ -33,11 +33,18 @@ export async function apiGetCanvasDocument(canvasId) {
   return response.json();
 }
 
-export async function apiUpdateCanvasDocument(canvasId, { baseRevision, title }) {
+export async function apiUpdateCanvasDocument(canvasId, { baseRevision, title, projectId, document, clientSavedAt, reconciledRunIds }) {
   const response = await authFetch(canvasUrl(`/${encodeURIComponent(canvasId)}`), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ base_revision: baseRevision, title }),
+    body: JSON.stringify({
+      base_revision: baseRevision,
+      ...(title !== undefined ? { title } : {}),
+      ...(projectId !== undefined ? { project_id: projectId } : {}),
+      ...(document !== undefined ? { document } : {}),
+      ...(clientSavedAt ? { client_saved_at: clientSavedAt } : {}),
+      ...(reconciledRunIds ? { reconciled_run_ids: reconciledRunIds } : {}),
+    }),
   });
   if (!response.ok) await throwResponseError(response, `保存画布名称失败（${response.status}）`);
   return response.json();

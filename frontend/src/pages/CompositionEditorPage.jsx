@@ -32,6 +32,7 @@ function toEditorAsset(item) {
   const rawDuration = meta.duration ?? item.duration;
   return {
     id: item.id,
+    manuallyAdded: item.manuallyAdded === true,
     type: assetType,
     asset_type: assetType,
     name: item.name || '',
@@ -70,6 +71,7 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
   const loadAlbum = useCompositionEditorStore((s) => s.loadAlbum);
   const isLoaded = useCompositionEditorStore((s) => s.loaded);
   const exportState = useCompositionEditorStore((s) => s.exportState);
+  const exportModalOpen = useCompositionEditorStore((s) => s.exportModalOpen);
   const storeAlbum = useCompositionEditorStore((s) => s.album);
   const [pendingRemoval, setPendingRemoval] = useState(null);
   const removeAsset = (asset) => {
@@ -108,15 +110,23 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
         if (cancelled) return;
         const composition = compId ? compositions.find((item) => String(item.id) === String(compId)) : compositions[0];
         if (compId && !composition) throw new Error('草稿加载失败或已被删除，请返回列表重试');
-        const missingAssets = await getMissingCompositionAssets(composition?.timeline, assets);
+        const libraryIds = composition?.libraryAssetIds || [];
+        const missingAssets = await getMissingCompositionAssets(composition?.timeline, assets, libraryIds);
         if (cancelled) return;
         const restoredAssets = missingAssets.map(toEditorAsset);
-        const allAssets = [...new Map([...assets, ...restoredAssets].map((asset) => [String(asset.id), asset])).values()];
+        const byId = new Map([...assets, ...restoredAssets].map((asset) => [String(asset.id), asset]));
+        const librarySet = new Set(libraryIds.map(String));
+        const allAssets = [
+          ...libraryIds.map((id) => byId.get(String(id))).filter(Boolean).map((asset) => ({ ...asset, manuallyAdded: true })),
+          ...[...byId.values()].filter((asset) => !librarySet.has(String(asset.id))),
+        ];
+        const unavailableIds = [...new Set([...libraryIds, ...(composition?.timeline || []).map((item) => item.clip_id)].filter(Boolean).map(String))].filter((id) => !byId.has(id));
         loadAlbum(allAssets);
         setAlbum((previous) => ({
           ...previous,
           assets: allAssets,
           loading: false,
+          warning: unavailableIds.length ? `${unavailableIds.length} 个草稿素材暂不可用，引用已保留，请检查素材权限或删除状态。` : previous.warning,
         }));
         useCompositionEditorStore.setState({ compositionId: null, segments: [], playing: false, dirty: false });
         await init({ projectId, compId, compositions, isCancelled: () => cancelled });
@@ -180,14 +190,17 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
         </div>
       ) : (
         <ResizableWorkspace
-          assets={<AssetLibraryPanel projectId={projectId} albumState={{ ...album, assets: selectFinalizedStoryboardAssets(storeAlbum, album.finalized, episode?.id) }} onFetch={() => fetchAlbum()} onAssetAdded={(items) => { loadAlbum([...new Map([...useCompositionEditorStore.getState().album, ...items].map((asset) => [asset.id, asset])).values()]); }} onRemoveAsset={requestRemoval} />}
+          assets={<AssetLibraryPanel projectId={projectId} albumState={{ ...album, assets: selectFinalizedStoryboardAssets(storeAlbum, album.finalized, episode?.id) }} onFetch={() => fetchAlbum()} onAssetAdded={(items) => useCompositionEditorStore.getState().addLibraryAssets(items)} onRemoveAsset={requestRemoval} />}
           preview={<PreviewCanvas />}
           properties={<PropsPanel />}
           timeline={<TimelineBar showToast={showToast} />}
         />
       )}
       </section>
-      {exportState.status !== 'idle' && <ExportModal />}
+      {exportModalOpen && exportState.status !== 'idle' && <ExportModal onClose={onBack || (() => {
+        window.history.pushState({}, '', `/project/${encodeURIComponent(projectId)}/edit`);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      })} />}
       {pendingRemoval && <ConfirmDialog
         title="删除素材"
         description={`当前素材「${pendingRemoval.asset.name || '未命名素材'}」已应用到轨道中，共关联 ${pendingRemoval.count} 个片段。删除后，将从素材区移除该素材，并同步删除当前工程所有轨道中的关联片段。资产库原文件和其他草稿不受影响。确定删除吗？`}

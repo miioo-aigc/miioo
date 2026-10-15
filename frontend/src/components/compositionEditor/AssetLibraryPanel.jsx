@@ -4,6 +4,7 @@ import AssetPickerModal from '../AssetPickerModal';
 import SubtitleLibraryPanel from './SubtitleLibraryPanel';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { apiGetAssetDetail } from '../../api/assets';
+import { prepareCompositionAsset } from '../../api/CompositionAssetImport';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { readMediaDuration } from '../../utils/ReadMediaDuration';
 import { formatTime, useCompositionEditorStore } from '../../stores/compositionEditorStore';
@@ -130,9 +131,7 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
         scrollRef.current?.scrollTo({ top: 0 });
         try {
           const items = await Promise.all(selected.map(async (item) => {
-            const id = item.assetId || item.asset_id || item.id;
-            const detail = await apiGetAssetDetail(id);
-            if (!detail.id || !detail.file_url) throw new Error('所选素材缺少可用资产关联，请选择其他素材');
+            const detail = await prepareCompositionAsset(item, projectId, mediaType);
             return normalizeAddedAsset(detail);
           }));
           addNewAssets(items);

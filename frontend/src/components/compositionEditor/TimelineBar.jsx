@@ -2,10 +2,11 @@
  * @file TimelineBar.jsx
  * @structure-index
  *
- * 时间线结构：素材展示辅助组件 L54；状态与缩放 L115；拖拽预览与提交 L208；
- * 定位与播放游标 L388；片段卡片 L443；轨道布局与工具栏 L510。
+ * 时间线结构：素材展示辅助组件 L55；状态与缩放 L116；拖拽预览与提交 L212；
+ * 定位与播放游标 L394；片段卡片 L452；轨道布局与工具栏 L519。
  *
  * 更新记录：2026-10-09 增强时间刻度对比度；吸顶刻度内补齐手柄到轨道游标线连接段。
+ * 2026-10-15 全选高亮、拖拽快捷键隔离及 Esc 取消；键盘分发独立于时间线展示。
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import TimelineToolbar from './TimelineToolbar';
@@ -117,6 +118,7 @@ export default function TimelineBar({ showToast }) {
   const cursor = useCompositionEditorStore((s) => s.cursor);
   const zoom = useCompositionEditorStore((s) => s.zoom);
   const selectedId = useCompositionEditorStore((s) => s.selectedId);
+  const selectedIds = useCompositionEditorStore((s) => s.selectedIds);
   const select = useCompositionEditorStore((s) => s.select);
   const seek = useCompositionEditorStore((s) => s.seek);
   const setZoom = useCompositionEditorStore((s) => s.setZoom);
@@ -325,6 +327,9 @@ export default function TimelineBar({ showToast }) {
     const trackRect = event.currentTarget.parentElement?.getBoundingClientRect();
     pointerDragRef.current = { id: seg.id, isAudio, duration: win.end - win.start, grabOffset: (event.clientX - rect.left) / zoom, start: win.start, currentStart: win.start, startX: event.clientX, startY: event.clientY, moved: false, before: { segments: useCompositionEditorStore.getState().segments, selectedId }, trackTop: trackRect?.top ?? 0, trackBottom: trackRect?.bottom ?? window.innerHeight };
     const drag = pointerDragRef.current;
+    const dragElement = event.currentTarget;
+    dragElement.dataset.timelineDragging = 'true';
+    drag.before.selectedIds = useCompositionEditorStore.getState().selectedIds;
     drag.before.trackSettings = useCompositionEditorStore.getState().trackSettings;
     drag.before.mainTracks = useCompositionEditorStore.getState().mainTracks;
     drag.prefix = seg.type === 'subtitle' ? 'S' : isAudio ? 'A' : 'V';
@@ -340,7 +345,8 @@ export default function TimelineBar({ showToast }) {
       finishVisualPointerDrag(upEvent);
     };
     const cancel = (cancelEvent) => {
-      if (cancelEvent.type !== 'blur' && cancelEvent.pointerId !== pointerId) return;
+      if (!['blur', 'timeline:cancel-drag'].includes(cancelEvent.type) && cancelEvent.pointerId !== pointerId) return;
+      if (cancelEvent.type === 'timeline:cancel-drag') cancelEvent.preventDefault();
       drag.cleanup();
       if (drag.moved) useCompositionEditorStore.setState({ segments: drag.before.segments });
       pointerDragRef.current = null;
@@ -360,17 +366,20 @@ export default function TimelineBar({ showToast }) {
       useCompositionEditorStore.getState().pause();
     }, 100);
     drag.cleanup = () => {
+      delete dragElement.dataset.timelineDragging;
       window.clearTimeout(timer);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
       window.removeEventListener('blur', cancel);
+      window.removeEventListener('timeline:cancel-drag', cancel);
     };
     setInsertionIndex(null);
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', cancel);
     window.addEventListener('blur', cancel);
+    window.addEventListener('timeline:cancel-drag', cancel);
   };
 
   useEffect(() => () => {
@@ -442,7 +451,7 @@ export default function TimelineBar({ showToast }) {
 
   const renderCard = (win, isAudio) => {
     const seg = win.seg;
-    const selected = seg.id === selectedId;
+    const selected = seg.id === selectedId || selectedIds.includes(seg.id);
     const dragging = seg.id === draggingId;
     const draggableSegment = true;
     const track = seg.track || (isAudio ? 'A1' : seg.type === 'subtitle' ? 'S1' : 'V1');
@@ -495,7 +504,7 @@ export default function TimelineBar({ showToast }) {
         </div>}
 
         {seg.type === 'subtitle' && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-purple-500/20 px-[6px] text-center text-[11px] text-white"><span className="truncate">{seg.text || '字幕'}</span></div>}
-        {seg.type === 'subtitle' && selected && <SubtitleTrimHandles segment={seg} zoom={zoom} />}
+        {seg.type === 'subtitle' && seg.id === selectedId && <SubtitleTrimHandles segment={seg} zoom={zoom} />}
 
         <div className="absolute inset-x-[6px] bottom-[3px] flex items-center justify-between gap-[2px]">
           <span className="text-font-size-12 text-text-hint whitespace-nowrap" style={{ fontFamily: FONT }}>

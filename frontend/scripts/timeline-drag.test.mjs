@@ -5,6 +5,72 @@ import { createServer } from 'vite';
 const server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom' });
 after(() => server.close());
 const { useCompositionEditorStore: store, computeVisualWindows } = await server.ssrLoadModule('/src/stores/compositionEditorStore.js');
+const { timelineShortcut, blocksTimelineShortcut } = await server.ssrLoadModule('/src/components/compositionEditor/UseTimelineShortcuts.js');
+
+test('输入、弹窗和已消费事件不抢占快捷键', () => {
+  const clear = { querySelector: () => null };
+  assert.equal(blocksTimelineShortcut({}, clear), false);
+  assert.equal(blocksTimelineShortcut({ defaultPrevented: true }, clear), true);
+  assert.equal(blocksTimelineShortcut({ target: { closest: () => ({}) } }, clear), true);
+  assert.equal(blocksTimelineShortcut({}, { querySelector: () => ({}) }), true);
+});
+
+test('第一阶段快捷键映射支持双平台并排除冲突修饰键', () => {
+  for (const modifier of ['ctrlKey', 'metaKey']) {
+    for (const [key, action] of Object.entries({ a: 'selectAll', s: 'save', b: 'splitSelected', z: 'undo', y: 'redo' })) {
+      assert.equal(timelineShortcut({ key, [modifier]: true }), action);
+    }
+    assert.equal(timelineShortcut({ key: 'Z', [modifier]: true, shiftKey: true }), 'redo');
+  }
+  for (const [key, action] of Object.entries({ ' ': 'togglePlay', C: 'splitSelected', q: 'trimLeft', w: 'trimRight', Delete: 'deleteSelected', Backspace: 'deleteSelected', Escape: 'clearSelection', '+': 'zoomIn', '=': 'zoomIn', '-': 'zoomOut', ArrowUp: 'previous', ArrowDown: 'next' })) {
+    assert.equal(timelineShortcut({ key }), action);
+  }
+  assert.equal(timelineShortcut({ key: '+', shiftKey: true }), 'zoomIn');
+  for (const event of [{ key: 'c', altKey: true }, { key: 'c', isComposing: true }, { key: 'c', shiftKey: true }, { key: 'a', ctrlKey: true, shiftKey: true }]) {
+    assert.equal(timelineShortcut(event), null);
+  }
+});
+
+test('跨轨全选与批量删除只记录一次历史，撤销恢复选中且不删除资产', () => {
+  const { segments } = setup();
+  store.setState({ selectedIds: [], album: [{ id: 'asset' }], libraryAssetIds: ['asset'] });
+  store.getState().selectAll();
+  assert.deepEqual(store.getState().selectedIds, segments.map(({ id }) => id));
+  assert.equal(store.getState().selectedId, null);
+  assert.equal(store.getState().past.length, 0);
+  store.getState().splitSelected();
+  store.getState().trimSelected('left');
+  assert.equal(store.getState().segments, segments);
+  store.getState().deleteSelected();
+  assert.equal(store.getState().segments.length, 0);
+  assert.equal(store.getState().past.length, 1);
+  assert.equal(store.getState().dirtyRev, 1);
+  assert.deepEqual(store.getState().album, [{ id: 'asset' }]);
+  assert.deepEqual(store.getState().libraryAssetIds, ['asset']);
+  store.getState().undo();
+  assert.equal(store.getState().segments, segments);
+  assert.deepEqual(store.getState().selectedIds, segments.map(({ id }) => id));
+  store.getState().redo();
+  assert.equal(store.getState().segments.length, 0);
+  store.getState().deleteSelected();
+  assert.equal(store.getState().past.length, 1);
+});
+
+test('单选和取消选择清空全选状态，空时间线全选无历史', () => {
+  setup();
+  store.getState().selectAll();
+  store.getState().select('a');
+  assert.deepEqual(store.getState().selectedIds, []);
+  assert.equal(store.getState().selectedId, 'a');
+  store.getState().selectAll();
+  store.getState().select(null);
+  store.getState().deleteSelected();
+  assert.equal(store.getState().past.length, 0);
+  store.setState({ segments: [] });
+  store.getState().selectAll();
+  assert.deepEqual(store.getState().selectedIds, []);
+  assert.equal(store.getState().past.length, 0);
+});
 
 test('V1 吸附默认开启，A1 默认保持关闭', () => {
   assert.equal(store.getInitialState().trackSettings.V1.excludeGaps, true);
@@ -25,6 +91,56 @@ function setup(snap = false) {
 }
 
 const positions = () => computeVisualWindows(store.getState().segments).windows.map(({ seg, start }) => [seg.id, start]);
+
+test('删除整轨保留素材与其他轨道，一次撤销恢复片段、设置和主轨', () => {
+  setup();
+  store.setState({ album: [{ id: 'asset' }], libraryAssetIds: ['asset'], selectedId: 'audio', playing: true,
+    trackSettings: { V1: { excludeGaps: true }, A1: { volume: 0.5 } } });
+  const before = store.getState();
+  store.getState().deleteTrack('A1');
+  const next = store.getState();
+  assert.deepEqual(next.segments, before.segments.filter((segment) => segment.type !== 'audio'));
+  assert.equal(next.selectedId, null);
+  assert.equal(next.mainTracks.A, null);
+  assert.equal(next.trackSettings.A1, undefined);
+  assert.equal(next.album, before.album);
+  assert.equal(next.libraryAssetIds, before.libraryAssetIds);
+  assert.equal(next.playing, false);
+  assert.equal(next.dirtyRev, 1);
+  assert.equal(next.past.length, 1);
+  store.getState().undo();
+  for (const key of ['segments', 'trackSettings', 'mainTracks', 'selectedId']) assert.deepEqual(store.getState()[key], before[key]);
+  store.getState().redo();
+  assert.deepEqual(store.getState().segments, next.segments);
+});
+
+test('最后一条轨道、最后一条画面轨及不存在的轨道删除不产生历史', () => {
+  setup();
+  const before = store.getState();
+  for (const track of ['V1', 'V6', 'invalid']) store.getState().deleteTrack(track);
+  assert.equal(store.getState().segments, before.segments);
+  assert.equal(store.getState().past.length, 0);
+  store.setState({ segments: [{ id: 's', type: 'subtitle', track: 'S1' }], trackSettings: {} });
+  store.getState().deleteTrack('S1');
+  assert.equal(store.getState().segments.length, 1);
+  assert.equal(store.getState().past.length, 0);
+});
+
+test('空轨直接删除，视频轨删除不重排其他轨道，非目标选中保持', () => {
+  setup();
+  store.setState({ trackSettings: { V1: {}, V2: {}, S2: {} } });
+  store.getState().deleteTrack('S2');
+  assert.equal(store.getState().trackSettings.S2, undefined);
+  assert.equal(store.getState().past.length, 1);
+  store.getState().undo();
+  assert.deepEqual(store.getState().trackSettings.S2, {});
+  const other = { id: 'v2', type: 'image', track: 'V2', start: 12, duration: 2 };
+  store.setState({ segments: [...store.getState().segments, other], selectedId: 'v2', past: [], future: [] });
+  store.getState().deleteTrack('V1');
+  assert.equal(store.getState().selectedId, 'v2');
+  assert.equal(store.getState().segments.find((segment) => segment.id === 'v2'), other);
+  assert.equal(store.getState().past.length, 1);
+});
 
 test('再次点击主轨取消，仅影响同类型，支持撤销重做和默认落轨', () => {
   for (const [prefix, type] of [['V', 'video'], ['A', 'audio'], ['S', 'subtitle']]) {
@@ -203,7 +319,7 @@ test('单片段音量实时预览，不暂停播放，整次提交一次历史�
   assert.equal(store.getState().segments.find((s) => s.id === 'audio').volume, 0);
 });
 
-test('音量回到默认不生成历史，限制范围且不写入后端字段', () => {
+test('音量回到默认不生成历史，限制范围并写入后端字段', () => {
   const before = setup();
   store.getState().previewAudioVolume('audio', -2);
   assert.equal(store.getState().segments.find((s) => s.id === 'audio').volume, 0);
@@ -212,7 +328,7 @@ test('音量回到默认不生成历史，限制范围且不写入后端字段',
   store.getState().previewAudioVolume('audio', 1);
   store.getState().commitAudioVolume(before);
   assert.equal(store.getState().past.length, 0);
-  assert.equal(store.getState().buildTimeline().find((s) => s.type === 'audio').volume, undefined);
+  assert.equal(store.getState().buildTimeline().find((s) => s.type === 'audio').volume, 1);
 });
 
 test('分离音频关闭原视频声音且只生成一次，允许切换选中并整体撤销', () => {

@@ -60,20 +60,20 @@ export function finalizedMediaToAsset({ media, shot }) {
   };
 }
 
-export async function getMissingCompositionAssets(timeline, availableAssets) {
+export async function getMissingCompositionAssets(timeline, availableAssets, libraryAssetIds = []) {
   const availableIds = new Set(availableAssets.map((asset) => String(asset.id)));
-  const missingIds = [...new Set((timeline || []).map((item) => item.clip_id).filter(Boolean))]
+  const missingIds = [...new Set([...libraryAssetIds, ...(timeline || []).map((item) => item.clip_id)].filter(Boolean))]
     .filter((id) => !availableIds.has(String(id)));
   const assets = [];
   for (let start = 0; start < missingIds.length; start += 6) {
-    const batch = await Promise.all(missingIds.slice(start, start + 6).map(async (id) => {
+    const batch = await Promise.allSettled(missingIds.slice(start, start + 6).map(async (id) => {
       const asset = await apiGetAssetDetail(id);
       if (!asset?.id || String(asset.id) !== String(id) || !asset.file_url) {
         throw new Error('草稿引用的素材无法加载，可能已被删除或无访问权限');
       }
       return { ...asset, manuallyAdded: true };
     }));
-    assets.push(...batch);
+    assets.push(...batch.filter((item) => item.status === 'fulfilled').map((item) => item.value));
   }
   return assets;
 }

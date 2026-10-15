@@ -31,6 +31,8 @@ export function normalizeComposition(raw) {
     id: raw.id ?? null,
     name: raw.name ?? '',
     timeline: Array.isArray(raw.timeline) ? raw.timeline : [],
+    libraryAssetIds: raw.libraryAssetIds ?? raw.library_asset_ids ?? [],
+    trackSettings: raw.trackSettings ?? raw.track_settings ?? {},
     resolution: raw.resolution ?? '',
     aspectRatio: raw.aspectRatio ?? raw.aspect_ratio ?? '',
     status: raw.status ?? '',
@@ -52,12 +54,14 @@ export function invalidateCompositionDependents(projectId) {
 }
 
 // 仅把提供的字段放入请求体，未传字段保持 undefined 不入 body（PATCH 语义）。
-function buildCompositionBody({ name, timeline, resolution, aspectRatio }) {
+export function buildCompositionBody({ name, timeline, resolution, aspectRatio, libraryAssetIds, trackSettings }) {
   const body = {};
   if (name !== undefined) body.name = name;
   if (timeline !== undefined) body.timeline = timeline;
   if (resolution !== undefined) body.resolution = resolution;
   if (aspectRatio !== undefined) body.aspect_ratio = aspectRatio;
+  if (libraryAssetIds !== undefined) body.library_asset_ids = libraryAssetIds;
+  if (trackSettings !== undefined) body.track_settings = trackSettings;
   return body;
 }
 

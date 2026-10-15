@@ -36,45 +36,6 @@ function activeIndexFor(windows, cursor, total) {
   return -1;
 }
 
-/**
- * 图片段渲染：transition='fade'（缺省按 fade）时 CSS opacity 淡入淡出。
- * 淡入：挂载即 opacity 0，经双 rAF 设 1 触发过渡（setState 均在帧回调中）；
- * 淡出：播放中在段尾 fadeD 前回落 0（与父级推进定时器并存）。
- */
-function FadeImage({ src, duration, playing, fadeOn, fadeDur }) {
-  const [opacity, setOpacity] = useState(fadeOn ? 0 : 1);
-
-  // 淡入：挂载 / fade 开启时 0 → 1（挂载场景初始已是 0，归零为幂等兜底）
-  useEffect(() => {
-    if (!fadeOn) return;
-    let raf2 = 0;
-    const raf1 = requestAnimationFrame(() => {
-      setOpacity(0);
-      raf2 = requestAnimationFrame(() => setOpacity(1));
-    });
-    return () => {
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
-    };
-  }, [fadeOn]);
-
-  // 淡出：播放中在段尾 fadeD 前触发 1 → 0
-  useEffect(() => {
-    if (!fadeOn || !playing) return;
-    const timer = setTimeout(() => setOpacity(0), Math.max(0, (duration - fadeDur) * 1000));
-    return () => clearTimeout(timer);
-  }, [fadeOn, playing, duration, fadeDur]);
-
-  return (
-    <img
-      src={src}
-      alt=""
-      className="w-full h-full object-contain"
-      style={fadeOn ? { opacity, transition: `opacity ${fadeDur}s ease` } : undefined}
-    />
-  );
-}
-
 export default function PreviewCanvas() {
   const segments = useCompositionEditorStore((s) => s.segments);
   const playing = useCompositionEditorStore((s) => s.playing);
@@ -84,23 +45,18 @@ export default function PreviewCanvas() {
   const seek = useCompositionEditorStore((s) => s.seek);
   const onCursorTick = useCompositionEditorStore((s) => s.onCursorTick);
   const trackSettings = useCompositionEditorStore((s) => s.trackSettings);
+  const aspectRatio = useCompositionEditorStore((s) => s.aspectRatio);
+  const viewportRef = useRef(null);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const ratio = aspectRatio === '9:16' ? 9 / 16 : aspectRatio === '1:1' ? 1 : 16 / 9;
+  const canvasWidth = Math.min(viewportSize.width, viewportSize.height * ratio);
 
   useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (event.code !== 'Space' || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
-      const target = event.target;
-      if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select, [role="textbox"], [role="dialog"], [role="alertdialog"]'))) return;
-      if (document.querySelector('[aria-modal="true"], dialog[open]')) return;
-      const state = useCompositionEditorStore.getState();
-      if (!state.loaded) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.repeat) return;
-      if (state.playing) state.pause();
-      else state.play();
-    };
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
+    const observer = new ResizeObserver(([entry]) => {
+      setViewportSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(viewportRef.current);
+    return () => observer.disconnect();
   }, []);
 
   const windows = useMemo(() => computeVisualWindows(segments).windows
@@ -123,10 +79,6 @@ export default function PreviewCanvas() {
     }
     return null;
   }, [audioWindows, cursor]);
-
-  // 图片 fade 参数：transition 为 'fade'（缺省按 fade）时启用，时长 min(0.4, duration/2)
-  const imgFadeOn = active?.seg?.type === 'image' && (active.seg.transition || 'fade') === 'fade';
-  const imgFadeDur = active?.seg ? Math.min(0.4, Math.max(0, Number(active.seg.duration) || 0) / 2) : 0.4;
 
   const videoRef = useRef(null);
   const audioRef = useRef(null);
@@ -262,8 +214,9 @@ export default function PreviewCanvas() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-surface-content-area">
-        <div className="absolute inset-0 overflow-hidden bg-surface-content-area flex items-center justify-center">
+      <div ref={viewportRef} className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-surface-content-area flex items-center justify-center">
+        <div aria-label={`成片画布 ${aspectRatio}`} className="relative shrink-0 overflow-hidden bg-black" style={{ width: canvasWidth, height: canvasWidth / ratio }}>
+        <div className="absolute inset-0 overflow-hidden flex items-center justify-center">
           {!active ? (
             <span className="text-text-hint text-font-size-14" style={{ fontFamily: FONT, visibility: segments.length ? 'hidden' : 'visible' }}>
               从左侧添加素材开始剪辑
@@ -282,17 +235,16 @@ export default function PreviewCanvas() {
           ) : active.seg.type === 'video' && v1Settings.hidden ? (
             <div className="h-full w-full bg-surface-content-area" aria-label="V1 轨道已隐藏" />
           ) : (
-            <FadeImage
+            <img
               key={active.seg.id}
               src={active.seg.posterUrl || active.seg.thumbnailUrl || active.seg.sourceUrl}
-              duration={Number(active.seg.duration) || 0}
-              playing={playing}
-              fadeOn={imgFadeOn}
-              fadeDur={imgFadeDur}
+              alt=""
+              className="w-full h-full object-contain"
             />
           )}
         </div>
         <SubtitlePreview cues={activeSubtitles} />
+        </div>
       </div>
 
       {/* 控制条 */}

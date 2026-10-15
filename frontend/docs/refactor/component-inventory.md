@@ -1,5 +1,16 @@
 # 组件重构盘点基线
 
+## 2026-10-15 分镜在线剪辑入口
+
+- StoryboardEditMenu 扩展 episodeId，集中处理在线剪辑查询/创建、防重复请求和全局反馈；成功回调 onStartEdit(compositionId, episodeId)，StoryboardPage 只编排列表或工作台路由及步骤解锁。
+- CompositionDraftCreation 位于 API 业务编排层，复用 compositions API 和 InitialStoryboardTimeline；EditWorkspace 手动新建复用同一创建入口，不新增基础 UI，不改变已有草稿。
+
+## 2026-10-15 时间线快捷键
+
+- 新增 UseTimelineShortcuts，负责键位映射、输入/弹窗隔离、重复按键保护和现有 Store 动作分发；由 TimelineToolbar 挂载和卸载，不引入业务 UI。PreviewCanvas 移除重复空格播放监听，保留媒体及音频上下文生命周期。
+- Store 新增 selectedIds、selectAll、deleteSelected，选择不写历史，批量删除只写一次历史并保留源资产；TimelineBar 只消费多选高亮及拖拽取消事件，多选不显示字幕裁剪手柄。TimelineBar 仍为单一时间线展示与指针交互边界，后续独立抽取拖拽 Hook，不在本次快捷键修改中搬迁副作用。
+- 完成状态与验证记录见 docs/edit-module-progress.md 的快捷键第一阶段记录。
+
 ## 2026-10-09 播放控制栏
 
 - 新增 PlaybackControls.jsx/CSS，props 为 playing/cursor/total/onToggle/onRestart/onSeek，复用 Tooltip 与 lucide 图标；PreviewCanvas 保留媒体生命周期，仅接线，不新增副作用。
@@ -84,7 +95,8 @@
 - 剪辑 Tab 选中宽度统一为 80px；`ui/EditIcons.jsx` 复用 Paper 胶片与导出 SVG，供顶部 Tab 和剪辑按钮共享。选中图标跟随文字青色渐变，普通图标继承文字颜色。
 
 - `edit/EditWorkspace.jsx` 使用项目 compositions 接口判断真实草稿，不再把分镜缩略图标为草稿；保留加载、错误重试和请求取消保护。
-- `edit/EditMethodActions.jsx` 复用 `ui/Button`，按 Paper 空态提供导出剪映格式、批量下载视频、在线剪辑三个入口；已有草稿时放回工具栏。
+- `edit/EditMethodActions.jsx` 已退出草稿页运行时；草稿页空态复用新建草稿卡片。2026-10-15 分镜页新增 `storyboard/StoryboardEditMenu.jsx`，复用 Button/DropdownMenu 提供剪映导出和在线剪辑入口，显式接收项目、分镜 ID 及跳转回调；业务导出副作用由此动作组件负责。
+- `edit/EditExportProgress.jsx` 展示当前项目导出任务，任务观察由 `stores/CompositionExportStore.js` 独立管理，编辑器弹窗只维护显示状态。任务列表为会话级，不包含跨刷新恢复。
 - `edit/EditDraftList.jsx` 只接收 `drafts` 和 `onOpen`，展示工程名称，通过 `comp_id` 打开对应工程，不发起创建或写入操作。
 - 保留现有分镜入口、下载接口及编辑器路由；未改动其他未提交页面。项目规则引用的 feature-development.md 仍缺失，依据现有组件资产与设计规范完成归属决策。
 
@@ -2810,6 +2822,7 @@
 
 - 2026-10-09 字幕第一阶段：新增 SubtitleLibraryPanel（读取文件、列表、添加）、SubtitleProperties（文字/样式事务）、SubtitlePreview（画面定位）、SubtitleTrimHandles（边缘修剪）；解析和冲突分配在 utils/SubtitleImport，持久化/历史集中 Store。复用 Tabs、Button、TextField、Select。29 项回归通过，浏览器和后端保存/渲染仍待验收。
 
+- 2026-10-14：MainTrackButton 承载轨道编号右键菜单和整轨删除确认，复用 DropdownMenu/ConfirmDialog；显式 props track/active/onChange 保持不变，通过 Store 读取片段和设置并调用 deleteTrack。TrackDeletion 纯函数统一 UI/Store 删除保护，素材数据不受影响。
 - 2026-10-09：MainTrackButton 高亮态提示“取消主轨道”，复用原回调切换设置/取消；Store 按类型隔离并维护撤销记录。
 
 - 2026-10-09 后续调整：MainTrackButton 改为 TextButton + Tooltip，直接展示可点击轨道编号，不再使用独立 Pin 图标。默认主轨为空，未设置时新增素材回退第一轨。

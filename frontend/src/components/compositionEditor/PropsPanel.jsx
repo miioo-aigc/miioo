@@ -27,12 +27,6 @@ const TYPE_LABEL = {
   audio: '音频片段',
 };
 
-// 图片段转场选项
-const TRANSITION_OPTIONS = [
-  { value: 'fade', label: '淡入淡出 (fade)' },
-  { value: 'none', label: '无 (none)' },
-];
-
 function SectionTitle({ children }) {
   return (
     <span className="text-font-size-14 font-font-weight-medium text-text-primary" style={{ fontFamily: FONT_MEDIUM }}>
@@ -46,7 +40,6 @@ export default function PropsPanel() {
   const selectedId = useCompositionEditorStore((s) => s.selectedId);
   const updateSegment = useCompositionEditorStore((s) => s.updateSegment);
   const setSpeed = useCompositionEditorStore((s) => s.setSpeed);
-  const setTransition = useCompositionEditorStore((s) => s.setTransition);
   const resolution = useCompositionEditorStore((s) => s.resolution);
   const setResolution = useCompositionEditorStore((s) => s.setResolution);
   const aspectRatio = useCompositionEditorStore((s) => s.aspectRatio);
@@ -141,7 +134,7 @@ export default function PropsPanel() {
 
       <PropertySlider key={`duration-${selected.id}`} label="片段时长"
         value={selected.duration} min={dc.min} max={dc.max} sliderStep={0.5}
-        hint={`素材时长 ${srcDurationText}`}
+        hint={isImage ? undefined : `素材时长 ${srcDurationText}`}
         onChange={(duration) => updateSegment(selected.id, { duration })}
         onCommit={(duration) => updateSegment(selected.id, { duration })} />
 
@@ -153,23 +146,6 @@ export default function PropsPanel() {
           value={speed} min={0.5} max={4} step={0.1} unit="x"
           onChange={(value) => setSpeed(selected.id, value)}
           onCommit={(value) => setSpeed(selected.id, value)} />
-      )}
-
-      {/* 转场（仅图片段） */}
-      {isImage && (
-        <div className="flex flex-col gap-[8px]">
-          <span className="text-font-size-14 text-text-secondary" style={{ fontFamily: FONT }}>转场</span>
-          <select
-            value={selected.transition === 'none' ? 'none' : 'fade'}
-            onChange={(e) => setTransition(selected.id, e.target.value)}
-            className="w-full h-[32px] min-h-[32px] shrink-0 rounded-medium px-[8px] bg-input-bg-normal border border-input-border-normal text-input-text-content text-font-size-14 outline-none cursor-pointer"
-            style={{ fontFamily: FONT }}
-          >
-            {TRANSITION_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </div>
       )}
 
     </aside>

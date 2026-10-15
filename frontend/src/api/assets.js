@@ -1,6 +1,7 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 import { authFetch } from './request.js';
+import { throwResponseError } from './error.js';
 import { normalizeImageUrl } from '../utils/imageUrl.js';
 import { mayShowEditPrompt, readEditMetadata } from '../utils/MediaEditPolicy.js';
 import { apiGetStoryboards, apiListStoryboardMediaCandidates } from './storyboard.js';
@@ -81,6 +82,7 @@ export async function apiCreateAsset(data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+  if (!res.ok) await throwResponseError(res, '素材导入失败，请重试');
   return res.json();
 }
 

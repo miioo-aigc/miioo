@@ -8,7 +8,7 @@ export default function EditDraftList({ drafts, onOpen, onCreate, creating, disa
       ))}
       <button type="button" onClick={onCreate} disabled={disabled} aria-busy={creating || undefined} className="flex aspect-[3/2] w-full min-w-0 cursor-pointer flex-col items-center justify-center gap-[6px] rounded-[8px] border border-dashed border-white/[0.15] bg-neutral-200 text-text-disabled hover:border-stroke-accent hover:text-text-secondary focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-brand-main disabled:cursor-not-allowed">
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 4V16M4 10H16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
-        <span className="text-[14px] leading-[18px]">{creating ? '新建中…' : '新建剪辑'}</span>
+        <span className="text-[14px] leading-[18px]">{creating ? '新建中…' : '新建草稿'}</span>
       </button>
     </div>
   );

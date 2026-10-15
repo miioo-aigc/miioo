@@ -17,6 +17,7 @@
  *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L640–L830
  *
  * ─── 更新记录 ───────────────────────────────────────
+ *   2026-10-15  显式接收初始项目及分类；项目列表加载后校验目标可见性
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-07-16  页面入口收敛；补充资产选择引用；抽离项目重命名/删除弹窗和资产卡片网格
  *   2026-07-17  统一按来源移除资产，并同步清理主体卡片与分页原始数据
@@ -176,14 +177,14 @@ function notifyProjectAssetsDeleted(projectId, subjectType, records = []) {
   }));
 }
 
-export default function AssetsProjectPanel() {
+export default function AssetsProjectPanel({ initialProjectId = null, initialCategory = 'chars' }) {
   const [projects, setProjects] = useState([]);
   const [activeProject, setActiveProject] = useState(null);
   const {
     activeCategory,
     handleCategoryChange,
     filterAssets,
-  } = useAssetFilter('chars');
+  } = useAssetFilter(PROJECT_CATEGORY_TABS.some((tab) => tab.key === initialCategory) ? initialCategory : 'chars');
   const {
     batchMode,
     selected,
@@ -404,9 +405,11 @@ export default function AssetsProjectPanel() {
         ? [...list].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
         : [];
       setProjects(sortedProjects);
-      setActiveProject((prev) => prev ?? sortedProjects[0]?.id ?? null);
+      const target = sortedProjects.find((project) => String(project.id) === String(initialProjectId));
+      setActiveProject((prev) => prev ?? target?.id ?? (initialProjectId ? null : sortedProjects[0]?.id) ?? null);
+      if (initialProjectId && !target) showGlobalToast('目标项目不存在或无访问权限', 'error');
     });
-  }, []);
+  }, [initialProjectId]);
 
   // 项目或 tab 切换时加载首屏
   useEffect(() => {

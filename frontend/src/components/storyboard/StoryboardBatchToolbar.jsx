@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../ui';
+import StoryboardEditMenu from './StoryboardEditMenu';
 
 /**
  * @file StoryboardBatchToolbar.jsx
@@ -15,6 +16,7 @@ import { Button } from '../ui';
  *   批量生成展开状态属于工具栏交互状态，由本组件自己管理。
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-10-15  剪辑入口委托 StoryboardEditMenu，工具栏仍不调用 API
  *   2026-07-15  从 StoryboardPage 抽离批量生成和批量下载工具栏展示层
  */
 
@@ -97,6 +99,7 @@ export default function StoryboardBatchToolbar({
   onDownload,
   onExitDownloadMode,
   onStartEdit,
+  editContext,
 }) {
   const [batchExpanded, setBatchExpanded] = useState(false);
   const toolbarRef = useRef(null);
@@ -144,7 +147,7 @@ export default function StoryboardBatchToolbar({
             </Button>
           )}
           <Button variant="primary" size="large" icon={<DownloadIcon />} disabled={generationDisabled} onClick={onEnterDownloadMode}>批量下载</Button>
-          <Button variant="accent" size="large" icon={<EditIcon />} onClick={onStartEdit}>开始剪辑</Button>
+          <StoryboardEditMenu {...editContext} icon={<EditIcon />} onStartEdit={onStartEdit} />
         </>
       )}
     </div>

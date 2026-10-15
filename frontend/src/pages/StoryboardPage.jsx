@@ -21,7 +21,7 @@
  *   NarrationColWrapper                         components/storyboard/NarrationCol.jsx
  *   ShotRow                                      页面业务桥接（已迁移至 StoryboardShotRowContent）
  *   ShotNumberColumn                            components/storyboard/ShotNumberColumn.jsx
- *   StoryboardHeader                            components/storyboard/
+ *   StoryboardHeader / StoryboardEditMenu        components/storyboard/；L2457 头部编排，L1822 在线剪辑跳转
  *   makeStoryboardShot                           utils/storyboardDataAdapter.js
  *   PanelSelect / ModalSelectItem 已迁移至 components/storyboard/PanelSelect.jsx
  *
@@ -62,7 +62,7 @@
  *               不持久化短时下载地址或 Blob URL，避免过期 401 后参考主体丢失
  *   2026-08-17  分镜视频生成前以镜头已保存主体补全 Seedance 素材身份：真人走 live_material，虚拟人像走 asset_ref_url；
  *               全能参考模式不再携带遗留首尾帧，避免普通真人图片混入请求
- *   2026-08-12  开始剪辑按钮改为弹出“开发中”提示 Toast，不再解锁 edit 步骤，避免跳转项目总览
+ *   2026-10-15  开始剪辑下拉提供剪映导出/在线剪辑；在线剪辑先查草稿，无草稿新建并直达工作台，有草稿进入列表
  *   2026-08-12  分镜任务轮询超时由 450 秒调整为 3000 秒（MAX_POLLS 150→1000，间隔 3000ms）
  *   2026-08-26  分镜视频创作任务轮询超时由 3000 秒延长至 3600 秒（MAX_POLLS 1000→1200，间隔 3000ms）
  *   2026-08-11  手动新增空白分镜打 isManualBlank 标记，图片/视频创作面板打开时不再代入后端返回的默认提示词
@@ -1819,7 +1819,11 @@ function hasStoryboardMediaHint(shot = {}) {
     }
   }
 
-  function handleStartEdit() {
+  function handleStartEdit(compositionId, episodeId) {
+    const query = new URLSearchParams();
+    if (compositionId) query.set('comp_id', compositionId);
+    if (compositionId && episodeId) query.set('episode_id', episodeId);
+    window.history.pushState({}, '', `/project/${encodeURIComponent(projectId)}/edit${compositionId ? '/editor?' + query : ''}`);
     onUnlockStep?.('edit');
     onStartEdit?.();
   }
@@ -2470,6 +2474,7 @@ function hasStoryboardMediaHint(shot = {}) {
       onDownload={handleDownload}
       onExitDownloadMode={exitDownloadMode}
       onStartEdit={handleStartEdit}
+      editContext={{ projectId, projectName, episodeId: getEpisodeId(episode), storyboardIds: shots.map((shot) => shot.id).filter(Boolean) }}
       onRegenerate={openRegenerateModal}
       showStoryboardSummary={shots.length > 0}
       showBatchToolbar={shots.length > 0}

@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { apiGetStoryboards, apiBatchDownloadStoryboardVideos } from '../../api/storyboard';
-import { apiGetCompositions, apiCreateComposition, apiExportJianyingDraft } from '../../api/compositions';
-import { downloadBlob, downloadResponse } from '../../api/download';
+import { apiGetStoryboards } from '../../api/storyboard';
+import { apiGetCompositions } from '../../api/compositions';
 import { getErrorMessage } from '../../api/error';
 import { Button } from '../ui/Button';
 import DotsLoading from '../DotsLoading';
-import EditMethodActions from './EditMethodActions';
 import EditDraftManager from './EditDraftManager';
+import EditExportProgress from './EditExportProgress';
 import { EpisodeSelector } from '../storyboard/StoryboardControls';
 import { getEpisodeId } from '../storyboard/storyboardControlUtils';
+import { createStoryboardDraft } from '../../api/CompositionDraftCreation';
 
 export default function EditWorkspace({ projectId, projectName = '项目', episodes = [], showToast, onOpenEditor }) {
   const [episodeSelection, setEpisodeSelection] = useState(null);
@@ -57,38 +57,13 @@ export default function EditWorkspace({ projectId, projectName = '项目', episo
     window.location.assign('/editor?' + query);
   }
 
-  async function handleDownload(kind) {
-    if (!projectId || busy || storyboards.length === 0) return;
-    setBusy(kind);
-    const storyboardIds = storyboards.map((storyboard) => storyboard.id).filter(Boolean);
-    try {
-      if (kind === 'export') {
-        const response = await apiExportJianyingDraft(projectId, { storyboardIds, projectName });
-        const { filename } = await downloadResponse(response, { mediaType: 'zip', contextLabel: '剪映工程包' });
-        showToast?.('已导出 ' + (filename || '剪映工程包'), 'success');
-      } else {
-        const blob = await apiBatchDownloadStoryboardVideos(projectId, storyboardIds);
-        await downloadBlob(blob, { mediaType: 'zip', contextLabel: '分镜视频' });
-        showToast?.('已下载分镜视频', 'success');
-      }
-    } catch (cause) {
-      showToast?.(getErrorMessage(cause, kind === 'export' ? '导出剪映工程包失败' : '批量下载分镜视频失败'), 'error');
-    } finally {
-      setBusy(null);
-    }
-  }
-
   async function handleCreate() {
     if (!projectId || busy || creatingRef.current) return;
     creatingRef.current = true;
     setBusy('create');
     try {
-      const draft = await apiCreateComposition(projectId, {
-        name: '草稿' + String(drafts.length + 1).padStart(2, '0'),
-        resolution: '1080p',
-        aspectRatio: '16:9',
-      });
-      if (!draft?.id) throw new Error('新建剪辑失败：未返回工程 ID');
+      const { draft, skipped } = await createStoryboardDraft(projectId, episodeId, drafts.length);
+      if (skipped) showToast?.(`${skipped} 个定稿视频缺少有效资产或时长，未自动加入轨道`, 'warning');
       setResult((previous) => previous?.key === requestKey
         ? { ...previous, drafts: [...previous.drafts, draft] }
         : previous);
@@ -100,11 +75,6 @@ export default function EditWorkspace({ projectId, projectName = '项目', episo
       setBusy(null);
     }
   }
-
-  const actions = (
-    <EditMethodActions stacked={drafts.length === 0} busy={busy} hasMaterials={storyboards.length > 0}
-      onExport={() => handleDownload('export')} onDownload={() => handleDownload('download')} onOnlineEdit={handleCreate} />
-  );
 
   return (
     <div className="absolute inset-0 flex min-h-0 flex-col gap-[12px] overflow-hidden" style={{ marginBottom: '24px', marginRight: '32px', boxSizing: 'border-box' }}>
@@ -124,7 +94,7 @@ export default function EditWorkspace({ projectId, projectName = '项目', episo
               {loading ? '加载中…' : error ? '分镜数据加载失败' : '分镜数' + String(storyboards.length).padStart(2, '0') + '，时长' + Math.round(totalDuration) + '秒'}
             </span>
           </div>
-          {!loading && !error && projectId && drafts.length > 0 && actions}
+          <EditExportProgress projectId={projectId} />
         </header>
         {loading ? (
           <div role="status" aria-label="正在加载剪辑草稿" className="flex flex-1 items-center justify-center"><DotsLoading /></div>
@@ -135,12 +105,10 @@ export default function EditWorkspace({ projectId, projectName = '项目', episo
           </div>
         ) : !projectId ? (
           <div className="flex flex-1 items-center justify-center text-text-secondary">请先选择项目</div>
-        ) : drafts.length > 0 ? (
+        ) : (
           <EditDraftManager key={requestKey} projectId={projectId} drafts={drafts} showToast={showToast}
             onChange={(update) => setResult((previous) => previous?.key === requestKey ? { ...previous, drafts: update(previous.drafts) } : previous)}
             onOpen={openEditor} onCreate={handleCreate} creating={busy === 'create'} disabled={Boolean(busy)} />
-        ) : (
-          <div className="flex min-h-[180px] flex-1 items-center justify-center">{actions}</div>
         )}
       </section>
     </div>

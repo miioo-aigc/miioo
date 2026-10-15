@@ -26,6 +26,6 @@ export default function PlaybackControls({ playing, cursor, total, onToggle, onR
       aria-label="播放进度" aria-valuetext={`${formatTime(position)} / ${formatTime(total)}`}
       className="playback-progress" style={{ '--playback-progress': `${percent}%` }}
       onChange={(event) => onSeek(Number(event.target.value))} />
-    <span className="shrink-0 font-mono text-font-size-12 tabular-nums text-text-secondary" style={{ width: timeWidth }}>{formatTime(total)}</span>
+    <span className="shrink-0 font-mono text-font-size-12 tabular-nums text-text-primary" style={{ width: timeWidth }}>{formatTime(total)}</span>
   </div>;
 }

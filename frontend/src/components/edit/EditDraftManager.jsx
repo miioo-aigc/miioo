@@ -27,6 +27,8 @@ export default function EditDraftManager({ projectId, drafts, onChange, showToas
           timeline: draft.timeline,
           resolution: draft.resolution,
           aspectRatio: draft.aspectRatio,
+          libraryAssetIds: draft.libraryAssetIds,
+          trackSettings: draft.trackSettings,
         });
         if (!copied?.id) throw new Error('复制草稿失败：未返回工程 ID');
         onChange((items) => [...items, copied]);

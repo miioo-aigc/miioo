@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState, useCallback } from 'react'
 const Home = lazy(() => import('./pages/Home'))
+const CompositionEditorPage = lazy(() => import('./pages/CompositionEditorPage'))
 const AdminConsolePage = lazy(() => import('./pages/AdminConsolePage'))
 import LiquidGlassDefs from './components/LiquidGlassDefs'
 import GlobalToast from './components/feedback/GlobalToast'
@@ -49,7 +50,11 @@ function App() {
     <>
       <LiquidGlassDefs />
       <Suspense fallback={null}>
-        <Home onProjectCreated={() => {}} onGoToAdmin={handleGoToAdmin} />
+        {window.location.pathname.replace(/\/+$/, '') === '/editor' ? (
+          <CompositionEditorPage />
+        ) : (
+          <Home onProjectCreated={() => {}} onGoToAdmin={handleGoToAdmin} />
+        )}
       </Suspense>
       <GlobalToast />
       <VideoEditNotice />

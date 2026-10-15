@@ -6,17 +6,18 @@
  * 通过显式 props 组合展示组件，不把页面入口或目录入口作为隐式依赖。
  *
  * ─── 状态与数据流 ───────────────────────────────────
- *   项目、当前分类、资产数据、批量选择和弹窗状态                  L61–L96
- *   首屏/追加分页、主体元数据覆盖和项目列表加载                    L251–L440
+ *   项目、当前分类、资产数据、批量选择和弹窗状态                  L182–L218
+ *   首屏/追加分页、主体元数据覆盖和项目列表加载                    L254–L444
  *
  * ─── 业务动作 ───────────────────────────────────────
- *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L432–L639
+ *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L487–L718
  *   下载动作统一启动全局下载 Toast；有流式总长度时展示环形进度
  *
  * ─── 页面组合 ───────────────────────────────────────
- *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L716–L914
+ *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L720–L918
  *
  * ─── 更新记录 ───────────────────────────────────────
+ *   2026-10-15  保留初始项目及分类、目标可见性校验；合并请求代际保护并校正索引
  *   2026-10-12  首屏与分页增加请求代际，项目切换清理旧列表及在途归属。
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-07-16  页面入口收敛；补充资产选择引用；抽离项目重命名/删除弹窗和资产卡片网格
@@ -177,14 +178,14 @@ function notifyProjectAssetsDeleted(projectId, subjectType, records = []) {
   }));
 }
 
-export default function AssetsProjectPanel() {
+export default function AssetsProjectPanel({ initialProjectId = null, initialCategory = 'chars' }) {
   const [projects, setProjects] = useState([]);
   const [activeProject, setActiveProject] = useState(null);
   const {
     activeCategory,
     handleCategoryChange,
     filterAssets,
-  } = useAssetFilter('chars');
+  } = useAssetFilter(PROJECT_CATEGORY_TABS.some((tab) => tab.key === initialCategory) ? initialCategory : 'chars');
   const {
     batchMode,
     selected,
@@ -419,9 +420,11 @@ export default function AssetsProjectPanel() {
         ? [...list].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
         : [];
       setProjects(sortedProjects);
-      setActiveProject((prev) => prev ?? sortedProjects[0]?.id ?? null);
+      const target = sortedProjects.find((project) => String(project.id) === String(initialProjectId));
+      setActiveProject((prev) => prev ?? target?.id ?? (initialProjectId ? null : sortedProjects[0]?.id) ?? null);
+      if (initialProjectId && !target) showGlobalToast('目标项目不存在或无访问权限', 'error');
     });
-  }, []);
+  }, [initialProjectId]);
 
   // 项目或 tab 切换时加载首屏
   useEffect(() => {

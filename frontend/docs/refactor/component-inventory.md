@@ -1,5 +1,105 @@
 # 组件重构盘点基线
 
+## 2026-10-15 分镜在线剪辑入口
+
+- StoryboardEditMenu 扩展 episodeId，集中处理在线剪辑查询/创建、防重复请求和全局反馈；成功回调 onStartEdit(compositionId, episodeId)，StoryboardPage 只编排列表或工作台路由及步骤解锁。
+- CompositionDraftCreation 位于 API 业务编排层，复用 compositions API 和 InitialStoryboardTimeline；EditWorkspace 手动新建复用同一创建入口，不新增基础 UI，不改变已有草稿。
+
+## 2026-10-15 时间线快捷键
+
+- 新增 UseTimelineShortcuts，负责键位映射、输入/弹窗隔离、重复按键保护和现有 Store 动作分发；由 TimelineToolbar 挂载和卸载，不引入业务 UI。PreviewCanvas 移除重复空格播放监听，保留媒体及音频上下文生命周期。
+- Store 新增 selectedIds、selectAll、deleteSelected，选择不写历史，批量删除只写一次历史并保留源资产；TimelineBar 只消费多选高亮及拖拽取消事件，多选不显示字幕裁剪手柄。TimelineBar 仍为单一时间线展示与指针交互边界，后续独立抽取拖拽 Hook，不在本次快捷键修改中搬迁副作用。
+- 完成状态与验证记录见 docs/edit-module-progress.md 的快捷键第一阶段记录。
+
+## 2026-10-09 播放控制栏
+
+- 新增 PlaybackControls.jsx/CSS，props 为 playing/cursor/total/onToggle/onRestart/onSeek，复用 Tooltip 与 lucide 图标；PreviewCanvas 保留媒体生命周期，仅接线，不新增副作用。
+
+## 2026-10-09 草稿名称编辑
+
+- DraftNameEditor 接收 name/disabled/onCommit，管理本地编辑草稿并复用 TextField；WorkspaceHeader 负责 Store 接线，不增加 API 或副作用。
+
+## 2026-10-09 工程信息
+
+- 新增 compositionEditor/ProjectInfo，仅接收 segments 并复用总时长计算函数，展示总时长及四类片段数量，无 API、Store 订阅或副作用；PropsPanel 负责数据传入。
+
+## 2026-10-09 字幕入口与属性精简
+
+- PropertySlider 新增可选 precision，字幕采用一位小数输入和步长 1；单位默认内置覆盖各片段属性。Store 的 addSubtitle 根据主字幕轨决定追加位置；TimelineBar 过滤空 V/A 行，保留编号。
+
+- PropertySlider 新增可选 inlineSlider/compact 模式，字幕复用基础 Slider 与现有历史回调，实现同行滑轨与紧凑时间字段；其他调用方默认保持不变。
+
+- PropertySlider 新增可选 leftAligned，字幕固定标题列左对齐；SubtitleProperties 的 StyleSection 负责开关与二级样式展开，SubtitlePreview 独立处理描边/背景 alpha，其他属性区默认布局不变。
+
+- PropertySlider 增加默认关闭的 unitInside/hideLabel，供字幕单位内置与字体字号同行使用；视频音频默认布局不变。字幕对齐采用 lucide 按钮组，空字幕轨隐藏控制入口。
+
+- TextField 新增默认关闭的 resizable 多行垂直缩放参数，字幕内容启用；SubtitleProperties 内 ColorField 统一颜色与独立开关，SubtitlePreview 将对齐与位置锚点分离。
+
+- 后续调整：SubtitleProperties 增加总时长、限定色块点击范围，背景改色同步启用背景；TimelineBar 恢复紫色覆盖并保留统一选中描边。新增 Store 回归覆盖时长、背景序列化与撤销。
+
+- SubtitleLibraryPanel 仅负责新建/导入入口及处理反馈，不展示轨道字幕列表。
+- SubtitleProperties 复用 PropertySlider 新增的可选 inputOnly/integer 模式，统一左右布局、整数显示与步进器；默认模式不变，视频音频继续使用原滑块。
+- TimelineBar 字幕卡片仅展示居中文字，共享选中态与拖拽样式；验收状态见剪辑模块进度文档。
+
+## 2026-10-08 剪辑属性滑块
+
+- `AssetLibraryPanel` 允许重复添加同一资产，已添加标签只读展示；`TimelineBar` 根据片段 `track` 动态生成 V/A 轨道行，`computeVisualWindows` / `computeAudioWindows` 支持按轨道过滤。
+
+- `TimelineToolbar` 新增两个裁剪动作及业务 Store `trimSelected`，三枚时间线图标使用 `compositionEditor` 业务资产目录中的用户 SVG；按钮 Tooltip 与现有工具栏保持 250ms 延迟。
+
+- 时间线工具栏五个操作按钮复用 `ui/Tooltip`，与 `TrackControls` 统一悬停提示时机（250ms），不改变操作回调和禁用逻辑。
+
+- 后续交互调整：`PropsPanel` 移除入点属性控件和入点操作按钮，保留片段时长、音量、倍速等在线编辑属性；底层源素材偏移仍由 Store 和切割流程维护。
+
+- 新增 `compositionEditor/PropertySlider.jsx`：统一标签、右上数值草稿与上下步进按钮、Slider 和三点刻度；props 显式传入范围、单位、禁用态、提交/预览回调和滑块事务事件，无 Store/API 副作用。
+- PropsPanel 移除本地 NumberField，时长与入点共用新控件；AudioVolumeControl 复用同一布局，保留音量事务和卸载提交。基础 Slider 不变，未影响其他业务域。
+- 构建、定向 lint、Store 回归通过；浏览器登录限制下未完成真实编辑器验收，详见剪辑专项进度文档。
+
+> 剪辑模块的持续拆分和验收状态统一维护在 [`docs/edit-module-progress.md`](../edit-module-progress.md)。下方剪辑历史记录只描述已发生的变更，不代表剪辑模块整体已经完成。
+
+## 2026-09-29 剪辑模块进度文档建立
+
+- 新增 [`docs/edit-module-progress.md`](../edit-module-progress.md)，按剪辑入口、草稿域、工作台区块、内部子职责、数据编排、Store、结构索引和整体验收建立独立进度项。
+- 当前基线为“第一阶段已完成，整体未完成”：既有主要工作台区块已经组件化，但 `CompositionEditorPage` 的初始化编排、`AssetLibraryPanel`、`TimelineBar`、`PropsPanel` 和 Store 仍需进行职责审计或进一步拆分。
+- 后续针对剪辑模块的每次修改必须同步更新专项进度文档；单个模块完成不得直接标记整个剪辑模块完成。
+
+## 2026-09-24 时间线片段高度
+
+- TimelineToolbar 在时间线顶部提供40px固定工具行，左对齐撤销、恢复、切割、分离音轨、删除，复用 IconButton。时间线片段历史最多100步，切换工程清空；切割依据选中片段和播放游标，保留倍速源偏移与音轨起点，两侧至少0.5秒。无可操作对象时禁用；工具栏不随轨道滚动。
+
+- TimelineBar 的视频、图片、音频片段统一为64px高，选中/未选中保持一致；轨道高度同步为92px（20px标签区、64px片段、8px底部留白），刻度与缩放逻辑不变。
+
+## 2026-09-23 剪辑工作台
+
+- 素材区域启用溢出滚动条，左侧拖拽最小宽度260px；卡片角标字号12px。顶部添加素材菜单复用 DropdownMenu，按当前媒体分类调用本地上传接口或 AssetPickerModal，回读真实资产后去重加入当前素材列表；上传失败显式提示。手动素材列表为当前工作台会话状态，加入时间线后沿用草稿保存与按ID恢复。
+
+- 定稿候选缺少资产 ID 时，只对缺失的媒体类型查询当前项目 `category=storyboard` 资产，按同类型源文件地址严格关联，找到后提前停止分页；不以候选 ID 代替资产 ID，不恢复全项目资产扫描。单条无关联/无地址记录显示数量提示并跳过，不阻塞其余素材和空草稿。
+
+- 左侧素材库从分镜候选的显式定稿记录构建，并按当前剧集过滤，不再全量加载项目资产。真实资产 ID 缺失时执行限定分镜资产关联，不用候选 ID 替代。草稿列表与定稿素材并行获取；时间线引用中未被定稿素材覆盖的资产按 ID 去重、最多六个并发补取，仅用于工程恢复，不混入左侧素材库。初始化复用已获取的草稿列表，避免重复请求；补取失败显示加载错误，保留原草稿。
+
+- `ResizableWorkspace` 统一管理素材、预览、属性和时间线布局。两条纵向分隔条调整两侧宽度、预览自适应；横向分隔条调整时间线高度。支持指针捕获、键盘方向键、双击恢复默认、窗口变化时尺寸钳制，子面板填满分配空间。
+
+- EditPage 在现有项目导航内切换草稿列表/CompositionEditorPage，传递项目、工程 ID、当前分集；保留独立 editor 路由兼容。
+- WorkspaceHeader 复用分集选择器及 Button，未保存提示为“有未保存草稿”，保存状态读取真实 store；返回列表前保存未提交修改，保存失败不退出。
+- 工作台沿用右侧32px/底部24px外边距。素材区352px、属性区314px、中间预览自适应，间距12px；全宽时间线314px，小窗口限制高度。素材按视频/图片/音频分类及当前分集筛选，不改变工程时间线。
+
+## 2026-09-22 剪辑入口空态与草稿列表
+
+- `EditDraftCard` 对齐 ProjectList 的标题 14px Medium/1.2 行高、日期 12px/白色40%、间距4px和底部12px内边距；日期共用 formatRelativeTime。更多按钮为28px，悬停/键盘焦点可见，菜单复用 DropdownMenu。
+- `EditDraftManager` 编排重命名、复制时间线和工程参数、删除二次确认，复用 AssetsProjectRenameModal 与 ConfirmDialog；成功后更新列表，删除最后一份草稿回到三选一，失败保留数据并提示。
+
+- 有草稿状态按 Paper 更新为 265×166px、12px 圆角卡片，显示胶片图标、工程名与更新日期；末尾新增同尺寸虚线新建卡片，右上角仅保留下载与导出。新建通过 compositions API 创建独立工程后携带 comp_id 跳转，含重复点击保护及错误反馈。
+
+- 剪辑页分集入口直接复用分镜 `EpisodeSelector`，统一标题格式、箭头、下拉菜单与选中态；选择状态按项目隔离，切集重新加载对应分镜统计及导出/下载素材，草稿仍按现有项目级接口展示。
+
+- 剪辑 Tab 选中宽度统一为 80px；`ui/EditIcons.jsx` 复用 Paper 胶片与导出 SVG，供顶部 Tab 和剪辑按钮共享。选中图标跟随文字青色渐变，普通图标继承文字颜色。
+
+- `edit/EditWorkspace.jsx` 使用项目 compositions 接口判断真实草稿，不再把分镜缩略图标为草稿；保留加载、错误重试和请求取消保护。
+- `edit/EditMethodActions.jsx` 已退出草稿页运行时；草稿页空态复用新建草稿卡片。2026-10-15 分镜页新增 `storyboard/StoryboardEditMenu.jsx`，复用 Button/DropdownMenu 提供剪映导出和在线剪辑入口，显式接收项目、分镜 ID 及跳转回调；业务导出副作用由此动作组件负责。
+- `edit/EditExportProgress.jsx` 展示当前项目导出任务，任务观察由 `stores/CompositionExportStore.js` 独立管理，编辑器弹窗只维护显示状态。任务列表为会话级，不包含跨刷新恢复。
+- `edit/EditDraftList.jsx` 只接收 `drafts` 和 `onOpen`，展示工程名称，通过 `comp_id` 打开对应工程，不发起创建或写入操作。
+- 保留现有分镜入口、下载接口及编辑器路由；未改动其他未提交页面。项目规则引用的 feature-development.md 仍缺失，依据现有组件资产与设计规范完成归属决策。
+
 ## 2026-10-10 画布媒体预览与播放（用户验收通过）
 
 - `CanvasMediaPreview` 为画布独立媒体预览组件，通过 Portal 在顶层显示媒体和模糊蒙版，不复用业务详情弹窗。负责最大80vw × 80vh展示、固定关闭按钮、空白/Esc关闭及视频自动播放和静音降级。
@@ -2712,6 +2812,28 @@
 - `ui/VideoPlaybackControls.jsx`：纯展示播放点击层和中央状态反馈，接收播放状态、反馈可见性与切换回调；原生视频 controls 和播放器 ref 仍归使用方。
 - 创作详情保留原播放事件、定时器及自动播放副作用，新增打开编辑前暂停；分镜详情负责视频 ref、弹窗开关，通过 `VideoEditContext` 向面板工具按钮提供打开回调，图片分支不提供回调。
 - 外壳增加可选层级参数以兼容分镜详情叠层；视频不传基准尺寸。定向 ESLint、构建通过；全仓历史阻塞和浏览器待验收项见 `docs/video-edit-modal-progress.md`。
+# 2026-09-29 增补：轨道控制
+
+- `src/components/compositionEditor/TrackControls.jsx`：V1/A1 共用的隐藏、静音、吸附按钮组；复用 IconButton 和 Tooltip，状态与回调由 TimelineBar 显式传入。已接入，浏览器验收待完成。
+# 2026-10-08 增补：音频片段音量
+
+- `src/components/compositionEditor/AudioVolumeControl.jsx`：音频片段音量滑块、百分比输入及单次交互提交，复用 Slider；PropsPanel 显式传入 segment，Store 提供预览及历史动作，PreviewCanvas 应用媒体音量。浏览器试听和 UI 验收待完成。
+# 2026-10-08 剪辑多轨增量
+
+- 2026-10-09 字幕第一阶段：新增 SubtitleLibraryPanel（读取文件、列表、添加）、SubtitleProperties（文字/样式事务）、SubtitlePreview（画面定位）、SubtitleTrimHandles（边缘修剪）；解析和冲突分配在 utils/SubtitleImport，持久化/历史集中 Store。复用 Tabs、Button、TextField、Select。29 项回归通过，浏览器和后端保存/渲染仍待验收。
+
+- 2026-10-14：MainTrackButton 承载轨道编号右键菜单和整轨删除确认，复用 DropdownMenu/ConfirmDialog；显式 props track/active/onChange 保持不变，通过 Store 读取片段和设置并调用 deleteTrack。TrackDeletion 纯函数统一 UI/Store 删除保护，素材数据不受影响。
+- 2026-10-09：MainTrackButton 高亮态提示“取消主轨道”，复用原回调切换设置/取消；Store 按类型隔离并维护撤销记录。
+
+- 2026-10-09 后续调整：MainTrackButton 改为 TextButton + Tooltip，直接展示可点击轨道编号，不再使用独立 Pin 图标。默认主轨为空，未设置时新增素材回退第一轨。
+
+- 2026-10-09：新增 `MainTrackButton`，只消费 track/active/onChange，复用 IconButton、Tooltip 和 Pin 图标；TimelineBar 编排 V/A/S 轨间落点与六轨上限，Store 统一主轨和插轨历史。TrackControls 扩展字幕隐藏/吸附，不提供无意义静音。22 项回归通过，浏览器待验收。
+
+- `TimelineBar` 负责跨轨指针坐标、固定新轨落点和卡片展示，Store 负责按轨道预览与提交；组件仍属时间线单一业务边界，后续可独立提取指针交互 Hook。
+- `CompositionEditorPage` 复用 `ConfirmDialog`，仅编排待删除素材、关联数量与 Store 删除动作；素材列表以 Store 为展示来源，支持撤销恢复。
+- 新增 `compositionEditor/PreviewAudioLayer.jsx`：单条额外音轨媒体生命周期、源时间同步及 Gain 音量，props 为 active/cursor/playing/settings，不访问页面闭包。
+- 已完成构建及 20 项 Store 测试；浏览器多轨和真实媒体验收待完成，不将剪辑模块标记整体完成。
+
 ## 2026-09-22 画布外壳组件
 
 - 新增 `src/components/canvas/CanvasProjectHeader.jsx`、`CanvasUserMenu.jsx`、`CanvasCenterPrompt.jsx`、`CanvasCenterActions.jsx` 和 `CanvasToolbar.jsx`，分别承载左上角项目区、右上角用户区、中央空态提示、中央素材/创作入口和底部悬浮工具栏；工具栏图标与分组按 Paper `2IJ6-2` 实现，添加节点图标保留绿青渐变；删除承担整体顶部布局的 `CanvasHeader.jsx`。

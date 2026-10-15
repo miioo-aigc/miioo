@@ -9,6 +9,7 @@ const context = vm.createContext({});
 const unexpectedRequest = () => { throw new Error('测试不应发起网络请求'); };
 const imports = {
   './request.js': { authFetch: unexpectedRequest },
+  './error.js': { throwResponseError: unexpectedRequest },
   './request': { authFetch: unexpectedRequest },
   '../utils/imageUrl.js': { normalizeImageUrl: (url) => url },
   '../utils/MediaEditPolicy.js': policy,

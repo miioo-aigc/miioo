@@ -3,7 +3,7 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L125；grouping L166；referenceGraph L180；mediaPreview L147；文档加载 L193；handleNodesChange L248；addNode L311；批量导入 L356；连线起点 L495；反向上游连接 L503；连线结束 L604；React Flow L707
+ *   CanvasPage L127；grouping L168；referenceGraph L182；mediaPreview L149；文档加载 L195；handleNodesChange L250；addNode L313；工具栏新增 L358；批量导入 L370；React Flow L724
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
  *   CanvasProjectHeader components/canvas；2026-10-10 接通开发态新建项目回调；模拟详情跳过用户接口，重命名仍为会话内。删除接入撤销，仅运行/排队任务确认。
@@ -13,7 +13,8 @@
  *   CanvasMediaPreview  components/canvas；2026-10-10 图片/视频双击打开悬浮预览，视频接续进度；固定关闭按钮与模糊遮罩。
  *   CanvasMiniMap       components/canvas；双层背景的交互预览地图
  *
- * ─── 业务边界 ────────────────────────────────────────────────────
+ * ─── 业务边界 ─── 2026-10-15：堆叠拖动坐标转换回展开布局坐标，双击点作为堆叠中心。
+ *   2026-10-14：UseCanvasList 接通同项目列表、新增、切换与重命名；切换先保存，失败保留当前画布。
  *   2026-10-10：图片、视频、音频共用工具栏；CanvasVideoEditor 复用四项编辑弹窗，后台结果新增对应媒体节点并保留源节点。
  *   2026-10-09：名称双击原地重命名接入历史，右键与快捷键弹窗保留；组合双击切换、展开平滑聚焦。
  *   节点与连线支持文档读取；本地上传完成后尝试保存，完整持久化流程仍待验收。
@@ -21,7 +22,7 @@
  *   2026-10-08：音频文本按连线顺序追加；音频任务独立编排，请求前建立结果节点及直连素材关系。
  *   2026-09-28：UseCanvasReferences 编排参考图及文本到音频连线，连接时单次导入正文。
  *   2026-09-24：空白面板使用标准双击事件打开菜单，关闭默认双击缩放。
- *   2026-09-24：初始缩放为 100%，单个新增节点不自动适配视口。
+ *   2026-10-14：工具栏新增在内容最右侧放置，空画布居中；保持缩放并平滑聚焦。其他创建入口位置不变。
  *   2026-09-24：节点模型选择保存为本地草稿；文本模型加载由节点外壳负责。
  *   2026-09-28：视频卡片及参考入口支持三类媒体，按真实素材类型回填；其他节点仍按类型筛选。
  *   2026-10-12：视频节点上传混合素材时，视频填充当前节点，图片/音频及多余视频创建为上游输入节点。
@@ -67,7 +68,7 @@ import { applyCanvasAsset, planCanvasAssetImport, toCanvasAsset } from '../compo
 import { getCanvasToolShortcut } from '../components/canvas/CanvasToolShortcuts';
 import { addCanvasReference, getCanvasReferenceNodePosition } from '../components/canvas/CanvasReferences';
 import { planCanvasReferenceBatch } from '../components/canvas/CanvasReferenceBatch';
-import { getCanvasImportBounds, preserveCanvasImportPanels } from '../components/canvas/CanvasImportLayout';
+import { getCanvasImportBounds, getCanvasToolbarNodePosition, preserveCanvasImportPanels } from '../components/canvas/CanvasImportLayout';
 import { getCanvasMediaFileType } from '../components/canvas/CanvasLocalMedia';
 import { useCanvasReferences } from '../components/canvas/UseCanvasReferences';
 import { useCanvasGrouping } from '../components/canvas/UseCanvasGrouping';
@@ -81,7 +82,7 @@ import CanvasConnectionEdge from '../components/canvas/CanvasConnectionEdge';
 import { useCanvasAudioGeneration } from '../components/canvas/UseCanvasAudioGeneration';
 import { resolveCanvasLeftConnection } from '../components/canvas/CanvasLeftConnection';
 import { useCanvasNodeActions } from '../components/canvas/UseCanvasNodeActions';
-import { getCanvasStackPresentation } from '../components/canvas/CanvasNodeActions';
+import { getCanvasStackPresentation, restoreCanvasStackPositionChange } from '../components/canvas/CanvasNodeActions';
 import CanvasNodeActionOverlays from '../components/canvas/CanvasNodeActionOverlays';
 import CanvasMediaPreview from '../components/canvas/CanvasMediaPreview';
 import LocalImageEditor from '../components/image-edit/LocalImageEditor';
@@ -89,6 +90,7 @@ import { useCanvasImageEdits } from '../components/canvas/UseCanvasImageEdits';
 import { useCanvasVideoEdits } from '../components/canvas/UseCanvasVideoEdits';
 import CanvasVideoEditor from '../components/canvas/CanvasVideoEditor';
 import { readCanvasDocument, serializeCanvasDocument } from '../components/canvas/CanvasDocument';
+import { useCanvasList } from '../components/canvas/UseCanvasList';
 
 // 浏览器 click 先于 dblclick 触发；保留极短窗口，避免双击时先展开创作框。
 const CANVAS_SINGLE_CLICK_DELAY = 200;
@@ -122,7 +124,7 @@ function UnsupportedAction({ onClose }) {
   return <div className="absolute bottom-[92px] left-1/2 z-20 flex w-[280px] -translate-x-1/2 items-center justify-between rounded-[12px] border border-white-10 bg-surface-modal px-[14px] py-[10px] text-[13px] text-text-secondary shadow-[0_8px_28px_rgba(0,0,0,0.35)]"><span>该入口将在后续阶段开放</span><button type="button" className="border-0 bg-transparent p-0 text-text-hint" onClick={onClose} aria-label="关闭提示"><X size={16} /></button></div>;
 }
 
-export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCreateProject }) {
+export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCreateProject, onSelectCanvas }) {
   const [canvas, setCanvas] = useState(null);
   const [currentUser, setCurrentUser] = useState({});
   const [profileOpen, setProfileOpen] = useState(false);
@@ -249,7 +251,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     if (changes.some((change) => change.type === 'select' || change.type === 'remove')) cancelPendingClicks();
     setNodes((current) => {
       const persistedChanges = changes.filter((change) => !(change.type === 'dimensions' && current.find((node) => node.id === change.id)?.data.stacked));
-      let next = applyNodeChanges(persistedChanges, current);
+      let next = applyNodeChanges(persistedChanges.map((change) => restoreCanvasStackPositionChange(change, current)), current);
       if (next.filter((node) => node.selected).length !== 1) next = setCanvasSelection(next, next.filter((node) => node.selected).map((node) => node.id));
       return fitCanvasGroups(next);
     }, { record: changes.some((change) => !['select', 'dimensions'].includes(change.type)) });
@@ -353,6 +355,18 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     setNodeMenu(null);
     setPendingConnection(null);
   }, [cancelPendingNodeClick, generateAudio, generateImage, generateText, generateVideo, handleGenerationModeChange, handleImageReferenceLimitChange, handleUnsupported, handleVideoCapabilitiesChange, nodes.length, referenceGraph, setNodes]);
+  const handleToolbarAddNode = useCallback((type) => {
+    if (loading || error || !flowInstance || !canvasContainerRef.current) return;
+    const rect = canvasContainerRef.current.getBoundingClientRect();
+    const center = flowInstance.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+    const visibleNodes = getCanvasStackPresentation(history.getSnapshot().nodes, []).nodes;
+    const size = getCanvasAssetNodeSize(null);
+    const position = getCanvasToolbarNodePosition(visibleNodes, center, size);
+    cancelPendingClicks();
+    addNode(type, position);
+    flowInstance.setCenter(position.x + size.width / 2, position.y + size.height / 2,
+      { zoom: flowInstance.getZoom(), duration: 300 });
+  }, [addNode, cancelPendingClicks, error, flowInstance, history, loading]);
   const importAssets = useCallback(async (assets, target = null) => {
     assets = await Promise.all(assets.map((asset) => prepareCanvasMediaAsset(toCanvasAsset(asset, 'video') || asset)));
     if (!canvasContainerRef.current) return false;
@@ -406,8 +420,9 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
   }, [history, setNodes, cancelPendingClicks, addNode, flowInstance]);
   useEffect(() => { importAssetsRef.current = importAssets; }, [importAssets]);
   const persistCanvas = useCallback(async () => {
-    if (!canvasId || isDevelopmentCanvas(canvasId) || !Number.isInteger(canvasRevision)) return false;
+    if (!canvasId || !Number.isInteger(canvasRevision)) return false;
     const snapshot = history.getSnapshot();
+    if (snapshot.nodes.some((node) => node.data?.generating || node.data?.generationPending)) return false;
     if (snapshot.nodes.some((node) => {
       const asset = node.data?.asset;
       return asset && (!asset.asset_id || asset.uploadStatus === 'uploading' || asset.uploadStatus === 'error');
@@ -420,6 +435,8 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     if (Number.isInteger(result?.revision)) setCanvasRevision(result.revision);
     return true;
   }, [canvasId, canvasRevision, history, referenceGraph.edges, viewport]);
+  const canvasList = useCanvasList({ canvas, persistCanvas, onSelectCanvas,
+    onRenamed: (title, revision) => { setCanvas((current) => ({ ...current, title })); setCanvasRevision(revision); } });
   const uploadFiles = useCallback(async (files, target = null) => {
     const validFiles = files.filter((file) => getCanvasMediaFileType(file, 'all'));
     if (!validFiles.length) {
@@ -704,7 +721,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     <CanvasProjectHeader canvasName={projectName} onBackHome={onBackHome} onBackProjects={onBackProjects} onCreateProject={onCreateProject} onImport={canvasFiles.open} onUnsupported={handleUnsupported} onRename={(name) => setCanvas((current) => ({ ...current, project_name: name }))} />
     <CanvasUserMenu currentUser={currentUser} onLogout={handleLogout} onOpenProfile={() => setProfileOpen(true)} />
     <div ref={canvasContainerRef} className="absolute inset-0 bg-surface-toolbar">
-      <ReactFlow defaultViewport={viewport} minZoom={0.01}
+      <ReactFlow viewport={viewport} minZoom={0.01}
         onDragOver={handleCanvasDragOver} onDrop={handleCanvasDrop}
         onWheelCapture={handleCanvasWheelCapture}
         onMove={(_, nextViewport) => { setViewport(nextViewport); setViewportZoom(nextViewport.zoom); }}
@@ -772,15 +789,19 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       showMiniMap={showMiniMap}
       onMiniMapChange={setShowMiniMap}
       onOpenSearch={() => { nodeActions.closeMenu(); setNodeMenu(null); search.show(); }}
-      onAddNode={addNode}
-      onCreateCanvas={handleUnsupported}
+      onAddNode={handleToolbarAddNode}
+      canvases={canvasList.items}
+      activeCanvasId={canvasId}
+      canvasListBusy={canvasList.busy || loading || !!error}
+      onSelectCanvas={canvasList.select}
+      onCreateCanvas={canvasList.create}
+      onRenameCanvas={canvasList.rename}
       onShare={canvasFiles.share}
       canUndo={history.canUndo}
       canRedo={history.canRedo}
       onUndo={() => { cancelPendingClicks(); history.undo(); }}
       onRedo={() => { cancelPendingClicks(); history.redo(); }}
       onOpenAssetPicker={() => { setAssetTarget(null); setAssetPickerOpen(true); }}
-      onLocalUpload={uploadFiles}
     />
     {search.open && <CanvasSearchModal nodes={nodes} onClose={search.close} onSelect={search.select} />}
     <AssetPickerModal

@@ -118,7 +118,9 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, getUndoToken, enab
       event.stopPropagation();
       cancelPendingClicks();
       setMenu(null);
-      setNodes((current) => setCanvasSelection(setCanvasGroupsStacked(current, [node.id], !node.data.stacked), [node.id]));
+      const center = !node.data.stacked && flowInstance
+        ? flowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY }, { snapToGrid: false }) : undefined;
+      setNodes((current) => setCanvasSelection(setCanvasGroupsStacked(current, [node.id], !node.data.stacked, center), [node.id]));
       if (node.data.stacked) setFocusGroupId(node.id);
     },
     setName: (value) => setDialog((current) => ({ ...current, value })),

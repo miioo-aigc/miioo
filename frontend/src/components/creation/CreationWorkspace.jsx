@@ -1,6 +1,6 @@
 /**
  * @file CreationWorkspace.jsx
- * @structure-index
+ * @structure-index：2026-10-14 L45 历史读取错误重试，失败保留输入区、不显示真实空态。
  *
  * ─── 组件职责 ─────────────────────────────────────────────────────
  *   创作页主体卡片的布局、工具栏和结果/空态分支组合
@@ -16,6 +16,7 @@
  *   2026-08-18  持有配音高级模式展开状态，保证空态与结果态切换时形态连续
  */
 import { useState } from 'react';
+import RemoteReadStatus from '../feedback/RemoteReadStatus';
 import CreationToolbar from './CreationToolbar';
 import CreationResultState from './CreationResultState';
 import CreationEmptyState from './CreationEmptyState';
@@ -29,7 +30,7 @@ export default function CreationWorkspace({
   onGenTypeChange, model, onModelChange, modelOptions, creationParams,
   capabilitiesMap, onDeleteCard, selected, onToggleSelect, onSwitchToFrameMode,
   onVideoCardClick, onAudioCardClick, onDownloadCard, favorites, toggleFavorite, showToast, historyLoading,
-  historyHasMore, onLoadMore, autoFillLimit, activeCount, onBeforeModelOpen,
+  historyHasMore, historyError, onLoadMore, autoFillLimit, activeCount, onBeforeModelOpen,
   onCancelGeneration, renderInputCard,
 }) {
   const [dubbingAdvancedEnabled, setDubbingAdvancedEnabled] = useState(false);
@@ -41,9 +42,10 @@ export default function CreationWorkspace({
           <CreationToolbar tabs={CREATION_TABS} activeTab={activeTab} onTabChange={onTabChange} batchMode={batchMode} selectedCount={selectedCount} onEnterBatch={onEnterBatch} onSelectAll={onSelectAll} onDownload={onDownload} onDelete={onDelete} onCancelBatch={onCancelBatch} onClearHistory={onClearHistory} font={font} fontMedium={fontMedium} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 0%', minHeight: 0, padding: '0px', overflow: 'clip', alignSelf: 'stretch', position: 'relative' }}>
+          {isLoggedIn !== false && <RemoteReadStatus error={historyError} onRetry={onLoadMore} />}
           {isLoggedIn === false ? (
             <CreationLoginEmptyState onLoginClick={onLoginClick} />
-          ) : generations.length > 0 || historyLoading ? (
+          ) : generations.length > 0 || historyLoading || historyError ? (
             <CreationResultState generations={generations} onGenerate={onGenerate} genType={genType} isGenerating={isGenerating} onGenTypeChange={onGenTypeChange} model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap} onDeleteCard={onDeleteCard} batchMode={batchMode} selected={selected} onToggleSelect={onToggleSelect} onSwitchToFrameMode={onSwitchToFrameMode} onVideoCardClick={onVideoCardClick} onAudioCardClick={onAudioCardClick} onDownloadCard={onDownloadCard} favorites={favorites} toggleFavorite={toggleFavorite} showToast={showToast} historyLoading={historyLoading} historyHasMore={historyHasMore} onLoadMore={onLoadMore} autoFillLimit={autoFillLimit} activeCount={activeCount} onBeforeModelOpen={onBeforeModelOpen} onCancelGeneration={onCancelGeneration} renderInputCard={renderInputCard} dubbingAdvancedEnabled={dubbingAdvancedEnabled} onDubbingAdvancedChange={setDubbingAdvancedEnabled} />
           ) : (
             <CreationEmptyState onGenerate={onGenerate} genType={genType} isGenerating={isGenerating} onCancelGeneration={onCancelGeneration} onGenTypeChange={onGenTypeChange} showToast={showToast} activeCount={activeCount} model={model} onModelChange={onModelChange} modelOptions={modelOptions} creationParams={creationParams} capabilitiesMap={capabilitiesMap} onBeforeModelOpen={onBeforeModelOpen} renderInputCard={renderInputCard} dubbingAdvancedEnabled={dubbingAdvancedEnabled} onDubbingAdvancedChange={setDubbingAdvancedEnabled} />

@@ -1,6 +1,6 @@
 /**
  * @file ProjectList.jsx
- * @structure-index
+ * @structure-index：2026-10-14 入口 L424 接收可选读取状态，L452 复用反馈；默认参数保持其他调用行为。
  *
  * ─── 全局常量 & 工具函数 ────────────────────────────────────────────
  *   FONT / FONT_MEDIUM              页面字体常量                         L43–L44
@@ -40,6 +40,7 @@ import { formatRelativeTime } from '../utils/formatTime';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { Button, ButtonGroup, DeleteIcon, DropdownMenu, IconButton, TextButton } from '../components/ui';
 import ConfirmDialog from '../components/ConfirmDialog';
+import RemoteReadStatus from '../components/feedback/RemoteReadStatus';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -420,7 +421,7 @@ function ProjectCard({ project, onRename, onCopy, onDelete, onOpen }) {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function ProjectList({ title = '所有项目', projects = [], onNewProject, onRenameProject, onCopyProject, onDeleteProject, onOpenProject }) {
+export default function ProjectList({ title = '所有项目', projects = [], loading = false, error = '', onRetry, onNewProject, onRenameProject, onCopyProject, onDeleteProject, onOpenProject }) {
   const [searchValue, setSearchValue] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchHovered, setSearchHovered] = useState(false);
@@ -448,6 +449,7 @@ export default function ProjectList({ title = '所有项目', projects = [], onN
           minHeight: '100%',
         }}
       >
+        <RemoteReadStatus loading={loading} error={error} onRetry={onRetry} />
         {/* Header row */}
         <div
           style={{

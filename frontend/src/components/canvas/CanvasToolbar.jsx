@@ -3,9 +3,11 @@
  * @structure-index
  *
  * ─── 交互区 ─────────────────────────────────────────────────────
- *   AddNodeMenu 共用添加节点菜单的工具栏定位容器 L115
- *   CanvasToolbar 画布底部悬浮工具栏、菜单和动作出口 L119
+ *   AddNodeMenu 共用添加节点菜单的工具栏定位容器 L121
+ *   CanvasToolbar 画布底部悬浮工具栏、菜单和动作出口 L125
  * ─── 更新记录 ───────────────────────────────────────────────────
+ *   2026-10-15 分享菜单新增指定链接和导出图标，颜色跟随菜单文字。
+ *   2026-10-14 画布列表抽离 CanvasListMenu，接通新增、切换与行内重命名。
  *   2026-10-09 分享复用标准菜单，宽度自适应内容，提供复制画布链接和导出画布入口
  *   2026-10-09 搜索改为独立中央弹窗，仅通过 onOpenSearch 通知页面
  *   2026-09-28 复用图标按钮新增撤销重做；统一添加菜单，工具栏仅负责定位
@@ -13,14 +15,14 @@
  *   2026-09-29 分割线右侧工具默认折叠为更多按钮，展开和收起使用 Gooey 风格过渡
  *   2026-10-08 收起工具按钮改用左尖括号图标
  *   2026-10-09 恢复更多工具中的搜索和分享；保留收起间距、精简画布列表和工具快捷键
- *   2026-10-09 本地媒体多选入口，复用原生文件选择及页面批量导入动作
+ *   2026-10-14 移除工具栏本地上传入口及专用文件选择器；拖拽和节点内上传保持不变
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { DropdownMenu, IconButton, Tooltip } from '../ui';
-import { ChevronLeft, MoreHorizontal, Redo2, Undo2, Upload } from 'lucide-react';
-import { getCanvasMediaAccept } from './CanvasLocalMedia';
+import { ChevronLeft, MoreHorizontal, Redo2, Undo2 } from 'lucide-react';
 import CanvasNodeAddMenu from './CanvasNodeAddMenu.jsx';
+import CanvasListMenu from './CanvasListMenu.jsx';
 import './CanvasToolbar.css';
 
 const ICON_PROPS = {
@@ -74,7 +76,6 @@ const TOOL_ITEMS = [
   { key: 'add', label: '添加节点', icon: GradientAddIcon },
   { key: 'move', label: '移动', icon: PointerIcon },
   { key: 'assets', label: '从资产库选择', icon: AssetLibraryIcon },
-  { key: 'upload', label: '从本地上传', icon: Upload },
   { key: 'canvases', label: '画布列表', icon: NodeListIcon },
 ];
 
@@ -92,19 +93,24 @@ function MenuButton({ children, onClick, active = false }) {
   return <button type="button" onClick={onClick} className={`flex min-h-[32px] w-full cursor-pointer items-center rounded-[6px] border-0 px-[10px] py-[6px] text-left text-[13px] leading-[18px] transition-colors ${active ? 'bg-white-10 text-text-primary' : 'bg-transparent text-text-secondary hover:bg-white-5 hover:text-text-primary'}`}>{children}</button>;
 }
 
-function CanvasListMenu({ canvases, activeCanvasId, onSelectCanvas, onCreateCanvas }) {
-  const items = canvases.length ? canvases : [{ id: activeCanvasId || 'current', name: '画布1' }];
-  return <ToolbarMenu className="w-[176px]">
-    {items.map((canvas) => <MenuButton key={canvas.id} active={canvas.id === activeCanvasId} onClick={() => onSelectCanvas?.(canvas.id)}>{canvas.name || '未命名画布'}</MenuButton>)}
-    <div className="my-[4px] h-px bg-stroke-normal" />
-    <MenuButton onClick={onCreateCanvas}>＋ 新增画布</MenuButton>
-  </ToolbarMenu>;
-}
-
 function ShareMenu({ onShare, onClose }) {
   return <DropdownMenu width="max-content" onClose={onClose} style={{ bottom: '40px', left: '50%', right: 'auto', transform: 'translateX(-50%)', marginBottom: 0, whiteSpace: 'nowrap' }} items={[
-    { key: 'copy-link', label: '复制画布链接', onClick: () => onShare?.('copy-link') },
-    { key: 'export-canvas', label: '导出画布', onClick: () => onShare?.('export-canvas') },
+    { key: 'copy-link', label: '复制画布链接', icon: (
+      <svg {...ICON_PROPS} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M7.25331 5.45772L10.3 2.41106C11.1871 1.52395 12.6449 1.54349 13.5562 2.45471C14.4674 3.36592 14.4869 4.82379 13.5998 5.71089L10.9547 8.35599" />
+        <path d="M5.03249 7.66772L2.38739 10.3128C1.50025 11.2 1.51982 12.6578 2.43102 13.569C3.34225 14.4803 4.80009 14.4998 5.68722 13.6127L8.73389 10.566" />
+        <path d="M7.29688 8.71384C6.38564 7.80261 6.36611 6.34477 7.25321 5.45764" />
+        <path d="M8.73376 7.26611C9.64499 8.17735 9.66453 9.63518 8.77743 10.5223" />
+      </svg>
+    ), onClick: () => onShare?.('copy-link') },
+    { key: 'export-canvas', label: '导出画布', icon: (
+      <svg {...ICON_PROPS} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10 8.33337H14" />
+        <path d="M12 6.33337L14 8.33337L12 10.3334" />
+        <path d="M7 2V8.66667C7 10.913 4.94493 13.1889 3 14" />
+        <path d="M14 4.66667V3C14 2.44772 13.5523 2 13 2H3C2.44772 2 2 2.44772 2 3V13C2 13.5523 2.44772 14 3 14H13C13.5523 14 14 13.5523 14 13V11.8333" />
+      </svg>
+    ), onClick: () => onShare?.('export-canvas') },
   ]} />;
 }
 
@@ -116,11 +122,10 @@ function AddNodeMenu({ onAddNode }) {
   return <div className="absolute bottom-[40px] left-1/2 z-30 -translate-x-1/2"><CanvasNodeAddMenu onAddNode={onAddNode} /></div>;
 }
 
-export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, onOpenSearch, canvases = [], activeCanvasId, onSelectCanvas, onCreateCanvas, onOpenAssetPicker, onLocalUpload, onAddNode, onShare, canUndo, canRedo, onUndo, onRedo }) {
+export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, onOpenSearch, canvases = [], activeCanvasId, onSelectCanvas, onCreateCanvas, onRenameCanvas, canvasListBusy, onOpenAssetPicker, onAddNode, onShare, canUndo, canRedo, onUndo, onRedo }) {
   const [openMenu, setOpenMenu] = useState(null);
   const [rightToolsExpanded, setRightToolsExpanded] = useState(false);
   const toolbarRef = useRef(null);
-  const uploadRef = useRef(null);
 
   useEffect(() => {
     const handlePointerDown = (event) => {
@@ -136,7 +141,6 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
       return;
     }
     if (key === 'assets') { setOpenMenu(null); onOpenAssetPicker?.(); return; }
-    if (key === 'upload') { setOpenMenu(null); uploadRef.current?.click(); return; }
     if (key === 'search') { setOpenMenu(null); onOpenSearch?.(); return; }
     setOpenMenu((current) => (current === key ? null : key));
   };
@@ -146,7 +150,7 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
     return <div key={key} className="relative flex size-[32px] shrink-0 items-center justify-center">
       {openMenu === key && key === 'add' && <AddNodeMenu onAddNode={(type) => { onAddNode?.(type); setOpenMenu(null); }} />}
       {openMenu === key && key === 'move' && <MoveMenu activeTool={activeTool} onToolChange={(tool) => { onToolChange(tool); setOpenMenu(null); }} />}
-      {openMenu === key && key === 'canvases' && <CanvasListMenu canvases={canvases} activeCanvasId={activeCanvasId} onSelectCanvas={(id) => { onSelectCanvas?.(id); setOpenMenu(null); }} onCreateCanvas={() => { onCreateCanvas?.(); setOpenMenu(null); }} />}
+      {openMenu === key && key === 'canvases' && <CanvasListMenu canvases={canvases} activeCanvasId={activeCanvasId} busy={canvasListBusy} onRenameCanvas={onRenameCanvas} onSelectCanvas={async (id) => { if (await onSelectCanvas?.(id)) setOpenMenu(null); }} onCreateCanvas={async () => { if (await onCreateCanvas?.()) setOpenMenu(null); }} />}
       {openMenu === key && key === 'share' && <ShareMenu onShare={onShare} onClose={() => setOpenMenu(null)} />}
       <Tooltip label={label} placement="top" offset={8}><button type="button" title={label} aria-label={label} aria-pressed={selected} onClick={() => handleToolClick(key)} className={`flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 transition-colors ${selected ? 'bg-white-10' : 'hover:bg-white-5'}`}><Icon size={16} strokeWidth={1.7} /></button></Tooltip>
     </div>;
@@ -155,11 +159,6 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
   return (
     <div ref={toolbarRef} className="absolute bottom-[24px] left-1/2 z-20 flex -translate-x-1/2 items-center gap-[12px] overflow-visible rounded-full border border-stroke-normal bg-surface-content-area px-[16px] py-[4px] outline outline-1 outline-black-90">
       {TOOL_ITEMS.map(renderTool)}
-      <input ref={uploadRef} type="file" hidden multiple accept={getCanvasMediaAccept('all')} onChange={(event) => {
-        const files = Array.from(event.target.files || []);
-        event.target.value = '';
-        if (files.length) onLocalUpload?.(files);
-      }} />
       <div className="h-[16px] w-px shrink-0 rounded-full bg-stroke-normal" />
       {!rightToolsExpanded && <Tooltip label="更多工具" placement="top" offset={8}><button type="button" aria-label="展开更多工具" title="展开更多工具" onClick={() => setRightToolsExpanded(true)} className="flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 hover:bg-white-5"><MoreHorizontal size={16} strokeWidth={1.7} color="var(--color-white-80)" /></button></Tooltip>}
       <div className={`canvas-toolbar__right-tools ${rightToolsExpanded ? 'canvas-toolbar__right-tools--expanded' : ''}`} aria-hidden={!rightToolsExpanded} inert={!rightToolsExpanded}>

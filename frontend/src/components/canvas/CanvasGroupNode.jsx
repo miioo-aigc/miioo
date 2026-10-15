@@ -1,4 +1,4 @@
-/** 组合边框与堆叠预览；堆叠不改写成员坐标。2026-10-13：单组选中清理框选覆盖层，描边区分悬停和选中。 */
+/** 组合边框与堆叠预览；堆叠不改写成员坐标。2026-10-15：收拢和展开动画补偿双击中心偏移。 */
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { Handle, Position, useStore, useStoreApi, useUpdateNodeInternals } from '@xyflow/react';
 import CanvasGroupStackPreview from './CanvasGroupStackPreview';
@@ -21,6 +21,8 @@ export default function CanvasGroupNode({ id, data, selected }) {
   const interrupted = useRef(new Map());
   const stacked = Boolean(data.stacked);
   const zoom = data.viewportZoom || 1;
+  const offsetX = data.stackOffset?.x || 0;
+  const offsetY = data.stackOffset?.y || 0;
   const membersSnapshot = JSON.stringify(data.stackMembers || []);
   useLayoutEffect(() => {
     const changed = previousStacked.current !== stacked;
@@ -28,8 +30,8 @@ export default function CanvasGroupNode({ id, data, selected }) {
     if (!changed || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const interruptedFrames = interrupted.current;
     const options = { duration: 300, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' };
-    const small = { width: '312px', height: '312px', opacity: 1, borderRadius: '20px' };
-    const large = { width: `${data.expandedWidth || 270}px`, height: `${data.expandedHeight || 180}px`, opacity: 1, borderRadius: '20px' };
+    const small = { transform: `translate(${stacked ? 0 : offsetX}px, ${stacked ? 0 : offsetY}px)`, width: '312px', height: '312px', opacity: 1, borderRadius: '20px' };
+    const large = { transform: `translate(${stacked ? -offsetX : 0}px, ${stacked ? -offsetY : 0}px)`, width: `${data.expandedWidth || 270}px`, height: `${data.expandedHeight || 180}px`, opacity: 1, borderRadius: '20px' };
     const animations = [];
     const tracked = [];
     const play = (element, frames, timing = options) => {
@@ -43,8 +45,8 @@ export default function CanvasGroupNode({ id, data, selected }) {
     stackRef.current.querySelectorAll('[data-stack-member]').forEach((element, index) => {
       const member = members.find((item) => item.id === element.dataset.stackMember);
       if (!member) return;
-      const compact = { transform: element.style.transform, width: '240px', height: '240px', opacity: Number(element.style.opacity) };
-      const expanded = { transform: `translate(${member.x}px, ${member.y}px) rotate(0deg)`, width: `${member.width}px`, height: `${member.height}px`, opacity: 1 };
+      const compact = { transform: `translate(${stacked ? 0 : offsetX}px, ${stacked ? 0 : offsetY}px) ${element.style.transform}`, width: '240px', height: '240px', opacity: Number(element.style.opacity) };
+      const expanded = { transform: `translate(${member.x - (stacked ? offsetX : 0)}px, ${member.y - (stacked ? offsetY : 0)}px) rotate(0deg)`, width: `${member.width}px`, height: `${member.height}px`, opacity: 1 };
       play(element, stacked ? [expanded, compact] : [compact, expanded], { ...options, delay: Math.min(index, 5) * 15, fill: 'both' });
     });
     if (!stacked) {
@@ -63,7 +65,7 @@ export default function CanvasGroupNode({ id, data, selected }) {
       });
       animations.forEach((animation) => animation.cancel());
     };
-  }, [stacked, membersSnapshot, data.expandedWidth, data.expandedHeight]);
+  }, [stacked, membersSnapshot, data.expandedWidth, data.expandedHeight, offsetX, offsetY]);
   useEffect(() => { updateNodeInternals(id); }, [id, data.stacked, updateNodeInternals]);
   return <div ref={rootRef} className={stacked ? 'canvas-group-stack' : 'canvas-group'} data-selected={selected}
     style={stacked ? undefined : { borderColor: 'transparent', background: 'transparent' }}>

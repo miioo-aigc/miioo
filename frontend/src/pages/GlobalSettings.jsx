@@ -1,26 +1,26 @@
 /**
  * @file GlobalSettings.jsx
  * @structure-index
- *
+ *   2026-10-14：保存失败保留当前草稿，返回操作等待保存成功；不改变现有表单布局。
  * ─── 全局常量 & 配置 ───────────────────────────────────────────────
- *   ScriptPage 懒加载定义                                        L40
- *   FONT / FONT_MEDIUM                                           L58–L59
- *   VISUAL_STYLES                                                L62
+ *   ScriptPage 懒加载定义                                        L49
+ *   FONT / FONT_MEDIUM                                           L59–L60
+ *   VISUAL_STYLES                                                L63
  *
  * ─── 结果/状态展示组件 ───────────────────────────────────────────
- *   SubjectOverviewCard（主体概览容器）                            L752
+ *   SubjectOverviewCard（主体概览容器）                            L344
  *
  * ─── 表单与业务交互组件 ─────────────────────────────────────────
- *   <CoverUpload>                                                L403
+ *   <CoverUpload>                                                L72
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
- *   export default function GlobalSettings()                      L577
- *     ├─ [状态] name / description / coverUrl / isSaving          L609–L612
- *     ├─ [Ref] saveTimerRef / onProjectUpdateRef                   L613–L614
- *     ├─ [函数] saveImmediately()                                  L618
- *     ├─ [副作用] onProjectUpdate 引用同步                         L615
- *     ├─ [副作用] 表单变更 debounce 自动保存                           L646
- *     └─ [渲染] ScriptPage 通过 Suspense 按需加载                    L717
+ *   export default function GlobalSettings()                      L414
+ *     ├─ [状态] name / description / coverUrl / isSaving          L448–L451
+ *     ├─ [Ref] saveTimerRef / onProjectUpdateRef                   L453–L454
+ *     ├─ [函数] saveImmediately()                                  L458
+ *     ├─ [副作用] onProjectUpdate 引用同步                         L455
+ *     ├─ [副作用] 表单变更 debounce 自动保存                           L491
+ *     └─ [渲染] ScriptPage 通过 Suspense 按需加载                    L539
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-07-15  修复 ScriptPage 草稿回调引用缺失，统一使用 onScriptDraftContentChange
@@ -422,6 +422,7 @@ export default function GlobalSettings({
   projectStylePrompt = '',
   projectCreationType = 'dialogue',
   onProjectUpdate,
+  showToast,
   onBack,
   activeStep,
   onGoToSubject,
@@ -475,11 +476,15 @@ export default function GlobalSettings({
         setIsSaving(true);
         try {
           await onProjectUpdateRef.current(updates);
+        } catch {
+          showToast?.('保存失败，修改已保留，请重试', 'error');
+          return false;
         } finally {
           setIsSaving(false);
         }
       }
     }
+    return true;
   };
 
   // 自动保存：name, description, coverUrl 变化时 debounce 调用 onProjectUpdate
@@ -515,6 +520,8 @@ export default function GlobalSettings({
           setIsSaving(true);
           try {
             await onProjectUpdateRef.current(updates);
+          } catch {
+            showToast?.('自动保存失败，修改已保留，请重试', 'error');
           } finally {
             setIsSaving(false);
           }
@@ -582,7 +589,7 @@ export default function GlobalSettings({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
             <svg width="24" height="24" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"
               style={{ flexShrink: 0, rotate: '90deg', transformOrigin: '50% 50%', cursor: 'pointer' }}
-              onClick={async () => { await saveImmediately(); onBack?.(); }}>
+              onClick={async () => { if (await saveImmediately()) onBack?.(); }}>
               <path d="M12 6L8 10L4 6" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span style={{ fontFamily: FONT_MEDIUM, fontWeight: 500, fontSize: '16px', lineHeight: '20px', color: '#FFFFFF' }}>{name || '项目名称'}</span>

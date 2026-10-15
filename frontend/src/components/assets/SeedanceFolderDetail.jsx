@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import SeedanceAssetCard from './SeedanceAssetCard';
+import { Button } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -16,7 +17,7 @@ function UploadIcon() {
   );
 }
 
-export default function SeedanceFolderDetail({ folder, assets = [], loading = false, uploading = false, onBack, onUpload, onSelectFromLibrary, onPreview, onDelete }) {
+export default function SeedanceFolderDetail({ folder, assets = [], loading = false, error = '', onRetry, uploading = false, onBack, onUpload, onSelectFromLibrary, onPreview, onDelete }) {
   const inputRef = useRef(null);
   const uploadMenuRef = useRef(null);
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
@@ -63,6 +64,8 @@ export default function SeedanceFolderDetail({ folder, assets = [], loading = fa
         <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF' }}>{folder.name}</span>
       </div>
 
+      {loading && <div role="status" className="text-text-secondary text-font-size-14">正在读取素材…</div>}
+      {error && !loading && <div role="alert" className="text-text-secondary text-font-size-14">{error} <Button onClick={onRetry}>重试</Button></div>}
       <div style={{ position: 'relative', flex: '1 1 0%', minHeight: '200px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignContent: 'flex-start' }}>
         <input
@@ -75,7 +78,7 @@ export default function SeedanceFolderDetail({ folder, assets = [], loading = fa
         <div ref={uploadMenuRef} style={{ position: 'relative', width: '242px', height: '160px', flexShrink: 0 }}>
           <button
             type="button"
-            disabled={uploading}
+            disabled={uploading || loading}
             aria-haspopup="menu"
             aria-expanded={uploadMenuOpen}
             onClick={(event) => {
@@ -99,7 +102,7 @@ export default function SeedanceFolderDetail({ folder, assets = [], loading = fa
             <UploadIcon />
             <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFFCC', flexShrink: 0 }}>上传</span>
           </button>
-          {uploadMenuOpen && !uploading ? (
+          {uploadMenuOpen && !uploading && !loading ? (
             <div role="menu" style={{ position: 'fixed', top: `${uploadMenuPosition.y}px`, left: `${uploadMenuPosition.x}px`, zIndex: 1202, minWidth: '148px', padding: '4px', border: '1px solid #FFFFFF14', borderRadius: '8px', background: '#1C1C1C', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}>
               <button
                 type="button"
@@ -128,7 +131,7 @@ export default function SeedanceFolderDetail({ folder, assets = [], loading = fa
             </div>
           ) : null}
         </div>
-        {!loading && assets.map((asset) => <SeedanceAssetCard key={asset.id} asset={asset} onPreview={onPreview} onDelete={onDelete} />)}
+        {assets.map((asset) => <SeedanceAssetCard key={asset.id} asset={asset} onPreview={onPreview} onDelete={onDelete} />)}
         </div>
       </div>
     </div>

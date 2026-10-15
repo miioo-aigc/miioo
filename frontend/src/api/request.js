@@ -12,6 +12,11 @@ export function getRefreshToken() {
 
 let authGeneration = 0;
 
+// 登录或退出改变会话代际；同一会话内刷新凭证不改变它。
+export function getAuthSessionGeneration() {
+  return authGeneration;
+}
+
 function ensureSameAuthSession(generation) {
   if (authGeneration !== generation) {
     throw createUnauthorizedError();
@@ -20,6 +25,7 @@ function ensureSameAuthSession(generation) {
 
 export function setTokens(accessToken, refreshToken) {
   authGeneration++;
+  clearAllCache();
   writeTokens(accessToken, refreshToken);
 }
 
@@ -120,7 +126,9 @@ function handleRefreshFailure(result, generation) {
   }
   const error = new Error('登录服务暂时不可用，请稍后重试');
   error.status = result.status;
-  error.isNetworkError = !result.status;
+  // 网关 5xx、代理返回的 502 以及连接异常都属于临时不可用，
+  // 不能被上层当作凭证失效处理。
+  error.isNetworkError = !result.status || result.status >= 500;
   error.cause = result.cause;
   throw error;
 }

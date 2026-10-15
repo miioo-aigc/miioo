@@ -6,6 +6,21 @@ const WIDTH = 240;
 const HEIGHT = 264;
 const GAP = 32;
 
+export function getCanvasToolbarNodePosition(nodes, center, size = { width: WIDTH, height: HEIGHT }) {
+  const visible = nodes.filter((node) => !node.hidden);
+  if (!visible.length) return { x: center.x - size.width / 2, y: center.y - size.height / 2 };
+  const right = Math.max(...visible.map((node) => {
+    const position = getCanvasAbsolutePosition(nodes, node);
+    const fallback = getCanvasAssetNodeSize(node.data?.asset);
+    const rawWidth = node.type === 'canvasGroup' && node.data?.stacked
+      ? 312
+      : node.measured?.width ?? node.width ?? node.style?.width ?? fallback.width;
+    const width = Number(rawWidth) || WIDTH;
+    return position.x + width;
+  }));
+  return { x: right + GAP, y: center.y - size.height / 2 };
+}
+
 export function getCanvasImportBounds(positions) {
   if (!positions.length) return null;
   const x = Math.min(...positions.map((p) => p.x));

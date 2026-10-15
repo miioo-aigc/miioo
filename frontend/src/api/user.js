@@ -24,6 +24,14 @@ export async function apiGetCurrentUser() {
   const res = await authFetch(`${BASE}/api/auth/me`, {
     headers: { 'Content-Type': 'application/json' },
   });
+  if (!res.ok) {
+    const error = new Error(res.status >= 500
+      ? `登录服务暂时不可用（${res.status}），请稍后重试`
+      : `认证请求失败（${res.status}）`);
+    error.status = res.status;
+    error.isNetworkError = res.status >= 500;
+    throw error;
+  }
   return res.json();
 }
 

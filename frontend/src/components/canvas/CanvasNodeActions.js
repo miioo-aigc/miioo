@@ -81,12 +81,27 @@ export function moveCanvasNodesOut(nodes, ids) {
   return deleteCanvasNodes(next, []);
 }
 
-export function setCanvasGroupsStacked(nodes, ids, stacked) {
+export function setCanvasGroupsStacked(nodes, ids, stacked, center) {
   const selected = new Set(ids);
   const members = canvasDescendantIds(nodes, nodes.filter((node) => selected.has(node.id) && node.type === 'canvasGroup').map((node) => node.id));
   return nodes.map((node) => selected.has(node.id) && node.type === 'canvasGroup'
-    ? { ...node, data: { ...node.data, stacked } }
+    ? { ...node, data: { ...node.data, stacked, ...(stacked && !node.data.stacked ? {
+      stackOffset: center ? {
+        x: center.x - getCanvasAbsolutePosition(nodes, node).x - 156,
+        y: center.y - getCanvasAbsolutePosition(nodes, node).y - 156,
+      } : { x: 0, y: 0 },
+    } : {}) } }
     : stacked && members.has(node.id) ? { ...node, selected: false, data: { ...node.data, creationPanelOpen: false } } : node);
+}
+
+/** 拖动展示位置时扣除堆叠偏移，历史中的展开布局只跟随实际拖动距离。 */
+export function restoreCanvasStackPositionChange(change, nodes) {
+  const node = nodes.find((item) => item.id === change.id);
+  if (change.type !== 'position' || !change.position || !node?.data.stacked || !node.data.stackOffset) return change;
+  return { ...change, position: {
+    x: change.position.x - node.data.stackOffset.x,
+    y: change.position.y - node.data.stackOffset.y,
+  } };
 }
 
 /** 堆叠仅在渲染层折叠成员，历史中保留真实坐标与尺寸。 */
@@ -107,7 +122,10 @@ export function getCanvasStackPresentation(nodes, edges) {
   return {
     nodes: nodes.map((node) => ({ ...node, hidden: Boolean(owners.get(node.id)),
       ...(node.type === 'canvasGroup' ? {
-        ...(node.data.stacked ? { style: { ...node.style, width: 312, height: 312 }, measured: { width: 312, height: 312 } } : {}),
+        ...(node.data.stacked ? { position: {
+          x: node.position.x + (node.data.stackOffset?.x || 0),
+          y: node.position.y + (node.data.stackOffset?.y || 0),
+        }, style: { ...node.style, width: 312, height: 312 }, measured: { width: 312, height: 312 } } : {}),
         data: { ...node.data, expandedWidth: node.style?.width, expandedHeight: node.style?.height,
           stackMembers: nodes.filter((child) => members.get(node.id).has(child.id) && child.type !== 'canvasGroup').map((child) => {
             const position = getCanvasAbsolutePosition(nodes, child);

@@ -9,6 +9,7 @@
  *   只接收页面显式数据和动作回调；不读取页面状态、不调用 API。
  *
  * ─── 更新记录 ─────────────────────────────────────────────────────
+ *   2026-10-15  显式透传剪辑菜单的项目与分镜上下文
  *   2026-07-17  从 StoryboardPage 抽离头部组合
  *   2026-07-23  按新版设计稿重做面包屑和分镜统计，复用 TextButton
  */
@@ -53,6 +54,7 @@ export default function StoryboardHeader({
   onDownload,
   onExitDownloadMode,
   onStartEdit,
+  editContext,
   onRegenerate,
   showStoryboardSummary = true,
   showBatchToolbar = true,
@@ -95,6 +97,7 @@ export default function StoryboardHeader({
           onDownload={onDownload}
           onExitDownloadMode={onExitDownloadMode}
           onStartEdit={onStartEdit}
+          editContext={editContext}
         />
       )}
     </div>

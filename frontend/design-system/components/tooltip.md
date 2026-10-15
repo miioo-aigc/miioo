@@ -1,5 +1,11 @@
 # Tooltip 提示气泡
 
+## 显示延迟
+
+- `Tooltip` 支持 `delay` 属性，单位为毫秒，默认 `0`，保持已有调用即时显示。
+- V1 轨道按钮使用 `delay={250}`；移开立即隐藏并取消待显示定时器，卸载时清理定时器。
+- 使用 Tooltip 时不再同时设置原生 `title`，避免重复提示。
+
 > 参考 `design-system/tokens.md` 获取所有 token 的完整定义和色值。
 > 字体：`AlibabaPuHuiTi 2_55 Regular` / `Alibaba PuHuiTi 2.0` / `system-ui` / `sans-serif`。
 

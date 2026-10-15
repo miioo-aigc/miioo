@@ -1,14 +1,14 @@
 /**
  * @file Home.jsx
  * @structure-update：2026-10-15 主体抽取完成刷新复用类别版本与会话归属，失败保留列表并可重试；任务提交/轮询完整会话边界仍待续审。
- * @structure-index：2026-10-15 readProjects L311；主体请求版本 L347；详情读取 L545；缓存订阅 L975/L986；删除后刷新 L1042；主体分页 L1121；原页重试 L1157；主体抽取 L1187；完成后刷新 L1297。
+ * @structure-index：2026-10-15 readProjects L316；主体请求版本 L352；详情读取 L550；缓存订阅 L980/L991；删除后刷新 L1047；主体分页 L1126；原页重试 L1162；主体抽取 L1192；完成后刷新 L1302。
  *   2026-10-15：主体分页按类别互斥并校验项目/会话/请求版本；缓存订阅与分页状态同步仍待续审，页面保留跨模块请求编排。
  *   2026-10-12：登录用户确认后恢复已受理的视频编辑任务；保留认证与恢复的页面编排边界。
- *   2026-10-13：公告提醒 L1946 主动查看全部进入消息中心 L1947 系统页签；按用户隔离已读状态。
- *   2026-10-14：画布内部切换路由 L1642；仅增加导航接线，认证、缓存和任务恢复仍保留页面编排。
- *   2026-10-14：项目保存队列 L257；按项目隔离保存回写 L1777，页面继续保留请求编排。
+ *   2026-10-13：公告提醒 L2183 主动查看全部进入消息中心系统页签；按用户隔离已读状态。
+ *   2026-10-14：画布内部切换路由；仅增加导航接线，认证、缓存和任务恢复仍保留页面编排。
+ *   2026-10-14：项目保存队列 L266；按项目隔离保存回写，页面继续保留请求编排。
  * ─── 全局常量 & 配置 ───────────────────────────────────────────────
- *   页面业务模块懒加载                                          L134–L139
+ *   页面业务模块懒加载                                          L142–L148
  *   NAV_ITEMS / BOTTOM_NAV_ITEMS                                  components/home/HomeNavigationConfig.jsx
  *   STEP_TABS / WorkflowStepTabs                                components/home/WorkflowStepTabs.jsx
  *   BG_VIDEOS                                                   components/home/HomeNavigationConfig.jsx
@@ -26,19 +26,19 @@
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
  *   2026-10-09 画布项目菜单返回自由画布列表，保留品牌图标返回首页；仅新增导航接线
- *   export default function Home()                               L255
- *     ├─ [懒加载] 页面业务模块按需加载                             L134–L139
- *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L256–L315
- *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L340 / L397 / L408
- *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L471 / L940 / L964
- *     │           handleExtractSubjects / handleGenerateStoryboards        L1006 / L1188
+ *   export default function Home()                               L265
+ *     ├─ [懒加载] 页面业务模块按需加载                             L142–L148
+ *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L266–L416
+ *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L417 / L474 / L485
+ *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L550 / L1102 / L1126
+ *     │           handleExtractSubjects / handleGenerateStoryboards        L1192 / L1404
  *     │           handleScriptFinalized / handleNavChange / handleBottomNavChange / handleProjectCreated
- *                                                               L1483 / L1490 / L1557 / L1573
- *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L432 / L446 / L453 / L463
- *     │           微信回调与鉴权初始化                                   L712 / L776
- *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L846 / L857 / L878 / L1175
- *     ├─ [底部导航配置] bottomNavItems                             L1541
- *     └─ [渲染] 页面业务模块统一通过 Suspense 按需加载              L1672
+ *                                                               L1699 / L1706 / L1770 / L1786
+ *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L511 / L525 / L532 / L542
+ *     │           微信回调与鉴权初始化                                   L819 / L848
+ *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L978 / L991 / L1018 / L1391
+ *     ├─ [底部导航配置] bottomNavItems                             L1754
+ *     └─ [渲染] 页面组合、画布与剪辑导航、Suspense                  L1829
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-09-22  新增独立画布列表入口；超长入口保留认证、历史与任务恢复集中编排，本次只接路由，验证导航及刷新，不迁移生成流程
@@ -80,6 +80,9 @@
  *   2026-08-04  资产概况剧本进度卡片跳转到对应分集分镜
  *   2026-07-31  项目列表加载动画占满内容区并垂直、水平居中显示
  *   2026-07-01  初始结构索引建立
+ *   2026-10-09  合并 V1.5 画布与剪辑入口，保留双方业务接线并校正结构索引
+ *   2026-10-12  同步 V1.5 最新画布导航，保留剪辑入口并校正合并后的索引
+ *   2026-10-15  合并远程剪辑模块，保留本地主体请求保护、公告及画布接线；校正结构索引
  */
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -140,6 +143,7 @@ const ProjectList = lazy(() => import('./ProjectList'));
 const GlobalSettings = lazy(() => import('./GlobalSettings'));
 const SubjectPage = lazy(() => import('./SubjectPage'));
 const StoryboardPage = lazy(() => import('./StoryboardPage'));
+const EditPage = lazy(() => import('./EditPage'));
 const AssetsPage = lazy(() => import('./AssetsPage'));
 const CreationPage = lazy(() => import('./CreationPage'));
 
@@ -167,12 +171,12 @@ function readWorkspaceRoute() {
   if (pathname === '/workspace/assets') return { key: 'assets' };
 
   // 详情页历史上已写入 /project/:id/:step，兼容旧的 /workspace/project/:id/:step。
-  const match = pathname.match(/^\/(?:workspace\/)?project\/([^/]+)(?:\/([^/]+))?$/);
+  const match = pathname.match(/^\/(?:workspace\/)?project\/([^/]+)(?:\/(edit)\/editor|\/([^/]+))?$/);
   if (match && match[1]) {
     return {
       key: 'project',
       projectId: decodeURIComponent(match[1]),
-      step: PATH_STEPS[match[2]] || 'script',
+      step: PATH_STEPS[match[2] || match[3]] || 'script',
     };
   }
 
@@ -193,6 +197,7 @@ function workspacePath({ key, projectId, canvasId, step }) {
 
 function updateWorkspaceUrl(route, { replace = false } = {}) {
   const nextPath = workspacePath(route);
+  if (route.step === 'edit' && window.location.pathname.replace(/\/+$/, '') === `${nextPath}/editor`) return;
   if (window.location.pathname === nextPath) return;
   window.history[replace ? 'replaceState' : 'pushState']({}, '', nextPath);
 }
@@ -1960,7 +1965,7 @@ export default function Home({ onGoToAdmin }) {
                 }}
               />
             )}
-            {activeKey === 'project' && activeProject && activeStep !== 'subject' && activeStep !== 'storyboard' && (
+            {activeKey === 'project' && activeProject && activeStep !== 'subject' && activeStep !== 'storyboard' && activeStep !== 'edit' && (
               <GlobalSettings
                 key={activeProject.id}
                 projectId={activeProject.id}
@@ -2103,12 +2108,25 @@ export default function Home({ onGoToAdmin }) {
                 episodes={scriptEpisodes}
                 initialEpisodeIndex={storyboardInitialEpisodeIndex}
                 onUnlockStep={handleUnlockStep}
+                onStartEdit={() => {
+                  handleUnlockStep('edit');
+                  setActiveStep('edit');
+                }}
                 onGenerateStoryboards={handleGenerateStoryboards}
                 onRetryGenerateStoryboards={handleRetryGenerateStoryboards}
                 isGenerating={isGeneratingStoryboards}
                 statusMessage={storyboardStatusMessage}
                 completedEpisodesCount={completedEpisodesCount}
                 generateError={generateError}
+              />
+            )}
+            {activeKey === 'project' && activeProject && activeStep === 'edit' && (
+              <EditPage
+                projectId={activeProject.id}
+                projectName={activeProject.name}
+                episodes={scriptEpisodes}
+                onStepChange={setActiveStep}
+                showToast={showToast}
               />
             )}
             {activeKey === 'assets' && (

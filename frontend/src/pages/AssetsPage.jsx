@@ -16,6 +16,7 @@
  *   组件迁移保持原参数、交互、删除/下载副作用和详情打开行为不变。
  *
  * ─── 更新记录 ─────────────────────────────────────
+ *   2026-10-15  接收 project_id/category 查询参数，支持导出结果定位项目成片
  *   2026-07-16  抽离 AssetsProjectPanel、AssetsCreativePanel 和资产卡片组合，
  *               页面入口收敛为模块切换与面板组合；同步真实行号和引用边界
  *   2026-07-24  接入 Seedance2.0素材库模块，由业务组件承载子 Tab 与文件夹展示
@@ -31,7 +32,11 @@ const MODULE_TABS = [
 ];
 
 export default function AssetsPage({ isLoggedIn, initialModule = 'project', initialSeedanceTab = 'real' }) {
-  const [activeModule, setActiveModule] = useState(initialModule);
+  const [entry] = useState(() => {
+    const query = new URLSearchParams(window.location.search);
+    return { projectId: query.get('project_id'), category: query.get('category'), module: query.get('module') };
+  });
+  const [activeModule, setActiveModule] = useState(entry.module === 'project' ? 'project' : initialModule);
 
   return (
     <div style={{
@@ -53,7 +58,7 @@ export default function AssetsPage({ isLoggedIn, initialModule = 'project', init
         overflow: 'hidden',
       }}>
         <AssetsModuleTabBar tabs={MODULE_TABS} active={activeModule} onChange={setActiveModule} />
-        {activeModule === 'project' && <AssetsProjectPanel />}
+        {activeModule === 'project' && <AssetsProjectPanel initialProjectId={entry.projectId} initialCategory={entry.category} />}
         {activeModule === 'creative' && <AssetsCreativePanel isLoggedIn={isLoggedIn} />}
         {activeModule === 'seedance' && <SeedanceAssetLibraryPanel initialTab={initialSeedanceTab} />}
       </div>

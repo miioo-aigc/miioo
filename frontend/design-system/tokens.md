@@ -9,6 +9,11 @@
 
 ## 使用规则
 
+### 音频时间线卡片
+
+- `bg-timeline-audio-bg`：`#163D58`，A1 卡片深蓝背景，选中时保留底色。
+- `text-timeline-audio-waveform`：`#0095C7`，A1 青蓝色波形。
+
 - **颜色类名**前缀：`bg-`、`text-`、`border-`，例如 `bg-surface-card`、`text-text-primary`
 - **间距类名**前缀：`p-`、`m-`、`gap-`，例如 `p-spacing-16`、`gap-spacing-8`
 - **圆角类名**前缀：`rounded-`，例如 `rounded-medium`

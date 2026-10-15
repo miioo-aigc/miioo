@@ -4,7 +4,22 @@ const INVALID_ID = /^(local[-_:]|blob:)/;
 
 export function validateSourceAsset(asset) {
   const id = asset?.creationAssetId || asset?.asset_id || asset?.assetId || asset?.backendId || asset?.source_asset_id;
-  if (typeof id !== 'string' || !id.trim() || INVALID_ID.test(id)) throw new Error('当前素材缺少真实源资产编号');
+  if (typeof id !== 'string' || !id.trim() || INVALID_ID.test(id)) {
+    if (import.meta.env?.DEV) {
+      const fields = ['id', 'creationAssetId', 'asset_id', 'assetId', 'backendId', 'source_asset_id', 'subject_id', 'primary_asset_id'];
+      const identifiers = Object.fromEntries(fields.map((key) => {
+        const value = asset?.[key];
+        const safeValue = typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value) ? value : null;
+        return [key, { type: typeof value, value: safeValue }];
+      }));
+      console.error('[图片编辑编号诊断]', JSON.stringify({
+        identifiers,
+        localEdit: asset?.localEdit === true,
+        selectedField: fields.slice(1, 6).find((key) => Boolean(asset?.[key])) || null,
+      }));
+    }
+    throw new Error('当前素材缺少真实源资产编号');
+  }
   return id;
 }
 

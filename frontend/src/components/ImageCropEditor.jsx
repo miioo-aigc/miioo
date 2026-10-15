@@ -1,4 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
+import { toImageMediaUrl } from '../utils/ImageMediaUrl';
+import DotsLoading from './DotsLoading';
 const MIN_CROP_SIZE = 0.08;
 const MAX_ZOOM = 4;
 
@@ -58,40 +60,44 @@ function clampCrop(crop, ratio, imageWidth, imageHeight) {
 function getResizeCrop(startCrop, handle, dx, dy, ratio, imageWidth, imageHeight) {
   const next = { ...startCrop };
   const isCorner = handle.length === 2;
-  if (!isCorner) {
+  if (ratio === 'custom') {
     if (handle.includes('w')) { next.x = startCrop.x + dx; next.width = startCrop.width - dx; }
     if (handle.includes('e')) next.width = startCrop.width + dx;
     if (handle.includes('n')) { next.y = startCrop.y + dy; next.height = startCrop.height - dy; }
     if (handle.includes('s')) next.height = startCrop.height + dy;
-    return clampCrop(next, 'custom', imageWidth, imageHeight);
+    const right = startCrop.x + startCrop.width;
+    const bottom = startCrop.y + startCrop.height;
+    if (handle.includes('w')) { next.x = clamp(next.x, 0, right - MIN_CROP_SIZE); next.width = right - next.x; }
+    if (handle.includes('e')) next.width = clamp(next.width, MIN_CROP_SIZE, 1 - startCrop.x);
+    if (handle.includes('n')) { next.y = clamp(next.y, 0, bottom - MIN_CROP_SIZE); next.height = bottom - next.y; }
+    if (handle.includes('s')) next.height = clamp(next.height, MIN_CROP_SIZE, 1 - startCrop.y);
+    return next;
   }
 
   const directionX = handle.includes('w') ? -1 : 1;
   const directionY = handle.includes('n') ? -1 : 1;
   const sourceRatio = imageWidth / imageHeight;
-  const cropRatio = ratio && ratio !== 'custom' ? ratio : (sourceRatio * startCrop.width) / startCrop.height;
-  const requestedWidth = startCrop.width + (directionX * dx);
-  const requestedHeight = startCrop.height + (directionY * dy);
-  let width = Math.max(MIN_CROP_SIZE, requestedWidth);
-  let height = width * sourceRatio / cropRatio;
-  if (requestedHeight > requestedWidth) {
-    height = Math.max(MIN_CROP_SIZE, requestedHeight);
-    width = height * cropRatio / sourceRatio;
-  }
-  if (startCrop.x + (directionX < 0 ? startCrop.width - width : width) > 1) {
-    width = directionX < 0 ? startCrop.x + startCrop.width : 1 - startCrop.x;
-    height = width * sourceRatio / cropRatio;
-  }
-  if (startCrop.y + (directionY < 0 ? startCrop.height - height : height) > 1) {
-    height = directionY < 0 ? startCrop.y + startCrop.height : 1 - startCrop.y;
-    width = height * cropRatio / sourceRatio;
-  }
-  const x = directionX < 0 ? startCrop.x + startCrop.width - width : startCrop.x;
-  const y = directionY < 0 ? startCrop.y + startCrop.height - height : startCrop.y;
-  return clampCrop({ x, y, width, height }, ratio, imageWidth, imageHeight);
+  const normalizedRatio = (ratio || sourceRatio) / sourceRatio;
+  const horizontal = handle.includes('w') || handle.includes('e');
+  const vertical = handle.includes('n') || handle.includes('s');
+  const anchorX = horizontal ? startCrop.x + (directionX < 0 ? startCrop.width : 0) : startCrop.x + startCrop.width / 2;
+  const anchorY = vertical ? startCrop.y + (directionY < 0 ? startCrop.height : 0) : startCrop.y + startCrop.height / 2;
+  const maxWidth = horizontal ? (directionX < 0 ? anchorX : 1 - anchorX) : 1;
+  const maxHeight = vertical ? (directionY < 0 ? anchorY : 1 - anchorY) : 1;
+  // 边缘优先围绕原中点伸缩，触边后平移联动轴；始终从拖动起点计算以支持原路回退。
+  const widthDelta = isCorner
+    ? (directionX * dx * imageWidth ** 2 + directionY * dy * imageHeight ** 2 / normalizedRatio) / (imageWidth ** 2 + imageHeight ** 2 / normalizedRatio ** 2)
+    : horizontal ? directionX * dx : directionY * dy * normalizedRatio;
+  const maximum = Math.min(maxWidth, maxHeight * normalizedRatio);
+  const minimum = Math.min(maximum, Math.max(MIN_CROP_SIZE, MIN_CROP_SIZE * normalizedRatio));
+  const width = clamp(startCrop.width + widthDelta, minimum, maximum);
+  const height = width / normalizedRatio;
+  const x = horizontal ? anchorX - (directionX < 0 ? width : 0) : clamp(anchorX - width / 2, 0, 1 - width);
+  const y = vertical ? anchorY - (directionY < 0 ? height : 0) : clamp(anchorY - height / 2, 0, 1 - height);
+  return { x, y, width, height };
 }
 
-const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, onRatioChange, onImageLoad, onChange, cropEnabled = true, rotation = 0, flipX = false, flipY = false, imageAlt = '待裁剪图片' }, ref) {
+const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, onRatioChange, onImageLoad, onChange, onReady, cropEnabled = true, rotation = 0, flipX = false, flipY = false, imageAlt = '待裁剪图片' }, ref) {
   const stageRef = useRef(null);
   const imageRef = useRef(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
@@ -100,12 +106,25 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [interaction, setInteraction] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const [hasPresented, setHasPresented] = useState(false);
   const internalRatioChange = useRef(false);
   const previousRotation = useRef(rotation);
   const previousRatio = useRef(ratio);
   const suspendedCrop = useRef(false);
   const orientedSize = getOrientedSize(imageSize, rotation);
   const orientedRatio = getOrientedRatio(ratio);
+  // 等真实尺寸传回弹窗并完成布局测量后再展示，避免首帧使用临时容器比例。
+  const previewReady = hasPresented || (imageSize.width > 0 && imageSize.height > 0
+    && stageSize.width > 0 && stageSize.height > 0
+    && Math.abs(stageSize.width - stageSize.height * orientedSize.width / orientedSize.height) < 2);
+
+  useEffect(() => {
+    if (previewReady) {
+      setHasPresented(true);
+      onReady?.(true);
+    }
+  }, [onReady, previewReady]);
 
   useLayoutEffect(() => {
     const stage = stageRef.current;
@@ -202,12 +221,7 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
         setCrop(clampCrop({ ...interaction.crop, x: interaction.crop.x + dx, y: interaction.crop.y + dy }, orientedRatio, orientedSize.width, orientedSize.height));
         return;
       }
-      const nextRatio = interaction.kind === 'edge' ? 'custom' : orientedRatio;
-      if (interaction.kind === 'edge' && ratio !== 'custom') {
-        internalRatioChange.current = true;
-        onRatioChange?.('custom', true);
-      }
-      setCrop(getResizeCrop(interaction.crop, interaction.handle, dx, dy, nextRatio, orientedSize.width, orientedSize.height));
+      setCrop(getResizeCrop(interaction.crop, interaction.handle, dx, dy, orientedRatio, orientedSize.width, orientedSize.height));
     };
     const end = () => setInteraction(null);
     window.addEventListener('pointermove', move);
@@ -229,14 +243,14 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
     onImageLoad?.(size);
   };
   const beginInteraction = (event, kind, handle) => {
-    if (!cropEnabled) return;
+    if (!cropEnabled || !previewReady) return;
     event.preventDefault();
     event.stopPropagation();
     setInteraction({ kind, handle, startX: event.clientX, startY: event.clientY, crop, pan });
   };
   useEffect(() => {
     const stage = stageRef.current;
-    if (!stage || !cropEnabled) return undefined;
+    if (!stage || !cropEnabled || !previewReady) return undefined;
 
     // React 的 onWheel 事件可能由被动委托监听器触发，滚轮缩放需要由编辑器接管默认滚动。
     const handleWheel = (event) => {
@@ -246,7 +260,7 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
 
     stage.addEventListener('wheel', handleWheel, { passive: false });
     return () => stage.removeEventListener('wheel', handleWheel);
-  }, [cropEnabled]);
+  }, [cropEnabled, previewReady]);
   const displayZoom = cropEnabled ? zoom : 1;
   const displayPan = cropEnabled ? pan : { x: 0, y: 0 };
   const imageStyle = {
@@ -254,6 +268,7 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
     height: stageSize.width && stageSize.height && Math.abs(rotation) % 180 === 90 ? `${stageSize.width}px` : `${stageSize.height}px`,
     maxWidth: 'none', maxHeight: 'none', minWidth: '0', minHeight: '0',
     objectFit: 'fill', display: 'block', position: 'absolute', left: '50%', top: '50%',
+    visibility: previewReady && !failed ? 'visible' : 'hidden',
     transform: `translate(-50%, -50%) translate(${displayPan.x * stageSize.width}px, ${displayPan.y * stageSize.height}px) rotate(${rotation}deg) scale(${(flipX ? -1 : 1) * displayZoom}, ${(flipY ? -1 : 1) * displayZoom})`,
   };
   const cropStyle = { position: 'absolute', left: `${crop.x * 100}%`, top: `${crop.y * 100}%`, width: `${crop.width * 100}%`, height: `${crop.height * 100}%` };
@@ -275,8 +290,9 @@ const ImageCropEditor = forwardRef(function ImageCropEditor({ imageUrl, ratio, o
 
   return (
     <div ref={stageRef} onPointerDown={(event) => event.button === 1 && beginInteraction(event, 'pan')} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', touchAction: 'none' }}>
-      {imageUrl ? <img ref={imageRef} src={imageUrl} alt={imageAlt} crossOrigin="anonymous" onLoad={handleImageLoad} style={imageStyle} /> : null}
-      {cropEnabled && <>
+      {imageUrl ? <img ref={imageRef} src={toImageMediaUrl(imageUrl)} alt={imageAlt} crossOrigin="anonymous" onLoad={handleImageLoad} onError={() => setFailed(true)} style={imageStyle} /> : null}
+      {(!previewReady || failed) && <div role="status" aria-label={failed ? '图片加载失败' : '图片加载中'} className="text-text-secondary text-font-size-12" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{failed ? '图片加载失败，请关闭后重试' : <DotsLoading />}</div>}
+      {cropEnabled && previewReady && !failed && <>
       <div style={{ ...cropStyle, zIndex: 4, border: '1px solid #2DC3E1', boxSizing: 'border-box', cursor: 'move' }} onPointerDown={(event) => event.button === 0 && beginInteraction(event, 'move')}>
         {showGrid ? <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'linear-gradient(to right, transparent 33.333%, #2DC3E199 33.333%, #2DC3E199 calc(33.333% + 1px), transparent calc(33.333% + 1px), transparent 66.666%, #2DC3E199 66.666%, #2DC3E199 calc(66.666% + 1px), transparent calc(66.666% + 1px)), linear-gradient(to bottom, transparent 33.333%, #2DC3E199 33.333%, #2DC3E199 calc(33.333% + 1px), transparent calc(33.333% + 1px), transparent 66.666%, #2DC3E199 66.666%, #2DC3E199 calc(66.666% + 1px), transparent calc(66.666% + 1px))' }} /> : null}
         {handles.map((handle) => <span key={handle} onPointerDown={(event) => beginInteraction(event, handle.length === 2 ? 'corner' : 'edge', handle)} style={handleStyle(handle)} />)}

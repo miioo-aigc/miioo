@@ -1,8 +1,8 @@
 .subtitle-body { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-.subtitle-stage { display: flex; flex: 1; min-width: 0; min-height: 0; align-items: center; justify-content: center; background: #0a0a0a; overflow: hidden; color: var(--color-text-secondary); }
+.subtitle-stage { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; align-items: center; justify-content: center; background: #0a0a0a; overflow: hidden; color: var(--color-text-secondary); }
 .subtitle-frame { position: relative; flex-shrink: 0; }
-.subtitle-frame video { display: block; width: 100%; height: 100%; object-fit: contain; }
-.subtitle-play-surface { position: absolute; inset: 0; background: transparent; border: 0; cursor: pointer; }
+.subtitle-source-video { position: absolute; inset: 0; display: block; box-sizing: border-box; width: 100%; height: 100%; padding-bottom: 64px; object-fit: contain; }
+.subtitle-mask-area { position: absolute; inset: 0 0 64px; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .subtitle-mask { position: absolute; box-sizing: border-box; border: 1px solid var(--color-brand-main); background: var(--color-blue-alpha-40); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); pointer-events: none; }
 .subtitle-mask-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: max-content; visibility: hidden; white-space: nowrap; font-size: 24px; line-height: 100%; font-weight: 500; font-family: 'AlibabaPuHuiTi_2_65_Medium', 'Alibaba_PuHuiTi_2.0', system-ui, sans-serif; color: var(--color-text-hint); letter-spacing: 0; pointer-events: none; user-select: none; }
 .subtitle-handle { position: absolute; padding: 0; border: 0; background: transparent; pointer-events: auto; touch-action: none; user-select: none; }
@@ -32,9 +32,4 @@
 .subtitle-handle-se span { right: 0; bottom: 0; }
 .subtitle-handle-sw span { bottom: 0; left: 0; }
 .subtitle-handle:focus-visible { outline: 2px solid var(--color-text-primary); outline-offset: -2px; }
-.subtitle-playback { display: flex; align-items: center; gap: 12px; height: 40px; flex-shrink: 0; padding: 0 16px; background: var(--color-surface-toolbar); color: var(--color-text-secondary); font-size: var(--font-size-12); }
-.subtitle-playback button { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex-shrink: 0; padding: 0; background: transparent; border: 0; color: var(--color-text-primary); cursor: pointer; }
-.subtitle-playback button:disabled { opacity: 0.4; cursor: default; }
-.subtitle-playback span { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.subtitle-playback input { flex: 1; min-width: 0; accent-color: var(--color-brand-main); }
 .subtitle-footer { display: flex; align-items: center; justify-content: flex-end; gap: 16px; height: 72px; flex-shrink: 0; padding: 0 24px; }

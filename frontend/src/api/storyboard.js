@@ -664,19 +664,21 @@ export async function apiDownloadStoryboardMediaCandidate(projectId, storyboardI
 }
 
 export async function apiDeleteStoryboard(projectId, storyboardId) {
-  await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}`, {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/${storyboardId}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });
+  if (!res.ok) throw new Error('删除分镜失败');
   invalidateStoryboards(projectId);
 }
 
 export async function apiReorderStoryboards(projectId, ordered_ids) {
-  await authFetch(`${BASE}/api/projects/${projectId}/storyboards/reorder`, {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/storyboards/reorder`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ordered_ids }),
   });
+  if (!res.ok) throw new Error('分镜排序保存失败');
   invalidateStoryboards(projectId);
 }
 

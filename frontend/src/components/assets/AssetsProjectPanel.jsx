@@ -6,18 +6,19 @@
  * 通过显式 props 组合展示组件，不把页面入口或目录入口作为隐式依赖。
  *
  * ─── 状态与数据流 ───────────────────────────────────
- *   项目、当前分类、资产数据、批量选择和弹窗状态                  L61–L96
- *   首屏/追加分页、主体元数据覆盖和项目列表加载                    L251–L431
+ *   项目、当前分类、资产数据、批量选择和弹窗状态                  L182–L218
+ *   首屏/追加分页、主体元数据覆盖和项目列表加载                    L254–L444
  *
  * ─── 业务动作 ───────────────────────────────────────
- *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L432–L639
+ *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L487–L718
  *   下载动作统一启动全局下载 Toast；有流式总长度时展示环形进度
  *
  * ─── 页面组合 ───────────────────────────────────────
- *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L640–L830
+ *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L720–L918
  *
  * ─── 更新记录 ───────────────────────────────────────
- *   2026-10-15  显式接收初始项目及分类；项目列表加载后校验目标可见性
+ *   2026-10-15  保留初始项目及分类、目标可见性校验；合并请求代际保护并校正索引
+ *   2026-10-12  首屏与分页增加请求代际，项目切换清理旧列表及在途归属。
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-07-16  页面入口收敛；补充资产选择引用；抽离项目重命名/删除弹窗和资产卡片网格
  *   2026-07-17  统一按来源移除资产，并同步清理主体卡片与分页原始数据
@@ -279,8 +280,14 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
     }
   }, []);
 
+  const listGeneration = useRef(0);
+  const morePending = useRef(null);
+
   // 首屏加载：切换项目或 tab 时触发
   const loadFirstPage = useCallback(async (projectId, category) => {
+    const generation = ++listGeneration.current;
+    morePending.current = null;
+    setAssetsMap({});
     const key = getAssetPageKey(projectId, category);
     // 清掉旧非分页接口写入的 localStorage 缓存，防止过期分组数据覆盖新结果
     invalidate(K.projectAssets(projectId), 'local');
@@ -354,6 +361,7 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
             project_id: projectId,
           };
         }))).filter(Boolean);
+        if (generation !== listGeneration.current) return;
         setAssetsMap((prev) => ({ ...prev, [category]: cards }));
         completeFirstPage(key, { cursor: null, hasMore: false, rawList: [] });
         return;
@@ -362,6 +370,7 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
       const result = await apiGetProjectAssetsPage(projectId, { category, limit });
       const filteredRawList = await filterReferenceAssetsForLibrary(projectId, category, result.rawList);
       const cards = await applySubjectMeta(projectId, category, groupByCategory(filteredRawList)[category] ?? []);
+      if (generation !== listGeneration.current) return;
       setAssetsMap(prev => ({ ...prev, [category]: cards }));
       completeFirstPage(key, {
         cursor: result.nextCursor,
@@ -370,7 +379,7 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
       });
     } catch (err) {
       console.error('[ProjectAssetsPanel] 加载失败:', err);
-      failFirstPage(key);
+      if (generation === listGeneration.current) failFirstPage(key);
     }
   }, [applySubjectMeta, completeFirstPage, failFirstPage, startPage]);
 
@@ -378,7 +387,10 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
   const loadMorePage = useCallback(async (projectId, category) => {
     const key = getAssetPageKey(projectId, category);
     const meta = pageMeta[key];
-    if (!meta || meta.loading || !meta.hasMore) return;
+    if (!meta || meta.loading || !meta.hasMore || morePending.current) return;
+    const generation = listGeneration.current;
+    const request = {};
+    morePending.current = request;
     markPageLoading(key);
     try {
       const limit = calcProjectAssetsLimit(category);
@@ -387,6 +399,7 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
       const filteredAccumulated = await filterReferenceAssetsForLibrary(projectId, category, accumulated);
       const regrouped = groupByCategory(filteredAccumulated);
       const cards = await applySubjectMeta(projectId, category, regrouped[category] ?? []);
+      if (generation !== listGeneration.current) return;
       setAssetsMap(prev => ({ ...prev, [category]: cards }));
       completeMorePage(key, {
         cursor: result.nextCursor,
@@ -395,7 +408,9 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
       });
     } catch (err) {
       console.error('[ProjectAssetsPanel] 加载更多失败:', err);
-      failMorePage(key);
+      if (generation === listGeneration.current) failMorePage(key);
+    } finally {
+      if (morePending.current === request) morePending.current = null;
     }
   }, [applySubjectMeta, completeMorePage, failMorePage, markPageLoading, pageMeta]);
 
@@ -417,7 +432,13 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
     const frame = requestAnimationFrame(() => {
       loadFirstPage(activeProject, activeCategory);
     });
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      // 请求代际不是 DOM 引用，清理时必须使最新的在途请求失效。
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      listGeneration.current++;
+      morePending.current = null;
+    };
   }, [activeProject, activeCategory, loadFirstPage]);
 
   // 主体页删除主体后，资产库可能仍然挂载在页面中。先移除旧卡片，

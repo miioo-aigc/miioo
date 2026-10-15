@@ -126,9 +126,9 @@ test('堆叠只改变展示，隐藏内部连线并将外部连线接到组', ()
   const edges = [{ id: 'inner', source: 'a', target: 'b' }, { id: 'outer', source: 'a', target: 'outside' }];
   const view = getCanvasStackPresentation(stacked, edges);
   assert.equal(view.nodes[1].hidden, true);
-  assert.equal(view.nodes[0].style.width, 300);
-  assert.equal(view.nodes[0].style.height, 300);
-  assert.deepEqual(view.nodes[0].measured, { width: 300, height: 300 });
+  assert.equal(view.nodes[0].style.width, 312);
+  assert.equal(view.nodes[0].style.height, 312);
+  assert.deepEqual(view.nodes[0].measured, { width: 312, height: 312 });
   assert.equal(stacked[0].style.width, 600);
   assert.deepEqual(stacked[1].position, nodes[1].position);
   assert.equal(view.edges[0].hidden, true);

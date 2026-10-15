@@ -74,9 +74,6 @@ export default function AdminModelVisibilityPage({
       });
       setDraftKeyword(nextKeyword);
       setPageData(payload);
-      if (nextPage === 1) {
-        setProviderOptions(buildProviderOptions(payload.list));
-      }
     } catch (error) {
       const message = getErrorMessage(error, '模型开放列表加载失败');
       setPageError(message);
@@ -88,12 +85,17 @@ export default function AdminModelVisibilityPage({
 
   const loadProviderOptions = useCallback(async () => {
     try {
-      const payload = await apiGetAdminModelVisibility({
-        page: 1,
-        pageSize: 100,
-        force: true,
-      });
-      setProviderOptions(buildProviderOptions(payload.list));
+      const items = [];
+      let page = 1;
+      let hasMore;
+      do {
+        const payload = await apiGetAdminModelVisibility({ page, pageSize: 100, force: true });
+        items.push(...payload.list);
+        hasMore = payload.hasMore;
+        if (hasMore && !payload.list.length) throw new Error('服务商列表分页异常');
+        page++;
+      } while (hasMore);
+      setProviderOptions(buildProviderOptions(items));
     } catch {
       // Ignore provider option warmup failures and let main page load surface the error.
     }
@@ -103,8 +105,13 @@ export default function AdminModelVisibilityPage({
     // refreshSignal 表示管理员外部数据刷新；此处必须重新请求列表和筛选项。
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPage({ force: true });
+  }, [loadPage, refreshSignal]);
+
+  useEffect(() => {
+    // 外部刷新信号触发独立的服务商分页读取。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadProviderOptions();
-  }, [loadPage, loadProviderOptions, refreshSignal]);
+  }, [loadProviderOptions, refreshSignal]);
 
   const handleToggleModelVisibility = async (item, nextVisible) => {
     const rowKey = `${item.providerType}:${item.category}:${item.modelId}`;

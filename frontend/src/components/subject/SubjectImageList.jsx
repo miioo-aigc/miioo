@@ -14,6 +14,7 @@
  *   图片上传、下载、定稿和 Toast 由页面通过回调负责；不引用页面、API、Store 或路由
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-10-12  详情图片映射保留资产身份和编辑元数据，避免裁剪保存丢失编号
  *   2026-10-08  图片编辑任务显示加载占位，复用 LoadingAnimation
  *   2026-07-15  从 SubjectPage 抽离主体编辑区右侧图片列表及图片卡片
  *   2026-07-15  保持页面负责上传、下载、定稿 API 和 Toast 行为
@@ -230,6 +231,7 @@ export default function SubjectImageList({
     .filter((image) => image?.source === 'asset-library' || image?.detailSource === 'asset-library')
     .flatMap((image) => [image.rawUrl, image.url, image.thumbnailUrl, image.previewUrl].filter(Boolean));
   const images = generatedImages.filter((image) => image.url).map((image) => ({
+    ...image,
     id: image.id,
     url: image.thumbnailUrl || image.url,
     fileUrl: image.previewUrl || image.rawUrl || image.url,

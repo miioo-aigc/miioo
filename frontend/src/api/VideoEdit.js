@@ -63,14 +63,14 @@ export async function resolveVideoEdit(accepted, mode) {
   if (taskId) {
     const task = await waitForImageEditTask(taskId, { mediaLabel: '视频' });
     const id = task.results?.find((item) => item.success !== false && item.asset_id)?.asset_id || task.resource_ids?.[0];
-    if (!id) throw new Error('视频任务已结束，但未返回资产编号，请勿重复生成');
+    if (!id) throw Object.assign(new Error('视频任务已结束，但未返回资产编号，请勿重复生成'), { resultInvalid: true });
     const response = await authFetch(`${BASE}/api/creation/videos/${encodeURIComponent(id)}`);
+    if (!response.ok) throw Object.assign(new Error('读取生成视频失败，请重试读取原任务'), { status: response.status });
     const data = await response.json();
-    if (!response.ok) throw new Error(getDisplayErrorMessage(data, '读取生成视频失败，请重试读取原任务'));
     result = data;
   }
   const id = result.asset_id || result.assetId || result.id;
   const url = mode === 'frame_extract' ? result.original_url || result.originalUrl || result.image_url || result.imageUrl : result.video_url || result.videoUrl;
-  if (!id || !url) throw new Error('后端已返回，但结果缺少资产编号或媒体地址，请核查资产库，不要重复提交');
+  if (!id || !url) throw Object.assign(new Error('后端已返回，但结果缺少资产编号或媒体地址，请核查资产库，不要重复提交'), { resultInvalid: true });
   return { ...result, id, asset_id: id, ...(mode === 'frame_extract' ? { original_url: url } : { video_url: url }) };
 }

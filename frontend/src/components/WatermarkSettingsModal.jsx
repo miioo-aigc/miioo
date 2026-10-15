@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Toggle from './Toggle';
 import { apiGetWatermarkSettings, apiUpdateWatermarkSettings } from '../api/settings';
 
@@ -22,6 +22,9 @@ export default function WatermarkSettingsModal({ onClose, showToast }) {
   const [imageWatermark, setImageWatermark] = useState(false);
   const [videoWatermark, setVideoWatermark] = useState(false);
   const [loading, setLoading] = useState(false);
+  const dirty = useRef({ image: false, video: false });
+  const saving = useRef(false);
+  const [readState, setReadState] = useState('loading');
   const [closeHovered, setCloseHovered] = useState(false);
   const [closePressed, setClosePressed] = useState(false);
   const [cancelHovered, setCancelHovered] = useState(false);
@@ -32,32 +35,42 @@ export default function WatermarkSettingsModal({ onClose, showToast }) {
   const [videoCardHovered, setVideoCardHovered] = useState(false);
 
   useEffect(() => {
+    let active = true;
     apiGetWatermarkSettings().then((data) => {
-      setImageWatermark(data.imageWatermark);
-      setVideoWatermark(data.videoWatermark);
+      if (!active) return;
+      if (!dirty.current.image) setImageWatermark(data.imageWatermark);
+      if (!dirty.current.video) setVideoWatermark(data.videoWatermark);
+      setReadState('ready');
+    }).catch(() => {
+      if (active) setReadState('error');
     });
+    return () => { active = false; };
   }, []);
 
   const handleImageWatermarkChange = (newValue) => {
+    if (saving.current) return;
+    dirty.current.image = true;
     setImageWatermark(newValue);
-    showToast(newValue ? '图片水印已开启' : '图片水印已关闭', 'success');
   };
 
   const handleVideoWatermarkChange = (newValue) => {
+    if (saving.current) return;
+    dirty.current.video = true;
     setVideoWatermark(newValue);
-    showToast(newValue ? '视频水印已开启' : '视频水印已关闭', 'success');
   };
 
   const handleSave = async () => {
-    if (loading) return;
+    if (saving.current || readState !== 'ready') return;
+    saving.current = true;
     setLoading(true);
     try {
       await apiUpdateWatermarkSettings({ imageWatermark, videoWatermark });
       showToast('水印设置已保存', 'success');
       onClose();
-    } catch {
-      showToast('保存失败，请重试', 'error');
+    } catch (error) {
+      showToast(error.message || '保存失败，请重试', 'error');
     } finally {
+      saving.current = false;
       setLoading(false);
     }
   };
@@ -65,7 +78,7 @@ export default function WatermarkSettingsModal({ onClose, showToast }) {
   return (
     <div
       className="fixed inset-0 flex items-center justify-center bg-surface-overlay backdrop-blur-[20px] z-50"
-      onClick={onClose}
+      onClick={() => { if (!saving.current) onClose(); }}
     >
       <div
         className="w-[400px] flex flex-col"
@@ -77,7 +90,7 @@ export default function WatermarkSettingsModal({ onClose, showToast }) {
             水印设置
           </div>
           <button
-            onClick={onClose}
+            onClick={() => { if (!saving.current) onClose(); }}
             onMouseEnter={() => setCloseHovered(true)}
             onMouseLeave={() => {
               setCloseHovered(false);
@@ -93,6 +106,7 @@ export default function WatermarkSettingsModal({ onClose, showToast }) {
 
         {/* Body */}
         <div className="items-start flex flex-col gap-[12px] py-[8px] w-[400px] bg-[#161616] px-[24px]">
+          {readState !== 'ready' && <div role="status">{readState === 'loading' ? '正在读取设置…' : '读取失败，请关闭后重新打开'}</div>}
           {/* 图片 AI 水印 */}
           <div
             className="items-start self-stretch flex justify-between rounded-[8px] py-[12px] px-[16px] gap-[8px] flex-col transition-colors duration-150"
@@ -162,7 +176,7 @@ export default function WatermarkSettingsModal({ onClose, showToast }) {
             {/* 保存按钮 */}
             <button
               onClick={handleSave}
-              disabled={loading}
+              disabled={loading || readState !== 'ready'}
               onMouseEnter={() => setSaveHovered(true)}
               onMouseLeave={() => {
                 setSaveHovered(false);

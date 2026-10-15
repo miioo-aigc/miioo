@@ -14,6 +14,7 @@ import StoryboardMediaDetailPanel from './StoryboardMediaDetailPanel';
 import { useModalSize } from '../../utils/useModalSize';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { formatReferenceMode } from '../../utils/referenceMode';
+import { mergeStoryboardMediaItems } from './StoryboardMediaItems';
 
 // 详情弹窗尺寸由 useModalSize 统一计算：基准 1200×800，内部内容整体等比缩放。
 
@@ -555,8 +556,7 @@ export default function StoryboardMediaDetailModal({ projectId, shot, candidates
   const [editMode, setEditMode] = useState(null);
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const items = useMemo(() => {
-    const source = [...(candidates.length ? candidates : media ? [media] : []), ...edits.images];
-    return source.filter((item, index, list) => item && (item.id || item.url) && list.findIndex((candidate) => (candidate.id || candidate.url) === (item.id || item.url)) === index);
+    return mergeStoryboardMediaItems(candidates.length ? candidates : media ? [media] : [], edits.images);
   }, [candidates, media, edits.images]);
   const initial = media?.id || media?.url;
   const [activeKey, setActiveKey] = useState(initial);

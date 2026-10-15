@@ -8,9 +8,10 @@
  *
  * ─── 页面级状态与动作 ────────────────────────────────────────────
  *   ApiConfigModal()         API 配置弹窗状态、服务商请求和子弹窗编排 L956
- *   saveOneLinkConfig()      OneLinkAI 配置保存与测试通过校验         L1559
+ *   saveOneLinkConfig()      OneLinkAI 配置保存与测试通过校验         L1575
  *
  * ─── 更新记录 ───────────────────────────────────────────────────
+ *   2026-10-12  编辑服务商模型三动作移出状态更新函数，失败保留列表并提示。
  *   2026-08-26  OneLinkAI API Key 清空时禁用保存并显示原因 Tooltip
  *   2026-09-28  严格校验连接结果，新密钥测试通过后才允许保存；忽略过期测试
  *   保留原因：本次仅修复 OneLinkAI 校验，不迁移服务商编排和历史弹窗 UI。
@@ -954,6 +955,7 @@ function EditModelModal({ draft, onChange, onCancel, onSave, title = '添加模�
 // }
 
 export default function ApiConfigModal({ open, onClose, onConfigured }) {
+  const modelMutationPending = useRef(false);
   const [state, setState] = useState(createDefaultState);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [bannerData, setBannerData] = useState(null);
@@ -1460,34 +1462,43 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
     }
   };
 
-  const toggleEditProviderModel = (modelId) =>
-    setState((current) => {
-      const tab = current.activeModelTab;
+  const toggleEditProviderModel = async (modelId) => {
+    if (modelMutationPending.current) return;
+    const tab = state.activeModelTab;
+    const target = (state.editProviderModelsByTab[tab] ?? []).find((model) => model.id === modelId);
+    if (!target) return;
+    modelMutationPending.current = true;
+    try {
+      await apiUpdateModel(modelId, { is_enabled: !target.enabled, ...(!target.enabled ? {} : { is_default: false }) });
+      setState((current) => {
       const updated = (current.editProviderModelsByTab[tab] ?? []).map((model) => {
         if (model.id !== modelId) return model;
-        const nowEnabled = !model.enabled;
+        const nowEnabled = !target.enabled;
         const nowDefault = nowEnabled ? model.isDefault : false;
-        apiUpdateModel(model.id, {
-          is_enabled: nowEnabled,
-          ...(nowDefault !== model.isDefault ? { is_default: nowDefault } : {}),
-        }).catch(err => console.error('更新模型状态失败:', err));
         return { ...model, enabled: nowEnabled, isDefault: nowDefault, isNew: false, justDisabled: !nowEnabled };
       });
       return {
         ...current,
         editProviderModelsByTab: { ...current.editProviderModelsByTab, [tab]: sortModels(updated) },
       };
-    });
+      });
+    } catch { showToast('error', '更新模型失败，请重试'); }
+    finally { modelMutationPending.current = false; }
+  };
 
-  const setDefaultEditProviderModel = (modelId) => {
-    setState((current) => {
-      const tab = current.activeModelTab;
-      const targetModel = (current.editProviderModelsByTab[tab] ?? []).find(m => m.id === modelId);
+  const setDefaultEditProviderModel = async (modelId) => {
+    if (modelMutationPending.current) return;
+      const tab = state.activeModelTab;
+      const targetModel = (state.editProviderModelsByTab[tab] ?? []).find(m => m.id === modelId);
+      if (!targetModel) return;
       const isCurrentlyDefault = targetModel?.isDefault;
       const newIsDefault = !isCurrentlyDefault;
       const needEnable = newIsDefault && !targetModel?.enabled;
-      apiUpdateModel(modelId, { is_default: newIsDefault, ...(needEnable ? { is_enabled: true } : {}) })
-        .catch(err => console.error('设为默认失败:', err));
+      modelMutationPending.current = true;
+      try {
+      await apiUpdateModel(modelId, { is_default: newIsDefault, ...(needEnable ? { is_enabled: true } : {}) });
+      setState((current) => {
+      if (!(current.editProviderModelsByTab[tab] ?? []).some((model) => model.id === modelId)) return current;
       const updated = (current.editProviderModelsByTab[tab] ?? []).map(model => ({
         ...model,
         isDefault: isCurrentlyDefault ? false : model.id === modelId,
@@ -1498,14 +1509,17 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
         editProviderModelsByTab: { ...current.editProviderModelsByTab, [tab]: sortModels(updated) },
       };
     });
+    } catch { showToast('error', '设置默认模型失败，请重试'); }
+    finally { modelMutationPending.current = false; }
   };
 
-  const deleteEditProviderModel = (modelId) =>
-    setState((current) => {
-      const tab = current.activeModelTab;
-      apiDeleteModel(modelId).catch((err) => {
-        console.error('删除模型失败:', err);
-      });
+  const deleteEditProviderModel = async (modelId) => {
+    if (modelMutationPending.current) return;
+    const tab = state.activeModelTab;
+    modelMutationPending.current = true;
+    try {
+      await apiDeleteModel(modelId);
+      setState((current) => {
       return {
         ...current,
         editProviderModelsByTab: {
@@ -1513,7 +1527,10 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
           [tab]: (current.editProviderModelsByTab[tab] ?? []).filter(m => m.id !== modelId),
         },
       };
-    });
+      });
+    } catch { showToast('error', '删除模型失败，请重试'); }
+    finally { modelMutationPending.current = false; }
+  };
 
   const addEditProviderModelWithValidation = async () => {
     try {

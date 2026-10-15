@@ -543,7 +543,10 @@ async function parseCreationDeleteResponse(res, action) {
     }
     throw new Error(detail || `${action}失败（${res.status}）`);
   }
-  return res.json();
+  if (res.status === 204) return { success: true };
+  const data = await res.json();
+  if (data?.success === false) throw new Error(`${action}失败`);
+  return data;
 }
 
 async function parseCreationDownloadResponse(res, action, onProgress) {
@@ -808,7 +811,8 @@ export async function apiGetCreationAudio(audioId) {
 }
 
 export async function apiDeleteCreationAudio(audioId) {
-  await authFetch(`${BASE}/api/creation/audios/${audioId}`, { method: 'DELETE' });
+  const res = await authFetch(`${BASE}/api/creation/audios/${audioId}`, { method: 'DELETE' });
+  return parseCreationDeleteResponse(res, '删除创作音频');
 }
 
 export async function apiToggleAudioFavorite(audioId) {
@@ -816,11 +820,12 @@ export async function apiToggleAudioFavorite(audioId) {
 }
 
 export async function apiBatchDeleteAudios(audio_ids) {
-  await authFetch(`${BASE}/api/creation/audios/batch-delete`, {
+  const res = await authFetch(`${BASE}/api/creation/audios/batch-delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ audio_ids }),
   });
+  return parseCreationDeleteResponse(res, '批量删除创作音频');
 }
 
 export async function apiBatchDownloadAudios(audio_ids, { onProgress } = {}) {

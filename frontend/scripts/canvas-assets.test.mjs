@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { toCanvasAsset, applyCanvasAsset } from '../src/components/canvas/CanvasAssets.js';
+import { addCanvasReference, getCanvasReferences } from '../src/components/canvas/CanvasReferences.js';
+import { createCanvasNode } from '../src/components/canvas/canvasNodeUtils.js';
 
 test('资产回填使用原文件而不是缩略图，保留来源身份', () => {
   const asset = toCanvasAsset({ id: 'v1', asset_type: 'video', url: '/thumb.jpg', fileUrl: '/movie.mp4', posterUrl: '/poster.jpg' }, 'video');
@@ -22,6 +24,19 @@ test('视频卡片接受三类素材并保留真实类型和原文件地址', ()
     assert.equal(asset.asset_type, type);
     assert.equal(asset.url, '/original');
   }
+});
+
+test('视频节点上传非视频素材时创建上游媒体节点并保留输入关系', () => {
+  const target = createCanvasNode('video', { x: 500, y: 300 }, 'video-target');
+  target.data.videoCapabilities = {};
+  let nodes = [target];
+  nodes = addCanvasReference(nodes, target.id, { type: 'image', url: '/image.png' });
+  nodes = addCanvasReference(nodes, target.id, { type: 'audio', url: '/audio.mp3' });
+  const sourceNodes = nodes.filter((node) => node.id !== target.id);
+  assert.deepEqual(sourceNodes.map((node) => node.type), ['image', 'audio']);
+  assert.deepEqual(getCanvasReferences(nodes, target.id).map((item) => item.asset.asset_type), ['image', 'audio']);
+  assert.deepEqual(nodes.find((node) => node.id === target.id).data.referenceInputs.map((input) => input.sourceId), sourceNodes.map((node) => node.id));
+  assert.equal(nodes.find((node) => node.id === target.id).data.asset, null);
 });
 
 test('只更新指定节点草稿，不改变提示词和其他节点', () => {

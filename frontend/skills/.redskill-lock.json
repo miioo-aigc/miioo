@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "skills": {
+    "review-frontend-production": {
+      "name": "review-frontend-production",
+      "version": "1.0.0",
+      "source": "redskill",
+      "install_dir": "/Users/suzylee/Desktop/miioo-v1.5/frontend/skills/review-frontend-production",
+      "installed_at": "1791768398666",
+      "sha256": "9946a1014b044411cc2d65104316c91ecaec3bce13c2e0c76b503b685f5923ef"
+    }
+  }
+}

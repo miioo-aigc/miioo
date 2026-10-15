@@ -489,6 +489,8 @@ function normalizeAsset(item) {
   return {
     ...readEditMetadata(item),
     id: item.id,
+    // AssetResponse.id 是真实资产编号；仅在资产适配边界补齐编辑契约。
+    asset_id: item.asset_id ?? item.id,
     assetType: item.asset_type ?? null,
     name: item.name,
     // 视频资产：url 只用缩略图，不 fallback 到视频地址（避免图片标签加载视频）

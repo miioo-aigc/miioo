@@ -382,6 +382,8 @@ function Agreement({ checked, onToggle }) {
 }
 
 function PhoneLoginView({ onLogin, onChangeTab, onShowToast }) {
+  const loginPending = useRef(false);
+  const [loggingIn, setLoggingIn] = useState(false);
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [agreed, setAgreed] = useState(true);
@@ -423,6 +425,7 @@ function PhoneLoginView({ onLogin, onChangeTab, onShowToast }) {
   };
 
   const handleLogin = async () => {
+    if (loginPending.current) return;
     if (!agreed) {
       onShowToast('error', '请先阅读并同意用户协议和隐私政策');
       return;
@@ -440,8 +443,17 @@ function PhoneLoginView({ onLogin, onChangeTab, onShowToast }) {
       onShowToast('error', '验证码只能包含数字');
       return;
     }
-    await loginWithPhone(phone, code);
-    onLogin();
+    loginPending.current = true;
+    setLoggingIn(true);
+    try {
+      await loginWithPhone(phone, code);
+      onLogin();
+    } catch (error) {
+      onShowToast('error', error.message || '登录失败，请重试');
+    } finally {
+      loginPending.current = false;
+      setLoggingIn(false);
+    }
   };
 
   return (
@@ -474,7 +486,7 @@ function PhoneLoginView({ onLogin, onChangeTab, onShowToast }) {
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, justifyContent: 'space-between', width: '100%', backgroundColor: '#161616', padding: 32 }}>
-        <PrimaryButton onClick={handleLogin}>登录</PrimaryButton>
+        <PrimaryButton onClick={handleLogin}>{loggingIn ? '登录中…' : '登录'}</PrimaryButton>
         <Agreement checked={agreed} onToggle={() => setAgreed((value) => !value)} />
       </div>
     </>

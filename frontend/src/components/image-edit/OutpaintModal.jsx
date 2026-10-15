@@ -6,6 +6,9 @@
  *   扩图比例选择、扩图框预览和锁定比例拖拽
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-10-12  向内拖拽越过最小边界时提示不支持裁剪，每次拖拽仅提示一次
+ *   2026-10-12  修正面积上限宽高比倒置，避免竖图首次拖拽时编辑框突缩
+ *   2026-10-12  拖拽触及扩图上限时提示，同一次连续拖拽仅提示一次
  *   2026-10-08  接入原图固定的左右生成对比，工具栏保留完整宽度
  *   2026-09-17  拖拽阶段限制四方向 [0,2] 与总面积 3 倍；滚轮缩放重算上限并自动收缩
  *   2026-09-17  图片视觉尺寸仅在滚轮时变化，拖拽编辑框不再带动图片放大
@@ -57,7 +60,7 @@ function getRatio(canvas, source) {
 // 锁比例居中模型下，宽高面积因子之积不超过 3 即满足总面积 3 倍约束；
 // 再以单边比例 [0,2]（对应因子至多 3）收窄，得到该比例下的最大宽度。
 function getAreaLimitWidth(ratio, displayedSource) {
-  const scaleFactor = Math.sqrt((3 * ratio * displayedSource.width) / displayedSource.height);
+  const scaleFactor = Math.sqrt((3 * ratio * displayedSource.height) / displayedSource.width);
   return Math.min(3, scaleFactor) * displayedSource.width;
 }
 
@@ -96,7 +99,11 @@ function getNextCanvas(start, handle, dx, dy, ratio, minimumWidth, maximumWidth)
     : directionX ? dx * directionX : dy * directionY * ratio;
   const requestedWidth = start.width + widthDelta * 2;
   const width = Math.max(minimumWidth, Math.min(maximumWidth, requestedWidth));
-  return { width, height: width / ratio };
+  return {
+    canvas: { width, height: width / ratio },
+    reachedMaximum: widthDelta > 0 && requestedWidth >= maximumWidth,
+    crossedMinimum: widthDelta < 0 && requestedWidth < minimumWidth,
+  };
 }
 
 function RatioButton({ item, selected, onClick }) {
@@ -203,6 +210,8 @@ function OutpaintStage({ imageUrl, source, canvas, onChange }) {
       minimumWidth,
       maximumWidth: Math.max(minimumWidth, getMaximumCanvasWidth(frame, imageZoom, targetRatio)),
       ratio: targetRatio,
+      limitNotified: false,
+      minimumNotified: false,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -210,7 +219,16 @@ function OutpaintStage({ imageUrl, source, canvas, onChange }) {
   const resize = (event) => {
     const start = interactionRef.current;
     if (!start || start.pointerId !== event.pointerId) return;
-    onChange(getNextCanvas(start.canvas, start.handle, (event.clientX - start.x) / start.scaleX, (event.clientY - start.y) / start.scaleY, start.ratio, start.minimumWidth, start.maximumWidth));
+    const next = getNextCanvas(start.canvas, start.handle, (event.clientX - start.x) / start.scaleX, (event.clientY - start.y) / start.scaleY, start.ratio, start.minimumWidth, start.maximumWidth);
+    onChange(next.canvas);
+    if (next.reachedMaximum && !start.limitNotified) {
+      start.limitNotified = true;
+      showGlobalToast('已达到扩图边缘上限', 'info');
+    }
+    if (next.crossedMinimum && !start.minimumNotified) {
+      start.minimumNotified = true;
+      showGlobalToast('不支持裁剪图片', 'info');
+    }
   };
   const endResize = (event) => {
     if (interactionRef.current?.pointerId !== event.pointerId) return;

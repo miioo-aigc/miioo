@@ -65,6 +65,13 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
+        '^/__image-media/media/origin/': {
+          target: 'https://www.chengxvblog.top',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/__image-media/, ''),
+          timeout: 0,
+          proxyTimeout: 300000,
+        },
         '^/__dev-media/media/origin/': {
           target: 'https://www.chengxvblog.top',
           changeOrigin: true,
@@ -92,7 +99,17 @@ export default defineConfig(({ mode }) => {
               }
             })
             proxy.on('error', (error) => {
-              console.error(`[开发代理] 连接失败 ${error.code || 'UNKNOWN'}，目标 ${new URL(apiTarget).origin}`)
+              // AggregateError 的顶层堆栈不会显示各次连接的实际地址。
+              const failures = error.errors?.length ? error.errors : [error]
+              console.error(`[开发代理] ${new Date().toISOString()} 连接失败，目标 ${new URL(apiTarget).origin}`)
+              for (const failure of failures) {
+                console.error('[开发代理] 连接详情', {
+                  code: failure.code || error.code || 'UNKNOWN',
+                  syscall: failure.syscall,
+                  address: failure.address,
+                  port: failure.port,
+                })
+              }
             })
           },
         },

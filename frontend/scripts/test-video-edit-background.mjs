@@ -10,9 +10,11 @@ let submits = 0;
 let reads = 0;
 let finish;
 let fail;
+let resumeQuery;
 const context = vm.createContext({
   console,
-  sessionStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) },
+  setTimeout: (callback) => { resumeQuery = callback; },
+  sessionStorage: { get length() { return storage.size; }, key: (i) => [...storage.keys()][i], getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) },
   window: { dispatchEvent: () => {} },
   CustomEvent: class {},
 });
@@ -76,19 +78,21 @@ assert.equal(useVideoEditStore.getState().tasks[key].result.video_url, '/result.
 assert.equal(useVideoEditStore.getState().tasks[key].busy, false);
 const second = runVideoEdit(source, options);
 await new Promise(setImmediate);
-fail(new Error('读取失败'));
-await second;
-assert.equal(useVideoEditStore.getState().tasks[key].error, '读取失败');
+fail(Object.assign(new Error('读取失败'), { status: 503 }));
+await new Promise(setImmediate);
+assert.equal(useVideoEditStore.getState().tasks[key].busy, true);
+assert.equal(useVideoEditStore.getState().notices.length, 0);
 assert.equal(saved.length, 2);
-assert.equal(saved[1][1].cards[0].status, 'error');
-const retry = runVideoEdit(source, options);
+assert.equal(saved[1][1].cards[0].status, 'loading');
+await runVideoEdit(source, options);
+resumeQuery();
 await new Promise(setImmediate);
 assert.equal(submits, 2);
 assert.equal(reads, 3);
 assert.equal(saved.length, 2);
 assert.equal(saved[1][1].cards[0].status, 'loading');
 finish({ id: 'result2', video_url: '/result2.mp4' });
-await retry;
+await second;
 assert.equal(useVideoEditStore.getState().tasks[key].result.id, 'result2');
 assert.equal(useVideoEditStore.getState().tasks[key].error, '');
 const subtitle = runVideoEdit(source, { mode: 'subtitle_remove', duration: 4 });
@@ -128,6 +132,20 @@ assert.equal(toasts.at(-1)[0], '正在保存剪辑片段');
 assert.equal(useVideoEditStore.getState().tasks[videoEditKey(source, 'trim')].busy, false);
 useVideoEditStore.getState().dismissNotice();
 assert.equal(useVideoEditStore.getState().notices.length, 0);
+for (const mode of ['upscale', 'subtitle_remove']) {
+  const count = saved.length;
+  const toastCount = toasts.length;
+  const failedJob = runVideoEdit(source, { ...options, mode });
+  await new Promise(setImmediate);
+  assert.equal(saved.length, count + 1);
+  fail(Object.assign(new Error('上游生成失败'), { terminal: true }));
+  await failedJob;
+  assert.equal(saved.length, count);
+  assert.equal(storage.size, 0);
+  assert.equal(toasts.length, toastCount);
+  assert.equal(useVideoEditStore.getState().notices[0].message, '上游生成失败');
+  useVideoEditStore.getState().dismissNotice();
+}
 console.log('后台视频任务测试通过：校验、卸载后写回、去重、恢复、剪辑即时关闭、失败移除与确认通知');
 
 for (const mode of ['upscale', 'subtitle_remove', 'trim', 'frame_extract']) {
@@ -143,3 +161,26 @@ for (const mode of ['upscale', 'subtitle_remove', 'trim', 'frame_extract']) {
   assert.equal(saved.length, beforeSaved, '画布完成不写回创作页');
 }
 console.log('画布四类任务隔离和结果返回通过');
+
+useVideoEditStore.setState({ ownerId: 'owner' });
+const malformed = runVideoEdit(source, options);
+await new Promise(setImmediate);
+fail(Object.assign(new Error('缺少资产编号'), { resultInvalid: true }));
+await malformed;
+assert.equal(useVideoEditStore.getState().tasks[key].busy, false);
+assert.equal(useVideoEditStore.getState().tasks[key].placeholder, null);
+assert.ok(storage.size);
+const beforeRecovery = submits;
+useVideoEditStore.setState({ tasks: {} });
+module.namespace.recoverVideoEdits('other');
+await new Promise(setImmediate);
+assert.equal(useVideoEditStore.getState().tasks[key], undefined);
+module.namespace.recoverVideoEdits('owner');
+await new Promise(setImmediate);
+assert.equal(useVideoEditStore.getState().tasks[key].busy, true);
+assert.equal(submits, beforeRecovery);
+finish({ id: 'recovered', video_url: '/recovered.mp4' });
+await new Promise(setImmediate);
+assert.equal(storage.size, 0);
+assert.equal(useVideoEditStore.getState().tasks[key].result.id, 'recovered');
+console.log('异常结果暂停、跨账号隔离、刷新恢复原任务通过');

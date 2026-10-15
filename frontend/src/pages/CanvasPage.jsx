@@ -23,6 +23,7 @@
  *   2026-09-24：初始缩放为 100%，单个新增节点不自动适配视口。
  *   2026-09-24：节点模型选择保存为本地草稿；文本模型加载由节点外壳负责。
  *   2026-09-28：视频卡片及参考入口支持三类媒体，按真实素材类型回填；其他节点仍按类型筛选。
+ *   2026-10-12：视频节点上传混合素材时，视频填充当前节点，图片/音频及多余视频创建为上游输入节点。
  *   2026-09-28：新增节点按当前同类型最大序号加1，编号由画布工具统一处理。
  *   2026-09-29：连接端口拆分为贴边真实锚点与 44px 独立命中层；只高亮当前悬停的合法目标卡片。
  *   2026-09-28：接入捏合、框选、修饰键多选和真正组合；组合交互与几何计算独立维护。
@@ -62,7 +63,7 @@ import AssetPickerModal from '../components/AssetPickerModal';
 import ProfileModal from '../components/ProfileModal';
 import { applyCanvasAsset, planCanvasAssetImport, toCanvasAsset } from '../components/canvas/CanvasAssets';
 import { getCanvasToolShortcut } from '../components/canvas/CanvasToolShortcuts';
-import { getCanvasReferenceNodePosition } from '../components/canvas/CanvasReferences';
+import { addCanvasReference, getCanvasReferenceNodePosition } from '../components/canvas/CanvasReferences';
 import { planCanvasReferenceBatch } from '../components/canvas/CanvasReferenceBatch';
 import { getCanvasImportBounds, preserveCanvasImportPanels } from '../components/canvas/CanvasImportLayout';
 import { getCanvasMediaFileType } from '../components/canvas/CanvasLocalMedia';
@@ -359,11 +360,20 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     let importBounds = null;
     try {
       if (anchor) {
-        setNodes((items) => applyCanvasAsset(items, anchor.id, valid[0]));
-        valid.slice(1).forEach((asset) => {
-          const position = getCanvasReferenceNodePosition(history.getSnapshot().nodes, anchor, getCanvasAssetNodeSize(asset));
-          addNode(asset.asset_type, position, null, asset);
-        });
+        if (anchor.type === 'video') {
+          const videoAsset = valid.find((asset) => asset.asset_type === 'video');
+          const upstreamAssets = valid.filter((asset) => asset !== videoAsset);
+          let next = videoAsset ? applyCanvasAsset(current, anchor.id, videoAsset) : current;
+          // 上传流程先保留完整的素材关系；视频能力限制在生成时统一校验，避免能力异步加载期间误拒绝上传。
+          upstreamAssets.forEach((asset) => { next = addCanvasReference(next, anchor.id, asset, 'all'); });
+          setNodes(next);
+        } else {
+          setNodes((items) => applyCanvasAsset(items, anchor.id, valid[0]));
+          valid.slice(1).forEach((asset) => {
+            const position = getCanvasReferenceNodePosition(history.getSnapshot().nodes, anchor, getCanvasAssetNodeSize(asset));
+            addNode(asset.asset_type, position, null, asset);
+          });
+        }
       } else {
         const center = flowInstance.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
         const imports = planCanvasAssetImport(valid, center, current);

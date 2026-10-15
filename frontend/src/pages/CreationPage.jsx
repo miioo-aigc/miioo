@@ -20,7 +20,7 @@
  *   模型入口检查、输入卡渲染和媒体详情回调                            L683–L733
  *   CreationInputCard 已迁移至 components/creation/，页面通过 renderInputCard 显式接入
  *
- * ─── 页面渲染结构 ────────────────────────────────────── L735–L848
+ * ─── 页面渲染结构 ────────────────────────────────────── L776–L889
  *   CreationPageOverlays（确认弹窗和媒体详情 Portal）         components/creation/CreationPageOverlays.jsx
  *   CreationWorkspace（主体卡片、工具栏和结果/空态组合）       components/creation/CreationWorkspace.jsx
  *   handleBeforeModelOpen / renderInputCard                     页面级显式接线辅助
@@ -43,6 +43,7 @@
  *   创作下载由页面按卡片记录 ID 调用正式下载接口；直链兼容工具只用于非创作记录。
  *
  * ─── 更新记录 ───────────────────────────────────────────
+ *   2026-10-12  删除等待服务端确认，批量逐项确认；失败记录保留，删除互斥。
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-09-18  删除已无运行时引用的旧创作页 Toast 展示；反馈统一由 GlobalToast 承接
  *   2026-05-28  初始结构索引建立
@@ -95,7 +96,7 @@
  *   2026-09-24  配音下载命名仅提取正文，过滤情绪、停顿和语气标记
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { apiPollCreationTask, apiPollCreationMusicTask, apiGetCreationVideo, apiGetCreationAudio, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../api/creation';
+import { apiPollCreationTask, apiPollCreationMusicTask, apiGetCreationVideo, apiGetCreationAudio, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { apiListModels } from '../api/config';
 import { adaptModels, getModelParams } from '../utils/modelAdapter';
@@ -549,32 +550,46 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     setSelected(isAllSelected ? new Set() : new Set(allDoneKeys));
   }
 
-  function deleteSelected() {
-    // Collect backend IDs by type for API calls
-    const imageIds = [];
-    const videoIds = [];
-    const audioIds = [];
-    selected.forEach((key) => {
+  const deletePending = useRef(false);
+  async function deleteSelected() {
+    if (deletePending.current) return;
+    deletePending.current = true;
+    const tab = activeTab;
+    const successful = new Set();
+    const entries = [...selected].map((key) => {
       const lastDash = key.lastIndexOf('-');
       const genId = key.slice(0, lastDash);
       const cardIdx = parseInt(key.slice(lastDash + 1));
       const gen = generationsByTab[activeTab]?.find((g) => g.id === genId);
       const card = gen?.cards?.[cardIdx];
       const cardId = card?.id || card?.audioId;
-      if (cardId) {
-        if (card.type === 'video') videoIds.push(cardId);
-        else if (card.type === 'audio') audioIds.push(cardId);
-        else imageIds.push(cardId);
-      }
+      return { genId, card, cardId };
     });
-    // Call backend APIs
-    if (imageIds.length > 0) apiBatchDeleteImages(imageIds).catch(() => {});
-    if (videoIds.length > 0) apiBatchDeleteVideos(videoIds).catch(() => {});
-    if (audioIds.length > 0) apiBatchDeleteAudios(audioIds).catch(() => {});
-    // Update local store
-    deleteSelectedCards(activeTab, selected);
-    invalidate(`creation_history:${activeTab}:`, 'local');
-    setSelected(new Set());
+    try {
+      // 逐项确认，避免批量接口只返回数量时无法识别失败记录。
+      const results = [];
+      for (const entry of entries) {
+        try {
+          if (entry.cardId) {
+            const remove = entry.card.type === 'video' ? apiDeleteCreationVideo : entry.card.type === 'audio' ? apiDeleteCreationAudio : apiDeleteCreationImage;
+            await remove(entry.cardId);
+          }
+          results.push({ status: 'fulfilled' });
+        } catch { results.push({ status: 'rejected' }); }
+      }
+      entries.forEach(({ genId, card, cardId }, index) => {
+        if (!card || results[index].status !== 'fulfilled') return;
+        const current = useCreationStore.getState().generationsByTab[tab]?.find((g) => g.id === genId);
+        const cardIndex = current?.cards?.findIndex((item) => cardId ? (item.id || item.audioId) === cardId : item === card) ?? -1;
+        if (cardIndex >= 0) successful.add(`${genId}-${cardIndex}`);
+      });
+      deleteSelectedCards(tab, successful);
+      invalidate(`creation_history:${tab}:`, 'local');
+      setSelected(new Set());
+      if (results.some((result) => result.status === 'rejected')) showToast('error', '部分删除失败，未删除的卡片已保留，请重新选择后重试');
+    } finally {
+      deletePending.current = false;
+    }
   }
 
   async function handleDownloadCard(card, providedFeedback) {
@@ -637,21 +652,32 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     });
   }
 
-  const handleDeleteCard = (genId, cardIdx) => {
+  const handleDeleteCard = async (genId, cardIdx) => {
+    if (deletePending.current) return;
+    deletePending.current = true;
+    const tab = activeTab;
     const gen = generationsByTab[activeTab]?.find((g) => g.id === genId);
     const card = gen?.cards?.[cardIdx];
     const cardId = card?.id || card?.audioId;
+    try {
     if (cardId) {
       if (card.type === 'video') {
-        apiDeleteCreationVideo(cardId).catch(() => {});
+        await apiDeleteCreationVideo(cardId);
       } else if (card.type === 'audio') {
-        apiDeleteCreationAudio(cardId).catch(() => {});
+        await apiDeleteCreationAudio(cardId);
       } else {
-        apiDeleteCreationImage(cardId).catch(() => {});
+        await apiDeleteCreationImage(cardId);
       }
     }
-    storeDeleteCard(activeTab, genId, cardIdx);
-    invalidate(`creation_history:${activeTab}:`, 'local');
+    const current = useCreationStore.getState().generationsByTab[tab]?.find((g) => g.id === genId);
+    const index = current?.cards?.findIndex((item) => cardId ? (item.id || item.audioId) === cardId : item === card) ?? -1;
+    if (index >= 0) storeDeleteCard(tab, genId, index);
+    invalidate(`creation_history:${tab}:`, 'local');
+    } catch {
+      showToast('error', '删除失败，卡片已保留，请重试');
+    } finally {
+      deletePending.current = false;
+    }
   };
 
   // 清空当前 Tab 的创作历史：调用后端持久隐藏，重置本 Tab 展示与分页，并失效本地缓存

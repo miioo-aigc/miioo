@@ -1,14 +1,14 @@
 /**
  * @file SubjectPage.jsx
- * @structure-index
+ * @structure-index 2026-10-20：面板 L249；生成回填 L948；主页面 L1110；单任务恢复 L1399；详情恢复 L1509；批量生成 L1628；页面渲染 L2335。
  *
  * ─── 全局常量 & 工具函数 ──────────────────────────────────────────
  *   SubjectEmptyIcons / SubjectExtractionState / SubjectEditorSlot components/subject/
- *   SUBJECT_LOADING_TEXTS                                           L145
+ *   SUBJECT_LOADING_TEXTS                                           L159
  *   downloadBlob                                                  utils/downloadBlob.js
- *   INITIAL_CHARS                                                  L165–L175
- *   sleep                                                           L183
- *   batchGeneratedImagesCache                                      L189
+ *   INITIAL_CHARS                                                  L179
+ *   sleep                                                           L197
+ *   batchGeneratedImagesCache                                      L203
  *   主体面板会话缓存 / pending 任务存储                               utils/subjectPanelStorage.js / subjectPendingGenerationStore.js
  *   normalizeSubjectList                                           utils/subjectAdapter.js
  *   getSubjectDownloadName                                          主体下载文件名适配
@@ -32,11 +32,11 @@
  *
  * ─── 业务组件 ────────────────────────────────────────────────────
  *   ConfirmStoryboardModal                                          components/subject/ConfirmStoryboardModal.jsx
- *   <EditSubjectPanel>                                             L239–L1035
- *     ├─ [状态/Ref] 模型、字段、图片、弹窗与保存队列状态            L240–L267 / L573–L631
- *     ├─ [函数] 生成、定稿、保存及图片动作句柄                      L599–L953
- *     ├─ [纯数据] 详情图片映射、参考图快照和生成参数由域工具完成    L356 / L750
- *     └─ [副作用] 模型/详情加载、批量占位、模型能力和选项联动      L289–L597
+ *   <EditSubjectPanel>                                             L249
+ *     ├─ [状态/Ref] 模型、字段、图片、弹窗与保存队列状态            面板内部
+ *     ├─ [函数] 生成、定稿、保存及图片动作句柄                      面板内部
+ *     ├─ [纯数据] 详情图片映射、参考图快照和生成参数由域工具完成
+ *     └─ [副作用] 模型/详情加载、批量占位、模型能力和选项联动
  *   SubjectGenerationOptions  主体生图选项组合                       src/components/subject/SubjectGenerationOptions.jsx
  *   SubjectGenerationMode     主体生图方式选择                       src/components/subject/SubjectGenerationMode.jsx
  *   SubjectGenerationAction   主体编辑面板底部生成动作区             src/components/subject/SubjectGenerationAction.jsx
@@ -48,15 +48,18 @@
  *   SubjectGridViewport / SubjectWorkspace 主体列表和工作区组合    src/components/subject/
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
- *   export default function SubjectPage()                          L1020
- *     ├─ [状态] activeTab / 认证模式 / 提取 / 批量 / 选中主体与列表  L1022–L1570
- *     ├─ [Ref] extractingRef / 列表哨兵 / 批量任务控制器            L1028–L1064
- *     ├─ [函数] 批量生成、添加、下载、删除、进入分镜               L1328–L1910
- *     ├─ [副作用] 提取、任务恢复、缓存订阅、资产删除和滚动加载     L1033–L1904
- *     └─ [渲染] loading/error、SubjectWorkspace 和弹窗组合        L1913–L2118
+ *   export default function SubjectPage()                          L1110
+ *     ├─ [状态] activeTab / 认证模式 / 提取 / 批量；选中主体        L1856
+ *     ├─ [副作用] 页面生命周期、单任务恢复与详情恢复               L1112 / L1399 / L1509
+ *     ├─ [函数] 批量生成、添加、下载、删除                         L1628 起
+ *     ├─ [副作用] 缓存订阅、资产删除和滚动加载                     主页面内
+ *     └─ [渲染] SubjectWorkspace 和弹窗组合                       L2335
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
- *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
+ *   2026-10-20  主体独立缓存校验及读写确认，损坏保留、提交前阻断；清理失败保留任务，完成结果保存失败留会话并提示。任务/认证/缓存/分页副作用集中编排暂保留；验证提交/恢复/收尾，未作视觉修改。
+ *   2026-10-20  共用存储异常阻止提交；读取失败提示并暂停恢复，清理传入账号；编号写失败保留保护，离页迟到编号仍登记原归属。页面超规模因任务/缓存/分页集中编排暂保留；验证生成/恢复/收尾，主体独立缓存待下一项。
+ *   2026-10-19  详情回填保护本面板上传并在更新执行时复核会话/定稿版本；保存与音色保护保留。任务/认证副作用暂保留。
+ *   2026-10-19  已编辑字段拒绝迟到详情覆盖，加载就绪补存草稿，关闭保存失败保留面板；受控列表由 Home 管理。
  *   2026-09-18  删除已无运行时引用的旧主体页 Toast 展示；反馈统一由 GlobalToast 承接
  *   2026-07-16  迁移 SubjectExtractionState 至 components/subject/SubjectExtractionState.jsx；页面仅传入加载文案和重试回调
  *   2026-07-16  新增 SubjectEditorSlot 统一三类主体编辑面板接线；页面继续持有列表写回与封面 API 副作用
@@ -125,12 +128,13 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import SubjectImageList from '../components/subject/SubjectImageList';
+import { mergeSubjectDetailUploads } from '../components/subject/SubjectImageMappers';
 import ConfirmStoryboardModal from '../components/subject/ConfirmStoryboardModal';
 import BatchGenerateModal from '../components/BatchGenerateModal';
 import { SubjectGenerationAction, SubjectPanelHeader, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, filterSubjectImagesByReferences, getSubjectCandidateImagesFromResponse, getFallbackSubjectImageModels, buildSubjectCertificationMap, getCurrentSubjectCertification } from '../components/subject';
 import { DubbingVoiceModal } from '../components/creation';
 import { showGlobalToast } from '../stores/toastStore';
-import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiDownloadSubjectImage, apiUnsetPrimarySubjectImage, apiBindSubjectReferenceImages } from '../api/subject';
+import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiDownloadSubjectImage, apiBindSubjectReferenceImages } from '../api/subject';
 import { apiGetTask } from '../api/storyboard';
 import { apiGetSubjectAssets, apiDeleteSubjectAssets } from '../api/assets';
 // 模型能力直接从后端 capabilities 获取
@@ -139,12 +143,14 @@ import { apiGetVoices } from '../api/voices';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { getSubjectReferenceImageIdentities, getSubjectReferenceImagesFromResponse, getSubjectReferenceSnapshot } from '../utils/referenceMediaAdapter';
 import { normalizeSubjects as normalizeSubjectList } from '../utils/subjectAdapter';
-import { addPendingTask, removePendingTask, getPendingTasks } from '../utils/taskPersistence';
+import { addPendingTask, removePendingTask, getPendingTasks, assertPendingTaskStorageReady } from '../utils/taskPersistence';
 import { peekCacheEntry, subscribe } from '../utils/cache';
+import { getAuthSessionGeneration, getToken } from '../api/request';
 import { K, MEDIUM } from '../utils/cacheKeys';
 import { defaultPromptForTab, findPendingSubjectImage, getPendingGenTabSetter } from '../utils/subjectPendingGenerationAdapter';
 import { clearSubjectPanelState, readSubjectPanelState, saveSubjectPanelState } from '../utils/subjectPanelStorage';
-import { pendingGenerations } from '../utils/subjectPendingGenerationStore';
+import { getSubjectGenerationScope, belongsToSubjectOwner } from '../utils/subjectPendingGenerationStore';
+import { beginManualPrimary, getPrimaryVersion, canApplyAutomaticPrimary, saveAutomaticPrimary } from '../components/subject/SubjectPrimaryCoordinator';
 import { downloadBlob } from '../utils/downloadBlob';
 import { startDownloadFeedback } from '../utils/downloadFeedback';
 import { normalizeSubjectImageModels } from '../components/subject/SubjectModelAdapter';
@@ -240,7 +246,8 @@ function getGeneratedSubjectReferenceImages(result) {
   return Array.isArray(refs) ? refs : [];
 }
 
-function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCommit, onCoverChange, refreshToken, setBatchLoadingSubjects, isBatchLoading = false }) {
+function EditSubjectPanel({ projectId, ownerId, isGenerationPageCurrent, char, tabLabel = '角色', onClose, onCommit, onCoverChange, refreshToken, setBatchLoadingSubjects, isBatchLoading = false }) {
+  const pendingGenerations = useMemo(() => getSubjectGenerationScope(projectId, ownerId, error => showGlobalToast(error.message, 'error')), [projectId, ownerId]);
   // ── 从后端拉取模型列表，直接使用后端 capabilities ──────────────
   const [imageModels, setImageModels] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
@@ -261,6 +268,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
   const referencePersistenceRef = useRef(null);
   const latestRefImageIdsRef = useRef(refImageIds);
   const uploadingAssetIdsRef = useRef(new Set());
+  const primaryOperationRef = useRef({ pending: false, version: 0 });
   const [mediaDetailOpen, setMediaDetailOpen] = useState(false);
   const [mediaDetailActiveIdx, setMediaDetailActiveIdx] = useState(0);
   const isMountedRef = useRef(true); // 跟踪组件是否已挂载，关闭弹窗后仍让请求跑完
@@ -270,7 +278,13 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
   const draftRef = useRef(null);
   const draftDirtyRef = useRef(false);
   const draftFieldsRef = useRef(new Set());
+  // 保存队列会清空待保存字段；编辑归属必须持续到本次面板关闭。
+  const editedFieldsRef = useRef(new Set());
   const saveChainRef = useRef(Promise.resolve());
+  const draftVersionsRef = useRef({});
+  const [saveSession] = useState(() => getAuthSessionGeneration());
+  const isSaveCurrent = useCallback(() => isMountedRef.current
+    && !!getToken() && saveSession === getAuthSessionGeneration(), [saveSession]);
 
   useEffect(() => {
     latestRefImageIdsRef.current = refImageIds;
@@ -293,7 +307,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
       }
 
       // 如果角色没有预设模型，加载完后自动选中默认模型
-      if (merged.length > 0 && !char?.model && !char?.default_image_model) {
+      if (merged.length > 0 && !editedFieldsRef.current.has('genConfig') && !char?.model && !char?.default_image_model) {
         const def = merged.find(m => m.is_default) || merged[0];
         if (def) setSelectedModel(def.value);
       }
@@ -345,15 +359,16 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
         const { genParams } = pendingPreflight;
         queueMicrotask(() => {
           if (cancelled) return;
-          setPromptText(genParams.prompt || '');
+          if (!editedFieldsRef.current.has('prompt')) setPromptText(genParams.prompt || '');
+          if (editedFieldsRef.current.has('genConfig')) return;
           if (genParams.model) setSelectedModel(genParams.model);
           if (genParams.ratio) setSelectedRatio(genParams.ratio);
           if (genParams.resolution) setSelectedResolution(genParams.resolution);
         });
       }
       // 更新卡片封面（兜底：else 分支可能因时序问题未执行 onCoverChange）
-      if (!char.imageUrl && pendingPreflight.rawUrl) {
-        onCoverChange?.(pendingPreflight.rawUrl);
+      if (!char.imageUrl && pendingPreflight.rawUrl && canApplyAutomaticPrimary(projectId, char.id, pendingPreflight.primaryVersion)) {
+        onCoverChange?.(pendingPreflight.rawUrl, { persist: true, primaryVersion: pendingPreflight.primaryVersion });
       }
       if (pendingPreflight.rawUrl) {
         const { rawUrl } = pendingPreflight;
@@ -391,11 +406,13 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
       // 先恢复主体详情和参考图；右侧候选资产较慢时不能阻塞编辑面板的首屏显示。
       // 每次编辑弹窗打开都主动读取当前主体详情；本地快照只负责接口暂时未返回的历史候选图补齐，
       // 不能把快照当成完整列表，否则生成后的新图可能遮蔽历史候选图。
+      const primaryVersion = primaryOperationRef.current.version;
+      const sharedPrimaryVersion = getPrimaryVersion(projectId, char.id);
       const detailRes = await apiGetSubjectDetail(projectId, char.id, { fresh: true }).catch(() => null);
-      if (cancelled) return;
+      if (cancelled || !isSaveCurrent()) return;
 
       if (!detailRes) {
-        if (!promptText) setPromptText(defaultPromptForTab(tabLabel));
+        if (!editedFieldsRef.current.has('prompt') && !promptText) setPromptText(defaultPromptForTab(tabLabel));
         setDetailLoaded(true);
         return;
       }
@@ -404,13 +421,15 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
       const subject = detailRes.subject || detailRes;   // 兼容后端扁平返回
       const genCfg = detailRes.latest_generate_config || subject.gen_config || {};
 
-      if (subject.prompt) setPromptText(subject.prompt);
+      if (!editedFieldsRef.current.has('prompt') && subject.prompt != null) setPromptText(subject.prompt);
+      if (!editedFieldsRef.current.has('genConfig')) {
       if (genCfg.model || subject.model) setSelectedModel(genCfg.model || subject.model);
       if (genCfg.ratio || subject.ratio) setSelectedRatio(genCfg.ratio || subject.ratio);
       if (genCfg.resolution || genCfg.size || subject.resolution) {
         setSelectedResolution(genCfg.resolution || genCfg.size || subject.resolution);
       }
       if (genCfg.generation_mode) setGenMode(genCfg.generation_mode);
+      }
       const responseReferenceImages = getSubjectReferenceImagesFromResponse(detailRes);
       const cachedReferenceImages = getSubjectReferenceSnapshot(projectId, char.id);
       // 参考图接口成功写入后，详情接口可能短暂返回旧快照；关闭弹窗再打开时优先
@@ -441,7 +460,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
       const subjectAssets = await apiGetSubjectAssets(projectId, char.id, {
         category: tabLabel === '场景' ? 'scene' : tabLabel === '道具' ? 'prop' : 'character',
       }).catch(() => []);
-      if (cancelled) return;
+      if (cancelled || !isSaveCurrent()) return;
 
       // 检查是否有进行中/已完成的跨弹窗生成
       const pending = pendingGenerations.get(char.id);
@@ -478,40 +497,37 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
         resolvedPendingImage,
         ...cachedImages,
       ].filter(Boolean);
-      if (candidateImages.length > 0) {
-        setGeneratedImages(() => {
-          const latestReferences = latestRefImageIdsRef.current;
-          const filteredCandidateImages = filterSubjectImagesByReferences(candidateImages, latestReferences);
-          const seenUrls = new Set();
-          return filteredCandidateImages.filter((image) => {
-            const imageUrl = normalizeImageUrl(image.rawUrl) || image.rawUrl;
-            if (!imageUrl || seenUrls.has(imageUrl)) return false;
-            seenUrls.add(imageUrl);
-            return true;
-          });
+      const canSyncPrimary = primaryVersion === primaryOperationRef.current.version
+        && canApplyAutomaticPrimary(projectId, char.id, sharedPrimaryVersion)
+        && !primaryOperationRef.current.pending;
+      if (canSyncPrimary) {
+        setGeneratedImages(prev => {
+          if (cancelled || !isSaveCurrent()
+            || !canApplyAutomaticPrimary(projectId, char.id, sharedPrimaryVersion)
+            || primaryVersion !== primaryOperationRef.current.version || primaryOperationRef.current.pending) return prev;
+          return mergeSubjectDetailUploads(prev, candidateImages, latestRefImageIdsRef.current, deletedAssetIdsRef.current);
         });
-      } else {
-        setGeneratedImages(prev => prev.length > 0 ? prev : []);
       }
       if (uniqueBatchCached.length > 0) {
         batchGeneratedImagesCache.delete(char.id);
       }
 
       setDetailLoaded(true);
+      if (!canSyncPrimary) return;
 
       // 只有候选图列表中的定稿图才能同步到卡片封面；参考图不会进入 finalImages。
       const _settledImg = finalImages.find((img) => img.settled && img.rawUrl);
       if (_settledImg) {
         setPrimaryImageUrl(_settledImg.rawUrl);
         setPrimaryImageId(_settledImg.id);
-        onCoverChange?.(_settledImg.rawUrl);
+        onCoverChange?.(_settledImg.rawUrl, { persist: false });
       } else {
         // 详情已完成且没有候选定稿图时，清除可能由旧 subject.image_url 带来的错误封面。
         // 候选普通图也不能充当封面，封面来源必须是候选图中的唯一 settled 图。
         setPrimaryImageUrl(null);
         setPrimaryImageId(null);
-        // 仅当页面当前确实仍有旧封面时通知父级清理，避免每次打开无封面的主体都发起 unset 请求。
-        if (char?.imageUrl) onCoverChange?.(null);
+        // 读取详情只同步显示，不发起取消定稿请求。
+        if (char?.imageUrl) onCoverChange?.(null, { persist: false });
       }
     })();
 
@@ -675,50 +691,53 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
       },
     };
   }, [charName, charDesc, promptText, selectedModel, selectedRatio, selectedResolution, genMode]);
+  const enqueueDraftSave = useCallback(() => {
+    if (!isSaveCurrent() || !draftDirtyRef.current || !draftRef.current) return saveChainRef.current;
+    const draft = draftRef.current;
+    const fields = new Set(draftFieldsRef.current);
+    const versions = { ...draftVersionsRef.current };
+    saveChainRef.current = saveChainRef.current.catch(() => {}).then(async () => {
+      if (!isSaveCurrent()) return;
+      try {
+        await onCommit?.(draft, fields, isSaveCurrent);
+        if (!isSaveCurrent()) return;
+        // 仅确认本次快照：请求期间的新输入仍需保存。
+        fields.forEach((field) => {
+          if (draftVersionsRef.current[field] === versions[field]) draftFieldsRef.current.delete(field);
+        });
+        draftDirtyRef.current = draftFieldsRef.current.size > 0;
+      } catch (error) {
+        if (!isSaveCurrent()) return;
+        console.error('[SubjectPage] 保存主体编辑内容失败:', error);
+        showToast('主体修改尚未保存，请重试关闭面板或继续编辑', 'error');
+      }
+    });
+    return saveChainRef.current;
+  }, [isSaveCurrent, onCommit, showToast]);
   const scheduleDraftSave = useCallback(() => {
     if (!draftDirtyRef.current || !detailLoaded) return;
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      const draft = draftRef.current;
-      if (draft) {
-        const fields = new Set(draftFieldsRef.current);
-        draftDirtyRef.current = false;
-        draftFieldsRef.current.clear();
-        saveChainRef.current = saveChainRef.current
-          .catch(() => {})
-          .then(() => onCommit?.(draft, fields))
-          .catch((error) => {
-            draftDirtyRef.current = true;
-            fields.forEach((field) => draftFieldsRef.current.add(field));
-            console.error('[SubjectPage] 自动保存主体编辑内容失败:', error);
-          });
-      }
+      enqueueDraftSave();
     }, 400);
-  }, [detailLoaded, onCommit]);
+  }, [detailLoaded, enqueueDraftSave]);
+  useEffect(() => {
+    // 用户可在详情等待期间输入；详情就绪后补发尚未排入队列的草稿。
+    if (detailLoaded && draftDirtyRef.current) scheduleDraftSave();
+  }, [detailLoaded, scheduleDraftSave]);
   const flushDraftSave = useCallback(() => {
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = null;
-    if (!draftDirtyRef.current || !draftRef.current) return saveChainRef.current;
-    const draft = draftRef.current;
-    const fields = new Set(draftFieldsRef.current);
-    saveChainRef.current = saveChainRef.current
-      .catch(() => {})
-      .then(() => onCommit?.(draft, fields))
-      .catch((error) => {
-        draftDirtyRef.current = true;
-        fields.forEach((field) => draftFieldsRef.current.add(field));
-        console.error('[SubjectPage] 关闭弹窗前保存主体编辑内容失败:', error);
-      });
-    draftDirtyRef.current = false;
-    draftFieldsRef.current.clear();
-    return saveChainRef.current;
-  }, [onCommit]);
+    return enqueueDraftSave();
+  }, [enqueueDraftSave]);
   useEffect(() => () => clearTimeout(saveTimerRef.current), []);
   const markDraftDirty = useCallback(() => {
     draftDirtyRef.current = true;
     scheduleDraftSave();
   }, [scheduleDraftSave]);
   const updateDraftField = useCallback((field, value) => {
+    editedFieldsRef.current.add(field);
+    draftVersionsRef.current[field] = (draftVersionsRef.current[field] || 0) + 1;
     draftRef.current = {
       ...(draftRef.current || {}),
       [field]: value,
@@ -728,8 +747,13 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
   }, [markDraftDirty]);
   const handlePanelClose = useCallback(async () => {
     await flushDraftSave();
+    if (!isSaveCurrent()) return;
+    if (draftDirtyRef.current) {
+      showToast('主体修改尚未保存，请稍后再次关闭重试', 'error');
+      return;
+    }
     onClose?.();
-  }, [flushDraftSave, onClose]);
+  }, [flushDraftSave, isSaveCurrent, onClose, showToast]);
   const getImageActionHandlers = useCallback(
     () => createSubjectImageActionHandlers({
       projectId,
@@ -737,6 +761,9 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
       subjectType: tabLabel === '场景' ? 'scene' : tabLabel === '道具' ? 'prop' : 'character',
       generatedImages,
       uploadingAssetIdsRef,
+      primaryOperationRef,
+      beforeManualPrimary: () => beginManualPrimary(projectId, char?.id),
+      isCurrent: isSaveCurrent,
       setGeneratedImages,
       onCoverChange,
       setPrimaryImageUrl,
@@ -744,7 +771,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
       showToast,
       triggerBlobDownload: downloadBlob,
     }),
-    [projectId, char?.id, tabLabel, generatedImages, onCoverChange, showToast]
+    [projectId, char?.id, tabLabel, generatedImages, onCoverChange, showToast, isSaveCurrent]
   );
   const handleImageUpload = useCallback(
     (fileOrAsset) => getImageActionHandlers().handleUpload(fileOrAsset),
@@ -874,12 +901,25 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
               return;
             }
 
-            const placeholder = `generated-${Date.now()}`;
+            if (!isSaveCurrent()) return;
+            if (!ownerId) { showToast('登录信息尚未就绪，请稍后重试', 'error'); return; }
+            try {
+              assertPendingTaskStorageReady(projectId, ownerId);
+              pendingGenerations.assertReady();
+            }
+            catch (error) { showToast(error.message, 'error'); return; }
+            if (pendingGenerations.get(char.id)?.status === 'pending') return;
+            const primaryVersion = getPrimaryVersion(projectId, char.id);
+            const canAutoPrimary = () => !!getToken() && saveSession === getAuthSessionGeneration()
+              && canApplyAutomaticPrimary(projectId, char.id, primaryVersion);
+            const placeholder = `generated-${crypto.randomUUID()}`;
             const tab = tabLabel === '角色' ? 'char' : tabLabel === '场景' ? 'scene' : 'prop';
             const genParamsForCache = { model: selectedModel, ratio: selectedRatio, resolution: selectedResolution, prompt: promptText };
             const existingImages = generatedImages.filter((img) => img?.rawUrl || img?.url);
-            pendingGenerations.set(char.id, {
+            try { pendingGenerations.set(char.id, {
               placeholderId: placeholder,
+              primaryVersion,
+              projectId,
               status: 'pending',
               genParams: genParamsForCache,
               createdAt: Date.now(),
@@ -887,7 +927,7 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
               knownImageIds: existingImages.map((img) => img.id).filter(Boolean),
               knownImageUrls: existingImages.flatMap((img) => [img.rawUrl, img.url]).filter(Boolean),
               refImages: mapReferenceImageIdsForModal(persistedReferenceImages),
-            });
+            }); } catch (error) { showToast(error.message, 'error'); return; }
             setBatchLoadingSubjects((prev) => ({ ...prev, [char.id]: true }));
             setGeneratedImages((prev) => [{ url: null, settled: false, id: placeholder, created_at: Date.now() }, ...prev]);
 
@@ -904,31 +944,42 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
             const refImagesSnapshot = mapReferenceImageIdsForModal(persistedReferenceImages);
 
             // 处理生成结果的回调（无论同步返回还是异步轮询，最终都走这里）
+            let completed = false;
             const handleGenResult = (payload) => {
+              if (completed || !isGenerationPageCurrent() || !getToken() || saveSession !== getAuthSessionGeneration()) return;
               const { rawUrl, imageId: realImageId } = extractSubjectImageResult(payload);
               if (!rawUrl) return;
+              completed = true;
+              const autoPrimary = !char.imageUrl && !generatedImages.some(img => img.settled) && canAutoPrimary();
               if (isMountedRef.current) {
                 const imageUrl = normalizeImageUrl(rawUrl);
                 setGeneratedImages((prev) => {
+                  if (!isSaveCurrent()) return prev;
+                  const resultImage = { id: realImageId || placeholder, rawUrl, url: imageUrl, settled: autoPrimary && canAutoPrimary() && !prev.some(img => img.settled), refImages: refImagesSnapshot, created_at: Date.now() };
+                  if (!prev.some(img => img.id === placeholder)) {
+                    if (prev.some(img => img.id === realImageId || normalizeImageUrl(img.rawUrl || img.url) === imageUrl)) return prev;
+                    return [resultImage, ...prev];
+                  }
                   const updated = prev.map((img) =>
                     img.id === placeholder
-                      ? { ...img, id: realImageId || placeholder, rawUrl, url: imageUrl, settled: false, refImages: refImagesSnapshot, created_at: img.created_at || Date.now() }
+                      ? { ...img, ...resultImage, created_at: img.created_at || resultImage.created_at }
                       : img
                   );
-                  const hasSettled = updated.some((img) => img.settled && img.rawUrl);
-                  if (!hasSettled && rawUrl) {
-                    updated[0] = { ...updated[0], settled: true };
-                    setPrimaryImageUrl(rawUrl);
-                    setPrimaryImageId(realImageId);
-                    onCoverChange?.(rawUrl);
-                  }
                   return updated;
                 });
+                if (autoPrimary) {
+                  setPrimaryImageUrl(rawUrl);
+                  setPrimaryImageId(realImageId);
+                  onCoverChange?.(rawUrl, { persist: true, primaryVersion });
+                }
                 showToast('图片生成成功', 'success');
                 pendingGenerations.delete(char.id);
               } else {
                 const currentPending = pendingGenerations.get(char.id);
                 pendingGenerations.set(char.id, {
+                  ...currentPending,
+                  primaryVersion,
+                  projectId,
                   placeholderId: placeholder,
                   status: 'done',
                   rawUrl,
@@ -938,8 +989,8 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
                   genParams: currentPending?.genParams,
                   refImages: refImagesSnapshot,
                 });
-                if (!char.imageUrl && rawUrl) {
-                  onCoverChange?.(rawUrl);
+                if (autoPrimary) {
+                  onCoverChange?.(rawUrl, { persist: true, primaryVersion });
                 }
               }
               setBatchLoadingSubjects((prev) => {
@@ -950,6 +1001,8 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
             };
 
             const handleGenError = (err) => {
+              if (completed || !isGenerationPageCurrent() || !getToken() || saveSession !== getAuthSessionGeneration()) return;
+              completed = true;
               console.error('[SubjectPage] 生成图片失败:', err);
               pendingGenerations.delete(char.id);
               setBatchLoadingSubjects((prev) => {
@@ -964,20 +1017,39 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
               showToast(errMsg, 'error');
             };
 
+            let acceptedTaskId = null;
             try {
               const result = await apiGenerateSubjectImage(projectId, char.id, genParams);
               const { taskId, rawUrl } = extractSubjectImageResult(result);
+              // 迟到编号仍登记原账号和项目；页面/登录边界只决定是否回填与轮询。
+              if (taskId && !rawUrl) {
+                acceptedTaskId = taskId;
+                addPendingTask(projectId, { taskId, shotId: '', episodeId: '', type: 'subject-single', subjectId: char.id, tab, placeholderId: placeholder, primaryVersion, ownerId });
+              }
+              if (!isGenerationPageCurrent() || !getToken() || saveSession !== getAuthSessionGeneration()) return;
 
-              if (taskId) {
+              if (rawUrl) {
+                handleGenResult(result);
+              } else if (taskId) {
                 // 后端改为任务模式：写入持久化，轮询 apiGetTask
-                addPendingTask(projectId, { taskId, shotId: '', episodeId: '', type: 'subject-single', subjectId: char.id, tab, placeholderId: placeholder });
                 // 后台轮询（不阻塞 onClick）
                 const pollTask = async () => {
-                  try {
-                    while (true) {
+                  let failures = 0;
+                  const startedAt = Date.now();
+                  const pause = () => {
+                    setBatchLoadingSubjects(prev => {
+                      if (!isGenerationPageCurrent() || !getToken() || saveSession !== getAuthSessionGeneration()) return prev;
+                      const next = { ...prev }; delete next[char.id]; return next;
+                    });
+                    showToast('生成结果暂时无法确认，任务记录已保留，请稍后重新进入主体页恢复', 'error');
+                  };
+                  while (true) {
                       await new Promise(r => setTimeout(r, 3000));
-                      const t = await apiGetTask(taskId).catch(() => null);
-                      if (!t) continue;
+                      if (!isGenerationPageCurrent() || !getToken() || saveSession !== getAuthSessionGeneration()) return;
+                      if (Date.now() - startedAt > PENDING_GEN_STALE_MS) { pause(); return; }
+                      try {
+                      const t = await apiGetTask(taskId);
+                      if (!isGenerationPageCurrent() || !getToken() || saveSession !== getAuthSessionGeneration()) return;
                       // 找到当前主体对应的结果
                       const item = getSubjectTaskResult(t, char.id);
                       if (item) {
@@ -985,46 +1057,45 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
                         const errMsg = getSubjectGenerationErrorMessage(item, '');
                         if (imgUrl) {
                           handleGenResult(item);
-                          removePendingTask(projectId, taskId);
+                          if (!pendingGenerations.hasStorageError()) removePendingTask(projectId, taskId, ownerId);
                           return;
                         } else if (errMsg) {
                           handleGenError(errMsg);
-                          removePendingTask(projectId, taskId);
+                          if (!pendingGenerations.hasStorageError()) removePendingTask(projectId, taskId, ownerId);
                           return;
                         }
                       }
                       if (isSubjectTaskTerminal(t)) {
                         // 任务已结束但未找到对应结果，回退检查主体详情
-                        const detail = await apiGetSubjectDetail(projectId, char.id).catch(() => null);
+                        const detail = await apiGetSubjectDetail(projectId, char.id);
+                        if (!isGenerationPageCurrent() || !getToken() || saveSession !== getAuthSessionGeneration()) return;
                         const recovered = detail ? findPendingSubjectImage(detail, pendingGenerations.get(char.id)) : null;
                         if (recovered) {
                           handleGenResult(recovered);
                         } else {
-                          handleGenError(new Error('生成任务已完成但未获取到结果'));
+                          throw new Error('任务已结束，结果暂未同步');
                         }
-                        removePendingTask(projectId, taskId);
+                        if (!pendingGenerations.hasStorageError()) removePendingTask(projectId, taskId, ownerId);
                         return;
                       }
-                    }
-                  } catch (err) {
-                    handleGenError(err);
-                    removePendingTask(projectId, taskId);
+                      failures = 0;
+                      } catch {
+                        if (!isGenerationPageCurrent() || !getToken() || saveSession !== getAuthSessionGeneration()) return;
+                        failures += 1;
+                        if (failures >= 3) { pause(); return; }
+                      }
                   }
                 };
                 pollTask();
-                // 同步模式下也有可能返回 taskId + image_url 共存
-                if (rawUrl) {
-                  handleGenResult(result);
-                  removePendingTask(projectId, taskId);
-                }
-              } else if (rawUrl) {
-                // 纯同步模式（后端未改造）：直接处理结果
-                handleGenResult(result);
               } else {
                 // 既无 taskId 也无 image_url：异常
                 handleGenError(new Error('生成接口未返回有效结果'));
               }
             } catch (err) {
+              if (acceptedTaskId) {
+                if (isGenerationPageCurrent() && getToken() && saveSession === getAuthSessionGeneration()) showToast(err.message, 'error');
+                return;
+              }
               handleGenError(err);
             }
           }}
@@ -1036,7 +1107,19 @@ function EditSubjectPanel({ projectId, char, tabLabel = '角色', onClose, onCom
 
 // ── Main export ────────────────────────────────────────────────────────────
 
-export default function SubjectPage({ projectId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onRegenerateStoryboard, onExtractSubjects, onRetryExtractSubjects, extractError = null, isExtractingSubjects = false, subjectExtractionStatusMessage = '', isStoryboardGenerated = false, initialTab = 'char', chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, subjectsLoading = false, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps, onGoToSeedanceLiveMaterials }) {
+export default function SubjectPage({ projectId, ownerId, projectName = '两只老虎的奇遇', onBack, onUnlockStep, onStartStoryboard, onRegenerateStoryboard, onExtractSubjects, onRetryExtractSubjects, extractError = null, isExtractingSubjects = false, subjectExtractionStatusMessage = '', isStoryboardGenerated = false, initialTab = 'char', chars: externalChars, onCharsChange, scenes: externalScenes, onScenesChange, props: externalProps, onPropsChange, subjectsLoading = false, onLoadMoreChars, onLoadMoreScenes, onLoadMoreProps, hasMoreChars = false, hasMoreScenes = false, hasMoreProps = false, charsLoadError = false, scenesLoadError = false, propsLoadError = false, onRetryChars, onRetryScenes, onRetryProps, onRefreshSubjects, onGoToSeedanceLiveMaterials }) {
+  const pendingGenerations = useMemo(() => getSubjectGenerationScope(projectId, ownerId, error => showGlobalToast(error.message, 'error')), [projectId, ownerId]);
+  useEffect(() => {
+    try { pendingGenerations.assertReadable(); }
+    catch (error) { showGlobalToast(error.message, 'error'); }
+  }, [pendingGenerations]);
+
+  const generationPageRef = useRef(false);
+  const isGenerationPageCurrent = useCallback(() => generationPageRef.current, []);
+  useEffect(() => {
+    generationPageRef.current = true;
+    return () => { generationPageRef.current = false; };
+  }, []);
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [isSeedanceCertificationMode, setIsSeedanceCertificationMode] = useState(false);
@@ -1089,6 +1172,21 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   const prevCoverUrlsRef = useRef({});
   // 批量生成 AbortController，组件卸载时取消
   const batchAbortRef = useRef(null);
+  const batchRecoveryRef = useRef(new Set());
+  const batchScopeRef = useRef(null);
+  useEffect(() => {
+    const scope = {};
+    batchScopeRef.current = scope;
+    // 切换项目或账号时，不沿用上一归属的加载标记；后续恢复副作用会补回当前任务。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBatchLoadingSubjects({});
+    setBatchGeneratingByTab({});
+    return () => {
+      batchScopeRef.current = null;
+      batchAbortRef.current?.abort();
+      batchAbortRef.current = null;
+    };
+  }, [projectId, ownerId]);
   const singleGenRecoveryRunRef = useRef(0);
 
   const refreshCertificationBindings = useCallback(async (refreshPending = false) => {
@@ -1201,77 +1299,118 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
 
   // ── 恢复跨刷新挂起的批量生成任务 ────────────────────────────────────────────
   useEffect(() => {
-    if (!projectId) return;
-    const pending = getPendingTasks(projectId, '');
-    const batchTasks = pending.filter(t => t.type === 'batch-subject' && t.tab);
+    if (!projectId || !ownerId) return;
+    let pending;
+    try { pending = getPendingTasks(projectId, ''); }
+    catch (error) { showGlobalToast(error.message, 'error'); return; }
+    const batchTasks = pending.filter(t => t.type === 'batch-subject' && t.taskId
+      && ['char', 'scene', 'prop'].includes(t.tab) && belongsToSubjectOwner(t, projectId, ownerId));
     if (batchTasks.length === 0) return;
-
-    // 取最新的一个批量任务
-    const task = batchTasks.sort((a, b) => b.createdAt - a.createdAt)[0];
-    const captureTab = task.tab;
-
-    // 跨刷新恢复任务时，先恢复页面级 loading 状态，再启动轮询。
+    let cancelled = false;
+    const session = getAuthSessionGeneration();
+    const isCurrent = () => !cancelled && !!getToken() && session === getAuthSessionGeneration();
+    const active = new Map(batchTasks.map(task => [task.taskId, task]));
+    batchRecoveryRef.current = new Set(active.keys());
+    const singleIds = new Set(pending.filter(t => t.type === 'subject-single'
+      && belongsToSubjectOwner(t, projectId, ownerId)).map(t => t.subjectId));
+    const loadingMap = {};
+    batchTasks.forEach(task => (task.subjectIds || []).forEach(id => { loadingMap[id] = true; }));
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setBatchGeneratingByTab(prev => ({ ...prev, [captureTab]: true }));
-    // 初始化所有待生成主体的 loading 状态
-    if (task.subjectIds && task.subjectIds.length > 0) {
-      const loadingMap = {};
-      task.subjectIds.forEach(id => { loadingMap[id] = true; });
-      setBatchLoadingSubjects(loadingMap);
-    }
+    setBatchGeneratingByTab(prev => ({ ...prev, ...Object.fromEntries(batchTasks.map(task => [task.tab, true])) }));
+    setBatchLoadingSubjects(prev => ({ ...prev, ...loadingMap }));
 
-    const targetSetter =
-      captureTab === 'char' ? setChars :
-      captureTab === 'scene' ? setScenes :
-      setProps;
-
-    (async () => {
+    batchTasks.forEach(task => { void (async () => {
       const processedIds = new Set();
+      const allowedIds = new Set(task.subjectIds || []);
+      const expectedIds = task.expectedSubjectIds || task.subjectIds || [];
+      const startedAt = Date.now();
+      let failures = 0;
+      let incompleteReads = 0;
+      const targetSetter = getPendingGenTabSetter(task.tab, { setChars, setScenes, setProps });
       try {
-        while (true) {
-          const t = await apiGetTask(task.taskId);
+        while (isCurrent()) {
+          if (Date.now() - startedAt >= PENDING_GEN_STALE_MS) throw new Error('等待生成结果超时');
+          let t;
+          try {
+            t = await apiGetTask(task.taskId);
+            failures = 0;
+          } catch (error) {
+            if (!isCurrent()) return;
+            if (++failures >= 3) throw error;
+            await sleep(3000);
+            continue;
+          }
+          if (!isCurrent()) return;
           const results = getSubjectTaskResults(t);
           if (Array.isArray(results)) {
             for (const item of results) {
               const sid = item.subject_id || item.id;
-              if (!sid || processedIds.has(sid)) continue;
+              if (!sid || !allowedIds.has(sid) || processedIds.has(sid)) continue;
               const { rawUrl: imgUrl } = extractSubjectImageResult(item);
               const errMsg = getSubjectGenerationErrorMessage(item, '');
               if (imgUrl) {
                 processedIds.add(sid);
                 const fullUrl = normalizeImageUrl(imgUrl);
-                targetSetter(prev => prev.map(s => s.id === sid ? { ...s, imageUrl: fullUrl } : s));
-                setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[sid]; return n; });
+                targetSetter(prev => !isCurrent() ? prev : prev.map(s => s.id === sid
+                  && !s.imageUrl && task.primaryVersions?.[sid] != null
+                  && canApplyAutomaticPrimary(projectId, sid, task.primaryVersions[sid]) ? { ...s, imageUrl: fullUrl } : s));
                 appendBatchGeneratedImage(sid, fullUrl, getGeneratedSubjectImageId(item), getGeneratedSubjectReferenceImages(item));
+                setSubjectDetailRefreshToken(prev => isCurrent() ? prev + 1 : prev);
               } else if (errMsg) {
                 processedIds.add(sid);
-                setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[sid]; return n; });
               }
             }
           }
-          if (isSubjectTaskTerminal(t)) break;
-          await new Promise(r => setTimeout(r, 3000));
+          if (isSubjectTaskTerminal(t)) {
+            if (expectedIds.every(id => processedIds.has(id))) {
+              removePendingTask(projectId, task.taskId, ownerId);
+              break;
+            }
+            if (++incompleteReads >= 5) throw new Error('原任务已结束，但部分主体结果尚未返回');
+          }
+          await sleep(3000);
         }
       } catch (err) {
+        if (!isCurrent()) return;
         console.error('[SubjectPage] 恢复批量任务失败:', task.taskId, err);
+        showGlobalToast('批量生成结果暂时无法确认，任务记录已保留，请稍后重新进入主体页恢复，请勿重复提交', 'error');
       } finally {
-        removePendingTask(projectId, task.taskId);
-        setBatchGeneratingByTab(prev => { const n = { ...prev }; delete n[captureTab]; return n; });
-        setBatchLoadingSubjects({});
+        if (isCurrent()) {
+          active.delete(task.taskId);
+          batchRecoveryRef.current.delete(task.taskId);
+          const remainingIds = new Set([...active.values()].flatMap(t => t.subjectIds || []));
+          setBatchLoadingSubjects(prev => {
+            if (!isCurrent()) return prev;
+            const next = { ...prev };
+            (task.subjectIds || []).forEach(id => { if (!remainingIds.has(id) && !singleIds.has(id)) delete next[id]; });
+            return next;
+          });
+          if (![...active.values()].some(t => t.tab === task.tab)) {
+            setBatchGeneratingByTab(prev => { if (!isCurrent()) return prev; const next = { ...prev }; delete next[task.tab]; return next; });
+          }
+        }
       }
-    })();
+    })(); });
+    return () => { cancelled = true; batchRecoveryRef.current = new Set(); };
   // setChars/setScenes/setProps 是受控与非受控数据的适配包装器，任务恢复只应在项目切换时启动，不能因包装器重建重复轮询。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, ownerId]);
 
   // ── 恢复跨刷新挂起的单主体生成任务（subject-single 类型）────────────────────
   useEffect(() => {
     if (!projectId) return;
-    const pending = getPendingTasks(projectId, '');
-    const singleTasks = pending.filter(t => t.type === 'subject-single' && t.subjectId && t.taskId);
+    let pending;
+    try { pending = getPendingTasks(projectId, ''); }
+    catch (error) { showGlobalToast(error.message, 'error'); return; }
+    const singleTasks = pending.filter(t => t.type === 'subject-single' && t.subjectId && t.taskId && belongsToSubjectOwner(t, projectId, ownerId));
     if (singleTasks.length === 0) return;
+    let cancelled = false;
+    const session = getAuthSessionGeneration();
+    const isCurrent = () => !cancelled && !!getToken() && session === getAuthSessionGeneration();
 
     const processedIds = new Set();
+    const failures = new Map();
+    const startedAt = Date.now();
     const loadingMap = {};
     singleTasks.forEach(t => { loadingMap[t.subjectId] = true; });
     // 跨刷新恢复单主体任务时，先恢复卡片 loading 状态，再启动轮询。
@@ -1281,63 +1420,79 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     (async () => {
       let allDone = false;
       try {
-        while (!allDone) {
+        while (!allDone && isCurrent()) {
           allDone = true;
           await Promise.all(singleTasks.map(async (task) => {
-            if (processedIds.has(task.subjectId)) return;
+            if (processedIds.has(task.taskId)) return;
+            const pause = () => {
+              processedIds.add(task.taskId);
+              setBatchLoadingSubjects(prev => { if (!isCurrent()) return prev; const next = { ...prev }; delete next[task.subjectId]; return next; });
+              showGlobalToast('生成结果暂时无法确认，任务记录已保留，请稍后重新进入主体页恢复', 'error');
+            };
+            if (Date.now() - startedAt > PENDING_GEN_STALE_MS) { pause(); return; }
             try {
               const t = await apiGetTask(task.taskId);
+              if (!isCurrent()) return;
               // 查找当前主体对应的结果
               const item = getSubjectTaskResult(t, task.subjectId);
               if (item) {
                 const { rawUrl: imgUrl } = extractSubjectImageResult(item);
                 const errMsg = getSubjectGenerationErrorMessage(item, '');
                 if (imgUrl) {
-                  processedIds.add(task.subjectId);
+                  processedIds.add(task.taskId);
                   const fullUrl = normalizeImageUrl(imgUrl);
                   const targetSetter = getPendingGenTabSetter(task.tab, { setChars, setScenes, setProps });
-                  targetSetter(prev => prev.map(s => s.id === task.subjectId ? { ...s, imageUrl: fullUrl } : s));
-                  setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[task.subjectId]; return n; });
-                  setSubjectDetailRefreshToken(prev => prev + 1);
+                  targetSetter(prev => !isCurrent() ? prev : prev.map(s => s.id === task.subjectId && !s.imageUrl && canApplyAutomaticPrimary(projectId, task.subjectId, task.primaryVersion) ? { ...s, imageUrl: fullUrl } : s));
+                  setBatchLoadingSubjects(prev => { if (!isCurrent()) return prev; const n = { ...prev }; delete n[task.subjectId]; return n; });
+                  setSubjectDetailRefreshToken(prev => isCurrent() ? prev + 1 : prev);
                   // 同步写入缓存供 EditSubjectPanel 读取
                   appendBatchGeneratedImage(task.subjectId, fullUrl, getGeneratedSubjectImageId(item), getGeneratedSubjectReferenceImages(item));
                   // 清理旧 pendingGenerations 路径的 pending 状态，避免残留 loading
-                  pendingGenerations.delete(task.subjectId);
-                  removePendingTask(projectId, task.taskId);
+                  if (pendingGenerations.get(task.subjectId)?.placeholderId === task.placeholderId) pendingGenerations.delete(task.subjectId);
+                  if (!pendingGenerations.hasStorageError()) removePendingTask(projectId, task.taskId, ownerId);
                 } else if (errMsg) {
-                  processedIds.add(task.subjectId);
-                  setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[task.subjectId]; return n; });
-                  pendingGenerations.delete(task.subjectId);
-                  removePendingTask(projectId, task.taskId);
+                  processedIds.add(task.taskId);
+                  setBatchLoadingSubjects(prev => { if (!isCurrent()) return prev; const n = { ...prev }; delete n[task.subjectId]; return n; });
+                  if (pendingGenerations.get(task.subjectId)?.placeholderId === task.placeholderId) pendingGenerations.delete(task.subjectId);
+                  if (!pendingGenerations.hasStorageError()) removePendingTask(projectId, task.taskId, ownerId);
                 }
-              } else if (isSubjectTaskTerminal(t)) {
+              }
+              if (processedIds.has(task.taskId)) return;
+              if (isSubjectTaskTerminal(t)) {
                 // 任务已结束但无对应结果，尝试从主体详情恢复
-                const detail = await apiGetSubjectDetail(projectId, task.subjectId).catch(() => null);
-                const pendingInfo = pendingGenerations.get(task.subjectId) || {};
+                const detail = await apiGetSubjectDetail(projectId, task.subjectId);
+                if (!isCurrent()) return;
+                const pendingInfo = pendingGenerations.get(task.subjectId);
+                if (!pendingInfo || pendingInfo.placeholderId !== task.placeholderId) throw new Error('缺少对应任务的结果识别记录');
                 const recovered = detail ? findPendingSubjectImage(detail, pendingInfo) : null;
                 if (recovered) {
-                  processedIds.add(task.subjectId);
                   const { rawUrl: recoveredUrl } = extractSubjectImageResult(recovered);
+                  if (!recoveredUrl) throw new Error('任务结果缺少图片地址');
+                  processedIds.add(task.taskId);
                   if (recoveredUrl) {
                     const fullUrl = normalizeImageUrl(recoveredUrl);
+                    appendBatchGeneratedImage(task.subjectId, fullUrl, getGeneratedSubjectImageId(recovered), getGeneratedSubjectReferenceImages(recovered));
+                    setSubjectDetailRefreshToken(prev => isCurrent() ? prev + 1 : prev);
                     const targetSetter = getPendingGenTabSetter(task.tab, { setChars, setScenes, setProps });
-                    targetSetter(prev => prev.map(s => s.id === task.subjectId ? { ...s, imageUrl: fullUrl } : s));
+                    targetSetter(prev => !isCurrent() ? prev : prev.map(s => s.id === task.subjectId && !s.imageUrl && canApplyAutomaticPrimary(projectId, task.subjectId, task.primaryVersion) ? { ...s, imageUrl: fullUrl } : s));
                   }
                 } else {
-                  processedIds.add(task.subjectId);
+                  throw new Error('任务已结束，结果暂未同步');
                 }
-                setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[task.subjectId]; return n; });
-                pendingGenerations.delete(task.subjectId);
-                removePendingTask(projectId, task.taskId);
+                setBatchLoadingSubjects(prev => { if (!isCurrent()) return prev; const n = { ...prev }; delete n[task.subjectId]; return n; });
+                if (pendingGenerations.get(task.subjectId)?.placeholderId === task.placeholderId) pendingGenerations.delete(task.subjectId);
+                if (!pendingGenerations.hasStorageError()) removePendingTask(projectId, task.taskId, ownerId);
               } else {
                 allDone = false;
               }
+              failures.delete(task.taskId);
             } catch (err) {
+              if (!isCurrent()) return;
               console.error('[SubjectPage] 恢复单主体任务失败:', task.subjectId, err);
-              processedIds.add(task.subjectId);
-              setBatchLoadingSubjects(prev => { const n = { ...prev }; delete n[task.subjectId]; return n; });
-              pendingGenerations.delete(task.subjectId);
-              removePendingTask(projectId, task.taskId);
+              const count = (failures.get(task.taskId) || 0) + 1;
+              failures.set(task.taskId, count);
+              if (count >= 3) pause();
+              else allDone = false;
             }
           }));
           if (!allDone) await new Promise(r => setTimeout(r, 3000));
@@ -1346,9 +1501,10 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         console.error('[SubjectPage] 恢复单主体任务循环异常:', err);
       }
     })();
+    return () => { cancelled = true; };
   // setChars/setScenes/setProps 是受控与非受控数据的适配包装器，任务恢复只应在项目切换时启动，不能因包装器重建重复轮询。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, ownerId, pendingGenerations]);
 
   // ── 恢复单主体 pending generations 的 loading 状态 ──────────────────────────
   useEffect(() => {
@@ -1357,9 +1513,10 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     const taskCoveredIds = new Set();
     try {
       const taskPending = getPendingTasks(projectId, "");
-      taskPending.filter(t => t.type === "subject-single" && t.subjectId).forEach(t => taskCoveredIds.add(t.subjectId));
-    } catch {
-      // getPendingTasks 失败不影响旧路径
+      taskPending.filter(t => t.type === "subject-single" && t.subjectId && belongsToSubjectOwner(t, projectId, ownerId)).forEach(t => taskCoveredIds.add(t.subjectId));
+    } catch (error) {
+      showGlobalToast(error.message, 'error');
+      return;
     }
     
     for (const [subjectId, info] of pendingGenerations) {
@@ -1369,10 +1526,6 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           continue;
         }
         
-        if (info.createdAt && (Date.now() - info.createdAt > PENDING_GEN_STALE_MS)) {
-          pendingGenerations.delete(subjectId);
-          continue;
-        }
         loadingMap[subjectId] = true;
       }
     }
@@ -1385,28 +1538,36 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     const runId = Date.now();
     singleGenRecoveryRunRef.current = runId;
     let cancelled = false;
+    const session = getAuthSessionGeneration();
+    const isCurrent = () => !cancelled && singleGenRecoveryRunRef.current === runId
+      && !!getToken() && session === getAuthSessionGeneration();
+    const paused = new Set();
+    const failures = new Map();
+    const eligible = (subjectId, info) => info?.status === 'pending'
+      && !taskCoveredIds.has(subjectId) && !paused.has(subjectId);
+    const pause = (subjectId) => {
+      paused.add(subjectId);
+      setBatchLoadingSubjects(prev => { if (!isCurrent()) return prev; const next = { ...prev }; delete next[subjectId]; return next; });
+      showGlobalToast('生成结果暂时无法确认，任务记录已保留，请稍后重新进入主体页恢复', 'error');
+    };
 
     const pollPendingGenerations = async () => {
-      while (!cancelled && singleGenRecoveryRunRef.current === runId) {
-        const activeEntries = Array.from(pendingGenerations.entries()).filter(([, info]) => info?.status === 'pending');
+      while (isCurrent()) {
+        const activeEntries = Array.from(pendingGenerations.entries()).filter(([id, info]) => eligible(id, info));
         if (activeEntries.length === 0) break;
 
         await Promise.all(activeEntries.map(async ([subjectId, info]) => {
           if (!info) return;
 
-          if (info.createdAt && (Date.now() - info.createdAt > PENDING_GEN_STALE_MS)) {
-            pendingGenerations.delete(subjectId);
-            setBatchLoadingSubjects((prev) => {
-              const next = { ...prev };
-              delete next[subjectId];
-              return next;
-            });
+          if (Date.now() - runId > PENDING_GEN_STALE_MS) {
+            pause(subjectId);
             return;
           }
 
           try {
             const detailRes = await apiGetSubjectDetail(projectId, subjectId);
-            if (cancelled || singleGenRecoveryRunRef.current !== runId) return;
+            if (!isCurrent() || pendingGenerations.get(subjectId) !== info) return;
+            failures.delete(subjectId);
 
             const recoveredImage = findPendingSubjectImage(detailRes, info);
             if (!recoveredImage) return;
@@ -1422,23 +1583,28 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
             });
 
             const targetSetter = getPendingGenTabSetter(info.tab, { setChars, setScenes, setProps });
-            targetSetter((prev) => prev.map((item) => {
-              if (item.id !== subjectId || item.imageUrl || !rawUrl) return item;
+            targetSetter((prev) => !isCurrent() ? prev : prev.map((item) => {
+              if (item.id !== subjectId || item.imageUrl || !rawUrl || !canApplyAutomaticPrimary(projectId, subjectId, info.primaryVersion)) return item;
               return { ...item, imageUrl: normalizeImageUrl(rawUrl) };
             }));
 
             setBatchLoadingSubjects((prev) => {
+              if (!isCurrent()) return prev;
               const next = { ...prev };
               delete next[subjectId];
               return next;
             });
-            setSubjectDetailRefreshToken((prev) => prev + 1);
+            setSubjectDetailRefreshToken((prev) => isCurrent() ? prev + 1 : prev);
           } catch (err) {
+            if (!isCurrent() || pendingGenerations.get(subjectId) !== info) return;
             console.error('[SubjectPage] 恢复单主体生成失败:', subjectId, err);
+            const count = (failures.get(subjectId) || 0) + 1;
+            failures.set(subjectId, count);
+            if (count >= 3) pause(subjectId);
           }
         }));
 
-        const stillPending = Array.from(pendingGenerations.values()).some((info) => info?.status === 'pending');
+        const stillPending = Array.from(pendingGenerations.entries()).some(([id, info]) => eligible(id, info));
         if (!stillPending) break;
         await sleep(PENDING_GEN_POLL_MS);
       }
@@ -1449,9 +1615,9 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     return () => {
       cancelled = true;
     };
-  // 自定义 setChars/setScenes/setProps 包装器随受控 props 重建；恢复 effect 只应随项目切换启动一次。
+  // setter 随受控 props 重建；恢复仅随项目或账号归属改变重新启动。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, ownerId, pendingGenerations]);
 
 
 
@@ -1460,6 +1626,10 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
   }
 
   const handleBatchGenerate = async (params) => {
+    if (!projectId || !ownerId || !getToken()) {
+      showBatchToast('登录信息尚未就绪，请稍后重试', 'error');
+      return;
+    }
 
   // 批量生成中可静默忽略的错误消息：命中后退出 loading，但不弹 toast、不计入失败数
   const BATCH_SILENT_ERRORS = ['已有主图，跳过生成'];
@@ -1474,8 +1644,15 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     }
 
     // 防止重复触发（已有加载中的主体）
-    if (Object.keys(batchLoadingSubjects).length > 0) {
-      showBatchToast('批量生成进行中，请等待当前任务完成', 'error');
+    let pendingTasks;
+    try {
+      assertPendingTaskStorageReady(projectId, ownerId);
+      pendingTasks = getPendingTasks(projectId, '');
+    }
+    catch (error) { showBatchToast(error.message, 'error'); return; }
+    if (batchAbortRef.current || batchRecoveryRef.current.size > 0 || Object.keys(batchLoadingSubjects).length > 0
+      || pendingTasks.some(t => t.type === 'batch-subject' && belongsToSubjectOwner(t, projectId, ownerId))) {
+      showBatchToast('已有生成任务尚未确认，请稍后重新进入主体页恢复，请勿重复提交', 'error');
       return;
     }
 
@@ -1484,6 +1661,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
 
     // 保存当前 tab 引用（stream 期间 tab 不会变）
     const captureTab = activeTab;
+    const primaryVersions = Object.fromEntries(subjectIds.map(id => [id, getPrimaryVersion(projectId, id)]));
     // 根据 tab 确定 setter 函数
     const targetSetter =
       captureTab === 'char' ? setChars :
@@ -1512,32 +1690,45 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
 
     // 创建 AbortController，用于组件卸载时取消
     const controller = new AbortController();
+    const batchSession = getAuthSessionGeneration();
+    const batchScope = batchScopeRef.current;
     batchAbortRef.current = controller;
+    const isCurrent = () => !!batchScope && batchScopeRef.current === batchScope
+      && !controller.signal.aborted
+      && !!getToken() && batchSession === getAuthSessionGeneration();
+    const processedIds = new Set();
+    const allowedIds = new Set(subjectIds);
+    const expectedSubjectIds = Object.keys(loadingMap);
+    const hasAllResults = () => expectedSubjectIds.every(id => processedIds.has(id));
     let batchTaskId = null;
+    let completed = false;
 
     // 统计成功/失败数
     let successCount = 0;
     let failCount = 0;
 
     try {
-      await apiBatchGenerateStream(projectId, { model: params.model, ratio: params.ratio, resolution: params.resolution, generation_mode: params.mode, only_undrafted: params.only_undrafted, subject_ids: subjectIds }, {
+      const callbacks = {
         signal: controller.signal,
         onTaskCreated: (taskId) => {
           batchTaskId = taskId;
-          addPendingTask(projectId, { taskId, shotId: '', episodeId: '', type: 'batch-subject', tab: captureTab, subjectIds });
+          addPendingTask(projectId, { taskId, shotId: '', episodeId: '', type: 'batch-subject', tab: captureTab, subjectIds, expectedSubjectIds, ownerId, primaryVersions });
         },
         onSubjectImage: (subjectId, imageUrl, result) => {
+          if (!isCurrent() || !allowedIds.has(subjectId) || processedIds.has(subjectId)) return;
+          processedIds.add(subjectId);
           successCount++;
           const fullUrl = normalizeImageUrl(imageUrl);
           // 更新对应 tab 的主体封面
-          targetSetter(prev => prev.map(s =>
-            s.id === subjectId ? { ...s, imageUrl: fullUrl } : s
+          targetSetter(prev => !isCurrent() ? prev : prev.map(s =>
+            s.id === subjectId && canApplyAutomaticPrimary(projectId, subjectId, primaryVersions[subjectId]) ? { ...s, imageUrl: fullUrl } : s
           ));
           // 该主体退出 loading
           setBatchLoadingSubjects(prev => {
+            if (!isCurrent()) return prev;
             const next = { ...prev };
             delete next[subjectId];
-          return next;
+            return next;
           });
           // 存入批量生成缓存，EditSubjectPanel 打开时优先从缓存读取
           // 结果里的 id 通常是主体 ID（用于 sid 解析），不能当作候选图 ID。
@@ -1545,9 +1736,12 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           appendBatchGeneratedImage(subjectId, fullUrl, imageId, getGeneratedSubjectReferenceImages(result));
         },
         onSubjectError: (subjectId, errorMsg) => {
+          if (!isCurrent() || !allowedIds.has(subjectId) || processedIds.has(subjectId)) return;
+          processedIds.add(subjectId);
           // 命中静默错误（如「已有主图，跳过生成」）：仅退出 loading，不弹 toast、不计入失败
           if (isSilentBatchError(errorMsg)) {
             setBatchLoadingSubjects(prev => {
+              if (!isCurrent()) return prev;
               const next = { ...prev };
               delete next[subjectId];
               return next;
@@ -1562,29 +1756,51 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           showBatchToast(`「${label}」生成失败: ${errorMsg || '未知错误'}`, 'error');
           // 该主体退出 loading（封面恢复为之前的图片或占位图）
           setBatchLoadingSubjects(prev => {
+            if (!isCurrent()) return prev;
             const next = { ...prev };
             delete next[subjectId];
             return next;
           });
         },
-      onComplete: () => {
-         if (batchTaskId) removePendingTask(projectId, batchTaskId);
-         if (successCount > 0) {
-           showBatchToast(successCount === targetCount
-             ? '批量生成全部完成'
-             : `批量生成完成（成功 ${successCount}，失败 ${failCount}）`, 'success');
+        onComplete: () => {
+          if (isCurrent()) completed = true;
+        },
+      };
+      await apiBatchGenerateStream(projectId, { model: params.model, ratio: params.ratio, resolution: params.resolution, generation_mode: params.mode, only_undrafted: params.only_undrafted, subject_ids: subjectIds }, callbacks);
+      if (!isCurrent()) return;
+      // 完成通知不等于逐项结果完整；只按原任务补读，不重新提交生成。
+      for (let attempt = 0; completed && !hasAllResults() && batchTaskId && attempt < 5; attempt++) {
+        if (attempt > 0) await sleep(3000);
+        if (!isCurrent()) return;
+        const task = await apiGetTask(batchTaskId);
+        if (!isCurrent()) return;
+        for (const item of getSubjectTaskResults(task)) {
+          const sid = item.subject_id || item.id;
+          const { rawUrl } = extractSubjectImageResult(item);
+          const error = getSubjectGenerationErrorMessage(item, '');
+          if (rawUrl) callbacks.onSubjectImage(sid, rawUrl, item);
+          else if (error) callbacks.onSubjectError(sid, error);
         }
-          else if (failCount > 0) {
-            showBatchToast('批量生成失败，可能是调用服务商模型失败了，请换个模型再试下', 'error');
-          }
-          else {
-            showBatchToast('批量生成失败，未能接收到任何结果', 'error');
-          }
-      },
-    });
+      }
+      if (!completed || !hasAllResults()) {
+        showBatchToast(batchTaskId
+          ? '批量结果尚未完整返回，原任务已保留；请稍后重新进入主体页补查，请勿重复提交'
+          : '批量结果不完整且未返回任务编号，无法补查；请先确认服务端结果，勿直接重新生成', 'error');
+        return;
+      }
+      if (batchTaskId) removePendingTask(projectId, batchTaskId, ownerId);
+      if (successCount > 0) {
+        showBatchToast(successCount === targetCount
+          ? '批量生成全部完成'
+          : `批量生成完成（成功 ${successCount}，失败 ${failCount}）`, 'success');
+      } else if (failCount > 0) {
+        showBatchToast('批量生成失败，可能是调用服务商模型失败了，请换个模型再试下', 'error');
+      } else {
+        showBatchToast('本批次无需生成，已跳过已有定稿图的主体', 'success');
+      }
     } catch (err) {
       // 忽略用户主动取消的错误
-      if (err?.name === 'AbortError') return;
+      if (err?.name === 'AbortError' || !isCurrent()) return;
 
       console.error('[SubjectPage] 批量生成流失败:', err);
       // 网络断开或整体请求失败 — toast 后统一恢复
@@ -1593,8 +1809,11 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         : (err?.message || '批量生成失败，请重试');
       showBatchToast(errMsg, 'error');
 
-      // 生图失败后重新从后端获取主体数据，恢复真实封面
+      // 受控列表必须由父页面同时刷新列表与分页，不能用独立批次覆盖共享列表。
       try {
+        if (hasExternalChars && hasExternalScenes && hasExternalProps) {
+          await onRefreshSubjects?.(projectId, batchSession);
+        } else {
         const _spAvailW = window.innerWidth - 48;
         const _spAvailH = window.innerHeight - 60 - 48;
         const _spCols = Math.max(1, Math.floor((_spAvailW + 16) / (200 + 16)));
@@ -1605,9 +1824,11 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           apiGetSubjects(projectId, { type: 'scene', limit: _spLimit }),
           apiGetSubjects(projectId, { type: 'prop', limit: _spLimit }),
         ]);
-        setChars(normalizeSubjectList(newChars));
-        setScenes(normalizeSubjectList(newScenes));
-        setProps(normalizeSubjectList(newProps));
+        if (!isCurrent()) return;
+        if (!hasExternalChars) setChars(normalizeSubjectList(newChars));
+        if (!hasExternalScenes) setScenes(normalizeSubjectList(newScenes));
+        if (!hasExternalProps) setProps(normalizeSubjectList(newProps));
+        }
       } catch (refetchErr) {
         console.error('[SubjectPage] 失败后刷新主体数据也失败:', refetchErr);
       }
@@ -1615,10 +1836,19 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
       // 整体失败时，所有卡片的 loading 都会由于 finally 清除而消失，
       // 封面自然恢复为之前的图片（因为我们没有修改过 imageUrl）
     } finally {
-      // 清空所有 loading 状态
-      setBatchLoadingSubjects({});
-      setBatchGeneratingByTab(prev => { const next = { ...prev }; delete next[captureTab]; return next; });
-      batchAbortRef.current = null;
+      if (isCurrent()) {
+        setBatchLoadingSubjects(prev => {
+          if (batchScopeRef.current !== batchScope) return prev;
+          const next = { ...prev };
+          Object.keys(loadingMap).forEach(id => { delete next[id]; });
+          return next;
+        });
+        setBatchGeneratingByTab(prev => {
+          if (batchScopeRef.current !== batchScope) return prev;
+          const next = { ...prev }; delete next[captureTab]; return next;
+        });
+        batchAbortRef.current = null;
+      }
     }
   };
 
@@ -1704,6 +1934,31 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     Object.fromEntries(INITIAL_CHARS.map((c) => [c.id, c.voice]))
   );
   const [charVoiceNames, setCharVoiceNames] = useState({});
+  const voiceOperationsRef = useRef(new Map());
+  const voiceOwnerRef = useRef(null);
+  useEffect(() => {
+    const owner = { projectId, session: getAuthSessionGeneration() };
+    const operations = voiceOperationsRef.current; voiceOwnerRef.current = owner;
+    return () => { voiceOwnerRef.current = null; operations.clear(); };
+  }, [projectId]);
+  const beginVoiceOperation = (subjectId) => {
+    const owner = voiceOwnerRef.current;
+    if (!owner || owner.projectId !== projectId || !getToken()
+      || owner.session !== getAuthSessionGeneration()) return null;
+    if (voiceOperationsRef.current.has(subjectId)) {
+      showBatchToast('该主体音色正在保存，请稍候', 'error');
+      return null;
+    }
+    const operation = {};
+    voiceOperationsRef.current.set(subjectId, operation);
+    return {
+      isCurrent: () => voiceOwnerRef.current === owner && !!getToken()
+        && owner.session === getAuthSessionGeneration(),
+      finish: () => {
+        if (voiceOperationsRef.current.get(subjectId) === operation) voiceOperationsRef.current.delete(subjectId);
+      },
+    };
+  };
 
   useEffect(() => {
     const panelState =
@@ -1801,21 +2056,21 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
 
     // 订阅角色缓存
     unsubscribers.push(subscribe(K.subjects(projectId, 'character'), (data) => {
-      if (Array.isArray(data)) {
+      if (!hasExternalChars && Array.isArray(data)) {
         setChars(normalizeSubjectList(data));
       }
     }));
 
     // 订阅场景缓存
     unsubscribers.push(subscribe(K.subjects(projectId, 'scene'), (data) => {
-      if (Array.isArray(data)) {
+      if (!hasExternalScenes && Array.isArray(data)) {
         setScenes(normalizeSubjectList(data));
       }
     }));
 
     // 订阅道具缓存
     unsubscribers.push(subscribe(K.subjects(projectId, 'prop'), (data) => {
-      if (Array.isArray(data)) {
+      if (!hasExternalProps && Array.isArray(data)) {
         setProps(normalizeSubjectList(data));
       }
     }));
@@ -1825,7 +2080,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     };
   // 缓存订阅回调使用受控/非受控适配 setter；订阅生命周期只随项目切换变化。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, hasExternalChars, hasExternalScenes, hasExternalProps]);
 
   // 监听资产库删除事件，刷新已打开的主体详情弹窗
   useEffect(() => {
@@ -1954,15 +2209,12 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
     const previousVoiceId = charVoices[subjectId] ?? subject.voice_id ?? null;
     if (!previousVoiceId) return;
 
-    // 先清除卡片上的旧引用，音色库删除后仍可解除主体与失效音色的绑定。
-    setCharVoices((prev) => ({ ...prev, [subjectId]: null }));
-    setCharVoiceNames((prev) => ({ ...prev, [subjectId]: null }));
-    setChars((prev) => prev.map((character) => character.id === subjectId
-      ? { ...character, voice_id: null, voice_name: null, voice_preview_url: null }
-      : character));
+    const operation = beginVoiceOperation(subjectId);
+    if (!operation) return;
 
     try {
       const updateResult = await apiUpdateSubject(projectId, subjectId, { voice_id: null });
+      if (!operation.isCurrent()) return;
       const updatedSubject = updateResult?.subject
         || updateResult?.data?.subject
         || updateResult?.result?.subject
@@ -1981,7 +2233,9 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         const retryDelays = [300, 700, 1200, 2000];
         for (const delay of retryDelays) {
           await new Promise((resolve) => setTimeout(resolve, delay));
+          if (!operation.isCurrent()) return;
           const detail = await apiGetSubjectDetail(projectId, subjectId).catch(() => null);
+          if (!operation.isCurrent()) return;
           const detailSubject = detail?.subject || detail?.data?.subject || detail?.data || detail;
           if (hasVoiceField(detailSubject)) {
             latestSubject = detailSubject;
@@ -1992,6 +2246,7 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           }
 
           const latestChars = await apiGetSubjects(projectId, { type: 'character', limit: 200 });
+          if (!operation.isCurrent()) return;
           const listSubject = latestChars.find((character) => character.id === subjectId) || null;
           if (listSubject) latestSubject = listSubject;
           if (hasVoiceField(listSubject) && listSubject.voice_id == null) {
@@ -2001,26 +2256,21 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         }
       }
 
-      if (!persisted && latestSubject?.voice_id) {
-        throw new Error('音色取消未保存成功，请稍后重试');
+      if (!persisted) {
+        throw new Error(latestSubject?.voice_id ? '音色取消未保存成功，请稍后重试' : '暂未确认音色取消结果，请稍后重试');
       }
+      setCharVoices((prev) => operation.isCurrent() ? { ...prev, [subjectId]: null } : prev);
+      setCharVoiceNames((prev) => operation.isCurrent() ? { ...prev, [subjectId]: null } : prev);
+      setChars((prev) => operation.isCurrent() ? prev.map((character) => character.id === subjectId
+        ? { ...character, voice_id: null, voice_name: null, voice_preview_url: null }
+        : character) : prev);
       showBatchToast('音色已取消', 'success');
     } catch (err) {
-      setCharVoices((prev) => ({ ...prev, [subjectId]: previousVoiceId }));
-      setCharVoiceNames((prev) => ({
-        ...prev,
-        [subjectId]: subject.voice_name || subject.voiceName || null,
-      }));
-      setChars((prev) => prev.map((character) => character.id === subjectId
-        ? {
-          ...character,
-          voice_id: previousVoiceId,
-          voice_name: character.voice_name ?? subject.voice_name ?? null,
-          voice_preview_url: character.voice_preview_url ?? subject.voice_preview_url ?? null,
-        }
-        : character));
+      if (!operation.isCurrent()) return;
       console.error('[SubjectPage] 取消主体音色失败:', err);
       showBatchToast(err?.message || '取消音色失败，请重试', 'error');
+    } finally {
+      operation.finish();
     }
   };
 
@@ -2136,12 +2386,14 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
         EditorComponent={EditSubjectPanel}
         projectId={projectId}
         subject={selectedChar}
+        ownerId={ownerId}
+        isGenerationPageCurrent={isGenerationPageCurrent}
         tabLabel="角色"
         refreshToken={subjectDetailRefreshToken}
         setBatchLoadingSubjects={setBatchLoadingSubjects}
         isBatchLoading={!!batchLoadingSubjects[selectedChar?.id]}
         onClose={() => setSelectedChar(null)}
-        onCommit={(draft, fields) => {
+        onCommit={async (draft, fields, isCurrent) => {
           if (!selectedChar) return;
           const payload = {};
           if (fields.has('name')) payload.name = draft.name;
@@ -2149,28 +2401,35 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           if (fields.has('prompt')) payload.prompt = draft.prompt;
           if (fields.has('genConfig')) payload.gen_config = draft.genConfig;
           if (Object.keys(payload).length === 0) return;
-          setChars((prev) => prev.map((c) => c.id === selectedChar.id ? { ...c, name: draft.name, desc: draft.description, prompt: draft.prompt } : c));
-          setSelectedChar((prev) => ({ ...prev, name: draft.name, desc: draft.description, prompt: draft.prompt }));
-          return apiUpdateSubject(projectId, selectedChar.id, payload);
+          if (!isCurrent()) return;
+          await apiUpdateSubject(projectId, selectedChar.id, payload);
+          if (!isCurrent()) return;
+          const patch = { ...payload };
+          if (fields.has('description')) { patch.desc = payload.description; delete patch.description; }
+          setChars((prev) => isCurrent() ? prev.map((c) => c.id === selectedChar.id ? { ...c, ...patch } : c) : prev);
+          setSelectedChar((prev) => isCurrent() && prev?.id === selectedChar.id ? { ...prev, ...patch } : prev);
         }}
-        onCoverChange={(imageUrl) => {
+        onCoverChange={(imageUrl, { persist = false, primaryVersion = 0 } = {}) => {
           if (!selectedChar) return;
+          if (persist && !canApplyAutomaticPrimary(projectId, selectedChar.id, primaryVersion)) return;
           const fullUrl = normalizeImageUrl(imageUrl);
           setChars((prev) => prev.map((c) => c.id === selectedChar.id ? { ...c, imageUrl: fullUrl } : c));
-          if (imageUrl) apiUpdateSubject(projectId, selectedChar.id, { image_url: imageUrl });
-          else apiUnsetPrimarySubjectImage(projectId, selectedChar.id).catch(() => {});
+          if (persist && imageUrl) return saveAutomaticPrimary(projectId, selectedChar.id, primaryVersion, () => apiUpdateSubject(projectId, selectedChar.id, { image_url: imageUrl }))
+            .catch(() => showBatchToast('自动封面保存失败，请重新设置定稿图', 'error'));
         }}
       />
       <SubjectEditorSlot
         EditorComponent={EditSubjectPanel}
         projectId={projectId}
         subject={selectedScene}
+        ownerId={ownerId}
+        isGenerationPageCurrent={isGenerationPageCurrent}
         tabLabel="场景"
         refreshToken={subjectDetailRefreshToken}
         setBatchLoadingSubjects={setBatchLoadingSubjects}
         isBatchLoading={!!batchLoadingSubjects[selectedScene?.id]}
         onClose={() => setSelectedScene(null)}
-        onCommit={(draft, fields) => {
+        onCommit={async (draft, fields, isCurrent) => {
           if (!selectedScene) return;
           const payload = {};
           if (fields.has('name')) payload.name = draft.name;
@@ -2178,28 +2437,35 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           if (fields.has('prompt')) payload.prompt = draft.prompt;
           if (fields.has('genConfig')) payload.gen_config = draft.genConfig;
           if (Object.keys(payload).length === 0) return;
-          setScenes((prev) => prev.map((s) => s.id === selectedScene.id ? { ...s, name: draft.name, desc: draft.description, prompt: draft.prompt } : s));
-          setSelectedScene((prev) => ({ ...prev, name: draft.name, desc: draft.description, prompt: draft.prompt }));
-          return apiUpdateSubject(projectId, selectedScene.id, payload);
+          if (!isCurrent()) return;
+          await apiUpdateSubject(projectId, selectedScene.id, payload);
+          if (!isCurrent()) return;
+          const patch = { ...payload };
+          if (fields.has('description')) { patch.desc = payload.description; delete patch.description; }
+          setScenes((prev) => isCurrent() ? prev.map((s) => s.id === selectedScene.id ? { ...s, ...patch } : s) : prev);
+          setSelectedScene((prev) => isCurrent() && prev?.id === selectedScene.id ? { ...prev, ...patch } : prev);
         }}
-        onCoverChange={(imageUrl) => {
+        onCoverChange={(imageUrl, { persist = false, primaryVersion = 0 } = {}) => {
           if (!selectedScene) return;
+          if (persist && !canApplyAutomaticPrimary(projectId, selectedScene.id, primaryVersion)) return;
           const fullUrl = normalizeImageUrl(imageUrl);
           setScenes((prev) => prev.map((s) => s.id === selectedScene.id ? { ...s, imageUrl: fullUrl } : s));
-          if (imageUrl) apiUpdateSubject(projectId, selectedScene.id, { image_url: imageUrl });
-          else apiUnsetPrimarySubjectImage(projectId, selectedScene.id).catch(() => {});
+          if (persist && imageUrl) return saveAutomaticPrimary(projectId, selectedScene.id, primaryVersion, () => apiUpdateSubject(projectId, selectedScene.id, { image_url: imageUrl }))
+            .catch(() => showBatchToast('自动封面保存失败，请重新设置定稿图', 'error'));
         }}
       />
       <SubjectEditorSlot
         EditorComponent={EditSubjectPanel}
         projectId={projectId}
         subject={selectedProp}
+        ownerId={ownerId}
+        isGenerationPageCurrent={isGenerationPageCurrent}
         tabLabel="道具"
         refreshToken={subjectDetailRefreshToken}
         setBatchLoadingSubjects={setBatchLoadingSubjects}
         isBatchLoading={!!batchLoadingSubjects[selectedProp?.id]}
         onClose={() => setSelectedProp(null)}
-        onCommit={(draft, fields) => {
+        onCommit={async (draft, fields, isCurrent) => {
           if (!selectedProp) return;
           const payload = {};
           if (fields.has('name')) payload.name = draft.name;
@@ -2207,16 +2473,21 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           if (fields.has('prompt')) payload.prompt = draft.prompt;
           if (fields.has('genConfig')) payload.gen_config = draft.genConfig;
           if (Object.keys(payload).length === 0) return;
-          setProps((prev) => prev.map((p) => p.id === selectedProp.id ? { ...p, name: draft.name, desc: draft.description, prompt: draft.prompt } : p));
-          setSelectedProp((prev) => ({ ...prev, name: draft.name, desc: draft.description, prompt: draft.prompt }));
-          return apiUpdateSubject(projectId, selectedProp.id, payload);
+          if (!isCurrent()) return;
+          await apiUpdateSubject(projectId, selectedProp.id, payload);
+          if (!isCurrent()) return;
+          const patch = { ...payload };
+          if (fields.has('description')) { patch.desc = payload.description; delete patch.description; }
+          setProps((prev) => isCurrent() ? prev.map((p) => p.id === selectedProp.id ? { ...p, ...patch } : p) : prev);
+          setSelectedProp((prev) => isCurrent() && prev?.id === selectedProp.id ? { ...prev, ...patch } : prev);
         }}
-        onCoverChange={(imageUrl) => {
+        onCoverChange={(imageUrl, { persist = false, primaryVersion = 0 } = {}) => {
           if (!selectedProp) return;
+          if (persist && !canApplyAutomaticPrimary(projectId, selectedProp.id, primaryVersion)) return;
           const fullUrl = normalizeImageUrl(imageUrl);
           setProps((prev) => prev.map((p) => p.id === selectedProp.id ? { ...p, imageUrl: fullUrl } : p));
-          if (imageUrl) apiUpdateSubject(projectId, selectedProp.id, { image_url: imageUrl });
-          else apiUnsetPrimarySubjectImage(projectId, selectedProp.id).catch(() => {});
+          if (persist && imageUrl) return saveAutomaticPrimary(projectId, selectedProp.id, primaryVersion, () => apiUpdateSubject(projectId, selectedProp.id, { image_url: imageUrl }))
+            .catch(() => showBatchToast('自动封面保存失败，请重新设置定稿图', 'error'));
         }}
       />
 
@@ -2229,21 +2500,28 @@ export default function SubjectPage({ projectId, projectName = '两只老虎的�
           showToast={(type, message) => showBatchToast(message, type)}
           onConfirm={async (voiceId, voiceName, _activeTab, _source, selectedVoice) => {
             const normalizedVoiceId = voiceId || null;
+            const subjectId = voiceModalChar.id;
+            const operation = beginVoiceOperation(subjectId);
+            if (!operation) return false;
             try {
-              await apiUpdateSubject(projectId, voiceModalChar.id, { voice_id: normalizedVoiceId });
-              setCharVoices((prev) => ({ ...prev, [voiceModalChar.id]: normalizedVoiceId }));
-              setCharVoiceNames((prev) => ({ ...prev, [voiceModalChar.id]: voiceName || normalizedVoiceId }));
+              await apiUpdateSubject(projectId, subjectId, { voice_id: normalizedVoiceId });
+              if (!operation.isCurrent()) return false;
+              setCharVoices((prev) => operation.isCurrent() ? { ...prev, [subjectId]: normalizedVoiceId } : prev);
+              setCharVoiceNames((prev) => operation.isCurrent() ? { ...prev, [subjectId]: voiceName || normalizedVoiceId } : prev);
               // 同步更新本地角色卡片，避免保存后等待主体列表刷新。
-              setChars((prev) => prev.map((c) => c.id === voiceModalChar.id
-                ? { ...c, voice_name: voiceName ?? null, voice_preview_url: selectedVoice?.audioUrl ?? null }
-                : c));
-              setVoiceModalChar(null);
+              setChars((prev) => operation.isCurrent() ? prev.map((c) => c.id === subjectId
+                ? { ...c, voice_id: normalizedVoiceId, voice_name: voiceName ?? null, voice_preview_url: selectedVoice?.audioUrl ?? null }
+                : c) : prev);
+              setVoiceModalChar((prev) => operation.isCurrent() && prev === voiceModalChar ? null : prev);
               showBatchToast('音色保存成功', 'success');
               return true;
             } catch (err) {
+              if (!operation.isCurrent()) return false;
               console.error('[SubjectPage] 更新主体音色失败:', err);
               showBatchToast(err?.message || '音色保存失败，请重试', 'error');
               return false;
+            } finally {
+              operation.finish();
             }
           }}
         />

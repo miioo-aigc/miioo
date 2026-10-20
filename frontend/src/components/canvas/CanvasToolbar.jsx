@@ -3,11 +3,12 @@
  * @structure-index
  *
  * ─── 交互区 ─────────────────────────────────────────────────────
- *   AddNodeMenu 共用添加节点菜单的工具栏定位容器 L121
- *   CanvasToolbar 画布底部悬浮工具栏、菜单和动作出口 L125
+ *   AddNodeMenu 共用添加节点菜单的工具栏定位容器 L123
+ *   CanvasToolbar 画布底部悬浮工具栏、菜单和动作出口 L127
  * ─── 更新记录 ───────────────────────────────────────────────────
+ *   2026-10-19：地图与分享之间新增磁铁吸附开关，默认关闭，使用 aria-pressed 表达状态。
  *   2026-10-15 分享菜单新增指定链接和导出图标，颜色跟随菜单文字。
- *   2026-10-14 画布列表抽离 CanvasListMenu，接通新增、切换与行内重命名。
+ *   2026-10-14 画布列表抽离 CanvasListMenu，接通新增、切换与行内重命名；2026-10-19 更多菜单接通复制与删除。
  *   2026-10-09 分享复用标准菜单，宽度自适应内容，提供复制画布链接和导出画布入口
  *   2026-10-09 搜索改为独立中央弹窗，仅通过 onOpenSearch 通知页面
  *   2026-09-28 复用图标按钮新增撤销重做；统一添加菜单，工具栏仅负责定位
@@ -20,7 +21,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { DropdownMenu, IconButton, Tooltip } from '../ui';
-import { ChevronLeft, MoreHorizontal, Redo2, Undo2 } from 'lucide-react';
+import { ChevronLeft, Magnet, MoreHorizontal, Redo2, Undo2 } from 'lucide-react';
 import CanvasNodeAddMenu from './CanvasNodeAddMenu.jsx';
 import CanvasListMenu from './CanvasListMenu.jsx';
 import './CanvasToolbar.css';
@@ -65,7 +66,7 @@ function SearchIcon() {
 }
 
 function MiniMapIcon() {
-  return <svg {...ICON_PROPS}><path d="M5.667 4L1.333 2V12L5.667 14L10.333 12L14.667 14V4L10.333 2L5.667 4Z" stroke="var(--color-white-80)" strokeLinecap="round" strokeLinejoin="round" /><path d="M10.333 2V12M5.667 4V14M3.5 3L5.667 4L10.333 2L12.5 3M3.5 13L5.667 14L10.333 12L12.5 13" stroke="var(--color-white-80)" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  return <svg {...ICON_PROPS}><path d="M5.667 4L1.333 2V12L5.667 14L10.333 12L14.667 14V4L10.333 2L5.667 4Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" /><path d="M10.333 2V12M5.667 4V14M3.5 3L5.667 4L10.333 2L12.5 3M3.5 13L5.667 14L10.333 12L12.5 13" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function ShareNodesIcon() {
@@ -82,6 +83,7 @@ const TOOL_ITEMS = [
 const COLLAPSIBLE_TOOL_ITEMS = [
   { key: 'search', label: '搜索节点', icon: SearchIcon },
   { key: 'map', label: '预览地图', icon: MiniMapIcon },
+  { key: 'snap', label: '网格吸附', icon: Magnet },
   { key: 'share', label: '分享', icon: ShareNodesIcon },
 ];
 
@@ -122,7 +124,7 @@ function AddNodeMenu({ onAddNode }) {
   return <div className="absolute bottom-[40px] left-1/2 z-30 -translate-x-1/2"><CanvasNodeAddMenu onAddNode={onAddNode} /></div>;
 }
 
-export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, onOpenSearch, canvases = [], activeCanvasId, onSelectCanvas, onCreateCanvas, onRenameCanvas, canvasListBusy, onOpenAssetPicker, onAddNode, onShare, canUndo, canRedo, onUndo, onRedo }) {
+export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, snapEnabled = false, onSnapChange, onOpenSearch, canvases = [], activeCanvasId, onSelectCanvas, onCreateCanvas, onRenameCanvas, onDuplicateCanvas, onDeleteCanvas, canvasListBusy, onOpenAssetPicker, onAddNode, onShare, canUndo, canRedo, onUndo, onRedo }) {
   const [openMenu, setOpenMenu] = useState(null);
   const [rightToolsExpanded, setRightToolsExpanded] = useState(false);
   const toolbarRef = useRef(null);
@@ -136,6 +138,7 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
   }, []);
 
   const handleToolClick = (key) => {
+    if (key === 'snap') { setOpenMenu(null); onSnapChange?.(!snapEnabled); return; }
     if (key === 'map') {
       onMiniMapChange(!showMiniMap);
       return;
@@ -146,13 +149,13 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
   };
 
   const renderTool = ({ key, label, icon: Icon }) => {
-    const selected = key === 'move' ? activeTool === 'hand' : key === 'map' ? showMiniMap : openMenu === key;
+    const selected = key === 'move' ? activeTool === 'hand' : key === 'map' ? showMiniMap : key === 'snap' ? snapEnabled : openMenu === key;
     return <div key={key} className="relative flex size-[32px] shrink-0 items-center justify-center">
       {openMenu === key && key === 'add' && <AddNodeMenu onAddNode={(type) => { onAddNode?.(type); setOpenMenu(null); }} />}
       {openMenu === key && key === 'move' && <MoveMenu activeTool={activeTool} onToolChange={(tool) => { onToolChange(tool); setOpenMenu(null); }} />}
-      {openMenu === key && key === 'canvases' && <CanvasListMenu canvases={canvases} activeCanvasId={activeCanvasId} busy={canvasListBusy} onRenameCanvas={onRenameCanvas} onSelectCanvas={async (id) => { if (await onSelectCanvas?.(id)) setOpenMenu(null); }} onCreateCanvas={async () => { if (await onCreateCanvas?.()) setOpenMenu(null); }} />}
+      {openMenu === key && key === 'canvases' && <CanvasListMenu canvases={canvases} activeCanvasId={activeCanvasId} busy={canvasListBusy} onRenameCanvas={onRenameCanvas} onDuplicateCanvas={async (id) => { if (await onDuplicateCanvas(id)) setOpenMenu(null); }} onDeleteCanvas={onDeleteCanvas} onSelectCanvas={async (id) => { if (await onSelectCanvas?.(id)) setOpenMenu(null); }} onCreateCanvas={async () => { if (await onCreateCanvas?.()) setOpenMenu(null); }} />}
       {openMenu === key && key === 'share' && <ShareMenu onShare={onShare} onClose={() => setOpenMenu(null)} />}
-      <Tooltip label={label} placement="top" offset={8}><button type="button" title={label} aria-label={label} aria-pressed={selected} onClick={() => handleToolClick(key)} className={`flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 transition-colors ${selected ? 'bg-white-10' : 'hover:bg-white-5'}`}><Icon size={16} strokeWidth={1.7} /></button></Tooltip>
+      <Tooltip label={label} placement="top" offset={8}><button type="button" title={label} aria-label={label} aria-pressed={selected} onClick={() => handleToolClick(key)} className={`flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 transition-colors ${selected ? 'bg-white-10' : 'hover:bg-white-5'} ${(key === 'snap' || key === 'map') && selected ? 'text-text-accent' : 'text-white-80'}`}><Icon size={16} strokeWidth={1.7} /></button></Tooltip>
     </div>;
   };
 

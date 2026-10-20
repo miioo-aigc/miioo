@@ -2,6 +2,8 @@ import { lazy, Suspense, useState, useCallback } from 'react'
 const Home = lazy(() => import('./pages/Home'))
 const CompositionEditorPage = lazy(() => import('./pages/CompositionEditorPage'))
 const AdminConsolePage = lazy(() => import('./pages/AdminConsolePage'))
+const SharedCanvasPage = lazy(() => import('./pages/SharedCanvasPage'))
+import { parseCanvasShareRoute } from './components/canvas/CanvasShareLink'
 import LiquidGlassDefs from './components/LiquidGlassDefs'
 import GlobalToast from './components/feedback/GlobalToast'
 import VideoEditNotice from './components/video-edit/VideoEditNotice'
@@ -9,6 +11,7 @@ import { showGlobalToast } from './stores/toastStore'
 import { apiGetCurrentUser } from './api/user'
 
 function App() {
+  const shareRoute = parseCanvasShareRoute(window.location.pathname)
   const [adminView, setAdminView] = useState(false)
   const [adminUser, setAdminUser] = useState(null)
   const showToast = useCallback((msg, type = 'warning', duration) => {
@@ -50,7 +53,9 @@ function App() {
     <>
       <LiquidGlassDefs />
       <Suspense fallback={null}>
-        {window.location.pathname.replace(/\/+$/, '') === '/editor' ? (
+        {shareRoute ? (
+          <SharedCanvasPage token={shareRoute.token} />
+        ) : window.location.pathname.replace(/\/+$/, '') === '/editor' ? (
           <CompositionEditorPage />
         ) : (
           <Home onProjectCreated={() => {}} onGoToAdmin={handleGoToAdmin} />

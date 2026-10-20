@@ -3,7 +3,9 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L127；grouping L168；referenceGraph L182；mediaPreview L149；文档加载 L195；handleNodesChange L250；addNode L313；工具栏新增 L358；批量导入 L370；React Flow L724
+ *   CanvasPage L134；grouping L177；referenceGraph L191；mediaPreview L158；文档加载 L204；handleNodesChange L270；addNode L340；工具栏新增 L385；批量导入 L397；React Flow L749
+ *   2026-10-20：正式 records 文档读写、分批素材恢复及会话内幂等串行保存；加载失败禁止保存，分享复制不依赖保存。
+ *   2026-10-19：UseCanvasSnapping 编排可选网格/边缘吸附，CanvasSnapGuides 显示辅助线；正文边界排除输入框，CanvasGrid 统一背景参数与可见网点中心，修正正文左上边框落点。
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
  *   CanvasProjectHeader components/canvas；2026-10-10 接通开发态新建项目回调；模拟详情跳过用户接口，重命名仍为会话内。删除接入撤销，仅运行/排队任务确认。
@@ -11,10 +13,10 @@
  *   CanvasCenterPrompt  components/canvas；中央空态提示
  *   CanvasToolbar       components/canvas；底部画布工具栏；2026-10-10 文本节点更多入口复用右键菜单，仅选当前卡片。
  *   CanvasMediaPreview  components/canvas；2026-10-10 图片/视频双击打开悬浮预览，视频接续进度；固定关闭按钮与模糊遮罩。
- *   CanvasMiniMap       components/canvas；双层背景的交互预览地图
+ *   CanvasMiniMap       components/canvas；双层背景的交互预览地图；2026-10-19：经用户确认使用官方配置隐藏画部署名，保留许可证及开发环境提醒。
  *
- * ─── 业务边界 ─── 2026-10-15：堆叠拖动坐标转换回展开布局坐标，双击点作为堆叠中心。
- *   2026-10-14：UseCanvasList 接通同项目列表、新增、切换与重命名；切换先保存，失败保留当前画布。
+ * ─── 业务边界 ─── 2026-10-15：堆叠拖动坐标转换回展开布局坐标，双击点作为堆叠中心；2026-10-19：所有工具启用中键平移，保留左键行为。
+ *   2026-10-14：UseCanvasList 接通同项目列表、新增、切换与重命名；2026-10-19 增加副本切换与归档后导航；切换先保存，失败保留当前画布。
  *   2026-10-10：图片、视频、音频共用工具栏；CanvasVideoEditor 复用四项编辑弹窗，后台结果新增对应媒体节点并保留源节点。
  *   2026-10-09：名称双击原地重命名接入历史，右键与快捷键弹窗保留；组合双击切换、展开平滑聚焦。
  *   节点与连线支持文档读取；本地上传完成后尝试保存，完整持久化流程仍待验收。
@@ -43,13 +45,16 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { CANVAS_GRID_GAP, CANVAS_GRID_DOT_SIZE, CANVAS_GRID_OFFSET } from '../components/canvas/CanvasGrid';
+import { useCanvasSnapping } from '../components/canvas/UseCanvasSnapping';
+import CanvasSnapGuides from '../components/canvas/CanvasSnapGuides';
 import { getCanvasAssetNodeSize, prepareCanvasMediaAsset } from '../components/canvas/CanvasMediaSize';
 import { applyNodeChanges, Background, PanOnScrollMode, ReactFlow } from '@xyflow/react';
 import CanvasMiniMap from '../components/canvas/CanvasMiniMap';
 import { X } from 'lucide-react';
 import { showGlobalToast } from '../stores/toastStore';
 import '@xyflow/react/dist/style.css';
-import { apiGetCanvasDocument, apiUpdateCanvasDocument } from '../api/canvas';
+import { apiGetCanvasDocument, apiUpdateCanvasDocument, apiResolveCanvasAssetViews } from '../api/canvas';
 import { uploadCanvasAsset } from '../api/canvasAssets';
 import { isDevelopmentCanvas } from '../api/CanvasDevelopment';
 import { apiGetCurrentUser } from '../api/user';
@@ -90,6 +95,8 @@ import { useCanvasImageEdits } from '../components/canvas/UseCanvasImageEdits';
 import { useCanvasVideoEdits } from '../components/canvas/UseCanvasVideoEdits';
 import CanvasVideoEditor from '../components/canvas/CanvasVideoEditor';
 import { readCanvasDocument, serializeCanvasDocument } from '../components/canvas/CanvasDocument';
+import { resolveCanvasDocumentAssets } from '../components/canvas/CanvasAssetResolver';
+import { createCanvasSaveSession } from '../components/canvas/CanvasSaveSession';
 import { useCanvasList } from '../components/canvas/UseCanvasList';
 
 // 浏览器 click 先于 dblclick 触发；保留极短窗口，避免双击时先展开创作框。
@@ -139,7 +146,9 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
   const [flowInstance, setFlowInstance] = useState(null);
   const [viewportZoom, setViewportZoom] = useState(1);
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+  const canvasContainerRef = useRef(null);
   const [canvasRevision, setCanvasRevision] = useState(null);
+  const saveSessionRef = useRef(null);
   const [connectingNodeId, setConnectingNodeId] = useState(null);
   const [connectingHandleType, setConnectingHandleType] = useState('');
   const [connectionTargetId, setConnectionTargetId] = useState(null);
@@ -148,7 +157,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
   const [upstreamConnection, setUpstreamConnection] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
   const [actionDialog, setActionDialog] = useState(null);
-  const canvasContainerRef = useRef(null);
+  const { enabled: snapEnabled, toggle: toggleSnap, guides: snapGuides, apply: applySnap, clear: clearSnap } = useCanvasSnapping(canvasId, canvasContainerRef);
   const importAssetsRef = useRef(null);
   const uploadFilesRef = useRef(null);
   const dragPositionsRef = useRef(new Map());
@@ -194,23 +203,34 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
 
   useEffect(() => {
     let cancelled = false;
-    Promise.allSettled([apiGetCanvasDocument(canvasId), isDevelopmentCanvas(canvasId) ? Promise.resolve({}) : apiGetCurrentUser()]).then(([documentResult, userResult]) => {
+    const controller = new AbortController();
+    saveSessionRef.current = { canvasId, session: createCanvasSaveSession(apiUpdateCanvasDocument) };
+    Promise.allSettled([apiGetCanvasDocument(canvasId), isDevelopmentCanvas(canvasId) ? Promise.resolve({}) : apiGetCurrentUser()]).then(async ([documentResult, userResult]) => {
       if (cancelled) return;
       if (documentResult.status === 'rejected') {
         setError(documentResult.reason?.message || '画布加载失败，请返回重试');
       } else {
-        setError('');
-        setCanvas(documentResult.value);
-        const document = readCanvasDocument(documentResult.value);
-        setNodes(document.nodes, { record: false });
-        setViewport(document.viewport);
-        setViewportZoom(document.viewport.zoom || 1);
-        setCanvasRevision(documentResult.value?.revision || null);
+        try {
+          const document = readCanvasDocument(documentResult.value);
+          const restoredNodes = isDevelopmentCanvas(canvasId) ? document.nodes : await resolveCanvasDocumentAssets(
+            canvasId, document.nodes, apiResolveCanvasAssetViews, { signal: controller.signal },
+          );
+          if (cancelled) return;
+          setError('');
+          setCanvas(documentResult.value);
+          setNodes(restoredNodes, { record: false });
+          setViewport(document.viewport);
+          setViewportZoom(document.viewport.zoom || 1);
+          setCanvasRevision(documentResult.value?.revision ?? null);
+        } catch (loadError) {
+          if (cancelled) return;
+          setError(loadError.message || '画布素材恢复失败，请返回重试');
+        }
       }
       if (userResult.status === 'fulfilled') setCurrentUser(userResult.value || {});
       setLoadedCanvasId(canvasId);
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [canvasId, setNodes]);
 
   useEffect(() => () => {
@@ -252,10 +272,15 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     setNodes((current) => {
       const persistedChanges = changes.filter((change) => !(change.type === 'dimensions' && current.find((node) => node.id === change.id)?.data.stacked));
       let next = applyNodeChanges(persistedChanges.map((change) => restoreCanvasStackPositionChange(change, current)), current);
+      const moving = changes.filter((change) => change.type === 'position' && change.position && typeof change.dragging === 'boolean');
+      if (moving.length) {
+        next = applySnap(next, moving.map((change) => change.id), viewportZoom);
+        if (moving.every((change) => !change.dragging)) clearSnap();
+      }
       if (next.filter((node) => node.selected).length !== 1) next = setCanvasSelection(next, next.filter((node) => node.selected).map((node) => node.id));
       return fitCanvasGroups(next);
     }, { record: changes.some((change) => !['select', 'dimensions'].includes(change.type)) });
-  }, [cancelPendingClicks, setNodes]);
+  }, [cancelPendingClicks, setNodes, applySnap, clearSnap, viewportZoom]);
   const cancelPendingNodeClick = useCallback((nodeId) => {
     const timer = pendingNodeClicksRef.current.get(nodeId);
     if (!timer) return;
@@ -263,11 +288,12 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     pendingNodeClicksRef.current.delete(nodeId);
   }, []);
   const handleNodeDragStart = useCallback((_, node) => {
+    clearSnap();
     cancelPendingClicks();
     history.begin();
     dragPositionsRef.current.set(node.id, node.position);
     setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, dragging: true, dragRelease: false } } : item));
-  }, [cancelPendingClicks, history, setNodes]);
+  }, [cancelPendingClicks, history, setNodes, clearSnap]);
   const handleNodeDrag = useCallback((_, node) => {
     const previous = dragPositionsRef.current.get(node.id) || node.position;
     const deltaX = node.position.x - previous.x;
@@ -275,7 +301,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     const distance = Math.hypot(deltaX, deltaY);
     if (distance < 0.01) return;
 
-    const stretch = Math.min(0.2, Math.max(0.02, distance * 0.012));
+    const stretch = snapEnabled ? 0 : Math.min(0.2, Math.max(0.02, distance * 0.012));
     const horizontal = Math.abs(deltaX) >= Math.abs(deltaY);
     const dragScaleX = horizontal ? 1 + stretch : 1 - stretch * 0.24;
     const dragScaleY = horizontal ? 1 - stretch * 0.24 : 1 + stretch;
@@ -284,13 +310,14 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       ...item,
       data: { ...item.data, dragging: true, dragRelease: false, dragScaleX, dragScaleY },
     } : item));
-  }, [setNodes]);
+  }, [setNodes, snapEnabled]);
   const handleNodeDragStop = useCallback((_, node) => {
+    clearSnap();
     setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, dragging: false, dragRelease: true } } : item));
     dragPositionsRef.current.delete(node.id);
     history.end();
     window.setTimeout(() => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, dragRelease: false, dragScaleX: 1, dragScaleY: 1 } } : item)), 280);
-  }, [history, setNodes]);
+  }, [history, setNodes, clearSnap]);
   const handleImageReferenceLimitChange = useCallback((nodeId, imageReferenceLimit) => {
     setNodes((current) => {
       const target = current.find((item) => item.id === nodeId);
@@ -420,22 +447,20 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
   }, [history, setNodes, cancelPendingClicks, addNode, flowInstance]);
   useEffect(() => { importAssetsRef.current = importAssets; }, [importAssets]);
   const persistCanvas = useCallback(async () => {
-    if (!canvasId || !Number.isInteger(canvasRevision)) return false;
+    if (!canvasId || loadedCanvasId !== canvasId || error || !Number.isInteger(canvasRevision)
+      || saveSessionRef.current?.canvasId !== canvasId) return false;
     const snapshot = history.getSnapshot();
     if (snapshot.nodes.some((node) => node.data?.generating || node.data?.generationPending)) return false;
     if (snapshot.nodes.some((node) => {
       const asset = node.data?.asset;
       return asset && (!asset.asset_id || asset.uploadStatus === 'uploading' || asset.uploadStatus === 'error');
     })) return false;
-    const result = await apiUpdateCanvasDocument(canvasId, {
-      baseRevision: canvasRevision,
-      document: serializeCanvasDocument(snapshot.nodes, referenceGraph.edges, viewport),
-      clientSavedAt: new Date().toISOString(),
-    });
+    const result = await saveSessionRef.current.session.save(canvasId, canvasRevision,
+      serializeCanvasDocument(snapshot.nodes, referenceGraph.edges, viewport));
     if (Number.isInteger(result?.revision)) setCanvasRevision(result.revision);
     return true;
-  }, [canvasId, canvasRevision, history, referenceGraph.edges, viewport]);
-  const canvasList = useCanvasList({ canvas, persistCanvas, onSelectCanvas,
+  }, [canvasId, loadedCanvasId, error, canvasRevision, history, referenceGraph.edges, viewport]);
+  const canvasList = useCanvasList({ canvas, persistCanvas, onSelectCanvas, onBackProjects,
     onRenamed: (title, revision) => { setCanvas((current) => ({ ...current, title })); setCanvasRevision(revision); } });
   const uploadFiles = useCallback(async (files, target = null) => {
     const validFiles = files.filter((file) => getCanvasMediaFileType(file, 'all'));
@@ -757,6 +782,8 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
           if (activeTool !== 'hand' && node.type !== 'canvasGroup' && !event.target.closest('button, input, textarea')) grouping.enterNode(node.id);
         }}
         onNodeDragStart={handleNodeDragStart} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop}
+        onSelectionDragStart={() => { clearSnap(); history.begin(); }}
+        onSelectionDragStop={() => { clearSnap(); history.end(); }}
         onDoubleClick={handlePaneDoubleClick} zoomOnDoubleClick={false} zoomOnPinch={true}
         panOnScroll={true} panOnScrollMode={PanOnScrollMode.Free} panOnScrollSpeed={0.5}
         nodesDraggable={activeTool !== 'hand'}
@@ -766,14 +793,15 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
           setNodeMenu(null);
           setNodes((current) => setCanvasSelection(current, []));
         }}
-        panOnDrag={activeTool === 'hand'} selectionOnDrag={activeTool === 'select'}
+        panOnDrag={activeTool === 'hand' ? true : [1]} selectionOnDrag={activeTool === 'select'}
         multiSelectionKeyCode={['Meta', 'Control', 'Shift']} selectionKeyCode={null}
         onSelectionStart={() => { cancelPendingClicks(); setNodeMenu(null); setNodes((current) => setCanvasSelection(current, current.filter((node) => node.selected).map((node) => node.id))); }}
         proOptions={{ hideAttribution: true }} className="bg-surface-toolbar">
         {/* 固定圆点的屏幕半径，间距和位置仍由 React Flow 随视口变化。 */}
-        <Background variant="dots" gap={16} size={1} patternClassName="[r:0.5px]" color="rgba(255,255,255,0.16)" />
+        <Background variant="dots" gap={CANVAS_GRID_GAP} size={CANVAS_GRID_DOT_SIZE} offset={CANVAS_GRID_OFFSET} patternClassName="[r:0.5px]" color="rgba(255,255,255,0.16)" />
         {showMiniMap && <CanvasMiniMap />}
       </ReactFlow>
+      <CanvasSnapGuides guides={snapGuides} viewport={viewport} />
       {upstreamConnection && <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full" aria-hidden="true"><line x1={upstreamConnection.start?.x ?? upstreamConnection.end.x} y1={upstreamConnection.start?.y ?? upstreamConnection.end.y} x2={upstreamConnection.end.x} y2={upstreamConnection.end.y} stroke="var(--color-brand-main)" strokeWidth="2" /></svg>}
       {(nodeMenu || pendingConnection) && <div className="pointer-events-none absolute inset-0 z-30"><div className="pointer-events-auto absolute" style={{ left: (pendingConnection || nodeMenu).screen.left, top: (pendingConnection || nodeMenu).screen.top }}><CanvasNodeAddMenu items={pendingConnection ? pendingMenuItems : CANVAS_NODE_MENU_ITEMS} onAddNode={(type) => pendingConnection
         ? addNode(type, pendingConnection.flowPosition, pendingConnection)
@@ -787,6 +815,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       activeTool={activeTool}
       onToolChange={setActiveTool}
       showMiniMap={showMiniMap}
+      snapEnabled={snapEnabled} onSnapChange={toggleSnap}
       onMiniMapChange={setShowMiniMap}
       onOpenSearch={() => { nodeActions.closeMenu(); setNodeMenu(null); search.show(); }}
       onAddNode={handleToolbarAddNode}
@@ -795,7 +824,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       canvasListBusy={canvasList.busy || loading || !!error}
       onSelectCanvas={canvasList.select}
       onCreateCanvas={canvasList.create}
-      onRenameCanvas={canvasList.rename}
+      onRenameCanvas={canvasList.rename} onDuplicateCanvas={canvasList.duplicate} onDeleteCanvas={canvasList.remove}
       onShare={canvasFiles.share}
       canUndo={history.canUndo}
       canRedo={history.canRedo}

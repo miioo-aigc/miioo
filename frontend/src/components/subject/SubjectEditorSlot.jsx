@@ -5,6 +5,8 @@
 export default function SubjectEditorSlot({
   EditorComponent,
   projectId,
+  ownerId,
+  isGenerationPageCurrent,
   subject,
   tabLabel,
   refreshToken,
@@ -19,6 +21,8 @@ export default function SubjectEditorSlot({
     <EditorComponent
       key={subject.id}
       projectId={projectId}
+      ownerId={ownerId}
+      isGenerationPageCurrent={isGenerationPageCurrent}
       char={subject}
       tabLabel={tabLabel}
       refreshToken={refreshToken}

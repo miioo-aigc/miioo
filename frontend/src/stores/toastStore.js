@@ -25,7 +25,8 @@ export const useToastStore = create((set, get) => ({
   showToast: (first, second, options = {}) => {
     const { type, message, duration: defaultDuration } = normalizeToastArgs(first, second);
     const action = options?.action;
-    const duration = action ? 8000 : defaultDuration;
+    const duration = Number.isFinite(options.duration) && options.duration > 0
+      ? options.duration : action ? 8000 : defaultDuration;
     if (!message) return;
     if (get().timer) clearTimeout(get().timer);
     const id = ++nextToastId;

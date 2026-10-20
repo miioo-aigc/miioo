@@ -18,6 +18,7 @@ export { default as ShotVideoDetailModal } from './ShotVideoDetailModal';
 export { default as AssetsAudioCard } from './AssetsAudioCard';
 export { default as AssetsProjectPanel } from './AssetsProjectPanel';
 export { default as AssetsCreativePanel } from './AssetsCreativePanel';
+export { default as CanvasAssetLibraryPanel } from './CanvasAssetLibraryPanel';
 export { AssetCard, ProjectAssetCard } from './AssetsCards';
 export { AssetsProjectRenameModal } from './AssetsProjectModals';
 export { default as AssetsProjectGrid } from './AssetsProjectGrid';

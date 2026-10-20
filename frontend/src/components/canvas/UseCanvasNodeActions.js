@@ -30,8 +30,9 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, getUndoToken, enab
     setNodes((current) => deleteCanvasNodes(current, ids));
     const token = getUndoToken();
     showGlobalToast('success', hasTasks ? '删除成功，撤销仅恢复节点，不保证找回生成结果。' : '删除成功，可以撤销 ⌘Z 找回', {
+      duration: 3500,
       mutedText: hasTasks ? undefined : '⌘Z',
-      action: { label: '撤销', onClick: () => {
+      action: { label: '撤销', inline: true, onClick: () => {
         if (!token || token !== getUndoToken()) return;
         cancelPendingClicks();
         undo();

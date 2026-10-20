@@ -14,6 +14,9 @@
  *   下载反馈通过全局下载 Toast/进度反馈统一承接
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-10-19  手动定稿开始即登记共享版本，等待此前自动封面写入完成后再提交
+ *   2026-10-19  上传校验面板会话与目标编号，失败反馈并清理占位，本地上传使用独立编号
+ *   2026-10-19  定稿操作共享面板互斥，成功后按图片身份更新；封面同步不重复写接口
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-07-15  抽离主体图片上传、下载和定稿动作适配，页面保留状态与反馈副作用
  *   2026-07-22  右侧候选图上传改走通用图片资产接口，不再写入主体参考图关系
@@ -63,6 +66,9 @@ export function createSubjectImageActionHandlers({
   subjectId,
   generatedImages = [],
   uploadingAssetIdsRef,
+  primaryOperationRef,
+  beforeManualPrimary,
+  isCurrent,
   setGeneratedImages,
   onCoverChange,
   setPrimaryImageUrl,
@@ -71,6 +77,11 @@ export function createSubjectImageActionHandlers({
   triggerBlobDownload,
 }) {
   function handleUpload(fileOrAsset) {
+    if (!isCurrent()) return;
+    if (!projectId || !subjectId) {
+      showToast('缺少项目或主体信息，请重新打开主体后再添加图片', 'error');
+      return;
+    }
     const selectedAssetId = fileOrAsset?.assetId || fileOrAsset?.asset_id || fileOrAsset?.id;
     if (fileOrAsset && typeof fileOrAsset === 'object' && selectedAssetId) {
       // 创作历史卡片的展示 ID 可能是 history-{id}-{index}，绑定主体必须使用真实资产 UUID。
@@ -107,7 +118,7 @@ export function createSubjectImageActionHandlers({
       uploadingAssetIdsRef?.current?.add(normalizedAssetId);
 
       const assetPlaceholderId = `asset-upload-${normalizedAssetId}`;
-      setGeneratedImages((prev) => [{
+      setGeneratedImages((prev) => !isCurrent() ? prev : [{
         rawUrl,
         url: normalizedUrl,
         settled: false,
@@ -117,6 +128,7 @@ export function createSubjectImageActionHandlers({
         source: 'asset-library',
         detailSource: 'asset-library',
         uploading: true,
+        panelUpload: true,
         prompt: fileOrAsset.prompt,
         input_prompt: fileOrAsset.input_prompt,
         model: fileOrAsset.model,
@@ -127,11 +139,12 @@ export function createSubjectImageActionHandlers({
       }, ...prev]);
       // 交给后端按目标主体创建独立候选资产，并保留 source_asset_id 等源资产关系。
       // 不再由前端下载后重新上传，避免额外的异步窗口和刷新后丢失源资产血缘。
-      apiAddSubjectImageFromAsset(projectId, subjectId, normalizedAssetId)
+      return apiAddSubjectImageFromAsset(projectId, subjectId, normalizedAssetId)
         .then((response) => {
+          if (!isCurrent()) return;
           const mapped = mapSubjectImageResponse(response);
           if (!mapped) throw new Error('资产库图片登记成功，但未返回主体候选图');
-          setGeneratedImages((prev) => prev.map((image) => (
+          setGeneratedImages((prev) => !isCurrent() ? prev : prev.map((image) => (
             image.id === assetPlaceholderId
               ? {
                 ...mapped,
@@ -139,25 +152,26 @@ export function createSubjectImageActionHandlers({
                 detailSource: 'asset-library',
                 sourceAssetId: normalizedAssetId,
                 uploading: false,
+                panelUpload: true,
               }
               : image
           )));
         })
         .catch((error) => {
+          if (!isCurrent()) return;
           console.error('[SubjectPage] 登记候选图资产失败:', error);
-          setGeneratedImages((prev) => prev.filter((image) => image.id !== assetPlaceholderId));
-          showToast(error.message || '保存候选图失败', 'error');
+          setGeneratedImages((prev) => !isCurrent() ? prev : prev.filter((image) => image.id !== assetPlaceholderId));
+          showToast(error?.message || '保存候选图失败，请刷新确认后重试', 'error');
         })
         .finally(() => {
           uploadingAssetIdsRef?.current?.delete(normalizedAssetId);
         });
-      return;
     }
 
     if (!(fileOrAsset instanceof File)) return;
 
-      const tempId = `upload-${Date.now()}`;
-      setGeneratedImages((prev) => [{
+    const tempId = `upload-${crypto.randomUUID()}`;
+    setGeneratedImages((prev) => !isCurrent() ? prev : [{
       // 上传接口返回真实资产 URL 前不展示 blob 预览，避免后续接口刷新时出现黑色闪烁。
       rawUrl: null,
       url: null,
@@ -166,25 +180,27 @@ export function createSubjectImageActionHandlers({
       source: 'local-upload',
       detailSource: 'local-upload',
       uploading: true,
+      panelUpload: true,
       created_at: Date.now(),
     }, ...prev]);
 
-    if (projectId) {
-      apiUploadSubjectCandidateImage(projectId, subjectId, fileOrAsset)
+    return apiUploadSubjectCandidateImage(projectId, subjectId, fileOrAsset)
         .then((response) => {
+          if (!isCurrent()) return;
           const mapped = mapSubjectImageResponse(response);
           if (!mapped) throw new Error('上传候选图成功，但未返回主体候选图');
-          setGeneratedImages((prev) => prev.map((image) => (
+          setGeneratedImages((prev) => !isCurrent() ? prev : prev.map((image) => (
             image.id === tempId
-              ? { ...mapped, source: 'subject-image', detailSource: 'local-upload', uploading: false }
+              ? { ...mapped, source: 'subject-image', detailSource: 'local-upload', uploading: false, panelUpload: true }
               : image
           )));
         })
         .catch((error) => {
+          if (!isCurrent()) return;
           console.error('[SubjectPage] 上传候选图失败:', error);
-          setGeneratedImages((prev) => prev.filter((image) => image.id !== tempId));
+          setGeneratedImages((prev) => !isCurrent() ? prev : prev.filter((image) => image.id !== tempId));
+          showToast(error?.message || '上传候选图失败，请刷新确认后重试', 'error');
         });
-    }
   }
 
   async function handleDownload(imageId) {
@@ -199,72 +215,66 @@ export function createSubjectImageActionHandlers({
     }
   }
 
-  function handleSettledChange(image, index, newSettled) {
+  async function handleSettledChange(image, _index, newSettled) {
+    if (!isCurrent()) return;
+    if (primaryOperationRef.current.pending) {
+      showToast('定稿图正在保存，请稍候', 'error');
+      return;
+    }
     if (image?.uploading) {
       showToast('图片正在保存，请稍候再设置定稿', 'error');
       return;
     }
 
-    if (newSettled) {
-      const imageId = String(image?.id || '');
-      const temporaryId = imageId.startsWith('asset-upload-')
-        || imageId.startsWith('upload-')
-        || imageId.startsWith('batch-')
-        || imageId.startsWith('generated-');
-      if (temporaryId) {
-        showToast('图片正在保存，请稍候再设置定稿', 'error');
-        return;
-      }
-      const nextCoverUrl = image?.rawUrl ?? image?.url ?? null;
-      onCoverChange?.(nextCoverUrl);
-      const setPrimaryRequest = image.id && !temporaryId
-        ? apiSetPrimarySubjectImage(projectId, subjectId, image.id)
-        : apiGetSubjectDetail(projectId, subjectId)
-          .then((detail) => {
-            const realImageId = resolveSubjectImageId(detail, image);
-            if (!realImageId) throw new Error('创作结果尚未同步到主体图片，请稍后重试');
-            return apiSetPrimarySubjectImage(projectId, subjectId, realImageId);
-          });
-
-      setPrimaryRequest.catch((error) => {
-        console.error('[SubjectPage] 设置定稿图失败:', error);
-        showToast(error.message || '设置定稿图失败', 'error');
-        setGeneratedImages((prev) => prev.map((item, itemIndex) => (
-          itemIndex === index ? { ...item, settled: false } : item
-        )));
-      });
-      // 先乐观更新卡片封面，接口完成后再次写回，覆盖上传/资产接口返回的最终地址。
-      setPrimaryRequest.then((result) => {
-        const persistedUrl = result?.file_url || result?.fileUrl || result?.url || result?.image_url;
-        const persistedId = result?.id || result?.image_id || image.id;
-        if (persistedUrl) {
-          const normalizedUrl = normalizeImageUrl(persistedUrl);
-          setGeneratedImages((prev) => prev.map((item) => (
-            String(item.id) === String(image.id)
-              ? { ...item, rawUrl: persistedUrl, url: normalizedUrl, uploading: false }
-              : item
-          )));
-          onCoverChange?.(persistedUrl);
-          setPrimaryImageUrl?.(normalizedUrl);
-          setPrimaryImageId?.(persistedId);
-        }
-      }).catch(() => {});
-    } else {
-      onCoverChange?.(null);
-      setPrimaryImageUrl(null);
-      setPrimaryImageId(null);
-      const unsetRequest = apiUnsetPrimarySubjectImage(projectId, subjectId);
-      unsetRequest.catch((error) => {
-        console.error('[SubjectPage] 取消定稿失败:', error);
-        showToast(error.message || '取消定稿失败', 'error');
-      });
+    const imageId = String(image?.id || '');
+    const temporaryId = imageId.startsWith('asset-upload-')
+      || imageId.startsWith('upload-')
+      || imageId.startsWith('batch-')
+      || imageId.startsWith('generated-');
+    if (temporaryId) {
+      showToast('图片正在保存，请稍候再设置定稿', 'error');
+      return;
     }
-
-    setGeneratedImages((prev) => prev.map((item, itemIndex) => (
-      itemIndex === index
-        ? { ...item, settled: newSettled }
-        : { ...item, settled: newSettled ? false : item.settled }
-    )));
+    const operation = primaryOperationRef.current;
+    operation.pending = true;
+    operation.version += 1;
+    try {
+      const pendingAutomaticSave = beforeManualPrimary?.();
+      if (pendingAutomaticSave) await pendingAutomaticSave;
+      if (!isCurrent()) return;
+      let persistedId = image?.id;
+      let result;
+      if (newSettled) {
+        if (!persistedId) {
+          const detail = await apiGetSubjectDetail(projectId, subjectId);
+          if (!isCurrent()) return;
+          persistedId = resolveSubjectImageId(detail, image);
+          if (!persistedId) throw new Error('创作结果尚未同步到主体图片，请稍后重试');
+        }
+        result = await apiSetPrimarySubjectImage(projectId, subjectId, persistedId);
+      } else {
+        await apiUnsetPrimarySubjectImage(projectId, subjectId);
+      }
+      if (!isCurrent()) return;
+      const persistedUrl = newSettled
+        ? result?.file_url || result?.fileUrl || result?.url || result?.image_url || image?.rawUrl || image?.url
+        : null;
+      const matches = (item) => image?.id != null
+        ? String(item.id) === String(image.id)
+        : normalizeImageUrl(item.rawUrl || item.url) === normalizeImageUrl(image?.rawUrl || image?.url);
+      setGeneratedImages((prev) => !isCurrent() ? prev : prev.map((item) => (
+        matches(item)
+          ? { ...item, settled: newSettled, ...(newSettled ? { id: persistedId, rawUrl: persistedUrl, url: normalizeImageUrl(persistedUrl) } : {}) }
+          : { ...item, settled: newSettled ? false : item.settled }
+      )));
+      onCoverChange?.(persistedUrl, { persist: false });
+      setPrimaryImageUrl?.(normalizeImageUrl(persistedUrl));
+      setPrimaryImageId?.(newSettled ? persistedId : null);
+    } catch (error) {
+      if (isCurrent()) showToast(error.message || '保存定稿图失败，请重试', 'error');
+    } finally {
+      operation.pending = false;
+    }
   }
 
   return { handleUpload, handleDownload, handleSettledChange };

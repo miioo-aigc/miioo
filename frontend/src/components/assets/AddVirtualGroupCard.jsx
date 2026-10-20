@@ -14,18 +14,18 @@ function AddIcon() {
   );
 }
 
-export default function AddVirtualGroupCard({ onClick }) {
+export default function AddVirtualGroupCard({ onClick, label = '新建素材组' }) {
   return (
     <button
       type="button"
-      aria-label="新建素材组"
+      aria-label={label}
       onClick={onClick}
-      className="aspect-[3/2] flex w-full min-w-[216px] max-w-[270px] items-center justify-self-center justify-center gap-[12px] rounded-[8px] border border-dashed border-white/20 bg-white/[0.08] p-[12px] text-white/80 antialiased transition-colors hover:border-white/30 hover:bg-white/[0.12] hover:text-white"
+      className="aspect-[3/2] flex w-full min-w-0 max-w-[270px] items-center justify-center gap-[12px] rounded-[8px] border border-dashed border-white/20 bg-white/[0.08] p-[12px] text-white/80 antialiased transition-colors hover:border-white/30 hover:bg-white/[0.12] hover:text-white"
       style={{ fontFamily: FONT, fontSynthesis: 'none' }}
     >
       <span className="flex flex-1 items-center justify-center gap-[6px]">
         <AddIcon />
-        <span className="w-max shrink-0 text-[14px] leading-[18px]">新建素材组</span>
+        <span className="w-max shrink-0 text-[14px] leading-[18px]">{label}</span>
       </span>
     </button>
   );

@@ -20,13 +20,14 @@ function isFailedTask(task) {
 
 export default function useStoryboardTaskRecovery({
   projectId,
+  ownerId,
+  captureGenerationScope,
   episode,
   pollTask,
   showToast,
   setIsGenerating,
   setEpisodeGenerationError,
-  setGeneratingVideoShotIds,
-  setGeneratingImageShotIds,
+  beginMediaTask,
   addPendingCandidate,
   removePendingCandidate,
   setGenVideoHistoryMap,
@@ -35,6 +36,7 @@ export default function useStoryboardTaskRecovery({
   onVideoRecovered,
   onImageRecovered,
 }) {
+  const episodeId = typeof episode === 'string' ? null : getEpisodeId(episode);
   const callbacksRef = useRef({});
   useEffect(() => {
     callbacksRef.current = {
@@ -42,8 +44,7 @@ export default function useStoryboardTaskRecovery({
       showToast,
       setIsGenerating,
       setEpisodeGenerationError,
-      setGeneratingVideoShotIds,
-      setGeneratingImageShotIds,
+      beginMediaTask,
       addPendingCandidate,
       removePendingCandidate,
       setGenVideoHistoryMap,
@@ -57,8 +58,7 @@ export default function useStoryboardTaskRecovery({
     showToast,
     setIsGenerating,
     setEpisodeGenerationError,
-    setGeneratingVideoShotIds,
-    setGeneratingImageShotIds,
+    beginMediaTask,
     addPendingCandidate,
     removePendingCandidate,
     setGenVideoHistoryMap,
@@ -69,64 +69,95 @@ export default function useStoryboardTaskRecovery({
   ]);
 
   useEffect(() => {
-    if (!projectId || typeof episode === 'string') return;
-    const episodeId = getEpisodeId(episode);
-    if (!episodeId) return;
+    if (!projectId || !episodeId) return;
 
-    const pending = getPendingTasks(projectId, episodeId);
+    let pending;
+    try {
+      pending = getPendingTasks(projectId, episodeId).filter((task) => (
+        ownerId && String(task.ownerId) === String(ownerId)
+      ));
+    } catch (error) {
+      callbacksRef.current.showToast(error.message, 'error');
+      return;
+    }
     if (pending.length === 0) return;
     let active = true;
     const callbacks = callbacksRef.current;
-    const isCurrent = () => active;
+    const isScopeCurrent = captureGenerationScope();
+    const isCurrent = () => active && isScopeCurrent();
+    const finishMediaTask = (task, setHistory, finish) => {
+      try { removePendingTask(projectId, task.taskId, ownerId); }
+      catch (error) {
+        callbacks.showToast(error.message, 'error');
+        return;
+      }
+      callbacks.removePendingCandidate(task.taskId, task.shotId);
+      setHistory((prev) => isCurrent() ? ({
+        ...prev,
+        [task.shotId]: (prev[task.shotId] ?? []).filter((item) => item.id !== `pending-resume-${task.taskId}`),
+      }) : prev);
+      finish();
+    };
 
     const resumeStoryboard = async (task) => {
       let settled = false;
       callbacksRef.current.setIsGenerating(true);
       callbacksRef.current.setEpisodeGenerationError(false);
       try {
+        if (task.submissionUnknown) throw new Error('提交结果尚未确认，请先核对后台任务，勿重复生成');
         const current = await apiGetTask(task.taskId);
-        if (!active) return;
+        if (!isCurrent()) return;
         const finalTask = isStoryboardTaskInProgress(current)
-          ? await callbacks.pollTask(task.taskId)
+          ? await callbacks.pollTask(task.taskId, undefined, 1000, isCurrent)
           : current;
-        if (!active) return;
-        if (isFailedTask(finalTask)) {
+        if (!isCurrent()) return;
+        const partialFailure = ['partial', 'completed_with_errors', 'completed_with_failures'].includes(getStoryboardTaskStatus(finalTask))
+          && Number(finalTask?.fail_count || finalTask?.failCount || 0) > 0;
+        if (isFailedTask(finalTask) || partialFailure) {
           settled = true;
           throw new Error(getStoryboardTaskErrorMessage(finalTask) || '分镜生成失败');
         }
-        if (!['completed', 'partial'].includes(getStoryboardTaskStatus(finalTask))) {
+        if (!['completed', 'success', 'succeeded', 'done', 'partial'].includes(getStoryboardTaskStatus(finalTask))) {
           throw new Error('任务状态尚未确认，请重新进入当前分集恢复查询');
         }
         await callbacks.onStoryboardRecovered(episodeId, isCurrent);
-        settled = active;
+        settled = isCurrent();
       } catch (error) {
-        if (!active) return;
+        if (!isCurrent()) return;
         console.error('[StoryboardPage] 恢复重新分镜任务失败:', task.taskId, error);
         callbacksRef.current.setEpisodeGenerationError(true);
-        callbacks.showToast(settled ? getStoryboardTaskErrorMessage(error) : '任务读取暂时失败，已保留任务，请重新进入当前分集恢复查询', 'error');
+        callbacks.showToast(task.submissionUnknown ? error.message : settled ? error.message : '任务读取暂时失败，已保留任务，请重新进入当前分集恢复查询', 'error');
       } finally {
-        if (active && settled) {
-          removePendingTask(projectId, task.taskId);
-          callbacks.setIsGenerating(false);
+        if (isCurrent() && settled) {
+          try {
+            removePendingTask(projectId, task.taskId, ownerId);
+            callbacks.setIsGenerating(false);
+          } catch (error) {
+            callbacks.setEpisodeGenerationError(true);
+            callbacks.showToast(error.message, 'error');
+          }
         }
       }
     };
 
     const resumeVideo = async (task) => {
       let settled = false;
-      callbacksRef.current.setGeneratingVideoShotIds((prev) => new Set([...prev, task.shotId]));
+      const finish = callbacks.beginMediaTask('video', task.shotId, task.taskId);
       callbacksRef.current.addPendingCandidate(task.shotId, 'video', task.taskId, `pending-${task.taskId}`);
-      callbacksRef.current.setGenVideoHistoryMap((prev) => ({
+      callbacksRef.current.setGenVideoHistoryMap((prev) => isCurrent() ? ({
         ...prev,
-        [task.shotId]: [{ url: null, settled: false, id: `pending-resume-${task.taskId}` }],
-      }));
+        [task.shotId]: [
+          ...(prev[task.shotId] ?? []).filter((item) => item.id !== `pending-resume-${task.taskId}`),
+          { url: null, settled: false, id: `pending-resume-${task.taskId}` },
+        ],
+      }) : prev);
       try {
         const current = await apiGetTask(task.taskId);
-        if (!active) return;
+        if (!isCurrent()) return;
         const finalTask = isStoryboardTaskInProgress(current)
-          ? await callbacks.pollTask(task.taskId, hasStoryboardVideoTaskResult, 1200)
+          ? await callbacks.pollTask(task.taskId, hasStoryboardVideoTaskResult, 1200, isCurrent)
           : current;
-        if (!active) return;
+        if (!isCurrent()) return;
         if (isFailedTask(finalTask)) {
           settled = true;
           throw new Error(getStoryboardTaskErrorMessage(finalTask) || '视频生成失败');
@@ -134,43 +165,41 @@ export default function useStoryboardTaskRecovery({
         if (getStoryboardTaskStatus(finalTask) === 'completed' || hasStoryboardVideoTaskResult(finalTask)) {
           const url = extractStoryboardVideoUrl(finalTask);
           if (url) {
-            await callbacks.onVideoRecovered(task.shotId, url);
+            await callbacks.onVideoRecovered(task.shotId, url, task.taskId, isCurrent);
+            if (!isCurrent()) return;
             settled = true;
           }
         }
         if (!settled) throw new Error('任务结果尚未确认');
       } catch (error) {
-        if (!active) return;
+        if (!isCurrent()) return;
         console.error('[StoryboardPage] 恢复视频任务失败:', task.taskId, error);
-        callbacks.showToast(settled ? error.message : '视频任务读取暂时失败，已保留任务，请重新进入当前分集恢复查询', 'error');
+        callbacks.showToast(settled ? error.message : '视频任务读取或候选保存暂时失败，已保留任务，请重新进入当前分集恢复查询', 'error');
       } finally {
-        if (active && settled) {
-          removePendingTask(projectId, task.taskId);
-          callbacks.removePendingCandidate(task.taskId, task.shotId);
-          callbacks.setGeneratingVideoShotIds((prev) => {
-            const next = new Set(prev);
-            next.delete(task.shotId);
-            return next;
-          });
+        if (isCurrent() && settled) {
+          finishMediaTask(task, callbacks.setGenVideoHistoryMap, finish);
         }
       }
     };
 
     const resumeImage = async (task) => {
       let settled = false;
-      callbacksRef.current.setGeneratingImageShotIds((prev) => new Set([...prev, task.shotId]));
+      const finish = callbacks.beginMediaTask('image', task.shotId, task.taskId);
       callbacksRef.current.addPendingCandidate(task.shotId, 'image', task.taskId, `pending-${task.taskId}`);
-      callbacksRef.current.setGenImageHistoryMap((prev) => ({
+      callbacksRef.current.setGenImageHistoryMap((prev) => isCurrent() ? ({
         ...prev,
-        [task.shotId]: [{ url: null, settled: false, id: `pending-resume-${task.taskId}` }],
-      }));
+        [task.shotId]: [
+          ...(prev[task.shotId] ?? []).filter((item) => item.id !== `pending-resume-${task.taskId}`),
+          { url: null, settled: false, id: `pending-resume-${task.taskId}` },
+        ],
+      }) : prev);
       try {
         const current = await apiGetTask(task.taskId);
-        if (!active) return;
+        if (!isCurrent()) return;
         const finalTask = isStoryboardTaskInProgress(current)
-          ? await callbacks.pollTask(task.taskId, hasStoryboardImageTaskResult)
+          ? await callbacks.pollTask(task.taskId, hasStoryboardImageTaskResult, 1000, isCurrent)
           : current;
-        if (!active) return;
+        if (!isCurrent()) return;
         if (isFailedTask(finalTask)) {
           settled = true;
           throw new Error(getStoryboardTaskErrorMessage(finalTask) || '图片生成失败');
@@ -179,33 +208,29 @@ export default function useStoryboardTaskRecovery({
         if (status === 'completed' || status === 'partial' || hasStoryboardImageTaskResult(finalTask)) {
           const url = extractStoryboardImageUrl(finalTask);
           if (url) {
-            await callbacks.onImageRecovered(task.shotId, url);
+            await callbacks.onImageRecovered(task.shotId, url, task.taskId, isCurrent);
+            if (!isCurrent()) return;
             settled = true;
           }
         }
         if (!settled) throw new Error('任务结果尚未确认');
       } catch (error) {
-        if (!active) return;
+        if (!isCurrent()) return;
         console.error('[StoryboardPage] 恢复图片任务失败:', task.taskId, error);
-        callbacks.showToast(settled ? error.message : '图片任务读取暂时失败，已保留任务，请重新进入当前分集恢复查询', 'error');
+        callbacks.showToast(settled ? error.message : '图片任务读取或候选保存暂时失败，已保留任务，请重新进入当前分集恢复查询', 'error');
       } finally {
-        if (active && settled) {
-          removePendingTask(projectId, task.taskId);
-          callbacks.removePendingCandidate(task.taskId, task.shotId);
-          callbacks.setGeneratingImageShotIds((prev) => {
-            const next = new Set(prev);
-            next.delete(task.shotId);
-            return next;
-          });
+        if (isCurrent() && settled) {
+          finishMediaTask(task, callbacks.setGenImageHistoryMap, finish);
         }
       }
     };
 
     pending.forEach((task) => {
+      if (!isCurrent()) return;
       if (task.type === 'storyboard') resumeStoryboard(task);
       else if (task.type === 'video') resumeVideo(task);
       else if (task.type === 'image') resumeImage(task);
     });
     return () => { active = false; };
-  }, [projectId, episode]);
+  }, [projectId, ownerId, episodeId, captureGenerationScope]);
 }

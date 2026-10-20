@@ -1,5 +1,5 @@
-/** 图片/视频提示词适配：复用创作页编辑器，保留节点草稿并隔离画布事件。 */
-import { useCallback, useEffect, useRef, useState } from 'react';
+/** 图片/视频提示词适配：复用创作页编辑器及卡片引用，保留节点草稿并隔离画布事件。 */
+import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useViewport } from '@xyflow/react';
 import CreationPromptEditor from '../creation/CreationPromptEditor';
 import { useCreationPromptInteraction } from '../creation/useCreationPromptInteraction';
@@ -7,7 +7,7 @@ import { showGlobalToast } from '../../stores/toastStore';
 import { getCanvasPromptFiles } from './CanvasPromptReferences';
 import { validateCanvasVideoMedia } from './CanvasVideoGeneration';
 
-export default function CanvasMediaPromptEditor({ nodeType, mode, model, capabilities, placeholder, references, prompt, snapshot, onChange, onFocusChange, onSend, composingRef }) {
+export default function CanvasMediaPromptEditor({ ref, nodeType, mode, model, capabilities, placeholder, references, prompt, snapshot, onChange, onFocusChange, onSend, composingRef }) {
   const files = getCanvasPromptFiles(references, nodeType, mode);
   const [prefillData] = useState(() => ({ prompt, promptHTML: snapshot?.html, files }));
   const { zoom } = useViewport();
@@ -41,6 +41,16 @@ export default function CanvasMediaPromptEditor({ nodeType, mode, model, capabil
     lastHtml.current = next.html;
     latest.current(next);
   }, [composingRef, getPromptSnapshot]);
+
+  useImperativeHandle(ref, () => ({
+    insertReference(id) {
+      if (composingRef.current) return;
+      const file = files.find((item) => item._uid === id);
+      if (!file || !canInsertMention(file, '', editorRef.current)) return;
+      editor.insertFromCard(file);
+      sync();
+    },
+  }));
 
   useEffect(() => {
     const observer = new MutationObserver(sync);

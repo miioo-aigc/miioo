@@ -1,9 +1,11 @@
 /**
  * @file StoryboardPage.jsx
  * @structure-index
+ *   当前定位（2026-10-20）：executeEpisodeGeneration L2011；批量入口 L1581/L1688、单独入口 L2904/L3069；共用存储提交前检查、保存/清理失败保留任务。下方带日期条目为历史定位。
+ *   2026-10-20：L439 beginMediaTask 协调任务标记；L533 归属切换重置；L1008 严格确认生成候选保存；L1495 轮询；L1530/L1549 视频/图片恢复持久候选；L1570 恢复 Hook；L1589/L1686 批量、L2899/L3060 单独入口校验访问归属并保留未确认任务。页面保留 API、缓存及持久化编排，不为行数移动副作用。
  *   2026-10-12：排序请求移出状态更新函数，串行提交并校验分集归属；失败提示刷新核对。
- *   2026-10-14：recoverStoryboardTask L1466 回读后检查恢复会话；任务未知状态保留在恢复 Hook。
- * ─── 全局常量与工具函数 ───────────────────────────────────── L119–L270
+ *   2026-10-14：recoverStoryboardTask L1513 回读后检查恢复会话；任务未知状态保留在恢复 Hook。
+ * ─── 全局常量与工具函数 ───────────────────────────────────── L120–L279
  *   normalizeStoryboard / normalizeStoryboardList / toBackendStoryboard  utils/storyboardDataAdapter.js
  *   buildStoryboardPrompt                      utils/buildStoryboardPrompt.js
  *   enrichMainRefs / buildStoryboardRefFromAsset         适配工具：主体参考图补全与资产映射
@@ -22,7 +24,7 @@
  *   NarrationColWrapper                         components/storyboard/NarrationCol.jsx
  *   ShotRow                                      页面业务桥接（已迁移至 StoryboardShotRowContent）
  *   ShotNumberColumn                            components/storyboard/ShotNumberColumn.jsx
- *   StoryboardHeader / StoryboardEditMenu        components/storyboard/；L2457 头部编排，L1822 在线剪辑跳转
+ *   StoryboardHeader / StoryboardEditMenu        components/storyboard/；L2579 头部编排
  *   makeStoryboardShot                           utils/storyboardDataAdapter.js
  *   PanelSelect / ModalSelectItem 已迁移至 components/storyboard/PanelSelect.jsx
  *
@@ -39,10 +41,10 @@
  *   GenerateImagePanel                         components/storyboard/GenerateImagePanel.jsx
  *   GenerateVideoPanel / ReferenceMediaEditor  components/storyboard/
  *
- * ─── 主页面入口 ──────────────────────────────────────────── L273–L3012
- *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化；L295 镜头状态，L1476 任务恢复
- *   [持久化动作] L667 enqueueStoryboardSave；L925–L1002 候选加载、保存与复制
- *   [候选定稿] L2014 handleFinalizeToggle：确保真实候选 UUID 后提交定稿状态
+ * ─── 主页面入口 ──────────────────────────────────────────── L269–L3196
+ *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化；L1562 任务恢复
+ *   [持久化动作] L703 enqueueStoryboardSave；L1000 候选保存；L2011 按集任务编排
+ *   [候选定稿] L2169 handleFinalizeToggle：确保真实候选 UUID 后提交定稿状态
  *   [加载与错误态] LoadingAnimation、DotsLoading、失败操作和统计
  *   [镜头 CRUD] 上传、编辑、复制、删除、排序
  *   [渲染] 状态结果、内容区（列表/时间轴）和生成面板；Toast 展示由 GlobalToast 承接
@@ -50,7 +52,7 @@
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
  * ─── 更新记录 ───────────────────────────────────────────────
- *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
+ *   2026-10-20  共用任务存储读写异常显式提示；提交前门禁，编号写失败保留会话记录，清理失败保留占位；批量中断不报全部完成。页面超规模因 API、缓存及持久化集中编排暂不拆；验证提交/恢复/收尾，视频恢复只入候选。
  *   2026-09-18  删除已无运行时引用的旧分镜页 Toast 展示；反馈统一由 GlobalToast 承接
  *   2026-09-07  修复兼容分镜媒体覆盖后端候选 UUID：后端候选合并优先，并在定稿前确保候选已持久化
  *   2026-09-04  台词分配移除语速/音量，新增角色与旁白音色选择；普通角色复用主体音色接口，旁白使用项目级音色设置，
@@ -98,6 +100,8 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import useStoryboardGenerationScope from '../hooks/useStoryboardGenerationScope';
+import { runStoryboardEpisodeGeneration } from '../utils/StoryboardEpisodeGeneration';
 import { ModalCloseBtn } from '../components/storyboard/StoryboardControls';
 import { showGlobalToast } from '../stores/toastStore';
 import StoryboardHeader from '../components/storyboard/StoryboardHeader';
@@ -134,19 +138,6 @@ function areCreationFormStatesEqual(previous, next) {
 
 function getStoryboardTaskId(task) {
   return getTaskIdFromAdapter(task);
-}
-
-function unwrapStoryboardTaskResponse(value) {
-  let payload = value?.data ?? value?.payload ?? value;
-  if (payload?.task && typeof payload.task === 'object') return payload.task;
-  if (payload && typeof payload === 'object' && (
-    payload.id || payload.task_id || payload.taskId || payload.status || payload.raw_status
-  )) return payload;
-  if (payload?.result && typeof payload.result === 'object') {
-    payload = payload.result;
-    if (payload.task && typeof payload.task === 'object') return payload.task;
-  }
-  return payload;
 }
 
 function getStoryboardTaskError(task, fallback) {
@@ -219,7 +210,8 @@ import useStoryboardTaskRecovery from '../hooks/useStoryboardTaskRecovery';
 import { loadLocalImages, useLocalImageEditStore } from '../stores/LocalImageEdits';
 import { enrichMainRefs, isBackendStoryboardId, makeStoryboardShot, normalizeStoryboard, normalizeStoryboardList, setStoryboardSubjectSnapshot, toBackendStoryboard } from '../utils/storyboardDataAdapter';
 import buildStoryboardPrompt from '../utils/buildStoryboardPrompt';
-import { addPendingTask, removePendingTask } from '../utils/taskPersistence';
+import { addPendingTask, removePendingTask, getPendingTasks, assertPendingTaskStorageReady } from '../utils/taskPersistence';
+import { createStoryboardGenerationTracker } from '../utils/StoryboardGenerationTracker';
 import { downloadBlob } from '../utils/downloadBlob';
 import { startDownloadFeedback, triggerAnchorDownload } from '../utils/downloadFeedback';
 import { createLatestPersistenceQueue } from '../utils/referenceMediaPersistence';
@@ -274,7 +266,7 @@ import {
 const EPISODES = ['第一集', '第二集'];
 const STORYBOARD_PAGE_SIZE = 10;
 
-export default function StoryboardPage({ projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onStartEdit, onGenerateStoryboards, onRetryGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0, statusMessage = '' }) {
+export default function StoryboardPage({ ownerId, projectId, projectName = '两只老虎的奇遇', projectRatio, chars = [], scenes = [], props = [], episodes = EPISODES, initialEpisodeIndex = null, onUnlockStep, onStartEdit, onGenerateStoryboards, onRetryGenerateStoryboards, generateError = null, isGenerating: homeIsGenerating = false, completedEpisodesCount = 0, statusMessage = '' }) {
   const localImageScopes = useLocalImageEditStore((state) => state.byScope);
 
   // 分镜主体参考可能同时包含角色、场景和道具；旁白列仍只使用 chars。
@@ -369,6 +361,8 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
     return activeEpisodes[idx] ?? '第一集';
   });
   const [dragId, setDragId] = useState(null);
+  const generationEpisodeId = getEpisodeId(episode);
+  const captureGenerationScope = useStoryboardGenerationScope(ownerId, projectId, generationEpisodeId);
   const [overId, setOverId] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [episodeGenerationError, setEpisodeGenerationError] = useState(false);
@@ -431,6 +425,18 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const [generatingVideos, setGeneratingVideos] = useState(false);
   const [generatingImageShotIds, setGeneratingImageShotIds] = useState(new Set());
   const [generatingVideoShotIds, setGeneratingVideoShotIds] = useState(new Set());
+  const beginMediaTask = useMemo(() => {
+    let isCurrent;
+    const guardSetter = (setter) => (update) => setter((prev) => isCurrent?.() ? update(prev) : prev);
+    const begin = createStoryboardGenerationTracker({
+      image: guardSetter(setGeneratingImageShotIds),
+      video: guardSetter(setGeneratingVideoShotIds),
+    });
+    return (...args) => {
+      isCurrent ??= captureGenerationScope();
+      return begin(...args);
+    };
+  }, [captureGenerationScope]);
   const [showImageModal, setShowImageModal] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [downloadMode, setDownloadMode] = useState(false);
@@ -512,6 +518,26 @@ export default function StoryboardPage({ projectId, projectName = '两只老虎�
   const [regenerateModalOpen, setRegenerateModalOpen] = useState(false);
   const [regenerateModalKey, setRegenerateModalKey] = useState(0);
   const [regenerateModalError, setRegenerateModalError] = useState('');
+
+  const generationViewKey = JSON.stringify([ownerId, projectId, generationEpisodeId]);
+  const [previousGenerationViewKey, setPreviousGenerationViewKey] = useState(generationViewKey);
+  // Reset before committing the new view, so recovery effects cannot be cleared afterwards.
+  if (previousGenerationViewKey !== generationViewKey) {
+    setPreviousGenerationViewKey(generationViewKey);
+    setIsGenerating(false);
+    setEpisodeGenerationError(false);
+    setRegenerateModalOpen(false);
+    setGeneratingImages(false);
+    setGeneratingVideos(false);
+    setGeneratingImageShotIds(new Set());
+    setGeneratingVideoShotIds(new Set());
+    setPendingCandidateMap({});
+    setGenImageHistoryMap({});
+    setGenVideoHistoryMap({});
+    setImagePanel(null);
+    setVideoPanel(null);
+    setCreationPanel(null);
+  }
 
   function addPendingCandidate(shotId, type, taskId, clientId = `pending-${type}-${shotId}-${Date.now()}`) {
     const item = { id: clientId, taskId, shotId, media_type: type, pending: true };
@@ -947,25 +973,36 @@ function hasStoryboardMediaHint(shot = {}) {
     }
   }, [projectId]);
 
-  async function saveCandidateMedia(shotId, media) {
+  async function saveCandidateMedia(shotId, media, isCurrent = () => true) {
+    if (!isCurrent()) return null;
     const { payload, mediaUrl } = buildStoryboardCandidatePayload(media);
     if (!mediaUrl) return null;
     try {
       const saved = await apiCreateStoryboardMediaCandidate(projectId, shotId, payload);
       const candidate = normalizeSavedStoryboardCandidate(payload, saved);
+      if (!isCurrent()) return candidate;
       setCandidateMediaMap((prev) => {
+        if (!isCurrent()) return prev;
         const current = prev[shotId] || [];
         return {
           ...prev,
           [shotId]: mergeStoryboardMediaItems(current, [candidate]),
         };
       });
-      setFinalizedMediaMap((prev) => ({ ...prev, [shotId]: candidate.is_finalized ? candidate : (prev[shotId] || null) }));
+      setFinalizedMediaMap((prev) => isCurrent() ? ({ ...prev, [shotId]: candidate.is_finalized ? candidate : (prev[shotId] || null) }) : prev);
       return candidate;
     } catch (error) {
       console.warn('[StoryboardPage] 候选媒体接口暂不可用，保留兼容媒体字段:', error);
       return null;
     }
+  }
+
+  async function saveGeneratedCandidateMedia(shotId, media, taskId, isCurrent = () => true) {
+    const saved = await saveCandidateMedia(shotId, {
+      ...media, metadata: { ...media.metadata, task_id: taskId },
+    }, isCurrent);
+    if (!saved) throw new Error('候选保存尚未确认，已保留任务，请重新进入当前分集恢复查询，请勿重复生成');
+    return saved;
   }
 
   async function saveExtractedFrame(shot, result) {
@@ -1447,20 +1484,22 @@ function hasStoryboardMediaHint(shot = {}) {
 
   // 轮询任务直到完成或超时；视频创作允许等待 3600 秒，分镜生成保持 3000 秒。
   // isSuccessPayload: 可选谓词，若返回 true 则即使 status 为 running 也停止轮询
-  async function pollTask(taskId, isSuccessPayload, maxPolls = 1000) {
+  async function pollTask(taskId, isSuccessPayload, maxPolls = 1000, isCurrent = () => true) {
     const MAX_POLLS = maxPolls;
     const INTERVAL = 3000;
     for (let i = 0; i < MAX_POLLS; i++) {
       // 提交生成任务后立即读取一次，避免任务已经创建但页面在首个 3 秒窗口内
       // 没有任何网络活动；后续请求再按固定间隔进行。
       if (i > 0) await new Promise(r => setTimeout(r, INTERVAL));
+      if (!isCurrent()) throw new Error('已离开原生成页面，任务保留待恢复');
       const t = await apiGetTask(taskId);
+      if (!isCurrent()) throw new Error('已离开原生成页面，任务保留待恢复');
       // 终态
       if (!isStoryboardTaskInProgress(t)) return t;
       // 后端修复后 running 态也可携带 results：有可播放视频就提前返回
       if (typeof isSuccessPayload === 'function' && isSuccessPayload(t)) return t;
     }
-    throw new Error('任务超时，请重试');
+    throw new Error('任务查询超时，已保留任务，请重新进入当前分集恢复查询，请勿重复生成');
   }
 
   const recoverStoryboardTask = useCallback(async (episodeId, isCurrent = () => true) => {
@@ -1480,44 +1519,56 @@ function hasStoryboardMediaHint(shot = {}) {
     generatedEpisodeIdsRef.current.add(episodeId);
   }, [projectId, storyboardSubjects, loadShotCandidates]);
 
-  const recoverVideoTask = useCallback(async (shotId, url) => {
+  const recoverVideoTask = useCallback(async (shotId, url, taskId, isCurrent) => {
     const normalizedUrl = normalizeImageUrl(url);
-    setShots((prev) => prev.map((shot) => shot.id === shotId && !shot.storyboardVideo
-      ? { ...shot, storyboardVideo: { id: `vid-${shotId}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4' } }
-      : shot));
-    apiUpdateStoryboard(projectId, shotId, { video_url: normalizedUrl }).catch(console.error);
-    setGenVideoHistoryMap((prev) => {
-      const list = prev[shotId] ?? [];
-      return {
-        ...prev,
-        [shotId]: mergeStoryboardMediaItems(
-          list.filter((item) => !String(item.id).startsWith('pending-resume-')),
-          [{ url: normalizedUrl, settled: false, id: `vid-${shotId}-resumed` }],
-        ),
-      };
+    const { payload } = buildStoryboardCandidatePayload({
+      url: normalizedUrl, mediaType: 'video', metadata: { task_id: taskId },
     });
+    // 不走吞错的兼容保存分支：候选落盘失败时，恢复 Hook 必须保留任务。
+    const saved = await apiCreateStoryboardMediaCandidate(projectId, shotId, payload);
+    if (!isCurrent()) return;
+    const candidate = normalizeSavedStoryboardCandidate(payload, saved);
+    setCandidateMediaMap((prev) => !isCurrent() ? prev : ({
+      ...prev,
+      [shotId]: mergeStoryboardMediaItems(prev[shotId] || [], [candidate]),
+    }));
+    setGenVideoHistoryMap((prev) => !isCurrent() ? prev : ({
+      ...prev,
+      [shotId]: mergeStoryboardMediaItems(prev[shotId] || [], [{ ...candidate, settled: false }]),
+    }));
   }, [projectId]);
 
-  const recoverImageTask = useCallback(async (shotId, url) => {
+  const recoverImageTask = useCallback(async (shotId, url, taskId, isCurrent = () => true) => {
     const normalizedUrl = normalizeImageUrl(url);
-    setShots((prev) => prev.map((shot) => shot.id === shotId && !shot.storyboardImage
+    const { payload } = buildStoryboardCandidatePayload({
+      url: normalizedUrl, mediaType: 'image', metadata: { task_id: taskId },
+    });
+    const saved = await apiCreateStoryboardMediaCandidate(projectId, shotId, payload);
+    if (!isCurrent()) return;
+    const candidate = normalizeSavedStoryboardCandidate(payload, saved);
+    setCandidateMediaMap((prev) => !isCurrent() ? prev : ({
+      ...prev, [shotId]: mergeStoryboardMediaItems(prev[shotId] || [], [candidate]),
+    }));
+    setShots((prev) => !isCurrent() ? prev : prev.map((shot) => shot.id === shotId && !shot.storyboardImage
       ? { ...shot, storyboardImage: { id: normalizedUrl, url: normalizedUrl, name: 'generated.jpg', type: 'image/jpeg' } }
       : shot));
     setGenImageHistoryMap((prev) => {
+      if (!isCurrent()) return prev;
       const list = prev[shotId] ?? [];
-      return { ...prev, [shotId]: [{ url: normalizedUrl, settled: false, id: `img-${shotId}-resumed` }, ...list.filter((item) => !String(item.id).startsWith('pending-resume-'))] };
+      return { ...prev, [shotId]: mergeStoryboardMediaItems(list, [{ url: normalizedUrl, settled: false, id: `img-${shotId}-resumed-${taskId}` }]) };
     });
-  }, []);
+  }, [projectId]);
 
   useStoryboardTaskRecovery({
     projectId,
+    ownerId,
+    captureGenerationScope,
     episode,
     pollTask,
     showToast,
     setIsGenerating,
     setEpisodeGenerationError,
-    setGeneratingVideoShotIds,
-    setGeneratingImageShotIds,
+    beginMediaTask,
     addPendingCandidate,
     removePendingCandidate,
     setGenVideoHistoryMap,
@@ -1528,7 +1579,12 @@ function hasStoryboardMediaHint(shot = {}) {
   });
 
   async function startBatchGenImages(params) {
+    if (isGenerating || homeIsGenerating) return;
+    const isCurrent = captureGenerationScope();
+    if (!isCurrent()) return;
     if (generatingImages) return;
+    try { assertPendingTaskStorageReady(projectId, ownerId); }
+    catch (error) { showToast(error.message, 'error'); return; }
     setGeneratingImages(true);
     const episodeId = getEpisodeId(episode);
     const targetShots = params?.only_undrafted
@@ -1536,10 +1592,16 @@ function hasStoryboardMediaHint(shot = {}) {
       : shots;
     let successCount = 0;
     let failCount = 0;
+    let pendingCount = 0;
+    let storageBlocked = false;
 
     for (const shot of targetShots) {
-      setGeneratingImageShotIds(prev => new Set([...prev, shot.id]));
+      if (!isCurrent()) break;
+      try { assertPendingTaskStorageReady(projectId, ownerId); }
+      catch (error) { storageBlocked = true; showToast(error.message, 'error'); break; }
+      const finish = beginMediaTask('image', shot.id);
       let taskId = null;
+      let settled = false;
       const pendingClientId = addPendingCandidate(shot.id, 'image');
       try {
         const taskResp = await apiGenerateStoryboardImage(projectId, shot.id, {
@@ -1551,18 +1613,22 @@ function hasStoryboardMediaHint(shot = {}) {
         });
         taskId = getStoryboardTaskId(taskResp);
         if (!taskId) throw new Error('分镜图生成接口未返回任务 ID');
+        addPendingTask(projectId, { taskId, shotId: shot.id, episodeId, ownerId, type: 'image' });
+        if (!isCurrent()) return;
         bindPendingCandidate(shot.id, pendingClientId, taskId);
-        addPendingTask(projectId, { taskId, shotId: shot.id, episodeId, type: 'image' });
-        const task = await pollTask(taskId, hasStoryboardImageTaskResult);
+        const task = await pollTask(taskId, hasStoryboardImageTaskResult, 1000, isCurrent);
+        if (!isCurrent()) return;
+        settled = ['failed', 'cancelled', 'canceled', 'expired', 'error'].includes(getStoryboardTaskStatus(task));
+        if (settled) throw new Error(getStoryboardTaskError(task, '图片生成失败'));
         if ((getStoryboardTaskStatus(task) === 'completed' || getStoryboardTaskStatus(task) === 'partial') || hasStoryboardImageTaskResult(task)) {
           const imageUrl = extractStoryboardImageUrl(task);
           if (imageUrl) {
             const normalizedUrl = normalizeImageUrl(imageUrl);
-            setShots((prev) => prev.map((s) => s.id === shot.id
+            setShots((prev) => !isCurrent() ? prev : prev.map((s) => s.id === shot.id
               ? { ...s, storyboardImage: { id: normalizedUrl, url: normalizedUrl, name: 'generated.jpg', type: 'image/jpeg' } }
               : s
             ));
-            await saveCandidateMedia(shot.id, {
+            await saveGeneratedCandidateMedia(shot.id, {
               id: normalizedUrl,
               url: normalizedUrl,
               name: 'generated.jpg',
@@ -1580,7 +1646,9 @@ function hasStoryboardMediaHint(shot = {}) {
                 ratio: projectRatio,
                 reference_images: toSafeStoryboardReferenceUrls(params.refImages),
               },
-            });
+            }, taskId, isCurrent);
+            if (!isCurrent()) return;
+            settled = true;
             successCount++;
           } else {
             failCount++;
@@ -1589,20 +1657,28 @@ function hasStoryboardMediaHint(shot = {}) {
           failCount++;
         }
       } catch (err) {
+        if (!isCurrent()) return;
         console.error('[StoryboardPage] 生成分镜图失败:', err);
         failCount++;
       } finally {
-        if (taskId) removePendingTask(projectId, taskId);
-        removePendingCandidate(taskId || pendingClientId, shot.id);
-        setGeneratingImageShotIds(prev => {
-          const next = new Set(prev);
-          next.delete(shot.id);
-          return next;
-        });
+        if (isCurrent()) {
+          if (taskId && settled) {
+            try { removePendingTask(projectId, taskId, ownerId); }
+            catch (error) { settled = false; showToast(error.message, 'error'); }
+          }
+          if (!taskId || settled) removePendingCandidate(taskId || pendingClientId, shot.id);
+          else beginMediaTask('image', shot.id, taskId);
+          if (taskId && !settled) pendingCount++;
+          finish();
+        }
       }
     }
+    if (!isCurrent()) return;
     setGeneratingImages(false);
-    if (failCount > 0) {
+    if (storageBlocked) return;
+    if (pendingCount > 0) {
+      showToast(`图片已保存 ${successCount} 个，${pendingCount} 个结果待确认，已保留任务；请重新进入当前分集查询，请勿重复生成`, 'warning');
+    } else if (failCount > 0) {
       showToast(`分镜图生成完成，成功 ${successCount} 个，失败 ${failCount} 个`, 'warning');
     } else {
       showToast('分镜图生成完成');
@@ -1610,7 +1686,12 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   async function startBatchGenVideos(params) {
+    if (isGenerating || homeIsGenerating) return;
+    const isCurrent = captureGenerationScope();
+    if (!isCurrent()) return;
     if (generatingVideos) return;
+    try { assertPendingTaskStorageReady(projectId, ownerId); }
+    catch (error) { showToast(error.message, 'error'); return; }
     setGeneratingVideos(true);
     const episodeId = getEpisodeId(episode);
     const targetShots = params?.only_undrafted
@@ -1618,10 +1699,16 @@ function hasStoryboardMediaHint(shot = {}) {
       : shots;
     let successCount = 0;
     let failCount = 0;
+    let pendingCount = 0;
+    let storageBlocked = false;
 
     for (const shot of targetShots) {
-      setGeneratingVideoShotIds(prev => new Set([...prev, shot.id]));
+      if (!isCurrent()) break;
+      try { assertPendingTaskStorageReady(projectId, ownerId); }
+      catch (error) { storageBlocked = true; showToast(error.message, 'error'); break; }
+      const finish = beginMediaTask('video', shot.id);
       let taskId = null;
+      let settled = false;
       const pendingClientId = addPendingCandidate(shot.id, 'video');
       try {
         const durationValue = (() => {
@@ -1640,22 +1727,26 @@ function hasStoryboardMediaHint(shot = {}) {
         });
         taskId = getStoryboardTaskId(taskResp);
         if (!taskId) throw new Error('分镜视频生成接口未返回任务 ID');
+        addPendingTask(projectId, { taskId, shotId: shot.id, episodeId, ownerId, type: 'video' });
+        if (!isCurrent()) return;
         bindPendingCandidate(shot.id, pendingClientId, taskId);
-        addPendingTask(projectId, { taskId, shotId: shot.id, episodeId, type: 'video' });
-        const task = await pollTask(taskId, hasStoryboardVideoTaskResult, 1200);
+        const task = await pollTask(taskId, hasStoryboardVideoTaskResult, 1200, isCurrent);
+        if (!isCurrent()) return;
+        settled = ['failed', 'cancelled', 'canceled', 'expired', 'error'].includes(getStoryboardTaskStatus(task));
+        if (settled) throw new Error(getStoryboardTaskError(task, '视频生成失败'));
         const videoUrl = extractStoryboardVideoUrl(task);
         if (videoUrl) {
           const normalizedUrl = normalizeImageUrl(videoUrl);
-          // 任务已有可播放结果时立即移除占位，候选保存接口较慢也不能并排渲染两张卡片。
+          // 已有实际结果时隐藏占位，但保存失败仍保留持久任务和查询标记。
           removePendingCandidate(taskId || pendingClientId, shot.id);
           const updatedVideo = { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4' };
-          setShots((prev) => prev.map((s) => s.id === shot.id
+          setShots((prev) => !isCurrent() ? prev : prev.map((s) => s.id === shot.id
             ? { ...s, storyboardVideo: updatedVideo }
             : s
           ));
           // 持久化到后端，避免刷新后视频列消失
           apiUpdateStoryboard(projectId, shot.id, { video_url: normalizedUrl }).catch(console.error);
-          await saveCandidateMedia(shot.id, {
+          await saveGeneratedCandidateMedia(shot.id, {
             id: `vid-${shot.id}`,
             url: normalizedUrl,
             name: 'generated.mp4',
@@ -1676,26 +1767,36 @@ function hasStoryboardMediaHint(shot = {}) {
               ratio: projectRatio,
               reference_images: toSafeStoryboardReferenceUrls(params.refImages),
             },
-          });
+          }, taskId, isCurrent);
+          if (!isCurrent()) return;
+          settled = true;
           successCount++;
         } else {
           failCount++;
         }
       } catch (err) {
+        if (!isCurrent()) return;
         console.error('[StoryboardPage] 生成分镜视频失败:', err);
         failCount++;
       } finally {
-        if (taskId) removePendingTask(projectId, taskId);
-        removePendingCandidate(taskId || pendingClientId, shot.id);
-        setGeneratingVideoShotIds(prev => {
-          const next = new Set(prev);
-          next.delete(shot.id);
-          return next;
-        });
+        if (isCurrent()) {
+          if (taskId && settled) {
+            try { removePendingTask(projectId, taskId, ownerId); }
+            catch (error) { settled = false; showToast(error.message, 'error'); }
+          }
+          if (!taskId || settled) removePendingCandidate(taskId || pendingClientId, shot.id);
+          else beginMediaTask('video', shot.id, taskId);
+          if (taskId && !settled) pendingCount++;
+          finish();
+        }
       }
     }
+    if (!isCurrent()) return;
     setGeneratingVideos(false);
-    if (failCount > 0) {
+    if (storageBlocked) return;
+    if (pendingCount > 0) {
+      showToast(`视频已保存 ${successCount} 个，${pendingCount} 个结果待确认，已保留任务；请重新进入当前分集查询，请勿重复生成`, 'warning');
+    } else if (failCount > 0) {
       showToast(`分镜视频生成完成，成功 ${successCount} 个，失败 ${failCount} 个`, 'warning');
     } else {
       showToast('分镜视频生成完成');
@@ -1851,6 +1952,7 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   async function handleTimelineFinalizeChange(media, nextValue) {
+    if (isGenerating || homeIsGenerating) return;
     if (!timelinePreviewMedia?.shot || !media) return;
     // 先更新弹窗本地状态，让 Toggle 即时响应，不再等 PATCH + 候选刷新
     setTimelinePreviewMedia((prev) => prev ? {
@@ -1879,14 +1981,9 @@ function hasStoryboardMediaHint(shot = {}) {
 
     setRegenerateModalError('');
 
-    // 只有重新分镜需要主动清空旧结果；首次进入时由任务状态决定是否展示加载态。
-    setShots([]);
     setSelectedShotIds(new Set());
     setDownloadMode(false);
-    setIsGenerating(true);
-
-    let pendingTaskId = null;
-    const generationPromise = apiGenerateStoryboardsFromFinalScript(projectId, {
+    return executeEpisodeGeneration(() => apiGenerateStoryboardsFromFinalScript(projectId, {
       episode_id: episodeId,
       episode_number: episode?.episode_number ?? null,
       mode: 'regenerate',
@@ -1894,65 +1991,7 @@ function hasStoryboardMediaHint(shot = {}) {
       confirm_overwrite: true,
       first_episode_only: true,
       model: null,
-    })
-      .then((rawResponse) => {
-        const taskResponse = unwrapStoryboardTaskResponse(rawResponse);
-        if (Array.isArray(taskResponse)) {
-          return { status: 'completed', storyboards: taskResponse };
-        }
-
-        const taskId = getStoryboardTaskId(taskResponse);
-        if (!taskId) {
-          const status = String(getStoryboardTaskStatus(taskResponse) || '').toLowerCase();
-          if (['completed', 'success', 'succeeded', 'done'].includes(status)) {
-            return taskResponse;
-          }
-          throw new Error('重新分镜接口未返回分镜结果或任务 ID');
-        }
-        // 重新分镜任务也要写入持久化记录。这样用户刷新页面或离开后返回时，
-        // 页面可以识别仍在执行的任务，不会只剩一个已经发出的 POST 请求。
-        pendingTaskId = taskId;
-        addPendingTask(projectId, {
-          taskId,
-          shotId: null,
-          episodeId,
-          type: 'storyboard',
-        });
-        return pollTask(taskId);
-      })
-      .then((taskResult) => {
-        if (pendingTaskId) removePendingTask(projectId, pendingTaskId);
-        const status = String(getStoryboardTaskStatus(taskResult) || '').toLowerCase();
-        if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
-          throw new Error(getStoryboardTaskError(taskResult, '分镜生成失败'));
-        }
-        if (Array.isArray(taskResult?.storyboards) && hasBackendStoryboardIds(taskResult.storyboards)) return taskResult.storyboards;
-        if (Array.isArray(taskResult?.results) && taskResult.results.some((item) => item?.episode_id || item?.shot_number) && hasBackendStoryboardIds(taskResult.results)) {
-          return taskResult.results;
-        }
-        invalidate(K.storyboards(projectId, episodeId));
-        invalidate(K.storyboards(projectId));
-        return apiGetStoryboards(projectId, { episode_id: episodeId, limit: STORYBOARD_PAGE_SIZE, offset: 0, include_gen_params: true });
-      })
-      .then((latest) => {
-        const normalizedLatest = normalizeStoryboardList(latest, storyboardSubjects, 0, projectId).slice(0, STORYBOARD_PAGE_SIZE);
-        setHasMoreShots(Array.isArray(latest) && latest.length >= STORYBOARD_PAGE_SIZE);
-        setShots(normalizedLatest);
-        loadShotCandidates(normalizedLatest);
-        generatedEpisodeIdsRef.current.add(episodeId);
-      })
-      .catch((err) => {
-        console.error('[StoryboardPage] 重新分镜失败:', err);
-        if (pendingTaskId) removePendingTask(projectId, pendingTaskId);
-        const message = err?.message || '重新分镜失败，请稍后重试';
-        setRegenerateModalError(message);
-        showToast(message, 'error');
-        return false;
-      })
-      .finally(() => setIsGenerating(false));
-
-    const result = await generationPromise;
-    return result !== false;
+    }), episodeId);
   }
 
   async function handleStartEpisodeGeneration() {
@@ -1963,54 +2002,95 @@ function hasStoryboardMediaHint(shot = {}) {
       return;
     }
 
-    setEpisodeGenerationError(false);
-    setIsGenerating(true);
-    generatingEpisodeRef.current = episodeId;
-
-    try {
-      const rawTaskResponse = await apiGenerateStoryboardsFromEpisode(projectId, {
+    return executeEpisodeGeneration(() => apiGenerateStoryboardsFromEpisode(projectId, {
         episode_id: episodeId,
         model: null,
-      });
-      const taskResponse = unwrapStoryboardTaskResponse(rawTaskResponse);
-      let taskResult = taskResponse;
-      if (!Array.isArray(taskResponse)) {
-        const taskId = getStoryboardTaskId(taskResponse);
-        if (!taskId) {
-          const status = String(getStoryboardTaskStatus(taskResponse) || '').toLowerCase();
-          if (!['completed', 'success', 'succeeded', 'done'].includes(status)) {
-            throw new Error('按集生成分镜未返回分镜结果或任务 ID');
-          }
-        } else {
-          taskResult = await pollTask(taskId);
-        }
-      }
-      if (['failed', 'error', 'cancelled', 'canceled'].includes(String(getStoryboardTaskStatus(taskResult) || '').toLowerCase())) {
-        throw new Error(getStoryboardTaskError(taskResult, '分镜生成失败'));
-      }
+    }), episodeId);
+  }
 
-      const taskItems = Array.isArray(taskResult)
+  async function executeEpisodeGeneration(submit, episodeId) {
+    const isCurrent = captureGenerationScope();
+    if (!isCurrent() || isGenerating || homeIsGenerating || generatingEpisodeRef.current?.isCurrent?.()) return false;
+    let pendingTasks;
+    try {
+      assertPendingTaskStorageReady(projectId, ownerId);
+      pendingTasks = getPendingTasks(projectId, episodeId);
+    }
+    catch (error) { showToast(error.message, 'error'); return false; }
+    if (generatingImages || generatingVideos || pendingTasks.some((task) => String(task.ownerId) === String(ownerId))) {
+      showToast('当前分集还有待确认任务，请先等待完成或恢复查询', 'error');
+      return false;
+    }
+    generatingEpisodeRef.current = { episodeId, isCurrent };
+    setEpisodeGenerationError(false);
+    setIsGenerating(true);
+    setImagePanel(null);
+    setVideoPanel(null);
+    setCreationPanel(null);
+    let settled = false;
+    let submitted = false;
+    const submissionId = `storyboard-submit-${Date.now()}`;
+    try {
+      addPendingTask(projectId, { taskId: submissionId, shotId: null, episodeId, ownerId, type: 'storyboard', submissionUnknown: true });
+      if (!getPendingTasks(projectId, episodeId).some((task) => task.taskId === submissionId)) {
+        throw new Error('任务记录无法保存，本次未提交生成，请检查浏览器存储空间后重试');
+      }
+      submitted = true;
+      const outcome = await runStoryboardEpisodeGeneration({
+        submit, isCurrent, poll: pollTask,
+        persist: (taskId) => {
+          addPendingTask(projectId, { taskId, shotId: null, episodeId, ownerId, type: 'storyboard' });
+          if (!getPendingTasks(projectId, episodeId).some((task) => task.taskId === taskId)) {
+            throw new Error('任务编号保存失败，请勿重复生成，先核对后台任务');
+          }
+          removePendingTask(projectId, submissionId, ownerId);
+        },
+        remove: (taskId) => removePendingTask(projectId, taskId, ownerId),
+        readResult: async (taskResult) => {
+          const taskItems = Array.isArray(taskResult)
         ? taskResult
         : (Array.isArray(taskResult?.storyboards)
           ? taskResult.storyboards
           : (Array.isArray(taskResult?.results) && taskResult.results.some((item) => item?.episode_id || item?.shot_number)
             ? taskResult.results
             : null));
-      const latest = hasBackendStoryboardIds(taskItems)
+          invalidate(K.storyboards(projectId, episodeId));
+          invalidate(K.storyboards(projectId));
+          return hasBackendStoryboardIds(taskItems)
         ? taskItems
         : await apiGetStoryboards(projectId, { episode_id: episodeId, limit: STORYBOARD_PAGE_SIZE, offset: 0, include_gen_params: true });
-      const normalizedLatest = normalizeStoryboardList(latest, storyboardSubjects, 0, projectId).slice(0, STORYBOARD_PAGE_SIZE);
-      setHasMoreShots(Array.isArray(latest) && latest.length >= STORYBOARD_PAGE_SIZE);
-      setShots(normalizedLatest);
-      loadShotCandidates(normalizedLatest);
-      generatedEpisodeIdsRef.current.add(episodeId);
+        },
+        applyResult: (latest) => {
+          const normalizedLatest = normalizeStoryboardList(latest, storyboardSubjects, 0, projectId).slice(0, STORYBOARD_PAGE_SIZE);
+          setHasMoreShots(Array.isArray(latest) && latest.length >= STORYBOARD_PAGE_SIZE);
+          setShots(normalizedLatest);
+          loadShotCandidates(normalizedLatest);
+          generatedEpisodeIdsRef.current.add(episodeId);
+        },
+      });
+      settled = outcome.settled;
+      if (settled) removePendingTask(projectId, submissionId, ownerId);
+      return settled;
     } catch (error) {
-      console.error('[StoryboardPage] 按集生成分镜失败:', error);
+      if (!isCurrent()) return false;
+      let finalError = error;
+      settled = !submitted || error.generationSettled;
+      if (settled) {
+        try { removePendingTask(projectId, submissionId, ownerId); }
+        catch (storageError) { settled = false; finalError = storageError; }
+      }
       setEpisodeGenerationError(true);
-      showToast(error?.message || '分镜生成失败，请稍后重试', 'error');
+      const message = settled || finalError.code === 'TASK_STORAGE' ? finalError.message : finalError.generationTaskId
+        ? '任务查询或结果读取失败，已保留任务，请重新进入当前分集恢复查询，请勿重复生成'
+        : '提交结果尚未确认且未取得任务编号，请先核对后台任务，请勿重复生成';
+      setRegenerateModalError(message);
+      showToast(message, 'error');
+      return false;
     } finally {
-      generatingEpisodeRef.current = null;
-      setIsGenerating(false);
+      if (isCurrent() && settled) {
+        generatingEpisodeRef.current = null;
+        setIsGenerating(false);
+      }
     }
   }
 
@@ -2019,6 +2099,7 @@ function hasStoryboardMediaHint(shot = {}) {
   }, [shots.length, onUnlockStep]);
 
   function updateShot(id, next) {
+    if (isGenerating || homeIsGenerating) return;
     // 主体参考列与创作面板的参考主体必须共享同一份当前镜头集合。
     // 优先读取表单 ref，避免弹窗尚未重新渲染时把旧 creationForm 快照写回。
     const latestVideoForm = videoFormStateRef.current[id] || next?.creationForm?.video;
@@ -2086,6 +2167,7 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   async function handleFinalizeToggle(shot, media, requestedFinalized) {
+    if (isGenerating || homeIsGenerating) return;
     if (media?.localEdit) { showGlobalToast('本地编辑图片暂不支持同步定稿', 'info'); return; }
     const current = finalizedMediaMap[shot.id];
     const shouldFinalize = typeof requestedFinalized === 'boolean'
@@ -2147,6 +2229,7 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   function openCreationPanel(shot) {
+    if (isGenerating || homeIsGenerating) return;
     setActiveShotId(shot.id);
     const tab = creationPanel?.tab || 'video';
     setCreationPanel({ shot, tab });
@@ -2329,6 +2412,7 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   function addShotAfter(id) {
+    if (isGenerating || homeIsGenerating) return;
     if (orderingPending.current) return;
     orderingPending.current = true;
     const scope = orderingScope.current;
@@ -2356,6 +2440,7 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   function copyShot(id) {
+    if (isGenerating || homeIsGenerating) return;
     if (orderingPending.current) return;
     orderingPending.current = true;
     const scope = orderingScope.current;
@@ -2389,6 +2474,7 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   function deleteShot(id) {
+    if (isGenerating || homeIsGenerating) return;
     if (orderingPending.current) return;
     orderingPending.current = true;
     const scope = orderingScope.current;
@@ -2407,6 +2493,7 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   function addNewShot() {
+    if (isGenerating || homeIsGenerating) return;
     if (orderingPending.current) return;
     orderingPending.current = true;
     const scope = orderingScope.current;
@@ -2432,6 +2519,7 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   async function handleDrop(targetId) {
+    if (isGenerating || homeIsGenerating) return;
     if (!dragId || dragId === targetId) { setDragId(null); setOverId(null); return; }
     if (orderingPending.current) { setDragId(null); setOverId(null); return; }
     orderingPending.current = true;
@@ -2445,7 +2533,7 @@ function hasStoryboardMediaHint(shot = {}) {
 
   // 判断是否显示 loading / 错误态
   // homeIsGenerating 期间如果已有分镜数据，直接展示数据，不再显示全屏 loading
-  const showGeneratingLoading = (isGenerating || homeIsGenerating) && shots.length === 0;
+  const showGeneratingLoading = (isGenerating || homeIsGenerating) && !generateError && !episodeGenerationError && shots.length === 0;
   const episodeDataReady = hasLoadedEpisodeData && loadedEpisodeDataKey === getEpisodeId(episode);
   const showGeneratingError = episodeDataReady && (!!generateError || episodeGenerationError) && shots.length === 0 && !hasManuallyInteracted;
   const showStoryboardLoadError = episodeDataReady && storyboardLoadError && !showGeneratingLoading && shots.length === 0 && !hasManuallyInteracted;
@@ -2499,7 +2587,8 @@ function hasStoryboardMediaHint(shot = {}) {
       completedEpisodesCount={completedEpisodesCount}
       downloadMode={downloadMode}
       selectedCount={selectedShotIds.size}
-      generationDisabled={generatingImages || generatingVideos}
+      generationDisabled={isGenerating || homeIsGenerating || generatingImages || generatingVideos}
+      readOnly={isGenerating || homeIsGenerating}
       onOpenImageModal={() => setShowImageModal(true)}
       onOpenVideoModal={() => setShowVideoModal(true)}
       onEnterDownloadMode={enterDownloadMode}
@@ -2515,10 +2604,12 @@ function hasStoryboardMediaHint(shot = {}) {
   );
 
   const handleEmptyEpisodeStart = showGeneratingError ? () => {
+    if (isGenerating || homeIsGenerating) return;
+    const isCurrent = captureGenerationScope();
     setEpisodeGenerationError(false);
     setIsGenerating(true);
     const start = onRetryGenerateStoryboards || onGenerateStoryboards;
-    Promise.resolve(start?.()).finally(() => setIsGenerating(false));
+    Promise.resolve(start?.()).finally(() => { if (isCurrent()) setIsGenerating(false); });
   } : handleStartEpisodeGeneration;
 
   if (showGeneratingLoading) {
@@ -2528,7 +2619,8 @@ function hasStoryboardMediaHint(shot = {}) {
   if (showStoryboardLoadError || showGeneratingError || showEpisodeStart) {
     return (
       <StoryboardEmptyState
-        showError={showStoryboardLoadError}
+        showError={showStoryboardLoadError || (showGeneratingError && (isGenerating || homeIsGenerating))}
+        errorMessage={generateError || (episodeGenerationError ? regenerateModalError || '任务结果尚未确认，请重新进入当前分集恢复查询，请勿重复生成' : '')}
         header={storyboardHeader}
         projectRatio={projectRatio}
         timeline={<StoryboardFinalizedTimeline projectRatio={projectRatio} shots={[]} finalizedMap={{}} />}
@@ -2586,6 +2678,7 @@ function hasStoryboardMediaHint(shot = {}) {
           <DotsLoading size={6} color="#2DC3E1" gap={4} />
         </div>
       ) : (
+        <div inert={isGenerating || homeIsGenerating} style={{ display: 'contents' }}>
         <StoryboardShotList
           shotListRef={shotListRef}
           shots={shots}
@@ -2682,10 +2775,11 @@ function hasStoryboardMediaHint(shot = {}) {
             />
           )}
         />
+        </div>
       )}
       </StoryboardContentArea>
     </div>
-    {showImageModal && (
+    {showImageModal && !isGenerating && !homeIsGenerating && (
       <BatchImageModal
         shots={shots}
         shotCount={shots.length}
@@ -2695,7 +2789,7 @@ function hasStoryboardMediaHint(shot = {}) {
         projectRatio={projectRatio}
       />
     )}
-    {showVideoModal && (
+    {showVideoModal && !isGenerating && !homeIsGenerating && (
       <BatchVideoModal
         shots={shots}
         finalizedMediaMap={finalizedMediaMap}
@@ -2727,7 +2821,7 @@ function hasStoryboardMediaHint(shot = {}) {
         onFrameSaved={(result) => saveExtractedFrame(timelinePreviewMedia.shot, result)}
       />
     ) : null}
-    {creationPanel && (
+    {!isGenerating && !homeIsGenerating && creationPanel && (
       <StoryboardCreationPanel
         projectId={projectId}
         storyboardId={creationPanel.shot?.id}
@@ -2740,7 +2834,7 @@ function hasStoryboardMediaHint(shot = {}) {
         onDownload={(media) => downloadCandidateMedia(media, creationPanel.shot)}
         onClose={handleCreationPanelClose}
       >
-    {imagePanel && creationPanel.tab === 'image' && (
+    {!isGenerating && !homeIsGenerating && imagePanel && creationPanel?.tab === 'image' && (
       <GenerateImagePanel
         shot={imagePanel.shot}
         isManualBlank={imagePanel.shot?.isManualBlank}
@@ -2808,45 +2902,61 @@ function hasStoryboardMediaHint(shot = {}) {
          }
        }}
       onGenerate={async (params) => {
+        const isCurrent = captureGenerationScope();
+        if (!isCurrent()) return;
+        assertPendingTaskStorageReady(projectId, ownerId);
         const shot = imagePanel.shot;
         let taskId = null;
+        let settled = false;
         const pendingClientId = addPendingCandidate(shot.id, 'image');
+        const finish = beginMediaTask('image', shot.id);
         try {
-          setGeneratingImageShotIds(prev => new Set([...prev, shot.id]));
           const taskResp = await apiGenerateStoryboardImage(projectId, shot.id, { model: params.model, resolution: params.resolution, prompt: params.prompt, aspect_ratio: projectRatio, reference_images: toSafeStoryboardReferenceUrls(params.refImages) });
           taskId = getStoryboardTaskId(taskResp);
           if (!taskId) throw new Error('分镜图生成接口未返回任务 ID');
+          addPendingTask(projectId, { taskId, shotId: shot.id, episodeId: getEpisodeId(episode), ownerId, type: 'image' });
+          if (!isCurrent()) return;
           bindPendingCandidate(shot.id, pendingClientId, taskId);
-          addPendingTask(projectId, { taskId, shotId: shot.id, episodeId: getEpisodeId(episode), type: 'image' });
-          const task = await pollTask(taskId, hasStoryboardImageTaskResult);
+          const task = await pollTask(taskId, hasStoryboardImageTaskResult, 1000, isCurrent);
+          if (!isCurrent()) return;
+          settled = ['failed', 'cancelled', 'canceled', 'expired', 'error'].includes(getStoryboardTaskStatus(task));
+          if (settled) throw new Error(getStoryboardTaskError(task, '图片生成失败'));
           if ((getStoryboardTaskStatus(task) === 'completed' || getStoryboardTaskStatus(task) === 'partial') || hasStoryboardImageTaskResult(task)) {
              const imageUrl = extractStoryboardImageUrl(task);
              if (imageUrl) {
                const normalizedUrl = normalizeImageUrl(imageUrl);
-               setShots((prev) => prev.map((s) => s.id === shot.id && !s.storyboardImage
+               setShots((prev) => !isCurrent() ? prev : prev.map((s) => s.id === shot.id && !s.storyboardImage
                  ? { ...s, storyboardImage: { id: normalizedUrl, url: normalizedUrl, name: 'generated.jpg', type: 'image/jpeg' } }
                  : s
                ));
-               await saveCandidateMedia(shot.id, { id: normalizedUrl, url: normalizedUrl, name: 'generated.jpg', type: 'image/jpeg', media_type: 'image', source: 'ai-generated', prompt: params.prompt, model: params.model, resolution: params.resolution, ratio: projectRatio, referenceImages: toSafeStoryboardReferenceUrls(params.refImages), genParams: { model: params.model, resolution: params.resolution, ratio: projectRatio, reference_images: toSafeStoryboardReferenceUrls(params.refImages) } });
+               await saveGeneratedCandidateMedia(shot.id, { id: normalizedUrl, url: normalizedUrl, name: 'generated.jpg', type: 'image/jpeg', media_type: 'image', source: 'ai-generated', prompt: params.prompt, model: params.model, resolution: params.resolution, ratio: projectRatio, referenceImages: toSafeStoryboardReferenceUrls(params.refImages), genParams: { model: params.model, resolution: params.resolution, ratio: projectRatio, reference_images: toSafeStoryboardReferenceUrls(params.refImages) } }, taskId, isCurrent);
+               if (!isCurrent()) return;
+               settled = true;
                return { url: normalizedUrl };
              }
            }
            const errMsg = task.error_msg || task.errorMsg || '生成失败，请重试';
            throw new Error(errMsg);
          } catch (err) {
+          if (!isCurrent()) return;
           console.error('[StoryboardPage] 生成分镜图失败:', err);
+          if (taskId && !settled) throw new Error('图片结果或候选保存尚未确认，已保留任务，请重新进入当前分集查询，请勿重复生成', { cause: err });
           throw err;
          } finally {
-           if (taskId) removePendingTask(projectId, taskId);
-           removePendingCandidate(taskId || pendingClientId, shot.id);
-           setGeneratingImageShotIds(prev => {
-            const next = new Set(prev); next.delete(shot.id); return next;
-          });
+           if (isCurrent()) {
+           if (taskId && settled) {
+             try { removePendingTask(projectId, taskId, ownerId); }
+             catch (error) { settled = false; showToast(error.message, 'error'); }
+           }
+           if (!taskId || settled) removePendingCandidate(taskId || pendingClientId, shot.id);
+           else beginMediaTask('image', shot.id, taskId);
+           finish();
+           }
         }
       }}
       />
     )}
-    {videoPanel && creationPanel.tab === 'video' && (
+    {!isGenerating && !homeIsGenerating && videoPanel && creationPanel?.tab === 'video' && (
       <GenerateVideoPanel
         // 主体参考列变更时重置面板内部主体快照，避免旧 refSubjects effect 在父级更新后回写。
         key={`${videoPanel.shot?.id || 'shot'}:${(videoPanel.shot?.mainRefs || []).map((ref) => (
@@ -2957,11 +3067,15 @@ function hasStoryboardMediaHint(shot = {}) {
             .catch((err) => console.error('[onSettleVideo] video_url 保存失败', err));
         }}
          onGenerate={async (params) => {
+         const isCurrent = captureGenerationScope();
+         if (!isCurrent()) return;
+         assertPendingTaskStorageReady(projectId, ownerId);
          const shot = videoPanel.shot;
          let taskId = null;
+         let settled = false;
          const pendingClientId = addPendingCandidate(shot.id, 'video');
+         const finish = beginMediaTask('video', shot.id);
          try {
-           setGeneratingVideoShotIds(prev => new Set([...prev, shot.id]));
            // 解析时长：将"Ns"格式转为数字
            const durationValue = (() => {
               if (!params.duration) return undefined;
@@ -3005,13 +3119,16 @@ function hasStoryboardMediaHint(shot = {}) {
             const savedReferenceImages = referencePayload.reference_images;
             taskId = getStoryboardTaskId(taskResp);
             if (!taskId) throw new Error('分镜视频生成接口未返回任务 ID');
+            addPendingTask(projectId, { taskId, shotId: shot.id, episodeId: getEpisodeId(episode), ownerId, type: 'video' });
+            if (!isCurrent()) return;
             bindPendingCandidate(shot.id, pendingClientId, taskId);
-            addPendingTask(projectId, { taskId, shotId: shot.id, episodeId: getEpisodeId(episode), type: 'video' });
-          const task = await pollTask(taskId, hasStoryboardVideoTaskResult, 1200);
+          const task = await pollTask(taskId, hasStoryboardVideoTaskResult, 1200, isCurrent);
+            if (!isCurrent()) return;
+            settled = ['failed', 'cancelled', 'canceled', 'expired', 'error'].includes(getStoryboardTaskStatus(task));
+            if (settled) throw new Error(getStoryboardTaskError(task, '视频生成失败'));
             const videoUrl = extractStoryboardVideoUrl(task);
             if (videoUrl) {
               const normalizedUrl = normalizeImageUrl(videoUrl);
-              // 任务已有可播放结果时立即移除任务占位，候选保存接口较慢也不能并排渲染占位和正式结果。
               removePendingCandidate(taskId || pendingClientId, shot.id);
               // 将参考素材信息一并存入 shot，供查看弹窗展示
               const refInfo = {
@@ -3021,19 +3138,21 @@ function hasStoryboardMediaHint(shot = {}) {
                 referenceVideoUrl: params.reference_video_url || undefined,
                 referenceAudioUrl: params.reference_audio_url || undefined,
               };
+              const currentShot = shotsRef.current.find((s) => s.id === shot.id);
+              if (currentShot && !currentShot.storyboardVideo) {
+                apiUpdateStoryboard(projectId, shot.id, { video_url: normalizedUrl }).catch(console.error);
+              }
               setShots((prev) => {
+                if (!isCurrent()) return prev;
                 const updated = prev.map((s) => s.id === shot.id && !s.storyboardVideo
                   ? { ...s, storyboardVideo: { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4' }, ...refInfo }
                   : s
                 );
-                // 若该分镜尚无视频（首次生成），自动持久化到后端
-                const wasEmpty = !prev.find(s => s.id === shot.id)?.storyboardVideo;
-                if (wasEmpty) {
-                  apiUpdateStoryboard(projectId, shot.id, { video_url: normalizedUrl }).catch(console.error);
-                }
                 return updated;
               });
-              await saveCandidateMedia(shot.id, { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated', prompt: params.prompt, model: params.model, resolution: params.resolution, duration: durationValue, ratio: projectRatio, referenceImages: savedReferenceImages, genParams: { model: params.model, resolution: params.resolution, duration: durationValue, sound_effect: params.sound, ratio: projectRatio, generate_mode: params.generate_mode, reference_mode: params.reference_mode, reference_images: savedReferenceImages, first_frame_url: params.first_frame_url, last_frame_url: params.last_frame_url, reference_video_url: isFrameReference ? undefined : params.reference_video_url, reference_audio_url: isFrameReference ? undefined : params.reference_audio_url } });
+              await saveGeneratedCandidateMedia(shot.id, { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated', prompt: params.prompt, model: params.model, resolution: params.resolution, duration: durationValue, ratio: projectRatio, referenceImages: savedReferenceImages, genParams: { model: params.model, resolution: params.resolution, duration: durationValue, sound_effect: params.sound, ratio: projectRatio, generate_mode: params.generate_mode, reference_mode: params.reference_mode, reference_images: savedReferenceImages, first_frame_url: params.first_frame_url, last_frame_url: params.last_frame_url, reference_video_url: isFrameReference ? undefined : params.reference_video_url, reference_audio_url: isFrameReference ? undefined : params.reference_audio_url } }, taskId, isCurrent);
+              if (!isCurrent()) return;
+              settled = true;
               return { url: normalizedUrl };
             }
             // 终态但没有视频 — 发送 toast 提示失败
@@ -3047,7 +3166,9 @@ function hasStoryboardMediaHint(shot = {}) {
             const errMsg = task.error_msg || task.errorMsg || '生成失败，请重试';
            throw new Error(errMsg);
           } catch (err) {
+           if (!isCurrent()) return;
            console.error('[StoryboardPage] 生成分镜视频失败:', err);
+           if (taskId && !settled) throw new Error('视频结果或候选保存尚未确认，已保留任务，请重新进入当前分集查询，请勿重复生成', { cause: err });
            const friendlyMessage = getSeedance20AudioReferenceErrorMessage(
              err?.rawMessage || err?.message || '',
            );
@@ -3055,11 +3176,15 @@ function hasStoryboardMediaHint(shot = {}) {
              ? Object.assign(new Error(friendlyMessage), { rawMessage: err?.rawMessage })
              : err;
           } finally {
-           if (taskId) removePendingTask(projectId, taskId);
-           removePendingCandidate(taskId || pendingClientId, shot.id);
-           setGeneratingVideoShotIds(prev => {
-             const next = new Set(prev); next.delete(shot.id); return next;
-           });
+           if (isCurrent()) {
+           if (taskId && settled) {
+             try { removePendingTask(projectId, taskId, ownerId); }
+             catch (error) { settled = false; showToast(error.message, 'error'); }
+           }
+           if (!taskId || settled) removePendingCandidate(taskId || pendingClientId, shot.id);
+           else beginMediaTask('video', shot.id, taskId);
+           finish();
+           }
          }
        }}
       />

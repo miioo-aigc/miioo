@@ -6,16 +6,18 @@
  * 分别由 src/components/assets/ 目录承载，页面不持有资产 API 或卡片细节。
  *
  * ─── 主页面入口 ────────────────────────────────────
- *   AssetsPage：模块切换（项目资产 / 创作资产）与页面外框
+ *   AssetsPage：模块切换（项目资产 / 画布资产 / 创作资产 / seedance素材库）与页面外框 L37
  *   AssetsProjectPanel：项目资产筛选、分页、批量操作和详情回调编排
  *   AssetsCreativePanel：创作资产历史分页、收藏和批量操作编排
  *   SeedanceAssetLibraryPanel：Seedance2.0素材库子 Tab 和文件夹组合
+ *   CanvasAssetLibraryPanel：左侧集合与右侧目录管理，接入位置 L66
  *
  * ─── 页面级边界 ───────────────────────────────────
  *   页面入口不直接调用资产 API；业务面板继续持有各自 API、Store、副作用和回调。
  *   组件迁移保持原参数、交互、删除/下载副作用和详情打开行为不变。
  *
  * ─── 更新记录 ─────────────────────────────────────
+ *   2026-10-20  接入画布资产 Tab（位于项目与创作之间）和 module=canvas 深链；集合左右布局由独立面板承载
  *   2026-10-15  接收 project_id/category 查询参数，支持导出结果定位项目成片
  *   2026-07-16  抽离 AssetsProjectPanel、AssetsCreativePanel 和资产卡片组合，
  *               页面入口收敛为模块切换与面板组合；同步真实行号和引用边界
@@ -23,10 +25,11 @@
  */
 
 import { useState } from 'react';
-import { AssetsModuleTabBar, AssetsProjectPanel, AssetsCreativePanel, SeedanceAssetLibraryPanel } from '../components/assets';
+import { AssetsModuleTabBar, AssetsProjectPanel, AssetsCreativePanel, CanvasAssetLibraryPanel, SeedanceAssetLibraryPanel } from '../components/assets';
 
 const MODULE_TABS = [
   { key: 'project', label: '项目资产' },
+  { key: 'canvas', label: '画布资产' },
   { key: 'creative', label: '创作资产' },
   { key: 'seedance', label: 'seedance素材库' },
 ];
@@ -36,7 +39,7 @@ export default function AssetsPage({ isLoggedIn, initialModule = 'project', init
     const query = new URLSearchParams(window.location.search);
     return { projectId: query.get('project_id'), category: query.get('category'), module: query.get('module') };
   });
-  const [activeModule, setActiveModule] = useState(entry.module === 'project' ? 'project' : initialModule);
+  const [activeModule, setActiveModule] = useState(MODULE_TABS.some((tab) => tab.key === entry.module) ? entry.module : initialModule);
 
   return (
     <div style={{
@@ -60,6 +63,7 @@ export default function AssetsPage({ isLoggedIn, initialModule = 'project', init
         <AssetsModuleTabBar tabs={MODULE_TABS} active={activeModule} onChange={setActiveModule} />
         {activeModule === 'project' && <AssetsProjectPanel initialProjectId={entry.projectId} initialCategory={entry.category} />}
         {activeModule === 'creative' && <AssetsCreativePanel isLoggedIn={isLoggedIn} />}
+        {activeModule === 'canvas' && <CanvasAssetLibraryPanel />}
         {activeModule === 'seedance' && <SeedanceAssetLibraryPanel initialTab={initialSeedanceTab} />}
       </div>
     </div>

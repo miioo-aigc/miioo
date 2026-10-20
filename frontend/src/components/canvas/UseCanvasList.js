@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { apiCreateCanvasDocument, apiGetCanvasDocument, apiListCanvasDocuments, apiUpdateCanvasDocument } from '../../api/canvas';
+import { apiArchiveCanvasDocument, apiDuplicateCanvasDocument, apiCreateCanvasDocument, apiGetCanvasDocument, apiListCanvasDocuments, apiUpdateCanvasDocument } from '../../api/canvas';
 import { createDevelopmentCanvas, isDevelopmentCanvas, listDevelopmentCanvases } from '../../api/CanvasDevelopment';
 import { showGlobalToast } from '../../stores/toastStore';
 
 // 仅管理同项目画布目录及其动作；节点、历史和视口仍由画布页面管理。
-export function useCanvasList({ canvas, persistCanvas, onSelectCanvas, onRenamed }) {
+export function useCanvasList({ canvas, persistCanvas, onSelectCanvas, onRenamed, onBackProjects }) {
   const [items, setItems] = useState([]);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const requestId = useRef(null);
+  const copyRequests = useRef(new Map());
   const id = canvas?.id;
   const projectId = canvas?.project_id;
 
@@ -70,5 +71,30 @@ export function useCanvasList({ canvas, persistCanvas, onSelectCanvas, onRenamed
     showGlobalToast('success', '画布名称已修改');
   });
   const listed = items.some((item) => item.id === id) ? items : [...items, ...(canvas ? [canvas] : [])];
-  return { items: listed.map((item) => ({ ...item, name: item.title })), busy, select, create, rename };
+  const duplicate = (targetId) => run(async () => {
+    await save();
+    const source = listed.find((item) => item.id === targetId);
+    if (!source) throw new Error('画布不存在，请刷新后重试');
+    if (!copyRequests.current.has(targetId)) copyRequests.current.set(targetId, crypto.randomUUID());
+    const created = await apiDuplicateCanvasDocument(targetId, {
+      title: `${(source.title || '未命名画布').slice(0, 97)} 副本`, clientRequestId: copyRequests.current.get(targetId),
+    });
+    copyRequests.current.delete(targetId);
+    setItems((previous) => [...previous, created]);
+    onSelectCanvas(created.id);
+    showGlobalToast('success', '画布已复制');
+  });
+  const remove = (targetId) => run(async () => {
+    if (!ready) throw new Error('画布列表尚未加载完成，请稍后重试');
+    if (listed.length <= 1) throw new Error('项目至少需要保留一个画布');
+    await apiArchiveCanvasDocument(targetId);
+    const remaining = listed.filter((item) => item.id !== targetId);
+    setItems(remaining);
+    if (targetId === id) {
+      if (remaining.length) onSelectCanvas(remaining[0].id);
+      else onBackProjects();
+    }
+    showGlobalToast('success', '画布已删除');
+  });
+  return { items: listed.map((item) => ({ ...item, name: item.title })), busy, select, create, rename, duplicate, remove };
 }

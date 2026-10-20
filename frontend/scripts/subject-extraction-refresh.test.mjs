@@ -14,7 +14,7 @@ function harness() {
   const versions = { current: { chars: 0, scenes: 0, props: 0 } };
   const locks = { current: {} };
   const deps = {
-    projectId: 'a', projectName: '甲', extractionSession: 1,
+    projectId: 'a', ownerId: 'user', projectName: '甲', extractionSession: 1,
     subjectRequestVersions: versions, subjectInFlight: locks,
     bumpSubjectRequest: key => ++versions.current[key],
     isCurrentSubjectRequest: (key, version) => current && versions.current[key] === version,

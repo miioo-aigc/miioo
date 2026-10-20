@@ -1,4 +1,4 @@
-/** 组合边框与堆叠预览；堆叠不改写成员坐标。2026-10-15：收拢和展开动画补偿双击中心偏移。 */
+/** 组合边框与堆叠预览；堆叠不改写成员坐标。2026-10-19：连接点常驻，避免收起时连线先于连接点注册。 */
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { Handle, Position, useStore, useStoreApi, useUpdateNodeInternals } from '@xyflow/react';
 import CanvasGroupStackPreview from './CanvasGroupStackPreview';
@@ -73,10 +73,9 @@ export default function CanvasGroupNode({ id, data, selected }) {
     <div ref={stackRef} className="canvas-group-morph__stack" style={{ opacity: stacked ? 1 : 0, pointerEvents: stacked ? 'auto' : 'none' }} aria-hidden={!stacked}>
       <CanvasGroupStackPreview members={data.stackMembers} />
     </div>
-    {stacked ? <>
-      <Handle type="target" position={Position.Left} id="stack-input" isConnectable={false} style={{ opacity: 0 }} />
-      <Handle type="source" position={Position.Right} id="stack-output" isConnectable={false} style={{ opacity: 0 }} />
-    </> : null}
+    {/* 保持可测量的连接点常驻，收起时连线可直接复用已注册的端点。 */}
+    <Handle type="target" position={Position.Left} id="stack-input" isConnectable={false} style={{ opacity: 0, pointerEvents: 'none' }} />
+    <Handle type="source" position={Position.Right} id="stack-output" isConnectable={false} style={{ opacity: 0, pointerEvents: 'none' }} />
     <div className="canvas-group__name" style={{ '--canvas-group-name-zoom': zoom, '--canvas-group-name-inverse-zoom': 1 / zoom }}>
       <CanvasEditableName name={data.label} onRename={data.onRename} onStart={data.onRenameStart} />
     </div>

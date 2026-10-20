@@ -1,7 +1,8 @@
 /**
  * @file CanvasCreationPanel.jsx
  * @structure-index
- * CanvasCreationPanel L21：公共创作皮肤、提示词、参考图栏与发送动作。
+ * CanvasCreationPanel L23：公共创作皮肤、提示词、参考图栏与发送动作。
+ * 2026-10-19：图片与视频参考卡片点击复用创作编辑器的光标引用插入。
  * 2026-09-29：图片与视频复用创作页占位提示及素材引用编辑器。
  * 2026-09-28：中文组词保留本地草稿，确认后同步；隔离画布键盘事件。
  * 2026-09-28：音频委托独立高级编辑组件，草稿由外壳持有。
@@ -18,6 +19,7 @@ import CanvasReferenceBar from './CanvasReferenceBar';
 import CanvasAudioCreationPanel from './CanvasAudioCreationPanel';
 import CanvasMediaPromptEditor from './CanvasMediaPromptEditor';
 import { getCanvasVideoPromptPlaceholder } from './CanvasVideoModels';
+import { getCanvasPromptFiles } from './CanvasPromptReferences';
 
 export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', promptSnapshot, references = [], model = '', modelState = { options: [], loading: false }, generating = false, generationError = '', mediaControls, audioDraft, onAudioDraftChange, onModelChange, onPromptChange, onGenerate, onAddReference, onRemoveReference }) {
   const [focused, setFocused] = useState(false);
@@ -26,6 +28,7 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', pro
   const [composing, setComposing] = useState(false);
   const composingRef = useRef(false);
   const mediaSnapshotRef = useRef(promptSnapshot);
+  const mediaEditorRef = useRef(null);
   // 外部导入仍同步到编辑器，输入法组词期间不覆盖本地文字。
   if (lastPrompt !== prompt && !composing) {
     setLastPrompt(prompt);
@@ -76,8 +79,11 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', pro
         <CreationSendButton onClick={() => send()} />
       </div>
     </>}>
-      {hasReferences && <CanvasReferenceBar nodeType={nodeType} references={references} mode={referenceMode} collapsed={videoTextMode} onAdd={onAddReference} onRemove={onRemoveReference} />}
+      {hasReferences && <CanvasReferenceBar nodeType={nodeType} references={references} mode={referenceMode} collapsed={videoTextMode} onAdd={onAddReference} onRemove={onRemoveReference}
+        insertableIds={getCanvasPromptFiles(activeReferences, nodeType, referenceMode).map((file) => file._uid)}
+        onInsert={(id) => mediaEditorRef.current?.insertReference(id)} />}
       {hasReferences ? <CanvasMediaPromptEditor
+        ref={mediaEditorRef}
         nodeType={nodeType} mode={referenceMode} references={activeReferences}
         model={c?.model} capabilities={c?.videoCapabilities}
         placeholder={nodeType === 'video' ? placeholder : undefined}

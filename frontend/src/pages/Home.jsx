@@ -1,14 +1,14 @@
 /**
  * @file Home.jsx
- * @structure-update：2026-10-15 主体抽取完成刷新复用类别版本与会话归属，失败保留列表并可重试；任务提交/轮询完整会话边界仍待续审。
- * @structure-index：2026-10-15 readProjects L316；主体请求版本 L352；详情读取 L550；缓存订阅 L980/L991；删除后刷新 L1047；主体分页 L1126；原页重试 L1162；主体抽取 L1192；完成后刷新 L1302。
- *   2026-10-15：主体分页按类别互斥并校验项目/会话/请求版本；缓存订阅与分页状态同步仍待续审，页面保留跨模块请求编排。
+ * @structure-update：2026-10-20 智能分镜持久记录异常保留原文并暂停提交；创作页按账号重建并显式传入归属，页面保留认证、轮询与结果写回。
+ * @structure-index：2026-10-20 readProjects L308；详情读取 L561；主体抽取 L1213；智能分镜 L1479；重新分镜 L1708；恢复 L1727。
+ *   2026-10-19：缓存无分页元信息，仅作为刷新信号；解锁探测绕过缓存，页面保留认证、缓存与请求编排，不因规模移动副作用。
  *   2026-10-12：登录用户确认后恢复已受理的视频编辑任务；保留认证与恢复的页面编排边界。
- *   2026-10-13：公告提醒 L2183 主动查看全部进入消息中心系统页签；按用户隔离已读状态。
+ *   2026-10-13：公告提醒 L2196 主动查看全部进入消息中心系统页签；按用户隔离已读状态。
  *   2026-10-14：画布内部切换路由；仅增加导航接线，认证、缓存和任务恢复仍保留页面编排。
  *   2026-10-14：项目保存队列 L266；按项目隔离保存回写，页面继续保留请求编排。
  * ─── 全局常量 & 配置 ───────────────────────────────────────────────
- *   页面业务模块懒加载                                          L142–L148
+ *   页面业务模块懒加载                                          L144–L150
  *   NAV_ITEMS / BOTTOM_NAV_ITEMS                                  components/home/HomeNavigationConfig.jsx
  *   STEP_TABS / WorkflowStepTabs                                components/home/WorkflowStepTabs.jsx
  *   BG_VIDEOS                                                   components/home/HomeNavigationConfig.jsx
@@ -26,21 +26,21 @@
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
  *   2026-10-09 画布项目菜单返回自由画布列表，保留品牌图标返回首页；仅新增导航接线
- *   export default function Home()                               L265
- *     ├─ [懒加载] 页面业务模块按需加载                             L142–L148
- *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L266–L416
- *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L417 / L474 / L485
- *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L550 / L1102 / L1126
- *     │           handleExtractSubjects / handleGenerateStoryboards        L1192 / L1404
+ *   export default function Home()                               L257
+ *     ├─ [懒加载] 页面业务模块按需加载                             L144–L150
+ *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L258–L427
+ *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L428 / L485 / L496
+ *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L561 / L1123 / L1147
+ *     │           handleExtractSubjects / handleGenerateStoryboards        L1213 / L1479
  *     │           handleScriptFinalized / handleNavChange / handleBottomNavChange / handleProjectCreated
- *                                                               L1699 / L1706 / L1770 / L1786
- *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L511 / L525 / L532 / L542
- *     │           微信回调与鉴权初始化                                   L819 / L848
- *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L978 / L991 / L1018 / L1391
- *     ├─ [底部导航配置] bottomNavItems                             L1754
- *     └─ [渲染] 页面组合、画布与剪辑导航、Suspense                  L1829
+ *                                                               L1775 / L1782 / L1846 / L1862
+ *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L522 / L536 / L543 / L553
+ *     │           微信回调与鉴权初始化                                   L859 / L923
+ *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L989 / L1002 / L1039 / L1466
+ *     ├─ [底部导航配置] bottomNavItems                             L1830
+ *     └─ [渲染] 页面组合、画布与剪辑导航、Suspense                  L1905
  *
- * ─── 更新记录 ──────────────────────────────────────────────────────
+ * ─── 更新记录：2026-10-20 存储损坏不视为空；保存、清理异常统一捕获，失败重试纳入统一链 ───
  *   2026-09-22  新增独立画布列表入口；超长入口保留认证、历史与任务恢复集中编排，本次只接路由，验证导航及刷新，不迁移生成流程
  *   2026-09-18  删除已无运行时引用的旧首页 Toast 展示；反馈统一由 GlobalToast 承接
  *   2026-08-12  智能分镜生成任务轮询超时由 500 秒调整为 3000 秒
@@ -85,7 +85,8 @@
  *   2026-10-15  合并远程剪辑模块，保留本地主体请求保护、公告及画布接线；校正结构索引
  */
 
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import useStoryboardGenerationScope from '../hooks/useStoryboardGenerationScope';
 import { apiGetProjects, apiUpdateProject, apiCopyProject, apiDeleteProject, apiGetProject, apiGetProjectOverview } from '../api/project';
 import { apiListCanvasDocuments, normalizeCanvasDocument } from '../api/canvas';
 import { canvasDevelopmentEnabled, createDevelopmentCanvasProject, listDevelopmentCanvasProjects } from '../api/CanvasDevelopment';
@@ -138,6 +139,7 @@ import {
   HomeNavigationRail,
 } from '../components/home';
 import CanvasPage from './CanvasPage';
+import { createStoryboardGenerationPersistence } from '../utils/StoryboardGenerationPersistence';
 
 const ProjectList = lazy(() => import('./ProjectList'));
 const GlobalSettings = lazy(() => import('./GlobalSettings'));
@@ -148,7 +150,11 @@ const AssetsPage = lazy(() => import('./AssetsPage'));
 const CreationPage = lazy(() => import('./CreationPage'));
 
 const SUBJECT_EXTRACTION_TASK_KEY_PREFIX = 'miioo:pending_subject_extraction:';
-const STORYBOARD_GENERATION_TASK_KEY_PREFIX = 'miioo:pending_storyboard_generation:';
+const {
+  read: readPendingStoryboardGeneration,
+  write: writePendingStoryboardGeneration,
+  clear: clearPendingStoryboardGeneration,
+} = createStoryboardGenerationPersistence(() => localStorage);
 
 const STEP_PATHS = {
   global: 'overview',
@@ -202,52 +208,38 @@ function updateWorkspaceUrl(route, { replace = false } = {}) {
   window.history[replace ? 'replaceState' : 'pushState']({}, '', nextPath);
 }
 
-function getSubjectExtractionTaskKey(projectId) {
-  return `${SUBJECT_EXTRACTION_TASK_KEY_PREFIX}${projectId}`;
+function getSubjectExtractionTaskKey(projectId, ownerId) {
+  return `${SUBJECT_EXTRACTION_TASK_KEY_PREFIX}${ownerId ? `${encodeURIComponent(ownerId)}:` : ''}${projectId}`;
 }
 
-function readPendingSubjectExtraction(projectId) {
-  if (!projectId) return null;
+function readPendingSubjectExtraction(projectId, ownerId) {
+  if (!projectId || !ownerId) return null;
   try {
-    const raw = localStorage.getItem(getSubjectExtractionTaskKey(projectId));
-    return raw ? JSON.parse(raw) : null;
+    const raw = localStorage.getItem(getSubjectExtractionTaskKey(projectId, ownerId));
+    if (raw) {
+      const saved = JSON.parse(raw);
+      if (!saved || saved.ownerId !== ownerId || saved.projectId !== projectId
+        || (!['failed', 'unknown', 'submitting'].includes(saved.status)
+          && (!saved.taskId || !['publish', 'subject', 'results'].includes(saved.phase)))) {
+        return { status: 'unknown', error: '抽取记录不完整，请先确认原任务状态，暂不重复提交' };
+      }
+      return saved;
+    }
+    const legacy = localStorage.getItem(getSubjectExtractionTaskKey(projectId));
+    return legacy ? { status: 'unknown', error: '发现归属不明的历史抽取记录，请先确认原任务状态，暂不重复提交' } : null;
   } catch {
-    return null;
+    return { status: 'unknown', error: '无法读取抽取记录，请先确认原任务状态，暂不重复提交' };
   }
 }
 
-function writePendingSubjectExtraction(projectId, value) {
-  if (!projectId || !value) return;
-  localStorage.setItem(getSubjectExtractionTaskKey(projectId), JSON.stringify(value));
+function writePendingSubjectExtraction(projectId, ownerId, value) {
+  if (!projectId || !ownerId || !value) return;
+  localStorage.setItem(getSubjectExtractionTaskKey(projectId, ownerId), JSON.stringify({ ...value, ownerId, projectId }));
 }
 
-function clearPendingSubjectExtraction(projectId) {
-  if (!projectId) return;
-  localStorage.removeItem(getSubjectExtractionTaskKey(projectId));
-}
-
-function getStoryboardGenerationTaskKey(projectId) {
-  return `${STORYBOARD_GENERATION_TASK_KEY_PREFIX}${projectId}`;
-}
-
-function readPendingStoryboardGeneration(projectId) {
-  if (!projectId) return null;
-  try {
-    const raw = localStorage.getItem(getStoryboardGenerationTaskKey(projectId));
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writePendingStoryboardGeneration(projectId, value) {
-  if (!projectId || !value) return;
-  localStorage.setItem(getStoryboardGenerationTaskKey(projectId), JSON.stringify(value));
-}
-
-function clearPendingStoryboardGeneration(projectId) {
-  if (!projectId) return;
-  localStorage.removeItem(getStoryboardGenerationTaskKey(projectId));
+function clearPendingSubjectExtraction(projectId, ownerId) {
+  if (!projectId || !ownerId) return;
+  localStorage.removeItem(getSubjectExtractionTaskKey(projectId, ownerId));
 }
 
 function readUnlockedSteps(projectId) {
@@ -369,7 +361,12 @@ export default function Home({ onGoToAdmin }) {
   const [completedEpisodesCount, setCompletedEpisodesCount] = useState(0);
   const [storyboardStatusMessage, setStoryboardStatusMessage] = useState('');
   const generatingStoryboardsRef = useRef(false); // 同步锁，防止并发调用
-  const extractingSubjectsRef = useRef({}); // { projectId: true }，防止同一项目重复发布结构
+  const extractingSubjectsRef = useRef({}); // 按项目保存运行会话，旧会话不能释放新锁
+  const extractionMountedRef = useRef(true);
+  useEffect(() => {
+    extractionMountedRef.current = true;
+    return () => { extractionMountedRef.current = false; };
+  }, []);
   // 自上次提取主体后，剧本是否又重新定稿过（用于控制"开始提取主体"按钮行为）
   const [scriptFinalizedSinceExtraction, setScriptFinalizedSinceExtraction] = useState(false);
   const [scriptEpisodes, setScriptEpisodes] = useState([]);
@@ -411,6 +408,20 @@ export default function Home({ onGoToAdmin }) {
   const currentVideoIndexRef = useRef(0);
   const activeProjectIdForExtraction = activeProject?.id;
   const activeProjectNameForExtraction = activeProject?.name;
+  const extractionOwnerId = isLoggedIn ? currentUser.id : null;
+  const captureStoryboardScope = useStoryboardGenerationScope(extractionOwnerId, activeProject?.id, 'project');
+  useLayoutEffect(() => {
+    generatingStoryboardsRef.current = false;
+    const frame = requestAnimationFrame(() => {
+      if (generatingStoryboardsRef.current) return;
+      setIsGeneratingStoryboards(false);
+      setGenerateError(null);
+      setGenerateErrorProjectId(null);
+      setStoryboardStatusMessage('');
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeProject?.id, extractionOwnerId]);
+  const activePendingExtraction = readPendingSubjectExtraction(activeProject?.id, extractionOwnerId);
   const activeExtractError = extractErrorByProject[activeProject?.id] || null;
   const activeSubjectExtractionStatusMessage = subjectExtractionStatusByProject[activeProject?.id] || '';
 
@@ -643,7 +654,7 @@ export default function Home({ onGoToAdmin }) {
       // （避免换浏览器/清缓存后明明有数据却被锁住）
       if (!restoredUnlockedSteps.has('subject')) {
         try {
-          const anySubjects = await apiGetSubjects(projectId, { type: 'character' }).catch(() => null);
+          const anySubjects = await apiGetSubjects(projectId, { type: 'character', limit: 1 }).catch(() => null);
           if (!isCurrent()) return;
           if (!anySubjects) setProjectRead({ projectId, requestedStep, loading: true, error: '主体步骤状态读取失败，请重试' });
           if (Array.isArray(anySubjects) && anySubjects.length > 0) {
@@ -994,26 +1005,36 @@ export default function Home({ onGoToAdmin }) {
     const session = getAuthSessionGeneration();
     const isCurrent = () => Boolean(getToken()) && session === getAuthSessionGeneration()
       && projectDetailOwner.current?.id === pid && projectDetailOwner.current?.session === session;
+    // 缓存只有一批数组，没有可靠的游标；不能覆盖多页列表后沿用旧游标。
+    // 以通知为刷新信号，重新读取首页并成对更新列表/分页，不合并已删除项。
     const unsubs = [
-      subscribe(K.subjects(pid, 'character'), (data) => {
-        if (!isCurrent()) return;
-        const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
-        // 空列表也是一次成功的服务端结果，不能继续保留旧主体/旧音色状态。
-        if (Array.isArray(list)) setSharedChars(normalizeSubjects(list));
-      }),
-      subscribe(K.subjects(pid, 'scene'), (data) => {
-        if (!isCurrent()) return;
-        const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
-        if (Array.isArray(list)) setSharedScenes(normalizeSubjects(list));
-      }),
-      subscribe(K.subjects(pid, 'prop'), (data) => {
-        if (!isCurrent()) return;
-        const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
-        if (Array.isArray(list)) setSharedProps(normalizeSubjects(list));
-      }),
-    ];
+      ['character', 'chars', setSharedChars],
+      ['scene', 'scenes', setSharedScenes],
+      ['prop', 'props', setSharedProps],
+    ].map(([type, key, setShared]) => subscribe(K.subjects(pid, type), () => {
+      if (!isCurrent()) return;
+      const version = bumpSubjectRequest(key);
+      subjectInFlight.current[key] = true;
+      setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: true } }));
+      apiGetSubjectsPage(pid, { type, limit: 20 })
+        .then((page) => {
+          if (!isCurrentSubjectRequest(key, version, pid, session)) return;
+          setShared(normalizeSubjects(page.list));
+          setSubjectPageMeta(prev => ({
+            ...prev,
+            [key]: { nextOffset: page.nextOffset, hasMore: page.hasMore, loading: false, error: false, rawList: page.list },
+          }));
+        })
+        .catch(() => {
+          if (!isCurrentSubjectRequest(key, version, pid, session)) return;
+          setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: false, error: true, retryOffset: null } }));
+        })
+        .finally(() => {
+          if (subjectRequestVersions.current[key] === version) subjectInFlight.current[key] = false;
+        });
+    }));
     return () => unsubs.forEach((fn) => fn());
-  }, [activeProject?.id]);
+  }, [activeProject?.id, bumpSubjectRequest, isCurrentSubjectRequest]);
 
   useEffect(() => {
     const handleForceLogout = () => {
@@ -1159,11 +1180,11 @@ export default function Home({ onGoToAdmin }) {
   };
 
   // 重试失败的原页；首屏失败替换，分页失败追加。
-  const retrySubjects = async (type) => {
+  const retrySubjects = async (type, restart = false) => {
     const key = type === 'character' ? 'chars' : type === 'scene' ? 'scenes' : 'props';
     const projectId = activeProject?.id;
-    if (!projectId || subjectInFlight.current[key]) return;
-    const offset = subjectPageMeta[key]?.retryOffset;
+    if (!projectId || (!restart && subjectInFlight.current[key])) return;
+    const offset = restart ? null : subjectPageMeta[key]?.retryOffset;
     const version = bumpSubjectRequest(key);
     const session = getAuthSessionGeneration();
     subjectInFlight.current[key] = true;
@@ -1181,7 +1202,7 @@ export default function Home({ onGoToAdmin }) {
     } catch (err) {
       console.error(`[Home] 重试加载主体失败 (${type}):`, err);
       if (isCurrentSubjectRequest(key, version, projectId, session)) {
-        setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: false, error: true } }));
+        setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: false, error: true, retryOffset: offset } }));
       }
     } finally {
       if (subjectRequestVersions.current[key] === version) subjectInFlight.current[key] = false;
@@ -1192,9 +1213,19 @@ export default function Home({ onGoToAdmin }) {
   const handleExtractSubjects = useCallback(async () => {
     const projectId = activeProjectIdForExtraction;
     const extractionSession = getAuthSessionGeneration();
-    if (!projectId || extractingSubjectsRef.current[projectId]) return;
-    extractingSubjectsRef.current[projectId] = true;
-    setSubjectExtractionByProject((prev) => ({ ...prev, [projectId]: true }));
+    const ownerId = extractionOwnerId;
+    if (!projectId || !ownerId || !getToken()) return;
+    if (extractingSubjectsRef.current[projectId]?.session === extractionSession) return;
+    const run = { session: extractionSession };
+    extractingSubjectsRef.current[projectId] = run;
+    const isCurrent = () => extractionMountedRef.current && getAuthSessionGeneration() === extractionSession
+      && Boolean(getToken()) && extractingSubjectsRef.current[projectId] === run;
+    const assertCurrent = () => { if (!isCurrent()) throw new Error('抽取会话已结束'); };
+    const savePending = (value) => {
+      assertCurrent();
+      writePendingSubjectExtraction(projectId, ownerId, value);
+    };
+    setSubjectExtractionByProject((prev) => ({ ...prev, [projectId]: extractionSession }));
     const projectName = activeProjectNameForExtraction || projectId;
     setExtractErrorByProject((prev) => {
       const next = { ...prev };
@@ -1202,7 +1233,10 @@ export default function Home({ onGoToAdmin }) {
       return next;
     });
     try {
-      const storedPendingExtraction = readPendingSubjectExtraction(projectId);
+      const storedPendingExtraction = readPendingSubjectExtraction(projectId, ownerId);
+      if (['unknown', 'submitting'].includes(storedPendingExtraction?.status)) {
+        throw new Error(storedPendingExtraction.error || '提交结果待确认，请先确认原任务状态，暂不重复提交');
+      }
       const pendingExtraction = storedPendingExtraction?.status === 'failed' ? null : storedPendingExtraction;
       const getTaskStatusMessage = (task) => (
         task?.status_message || task?.statusMessage || task?.params?.status_message || ''
@@ -1210,24 +1244,38 @@ export default function Home({ onGoToAdmin }) {
       const pollScriptTask = async (initialTask, taskId, timeoutMessage) => {
         const deadline = Date.now() + 10 * 60 * 1000;
         let task = initialTask;
+        let failures = 0;
         let statusMessage = getTaskStatusMessage(task) || pendingExtraction?.statusMessage || '';
         setSubjectExtractionStatusByProject((prev) => ({ ...prev, [projectId]: statusMessage }));
         while (Date.now() < deadline) {
+          assertCurrent();
           const status = String(task?.status || '').toLowerCase();
           if (['completed', 'succeeded', 'success'].includes(status)) return task;
           if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
-            throw new Error(task?.error?.message || task?.error?.detail || task?.status_message || '主体提取任务失败');
+            const error = new Error(task?.error?.message || task?.error?.detail || task?.status_message || '主体提取任务失败');
+            error.taskTerminal = true;
+            throw error;
           }
           await new Promise(resolve => setTimeout(resolve, 2500));
-          task = await apiGetScriptTask(projectId, task?.task_id || task?.taskId || taskId);
+          assertCurrent();
+          try {
+            task = await apiGetScriptTask(projectId, taskId);
+            assertCurrent();
+            failures = 0;
+          } catch (error) {
+            assertCurrent();
+            failures += 1;
+            if (failures >= 3) throw new Error('网络持续异常，已暂停查询；重试将继续查询原任务', { cause: error });
+            continue;
+          }
           const nextStatusMessage = getTaskStatusMessage(task);
           if (nextStatusMessage) {
             statusMessage = nextStatusMessage;
             setSubjectExtractionStatusByProject((prev) => ({ ...prev, [projectId]: statusMessage }));
           }
           if (statusMessage) {
-            writePendingSubjectExtraction(projectId, {
-              ...(readPendingSubjectExtraction(projectId) || {}),
+            savePending({
+              ...(readPendingSubjectExtraction(projectId, ownerId) || {}),
               statusMessage,
             });
           }
@@ -1239,14 +1287,17 @@ export default function Home({ onGoToAdmin }) {
       // 因此这里必须绕过缓存读取最新 revision，不能使用 null。
       let structureRevision = pendingExtraction?.sourceRevision;
       if (!pendingExtraction || pendingExtraction.phase === 'publish') {
-        const latestStructure = await apiGetScriptStructure(projectId);
+        const latestStructure = pendingExtraction?.taskId ? null : await apiGetScriptStructure(projectId);
+        assertCurrent();
         structureRevision = latestStructure?.revision
           ?? latestStructure?.data?.revision
-          ?? latestStructure?.payload?.revision;
+          ?? latestStructure?.payload?.revision
+          ?? structureRevision;
         if (structureRevision === undefined || structureRevision === null) {
           throw new Error('未读取到剧本结构版本，请先返回剧本页刷新后重试');
         }
 
+        if (!pendingExtraction?.taskId) savePending({ phase: 'publish', status: 'submitting', sourceRevision: structureRevision, createdAt: Date.now() });
         const taskResponse = pendingExtraction?.taskId
           ? await apiGetScriptTask(projectId, pendingExtraction.taskId)
           : await apiPublishScriptStructure(projectId, {
@@ -1254,9 +1305,10 @@ export default function Home({ onGoToAdmin }) {
             base_revision: structureRevision,
             publish_target: ['episodes'],
           });
+        assertCurrent();
         const taskId = taskResponse?.task_id || taskResponse?.taskId || pendingExtraction?.taskId;
         if (!taskId) throw new Error('发布剧本结构接口未返回任务 ID');
-        writePendingSubjectExtraction(projectId, {
+        savePending({
           phase: 'publish',
           taskId,
           sourceRevision: structureRevision,
@@ -1265,34 +1317,42 @@ export default function Home({ onGoToAdmin }) {
         });
 
         const storageUsage = await apiGetStorageUsage();
+        assertCurrent();
         if (storageUsage?.writeBlocked) {
           throw new Error('当前存储空间不足，无法生成主体，请先清理项目资产');
         }
         await pollScriptTask(taskResponse, taskId, '剧本发布任务超时，请稍后重试');
       }
 
-      const subjectTaskResponse = pendingExtraction?.phase === 'subject'
-        ? await apiGetScriptTask(projectId, pendingExtraction.taskId)
-        : await apiExtractSubjectsByEpisodes(projectId, {
-          episode_ids: [],
-          source_revision: structureRevision,
-          force_retry: true,
+      assertCurrent();
+      if (pendingExtraction?.phase !== 'results') {
+        if (pendingExtraction?.phase !== 'subject') savePending({ phase: 'subject', status: 'submitting', sourceRevision: structureRevision, createdAt: Date.now() });
+        const subjectTaskResponse = pendingExtraction?.phase === 'subject'
+          ? await apiGetScriptTask(projectId, pendingExtraction.taskId)
+          : await apiExtractSubjectsByEpisodes(projectId, {
+            episode_ids: [],
+            source_revision: structureRevision,
+            force_retry: true,
+          });
+        assertCurrent();
+        const subjectTaskId = subjectTaskResponse?.task_id || subjectTaskResponse?.taskId
+          || (pendingExtraction?.phase === 'subject' ? pendingExtraction.taskId : null);
+        if (!subjectTaskId) throw new Error('主体抽取接口未返回任务 ID');
+        savePending({
+          phase: 'subject',
+          taskId: subjectTaskId,
+          sourceRevision: structureRevision,
+          statusMessage: getTaskStatusMessage(subjectTaskResponse),
+          createdAt: Date.now(),
         });
-      const subjectTaskId = subjectTaskResponse?.task_id || subjectTaskResponse?.taskId || pendingExtraction?.taskId;
-      if (!subjectTaskId) throw new Error('主体抽取接口未返回任务 ID');
-      writePendingSubjectExtraction(projectId, {
-        phase: 'subject',
-        taskId: subjectTaskId,
-        sourceRevision: structureRevision,
-        statusMessage: getTaskStatusMessage(subjectTaskResponse),
-        createdAt: Date.now(),
-      });
-      await pollScriptTask(subjectTaskResponse, subjectTaskId, '主体抽取任务超时，请稍后刷新主体列表');
+        await pollScriptTask(subjectTaskResponse, subjectTaskId, '主体抽取任务超时，请稍后刷新主体列表');
+        savePending({ phase: 'results', taskId: subjectTaskId, sourceRevision: structureRevision,
+          status: 'paused', error: '主体抽取已完成，结果待读取；重试只刷新列表，不会重新抽取', createdAt: Date.now() });
+      }
 
-      if (getAuthSessionGeneration() !== extractionSession || !getToken()) return;
+      if (!isCurrent()) return;
       if (currentProjectIdRef.current !== projectId) {
-        clearPendingSubjectExtraction(projectId);
-        showToast(`「${projectName}」主体抽取完成`, 'success');
+        showToast(`「${projectName}」主体抽取已完成，返回项目后可刷新结果`, 'success');
         return;
       }
 
@@ -1341,7 +1401,7 @@ export default function Home({ onGoToAdmin }) {
           }));
         });
         setForceExtract(false);
-        clearPendingSubjectExtraction(projectId);
+        clearPendingSubjectExtraction(projectId, ownerId);
         showToast(`「${projectName}」主体抽取完成`, 'success');
       } catch (error) {
         if (!refreshTargets.some(isCurrentRefresh)) return;
@@ -1359,33 +1419,48 @@ export default function Home({ onGoToAdmin }) {
         });
       }
     } catch (err) {
+      if (!isCurrent()) return;
       console.error('提取主体失败:', err);
-      writePendingSubjectExtraction(projectId, {
-        status: 'failed',
-        error: err?.message || '主体抽取失败，请重试',
-        createdAt: Date.now(),
-      });
+      const saved = readPendingSubjectExtraction(projectId, ownerId);
+      const unknown = ['submitting', 'unknown'].includes(saved?.status);
+      const message = unknown
+        ? '提交结果待确认，请先确认原任务状态，暂不重复提交'
+        : err?.message || '主体抽取失败，请重试';
+      try {
+        savePending({
+          ...saved,
+          status: unknown ? 'unknown' : err.taskTerminal || !saved?.taskId ? 'failed' : 'paused',
+          error: message,
+          createdAt: Date.now(),
+        });
+      } catch (storageError) {
+        console.error('保存抽取恢复记录失败:', storageError);
+      }
       if (currentProjectIdRef.current === projectId) {
         setExtractErrorByProject((prev) => ({
           ...prev,
-          [projectId]: err?.message || '提取主体失败，请重试',
+          [projectId]: message,
         }));
-        showToast(err?.message || '提取主体失败，请重试', 'error');
+        showToast(message, 'error');
       }
     } finally {
-      delete extractingSubjectsRef.current[projectId];
-      setSubjectExtractionByProject((prev) => {
-        const next = { ...prev };
-        delete next[projectId];
-        return next;
-      });
-      setSubjectExtractionStatusByProject((prev) => {
-        const next = { ...prev };
-        delete next[projectId];
-        return next;
-      });
+      if (!isCurrent()) {
+        if (extractingSubjectsRef.current[projectId] === run) delete extractingSubjectsRef.current[projectId];
+      } else {
+        delete extractingSubjectsRef.current[projectId];
+        setSubjectExtractionByProject((prev) => {
+          const next = { ...prev };
+          delete next[projectId];
+          return next;
+        });
+        setSubjectExtractionStatusByProject((prev) => {
+          const next = { ...prev };
+          delete next[projectId];
+          return next;
+        });
+      }
     }
-  }, [activeProjectIdForExtraction, activeProjectNameForExtraction, showToast, bumpSubjectRequest, isCurrentSubjectRequest]);
+  }, [activeProjectIdForExtraction, activeProjectNameForExtraction, extractionOwnerId, showToast, bumpSubjectRequest, isCurrentSubjectRequest]);
 
   // 切回项目时，检查是否有暂存的提取结果等待应用
   useEffect(() => {
@@ -1401,14 +1476,28 @@ export default function Home({ onGoToAdmin }) {
   }, [activeProject?.id]);
 
   // 智能分镜生成回调（由 StoryboardPage 在挂载时调用）
-  const handleGenerateStoryboards = async () => {
-    if (generatingStoryboardsRef.current) return;
-    generatingStoryboardsRef.current = true;
+  const handleGenerateStoryboards = async (submitOverride, retryFailed = false) => {
+    const isCurrent = captureStoryboardScope();
+    const projectId = activeProject?.id;
+    const ownerId = extractionOwnerId;
+    if (!isCurrent() || generatingStoryboardsRef.current) return;
+    const run = {};
+    generatingStoryboardsRef.current = run;
     setIsGeneratingStoryboards(true);
     setCompletedEpisodesCount(0);
     setStoryboardStatusMessage('');
-    const pendingGeneration = readPendingStoryboardGeneration(activeProject.id);
-    if (pendingGeneration?.status === 'failed') {
+    const pendingGeneration = readPendingStoryboardGeneration(projectId, ownerId);
+    let taskId = pendingGeneration?.taskId || null;
+    let settled = false;
+    let submitted = Boolean(taskId);
+    if (['unknown', 'submitting'].includes(pendingGeneration?.status) && !taskId) {
+      setGenerateError(pendingGeneration.error || '上次提交结果尚未确认，请先核对后台任务，勿重复生成');
+      setGenerateErrorProjectId(projectId);
+      setIsGeneratingStoryboards(true);
+      generatingStoryboardsRef.current = false;
+      return;
+    }
+    if (pendingGeneration?.status === 'failed' && !submitOverride && !retryFailed) {
       setGenerateError(pendingGeneration.error || '分镜生成失败，请重试');
       setGenerateErrorProjectId(activeProject.id);
       setIsGeneratingStoryboards(false);
@@ -1418,11 +1507,19 @@ export default function Home({ onGoToAdmin }) {
     setGenerateError(null);
     setGenerateErrorProjectId(null);
     try {
-      let freshEpisodes = await apiGetEpisodes(activeProject.id).catch(() => []);
+      if (pendingGeneration?.status === 'failed' && (submitOverride || retryFailed)) {
+        // 清理失败时停止，不能把旧任务当成可重新提交。
+        submitted = false;
+        clearPendingStoryboardGeneration(projectId, ownerId);
+        taskId = null;
+      }
+      let freshEpisodes = await apiGetEpisodes(projectId);
+      if (!isCurrent()) return;
       if (freshEpisodes.length === 0 && scriptContent) {
         const finalizeResult = await apiFinalizeScriptWorkspace(activeProject.id, {
           episode_count: null, model: null,
         });
+        if (!isCurrent()) return;
         const finalized = finalizeResult?.items || finalizeResult?.episodes || finalizeResult?.data;
         if (Array.isArray(finalized) && finalized.length > 0) {
           freshEpisodes = finalized;
@@ -1439,17 +1536,23 @@ export default function Home({ onGoToAdmin }) {
       });
 
       // 1. 启动任务，拿到 taskId
-      const taskResp = pendingGeneration?.taskId
-        ? await apiGetTask(pendingGeneration.taskId)
-        : await apiGenerateStoryboardsFromFinalScript(activeProject.id, { first_episode_only: true });
-      const taskId = getStoryboardTaskId(taskResp);
+      if (!taskId && submitOverride && !freshEpisodes[0]?.id) throw new Error('未找到可重新抽取的正式分集');
+      if (!taskId) {
+        writePendingStoryboardGeneration(projectId, ownerId, { status: 'submitting', createdAt: Date.now() });
+        submitted = true;
+      }
+      const taskResp = taskId
+        ? await apiGetTask(taskId)
+        : await (submitOverride ? submitOverride(freshEpisodes) : apiGenerateStoryboardsFromFinalScript(projectId, { first_episode_only: true }));
+      taskId = getStoryboardTaskId(taskResp) || taskId;
       const initialStatus = String(getStoryboardTaskStatus(taskResp) || '').toLowerCase();
-      if (!taskId && !['completed', 'succeeded', 'success', 'failed', 'error', 'cancelled', 'canceled'].includes(initialStatus)) {
+      if (!taskId && !['completed', 'succeeded', 'success', 'done', 'partial', 'failed', 'error', 'cancelled', 'canceled'].includes(initialStatus)) {
         throw new Error('未获取到任务 ID');
       }
       if (taskId) {
-        writePendingStoryboardGeneration(activeProject.id, { taskId, status: 'running', createdAt: pendingGeneration?.createdAt || Date.now() });
+        writePendingStoryboardGeneration(projectId, ownerId, { taskId, status: 'running', createdAt: pendingGeneration?.createdAt || Date.now() });
       }
+      if (!isCurrent()) return;
       setStoryboardStatusMessage(getStoryboardTaskStatusMessage(taskResp));
 
       // 2. 轮询任务，每完成一集立即失效对应缓存，让 StoryboardPage 实时看到结果
@@ -1463,6 +1566,7 @@ export default function Home({ onGoToAdmin }) {
       const pollStartTime = Date.now();
 
       const flushEpisode = (num) => {
+        if (!isCurrent()) return;
         if (notifiedEpisodeNumbers.has(num)) return;
         notifiedEpisodeNumbers.add(num);
         setCompletedEpisodesCount(notifiedEpisodeNumbers.size);
@@ -1482,12 +1586,12 @@ export default function Home({ onGoToAdmin }) {
       while (!finalTask && Date.now() - pollStartTime < TIMEOUT_MS) {
         // 任务提交后先立即查询一次，后续查询再按 3 秒间隔执行。
         if (pollCount > 0) await new Promise(r => setTimeout(r, INTERVAL));
+        if (!isCurrent()) return;
         pollCount += 1;
         if (Date.now() - pollStartTime >= TIMEOUT_MS) break;
-        const t = await apiGetTask(taskId).catch(() => null);
-        if (!t) continue;
+        const t = await apiGetTask(taskId);
+        if (!isCurrent()) return;
         setStoryboardStatusMessage(getStoryboardTaskStatusMessage(t));
-        console.log('[poll] task status:', getStoryboardTaskStatus(t), 'params:', JSON.stringify(t.params));
 
         // 路径1：completed_episode_numbers 字段（后端明确告知哪些集已完成）
         const completedNums = t.completed_episode_numbers || t.params?.completed_episode_numbers;
@@ -1512,6 +1616,7 @@ export default function Home({ onGoToAdmin }) {
       if (!finalTask) throw new Error('POLL_TIMEOUT');
       const finalStatus = String(getStoryboardTaskStatus(finalTask) || '').toLowerCase();
       if (['failed', 'error', 'cancelled', 'canceled'].includes(finalStatus)) {
+        settled = true;
         const msg = getStoryboardTaskErrorMessage(finalTask) || '分镜生成失败';
         throw new Error(msg);
       }
@@ -1520,44 +1625,44 @@ export default function Home({ onGoToAdmin }) {
       // 同时把失败数量反馈给用户，避免把部分失败静默当成完全成功。
       const failedCount = Number(finalTask.fail_count || finalTask.failCount || 0);
       if (['partial', 'completed_with_errors', 'completed_with_failures'].includes(finalStatus) && failedCount > 0) {
+        settled = true;
         const detail = getStoryboardTaskErrorMessage(finalTask);
         throw new Error(detail || `智能分镜失败，失败 ${failedCount} 集`);
       }
 
       // 3. 任务完成，重新拉取最新 episodes（后端可能已创建新 UUID）
-      const latestEpisodes = await apiGetEpisodes(activeProject.id).catch(() => freshEpisodes);
-      if (Array.isArray(latestEpisodes) && latestEpisodes.length > 0) {
-        setScriptEpisodes(latestEpisodes);
-      }
+      if (!['completed', 'succeeded', 'success', 'done', 'partial'].includes(finalStatus)) throw new Error('任务状态尚未确认');
+      const latestEpisodes = await apiGetEpisodes(projectId);
+      if (!isCurrent()) return;
 
       // 4. 用最新 episodes 做兜底刷新分镜（确保用正确的 episode ID）
       const finalEpisodes = (Array.isArray(latestEpisodes) && latestEpisodes.length > 0)
         ? latestEpisodes : freshEpisodes;
-      finalEpisodes.forEach(ep => {
-        if (!ep.id) return;
+      // 当前提交约定只处理首集，不能为确认结果扫描全项目所有分集。
+      for (const ep of finalEpisodes.slice(0, 1)) {
+        if (!ep.id) continue;
         invalidate(K.storyboards(activeProject.id, ep.id));
         invalidate(K.storyboardPagePrefix(activeProject.id));
-        apiGetStoryboards(activeProject.id, {
+        await apiGetStoryboards(activeProject.id, {
           episode_id: ep.id,
           limit: 10,
           include_gen_params: false,
-        }).catch(() => {});
-      });
+        });
+        if (!isCurrent()) return;
+      }
       invalidate(K.storyboards(activeProject.id));
       invalidate(K.storyboardPagePrefix(activeProject.id));
-      apiGetStoryboards(activeProject.id, {
-        limit: 10,
-        include_gen_params: false,
-      }).catch(() => {});
-      clearPendingStoryboardGeneration(activeProject.id);
+      if (Array.isArray(latestEpisodes) && latestEpisodes.length > 0) setScriptEpisodes(latestEpisodes);
+      clearPendingStoryboardGeneration(projectId, ownerId);
 
     } catch (err) {
+      if (!isCurrent()) return;
       console.error('智能分镜生成失败:', err);
       const status = err?.status;
       const msg = err?.message || String(err);
       let errorMsg;
       if (msg === 'POLL_TIMEOUT') {
-        errorMsg = '剧本生成超时，请重新生成';
+        errorMsg = '分镜查询超时，恢复后将查询原任务，请勿重复生成';
       } else if (status === 502) {
         errorMsg = '服务器繁忙，请稍后重试';
       } else if (status === 504 || msg.includes('timeout') || msg.includes('Timeout') || msg.includes('abort')) {
@@ -1573,95 +1678,61 @@ export default function Home({ onGoToAdmin }) {
       } else {
         errorMsg = '分镜生成失败，请重试';
       }
+      if (submitted && !settled) errorMsg = taskId
+        ? '生成结果尚未确认，点击重试将查询原任务，不会重复生成'
+        : '提交结果尚未确认，请先核对后台任务，勿重复生成';
       setGenerateError(errorMsg);
       setGenerateErrorProjectId(activeProject?.id);
-      writePendingStoryboardGeneration(activeProject?.id, { status: 'failed', error: errorMsg, createdAt: Date.now() });
+      if (submitted && !readPendingStoryboardGeneration(projectId, ownerId)?.blocked) {
+        try {
+          writePendingStoryboardGeneration(projectId, ownerId, { taskId, status: settled ? 'failed' : (taskId ? 'running' : 'unknown'), error: errorMsg, createdAt: Date.now() });
+        } catch { showToast('任务记录保存失败，请勿重复生成，先核对后台任务', 'error'); }
+      }
       showToast(errorMsg, 'error');
+    } finally {
+      if (isCurrent() && generatingStoryboardsRef.current === run) {
+        const remaining = readPendingStoryboardGeneration(projectId, ownerId);
+        setIsGeneratingStoryboards(Boolean(remaining && remaining.status !== 'failed'));
+        setStoryboardStatusMessage('');
+        generatingStoryboardsRef.current = false;
+      }
     }
-    setIsGeneratingStoryboards(false);
-    setStoryboardStatusMessage('');
-    generatingStoryboardsRef.current = false;
   };
 
   const handleRetryGenerateStoryboards = async () => {
-    const projectId = activeProject?.id;
-    clearPendingStoryboardGeneration(projectId);
-    setGenerateError(null);
-    setGenerateErrorProjectId(null);
-    setStoryboardStatusMessage('');
-    return handleGenerateStoryboards();
+    return handleGenerateStoryboards(undefined, true);
   };
 
-  // 主体页确认“已有分镜重新生成”时，必须先提交覆盖重抽任务，再切换到分镜页。
+  // 主体页确认重新生成后，进入分镜页并通过统一恢复链路提交覆盖任务。
   // 不能复用首次抽分镜接口，否则已有分镜状态会让页面只跳转而不发起重新生成请求。
   const handleRegenerateStoryboardsFromSubject = async () => {
     if (generatingStoryboardsRef.current || !activeProject?.id) return;
-
     const projectId = activeProject.id;
-    try {
-      const freshEpisodes = await apiGetEpisodes(projectId).catch(() => scriptEpisodes);
-      const firstEpisode = Array.isArray(freshEpisodes) && freshEpisodes.length > 0
-        ? freshEpisodes[0]
-        : null;
-      if (!firstEpisode?.id) {
-        throw new Error('未找到可重新抽取的正式分集');
-      }
-
-      setGenerateError(null);
-      setGenerateErrorProjectId(null);
-      setStoryboardStatusMessage('');
-      setCompletedEpisodesCount(0);
-
-      const taskResponse = await apiGenerateStoryboardsFromEpisode(projectId, {
-        episode_id: firstEpisode.id,
+    const isCurrent = captureStoryboardScope();
+    handleUnlockStep('storyboard');
+    setStoryboardInitialEpisodeIndex(0);
+    setActiveStep('storyboard');
+    await handleGenerateStoryboards((freshEpisodes) => {
+      if (!isCurrent() || !freshEpisodes[0]?.id) throw new Error('未找到可重新抽取的正式分集');
+      return apiGenerateStoryboardsFromEpisode(projectId, {
+        episode_id: freshEpisodes[0].id,
         model: null,
         overwrite_existing: true,
         confirm_overwrite: true,
       });
-      const taskId = getStoryboardTaskId(taskResponse);
-      const status = String(taskResponse?.status || '').toLowerCase();
-      const terminal = ['completed', 'succeeded', 'success', 'done', 'failed', 'error', 'cancelled', 'canceled'].includes(status);
-
-      if (!taskId && !terminal && !Array.isArray(taskResponse)) {
-        throw new Error('重新分镜接口未返回任务 ID');
-      }
-
-      if (taskId && !['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
-        writePendingStoryboardGeneration(projectId, {
-          taskId,
-          status: 'running',
-          createdAt: Date.now(),
-        });
-        // 复用首页已有的任务轮询和刷新逻辑。先写入 pending，再启动轮询，
-        // 这样切换页面或刷新浏览器时仍能恢复同一个覆盖重抽任务。
-        void handleGenerateStoryboards();
-      } else {
-        invalidate(K.storyboards(projectId, firstEpisode.id));
-        invalidate(K.storyboards(projectId));
-        invalidate(K.storyboardPagePrefix(projectId));
-      }
-
-      handleUnlockStep('storyboard');
-      setStoryboardInitialEpisodeIndex(0);
-      setActiveStep('storyboard');
-    } catch (err) {
-      const message = err?.message || '重新分镜失败，请重试';
-      setGenerateError(message);
-      setGenerateErrorProjectId(projectId);
-      showToast(message, 'error');
-      return false;
-    }
+    });
   };
 
   // 刷新或离开分镜页后，恢复仍在执行的分镜任务；失败快照只恢复失败态，不会重复发起任务。
   useEffect(() => {
     const projectId = activeProject?.id;
-    const pending = readPendingStoryboardGeneration(projectId);
+    const pending = readPendingStoryboardGeneration(projectId, extractionOwnerId);
     if (!projectId) return;
-    if (pending?.status === 'failed') {
+    if (['failed', 'unknown', 'submitting'].includes(pending?.status)) {
       const frameId = requestAnimationFrame(() => {
-        setGenerateError(pending.error || '分镜生成失败，请重试');
+        setGenerateError(pending.error || '提交结果尚未确认，请先核对后台任务，勿重复生成');
         setGenerateErrorProjectId(projectId);
+        setIsGeneratingStoryboards(pending.status !== 'failed');
       });
       return () => cancelAnimationFrame(frameId);
     }
@@ -1669,14 +1740,19 @@ export default function Home({ onGoToAdmin }) {
     handleGenerateStoryboards();
     // 仅在项目切换时检查一次，避免状态更新导致重复恢复。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProject?.id]);
+  }, [activeProject?.id, extractionOwnerId]);
 
   useEffect(() => {
     const projectId = activeProject?.id;
-    const pending = readPendingSubjectExtraction(projectId);
+    const pending = readPendingSubjectExtraction(projectId, extractionOwnerId);
     if (!projectId) return;
-    if (pending?.status !== 'failed') {
+    if (!['failed', 'paused', 'unknown', 'submitting'].includes(pending?.status)) {
       const frameId = requestAnimationFrame(() => {
+        setExtractErrorByProject((prev) => {
+          const next = { ...prev };
+          delete next[projectId];
+          return next;
+        });
         setSubjectExtractionStatusByProject((prev) => ({ ...prev, [projectId]: pending?.statusMessage || '' }));
       });
       return () => cancelAnimationFrame(frameId);
@@ -1693,7 +1769,7 @@ export default function Home({ onGoToAdmin }) {
       });
     });
     return () => cancelAnimationFrame(frameId);
-  }, [activeProject?.id]);
+  }, [activeProject?.id, extractionOwnerId]);
 
   // 定稿成功回调：标记"提取主体后已重新定稿"，允许用户再次提取（弹确认弹窗）
   const handleScriptFinalized = () => {
@@ -1967,7 +2043,8 @@ export default function Home({ onGoToAdmin }) {
             )}
             {activeKey === 'project' && activeProject && activeStep !== 'subject' && activeStep !== 'storyboard' && activeStep !== 'edit' && (
               <GlobalSettings
-                key={activeProject.id}
+                key={`${activeProject.id}:${isLoggedIn ? currentUser.id || '' : ''}`}
+                ownerId={isLoggedIn ? currentUser.id : null}
                 projectId={activeProject.id}
                 projectName={activeProject.name}
                 projectDescription={activeProject.description || activeProject.desc}
@@ -2035,6 +2112,13 @@ export default function Home({ onGoToAdmin }) {
             )}
             {activeKey === 'project' && activeProject && activeStep === 'subject' && (
               <SubjectPage
+                key={activeProject.id}
+                onRefreshSubjects={(projectId, session) => {
+                  if (!getToken() || getAuthSessionGeneration() !== session
+                    || projectDetailOwner.current?.id !== projectId
+                    || projectDetailOwner.current?.session !== session) return;
+                  return Promise.all(['character', 'scene', 'prop'].map(type => retrySubjects(type, true)));
+                }}
                 projectRatio={activeProject.aspect_ratio || activeProject.ratio}
                 projectId={activeProject.id}
                 projectName={activeProject.name}
@@ -2061,7 +2145,7 @@ export default function Home({ onGoToAdmin }) {
                 props={sharedProps}
                 onPropsChange={setSharedProps}
                 subjectsLoading={subjectPageMeta.chars.loading || subjectPageMeta.scenes.loading || subjectPageMeta.props.loading}
-                isExtractingSubjects={!!subjectExtractionByProject[activeProject.id] || (readPendingSubjectExtraction(activeProject.id)?.status !== 'failed' && !!readPendingSubjectExtraction(activeProject.id)?.taskId)}
+                isExtractingSubjects={subjectExtractionByProject[activeProject.id] === getAuthSessionGeneration() || (!activePendingExtraction?.status && !!activePendingExtraction?.taskId)}
                 subjectExtractionStatusMessage={activeSubjectExtractionStatusMessage}
                 isStoryboardGenerated={unlockedSteps.has('storyboard')}
                 onStartStoryboard={() => {
@@ -2070,11 +2154,10 @@ export default function Home({ onGoToAdmin }) {
                   setActiveStep('storyboard');
                 }}
                 onRegenerateStoryboard={handleRegenerateStoryboardsFromSubject}
-                onExtractSubjects={(forceExtract || (readPendingSubjectExtraction(activeProject.id)?.status !== 'failed' && !!readPendingSubjectExtraction(activeProject.id)?.taskId))
+                onExtractSubjects={(forceExtract || (!activePendingExtraction?.status && !!activePendingExtraction?.taskId))
                   ? handleExtractSubjects
                   : undefined}
                 onRetryExtractSubjects={activeExtractError ? async () => {
-                  clearPendingSubjectExtraction(activeProject.id);
                   setExtractErrorByProject((prev) => {
                     const next = { ...prev };
                     delete next[activeProject.id];
@@ -2099,6 +2182,7 @@ export default function Home({ onGoToAdmin }) {
             )}
             {activeKey === 'project' && activeProject && activeStep === 'storyboard' && (
               <StoryboardPage
+                ownerId={isLoggedIn ? currentUser.id : null}
                 projectId={activeProject.id}
                 projectName={activeProject.name}
                 projectRatio={activeProject.aspect_ratio || activeProject.ratio}
@@ -2140,6 +2224,8 @@ export default function Home({ onGoToAdmin }) {
             )}
             <div style={{ display: activeKey === 'create' ? 'flex' : 'none', flexDirection: 'column', position: 'absolute', inset: 0 }}>
               <CreationPage
+                key={isLoggedIn ? currentUser.id : 'guest'}
+                ownerId={isLoggedIn ? currentUser.id : null}
                 isLoggedIn={isLoggedIn}
                 onLoginClick={() => setLoginOpen(true)}
                 apiConfigured={apiConfigured}

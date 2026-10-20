@@ -50,23 +50,37 @@ export default function GlobalToast() {
         const message = item.kind === 'download' && item.progress !== null
           ? `${item.message} ${item.progress}%`
           : item.message;
-        const messageContent = item.mutedText ? message.split(item.mutedText).map((part, index) => <span key={index}>
+        const renderText = (text) => item.mutedText ? text.split(item.mutedText).map((part, index) => <span key={index}>
           {index > 0 && <span style={{ color: 'var(--color-white-60)' }}>{item.mutedText}</span>}{part}
-        </span>) : message;
+        </span>) : text;
+        const action = item.action && <a href={item.action.href}
+          role={item.action.href ? undefined : 'button'}
+          tabIndex={0}
+          style={{ pointerEvents: 'auto', cursor: 'pointer', color: 'var(--color-text-accent)', textDecoration: 'underline', textUnderlineOffset: '3px' }}
+          onKeyDown={(event) => {
+            if (!item.action.href && (event.key === 'Enter' || event.key === ' ')) {
+              event.preventDefault();
+              event.currentTarget.click();
+            }
+          }}
+          onClick={(event) => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            item.action.onClick?.();
+            useToastStore.getState().hideToast();
+          }}>{item.action.label}</a>;
+        const inlineIndex = item.action?.inline && item.action.label
+          ? message.indexOf(item.action.label) : -1;
+        const messageContent = inlineIndex >= 0
+          ? <>{renderText(message.slice(0, inlineIndex))}{action}{renderText(message.slice(inlineIndex + item.action.label.length))}</>
+          : <>{renderText(message)}{action}</>;
 
         return (
           <div key={item.id} className="flex items-center gap-[8px] px-[16px] py-[8px] rounded-medium bg-toast-bg backdrop-blur-[20px]" style={{ maxWidth: '600px', whiteSpace: 'normal', overflowWrap: 'anywhere', animation: 'slideUpBounce 250ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }}>
             {item.kind === 'download'
               ? <LoadingAnimation width={DOWNLOAD_ANIMATION_WIDTH} style={{ height: `${DOWNLOAD_ANIMATION_HEIGHT}px` }} />
               : <ToastIcon type={item.type} />}
-            <span className="text-text-primary text-font-size-16 font-font-weight-regular" style={{ fontFamily: FONT }}>{messageContent}{item.action && <a href={item.action.href}
-              style={{ pointerEvents: 'auto', color: 'var(--color-text-accent)', textDecoration: 'underline', textUnderlineOffset: '3px' }}
-              onClick={(event) => {
-                if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                event.preventDefault();
-                item.action.onClick?.();
-                useToastStore.getState().hideToast();
-              }}>{item.action.label}</a>}</span>
+            <span className="text-text-primary text-font-size-16 font-font-weight-regular" style={{ fontFamily: FONT }}>{messageContent}</span>
           </div>
         );
       })}

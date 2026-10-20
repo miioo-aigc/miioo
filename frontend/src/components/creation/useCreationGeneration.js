@@ -14,9 +14,12 @@
  *   视频结果同时保留后端返回的封面地址，详情弹窗使用 poster 展示。
  *   2026-09-08 新生成图片独立透传原图地址，避免参考图使用下载入口。
  *   2026-09-08 多机位通过 onSubmitted/onSubmissionError 区分提交与生成终态。
+ *   2026-10-20 按账号保存受理前快照和全部任务编号；取消/离页保留恢复记录。
+ *   已完成卡脱离等待清理，避免分镜关联写入期间离页误删结果。
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
+import { creationPendingStore } from '../../utils/CreationPendingStore';
 import {
   apiCreateShot,
   apiGenerateCreation,
@@ -27,8 +30,6 @@ import {
   AUDIO_EXTS_SET,
   isVideoFile,
 } from './CreationFileUtils';
-
-const PENDING_CREATION_TASKS_KEY = 'miioo_pending_tasks';
 
 function createAbortError() {
   const error = new Error('请求已停止');
@@ -96,23 +97,6 @@ function toLiveMaterialReference(file) {
   };
 }
 
-function readPendingTasks() {
-  try {
-    return JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
-  } catch {
-    return [];
-  }
-}
-
-function removePendingTask(genId) {
-  try {
-    const pending = readPendingTasks().filter((task) => task.genId !== genId);
-    localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(pending));
-  } catch {
-    // pending task cleanup is best-effort
-  }
-}
-
 function createPendingTaskSnapshot({ taskId, genId, shotId, tab, params }) {
   return {
     taskId,
@@ -138,16 +122,6 @@ function createPendingTaskSnapshot({ taskId, genId, shotId, tab, params }) {
     refVideos: (params.files || []).filter(isVideoFile).map(toPendingReferenceVideo),
     refAudios: getAudioReferenceFiles(params.files).map(toReferenceAudio),
   };
-}
-
-function persistPendingTask(snapshot) {
-  try {
-    const pending = readPendingTasks();
-    pending.push(snapshot);
-    localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(pending));
-  } catch {
-    // pending task persistence is best-effort
-  }
 }
 
 function createGenerationPlaceholder({ genId, shotId, params, countNum, isVideoGen, isAudioGen }) {
@@ -261,6 +235,7 @@ function createCompletedGeneration({ genId, shotId, params, result, mediaUrls, i
 export function useCreationGeneration({
   activeTab,
   isLoggedIn,
+  ownerId,
   sessionIdRef,
   addGeneration,
   storeDeleteGeneration,
@@ -270,8 +245,37 @@ export function useCreationGeneration({
   showToast,
 }) {
   const activeGenerationRef = useRef(null);
+  const requestsRef = useRef(new Set());
+  const scopeRef = useRef(null);
+  useEffect(() => {
+    const scope = { ownerId, isLoggedIn };
+    const requests = requestsRef.current;
+    scopeRef.current = scope;
+    return () => {
+      scopeRef.current = null;
+      for (const request of requests) {
+        request.controller.abort();
+        if (request.genId) storeDeleteGeneration(request.currentTab, request.genId);
+        decrementActive(request.currentTab);
+      }
+    };
+  // 清理绑定创建请求时的页面作用域，不随渲染生成的新回调重启。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownerId, isLoggedIn]);
 
   const generateCreation = useCallback(async (params) => {
+    const scope = scopeRef.current;
+    try {
+      if (!scope?.isLoggedIn || scope.ownerId !== ownerId) throw new Error('请先登录后再生成');
+      creationPendingStore.assertReady(ownerId);
+    } catch (error) {
+      showToast('error', error.message);
+      params.onSubmissionError?.(error);
+      return { success: false };
+    }
+    const isCurrent = () => scopeRef.current === scope;
+    params = { ...params };
+    const sessionId = sessionIdRef.current;
     const controller = new AbortController();
     const currentTab = getCreationTab(params.genType || activeTab);
     const genType = params.genType || 'image';
@@ -284,6 +288,7 @@ export function useCreationGeneration({
       cancelled: false,
     };
     activeGenerationRef.current = request;
+    requestsRef.current.add(request);
 
     incrementActive(getCreationTab(genType));
     const countNum = parseInt(params.count, 10) || 1;
@@ -292,7 +297,7 @@ export function useCreationGeneration({
     const shotTypeLabel = isVideoGen ? '视频' : isAudioGen ? (genType === 'music' ? '音乐' : '配音') : '图片';
     let shotId = null;
 
-    if (isLoggedIn && sessionIdRef.current) {
+    if (isLoggedIn && sessionId) {
       try {
         const now = new Date();
         const timestamp = now.toLocaleTimeString('zh-CN', {
@@ -300,13 +305,13 @@ export function useCreationGeneration({
           minute: '2-digit',
           second: '2-digit',
         });
-        const shot = await apiCreateShot(sessionIdRef.current, {
+        const shot = await apiCreateShot(sessionId, {
           title: `${shotTypeLabel} - ${timestamp}`,
           prompt: params.prompt || undefined,
           duration: isVideoGen ? (parseInt(params.videoDuration, 10) || 5) : undefined,
         }, { signal: controller.signal });
         shotId = shot.id;
-        params.session_id = sessionIdRef.current;
+        params.session_id = sessionId;
         params.shot_id = shotId;
       } catch (error) {
         if (error?.name === 'AbortError' || controller.signal.aborted) {
@@ -316,17 +321,27 @@ export function useCreationGeneration({
       }
     }
 
-    if (request.cancelled || controller.signal.aborted) {
-      params.onCancel?.();
-      decrementActive(getCreationTab(genType));
+    if (request.cancelled || controller.signal.aborted || !isCurrent()) {
+      if (isCurrent()) { params.onCancel?.(); decrementActive(getCreationTab(genType)); }
+      requestsRef.current.delete(request);
       if (activeGenerationRef.current === request) {
         activeGenerationRef.current = null;
       }
       return { success: false };
     }
 
-    const genId = `gen-${Date.now()}`;
+    const genId = `gen-${crypto.randomUUID()}`;
     request.genId = genId;
+    let snapshot = { ...createPendingTaskSnapshot({ genId, shotId, tab: currentTab, params }), ownerId, sessionId };
+    try { creationPendingStore.save(snapshot); }
+    catch (error) {
+      showToast('error', error.message);
+      params.onSubmissionError?.(error);
+      decrementActive(getCreationTab(genType));
+      requestsRef.current.delete(request);
+      if (activeGenerationRef.current === request) activeGenerationRef.current = null;
+      return { success: false };
+    }
     addGeneration(currentTab, createGenerationPlaceholder({
       genId,
       shotId,
@@ -339,19 +354,15 @@ export function useCreationGeneration({
     try {
       const result = await apiGenerateCreation(params, {
         signal: controller.signal,
-        onTaskCreated: ({ taskId }) => {
-          if (request.cancelled || controller.signal.aborted) return;
-          persistPendingTask(createPendingTaskSnapshot({
-            taskId,
-            genId,
-            shotId,
-            tab: currentTab,
-            params,
-          }));
-          params.onSubmitted?.({ taskId });
+        onTaskCreated: ({ taskId, taskIds }) => {
+          snapshot = { ...snapshot, taskId, taskIds: taskIds || [taskId] };
+          // 迟到的编号仍属于原账号，取消等待不能丢弃它。
+          try { creationPendingStore.save(snapshot); }
+          catch (error) { if (isCurrent()) showToast('error', error.message); }
+          if (isCurrent() && !request.cancelled) params.onSubmitted?.({ taskId });
         },
       });
-      if (request.cancelled || controller.signal.aborted) throw createAbortError();
+      if (request.cancelled || controller.signal.aborted || !isCurrent()) throw createAbortError();
       const rawMediaUrls = isVideoGen ? (result.videos ?? []) : isAudioGen ? (result.audios ?? []) : (result.images ?? []);
       const audioIds = isAudioGen ? (result.audioIds || []) : [];
       let mediaUrls;
@@ -375,7 +386,7 @@ export function useCreationGeneration({
       }
 
       if (!mediaUrls.length) {
-        showToast('error', '生成失败，请稍后重试');
+        showToast('error', '结果暂未完整返回，已保留任务记录，请勿重复提交');
         storeDeleteGeneration(currentTab, genId);
         params.onFail?.(params.prompt);
         return { success: false };
@@ -393,6 +404,7 @@ export function useCreationGeneration({
         isVideoGen,
         isAudioGen,
       }));
+      request.genId = null;
 
       if (!isAudioGen && result.cardIds?.length) {
         storeUpdateCardIds(currentTab, genId, result.cardIds);
@@ -408,22 +420,29 @@ export function useCreationGeneration({
           // shot update fails silently
         }
       }
-      removePendingTask(genId);
+      try { creationPendingStore.remove(ownerId, genId); }
+      catch (error) { if (isCurrent()) showToast('error', error.message); }
       return { success: true };
     } catch (error) {
       const cancelled = request.cancelled || error?.name === 'AbortError';
-      removePendingTask(genId);
+      if (error?.taskFailed && snapshot.taskIds?.length === 1) {
+        try { creationPendingStore.remove(ownerId, genId); }
+        catch (storageError) { if (isCurrent()) showToast('error', storageError.message); }
+      }
+      if (!isCurrent()) return { success: false };
       storeDeleteGeneration(currentTab, genId);
       if (cancelled) {
         params.onCancel?.();
+        showToast('info', '已停止前端等待，后台任务记录保留，重新进入后查询原任务');
       } else {
         params.onSubmissionError?.(error);
-        showToast('error', error?.message || '生成失败，请稍后重试');
+        showToast('error', error?.taskFailed ? error.message : '任务状态暂未确认，记录已保留，请勿重复提交');
         params.onFail?.(params.prompt);
       }
       return { success: false };
     } finally {
-      decrementActive(getCreationTab(genType));
+      if (isCurrent()) decrementActive(getCreationTab(genType));
+      requestsRef.current.delete(request);
       if (activeGenerationRef.current === request) {
         activeGenerationRef.current = null;
       }
@@ -434,6 +453,7 @@ export function useCreationGeneration({
     decrementActive,
     incrementActive,
     isLoggedIn,
+    ownerId,
     sessionIdRef,
     showToast,
     storeDeleteGeneration,
@@ -446,7 +466,6 @@ export function useCreationGeneration({
 
     request.cancelled = true;
     request.controller.abort();
-    removePendingTask(request.genId);
     if (request.genId) storeDeleteGeneration(request.currentTab, request.genId);
     return true;
   }, [storeDeleteGeneration]);

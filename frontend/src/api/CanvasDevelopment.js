@@ -3,6 +3,7 @@ export const canvasDevelopmentEnabled = import.meta.env?.DEV === true
   && import.meta.env?.VITE_CANVAS_DEV_MOCK !== 'false';
 
 const documents = new Map();
+const archivedIds = new Set();
 const PREFIX = 'dev-canvas-';
 
 export function isDevelopmentCanvas(canvasId) {
@@ -17,6 +18,7 @@ export function createDevelopmentCanvasProject() {
 
 export function getDevelopmentCanvas(canvasId) {
   if (!isDevelopmentCanvas(canvasId)) throw new Error('不是开发态模拟画布');
+  if (archivedIds.has(canvasId)) throw new Error('画布已删除');
   // 刷新后保留开发路由可访问性，但恢复为空白草稿，不读取服务器。
   if (!documents.has(canvasId)) {
     const now = new Date().toISOString();
@@ -25,6 +27,14 @@ export function getDevelopmentCanvas(canvasId) {
       project_id: `dev-project-${canvasId.slice(PREFIX.length)}`,
       project_name: '未命名项目',
       title: '画布1',
+      document: {
+        schemaVersion: 1,
+        engine: 'xyflow',
+        engineVersion: '12.11.2',
+        records: [],
+        businessBindings: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
       revision: 1,
       created_at: now,
       updated_at: now,
@@ -61,4 +71,23 @@ export function updateDevelopmentCanvas(id, { baseRevision, title, document }) {
     ...(document !== undefined ? { document } : {}), revision: current.revision + 1, updated_at: new Date().toISOString() };
   documents.set(id, next);
   return { ...next };
+}
+
+export function archiveDevelopmentCanvas(id) {
+  if (!documents.delete(id)) throw new Error('画布不存在或已删除');
+  archivedIds.add(id);
+  return { id };
+}
+
+export function duplicateDevelopmentCanvas(id, { title }) {
+  const source = getDevelopmentCanvas(id);
+  const created = createDevelopmentCanvas({ projectId: source.project_id, title });
+  const document = structuredClone(source.document || { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } });
+  for (const node of document.nodes || []) {
+    for (const key of ['generating', 'generationPending', 'generationError', 'generationRequestId']) {
+      delete node[key];
+      if (node.data) delete node.data[key];
+    }
+  }
+  return updateDevelopmentCanvas(created.id, { baseRevision: created.revision, document });
 }

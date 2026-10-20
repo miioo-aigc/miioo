@@ -10,7 +10,13 @@ const dependencies = match[2].split(',').map((value) => value.trim());
 const names = ['canvasId', 'apiGetCanvasDocument', 'isDevelopmentCanvas', 'apiGetCurrentUser',
   'setError', 'setCanvas', 'readCanvasDocument', 'setNodes', 'setViewport',
   'setViewportZoom', 'setCanvasRevision', 'setCurrentUser', 'setLoadedCanvasId'];
-const runEffect = new Function(...names, `let cancelled = false;${match[1]}`);
+const runEffect = new Function(...names, `
+  const saveSessionRef = { current: null };
+  const createCanvasSaveSession = () => ({});
+  const apiUpdateCanvasDocument = () => {};
+  const resolveCanvasDocumentAssets = async (_, nodes) => nodes;
+  const apiResolveCanvasAssetViews = () => {};
+  let cancelled = false;${match[1]}`);
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 test('初始化依赖稳定方法，节点更新及普通重渲染不会重复读取文档', async () => {

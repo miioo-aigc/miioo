@@ -349,6 +349,7 @@ export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = 
       if (userMessage) {
         const err = new Error(userMessage);
         err.rawMessage = rawMsg;
+        err.taskFailed = true;
         throw err;
       }
       if (rawMsg.includes('copyright')) {
@@ -360,6 +361,7 @@ export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = 
       }
       const err = new Error(userMessage);
       err.rawMessage = rawMsg;
+      err.taskFailed = true;
       throw err;
     }
   }
@@ -755,6 +757,7 @@ export async function apiPollCreationMusicTask(taskId, timeoutMs = CREATION_AUDI
     if (Date.now() - start >= timeoutMs) break;
     throwIfAborted(signal);
     const pollRes = await authFetch(`${BASE}/api/tasks/${taskId}`, { signal });
+    if (!pollRes.ok) throw new Error('音乐任务状态读取失败');
     const pollData = await pollRes.json();
     const status = pollData.status;
     if (status === 'done' || status === 'completed' || status === 'success' || status === 'succeeded' || status === 'partial') {
@@ -763,7 +766,7 @@ export async function apiPollCreationMusicTask(taskId, timeoutMs = CREATION_AUDI
     }
     if (status === 'failed' || status === 'error' || status === 'cancelled' || status === 'canceled') {
       const rawMsg = pollData.error_msg || pollData.errorMsg || pollData.message || '';
-      throw new Error(rawMsg || '音乐生成失败');
+      throw Object.assign(new Error(rawMsg || '音乐生成失败'), { taskFailed: true });
     }
   }
   throw new Error('音乐生成超过600秒，已停止轮询');
@@ -1047,6 +1050,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
         if (userMessage) {
           const err = new Error(userMessage);
           err.rawMessage = rawMsg;
+          err.taskFailed = true;
           throw err;
         }
         if (rawMsg.includes('copyright')) {
@@ -1058,6 +1062,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
         }
         const err = new Error(userMessage);
         err.rawMessage = rawMsg;
+        err.taskFailed = true;
         throw err;
       }
     }
@@ -1421,7 +1426,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
       : [genData.task_id || genData.id].filter(Boolean);
     if (taskIds.length === 0) throw new Error('No task_id returned');
 
-    onTaskCreated?.({ taskId: taskIds[0], params });
+    onTaskCreated?.({ taskId: taskIds[0], taskIds, params });
 
     // 并行轮询所有任务，合并结果
     const pollResults = await Promise.all(

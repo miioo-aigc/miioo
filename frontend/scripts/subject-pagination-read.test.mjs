@@ -31,9 +31,9 @@ function harness() {
     deps.subjectRequestVersions.current[key] === version && deps.activeProject?.id === projectId && session === ownerSession
   );
   const compile = (name) => {
-    const body = source.match(new RegExp(`const ${name} = async \\(type\\) => \\{([\\s\\S]*?)\\n  \\};`))?.[1];
+    const body = source.match(new RegExp(`const ${name} = async \\(type(?:, restart = false)?\\) => \\{([\\s\\S]*?)\\n  \\};`))?.[1];
     assert.ok(body);
-    return () => new Function(...Object.keys(deps), `return async (type) => {${body}}`)(...Object.values(deps))('character');
+    return (restart = false) => new Function(...Object.keys(deps), `return async (type, restart) => {${body}}`)(...Object.values(deps))('character', restart);
   };
   return { state, deps, requests, more: compile('loadMoreSubjects'), retry: compile('retrySubjects'), changeSession: () => session++ };
 }
@@ -78,4 +78,23 @@ test('首屏重试替换而不是追加旧卡片', async () => {
   const pending = h.retry(); assert.equal(h.requests[0].options.offset, undefined);
   h.requests[0].resolve({ list: [{ id: 3 }], hasMore: false }); await pending;
   assert.deepEqual(h.state.items, [{ id: 3 }]);
+});
+
+test('子页面刷新取代在途分页并从首页重建游标', async () => {
+  const h = harness(); const old = h.more(); const fresh = h.retry(true);
+  assert.equal(h.requests[1].options.offset, null);
+  h.requests[0].resolve(page); await old;
+  assert.equal(h.deps.subjectInFlight.current.chars, true);
+  assert.equal(h.state.items.length, 1);
+  h.requests[1].resolve({ list: [{ id: 3 }], nextOffset: 20, hasMore: true }); await fresh;
+  assert.deepEqual(h.state.items, [{ id: 3 }]);
+  assert.equal(h.state.meta.chars.nextOffset, 20);
+});
+test('子页面刷新失败不能沿用旧的失败页位置', async () => {
+  const h = harness(); h.state.meta.chars.retryOffset = 40;
+  const fresh = h.retry(true); h.requests[0].reject(Error()); await fresh;
+  assert.equal(h.state.meta.chars.retryOffset, null);
+  assert.equal(h.state.items.length, 1);
+  const retry = h.retry(); assert.equal(h.requests[1].options.offset, null);
+  h.requests[1].resolve(page); await retry;
 });

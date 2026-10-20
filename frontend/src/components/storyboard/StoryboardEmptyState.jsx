@@ -12,6 +12,7 @@ function StartStoryboardIcon() {
 
 export default function StoryboardEmptyState({
   showError,
+  errorMessage,
   header,
   projectRatio,
   timeline,
@@ -38,8 +39,8 @@ export default function StoryboardEmptyState({
       >
         {showError ? (
           <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' }}>
-            <div style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif", fontSize: '14px', lineHeight: '20px', color: 'rgba(255,255,255,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' }}>
-              <span>抱歉，加载数据失败，请</span>
+            <div style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif", fontSize: '14px', lineHeight: '20px', color: 'rgba(255,255,255,0.8)', display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '16px', alignItems: 'center', justifyContent: 'center' }}>
+              <span>{errorMessage || '抱歉，加载数据失败，请'}</span>
               <button
                 type="button"
                 onClick={() => window.location.reload()}

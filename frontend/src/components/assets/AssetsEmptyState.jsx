@@ -50,7 +50,7 @@ function EmptyIconAudio() {
   );
 }
 
-function EmptyAssetState({ mediaType = 'image' }) {
+export function EmptyAssetState({ mediaType = 'image' }) {
   const Icon = mediaType === 'video' ? EmptyIconVideo : mediaType === 'audio' ? EmptyIconAudio : EmptyIconImage;
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

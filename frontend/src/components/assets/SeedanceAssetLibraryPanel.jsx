@@ -1,7 +1,7 @@
 /**
  * @file SeedanceAssetLibraryPanel.jsx
  * @structure-index
- *   2026-10-14：folderReadVersion L179；handleOpenFolder L250 / handleBackToFolders L603 隔离读取、上传与轮询；详情提供错误重试。
+ *   2026-10-14：folderReadVersion L181；handleOpenFolder L252 / handleBackToFolders L605 隔离读取、上传与轮询；详情提供错误重试。
  * ─── 页面区块 ───────────────────────────────────────
  *   SeedanceAssetLibraryPanel：Seedance2.0素材库子 Tab 和文件夹网格
  *   真人素材组：从真人素材接口读取，空数据时仅展示录入入口
@@ -15,6 +15,7 @@
  *   2026-07-24  按 Paper 设计稿校准「录入新的真人」卡片的渐变、描边和文字颜色
  *   2026-07-24  统一录入卡片和文件夹卡片的 270×180 基准比例及宽度边界
  *   2026-07-24  卡片不再因少量内容拉伸，网格间距固定为 16px
+ *   2026-10-20  复用 AssetFolderGrid：按 216px 计算列数，均分空间并保留 270px 上限
  *   2026-07-24  增加素材库重命名和删除二次确认交互
  *   2026-07-24  复用创作模块真人素材弹窗，接入扫码录入和认证流程
  *   2026-07-24  增加文件夹详情页，接入真人素材图片上传与真实列表
@@ -47,6 +48,7 @@ import {
 import SeedanceFolderCard from './SeedanceFolderCard';
 import SeedanceFolderDetail from './SeedanceFolderDetail';
 import AddVirtualGroupCard from './AddVirtualGroupCard';
+import AssetFolderGrid from './AssetFolderGrid';
 import { createVideoFirstFrame, validateSeedanceUpload } from './SeedanceUploadValidation';
 import SeedanceResolutionDialog from './SeedanceResolutionDialog';
 import SeedanceAssetPreviewModal from './SeedanceAssetPreviewModal';
@@ -138,7 +140,7 @@ function AddRealPersonCard({ onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="aspect-[3/2] flex w-full min-w-[216px] max-w-[270px] items-center justify-self-center rounded-[8px] border border-solid border-white/12 p-[12px] text-white/80 transition-colors hover:border-white/25 hover:text-white"
+      className="aspect-[3/2] flex w-full min-w-0 max-w-[270px] items-center rounded-[8px] border border-solid border-white/12 p-[12px] text-white/80 transition-colors hover:border-white/25 hover:text-white"
       style={{
         backgroundImage: 'linear-gradient(121.71deg, oklab(0.2 0 0) 0.7%, oklab(0.274 -0.039 -0.028) 99.92%)',
         justifyContent: 'center',
@@ -637,7 +639,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
           />
         </>
       ) : activeTab === 'real' ? (
-        <div className="grid min-h-0 flex-1 grid-cols-[repeat(auto-fill,minmax(216px,270px))] content-start justify-start gap-[16px] overflow-y-auto px-[24px] py-[6px]">
+        <AssetFolderGrid className="min-h-0 flex-1 content-start overflow-y-auto px-[24px] py-[6px]">
           <AddRealPersonCard onClick={handleOpenLiveMaterialModal} />
           {folders.map((folder) => (
             <SeedanceFolderCard
@@ -648,9 +650,9 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
               onDelete={() => handleDelete(folder)}
             />
           ))}
-        </div>
+        </AssetFolderGrid>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-[repeat(auto-fill,minmax(216px,270px))] content-start justify-start gap-[16px] overflow-y-auto px-[24px] py-[6px]">
+        <AssetFolderGrid className="min-h-0 flex-1 content-start overflow-y-auto px-[24px] py-[6px]">
           <AddVirtualGroupCard onClick={handleOpenCreateVirtualGroup} />
           {virtualFolders.map((folder) => (
             <SeedanceFolderCard
@@ -661,7 +663,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
               onDelete={() => handleDelete(folder)}
             />
           ))}
-        </div>
+        </AssetFolderGrid>
       )}
 
       {(renameTarget || createVirtualGroupOpen) && (

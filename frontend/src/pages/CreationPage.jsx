@@ -1,9 +1,9 @@
 /**
  * @file CreationPage.jsx
- * @structure-index：2026-10-14 loadHistoryPage L213 记录错误；L879 传递等待并暂停失败后的自动补页。
+ * @structure-index：2026-10-20 已同步当前结构；历史加载错误保留并暂停失败后的自动补页。
  *   2026-10-09：选帧查看导航由 viewSavedImage 副作用承接，保存草稿后切到图片并关闭视频详情。
  *
- * ─── 全局常量与工具函数 ─────────────────────────────── L128–L150
+ * ─── 全局常量与工具函数 ─────────────────────────────── L134–L143
  *   FONT / FONT_MEDIUM、图片下载、动画注入
  *   filenameFromPrompt / audioFilenameFromPrompt              utils/creationFilename.js
  *   生成类型到任务轮询类型的适配                     utils/creationTaskAdapter.js
@@ -12,15 +12,15 @@
  *   刷新任务快照、占位卡片和轮询结果适配                   utils/creationTaskAdapter.js
  *   视频详情与音频详情字段适配                                    utils/creationDetailAdapter.js / creationAudioDetailAdapter.js
  *
- * ─── 页面入口与状态编排 ──────────────────────────────── L152–L733
- *   CreationPage 状态、Store、历史缓存和分页                       L152–L305
- *   Session 初始化、刷新任务恢复和收藏动作                           L309–L436
- *   模型能力、参数加载、Tab、批量操作、正式下载和历史清理               L438–L666
- *   useCreationGeneration 生成请求、占位卡和结果写回                  L668–L681
- *   模型入口检查、输入卡渲染和媒体详情回调                            L683–L733
+ * ─── 页面入口与状态编排 ──────────────────────────────── L145–L794
+ *   CreationPage 状态、Store、历史缓存和分页                       L145–L300
+ *   Session 初始化、刷新任务恢复和收藏动作                           L301–L457
+ *   模型能力、参数加载、Tab、批量操作、正式下载和历史清理               L458–L723
+ *   useCreationGeneration 生成请求、占位卡和结果写回                  L724–L741
+ *   模型入口检查、输入卡渲染和媒体详情回调                            L743–L794
  *   CreationInputCard 已迁移至 components/creation/，页面通过 renderInputCard 显式接入
  *
- * ─── 页面渲染结构 ────────────────────────────────────── L776–L889
+ * ─── 页面渲染结构 ────────────────────────────────────── L795–L909
  *   CreationPageOverlays（确认弹窗和媒体详情 Portal）         components/creation/CreationPageOverlays.jsx
  *   CreationWorkspace（主体卡片、工具栏和结果/空态组合）       components/creation/CreationWorkspace.jsx
  *   handleBeforeModelOpen / renderInputCard                     页面级显式接线辅助
@@ -94,8 +94,11 @@
  *   2026-09-04  修复图片创作任务刷新恢复过早清理快照，支持多次刷新持续轮询
  *   2026-09-21  图片历史每页由 18 条改为 6 条；视频、配音及自动补页行为保持不变
  *   2026-09-24  配音下载命名仅提取正文，过滤情绪、停顿和语气标记
+ *   2026-10-20  按账号恢复全部任务编号；未知/损坏记录保留，取消仅停止等待。
+ *   结构审计：历史分页、Session、任务恢复及 Store 写回集中编排；本轮不为行数搬迁副作用。
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { mergeCreationRecoveryResults } from '../utils/CreationRecoveryResults';
 import { apiPollCreationTask, apiPollCreationMusicTask, apiGetCreationVideo, apiGetCreationAudio, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { apiListModels } from '../api/config';
@@ -126,6 +129,7 @@ import { audioFilenameFromPrompt, filenameFromPrompt } from '../utils/creationFi
 import { downloadBlob } from '../utils/downloadBlob';
 import { startDownloadFeedback } from '../utils/downloadFeedback';
 import { showGlobalToast } from '../stores/toastStore';
+import { creationPendingStore } from '../utils/CreationPendingStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -135,23 +139,10 @@ const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-u
 
 // 顶部 Tab、批量操作和清空历史展示层已迁移至 components/creation/CreationToolbar。
 
-// 模块级常量和 ref：组件卸载重挂载不重置，避免 session 重复恢复导致数据叠加
+// 会话缓存键前缀；实际缓存按账号隔离，会话引用保留在组件内。
 const SESSION_KEY = 'miioo_creation_session_id';
-const PENDING_CREATION_TASKS_KEY = 'miioo_pending_tasks';
-const _sessionIdRef = { current: localStorage.getItem(SESSION_KEY) };
-const _sessionInitRef = { current: false };
 
-function removePendingCreationTask(genId) {
-  try {
-    const pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
-    const remaining = pending.filter((task) => task?.genId !== genId);
-    localStorage.setItem(PENDING_CREATION_TASKS_KEY, JSON.stringify(remaining));
-  } catch {
-    // 任务快照清理失败不阻断已经完成的创作结果展示。
-  }
-}
-
-export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured = true, onShowNoModelNotice }) {  const [activeTab, setActiveTab] = useState('image');
+export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiConfigured = true, onShowNoModelNotice }) {  const [activeTab, setActiveTab] = useState('image');
   const saveActiveDraftRef = useRef(null);
   const [genType, setGenType] = useState('image');
   const [activeCountByTab, setActiveCountByTab] = useState({ image: 0, video: 0, dubbing: 0, music: 0 });
@@ -174,8 +165,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
 
 
   // Session state for backend persistence
-  const sessionIdRef = _sessionIdRef;
-  const sessionInitRef = _sessionInitRef;
+  const sessionIdRef = useRef(null);
 
   // ── 历史数据加载：页面保留缓存、Store 和请求副作用，字段转换由纯适配工具负责。
   const hydrateHistoryFromCache = useCallback((tab) => {
@@ -311,92 +301,119 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
   // Session init: create or resume backend session when logged in
   // 注意：shot 历史数据现在由 apiListCreationImages/Videos/Audios 提供，不再从 apiListShots 恢复
   useEffect(() => {
-    if (!isLoggedIn || sessionInitRef.current) return;
-    sessionInitRef.current = true;
+    sessionIdRef.current = null;
+    if (!isLoggedIn || ownerId == null) return;
+    let stopped = false;
+    const sessionKey = `${SESSION_KEY}:${ownerId}`;
 
     const initSession = async () => {
       try {
-        let sid = sessionIdRef.current;
+        let sid;
+        try { sid = localStorage.getItem(sessionKey); } catch { /* 会话可仅驻留内存。 */ }
         if (sid) {
-          try { await apiGetSession(sid); } catch { sid = null; }
+          try { await apiGetSession(sid); } catch { return; }
         }
+        if (stopped) return;
         if (!sid) {
           const now = new Date();
           const pad = (n) => String(n).padStart(2, '0');
           const title = `创作 - ${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
           const session = await apiCreateSession({ title });
+          if (stopped) return;
           sid = session.id;
           sessionIdRef.current = sid;
-          localStorage.setItem(SESSION_KEY, sid);
+          localStorage.setItem(sessionKey, sid);
         } else if (sid !== sessionIdRef.current) {
           sessionIdRef.current = sid;
-          localStorage.setItem(SESSION_KEY, sid);
+          localStorage.setItem(sessionKey, sid);
         }
       } catch { /* session init fails silently; local-only mode */ }
     };
     initSession();
-  }, [isLoggedIn, sessionIdRef, sessionInitRef]);
+    return () => { stopped = true; sessionIdRef.current = null; };
+  }, [isLoggedIn, ownerId]);
 
   // 刷新恢复：检测 localStorage 中未完成的创作任务，重建占位卡片并继续轮询（支持图片/视频/配音）
   useEffect(() => {
     // 未登录时保留快照，避免调用需要鉴权的轮询接口；登录后再执行恢复。
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || ownerId == null) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    const waiting = new Map();
 
     let pending;
     try {
-      pending = JSON.parse(localStorage.getItem(PENDING_CREATION_TASKS_KEY) || '[]');
-    } catch {
-      pending = [];
+      pending = creationPendingStore.list(ownerId);
+      creationPendingStore.assertReady(ownerId);
+    } catch (error) {
+      showToast('error', error.message);
     }
-    if (!pending.length) return;
+    if (!pending?.length) return;
 
     pending
       .map(normalizeCreationPendingTask)
       .filter(Boolean)
       .forEach((task) => {
       const { taskId, genId, tab, genType } = task;
+      waiting.set(genId, task);
 
       // 先删除 store 中可能残留的同 genId 旧条目
       storeDeleteGeneration(tab, genId);
 
       // 重建占位卡片（按类型生成对应数量的占位）
-      addGeneration(tab, createCreationTaskPlaceholder(task));
+      addGeneration(tab, createCreationTaskPlaceholder({ ...task, count: 1 }));
       incrementActive(genType === 'video' ? 'video' : (genType === 'dubbing' || genType === 'music') ? genType : 'image');
 
       // 重新轮询
-      const pollPromise = genType === 'music'
-        ? apiPollCreationMusicTask(taskId)
-        : apiPollCreationTask(getCreationTaskType(genType), taskId);
+      const ids = task.taskIds || [taskId];
+      const pollPromise = Promise.all(ids.map(id => (genType === 'music'
+        ? apiPollCreationMusicTask(id, undefined, { signal })
+        : apiPollCreationTask(getCreationTaskType(genType), id, undefined, { signal }))
+        .catch(error => { if (error.taskFailed) return { failed: true }; throw error; })))
+        .then(mergeCreationRecoveryResults);
       pollPromise
         .then((result) => {
+          if (signal.aborted) return;
           const { mediaUrls, cardIds, generation } = normalizeCreationTaskResult(result, task);
 
           if (!mediaUrls.length) {
-            showToast('error', '生成失败，请稍后重试');
+            showToast('error', '任务结果尚不完整，记录已保留，请勿重复提交');
             storeDeleteGeneration(tab, genId);
-            removePendingCreationTask(genId);
             return;
           }
           storeDeleteGeneration(tab, genId);
           addGeneration(tab, generation);
           if (cardIds?.length) storeUpdateCardIds(tab, genId, cardIds);
-          removePendingCreationTask(genId);
+          try { creationPendingStore.remove(ownerId, genId); }
+          catch (error) { showToast('error', error.message); }
           // 新创作完成 → 清除历史缓存，下次刷新时能拿到新数据
           invalidate(`creation_history:${tab}:`, 'local');
         })
         .catch((err) => {
-          showToast('error', err?.message || '生成失败，请稍后重试');
+          if (signal.aborted) return;
+          showToast('error', err?.taskFailed ? err.message : '原任务查询中断，记录已保留，请勿重复提交');
           storeDeleteGeneration(tab, genId);
-          removePendingCreationTask(genId);
+          if (err.taskFailed) {
+            try { creationPendingStore.remove(ownerId, genId); }
+            catch (error) { showToast('error', error.message); }
+          }
         })
         .finally(() => {
-          decrementActive(genType === 'video' ? 'video' : (genType === 'dubbing' || genType === 'music') ? genType : 'image');
+          waiting.delete(genId);
+          if (!signal.aborted) decrementActive(genType === 'video' ? 'video' : (genType === 'dubbing' || genType === 'music') ? genType : 'image');
         });
     });
+    return () => {
+      controller.abort();
+      for (const task of waiting.values()) {
+        storeDeleteGeneration(task.tab, task.genId);
+        decrementActive(task.genType);
+      }
+    };
   // 快照保留到轮询终态，确保用户再次刷新时仍可恢复任务。
   // 仅在登录状态变化时执行，避免未登录首次挂载消费任务快照。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn]);
+  }, [isLoggedIn, ownerId]);
 
   
 
@@ -711,6 +728,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
     generateCreation: handleGenerate,
     cancelGeneration,
   } = useCreationGeneration({
+    ownerId,
     activeTab,
     isLoggedIn,
     sessionIdRef,

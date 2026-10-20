@@ -1,3 +1,5 @@
+/* 平移状态优先于选择工具的光标，结束拖动后由 React Flow 自动恢复。 */
+.react-flow .react-flow__pane.dragging { cursor: grabbing; }
 .canvas-node { --file-upload-button-font-size: 14px; --file-upload-button-line-height: 18px; --file-upload-button-text-color: rgba(255, 255, 255, 0.60); position: relative; width: 240px; color: var(--color-text-primary); font-family: inherit; }
 /* 以卡片上沿定位：固定24px标题区，加8px工具栏间距。 */
 .canvas-node__toolbar-scale { position: absolute; z-index: 12; top: 24px; left: 50%; width: 152px; height: 42px; transform: translateX(-50%) scale(var(--canvas-inverse-zoom, 1)) translateY(calc(-100% - 32px)); transform-origin: top center; }

@@ -9,6 +9,7 @@
  *   只接收页面显式数据和动作回调；不读取页面状态、不调用 API。
  *
  * ─── 更新记录 ─────────────────────────────────────────────────────
+ *   2026-10-20  接收 readOnly，未确认分镜任务期间禁止重复重新分镜
  *   2026-10-15  显式透传剪辑菜单的项目与分镜上下文
  *   2026-07-17  从 StoryboardPage 抽离头部组合
  *   2026-07-23  按新版设计稿重做面包屑和分镜统计，复用 TextButton
@@ -47,6 +48,7 @@ export default function StoryboardHeader({
   downloadMode,
   selectedCount,
   generationDisabled,
+  readOnly = false,
   onOpenImageModal,
   onOpenVideoModal,
   onEnterDownloadMode,
@@ -73,7 +75,7 @@ export default function StoryboardHeader({
         {showStoryboardSummary && (
           <>
             <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '20px', color: '#FFFFFFCC' }}>分镜数{shotText}，总时长{durationText}秒</span>
-            <TextButton variant="link" icon={<RegenerateIcon />} disabled={homeIsGenerating} onClick={onRegenerate} contentClassName="text-[14px] leading-[20px]">
+            <TextButton variant="link" icon={<RegenerateIcon />} disabled={homeIsGenerating || readOnly} onClick={onRegenerate} contentClassName="text-[14px] leading-[20px]">
               重新分镜
             </TextButton>
           </>

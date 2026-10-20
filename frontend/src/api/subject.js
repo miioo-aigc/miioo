@@ -454,11 +454,58 @@ export async function apiBatchGenerate(projectIdOrParams, maybeParams) {
 // onComplete()                          — 全部完成
 // 如果后端尚未支持 SSE，会自动降级为普通 JSON 响应
 export async function apiBatchGenerateStream(projectId, params, { onTaskCreated, onSubjectImage, onSubjectError, onComplete: rawOnComplete, signal } = {}) {
+  const throwIfAborted = () => {
+    if (signal?.aborted) throw new DOMException('请求已取消', 'AbortError');
+  };
+  const waitForTask = async (taskId) => {
+    const processedIds = new Set();
+    let failures = 0;
+    for (let poll = 0; poll < 200; poll++) {
+      throwIfAborted();
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      throwIfAborted();
+      let task;
+      try {
+        const response = await authFetch(`${BASE}/api/tasks/${taskId}`, {
+          headers: { 'Content-Type': 'application/json' }, signal,
+        });
+        if (!response.ok) throw new Error(`任务查询失败（${response.status}）`);
+        task = await response.json();
+        failures = 0;
+      } catch (error) {
+        throwIfAborted();
+        if (error?.name === 'AbortError') throw error;
+        if (++failures >= 3) throw new Error('任务查询连续失败，已暂停等待；生成可能仍在后台进行，请勿重复提交', { cause: error });
+        continue;
+      }
+      throwIfAborted();
+      for (const item of Array.isArray(task.results) ? task.results : []) {
+        const sid = item.subject_id || item.id;
+        if (!sid || processedIds.has(sid)) continue;
+        const imageUrl = item.image_url || item.imageUrl || item.url;
+        const error = item.error_msg || item.errorMsg || item.error;
+        if (error || item.success === false || item.status === 'error') {
+          processedIds.add(sid);
+          onSubjectError?.(sid, error || item.message || '生成失败');
+        } else if (imageUrl) {
+          processedIds.add(sid);
+          onSubjectImage?.(sid, imageUrl, item);
+        }
+      }
+      if (isBatchSubjectTaskTerminal(task.status || task.raw_status || '')) {
+        onComplete();
+        return;
+      }
+    }
+    throw new Error('等待生成结果超时，任务可能仍在后台进行，请勿重复提交');
+  };
   // 包装 onComplete：全部完成后先失效主体缓存，再触发调用方回调
   const onComplete = (...args) => {
+    throwIfAborted();
     invalidateSubjects(projectId);
     return rawOnComplete?.(...args);
   };
+  throwIfAborted();
   const res = await authFetchStream(`${BASE}/api/projects/${projectId}/subjects/batch-generate`, {
     method: 'POST',
     headers: {
@@ -490,61 +537,13 @@ export async function apiBatchGenerateStream(projectId, params, { onTaskCreated,
   // ── 非流式降级：后端返回普通 JSON ────────────────────────────────
   if (!contentType.includes('text/event-stream')) {
     const data = await res.json();
+    throwIfAborted();
 
     // ── 任务模式：后端返回 task_id → 轮询等待结果 ──────────────────
     if (data && (data.task_id || (data.id && data.status && (data.status === 'pending' || data.status === 'running')))) {
       const taskId = data.task_id || data.id;
       onTaskCreated?.(taskId);
-      const processedIds = new Set();
-      let pollCount = 0;
-      const MAX_POLLS = 200;
-
-      while (pollCount < MAX_POLLS) {
-        if (signal?.aborted) return;
-
-        await new Promise(r => setTimeout(r, 3000));
-        pollCount++;
-
-        try {
-          const taskRes = await authFetch(`${BASE}/api/tasks/${taskId}`, {
-            headers: { 'Content-Type': 'application/json' },
-            signal,
-          });
-          if (!taskRes.ok) continue;
-
-          const task = await taskRes.json();
-          const results = task.results || [];
-
-          if (Array.isArray(results)) {
-            for (const item of results) {
-              const sid = item.subject_id || item.id;
-              if (!sid || processedIds.has(sid)) continue;
-
-              const imgUrl = item.image_url || item.imageUrl || item.url;
-              const errMsg = item.error_msg || item.errorMsg || item.error || item.message;
-
-              if (errMsg || item.success === false || item.status === 'error') {
-                processedIds.add(sid);
-                onSubjectError?.(sid, errMsg || '生成失败');
-              } else if (imgUrl) {
-                processedIds.add(sid);
-                onSubjectImage?.(sid, imgUrl, item);
-              }
-            }
-          }
-
-          const status = task.status || task.raw_status || '';
-          if (isBatchSubjectTaskTerminal(status)) {
-            onComplete?.();
-            return data;
-          }
-        } catch (pollErr) {
-          if (pollErr?.name === 'AbortError') return;
-          console.warn('[apiBatchGenerateStream] 轮询出错:', pollErr);
-        }
-      }
-
-      onComplete?.();
+      await waitForTask(taskId);
       return data;
     }
 
@@ -561,7 +560,7 @@ export async function apiBatchGenerateStream(projectId, params, { onTaskCreated,
         }
       }
     }
-    const firstError = results.find(r => r.error || r.status === 'error' || r.success === false);
+    const firstError = Array.isArray(results) && results.find(r => r.error || r.status === 'error' || r.success === false);
     if (firstError && !results.some(r => r.image_url || r.imageUrl || r.url)) {
       const err = new Error(firstError.error || firstError.message || '批量生成失败');
       err.status = res.status;
@@ -578,7 +577,9 @@ export async function apiBatchGenerateStream(projectId, params, { onTaskCreated,
 
   try {
     while (true) {
+      throwIfAborted();
       const { done, value } = await reader.read();
+      throwIfAborted();
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
@@ -594,80 +595,29 @@ export async function apiBatchGenerateStream(projectId, params, { onTaskCreated,
           return;
         }
 
-        try {
-          const parsed = JSON.parse(payload);
+        let parsed;
+        try { parsed = JSON.parse(payload); } catch { continue; }
 
-          // SSE 中检测到任务模式 → 切换轮询
-          if (parsed.type === 'task' && (parsed.task_id || (parsed.id && parsed.status))) {
-            const taskId = parsed.task_id || parsed.id;
-            onTaskCreated?.(taskId);
-            const processedIds = new Set();
-            let pollCount = 0;
-            const MAX_POLLS = 200;
+        // SSE 中检测到任务模式后复用同一查询和收尾规则。
+        if (parsed.type === 'task' && (parsed.task_id || (parsed.id && parsed.status))) {
+          const taskId = parsed.task_id || parsed.id;
+          onTaskCreated?.(taskId);
+          await waitForTask(taskId);
+          return;
+        }
 
-            while (pollCount < MAX_POLLS) {
-              if (signal?.aborted) { reader.releaseLock(); return; }
-              await new Promise(r => setTimeout(r, 3000));
-              pollCount++;
+        const sid = parsed.subject_id || parsed.id;
+        const errMsg = parsed.error_msg || parsed.errorMsg || parsed.error;
+        const imgUrl = parsed.image_url || parsed.imageUrl || parsed.url;
 
-              try {
-                const taskRes = await authFetch(`${BASE}/api/tasks/${taskId}`, {
-                  headers: { 'Content-Type': 'application/json' },
-                  signal,
-                });
-                if (!taskRes.ok) continue;
-
-                const task = await taskRes.json();
-                const results = task.results || [];
-
-                if (Array.isArray(results)) {
-                  for (const item of results) {
-                    const s = item.subject_id || item.id;
-                    if (!s || processedIds.has(s)) continue;
-                    const u = item.image_url || item.imageUrl || item.url;
-                    const e = item.error_msg || item.errorMsg || item.error || item.message;
-                    if (e || item.success === false || item.status === 'error') {
-                      processedIds.add(s);
-                      onSubjectError?.(s, e || '生成失败');
-                    } else if (u) {
-                      processedIds.add(s);
-                      onSubjectImage?.(s, u, item);
-                    }
-                  }
-                }
-
-                const st = task.status || task.raw_status || '';
-                if (isBatchSubjectTaskTerminal(st)) {
-                  reader.releaseLock();
-                  onComplete?.();
-                  return;
-                }
-              } catch (pollErr) {
-                if (pollErr?.name === 'AbortError') { reader.releaseLock(); return; }
-                console.warn('[apiBatchGenerateStream] 轮询出错:', pollErr);
-              }
-            }
-
-            reader.releaseLock();
-            onComplete?.();
-            return;
-          }
-
-          const sid = parsed.subject_id || parsed.id;
-          const errMsg = parsed.error_msg || parsed.errorMsg || parsed.error || parsed.message;
-          const imgUrl = parsed.image_url || parsed.imageUrl || parsed.url;
-
-          if (errMsg || parsed.success === false) {
-            onSubjectError?.(sid, errMsg);
-          } else if (imgUrl) {
-            onSubjectImage?.(sid, imgUrl, parsed);
-          }
-        } catch {
-          // 忽略无法解析的 chunk
+        if (errMsg || parsed.success === false) {
+          onSubjectError?.(sid, errMsg || parsed.message || '生成失败');
+        } else if (imgUrl) {
+          onSubjectImage?.(sid, imgUrl, parsed);
         }
       }
     }
-    onComplete?.();
+    throw new Error('生成结果连接已中断，未确认任务完成，请勿重复提交');
   } finally {
     reader.releaseLock();
   }

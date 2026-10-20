@@ -1,5 +1,6 @@
 /**
  * 首页导航配置与图标展示。仅提供静态配置，不读取页面状态或执行导航副作用。
+ * 2026-10-20：画布入口调整至项目之后、创作之前。
  */
 
 import { QRCodePopup } from './HomeBottomMenus';
@@ -30,6 +31,11 @@ const NAV_ITEMS = [
     ),
   },
   {
+    key: 'canvas',
+    label: '画布',
+    icon: <img src={canvasNavIcon} width="16" height="16" alt="" style={ICON_STYLE} />,
+  },
+  {
     key: 'create',
     label: '创作',
     icon: (
@@ -45,11 +51,6 @@ const NAV_ITEMS = [
         </defs>
       </svg>
     ),
-  },
-  {
-    key: 'canvas',
-    label: '画布',
-    icon: <img src={canvasNavIcon} width="16" height="16" alt="" style={ICON_STYLE} />,
   },
   {
     key: 'assets',

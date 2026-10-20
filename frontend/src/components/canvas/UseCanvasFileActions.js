@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { CANVAS_FILE_LIMIT, mergeCanvasFile, parseCanvasFile, serializeCanvasFile } from './CanvasFile';
 import { showGlobalToast } from '../../stores/toastStore';
+import { apiEnableCanvasShare } from '../../api/canvas';
+import { copyCanvasShareLink, enableAndCopyCanvasShare } from './CanvasShareLink';
 
 export function useCanvasFileActions({ nodes, setNodes, name, flowInstance, canvasId }) {
   const inputRef = useRef(null);
@@ -26,7 +28,7 @@ export function useCanvasFileActions({ nodes, setNodes, name, flowInstance, canv
     busy.current = true;
     const token = scope.current;
     try { await action(() => scope.current === token); }
-    catch (error) { if (scope.current === token) showGlobalToast(error.message || '文件操作失败', 'error'); }
+    catch (error) { if (scope.current === token) showGlobalToast(error.message || '画布操作失败', 'error'); }
     finally { busy.current = false; }
   };
   return {
@@ -52,7 +54,14 @@ export function useCanvasFileActions({ nodes, setNodes, name, flowInstance, canv
       });
     },
     share: (action) => {
-      if (action !== 'export-canvas') { showGlobalToast('复制画布链接暂未开放', 'info'); return; }
+      if (action === 'copy-link') return run(async (active) => {
+        const copied = await enableAndCopyCanvasShare({
+          canvasId, origin: window.location.origin, enable: apiEnableCanvasShare,
+          copy: copyCanvasShareLink, active,
+        });
+        if (copied) showGlobalToast('链接已复制，展示服务端已保存的版本', 'success');
+      });
+      if (action !== 'export-canvas') return;
       return run(async (active) => {
         const text = await serializeCanvasFile(nodes, name);
         if (!active()) return;

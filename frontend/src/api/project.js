@@ -67,11 +67,11 @@ export async function apiUpdateProjectVoiceSettings(projectId, data) {
   return updated;
 }
 
-export async function apiCreateProject({ name, description, aspect_ratio, visual_style, visual_style_prompt, creation_mode, project_type, cover_url }) {
+export async function apiCreateProject({ name, description, aspect_ratio, visual_style, visual_style_prompt, creation_mode, project_type, cover_url, create_first_canvas, first_canvas_title }) {
   const res = await authFetch(`${BASE}/api/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, description, aspect_ratio, visual_style, visual_style_prompt, creation_mode, project_type, cover_url }),
+    body: JSON.stringify({ name, description, aspect_ratio, visual_style, visual_style_prompt, creation_mode, project_type, cover_url, create_first_canvas, first_canvas_title }),
   });
   if (!res.ok) {
     await throwResponseError(res, `创建项目失败（${res.status}）`);

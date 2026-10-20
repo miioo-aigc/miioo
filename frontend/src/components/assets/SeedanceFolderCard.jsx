@@ -176,7 +176,7 @@ export default function SeedanceFolderCard({ name, count = 0, images = [], onOpe
   }, [isHovered]);
 
   return (
-    <article className="group aspect-[3/2] w-full min-w-[216px] max-w-[270px] min-h-0 cursor-pointer" role={presentationOnly ? undefined : 'button'} tabIndex={presentationOnly ? undefined : 0} style={{ fontFamily: FONT }} onClick={presentationOnly ? undefined : onOpen} onKeyDown={presentationOnly ? undefined : (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen?.(); } }} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} onFocus={() => setIsHovered(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsHovered(false); }}>
+    <article className="group aspect-[3/2] w-full min-w-0 max-w-[270px] min-h-0 cursor-pointer" role={presentationOnly ? undefined : 'button'} tabIndex={presentationOnly ? undefined : 0} style={{ fontFamily: FONT }} onClick={presentationOnly ? undefined : onOpen} onKeyDown={presentationOnly ? undefined : (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen?.(); } }} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} onFocus={() => setIsHovered(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsHovered(false); }}>
       <div className="relative h-full w-full overflow-hidden">
         <BackFolder id={instanceId} />
         {previews.length > 1 ? (

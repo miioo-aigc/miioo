@@ -10,11 +10,13 @@
  *   getSubjectCandidateImagesFromResponse 从主体详情响应读取候选图字段
  *   sortSubjectImages        按进入候选列表时间倒序排列
  *   mergeSubjectImages       去重、限制定稿图数量并插入任务占位/结果
+ *   mergeSubjectDetailUploads 详情回填时保护本面板新增上传，按编号/地址去重
  *
  * ─── 依赖边界 ───────────────────────────────────────────────────────
  *   仅依赖图片地址和参考素材适配工具；不引用 React、页面、API、Store 或 Toast
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-10-19  详情合并只保留本面板上传，不整体保留旧候选列表
  *   2026-07-15  从 SubjectPage 抽离主体详情图片的纯数据转换逻辑
  *   2026-07-22  参考图与候选图彻底分流，主体右侧列表只展示候选结果
  *   2026-07-28  合并读取绑定主体的项目资产，支持候选区上传和资产库选择刷新恢复
@@ -400,4 +402,22 @@ export function filterSubjectImagesByReferences(images = [], referenceImages = [
   const referenceKeys = buildReferenceKeys(referenceImages);
   return (Array.isArray(images) ? images : [])
     .filter((image) => !isReferenceImage(image, referenceKeys));
+}
+
+export function mergeSubjectDetailUploads(current, incoming, referenceImages, deletedIds) {
+  const uploads = current.filter(image => image.panelUpload);
+  const ids = new Set(), assetIds = new Set(), urls = new Set();
+  return filterSubjectImagesByReferences([...uploads, ...incoming], referenceImages).filter(image => {
+    const id = image.id == null ? null : String(image.id);
+    const assetId = image.assetId == null ? null : String(image.assetId);
+    const url = normalizeImageUrl(image.rawUrl || image.url) || image.rawUrl || image.url;
+    if ((id && deletedIds.has(id)) || (assetId && deletedIds.has(assetId))) return false;
+    // 无地址的上传占位仍须保留，成功回调依赖其临时编号替换。
+    if (!url && !image.uploading) return false;
+    if ((id && ids.has(id)) || (assetId && assetIds.has(assetId)) || (url && urls.has(url))) return false;
+    if (id) ids.add(id);
+    if (assetId) assetIds.add(assetId);
+    if (url) urls.add(url);
+    return true;
+  });
 }

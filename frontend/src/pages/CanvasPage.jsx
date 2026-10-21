@@ -3,12 +3,13 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L134；grouping L177；referenceGraph L191；mediaPreview L158；文档加载 L204；handleNodesChange L270；addNode L340；工具栏新增 L385；批量导入 L397；React Flow L749
+ *   CanvasPage L137；grouping L181；referenceGraph L195；mediaPreview L162；文档加载 L208；handleNodesChange L291；addNode L361；工具栏新增 L406；批量导入 L418；React Flow L770
+ *   2026-10-21：正式项目详情及项目改名接线，项目名与画布名独立；加载及改名校验账号会话。
  *   2026-10-20：正式 records 文档读写、分批素材恢复及会话内幂等串行保存；加载失败禁止保存，分享复制不依赖保存。
  *   2026-10-19：UseCanvasSnapping 编排可选网格/边缘吸附，CanvasSnapGuides 显示辅助线；正文边界排除输入框，CanvasGrid 统一背景参数与可见网点中心，修正正文左上边框落点。
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
- *   CanvasProjectHeader components/canvas；2026-10-10 接通开发态新建项目回调；模拟详情跳过用户接口，重命名仍为会话内。删除接入撤销，仅运行/排队任务确认。
+ *   CanvasProjectHeader components/canvas；正式新建项目由首页回调，项目改名持久化；仅旧模拟详情保持会话内名称。删除接入撤销，仅运行/排队任务确认。
  *   CanvasUserMenu      components/canvas；右上角用户信息与菜单
  *   CanvasCenterPrompt  components/canvas；中央空态提示
  *   CanvasToolbar       components/canvas；底部画布工具栏；2026-10-10 文本节点更多入口复用右键菜单，仅选当前卡片。
@@ -58,6 +59,8 @@ import { apiGetCanvasDocument, apiUpdateCanvasDocument, apiResolveCanvasAssetVie
 import { uploadCanvasAsset } from '../api/canvasAssets';
 import { isDevelopmentCanvas } from '../api/CanvasDevelopment';
 import { apiGetCurrentUser } from '../api/user';
+import { apiGetProject, apiUpdateProject } from '../api/project';
+import { getAuthSessionGeneration } from '../api/request';
 import { apiLogout, clearTokens } from '../api/auth';
 import CanvasCenterPrompt from '../components/canvas/CanvasCenterPrompt';
 import CanvasProjectHeader from '../components/canvas/CanvasProjectHeader';
@@ -133,6 +136,7 @@ function UnsupportedAction({ onClose }) {
 
 export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCreateProject, onSelectCanvas }) {
   const [canvas, setCanvas] = useState(null);
+  const [project, setProject] = useState(null);
   const [currentUser, setCurrentUser] = useState({});
   const [profileOpen, setProfileOpen] = useState(false);
   const [loadedCanvasId, setLoadedCanvasId] = useState(null);
@@ -171,7 +175,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
   const { nodes, setNodes } = history;
   const imageEdits = useCanvasImageEdits({ nodes, setNodes, canvasId, cancelPendingClicks });
   const videoEdits = useCanvasVideoEdits({ nodes, setNodes, canvasId, cancelPendingClicks });
-  const projectName = canvas?.project_name || canvas?.projectName || '自由画布项目';
+  const projectName = project?.name || canvas?.project_name || canvas?.projectName || '自由画布项目';
   const canvasFiles = useCanvasFileActions({ nodes, setNodes, name: projectName, flowInstance, canvasId });
   const search = useCanvasSearch({ nodes, setNodes, flowInstance, containerRef: canvasContainerRef, cancelPendingClicks, open: searchOpen, setOpen: setSearchOpen });
   const grouping = useCanvasGrouping(nodes, setNodes, cancelPendingClicks, false);
@@ -203,35 +207,52 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
 
   useEffect(() => {
     let cancelled = false;
+    const session = getAuthSessionGeneration();
+    const isCurrent = () => !cancelled && session === getAuthSessionGeneration();
     const controller = new AbortController();
     saveSessionRef.current = { canvasId, session: createCanvasSaveSession(apiUpdateCanvasDocument) };
     Promise.allSettled([apiGetCanvasDocument(canvasId), isDevelopmentCanvas(canvasId) ? Promise.resolve({}) : apiGetCurrentUser()]).then(async ([documentResult, userResult]) => {
-      if (cancelled) return;
+      if (!isCurrent()) return;
       if (documentResult.status === 'rejected') {
         setError(documentResult.reason?.message || '画布加载失败，请返回重试');
       } else {
         try {
           const document = readCanvasDocument(documentResult.value);
+          const projectId = documentResult.value?.project_id;
+          const projectDetails = !isDevelopmentCanvas(canvasId) && projectId ? await apiGetProject(projectId) : null;
           const restoredNodes = isDevelopmentCanvas(canvasId) ? document.nodes : await resolveCanvasDocumentAssets(
             canvasId, document.nodes, apiResolveCanvasAssetViews, { signal: controller.signal },
           );
-          if (cancelled) return;
+          if (!isCurrent()) return;
           setError('');
+          setProject(projectDetails);
           setCanvas(documentResult.value);
           setNodes(restoredNodes, { record: false });
           setViewport(document.viewport);
           setViewportZoom(document.viewport.zoom || 1);
           setCanvasRevision(documentResult.value?.revision ?? null);
         } catch (loadError) {
-          if (cancelled) return;
+          if (!isCurrent()) return;
           setError(loadError.message || '画布素材恢复失败，请返回重试');
         }
       }
+      if (!isCurrent()) return;
       if (userResult.status === 'fulfilled') setCurrentUser(userResult.value || {});
       setLoadedCanvasId(canvasId);
     });
     return () => { cancelled = true; controller.abort(); };
   }, [canvasId, setNodes]);
+
+  const renameProject = async (name) => {
+    if (isDevelopmentCanvas(canvasId)) {
+      setCanvas((current) => ({ ...current, project_name: name }));
+      return;
+    }
+    if (!project?.id) throw new Error('项目尚未加载完成，请稍后重试');
+    const session = getAuthSessionGeneration();
+    const updated = await apiUpdateProject(project.id, { name });
+    if (session === getAuthSessionGeneration()) setProject(updated);
+  };
 
   useEffect(() => () => {
     pendingNodeClicksRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -743,7 +764,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     {imageEdits.editor && <LocalImageEditor key={`${imageEdits.editor.card.imageUrl}:${imageEdits.editor.mode}`} {...imageEdits.editor} onClose={imageEdits.close} />}
     {videoEdits.editor && <CanvasVideoEditor key={`${videoEdits.editor.videoUrl}:${videoEdits.editor.mode}`} editor={videoEdits.editor} onClose={videoEdits.close} />}
     <CanvasFileInput inputRef={canvasFiles.inputRef} onChange={canvasFiles.importFile} />
-    <CanvasProjectHeader canvasName={projectName} onBackHome={onBackHome} onBackProjects={onBackProjects} onCreateProject={onCreateProject} onImport={canvasFiles.open} onUnsupported={handleUnsupported} onRename={(name) => setCanvas((current) => ({ ...current, project_name: name }))} />
+    <CanvasProjectHeader canvasName={projectName} onBackHome={onBackHome} onBackProjects={onBackProjects} onCreateProject={onCreateProject} onImport={canvasFiles.open} onUnsupported={handleUnsupported} onRename={renameProject} />
     <CanvasUserMenu currentUser={currentUser} onLogout={handleLogout} onOpenProfile={() => setProfileOpen(true)} />
     <div ref={canvasContainerRef} className="absolute inset-0 bg-surface-toolbar">
       <ReactFlow viewport={viewport} minZoom={0.01}

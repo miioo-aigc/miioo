@@ -16,6 +16,9 @@ const runEffect = new Function(...names, `
   const apiUpdateCanvasDocument = () => {};
   const resolveCanvasDocumentAssets = async (_, nodes) => nodes;
   const apiResolveCanvasAssetViews = () => {};
+  const getAuthSessionGeneration = () => 1;
+  const apiGetProject = async (id) => ({ id, name: '正式项目' });
+  const setProject = () => {};
   let cancelled = false;${match[1]}`);
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 

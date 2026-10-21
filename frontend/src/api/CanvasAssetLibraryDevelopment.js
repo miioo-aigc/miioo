@@ -170,7 +170,7 @@ export function createCanvasAssetLibraryDevelopment() {
     async references({ folder_id, asset_ids }) {
       if (!folder_id) fail('请选择目标文件夹', 'TARGET_NOT_FOUND');
       folder(folder_id);
-      for (const key of asset_ids) if (!assets.has(key)) fail('模拟模式只能添加本次模拟上传的素材', 'ASSET_UNAVAILABLE');
+      for (const key of asset_ids) if (!assets.has(key)) fail('模拟模式只能添加本次会话已有的素材', 'ASSET_UNAVAILABLE');
       for (const key of asset_ids) {
         const entry = { id: id(), type: 'entry', folder_id, asset_id: key, relation: 'reference', revision: revision + 1 };
         entries.set(entry.id, entry);
@@ -178,7 +178,8 @@ export function createCanvasAssetLibraryDevelopment() {
       revision++;
       return { status: 'completed' };
     },
-    async upload(file, folderId) {
+    // 仅用于测试注入原生素材，不作为资产库页面的上传接口。
+    async seedAsset(file, folderId) {
       folder(folderId);
       if (!folderId) fail('请先进入文件夹', 'TARGET_NOT_FOUND');
       const mediaType = file.type.split('/')[0];

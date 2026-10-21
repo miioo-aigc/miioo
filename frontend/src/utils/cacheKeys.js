@@ -57,7 +57,7 @@ export const K = {
   storyboardMediaCandidatesPrefix: (projectId) => `storyboard-media-candidates:${projectId}:`,
 
   // ── L3 列表（medium: 'session'，短缓存）─────────────────────────────────────
-  projects: (search) => `projects:${search || ''}`,
+  projects: (params = {}) => `projects:${stable(params)}`,
   projectsPrefix: () => 'projects:',
 
   // ── L2 资产库（medium: 'local'，SWR + 写失效）────────────────────────────────

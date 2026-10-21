@@ -1,4 +1,4 @@
-import { authFetch, authFetchForm } from './request';
+import { authFetch } from './request';
 import { createCanvasAssetLibraryDevelopment } from './CanvasAssetLibraryDevelopment';
 import { apiUpdateAsset, apiDownloadAsset } from './assets';
 
@@ -23,10 +23,9 @@ const messages = {
 };
 
 async function request(path, method = 'GET', body, signal) {
-  const isForm = body instanceof FormData;
-  const response = await (isForm ? authFetchForm : authFetch)(`${base}${path}`, {
-    method, signal, ...(!isForm ? { headers: { 'Content-Type': 'application/json' } } : {}),
-    ...(body ? { body: isForm ? body : JSON.stringify(body) } : {}),
+  const response = await authFetch(`${base}${path}`, {
+    method, signal, headers: { 'Content-Type': 'application/json' },
+    ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const data = response.status === 204 ? {} : await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -80,17 +79,6 @@ export const canvasAssetLibrary = {
   references: (body) => development ? development.references(body) : request('/references', 'POST', { ...body, idempotency_key: key() }).then(settle),
   preview: (body) => development ? development.preview(body) : request('/deletions/preview', 'POST', body),
   commit: (body) => development ? development.commit(body) : request('/deletions/commit', 'POST', { ...body, idempotency_key: key() }).then(settle),
-  async upload(file, folderId) {
-    if (development) return development.upload(file, folderId);
-    const form = new FormData();
-    form.append('file', file);
-    form.append('folder_id', folderId);
-    form.append('idempotency_key', key());
-    // 后端受控上传并创建唯一原生位置；不复用会产生其他库资产的上传接口。
-    const upload = await request('/uploads', 'POST', form);
-    if (!upload.upload_id) throw new Error('服务端未返回上传凭证，不能确认入库');
-    return settle(await request(`/uploads/${encodeURIComponent(upload.upload_id)}/complete`, 'POST', { idempotency_key: key() }));
-  },
   async download(entry) {
     if (development) return { url: entry.asset.url, name: entry.asset.name };
     const blob = await apiDownloadAsset(entry.asset_id ?? entry.asset?.id);

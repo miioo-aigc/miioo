@@ -18,6 +18,7 @@ function setup({ status = 200, payload = { ok: true } } = {}) {
   const api = runInNewContext(`${source}\n({ apiResolveCanvasAssetViews, apiArchiveCanvasDocument, apiDuplicateCanvasDocument,
     apiGetCanvasShareStatus, apiEnableCanvasShare, apiDisableCanvasShare,
     apiGetSharedCanvas, apiImportSharedCanvas, apiUpdateCanvasDocument, apiReorderCanvasDocuments,
+    apiListCanvasDocuments,
     apiGetCanvasRuns, apiGetCanvasRun, apiCancelCanvasRun, apiReconcileCanvasRuns })`, {
     authFetch: request('auth'), fetch: request('public'), throwResponseError,
     isDevelopmentCanvas: (id) => id.startsWith('dev-'), URLSearchParams,
@@ -34,6 +35,22 @@ test('资产解析去重保序，保留失效分类，不修改返回结构', as
   assert.throws(() => api.apiResolveCanvasAssetViews('canvas', Array.from({ length: 201 }, (_, i) => String(i))), /200/);
   assert.throws(() => api.apiResolveCanvasAssetViews('canvas', [null]), /资产编号/);
   assert.equal(calls.length, 1);
+});
+
+test('画布列表透传 OpenAPI 已声明的过滤与树范围参数', async () => {
+  const { api, calls } = setup();
+  await api.apiListCanvasDocuments({
+    projectId: 'project-1', status: 'active', search: '草稿', rootsOnly: true,
+    rootCanvasId: 'canvas-1', page: 2, pageSize: 50,
+  });
+  const url = new URL(calls[0].url);
+  assert.equal(url.searchParams.get('project_id'), 'project-1');
+  assert.equal(url.searchParams.get('status'), 'active');
+  assert.equal(url.searchParams.get('search'), '草稿');
+  assert.equal(url.searchParams.get('roots_only'), 'true');
+  assert.equal(url.searchParams.get('root_canvas_id'), 'canvas-1');
+  assert.equal(url.searchParams.get('page'), '2');
+  assert.equal(url.searchParams.get('page_size'), '50');
 });
 
 test('保存和分享导入携带各自幂等键，204删除无需解析JSON', async () => {

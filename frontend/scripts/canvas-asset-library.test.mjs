@@ -1,13 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createCanvasAssetLibraryDevelopment } from '../src/api/CanvasAssetLibraryDevelopment.js';
+
+test('资产库取消本地上传但保留引用入口', () => {
+  const contents = readFileSync(new URL('../src/components/assets/CanvasLibraryContents.jsx', import.meta.url), 'utf8');
+  const api = readFileSync(new URL('../src/api/CanvasAssetLibrary.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(contents, /本地上传|上传素材|type="file"|api\.upload/);
+  assert.match(contents, /添加素材/);
+  assert.match(contents, /api\.references/);
+  assert.doesNotMatch(api, /async upload\(|\/uploads/);
+});
 
 const setup = (t) => {
   const api = createCanvasAssetLibraryDevelopment();
   t.after(() => api.dispose());
   return api;
 };
-const upload = (api, folder) => api.upload(new File(['image'], '角色.png', { type: 'image/png' }), folder.id);
+const upload = (api, folder) => api.seedAsset(new File(['image'], '角色.png', { type: 'image/png' }), folder.id);
 const remove = async (api, item) => api.commit(await api.preview({ selection: [item] }));
 const root = (api, name) => {
   const item = api.seedCollection({ name, defaults: false });
@@ -87,10 +97,10 @@ test('删除预检在范围变动或过期时拒绝提交，不能重放', async
   await assert.rejects(api.commit(next), { code: 'DELETE_PREVIEW_EXPIRED' });
 });
 
-test('仅允许图片视频音频上传', async (t) => {
+test('原生素材测试数据仅允许图片视频音频', async (t) => {
   const api = setup(t);
   const a = root(api, '甲');
-  await assert.rejects(api.upload(new File(['text'], '文本.txt', { type: 'text/plain' }), a.id), { code: 'UNSUPPORTED_MEDIA_TYPE' });
+  await assert.rejects(api.seedAsset(new File(['text'], '文本.txt', { type: 'text/plain' }), a.id), { code: 'UNSUPPORTED_MEDIA_TYPE' });
 });
 
 test('集合倒序分页、默认类型目录可删改、复制集合素材独立', async (t) => {

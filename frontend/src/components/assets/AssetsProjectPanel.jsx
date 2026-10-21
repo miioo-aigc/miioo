@@ -6,15 +6,15 @@
  * 通过显式 props 组合展示组件，不把页面入口或目录入口作为隐式依赖。
  *
  * ─── 状态与数据流 ───────────────────────────────────
- *   项目、当前分类、资产数据、批量选择和弹窗状态                  L182
- *   首屏加载 L290；追加分页 L402；归属过滤 L499
+ *   项目、当前分类、资产数据、批量选择和弹窗状态                  L183
+ *   首屏加载 L291；追加分页 L403；归属过滤 L500
  *
  * ─── 业务动作 ───────────────────────────────────────
- *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L503
+ *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L504
  *   下载动作统一启动全局下载 Toast；有流式总长度时展示环形进度
  *
  * ─── 页面组合 ───────────────────────────────────────
- *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L736
+ *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L737
  *
  * ─── 更新记录 ───────────────────────────────────────
  *   2026-10-15  保留初始项目及分类、目标可见性校验；合并请求代际保护并校正索引
@@ -32,6 +32,7 @@
  *   2026-08-04 过滤改为读取主体详情，避免主体摘要不返回 reference_images 导致过滤失效
  *   2026-08-21 项目音频卡片接入统一详情弹窗，按 Asset/AudioClip 视图补全详情字段
  *   2026-09-07 项目音频复用创作配音卡片，并按分集/分镜切换为时间线分区展示
+ *   2026-10-21 项目列表改为创建时间倒序，未指定项目时默认选中最新项目
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -432,7 +433,7 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
   useEffect(() => {
     apiGetProjects().then((list) => {
       const sortedProjects = Array.isArray(list)
-        ? [...list].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+        ? [...list].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
         : [];
       setProjects(sortedProjects);
       const target = sortedProjects.find((project) => String(project.id) === String(initialProjectId));

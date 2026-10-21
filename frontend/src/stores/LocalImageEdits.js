@@ -4,6 +4,9 @@ import { showGlobalToast } from './toastStore';
 import { downloadUrlWithFeedback } from '../utils/downloadFeedback';
 import { bindImageEditResult } from '../api/ImageEditSave';
 import { syncCreationImageEdit, removeCreationImageEdit } from './CreationImageEdits';
+import { creationEditOwner } from '../utils/CreationEditScope';
+import { useCreationStore } from './creationStore';
+import { getAuthSessionGeneration } from '../api/request';
 
 const EMPTY = [];
 let database;
@@ -60,18 +63,21 @@ async function discard(record) {
 
 export async function loadLocalImages(scope) {
   if (!scope) return;
+  if (scope.startsWith('creation:') && (!creationEditOwner(scope) || creationEditOwner(scope) !== useCreationStore.getState().ownerId)) return;
   if (!loads.has(scope)) loads.set(scope, transact('readonly', (store) => store.index('scope').getAll(scope)).then((records) => {
     useLocalImageEditStore.setState((state) => ({ byScope: { ...state.byScope, [scope]: records.filter((record) => !record.abandoned).sort((a, b) => a.created_at.localeCompare(b.created_at)).map(materialize) } }));
     localImagesFor(useLocalImageEditStore.getState(), scope).forEach(syncCreationImageEdit);
-    records.filter((record) => record.pending && !record.abandoned).forEach((record) => {
-      resumePendingImage(record).catch((error) => showGlobalToast(error.message || '图片编辑任务恢复失败', 'error'));
-    });
   }).catch((error) => { loads.delete(scope); throw error; }));
   await loads.get(scope);
+  localImagesFor(useLocalImageEditStore.getState(), scope).forEach(syncCreationImageEdit);
+  localImagesFor(useLocalImageEditStore.getState(), scope).filter((record) => record.pending && !record.abandoned).forEach((record) => {
+    resumePendingImage(record).catch((error) => showGlobalToast(error.message || '图片编辑任务恢复失败', 'error'));
+  });
 }
 
 export async function saveLocalImage(scope, image) {
   if (!scope || (!(image.blob instanceof Blob) && !image.remoteUrl)) throw new Error('缺少图片或列表归属');
+  if (scope.startsWith('creation:') && !creationEditOwner(scope)) throw new Error('图片编辑缺少账号归属，未自动认领旧记录');
   await loadLocalImages(scope);
   // 只持久化实体和必要元数据，不保存刷新后失效的临时地址。
   const record = { id: image.pendingRecordId || `local-edit-${crypto.randomUUID()}`, scope, blob: image.blob, remoteUrl: image.remoteUrl, originalUrl: image.originalUrl, creationAssetId: image.creationAssetId, backendId: image.backendId, model: image.model, prompt: image.prompt, ratio: image.ratio, resolution: image.resolution, width: image.width, height: image.height, source: image.source, metadata_json: image.metadata_json, edit_type: image.edit_type, edit_mode: image.edit_mode, source_asset_id: image.source_asset_id, created_at: new Date().toISOString() };
@@ -81,15 +87,26 @@ export async function saveLocalImage(scope, image) {
 
 function resumePendingImage(record) {
   if (!resumptions.has(record.id)) resumptions.set(record.id, (async () => {
+    const session = getAuthSessionGeneration();
+    const isCurrent = () => !record.scope?.startsWith('creation:') || (
+      creationEditOwner(record.scope) != null
+      && creationEditOwner(record.scope) === useCreationStore.getState().ownerId
+      && session === getAuthSessionGeneration()
+    );
     try {
       if (!record.image) await transact('readwrite', (store) => store.put(record));
+      if (!isCurrent()) return;
       const image = record.image || await apiResolveImageEdit(record.accepted, record.mode);
       record.image = image;
+      await transact('readwrite', (store) => store.put(record));
+      publish(record);
       // 重试只处理同一张已生成图片，不重新提交生成；次数随任务持久化。
       while ((record.saveAttempts || 0) < 5) {
+        if (!isCurrent()) return;
         record.saveAttempts = (record.saveAttempts || 0) + 1;
         try {
           await transact('readwrite', (store) => store.put(record));
+          if (!isCurrent()) return;
           const edited = record.destination ? { ...image, edit_type: image.edit_type || 'image_edit', edit_mode: image.edit_mode || record.mode, source_asset_id: image.source_asset_id || record.sourceId } : image;
           record.boundResult ||= record.destination ? await bindImageEditResult(edited, record.destination) : normalizeEditedImage(edited);
           await transact('readwrite', (store) => store.put(record));
@@ -100,6 +117,7 @@ function resumePendingImage(record) {
       }
       throw new Error('图片已生成，但自动保存 5 次均失败，已放弃本次任务，请重新发起生成');
     } catch (error) {
+      if (!isCurrent()) return;
       error.terminal = true;
       record.abandoned = true;
       await discard(record).catch(async () => {
@@ -112,6 +130,9 @@ function resumePendingImage(record) {
 }
 
 export async function savePendingImage(scope, pending) {
+  if (scope?.startsWith('creation:') && !creationEditOwner(scope)) {
+    throw new Error('图片编辑缺少账号归属，未自动认领旧记录');
+  }
   await loadLocalImages(scope);
   const taskId = pending.accepted?.task_id || pending.accepted?.taskId || pending.accepted?.id || pending.image?.asset_id || pending.image?.id;
   if (!taskId) throw new Error('保存编辑任务失败：缺少任务或资产编号');
@@ -119,6 +140,7 @@ export async function savePendingImage(scope, pending) {
   const existing = await transact('readonly', (store) => store.get(id));
   if (existing && !existing.pending) return materialize(existing);
   const record = existing || { id, scope, pending: true, ...pending, created_at: new Date().toISOString() };
+  await transact('readwrite', (store) => store.put(record));
   publish(record);
   return resumePendingImage(record);
 }

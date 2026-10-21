@@ -1,9 +1,9 @@
 /**
  * @file CreationPage.jsx
- * @structure-index：2026-10-20 已同步当前结构；历史加载错误保留并暂停失败后的自动补页。
+ * @structure-index：2026-10-21 历史按账号缓存，页面访问和请求代际保护迟到回写。
  *   2026-10-09：选帧查看导航由 viewSavedImage 副作用承接，保存草稿后切到图片并关闭视频详情。
  *
- * ─── 全局常量与工具函数 ─────────────────────────────── L134–L143
+ * ─── 全局常量与工具函数 ─────────────────────────────── L136–L145
  *   FONT / FONT_MEDIUM、图片下载、动画注入
  *   filenameFromPrompt / audioFilenameFromPrompt              utils/creationFilename.js
  *   生成类型到任务轮询类型的适配                     utils/creationTaskAdapter.js
@@ -12,15 +12,15 @@
  *   刷新任务快照、占位卡片和轮询结果适配                   utils/creationTaskAdapter.js
  *   视频详情与音频详情字段适配                                    utils/creationDetailAdapter.js / creationAudioDetailAdapter.js
  *
- * ─── 页面入口与状态编排 ──────────────────────────────── L145–L794
- *   CreationPage 状态、Store、历史缓存和分页                       L145–L300
- *   Session 初始化、刷新任务恢复和收藏动作                           L301–L457
- *   模型能力、参数加载、Tab、批量操作、正式下载和历史清理               L458–L723
- *   useCreationGeneration 生成请求、占位卡和结果写回                  L724–L741
- *   模型入口检查、输入卡渲染和媒体详情回调                            L743–L794
+ * ─── 页面入口与状态编排 ──────────────────────────────── L147–L842
+ *   CreationPage 状态、Store、历史缓存和分页                       L147–L331
+ *   Session 初始化、刷新任务恢复和收藏动作                           L332–L493
+ *   模型能力、参数加载、Tab、批量操作、正式下载和历史清理               L494–L771
+ *   useCreationGeneration 生成请求、占位卡和结果写回                  L772–L789
+ *   模型入口检查、输入卡渲染和媒体详情回调                            L791–L842
  *   CreationInputCard 已迁移至 components/creation/，页面通过 renderInputCard 显式接入
  *
- * ─── 页面渲染结构 ────────────────────────────────────── L795–L909
+ * ─── 页面渲染结构 ────────────────────────────────────── L843–L957
  *   CreationPageOverlays（确认弹窗和媒体详情 Portal）         components/creation/CreationPageOverlays.jsx
  *   CreationWorkspace（主体卡片、工具栏和结果/空态组合）       components/creation/CreationWorkspace.jsx
  *   handleBeforeModelOpen / renderInputCard                     页面级显式接线辅助
@@ -95,9 +95,11 @@
  *   2026-09-21  图片历史每页由 18 条改为 6 条；视频、配音及自动补页行为保持不变
  *   2026-09-24  配音下载命名仅提取正文，过滤情绪、停顿和语气标记
  *   2026-10-20  按账号恢复全部任务编号；未知/损坏记录保留，取消仅停止等待。
- *   结构审计：历史分页、Session、任务恢复及 Store 写回集中编排；本轮不为行数搬迁副作用。
+ *   2026-10-21  历史缓存按账号隔离，过期分页和写操作回执不跨访问写回；仍保留页面级编排。
  */
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { getAuthSessionGeneration } from '../api/request';
+import { creationHistoryPrefix, createCreationHistoryVisit } from '../utils/CreationHistoryScope';
 import { mergeCreationRecoveryResults } from '../utils/CreationRecoveryResults';
 import { apiPollCreationTask, apiPollCreationMusicTask, apiGetCreationVideo, apiGetCreationAudio, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
@@ -143,6 +145,28 @@ const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-u
 const SESSION_KEY = 'miioo_creation_session_id';
 
 export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiConfigured = true, onShowNoModelNotice }) {  const [activeTab, setActiveTab] = useState('image');
+  const visitRef = useRef(null);
+  const historyRequestsRef = useRef({});
+  const invalidateHistory = (tab) => {
+    historyRequestsRef.current[tab] = null;
+    invalidate(creationHistoryPrefix(ownerId, tab), 'local');
+    useCreationStore.getState().updateHistoryMeta(tab, { loading: false });
+  };
+  useLayoutEffect(() => {
+    useCreationStore.getState().setAccount(isLoggedIn ? ownerId : null);
+    const visit = createCreationHistoryVisit(isLoggedIn ? ownerId : null, getAuthSessionGeneration(),
+      () => useCreationStore.getState().ownerId, getAuthSessionGeneration);
+    visitRef.current = visit;
+    return () => {
+      visit.stop();
+      // 离页请求不再收尾；重进允许重读同一分页，不留下永久等待。
+      if (useCreationStore.getState().ownerId === String(ownerId)) {
+        for (const tab of ['image', 'video', 'dubbing']) {
+          useCreationStore.getState().updateHistoryMeta(tab, { loading: false });
+        }
+      }
+    };
+  }, [isLoggedIn, ownerId]);
   const saveActiveDraftRef = useRef(null);
   const [genType, setGenType] = useState('image');
   const [activeCountByTab, setActiveCountByTab] = useState({ image: 0, video: 0, dubbing: 0, music: 0 });
@@ -169,7 +193,8 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
 
   // ── 历史数据加载：页面保留缓存、Store 和请求副作用，字段转换由纯适配工具负责。
   const hydrateHistoryFromCache = useCallback((tab) => {
-    const cacheKey = `creation_history:${tab}:page1`;
+    if (!visitRef.current?.isCurrent()) return false;
+    const cacheKey = `${creationHistoryPrefix(ownerId, tab)}page1`;
     const cacheEntry = peekCacheEntry(cacheKey, 'local');
     if (!cacheEntry?.d) {
       return false;
@@ -181,7 +206,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
     mergeHistoryGenerations(tab, normalized);
 
     return true;
-  }, [mergeHistoryGenerations]);
+  }, [mergeHistoryGenerations, ownerId]);
 
   const syncHistoryFavorites = useCallback((tab) => {
     const latestGens = useCreationStore.getState().generationsByTab[tab] ?? [];
@@ -201,13 +226,17 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
 
   // 拉取一页历史数据，自动填满视口逻辑由 CreationResultState 触发
   const loadHistoryPage = useCallback(async (tab) => {
-    if (!isLoggedIn || tab === 'music') return;
+    const visit = visitRef.current;
+    if (!isLoggedIn || tab === 'music' || !visit?.isCurrent()) return;
     const meta = useCreationStore.getState().historyMeta[tab];
     if (meta.loading || !meta.hasMore) {
       return;
     }
 
     updateHistoryMeta(tab, { loading: true, error: '' });
+    const request = {};
+    historyRequestsRef.current[tab] = request;
+    const isCurrent = () => visit.isCurrent() && historyRequestsRef.current[tab] === request;
     const nextPage = meta.page + 1;
     const PAGE_SIZE = (tab === 'image' || tab === 'video') ? 6 : 18;
 
@@ -220,7 +249,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
         dubbing: apiListCreationAudios,
       };
       if (nextPage === 1) {
-        const cacheKey = `creation_history:${tab}:page1`;
+        const cacheKey = `${creationHistoryPrefix(ownerId, tab)}page1`;
         const cacheEntry = peekCacheEntry(cacheKey, 'local');
         const cacheList = cacheEntry?.d ? getCreationHistoryList(cacheEntry.d) : [];
         // 第 1 页始终向服务端拉取最新数据，再写回本地缓存：
@@ -230,6 +259,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
         // 视频列表需要与资产库保持「全部创作资产」的查询口径；图片和配音仍保留创作页的隐藏历史规则。
         if (tab !== 'video') requestParams.exclude_hidden = true;
         const networkResp = await apiMap[tab](requestParams);
+        if (!isCurrent()) return;
         pageResp = networkResp;
         const resp = tab === 'video' ? buildCreationHistoryCachePayload(tab, networkResp) : networkResp;
         setCache(cacheKey, resp, { medium: 'local' });
@@ -249,6 +279,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
         const requestParams = { page: nextPage, page_size: PAGE_SIZE };
         if (tab !== 'video') requestParams.exclude_hidden = true;
         pageResp = await apiMap[tab](requestParams);
+        if (!isCurrent()) return;
         list = getCreationHistoryList(pageResp);
       }
 
@@ -275,11 +306,13 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
 
       updateHistoryMeta(tab, { page: nextPage, hasMore, loading: false, initialized: true });
     } catch (err) {
+      if (!isCurrent()) return;
       console.error('[CreationPage] 历史数据加载失败:', err);
       updateHistoryMeta(tab, { loading: false, initialized: true, error: '历史记录读取失败，请重试' });
     }
   }, [
     isLoggedIn,
+    ownerId,
     mergeHistoryGenerations,
     setHistoryPage1,
     syncHistoryFavorites,
@@ -338,6 +371,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
     // 未登录时保留快照，避免调用需要鉴权的轮询接口；登录后再执行恢复。
     if (!isLoggedIn || ownerId == null) return;
     const controller = new AbortController();
+    const visit = visitRef.current;
     const { signal } = controller;
     const waiting = new Map();
 
@@ -373,7 +407,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
         .then(mergeCreationRecoveryResults);
       pollPromise
         .then((result) => {
-          if (signal.aborted) return;
+          if (signal.aborted || !visit?.isCurrent()) return;
           const { mediaUrls, cardIds, generation } = normalizeCreationTaskResult(result, task);
 
           if (!mediaUrls.length) {
@@ -387,10 +421,10 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
           try { creationPendingStore.remove(ownerId, genId); }
           catch (error) { showToast('error', error.message); }
           // 新创作完成 → 清除历史缓存，下次刷新时能拿到新数据
-          invalidate(`creation_history:${tab}:`, 'local');
+          invalidateHistory(tab);
         })
         .catch((err) => {
-          if (signal.aborted) return;
+          if (signal.aborted || !visit?.isCurrent()) return;
           showToast('error', err?.taskFailed ? err.message : '原任务查询中断，记录已保留，请勿重复提交');
           storeDeleteGeneration(tab, genId);
           if (err.taskFailed) {
@@ -406,7 +440,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
     return () => {
       controller.abort();
       for (const task of waiting.values()) {
-        storeDeleteGeneration(task.tab, task.genId);
+        if (useCreationStore.getState().ownerId === String(ownerId)) storeDeleteGeneration(task.tab, task.genId);
         decrementActive(task.genType);
       }
     };
@@ -422,6 +456,8 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
 
   // Toggle favorite with API linkage (optimistic update + rollback on failure)
   function handleToggleFavorite(cardKey) {
+    const visit = visitRef.current;
+    if (!visit?.isCurrent()) return;
     const wasFav = favorites.has(cardKey);
     // Optimistically update local state first
     storeToggleFavorite(cardKey);
@@ -442,8 +478,9 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
           ? apiToggleAudioFavorite(card.id)
           : apiToggleImageFavorite(card.id, !wasFav);
       apiCall
-        .then(() => storeConfirmFavoriteToggle(cardKey))
+        .then(() => { if (visit.isCurrent()) storeConfirmFavoriteToggle(cardKey); })
         .catch(() => {
+          if (!visit.isCurrent()) return;
           storeRollbackFavoriteToggle(cardKey);
           setAudioDetailModal((current) => current?.key === cardKey
             ? { ...current, favorited: wasFav, favoriteStatusLoaded: true }
@@ -569,6 +606,8 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
 
   const deletePending = useRef(false);
   async function deleteSelected() {
+    const visit = visitRef.current;
+    if (!visit?.isCurrent()) return;
     if (deletePending.current) return;
     deletePending.current = true;
     const tab = activeTab;
@@ -586,6 +625,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
       // 逐项确认，避免批量接口只返回数量时无法识别失败记录。
       const results = [];
       for (const entry of entries) {
+        if (!visit.isCurrent()) return;
         try {
           if (entry.cardId) {
             const remove = entry.card.type === 'video' ? apiDeleteCreationVideo : entry.card.type === 'audio' ? apiDeleteCreationAudio : apiDeleteCreationImage;
@@ -594,6 +634,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
           results.push({ status: 'fulfilled' });
         } catch { results.push({ status: 'rejected' }); }
       }
+      if (!visit.isCurrent()) return;
       entries.forEach(({ genId, card, cardId }, index) => {
         if (!card || results[index].status !== 'fulfilled') return;
         const current = useCreationStore.getState().generationsByTab[tab]?.find((g) => g.id === genId);
@@ -601,7 +642,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
         if (cardIndex >= 0) successful.add(`${genId}-${cardIndex}`);
       });
       deleteSelectedCards(tab, successful);
-      invalidate(`creation_history:${tab}:`, 'local');
+      invalidateHistory(tab);
       setSelected(new Set());
       if (results.some((result) => result.status === 'rejected')) showToast('error', '部分删除失败，未删除的卡片已保留，请重新选择后重试');
     } finally {
@@ -670,6 +711,8 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
   }
 
   const handleDeleteCard = async (genId, cardIdx) => {
+    const visit = visitRef.current;
+    if (!visit?.isCurrent()) return;
     if (deletePending.current) return;
     deletePending.current = true;
     const tab = activeTab;
@@ -686,12 +729,13 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
         await apiDeleteCreationImage(cardId);
       }
     }
+    if (!visit.isCurrent()) return;
     const current = useCreationStore.getState().generationsByTab[tab]?.find((g) => g.id === genId);
     const index = current?.cards?.findIndex((item) => cardId ? (item.id || item.audioId) === cardId : item === card) ?? -1;
     if (index >= 0) storeDeleteCard(tab, genId, index);
-    invalidate(`creation_history:${tab}:`, 'local');
+    invalidateHistory(tab);
     } catch {
-      showToast('error', '删除失败，卡片已保留，请重试');
+      if (visit.isCurrent()) showToast('error', '删除失败，卡片已保留，请重试');
     } finally {
       deletePending.current = false;
     }
@@ -699,26 +743,30 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
 
   // 清空当前 Tab 的创作历史：调用后端持久隐藏，重置本 Tab 展示与分页，并失效本地缓存
   async function handleClearHistory() {
+    const visit = visitRef.current;
+    if (!visit?.isCurrent()) return;
     setClearHistoryConfirm(false);
     // 音乐 Tab 暂无后端历史接口（/api/creation/history/hide 仅支持 image/video/dubbing），
     // 仅清空本地展示与缓存，保持与配音等 Tab 的数据隔离。
     if (activeTab === 'music') {
       clearHistoryTab(activeTab);
-      invalidate(`creation_history:${activeTab}:`, 'local');
+      invalidateHistory(activeTab);
       showToast('success', '本页创作历史已清空');
       return;
     }
     try {
       const res = await apiHideCreationHistory(activeTab);
+      if (!visit.isCurrent()) return;
       const hiddenCount = res?.hiddenCount ?? res?.hidden_count ?? 0;
       clearHistoryTab(activeTab);
-      invalidate(`creation_history:${activeTab}:`, 'local');
+      invalidateHistory(activeTab);
       if (hiddenCount > 0) {
         showToast('success', `已清空 ${hiddenCount} 条创作历史`);
       } else {
         showToast('success', '本页创作历史已清空');
       }
     } catch (err) {
+      if (!visit.isCurrent()) return;
       console.error('[CreationPage] 清空创作历史失败:', err);
       showToast('error', '清空失败，请重试');
     }

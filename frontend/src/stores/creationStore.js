@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { dedupeByMediaAliases, getCreationAssetMediaAliases } from '../utils/creationHistoryAdapter';
 
 function getCardMediaAliases(card) {
@@ -33,22 +32,26 @@ function mergeGenerations(previous, current) {
   };
 }
 
+function accountState(ownerId = null) {
+  return {
+    ownerId,
+    generationsByTab: { image: [], video: [], dubbing: [], music: [] },
+    favorites: new Set(),
+    pendingFavoriteToggles: new Set(),
+    historyMeta: Object.fromEntries(['image', 'video', 'dubbing', 'music'].map(tab => [tab, {
+      page: 0, hasMore: tab !== 'music', loading: false, initialized: tab === 'music',
+    }])),
+  };
+}
+
 export const useCreationStore = create(
-  persist(
     (set) => ({
-      generationsByTab: { image: [], video: [], dubbing: [], music: [] },
-      favorites: new Set(),
-      // Keys currently being toggled (optimistic update in-flight); syncFavorites skips these
-      pendingFavoriteToggles: new Set(),
-      // 每个 tab 的历史分页状态（不持久化，每次启动重新拉）
-      historyMeta: {
-        image:   { page: 0, hasMore: true, loading: false, initialized: false },
-        video:   { page: 0, hasMore: true, loading: false, initialized: false },
-        dubbing: { page: 0, hasMore: true, loading: false, initialized: false },
-        // 音乐 Tab 暂无后端历史接口，预置为已初始化（hasMore=false），
-        // 保证与配音等 Tab 的数据、分页和缓存完全隔离。
-        music:   { page: 0, hasMore: false, loading: false, initialized: true },
-      },
+      ...accountState(),
+      // 不认领旧 creation-store 收藏；收藏状态由当前账号服务端历史确认。
+      setAccount: (ownerId) => set(state => {
+        const owner = ownerId == null ? null : String(ownerId);
+        return state.ownerId === owner ? state : accountState(owner);
+      }),
 
       // 合并历史数据（按卡片后端 ID 和媒体地址去重，避免本地结果与历史结果重复）
       // store 约定：数组越靠后 = 越新（display 时 reverse 展示最新在前）
@@ -279,44 +282,5 @@ export const useCreationStore = create(
           pending.delete(cardKey);
           return { favorites: next, pendingFavoriteToggles: pending };
         }),
-    }),
-    {
-      name: 'creation-store',
-      storage: {
-        getItem: (name) => {
-          const str = localStorage.getItem(name);
-          if (!str) return null;
-          const parsed = JSON.parse(str);
-          return {
-            ...parsed,
-            state: {
-              ...parsed.state,
-              favorites: new Set(parsed.state?.favorites || []),
-              pendingFavoriteToggles: new Set(),
-            },
-          };
-        },
-        setItem: (name, value) => {
-          const toStore = {
-            ...value,
-            state: {
-              ...value.state,
-              favorites: [...value.state.favorites],
-            },
-          };
-          localStorage.setItem(name, JSON.stringify(toStore));
-        },
-        removeItem: (name) => localStorage.removeItem(name),
-      },
-      partialize: (state) => ({
-        // generationsByTab 不再持久化：现在由后端历史接口提供数据，localStorage 缓存会导致重复展示
-        favorites: state.favorites,
-      }),
-      version: 2, // 升版本清除旧 localStorage 缓存（旧版持久化了 generationsByTab 导致数据叠加）
-      migrate: (persistedState) => {
-        // 版本不一致时直接返回初始值（旧 generationsByTab 缓存全部丢弃）
-        return { favorites: persistedState?.favorites ?? [] };
-      },
-    }
-  )
+    })
 );

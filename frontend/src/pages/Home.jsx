@@ -1,14 +1,14 @@
 /**
  * @file Home.jsx
- * @structure-update：2026-10-20 智能分镜持久记录异常保留原文并暂停提交；创作页按账号重建并显式传入归属，页面保留认证、轮询与结果写回。
- * @structure-index：2026-10-20 readProjects L308；详情读取 L561；主体抽取 L1213；智能分镜 L1479；重新分镜 L1708；恢复 L1727。
+ * @structure-update：2026-10-21 正式项目入口由 UseCanvasProjects 编排（L301）；账号变化同步重置创作 Store（L399），认证与恢复编排仍保留首页。
+ * @structure-index：2026-10-21 readProjects L317；详情读取 L573；主体抽取 L1225；智能分镜 L1491；重新分镜 L1720；恢复 L1739。
  *   2026-10-19：缓存无分页元信息，仅作为刷新信号；解锁探测绕过缓存，页面保留认证、缓存与请求编排，不因规模移动副作用。
  *   2026-10-12：登录用户确认后恢复已受理的视频编辑任务；保留认证与恢复的页面编排边界。
- *   2026-10-13：公告提醒 L2196 主动查看全部进入消息中心系统页签；按用户隔离已读状态。
+ *   2026-10-13：公告提醒 L2178 主动查看全部进入消息中心系统页签；按用户隔离已读状态。
  *   2026-10-14：画布内部切换路由；仅增加导航接线，认证、缓存和任务恢复仍保留页面编排。
  *   2026-10-14：项目保存队列 L266；按项目隔离保存回写，页面继续保留请求编排。
  * ─── 全局常量 & 配置 ───────────────────────────────────────────────
- *   页面业务模块懒加载                                          L144–L150
+ *   页面业务模块懒加载                                          L145–L151
  *   NAV_ITEMS / BOTTOM_NAV_ITEMS                                  components/home/HomeNavigationConfig.jsx
  *   STEP_TABS / WorkflowStepTabs                                components/home/WorkflowStepTabs.jsx
  *   BG_VIDEOS                                                   components/home/HomeNavigationConfig.jsx
@@ -27,18 +27,18 @@
  * ─── 主页面入口 ─────────────────────────────────────────────────
  *   2026-10-09 画布项目菜单返回自由画布列表，保留品牌图标返回首页；仅新增导航接线
  *   export default function Home()                               L257
- *     ├─ [懒加载] 页面业务模块按需加载                             L144–L150
- *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L258–L427
- *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L428 / L485 / L496
- *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L561 / L1123 / L1147
- *     │           handleExtractSubjects / handleGenerateStoryboards        L1213 / L1479
+ *     ├─ [懒加载] 页面业务模块按需加载                             L145–L151
+ *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L258–L439
+ *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L440 / L497 / L508
+ *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L573 / L1135 / L1159
+ *     │           handleExtractSubjects / handleGenerateStoryboards        L1225 / L1491
  *     │           handleScriptFinalized / handleNavChange / handleBottomNavChange / handleProjectCreated
- *                                                               L1775 / L1782 / L1846 / L1862
- *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L522 / L536 / L543 / L553
- *     │           微信回调与鉴权初始化                                   L859 / L923
- *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L989 / L1002 / L1039 / L1466
- *     ├─ [底部导航配置] bottomNavItems                             L1830
- *     └─ [渲染] 页面组合、画布与剪辑导航、Suspense                  L1905
+ *                                                               L1787 / L1794 / L1832 / L1848
+ *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L534 / L548 / L555 / L565
+ *     │           微信回调与鉴权初始化                                   L871 / L935
+ *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L1001 / L1014 / L1051 / L1478
+ *     ├─ [底部导航配置] bottomNavItems                             L1816
+ *     └─ [渲染] 页面组合、画布与剪辑导航、Suspense                  L1891
  *
  * ─── 更新记录：2026-10-20 存储损坏不视为空；保存、清理异常统一捕获，失败重试纳入统一链 ───
  *   2026-09-22  新增独立画布列表入口；超长入口保留认证、历史与任务恢复集中编排，本次只接路由，验证导航及刷新，不迁移生成流程
@@ -88,8 +88,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useStoryboardGenerationScope from '../hooks/useStoryboardGenerationScope';
 import { apiGetProjects, apiUpdateProject, apiCopyProject, apiDeleteProject, apiGetProject, apiGetProjectOverview } from '../api/project';
-import { apiListCanvasDocuments, normalizeCanvasDocument } from '../api/canvas';
-import { canvasDevelopmentEnabled, createDevelopmentCanvasProject, listDevelopmentCanvasProjects } from '../api/CanvasDevelopment';
+import { useCanvasProjects } from '../components/canvas/UseCanvasProjects';
 import { getToken, getRefreshToken, refreshAccessToken, getAuthSessionGeneration } from '../api/request';
 import { clearTokens, apiLogout, apiCompleteWechatCallback } from '../api/auth';
 import { apiListProviders } from '../api/config';
@@ -97,6 +96,7 @@ import { apiAcknowledgeStorageReminder, apiGetCurrentUser, apiGetNotifications, 
 import { apiGetSubjects, apiGetSubjectsPage, apiGetEpisodes, apiGetScriptWorkspace, apiGetScriptStructure, apiFinalizeScriptWorkspace, apiPublishScriptStructure, apiExtractSubjectsByEpisodes, apiGetScriptTask } from '../api/subject';
 import { apiGetStoryboards, apiGenerateStoryboardsFromFinalScript, apiGenerateStoryboardsFromEpisode, apiGetTask } from '../api/storyboard';
 import { invalidate } from '../utils/cache';
+import { useCreationStore } from '../stores/creationStore';
 import { recoverVideoEdits, useVideoEditStore } from '../stores/videoEditStore';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { normalizeSubjects, mergeSubjectItems } from '../utils/subjectAdapter';
@@ -297,8 +297,17 @@ export default function Home({ onGoToAdmin }) {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [watermarkSettingsOpen, setWatermarkSettingsOpen] = useState(false);
   const [projects, setProjects] = useState([]);
-  const [canvasProjects, setCanvasProjects] = useState([]);
   const [canvasRouteId, setCanvasRouteId] = useState(initialRoute.canvasId || null);
+  const canvasProjects = useCanvasProjects({
+    context: canvasRouteId || activeKey,
+    active: activeKey === 'canvas', isLoggedIn,
+    onLogin: () => setLoginOpen(true),
+    onOpen: (id) => {
+      setCanvasRouteId(id);
+      setActiveKey('canvas-detail');
+      updateWorkspaceUrl({ key: 'canvas-detail', canvasId: id });
+    },
+  });
   const [activeProject, setActiveProject] = useState(null);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [projectsLoaded, setProjectsLoaded] = useState(() => !getToken());
@@ -315,7 +324,7 @@ export default function Home({ onGoToAdmin }) {
     try {
       const normalized = normalizeProjectList(await apiGetProjects());
       if (!isCurrent()) return null;
-      setProjects(normalized);
+      setProjects(normalized.filter((project) => project.project_type !== 'canvas'));
       setProjectListSession(session);
       return normalized;
     } catch {
@@ -387,6 +396,9 @@ export default function Home({ onGoToAdmin }) {
   // Tracks which non-alwaysEnabled steps have ever had content — once unlocked, stays unlocked
   const [unlockedSteps, setUnlockedSteps] = useState(new Set());
   const [currentUser, setCurrentUser] = useState({});
+  useLayoutEffect(() => {
+    useCreationStore.getState().setAccount(isLoggedIn ? currentUser.id : null);
+  }, [isLoggedIn, currentUser.id]);
   useEffect(() => {
     if (isLoggedIn && currentUser.id) recoverVideoEdits(currentUser.id);
     else useVideoEditStore.setState({ ownerId: null });
@@ -992,7 +1004,7 @@ export default function Home({ onGoToAdmin }) {
       if (!getToken() || projectListSession !== getAuthSessionGeneration()) return;
       if (Array.isArray(data)) {
         const normalized = normalizeProjectList(data);
-        setProjects(normalized);
+        setProjects(normalized.filter((project) => project.project_type !== 'canvas'));
       }
     });
     return unsubscribe;
@@ -1797,33 +1809,7 @@ export default function Home({ onGoToAdmin }) {
     }
   };
 
-  const handleCreateCanvas = () => {
-    if (canvasDevelopmentEnabled) {
-      const document = createDevelopmentCanvasProject();
-      setCanvasProjects(listDevelopmentCanvasProjects());
-      setCanvasRouteId(document.id);
-      setActiveKey('canvas-detail');
-      updateWorkspaceUrl({ key: 'canvas-detail', canvasId: document.id });
-      return;
-    }
-    if (!isLoggedIn) { setLoginOpen(true); return; }
-    showToast('自由画布项目创建能力正在建设中', 'info');
-  };
-
-  useEffect(() => {
-    if (activeKey === 'canvas' && canvasDevelopmentEnabled) {
-      setCanvasProjects(listDevelopmentCanvasProjects());
-      return;
-    }
-    if (activeKey !== 'canvas' || !isLoggedIn) return;
-    let cancelled = false;
-    apiListCanvasDocuments().then((data) => {
-      if (!cancelled) setCanvasProjects((data?.items || []).map(normalizeCanvasDocument));
-    }).catch((error) => {
-      if (!cancelled) showToast(error?.message || '获取画布列表失败', 'error');
-    });
-    return () => { cancelled = true; };
-  }, [activeKey, isLoggedIn, showToast]);
+  const handleCreateCanvas = canvasProjects.create;
 
   const showApiBubble = !apiConfigOpen && (!isLoggedIn || (isLoggedIn && !apiConfigured));
 
@@ -1891,7 +1877,7 @@ export default function Home({ onGoToAdmin }) {
     return <CanvasPage key={canvasRouteId} canvasId={canvasRouteId} onSelectCanvas={(id) => {
       setCanvasRouteId(id);
       updateWorkspaceUrl({ key: 'canvas-detail', canvasId: id });
-    }} onCreateProject={canvasDevelopmentEnabled ? handleCreateCanvas : undefined} onBackHome={() => {
+    }} onCreateProject={handleCreateCanvas} onBackHome={() => {
       setCanvasRouteId(null);
       setActiveKey('home');
       updateWorkspaceUrl({ key: 'home' });
@@ -1988,13 +1974,12 @@ export default function Home({ onGoToAdmin }) {
             {activeKey === 'canvas' && (
               <ProjectList
                 key="canvas" title="自由画布项目"
-                projects={canvasProjects}
+                projects={canvasProjects.items}
+                loading={canvasProjects.loading}
+                error={canvasProjects.error}
+                onRetry={canvasProjects.reload}
                 onNewProject={handleCreateCanvas}
-                onOpenProject={(item) => {
-                  setCanvasRouteId(item.id);
-                  setActiveKey('canvas-detail');
-                  updateWorkspaceUrl({ key: 'canvas-detail', canvasId: item.id });
-                }}
+                onOpenProject={canvasProjects.open}
               />
             )}
             {activeKey === 'project' && projectRead && (

@@ -2,7 +2,8 @@
  * @file AssetPickerModal.jsx
  * @description 项目资产、创作资产与 Seedance 素材的统一选择弹窗。
  *
- * ─── 结构索引 ─────────────────────────────────────────── 2026-10-14：项目读取状态 L857、加载判定 L1336、失败重试 L1570；其他来源失败边界待续审。
+ * ─── 结构索引 ─────────────────────────────────────────── 2026-10-21：账号入口 L487、分页 L1085、读取反馈 L1580。
+ *   更新：按账号重建弹窗临时状态；创作分页校验弹窗会话和认证代际；其他来源失败边界待续审。
  *   AssetCard / 空态 / 悬浮预览：资产展示与预览
  *   AssetPickerModal：状态、数据适配、会话复位及请求
  *   toggle / handleConfirm / filteredAssets：选择、确认与筛选
@@ -17,6 +18,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useCreationStore } from '../stores/creationStore';
+import { getAuthSessionGeneration } from '../api/request';
 import Checkbox from './Checkbox';
 import RemoteReadStatus from './feedback/RemoteReadStatus';
 import { generationsToFlatList } from '../utils/creativeDaysAdapter';
@@ -483,7 +485,12 @@ function AssetHoverPreview({ url, mouseX, mouseY }) {
   );
 }
 
-export default function AssetPickerModal({
+export default function AssetPickerModal(props) {
+  const ownerId = useCreationStore((state) => state.ownerId);
+  return <AccountAssetPickerModal key={ownerId ?? 'guest'} {...props} />;
+}
+
+function AccountAssetPickerModal({
   open,
   onClose,
   onConfirm,
@@ -517,6 +524,7 @@ export default function AssetPickerModal({
   const [creativePagination, setCreativePagination] = useState(createCreativePagination);
   const creativeRequestedPagesRef = useRef(new Set());
   const creativeSessionRef = useRef(0);
+  useEffect(() => () => { creativeSessionRef.current += 1; }, []);
   const [seedanceGroups, setSeedanceGroups] = useState([]);
   const [seedanceAssets, setSeedanceAssets] = useState([]);
   const [seedanceLoading, setSeedanceLoading] = useState(false);
@@ -1086,6 +1094,9 @@ export default function AssetPickerModal({
     creativeRequestedPagesRef.current.add(requestKey);
 
     const requestSession = creativeSessionRef.current;
+    const authSession = getAuthSessionGeneration();
+    const isCurrent = () => requestSession === creativeSessionRef.current
+      && authSession === getAuthSessionGeneration();
     setLoadingCreativeTabs(prev => new Set([...prev, type]));
 
     try {
@@ -1095,7 +1106,7 @@ export default function AssetPickerModal({
           ? apiListCreationVideos
           : apiListCreationAudios;
       const resp = await listApi({ page, page_size: CREATIVE_PAGE_SIZE });
-      if (requestSession !== creativeSessionRef.current) return;
+      if (!isCurrent()) return;
 
       const list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
       const normalized = list
@@ -1123,14 +1134,14 @@ export default function AssetPickerModal({
       }));
     } catch (err) {
       console.error('[AssetPickerModal] 拉取创作资产失败:', err);
-      if (requestSession === creativeSessionRef.current) {
+      if (isCurrent()) {
         setCreativePagination(prev => ({
           ...prev,
           [type]: { ...prev[type], hasMore: false, loaded: true },
         }));
       }
     } finally {
-      if (requestSession === creativeSessionRef.current) {
+      if (isCurrent()) {
         setLoadingCreativeTabs(prev => {
           const next = new Set(prev);
           next.delete(type);

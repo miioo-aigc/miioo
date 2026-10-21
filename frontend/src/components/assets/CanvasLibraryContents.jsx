@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { ArrowLeft, ChevronRight, Upload, CopyPlus, Move, Download, Trash2, ListChecks, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowLeft, ChevronRight, CopyPlus, Move, Download, Trash2, ListChecks, RefreshCw } from 'lucide-react';
 import { Button, TextField } from '../ui';
 import AssetPickerModal from '../AssetPickerModal';
 import SeedanceAssetPreviewModal from './SeedanceAssetPreviewModal';
@@ -12,7 +12,7 @@ import { canvasLibraryItemKey, canvasLibraryMedia, canvasLibraryDrop } from './C
 import CanvasLibrarySourceDialog from './CanvasLibrarySourceDialog';
 import { CanvasLibraryDialog, CanvasLibraryDestinationDialog, CanvasLibraryDeleteDialog } from './CanvasLibraryDialogs';
 
-/** 画布资产业务编排：目录、批量操作、上传和操作弹窗；不双写真实画布。 */
+/** 画布资产业务编排：目录、批量操作、引用和操作弹窗；不双写真实画布。 */
 export default function CanvasLibraryContents({ collection }) {
   const library = useCanvasAssetLibrary(collection);
   const { parentId, items, folder, loading, error, busy, navigate, refresh, run, loadMore, cursor } = library;
@@ -25,7 +25,6 @@ export default function CanvasLibraryContents({ collection }) {
   const [deletion, setDeletion] = useState(null);
   const [preview, setPreview] = useState(null);
   const [source, setSource] = useState(null);
-  const input = useRef(null);
   const chosen = items.filter((item) => selected.has(canvasLibraryItemKey(item)));
   const mediaOnly = !allSelection && chosen.length > 0 && chosen.every((item) => item.type !== 'folder');
   const canMove = !allSelection && chosen.length > 0;
@@ -76,22 +75,6 @@ export default function CanvasLibraryContents({ collection }) {
     }
     return addReferences(ids);
   };
-  const upload = async (event) => {
-    const files = [...event.target.files];
-    event.target.value = '';
-    if (!files.length) return;
-    clearSelection();
-    await run(async () => {
-      let completed = 0;
-      const failures = [];
-      for (const file of files) {
-        try { await api.upload(file, parentId); completed++; }
-        catch (cause) { failures.push(`${file.name}：${cause.message}`); }
-      }
-      if (failures.length) showGlobalToast('error', `已上传 ${completed} 个，失败 ${failures.length} 个。${failures.join('；')}`);
-      else showGlobalToast('success', `已上传 ${completed} 个素材`);
-    });
-  };
   const download = (list) => run(async () => {
     for (const item of list) {
       const result = await api.download(item);
@@ -114,7 +97,7 @@ export default function CanvasLibraryContents({ collection }) {
       </nav> : <div />}
       <div className="flex flex-wrap items-center gap-[8px]">
         <Button iconOnly icon={<RefreshCw size={16} />} title="刷新" aria-label="刷新" disabled={busy || loading} onClick={() => { clearSelection(); refresh(); }} />
-        {parentId && <><Button variant="secondary" icon={<Upload size={16} />} disabled={busy || loading || Boolean(error)} onClick={() => input.current.click()}>上传素材</Button><Button variant="secondary" icon={<CopyPlus size={16} />} disabled={busy || loading || Boolean(error)} onClick={() => setSource('choose')}>添加素材</Button></>}
+        {parentId && <Button variant="secondary" icon={<CopyPlus size={16} />} disabled={busy || loading || Boolean(error)} onClick={() => setSource('choose')}>添加素材</Button>}
         <Button variant="secondary" icon={<ListChecks size={16} />} disabled={busy} onClick={() => { setBatch((old) => !old); clearSelection(); }}>{batch ? '退出批量' : '批量操作'}</Button>
       </div>
     </header>}
@@ -131,7 +114,6 @@ export default function CanvasLibraryContents({ collection }) {
       {loading && <p role="status" className="py-[24px] text-[14px] text-text-secondary">加载中...</p>}
       {cursor && <div className="pt-[24px] text-center"><Button variant="secondary" disabled={loading || busy} onClick={loadMore}>加载更多</Button></div>}
     </div>
-    <input ref={input} type="file" multiple accept="image/*,video/*,audio/*" className="hidden" onChange={upload} />
     {nameDialog && <CanvasLibraryDialog title={nameDialog.item ? '重命名' : '新增文件夹'} busy={busy} onClose={() => setNameDialog(null)} footer={<><Button variant="secondary" disabled={busy} onClick={() => setNameDialog(null)}>取消</Button><Button disabled={busy || !name.trim()} loading={busy} onClick={saveName}>确认</Button></>}><TextField label="名称" autoFocus value={name} disabled={busy} onChange={(event) => setName(typeof event === 'string' ? event : event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing && name.trim() && !busy) saveName(); }} /></CanvasLibraryDialog>}
     {destination && <CanvasLibraryDestinationDialog collection={collection} selection={destination.list} mode={destination.mode} busy={busy} onClose={() => setDestination(null)} onConfirm={async (target) => {
       if (destination.mode === 'move') return move(destination.list, target);
@@ -139,7 +121,7 @@ export default function CanvasLibraryContents({ collection }) {
     }} />}
     {deletion && <CanvasLibraryDeleteDialog preview={deletion} busy={busy} onClose={() => setDeletion(null)} onConfirm={confirmDelete} />}
     {preview && <SeedanceAssetPreviewModal asset={preview} onClose={() => setPreview(null)} />}
-    {source === 'choose' && <CanvasLibraryDialog title="添加素材" onClose={() => setSource(null)} footer={<Button variant="secondary" onClick={() => setSource(null)}>取消</Button>}><div className="flex flex-col gap-[12px]"><Button variant="secondary" onClick={() => setSource('canvas')}>画布资产</Button><Button variant="secondary" onClick={() => setSource('external')}>项目资产 / 创作资产 / seedance素材库</Button><Button variant="secondary" onClick={() => { setSource(null); input.current.click(); }}>本地上传</Button></div></CanvasLibraryDialog>}
+    {source === 'choose' && <CanvasLibraryDialog title="添加素材" onClose={() => setSource(null)} footer={<Button variant="secondary" onClick={() => setSource(null)}>取消</Button>}><div className="flex flex-col gap-[12px]"><Button variant="secondary" onClick={() => setSource('canvas')}>画布资产</Button><Button variant="secondary" onClick={() => setSource('external')}>项目资产 / 创作资产 / seedance素材库</Button></div></CanvasLibraryDialog>}
     {source === 'canvas' && <CanvasLibrarySourceDialog busy={busy} onClose={() => setSource(null)} onConfirm={addReferences} />}
     {source === 'external' && <AssetPickerModal open includeSeedanceLibrary accept="all" onClose={() => setSource(null)} onConfirm={addExternal} assetFilter={(asset) => ['image', 'video', 'audio'].includes(asset.asset_type || asset.type)} />}
   </section>;

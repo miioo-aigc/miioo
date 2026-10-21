@@ -17,17 +17,20 @@ export async function apiUploadProjectCover(file) {
   return data.url || data.file_url || data.uploaded_url || null;
 }
 
-export async function apiGetProjects({ search } = {}) {
+export async function apiGetProjects({ search, limit, offset } = {}) {
   return cached(
-    K.projects(search),
+    K.projects({ search, limit, offset }),
     async () => {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
+      if (limit !== undefined) params.append('limit', String(limit));
+      if (offset !== undefined) params.append('offset', String(offset));
       const query = params.toString();
       const url = query ? `${BASE}/api/projects?${query}` : `${BASE}/api/projects`;
       const res = await authFetch(url, {
         headers: { 'Content-Type': 'application/json' },
       });
+      if (!res.ok) await throwResponseError(res, '获取项目列表失败');
       return res.json();
     },
     { medium: MEDIUM.LIST, ttl: TTL.LIST },
@@ -41,6 +44,7 @@ export async function apiGetProject(projectId) {
       const res = await authFetch(`${BASE}/api/projects/${projectId}`, {
         headers: { 'Content-Type': 'application/json' },
       });
+      if (!res.ok) await throwResponseError(res, '获取项目详情失败');
       return res.json();
     },
     { medium: MEDIUM.CONTENT, ttl: TTL.CONTENT },
@@ -86,6 +90,7 @@ export async function apiUpdateProject(projectId, data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+  if (!res.ok) await throwResponseError(res, '更新项目失败');
   const updated = await res.json();
   // 回填项目详情缓存，失效列表（列表项含项目摘要）
   setCache(K.project(projectId), updated, { medium: MEDIUM.CONTENT });

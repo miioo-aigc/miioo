@@ -1,8 +1,10 @@
 import { useCreationStore } from './creationStore';
+import { creationEditOwner } from '../utils/CreationEditScope';
 
 export function syncCreationImageEdit(image) {
   if (!image.scope?.startsWith('creation:')) return;
   const store = useCreationStore.getState();
+  if (!store.ownerId || creationEditOwner(image.scope) !== store.ownerId) return;
   const generations = store.generationsByTab.image;
   const generationId = `image-edit:${image.id}`;
   const existing = generations.find((generation) => generation.id === generationId);
@@ -36,7 +38,7 @@ export function syncCreationImageEdit(image) {
 }
 
 export function removeCreationImageEdit(record) {
-  if (record.scope?.startsWith('creation:')) {
+  if (useCreationStore.getState().ownerId && creationEditOwner(record.scope) === useCreationStore.getState().ownerId) {
     useCreationStore.getState().deleteGeneration('image', `image-edit:${record.id}`);
   }
 }

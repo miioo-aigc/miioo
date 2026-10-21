@@ -35,10 +35,13 @@ export async function apiReorderCanvasDocuments({ projectId = null, parentCanvas
   finally { if (reorderQueues.get(scope) === pending) reorderQueues.delete(scope); }
 }
 
-export async function apiListCanvasDocuments({ search, projectId, page = 1, pageSize = 100 } = {}) {
+export async function apiListCanvasDocuments({ search, projectId, status, rootsOnly, rootCanvasId, page = 1, pageSize = 100 } = {}) {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   if (search) params.set('search', search);
   if (projectId) params.set('project_id', projectId);
+  if (status) params.set('status', status);
+  if (rootsOnly !== undefined) params.set('roots_only', String(Boolean(rootsOnly)));
+  if (rootCanvasId) params.set('root_canvas_id', rootCanvasId);
   const response = await authFetch(`${canvasUrl()}?${params.toString()}`, { headers: { 'Content-Type': 'application/json' } });
   if (!response.ok) await throwResponseError(response, `获取画布列表失败（${response.status}）`);
   return response.json();

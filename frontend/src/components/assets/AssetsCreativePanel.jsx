@@ -1,6 +1,7 @@
 /**
  * @file AssetsCreativePanel.jsx
- * @structure-index：2026-10-14 loadHistoryPage L244 记录错误，L611 展示反馈；失败暂停自动补页。
+ * @structure-index：2026-10-21 账号入口 L52、访问隔离 L57、历史分页 L261、读取反馈 L641。
+ *   更新：按账号重建局部状态；分页、音频详情及收藏回执校验账号与认证代际。
  *
  * ─── 组件职责 ───────────────────────────────────────
  *   创作资产面板持有筛选、分页、批量选择、详情弹窗和资产 API；
@@ -15,7 +16,9 @@
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { getAuthSessionGeneration } from '../../api/request';
+import { createCreationHistoryVisit } from '../../utils/CreationHistoryScope';
 import { createPortal } from 'react-dom';
 import { apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiGetCreationAudio, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../../api/creation';
 import { useCreationStore } from '../../stores/creationStore';
@@ -48,6 +51,18 @@ const CREATIVE_TYPE_TABS = [
 ];
 
 export default function AssetsCreativePanel({ isLoggedIn }) {
+  const ownerId = useCreationStore((state) => state.ownerId);
+  return <AccountCreativePanel key={ownerId ?? 'guest'} isLoggedIn={isLoggedIn} ownerId={ownerId} />;
+}
+
+function AccountCreativePanel({ isLoggedIn, ownerId }) {
+  const visitRef = useRef(null);
+  useLayoutEffect(() => {
+    const visit = createCreationHistoryVisit(ownerId, getAuthSessionGeneration(),
+      () => useCreationStore.getState().ownerId, getAuthSessionGeneration);
+    visitRef.current = visit;
+    return () => visit.stop();
+  }, [ownerId]);
   const videoEditTasks = useVideoEditStore((state) => state.tasks);
   const [activeType, setActiveType] = useState('image');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -194,6 +209,8 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   }
 
   function openAudioDetail(card) {
+    const visit = visitRef.current;
+    if (!visit?.isCurrent()) return;
     setAudioDetail({
       ...card,
       favorited: favorites.has(card.id),
@@ -202,6 +219,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     const audioId = card.backendId || card.audioId || card.id;
     if (!audioId) return;
     apiGetCreationAudio(audioId).then((detail) => {
+      if (!visit.isCurrent()) return;
       setAudioDetail((current) => {
         const currentAudioId = current?.backendId || current?.audioId || current?.id;
         return current && String(currentAudioId) === String(audioId)
@@ -243,6 +261,8 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
 
   const loadHistoryPage = useCallback(async (tab) => {
     if (!isLoggedIn) return;
+    const visit = visitRef.current;
+    if (!visit?.isCurrent()) return;
     const meta = creationHistoryMetaRef.current[tab];
     if (meta.loading || !meta.hasMore || historyRequestTabsRef.current.has(tab)) return;
 
@@ -262,6 +282,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         resp = await apiListCreationAudios({ page: nextPage, page_size: pageSize });
       }
 
+      if (!visit.isCurrent()) return;
       const type = tab === 'dubbing' ? 'audio' : tab;
       const rawList = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
       const explicitHasMore = resp?.has_more ?? resp?.hasMore;
@@ -349,6 +370,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         [tab]: { ...prev[tab], page: nextPage, hasMore, loading: false, initialized: true },
       }));
     } catch {
+      if (!visit.isCurrent()) return;
       setCreationHistoryMeta((prev) => ({
         ...prev,
         [tab]: { ...prev[tab], loading: false, initialized: true, error: '创作资产读取失败，请重试' },
@@ -476,21 +498,33 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   }
 
   function toggleStar(cardKey, backendId, cardType) {
+    const visit = visitRef.current;
+    const store = useCreationStore.getState();
+    if (!visit?.isCurrent() || store.pendingFavoriteToggles.has(cardKey)) return;
+    const account = createCreationHistoryVisit(store.ownerId, getAuthSessionGeneration(),
+      () => useCreationStore.getState().ownerId, getAuthSessionGeneration);
     const isLiked = favorites.has(cardKey);
     storeToggleFavorite(cardKey);
     setAudioDetail((current) => current?.id === cardKey
       ? { ...current, favorited: !isLiked, favoriteStatusLoaded: true }
       : current);
     showToast(isLiked ? '取消收藏' : '收藏成功');
-    if (!backendId) return;
+    if (!backendId) {
+      store.confirmFavoriteToggle(cardKey);
+      return;
+    }
     const type = cardType || activeType;
     const apiCall = type === 'video'
       ? apiToggleVideoFavorite(backendId, !isLiked)
       : type === 'audio'
         ? apiToggleAudioFavorite(backendId)
         : apiToggleImageFavorite(backendId, !isLiked);
-    apiCall.catch(() => {
-      storeToggleFavorite(cardKey);
+    apiCall.then(() => {
+      if (account.isCurrent()) store.confirmFavoriteToggle(cardKey);
+    }).catch(() => {
+      if (!account.isCurrent()) return;
+      store.rollbackFavoriteToggle(cardKey);
+      if (!visit.isCurrent()) return;
       setAudioDetail((current) => current?.id === cardKey
         ? { ...current, favorited: isLiked, favoriteStatusLoaded: true }
         : current);

@@ -45,7 +45,7 @@ test('新建菜单显式接线，画布按编号重建以隔离节点和历史',
   const page = await readFile(new URL('../src/pages/CanvasPage.jsx', import.meta.url), 'utf8');
   const header = await readFile(new URL('../src/components/canvas/CanvasProjectHeader.jsx', import.meta.url), 'utf8');
   assert.match(home, /<CanvasPage key=\{canvasRouteId\}/);
-  assert.match(home, /onCreateProject=\{canvasDevelopmentEnabled \? handleCreateCanvas : undefined\}/);
+  assert.ok(home.includes('onCreateProject={handleCreateCanvas}'));
   assert.match(page, /onCreateProject=\{onCreateProject\}/);
   assert.match(page, /isDevelopmentCanvas\(canvasId\) \? Promise.resolve\(\{\}\) : apiGetCurrentUser\(\)/);
   assert.match(header, /onClick: onCreateProject \|\| onUnsupported/);

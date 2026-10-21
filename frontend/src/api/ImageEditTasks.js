@@ -1,9 +1,11 @@
 import { authFetch, authFetchStream } from './request';
+import { imageEditSessionCheck } from './ImageEditSession';
 
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 // 事件只负责唤醒查询，结果始终以任务详情为准；断流时保留低频查询。
-export async function waitForImageEditTask(taskId, { signal, timeout = 1800000, mediaLabel = '图片' } = {}) {
+export async function waitForImageEditTask(taskId, { signal, timeout = 1800000, mediaLabel = '图片', checkSession = imageEditSessionCheck() } = {}) {
+  checkSession();
   const controller = new AbortController();
   let wake;
   let timer;
@@ -40,12 +42,14 @@ export async function waitForImageEditTask(taskId, { signal, timeout = 1800000, 
   let failures = 0;
   try {
     while (Date.now() - started < timeout) {
+      checkSession();
       if (controller.signal.aborted) throw new DOMException('已停止等待任务', 'AbortError');
       let task;
       try {
         const response = await authFetch(`${BASE}/api/tasks/${encodeURIComponent(taskId)}`, { signal: controller.signal });
         if (!response.ok) throw Object.assign(new Error(`读取编辑任务失败（${response.status}）`), { status: response.status });
         task = await response.json();
+        checkSession();
         failures = 0;
       } catch (error) {
         if (error.name === 'AbortError' || [401, 403, 404].includes(error.status) || ++failures >= 5) throw error;

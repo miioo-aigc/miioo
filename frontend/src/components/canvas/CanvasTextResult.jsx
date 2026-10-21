@@ -1,8 +1,16 @@
 /** 生成正文逐行入场；测量实际换行，动画结束后恢复普通文本。 */
 import { useLayoutEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { getRevealCharacters, getRevealLines, shouldRevealResult } from './CanvasTextReveal';
 
-export default function CanvasTextResult({ content = '', generating = false, editing = false }) {
+export default function CanvasTextResult(props) {
+  if (!props.generating && /(^|\n)#{1,2} |\*\*[^*]+\*\*|(^|\n)\s*(?:[-*] |\d+\. )/.test(props.content || '')) {
+    return <div hidden={props.editing} className="canvas-node__text-result canvas-node__rich-text"><ReactMarkdown>{props.content}</ReactMarkdown></div>;
+  }
+  return <CanvasPlainTextResult {...props} />;
+}
+
+function CanvasPlainTextResult({ content = '', generating = false, editing = false }) {
   const elementRef = useRef(null);
   const previousRef = useRef({ content, generating, editing });
 

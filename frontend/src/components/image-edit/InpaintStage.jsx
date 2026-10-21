@@ -142,7 +142,7 @@ export default function InpaintStage({ imageUrl, tool, brushSize, zoom, strokes,
   }
 
   return (
-    <div ref={viewport} className="inpaint-stage" data-tool={tool} onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={(event) => finish(event, true)} onLostPointerCapture={(event) => finish(event, true)} onPointerLeave={() => setCursor(null)}>
+    <div ref={viewport} className="inpaint-stage" data-tool={tool} onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={(event) => finish(event, true)} onLostPointerCapture={finish} onPointerLeave={() => setCursor(null)}>
       {(!imageSize || failed) && <span className="inpaint-status" role="status">{failed || !imageUrl ? '图片加载失败，请关闭后重试' : '图片加载中…'}</span>}
       <div className="inpaint-image-plane" style={{ width: imageSize ? imageSize.width * displayScale : 0, height: imageSize ? imageSize.height * displayScale : 0, transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px)` }}>
         <img ref={image} src={imageUrl || undefined} alt="局部重绘原图" draggable={false} onLoad={() => { const size = { width: image.current.naturalWidth, height: image.current.naturalHeight }; setImageSize(size); onReady(true); }} onError={() => { setFailed(true); onReady(false); }} />

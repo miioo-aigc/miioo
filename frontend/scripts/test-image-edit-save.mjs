@@ -35,5 +35,7 @@ await assert.rejects(api.bindImageEditResult(image, destination), /相同创作�
 await api.bindImageEditResult({ ...image, metadata_json: { session_id: 'session', shot_id: 'shot' } }, destination);
 await assert.rejects(api.prepareImageEditDestination('subject:undefined:target', 'source'), /缺少/);
 source = { id: 'source' };
-await assert.rejects(api.prepareImageEditDestination('creation:source', 'source'), /未返回创作/);
+const independentDestination = await api.prepareImageEditDestination('creation:source', 'source');
+await api.bindImageEditResult(image, independentDestination);
+assert.equal(calls.length, 2, '无创作会话的图片按创作入口保存，不额外绑定项目候选');
 console.log('图片编辑云端归属测试通过');

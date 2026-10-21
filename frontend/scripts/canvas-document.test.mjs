@@ -80,6 +80,57 @@ test('素材按200个分批恢复，失效状态不泄露地址，缺项不静�
   await assert.rejects(resolveCanvasDocumentAssets('canvas', nodes, async () => ({ items: [] })), /可用状态/);
 });
 
+test('图片视频保存刷新后恢复相对媒体地址，保留永久编号且地址不写回文档', async () => {
+  const nodes = ['image', 'video'].map((type) => {
+    const node = createCanvasNode(type, undefined, type);
+    node.data.asset = { asset_id: assetId, asset_type: type, source: 'upload', url: '/uploads/old' };
+    return node;
+  });
+  const document = serializeCanvasDocument(nodes);
+  const before = JSON.stringify(document);
+  const restored = await resolveCanvasDocumentAssets('canvas', readCanvasDocument({ document }).nodes, async () => ({
+    items: [{ asset_id: assetId, availability: 'ready', original_url: '/uploads/original.mp4?token=signed',
+      preview_url: 'uploads/preview.mp4', poster_url: '/uploads/poster.jpg' }],
+  }), { normalizeMediaUrl: (value) => `https://media.test${value}` });
+  for (const node of restored) {
+    assert.equal(node.data.asset.url, 'https://media.test/uploads/original.mp4?token=signed');
+    assert.equal(node.data.asset.previewUrl, 'https://media.test/uploads/preview.mp4');
+    assert.equal(node.data.asset.posterUrl, 'https://media.test/uploads/poster.jpg');
+    assert.equal(node.data.asset.asset_id, assetId);
+    assert.equal(node.data.asset.asset_type, node.type);
+    assert.equal(node.data.asset.source, 'upload');
+  }
+  const saved = serializeCanvasDocument(restored);
+  assert.equal(JSON.stringify(document), before);
+  assert.ok(!JSON.stringify(saved).includes('media.test'));
+  assert.ok(!JSON.stringify(saved).includes('/uploads/'));
+  assert.equal(readCanvasDocument({ document: saved }).nodes[1].data.asset.asset_id, assetId);
+});
+
+test('素材恢复支持预览及受控下载相对地址，同时拒绝危险或缺失的可用地址', async () => {
+  const nodes = [{ id: 'image', data: { asset: { asset_id: assetId } } }];
+  const restore = (fields, availability = 'ready') => resolveCanvasDocumentAssets('canvas', nodes, async () => ({
+    items: [{ asset_id: assetId, availability, ...fields }],
+  }));
+  for (const fields of [
+    { original_url: 'javascript:alert(1)', preview_url: '/uploads/preview.jpg' },
+    { download_url: '/api/media/downloads/token?expires=10' },
+    { original_url: 'https://cdn.test/image.jpg?signed=1' },
+  ]) {
+    const [node] = await restore(fields);
+    assert.equal(node.data.asset.url, fields.preview_url || fields.download_url || fields.original_url);
+  }
+  for (const original_url of [undefined, '', '  ', 'javascript:alert(1)', 'data:image/png;base64,abc', 'blob:temp', '//external.test/a', 'http://[invalid']) {
+    await assert.rejects(restore({ original_url }), /缺少有效媒体地址/);
+    await assert.rejects(restore({ original_url }, 'trashed'), /缺少有效媒体地址/);
+  }
+  const [hidden] = await restore({ original_url: '/uploads/private.jpg', poster_url: '/uploads/private.jpg' }, 'forbidden');
+  assert.equal(hidden.data.asset.asset_id, assetId);
+  assert.equal(hidden.data.asset.url, undefined);
+  assert.equal(hidden.data.asset.posterUrl, undefined);
+  assert.equal(nodes[0].data.asset.url, undefined);
+});
+
 test('丢响应后先重放原请求，新编辑在确认版本后以新幂等键提交', async () => {
   const calls = [];
   let fail = true;

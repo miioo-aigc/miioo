@@ -6,7 +6,7 @@ import { getCanvasGroupFocus } from './CanvasGroupFocus';
 import { canMoveCanvasNodesInto, canvasTransferRoots, moveCanvasNodesInto } from './CanvasGroupTransfer';
 import { showGlobalToast } from '../../stores/toastStore';
 
-export function useCanvasNodeActions({ nodes, setNodes, undo, getUndoToken, enabled, cancelPendingClicks, flowInstance, containerRef, dialog, setDialog }) {
+export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken, enabled, cancelPendingClicks, flowInstance, containerRef, dialog, setDialog }) {
   const [menu, setMenu] = useState(null);
   const [clipboard, setClipboard] = useState([]);
   const pasteCount = useRef(0);
@@ -26,10 +26,11 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, getUndoToken, enab
   }, [focusGroupId, flowInstance, nodes, containerRef]);
   const closeMenu = useCallback(() => setMenu(null), []);
   const closeDialog = useCallback(() => setDialog(null), [setDialog]);
-  const deleteNodes = useCallback((ids, hasTasks = false) => {
+  const deleteNodes = useCallback((ids, hasTasks = false, clear = false) => {
     setNodes((current) => deleteCanvasNodes(current, ids));
     const token = getUndoToken();
-    showGlobalToast('success', hasTasks ? '删除成功，撤销仅恢复节点，不保证找回生成结果。' : '删除成功，可以撤销 ⌘Z 找回', {
+    const label = clear ? '画布已清空' : '删除成功';
+    showGlobalToast('success', hasTasks ? `${label}，撤销仅恢复节点，不保证找回生成结果。` : `${label}，可以撤销 ⌘Z 找回`, {
       duration: 3500,
       mutedText: hasTasks ? undefined : '⌘Z',
       action: { label: '撤销', inline: true, onClick: () => {
@@ -41,7 +42,14 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, getUndoToken, enab
   }, [setNodes, getUndoToken, cancelPendingClicks, undo]);
 
   const execute = useCallback((action, targetId) => {
+    if (!enabled || dialog) return;
     cancelPendingClicks();
+    if (action === 'undo' || action === 'redo') {
+      if (action === 'undo') undo();
+      else redo();
+      setMenu(null);
+      return;
+    }
     const selected = nodes.filter((node) => node.selected);
     const ids = selected.map((node) => node.id);
     if (action === 'moveInto' && canMoveCanvasNodesInto(nodes, ids, targetId)) {
@@ -60,10 +68,11 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, getUndoToken, enab
         const rect = containerRef.current?.getBoundingClientRect();
         const point = menu ? { x: menu.x, y: menu.y } : rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
         const position = action === 'paste' && point && flowInstance
-          ? flowInstance.screenToFlowPosition(point)
+          ? (menu?.flowPosition || flowInstance.screenToFlowPosition(point))
           : { x: Math.min(...roots.map((node) => node.position.x)) + offset, y: Math.min(...roots.map((node) => node.position.y)) + offset };
-        if (action === 'paste' && !menu) { position.x += offset; position.y += offset; }
-        setNodes((current) => pasteCanvasNodes(current, contents, position));
+        const pastePosition = action === 'paste' && !menu
+          ? { x: position.x + offset, y: position.y + offset } : position;
+        setNodes((current) => pasteCanvasNodes(current, contents, pastePosition));
       }
     }
     if (action === 'group') setNodes((current) => groupCanvasNodes(current, `canvas-group-${crypto.randomUUID()}`));
@@ -79,12 +88,17 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, getUndoToken, enab
       if (messages.length) showGlobalToast(messages.join('；'), 'success');
     }
     if (action === 'rename' && selected.length === 1) setDialog({ type: 'rename', ids, value: selected[0].data.label });
+    if (action === 'clear' && nodes.length) {
+      const allIds = nodes.map((node) => node.id);
+      if (hasCanvasDeletionTasks(nodes, allIds)) setDialog({ type: 'clear' });
+      else deleteNodes(allIds, false, true);
+    }
     if (action === 'delete' && ids.length) {
       if (hasCanvasDeletionTasks(nodes, ids)) setDialog({ type: 'delete', ids });
       else deleteNodes(ids);
     }
     setMenu(null);
-  }, [cancelPendingClicks, nodes, clipboard, containerRef, menu, flowInstance, setNodes, setDialog, deleteNodes]);
+  }, [enabled, dialog, undo, redo, cancelPendingClicks, nodes, clipboard, containerRef, menu, flowInstance, setNodes, setDialog, deleteNodes]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -131,6 +145,13 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, getUndoToken, enab
       setNodes((current) => setCanvasSelection(current, [nodeId], true), { record: false });
       setMenu({ id: nodeId, x: rect.right - 200, y: rect.bottom + 8 });
     },
+    onPaneContextMenu: (event) => {
+      event.preventDefault();
+      if (!enabled || dialog || !flowInstance) return;
+      cancelPendingClicks();
+      const point = { x: event.clientX, y: event.clientY };
+      setMenu({ kind: 'pane', ...point, flowPosition: flowInstance.screenToFlowPosition(point, { snapToGrid: false }) });
+    },
     onContextMenu: (event, node) => {
       if (!enabled || dialog || event.target.closest?.('input, textarea, [contenteditable="true"]')) return;
       event.preventDefault();
@@ -140,7 +161,10 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, getUndoToken, enab
     },
     confirm: () => {
       if (!dialog) return;
-      if (dialog.type === 'delete') deleteNodes(dialog.ids, hasCanvasDeletionTasks(nodes, dialog.ids));
+      if (dialog.type === 'clear') {
+        const ids = nodes.map((node) => node.id);
+        if (ids.length) deleteNodes(ids, hasCanvasDeletionTasks(nodes, ids), true);
+      } else if (dialog.type === 'delete') deleteNodes(dialog.ids, hasCanvasDeletionTasks(nodes, dialog.ids));
       else if (dialog.value.trim()) setNodes((current) => current.map((node) => dialog.ids.includes(node.id)
         ? { ...node, data: { ...node.data, label: dialog.value.trim() } } : node));
       setDialog(null);

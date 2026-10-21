@@ -8,6 +8,7 @@ import { buildImageEditRequest, validateSourceAsset } from '../src/utils/MediaEd
 const context = vm.createContext({});
 const unexpectedRequest = () => { throw new Error('测试不应发起网络请求'); };
 const imports = {
+  './ImageEditSession': { imageEditSessionCheck: () => () => {} },
   './request.js': { authFetch: unexpectedRequest },
   './error.js': { throwResponseError: unexpectedRequest },
   './request': { authFetch: unexpectedRequest },

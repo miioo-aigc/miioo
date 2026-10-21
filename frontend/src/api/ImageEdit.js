@@ -1,6 +1,7 @@
 import { authFetch } from './request';
 import { mayShowEditPrompt, readEditMetadata, validateExpansion } from '../utils/MediaEditPolicy';
 import { waitForImageEditTask } from './ImageEditTasks';
+import { imageEditSessionCheck } from './ImageEditSession';
 
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
@@ -72,16 +73,21 @@ export async function apiSubmitImageEdit(source, options = {}) {
 }
 
 export async function apiResolveImageEdit(accepted, mode, options) {
+  const checkSession = options?.checkSession || imageEditSessionCheck();
+  checkSession();
   const taskId = accepted.task_id || accepted.taskId;
   if (!taskId && mode !== 'outpaint') return accepted;
   const id = taskId || accepted.id;
   if (!id) throw new Error('生成服务未返回任务编号');
-  const task = await waitForImageEditTask(id, options);
+  const task = await waitForImageEditTask(id, { ...options, checkSession });
+  checkSession();
   const result = task.results?.find((item) => item.success !== false && item.asset_id);
   const image = task.images?.[0];
   const assetId = result?.asset_id || image?.asset_id || image?.id || task.resource_ids?.[0];
-  if (!assetId) throw Object.assign(new Error('任务结束但未返回可用图片资产'), { terminal: true });
-  return apiReadEditedImage(assetId);
+  if (!assetId) throw new Error('任务结束但未返回可用图片资产，请继续读取原任务');
+  const edited = await apiReadEditedImage(assetId);
+  checkSession();
+  return edited;
 }
 
 export function normalizeEditedImage(image) {

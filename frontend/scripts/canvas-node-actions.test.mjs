@@ -20,6 +20,25 @@ const fixture = () => [
   { id: 'outside', type: 'text', position: { x: 900, y: 0 }, data: { label: '外部', textSourceIds: ['a'] } },
 ];
 
+test('清空覆盖未选中节点和组，单步撤销恢复布局与内部引用，重做再次清空', () => {
+  const nodes = fixture();
+  nodes[1].data = { label: '文本', content: '保留正文' };
+  const clipboard = copyCanvasNodes(nodes);
+  const history = createCanvasHistory(nodes);
+  history.setNodes((current) => deleteCanvasNodes(current, current.map((node) => node.id)));
+  assert.deepEqual(history.getSnapshot().nodes, []);
+  history.undo();
+  const restored = history.getSnapshot().nodes;
+  assert.deepEqual(restored.map((node) => node.id), nodes.map((node) => node.id));
+  assert.deepEqual(restored[2].data.imageSourceIds, ['a', 'outside']);
+  assert.deepEqual(restored[1].position, nodes[1].position);
+  history.redo();
+  assert.deepEqual(history.getSnapshot().nodes, []);
+  const pasted = pasteCanvasNodes([], clipboard, { x: -200, y: 350 });
+  assert.deepEqual(pasted.find((node) => !node.parentId).position, { x: -200, y: 350 });
+  history.dispose();
+});
+
 test('四类普通节点不论有无内容均免确认，运行和排队需要确认', () => {
   for (const type of ['text', 'image', 'video', 'audio']) {
     for (const data of [{}, { content: '正文' }, { prompt: '提示词' }, { asset: { url: '/media' } }]) {

@@ -4,11 +4,36 @@ import { createCanvasHistory } from '../src/components/canvas/CanvasHistory.js';
 import { createCanvasNode } from '../src/components/canvas/canvasNodeUtils.js';
 
 const node = (id) => createCanvasNode('text', { x: 0, y: 0 }, id);
-test('历史最多20步，撤销后新编辑清空重做；选择不占历史', () => {
+test('专注编辑保存独立于先前输入，单次撤销恢复正文并保留最新字段', () => {
+  const history = createCanvasHistory([node('a')]);
+  const updateContent = (content) => history.setNodes((nodes) => nodes.map((n) => ({ ...n, data: { ...n.data, content } })));
+  updateContent('先前输入');
+  history.setNodes((nodes) => nodes.map((n) => ({ ...n, data: { ...n.data, label: '最新名称' } })), { record: false });
+  history.begin();
+  updateContent('## 标题\n\n**保存正文**');
+  history.end();
+  history.undo();
+  assert.equal(history.getSnapshot().nodes[0].data.content, '先前输入');
+  assert.equal(history.getSnapshot().nodes[0].data.label, '最新名称');
+  history.redo();
+  assert.equal(history.getSnapshot().nodes[0].data.content, '## 标题\n\n**保存正文**');
+  history.begin();
+  updateContent('## 标题\n\n**保存正文**');
+  history.end();
+  history.undo();
+  assert.equal(history.getSnapshot().nodes[0].data.content, '先前输入');
+});
+test('历史最多50步，撤销后新编辑清空重做；选择不占历史', () => {
   const history = createCanvasHistory();
-  for (let i = 0; i < 22; i++) history.setNodes((nodes) => [...nodes, node(String(i))]);
+  for (let i = 0; i < 52; i++) history.setNodes((nodes) => [...nodes, node(String(i))]);
   history.setNodes((nodes) => nodes.map((n) => ({ ...n, selected: false })));
-  for (let i = 0; i < 20; i++) history.undo();
+  for (let i = 0; i < 50; i++) history.undo();
+  assert.equal(history.getSnapshot().nodes.length, 2);
+  assert.equal(history.getSnapshot().canUndo, false);
+  for (let i = 0; i < 50; i++) history.redo();
+  assert.equal(history.getSnapshot().nodes.length, 52);
+  assert.equal(history.getSnapshot().canRedo, false);
+  for (let i = 0; i < 50; i++) history.undo();
   assert.equal(history.getSnapshot().nodes.length, 2);
   assert.equal(history.getSnapshot().canUndo, false);
   history.redo();
@@ -63,7 +88,7 @@ test('撤销删除保留节点回调和素材地址，历史释放后回收地�
     history.undo();
     assert.equal(history.getSnapshot().nodes[0].data.onAssetChange, onAssetChange);
     history.redo();
-    for (let i = 0; i < 21; i++) history.setNodes((nodes) => [...nodes, node(String(i))]);
+    for (let i = 0; i < 51; i++) history.setNodes((nodes) => [...nodes, node(String(i))]);
     assert.deepEqual(revoked, ['blob:canvas-test']);
   } finally { URL.revokeObjectURL = original; }
 });

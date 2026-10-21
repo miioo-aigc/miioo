@@ -1,4 +1,4 @@
-import { getCanvasMediaSize } from './CanvasMediaSize.js';
+import { getCanvasMediaSize, prepareCanvasMediaAsset } from './CanvasMediaSize.js';
 import { readCanvasDocument } from './CanvasDocument.js';
 import { getCanvasAbsolutePosition } from './CanvasGroups.js';
 
@@ -8,6 +8,22 @@ export function safeCanvasMediaUrl(value) {
     const url = new URL(value, 'https://canvas.invalid');
     return ['https:', 'http:'].includes(url.protocol) ? value : undefined;
   } catch { return undefined; }
+}
+
+// 公开素材缺少宽高时，沿用本地素材探测；首次适应画布前同步节点宽度和卡片尺寸。
+export async function prepareCanvasShareMedia(graph) {
+  const nodes = await Promise.all(graph.nodes.map(async (node) => {
+    const { asset, mediaType } = node.data;
+    if (asset?.availability !== 'ready' || !['image', 'video'].includes(mediaType)) return node;
+    const url = mediaType === 'image'
+      ? safeCanvasMediaUrl(asset.original_url) || safeCanvasMediaUrl(asset.preview_url) || safeCanvasMediaUrl(asset.thumbnail_url)
+      : safeCanvasMediaUrl(asset.preview_url);
+    const prepared = await prepareCanvasMediaAsset({ ...asset, asset_type: mediaType, url });
+    const size = getCanvasMediaSize(prepared);
+    if (!size) return node;
+    return { ...node, data: { ...node.data, mediaSize: size }, style: { ...node.style, width: size.width } };
+  }));
+  return { ...graph, nodes };
 }
 
 export function readCanvasShareDocument(payload) {
@@ -28,7 +44,7 @@ export function readCanvasShareDocument(payload) {
     const props = record.props;
     const asset = assets.get(props.assetId);
     const mediaType = asset?.media_type || props.assetType || props.nodeType;
-    const size = getCanvasMediaSize({ ...asset, asset_type: mediaType }) || { width: mediaType === 'audio' ? 320 : 280, height: 200 };
+    const size = getCanvasMediaSize({ ...asset, asset_type: mediaType }) || { width: 240, height: 240 };
     return {
       id: record.id, type: 'shared', position: getCanvasAbsolutePosition(restored, restored.find((node) => node.id === record.id)),
       data: { ...props, asset, mediaType, mediaSize: size }, style: { width: size.width },
@@ -41,7 +57,7 @@ export function readCanvasShareDocument(payload) {
     const key = JSON.stringify([source, target]);
     if (pairs.has(key)) return;
     pairs.add(key);
-    edges.push({ id: `share:${key}`, source, target, type: 'smoothstep', style: { stroke: 'var(--color-text-hint)' } });
+    edges.push({ id: `share:${key}`, source, target, type: 'default', style: { stroke: 'var(--color-stroke-accent)' } });
   };
   const fields = ['referenceInputs', 'textSourceIds', 'imageSourceIds', 'videoSourceIds', 'audioSourceIds'];
   for (const node of nodes) {

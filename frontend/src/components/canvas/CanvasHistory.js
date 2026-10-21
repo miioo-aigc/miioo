@@ -1,5 +1,6 @@
 /** 画布编辑历史：字段差异避免撤销位置时覆盖异步结果；运行态不进入历史。 */
 import { syncCanvasAudioText } from './CanvasTextAudio.js';
+const HISTORY_LIMIT = 50;
 const transient = new Set(['selected', 'measured', 'dragging', 'resizing', 'creationPanelOpen', 'editing',
   'generating', 'generationPending', 'generationError', 'generationRequestId', 'dragRelease', 'dragScaleX', 'dragScaleY']);
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -83,7 +84,7 @@ export function createCanvasHistory(initial = []) {
     const key = field?.scope === 'data' && ['prompt', 'content'].includes(field.key) ? `${delta[0].id}:${field.key}` : null;
     if (key && lastEdit?.key === key && Date.now() - lastEdit.time < 750 && past.length) {
       past[past.length - 1][0].fields[0].after = field.after;
-    } else past = [...past, delta].slice(-20);
+    } else past = [...past, delta].slice(-HISTORY_LIMIT);
     lastEdit = { key, time: Date.now() };
     future = [];
   };
@@ -102,7 +103,7 @@ export function createCanvasHistory(initial = []) {
     nodes = apply(nodes, stack.at(-1), undo ? 'before' : 'after');
     const inverse = undo ? changes(snapshot(nodes), before) : changes(before, snapshot(nodes));
     if (undo) { past = past.slice(0, -1); future = [...future, inverse]; }
-    else { future = future.slice(0, -1); past = [...past, inverse].slice(-20); }
+    else { future = future.slice(0, -1); past = [...past, inverse].slice(-HISTORY_LIMIT); }
     lastEdit = null;
     publish();
   };
@@ -123,7 +124,9 @@ export function createCanvasHistory(initial = []) {
       nodes = next;
       publish();
     },
-    begin: () => { if (!transaction) transaction = snapshot(nodes); },
+    begin: () => {
+      if (!transaction) { transaction = snapshot(nodes); lastEdit = null; }
+    },
     end,
     undo: () => travel(true),
     redo: () => travel(false),

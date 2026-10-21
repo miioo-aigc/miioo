@@ -4,8 +4,24 @@ import vm from 'node:vm';
 
 let slots = [], cursor = 0, calls = [], saves = [], closeCount = 0, failSave = false, terminal = false;
 let release;
+let session = 1, changeDuringPrepare = false;
+let journalBlocked = false, journalUnavailable = false, failSubmit = false;
 const context = vm.createContext({});
 const dependencies = {
+  '../stores/ImageEditSubmissionJournal': {
+    imageEditSubmissionOwner: () => '甲',
+    reserveImageEditSubmission: async () => {
+      if (journalUnavailable || journalBlocked) throw new Error('提交记录未核清或无法保存');
+      journalBlocked = true;
+      return { id: 'journal' };
+    },
+    recordImageEditReceipt: async () => {},
+    finishImageEditSubmission: async () => { journalBlocked = false; },
+  },
+  '../api/ImageEditSession': { imageEditSessionCheck: () => {
+    const initial = session;
+    return () => { if (initial !== session) throw Object.assign(new Error('会话变化'), { name: 'AbortError' }); };
+  } },
   react: {
     useState(initial) {
       const index = cursor++;
@@ -18,10 +34,10 @@ const dependencies = {
   '../stores/toastStore': { showGlobalToast() {} },
   '../api/ImageEdit': {
     apiPrepareEditSource: async (card) => ({ id: card.id }),
-    apiSubmitImageEdit: async (source, options) => { calls.push({ source, options }); return { task_id: `task-${calls.length}` }; },
+    apiSubmitImageEdit: async (source, options) => { calls.push({ source, options }); if (failSubmit) throw new Error('网络中断'); return { task_id: `task-${calls.length}` }; },
   },
   '../api/ImageEditSave': {
-    prepareImageEditDestination: async () => ({ scope: 'subject:p:s' }),
+    prepareImageEditDestination: async () => { if (changeDuringPrepare) session++; return { scope: 'subject:p:s' }; },
     uploadImageEditFile: async () => ({ id: 'upload' }),
   },
 };
@@ -53,18 +69,18 @@ assert.equal(render().comparison.result.imageUrl, 'task-2');
 failSave = true;
 await render().submit({ mode: 'outpaint' });
 assert.equal(render().comparison.result.imageUrl, 'task-2');
-assert.equal(render().comparison.retrySave, false);
+assert.equal(render().comparison.retrySave, true);
 failSave = false;
 await render().submit({ mode: 'outpaint' });
-assert.equal(calls.length, 4);
-assert.equal(render().comparison.result.imageUrl, 'task-4');
+assert.equal(calls.length, 3);
+assert.equal(render().comparison.result.imageUrl, 'task-3');
 
 failSave = true; terminal = true;
 await render().submit({ mode: 'outpaint' });
 assert.equal(render().comparison.retrySave, false);
 failSave = false;
 await render().submit({ mode: 'outpaint', prompt: '终态失败后的新尝试' });
-assert.equal(calls.length, 6);
+assert.equal(calls.length, 5);
 
 release = true;
 const pending = render().submit({ mode: 'upscale' });
@@ -72,7 +88,7 @@ while (release === true) await Promise.resolve();
 assert.equal(render().busy, true);
 assert.equal(render().comparison.active, true);
 await render().submit({ mode: 'upscale' });
-assert.equal(calls.length, 7);
+assert.equal(calls.length, 6);
 // 不再渲染弹窗，已启动的保存仍会完成。
 release(); release = null;
 await pending;
@@ -80,4 +96,17 @@ assert.equal(saves.length, 5);
 slots = [];
 await render({ id: 'crop' }, false).submit({ mode: 'crop', file: {} });
 assert.equal(closeCount, 1);
+slots = []; changeDuringPrepare = true;
+const previousCalls = calls.length;
+await render().submit({ mode: 'outpaint' });
+assert.equal(calls.length, previousCalls, '准备归属期间切账号不得提交');
+changeDuringPrepare = false; slots = []; journalUnavailable = true;
+await render().submit({ mode: 'outpaint' });
+assert.equal(calls.length, previousCalls, '日志保存失败不得提交');
+journalUnavailable = false; failSubmit = true;
+await render().submit({ mode: 'outpaint' });
+assert.equal(calls.length, previousCalls + 1);
+slots = []; failSubmit = false;
+await render().submit({ mode: 'outpaint' });
+assert.equal(calls.length, previousCalls + 1, '关闭重开仍不得重复发送不确定请求');
 console.log('左右对比流程测试通过：固定原图、连续生成、历史保留、保存重试、终态失败、防重复、关闭后保存及裁剪兼容');

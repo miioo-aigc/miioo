@@ -1,14 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
-import Document from '@tiptap/extension-document';
-import Paragraph from '@tiptap/extension-paragraph';
-import Text from '@tiptap/extension-text';
-import Heading from '@tiptap/extension-heading';
-import Bold from '@tiptap/extension-bold';
-import BulletList from '@tiptap/extension-bullet-list';
-import OrderedList from '@tiptap/extension-ordered-list';
-import ListItem from '@tiptap/extension-list-item';
-import { Markdown } from 'tiptap-markdown';
+import { createScriptEditorExtensions } from './ScriptEditorExtensions';
 import EditorToolbar from './EditorToolbar';
 import { ensureScriptEditorStyle } from './ScriptStyles';
 
@@ -23,17 +15,7 @@ export default function ScriptEditor({ initialContent, onContentChange, containe
   });
 
   const editor = useEditor({
-    extensions: [
-      Document,
-      Paragraph,
-      Text,
-      Heading.configure({ levels: [1, 2] }),
-      Bold,
-      BulletList,
-      OrderedList,
-      ListItem,
-      Markdown.configure({ html: false, transformCopiedText: true, transformPastedText: true }),
-    ],
+    extensions: createScriptEditorExtensions(),
     content: initialContent || '',
     immediatelyRender: false,
     onUpdate: ({ editor: currentEditor }) => {

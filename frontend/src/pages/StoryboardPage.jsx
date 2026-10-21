@@ -1,7 +1,7 @@
 /**
  * @file StoryboardPage.jsx
  * @structure-index
- *   当前定位（2026-10-20）：executeEpisodeGeneration L2011；批量入口 L1581/L1688、单独入口 L2904/L3069；共用存储提交前检查、保存/清理失败保留任务。下方带日期条目为历史定位。
+ *   当前定位（2026-10-21）：本地图片读取 L316、候选合并 L2558 均按账号隔离；executeEpisodeGeneration L2012。下方带日期条目为历史定位。
  *   2026-10-20：L439 beginMediaTask 协调任务标记；L533 归属切换重置；L1008 严格确认生成候选保存；L1495 轮询；L1530/L1549 视频/图片恢复持久候选；L1570 恢复 Hook；L1589/L1686 批量、L2899/L3060 单独入口校验访问归属并保留未确认任务。页面保留 API、缓存及持久化编排，不为行数移动副作用。
  *   2026-10-12：排序请求移出状态更新函数，串行提交并校验分集归属；失败提示刷新核对。
  *   2026-10-14：recoverStoryboardTask L1513 回读后检查恢复会话；任务未知状态保留在恢复 Hook。
@@ -41,10 +41,10 @@
  *   GenerateImagePanel                         components/storyboard/GenerateImagePanel.jsx
  *   GenerateVideoPanel / ReferenceMediaEditor  components/storyboard/
  *
- * ─── 主页面入口 ──────────────────────────────────────────── L269–L3196
- *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化；L1562 任务恢复
- *   [持久化动作] L703 enqueueStoryboardSave；L1000 候选保存；L2011 按集任务编排
- *   [候选定稿] L2169 handleFinalizeToggle：确保真实候选 UUID 后提交定稿状态
+ * ─── 主页面入口 ──────────────────────────────────────────── L270–L3197
+ *   [状态与副作用] 分镜数据、API、任务轮询、缓存和持久化；L1563 任务恢复
+ *   [持久化动作] L704 enqueueStoryboardSave；L1001 候选保存；L2012 按集任务编排
+ *   [候选定稿] L2170 handleFinalizeToggle：确保真实候选 UUID 后提交定稿状态
  *   [加载与错误态] LoadingAnimation、DotsLoading、失败操作和统计
  *   [镜头 CRUD] 上传、编辑、复制、删除、排序
  *   [渲染] 状态结果、内容区（列表/时间轴）和生成面板；Toast 展示由 GlobalToast 承接
@@ -208,6 +208,7 @@ import { areStoryboardMediaSame, mergeStoryboardMediaItems } from '../utils/stor
 import { insertStoryboardShot, moveStoryboardShot, removeStoryboardShot, renumberStoryboardShots } from '../utils/storyboardShotUtils';
 import useStoryboardTaskRecovery from '../hooks/useStoryboardTaskRecovery';
 import { loadLocalImages, useLocalImageEditStore } from '../stores/LocalImageEdits';
+import { accountImageEditScope } from '../utils/CreationEditScope';
 import { enrichMainRefs, isBackendStoryboardId, makeStoryboardShot, normalizeStoryboard, normalizeStoryboardList, setStoryboardSubjectSnapshot, toBackendStoryboard } from '../utils/storyboardDataAdapter';
 import buildStoryboardPrompt from '../utils/buildStoryboardPrompt';
 import { addPendingTask, removePendingTask, getPendingTasks, assertPendingTaskStorageReady } from '../utils/taskPersistence';
@@ -312,8 +313,8 @@ export default function StoryboardPage({ ownerId, projectId, projectName = '两�
   });
   const [narratorVoice, setNarratorVoice] = useState(null);
   useEffect(() => {
-    shots.forEach((shot) => { loadLocalImages(`storyboard:${projectId}:${shot.id}`).catch(console.error); });
-  }, [projectId, shots]);
+    shots.forEach((shot) => { loadLocalImages(accountImageEditScope(`storyboard:${projectId}:${shot.id}`, ownerId)).catch(console.error); });
+  }, [ownerId, projectId, shots]);
   const [voiceOverrides, setVoiceOverrides] = useState({});
 
   const globalVoiceParams = useMemo(() => {
@@ -2554,7 +2555,7 @@ function hasStoryboardMediaHint(shot = {}) {
     shots.map((shot) => [shot.id, isMediaLoading(shot)]),
   );
   const getCreationCandidates = (shotId) => mergeStoryboardMediaItems(
-    [...(pendingCandidateMap[shotId] || []), ...(localImageScopes[`storyboard:${projectId}:${shotId}`] || [])],
+    [...(pendingCandidateMap[shotId] || []), ...(localImageScopes[accountImageEditScope(`storyboard:${projectId}:${shotId}`, ownerId)] || [])],
     mergeStoryboardMediaItems(
       fallbackCandidates(shots.find((shot) => shot.id === shotId)),
       candidateMediaMap[shotId] || [],

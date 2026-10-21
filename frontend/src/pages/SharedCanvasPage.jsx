@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiGetSharedCanvas } from '../api/canvas';
-import { readCanvasShareDocument } from '../components/canvas/CanvasShareDocument';
+import { readCanvasShareDocument, prepareCanvasShareMedia } from '../components/canvas/CanvasShareDocument';
 import { buildCanvasShareLink, copyCanvasShareLink } from '../components/canvas/CanvasShareLink';
 import SharedCanvasView from '../components/canvas/SharedCanvasView';
 import { showGlobalToast } from '../stores/toastStore';
@@ -25,7 +25,7 @@ export default function SharedCanvasPage({ token }) {
       try {
         if (!token) throw new Error('分享链接格式不正确');
         const payload = await apiGetSharedCanvas(token, { signal: controller.signal });
-        const graph = readCanvasShareDocument(payload);
+        const graph = await prepareCanvasShareMedia(readCanvasShareDocument(payload));
         if (!controller.signal.aborted) setState({ loading: false, title: typeof payload.title === 'string' ? payload.title : '', graph });
       } catch (error) {
         if (!controller.signal.aborted) setState({ loading: false, error: error.status === 404 || error.code === 'CANVAS_SHARE_NOT_FOUND'

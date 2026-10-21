@@ -5,6 +5,17 @@ import { apiCreateStoryboardMediaCandidate } from './storyboard';
 
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
+// 创作详情契约同时提供下划线字段和驼峰别名，提交与结果校验共用同一归属读取规则。
+function readCreationContext(image) {
+  let metadata = image.metadata_json || {};
+  if (typeof metadata === 'string') metadata = JSON.parse(metadata);
+  return {
+    project_id: image.project_id || image.projectId || metadata.project_id || metadata.projectId,
+    session_id: image.session_id || image.sessionId || metadata.session_id || metadata.sessionId,
+    shot_id: image.shot_id || image.shotId || metadata.shot_id || metadata.shotId,
+  };
+}
+
 export async function prepareImageEditDestination(scope, sourceId) {
   const [kind, projectId, targetId] = (scope || '').split(':');
   if (['subject', 'storyboard'].includes(kind)) {
@@ -15,14 +26,9 @@ export async function prepareImageEditDestination(scope, sourceId) {
   }
   if (kind !== 'creation') throw new Error('当前列表未连接云端编辑保存');
   const source = await apiReadEditedImage(sourceId);
-  let metadata = source.metadata_json || {};
-  if (typeof metadata === 'string') metadata = JSON.parse(metadata);
-  const context = { kind, project_id: source.project_id || metadata.project_id,
-    session_id: source.session_id || metadata.session_id, shot_id: source.shot_id || metadata.shot_id };
-  if (!context.session_id && !context.shot_id) {
-    throw new Error('原资产未返回创作会话或镜头归属，无法保证编辑结果回到原创作记录');
-  }
-  return context;
+  // 列表归属由入口 scope 决定。创作列表也包含选帧、裁剪等无会话资产，
+  // 会话/镜头仅在源图已有时保留；历史 storyboard_id 不作为候选绑定目标。
+  return { kind, ...readCreationContext(source) };
 }
 
 export async function uploadImageEditFile(file, { sourceAssetId, editMode } = {}) {
@@ -53,10 +59,9 @@ export async function bindImageEditResult(image, destination) {
       source: 'asset-library', metadata: { edit_type: image.edit_type, edit_mode: image.edit_mode, source_asset_id: image.source_asset_id },
     });
   } else {
-    let metadata = image.metadata_json || {};
-    if (typeof metadata === 'string') metadata = JSON.parse(metadata);
+    const context = readCreationContext(image);
     for (const key of ['session_id', 'shot_id']) {
-      if (destination[key] && (image[key] || metadata[key]) !== destination[key]) {
+      if (destination[key] && context[key] !== destination[key]) {
         throw new Error('新图片已生成，但后端未返回相同创作归属；请勿重复生成，需要核对后端归属继承');
       }
     }

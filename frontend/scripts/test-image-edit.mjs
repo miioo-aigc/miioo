@@ -15,14 +15,17 @@ const request = new vm.SyntheticModule(['authFetch', 'authFetchStream'], functio
   });
 }, { context });
 const policy = new vm.SourceTextModule(await readFile(new URL('../src/utils/MediaEditPolicy.js', import.meta.url), 'utf8'), { context });
+const session = new vm.SyntheticModule(['imageEditSessionCheck'], function () {
+  this.setExport('imageEditSessionCheck', () => () => {});
+}, { context });
 const tasks = new vm.SourceTextModule(await readFile(new URL('../src/api/ImageEditTasks.js', import.meta.url), 'utf8'), {
   context, initializeImportMeta: (meta) => { meta.env = { VITE_API_BASE_URL: '' }; },
 });
-await tasks.link(() => request);
+await tasks.link(name => name === './ImageEditSession' ? session : request);
 const module = new vm.SourceTextModule(await readFile(new URL('../src/api/ImageEdit.js', import.meta.url), 'utf8'), {
   context, initializeImportMeta: (meta) => { meta.env = { VITE_API_BASE_URL: '' }; },
 });
-await module.link((name) => name === './request' ? request : name === './ImageEditTasks' ? tasks : policy);
+await module.link((name) => name === './request' ? request : name === './ImageEditTasks' ? tasks : name === './ImageEditSession' ? session : policy);
 await module.evaluate();
 const api = module.namespace;
 const image = { id: 'result', original_url: 'https://example.com/result.png' };
@@ -66,7 +69,7 @@ assert.equal((await api.apiResolveImageEdit({ task_id: 'task' }, 'eraser')).id, 
 assert.equal(calls.at(-2).url, '/api/tasks/task');
 for (const status of ['failed', 'cancelled', 'partial']) {
   responses = [{ data: { status, results: [] } }];
-  await assert.rejects(api.apiResolveImageEdit({ task_id: 'task' }, 'eraser'), (error) => error.terminal === true);
+  await assert.rejects(api.apiResolveImageEdit({ task_id: 'task' }, 'eraser'), (error) => status === 'partial' ? !error.terminal : error.terminal === true);
 }
 responses = [{ ok: false, status: 422, data: { detail: '参数无效' } }];
 await assert.rejects(api.apiReadEditedImage('result'), /参数无效/);

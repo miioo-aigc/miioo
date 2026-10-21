@@ -1,74 +1,65 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-
-const source = readFileSync(new URL('../src/components/canvas/TextCanvasNode.jsx', import.meta.url), 'utf8');
-
-// 执行组件实际的事件处理器，验证组合输入阶段不会提交半成品拼音。
-function createHandlers() {
-  const changes = [];
-  const composingRef = { current: false };
-  let editing = true;
-  const handlers = {};
-  for (const name of ['handleContentChange', 'handleCompositionEnd', 'handleBlur']) {
-    const body = source.match(new RegExp(`const ${name} = \\(event\\) => \\{([\\s\\S]*?)\\n  \\};`))?.[1];
-    assert.ok(body, name);
-    handlers[name] = new Function('composingRef', 'data', 'id', 'setEditing', 'event', body)
-      .bind(null, composingRef, { onContentChange: (id, value) => changes.push([id, value]) }, 'text-1', (value) => { editing = value; });
-  }
-  return { ...handlers, changes, composingRef, isEditing: () => editing };
+import vm from 'node:vm';
+const source = readFileSync(new URL('../src/components/canvas/CanvasInlineTextEditor.jsx', import.meta.url), 'utf8');
+function mount() {
+  const changes = [], refs = [], effects = [], listeners = new Map(), timers = [];
+  let options, markdown = '# 标题', finishes = 0;
+  const editor = { isDestroyed: false, view: { composing: false }, storage: { markdown: { getMarkdown: () => markdown } } };
+  const context = vm.createContext({
+    useRef: (value) => { const ref = { current: value }; refs.push(ref); return ref; },
+    useCallback: (fn) => fn, useEffect: (fn) => effects.push(fn),
+    useEditor: (value) => { options = value; return editor; }, createCanvasTextEditorExtensions: () => [],
+    window: { setTimeout: (fn) => timers.push(fn) },
+    document: { addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: (name) => listeners.delete(name) },
+  });
+  const body = source.slice(source.indexOf('export default function'), source.indexOf('  return <div'));
+  vm.runInContext(body.replace('export default ', '') + 'return { commit, finish }; }', context);
+  const handlers = context.CanvasInlineTextEditor({ initialContent: markdown, onContentChange: (value) => changes.push(value), onFinish: () => finishes++ });
+  editor.commands = { blur: () => options.onBlur({ editor }) };
+  const cleanups = effects.map((effect) => effect());
+  return { ...handlers, changes, refs, editor, listeners, options, cleanups, flush: () => timers.splice(0).forEach((fn) => fn()),
+    update: (value) => { markdown = value; options.onUpdate({ editor }); }, finishes: () => finishes };
 }
-
-const event = (value, isComposing = false) => ({ currentTarget: { value }, nativeEvent: { isComposing } });
-
-test('有正文时保留滚动隔离，只有非编辑空节点放行画布滚动', () => {
-  const expression = source.match(/canvas-node__text-content \$\{([^}]+)\}/)?.[1];
-  assert.ok(expression);
-  const classes = new Function('editing', 'data', `return ${expression};`);
-  for (const content of ['', undefined, '一行正文', '第一行\n第二行']) {
-    assert.equal(classes(false, { content }), content ? 'nowheel' : '');
-    assert.equal(classes(true, { content }), 'nodrag nowheel nopan');
-  }
-  const textarea = source.match(/<textarea[\s\S]*?\/>/)?.[0];
-  assert.ok(textarea);
-  assert.match(textarea, /className="canvas-node__text-editor nodrag nowheel nopan"/);
-});
-
-test('编辑正文不再受画布回传值控制，保留组合输入事件', () => {
-  const textarea = source.match(/<textarea[\s\S]*?\/>/)?.[0];
-  assert.ok(textarea);
-  assert.match(textarea, /defaultValue=\{data\?\.content \|\| ''\}/);
-  assert.doesNotMatch(textarea, /\bvalue=/);
-  assert.match(textarea, /onCompositionStart=\{\(\) => \{ composingRef\.current = true; \}\}/);
-  assert.match(textarea, /onCompositionEnd=\{handleCompositionEnd\}/);
-});
-
-test('连续拼音只在选字结束时同步完整中文，下一轮输入仍受保护', () => {
-  const state = createHandlers();
-  state.composingRef.current = true;
-  for (const value of ['n', 'ni', 'nih', 'nihao']) state.handleContentChange(event(value));
+test('无修改退出不改写Markdown，失焦不重复结束', () => {
+  const state = mount();
+  state.finish(state.editor);
+  state.options.onBlur({ editor: state.editor });
   assert.deepEqual(state.changes, []);
-  state.handleCompositionEnd(event('你好'));
-  assert.deepEqual(state.changes, [['text-1', '你好']]);
-  state.composingRef.current = true;
-  state.handleContentChange(event('你好shi'));
-  state.handleCompositionEnd(event('你好世界'));
-  assert.deepEqual(state.changes.at(-1), ['text-1', '你好世界']);
+  assert.equal(state.finishes(), 1);
 });
-
-test('原生组合标记同样保护输入，英文、删除和换行正常同步', () => {
-  const state = createHandlers();
-  state.handleContentChange(event('zhong', true));
+test('标题、粗体、列表和删除同步，同值不重复提交', () => {
+  const state = mount();
+  for (const value of ['# 新标题', '**粗体**', '- 列表', '']) state.update(value);
+  state.update('');
+  assert.deepEqual(state.changes, ['# 新标题', '**粗体**', '- 列表', '']);
+});
+test('组合输入不提交拼音，结束提交中文，下一轮仍受保护', () => {
+  const state = mount();
+  state.refs[4].current = true;
+  state.update('ni'); state.update('nihao');
   assert.deepEqual(state.changes, []);
-  for (const value of ['hello', 'hello\n世界', '']) state.handleContentChange(event(value));
-  assert.deepEqual(state.changes.map(([, value]) => value), ['hello', 'hello\n世界', '']);
+  state.refs[4].current = false;
+  state.update('你好');
+  state.editor.view.composing = true;
+  state.update('你好shi');
+  assert.deepEqual(state.changes, ['你好']);
+  state.editor.view.composing = false;
+  state.update('你好世界');
+  assert.deepEqual(state.changes, ['你好', '你好世界']);
 });
-
-test('失焦提交输入框最终正文并清理组合状态', () => {
-  const state = createHandlers();
-  state.composingRef.current = true;
-  state.handleBlur(event('最终正文'));
-  assert.deepEqual(state.changes, [['text-1', '最终正文']]);
-  assert.equal(state.composingRef.current, false);
-  assert.equal(state.isEditing(), false);
+test('外部点击提交最终正文，清理监听', () => {
+  const state = mount();
+  state.refs[0].current = { contains: (target) => target === 'inside' };
+  state.listeners.get('pointerdown')({ target: 'inside' });
+  assert.equal(state.finishes(), 0);
+  state.editor.view.composing = true;
+  state.update('最终正文');
+  state.listeners.get('pointerdown')({ target: 'outside' });
+  state.flush();
+  assert.deepEqual(state.changes, ['最终正文']);
+  assert.equal(state.finishes(), 1);
+  for (const cleanup of state.cleanups) cleanup?.();
+  assert.equal(state.listeners.size, 0);
 });

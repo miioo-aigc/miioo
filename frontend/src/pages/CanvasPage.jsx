@@ -3,7 +3,11 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L137；grouping L181；referenceGraph L195；mediaPreview L162；文档加载 L208；handleNodesChange L291；addNode L361；工具栏新增 L406；批量导入 L418；React Flow L770
+ *   CanvasPage L145；grouping L191；referenceGraph L205；mediaPreview L171；文档加载 L218；handleNodesChange L301；addNode L381；工具栏新增 L417；批量导入 L429；React Flow L787
+ *   2026-10-21：素材恢复支持合法相对地址，复用媒体地址归一化；可用素材缺有效地址则停止加载并禁止保存，不静默变空节点。
+ *   2026-10-21：上传与资产选择动作在节点渲染时统一注入，刷新恢复节点不再依赖新建时绑定。
+ *   2026-10-21：CanvasTextEditor / UseCanvasTextEditor 编排800×800专注富文本编辑，原生模态隔离背景，保存独立历史；页面保留文档/历史/生成任务编排，编辑UI与草稿会话独立。
+ *   2026-10-21：空白右键复用节点动作菜单；新建节点二级菜单、撤销/重做；新建/粘贴固定右键坐标，清空仅有任务时确认。
  *   2026-10-21：正式项目详情及项目改名接线，项目名与画布名独立；加载及改名校验账号会话。
  *   2026-10-20：正式 records 文档读写、分批素材恢复及会话内幂等串行保存；加载失败禁止保存，分享复制不依赖保存。
  *   2026-10-19：UseCanvasSnapping 编排可选网格/边缘吸附，CanvasSnapGuides 显示辅助线；正文边界排除输入框，CanvasGrid 统一背景参数与可见网点中心，修正正文左上边框落点。
@@ -20,7 +24,7 @@
  *   2026-10-14：UseCanvasList 接通同项目列表、新增、切换与重命名；2026-10-19 增加副本切换与归档后导航；切换先保存，失败保留当前画布。
  *   2026-10-10：图片、视频、音频共用工具栏；CanvasVideoEditor 复用四项编辑弹窗，后台结果新增对应媒体节点并保留源节点。
  *   2026-10-09：名称双击原地重命名接入历史，右键与快捷键弹窗保留；组合双击切换、展开平滑聚焦。
- *   节点与连线支持文档读取；本地上传完成后尝试保存，完整持久化流程仍待验收。
+ *   2026-10-21：节点/连线/视口停止编辑1秒后自动保存，UseCanvasAutosave 管理防抖与离开保护；保存失败不清未保存状态，待手验。
  *   2026-10-13：初始化仅依赖画布编号与稳定 setNodes，避免 history 包装对象变化导致重复加载；不调整上传流程。
  *   2026-10-08：音频文本按连线顺序追加；音频任务独立编排，请求前建立结果节点及直连素材关系。
  *   2026-09-28：UseCanvasReferences 编排参考图及文本到音频连线，连接时单次导入正文。
@@ -32,7 +36,7 @@
  *   2026-09-28：新增节点按当前同类型最大序号加1，编号由画布工具统一处理。
  *   2026-09-29：连接端口拆分为贴边真实锚点与 44px 独立命中层；只高亮当前悬停的合法目标卡片。
  *   2026-09-28：接入捏合、框选、修饰键多选和真正组合；组合交互与几何计算独立维护。
- *   2026-09-28：接入20步历史及5任务并发；拖动和删除按事务记录，发送取消延迟选中。
+ *   2026-09-28：接入历史（2026-10-21 上限调整为50步）及5任务并发；拖动和删除按事务记录，发送取消延迟选中。
  *   2026-09-29：触控板双指捏合缩放，双指自由方向滚动画布；输入区域继续隔离画布滚动。
  *   2026-09-29：图片参考按模型 max_reference_images 能力允许图片连线；未声明能力或达到上限时拒绝并提示。
  *   2026-09-30：左侧端口支持反向拖拽，为当前节点添加上游节点；复用统一连接校验和新增节点菜单。
@@ -46,6 +50,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import CanvasTextEditor from '../components/canvas/CanvasTextEditor';
+import { useCanvasTextEditor } from '../components/canvas/UseCanvasTextEditor';
+import { useCanvasAutosave } from '../components/canvas/UseCanvasAutosave';
 import { CANVAS_GRID_GAP, CANVAS_GRID_DOT_SIZE, CANVAS_GRID_OFFSET } from '../components/canvas/CanvasGrid';
 import { useCanvasSnapping } from '../components/canvas/UseCanvasSnapping';
 import CanvasSnapGuides from '../components/canvas/CanvasSnapGuides';
@@ -99,6 +106,7 @@ import { useCanvasVideoEdits } from '../components/canvas/UseCanvasVideoEdits';
 import CanvasVideoEditor from '../components/canvas/CanvasVideoEditor';
 import { readCanvasDocument, serializeCanvasDocument } from '../components/canvas/CanvasDocument';
 import { resolveCanvasDocumentAssets } from '../components/canvas/CanvasAssetResolver';
+import { normalizeImageUrl } from '../utils/imageUrl';
 import { createCanvasSaveSession } from '../components/canvas/CanvasSaveSession';
 import { useCanvasList } from '../components/canvas/UseCanvasList';
 
@@ -153,6 +161,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
   const canvasContainerRef = useRef(null);
   const [canvasRevision, setCanvasRevision] = useState(null);
   const saveSessionRef = useRef(null);
+  const acknowledgeSaveRef = useRef(null);
   const [connectingNodeId, setConnectingNodeId] = useState(null);
   const [connectingHandleType, setConnectingHandleType] = useState('');
   const [connectionTargetId, setConnectionTargetId] = useState(null);
@@ -173,13 +182,14 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
   const [searchOpen, setSearchOpen] = useState(false);
   const history = useCanvasHistory(cancelPendingClicks, !assetPickerOpen && !profileOpen && !actionDialog && !searchOpen);
   const { nodes, setNodes } = history;
+  const textEditor = useCanvasTextEditor({ nodes, history, cancelPendingClicks });
   const imageEdits = useCanvasImageEdits({ nodes, setNodes, canvasId, cancelPendingClicks });
   const videoEdits = useCanvasVideoEdits({ nodes, setNodes, canvasId, cancelPendingClicks });
   const projectName = project?.name || canvas?.project_name || canvas?.projectName || '自由画布项目';
   const canvasFiles = useCanvasFileActions({ nodes, setNodes, name: projectName, flowInstance, canvasId });
   const search = useCanvasSearch({ nodes, setNodes, flowInstance, containerRef: canvasContainerRef, cancelPendingClicks, open: searchOpen, setOpen: setSearchOpen });
   const grouping = useCanvasGrouping(nodes, setNodes, cancelPendingClicks, false);
-  const nodeActions = useCanvasNodeActions({ nodes, setNodes, undo: history.undo, getUndoToken: history.getUndoToken, cancelPendingClicks, flowInstance,
+  const nodeActions = useCanvasNodeActions({ nodes, setNodes, undo: history.undo, redo: history.redo, getUndoToken: history.getUndoToken, cancelPendingClicks, flowInstance,
     containerRef: canvasContainerRef, enabled: loadedCanvasId === canvasId && !error && !assetPickerOpen && !profileOpen && !searchOpen,
     dialog: actionDialog, setDialog: setActionDialog });
   const generateText = useCanvasTextGeneration(nodes, setNodes, canvasId, cancelPendingClicks);
@@ -221,7 +231,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
           const projectId = documentResult.value?.project_id;
           const projectDetails = !isDevelopmentCanvas(canvasId) && projectId ? await apiGetProject(projectId) : null;
           const restoredNodes = isDevelopmentCanvas(canvasId) ? document.nodes : await resolveCanvasDocumentAssets(
-            canvasId, document.nodes, apiResolveCanvasAssetViews, { signal: controller.signal },
+            canvasId, document.nodes, apiResolveCanvasAssetViews, { signal: controller.signal, normalizeMediaUrl: normalizeImageUrl },
           );
           if (!isCurrent()) return;
           setError('');
@@ -240,7 +250,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       if (userResult.status === 'fulfilled') setCurrentUser(userResult.value || {});
       setLoadedCanvasId(canvasId);
     });
-    return () => { cancelled = true; controller.abort(); };
+    return () => { cancelled = true; controller.abort(); saveSessionRef.current = null; };
   }, [canvasId, setNodes]);
 
   const renameProject = async (name) => {
@@ -358,6 +368,16 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       ? { ...item, data: { ...item.data, generationMode } }
       : item));
   }, [setNodes]);
+  const handleNodeAssetChange = useCallback((nodeId, asset) => {
+    const assets = Array.isArray(asset) ? asset : [asset];
+    const files = assets.map((item) => item.file).filter(Boolean);
+    return files.length ? uploadFilesRef.current?.(files, { nodeId }) : importAssetsRef.current?.(assets, { nodeId });
+  }, []);
+  const handleNodeSelectAsset = useCallback((nodeId, nodeType) => {
+    cancelPendingClicks();
+    setAssetTarget({ nodeId, nodeType });
+    setAssetPickerOpen(true);
+  }, [cancelPendingClicks]);
   const addNode = useCallback((type, position, connection = null, asset = null) => {
     const node = createCanvasNode(type, position || { x: 160 + (nodes.length % 3) * 280, y: 160 + Math.floor(nodes.length / 3) * 300 });
     node.data.onPromptChange = (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item));
@@ -377,15 +397,6 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       if (type === 'video') return generateVideo(payload);
       if (type === 'audio') return generateAudio(payload);
       return handleUnsupported();
-    };
-    node.data.onAssetChange = (nodeId, asset) => {
-      const assets = Array.isArray(asset) ? asset : [asset];
-      const files = assets.map((item) => item.file).filter(Boolean);
-      return files.length ? uploadFilesRef.current?.(files, { nodeId }) : importAssetsRef.current?.(assets, { nodeId });
-    };
-    node.data.onSelectAsset = (nodeId, nodeType) => {
-      setAssetTarget({ nodeId, nodeType });
-      setAssetPickerOpen(true);
     };
     if (!connection) setNodes((current) => {
       const next = appendCanvasNode(current, node);
@@ -476,13 +487,19 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       const asset = node.data?.asset;
       return asset && (!asset.asset_id || asset.uploadStatus === 'uploading' || asset.uploadStatus === 'error');
     })) return false;
-    const result = await saveSessionRef.current.session.save(canvasId, canvasRevision,
-      serializeCanvasDocument(snapshot.nodes, referenceGraph.edges, viewport));
+    const owner = saveSessionRef.current;
+    const session = getAuthSessionGeneration();
+    const document = serializeCanvasDocument(snapshot.nodes, referenceGraph.edges, viewport);
+    const result = await owner.session.save(canvasId, canvasRevision, document);
+    if (saveSessionRef.current !== owner || session !== getAuthSessionGeneration()) return false;
+    acknowledgeSaveRef.current?.(document);
     if (Number.isInteger(result?.revision)) setCanvasRevision(result.revision);
     return true;
   }, [canvasId, loadedCanvasId, error, canvasRevision, history, referenceGraph.edges, viewport]);
   const canvasList = useCanvasList({ canvas, persistCanvas, onSelectCanvas, onBackProjects,
     onRenamed: (title, revision) => { setCanvas((current) => ({ ...current, title })); setCanvasRevision(revision); } });
+  const autosave = useCanvasAutosave({ enabled: loadedCanvasId === canvasId && !error,
+    nodes, edges: referenceGraph.edges, viewport, persist: persistCanvas, paused: canvasList.busy, acknowledgeRef: acknowledgeSaveRef });
   const uploadFiles = useCallback(async (files, target = null) => {
     const validFiles = files.filter((file) => getCanvasMediaFileType(file, 'all'));
     if (!validFiles.length) {
@@ -760,24 +777,26 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     });
   }, []);
 
-  return <div className="relative h-screen w-screen overflow-hidden bg-surface-base text-text-primary [font-synthesis:none] antialiased">
+  return <div data-text-editing={Boolean(textEditor.session)} className="relative h-screen w-screen overflow-hidden bg-surface-base text-text-primary [font-synthesis:none] antialiased">
     {imageEdits.editor && <LocalImageEditor key={`${imageEdits.editor.card.imageUrl}:${imageEdits.editor.mode}`} {...imageEdits.editor} onClose={imageEdits.close} />}
     {videoEdits.editor && <CanvasVideoEditor key={`${videoEdits.editor.videoUrl}:${videoEdits.editor.mode}`} editor={videoEdits.editor} onClose={videoEdits.close} />}
     <CanvasFileInput inputRef={canvasFiles.inputRef} onChange={canvasFiles.importFile} />
-    <CanvasProjectHeader canvasName={projectName} onBackHome={onBackHome} onBackProjects={onBackProjects} onCreateProject={onCreateProject} onImport={canvasFiles.open} onUnsupported={handleUnsupported} onRename={renameProject} />
-    <CanvasUserMenu currentUser={currentUser} onLogout={handleLogout} onOpenProfile={() => setProfileOpen(true)} />
+    <CanvasProjectHeader canvasName={projectName} onBackHome={() => autosave.leave(onBackHome)} onBackProjects={() => autosave.leave(onBackProjects)} onCreateProject={() => autosave.leave(onCreateProject)} onImport={canvasFiles.open} onUnsupported={handleUnsupported} onRename={renameProject} />
+    <CanvasUserMenu currentUser={currentUser} onLogout={() => autosave.leave(handleLogout)} onOpenProfile={() => setProfileOpen(true)} />
     <div ref={canvasContainerRef} className="absolute inset-0 bg-surface-toolbar">
       <ReactFlow viewport={viewport} minZoom={0.01}
         onDragOver={handleCanvasDragOver} onDrop={handleCanvasDrop}
         onWheelCapture={handleCanvasWheelCapture}
         onMove={(_, nextViewport) => { setViewport(nextViewport); setViewportZoom(nextViewport.zoom); }}
-        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, viewportZoom, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
+        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, onAssetChange: handleNodeAssetChange, onSelectAsset: handleNodeSelectAsset, viewportZoom, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
           onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); },
+          onEditContent: (id) => { clearPendingConnection(); setNodeMenu(null); nodeActions.closeMenu(); textEditor.open(id); },
           onContentChange: (nodeId, content) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, content } } : item)),
           onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)),
           onModelChange: (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item)),
           onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : node.type === 'image' ? { onGenerate: generateImage, onImageEdit: imageEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); }, onPreview: (asset) => setMediaPreview({ asset, nodeType: node.type }) } : node.type === 'video' ? { onGenerate: generateVideo, onVideoEdit: videoEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); }, onPreview: (asset) => setMediaPreview({ asset, nodeType: node.type }) } : node.type === 'audio' ? { onGenerate: generateAudio, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); } } : {}) } }))} edges={presentation.edges} edgeTypes={CANVAS_EDGE_TYPES} onEdgesChange={referenceGraph.onEdgesChange}
         deleteKeyCode={null}
+        onPaneContextMenu={(event) => { clearPendingConnection(); setNodeMenu(null); nodeActions.onPaneContextMenu(event); }}
         onNodeContextMenu={(event, node) => { clearPendingConnection(); nodeActions.onContextMenu(event, node); }}
         onSelectionContextMenu={(event, selectedNodes) => { if (selectedNodes[0]) { clearPendingConnection(); nodeActions.onContextMenu(event, selectedNodes[0]); } }}
         onMoveStart={nodeActions.closeMenu}
@@ -868,10 +887,11 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       assetFilter={assetTarget ? (asset) => Boolean(toCanvasAsset(asset, assetTarget.nodeType)) : undefined}
       includeSeedanceLibrary
     />
-    <ProfileModal open={profileOpen} currentUser={currentUser} onClose={() => setProfileOpen(false)} onLogout={handleLogout} onProfileUpdated={(updated) => setCurrentUser((previous) => ({ ...previous, ...updated }))} />
+    <ProfileModal open={profileOpen} currentUser={currentUser} onClose={() => setProfileOpen(false)} onLogout={() => autosave.leave(handleLogout)} onProfileUpdated={(updated) => setCurrentUser((previous) => ({ ...previous, ...updated }))} />
     {mediaPreview && <CanvasMediaPreview asset={mediaPreview.asset} nodeType={mediaPreview.nodeType} playback={mediaPreview.playback} onClose={() => setMediaPreview(null)} />}
+    {textEditor.session && <CanvasTextEditor key={textEditor.session.id} {...textEditor.session} onCancel={textEditor.close} onSave={textEditor.save} />}
     <CanvasNodeActionOverlays menu={nodeActions.menu} dialog={nodeActions.dialog} nodes={nodes}
-      canPaste={nodeActions.clipboard.length > 0} onAction={nodeActions.execute} onCloseMenu={nodeActions.closeMenu}
+      canUndo={history.canUndo} canRedo={history.canRedo} onAddNode={addNode} canPaste={nodeActions.clipboard.length > 0} onAction={nodeActions.execute} onCloseMenu={nodeActions.closeMenu}
       onCloseDialog={nodeActions.closeDialog} onNameChange={nodeActions.setName} onConfirm={nodeActions.confirm} />
   </div>;
 }

@@ -27,6 +27,20 @@
 .canvas-media-preview__close:hover { background: var(--color-white-10); color: var(--color-white-100); }
 .canvas-media-preview__close:active { color: var(--color-white-60); }
 .canvas-node__text-result { flex-shrink: 0; }
+[data-text-editing='true'] .react-flow__node { opacity: 0.4; pointer-events: none; }
+.canvas-node__rich-text { white-space: normal; }
+.canvas-node__rich-text p { white-space: pre-wrap; }
+[data-text-editing='true'] .tiptap-editor ul { list-style: disc; }
+[data-text-editing='true'] .tiptap-editor ol { list-style: decimal; }
+.canvas-node__rich-text h1 { font-size: 20px; line-height: 24px; font-weight: bold; margin: 0 0 8px; }
+.canvas-node__rich-text h2 { font-size: 16px; line-height: 20px; font-weight: bold; margin: 12px 0 6px; }
+.canvas-node__rich-text p { margin: 4px 0; }
+.canvas-node__rich-text ul { list-style: disc; padding-left: 20px; margin: 4px 0; }
+.canvas-node__rich-text ol { list-style: decimal; padding-left: 20px; margin: 4px 0; }
+.canvas-node__rich-text li > p { margin: 0; }
+.canvas-node__rich-text strong { font-weight: bold; color: var(--color-text-primary); }
+.canvas-node__inline-editor { flex: 1 0 auto; min-height: 100%; white-space: normal; cursor: text; }
+.canvas-node__inline-editor .ProseMirror { min-height: 100%; outline: none; caret-color: var(--color-text-accent); }
 .canvas-group { position: relative; width: 100%; height: 100%; box-sizing: border-box; border: 1px solid var(--color-stroke-normal); border-radius: 20px; background: var(--color-white-5); }
 .canvas-group__name { position: absolute; top: 0; left: 0; display: flex; align-items: center; width: calc(100% * var(--canvas-group-name-zoom, 1)); height: 16px; transform: scale(var(--canvas-group-name-inverse-zoom, 1)) translateY(-24px); transform-origin: top left; color: var(--color-text-secondary); font-size: 12px; line-height: 16px; }
 .canvas-group__name .canvas-editable-name { flex: 1; min-width: 0; }
@@ -106,7 +120,9 @@
 .canvas-node:not([data-node-type='text']) .canvas-node__empty-state { padding-top: 42px; }
 .canvas-node__asset-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--color-text-secondary); }
 .canvas-node__text-content { position: relative; display: flex; width: 100%; height: 238px; max-height: 238px; box-sizing: border-box; flex-direction: column; overflow-y: auto; overflow-wrap: anywhere; padding: 12px; white-space: pre-wrap; color: var(--color-white-80); font-size: 14px; line-height: 21px; }
-.canvas-node__text-editor { display: block; width: 100%; height: 100%; min-height: 0; box-sizing: border-box; flex: 1; resize: none; overflow-y: auto; overflow-wrap: anywhere; border: 0; outline: none; padding: 0; background: transparent; color: inherit; font: inherit; }
+/* 固定底部4px安全区；仍有下文时，其上32px渐隐，滚动到底恢复清晰。 */
+.canvas-node__text-content[data-text-preview='true'] { clip-path: inset(0 0 4px); }
+.canvas-node__text-content[data-text-preview='true'][data-has-more='true'] { mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 36px), transparent calc(100% - 4px), transparent 100%); }
 .canvas-node__text-placeholder { align-self: stretch; color: var(--color-text-hint); }
 .canvas-node__upload { position: absolute; top: 105px; left: 50%; transform: translateX(-50%); }
 .canvas-node__upload-hint { position: absolute; top: 137px; left: 50%; width: max-content; color: var(--color-text-hint); transform: translateX(-50%); font-size: 12px; line-height: 16px; }

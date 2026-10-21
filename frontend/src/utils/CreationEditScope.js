@@ -12,3 +12,22 @@ export function creationEditOwner(scope) {
   if (!match) return null;
   try { return decodeURIComponent(match[1]); } catch { return null; }
 }
+
+export function imageEditOwner(scope) {
+  const match = /^(creation|subject|storyboard):owner:([^:]+):.+/.exec(scope || '');
+  if (!match) return null;
+  try { return decodeURIComponent(match[2]); } catch { return null; }
+}
+
+export function accountImageEditScope(scope, ownerId) {
+  if (!/^(creation|subject|storyboard):/.test(scope || '') || ownerId == null || ownerId === '') return null;
+  const [kind, ...parts] = scope.split(':');
+  if (parts[0] === 'owner') return imageEditOwner(scope) === String(ownerId) ? scope : null;
+  return `${kind}:owner:${encodeURIComponent(String(ownerId))}:${parts.join(':')}`;
+}
+
+export function imageEditBusinessScope(scope) {
+  if (!imageEditOwner(scope)) return scope;
+  const [kind, , , ...parts] = scope.split(':');
+  return `${kind}:${parts.join(':')}`;
+}

@@ -37,11 +37,10 @@ test('四类节点直接复用公共上传按钮', () => {
 
 test('文本卡片原地编辑复用正文并隔离画布键盘事件', () => {
   const source = readFileSync(new URL('../src/components/canvas/TextCanvasNode.jsx', import.meta.url), 'utf8');
-  assert.match(source, /<textarea/);
-  assert.match(source, /defaultValue=\{data\?\.content \|\| ''\}/);
-  assert.match(source, /onBlur=\{handleBlur\}/);
-  assert.match(source, /onKeyDown=\{\(event\) => event.stopPropagation\(\)\}/);
-  assert.match(source, /onContentChange\?\.\(id, event.currentTarget.value\)/);
+  assert.match(source, /<CanvasInlineTextEditor/);
+  assert.match(source, /initialContent=/);
+  assert.match(source, /onFinish=/);
+  assert.match(source, /onContentChange=/);
 });
 import {
   CANVAS_NODE_TYPES,

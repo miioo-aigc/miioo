@@ -1,10 +1,50 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildCanvasShareLink, parseCanvasShareRoute, enableAndCopyCanvasShare } from '../src/components/canvas/CanvasShareLink.js';
-import { readCanvasShareDocument, safeCanvasMediaUrl } from '../src/components/canvas/CanvasShareDocument.js';
+import { readCanvasShareDocument, safeCanvasMediaUrl, prepareCanvasShareMedia } from '../src/components/canvas/CanvasShareDocument.js';
 
 const record = (id, props = {}) => ({ id, type: 'free-canvas-node', x: 0, y: 10, props: { nodeType: 'text', ...props } });
 const payload = (records, businessBindings = []) => ({ document: { schemaVersion: 1, engine: 'xyflow', records, businessBindings }, assets: [] });
+
+test('缺少宽高时读取真实素材比例，首次布局同步节点宽度，失败保留默认尺寸', async (t) => {
+  const sources = [];
+  class Media {
+    set src(value) {
+      sources.push(value);
+      this.naturalWidth = value.endsWith('failed') ? 0 : 900; this.naturalHeight = value.endsWith('failed') ? 0 : 1600;
+      this.videoWidth = 1920; this.videoHeight = 1080;
+      queueMicrotask(() => value.endsWith('failed') ? this.onerror() : (this.onload || this.onloadedmetadata)?.());
+    }
+    removeAttribute() {}
+    load() {}
+  }
+  const originalImage = globalThis.Image;
+  const originalDocument = globalThis.document;
+  globalThis.Image = Media;
+  globalThis.document = { createElement: () => new Media() };
+  t.after(() => {
+    if (originalImage === undefined) delete globalThis.Image; else globalThis.Image = originalImage;
+    if (originalDocument === undefined) delete globalThis.document; else globalThis.document = originalDocument;
+  });
+  const ids = ['image', 'video', 'failed', 'unsafe', 'known', 'unavailable'];
+  const assetId = (index) => `00000000-0000-0000-0000-${String(index + 1).padStart(12, '0')}`;
+  const data = payload(ids.map((id, index) => record(id, { assetId: assetId(index), nodeType: id === 'video' ? 'video' : 'image' })));
+  data.assets = ids.map((id, index) => ({ asset_id: assetId(index), media_type: id === 'video' ? 'video' : 'image',
+    availability: id === 'unavailable' ? 'missing' : 'ready',
+    original_url: id === 'unsafe' ? 'javascript:bad()' : `https://a/${id}`,
+    preview_url: id === 'video' ? 'https://a/video' : undefined,
+    thumbnail_url: id === 'image' ? 'https://a/square-thumb' : undefined,
+    ...(id === 'known' ? { width: 1600, height: 900 } : {}),
+  }));
+  const graph = await prepareCanvasShareMedia(readCanvasShareDocument(data));
+  assert.deepEqual(sources, ['https://a/image', 'https://a/video', 'https://a/failed']);
+  assert.deepEqual(graph.nodes[0].data.mediaSize, { width: 180, height: 320 });
+  assert.deepEqual(graph.nodes[1].data.mediaSize, { width: 320, height: 180 });
+  assert.deepEqual(graph.nodes[4].data.mediaSize, { width: 320, height: 180 });
+  for (const index of [2, 3, 5]) assert.deepEqual(graph.nodes[index].data.mediaSize, { width: 240, height: 240 });
+  for (const node of graph.nodes) assert.equal(node.style.width, node.data.mediaSize.width);
+  assert.equal(data.assets[0].width, undefined);
+});
 
 test('链接固定使用前端域名且凭证编码可逆', () => {
   const url = new URL(buildCanvasShareLink('https://front.example', 'a/b ?'));
@@ -48,6 +88,9 @@ test('节点连线优先、绑定兜底、去重并丢弃悬空连线', () => {
     record('1'), record('2', { textSourceIds: ['1', '1', 'missing'] }), record('3'), record('4', { referenceInputs: [] }),
   ], [{ fromId: '1', toId: '3', enabled: true }, { fromId: '2', toId: '4', enabled: true }]));
   assert.deepEqual(graph.edges.map(({ source, target }) => [source, target]), [['1', '2'], ['1', '3']]);
+  assert.equal(graph.edges[0].type, 'default');
+  assert.deepEqual(graph.nodes[0].data.mediaSize, { width: 240, height: 240 });
+  assert.equal(graph.nodes[0].style.width, 240);
 });
 
 test('空文档正常，旧格式、重复编号、未知版本不伪装为空态', () => {

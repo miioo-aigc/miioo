@@ -49,7 +49,7 @@
  *   [边界] 页面保留 API、轮询循环、状态写回、缓存、持久化和页面编排；任务恢复由 useStoryboardTaskRecovery 负责流程，页面通过显式回调接收结果
  *   [外部上传] ReferenceMediaEditor 直接引入 StoryboardUploadSlots，页面不转发上传槽位
  *
- * ─── 更新记录 ───────────────────────────────────────────────
+ * ─── 更新记录 ─────────────────────────────────────────────── 2026-10-23：在线剪辑跳转保留分集参数（L1823）
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-09-18  删除已无运行时引用的旧分镜页 Toast 展示；反馈统一由 GlobalToast 承接
  *   2026-09-07  修复兼容分镜媒体覆盖后端候选 UUID：后端候选合并优先，并在定稿前确保候选已持久化
@@ -1824,8 +1824,8 @@ function hasStoryboardMediaHint(shot = {}) {
   function handleStartEdit(compositionId, episodeId) {
     const query = new URLSearchParams();
     if (compositionId) query.set('comp_id', compositionId);
-    if (compositionId && episodeId) query.set('episode_id', episodeId);
-    window.history.pushState({}, '', `/project/${encodeURIComponent(projectId)}/edit${compositionId ? '/editor?' + query : ''}`);
+    if (episodeId) query.set('episode_id', episodeId);
+    window.history.pushState({}, '', `/project/${encodeURIComponent(projectId)}/edit${compositionId ? '/editor' : ''}${query.size ? '?' + query : ''}`);
     onUnlockStep?.('edit');
     onStartEdit?.();
   }

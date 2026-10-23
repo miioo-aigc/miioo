@@ -11,7 +11,7 @@ import { getEpisodeId } from '../storyboard/storyboardControlUtils';
 import { createStoryboardDraft } from '../../api/CompositionDraftCreation';
 
 export default function EditWorkspace({ projectId, projectName = '项目', episodes = [], showToast, onOpenEditor }) {
-  const [episodeSelection, setEpisodeSelection] = useState(null);
+  const [episodeSelection, setEpisodeSelection] = useState(() => ({ projectId, id: new URLSearchParams(window.location.search).get('episode_id') }));
   const selectedEpisode = (episodeSelection?.projectId === projectId
     ? episodes.find((episode) => getEpisodeId(episode) === episodeSelection.id)
     : null) || episodes[0] || null;
@@ -32,10 +32,16 @@ export default function EditWorkspace({ projectId, projectName = '项目', episo
   }, 0);
 
   useEffect(() => {
+    const restoreEpisode = () => setEpisodeSelection({ projectId, id: new URLSearchParams(window.location.search).get('episode_id') });
+    window.addEventListener('popstate', restoreEpisode);
+    return () => window.removeEventListener('popstate', restoreEpisode);
+  }, [projectId]);
+
+  useEffect(() => {
     if (!projectId) return;
     let cancelled = false;
     Promise.all([
-      apiGetCompositions(projectId),
+      episodeId ? apiGetCompositions(projectId, episodeId) : Promise.resolve([]),
       apiGetStoryboards(projectId, episodeId ? { episode_id: episodeId } : {}),
     ]).then(([compositions, data]) => {
       if (cancelled) return;
@@ -54,6 +60,7 @@ export default function EditWorkspace({ projectId, projectName = '项目', episo
     }
     const query = new URLSearchParams({ project_id: projectId });
     if (compositionId) query.set('comp_id', compositionId);
+    if (episodeId) query.set('episode_id', episodeId);
     window.location.assign('/editor?' + query);
   }
 
@@ -87,7 +94,13 @@ export default function EditWorkspace({ projectId, projectName = '项目', episo
               <EpisodeSelector
                 episodes={episodes}
                 value={selectedEpisode}
-                onChange={(episode) => setEpisodeSelection({ projectId, id: getEpisodeId(episode) })}
+                onChange={(episode) => {
+                  const id = getEpisodeId(episode);
+                  setEpisodeSelection({ projectId, id });
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('episode_id', id);
+                  window.history.replaceState({}, '', url.pathname + url.search);
+                }}
               />
             </div>
             <span className="text-white/[0.8]">

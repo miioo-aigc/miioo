@@ -26,7 +26,9 @@ export default function EditPage(props) {
     setEditor({ projectId: props.projectId, compId, episodeId: episode?.id });
   };
   const backToDrafts = () => {
-    window.history.pushState({}, '', `/project/${encodeURIComponent(props.projectId)}/edit`);
+    const query = new URLSearchParams();
+    if (editor?.episodeId) query.set('episode_id', editor.episodeId);
+    window.history.pushState({}, '', `/project/${encodeURIComponent(props.projectId)}/edit${query.size ? `?${query}` : ''}`);
     setEditor(null);
   };
   if (editor?.projectId === props.projectId) {

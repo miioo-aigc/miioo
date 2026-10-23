@@ -107,7 +107,7 @@ export default function PropsPanel() {
   if (selected.type === 'subtitle') return <SubtitleProperties key={selected.id} segment={selected} />;
   const typeLabel = TYPE_LABEL[selected.type] || '片段';
   const dc = durationClampOf(selected);
-  const srcDurationText = selected.sourceDuration ? formatTime(selected.sourceDuration) : '未知';
+  const srcDurationText = selected.sourceDuration ? formatTime(selected.sourceDuration, 2) : '未知';
 
   const isVideo = selected.type === 'video';
   const isImage = selected.type === 'image';
@@ -133,7 +133,7 @@ export default function PropsPanel() {
       </div>
 
       <PropertySlider key={`duration-${selected.id}`} label="片段时长"
-        value={selected.duration} min={dc.min} max={dc.max} sliderStep={0.5}
+        value={selected.duration} min={dc.min} max={dc.max} step={1} sliderStep="any" precision={2}
         hint={isImage ? undefined : `素材时长 ${srcDurationText}`}
         onChange={(duration) => updateSegment(selected.id, { duration })}
         onCommit={(duration) => updateSegment(selected.id, { duration })} />

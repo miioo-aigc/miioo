@@ -25,11 +25,13 @@ import { getErrorMessage } from '../api/error';
 
 // ── 基础工具 ────────────────────────────────────────────────────────────────
 
-export function formatTime(seconds) {
+export function formatTime(seconds, precision = 0) {
   const safe = Math.max(0, Number(seconds) || 0);
-  const m = Math.floor(safe / 60);
-  const s = Math.floor(safe % 60);
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  const scale = 10 ** precision;
+  const ticks = precision ? Math.round(safe * scale) : Math.floor(safe);
+  const m = Math.floor(ticks / (60 * scale));
+  const s = (ticks % (60 * scale)) / scale;
+  return `${String(m).padStart(2, '0')}:${s.toFixed(precision).padStart(precision ? 3 + precision : 2, '0')}`;
 }
 
 function clampNumber(value, min, max) {
@@ -128,6 +130,25 @@ export function computeTotalDuration(segments = []) {
   const audio = computeAudioWindows(segments);
   const subtitle = computeSubtitleWindows(segments);
   return Math.max(visual.total, audio.total, subtitle.total);
+}
+
+// 删除前计算时间顺序，兼容显式起点和旧草稿的隐式串行位置。
+function removeSegmentsWithTrackSnap(state, matches) {
+  const removed = state.segments.filter(matches);
+  if (!removed.length) return state.segments;
+  const tracks = new Set(removed.map(segmentTrack));
+  const windows = [...computeVisualWindows(state.segments).windows, ...computeAudioWindows(state.segments).windows, ...computeSubtitleWindows(state.segments).windows];
+  const starts = new Map();
+  for (const track of tracks) {
+    let cursor = 0;
+    windows.filter(({ seg }) => segmentTrack(seg) === track && !matches(seg))
+      .sort((a, b) => a.start - b.start).forEach(({ seg, start }) => {
+        starts.set(seg.id, state.trackSettings[track]?.excludeGaps ? cursor : start);
+        cursor += Math.max(0, Number(seg.duration) || 0);
+      });
+  }
+  return state.segments.filter((segment) => !matches(segment)).map((segment) =>
+    starts.has(segment.id) ? { ...segment, start: starts.get(segment.id) } : segment);
 }
 
 /** 把片段序列化成后端时间线协议 */
@@ -363,6 +384,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     set({ segments: nextSegments, selectedId: segment.id, dirty: true, dirtyRev: state.dirtyRev + 1, playing: false, cursor: side === 'left' ? state.cursor : window.start });
   },
   projectId: null,
+  episodeId: null,
   compositionId: null,
   name: '未命名成片',
   segments: [],
@@ -372,7 +394,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   deleteSelected: () => set((state) => {
     const ids = new Set(state.selectedIds.length ? state.selectedIds : [state.selectedId]);
     if (!state.segments.some((segment) => ids.has(segment.id))) return {};
-    return { segments: state.segments.filter((segment) => !ids.has(segment.id)), selectedId: null, selectedIds: [], dirty: true, dirtyRev: state.dirtyRev + 1, playing: false };
+    return { segments: removeSegmentsWithTrackSnap(state, (segment) => ids.has(segment.id)), selectedId: null, selectedIds: [], dirty: true, dirtyRev: state.dirtyRev + 1, playing: false };
   }),
   resolution: '1080p',
   aspectRatio: '16:9',
@@ -462,7 +484,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   }),
   removeAsset: (assetId) => set((state) => {
     const matches = (segment) => String(segment.assetId) === String(assetId);
-    const segments = state.segments.filter((segment) => !matches(segment));
+    const segments = removeSegmentsWithTrackSnap(state, matches);
     return {
       album: state.album.filter((asset) => String(asset.id) !== String(assetId)),
       libraryAssetIds: state.libraryAssetIds.filter((id) => String(id) !== String(assetId)),
@@ -547,8 +569,8 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     return { past: [...state.past, before].slice(-100), future: [], selectedId: id, dirty: true, dirtyRev: state.dirtyRev + 1 };
   }),
 
-  init: async ({ projectId, compId, compositions, isCancelled = () => false } = {}) => {
-    set({ exportModalOpen: false, exportState: { ...initialExportState } });
+  init: async ({ projectId, compId, episodeId, compositions, isCancelled = () => false } = {}) => {
+    set({ compositionId: null, episodeId: episodeId ?? null, segments: [], playing: false, dirty: false, exportModalOpen: false, exportState: { ...initialExportState } });
     if (!projectId) {
       set({ projectId: null, dirty: false, dirtyRev: 0, loaded: true, exportState: { ...initialExportState } });
       return;
@@ -558,16 +580,21 @@ export const useCompositionEditorStore = create((rawSet, get) => {
 
     set({ projectId, loaded: false, past: [], future: [], mainTracks: { V: null, A: null, S: null }, trackSettings: { V1: { hidden: false, volume: 1, excludeGaps: true }, A1: { hidden: false, volume: 1, excludeGaps: false }, S1: { hidden: false, excludeGaps: false } } });
     try {
-      const list = compositions ?? await apiGetCompositions(projectId);
+      const list = (compositions ?? await apiGetCompositions(projectId, episodeId))
+        .filter((item) => !episodeId || String(item.episodeId ?? item.episode_id) === String(episodeId));
       if (isCancelled()) return;
       let comp = null;
-      if (compId) comp = list.find((c) => c.id === compId) || null;
+      if (compId) {
+        comp = list.find((c) => String(c.id) === String(compId)) || null;
+        if (!comp) throw new Error('草稿不属于当前分集或已被删除');
+      }
       if (!comp) comp = list[0] || null;
 
       let segments = [];
       if (comp) {
         set({
           compositionId: comp.id,
+          episodeId: comp.episodeId ?? comp.episode_id ?? episodeId ?? null,
           name: comp.name || '未命名成片',
           resolution: comp.resolution || '1080p',
           aspectRatio: comp.aspectRatio || comp.aspect_ratio || '16:9',
@@ -613,12 +640,13 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       } else {
         // 后端已允许空时间线保存草稿，此处省略 timeline 以体现「新建空工程」
         const created = await apiCreateComposition(projectId, {
+          episodeId,
           name: '未命名成片',
           resolution: get().resolution,
           aspectRatio: get().aspectRatio,
         });
         if (isCancelled()) return;
-        set({ compositionId: created.id, name: created.name || '未命名成片', libraryAssetIds: [] });
+        set({ compositionId: created.id, episodeId: created.episodeId, name: created.name || '未命名成片', libraryAssetIds: [] });
       }
       set({ segments, selectedId: null, dirty: false, dirtyRev: 0, saving: false, loaded: true, cursor: 0, playing: false });
     } catch (err) {
@@ -672,13 +700,17 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     }),
 
   removeSegment: (id) =>
-    set((state) => ({
-      segments: state.segments.filter((s) => s.id !== id),
-      selectedId: state.selectedId === id ? null : state.selectedId,
-      dirty: true,
-      dirtyRev: state.dirtyRev + 1,
-      playing: false,
-    })),
+    set((state) => {
+      const segments = removeSegmentsWithTrackSnap(state, (segment) => segment.id === id);
+      if (segments === state.segments) return {};
+      return {
+        segments,
+        selectedId: state.selectedId === id ? null : state.selectedId,
+        dirty: true,
+        dirtyRev: state.dirtyRev + 1,
+        playing: false,
+      };
+    }),
 
   moveSegment: (id, dir) =>
     set((state) => {
@@ -905,7 +937,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     try {
       let comp;
       if (!state.compositionId) {
-        comp = await apiCreateComposition(state.projectId, payload);
+        comp = await apiCreateComposition(state.projectId, { ...payload, episodeId: state.episodeId });
       } else {
         comp = await apiUpdateComposition(state.projectId, state.compositionId, payload);
       }

@@ -7,6 +7,59 @@ after(() => server.close());
 const { useCompositionEditorStore: store, computeVisualWindows } = await server.ssrLoadModule('/src/stores/compositionEditorStore.js');
 const { timelineShortcut, blocksTimelineShortcut } = await server.ssrLoadModule('/src/components/compositionEditor/UseTimelineShortcuts.js');
 
+test('删除入口按受影响轨道吸附补齐，关闭吸附保留隐式位置，撤销整体恢复', () => {
+  for (const action of ['deleteSelected', 'removeSegment', 'removeAsset']) {
+    const segments = [
+      { id: 'first', type: 'image', track: 'V1', start: 0, duration: 2 },
+      { id: 'middle', assetId: 'deleted', type: 'video', track: 'V1', start: 2, duration: 6 },
+      { id: 'later', type: 'video', track: 'V1', start: 8, duration: 2 },
+      { id: 'audio-first', type: 'audio', track: 'A1', duration: 2 },
+      { id: 'audio-middle', assetId: 'deleted', type: 'audio', track: 'A1', duration: 6 },
+      { id: 'audio-last', type: 'audio', track: 'A1', duration: 2 },
+      { id: 'sub-first', type: 'subtitle', track: 'S1', start: 0, duration: 2 },
+      { id: 'sub-middle', assetId: 'deleted', type: 'subtitle', track: 'S1', start: 2, duration: 6 },
+      { id: 'sub-last', type: 'subtitle', track: 'S1', start: 8, duration: 2 },
+      { id: 'other', type: 'video', track: 'V2', start: 10, duration: 2 },
+    ];
+    store.setState({ ...store.getInitialState(), loaded: true, segments, selectedId: 'middle',
+      selectedIds: action === 'deleteSelected' ? ['middle', 'audio-middle', 'sub-middle'] : [],
+      album: [{ id: 'deleted' }], libraryAssetIds: ['deleted'],
+      trackSettings: { V1: { excludeGaps: true }, A1: { excludeGaps: false }, S1: { excludeGaps: true }, V2: { excludeGaps: true } } });
+    store.getState()[action](action === 'removeAsset' ? 'deleted' : 'middle');
+    const state = store.getState();
+    assert.equal(state.segments.find(({ id }) => id === 'later').start, 2);
+    assert.equal(state.segments.find(({ id }) => id === 'other'), segments.at(-1));
+    if (action !== 'removeSegment') {
+      assert.equal(state.segments.find(({ id }) => id === 'audio-last').start, 8);
+      assert.equal(state.segments.find(({ id }) => id === 'sub-last').start, 2);
+    }
+    assert.equal(state.past.length, 1);
+    store.getState().undo();
+    assert.equal(store.getState().segments, segments);
+    assert.deepEqual(store.getState().libraryAssetIds, ['deleted']);
+    store.getState().redo();
+    assert.deepEqual(store.getState().segments, state.segments);
+  }
+  store.getState().removeSegment('missing');
+  assert.equal(store.getState().past.length, 1);
+});
+
+test('各类轨道删除首中尾片段遵循各自吸附状态，允许删空', () => {
+  for (const [type, track] of [['video', 'V1'], ['audio', 'A1'], ['subtitle', 'S1']]) {
+    for (const excludeGaps of [true, false]) {
+      for (const deleted of [0, 1, 2]) {
+        const segments = [0, 1, 2].map((index) => ({ id: String(index), type, track, start: index * 2.25, duration: 2.25 }));
+        store.setState({ ...store.getInitialState(), loaded: true, segments, trackSettings: { [track]: { excludeGaps } } });
+        store.getState().removeSegment(String(deleted));
+        const remaining = store.getState().segments;
+        assert.deepEqual(remaining.map(({ start }) => start), excludeGaps ? [0, 2.25] : segments.filter((_, index) => index !== deleted).map(({ start }) => start));
+        remaining.forEach(({ id }) => store.getState().removeSegment(id));
+        assert.deepEqual(store.getState().segments, []);
+      }
+    }
+  }
+});
+
 test('输入、弹窗和已消费事件不抢占快捷键', () => {
   const clear = { querySelector: () => null };
   assert.equal(blocksTimelineShortcut({}, clear), false);

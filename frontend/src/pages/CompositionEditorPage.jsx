@@ -63,6 +63,7 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
   const [query] = useState(() => new URLSearchParams(window.location.search));
   const projectId = suppliedProjectId || query.get('project_id');
   const compId = suppliedCompId || query.get('comp_id') || undefined;
+  const draftEpisodeId = initialEpisode?.id || query.get('episode_id') || undefined;
   const [episode, setEpisode] = useState(initialEpisode || episodes[0] || null);
   const [initialized, setInitialized] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -106,10 +107,12 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
     let cancelled = false;
     (async () => {
       try {
-        const [assets, compositions] = await Promise.all([fetchAlbum(() => cancelled), apiGetCompositions(projectId)]);
+        if (!compId && !draftEpisodeId) throw new Error('请从分集草稿列表进入剪辑');
+        const [assets, compositions] = await Promise.all([fetchAlbum(() => cancelled), apiGetCompositions(projectId, draftEpisodeId)]);
         if (cancelled) return;
         const composition = compId ? compositions.find((item) => String(item.id) === String(compId)) : compositions[0];
         if (compId && !composition) throw new Error('草稿加载失败或已被删除，请返回列表重试');
+        if (!composition?.episodeId && !draftEpisodeId) throw new Error('草稿缺少分集归属，请返回分集列表新建');
         const libraryIds = composition?.libraryAssetIds || [];
         const missingAssets = await getMissingCompositionAssets(composition?.timeline, assets, libraryIds);
         if (cancelled) return;
@@ -129,7 +132,7 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
           warning: unavailableIds.length ? `${unavailableIds.length} 个草稿素材暂不可用，引用已保留，请检查素材权限或删除状态。` : previous.warning,
         }));
         useCompositionEditorStore.setState({ compositionId: null, segments: [], playing: false, dirty: false });
-        await init({ projectId, compId, compositions, isCancelled: () => cancelled });
+        await init({ projectId, compId, episodeId: composition?.episodeId || draftEpisodeId, compositions, isCancelled: () => cancelled });
         if (!cancelled) {
           const loadedId = useCompositionEditorStore.getState().compositionId;
           if (!loadedId || (compId && String(loadedId) !== String(compId))) {
@@ -145,7 +148,7 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
     return () => {
       cancelled = true;
     };
-  }, [projectId, compId, init, fetchAlbum, loadAlbum]);
+  }, [projectId, compId, draftEpisodeId, init, fetchAlbum, loadAlbum]);
 
   if (!projectId) {
     return (

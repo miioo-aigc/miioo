@@ -33,6 +33,10 @@ export const K = {
   adminModelVisibilityPrefix: () => 'admin-model-visibility:',
   adminAccounts: (params = {}) => `admin-accounts:${stable(params)}`,
   adminAccountsPrefix: () => 'admin-accounts:',
+  adminAnnouncements: (userId, params = {}) => `admin-announcements:${encodeURIComponent(userId)}:${stable(params)}`,
+  adminAnnouncementsPrefix: () => 'admin-announcements:',
+  announcementPopup: (userId, force = false) => `announcement:latest-popup:${encodeURIComponent(userId)}:${force}`,
+  announcementPopupPrefix: () => 'announcement:latest-popup:',
 
   // ── L2 项目内容（medium: 'local'，SWR + 写失效）──────────────────────────────
   project: (id) => `project:${id}`,

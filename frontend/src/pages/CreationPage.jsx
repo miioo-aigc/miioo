@@ -1,6 +1,6 @@
 /**
  * @file CreationPage.jsx
- * @structure-index
+ * @structure-index：2026-10-14 loadHistoryPage L213 记录错误；L879 传递等待并暂停失败后的自动补页。
  *   2026-10-09：选帧查看导航由 viewSavedImage 副作用承接，保存草稿后切到图片并关闭视频详情。
  *
  * ─── 全局常量与工具函数 ─────────────────────────────── L128–L150
@@ -217,7 +217,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       return;
     }
 
-    updateHistoryMeta(tab, { loading: true });
+    updateHistoryMeta(tab, { loading: true, error: '' });
     const nextPage = meta.page + 1;
     const PAGE_SIZE = (tab === 'image' || tab === 'video') ? 6 : 18;
 
@@ -286,7 +286,7 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
       updateHistoryMeta(tab, { page: nextPage, hasMore, loading: false, initialized: true });
     } catch (err) {
       console.error('[CreationPage] 历史数据加载失败:', err);
-      updateHistoryMeta(tab, { loading: false, initialized: true });
+      updateHistoryMeta(tab, { loading: false, initialized: true, error: '历史记录读取失败，请重试' });
     }
   }, [
     isLoggedIn,
@@ -876,8 +876,9 @@ export default function CreationPage({ isLoggedIn, onLoginClick, apiConfigured =
         favorites={favorites}
         toggleFavorite={handleToggleFavorite}
         showToast={showToast}
-        historyLoading={historyMeta[activeTab]?.loading}
-        historyHasMore={historyMeta[activeTab]?.hasMore}
+        historyLoading={historyMeta[activeTab]?.loading || (isLoggedIn && activeTab !== 'music' && !historyMeta[activeTab]?.initialized)}
+        historyError={historyMeta[activeTab]?.error}
+        historyHasMore={!historyMeta[activeTab]?.error && historyMeta[activeTab]?.hasMore}
         onLoadMore={() => loadHistoryPage(activeTab)}
         autoFillLimit={activeTab === 'video' ? 2 : Infinity}
         activeCount={activeCountByTab[genType] ?? 0}

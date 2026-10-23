@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import useLatestRequest from '../../hooks/useLatestRequest';
 import {
   apiGetAdminModelVisibility,
   apiUpdateAdminModelVisibility,
@@ -32,6 +33,7 @@ export default function AdminModelVisibilityPage({
   });
   const [draftKeyword, setDraftKeyword] = useState('');
   const [loading, setLoading] = useState(true);
+  const beginRead = useLatestRequest();
   const [savingKey, setSavingKey] = useState('');
   const [providerOptions, setProviderOptions] = useState([]);
   const [pageError, setPageError] = useState('');
@@ -52,6 +54,7 @@ export default function AdminModelVisibilityPage({
     force = true,
   } = {}) => {
     const nextPage = Number(page || query.page || 1);
+    const isCurrent = beginRead();
     const nextKeyword = typeof keyword === 'string' ? keyword : query.keyword;
     const nextProviderType = typeof providerType === 'string' ? providerType : query.providerType;
     const nextCategory = typeof category === 'string' ? category : query.category;
@@ -66,6 +69,7 @@ export default function AdminModelVisibilityPage({
         category: nextCategory === 'all' ? undefined : nextCategory,
         force,
       });
+      if (!isCurrent()) return;
       setQuery({
         page: payload.page,
         keyword: nextKeyword,
@@ -75,13 +79,14 @@ export default function AdminModelVisibilityPage({
       setDraftKeyword(nextKeyword);
       setPageData(payload);
     } catch (error) {
+      if (!isCurrent()) return;
       const message = getErrorMessage(error, '模型开放列表加载失败');
       setPageError(message);
       showToast?.(message, 'error');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [query.category, query.keyword, query.page, query.providerType, showToast]);
+  }, [beginRead, query.category, query.keyword, query.page, query.providerType, showToast]);
 
   const loadProviderOptions = useCallback(async () => {
     try {

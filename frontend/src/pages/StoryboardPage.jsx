@@ -2,7 +2,7 @@
  * @file StoryboardPage.jsx
  * @structure-index
  *   2026-10-12：排序请求移出状态更新函数，串行提交并校验分集归属；失败提示刷新核对。
- *
+ *   2026-10-14：recoverStoryboardTask L1466 回读后检查恢复会话；任务未知状态保留在恢复 Hook。
  * ─── 全局常量与工具函数 ───────────────────────────────────── L119–L270
  *   normalizeStoryboard / normalizeStoryboardList / toBackendStoryboard  utils/storyboardDataAdapter.js
  *   buildStoryboardPrompt                      utils/buildStoryboardPrompt.js
@@ -1463,7 +1463,7 @@ function hasStoryboardMediaHint(shot = {}) {
     throw new Error('任务超时，请重试');
   }
 
-  const recoverStoryboardTask = useCallback(async (episodeId) => {
+  const recoverStoryboardTask = useCallback(async (episodeId, isCurrent = () => true) => {
     invalidate(K.storyboards(projectId, episodeId));
     invalidate(K.storyboards(projectId));
     const latest = await apiGetStoryboards(projectId, {
@@ -1472,6 +1472,7 @@ function hasStoryboardMediaHint(shot = {}) {
       offset: 0,
       include_gen_params: true,
     });
+    if (!isCurrent()) return;
     const normalizedLatest = normalizeStoryboardList(latest, storyboardSubjects, 0, projectId).slice(0, STORYBOARD_PAGE_SIZE);
     setHasMoreShots(Array.isArray(latest) && latest.length >= STORYBOARD_PAGE_SIZE);
     setShots(normalizedLatest);

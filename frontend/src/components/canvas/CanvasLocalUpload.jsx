@@ -15,7 +15,7 @@ export default function CanvasLocalUpload({ nodeType, onAssetChange, hidden = fa
       setError(nodeType === 'audio' ? '请选择 MP3、WAV、M4A、AAC、OGG、FLAC、OPUS 或 AIFF 音频文件' : '请选择对应类型的非空文件');
       return;
     }
-    const assets = files.map((file) => ({ name: file.name, asset_type: getCanvasMediaFileType(file, nodeType), url: URL.createObjectURL(file), source: 'local-preview' }));
+    const assets = files.map((file) => ({ file, name: file.name, asset_type: getCanvasMediaFileType(file, nodeType), url: URL.createObjectURL(file), source: 'local-upload', uploadStatus: 'uploading' }));
     if (!onAssetChange || await onAssetChange(assets) === false) assets.forEach((asset) => URL.revokeObjectURL(asset.url));
     setError('');
   };

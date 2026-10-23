@@ -9,7 +9,7 @@
  *   startPage / markPageLoading      开始首屏或追加加载
  *   completeFirstPage                写入首屏分页结果
  *   completeMorePage                 写入追加分页结果
- *   failFirstPage / failMorePage    保留原有失败状态语义
+ *   failFirstPage / failMorePage    保留数据和游标，记录失败阶段用于原位重试
  *
  * ─── 数据边界 ───────────────────────────────────────────────────────
  *   只管理分页状态转换，不调用 API、不创建观察器；请求和
@@ -22,6 +22,7 @@ const EMPTY_PAGE = {
   cursor: null,
   hasMore: false,
   loading: false,
+  error: '',
   rawList: [],
 };
 
@@ -29,17 +30,17 @@ export function useAssetPagination() {
   const [pageMeta, setPageMeta] = useState({});
 
   const startPage = useCallback((key) => {
-    setPageMeta((prev) => ({ ...prev, [key]: { ...EMPTY_PAGE, loading: true } }));
+    setPageMeta((prev) => ({ ...prev, [key]: { ...EMPTY_PAGE, ...prev[key], error: '', failedPhase: null, loading: true } }));
   }, []);
 
   const markPageLoading = useCallback((key) => {
-    setPageMeta((prev) => ({ ...prev, [key]: { ...prev[key], loading: true } }));
+    setPageMeta((prev) => ({ ...prev, [key]: { ...prev[key], error: '', loading: true } }));
   }, []);
 
-  const completeFirstPage = useCallback((key, { cursor, hasMore, rawList }) => {
+  const completeFirstPage = useCallback((key, { cursor, hasMore, rawList, error = '' }) => {
     setPageMeta((prev) => ({
       ...prev,
-      [key]: { cursor, hasMore, loading: false, rawList },
+      [key]: { cursor, hasMore, loading: false, rawList, error },
     }));
   }, []);
 
@@ -51,13 +52,13 @@ export function useAssetPagination() {
   }, []);
 
   const failFirstPage = useCallback((key) => {
-    setPageMeta((prev) => ({ ...prev, [key]: { ...EMPTY_PAGE } }));
+    setPageMeta((prev) => ({ ...prev, [key]: { ...EMPTY_PAGE, ...prev[key], loading: false, failedPhase: 'first', error: '读取失败，请重试' } }));
   }, []);
 
   const failMorePage = useCallback((key) => {
     setPageMeta((prev) => ({
       ...prev,
-      [key]: { ...prev[key], loading: false },
+      [key]: { ...prev[key], loading: false, failedPhase: 'more', error: '加载更多失败，请重试' },
     }));
   }, []);
 

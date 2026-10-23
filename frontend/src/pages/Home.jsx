@@ -1,10 +1,14 @@
 /**
  * @file Home.jsx
- * @structure-index
+ * @structure-update：2026-10-15 主体抽取完成刷新复用类别版本与会话归属，失败保留列表并可重试；任务提交/轮询完整会话边界仍待续审。
+ * @structure-index：2026-10-15 readProjects L316；主体请求版本 L352；详情读取 L550；缓存订阅 L980/L991；删除后刷新 L1047；主体分页 L1126；原页重试 L1162；主体抽取 L1192；完成后刷新 L1302。
+ *   2026-10-15：主体分页按类别互斥并校验项目/会话/请求版本；缓存订阅与分页状态同步仍待续审，页面保留跨模块请求编排。
  *   2026-10-12：登录用户确认后恢复已受理的视频编辑任务；保留认证与恢复的页面编排边界。
- *
+ *   2026-10-13：公告提醒 L2183 主动查看全部进入消息中心系统页签；按用户隔离已读状态。
+ *   2026-10-14：画布内部切换路由；仅增加导航接线，认证、缓存和任务恢复仍保留页面编排。
+ *   2026-10-14：项目保存队列 L266；按项目隔离保存回写，页面继续保留请求编排。
  * ─── 全局常量 & 配置 ───────────────────────────────────────────────
- *   页面业务模块懒加载                                          L134–L140
+ *   页面业务模块懒加载                                          L142–L148
  *   NAV_ITEMS / BOTTOM_NAV_ITEMS                                  components/home/HomeNavigationConfig.jsx
  *   STEP_TABS / WorkflowStepTabs                                components/home/WorkflowStepTabs.jsx
  *   BG_VIDEOS                                                   components/home/HomeNavigationConfig.jsx
@@ -22,19 +26,19 @@
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
  *   2026-10-09 画布项目菜单返回自由画布列表，保留品牌图标返回首页；仅新增导航接线
- *   export default function Home()                               L257
- *     ├─ [懒加载] 页面业务模块按需加载                             L134–L140
- *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L258–L326
- *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L342 / L399 / L410
- *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L473 / L942 / L966
- *     │           handleExtractSubjects / handleGenerateStoryboards        L1008 / L1190
+ *   export default function Home()                               L265
+ *     ├─ [懒加载] 页面业务模块按需加载                             L142–L148
+ *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L266–L416
+ *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L417 / L474 / L485
+ *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L550 / L1102 / L1126
+ *     │           handleExtractSubjects / handleGenerateStoryboards        L1192 / L1404
  *     │           handleScriptFinalized / handleNavChange / handleBottomNavChange / handleProjectCreated
- *                                                               L1485 / L1492 / L1559 / L1575
- *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L434 / L448 / L455 / L465
- *     │           微信回调与鉴权初始化；视频编辑恢复                      L714 / L778；L318
- *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L848 / L859 / L880 / L1177
- *     ├─ [底部导航配置] bottomNavItems                             L1543
- *     └─ [渲染] 页面组合 / Suspense / 画布创建与开发态列表           L1614 / L1674 / L1513 / L1526
+ *                                                               L1699 / L1706 / L1770 / L1786
+ *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L511 / L525 / L532 / L542
+ *     │           微信回调与鉴权初始化                                   L819 / L848
+ *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L978 / L991 / L1018 / L1391
+ *     ├─ [底部导航配置] bottomNavItems                             L1754
+ *     └─ [渲染] 页面组合、画布与剪辑导航、Suspense                  L1829
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-09-22  新增独立画布列表入口；超长入口保留认证、历史与任务恢复集中编排，本次只接路由，验证导航及刷新，不迁移生成流程
@@ -78,14 +82,14 @@
  *   2026-07-01  初始结构索引建立
  *   2026-10-09  合并 V1.5 画布与剪辑入口，保留双方业务接线并校正结构索引
  *   2026-10-12  同步 V1.5 最新画布导航，保留剪辑入口并校正合并后的索引
- *   2026-10-15  同步视频编辑任务恢复，保留剪辑导航及资产库跳转接线
+ *   2026-10-15  合并远程剪辑模块，保留本地主体请求保护、公告及画布接线；校正结构索引
  */
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiGetProjects, apiUpdateProject, apiCopyProject, apiDeleteProject, apiGetProject, apiGetProjectOverview } from '../api/project';
 import { apiListCanvasDocuments, normalizeCanvasDocument } from '../api/canvas';
 import { canvasDevelopmentEnabled, createDevelopmentCanvasProject, listDevelopmentCanvasProjects } from '../api/CanvasDevelopment';
-import { getToken, getRefreshToken, refreshAccessToken } from '../api/request';
+import { getToken, getRefreshToken, refreshAccessToken, getAuthSessionGeneration } from '../api/request';
 import { clearTokens, apiLogout, apiCompleteWechatCallback } from '../api/auth';
 import { apiListProviders } from '../api/config';
 import { apiAcknowledgeStorageReminder, apiGetCurrentUser, apiGetNotifications, apiGetStorageUsage } from '../api/user';
@@ -94,8 +98,11 @@ import { apiGetStoryboards, apiGenerateStoryboardsFromFinalScript, apiGenerateSt
 import { invalidate } from '../utils/cache';
 import { recoverVideoEdits, useVideoEditStore } from '../stores/videoEditStore';
 import { normalizeImageUrl } from '../utils/imageUrl';
-import { normalizeSubjects } from '../utils/subjectAdapter';
+import { normalizeSubjects, mergeSubjectItems } from '../utils/subjectAdapter';
 import { normalizeProjectList } from '../utils/projectAdapter';
+import { createProjectSaveQueue, applyProjectSave } from '../utils/ProjectSaveQueue';
+import { createProjectRouteRestore } from '../utils/ProjectRouteRestore';
+import RemoteReadStatus from '../components/feedback/RemoteReadStatus';
 import { buildEpisodeStatusMap } from '../utils/episodeStatusAdapter';
 import {
   getStoryboardTaskErrorMessage,
@@ -114,6 +121,7 @@ import StorageUsageReminderModal from '../components/StorageUsageReminderModal';
 import NewProjectModal from '../components/NewProjectModal';
 import WatermarkSettingsModal from '../components/WatermarkSettingsModal';
 import NotificationCenterModal from '../components/NotificationCenterModal';
+import SystemAnnouncementModal from '../components/announcements/SystemAnnouncementModal';
 import DotsLoading from '../components/DotsLoading';
 import PageErrorBoundary from '../components/feedback/PageErrorBoundary';
 import { showGlobalToast } from '../stores/toastStore';
@@ -255,14 +263,35 @@ function readUnlockedSteps(projectId) {
 }
 
 export default function Home({ onGoToAdmin }) {
+  const [enqueueProjectSave] = useState(createProjectSaveQueue);
   const initialRoute = readWorkspaceRoute();
+  const [projectRouteRestore] = useState(() => createProjectRouteRestore(initialRoute, localStorage, getAuthSessionGeneration()));
   const routeSyncReadyRef = useRef(false);
-  const [activeKey, setActiveKey] = useState(() => {
+  const projectDetailVersion = useRef(0);
+  const projectDetailOwner = useRef(null);
+  const scriptEditVersion = useRef(0);
+  const [projectRead, setProjectRead] = useState(null);
+  const cancelProjectRead = useCallback(() => {
+    projectDetailVersion.current++;
+    projectDetailOwner.current = null;
+    setProjectRead(null);
+    setIsLoadingProject(false);
+  }, []);
+  useEffect(() => () => {
+    projectDetailVersion.current++;
+    projectDetailOwner.current = null;
+  }, []);
+  const [activeKey, setActiveKeyState] = useState(() => {
     if (initialRoute.key !== 'home') return initialRoute.key;
     // 只有明确保存了非 home 的 activeKey 才恢复，否则默认 home
     const savedKey = localStorage.getItem('miioo_active_key');
     return ['project', 'canvas', 'create', 'assets'].includes(savedKey) ? savedKey : 'home';
   });
+  const setActiveKey = useCallback((key) => {
+    projectRouteRestore.cancel();
+    cancelProjectRead();
+    setActiveKeyState(key);
+  }, [projectRouteRestore, cancelProjectRead]);
   const [assetsEntry, setAssetsEntry] = useState({ module: initialRoute.key === 'assets' && new URLSearchParams(window.location.search).get('module') === 'creative' ? 'creative' : 'project', seedanceTab: 'real' });
   const [bottomActiveKey, setBottomActiveKey] = useState(null);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -281,6 +310,30 @@ export default function Home({ onGoToAdmin }) {
   const [activeProject, setActiveProject] = useState(null);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [projectsLoaded, setProjectsLoaded] = useState(() => !getToken());
+  const [projectsError, setProjectsError] = useState('');
+  const projectListVersion = useRef(0);
+  const [projectListSession, setProjectListSession] = useState(null);
+  const readProjects = useCallback(async () => {
+    const version = ++projectListVersion.current;
+    const session = getAuthSessionGeneration();
+    const isCurrent = () => version === projectListVersion.current && session === getAuthSessionGeneration();
+    if (!getToken()) return null;
+    setProjectsLoaded(false);
+    setProjectsError('');
+    try {
+      const normalized = normalizeProjectList(await apiGetProjects());
+      if (!isCurrent()) return null;
+      setProjects(normalized);
+      setProjectListSession(session);
+      return normalized;
+    } catch {
+      if (isCurrent()) setProjectsError('项目列表读取失败，请重试');
+      return null;
+    } finally {
+      if (isCurrent()) setProjectsLoaded(true);
+    }
+  }, []);
+  useEffect(() => () => { projectListVersion.current++; }, []);
   const [, setActiveProjectId] = useState(null);
   const [activeStep, setActiveStep] = useState(initialRoute.step || 'script'); // loadProjectDetails 会按项目恢复正确步骤
   const [subjectInitialTab, setSubjectInitialTab] = useState('char');
@@ -293,6 +346,20 @@ export default function Home({ onGoToAdmin }) {
     scenes: { nextOffset: null, hasMore: false, loading: true, rawList: [] },
     props:  { nextOffset: null, hasMore: false, loading: true, rawList: [] },
   });
+  // 主体首屏、分页和删除后刷新可能并行返回；按类别隔离代际，旧响应不得覆盖新请求。
+  const subjectRequestVersions = useRef({ chars: 0, scenes: 0, props: 0 });
+  const subjectInFlight = useRef({ chars: false, scenes: false, props: false });
+  const bumpSubjectRequest = useCallback((key) => {
+    subjectRequestVersions.current[key] += 1;
+    return subjectRequestVersions.current[key];
+  }, []);
+  const isCurrentSubjectRequest = useCallback((key, version, projectId, session) => (
+    subjectRequestVersions.current[key] === version
+      && getAuthSessionGeneration() === session
+      && Boolean(getToken())
+      && projectDetailOwner.current?.id === projectId
+      && projectDetailOwner.current?.session === session
+  ), []);
   const [extractErrorByProject, setExtractErrorByProject] = useState({});
   const [subjectExtractionByProject, setSubjectExtractionByProject] = useState({});
   const [subjectExtractionStatusByProject, setSubjectExtractionStatusByProject] = useState({});
@@ -309,6 +376,14 @@ export default function Home({ onGoToAdmin }) {
   const [scriptPhase, setScriptPhase] = useState('initial');
   const [scriptHasStarted, setScriptHasStarted] = useState(false);
   const [scriptContent, setScriptContent] = useState('');
+  const handleScriptContentChange = useCallback((value) => {
+    scriptEditVersion.current++;
+    setScriptContent(value);
+  }, []);
+  const handleScriptEpisodesChange = useCallback((value) => {
+    scriptEditVersion.current++;
+    setScriptEpisodes(value);
+  }, []);
   const [scriptDraftContent, setScriptDraftContent] = useState('');
   const [episodeStatuses, setEpisodeStatuses] = useState({});
   const [storyboardInitialEpisodeIndex, setStoryboardInitialEpisodeIndex] = useState(null);
@@ -373,7 +448,7 @@ export default function Home({ onGoToAdmin }) {
     localStorage.removeItem('miioo_active_project_id');
     localStorage.removeItem('miioo_active_step');
     localStorage.removeItem('miioo_active_key');
-  }, []);
+  }, [setActiveKey]);
 
   useEffect(() => {
     const type = getStorageReminderType(storageUsage);
@@ -408,6 +483,8 @@ export default function Home({ onGoToAdmin }) {
 
   // 统一的退出登录处理函数
   const handleLogout = async () => {
+    projectRouteRestore.cancel();
+    cancelProjectRead();
     try {
       // 调用后端退出登录接口
       await apiLogout();
@@ -471,8 +548,19 @@ export default function Home({ onGoToAdmin }) {
 
   // 统一的项目数据加载函数
   const loadProjectDetails = async (projectId, requestedStep = null) => {
-    setIsLoadingProject(true);
-    setSubjectPageMeta({
+    projectRouteRestore.cancel();
+    Object.keys(subjectRequestVersions.current).forEach((key) => bumpSubjectRequest(key));
+    const subjectVersions = { ...subjectRequestVersions.current };
+    Object.keys(subjectInFlight.current).forEach((key) => { subjectInFlight.current[key] = true; });
+    const version = ++projectDetailVersion.current;
+    const session = getAuthSessionGeneration();
+    const isCurrent = () => version === projectDetailVersion.current && session === getAuthSessionGeneration();
+    const scriptVersion = scriptEditVersion.current;
+    const sameProject = projectDetailOwner.current?.id === projectId && projectDetailOwner.current?.session === session;
+    projectDetailOwner.current = { id: projectId, session };
+    setProjectRead({ projectId, requestedStep, loading: true, error: '' });
+    setIsLoadingProject(!sameProject);
+    if (!sameProject) setSubjectPageMeta({
       chars: { nextOffset: null, hasMore: false, loading: true, rawList: [], error: false },
       scenes: { nextOffset: null, hasMore: false, loading: true, rawList: [], error: false },
       props: { nextOffset: null, hasMore: false, loading: true, rawList: [], error: false },
@@ -482,6 +570,7 @@ export default function Home({ onGoToAdmin }) {
     invalidate(K.projectOverview(projectId));
     try {
       // 0. 切换项目前先清空旧项目所有数据状态，避免闪现旧数据
+      if (!sameProject) {
       setActiveProject(null);
       setActiveStep(requestedStep || 'script');
       setScriptContent('');
@@ -505,6 +594,7 @@ export default function Home({ onGoToAdmin }) {
         setGenerateErrorProjectId(null);
       }
       setSubjectInitialTab('char');
+      }
 
       // ── 缓存快速路径：如果核心数据都有缓存，立即填充并关掉 loading ──────────
       const cachedProject = peekCache(K.project(projectId), MEDIUM.CONTENT);
@@ -514,7 +604,7 @@ export default function Home({ onGoToAdmin }) {
       const cachedScenes = peekCache(K.subjects(projectId, 'scene'), MEDIUM.CONTENT);
       const cachedProps = peekCache(K.subjects(projectId, 'prop'), MEDIUM.CONTENT);
 
-      if (cachedProject && cachedEpisodes) {
+      if (!sameProject && cachedProject && cachedEpisodes) {
         // 从缓存填充状态，立即关掉 loading → StoryboardPage 秒挂载
         setActiveProject(cachedProject);
         setScriptEpisodes(cachedEpisodes);
@@ -542,6 +632,7 @@ export default function Home({ onGoToAdmin }) {
       // ── 结束缓存快速路径 ────────────────────────────────────────────────────
       // 1. 加载项目基本信息
       const projectData = await apiGetProject(projectId);
+      if (!isCurrent()) return;
       setActiveProject(projectData);
 
       // 2. 恢复步骤解锁状态（从 localStorage，按项目 ID）
@@ -552,7 +643,9 @@ export default function Home({ onGoToAdmin }) {
       // （避免换浏览器/清缓存后明明有数据却被锁住）
       if (!restoredUnlockedSteps.has('subject')) {
         try {
-          const anySubjects = await apiGetSubjects(projectId, { type: 'character' }).catch(() => []);
+          const anySubjects = await apiGetSubjects(projectId, { type: 'character' }).catch(() => null);
+          if (!isCurrent()) return;
+          if (!anySubjects) setProjectRead({ projectId, requestedStep, loading: true, error: '主体步骤状态读取失败，请重试' });
           if (Array.isArray(anySubjects) && anySubjects.length > 0) {
             setUnlockedSteps(prev => {
               const next = new Set(prev);
@@ -579,7 +672,7 @@ export default function Home({ onGoToAdmin }) {
       const [scriptData, charsPage, scenesPage, propsPage, episodesData, overviewData] = await Promise.all([
         apiGetScriptWorkspace(projectId).catch(err => {
           console.error('加载剧本数据失败:', err);
-          return { content: '', episodes: [], phase: 'initial' };
+          return null;
         }),
         // 注意：失败时返回 error 哨兵，而非空列表。
         // 否则某一类主体接口 500（如后端主图脏数据触发 MultipleResultsFound）会被吞成空数组，
@@ -587,22 +680,33 @@ export default function Home({ onGoToAdmin }) {
         apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }).catch((err) => ({ error: true, err })),
         apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }).catch((err) => ({ error: true, err })),
         apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }).catch((err) => ({ error: true, err })),
-        apiGetEpisodes(projectId).catch(() => []),
+        apiGetEpisodes(projectId).catch(() => null),
         apiGetProjectOverview(projectId).catch(() => null),
       ]);
+      if (!isCurrent()) return;
+      if (!scriptData || !episodesData || !overviewData || charsPage.error || scenesPage.error || propsPage.error) {
+        setProjectRead({ projectId, requestedStep, loading: false, error: '部分项目数据读取失败，已保留读取成功或已有的内容，请重试' });
+      }
 
       // 4. 更新状态
+      const scriptUnchanged = scriptVersion === scriptEditVersion.current;
+      if (scriptData && scriptUnchanged) {
       const scriptContent = scriptData.script?.content || scriptData.content || '';
       setScriptContent(scriptContent);
-      setScriptEpisodes(episodesData || []);
       setScriptPhase(scriptContent ? 'view' : 'initial');
       setScriptHasStarted(!!scriptContent);
+      }
+      if (episodesData && scriptUnchanged) setScriptEpisodes(episodesData);
 
       // 某类主体加载失败时：不覆盖已有卡片（避免误清空），仅在 meta 上标记 error 供 UI 提示重试。
       // 加载成功时才写入最新数据。
-      if (!charsPage.error)  setSharedChars(normalizeSubjects(charsPage.list));
-      if (!scenesPage.error) setSharedScenes(normalizeSubjects(scenesPage.list));
-      if (!propsPage.error)  setSharedProps(normalizeSubjects(propsPage.list));
+      const subjectPages = { chars: charsPage, scenes: scenesPage, props: propsPage };
+      const subjectSetters = { chars: setSharedChars, scenes: setSharedScenes, props: setSharedProps };
+      Object.entries(subjectPages).forEach(([key, page]) => {
+        if (!page.error && isCurrentSubjectRequest(key, subjectVersions[key], projectId, session)) {
+          subjectSetters[key](normalizeSubjects(page.list));
+        }
+      });
 
       const buildMeta = (page) => page.error
         ? { nextOffset: null, hasMore: false, loading: false, rawList: null, error: true }
@@ -610,13 +714,19 @@ export default function Home({ onGoToAdmin }) {
       setSubjectPageMeta((prev) => ({
         // 失败类保留上一次的分页 meta（rawList 等），只把 error 标记合并进去，
         // 这样已加载的卡片和「加载更多」状态不被清掉。
-        chars:  charsPage.error  ? { ...(prev?.chars  || {}), loading: false, error: true } : buildMeta(charsPage),
-        scenes: scenesPage.error ? { ...(prev?.scenes || {}), loading: false, error: true } : buildMeta(scenesPage),
-        props:  propsPage.error  ? { ...(prev?.props  || {}), loading: false, error: true } : buildMeta(propsPage),
+        chars:  !isCurrentSubjectRequest('chars', subjectVersions.chars, projectId, session)
+          ? prev.chars
+          : (charsPage.error ? { ...(prev?.chars || {}), loading: false, error: true, retryOffset: null } : buildMeta(charsPage)),
+        scenes: !isCurrentSubjectRequest('scenes', subjectVersions.scenes, projectId, session)
+          ? prev.scenes
+          : (scenesPage.error ? { ...(prev?.scenes || {}), loading: false, error: true, retryOffset: null } : buildMeta(scenesPage)),
+        props:  !isCurrentSubjectRequest('props', subjectVersions.props, projectId, session)
+          ? prev.props
+          : (propsPage.error ? { ...(prev?.props || {}), loading: false, error: true, retryOffset: null } : buildMeta(propsPage)),
       }));
 
       // 从后端数据中提取剧集状态，纯转换交给适配工具。
-      const statusMap = buildEpisodeStatusMap(overviewData, episodesData);
+      const statusMap = overviewData && episodesData ? buildEpisodeStatusMap(overviewData, episodesData) : {};
       if (Object.keys(statusMap).length > 0) setEpisodeStatuses(statusMap);
 
       // 5. 加载分镜数据（需要剧集 ID）并用最新 episodesData 的 ID 写入缓存
@@ -629,27 +739,51 @@ export default function Home({ onGoToAdmin }) {
           include_gen_params: false,
         }).catch((error) => {
           console.warn('[Home] 预加载分镜失败，继续打开项目页面:', error);
-          return [];
+          return null;
         });
+        if (!isCurrent()) return;
+        if (!storyboardsData) setProjectRead({ projectId, requestedStep, loading: false, error: '分镜步骤状态读取失败，请重试' });
 
         // 根据分镜数据判断是否解锁分镜步骤
-        if (storyboardsData.length > 0) {
+        if (storyboardsData?.length > 0) {
           setUnlockedSteps(prev => new Set([...prev, 'storyboard']));
         }
       }
 
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('加载项目详情失败:', error);
-      // 加载失败时清除缓存
+      setProjectRead({ projectId, requestedStep, loading: false, error: '项目详情读取失败，请重试' });
+    } finally {
+      Object.keys(subjectVersions).forEach((key) => {
+        if (subjectRequestVersions.current[key] === subjectVersions[key]) subjectInFlight.current[key] = false;
+      });
+      if (isCurrent()) {
+      setSubjectPageMeta(prev => Object.fromEntries(Object.entries(prev).map(([key, meta]) => [
+        key, subjectRequestVersions.current[key] === subjectVersions[key] ? { ...meta, loading: false } : meta,
+      ])));
+      setIsLoadingProject(false);
+      setProjectRead((prev) => prev ? { ...prev, loading: false } : prev);
+      }
+    }
+  };
+
+  // 首次读取与失败重试均可恢复；主动导航、打开项目或退出会取消目标。
+  useEffect(() => {
+    if (!projectsLoaded || projectsError || !getToken() || projectListSession !== getAuthSessionGeneration()) return;
+    const target = projectRouteRestore.consume(projects, getAuthSessionGeneration());
+    if (!target) return;
+    if (target.exists) {
+      setActiveProjectId(target.projectId);
+      void loadProjectDetails(target.projectId, target.step);
+    } else {
       localStorage.removeItem('miioo_active_project_id');
       localStorage.removeItem('miioo_active_step');
       localStorage.removeItem('miioo_active_key');
-      setActiveProject(null);
-      setActiveProjectId(null);
-    } finally {
-      setIsLoadingProject(false);
     }
-  };
+    // 只由列表读取状态驱动；目标在调用详情前消费，避免详情状态更新重复恢复。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, projectsLoaded, projectsError, projectRouteRestore, projectListSession]);
 
   // 工作台采用轻量 History 路由，保留现有页面状态和登录边界。
   useEffect(() => {
@@ -794,44 +928,40 @@ export default function Home({ onGoToAdmin }) {
         return;
       }
 
+      let user;
       try {
-        const user = await apiGetCurrentUser();
+        // EdgeOne/开发代理短暂断开时，给当前会话几次恢复机会。
+        // 仅对网络错误和 5xx 重试，明确的 401/403 仍立即按失效会话处理。
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            user = await apiGetCurrentUser();
+            break;
+          } catch (error) {
+            const temporaryFailure = error?.isNetworkError || error?.status >= 500;
+            if (!temporaryFailure || attempt === 2) throw error;
+            await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+          }
+        }
         setIsLoggedIn(true);
         setCurrentUser({ ...user, avatar_url: normalizeImageUrl(user.avatar_url) ?? '' });
         refreshStorageUsage();
-      } catch {
-        // 401 / 其他鉴权错误 → authFetch 已清 token + 触发 logout 事件
+      } catch (error) {
+        // 网络/网关临时失败时保留本地会话，不能把“无法验证”显示成“已退出”。
+        // 只有 request 层明确清除 token 并发出 auth:logout 时，才进入登录态。
+        if (getToken() && (error?.isNetworkError || error?.status >= 500)) {
+          // 保留 token 和当前页面，不弹出登录框；下一次刷新或用户操作时继续验证。
+          setIsLoggedIn(true);
+          setProjectsError('暂时无法验证登录状态，请重试读取项目');
+          setProjectsLoaded(true);
+          return;
+        }
         setProjectsLoaded(true);
         return; // 阻止后续加载
       }
       // 仅在验证成功时加载鉴权数据（此时 token 必然有效）
       if (!getToken()) return;
       refreshAccessToken().finally(() => {
-      apiGetProjects().then((data) => {
-        const normalized = normalizeProjectList(data);
-        // 按创建时间倒序排列，最新的在前
-        setProjects(normalized);
-
-        // 地址中的项目深链接优先于旧的本地缓存，确保刷新后仍停留在原步骤。
-        const savedProjectId = initialRoute.projectId
-          || (initialRoute.key === 'home' ? localStorage.getItem('miioo_active_project_id') : null);
-        const savedKey = initialRoute.key !== 'home' ? initialRoute.key : localStorage.getItem('miioo_active_key');
-
-        if (savedKey === 'project' && savedProjectId) {
-          const exists = normalized.some(p => p.id === savedProjectId);
-          if (exists) {
-            setActiveProjectId(savedProjectId);
-            loadProjectDetails(savedProjectId, initialRoute.projectId ? initialRoute.step : null);
-          } else {
-            // 项目已被删除，清除缓存
-            localStorage.removeItem('miioo_active_project_id');
-            localStorage.removeItem('miioo_active_step');
-            localStorage.removeItem('miioo_active_key');
-          }
-        }
-      }).catch(() => {}).finally(() => {
-        setProjectsLoaded(true);
-      });
+      void readProjects();
           apiGetNotifications().then(setNotifications).catch(() => {});
           apiListProviders().then((data) => {
             const providers = Array.isArray(data) ? data : (data?.providers || []);
@@ -846,30 +976,38 @@ export default function Home({ onGoToAdmin }) {
 
   // 订阅项目列表后台更新
   useEffect(() => {
+    if (projectListSession !== getAuthSessionGeneration()) return;
     const unsubscribe = subscribe(K.projects(), (data) => {
+      if (!getToken() || projectListSession !== getAuthSessionGeneration()) return;
       if (Array.isArray(data)) {
         const normalized = normalizeProjectList(data);
         setProjects(normalized);
       }
     });
     return unsubscribe;
-  }, []);
+  }, [projectListSession]);
 
   // 订阅主体缓存更新 —— 当 SubjectPage 修改主体（如更换定稿图）后，分镜页面自动同步最新参考图
   useEffect(() => {
     if (!activeProject?.id) return;
     const pid = activeProject.id;
+    const session = getAuthSessionGeneration();
+    const isCurrent = () => Boolean(getToken()) && session === getAuthSessionGeneration()
+      && projectDetailOwner.current?.id === pid && projectDetailOwner.current?.session === session;
     const unsubs = [
       subscribe(K.subjects(pid, 'character'), (data) => {
+        if (!isCurrent()) return;
         const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
         // 空列表也是一次成功的服务端结果，不能继续保留旧主体/旧音色状态。
         if (Array.isArray(list)) setSharedChars(normalizeSubjects(list));
       }),
       subscribe(K.subjects(pid, 'scene'), (data) => {
+        if (!isCurrent()) return;
         const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
         if (Array.isArray(list)) setSharedScenes(normalizeSubjects(list));
       }),
       subscribe(K.subjects(pid, 'prop'), (data) => {
+        if (!isCurrent()) return;
         const list = Array.isArray(data) ? data : (data?.list || data?.items || []);
         if (Array.isArray(list)) setSharedProps(normalizeSubjects(list));
       }),
@@ -879,6 +1017,17 @@ export default function Home({ onGoToAdmin }) {
 
   useEffect(() => {
     const handleForceLogout = () => {
+      projectRouteRestore.cancel();
+      cancelProjectRead();
+      projectListVersion.current++;
+      setActiveProject(null);
+      setActiveProjectId(null);
+      setSharedChars([]);
+      setSharedScenes([]);
+      setSharedProps([]);
+      setProjects([]);
+      setProjectsError('');
+      setProjectsLoaded(true);
       void clearCreationDrafts();
       setIsLoggedIn(false);
       setApiConfigured(false);
@@ -915,8 +1064,13 @@ export default function Home({ onGoToAdmin }) {
       // 避免刷新失败导致已有卡片消失。
       targetTypes.forEach((type) => {
         const key = TYPE_TO_KEY[type];
+        const version = bumpSubjectRequest(key);
+        const session = getAuthSessionGeneration();
+        subjectInFlight.current[key] = true;
+        setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: true } }));
         apiGetSubjectsPage(projectId, { type, limit: SUBJECT_LIMIT })
           .then((page) => {
+            if (!isCurrentSubjectRequest(key, version, projectId, session)) return;
             SETTERS[key](normalizeSubjects(page.list));
             setSubjectPageMeta((prev) => ({
               ...prev,
@@ -925,6 +1079,12 @@ export default function Home({ onGoToAdmin }) {
           })
           .catch((err) => {
             console.error(`资产删除后刷新主体数据失败（${type}）:`, err);
+            if (isCurrentSubjectRequest(key, version, projectId, session)) {
+              setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: false, error: true, retryOffset: null } }));
+            }
+          })
+          .finally(() => {
+            if (subjectRequestVersions.current[key] === version) subjectInFlight.current[key] = false;
           });
       });
     };
@@ -937,7 +1097,7 @@ export default function Home({ onGoToAdmin }) {
       window.removeEventListener('message', handleWechatNeedBind);
       window.removeEventListener('project-assets:deleted', handleProjectAssetsDeleted);
     };
-  }, [activeProject?.id]);
+  }, [activeProject?.id, projectRouteRestore, cancelProjectRead, bumpSubjectRequest, isCurrentSubjectRequest]);
 
   const handleUnlockStep = (stepKey) => {
     setUnlockedSteps((prev) => {
@@ -966,47 +1126,72 @@ export default function Home({ onGoToAdmin }) {
   const loadMoreSubjects = async (type) => {
     const key = type === 'character' ? 'chars' : type === 'scene' ? 'scenes' : 'props';
     const meta = subjectPageMeta[key];
-    if (!meta || meta.loading || !meta.hasMore) return;
+    const projectId = activeProject?.id;
+    if (!projectId || !meta || meta.loading || meta.error || !meta.hasMore || subjectInFlight.current[key]) return;
+    const version = bumpSubjectRequest(key);
+    const session = getAuthSessionGeneration();
+    subjectInFlight.current[key] = true;
     setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: true } }));
     try {
-      const page = await apiGetSubjectsPage(activeProject.id, { type, limit: 20, offset: meta.nextOffset });
+      const page = await apiGetSubjectsPage(projectId, { type, limit: 20, offset: meta.nextOffset });
+      if (!isCurrentSubjectRequest(key, version, projectId, session)) return;
       const newItems = normalizeSubjects(page.list);
-      if (key === 'chars') setSharedChars(prev => [...(prev || []), ...newItems]);
-      else if (key === 'scenes') setSharedScenes(prev => [...(prev || []), ...newItems]);
-      else setSharedProps(prev => [...(prev || []), ...newItems]);
+      const setShared = key === 'chars' ? setSharedChars : key === 'scenes' ? setSharedScenes : setSharedProps;
+      setShared(prev => mergeSubjectItems(prev, newItems));
       setSubjectPageMeta(prev => ({
         ...prev,
-        [key]: { nextOffset: page.nextOffset, hasMore: page.hasMore, loading: false, rawList: [...meta.rawList, ...page.list] },
+        [key]: {
+          nextOffset: page.nextOffset,
+          hasMore: page.hasMore,
+          loading: false,
+          error: false,
+          rawList: mergeSubjectItems(prev[key]?.rawList, page.list),
+        },
       }));
     } catch (err) {
       console.error(`[Home] 加载更多主体失败 (${type}):`, err);
-      setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: false } }));
+      if (isCurrentSubjectRequest(key, version, projectId, session)) {
+        setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: false, error: true, retryOffset: meta.nextOffset } }));
+      }
+    } finally {
+      if (subjectRequestVersions.current[key] === version) subjectInFlight.current[key] = false;
     }
   };
 
-  // 重试单类主体首屏加载（首屏 500 后由 SubjectPage 的错误条触发）
+  // 重试失败的原页；首屏失败替换，分页失败追加。
   const retrySubjects = async (type) => {
     const key = type === 'character' ? 'chars' : type === 'scene' ? 'scenes' : 'props';
+    const projectId = activeProject?.id;
+    if (!projectId || subjectInFlight.current[key]) return;
+    const offset = subjectPageMeta[key]?.retryOffset;
+    const version = bumpSubjectRequest(key);
+    const session = getAuthSessionGeneration();
+    subjectInFlight.current[key] = true;
     setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: true } }));
     try {
-      const page = await apiGetSubjectsPage(activeProject.id, { type, limit: 20 });
+      const page = await apiGetSubjectsPage(projectId, { type, limit: 20, offset });
+      if (!isCurrentSubjectRequest(key, version, projectId, session)) return;
       const items = normalizeSubjects(page.list);
-      if (key === 'chars') setSharedChars(items);
-      else if (key === 'scenes') setSharedScenes(items);
-      else setSharedProps(items);
+      const setShared = key === 'chars' ? setSharedChars : key === 'scenes' ? setSharedScenes : setSharedProps;
+      setShared(prev => offset != null ? mergeSubjectItems(prev, items) : items);
       setSubjectPageMeta(prev => ({
         ...prev,
-        [key]: { nextOffset: page.nextOffset, hasMore: page.hasMore, loading: false, rawList: page.list, error: false },
+        [key]: { nextOffset: page.nextOffset, hasMore: page.hasMore, loading: false, rawList: offset != null ? mergeSubjectItems(prev[key]?.rawList, page.list) : page.list, error: false },
       }));
     } catch (err) {
       console.error(`[Home] 重试加载主体失败 (${type}):`, err);
-      setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: false, error: true } }));
+      if (isCurrentSubjectRequest(key, version, projectId, session)) {
+        setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: false, error: true } }));
+      }
+    } finally {
+      if (subjectRequestVersions.current[key] === version) subjectInFlight.current[key] = false;
     }
   };
 
   // 提取主体回调（由 SubjectPage 在挂载时调用）：发布结构、提交主体抽取并轮询任务
   const handleExtractSubjects = useCallback(async () => {
     const projectId = activeProjectIdForExtraction;
+    const extractionSession = getAuthSessionGeneration();
     if (!projectId || extractingSubjectsRef.current[projectId]) return;
     extractingSubjectsRef.current[projectId] = true;
     setSubjectExtractionByProject((prev) => ({ ...prev, [projectId]: true }));
@@ -1104,6 +1289,7 @@ export default function Home({ onGoToAdmin }) {
       });
       await pollScriptTask(subjectTaskResponse, subjectTaskId, '主体抽取任务超时，请稍后刷新主体列表');
 
+      if (getAuthSessionGeneration() !== extractionSession || !getToken()) return;
       if (currentProjectIdRef.current !== projectId) {
         clearPendingSubjectExtraction(projectId);
         showToast(`「${projectName}」主体抽取完成`, 'success');
@@ -1113,37 +1299,65 @@ export default function Home({ onGoToAdmin }) {
       invalidate(K.subjectsPrefix(projectId));
       invalidate(K.projectOverview(projectId));
       const SUBJECT_LIMIT = 20;
-      // 发布任务完成后主体写入可能还在同一条异步链路的收尾阶段。
-      // 强制重新读取，短暂读到空列表时再重试，避免成功任务把主体页留在空态。
-      const loadPublishedSubjects = async () => {
-        let pages;
-        for (let attempt = 0; attempt < 5; attempt += 1) {
-          pages = await Promise.all([
-            apiGetSubjectsPage(projectId, { type: 'character', limit: SUBJECT_LIMIT }),
-            apiGetSubjectsPage(projectId, { type: 'scene', limit: SUBJECT_LIMIT }),
-            apiGetSubjectsPage(projectId, { type: 'prop', limit: SUBJECT_LIMIT }),
-          ]);
-          if (pages.some(page => page.list.length > 0) || attempt === 4) return pages;
-          await new Promise(resolve => setTimeout(resolve, 1000));
+      const refreshTargets = [
+        ['chars', 'character', setSharedChars],
+        ['scenes', 'scene', setSharedScenes],
+        ['props', 'prop', setSharedProps],
+      ].map(([key, type, setter]) => {
+        const version = bumpSubjectRequest(key);
+        subjectInFlight.current[key] = true;
+        setSubjectPageMeta(prev => ({ ...prev, [key]: { ...prev[key], loading: true } }));
+        return { key, type, setter, version };
+      });
+      const isCurrentRefresh = (target) => isCurrentSubjectRequest(
+        target.key, target.version, projectId, extractionSession,
+      );
+      try {
+        // 发布任务完成后可能暂未读到写入结果；只在仍拥有当前列表时继续补读。
+        const loadPublishedSubjects = async () => {
+          let pages;
+          for (let attempt = 0; attempt < 5; attempt += 1) {
+            if (!refreshTargets.some(isCurrentRefresh)) return null;
+            pages = await Promise.all(refreshTargets.map(({ type }) => (
+              apiGetSubjectsPage(projectId, { type, limit: SUBJECT_LIMIT })
+            )));
+            if (pages.some(page => page.list.length > 0) || attempt === 4) return pages;
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+          return pages;
+        };
+        const pages = await loadPublishedSubjects();
+        if (!pages || !refreshTargets.some(isCurrentRefresh)) return;
+        if (!pages.some(page => page.list.length > 0)) {
+          throw new Error('主体抽取任务已完成，但暂未读取到主体数据，请稍后重试');
         }
-        return pages;
-      };
-      const [charsPage, scenesPage, propsPage] = await loadPublishedSubjects();
-      if (![charsPage, scenesPage, propsPage].some(page => page.list.length > 0)) {
-        throw new Error('主体抽取任务已完成，但暂未读取到主体数据，请稍后重试');
+        refreshTargets.forEach((target, index) => {
+          if (!isCurrentRefresh(target)) return;
+          const page = pages[index];
+          target.setter(normalizeSubjects(page.list));
+          setSubjectPageMeta(prev => ({
+            ...prev,
+            [target.key]: { nextOffset: page.nextOffset, hasMore: page.hasMore, loading: false, rawList: page.list, error: false },
+          }));
+        });
+        setForceExtract(false);
+        clearPendingSubjectExtraction(projectId);
+        showToast(`「${projectName}」主体抽取完成`, 'success');
+      } catch (error) {
+        if (!refreshTargets.some(isCurrentRefresh)) return;
+        refreshTargets.forEach((target) => {
+          if (!isCurrentRefresh(target)) return;
+          setSubjectPageMeta(prev => ({
+            ...prev,
+            [target.key]: { ...prev[target.key], loading: false, error: true, retryOffset: null },
+          }));
+        });
+        throw error;
+      } finally {
+        refreshTargets.forEach(({ key, version }) => {
+          if (subjectRequestVersions.current[key] === version) subjectInFlight.current[key] = false;
+        });
       }
-      setSharedChars(normalizeSubjects(charsPage.list));
-      setSharedScenes(normalizeSubjects(scenesPage.list));
-      setSharedProps(normalizeSubjects(propsPage.list));
-      setSubjectPageMeta(prev => ({
-        ...prev,
-        chars: { nextOffset: charsPage.nextOffset, hasMore: charsPage.hasMore, loading: false, rawList: charsPage.list, error: false },
-        scenes: { nextOffset: scenesPage.nextOffset, hasMore: scenesPage.hasMore, loading: false, rawList: scenesPage.list, error: false },
-        props: { nextOffset: propsPage.nextOffset, hasMore: propsPage.hasMore, loading: false, rawList: propsPage.list, error: false },
-      }));
-      setForceExtract(false);
-      clearPendingSubjectExtraction(projectId);
-      showToast(`「${projectName}」主体抽取完成`, 'success');
     } catch (err) {
       console.error('提取主体失败:', err);
       writePendingSubjectExtraction(projectId, {
@@ -1171,7 +1385,7 @@ export default function Home({ onGoToAdmin }) {
         return next;
       });
     }
-  }, [activeProjectIdForExtraction, activeProjectNameForExtraction, showToast]);
+  }, [activeProjectIdForExtraction, activeProjectNameForExtraction, showToast, bumpSubjectRequest, isCurrentSubjectRequest]);
 
   // 切回项目时，检查是否有暂存的提取结果等待应用
   useEffect(() => {
@@ -1503,10 +1717,7 @@ export default function Home({ onGoToAdmin }) {
 
     // 每次切到项目列表都从后端拉取最新数据
     if (key === 'project') {
-      apiGetProjects().then((data) => {
-        const normalized = normalizeProjectList(data);
-        setProjects(normalized);
-      }).catch(() => {});
+      readProjects();
     }
   };
 
@@ -1592,6 +1803,7 @@ export default function Home({ onGoToAdmin }) {
     setActiveProjectId(normalized.id);
     setActiveStep('script');
     setActiveKey('project');
+    projectDetailOwner.current = { id: normalized.id, session: getAuthSessionGeneration() };
   };
 
   // 在 iframe 内（微信 redirect 回调）不渲染完整 UI，只执行 useEffect 回调逻辑
@@ -1600,7 +1812,10 @@ export default function Home({ onGoToAdmin }) {
   }
 
   if (canvasRouteId) {
-    return <CanvasPage key={canvasRouteId} canvasId={canvasRouteId} onCreateProject={canvasDevelopmentEnabled ? handleCreateCanvas : undefined} onBackHome={() => {
+    return <CanvasPage key={canvasRouteId} canvasId={canvasRouteId} onSelectCanvas={(id) => {
+      setCanvasRouteId(id);
+      updateWorkspaceUrl({ key: 'canvas-detail', canvasId: id });
+    }} onCreateProject={canvasDevelopmentEnabled ? handleCreateCanvas : undefined} onBackHome={() => {
       setCanvasRouteId(null);
       setActiveKey('home');
       updateWorkspaceUrl({ key: 'home' });
@@ -1706,23 +1921,30 @@ export default function Home({ onGoToAdmin }) {
                 }}
               />
             )}
-            {activeKey === 'project' && isLoadingProject && (
+            {activeKey === 'project' && projectRead && (
+              <RemoteReadStatus loading={projectRead.loading} error={projectRead.error}
+                onRetry={() => loadProjectDetails(projectRead.projectId, projectRead.requestedStep)} />
+            )}
+            {activeKey === 'project' && isLoadingProject && !projectRead && (
               <div style={{ width: '100%', height: '100%', minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <DotsLoading size={6} color="#2DC3E1" gap={5} />
               </div>
             )}
-            {activeKey === 'project' && !activeProject && !isLoadingProject && projectsLoaded && (
+            {activeKey === 'project' && !activeProject && !isLoadingProject && (
               <ProjectList
                 key="project" title="工作流项目"
                 projects={projects}
+                loading={!projectsLoaded}
+                error={projectsError}
+                onRetry={readProjects}
                 onNewProject={() => {
                   if (!isLoggedIn) { setLoginOpen(true); return; }
                   if (!apiConfigured) { setNoModelNoticeOpen(true); return; }
                   setNewProjectOpen(true);
                 }}
                 onOpenProject={(p) => {
-                  loadProjectDetails(p.id);
                   setActiveKey('project');
+                  loadProjectDetails(p.id);
                 }}
                 onRenameProject={(projectId, newName) => {
                   apiUpdateProject(projectId, { name: newName }).then(() => {
@@ -1756,18 +1978,20 @@ export default function Home({ onGoToAdmin }) {
                 projectStylePrompt={activeProject.visual_style_prompt || activeProject.visualStylePrompt}
                 projectCreationType={activeProject.creation_type || activeProject.creation_mode || activeProject.project_type}
                 onProjectUpdate={(updates) => {
-                  return apiUpdateProject(activeProject.id, updates).then(() => {
+                  const projectId = activeProject.id;
+                  return enqueueProjectSave(projectId, () => apiUpdateProject(projectId, updates)).then(() => {
                     // 字段映射：cover_url -> cover
                     const mappedUpdates = { ...updates };
                     if (updates.cover_url !== undefined) {
                       mappedUpdates.cover = updates.cover_url;
                       showToast('封面保存成功', 'success');
                     }
-                    setActiveProject((prev) => ({ ...prev, ...mappedUpdates }));
-                    setProjects((prev) => prev.map((p) => (p.id === activeProject.id ? { ...p, ...mappedUpdates } : p)));
+                    setActiveProject((prev) => applyProjectSave(prev, projectId, mappedUpdates));
+                    setProjects((prev) => prev.map((p) => applyProjectSave(p, projectId, mappedUpdates)));
                   });
                 }}
                 onBack={() => {
+                  cancelProjectRead();
                   setActiveProject(null);
                   setActiveProjectId(null);
                   setForceExtract(false);
@@ -1784,13 +2008,13 @@ export default function Home({ onGoToAdmin }) {
                 scenes={sharedScenes ?? []}
                 props={sharedProps ?? []}
                 episodes={scriptEpisodes}
-                onEpisodesChange={setScriptEpisodes}
+                onEpisodesChange={handleScriptEpisodesChange}
                 scriptPhase={scriptPhase}
                 onScriptPhaseChange={setScriptPhase}
                 scriptHasStarted={scriptHasStarted}
                 onScriptHasStartedChange={setScriptHasStarted}
                 scriptContent={scriptContent}
-                onScriptContentChange={setScriptContent}
+                onScriptContentChange={handleScriptContentChange}
                 scriptDraftContent={scriptDraftContent}
                 onScriptDraftContentChange={setScriptDraftContent}
                 onGoToSubject={(tab, options = {}) => {
@@ -1819,6 +2043,7 @@ export default function Home({ onGoToAdmin }) {
                   setActiveKey('assets');
                 }}
                 onBack={() => {
+                  cancelProjectRead();
                   setActiveProject(null);
                   setActiveProjectId(null);
                   setForceExtract(false);
@@ -1938,10 +2163,7 @@ export default function Home({ onGoToAdmin }) {
         } catch (error) {
           console.warn('[Home] 登录后拉取用户信息失败:', error);
         }
-        apiGetProjects().then((data) => {
-          const normalized = normalizeProjectList(data);
-          setProjects(normalized);
-        }).catch(() => {});
+        readProjects();
         apiListProviders().then((data) => {
           const providers = Array.isArray(data) ? data : (data?.providers || []);
           if (providers.length > 0) setApiConfigured(true);
@@ -1958,8 +2180,11 @@ export default function Home({ onGoToAdmin }) {
           onClose={() => setNoModelNoticeOpen(false)}
         />
       )}
+      {isLoggedIn && currentUser.id && <SystemAnnouncementModal key={currentUser.id} userId={currentUser.id} showToast={showToast} onViewAll={() => setNotificationCenterOpen('system')} />}
       <NotificationCenterModal
-        open={notificationCenterOpen}
+        key={`${isLoggedIn}:${currentUser.id || ''}:${notificationCenterOpen}`}
+        userId={isLoggedIn ? currentUser.id : null}
+        open={Boolean(notificationCenterOpen)} initialTab={notificationCenterOpen === 'system' ? 'system' : 'creation'}
         onClose={() => setNotificationCenterOpen(false)}
         showToast={showToast}
       />

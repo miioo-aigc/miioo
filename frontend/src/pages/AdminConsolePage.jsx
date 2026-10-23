@@ -3,13 +3,16 @@
  * @structure-index
  *
  * ─── 页面结构 ───────────────────────────────────────────────────────
- *   EmptyAdminState / 管理员权限提示                                  L19
- *   AdminConsolePage / 分区导航、刷新信号和业务面板编排                 L38
+ *   EmptyAdminState / 管理员权限提示                                  L35
+ *   AdminConsolePage / 分区导航、刷新信号和业务面板编排                 L51
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-10-13  接入系统公告与操作日志子页，保留控制台分区编排边界
  *   2026-07-16  字体常量改从管理员工具函数模块导入，避免组件模块导出非组件能力
  */
 import { useMemo, useState } from 'react';
+import AdminAnnouncementPage from '../components/admin/AdminAnnouncementPage';
+import AdminOperationLogPage from '../components/admin/AdminOperationLogPage';
 import AdminAccountManagementPage from '../components/admin/AdminAccountManagementPage';
 import AdminConsoleSidebar from '../components/admin/AdminConsoleSidebar';
 import AdminDisplaySettingsPage from '../components/admin/AdminDisplaySettingsPage';
@@ -25,6 +28,8 @@ const SECTIONS = [
   { key: 'models', label: '模型开放', description: '分页控制普通用户可见模型与开放状态。' },
   { key: 'voices', label: '音色库', description: '分页维护 miioo 系统音色、试听与编辑。' },
   { key: 'accounts', label: '账号管理', description: '沿用现有表格分页处理账号资料和权限。' },
+  { key: 'announcements', label: '系统公告', description: '管理全员公告和登录弹窗提醒。' },
+  { key: 'operation-logs', label: '操作日志', description: '查看用户操作、模型使用及执行结果。' },
 ];
 
 function EmptyAdminState({ onBackHome }) {
@@ -65,6 +70,10 @@ export default function AdminConsolePage({
     };
 
     switch (activeSection) {
+      case 'operation-logs':
+        return <AdminOperationLogPage key={currentUser?.id} {...sharedProps} />;
+      case 'announcements':
+        return <AdminAnnouncementPage key={currentUser?.id} {...sharedProps} />;
       case 'display':
         return <AdminDisplaySettingsPage {...sharedProps} />;
       case 'models':

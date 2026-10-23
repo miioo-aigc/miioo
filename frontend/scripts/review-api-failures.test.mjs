@@ -7,9 +7,18 @@ async function loadApi(file, fetcher) {
   const module = new SourceTextModule(readFileSync(new URL(`../src/api/${file}`, import.meta.url), 'utf8'), {
     initializeImportMeta(meta) { meta.env = { VITE_API_BASE_URL: 'https://test.invalid' }; },
   });
-  await module.link(() => new SyntheticModule(['authFetch'], function () {
+  await module.link((specifier) => {
+    if (specifier === './Announcements.js') {
+      const names = ['apiGetUserAnnouncements', 'apiGetLatestAnnouncementPopup', 'apiMarkAnnouncementRead'];
+      return new SyntheticModule(names, function () {
+        for (const name of names) this.setExport(name, () => { throw new Error('公告接口不属于此测试范围'); });
+      });
+    }
+    assert.ok(['./request.js', './request'].includes(specifier), `未声明的测试依赖：${specifier}`);
+    return new SyntheticModule(['authFetch'], function () {
     this.setExport('authFetch', fetcher);
-  }));
+    });
+  });
   await module.evaluate();
   return module.namespace;
 }

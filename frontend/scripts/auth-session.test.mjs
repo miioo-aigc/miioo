@@ -43,11 +43,200 @@ async function load(fetcher) {
   await auth.evaluate();
   request.namespace.setTokens('old-access', 'old-refresh');
   localStorage.setItem('miioo_cache:projects', 'cached');
-  return { api: request.namespace, auth: auth.namespace, localStorage, events, calls };
+  return { api: request.namespace, auth: auth.namespace, cache: cache.namespace, localStorage, events, calls };
 }
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
 const methods = ['authFetch', 'authFetchForm', 'authFetchStream'];
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+for (const medium of ['memory', 'local', 'session']) {
+  test(`重新登录清理${medium}缓存并隔离旧缓存通知`, async () => {
+    const { api, cache } = await load(() => json({}));
+    await cache.cached('saved', async () => 'account-a', { medium });
+    let finish;
+    const updates = [];
+    const unsubscribe = cache.subscribe('pending', (data) => updates.push(data));
+    const pending = cache.cached('pending', () => new Promise((resolve) => { finish = resolve; }), { medium });
+    await tick();
+    api.setTokens('account-b', 'refresh-b');
+    assert.equal(cache.peekCache('saved', medium), undefined);
+    finish('stale');
+    await pending;
+    assert.equal(cache.peekCache('pending', medium), undefined);
+    assert.deepEqual(updates, []);
+    await cache.cached('pending', async () => 'account-b', { medium });
+    assert.deepEqual(updates, ['account-b']);
+    unsubscribe();
+  });
+}
+test('同一会话自动刷新凭证保留业务缓存', async () => {
+  const { api, cache } = await load(() => json({ access_token: 'renewed' }));
+  await cache.cached('saved', async () => 'same-account');
+  assert.equal(await api.refreshAccessToken(), true);
+  assert.equal(cache.peekCache('saved'), 'same-account');
+});
+
+// 执行首页实际读取回调，隔离 React 渲染；请求层仍使用真实实现与模拟网络。
+const homeSource = await readFile(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
+const readProjectsBody = homeSource.match(/const readProjects = useCallback\(async \(\) => \{([\s\S]*?)\n  \}, \[\]\);/)?.[1];
+assert.ok(readProjectsBody, '首页项目读取回调必须可定位');
+function projectReader(api, fetchProjects) {
+  const state = { projects: ['existing'], loaded: true, error: '' };
+  const deps = {
+    getToken: api.getToken,
+    getAuthSessionGeneration: api.getAuthSessionGeneration,
+    projectListVersion: { current: 0 },
+    apiGetProjects: fetchProjects,
+    normalizeProjectList: (data) => data,
+    setProjects: (data) => { state.projects = data; },
+    setProjectListSession: (value) => { state.session = value; },
+    setProjectsLoaded: (value) => { state.loaded = value; },
+    setProjectsError: (value) => { state.error = value; },
+  };
+  const read = new Function(...Object.keys(deps), `return async () => {${readProjectsBody}}`)(...Object.values(deps));
+  return { state, read };
+}
+
+for (const failure of [false, true]) {
+  test(`首页读取期间凭证刷新后${failure ? '失败可重试' : '成功结束加载'}`, async () => {
+    const { api } = await load(() => json({ access_token: 'renewed', refresh_token: 'renewed-refresh' }));
+    const generation = api.getAuthSessionGeneration();
+    let finish;
+    const reader = projectReader(api, () => new Promise((resolve, reject) => { finish = failure ? reject : resolve; }));
+    const pending = reader.read();
+    assert.equal(reader.state.loaded, false);
+    assert.equal(await api.refreshAccessToken(), true);
+    assert.equal(api.getAuthSessionGeneration(), generation);
+    finish(failure ? new Error('网络失败') : ['fresh']);
+    await pending;
+    assert.equal(reader.state.loaded, true);
+    assert.deepEqual(reader.state.projects, failure ? ['existing'] : ['fresh']);
+    assert.equal(Boolean(reader.state.error), failure);
+    if (failure) {
+      const retry = reader.read();
+      assert.equal(reader.state.error, '');
+      finish(new Error('仍不可用'));
+      await retry;
+      assert.equal(reader.state.loaded, true);
+    }
+  });
+}
+
+for (const change of ['退出', '重新登录', '新请求']) {
+  test(`首页${change}后迟到结果不回写或结束当前加载`, async () => {
+    const { api } = await load(() => json({}));
+    const pendingResponses = [];
+    const reader = projectReader(api, () => new Promise((resolve) => pendingResponses.push(resolve)));
+    const old = reader.read();
+    const generation = api.getAuthSessionGeneration();
+    if (change === '退出') api.clearTokens();
+    if (change === '重新登录') api.setTokens('old-access', 'old-refresh');
+    if (change !== '新请求') assert.notEqual(api.getAuthSessionGeneration(), generation);
+    const current = change === '退出' ? null : reader.read();
+    pendingResponses[0](['stale']);
+    assert.equal(await old, null);
+    assert.deepEqual(reader.state.projects, ['existing']);
+    assert.equal(reader.state.loaded, false);
+    assert.equal(reader.state.error, '');
+    if (current) {
+      pendingResponses[1](['current']);
+      await current;
+      assert.deepEqual(reader.state.projects, ['current']);
+      assert.equal(reader.state.loaded, true);
+    }
+  });
+}
+
+for (const method of methods) {
+  test(`${method} 重试期间换号拒绝旧响应且不误报网络错误`, async () => {
+    let finish;
+    const state = await load((url, options) => {
+      if (url.endsWith('/auth/refresh')) return json({ access_token: 'renewed' });
+      if (options.headers.Authorization === 'Bearer renewed') return new Promise((resolve) => { finish = resolve; });
+      return json({}, 401);
+    });
+    const pending = state.api[method]('/items');
+    const rejected = assert.rejects(pending, (error) => error.status === 401 && !error.isNetworkError);
+    await tick();
+    state.api.setTokens('account-b', 'refresh-b');
+    finish(json({ secret: 'old-account' }));
+    await rejected;
+    assert.equal(state.api.getToken(), 'account-b');
+    assert.deepEqual(state.events, []);
+  });
+  for (const status of [200, 401]) {
+    test(`${method} 刷新中换号不写回也不登出新账号 ${status}`, async () => {
+      let finish;
+      const state = await load((url) => url.endsWith('/auth/refresh')
+        ? new Promise((resolve) => { finish = resolve; }) : json({}, 401));
+      const pending = state.api[method]('/api/items');
+      const rejected = assert.rejects(pending);
+      await tick();
+      state.api.setTokens('account-b', 'refresh-b');
+      finish(json({ access_token: 'stale', refresh_token: 'stale-refresh' }, status));
+      await rejected;
+      assert.equal(state.api.getToken(), 'account-b');
+      assert.equal(state.api.getRefreshToken(), 'refresh-b');
+      assert.deepEqual(state.events, []);
+      assert.equal(state.calls.length, 2);
+    });
+  }
+  test(`${method} 迟到401在正常令牌轮换后使用新令牌重试`, async () => {
+    let finishOld;
+    const state = await load((url, options) => {
+      if (url.endsWith('/auth/refresh')) return json({ access_token: 'new-access', refresh_token: 'rotated' });
+      if (url.endsWith('/slow') && options.headers.Authorization === 'Bearer old-access') return new Promise((resolve) => { finishOld = resolve; });
+      return json({}, options.headers.Authorization === 'Bearer new-access' ? 200 : 401);
+    });
+    const slow = state.api[method]('/slow');
+    await tick();
+    await state.api[method]('/fast');
+    finishOld(json({}, 401));
+    assert.equal((await slow).status, 200);
+    assert.equal(state.calls.filter((call) => call.url.endsWith('/auth/refresh')).length, 1);
+  });
+  test(`${method} ensure等待阶段换号不发送旧业务请求`, async () => {
+    let finish;
+    const state = await load(() => new Promise((resolve) => { finish = resolve; }));
+    state.localStorage.removeItem('token');
+    const pending = state.api[method]('/old-write', { method: 'POST' });
+    const rejected = assert.rejects(pending);
+    await tick();
+    state.api.clearTokens();
+    state.api.setTokens('account-b', 'refresh-b');
+    finish(json({ access_token: 'old-renewed' }));
+    await rejected;
+    assert.equal(state.calls.length, 1);
+    assert.equal(state.api.getToken(), 'account-b');
+  });
+  test(`${method} 首次响应返回前换号拒绝旧响应`, async () => {
+    let finish;
+    const state = await load(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = state.api[method]('/items');
+    const rejected = assert.rejects(pending);
+    await tick();
+    state.api.setTokens('account-b', 'refresh-b');
+    finish(json({ secret: 'old-account' }));
+    await rejected;
+  });
+}
+test('旧账号刷新完成不清除新账号刷新锁，也不覆盖新令牌', async () => {
+  const finishes = [];
+  const state = await load(() => new Promise((resolve) => finishes.push(resolve)));
+  const old = state.api.refreshAccessToken();
+  state.api.setTokens('account-b', 'refresh-b');
+  const current = state.api.refreshAccessToken();
+  finishes[0](json({ access_token: 'stale' }));
+  assert.equal(await old, false);
+  const joined = state.api.refreshAccessToken();
+  assert.equal(state.calls.length, 2);
+  finishes[1](json({ access_token: 'renewed-b', refresh_token: 'rotated-b' }));
+  assert.equal(await current, true);
+  assert.equal(await joined, true);
+  assert.equal(state.api.getToken(), 'renewed-b');
+  assert.equal(state.api.getRefreshToken(), 'rotated-b');
+});
 const temporaryFailures = [
   ...[500, 502, 503, 504, 429, 422].map((status) => [String(status), () => json({}, status)]),
   ['断网', () => { throw new TypeError('Failed to fetch'); }],

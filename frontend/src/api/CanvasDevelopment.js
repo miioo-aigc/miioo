@@ -35,5 +35,30 @@ export function getDevelopmentCanvas(canvasId) {
 
 export function listDevelopmentCanvasProjects() {
   if (!canvasDevelopmentEnabled) return [];
-  return [...documents.values()].reverse().map((item) => ({ ...item, name: item.project_name }));
+  const projects = new Map();
+  for (const item of documents.values()) {
+    if (!projects.has(item.project_id)) projects.set(item.project_id, { ...item, name: item.project_name });
+  }
+  return [...projects.values()].reverse();
+}
+
+export function listDevelopmentCanvases(projectId) {
+  return [...documents.values()].filter((item) => item.project_id === projectId).map((item) => ({ ...item }));
+}
+
+export function createDevelopmentCanvas({ projectId, title }) {
+  const item = createDevelopmentCanvasProject();
+  const sibling = listDevelopmentCanvases(projectId)[0];
+  const next = { ...item, project_id: projectId, project_name: sibling?.project_name || item.project_name, title };
+  documents.set(item.id, next);
+  return { ...next };
+}
+
+export function updateDevelopmentCanvas(id, { baseRevision, title, document }) {
+  const current = getDevelopmentCanvas(id);
+  if (current.revision !== baseRevision) throw new Error('画布已更新，请刷新后重试');
+  const next = { ...current, ...(title !== undefined ? { title } : {}),
+    ...(document !== undefined ? { document } : {}), revision: current.revision + 1, updated_at: new Date().toISOString() };
+  documents.set(id, next);
+  return { ...next };
 }

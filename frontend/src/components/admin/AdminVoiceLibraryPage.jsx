@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import useLatestRequest from '../../hooks/useLatestRequest';
 import {
   apiCreateVoiceLibraryItem,
   apiDeleteVoiceLibraryItem,
@@ -236,6 +237,7 @@ export default function AdminVoiceLibraryPage({
   });
   const [draftKeyword, setDraftKeyword] = useState('');
   const [loading, setLoading] = useState(true);
+  const beginRead = useLatestRequest();
   const [savingKey, setSavingKey] = useState('');
   const [pageError, setPageError] = useState('');
   const [voiceEditorOpen, setVoiceEditorOpen] = useState(false);
@@ -258,6 +260,7 @@ export default function AdminVoiceLibraryPage({
     silent = false,
   } = {}) => {
     const nextPage = Number(page || query.page || 1);
+    const isCurrent = beginRead();
     const nextKeyword = typeof keyword === 'string' ? keyword.trim() : query.keyword;
     const nextStatusFilter = typeof statusFilter === 'string' ? statusFilter : query.statusFilter;
     if (!silent) setLoading(true);
@@ -276,6 +279,7 @@ export default function AdminVoiceLibraryPage({
         pageSize: 12,
       });
 
+      if (!isCurrent()) return null;
       setQuery({
         page: payload.page,
         keyword: nextKeyword,
@@ -285,14 +289,15 @@ export default function AdminVoiceLibraryPage({
       setPageData(payload);
       return payload;
     } catch (error) {
+      if (!isCurrent()) return null;
       const message = getErrorMessage(error, 'miioo 音色库加载失败');
       setPageError(message);
       showToast?.(message, 'error');
       return null;
     } finally {
-      if (!silent) setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [query.keyword, query.page, query.statusFilter, showToast]);
+  }, [beginRead, query.keyword, query.page, query.statusFilter, showToast]);
 
   useEffect(() => {
     // 页面首次加载或外部刷新时必须同步音色库数据。

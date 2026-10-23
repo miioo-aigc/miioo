@@ -7,6 +7,19 @@
 
 import { normalizeImageUrl } from './imageUrl';
 
+// 分页重叠时保留已展示版本，避免覆盖期间的本地编辑；无编号项不推测身份。
+export function mergeSubjectItems(existing = [], incoming = []) {
+  const seen = new Set();
+  return [...(existing || []), ...(incoming || [])].filter((item) => {
+    const id = item?.id ?? item?.subject_id ?? item?.subjectId;
+    if (id == null) return true;
+    const key = String(id);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function getReferenceUrls(subject) {
   const values = [
     subject?.reference_image_url,

@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { apiGetNotifications } from '../api/user';
+import { useState, useEffect, useRef } from 'react';
+import { apiMarkAnnouncementRead, apiMarkNotificationRead } from '../api/user';
+import useNotificationFeed from '../hooks/useNotificationFeed';
+import { notificationKey, mergeConfirmedReads } from '../utils/NotificationReadState';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -47,14 +49,14 @@ function NotificationCard({ item, onOpenDetail }) {
   return (
     <button
       type="button"
-      className="flex items-start gap-[12px] self-stretch rounded-lg px-[12px] py-[8px] border-0 text-left cursor-pointer transition-colors"
+      className="flex shrink-0 items-start gap-[12px] self-stretch rounded-lg px-[12px] py-[8px] border-0 text-left cursor-pointer transition-colors"
       style={{
         backgroundColor: pressed
           ? '#FFFFFF14'
           : hovered
           ? (isUnread ? '#7AE5B90A' : '#FFFFFF0D')
           : (isUnread ? '#7AE5B905' : 'transparent'),
-        borderLeft: isUnread ? '3px solid #7AE5B9' : '3px solid transparent',
+        borderLeft: '3px solid transparent',
         paddingLeft: '10px',
         transition: 'background-color 150ms, border-color 150ms',
       }}
@@ -187,57 +189,61 @@ function NotificationDetailModal({ item, onClose }) {
   );
 }
 
-export default function NotificationCenterModal({ open, onClose, showToast }) {
-  const [activeTab, setActiveTab] = useState('creation');
-  const [notifications, setNotifications] = useState([]);
+export default function NotificationCenterModal({ open, onClose, showToast, userId, initialTab = 'creation' }) {
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [detailItem, setDetailItem] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState(false);
-  const requestId = useRef(0);
-
-  const loadNotifications = useCallback(async () => {
-    const id = ++requestId.current;
-    setLoading(true);
-    setLoadError(false);
-    try {
-      // type: 'creation_log' / 'system_notice' / 'team_collab'
-      const typeMap = {
-        creation: 'creation_log',
-        system: 'system_notice',
-        team: 'team_collab',
-      };
-      const data = await apiGetNotifications({ type: typeMap[activeTab] });
-      if (id !== requestId.current) return;
-      setNotifications(data);
-    } catch (error) {
-      console.error('加载消息失败:', error);
-      if (id === requestId.current) setLoadError(true);
-    } finally {
-      if (id === requestId.current) setLoading(false);
-    }
-  }, [activeTab]);
+  const readPending = useRef(new Set());
+  const confirmedReads = useRef(new Set());
+  const lifetime = useRef(0);
+  const { notifications, setNotifications, loading, loadError, hasMore, loadNotifications, setSentinel } = useNotificationFeed({ open, userId, activeTab, confirmedReads });
+  useEffect(() => {
+    const generation = ++lifetime.current;
+    confirmedReads.current.clear();
+    readPending.current.clear();
+    return () => { lifetime.current = generation + 1; };
+  }, [userId, open]);
 
   useEffect(() => {
-    if (!open) return;
-    // 打开弹窗时主动触发外部通知请求；请求内部负责异步状态更新。
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadNotifications();
-    return () => {
-      // 重试也会推进序号，关闭时必须失效所有在途请求。
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      requestId.current++;
+    const onRead = (event) => {
+      if (event.detail?.userId !== userId) return;
+      confirmedReads.current.add(`announcement:${event.detail.id}`);
+      setNotifications((items) => mergeConfirmedReads(items, confirmedReads.current));
     };
-  }, [open, loadNotifications]);
+    window.addEventListener('announcement:read', onRead);
+    return () => window.removeEventListener('announcement:read', onRead);
+  }, [userId, setNotifications]);
+
+  const openDetail = async (item) => {
+    setDetailItem(item);
+    const key = notificationKey(item);
+    const generation = lifetime.current;
+    if (confirmedReads.current.has(key) || readPending.current.has(key) || !(item.unread ?? !item.is_read)) return;
+    readPending.current.add(key);
+    try {
+      if (item.kind === 'announcement') await apiMarkAnnouncementRead(item.id);
+      else await apiMarkNotificationRead(item.id);
+      if (generation !== lifetime.current) return;
+      confirmedReads.current.add(key);
+      setNotifications((items) => mergeConfirmedReads(items, confirmedReads.current));
+    } catch (error) {
+      if (generation === lifetime.current) showToast?.(error.message || '标记已读失败，请重新打开重试', 'warning');
+    } finally {
+      if (generation === lifetime.current) readPending.current.delete(key);
+    }
+  };
 
   const handleTabClick = (tab) => {
     if (tab === 'team') {
       showToast?.('团队功能开发中，敬请期待！', 'warning');
       return;
     }
+    if (tab === activeTab) return;
+    setDetailItem(null);
+    setNotifications([]);
     setActiveTab(tab);
   };
 
-  if (!open) return null;
+  if (!open || !userId) return null;
 
   return (
     <>
@@ -276,12 +282,12 @@ export default function NotificationCenterModal({ open, onClose, showToast }) {
           </div>
 
           {/* Body */}
-          <div className="flex flex-col gap-[8px] py-[8px] px-[24px] bg-surface-modal overflow-y-auto flex-1">
-            {loading ? (
+          <div key={activeTab} className="flex flex-col gap-[8px] py-[8px] px-[24px] bg-surface-modal overflow-y-auto flex-1 min-h-0">
+            {loading && notifications.length === 0 ? (
               <div className="flex items-center justify-center flex-1">
                 <span className="text-[#FFFFFF99] text-sm">加载中...</span>
               </div>
-            ) : loadError ? (
+            ) : loadError && notifications.length === 0 ? (
               <button type="button" onClick={loadNotifications}>加载失败，点击重试</button>
             ) : notifications.length === 0 ? (
               <NotificationEmptyState />
@@ -290,10 +296,13 @@ export default function NotificationCenterModal({ open, onClose, showToast }) {
                 <NotificationCard
                   key={item.id}
                   item={item}
-                  onOpenDetail={() => setDetailItem(item)}
+                  onOpenDetail={() => openDetail(item)}
                 />
               ))
             )}
+            {notifications.length > 0 && loading && <div role="status" className="shrink-0 py-[8px] text-center text-[12px] text-text-hint">加载中...</div>}
+            {notifications.length > 0 && loadError && <button type="button" className="shrink-0 py-[8px] text-[12px] text-text-secondary" onClick={loadNotifications}>加载失败，点击重试</button>}
+            {hasMore && <div ref={setSentinel} className="h-[1px] shrink-0" aria-hidden="true" />}
           </div>
 
           {/* Footer */}

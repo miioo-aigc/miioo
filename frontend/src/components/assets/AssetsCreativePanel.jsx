@@ -1,6 +1,6 @@
 /**
  * @file AssetsCreativePanel.jsx
- * @structure-index
+ * @structure-index：2026-10-14 loadHistoryPage L244 记录错误，L611 展示反馈；失败暂停自动补页。
  *
  * ─── 组件职责 ───────────────────────────────────────
  *   创作资产面板持有筛选、分页、批量选择、详情弹窗和资产 API；
@@ -32,6 +32,7 @@ import { normalizeCreationAudioDetail } from '../../utils/creationAudioDetailAda
 import { showGlobalToast } from '../../stores/toastStore';
 import { startDownloadFeedback } from '../../utils/downloadFeedback';
 import ConfirmDialog from '../ConfirmDialog';
+import RemoteReadStatus from '../feedback/RemoteReadStatus';
 import { AssetsTabBar } from './AssetsTabs';
 import AssetsBatchToolbar from './AssetsBatchToolbar';
 import { EmptyCreativeAssets } from './AssetsEmptyState';
@@ -246,7 +247,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     if (meta.loading || !meta.hasMore || historyRequestTabsRef.current.has(tab)) return;
 
     historyRequestTabsRef.current.add(tab);
-    setCreationHistoryMeta((prev) => ({ ...prev, [tab]: { ...prev[tab], loading: true } }));
+    setCreationHistoryMeta((prev) => ({ ...prev, [tab]: { ...prev[tab], loading: true, error: '' } }));
     const nextPage = meta.page + 1;
     const pageSize = calcCreativePageSize();
 
@@ -350,7 +351,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     } catch {
       setCreationHistoryMeta((prev) => ({
         ...prev,
-        [tab]: { ...prev[tab], loading: false, initialized: true },
+        [tab]: { ...prev[tab], loading: false, initialized: true, error: '创作资产读取失败，请重试' },
       }));
     } finally {
       historyRequestTabsRef.current.delete(tab);
@@ -393,7 +394,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
   useEffect(() => {
     const container = scrollContainerRef.current;
     const sentinel = loadMoreSentinelRef.current;
-    if (!container || !sentinel || !activeHistoryMeta?.hasMore) return;
+    if (!container || !sentinel || !activeHistoryMeta?.hasMore || activeHistoryMeta.error) return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -405,11 +406,11 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [activeType, activeHistoryMeta?.hasMore, activeHistoryMeta?.loading, loadHistoryPage]);
+  }, [activeType, activeHistoryMeta?.hasMore, activeHistoryMeta?.loading, activeHistoryMeta?.error, loadHistoryPage]);
 
   // 首屏数据不足以形成滚动条时主动补页，直到填满视口或服务端返回没有更多数据。
   useEffect(() => {
-    if (!activeHistoryMeta?.initialized || activeHistoryMeta.loading || !activeHistoryMeta.hasMore) return;
+    if (!activeHistoryMeta?.initialized || activeHistoryMeta.loading || activeHistoryMeta.error || !activeHistoryMeta.hasMore) return;
     const container = scrollContainerRef.current;
     if (!container) return;
 
@@ -419,7 +420,7 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [activeType, activeHistoryMeta?.hasMore, activeHistoryMeta?.initialized, activeHistoryMeta?.loading, generations.length, loadHistoryPage]);
+  }, [activeType, activeHistoryMeta?.hasMore, activeHistoryMeta?.initialized, activeHistoryMeta?.loading, activeHistoryMeta?.error, generations.length, loadHistoryPage]);
 
   function selectAll() {
     const allIds = days.flatMap((d) => d.cards.filter((c) => c.status !== 'loading').map((c) => c.id));
@@ -607,8 +608,9 @@ export default function AssetsCreativePanel({ isLoggedIn }) {
         alignItems: days.length === 0 ? 'center' : undefined,
         justifyContent: days.length === 0 ? 'center' : undefined,
       }}>
+        <RemoteReadStatus loading={isLoggedIn && (!activeHistoryMeta?.initialized || activeHistoryMeta.loading)} error={activeHistoryMeta?.error} onRetry={() => loadHistoryPage(activeType)} />
         {days.length === 0 ? (
-          <EmptyCreativeAssets type={activeType} />
+          !activeHistoryMeta?.error && !activeHistoryMeta?.loading && (!isLoggedIn || activeHistoryMeta?.initialized) && <EmptyCreativeAssets type={activeType} />
         ) : days.map((day) => (
           <div key={day.date} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

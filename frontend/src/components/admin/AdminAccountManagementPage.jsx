@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import useLatestRequest from '../../hooks/useLatestRequest';
 import {
   apiGetAdminUserAccounts,
   apiUpdateAdminUserAccount,
@@ -47,6 +48,7 @@ export default function AdminAccountManagementPage({
     hasMore: false,
   });
   const [loading, setLoading] = useState(true);
+  const beginRead = useLatestRequest();
   const [actionLoadingKey, setActionLoadingKey] = useState('');
   const [accountEditDraft, setAccountEditDraft] = useState(null);
   const [accountEditOpen, setAccountEditOpen] = useState(false);
@@ -59,6 +61,7 @@ export default function AdminAccountManagementPage({
     force = true,
   } = {}) => {
     const nextPage = Number(page || query.page || 1);
+    const isCurrent = beginRead();
     const nextKeyword = typeof keyword === 'string' ? keyword : query.keyword;
     const nextActiveFilter = typeof activeFilter === 'string' ? activeFilter : query.activeFilter;
     const nextAdminFilter = typeof adminFilter === 'string' ? adminFilter : query.adminFilter;
@@ -72,6 +75,7 @@ export default function AdminAccountManagementPage({
         isAdmin: mapAccountFilterValue(nextAdminFilter, 'admin'),
         force,
       });
+      if (!isCurrent()) return;
       setQuery({
         page: payload.page,
         keyword: nextKeyword,
@@ -81,11 +85,12 @@ export default function AdminAccountManagementPage({
       setDraftKeyword(nextKeyword);
       setAccountData(payload);
     } catch (error) {
+      if (!isCurrent()) return;
       showToast?.(getErrorMessage(error, '账号管理列表加载失败'), 'error');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [query.activeFilter, query.adminFilter, query.keyword, query.page, showToast]);
+  }, [beginRead, query.activeFilter, query.adminFilter, query.keyword, query.page, showToast]);
 
   useEffect(() => {
     // refreshSignal 表示管理员外部数据刷新；此处必须重新请求列表。

@@ -1,7 +1,7 @@
 /**
  * @file SeedanceAssetLibraryPanel.jsx
  * @structure-index
- *
+ *   2026-10-14：folderReadVersion L179；handleOpenFolder L250 / handleBackToFolders L603 隔离读取、上传与轮询；详情提供错误重试。
  * ─── 页面区块 ───────────────────────────────────────
  *   SeedanceAssetLibraryPanel：Seedance2.0素材库子 Tab 和文件夹网格
  *   真人素材组：从真人素材接口读取，空数据时仅展示录入入口
@@ -167,6 +167,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
   const [activeFolder, setActiveFolder] = useState(null);
   const [folderAssets, setFolderAssets] = useState([]);
   const [folderAssetsLoading, setFolderAssetsLoading] = useState(false);
+  const [folderReadError, setFolderReadError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [resolutionDialogOpen, setResolutionDialogOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState(null);
@@ -175,6 +176,8 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
   const [deletingAsset, setDeletingAsset] = useState(false);
   const [notice, setNotice] = useState(null);
   const assetPollRef = useRef(null);
+  const folderReadVersion = useRef(0);
+  const uploadPending = useRef(false);
   const assetPollTargetRef = useRef(null);
   const assetPollRequestRef = useRef(false);
   const uploadedAssetNamesRef = useRef(new Map());
@@ -237,22 +240,37 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
 
   const handleDelete = (folder) => setDeleteTarget(folder);
 
+  const stopAssetStatusPolling = useCallback(() => {
+    clearInterval(assetPollRef.current);
+    assetPollRef.current = null;
+    assetPollTargetRef.current = null;
+    assetPollRequestRef.current = false;
+  }, []);
+
   const handleOpenFolder = async (folder) => {
+    const version = ++folderReadVersion.current;
+    stopAssetStatusPolling();
+    setFolderReadError('');
+    setUploading(false);
+    uploadPending.current = false;
     setActiveFolder(folder);
-    setFolderAssets([]);
+    if (activeFolder?.id !== folder.id) setFolderAssets([]);
     setFolderAssetsLoading(true);
     try {
       const assets = await apiListLiveMaterialAssets(folder.id, { refresh: true });
+      if (version !== folderReadVersion.current) return;
       setFolderAssets(assets.map((asset) => ({
         ...asset,
         name: uploadedAssetNamesRef.current.get(asset.id) || asset.name,
         posterUrl: uploadedAssetPostersRef.current.get(asset.id) || getStoredVideoPoster(asset.id) || getLiveAssetPoster(asset),
       })));
     } catch (error) {
+      if (version !== folderReadVersion.current) return;
       console.warn('[SeedanceAssetLibraryPanel] 获取文件夹素材失败', error);
+      setFolderReadError('素材读取失败，请重试');
       showToast('素材加载失败，请返回后重试');
     } finally {
-      setFolderAssetsLoading(false);
+      if (version === folderReadVersion.current) setFolderAssetsLoading(false);
     }
   };
 
@@ -302,23 +320,21 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
     });
   }, []);
 
-  const stopAssetStatusPolling = useCallback(() => {
-    clearInterval(assetPollRef.current);
-    assetPollRef.current = null;
-    assetPollTargetRef.current = null;
-    assetPollRequestRef.current = false;
-  }, []);
-
   const startAssetStatusPolling = useCallback((groupId, targetAssetId = null) => {
     if (assetPollRef.current && assetPollTargetRef.current?.groupId === groupId) return;
     stopAssetStatusPolling();
     assetPollTargetRef.current = { groupId, assetId: targetAssetId };
+    const target = assetPollTargetRef.current;
+    const version = folderReadVersion.current;
+    const isCurrent = () => assetPollTargetRef.current === target && version === folderReadVersion.current;
 
     const refreshStatus = async () => {
+      if (!isCurrent()) return;
       if (assetPollRequestRef.current) return;
       assetPollRequestRef.current = true;
       try {
         const assets = await apiListLiveMaterialAssets(groupId, { refresh: true });
+        if (!isCurrent()) return;
         const targetAsset = targetAssetId ? assets.find((asset) => asset.id === targetAssetId) : null;
         setFolderAssets((current) => {
           return applyServerAssets(assets, current);
@@ -331,7 +347,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
       } catch (error) {
         console.warn('[SeedanceAssetLibraryPanel] 刷新真人素材审核状态失败', error);
       } finally {
-        assetPollRequestRef.current = false;
+        if (isCurrent()) assetPollRequestRef.current = false;
       }
     };
 
@@ -340,7 +356,11 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
   }, [applyServerAssets, refreshFolders, stopAssetStatusPolling]);
 
   const handleUploadAsset = async (file) => {
-    if (!activeFolder) return;
+    if (!activeFolder || folderAssetsLoading || uploadPending.current) return;
+    uploadPending.current = true;
+    setUploading(true);
+    const version = folderReadVersion.current;
+    const isCurrent = () => version === folderReadVersion.current;
     const placeholderId = `uploading-${Date.now()}`;
     const placeholderType = String(file.type || '').toLowerCase().startsWith('video/') ? 'video' : 'image';
     const uploadingPlaceholder = {
@@ -351,19 +371,20 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
       status: 'uploading',
     };
     setFolderAssets((current) => [uploadingPlaceholder, ...current]);
-    const validation = await validateSeedanceUpload(file);
-    if (validation.error || !validation.type) {
-      setFolderAssets((current) => current.filter((asset) => asset.id !== placeholderId));
-      if (validation.errorCode === 'resolution') {
-        setResolutionDialogOpen(true);
+    try {
+      const validation = await validateSeedanceUpload(file);
+      if (!isCurrent()) return;
+      if (validation.error || !validation.type) {
+        setFolderAssets((current) => current.filter((asset) => asset.id !== placeholderId));
+        if (validation.errorCode === 'resolution') {
+          setResolutionDialogOpen(true);
+          return;
+        }
+        showToast(validation.error || '当前素材类型暂不支持上传', 'error');
         return;
       }
-      showToast(validation.error || '当前素材类型暂不支持上传', 'error');
-      return;
-    }
-    setUploading(true);
-    try {
       const asset = await apiUploadLiveMaterialAsset(activeFolder.id, file, validation.type, file.name);
+      if (!isCurrent()) return;
       if (asset?.id) {
         uploadedAssetNamesRef.current.set(asset.id, file.name);
       }
@@ -384,6 +405,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
       if (validation.type === 'video' && asset?.id) {
         createVideoFirstFrame(file)
           .then((firstFrameUrl) => {
+            if (!isCurrent()) return;
             uploadedAssetPostersRef.current.set(asset.id, firstFrameUrl);
             storeVideoPoster(asset.id, firstFrameUrl);
             setFolderAssets((current) => current.map((item) => (
@@ -395,11 +417,15 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
           });
       }
     } catch (error) {
+      if (!isCurrent()) return;
       console.warn('[SeedanceAssetLibraryPanel] 上传真人素材失败', error);
       setFolderAssets((current) => current.filter((item) => item.id !== placeholderId));
       showToast('上传失败，请重试');
     } finally {
-      setUploading(false);
+      if (isCurrent()) {
+        uploadPending.current = false;
+        setUploading(false);
+      }
     }
   };
 
@@ -448,12 +474,16 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
   const handleSelectLibraryAssets = async (selectedAssets) => {
     setAssetPickerOpen(false);
     if (!Array.isArray(selectedAssets) || selectedAssets.length === 0) return;
+    const version = folderReadVersion.current;
     try {
       for (const asset of selectedAssets) {
+        if (version !== folderReadVersion.current) return;
         const file = await assetToFile(asset);
+        if (version !== folderReadVersion.current) return;
         await handleUploadAsset(file);
       }
     } catch (error) {
+      if (version !== folderReadVersion.current) return;
       console.warn('[SeedanceAssetLibraryPanel] 导入资产库素材失败', error);
       showToast('资产导入失败，请重试');
     }
@@ -571,12 +601,15 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
   };
 
   const handleBackToFolders = () => {
+    folderReadVersion.current++;
+    stopAssetStatusPolling();
     setActiveFolder(null);
     setFolderAssets([]);
     refreshFolders();
   };
 
   useEffect(() => () => {
+    folderReadVersion.current++;
     stopAssetStatusPolling();
     uploadedAssetNamesRef.current.clear();
     uploadedAssetPostersRef.current.clear();
@@ -593,6 +626,8 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
             folder={activeFolder}
             assets={folderAssets}
             loading={folderAssetsLoading}
+            error={folderReadError}
+            onRetry={() => handleOpenFolder(activeFolder)}
             uploading={uploading}
             onBack={handleBackToFolders}
             onUpload={handleUploadAsset}

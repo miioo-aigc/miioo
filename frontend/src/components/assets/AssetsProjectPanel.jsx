@@ -6,19 +6,20 @@
  * 通过显式 props 组合展示组件，不把页面入口或目录入口作为隐式依赖。
  *
  * ─── 状态与数据流 ───────────────────────────────────
- *   项目、当前分类、资产数据、批量选择和弹窗状态                  L182–L218
- *   首屏/追加分页、主体元数据覆盖和项目列表加载                    L254–L444
+ *   项目、当前分类、资产数据、批量选择和弹窗状态                  L182
+ *   首屏加载 L290；追加分页 L402；归属过滤 L499
  *
  * ─── 业务动作 ───────────────────────────────────────
- *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L487–L718
+ *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L503
  *   下载动作统一启动全局下载 Toast；有流式总长度时展示环形进度
  *
  * ─── 页面组合 ───────────────────────────────────────
- *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L720–L918
+ *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L736
  *
  * ─── 更新记录 ───────────────────────────────────────
  *   2026-10-15  保留初始项目及分类、目标可见性校验；合并请求代际保护并校正索引
  *   2026-10-12  首屏与分页增加请求代际，项目切换清理旧列表及在途归属。
+ *              2026-10-14 补充加载/失败重试与候选失败保留旧卡片；暂保留分页、删除与详情副作用集中编排，后续复核项目列表及账号边界。
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-07-16  页面入口收敛；补充资产选择引用；抽离项目重命名/删除弹窗和资产卡片网格
  *   2026-07-17  统一按来源移除资产，并同步清理主体卡片与分页原始数据
@@ -196,6 +197,7 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
     exitBatch,
   } = useAssetSelection();
   const [assetsMap, setAssetsMap] = useState({});
+  const [assetsOwnerKey, setAssetsOwnerKey] = useState(null);
   // 每个 [projectId+category] 的分页状态：{ cursor, hasMore, loading, rawList }
   const {
     pageMeta,
@@ -282,18 +284,22 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
 
   const listGeneration = useRef(0);
   const morePending = useRef(null);
+  const visiblePageKey = useRef(null);
 
   // 首屏加载：切换项目或 tab 时触发
   const loadFirstPage = useCallback(async (projectId, category) => {
     const generation = ++listGeneration.current;
     morePending.current = null;
-    setAssetsMap({});
     const key = getAssetPageKey(projectId, category);
+    if (visiblePageKey.current !== key) setAssetsMap({});
+    visiblePageKey.current = key;
+    setAssetsOwnerKey(key);
     // 清掉旧非分页接口写入的 localStorage 缓存，防止过期分组数据覆盖新结果
     invalidate(K.projectAssets(projectId), 'local');
     startPage(key);
     try {
       if (category === 'storyboard') {
+        const failedCandidateIds = new Set();
         const [storyboards, episodes] = await Promise.all([
           // 资产库只需要分镜基础信息和媒体字段，不需要加载生成参数。
           apiGetStoryboards(projectId, { include_gen_params: false }),
@@ -312,6 +318,7 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
           try {
             candidates = await apiListStoryboardMediaCandidates(projectId, shot.id);
           } catch (error) {
+            failedCandidateIds.add(String(shot.id));
             console.warn('[ProjectAssetsPanel] 获取分镜候选媒体失败:', error);
           }
           if (candidates.length === 0) {
@@ -362,8 +369,16 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
           };
         }))).filter(Boolean);
         if (generation !== listGeneration.current) return;
-        setAssetsMap((prev) => ({ ...prev, [category]: cards }));
-        completeFirstPage(key, { cursor: null, hasMore: false, rawList: [] });
+        setAssetsMap((prev) => {
+          const previous = new Map((prev[category] || []).map((card) => [String(card.id), card]));
+          const next = new Map(cards.map((card) => [String(card.id), card]));
+          // 读取失败不等于素材被删除，同一项目重试时保留失败镜头的旧卡片。
+          for (const id of failedCandidateIds) {
+            if (previous.has(id)) next.set(id, previous.get(id));
+          }
+          return { ...prev, [category]: [...next.values()] };
+        });
+        completeFirstPage(key, { cursor: null, hasMore: false, rawList: [], error: failedCandidateIds.size ? `${failedCandidateIds.size} 个分镜的素材未完整读取，已有内容可能未更新，请重试` : '' });
         return;
       }
       const limit = calcProjectAssetsLimit(category);
@@ -471,7 +486,7 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
     if (!sentinelRef.current || !scrollContainerRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && activeProject) {
+        if (entries[0].isIntersecting && activeProject && !pageMeta[getAssetPageKey(activeProject, activeCategory)]?.error) {
           loadMorePage(activeProject, activeCategory);
         }
       },
@@ -481,7 +496,8 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
     return () => observer.disconnect();
   }, [activeProject, activeCategory, loadMorePage, pageMeta]);
 
-  const categoryAssets = assetsMap[activeCategory] || [];
+  const categoryAssets = assetsOwnerKey === getAssetPageKey(activeProject, activeCategory)
+    ? assetsMap[activeCategory] || [] : [];
   const filtered = filterAssets(categoryAssets);
 
   function toggleStar(id) {
@@ -777,7 +793,11 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
           subjectCardCategories={SUBJECT_CARD_CATEGORIES}
           scrollContainerRef={scrollContainerRef}
           sentinelRef={sentinelRef}
-          loading={pageMeta[getAssetPageKey(activeProject, activeCategory)]?.loading}
+          loading={pageMeta[getAssetPageKey(activeProject, activeCategory)]?.loading ?? Boolean(activeProject)}
+          error={pageMeta[getAssetPageKey(activeProject, activeCategory)]?.error}
+          onRetry={() => pageMeta[getAssetPageKey(activeProject, activeCategory)]?.failedPhase === 'more'
+            ? loadMorePage(activeProject, activeCategory)
+            : loadFirstPage(activeProject, activeCategory)}
           emptyState={<EmptyProjectAssets category={activeCategory} />}
         >
           <AssetsProjectGrid

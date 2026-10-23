@@ -2,7 +2,7 @@
  * @file AssetPickerModal.jsx
  * @description 项目资产、创作资产与 Seedance 素材的统一选择弹窗。
  *
- * ─── 结构索引 ───────────────────────────────────────────
+ * ─── 结构索引 ─────────────────────────────────────────── 2026-10-14：项目读取状态 L857、加载判定 L1336、失败重试 L1570；其他来源失败边界待续审。
  *   AssetCard / 空态 / 悬浮预览：资产展示与预览
  *   AssetPickerModal：状态、数据适配、会话复位及请求
  *   toggle / handleConfirm / filteredAssets：选择、确认与筛选
@@ -18,6 +18,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useCreationStore } from '../stores/creationStore';
 import Checkbox from './Checkbox';
+import RemoteReadStatus from './feedback/RemoteReadStatus';
 import { generationsToFlatList } from '../utils/creativeDaysAdapter';
 import { apiGetProjects } from '../api/project';
 import { apiGetAssetsPage, enrichWithStoryboards } from '../api/assets';
@@ -854,6 +855,9 @@ export default function AssetPickerModal({
 
   // ── 从后端拉取真实数据 ──────────────────────────────────────────────────
   const [apiProjects, setApiProjects] = useState(null);
+  const [projectsError, setProjectsError] = useState('');
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectsRetry, setProjectsRetry] = useState(0);
   const [apiAssetsMap, setApiAssetsMap] = useState(null);
   // 已加载完成的 tab key 集合：key = `${projectId}__${tabKey}`
   const [loadedTabKeys, setLoadedTabKeys] = useState(new Set());
@@ -918,18 +922,28 @@ export default function AssetPickerModal({
 
   useEffect(() => {
     if (!open) return;
+    let cancelled = false;
+    // 弹窗重新打开或显式重试时同步本次远程读取状态，不派生业务数据。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setProjectsLoading(true);
+    setProjectsError('');
     (async () => {
       try {
         // 拉取所有项目列表
         const projList = await apiGetProjects();
+        if (cancelled) return;
         const projs = Array.isArray(projList) ? [...projList].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)).map(p => ({ id: p.id, name: p.name })) : [];
         setApiProjects(projs);
       } catch (err) {
+        if (cancelled) return;
         console.error('[AssetPickerModal] 拉取项目列表失败:', err);
-        setApiProjects([]);
+        setProjectsError('项目列表读取失败，请重试');
+      } finally {
+        if (!cancelled) setProjectsLoading(false);
       }
     })();
-  }, [open]);
+    return () => { cancelled = true; };
+  }, [open, projectsRetry]);
 
   const pickerTabKey = (pid, tabKey) => `${pid}__${tabKey}`;
 
@@ -1151,8 +1165,10 @@ export default function AssetPickerModal({
     if (projects.length > 0 && !projects.find(p => p.id === activeProjectId)) {
       // 项目列表首次加载后选择第一个可用项目。
       setActiveProjectId(projects[0].id);
+    } else if (apiProjects !== null && projects.length === 0) {
+      setActiveProjectId(null);
     }
-  }, [projects, projectId, activeProjectId]);
+  }, [projects, projectId, activeProjectId, apiProjects]);
 
   // 当 accept 变化时，重置子 Tab 到第一个可用项
   useEffect(() => {
@@ -1318,7 +1334,7 @@ export default function AssetPickerModal({
   const activeCreativeType = CREATIVE_SUB_TAB_TYPE_MAP[creativeSubTab];
   const creativeLoading = !creativeAssetsProp && loadingCreativeTabs.has(activeCreativeType);
   const contentLoading = activeTab === 'project'
-    ? (!activeProjectId || apiProjects === null || Boolean(currentProjectTabKey && loadingTabKeys.has(currentProjectTabKey)))
+    ? (projectsLoading || Boolean(activeProjectId && currentProjectTabKey && loadingTabKeys.has(currentProjectTabKey)))
     : activeTab === 'creative'
       ? (creativeLoading && rawAssets.length === 0)
       : seedanceLoading;
@@ -1551,7 +1567,7 @@ export default function AssetPickerModal({
 
         {/* ── 内容区（可滚动） ── */}
         <div onScroll={handleContentScroll} style={{ flex: 1, overflowY: 'auto', padding: '8px 24px', display: 'flex', flexDirection: 'column' }}>
-          {contentLoading ? <LoadingState /> : activeTab === 'seedance' && !activeSeedanceGroup ? (
+          {activeTab === 'project' && projectsError && !projectsLoading ? <RemoteReadStatus error={projectsError} onRetry={() => setProjectsRetry((value) => value + 1)} /> : contentLoading ? <LoadingState /> : activeTab === 'seedance' && !activeSeedanceGroup ? (
             seedanceGroups.filter((group) => seedanceSubTab === 'virtual' ? String(group.group_type || '').toUpperCase() === 'AIGC' : String(group.group_type || '').toUpperCase() !== 'AIGC').length === 0 ? <EmptyState /> : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px', paddingTop: '8px', paddingBottom: '8px', alignContent: 'flex-start' }}>
                 {seedanceGroups.filter((group) => seedanceSubTab === 'virtual' ? String(group.group_type || '').toUpperCase() === 'AIGC' : String(group.group_type || '').toUpperCase() !== 'AIGC').map((group) => (

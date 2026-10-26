@@ -177,7 +177,7 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
       style={{ fontFamily: FONT, ...(embedded ? { marginBottom: '24px', marginRight: '32px' } : {}) }}
     >
       <section
-        className={embedded ? 'flex min-h-0 flex-1 flex-col gap-[12px] overflow-hidden rounded-[12px] border border-stroke-normal bg-[#060606] px-[24px] py-[16px]' : 'flex min-h-0 flex-1 flex-col'}
+        className={embedded ? 'flex min-h-0 flex-1 flex-col gap-[12px] overflow-hidden rounded-[12px] border border-stroke-normal bg-[#060606] px-[16px] py-[16px]' : 'flex min-h-0 flex-1 flex-col'}
         style={embedded ? { borderRadius: '12px' } : undefined}
       >
       {embedded ? <WorkspaceHeader projectName={projectName} episodes={episodes} episode={episode} onEpisodeChange={setEpisode} onBack={onBack} showToast={showToast} ready={initialized && isLoaded} /> : <EditorHeader />}

@@ -19,7 +19,7 @@ const ASPECTS = [
   { key: '1:1', label: '1:1', Icon: Square },
 ];
 
-const settingOptionClass = (active) => `flex h-[40px] min-w-0 flex-1 items-center justify-center gap-[8px] rounded-small border text-font-size-14 text-text-secondary cursor-pointer ${active ? 'border-brand-main bg-tag-bg-blue text-text-primary' : 'border-transparent bg-white-10 hover:text-text-primary'} `;
+const settingOptionClass = (active) => `flex h-[40px] min-w-0 flex-1 items-center justify-center gap-[8px] rounded-medium border text-font-size-14 text-text-secondary cursor-pointer ${active ? 'border-brand-main bg-tag-bg-blue text-text-primary' : 'border-transparent bg-white-10 hover:text-text-primary'} `;
 
 const TYPE_LABEL = {
   video: '视频片段',

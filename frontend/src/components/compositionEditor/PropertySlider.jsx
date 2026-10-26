@@ -12,8 +12,7 @@ export default function PropertySlider({ label, value, min, max, step = 0.1, sli
   unit = '秒', disabled = false, hint, onCommit, onChange, sliderProps = {}, inputOnly = false, integer = false, unitInside = true, hideLabel = false, leftAligned = false, inlineSlider = false, compact = false, precision }) {
   const id = useId();
   const [draft, setDraft] = useState(null);
-  const midpoint = (min + max) / 2;
-  const middleTick = unit === '秒' ? Math.round(midpoint) : midpoint;
+  const middleTick = (min + max) / 2;
   const showMiddleTick = middleTick > min && middleTick < max;
   const format = precision != null ? (number) => String(Number(number.toFixed(precision))) : integer ? (number) => String(Math.round(number)) : unit === '秒' ? timeText : String;
   const parse = (text) => {
@@ -80,7 +79,7 @@ export default function PropertySlider({ label, value, min, max, step = 0.1, sli
           onChange={(event) => onChange(Number(event.target.value))} />
         <div className="relative flex justify-between text-font-size-12 text-text-secondary tabular-nums" aria-hidden="true">
           <span>{format(min)}{unit !== '秒' ? unit : ''}</span>
-          {showMiddleTick && <span className="absolute -translate-x-1/2" style={{ left: `${(middleTick - min) / (max - min) * 100}%` }}>
+          {showMiddleTick && <span className="absolute left-1/2 -translate-x-1/2">
             {format(middleTick)}{unit !== '秒' ? unit : ''}
           </span>}
           <span>{format(max)}{unit !== '秒' ? unit : ''}</span>

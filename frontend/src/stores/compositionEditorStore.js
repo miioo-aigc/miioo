@@ -409,6 +409,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   exportSubmitting: false,
   playing: false,
   cursor: 0,
+  seekEpoch: 0,
   trackSettings: { V1: { hidden: false, volume: 1, excludeGaps: true }, A1: { hidden: false, volume: 1, excludeGaps: false }, S1: { hidden: false } },
   mainTracks: { V: null, A: null, S: null },
   setMainTrack: (track) => rawSet((state) => {
@@ -805,7 +806,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
 
   updateSegment: (id, patch) =>
     set((state) => {
-      const segments = state.segments.map((seg) => {
+      let segments = state.segments.map((seg) => {
         if (seg.id !== id) return seg;
         let next = { ...seg, ...patch, offset: seg.type === 'image' ? 0 : (patch.offset ?? seg.offset ?? 0) }; // 图片恒无 offset
         // 时长 / offset 相互约束，收敛两轮
@@ -817,6 +818,24 @@ export const useCompositionEditorStore = create((rawSet, get) => {
         next.duration = clampNumber(next.duration, dc.min, dc.max);
         return next;
       });
+      const original = state.segments.find((segment) => segment.id === id);
+      const updated = segments.find((segment) => segment.id === id);
+      const track = original && segmentTrack(original);
+      if (patch.speed != null && original && updated.duration !== original.duration
+        && state.trackSettings[track]?.excludeGaps) {
+        // 按变速前的顺序排布，显式写回起点，使缩短、延长及保存使用同一结果。
+        const windows = original.type === 'audio'
+          ? computeAudioWindows(state.segments, track).windows
+          : computeVisualWindows(state.segments, track).windows;
+        const starts = new Map();
+        let cursor = 0;
+        windows.sort((a, b) => a.start - b.start).forEach(({ seg }) => {
+          starts.set(seg.id, cursor);
+          cursor += Number(seg.id === id ? updated.duration : seg.duration) || 0;
+        });
+        segments = segments.map((segment) => starts.has(segment.id)
+          ? { ...segment, start: starts.get(segment.id) } : segment);
+      }
       return { segments, dirty: true, dirtyRev: state.dirtyRev + 1, playing: false };
     }),
 
@@ -1033,14 +1052,14 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     }
   },
 
-  resetPreview: () => set({ cursor: 0, playing: false }),
+  resetPreview: () => set((state) => ({ cursor: 0, playing: false, seekEpoch: state.seekEpoch + 1 })),
 
   play: () =>
     set((state) => {
       const total = computeTotalDuration(state.segments);
       if (total <= 0) return { playing: false };
       // 已在末尾则从头播放
-      if (state.cursor >= total) return { cursor: 0, playing: true };
+      if (state.cursor >= total) return { cursor: 0, playing: true, seekEpoch: state.seekEpoch + 1 };
       return { playing: true };
     }),
 
@@ -1050,7 +1069,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     set((state) => {
       const total = computeTotalDuration(state.segments);
       const next = clampNumber(time, 0, total);
-      return { cursor: next };
+      return { cursor: next, seekEpoch: state.seekEpoch + 1 };
     }),
 
   onCursorTick: (time) =>

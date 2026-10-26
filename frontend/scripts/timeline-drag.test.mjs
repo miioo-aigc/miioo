@@ -60,6 +60,52 @@ test('各类轨道删除首中尾片段遵循各自吸附状态，允许删空',
   }
 });
 
+test('倍速缩短或延长按当前轨道吸附重排，其他轨道不变且撤销整体恢复', () => {
+  for (const [type, track] of [['video', 'V2'], ['audio', 'A2']]) {
+    for (const excludeGaps of [true, false]) {
+      for (const speed of [2, 0.5]) {
+        const segments = [
+          { id: 'first', type, track, start: 0, duration: 2 },
+          { id: 'target', type, track, start: 2, duration: 6, sourceDuration: 6, speed: 1 },
+          { id: 'next', type, track, start: 8, duration: 2 },
+          { id: 'last', type, track, start: 10, duration: 2 },
+          { id: 'other', type: 'video', track: 'V1', start: 8, duration: 2 },
+          { id: 'subtitle', type: 'subtitle', track: 'S1', start: 8, duration: 2 },
+        ];
+        store.setState({ ...store.getInitialState(), loaded: true, segments, selectedId: 'target',
+          trackSettings: { [track]: { excludeGaps } } });
+        store.getState().setSpeed('target', speed);
+        const result = store.getState().segments;
+        assert.equal(result[1].duration, 6 / speed);
+        assert.equal(result[2].start, excludeGaps ? 2 + 6 / speed : 8);
+        assert.equal(result[3].start, excludeGaps ? 4 + 6 / speed : 10);
+        assert.equal(result[4], segments[4]);
+        assert.equal(result[5], segments[5]);
+        assert.equal(store.getState().past.length, 1);
+        store.getState().setSpeed('target', speed);
+        assert.equal(store.getState().past.length, 1);
+        store.getState().undo();
+        assert.equal(store.getState().segments, segments);
+        store.getState().redo();
+        assert.deepEqual(store.getState().segments, result);
+      }
+    }
+  }
+});
+
+test('主动定位与末尾重播增加 seekEpoch，逐帧推进和暂停不增加', () => {
+  store.setState({ ...store.getInitialState(), segments: [{ id: 'one', type: 'image', duration: 3 }] });
+  store.getState().seek(1.2);
+  assert.equal(store.getState().seekEpoch, 1);
+  store.getState().onCursorTick(2);
+  store.getState().pause();
+  assert.equal(store.getState().seekEpoch, 1);
+  store.getState().seek(3);
+  store.getState().play();
+  assert.equal(store.getState().cursor, 0);
+  assert.equal(store.getState().seekEpoch, 3);
+});
+
 test('输入、弹窗和已消费事件不抢占快捷键', () => {
   const clear = { querySelector: () => null };
   assert.equal(blocksTimelineShortcut({}, clear), false);

@@ -1,5 +1,11 @@
 # 组件重构盘点基线
 
+## 2026-10-26 剪辑预览播放同步
+
+- 新增业务域 PreviewMediaClock：管理源时间换算、媒体注册清理、主时钟选择及限频纠偏，不调用接口或读取页面状态。
+- PreviewAudioLayer 统一承载 A1～A6，显式接收 active、playing、settings、clock、track、seekEpoch；复用既有 Web Audio GainNode，移除 PreviewCanvas 中重复的 A1 播放实现。
+- PreviewCanvas 保留可见视频选择、字幕编排和 rAF 生命周期；PlaybackControls 合并用户定位请求，Store 区分主动 seek 与播放 tick。媒体 URL、offset、speed、volume、hasAudio 和轨道时间口径不变。真实浏览器多轨与远程媒体验收尚未完成。
+
 ## 2026-10-15 主体抽取完成刷新补修（待统一手验）
 
 - 无新增组件；Home 复用已有类别请求版本、会话及归属判断，集中保留抽取完成后的列表/分页刷新编排。按类别持锁和回写，失败保留内容并登记首屏重试；不因超行数搬动任务副作用。

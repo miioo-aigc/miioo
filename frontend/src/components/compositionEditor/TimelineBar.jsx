@@ -87,7 +87,7 @@ function VideoFilmstrip({ src, poster, offset = 0, duration = 0, speed = 1 }) {
           poster={poster || undefined}
           muted
           playsInline
-          preload="auto"
+          preload="metadata"
           onLoadedMetadata={(event) => setFrame(index, event)}
           onLoadedData={(event) => setFrame(index, event)}
           onSeeked={() => markReady(index)}

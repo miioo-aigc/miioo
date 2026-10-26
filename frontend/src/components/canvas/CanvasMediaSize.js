@@ -1,3 +1,5 @@
+import { getCanvasImagePreview, getCanvasVideoPoster } from './CanvasMediaSources.js';
+
 const AREA = 240 * 240;
 const MAX_EDGE = 480;
 
@@ -10,7 +12,8 @@ export function getCanvasMediaSize(asset) {
   const w = Math.sqrt(AREA * ratio);
   const h = Math.sqrt(AREA / ratio);
   const scale = Math.min(1, MAX_EDGE / Math.max(w, h));
-  return { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) };
+  // 图片和视频内容保持精确比例，外框另外容纳两侧各 1px 边框，避免 contain 留缝。
+  return { width: w * scale + 2, height: h * scale + 2 };
 }
 
 export function getCanvasAssetNodeSize(asset) {
@@ -22,7 +25,8 @@ export function getCanvasAssetNodeSize(asset) {
 export function prepareCanvasMediaAsset(asset) {
   if (getCanvasMediaSize(asset) || !['image', 'video'].includes(asset?.asset_type) || !asset.url) return Promise.resolve(asset);
   return new Promise((resolve) => {
-    const video = asset.asset_type === 'video';
+    const poster = asset.asset_type === 'video' ? getCanvasVideoPoster(asset) : undefined;
+    const video = asset.asset_type === 'video' && !poster;
     const media = video ? document.createElement('video') : new Image();
     let timer;
     const finish = () => {
@@ -37,6 +41,6 @@ export function prepareCanvasMediaAsset(asset) {
     if (video) { media.preload = 'metadata'; media.onloadedmetadata = finish; }
     else media.onload = finish;
     timer = setTimeout(finish, 8000);
-    media.src = asset.url;
+    media.src = poster || (video ? asset.url : getCanvasImagePreview(asset));
   });
 }

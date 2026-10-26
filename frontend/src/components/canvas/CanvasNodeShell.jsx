@@ -14,9 +14,13 @@
  * 2026-09-28：复用 chat 模型接口，透传文本生成状态、失败反馈及模型草稿。
  * 2026-10-08：透传连线目标合法性，显示蓝色或红色描边。
  * 2026-10-08：手动接线成功后沿卡片边界播放一次双路流光。
+
+ * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
+ * 当前定义定位：CanvasNodeShell L37。
  */
 import { useEffect, useState } from 'react';
-import { apiListModels } from '../../api/config';
+import ModelReadStatus from '../feedback/ModelReadStatus';
+import { useAvailableModels } from '../../hooks/useAvailableModels';
 import { getCanvasTextModels } from './CanvasTextModels';
 import { useCanvasMediaControls } from './UseCanvasMediaControls';
 import CanvasCreationPanel from './CanvasCreationPanel';
@@ -31,7 +35,8 @@ import './canvas-nodes.css';
 import { useCanvasMediaSize } from './UseCanvasMediaSize';
 
 export default function CanvasNodeShell({ nodeType, title, selected = false, data, children, onPromptChange, onAddReference, onGenerate }) {
-  const [modelState, setModelState] = useState({ options: [], loading: true, error: false });
+  const textDirectory = useAvailableModels('chat', nodeType === 'text');
+  const modelState = { options: getCanvasTextModels(textDirectory.models), loading: textDirectory.loading, error: textDirectory.error };
   const [audioDraft, setAudioDraft] = useState({});
   const mediaSize = useCanvasMediaSize(['image', 'video'].includes(nodeType) ? data?.asset : null);
   const mediaControls = useCanvasMediaControls(nodeType, data?.model, (value) => data?.onModelChange?.(data?.nodeId, value), (value) => data?.onGenerationModeChange?.(data?.nodeId, value));
@@ -45,16 +50,6 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
     data?.onVideoCapabilitiesChange?.(data?.nodeId, mediaControls.videoCapabilities);
     if (!data?.generationMode && mediaControls.refMode) data?.onGenerationModeChange?.(data?.nodeId, mediaControls.refMode);
   }, [data?.generationMode, data?.nodeId, data?.onGenerationModeChange, data?.onVideoCapabilitiesChange, mediaControls.refMode, mediaControls.videoCapabilities, mediaControls.loading, nodeType]);
-  useEffect(() => {
-    if (nodeType !== 'text') return;
-    let cancelled = false;
-    apiListModels({ category: 'chat' }).then((list) => {
-      if (!cancelled) setModelState({ options: getCanvasTextModels(list), loading: false, error: false });
-    }).catch(() => {
-      if (!cancelled) setModelState({ options: [], loading: false, error: true });
-    });
-    return () => { cancelled = true; };
-  }, [nodeType]);
   const creationOpen = Boolean(selected && data?.creationPanelOpen);
   return <div className={`canvas-node ${selected ? 'canvas-node--selected' : ''}`} data-node-type={nodeType} data-media-sized={Boolean(mediaSize)} style={mediaSize ? { '--canvas-media-width': `${mediaSize.width}px`, '--canvas-media-height': `${mediaSize.height}px` } : undefined}>
     <div className="canvas-node__toolbar-scale" inert={!creationOpen} style={{ '--canvas-inverse-zoom': 1 / (data?.viewportZoom || 1) }}><CanvasCreationPresence open={creationOpen} className="canvas-node__toolbar-presence"><CanvasNodeToolbar nodeType={nodeType} content={data?.content} asset={data?.asset} onAction={data?.onToolbarAction} onMore={data?.onMore} onPreview={data?.onPreview} /></CanvasCreationPresence></div>
@@ -68,7 +63,7 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
       {children}
       {data?.generating && <CanvasGenerationLoading key={data.generationRequestId} message={data.generationMessageRequestId === data.generationRequestId ? data.generationMessage : undefined} />}
     </div>
-    <CanvasCreationPresence open={creationOpen}><div className="canvas-creation-scale" style={{ '--canvas-inverse-zoom': 1 / (data?.viewportZoom || 1) }}><CanvasCreationPanel
+    <CanvasCreationPresence open={creationOpen}><div className="canvas-creation-scale" style={{ '--canvas-inverse-zoom': 1 / (data?.viewportZoom || 1) }}><ModelReadStatus loading={nodeType === 'text' ? modelState.loading : mediaControls.loading} error={nodeType === 'text' ? modelState.error : mediaControls.error} empty={!(nodeType === 'text' ? modelState.options : mediaControls.options).length} onRetry={nodeType === 'text' ? textDirectory.retry : mediaControls.retry} /><CanvasCreationPanel
       key={data?.promptImportVersion || 0}
       nodeId={data?.nodeId}
       nodeType={nodeType}

@@ -15,6 +15,8 @@
  *   FrameUploadSlot / PanelUploadSlot 只负责槽位展示、文件校验、上传和资产选择；
  *   素材列表写回、生成请求、Toast 和任务轮询由上层显式回调负责。
  *
+ *   2026-10-26  悬停预览失败固定浮层并就地刷新，正常移出及素材移除行为保留
+ *
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-09-18  角色类缺失占位兼容 role 类型，复用主体页面 CharIcon
  *   2026-09-16  缺失主体占位名称样式对齐设计稿（字号改为 12px）
@@ -27,14 +29,16 @@
  *   2026-07-17  抽离媒体内容、删除按钮和首尾帧快捷卡片展示，上传与资产逻辑保持不变
  *   2026-08-10  首尾帧快捷入口支持异步处理后再写入槽位
  *   2026-08-10  首尾帧上传卡片改为三列等宽布局，首帧三个入口可完整撑满一行
+ * 当前定义定位：getUploadFn L52；getFileLimit L58；toUploadedMedia L64；FrameUploadSlot L77；PanelUploadSlot L191。
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AssetPickerModal from '../AssetPickerModal';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { MediaContent, MediaRemoveButton, ShortcutMediaCard } from './StoryboardMediaPrimitives';
-import { MediaHoverPreview as StoryboardMediaHoverPreview } from './MainRefCol';
+import StoryboardMediaHoverPreview from './MediaHoverPreview';
+import { useHoverPreviewBoundary } from '../../hooks/useHoverPreviewBoundary';
 import FileUploadButton from '../ui/FileUploadButton';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { getUploadedImageId, getUploadedImageUrl } from '../../utils/storyboardReferenceAdapter';
@@ -97,7 +101,11 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
     event.target.value = '';
   }
 
+  const hoverBoundary = useHoverPreviewBoundary(() => setPreviewPos(null));
+  useEffect(() => () => clearTimeout(hoverTimerRef.current), []);
+
   function startPreview(event) {
+    hoverBoundary.enter();
     const { clientX, clientY } = event;
     clearTimeout(hoverTimerRef.current);
     hoverTimerRef.current = setTimeout(() => {
@@ -111,7 +119,7 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
 
   function stopPreview() {
     clearTimeout(hoverTimerRef.current);
-    setPreviewPos(null);
+    hoverBoundary.leave();
   }
 
   return (
@@ -128,7 +136,7 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
               style={{ position: 'relative', width: '100%', aspectRatio: '1', borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)', boxSizing: 'border-box' }}
             >
               <MediaContent media={media} />
-              <MediaRemoveButton visible={mediaHovered} ariaLabel={`移除${label || '参考素材'}`} onClick={() => { stopPreview(); onRemove?.(); }} />
+              <MediaRemoveButton visible={mediaHovered} ariaLabel={`移除${label || '参考素材'}`} onClick={() => { clearTimeout(hoverTimerRef.current); hoverBoundary.dismiss(); onRemove?.(); }} />
             </div>
           ) : (
             <div
@@ -173,7 +181,7 @@ export function FrameUploadSlot({ label, media, onUpload, onRemove, shortcutLabe
         }}
       />
       {previewPos && media?.url && createPortal(
-        <StoryboardMediaHoverPreview url={media.url} isVideo={false} mouseX={previewPos.x} mouseY={previewPos.y} />,
+        <StoryboardMediaHoverPreview onPinnedChange={hoverBoundary.pin} onDismiss={hoverBoundary.dismiss} url={media.url} isVideo={false} mouseX={previewPos.x} mouseY={previewPos.y} />,
         document.body,
       )}
     </>
@@ -217,7 +225,11 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
     event.target.value = '';
   }
 
+  const hoverBoundary = useHoverPreviewBoundary(() => setPreviewMedia(null));
+  useEffect(() => () => clearTimeout(hoverTimerRef.current), []);
+
   function startPreview(event, item) {
+    hoverBoundary.enter();
     setMousePos({ x: event.clientX, y: event.clientY });
     clearTimeout(hoverTimerRef.current);
     hoverTimerRef.current = setTimeout(() => {
@@ -231,7 +243,7 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
 
   function stopPreview() {
     clearTimeout(hoverTimerRef.current);
-    setPreviewMedia(null);
+    hoverBoundary.leave();
   }
 
   function renderMedia(item) {
@@ -321,7 +333,7 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
               <div onMouseDown={(event) => { if (onInsert) event.preventDefault(); }} onClick={() => onInsert?.(media)} onMouseEnter={(event) => { setHoveredMediaIndex(0); startPreview(event, media); }} onMouseMove={movePreview} onMouseLeave={() => { setHoveredMediaIndex(null); stopPreview(); }} style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: `1px solid ${onInsert ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.12)'}`, cursor: onInsert ? 'pointer' : 'default' }}>
                 {renderMedia(media)}
                 {media.type?.startsWith('audio') && <span style={{ position: 'absolute', bottom: '6px', left: 0, right: 0, paddingInline: '4px', textAlign: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.40)', fontFamily: FONT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{media.name}</span>}
-                <MediaRemoveButton visible={hoveredMediaIndex === 0} ariaLabel={`移除${label || '参考素材'}`} onClick={() => { stopPreview(); onRemove?.(); }} />
+                <MediaRemoveButton visible={hoveredMediaIndex === 0} ariaLabel={`移除${label || '参考素材'}`} onClick={() => { clearTimeout(hoverTimerRef.current); hoverBoundary.dismiss(); onRemove?.(); }} />
               </div>
             ) : (
               <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ width: '120px', height: '120px', borderRadius: '6px', flexShrink: 0, border: `1px dashed ${hov ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.08)'}`, backgroundColor: '#1D1E1E', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'border-color 0.12s' }}>{renderUploadButtons()}</div>
@@ -348,7 +360,7 @@ export function PanelUploadSlot({ label, onUpload, media, onRemove, accept = 'im
         }}
       />
       {previewMedia && createPortal(
-        <StoryboardMediaHoverPreview url={previewMedia.url} isVideo={previewMedia.isVideo} mouseX={mousePos.x} mouseY={mousePos.y} />,
+        <StoryboardMediaHoverPreview onPinnedChange={hoverBoundary.pin} onDismiss={hoverBoundary.dismiss} url={previewMedia.url} isVideo={previewMedia.isVideo} mouseX={mousePos.x} mouseY={mousePos.y} />,
         document.body,
       )}
     </>

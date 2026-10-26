@@ -14,6 +14,18 @@ before(async () => {
 });
 after(async () => { await server?.close(); });
 
+test('分享组名只读且空折叠封面不出现编辑和上传入口', () => {
+  const markup = renderToStaticMarkup(createElement(ReactFlow, {
+    width: 800, height: 600, nodesDraggable: false, elementsSelectable: false,
+    nodeTypes: { canvasGroup: GroupNode },
+    nodes: [{ id: 'group', type: 'canvasGroup', position: { x: 0, y: 0 }, width: 312, height: 312,
+      data: { label: '只读组', readOnly: true, stacked: true, stackMembers: [{ id: 'child', type: 'text', readOnly: true }] } }],
+  }));
+  assert.match(markup, /只读组/);
+  assert.match(markup, /暂无内容/);
+  assert.doesNotMatch(markup, /canvas-editable-name|双击编辑|本地上传|<input/);
+});
+
 for (const stacked of [false, true]) {
   test(`${stacked ? '堆叠' : '展开'}态保留可测量但不可交互的组连接点`, () => {
     const markup = renderToStaticMarkup(createElement(ReactFlow, {

@@ -1,4 +1,5 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
+import { assertImageReferenceUrls } from './ImageReferences.js';
 
 // 更新记录：2026-08-11 分镜图片/视频生成错误保留后端原始响应，便于定位 5xx；
 //           2026-08-06 创作表单保存同时覆盖主体字段，并与最新 mainRefs 快照串行提交，避免刷新后旧主体恢复。
@@ -772,6 +773,7 @@ export async function apiGenerateStoryboardsFromFinalScript(projectId, options =
 // ── 分镜图片/视频生成 ─────────────────────────────────────────────────────────
 
 export async function apiGenerateStoryboardImage(projectId, storyboardId, params) {
+  assertImageReferenceUrls(params.reference_images);
   const normalizedSize = normalizeStoryboardImageSize(params?.size || params?.resolution);
   const payload = {
     ...params,

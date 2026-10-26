@@ -17,7 +17,7 @@ test('缩略帧渐进显示、五分钟等待、缓存命中和资源释放', as
     clearTimeout() {}, queueMicrotask,
     document: { createElement(type) {
       if (type === 'canvas') return { getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:image/jpeg;base64,test' };
-      const video = { duration: 6, currentTime: 0, readyState: 2, removeAttribute() { this.released = true; }, load() {} };
+      const video = { duration: 6, videoWidth: 1920, videoHeight: 1080, currentTime: 0, readyState: 2, removeAttribute() { this.released = true; }, load() {} };
       videos.push(video);
       return video;
     } },
@@ -50,4 +50,36 @@ test('剪辑播放和缩略帧统一使用预览地址，保持固定24格宽度
   assert.match(modal, /src=\{previewUrl\}/);
   assert.match(modal, /VideoTrimTimeline videoUrl=\{previewUrl\}/);
   assert.match(css, /flex: 0 0 calc\(100% \/ 24\)/);
+});
+
+test('竖屏、横屏和方形按原比例生成，自适应数量且采样覆盖时间范围', async () => {
+  const source = await readFile(new URL('../src/components/video-edit/useVideoThumbnails.js', import.meta.url), 'utf8');
+  for (const [width, height] of [[406, 720], [1920, 1080], [720, 720]]) {
+    let effect;
+    let result;
+    const samples = [];
+    const video = { duration: 16, videoWidth: width, videoHeight: height, currentTime: 0, readyState: 2, removeAttribute() {}, load() {} };
+    const canvas = { getContext: () => ({ drawImage() { samples.push(video.currentTime); } }), toDataURL: () => 'frame' };
+    const context = vm.createContext({
+      useState: () => [{}, value => { result = value; }],
+      useEffect: callback => { effect = callback; },
+      toVideoMediaUrl: url => url,
+      setTimeout: () => 1, clearTimeout() {}, queueMicrotask,
+      document: { createElement: type => type === 'canvas' ? canvas : video },
+    });
+    vm.runInContext(source.replace(/^import .*;$/gm, '').replace('export default ', ''), context);
+    const options = { adaptive: true, trackWidth: 990, trackHeight: 66, start: 1 };
+    context.useVideoThumbnails('/ratio.mp4', 150, options);
+    effect();
+    video.onloadeddata();
+    const count = Math.ceil(990 / (66 * width / height));
+    for (let i = 0; i < count; i++) video.onseeked();
+    assert.equal(result.frames.length, count);
+    assert.equal(result.aspectRatio, width / height);
+    assert.ok(Math.abs(canvas.width / canvas.height - width / height) < 0.01);
+    assert.ok(samples[0] > 1 && samples[0] < 1 + 14 / count);
+    assert.ok(samples.at(-1) < 15 && samples.at(-1) > 15 - 14 / count);
+    assert.equal(context.useVideoThumbnails('/ratio.mp4', 150, options).frames.length, count);
+    assert.equal(context.useVideoThumbnails('/ratio.mp4', 150, { ...options, trackWidth: 500 }).frames.length, 0);
+  }
 });

@@ -10,11 +10,11 @@ import { EpisodeSelector } from '../storyboard/StoryboardControls';
 import { getEpisodeId } from '../storyboard/storyboardControlUtils';
 import { createStoryboardDraft } from '../../api/CompositionDraftCreation';
 
-export default function EditWorkspace({ projectId, projectName = '项目', episodes = [], showToast, onOpenEditor }) {
+export default function EditWorkspace({ projectId, projectName = '项目', episodes = [], initialEpisodeId = null, showToast, onOpenEditor }) {
   const [episodeSelection, setEpisodeSelection] = useState(null);
   const selectedEpisode = (episodeSelection?.projectId === projectId
     ? episodes.find((episode) => getEpisodeId(episode) === episodeSelection.id)
-    : null) || episodes[0] || null;
+    : episodes.find((episode) => String(getEpisodeId(episode)) === String(initialEpisodeId))) || episodes[0] || null;
   const episodeId = selectedEpisode?.id;
   const requestKey = projectId + ':' + (episodeId || '');
   const [result, setResult] = useState(null);

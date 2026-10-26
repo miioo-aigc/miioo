@@ -1,6 +1,6 @@
 /**
  * @file SubjectPage.jsx
- * @structure-index 2026-10-20：面板 L249；生成回填 L948；主页面 L1110；单任务恢复 L1399；详情恢复 L1509；批量生成 L1628；页面渲染 L2335。
+ * @structure-index
  *
  * ─── 全局常量 & 工具函数 ──────────────────────────────────────────
  *   SubjectEmptyIcons / SubjectExtractionState / SubjectEditorSlot components/subject/
@@ -28,7 +28,7 @@
  *     └─ getSubjectTaskResults / getSubjectTaskResult                   任务结果列表与主体结果读取
  *   SubjectImageActions                                               src/components/subject/SubjectImageActions.js
  *     └─ createSubjectImageActionHandlers                                图片上传、下载和定稿动作适配
- *   normalizeSubjectImageModels / getFallbackSubjectImageModels         components/subject/SubjectModelAdapter.js
+ *   normalizeSubjectImageModels         components/subject/SubjectModelAdapter.js
  *
  * ─── 业务组件 ────────────────────────────────────────────────────
  *   ConfirmStoryboardModal                                          components/subject/ConfirmStoryboardModal.jsx
@@ -124,6 +124,9 @@
  *   2026-07-09  取消定稿改走语义化接口 apiUnsetPrimarySubjectImage，移除本地兜底状态
  *   2026-07-06  单主体与批量生图统一任务轮询并修复刷新后的重复占位
  *   2026-07-03  修复媒体详情弹窗参考图数据源
+
+ * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
+ * 当前定义定位：sanitizeDownloadPart L165；getSubjectDownloadName L173；sleep L201；appendBatchGeneratedImage L209；dedupeBatchGeneratedImages L217；getGeneratedSubjectImageId L227；getGeneratedSubjectReferenceImages L241；EditSubjectPanel L253；SubjectPage L1110。
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -131,14 +134,15 @@ import SubjectImageList from '../components/subject/SubjectImageList';
 import { mergeSubjectDetailUploads } from '../components/subject/SubjectImageMappers';
 import ConfirmStoryboardModal from '../components/subject/ConfirmStoryboardModal';
 import BatchGenerateModal from '../components/BatchGenerateModal';
-import { SubjectGenerationAction, SubjectPanelHeader, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, filterSubjectImagesByReferences, getSubjectCandidateImagesFromResponse, getFallbackSubjectImageModels, buildSubjectCertificationMap, getCurrentSubjectCertification } from '../components/subject';
+import { SubjectGenerationAction, SubjectPanelHeader, SubjectEmptyIcons, SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError, SubjectEditorSlot, SubjectWorkspace, SubjectEditForm, buildSubjectGenerationParams, createSubjectImageActionHandlers, createSubjectImageItem, extractSubjectImageResult, getSubjectGenerationErrorMessage, isSubjectTaskTerminal, getSubjectTaskResults, getSubjectTaskResult, mapReferenceImageIdsForModal, mergeSubjectImages, filterSubjectImagesByReferences, getSubjectCandidateImagesFromResponse, buildSubjectCertificationMap, getCurrentSubjectCertification } from '../components/subject';
 import { DubbingVoiceModal } from '../components/creation';
 import { showGlobalToast } from '../stores/toastStore';
 import { apiCreateSubject, apiUpdateSubject, apiDeleteSubject, apiGenerateSubjectImage, apiGetSubjects, apiBatchGenerateStream, apiGetSubjectDetail, apiGetSubjectImages, apiDownloadSubjectImage, apiBindSubjectReferenceImages } from '../api/subject';
 import { apiGetTask } from '../api/storyboard';
 import { apiGetSubjectAssets, apiDeleteSubjectAssets } from '../api/assets';
 // 模型能力直接从后端 capabilities 获取
-import { apiListModels } from '../api/config';
+import { useAvailableModels } from '../hooks/useAvailableModels';
+import ModelReadStatus from '../components/feedback/ModelReadStatus';
 import { apiGetVoices } from '../api/voices';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { getSubjectReferenceImageIdentities, getSubjectReferenceImagesFromResponse, getSubjectReferenceSnapshot } from '../utils/referenceMediaAdapter';
@@ -249,12 +253,12 @@ function getGeneratedSubjectReferenceImages(result) {
 function EditSubjectPanel({ projectId, ownerId, isGenerationPageCurrent, char, tabLabel = '角色', onClose, onCommit, onCoverChange, refreshToken, setBatchLoadingSubjects, isBatchLoading = false }) {
   const pendingGenerations = useMemo(() => getSubjectGenerationScope(projectId, ownerId, error => showGlobalToast(error.message, 'error')), [projectId, ownerId]);
   // ── 从后端拉取模型列表，直接使用后端 capabilities ──────────────
-  const [imageModels, setImageModels] = useState([]);
-  const [modelsLoading, setModelsLoading] = useState(true);
+  const { models: availableModels, loading: modelsLoading, error: modelsError, retry: retryModels } = useAvailableModels('image');
+  const imageModels = useMemo(() => normalizeSubjectImageModels(availableModels), [availableModels]);
 
   // 本地表单状态必须先于模型加载 effect 声明，避免 effect 闭包引用尚未声明的 setter。
   const [promptText, setPromptText] = useState(char?.prompt || char?.prompt_text || '');
-  const [selectedModel, setSelectedModel] = useState(char?.model || char?.default_image_model || imageModels[0]?.value || 'doubao-seedream-5.0-lite');
+  const [selectedModel, setSelectedModel] = useState(char?.model || char?.default_image_model || imageModels[0]?.value || '');
   const [selectedRatio, setSelectedRatio] = useState(char?.ratio || '16:9');
   const [selectedResolution, setSelectedResolution] = useState(char?.resolution || '2K');
   const [genMode, setGenMode] = useState('three_view');
@@ -294,25 +298,15 @@ function EditSubjectPanel({ projectId, ownerId, isGenerationPageCurrent, char, t
   const [, setPrimaryImageId] = useState(null);
 
   useEffect(() => {
-    (async () => {
-      let merged = [];
-      try {
-        const data = await apiListModels({ category: 'image' });
-        merged = normalizeSubjectImageModels(data);
-        setImageModels(merged.length > 0 ? merged : getFallbackSubjectImageModels());
-      } catch {
-        setImageModels(getFallbackSubjectImageModels());
-      } finally {
-        setModelsLoading(false);
-      }
-
-      // 如果角色没有预设模型，加载完后自动选中默认模型
-      if (merged.length > 0 && !editedFieldsRef.current.has('genConfig') && !char?.model && !char?.default_image_model) {
-        const def = merged.find(m => m.is_default) || merged[0];
-        if (def) setSelectedModel(def.value);
-      }
-    })();
-  }, [projectId, char?.model, char?.default_image_model]);
+    if (modelsLoading || editedFieldsRef.current.has('genConfig') || char?.model || char?.default_image_model) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+    const first = imageModels.find(model => model.is_default) || imageModels[0];
+    if (first) setSelectedModel(first.value);
+    });
+    return () => { active = false; };
+  }, [modelsLoading, imageModels, char?.model, char?.default_image_model]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -811,6 +805,7 @@ function EditSubjectPanel({ projectId, ownerId, isGenerationPageCurrent, char, t
     >
       <SubjectPanelHeader tabLabel={tabLabel} onClose={handlePanelClose} />
 
+      <ModelReadStatus loading={modelsLoading} error={modelsError} empty={!imageModels.length} onRetry={retryModels} />
       {/* two-column body */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', overflow: 'hidden' }}>
         <SubjectEditForm
@@ -868,7 +863,12 @@ function EditSubjectPanel({ projectId, ownerId, isGenerationPageCurrent, char, t
         </div>
       {/* footer: 生成图片动作区 — 由主体域组件负责布局，页面保留业务生成流程 */}
         <SubjectGenerationAction
+          disabled={modelsLoading || !imageModels.some(item => item.value === selectedModel)}
           onGenerate={async () => {
+            if (modelsLoading || !imageModels.some(item => item.value === selectedModel)) {
+              showToast('模型不可用，请重试读取或前往首页 API 配置启用模型', 'error');
+              return;
+            }
             if (!promptText.trim()) {
               showToast('请输入提示词', 'error');
               return;

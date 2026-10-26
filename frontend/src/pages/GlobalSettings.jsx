@@ -3,24 +3,24 @@
  * @structure-index
  *   2026-10-14：保存失败保留当前草稿，返回操作等待保存成功；不改变现有表单布局。
  * ─── 全局常量 & 配置 ───────────────────────────────────────────────
- *   ScriptPage 懒加载定义                                        L49
- *   FONT / FONT_MEDIUM                                           L59–L60
- *   VISUAL_STYLES                                                L63
+ *   ScriptPage 懒加载定义                                        L50
+ *   FONT / FONT_MEDIUM                                           L60–L61
+ *   VISUAL_STYLES                                                L64
  *
  * ─── 结果/状态展示组件 ───────────────────────────────────────────
- *   SubjectOverviewCard（主体概览容器）                            L344
+ *   SubjectOverviewCard（主体概览容器）                            L345
  *
  * ─── 表单与业务交互组件 ─────────────────────────────────────────
- *   <CoverUpload>                                                L72
+ *   <CoverUpload>                                                L73
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
- *   export default function GlobalSettings()                      L414
- *     ├─ [状态] name / description / coverUrl / isSaving          L448–L451
- *     ├─ [Ref] saveTimerRef / onProjectUpdateRef                   L453–L454
- *     ├─ [函数] saveImmediately()                                  L458
- *     ├─ [副作用] onProjectUpdate 引用同步                         L455
- *     ├─ [副作用] 表单变更 debounce 自动保存                           L491
- *     └─ [渲染] ScriptPage 通过 Suspense 按需加载                    L539
+ *   export default function GlobalSettings()                      L415
+ *     ├─ [状态] name / description / coverUrl / isSaving          L450–L453
+ *     ├─ [Ref] saveTimerRef / onProjectUpdateRef                   L455–L456
+ *     ├─ [函数] saveImmediately()                                  L460
+ *     ├─ [副作用] onProjectUpdate 引用同步                         L457
+ *     ├─ [副作用] 表单变更 debounce 自动保存                           L493
+ *     └─ [渲染] ScriptPage 通过 Suspense 按需加载                    L541
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-07-15  修复 ScriptPage 草稿回调引用缺失，统一使用 onScriptDraftContentChange
@@ -42,6 +42,7 @@
  *   2026-08-04  剧本进度卡片支持跳转对应分集分镜，并补齐卡片交互反馈
  *   2026-08-31  项目信息 Tab 支持自定义视觉风格入口卡片展示
  *   2026-08-31  自定义视觉风格卡片恢复普通深色卡片结构
+ *   2026-10-22  剧本进度按显示状态跳转，剪辑中进入草稿列表并携带分集；保持页面业务编排边界。
  */
 
 import { lazy, Suspense, useState, useRef, useEffect } from 'react';
@@ -443,6 +444,7 @@ export default function GlobalSettings({
   scriptDraftContent,
   onScriptDraftContentChange,
   onGoToStoryboard,
+  onGoToEdit,
   episodeStatuses = {},
 }) {
   const [name, setName] = useState(projectName);
@@ -602,7 +604,7 @@ export default function GlobalSettings({
         {/* 资产概况 Tab */}
         {activeTab === 'overview' && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', paddingTop: '16px', paddingBottom: '0px', alignSelf: 'stretch', flex: '1 1 0%', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box' }}>
-            <ScriptProgress episodes={episodes} episodeStatuses={episodeStatuses} onEpisodeClick={onGoToStoryboard} />
+            <ScriptProgress episodes={episodes} episodeStatuses={episodeStatuses} onEpisodeClick={onGoToStoryboard} onEditEpisodeClick={onGoToEdit} />
             <SubjectOverviewCard label="角色" type="char" subjects={chars} onNavigate={isSubjectUnlocked || chars.length > 0 ? () => onGoToSubject?.('char', { fromOverview: true }) : undefined} />
             <SubjectOverviewCard label="场景" type="scene" subjects={scenes} onNavigate={isSubjectUnlocked || scenes.length > 0 ? () => onGoToSubject?.('scene', { fromOverview: true }) : undefined} />
             <SubjectOverviewCard label="道具" type="prop" subjects={props} emptyLabel="暂无道具" onNavigate={isSubjectUnlocked || props.length > 0 ? () => onGoToSubject?.('prop', { fromOverview: true }) : undefined} />

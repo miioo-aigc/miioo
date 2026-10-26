@@ -13,8 +13,9 @@ export function createCanvasTextRequests() {
     finish: (requestId) => pending.delete(requestId),
     reconcile(nodes) {
       for (const [id, { plan, controller }] of pending) {
-        const result = nodes.find((node) => node.id === plan.resultId);
-        if (result?.data.generationRequestId !== id) {
+        const resultIds = plan.resultIds || [plan.resultId];
+        const hasResult = nodes.some((node) => resultIds.includes(node.id) && node.data.generationRequestId === id);
+        if (!hasResult) {
           controller.abort();
           pending.delete(id);
         }

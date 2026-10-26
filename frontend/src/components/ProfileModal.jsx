@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useProfileOperation } from '../hooks/useProfileOperation';
+import { useProfileAutosave } from '../hooks/useProfileAutosave';
+import { getAuthSessionGeneration } from '../api/request';
 import { createPortal } from 'react-dom';
 import ConfirmDialog from './ConfirmDialog';
 import WechatOfficialQr from './WechatOfficialQr';
 import { createSerialPolling } from '../utils/serialPolling';
-import { apiUpdateProfile, apiUploadAvatar, apiDeleteAccount, apiGetWechatQrCode, apiPollWechatBind, apiUnbindWechat, apiSendPhoneCode, apiVerifyPhoneCode, apiRebindPhone } from '../api/user';
+import { apiGetCurrentUser, apiDeleteAccount, apiGetWechatQrCode, apiPollWechatBind, apiUnbindWechat, apiSendPhoneCode, apiVerifyPhoneCode, apiRebindPhone } from '../api/user';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { showGlobalToast } from '../stores/toastStore';
 
@@ -332,10 +335,13 @@ function CodeInput({ value, onChange, phone, maskedPhone }) {
   const [inputState, setInputState] = useState('normal');
   const timerRef = useRef(null);
 
+  const { loading, run } = useProfileOperation(phone || maskedPhone);
   const handleSend = async () => {
     if (countdown > 0) return;
-    await apiSendPhoneCode(phone || maskedPhone);
-    setCountdown(60);
+    await run(async (current) => {
+      await apiSendPhoneCode(phone || maskedPhone);
+      if (current()) setCountdown(60);
+    });
   };
 
   useEffect(() => {
@@ -344,7 +350,7 @@ function CodeInput({ value, onChange, phone, maskedPhone }) {
     return () => clearTimeout(timerRef.current);
   }, [countdown]);
 
-  const canSend = countdown === 0;
+  const canSend = !loading && countdown === 0;
 
   const borderClass = inputState === 'focus'
     ? 'border-input-border-focus'
@@ -382,7 +388,7 @@ function CodeInput({ value, onChange, phone, maskedPhone }) {
           className={`inline-block w-max shrink-0 text-font-size-12 ${canSend ? 'text-text-secondary' : 'text-text-disabled'}`}
           style={{ fontFamily: FONT_REGULAR }}
         >
-          {countdown > 0 ? `${countdown}s` : '获取'}
+          {loading ? '发送中…' : countdown > 0 ? `${countdown}s` : '获取'}
         </span>
       </button>
     </div>
@@ -392,22 +398,24 @@ function CodeInput({ value, onChange, phone, maskedPhone }) {
 function PhoneUnbindStep1({ currentPhone, onNext, onCancel }) {
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const { loading, run, cancel } = useProfileOperation(`${currentPhone}:${code}`);
+  const handleCancel = () => { cancel(); onCancel(); };
 
   const handleNext = async () => {
     if (!code) { setCodeError(true); return; }
-    setLoading(true);
-    const res = await apiVerifyPhoneCode(currentPhone, code);
-    setLoading(false);
-    if (!res.valid) { setCodeError(true); return; }
-    setCodeError(false);
-    onNext();
+    await run(async (current) => {
+      const res = await apiVerifyPhoneCode(currentPhone, code);
+      if (!current()) return;
+      if (!res.valid) { setCodeError(true); return; }
+      setCodeError(false);
+      onNext();
+    });
   };
 
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
-      onClick={onCancel}
+      onClick={handleCancel}
     >
       <div
         style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', background: '#161616', border: '0.555556px solid rgba(255,255,255,0.08)', borderRadius: '16px', overflow: 'hidden', width: '400px' }}
@@ -416,7 +424,7 @@ function PhoneUnbindStep1({ currentPhone, onNext, onCancel }) {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'space-between', width: '100%', padding: '16px 24px', boxSizing: 'border-box', borderRadius: '16px 16px 0 0' }}>
           <span style={{ flex: 1, fontFamily: FONT_MEDIUM, fontWeight: 500, color: '#FFFFFF', fontSize: '16px', lineHeight: '20px' }}>手机号解绑</span>
-          <button type="button" onClick={onCancel} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', flexShrink: 0 }}>
+          <button type="button" onClick={handleCancel} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', flexShrink: 0 }}>
             <CloseIcon />
           </button>
         </div>
@@ -440,7 +448,7 @@ function PhoneUnbindStep1({ currentPhone, onNext, onCancel }) {
 
         {/* Footer */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'flex-end', width: '100%', padding: '16px 24px', boxSizing: 'border-box', borderRadius: '0 0 16px 16px' }}>
-          <GhostBtn onClick={onCancel}>取消</GhostBtn>
+          <GhostBtn onClick={handleCancel}>取消</GhostBtn>
           <PrimaryBtn onClick={handleNext}>{loading ? '验证中…' : '下一步'}</PrimaryBtn>
         </div>
       </div>
@@ -453,24 +461,25 @@ function PhoneUnbindStep2({ onBind, onCancel }) {
   const [code, setCode] = useState('');
   const [phoneError, setPhoneError] = useState(false);
   const [codeError, setCodeError] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const { loading, run, cancel } = useProfileOperation(`${newPhone}:${code}`);
+  const handleCancel = () => { cancel(); onCancel(); };
   const [phoneInputState, setPhoneInputState] = useState('normal');
 
   const handleBind = async () => {
     const phoneOk = /^1\d{10}$/.test(newPhone);
     if (!phoneOk) { setPhoneError(true); return; }
     if (!code) { setCodeError(true); return; }
-    setLoading(true);
-    const res = await apiRebindPhone(newPhone, code).catch(() => null);
-    setLoading(false);
-    if (res === null) { setCodeError(true); return; }
-    onBind(newPhone);
+    await run(async (current, markSent) => {
+      markSent();
+      const updated = await apiRebindPhone(newPhone, code);
+      if (current()) onBind(newPhone, updated);
+    });
   };
 
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
-      onClick={onCancel}
+      onClick={handleCancel}
     >
       <div
         style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', background: '#161616', border: '0.555556px solid rgba(255,255,255,0.08)', borderRadius: '16px', overflow: 'hidden', width: '400px' }}
@@ -479,7 +488,7 @@ function PhoneUnbindStep2({ onBind, onCancel }) {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'space-between', width: '100%', padding: '16px 24px', boxSizing: 'border-box', borderRadius: '16px 16px 0 0' }}>
           <span style={{ flex: 1, fontFamily: FONT_MEDIUM, fontWeight: 500, color: '#FFFFFF', fontSize: '16px', lineHeight: '20px' }}>更换手机号</span>
-          <button type="button" onClick={onCancel} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', flexShrink: 0 }}>
+          <button type="button" onClick={handleCancel} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', flexShrink: 0 }}>
             <CloseIcon />
           </button>
         </div>
@@ -513,7 +522,7 @@ function PhoneUnbindStep2({ onBind, onCancel }) {
           {/* Code field */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px', alignSelf: 'stretch' }}>
             <span style={{ fontFamily: FONT_REGULAR, color: 'rgba(255,255,255,0.6)', fontSize: '14px', lineHeight: '18px' }}>验证码</span>
-            <CodeInput value={code} onChange={e => { setCode(e.target.value); setCodeError(false); }} phone={newPhone} />
+            <CodeInput key={newPhone} value={code} onChange={e => { setCode(e.target.value); setCodeError(false); }} phone={newPhone} />
             <div style={{ padding: '0 13px', opacity: codeError ? 1 : 0, transition: 'opacity 120ms' }}>
               <span style={{ fontFamily: FONT_REGULAR, color: '#F75F5F', fontSize: '14px', lineHeight: '18px' }}>验证码错误</span>
             </div>
@@ -522,7 +531,7 @@ function PhoneUnbindStep2({ onBind, onCancel }) {
 
         {/* Footer */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'flex-end', width: '100%', padding: '16px 24px', boxSizing: 'border-box', borderRadius: '0 0 16px 16px' }}>
-          <GhostBtn onClick={onCancel}>取消</GhostBtn>
+          <GhostBtn onClick={handleCancel}>取消</GhostBtn>
           <PrimaryBtn onClick={handleBind}>{loading ? '绑定中…' : '绑定'}</PrimaryBtn>
         </div>
       </div>
@@ -534,22 +543,24 @@ function PhoneUnbindStep2({ onBind, onCancel }) {
 function DeleteVerifyDialog({ maskedPhone, onConfirm, onCancel }) {
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const { loading, run, cancel } = useProfileOperation(`${maskedPhone}:${code}`);
+  const handleCancel = () => { cancel(); onCancel(); };
 
   const handleConfirm = async () => {
     if (!code) { setCodeError(true); return; }
-    setLoading(true);
-    const res = await apiVerifyPhoneCode(maskedPhone, code);
-    setLoading(false);
-    if (!res.valid) { setCodeError(true); return; }
-    setCodeError(false);
-    await onConfirm();
+    await run(async (current, markSent) => {
+      const res = await apiVerifyPhoneCode(maskedPhone, code);
+      if (!current()) return;
+      if (!res.valid) { setCodeError(true); return; }
+      setCodeError(false);
+      await onConfirm(current, markSent);
+    });
   };
 
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
-      onClick={onCancel}
+      onClick={handleCancel}
     >
       <div
         style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', background: '#161616', border: '0.555556px solid rgba(255,255,255,0.08)', borderRadius: '16px', overflow: 'hidden', width: '400px' }}
@@ -558,7 +569,7 @@ function DeleteVerifyDialog({ maskedPhone, onConfirm, onCancel }) {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'space-between', width: '100%', padding: '16px 24px', boxSizing: 'border-box' }}>
           <span style={{ flex: 1, fontFamily: FONT_MEDIUM, fontWeight: 500, color: '#FFFFFF', fontSize: '16px', lineHeight: '20px' }}>验证手机号</span>
-          <button type="button" onClick={onCancel} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', flexShrink: 0 }}>
+          <button type="button" onClick={handleCancel} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', flexShrink: 0 }}>
             <CloseIcon />
           </button>
         </div>
@@ -582,7 +593,7 @@ function DeleteVerifyDialog({ maskedPhone, onConfirm, onCancel }) {
 
         {/* Footer */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'flex-end', width: '100%', padding: '16px 24px', boxSizing: 'border-box' }}>
-          <GhostBtn onClick={onCancel}>取消</GhostBtn>
+          <GhostBtn onClick={handleCancel}>取消</GhostBtn>
           <button
             type="button"
             disabled={loading || !code}
@@ -605,18 +616,36 @@ function WechatBindView({ onBack, onClose, onBindSuccess }) {
   const [authUrl, setAuthUrl] = useState('');
   const pollingRef = useRef(null);
   const ticketRef = useRef(null);
+  const requestVersion = useRef(0);
+  const invalidate = useCallback(() => {
+    requestVersion.current++;
+    pollingRef.current?.stop();
+    pollingRef.current = null;
+  }, []);
 
-  const startPolling = useCallback((ticket) => {
+  const startPolling = useCallback((ticket, current) => {
     if (pollingRef.current) { pollingRef.current.stop(); pollingRef.current = null; }
     pollingRef.current = createSerialPolling({
-      task: async () => apiPollWechatBind(ticket),
+      task: async () => {
+        if (!current()) { pollingRef.current?.stop(); return null; }
+        const data = await apiPollWechatBind(ticket);
+        if (!current()) return null;
+        if (data.status === 'confirmed') {
+          const user = await apiGetCurrentUser();
+          if (!current()) return null;
+          if (!user?.id || user.wechat_bound !== true) throw new Error('绑定资料未确认');
+          return { ...data, user };
+        }
+        return data;
+      },
       interval: 2000,
       onResult: (data) => {
+        if (!current() || !data) return;
         if (data.status === 'scanned') {
           setQrStatus('scanned');
         } else if (data.status === 'confirmed') {
           pollingRef.current?.stop();
-          onBindSuccess(data.wechat_nickname);
+          onBindSuccess(data.user);
         } else if (data.status === 'expired') {
           pollingRef.current?.stop();
           setQrStatus('expired');
@@ -626,6 +655,7 @@ function WechatBindView({ onBack, onClose, onBindSuccess }) {
         }
       },
       onError: () => {
+        if (!current()) return;
         pollingRef.current?.stop();
         setQrStatus('error');
       },
@@ -636,25 +666,31 @@ function WechatBindView({ onBack, onClose, onBindSuccess }) {
   }, [onBindSuccess]);
 
   const loadQrCode = useCallback(async () => {
+    invalidate();
+    const version = requestVersion.current;
+    const generation = getAuthSessionGeneration();
+    const current = () => version === requestVersion.current && generation === getAuthSessionGeneration();
     setQrStatus('loading');
     setAuthUrl('');
     try {
       const data = await apiGetWechatQrCode();
+      if (!current()) return;
+      if (!data.ticket || !data.qrCodeValue) throw new Error('二维码返回不完整');
       ticketRef.current = data.ticket;
       setAuthUrl(data.qrCodeValue);
       setQrStatus('ready');
-      startPolling(data.ticket);
+      startPolling(data.ticket, current);
     } catch {
-      setQrStatus('error');
+      if (current()) setQrStatus('error');
     }
-  }, [startPolling]);
+  }, [startPolling, invalidate]);
 
   useEffect(() => {
     // 挂载绑定视图时主动发起二维码请求；请求内部负责异步状态更新。
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadQrCode();
-    return () => { pollingRef.current?.stop(); pollingRef.current = null; };
-  }, [loadQrCode]);
+    return invalidate;
+  }, [loadQrCode, invalidate]);
 
   const isExpiredOrError = qrStatus === 'expired' || qrStatus === 'error';
   const qrLabel = {
@@ -670,14 +706,14 @@ function WechatBindView({ onBack, onClose, onBindSuccess }) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', flex: 1, gap: '4px' }}>
-          <button type="button" onClick={() => { pollingRef.current?.stop(); onBack(); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
+          <button type="button" onClick={() => { invalidate(); onBack(); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
             <BackArrowIcon />
           </button>
           <span style={{ fontFamily: FONT_MEDIUM, fontWeight: 500, fontSize: '16px', lineHeight: '20px', color: '#FFFFFF', flex: 1 }}>
             微信绑定
           </span>
         </div>
-        <button type="button" onClick={() => { pollingRef.current?.stop(); onClose(); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+        <button type="button" onClick={() => { invalidate(); onClose(); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
           <CloseIcon />
         </button>
       </div>
@@ -737,21 +773,26 @@ function WechatBindView({ onBack, onClose, onBindSuccess }) {
   );
 }
 
-export default function ProfileModal({
+export default function ProfileModal(props) {
+  if (!props.open) return null;
+  return <ProfileSession key={`${getAuthSessionGeneration()}:${props.currentUser?.id || ''}`} {...props} />;
+}
+
+function ProfileSession({
   open,
   currentUser = {},
   onLogout,
   onClose,
   onProfileUpdated,
 }) {
-  const [nameVal, setNameVal] = useState('');
+  const { name: nameVal, avatar: avatarUrl, editName, saveName, uploadAvatar } = useProfileAutosave(currentUser, onProfileUpdated);
   const [deleteStep, setDeleteStep] = useState(null);
-  const [avatarUrl, setAvatarUrl] = useState(null);
   const [wechatView, setWechatView] = useState('profile');
   const [boundWechat, setBoundWechat] = useState(null);
   const [phoneUnbindStep, setPhoneUnbindStep] = useState(null);
   const [boundPhone, setBoundPhone] = useState(null);
   const [wechatUnbindConfirm, setWechatUnbindConfirm] = useState(false);
+  const { loading: unbinding, run: runUnbind, cancel: cancelUnbind } = useProfileOperation();
   const toast = null;
   const showToast = (msg, type = 'warning') => {
     showGlobalToast(msg, type);
@@ -761,43 +802,43 @@ export default function ProfileModal({
     // 打开个人资料时从 currentUser 恢复本地编辑态，避免关闭后残留上次会话。
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 打开弹窗时恢复外部用户资料
-    setNameVal(currentUser.nickname ?? '');
-    setAvatarUrl(currentUser.avatar_url ?? null);
     setBoundPhone(currentUser.phone_bound ? (currentUser.phone ?? '已绑定') : null);
     setBoundWechat(currentUser.wechat_bound ? (currentUser.wechat ?? '已绑定') : null);
     setWechatView('profile');
     setDeleteStep(null);
     setPhoneUnbindStep(null);
-  }, [open, currentUser.avatar_url, currentUser.nickname, currentUser.phone, currentUser.phone_bound, currentUser.wechat, currentUser.wechat_bound]);
+  }, [open, currentUser.phone, currentUser.phone_bound, currentUser.wechat, currentUser.wechat_bound]);
 
   const handleClose = useCallback(() => {
+    cancelUnbind();
     if (wechatView !== 'profile') {
       setWechatView('profile');
       return;
     }
     onClose?.();
-  }, [onClose, wechatView]);
+  }, [onClose, wechatView, cancelUnbind]);
 
-  const handleLocalPreview = (localUrl) => setAvatarUrl(localUrl);
-
-  const handleAvatarUploaded = async (cdnUrl) => {
-    setAvatarUrl(cdnUrl);
-    const updated = await apiUpdateProfile({ nickname: nameVal, avatar_url: cdnUrl }).catch(() => null);
-    if (updated) onProfileUpdated?.(updated);
-  };
-
-  const handleBindSuccess = (nickname) => {
-    setBoundWechat(nickname || '已绑定');
+  const profileUpdatedRef = useRef(onProfileUpdated);
+  useEffect(() => { profileUpdatedRef.current = onProfileUpdated; }, [onProfileUpdated]);
+  const handleBindSuccess = useCallback((user) => {
+    profileUpdatedRef.current?.({ wechat: user.wechat, wechat_nickname: user.wechat_nickname, wechat_bound: true });
+    setBoundWechat(user.wechat_nickname || user.wechat || '已绑定');
     setWechatView('profile');
-  };
+  }, []);
 
   const handleUnbindWechat = async () => {
-    await apiUnbindWechat();
-    setBoundWechat(null);
-    setWechatUnbindConfirm(false);
+    await runUnbind(async (current, markSent) => {
+      markSent();
+      const updated = await apiUnbindWechat();
+      if (!current()) return;
+      setBoundWechat(null);
+      setWechatUnbindConfirm(false);
+      onProfileUpdated?.(updated);
+    });
   };
 
-  const handlePhoneRebindSuccess = (newPhone) => {
+  const handlePhoneRebindSuccess = (newPhone, updated) => {
+    if (updated?.id) onProfileUpdated?.(updated);
     setBoundPhone(newPhone);
     setPhoneUnbindStep(null);
   };
@@ -835,7 +876,7 @@ export default function ProfileModal({
 
             {/* Avatar section */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px', gap: '8px' }}>
-              <AvatarEditButton avatarSrc={avatarUrl} onLocalPreview={handleLocalPreview} onUploaded={handleAvatarUploaded} showToast={showToast} />
+              <AvatarEditButton avatarSrc={avatarUrl} onUpload={uploadAvatar} showToast={showToast} />
               <span style={{ fontFamily: FONT_MEDIUM, fontWeight: 500, fontSize: '16px', lineHeight: '20px', color: 'rgba(255,255,255,0.85)' }}>
                 {nameVal || currentUser.nickname || ''}
               </span>
@@ -849,22 +890,11 @@ export default function ProfileModal({
               <ProfileField
                 label="用户名"
                 value={nameVal}
-                onChange={(e) => setNameVal(e.target.value)}
+                onChange={(e) => editName(e.target.value)}
                 placeholder="请输入用户名"
                 maxLength={20}
                 filterInput={filterUsername}
-                onBlurSave={async (overrideVal) => {
-                  const val = overrideVal ?? nameVal;
-                  if (val !== (currentUser.nickname ?? '')) {
-                    const updated = await apiUpdateProfile({ nickname: val, avatar_url: avatarUrl }).catch(() => null);
-                    if (updated) {
-                      onProfileUpdated?.(updated);
-                    } else {
-                      showToast('用户名修改失败，请稍后重试');
-                      setNameVal(currentUser.nickname ?? '');
-                    }
-                  }
-                }}
+                onBlurSave={(overrideVal) => saveName(overrideVal ?? nameVal)}
               />
               <PhoneRow phone={boundPhone} onUnbind={() => setPhoneUnbindStep('step1')} />
               {boundWechat ? (
@@ -872,7 +902,7 @@ export default function ProfileModal({
               ) : (
                 <WechatUnboundRow onBind={() => setWechatView('qrcode')} />
               )}
-              <DangerRow label="注销账号" value="永久删除账号及所有数据" onClick={() => setDeleteStep('confirm')} />
+              <DangerRow label="注销账号" value="注销后无法继续登录" onClick={() => setDeleteStep('confirm')} />
             </div>
           </>
         )}
@@ -880,7 +910,7 @@ export default function ProfileModal({
       {deleteStep === 'confirm' && (
         <ConfirmDialog
           title="确认注销账号？"
-          description="注销后账号及所有数据将被永久删除，无法恢复。"
+          description="注销后账号将无法继续登录。数据保留和清除以平台实际规则为准。"
           confirmText="继续注销"
           onConfirm={() => setDeleteStep('verify')}
           onCancel={() => setDeleteStep(null)}
@@ -890,8 +920,11 @@ export default function ProfileModal({
       {deleteStep === 'verify' && (
         <DeleteVerifyDialog
           maskedPhone={boundPhone}
-          onConfirm={async () => {
+          onConfirm={async (current, markSent) => {
+            if (!current()) return;
+            markSent();
             await apiDeleteAccount();
+            if (!current()) return;
             setDeleteStep(null);
             onLogout?.();
           }}
@@ -915,9 +948,9 @@ export default function ProfileModal({
         <ConfirmDialog
           title="确认解绑微信？"
           description="解绑后，微信将无法用于登录本账号。"
-          confirmText="确认解绑"
+          confirmText={unbinding ? '解绑中…' : '确认解绑'}
           onConfirm={handleUnbindWechat}
-          onCancel={() => setWechatUnbindConfirm(false)}
+          onCancel={() => { cancelUnbind(); setWechatUnbindConfirm(false); }}
           zIndex={70}
         />
       )}
@@ -957,7 +990,7 @@ export default function ProfileModal({
   );
 }
 
-function AvatarEditButton({ avatarSrc, onLocalPreview, onUploaded, showToast }) {
+function AvatarEditButton({ avatarSrc, onUpload, showToast }) {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
   const fileInputRef = useRef(null);
@@ -970,14 +1003,9 @@ function AvatarEditButton({ avatarSrc, onLocalPreview, onUploaded, showToast }) 
       e.target.value = '';
       return;
     }
-    const localUrl = URL.createObjectURL(file);
-    onLocalPreview(localUrl);
-    const result = await apiUploadAvatar(file);
-    if (result?.avatarUrl) {
-      onUploaded(result.avatarUrl);
-      URL.revokeObjectURL(localUrl);
-    }
+    // 先清空选择器，允许上传失败后重新选择同一个文件。
     e.target.value = '';
+    await onUpload(file);
   };
 
   return (

@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import StoryboardMediaPreview from './StoryboardMediaPreview';
+import AsyncImagePreview from '../AsyncImagePreview';
+import { useMediaPlayback } from '../../hooks/useMediaPlayback';
+import MediaLoadStatus from '../feedback/MediaLoadStatus';
+import { useMemo, useRef, useState } from 'react';
 import { VideoEditContext } from '../video-edit/VideoEditContext';
 import VideoUpscaleModal from '../video-edit/VideoUpscaleModal';
 import VideoSubtitleModal from '../video-edit/VideoSubtitleModal';
@@ -494,64 +498,17 @@ function CloseButton({ onClick }) {
 function CandidateThumbnail({ media, active, onClick }) {
   const video = isVideoMedia(media);
   const thumb = mediaPreviewUrl(media);
-  const [generatedThumb, setGeneratedThumb] = useState('');
-  const videoUrl = normalizeImageUrl(media?.url || media?.preview_video_url || media?.previewVideoUrl || '');
-
-  useEffect(() => {
-    if (!video || thumb || !videoUrl) return undefined;
-
-    let cancelled = false;
-    const source = document.createElement('video');
-    source.src = videoUrl;
-    source.muted = true;
-    source.playsInline = true;
-    source.preload = 'auto';
-
-    const captureFirstFrame = () => {
-      if (cancelled || !source.videoWidth || !source.videoHeight) return;
-      const canvas = document.createElement('canvas');
-      canvas.width = source.videoWidth;
-      canvas.height = source.videoHeight;
-      const context = canvas.getContext('2d');
-      if (!context) return;
-      try {
-        context.drawImage(source, 0, 0, canvas.width, canvas.height);
-        setGeneratedThumb(canvas.toDataURL('image/jpeg', 0.88));
-      } catch {
-        // 跨域媒体无法绘制到 canvas 时，保留 video 自身的浏览器首帧兜底。
-      }
-    };
-    const seekToStart = () => {
-      source.currentTime = 0;
-      if (source.readyState >= 2) captureFirstFrame();
-    };
-    source.addEventListener('loadeddata', seekToStart);
-    source.addEventListener('seeked', captureFirstFrame);
-    source.load();
-
-    return () => {
-      cancelled = true;
-      source.removeEventListener('loadeddata', seekToStart);
-      source.removeEventListener('seeked', captureFirstFrame);
-      source.removeAttribute('src');
-      source.load();
-    };
-  }, [video, thumb, videoUrl]);
-
-  const resolvedThumb = thumb || generatedThumb;
+  const Thumbnail = 'div';
   return (
-    <button type="button" onClick={onClick} aria-label={`查看${video ? '视频' : '图片'}`} style={{ width: '100px', height: '76px', position: 'relative', flexShrink: 0, overflow: 'hidden', padding: 0, borderRadius: '6px', border: `1px solid ${active ? '#2DC3E1' : '#FFFFFF1F'}`, background: '#1D1E1E', cursor: 'pointer', boxShadow: active ? '0 0 0 1px #2DC3E166' : 'none' }}>
-      {video ? (resolvedThumb
-        ? <img src={resolvedThumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        : <video src={videoUrl} muted playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />)
-        : <img src={resolvedThumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+    <Thumbnail role="button" tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && ['Enter', ' '].includes(event.key)) { event.preventDefault(); onClick(); } }} onClick={onClick} aria-label={`查看${video ? '视频' : '图片'}`} style={{ width: '100px', height: '76px', position: 'relative', flexShrink: 0, overflow: 'hidden', padding: 0, borderRadius: '6px', border: `1px solid ${active ? '#2DC3E1' : '#FFFFFF1F'}`, background: '#1D1E1E', cursor: 'pointer', boxShadow: active ? '0 0 0 1px #2DC3E166' : 'none' }}>
+      <StoryboardMediaPreview media={{ ...media, media_preview_url: thumb, url: video ? media.url || media.preview_video_url || media.previewVideoUrl : mediaImageUrl(media) }} />
       <span style={{ position: 'absolute', top: '4px', right: '4px', padding: '1px 4px', borderRadius: '2px', background: '#00000099', color: '#FFFFFFCC', font: `10px/14px ${FONT}` }}>{video ? '视频' : '图片'}</span>
       {media?.is_finalized && <span style={{ position: 'absolute', top: '4px', left: '4px', padding: '1px 4px', borderRadius: '2px', background: '#2DC3E1', color: '#090909', font: `10px/14px ${FONT}` }}>定稿</span>}
-    </button>
+    </Thumbnail>
   );
 }
 
-export default function StoryboardMediaDetailModal({ projectId, shot, candidates = [], media, onClose, onDownload, onDelete, onFavorite, onFrameSaved }) {
+export default function StoryboardMediaDetailModal({ projectId, shot, candidates = [], media, onClose, onDownload, onDelete, onFavorite, onFrameSaved, visualMedia = true }) {
   const edits = useLocalImageEdits(`storyboard:${projectId || shot?.project_id}:${shot?.id}`);
   const [editMode, setEditMode] = useState(null);
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
@@ -568,6 +525,8 @@ export default function StoryboardMediaDetailModal({ projectId, shot, candidates
   const activeMedia = items.find((item) => (item.id || item.url) === activeKey) || items[0] || media;
   const video = isVideoMedia(activeMedia);
   const activePoster = mediaPreviewUrl(activeMedia);
+
+  const playback = useMediaPlayback(videoRef, visualMedia && video ? normalizeImageUrl(activeMedia?.url || activeMedia?.preview_video_url || activeMedia?.previewVideoUrl) : null, { autoPlay: true });
 
   if (!activeMedia) return null;
 
@@ -687,15 +646,17 @@ export default function StoryboardMediaDetailModal({ projectId, shot, candidates
         </header>
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
           <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', background: '#0D0D0D' }}>
-            <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', background: '#0A0A0A' }}>
-              {video ? <video ref={videoRef} key={activeMedia.id || activeMedia.url} src={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)} poster={activePoster || undefined} controls autoPlay playsInline style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : <img src={mediaImageUrl(activeMedia)} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', background: '#0A0A0A', position: 'relative' }}>
+              {video ? <video ref={videoRef} key={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)} src={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)} poster={activePoster || undefined} controls autoPlay={!visualMedia} playsInline style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : visualMedia ? <AsyncImagePreview visual plain src={mediaImageUrl(activeMedia)} imageStyle={{ objectFit: 'contain' }} /> : <img src={mediaImageUrl(activeMedia)} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}
+              {visualMedia && video && <MediaLoadStatus visual {...playback} onPause={playback.pause} onRetry={playback.retry} onPlay={() => playback.play()} />}
             </div>
             <div style={{ flexShrink: 0, minHeight: '108px', padding: '16px', display: 'flex', gap: '12px', overflowX: 'auto', borderTop: '1px solid #FFFFFF0F', background: '#161616' }}>
-              {items.map((item) => <CandidateThumbnail key={item.id || item.url} media={item} active={(item.id || item.url) === (activeMedia.id || activeMedia.url)} onClick={() => setActiveKey(item.id || item.url)} />)}
+              {items.map((item) => <CandidateThumbnail visualMedia={visualMedia} key={item.id || item.url} media={item} active={(item.id || item.url) === (activeMedia.id || activeMedia.url)} onClick={() => setActiveKey(item.id || item.url)} />)}
             </div>
           </div>
           <VideoEditContext.Provider value={video ? (mode) => {
-            videoRef.current?.pause();
+            if (visualMedia) playback.pause();
+            else videoRef.current?.pause();
             if (mode === '去字幕') setSubtitleOpen(true);
             else if (mode === '剪辑') setTrimOpen(true);
             else if (mode === '选帧') setFrameOpen(true);

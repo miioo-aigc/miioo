@@ -1,3 +1,5 @@
+import AsyncImagePreview from '../AsyncImagePreview';
+import AssetLibraryPlayer from './AssetLibraryPlayer';
 /**
  * Seedance 素材库素材预览弹窗。
  * 只负责展示素材，删除确认和接口请求由父面板编排。
@@ -23,8 +25,8 @@ export default function SeedanceAssetPreviewModal({ asset, onClose }) {
   const isVideo = assetType === 'video';
   const isAudio = assetType === 'audio';
   const mediaUrl = isVideo
-    ? (asset.source_url || asset.file_url || asset.preview_url)
-    : (asset.preview_url || asset.asset_ref_url || asset.file_url);
+    ? (asset.source_url || asset.file_url || asset.preview_url || asset.url)
+    : (asset.preview_url || asset.asset_ref_url || asset.file_url || asset.source_url || asset.url);
   const posterUrl = asset.posterUrl || asset.poster_url || asset.thumbnail_url || asset.thumbnailUrl;
 
   return createPortal(
@@ -49,11 +51,11 @@ export default function SeedanceAssetPreviewModal({ asset, onClose }) {
         </div>
         <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', background: '#0A0A0A' }}>
           {isVideo && mediaUrl ? (
-            <video src={normalizeImageUrl(mediaUrl)} poster={posterUrl ? normalizeImageUrl(posterUrl) : undefined} controls autoPlay muted playsInline style={{ maxWidth: '100%', maxHeight: '100%', display: 'block' }} />
+            <AssetLibraryPlayer src={normalizeImageUrl(mediaUrl)} poster={posterUrl ? normalizeImageUrl(posterUrl) : undefined} label={asset.name || '视频素材'} autoPlay muted />
           ) : isAudio && mediaUrl ? (
-            <audio src={normalizeImageUrl(mediaUrl)} controls autoPlay style={{ width: 'min(560px, 100%)' }} />
+            <AssetLibraryPlayer type="audio" src={normalizeImageUrl(mediaUrl)} label={asset.name || '音频素材'} autoPlay />
           ) : mediaUrl ? (
-            <img src={normalizeImageUrl(mediaUrl)} alt={asset.name || '素材预览'} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }} />
+            <AsyncImagePreview visual plain src={normalizeImageUrl(mediaUrl)} fallbackSrc={asset.source_url ? normalizeImageUrl(asset.source_url) : undefined} alt={asset.name || '素材预览'} imageStyle={{ objectFit: 'contain' }} />
           ) : (
             <span style={{ fontFamily: FONT, color: '#FFFFFF66', fontSize: '14px' }}>暂无可预览内容</span>
           )}

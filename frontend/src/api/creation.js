@@ -1,3 +1,4 @@
+import { assertImageReferenceUrls, buildImageReferences } from './ImageReferences.js';
 const BASE = import.meta.env.VITE_API_BASE_URL;
 const CREATION_DEFAULT_POLL_TIMEOUT_MS = 1800000;
 const CREATION_VIDEO_POLL_TIMEOUT_MS = 3600000;
@@ -7,6 +8,7 @@ const CREATION_POLL_INTERVAL_MS = 3000;
 const CREATION_POLL_TRANSIENT_FAILURE_LIMIT = 5;
 const CREATION_POLL_TRANSIENT_STATUSES = new Set([502, 503, 504]);
 import { readResponseBlobWithProgress } from '../utils/responseBlobProgress';
+import { waitForCreationVideoImages } from './CreationVideoReferences.js';
 
 function isLikelyImageMediaUrl(url) {
   return /\.(?:avif|bmp|gif|jpe?g|png|webp)(?:[?#].*)?$/i.test(String(url || ''));
@@ -233,24 +235,24 @@ async function pollBasicEditCreationImageTask(taskId, { signal } = {}) {
 /**
  * 结构索引（api/creation.js）
  * ─── 音乐生成（自由函数）────────────────────────
- *   [接口] apiGenerateCreationMusic()              L599   POST /api/music/generate （音乐生成/翻唱）
- *   [提取] extractMusicResultUrl()                  L609   从 url/audio_url/result/results[] 提取音乐结果
- *   [轮询] apiPollCreationMusicTask()                L627   GET /api/tasks/{task_id} 最多 600 秒，支持 AbortSignal
+ *   [接口] apiGenerateCreationMusic()              L735   POST /api/music/generate （音乐生成/翻唱）
+ *   [提取] extractMusicResultUrl()                  L745   从 url/audio_url/result/results[] 提取音乐结果
+ *   [轮询] apiPollCreationMusicTask()                L763   GET /api/tasks/{task_id} 最多 600 秒，支持 AbortSignal
  * ─── 视频生成（apiGenerateCreation）────────────────────────
- *   [函数] apiGenerateCreation()                    L881  入口：按 genType 分流 图片/视频/配音/音乐
- *   [上传] 参考文件分类循环                           L933  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
+ *   [函数] apiGenerateCreation()                    L1028  入口：按 genType 分流 图片/视频/配音/音乐
+ *   [上传] 参考文件分类循环                           L1115  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
  *                                                        （图片 asset_id 兜底：assetId || backendId || asset_id）
- *   [上传] 首/尾帧上传                               L1006  仅视频首尾帧模式使用
- *   [分支] 配音同步/异步生成与任务轮询                L1037  短文本直取音频，长文本轮询
+ *   [上传] 首/尾帧上传                               L1186  仅视频首尾帧模式使用
+ *   [分支] 配音同步/异步生成与任务轮询                L1218  短文本直取音频，长文本轮询
  *                                                        普通/高级模式统一透传 voice_setting
  *                                                        配音任务轮询最多 600 秒，可通过 AbortSignal 停止
- *   [分支] 音乐生成与任务轮询                        L1163  上传参考音频 → POST /api/music/generate → 轮询任务
- *   [分支] 图片生成（多张并行）                      L1220  count>1 可返回多 task_ids 并行轮询
- *   [分支] 视频生成                                  L1286  generation_mode / reference_mode / attachments
- *   [校验] 视频能力与音频门禁                         L935  上传前校验 generation_mode、reference_mode 与能力映射
- *   [组装] @ 数字资产绑定 attachments                L1292  CreationAssetBinding[]，source:'mention'
- *   [组装] 视频生成请求体 body                       L1322  generation_mode / reference_mode / attachments / reference_image_asset_ids / first_frame_url
- *   [日志] [video-generate] 调试日志                 L1355  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
+ *   [分支] 音乐生成与任务轮询                        L1362  上传参考音频 → POST /api/music/generate → 轮询任务
+ *   [分支] 图片生成（多张并行）                      L1419  count>1 可返回多 task_ids 并行轮询
+ *   [分支] 视频生成                                  L1495  generation_mode / reference_mode / attachments
+ *   [校验] 视频能力与音频门禁                         L1100  上传前校验 generation_mode、reference_mode 与能力映射
+ *   [组装] @ 数字资产绑定 attachments                L1519  CreationAssetBinding[]，source:'mention'
+ *   [组装] 视频生成请求体 body                       L1527  generation_mode / reference_mode / attachments / reference_image_asset_ids / first_frame_url
+ *   [日志] [video-generate] 调试日志                 L1563  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *  2026-08-28  视频新请求不再发送已下线的 multi_shot 参数；参考模式继续由后端映射结果决定
  *   2026-08-12  新增音乐生成支持：POST /api/music/generate、通用任务中心 GET /api/tasks/{task_id} 轮询（最多 600 秒），
@@ -266,6 +268,9 @@ async function pollBasicEditCreationImageTask(taskId, { signal } = {}) {
  *   2026-08-21  普通配音模式将 speed / pitch / volume 归一到 voice_setting.speed / pitch / vol
  *   2026-10-08  配音分支增加画布参考音频全量 attachments 及临时地址上传；其他入口保持原行为。
  *   2026-10-09  apiGenerateCreation 增加可选 onProgress，透传轮询 message；未返回时由画布兜底。
+ *   2026-10-26  图片轮询额外保留 imageAssetIds，按结果索引含空位合并，独立于创作记录 cardIds。
+ *   2026-10-26  图片参考统一上传、资产绑定与地址校验，上传失败停止生成；视频分支保留原契约。
+ *   2026-10-23  视频提交前检查原图加载及上传完整性，失败停止提交并检查提交响应。
  */
 
 function isMiniMaxSpeechModel(model) {
@@ -477,14 +482,15 @@ export async function apiReorderShots(sessionId, shot_ids) {
 
 // ── 创作图片 ──────────────────────────────────────────────────────────────────
 
-export async function apiListCreationImages(filters = {}) {
+export async function apiListCreationImages(filters = {}, { signal } = {}) {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== '') params.append(k, v);
   });
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/images?${query}` : `${BASE}/api/creation/images`;
-  const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+  const res = await authFetch(url, { signal, headers: { 'Content-Type': 'application/json' } });
+  if (!res.ok) await throwResponseError(res, '创作图片读取失败');
   return res.json();
 }
 
@@ -516,6 +522,7 @@ export async function apiBasicEditCreationImage(imageId, { operations = ['crop']
 }
 
 export async function apiGenerateCreationImages(data) {
+  assertImageReferenceUrls(data.reference_images);
   const res = await authFetch(`${BASE}/api/creation/images/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -525,6 +532,7 @@ export async function apiGenerateCreationImages(data) {
 }
 
 export async function apiGenerateShotImage(shotId, data) {
+  assertImageReferenceUrls(data.reference_images);
   const res = await authFetch(`${BASE}/api/creation/shots/${shotId}/generate-image`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -629,14 +637,15 @@ export async function apiDownloadCreationImage(imageId, { onProgress } = {}) {
 
 // ── 创作视频 ──────────────────────────────────────────────────────────────────
 
-export async function apiListCreationVideos({ page, page_size, exclude_hidden } = {}) {
+export async function apiListCreationVideos({ page, page_size, exclude_hidden } = {}, { signal } = {}) {
   const params = new URLSearchParams();
   if (page !== undefined) params.append('page', page);
   if (page_size !== undefined) params.append('page_size', page_size);
   if (exclude_hidden !== undefined) params.append('exclude_hidden', exclude_hidden);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/videos?${query}` : `${BASE}/api/creation/videos`;
-  const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+  const res = await authFetch(url, { signal, headers: { 'Content-Type': 'application/json' } });
+  if (!res.ok) await throwResponseError(res, '创作视频读取失败');
   const data = await res.json();
   return data;
 }
@@ -647,6 +656,7 @@ export async function apiGenerateCreationVideo(data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+  if (!res.ok) await throwResponseError(res, '视频生成提交失败');
   return res.json();
 }
 
@@ -781,7 +791,7 @@ export async function apiGenerateShotAudio(shotId, data) {
   return res.json();
 }
 
-export async function apiListCreationAudios({ page, page_size, is_favorite, search, exclude_hidden } = {}) {
+export async function apiListCreationAudios({ page, page_size, is_favorite, search, exclude_hidden } = {}, { signal } = {}) {
   const params = new URLSearchParams();
   if (page !== undefined) params.append('page', page);
   if (page_size !== undefined) params.append('page_size', page_size);
@@ -790,7 +800,8 @@ export async function apiListCreationAudios({ page, page_size, is_favorite, sear
   if (exclude_hidden !== undefined) params.append('exclude_hidden', exclude_hidden);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/audios?${query}` : `${BASE}/api/creation/audios`;
-  const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+  const res = await authFetch(url, { signal, headers: { 'Content-Type': 'application/json' } });
+  if (!res.ok) await throwResponseError(res, '创作配音读取失败');
   return res.json();
 }
 
@@ -1101,9 +1112,14 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
   const uploadedRefAudios = [];
   const uploadedMediaReferences = [];
 
-  for (const f of files) {
+  const imageBindings = !isVideo && !isMusic && !isDubbing
+    ? await buildImageReferences(files, { signal, upload: (file) => apiUploadCreationImage({ file, category: 'reference', ...uploadContext, signal }) })
+    : null;
+  if (imageBindings) refUrls.push(...imageBindings.reference_images);
+
+  for (const f of imageBindings ? [] : files) {
     // 已经有 URL 的资产（如「用作参考图」、资产库选择的素材），直接分类使用
-    if (f && typeof f === 'object' && !(f instanceof File) && f.url) {
+    if (f && typeof f === 'object' && !(f instanceof File) && (f.url || (isVideo && f.assetId))) {
       const mime = (f.type || '').toLowerCase();
       const name = (f.name || '').toLowerCase();
       const isVid = mime.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|wmv|flv)$/.test(name);
@@ -1125,7 +1141,10 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
       }
       continue;
     }
-    if (!(f instanceof File)) continue;
+    if (!(f instanceof File)) {
+      if (isVideo) throw new Error('参考素材尚未准备完成，请移除后重新添加');
+      continue;
+    }
     const mime = f.type.toLowerCase();
     const isVid = mime.startsWith('video/');
     const isAud = mime.startsWith('audio/');
@@ -1158,6 +1177,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
       }
     } catch (error) {
       if (isAbortError(error)) throw error;
+      if (isVideo) throw new Error(`参考素材上传失败：${error.message || '请重试'}`, { cause: error });
       /* 单个文件上传失败不阻塞整体 */
     }
   }
@@ -1171,6 +1191,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
       firstFrameAssetId = r.asset_id || undefined;
     } catch (error) {
       if (isAbortError(error)) throw error;
+      if (isVideo) throw new Error(`首帧上传失败：${error.message || '请重试'}`, { cause: error });
       /* 单个首帧上传失败时保留后续生成流程 */
     }
   } else if (params.firstFrameFile && params.firstFrameFile.url) {
@@ -1185,6 +1206,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
       lastFrameAssetId = r.asset_id || undefined;
     } catch (error) {
       if (isAbortError(error)) throw error;
+      if (isVideo) throw new Error(`尾帧上传失败：${error.message || '请重试'}`, { cause: error });
       /* 单个尾帧上传失败时保留后续生成流程 */
     }
   } else if (params.lastFrameFile && params.lastFrameFile.url) {
@@ -1406,6 +1428,8 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
       count: countNum,
       imageCount: countNum,
       reference_images: refUrls.length > 0 ? refUrls : undefined,
+      attachments: imageBindings?.attachments.length ? imageBindings.attachments : undefined,
+      generation_mode: refUrls.length || imageBindings?.attachments.length ? 'reference_image' : undefined,
       reference_materials: Array.isArray(params.referenceMaterials) && params.referenceMaterials.length > 0
         ? params.referenceMaterials
         : undefined,
@@ -1441,6 +1465,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
               imageDownloadUrls: imageUrls.map(({ downloadUrl }) => downloadUrl),
               imageOriginalUrls: imageUrls.map(({ originalUrl }) => originalUrl),
               cardIds: imgs.map((img) => img.id),
+              imageAssetIds: imgs.map((img) => img.asset_id || img.assetId || null),
               referenceImages: pollData.reference_images || pollData.referenceImages || [],
             };
           },
@@ -1461,6 +1486,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
       imageDownloadUrls: allImageDownloadUrls,
       imageOriginalUrls: pollResults.flatMap((r) => r.imageOriginalUrls || []),
       cardIds: allCardIds,
+      imageAssetIds: pollResults.flatMap((r) => r.imageAssetIds),
       referenceImages,
     };
   }
@@ -1468,6 +1494,19 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
   // ── 视频生成 ────────────────────────────────────────────────────────────
   const liveMaterialParam = params.liveMaterialParam || null;
   const uploadedRefVideoUrl = uploadedRefVideos[0];
+  // 上传返回空地址也不能静默丢图后继续生成。
+  const expectedReferences = files.filter((file) => !file?.isLiveMaterial).length;
+  if (uploadedMediaReferences.length !== expectedReferences
+    || (params.firstFrameFile && !firstFrameUrl)
+    || (params.lastFrameFile && !lastFrameUrl)) {
+    throw new Error('参考素材未完整上传，请重新添加后再发送');
+  }
+  await waitForCreationVideoImages([
+    ...uploadedMediaReferences.filter((item) => item.asset_type === 'image').map((item) => ({ url: item.url, assetId: item.asset_id })),
+    ...(firstFrameUrl || params.firstFrameUrl ? [{ url: firstFrameUrl || params.firstFrameUrl, name: '首帧图片' }] : []),
+    ...(lastFrameUrl || params.lastFrameUrl ? [{ url: lastFrameUrl || params.lastFrameUrl, name: '尾帧图片' }] : []),
+  ], { signal });
+  throwIfAborted(signal);
   const uploadedRefAudioUrl = uploadedRefAudios[0];
   const hasRefMedia = uploadedMediaReferences.length > 0 || (liveMaterialParam && liveMaterialParam.length > 0);
   const effectiveGenerationMode = params.generation_mode;

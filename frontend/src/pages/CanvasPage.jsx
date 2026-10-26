@@ -3,10 +3,12 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L145；grouping L191；referenceGraph L205；mediaPreview L171；文档加载 L218；handleNodesChange L301；addNode L381；工具栏新增 L417；批量导入 L429；React Flow L787
+ *   CanvasPage L147；grouping L193；referenceGraph L207；mediaPreview L173；文档加载 L220；handleNodesChange L303；addNode L383；工具栏新增 L419；批量导入 L431；React Flow L794
+ *   2026-10-26：参考入口复用后台上传；上传与生成复用请求，迟到回填校验会话和素材身份。
  *   2026-10-21：素材恢复支持合法相对地址，复用媒体地址归一化；可用素材缺有效地址则停止加载并禁止保存，不静默变空节点。
  *   2026-10-21：上传与资产选择动作在节点渲染时统一注入，刷新恢复节点不再依赖新建时绑定。
  *   2026-10-21：CanvasTextEditor / UseCanvasTextEditor 编排800×800专注富文本编辑，原生模态隔离背景，保存独立历史；页面保留文档/历史/生成任务编排，编辑UI与草稿会话独立。
+ *   2026-10-22：展开组右键复用新建节点二级菜单，按右键坐标归入当前组；折叠组不显示此入口。
  *   2026-10-21：空白右键复用节点动作菜单；新建节点二级菜单、撤销/重做；新建/粘贴固定右键坐标，清空仅有任务时确认。
  *   2026-10-21：正式项目详情及项目改名接线，项目名与画布名独立；加载及改名校验账号会话。
  *   2026-10-20：正式 records 文档读写、分批素材恢复及会话内幂等串行保存；加载失败禁止保存，分享复制不依赖保存。
@@ -63,7 +65,7 @@ import { X } from 'lucide-react';
 import { showGlobalToast } from '../stores/toastStore';
 import '@xyflow/react/dist/style.css';
 import { apiGetCanvasDocument, apiUpdateCanvasDocument, apiResolveCanvasAssetViews } from '../api/canvas';
-import { uploadCanvasAsset } from '../api/canvasAssets';
+import { ensureCanvasImageAsset, uploadCanvasAsset } from '../api/canvasAssets';
 import { isDevelopmentCanvas } from '../api/CanvasDevelopment';
 import { apiGetCurrentUser } from '../api/user';
 import { apiGetProject, apiUpdateProject } from '../api/project';
@@ -193,7 +195,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     containerRef: canvasContainerRef, enabled: loadedCanvasId === canvasId && !error && !assetPickerOpen && !profileOpen && !searchOpen,
     dialog: actionDialog, setDialog: setActionDialog });
   const generateText = useCanvasTextGeneration(nodes, setNodes, canvasId, cancelPendingClicks);
-  const generateImage = useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks);
+  const generateImage = useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, canvas?.project_id);
   const generateVideo = useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks);
   const generateAudio = useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks);
   const enterNodeRef = useRef(grouping.enterNode);
@@ -202,7 +204,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     setAssetTarget(target);
     setAssetPickerOpen(true);
   }, []);
-  const referenceGraph = useCanvasReferences(grouping.nodes, setNodes, openReferencePicker);
+  const referenceGraph = useCanvasReferences(grouping.nodes, setNodes, openReferencePicker, uploadFilesRef);
   const presentation = getCanvasStackPresentation(referenceGraph.nodes, referenceGraph.edges);
 
   const clearPendingConnection = useCallback(() => {
@@ -378,7 +380,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     setAssetTarget({ nodeId, nodeType });
     setAssetPickerOpen(true);
   }, [cancelPendingClicks]);
-  const addNode = useCallback((type, position, connection = null, asset = null) => {
+  const addNode = useCallback((type, position, connection = null, asset = null, parentId) => {
     const node = createCanvasNode(type, position || { x: 160 + (nodes.length % 3) * 280, y: 160 + Math.floor(nodes.length / 3) * 300 });
     node.data.onPromptChange = (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item));
     node.data.onModelChange = (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item));
@@ -399,7 +401,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       return handleUnsupported();
     };
     if (!connection) setNodes((current) => {
-      const next = appendCanvasNode(current, node);
+      const next = appendCanvasNode(current, node, parentId);
       return asset ? applyCanvasAsset(next, node.id, asset) : next;
     });
     else {
@@ -501,6 +503,9 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
   const autosave = useCanvasAutosave({ enabled: loadedCanvasId === canvasId && !error,
     nodes, edges: referenceGraph.edges, viewport, persist: persistCanvas, paused: canvasList.busy, acknowledgeRef: acknowledgeSaveRef });
   const uploadFiles = useCallback(async (files, target = null) => {
+    const owner = saveSessionRef.current;
+    const session = getAuthSessionGeneration();
+    const isCurrent = () => saveSessionRef.current === owner && session === getAuthSessionGeneration();
     const validFiles = files.filter((file) => getCanvasMediaFileType(file, 'all'));
     if (!validFiles.length) {
       showGlobalToast('warning', '请选择有效的图片、视频或音频文件');
@@ -527,21 +532,23 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       const node = importedNodes.find((item) => item.data?.asset?.url === asset.url);
       if (!node) return;
       try {
-        const uploaded = await uploadCanvasAsset(asset.file, asset.asset_type, { projectId: canvas?.project_id, });
-        setNodes((current) => current.map((item) => item.id === node.id
+        const uploaded = await (asset.asset_type === 'image'
+          ? ensureCanvasImageAsset(asset, { projectId: canvas?.project_id })
+          : uploadCanvasAsset(asset.file, asset.asset_type, { projectId: canvas?.project_id }));
+        if (!isCurrent()) return;
+        setNodes((current) => current.map((item) => item.id === node.id && item.data?.asset?.url === asset.url
           ? { ...item, data: { ...item.data, asset: { ...item.data.asset, ...uploaded, file: undefined } } }
           : item));
       } catch (uploadError) {
-        setNodes((current) => current.map((item) => item.id === node.id
+        if (!isCurrent()) return;
+        setNodes((current) => current.map((item) => item.id === node.id && item.data?.asset?.url === asset.url
           ? { ...item, data: { ...item.data, asset: { ...item.data.asset, uploadStatus: 'error', uploadError: uploadError.message } } }
           : item));
         showGlobalToast('error', `${asset.name} 上传失败：${uploadError.message}`);
-      } finally {
-        URL.revokeObjectURL(asset.url);
       }
     }));
     try {
-      await persistCanvas();
+      if (isCurrent()) await persistCanvas();
     } catch (saveError) {
       showGlobalToast('error', `素材已上传，但画布保存失败：${saveError.message}`);
     }

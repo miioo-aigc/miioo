@@ -10,6 +10,7 @@ let canvas;
 let selected = -1;
 let pending = null;
 let running = false;
+let thumbnails = [];
 let previewSourceUrl;
 
 function fail(message, id) {
@@ -46,14 +47,22 @@ async function drain() {
   if (running) return;
   running = true;
   try {
-    while (pending) {
-      const request = pending;
+    while (pending || thumbnails.length) {
+      const request = pending || thumbnails.shift();
       pending = null;
       let sample;
       try {
         sample = await sink.getSample(times[request.index]);
         if (!sample) throw new Error('无法解码选中的画面');
         if (pending) continue;
+        if (request.type === 'thumbnail') {
+          const scale = Math.min(1, 240 / sample.displayWidth, 120 / sample.displayHeight);
+          const small = new OffscreenCanvas(Math.max(1, Math.round(sample.displayWidth * scale)), Math.max(1, Math.round(sample.displayHeight * scale)));
+          sample.draw(small.getContext('2d'), 0, 0, small.width, small.height);
+          const blob = await small.convertToBlob({ type: 'image/jpeg', quality: 0.75 });
+          self.postMessage({ type: 'thumbnail', index: request.index, blob });
+          continue;
+        }
         canvas ??= new OffscreenCanvas(1, 1);
         canvas.width = sample.displayWidth;
         canvas.height = sample.displayHeight;
@@ -66,7 +75,8 @@ async function drain() {
         const bitmap = await createImageBitmap(canvas, { resizeWidth: Math.max(1, Math.round(canvas.width * scale)), resizeHeight: Math.max(1, Math.round(canvas.height * scale)) });
         self.postMessage({ type: 'frame', id: request.id, index: selected, width: canvas.width, height: canvas.height, bitmap }, [bitmap]);
       } catch (error) {
-        fail(error.message || '画面解码失败，请重试', request.id);
+        if (request.type === 'thumbnail') self.postMessage({ type: 'thumbnail', index: request.index, error: true });
+        else fail(error.message || '画面解码失败，请重试', request.id);
       } finally {
         sample?.close();
       }
@@ -106,8 +116,12 @@ self.onmessage = async ({ data }) => {
       pending = data;
       void drain();
     }
+    if (data.type === 'thumbnails' && sink) {
+      thumbnails = data.indices.filter(index => Number.isInteger(index) && index >= 0 && index < times.length).map(index => ({ type: 'thumbnail', index }));
+      void drain();
+    }
     if (data.type === 'export') {
-      if (!canvas || running || pending || data.index !== selected) throw new Error('画面尚未就绪，请稍后下载');
+      if (!canvas || pending || data.index !== selected) throw new Error('画面尚未就绪，请稍后下载');
       if (!data.originalUrl) throw new Error('未找到原视频地址，无法下载原画图片');
       const blob = await exportOriginal(data);
       self.postMessage({ type: 'export', blob, index: selected, purpose: data.purpose || 'download' });

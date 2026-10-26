@@ -3,6 +3,35 @@ import {
   apiUploadCreationImage,
   apiUploadCreationVideo,
 } from './creation.js';
+import { getAuthSessionGeneration } from './request.js';
+import { getImageReferenceId, getImageReferenceUrl, isManagedImageUrl } from './ImageReferences.js';
+
+const pendingUploads = new Map();
+let uploadSession;
+/** 同一会话、项目、临时素材复用上传；失败可重试，临时预览随画布历史保留。 */
+export function ensureCanvasImageAsset(asset, { projectId } = {}) {
+  const session = getAuthSessionGeneration();
+  if (session !== uploadSession) { pendingUploads.clear(); uploadSession = session; }
+  if (getImageReferenceId(asset)) return Promise.resolve(asset);
+  const url = getImageReferenceUrl(asset);
+  if (!asset?.file && isManagedImageUrl(url)) return Promise.resolve(asset);
+  const key = `${session}:${projectId || ''}:${url}`;
+  if (pendingUploads.has(key)) return pendingUploads.get(key);
+  const pending = (async () => {
+    let file = asset?.file;
+    if (!file && (url.startsWith('blob:') || url.startsWith('data:image/'))) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('参考图读取失败，请重新上传');
+      const blob = await response.blob();
+      file = new File([blob], asset?.name || '参考图', { type: blob.type || 'image/png' });
+    }
+    if (!(file instanceof File)) throw new Error('参考图地址已失效，请重新上传');
+    return uploadCanvasAsset(file, 'image', { projectId });
+  })();
+  pendingUploads.set(key, pending);
+  pending.catch(() => { if (pendingUploads.get(key) === pending) pendingUploads.delete(key); });
+  return pending;
+}
 
 const UPLOADERS = {
   image: apiUploadCreationImage,
@@ -19,10 +48,11 @@ export function normalizeCanvasUploadedAsset(result, file, assetType) {
   const item = result?.asset || result?.image || result?.video || result?.audio || result;
   const assetId = firstValue(item, ['asset_id', 'assetId']) || firstValue(result, ['asset_id', 'assetId'])
     || firstValue(item, ['id']) || firstValue(result, ['id']);
-  const url = firstValue(item, ['file_url', 'fileUrl', 'uploaded_url', 'uploadedUrl', 'url', 'preview_url', 'previewUrl'])
-    || firstValue(result, ['file_url', 'fileUrl', 'uploaded_url', 'uploadedUrl', 'url']);
+  const url = firstValue(result, ['uploaded_url', 'uploadedUrl'])
+    || firstValue(item, ['original_url', 'originalUrl', 'file_url', 'fileUrl', 'uploaded_url', 'uploadedUrl', 'url'])
+    || firstValue(result, ['file_url', 'fileUrl', 'url']);
   if (typeof assetId !== 'string' || !UUID.test(assetId)) throw new Error('上传响应未提供合法的永久素材编号，不能保存画布');
-  if (!url) throw new Error('上传成功但服务端没有返回可预览地址');
+  if (!isManagedImageUrl(url)) throw new Error('上传成功但服务端没有返回有效素材地址');
   return {
     ...item,
     asset_id: assetId,

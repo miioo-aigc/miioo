@@ -48,7 +48,7 @@ export function useCanvasAudioWaveform({ url, playing, audioRef }) {
     }
 
     function start() {
-      if (!pending) pending = loadAnalysis();
+      if (!pending && !analysisRef.current) pending = loadAnalysis().finally(() => { pending = null; });
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(tick);
     }

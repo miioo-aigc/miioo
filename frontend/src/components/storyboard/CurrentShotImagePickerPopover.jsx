@@ -8,6 +8,8 @@
  *
  * ─── 依赖边界 ───────────────────────────────────────────────
  *   仅接收图片列表与选择/关闭回调，不读取页面状态、不调用接口。
+ *   2026-10-26  固定媒体框接入有限恢复；刷新与业务操作隔离。
+ * 当前定义定位：CurrentShotImagePickerPopover L20；ImagePickerCard L63。
  */
 import { createPortal } from 'react-dom';
 import { useState } from 'react';
@@ -64,8 +66,8 @@ function ImagePickerCard({ image, onSelect }) {
   const pressed = state === 'pressed';
 
   return (
-    <button
-      type="button"
+    <div
+      role="button" tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && ['Enter', ' '].includes(event.key)) { event.preventDefault(); onSelect?.(image); } }}
       aria-label={image.name || '当前分镜图片'}
       onClick={() => onSelect?.(image)}
       onMouseEnter={() => setState('hovered')}
@@ -82,6 +84,6 @@ function ImagePickerCard({ image, onSelect }) {
       }}
     >
       <MediaContent media={image} style={{ opacity: hovered || pressed ? 1 : 0.86, transition: 'opacity 120ms ease' }} />
-    </button>
+    </div>
   );
 }

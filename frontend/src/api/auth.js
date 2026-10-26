@@ -1,6 +1,6 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
-import { setTokens, clearTokens as _clearTokens, authFetch } from './request.js';
+import { setTokens, getAuthSessionGeneration, clearTokens as _clearTokens, authFetch } from './request.js';
 export { clearTokens } from './request.js';
 
 async function readAuthResponse(res) {
@@ -35,7 +35,12 @@ export async function apiSendCode(phone) {
   return res.json();
 }
 
-export async function apiLogin({ phone, password }) {
+export async function apiLogin({ phone, password }, { isCurrent = () => true } = {}) {
+  const generation = getAuthSessionGeneration();
+  const check = () => {
+    if (!isCurrent() || generation !== getAuthSessionGeneration()) throw new DOMException("登录流程已失效", "AbortError");
+  };
+  check();
   const res = await fetch(`${BASE}/api/auth/login`, {
     credentials: 'include',
     method: 'POST',
@@ -43,11 +48,17 @@ export async function apiLogin({ phone, password }) {
     body: JSON.stringify({ phone, password }),
   });
   const data = await readAuthResponse(res);
+  check();
   if (data.access_token) setTokens(data.access_token, data.refresh_token);
   return data;
 }
 
-export async function apiVerifyCodeLogin({ phone, code }) {
+export async function apiVerifyCodeLogin({ phone, code }, { isCurrent = () => true } = {}) {
+  const generation = getAuthSessionGeneration();
+  const check = () => {
+    if (!isCurrent() || generation !== getAuthSessionGeneration()) throw new DOMException('登录流程已失效', 'AbortError');
+  };
+  check();
   const res = await fetch(`${BASE}/api/auth/verify-code-login`, {
     credentials: 'include',
     method: 'POST',
@@ -55,11 +66,17 @@ export async function apiVerifyCodeLogin({ phone, code }) {
     body: JSON.stringify({ phone, code }),
   });
   const data = await readAuthResponse(res);
+  check();
   if (data.access_token) setTokens(data.access_token, data.refresh_token);
   return data;
 }
 
-export async function apiRegister({ phone, password, nickname }) {
+export async function apiRegister({ phone, password, nickname }, { isCurrent = () => true } = {}) {
+  const generation = getAuthSessionGeneration();
+  const check = () => {
+    if (!isCurrent() || generation !== getAuthSessionGeneration()) throw new DOMException("登录流程已失效", "AbortError");
+  };
+  check();
   const res = await fetch(`${BASE}/api/auth/register`, {
     credentials: 'include',
     method: 'POST',
@@ -67,6 +84,7 @@ export async function apiRegister({ phone, password, nickname }) {
     body: JSON.stringify({ phone, password, nickname }),
   });
   const data = await readAuthResponse(res);
+  check();
   if (data.access_token) setTokens(data.access_token, data.refresh_token);
   return data;
 }
@@ -91,8 +109,8 @@ export async function sendVerificationCode(phone) {
   return apiSendCode(phone);
 }
 
-export async function loginWithPhone(phone, code) {
-  return apiVerifyCodeLogin({ phone, code });
+export async function loginWithPhone(phone, code, options) {
+  return apiVerifyCodeLogin({ phone, code }, options);
 }
 
 // ── 微信扫码登录（新版，完整闭环实现）────────────────────────────────────
@@ -128,7 +146,11 @@ export async function apiGetWechatQrCode() {
 
 // 2. 轮询二维码状态
 // 响应 status: 'pending' | 'scanned' | 'confirmed' | 'need_bind_mobile' | 'expired' | 'error'
-export async function apiPollWechatQrCodeStatus(qrcodeId) {
+export async function apiPollWechatQrCodeStatus(qrcodeId, { isCurrent = () => true } = {}) {
+  const generation = getAuthSessionGeneration();
+  const current = () => isCurrent() && generation === getAuthSessionGeneration();
+  const check = () => { if (!current()) throw new DOMException('登录流程已失效', 'AbortError'); };
+  check();
   if (import.meta.env.VITE_USE_MOCK === 'true') {
     return { status: 'pending' };
   }
@@ -141,12 +163,16 @@ export async function apiPollWechatQrCodeStatus(qrcodeId) {
     throw err;
   }
   const data = await res.json();
+  check();
   if (data.access_token) setTokens(data.access_token, data.refresh_token);
   return data;
 }
 
 // 3. 完成微信回调（根路径 ?code=&state= 回调）
-export async function apiCompleteWechatCallback({ code, state }) {
+export async function apiCompleteWechatCallback({ code, state }, { isCurrent = () => true, commitTokens = true } = {}) {
+  const generation = getAuthSessionGeneration();
+  const check = () => { if (!isCurrent() || generation !== getAuthSessionGeneration()) throw new DOMException('登录流程已失效', 'AbortError'); };
+  check();
   if (import.meta.env.VITE_USE_MOCK === 'true') {
     return {
       status: 'confirmed',
@@ -171,12 +197,17 @@ export async function apiCompleteWechatCallback({ code, state }) {
     throw err;
   }
   const data = await res.json();
-  if (data.access_token) setTokens(data.access_token, data.refresh_token);
+  check();
+  if (commitTokens && data.access_token) setTokens(data.access_token, data.refresh_token);
   return data;
 }
 
 // 4. 继续绑定手机号（微信登录 need_bind_mobile 分支）
-export async function apiConfirmWechatLogin({ session_id, phone, sms_code }) {
+export async function apiConfirmWechatLogin({ session_id, phone, sms_code }, { isCurrent = () => true } = {}) {
+  const generation = getAuthSessionGeneration();
+  const current = () => isCurrent() && generation === getAuthSessionGeneration();
+  const check = () => { if (!current()) throw new DOMException('登录流程已失效', 'AbortError'); };
+  check();
   if (import.meta.env.VITE_USE_MOCK === 'true') {
     return { access_token: 'mock-token', refresh_token: 'mock-refresh' };
   }
@@ -194,6 +225,7 @@ export async function apiConfirmWechatLogin({ session_id, phone, sms_code }) {
     throw err;
   }
   const data = await res.json();
+  check();
   if (data.access_token) setTokens(data.access_token, data.refresh_token);
   return data;
 }

@@ -1,19 +1,21 @@
 /**
  * @file CreationImageResultCard.jsx
  * @structure-index
+ * 2026-10-26：媒体加载改用像素动效，失败刷新及继续播放仅显示图标。
  *
  * ─── 状态层 ─────────────────────────────────────────────────────
- *   hovered / detailOpen / starAnim / confirmDelete              卡片悬停、详情、收藏和删除确认状态
+ *   hovered / detailOpen / starAnim / confirmDelete              卡片悬停、详情、收藏和删除确认状态 L41
  *
  * ─── 展示层 ────────────────────────────────────────────────────
- *   CreationImageResultCard                                      图片结果卡片、批量选择和媒体操作
- *   ImageDetailModal                                             共享图片详情弹窗
+ *   CreationImageResultCard                                      图片结果卡片、批量选择和媒体操作 L40
+ *   ImageDetailModal                                             共享图片详情弹窗 L82
  *
  * ─── 依赖边界 ──────────────────────────────────────────────────
  *   只通过 props 接收图片数据和业务回调；不读取 CreationPage 闭包变量
  *   图片下载通过 onDownload 回调回到页面；详情弹窗由共享组件负责
  *
  * ─── 更新记录 ──────────────────────────────────────────────────
+ *   2026-10-23  图片本体复用加载、失败及有限联网恢复
  *   2026-10-21  暂停的本地编辑任务与明确生成失败区分，保留原结果
  *   2026-07-16  从 CreationPage.jsx 抽离图片结果卡片及图片详情弹窗；页面通过显式 props 注入业务回调
  *   2026-08-17  下载统一透传页面正式下载回调，详情弹窗不再请求短时媒体链接
@@ -24,6 +26,7 @@
  *   2026-10-08  编辑结果通过创作 Store 新增占位；卡片不再附带渲染结果
  */
 
+import AsyncImagePreview from '../AsyncImagePreview';
 import { useState } from 'react';
 import ConfirmDialog from '../ConfirmDialog';
 import LoadingAnimation from '../LoadingAnimation';
@@ -60,7 +63,7 @@ export default function CreationImageResultCard({ status, imageUrl, originalUrl,
   return (
     <>
       <div style={{ width: '100%', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden', backgroundColor: hovered ? '#343434' : '#272727', transition: 'background-color 0.15s', position: 'relative', cursor: isDone ? 'pointer' : 'default', outline: isSelected ? '2px solid #2DC3E1' : 'none', outlineOffset: '-2px' }} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={() => { if (batchMode && isDone) { onToggleSelect?.(); return; } if (isDone) setDetailOpen(true); }}>
-        {status === 'loading' ? <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><LoadingAnimation width={88} /></div> : isDone ? <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ color: '#FFFFFF33', fontSize: '12px', fontFamily: FONT }}>{status === 'paused' ? '处理暂停，原任务已保留' : '生成失败'}</span></div>}
+        {status === 'loading' ? <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><LoadingAnimation width={88} /></div> : isDone ? <AsyncImagePreview visual plain src={imageUrl} alt="" imageStyle={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ color: '#FFFFFF33', fontSize: '12px', fontFamily: FONT }}>{status === 'paused' ? '处理暂停，原任务已保留' : '生成失败'}</span></div>}
 
         {batchMode && isDone && <div style={{ position: 'absolute', top: '8px', right: '8px', width: '18px', height: '18px', borderRadius: '4px', zIndex: 1, border: isSelected ? '1px solid #2DC3E1' : '1px solid rgba(255,255,255,0.5)', backgroundColor: isSelected ? '#2DC3E1' : 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{isSelected && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="#000" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}</div>}
 
@@ -76,7 +79,7 @@ export default function CreationImageResultCard({ status, imageUrl, originalUrl,
       </div>
 
       {confirmDelete && <ConfirmDialog title="确认删除" description="删除后无法恢复，确定要删除这张图片吗？" confirmText="删除" onConfirm={() => { setConfirmDelete(false); onDelete?.(); }} onCancel={() => setConfirmDelete(false)} zIndex={1100} />}
-      {detailOpen && <ImageDetailModal card={{ imageUrl, originalUrl, creationAssetId: backendId, prompt, promptHTML, model, ratio, resolution, refImages, createdAt }} onCreateImage={edits.save} onGenerateImage={onGenerateImage} onClose={() => setDetailOpen(false)} onDelete={onDelete} onDownload={onDownload} favorited={favorited} onToggleFavorite={() => onToggleFavorite?.()} />}
+      {detailOpen && <ImageDetailModal visualMedia card={{ imageUrl, originalUrl, creationAssetId: backendId, prompt, promptHTML, model, ratio, resolution, refImages, createdAt }} onCreateImage={edits.save} onGenerateImage={onGenerateImage} onClose={() => setDetailOpen(false)} onDelete={onDelete} onDownload={onDownload} favorited={favorited} onToggleFavorite={() => onToggleFavorite?.()} />}
     </>
   );
 }

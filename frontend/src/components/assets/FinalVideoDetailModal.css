@@ -1,0 +1,55 @@
+.final-video-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.final-video-detail {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-large);
+  background: #161616;
+  border: 1px solid #ffffff14;
+  box-shadow: -10px 24px 64px #00000099;
+  color: var(--color-text-primary);
+  transform-origin: center;
+}
+.final-video-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: 20px 24px;
+}
+.final-video-detail-header h2 { margin: 0; font-size: 16px; line-height: 20px; font-weight: 500; }
+.final-video-detail-body { display: flex; flex: 1; min-height: 0; }
+.final-video-detail-player {
+  position: relative;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: linear-gradient(135deg, #1b1b1b, #121212);
+}
+.final-video-detail-player video { width: 100%; height: 100%; object-fit: contain; }
+.final-video-detail-info { width: 340px; flex-shrink: 0; display: flex; flex-direction: column; border-left: 1px solid #ffffff0f; }
+.final-video-detail-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.final-video-detail-section { margin: 0 20px; padding: 16px 0; border-bottom: 1px solid #ffffff0a; }
+.final-video-detail-section h3 { margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 16px; font-weight: 400; }
+.final-video-detail-name { margin: 0; font-size: 14px; line-height: 22px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.final-video-detail-section dl { display: flex; flex-direction: column; gap: 12px; margin: 12px 0 0; }
+.final-video-detail-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; line-height: 16px; }
+.final-video-detail-row dt { color: var(--color-text-secondary); }
+.final-video-detail-row dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.final-video-detail-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 20px; border-top: 1px solid #ffffff0d; flex-shrink: 0; }
+/* Chrome 原生控制栏在悬停期间持续显示，离开后由 controls 属性移除。 */
+.final-video-detail-player:hover video::-webkit-media-controls-panel { opacity: 1; }

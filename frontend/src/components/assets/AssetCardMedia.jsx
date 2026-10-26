@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import AsyncImagePreview from '../AsyncImagePreview';
+import RecoverableVideoPreview from '../creation/RecoverableVideoPreview';
 import AssetsMoreMenu from './AssetsMoreMenu';
 import { FavoriteIcon } from '../ui';
 
@@ -31,19 +32,6 @@ export default function AssetCardMedia({
   onDelete,
   videoObjectFit = 'cover',
 }) {
-  const videoRef = useRef(null);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (hovered) {
-      video.currentTime = 0;
-      video.play().catch(() => {});
-    } else {
-      video.pause();
-    }
-  }, [hovered]);
-
   return (
     <div
       style={{
@@ -57,11 +45,9 @@ export default function AssetCardMedia({
       onMouseLeave={() => onHoverChange?.(false)}
     >
       {asset.videoUrl ? (
-        <video ref={videoRef} src={asset.videoUrl} style={{ width: '100%', height: '100%', objectFit: videoObjectFit, display: 'block' }} muted playsInline loop preload="metadata" />
-      ) : asset.type === 'video' && asset.videoUrl ? (
-        <video src={asset.videoUrl} poster={url} style={{ width: '100%', height: '100%', objectFit: videoObjectFit, display: 'block' }} muted playsInline preload="metadata" />
+        <RecoverableVideoPreview src={asset.videoUrl} hovered={hovered} objectFit={videoObjectFit} />
       ) : url ? (
-        <img src={url} alt={name} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+        <AsyncImagePreview visual plain src={url} alt={name} imageStyle={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
       ) : null}
 
       {batchMode ? (

@@ -4,7 +4,8 @@ import { normalizeImageUrl } from '../../utils/imageUrl';
 import Checkbox from '../Checkbox';
 import DotsLoading from '../DotsLoading';
 import NarrationAddButton from './NarrationAddButton';
-import { MediaHoverPreview } from './MainRefCol';
+import MediaHoverPreview from './MediaHoverPreview';
+import { useHoverPreviewBoundary } from '../../hooks/useHoverPreviewBoundary';
 import StoryboardMediaPreview from './StoryboardMediaPreview';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -54,7 +55,7 @@ function PlusButton({ onClick, small = false, tooltip = '创作' }) {
 
 function CandidateCard({ item, finalized, onSelect, onPreview }) {
   return (
-    <button type="button" onClick={() => onSelect?.(item)} onMouseEnter={(event) => onPreview?.(item, event)} onMouseLeave={() => onPreview?.(null)} style={{
+    <div role="button" tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && ['Enter', ' '].includes(event.key)) { event.preventDefault(); onSelect?.(item); } }} onClick={() => onSelect?.(item)} onMouseEnter={(event) => onPreview?.(item, event)} onMouseLeave={() => onPreview?.(null)} style={{
       width: '60px', height: '60px', position: 'relative', padding: 0, overflow: 'hidden', flexShrink: 0, cursor: 'pointer',
       borderRadius: '4px', border: `1px solid ${finalized ? '#2DC3E1' : 'rgba(255,255,255,0.10)'}`, background: '#101111',
     }}>
@@ -64,7 +65,7 @@ function CandidateCard({ item, finalized, onSelect, onPreview }) {
         aria-label={finalized ? '已定稿' : '未定稿'}
         style={{ position: 'absolute', right: '4px', top: '4px', width: '14px', height: '14px', pointerEvents: 'none' }}
       />
-    </button>
+    </div>
   );
 }
 
@@ -93,6 +94,7 @@ function PendingCandidateCard() {
 export default function StoryboardShotMediaColumn({ candidates = [], image, video, generating, loading = false, onOpenCreation, onUpload, onFinalizeToggle, onSelectShot }) {
   const inputRef = useRef(null);
   const [preview, setPreview] = useState(null);
+  const hoverBoundary = useHoverPreviewBoundary(() => setPreview(null));
   const pendingMedia = candidates.filter((item) => item?.pending);
   const candidateMedia = candidates.filter((item) => !item?.pending);
   const media = candidateMedia.length > 0
@@ -116,10 +118,11 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
 
   function handlePreview(item, event) {
     if (!item || !event) {
-      setPreview(null);
+      hoverBoundary.leave();
       return;
     }
 
+    hoverBoundary.enter();
     const isVideo = item.media_type === 'video' || item.type?.startsWith('video');
     const previewVideoUrl = isVideo
       ? item.preview_video_url
@@ -173,6 +176,8 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
       )}
       {preview?.item && createPortal(
         <MediaHoverPreview
+          onPinnedChange={hoverBoundary.pin}
+          onDismiss={hoverBoundary.dismiss}
           url={preview.url}
           isVideo={preview.isVideo}
           mouseX={preview.mouseX}

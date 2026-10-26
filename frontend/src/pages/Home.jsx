@@ -1,14 +1,15 @@
 /**
  * @file Home.jsx
- * @structure-update：2026-10-21 正式项目入口由 UseCanvasProjects 编排（L301）；账号变化同步重置创作 Store（L399），认证与恢复编排仍保留首页。
- * @structure-index：2026-10-21 readProjects L317；详情读取 L573；主体抽取 L1225；智能分镜 L1491；重新分镜 L1720；恢复 L1739。
+ *   2026-10-26 微信回调：内嵌窗口仅发送会话通知；顶层登录/绑定显式编排，保留页面认证副作用。
+ * @structure-update：2026-10-21 正式项目入口由 UseCanvasProjects 编排（L302）；账号变化同步重置创作 Store（L401），认证与恢复编排仍保留首页。
+ * @structure-index：2026-10-21 readProjects L318；详情读取 L575；主体抽取 L1227；智能分镜 L1493；重新分镜 L1722；恢复 L1741。
  *   2026-10-19：缓存无分页元信息，仅作为刷新信号；解锁探测绕过缓存，页面保留认证、缓存与请求编排，不因规模移动副作用。
  *   2026-10-12：登录用户确认后恢复已受理的视频编辑任务；保留认证与恢复的页面编排边界。
- *   2026-10-13：公告提醒 L2178 主动查看全部进入消息中心系统页签；按用户隔离已读状态。
+ *   2026-10-13：公告提醒 L2185 主动查看全部进入消息中心系统页签；按用户隔离已读状态。
  *   2026-10-14：画布内部切换路由；仅增加导航接线，认证、缓存和任务恢复仍保留页面编排。
- *   2026-10-14：项目保存队列 L266；按项目隔离保存回写，页面继续保留请求编排。
+ *   2026-10-14：项目保存队列 L267；按项目隔离保存回写，页面继续保留请求编排。
  * ─── 全局常量 & 配置 ───────────────────────────────────────────────
- *   页面业务模块懒加载                                          L145–L151
+ *   页面业务模块懒加载                                          L146–L152
  *   NAV_ITEMS / BOTTOM_NAV_ITEMS                                  components/home/HomeNavigationConfig.jsx
  *   STEP_TABS / WorkflowStepTabs                                components/home/WorkflowStepTabs.jsx
  *   BG_VIDEOS                                                   components/home/HomeNavigationConfig.jsx
@@ -26,19 +27,19 @@
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
  *   2026-10-09 画布项目菜单返回自由画布列表，保留品牌图标返回首页；仅新增导航接线
- *   export default function Home()                               L257
- *     ├─ [懒加载] 页面业务模块按需加载                             L145–L151
- *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L258–L439
- *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L440 / L497 / L508
- *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L573 / L1135 / L1159
- *     │           handleExtractSubjects / handleGenerateStoryboards        L1225 / L1491
+ *   export default function Home()                               L258
+ *     ├─ [懒加载] 页面业务模块按需加载                             L146–L152
+ *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L259–L441
+ *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L442 / L499 / L510
+ *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L575 / L1137 / L1161
+ *     │           handleExtractSubjects / handleGenerateStoryboards        L1227 / L1493
  *     │           handleScriptFinalized / handleNavChange / handleBottomNavChange / handleProjectCreated
- *                                                               L1787 / L1794 / L1832 / L1848
- *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L534 / L548 / L555 / L565
- *     │           微信回调与鉴权初始化                                   L871 / L935
- *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L1001 / L1014 / L1051 / L1478
- *     ├─ [底部导航配置] bottomNavItems                             L1816
- *     └─ [渲染] 页面组合、画布与剪辑导航、Suspense                  L1891
+ *                                                               L1789 / L1796 / L1834 / L1850
+ *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L536 / L550 / L557 / L567
+ *     │           微信回调与鉴权初始化                                   L873 / L937
+ *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L1003 / L1016 / L1053 / L1480
+ *     ├─ [底部导航配置] bottomNavItems                             L1818
+ *     └─ [渲染] 页面组合、画布与剪辑导航、Suspense                  L1893
  *
  * ─── 更新记录：2026-10-20 存储损坏不视为空；保存、清理异常统一捕获，失败重试纳入统一链 ───
  *   2026-09-22  新增独立画布列表入口；超长入口保留认证、历史与任务恢复集中编排，本次只接路由，验证导航及刷新，不迁移生成流程
@@ -83,8 +84,10 @@
  *   2026-10-09  合并 V1.5 画布与剪辑入口，保留双方业务接线并校正结构索引
  *   2026-10-12  同步 V1.5 最新画布导航，保留剪辑入口并校正合并后的索引
  *   2026-10-15  合并远程剪辑模块，保留本地主体请求保护、公告及画布接线；校正结构索引
+ *   2026-10-22  剧本进度按显示状态跳转，剪辑中进入草稿列表并携带分集；保持页面业务编排边界。
  */
 
+import { createWechatCallbackNotice } from '../utils/WechatCallbackMessage';
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useStoryboardGenerationScope from '../hooks/useStoryboardGenerationScope';
 import { apiGetProjects, apiUpdateProject, apiCopyProject, apiDeleteProject, apiGetProject, apiGetProjectOverview } from '../api/project';
@@ -255,6 +258,9 @@ function readUnlockedSteps(projectId) {
 }
 
 export default function Home({ onGoToAdmin }) {
+  const [wechatCallbackBinding, setWechatCallbackBinding] = useState(null);
+  const callbackCancelled = useRef(false);
+
   const [enqueueProjectSave] = useState(createProjectSaveQueue);
   const initialRoute = readWorkspaceRoute();
   const [projectRouteRestore] = useState(() => createProjectRouteRestore(initialRoute, localStorage, getAuthSessionGeneration()));
@@ -392,6 +398,7 @@ export default function Home({ onGoToAdmin }) {
   }, []);
   const [scriptDraftContent, setScriptDraftContent] = useState('');
   const [episodeStatuses, setEpisodeStatuses] = useState({});
+  const [editEntry, setEditEntry] = useState(null);
   const [storyboardInitialEpisodeIndex, setStoryboardInitialEpisodeIndex] = useState(null);
   // Tracks which non-alwaysEnabled steps have ever had content — once unlocked, stays unlocked
   const [unlockedSteps, setUnlockedSteps] = useState(new Set());
@@ -867,69 +874,37 @@ export default function Home({ onGoToAdmin }) {
     updateWorkspaceUrl({ key: activeKey });
   }, [activeKey, activeProject?.id, activeStep, canvasRouteId]);
 
-  // 处理微信回调（根路径 ?code=&state=）
+  // 回调完成：iframe只通知会话，顶层通过显式数据进入绑定流程。
   useEffect(() => {
-    const handleWechatCallback = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
-      const state = params.get('state');
-
-      if (!code || !state) return; // 没有微信参数，继续正常流程
-
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code'), state = params.get('state');
+    if (!code || !state) return undefined;
+    let disposed = false;
+    const generation = getAuthSessionGeneration();
+    const current = () => !disposed && !callbackCancelled.current;
+    const embedded = window.self !== window.top;
+    const clean = () => window.history.replaceState({}, document.title, window.location.pathname);
+    void (async () => {
       try {
-        // 调用后端完成回调
-        const result = await apiCompleteWechatCallback({ code, state });
-        console.log('[Home] 微信回调完成:', result);
-
-        // 如果是 iframe 内，通知父窗口
-        if (window.self !== window.top) {
-          try {
-            window.parent.postMessage({
-              type: 'wechat-callback-complete',
-              payload: result,
-            }, '*');
-          } catch (err) {
-            console.error('[Home] postMessage 失败:', err);
-          }
-        } else {
-          // 顶层窗口直接处理回调结果
-          if (result?.status === 'confirmed' && result?.access_token) {
-            // token 已由 apiCompleteWechatCallback 写入，触发页面刷新完成登录
-            window.location.replace('/');
-          } else if (result?.status === 'need_bind_mobile') {
-            // 通知自身（LoginModal 监听同一个 message 事件）
-            window.dispatchEvent(new MessageEvent('message', {
-              data: { type: 'wechat-callback-complete', payload: result },
-            }));
-          }
+        const result = await apiCompleteWechatCallback({ code, state }, { isCurrent: current, commitTokens: !embedded });
+        if (!current()) return;
+        if (embedded) {
+          const notice = createWechatCallbackNotice(result);
+          if (notice) window.parent.postMessage(notice, window.location.origin);
+        } else if (result.status === 'confirmed' && result.access_token) {
+          window.location.replace('/');
+        } else if (result.status === 'need_bind_mobile' && result.session_id) {
+          setWechatCallbackBinding({ sessionId: result.session_id, bindToken: result.bind_token || result.session_id });
+          setLoginOpen(true);
         }
-
-        // 清理 URL 中的微信参数（避免刷新重复执行）
-        const cleanUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, cleanUrl);
-      } catch (err) {
-        console.error('[Home] 微信回调处理失败:', err);
-        // 无论 iframe 还是顶层，均通知 LoginModal 显示错误
-        const errorPayload = {
-          type: 'wechat-callback-complete',
-          payload: { status: 'error', message: err?.message || '微信登录失败，请稍后重试' },
-        };
-        if (window.self !== window.top) {
-          try {
-            window.parent.postMessage(errorPayload, '*');
-          } catch {
-            // 跨窗口通知失败不应阻断当前页面的错误清理流程。
-          }
-        } else {
-          window.dispatchEvent(new MessageEvent('message', { data: errorPayload }));
-        }
-        // 清理 URL（即使失败也要清理，避免重复尝试）
-        const cleanUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, cleanUrl);
+        clean();
+      } catch (error) {
+        if (!current() || error.name === 'AbortError' || generation !== getAuthSessionGeneration()) return;
+        if (!embedded) showGlobalToast('error', '微信登录失败，请重新扫码');
+        clean();
       }
-    };
-
-    handleWechatCallback();
+    })();
+    return () => { disposed = true; };
   }, []);
 
   useEffect(() => {
@@ -1069,14 +1044,6 @@ export default function Home({ onGoToAdmin }) {
       setLoginOpen(true);
     };
 
-    // 微信回调 need_bind_mobile：确保登录弹窗打开，再让 LoginModal 内部切换到绑定手机步骤
-    const handleWechatNeedBind = (event) => {
-      if (event.data?.type === 'wechat-callback-complete' &&
-          event.data?.payload?.status === 'need_bind_mobile') {
-        setLoginOpen(true);
-      }
-    };
-
     const handleProjectAssetsDeleted = (event) => {
       const projectId = event?.detail?.projectId;
       if (!projectId || projectId !== activeProject?.id) return;
@@ -1123,11 +1090,9 @@ export default function Home({ onGoToAdmin }) {
     };
 
     window.addEventListener('auth:logout', handleForceLogout);
-    window.addEventListener('message', handleWechatNeedBind);
     window.addEventListener('project-assets:deleted', handleProjectAssetsDeleted);
     return () => {
       window.removeEventListener('auth:logout', handleForceLogout);
-      window.removeEventListener('message', handleWechatNeedBind);
       window.removeEventListener('project-assets:deleted', handleProjectAssetsDeleted);
     };
   }, [activeProject?.id, projectRouteRestore, cancelProjectRead, bumpSubjectRequest, isCurrentSubjectRequest]);
@@ -2085,6 +2050,11 @@ export default function Home({ onGoToAdmin }) {
                   handleUnlockStep('subject');
                   setActiveStep('subject');
                 }}
+                onGoToEdit={(_episodeIndex, episode) => {
+                  setEditEntry({ projectId: activeProject.id, episodeId: episode.id });
+                  handleUnlockStep('edit');
+                  setActiveStep('edit');
+                }}
                 onGoToStoryboard={(episodeIndex) => {
                   setStoryboardInitialEpisodeIndex(episodeIndex);
                   handleUnlockStep('storyboard');
@@ -2191,6 +2161,8 @@ export default function Home({ onGoToAdmin }) {
             )}
             {activeKey === 'project' && activeProject && activeStep === 'edit' && (
               <EditPage
+                key={activeProject.id}
+                initialEpisodeId={editEntry?.projectId === activeProject.id ? editEntry.episodeId : null}
                 projectId={activeProject.id}
                 projectName={activeProject.name}
                 episodes={scriptEpisodes}
@@ -2223,7 +2195,7 @@ export default function Home({ onGoToAdmin }) {
         </div>
       </div>
 
-      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} onSuccess={async () => {
+      <LoginModal key={wechatCallbackBinding?.sessionId || 'normal-login'} initialWechatBinding={wechatCallbackBinding} onInvalidateCallback={() => { callbackCancelled.current = true; }} open={loginOpen} onClose={() => { callbackCancelled.current = true; setWechatCallbackBinding(null); setLoginOpen(false); }} onSuccess={async () => {
         setLoginOpen(false);
         setIsLoggedIn(true);
         // 登录成功后立即拉取用户信息，确保头像菜单中手机号等绑定状态即时正确显示

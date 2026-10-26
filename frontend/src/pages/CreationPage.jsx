@@ -3,7 +3,7 @@
  * @structure-index：2026-10-21 历史按账号缓存，页面访问和请求代际保护迟到回写。
  *   2026-10-09：选帧查看导航由 viewSavedImage 副作用承接，保存草稿后切到图片并关闭视频详情。
  *
- * ─── 全局常量与工具函数 ─────────────────────────────── L136–L145
+ * ─── 全局常量与工具函数 ─────────────────────────────── L137–L146
  *   FONT / FONT_MEDIUM、图片下载、动画注入
  *   filenameFromPrompt / audioFilenameFromPrompt              utils/creationFilename.js
  *   生成类型到任务轮询类型的适配                     utils/creationTaskAdapter.js
@@ -12,15 +12,15 @@
  *   刷新任务快照、占位卡片和轮询结果适配                   utils/creationTaskAdapter.js
  *   视频详情与音频详情字段适配                                    utils/creationDetailAdapter.js / creationAudioDetailAdapter.js
  *
- * ─── 页面入口与状态编排 ──────────────────────────────── L147–L842
- *   CreationPage 状态、Store、历史缓存和分页                       L147–L331
- *   Session 初始化、刷新任务恢复和收藏动作                           L332–L493
- *   模型能力、参数加载、Tab、批量操作、正式下载和历史清理               L494–L771
- *   useCreationGeneration 生成请求、占位卡和结果写回                  L772–L789
- *   模型入口检查、输入卡渲染和媒体详情回调                            L791–L842
+ * ─── 页面入口与状态编排 ──────────────────────────────── L148–L859
+ *   CreationPage 状态、Store、历史缓存和分页                       L148–L332
+ *   Session 初始化、刷新任务恢复和收藏动作                           L333–L494
+ *   模型能力、参数加载、Tab、批量操作、正式下载和历史清理               L495–L788
+ *   useCreationGeneration 生成请求、占位卡和结果写回                  L789–L806
+ *   模型入口检查、输入卡渲染和媒体详情回调                            L808–L859
  *   CreationInputCard 已迁移至 components/creation/，页面通过 renderInputCard 显式接入
  *
- * ─── 页面渲染结构 ────────────────────────────────────── L843–L957
+ * ─── 页面渲染结构 ────────────────────────────────────── L860–L974
  *   CreationPageOverlays（确认弹窗和媒体详情 Portal）         components/creation/CreationPageOverlays.jsx
  *   CreationWorkspace（主体卡片、工具栏和结果/空态组合）       components/creation/CreationWorkspace.jsx
  *   handleBeforeModelOpen / renderInputCard                     页面级显式接线辅助
@@ -95,7 +95,7 @@
  *   2026-09-21  图片历史每页由 18 条改为 6 条；视频、配音及自动补页行为保持不变
  *   2026-09-24  配音下载命名仅提取正文，过滤情绪、停顿和语气标记
  *   2026-10-20  按账号恢复全部任务编号；未知/损坏记录保留，取消仅停止等待。
- *   2026-10-21  历史缓存按账号隔离，过期分页和写操作回执不跨访问写回；仍保留页面级编排。
+ *   2026-10-21  历史缓存按账号隔离；2026-10-23 配置通知刷新可用模型并切新默认，保留页面级副作用编排。
  */
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { getAuthSessionGeneration } from '../api/request';
@@ -104,6 +104,7 @@ import { mergeCreationRecoveryResults } from '../utils/CreationRecoveryResults';
 import { apiPollCreationTask, apiPollCreationMusicTask, apiGetCreationVideo, apiGetCreationAudio, apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiCreateSession, apiGetSession, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiHideCreationHistory, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../api/creation';
 import { useCreationStore } from '../stores/creationStore';
 import { apiListModels } from '../api/config';
+import { subscribeModelConfig } from '../api/ModelConfigEvents';
 import { adaptModels, getModelParams } from '../utils/modelAdapter';
 import { mergeCreationVideoDetail } from '../utils/creationDetailAdapter';
 import { normalizeCreationAudioDetail } from '../utils/creationAudioDetailAdapter';
@@ -506,11 +507,15 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
   // Load model list from backend (fallback to local config) when genType changes
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let revision = 0;
+    const generation = getAuthSessionGeneration();
+    const loadModels = async (changed = false) => {
+      const request = ++revision;
+      const isCurrent = () => !cancelled && request === revision && generation === getAuthSessionGeneration();
       try {
-        const models = await apiListModels({ category: genType === 'dubbing' ? 'voice' : genType });
+        const models = await apiListModels({ category: genType === 'dubbing' ? 'voice' : genType, fresh: true, availableOnly: true });
         const { modelOptions: opts, capabilitiesMap } = adaptModels(models, genType);
-        if (cancelled) return;
+        if (!isCurrent()) return;
         capabilitiesMapRef.current = capabilitiesMap;
         setCapabilitiesMap(capabilitiesMap);
         setModelOptions(opts);
@@ -527,15 +532,27 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
         ));
         setModel(defaultOption?.value ?? opts[0]?.value ?? '');
       } catch {
-        if (cancelled) return;
+        if (!isCurrent()) return;
+        if (changed) {
+          setModelOptions([]);
+          setModel('');
+          capabilitiesMapRef.current = {};
+          setCapabilitiesMap({});
+          showGlobalToast('error', '配置已变更，但创作模型刷新失败，请切换创作类型后重试');
+          return;
+        }
         const { modelOptions: opts, capabilitiesMap } = adaptModels([], genType);
         capabilitiesMapRef.current = capabilitiesMap;
         setCapabilitiesMap(capabilitiesMap);
         setModelOptions(opts);
         setModel(opts[0]?.value ?? '');
       }
-    })();
-    return () => { cancelled = true; };
+    };
+    const unsubscribe = subscribeModelConfig(auth => {
+      if (auth === generation && generation === getAuthSessionGeneration()) void loadModels(true);
+    });
+    void loadModels();
+    return () => { cancelled = true; unsubscribe(); };
   }, [genType]);
 
   // Load params when model changes (backend-first, local fallback)

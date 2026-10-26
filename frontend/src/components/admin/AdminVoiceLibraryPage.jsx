@@ -8,10 +8,11 @@ import {
   getVoiceDisplayName,
 } from '../../api/voices';
 import {
-  getActiveVoicePreviewKey,
+  getVoicePreviewState,
   stopVoicePreview,
-  subscribeVoicePreview,
+  subscribeVoicePreviewState,
   toggleVoicePreview,
+  retryVoicePreview,
 } from '../../utils/voicePreviewPlayer';
 import AdminVoiceLibraryFilters from './AdminVoiceLibraryFilters';
 import AdminVoiceLibraryTable from './AdminVoiceLibraryTable';
@@ -243,10 +244,10 @@ export default function AdminVoiceLibraryPage({
   const [voiceEditorOpen, setVoiceEditorOpen] = useState(false);
   const [voiceEditorMode, setVoiceEditorMode] = useState('create');
   const [voiceForm, setVoiceForm] = useState(createEmptyVoiceForm());
-  const [playingPreviewKey, setPlayingPreviewKey] = useState(() => getActiveVoicePreviewKey());
+  const [previewPlayback, setPreviewPlayback] = useState(() => getVoicePreviewState());
 
   useEffect(() => {
-    const unsubscribe = subscribeVoicePreview(setPlayingPreviewKey);
+    const unsubscribe = subscribeVoicePreviewState(setPreviewPlayback);
     return () => {
       unsubscribe();
       stopVoicePreview();
@@ -329,6 +330,9 @@ export default function AdminVoiceLibraryPage({
       showToast?.('当前音色还没有可试听的音频文件', 'error');
       return;
     }
+    const current = getVoicePreviewState();
+    if (current.key === previewKey && current.status === 'loading') return;
+    if (current.key === previewKey && current.status === 'error') { retryVoicePreview(previewKey); return; }
     try {
       await toggleVoicePreview({ key: previewKey, url: previewUrl });
     } catch (error) {
@@ -447,7 +451,7 @@ export default function AdminVoiceLibraryPage({
           pageSize={pageData.pageSize}
           hasMore={pageData.hasMore}
           loading={loading}
-          playingKey={playingPreviewKey}
+          playback={previewPlayback}
           deletingKey={savingKey.startsWith('voice-delete:') ? savingKey.replace('voice-delete:', '') : ''}
           getItemPlayingKey={getVoicePreviewKey}
           resolveVoiceName={resolveVoiceName}

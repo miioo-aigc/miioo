@@ -20,9 +20,13 @@
  *   2026-08-04  避免中文输入法候选阶段按 Enter 误触发发送
  *   2026-08-10  剧本生成中保持输入可用，非空输入直接交由页面发送到后端
  *   2026-09-21  外观迁移至 ComposerSurface，保留文本、模型和发送行为
+
+ * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
+ * 当前定义定位：InputCard L35。
  */
 import { useEffect, useRef, useState } from 'react';
-import { apiListModels } from '../../api/config';
+import { useAvailableModels } from '../../hooks/useAvailableModels';
+import ModelReadStatus from '../feedback/ModelReadStatus';
 import { ComposerSurface, Select } from '../ui';
 import EpisodeCountSelector from './EpisodeCountSelector';
 import EpisodeDurationSelector from './EpisodeDurationSelector';
@@ -31,19 +35,14 @@ import SendButton from './SendButton';
 function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelChange, episodeCount, onEpisodeCountChange, episodeDuration = 60, onEpisodeDurationChange, width = '700px', disabled = false }) {
   const [text, setText] = useState(restoreText); // 挂载时使用 restoreText 作为初始值（超时回到空状态时预填充）
   const [focused, setFocused] = useState(false);
-  const [models, setModels] = useState([]);
+  const { models, loading: modelsLoading, error: modelsError, retry } = useAvailableModels('chat');
   const prevDisabledRef = useRef(false);
   const composingRef = useRef(false);
 
   useEffect(() => {
-    // 仅在输入卡片挂载时加载模型；默认模型回调由本次加载结果触发。
-    apiListModels({ category: 'chat' }).then((list) => {
-      if (Array.isArray(list) && list.length > 0) {
-        setModels(list);
-        if (!selectedModel) { const def = list.find(m => m.is_default === true) || list[0]; onModelChange?.(def.model_id); }
-      }
-    }).catch(() => {});
-  }, [onModelChange, selectedModel]);
+    if (modelsLoading || models.some(model => model.model_id === selectedModel)) return;
+    onModelChange?.((models.find(model => model.is_default) || models[0])?.model_id || '');
+  }, [models, modelsLoading, onModelChange, selectedModel]);
 
   useEffect(() => {
     if (prevDisabledRef.current && !disabled) {
@@ -56,7 +55,7 @@ function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelCha
 
   const handleSend = async () => {
     // 忙碌态也允许发送，后端负责判断任务冲突并返回真实错误。
-    if (!hasText) return;
+    if (!hasText || modelsLoading || !models.some(model => model.model_id === selectedModel)) return;
     const sent = await onSend(text.trim(), selectedModel, episodeCount, episodeDuration);
     if (sent !== false) setText('');
   };
@@ -82,11 +81,11 @@ function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelCha
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: 0 }}>
             <Select
               value={selectedModel ?? ''}
-              displayValue={selectedModel ? (models.find(m => m.model_id === selectedModel)?.name ?? selectedModel) : (models[0]?.name ?? '加载中…')}
+              displayValue={selectedModel ? (models.find(m => m.model_id === selectedModel)?.name ?? selectedModel) : (models[0]?.name ?? (modelsLoading ? '加载中…' : '暂无可用模型'))}
               options={models.map(m => ({ value: m.model_id, label: m.name }))}
               width="200px"
               disabled={disabled}
-              loading={models.length === 0}
+              loading={modelsLoading}
               onChange={onModelChange}
               menuPlacement="up"
             />
@@ -94,15 +93,16 @@ function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelCha
             <EpisodeCountSelector value={episodeCount} onChange={onEpisodeCountChange} disabled={disabled} />
           </div>
           <SendButton
-            // 有输入时始终进入页面层 handleSend，直接发送到后端剧本对话接口。
+            // 有输入且模型目录可用时进入页面层 handleSend。
             onClick={hasText ? handleSend : handleStop}
-            disabled={!hasText}
+            disabled={!hasText || modelsLoading || !models.some(model => model.model_id === selectedModel)}
             loading={disabled && !hasText}
             paused={disabled && !hasText && !!onStop}
           />
         </>
       )}
     >
+      <ModelReadStatus loading={modelsLoading} error={modelsError} empty={!models.length} onRetry={retry} />
       <textarea
         className="composer-surface__editor"
         style={{ flex: 1, alignSelf: 'stretch', color: text ? undefined : 'var(--composer-placeholder-color)' }}

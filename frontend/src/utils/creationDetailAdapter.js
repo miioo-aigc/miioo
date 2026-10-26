@@ -10,6 +10,7 @@
  * ─── 依赖边界 ─────────────────────────────────────────────
  *   只接收详情数据并返回新对象；不调用 API、Store、缓存或 React 状态。
  *   2026-09-08 修复用作参考图误传派生预览图。
+ *   2026-10-23 视频重新编辑保留资产编号，分离原图与预览并清空缺失首尾帧。
  */
 
 import { isSafeImageUrl, normalizeImageUrl } from './imageUrl';
@@ -118,12 +119,13 @@ export function normalizeCreationVideoDetailMedia(detail, { preferOriginalImageU
     .filter((binding) => getBindingType(binding) === 'image')
     .map((binding) => {
       const rawUrl = preferOriginalImageUrl
-        ? bindingUrl(binding, 'url', 'preview_url', 'previewUrl')
+        ? bindingUrl(binding, 'url', 'original_url', 'originalUrl', 'file_url', 'fileUrl')
         : bindingUrl(binding, 'preview_url', 'previewUrl', 'url');
       const url = normalizeImageUrl(rawUrl) || rawUrl;
       return {
         url,
-        previewUrl: url,
+        originalUrl: normalizeImageUrl(bindingUrl(binding, 'url', 'original_url', 'originalUrl', 'file_url', 'fileUrl')) || '',
+        previewUrl: normalizeImageUrl(bindingUrl(binding, 'preview_url', 'previewUrl', 'url')) || url,
         type: 'image/png',
         isAsset: true,
         name: binding.asset_name || 'ref.png',
@@ -213,8 +215,9 @@ export function toCreationRefMode(value) {
 function toPrefillAsset(item, type, defaults) {
   return {
     name: item.name || defaults.name,
-    url: item.url || item.previewUrl || '',
-    previewUrl: item.url || item.previewUrl || '',
+    url: item.originalUrl ?? item.url ?? '',
+    previewUrl: item.previewUrl || item.url || '',
+    assetId: item.assetId || item.asset_id,
     type,
     isAsset: true,
     size: 0,
@@ -254,10 +257,10 @@ export function buildCreationVideoReeditPrefill(card, media) {
     refMode,
     firstFrameFile: card.firstFrameUrl
       ? { url: card.firstFrameUrl, previewUrl: card.firstFrameUrl, name: 'first-frame.png', size: 0 }
-      : undefined,
+      : null,
     lastFrameFile: card.lastFrameUrl
       ? { url: card.lastFrameUrl, previewUrl: card.lastFrameUrl, name: 'last-frame.png', size: 0 }
-      : undefined,
+      : null,
   };
 }
 

@@ -1,6 +1,6 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
-import { authFetch } from './request.js';
+import { authFetch, getAuthSessionGeneration } from './request.js';
 import { throwResponseError } from './error.js';
 import { normalizeImageUrl } from '../utils/imageUrl.js';
 import { mayShowEditPrompt, readEditMetadata } from '../utils/MediaEditPolicy.js';
@@ -778,27 +778,61 @@ const TAB_CATEGORY_FILTER = {
 };
 
 // 用 storyboard 数据给资产打 is_primary / ratio 标记，返回富化后的原始资产数组
-async function enrichWithStoryboards(projectId, rawList, needsStoryboards) {
-  if (!needsStoryboards) return rawList;
+async function enrichWithStoryboards(projectId, rawList, needsStoryboards, { isCurrent = () => true } = {}) {
+  const authSession = getAuthSessionGeneration();
+  const assertCurrent = () => {
+    if (!isCurrent() || authSession !== getAuthSessionGeneration()) {
+      const error = new Error('素材读取会话已失效');
+      error.name = 'AbortError';
+      throw error;
+    }
+  };
+  assertCurrent();
+  if (!needsStoryboards || rawList.length === 0) return rawList;
   // 这里只需要分镜 ID 和媒体字段来判断定稿状态，不需要生成参数。
   // 分页读取避免资产页一次性拉取最多 200 条完整分镜并写入持久缓存。
   const storyboardPageSize = 10;
   const storyboards = [];
   for (let offset = 0; ; offset += storyboardPageSize) {
+    assertCurrent();
     const page = await apiGetStoryboards(projectId, {
       limit: storyboardPageSize,
       offset,
       include_gen_params: false,
-    }).catch(() => []);
-    if (!Array.isArray(page) || page.length === 0) break;
+    });
+    assertCurrent();
+    if (!Array.isArray(page)) throw new Error('分镜列表响应格式异常，请重试');
+    if (page.length === 0) break;
     storyboards.push(...page);
     if (page.length < storyboardPageSize) break;
   }
   // 分镜页的定稿状态保存在每个镜头的候选媒体中，不能只依赖分镜主表的 image_url/video_url。
-  // 这里批量读取候选列表，只收集已定稿媒体，保证资产选择弹窗的“仅显示定稿图”与分镜页一致。
-  const finalizedCandidates = (await Promise.all(
-    storyboards.map((storyboard) => apiListStoryboardMediaCandidates(projectId, storyboard.id).catch(() => [])),
-  )).flat().filter((candidate) => candidate?.is_finalized === true || candidate?.isFinalized === true);
+  // 保留原顺序和定稿规则；任一失败即停止调度，等待已发请求收尾后向上报错。
+  const candidateLists = new Array(storyboards.length);
+  let nextIndex = 0;
+  let failure;
+  let stopped = false;
+  const readCandidates = async () => {
+    try {
+      while (!stopped && nextIndex < storyboards.length) {
+        assertCurrent();
+        const index = nextIndex++;
+        const candidates = await apiListStoryboardMediaCandidates(projectId, storyboards[index].id);
+        assertCurrent();
+        if (stopped) return;
+        if (!Array.isArray(candidates)) throw new Error('分镜候选响应格式异常，请重试');
+        candidateLists[index] = candidates;
+      }
+    } catch (error) {
+      if (!stopped) failure = error;
+      stopped = true;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, storyboards.length) }, readCandidates));
+  assertCurrent();
+  if (stopped) throw failure;
+  const finalizedCandidates = candidateLists.flat()
+    .filter((candidate) => candidate?.is_finalized === true || candidate?.isFinalized === true);
   const primaryAssetIds = new Set();
   const primaryImageUrls = new Set();
   const primaryVideoAssetIds = new Set();
@@ -926,12 +960,15 @@ async function enrichWithStoryboards(projectId, rawList, needsStoryboards) {
 export { groupByCategory, enrichWithStoryboards };
 
 export async function apiGetProjectAssets(projectId, { limit, category } = {}) {
+  const authSession = getAuthSessionGeneration();
   const fetchFn = async () => {
     const categoryFilter = category ? (TAB_CATEGORY_FILTER[category] ?? {}) : {};
     const effectiveLimit = limit || 200;
     const needsStoryboards = category === 'storyboard' || !category;
     const rawList = await apiGetAssets({ project_id: projectId, scope: 'project', limit: effectiveLimit, ...categoryFilter });
-    const enriched = await enrichWithStoryboards(projectId, Array.isArray(rawList) ? rawList : [], needsStoryboards);
+    const enriched = await enrichWithStoryboards(projectId, Array.isArray(rawList) ? rawList : [], needsStoryboards, {
+      isCurrent: () => authSession === getAuthSessionGeneration(),
+    });
     return groupByCategory(enriched);
   };
 
@@ -946,6 +983,7 @@ export async function apiGetProjectAssets(projectId, { limit, category } = {}) {
  * rawList 是未分组的原始资产，调用方需自行累积后调用 groupByCategory 重新分组
  */
 export async function apiGetProjectAssetsPage(projectId, { category, limit = 20, cursor } = {}) {
+  const authSession = getAuthSessionGeneration();
   const categoryFilter = category ? (TAB_CATEGORY_FILTER[category] ?? {}) : {};
   const needsStoryboards = category === 'storyboard' || !category;
   const page = await apiGetAssetsPage({
@@ -955,7 +993,9 @@ export async function apiGetProjectAssetsPage(projectId, { category, limit = 20,
     cursor: cursor || undefined,
     ...categoryFilter,
   });
-  const enriched = await enrichWithStoryboards(projectId, page.list, needsStoryboards);
+  const enriched = await enrichWithStoryboards(projectId, page.list, needsStoryboards, {
+    isCurrent: () => authSession === getAuthSessionGeneration(),
+  });
   return {
     rawList: enriched,
     grouped: groupByCategory(enriched),

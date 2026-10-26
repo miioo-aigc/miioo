@@ -3,19 +3,19 @@
  * @structure-index
  *
  * ─── 全局常量 & 工具函数 ─────────────────────────────────────────────
- *   FONT / CHAT_TIMEOUT_MS / 页面级常量                                  L53–L60
- *   formatEpisodeHeaders                                                   L79
+ *   FONT / CHAT_TIMEOUT_MS / 页面级常量                                  L67
+ *   formatEpisodeHeaders                                                   L93
  *
  * ─── 反馈与输入区组件 ─────────────────────────────────────────────────
- *   Toast                                                                  L176
+ *   Toast                                                                  L190
  *
  * ─── 剧本展示与编辑组件 ───────────────────────────────────────────────
  *   ScriptOutlineLoading / ScriptOutlineWorkspace / ScriptEpisodeOutline / ScriptStoryboardDocument / ScriptModifyConfirmModal src/components/script/
  *
  * ─── 主页面入口 ───────────────────────────────────────────────────────
- *   export default ScriptPage()                                         L227
+ *   export default ScriptPage()                                         L234
  *     ├─ [状态] 受控/非受控 phase、剧本内容、入口文件、模型、集数/时长、消息和编排任务
- *     ├─ [函数] handleSend L1017 / handleScriptFileSelect L743 / handleOpenScriptOutline L276 / handleStop L714 / handleBackToConversation L397 / handleBackToScriptOutline L401
+ *     ├─ [函数] handleSend L1095 / handleScriptFileSelect L809 / handleOpenScriptOutline L293 / handleStop L780 / handleBackToConversation L421 / handleBackToScriptOutline L456
  *     └─ [副作用] 工作区加载、编排任务恢复与轮询、流式请求、剧本和分集同步
  *
  * ─── 更新记录 ────────────────────────────────────────────────────────
@@ -49,8 +49,14 @@
  *   2026-08-18  已确认项目收到 SCRIPT_ALREADY_CONFIRMED 时从工作区恢复已有结构，避免重复 confirm
  *   2026-09-18  编排页左上角新增返回对话按钮，支持从成功编排视图切回对话
  *   2026-09-18  解构成功后对话底部提供回到剧本编排入口，无需重新确认解构
+ *   2026-10-23  返回对话接入服务端解锁，防重复与迟到回写；按持久阶段恢复，新一轮剧本重新确认。
+ *   2026-10-23  发送新要求前停止并确认旧任务结束；失败保留输入与整稿，本地旧请求串行收尾。
+ *   保留原因：工作区、认证归属、流式生成与编排轮询由页面集中编排；验证返回、刷新及再次确认。
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { apiReopenScriptDialogue } from '../api/subject';
+import { getAuthSessionGeneration } from '../api/request';
+import { prepareScriptChat } from '../components/script/PrepareScriptChat';
 import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiInterruptScriptChatTurn, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiDownloadStoryboardFile, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
 import { Button } from '../components/ui';
 import { InputCard, ScriptEmptyState, ScriptMessageArea, ScriptOutlineLoading, ScriptOutlineWorkspace, ScriptModifyConfirmModal } from '../components/script';
@@ -248,6 +254,9 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   const [messages, setMessages] = useState([]);
   const [workspaceError, setWorkspaceError] = useState('');
   const [workspaceRetry, setWorkspaceRetry] = useState(0);
+  const [reopeningDialogue, setReopeningDialogue] = useState(false);
+  const reopenScopeRef = useRef(null);
+  const workspaceReadVersionRef = useRef(0);
   const [activeMessageId, setActiveMessageId] = useState(null);
   const [scriptOutlineMode, setScriptOutlineMode] = useState(false);
   const [scriptOutlineLoading, setScriptOutlineLoading] = useState(false);
@@ -265,6 +274,8 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   const abortControllerRef = useRef(null); // 用于取消进行中的流式请求
   const chatInterruptPromiseRef = useRef(null);
   const chatSendLockRef = useRef(false);
+  const chatSendPromiseRef = useRef(null);
+  const replacingChatRef = useRef(false);
   const outlinePollStartedAtRef = useRef(null);
   const scriptContentContainerRef = useRef(null);
 
@@ -400,9 +411,47 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     throw timeoutError;
   }, [projectId]);
 
-  const handleBackToConversation = useCallback(() => {
-    setScriptOutlineMode(false);
-  }, []);
+  useEffect(() => {
+    const scope = { pending: false };
+    reopenScopeRef.current = scope;
+    setReopeningDialogue(false);
+    return () => { if (reopenScopeRef.current === scope) reopenScopeRef.current = null; };
+  }, [projectId]);
+
+  const handleBackToConversation = useCallback(async () => {
+    const scope = reopenScopeRef.current;
+    if (!projectId || !scope || scope.pending || episodeActionLoading) return;
+    const session = getAuthSessionGeneration();
+    const isCurrent = () => reopenScopeRef.current === scope && session === getAuthSessionGeneration();
+    scope.pending = true;
+    workspaceReadVersionRef.current += 1;
+    setReopeningDialogue(true);
+    try {
+      const latest = await apiGetScriptWorkspace(projectId, { fresh: true });
+      if (!isCurrent()) return;
+      const workspace = await apiReopenScriptDialogue(projectId, {
+        expected_draft_revision: latest?.script?.draft_revision,
+        client_request_id: crypto.randomUUID(),
+      });
+      if (!isCurrent()) return;
+      setMessages(normalizeScriptMessages(workspace.messages));
+      setScriptContent(workspace.script.content || '');
+      setHasStarted(true);
+      setPhase('view');
+      // 后端保留结构快照；前端新一轮创作必须重新确认，不能复用旧编排。
+      setScriptOutlineData(null);
+      setScriptOutlineTaskId(null);
+      clearStoredScriptOperation(projectId);
+      setScriptOutlineError('');
+      setWorkspaceError('');
+      setScriptOutlineMode(false);
+    } catch (error) {
+      if (isCurrent()) showGlobalToast(error?.message || '返回对话失败，请重试', 'error');
+    } finally {
+      scope.pending = false;
+      if (isCurrent()) setReopeningDialogue(false);
+    }
+  }, [projectId, episodeActionLoading, setScriptContent, setHasStarted, setPhase]);
 
   const handleBackToScriptOutline = useCallback(() => {
     setScriptOutlineMode(true);
@@ -537,9 +586,10 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   useEffect(() => {
     if (!projectId) return;
     let active = true;
+    const readVersion = ++workspaceReadVersionRef.current;
     apiGetScriptWorkspace(projectId)
       .then((data) => {
-        if (!active) return;
+        if (!active || readVersion !== workspaceReadVersionRef.current) return;
         setWorkspaceError('');
         const content = data?.script?.content || data?.content;
         const sourceType = data?.script?.source_type || data?.script?.sourceType || data?.source_type || data?.sourceType || '';
@@ -568,7 +618,14 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         const activeTaskId = getScriptTaskId(activeTask);
         const hasStoryboardFile = Boolean(restoredStoryboard.fileName || restoredStoryboard.downloadUrl || restoredStoryboard.fileId);
         const storedTaskId = readStoredScriptOperationTaskId(projectId);
-        if (data?.structure || activeTaskId || hasStoryboardFile || storedTaskId) {
+        if (data?.script?.workflow_stage === 'dialogue') {
+          setHasStarted(Boolean(content || restoredMessages.length));
+          setPhase(content || restoredMessages.length ? 'view' : 'initial');
+          setScriptOutlineMode(false);
+          setScriptOutlineData(null);
+          setScriptOutlineTaskId(null);
+          setScriptOutlineLoading(false);
+        } else if (data?.structure || activeTaskId || hasStoryboardFile || storedTaskId) {
           setScriptOutlineMode(true);
           const storedOutlineType = readStoredScriptOutlineType(projectId);
           setOutlineType(isStoryboardUpload || storedOutlineType === 'storyboard' ? 'storyboard' : 'script');
@@ -608,7 +665,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       })
       .catch((err) => {
         console.error('[ScriptPage] 加载剧本失败:', err);
-        if (active) setWorkspaceError('剧本读取失败，当前内容已保留，请重试');
+        if (active && readVersion === workspaceReadVersionRef.current) setWorkspaceError('剧本读取失败，当前内容已保留，请重试');
       })
       // 新的对话工作流在用户点击“确认初稿，进入剧本编排”后才确认结构。
       // 这里不能再自动调用旧 finalize，否则会在用户点击确认前改写
@@ -837,14 +894,11 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   };
 
   const performSend = async (text, model, epCount, duration) => {
-    if (!text || chatSendLockRef.current) return;
-    // 用户刚点击暂停时，等待后端确认上一轮 turn 已收口，避免立刻发送造成并发冲突。
-    const interruptPromise = chatInterruptPromiseRef.current;
-    if (interruptPromise) {
-      const interruptResult = await interruptPromise;
-      if (interruptResult === null) return false;
-    }
+    if (!text || chatSendLockRef.current) return false;
     chatSendLockRef.current = true;
+    const sendScope = reopenScopeRef.current;
+    const sendSession = getAuthSessionGeneration();
+    const isCurrent = () => sendScope && reopenScopeRef.current === sendScope && getAuthSessionGeneration() === sendSession;
 
     // 保存发送前的内容，超时时可恢复（避免丢失已有剧本）
     const prevContent = scriptContent;
@@ -917,8 +971,13 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     };
 
     try {
-      // 点击发送后直接请求后端；后端的任务冲突和业务错误由请求层透传给页面。
-      // 客户端只负责为这一次流式请求提供 30 分钟超时兜底。
+      const interruptPromise = chatInterruptPromiseRef.current;
+      if (interruptPromise && await interruptPromise === null) throw new Error('旧剧本任务停止失败，新要求已保留，请重试');
+      await prepareScriptChat({
+        readWorkspace: () => apiGetScriptWorkspace(projectId, { fresh: true, signal: abortController.signal }),
+        interrupt: () => apiInterruptScriptChatTurn(projectId),
+        isCurrent: () => isCurrent() && !abortController.signal.aborted,
+      });
       startClientTimeout();
       let hasStartedStreaming = false;
       await apiChatScriptWorkspaceStream(
@@ -932,6 +991,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         },
         {
           onChunk: (accumulated) => {
+            if (!isCurrent()) return;
             const formatted = formatEpisodeHeaders(accumulated);
             receivedContent = formatted;
             if (!hasStartedStreaming) {
@@ -950,6 +1010,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
           signal: abortController.signal,
         }
       );
+      if (!isCurrent()) return false;
 
       setMessages((previous) => previous.map((message) => (
         message.id === assistantMessageId ? { ...message, content: receivedContent, status: 'completed' } : message
@@ -958,13 +1019,15 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       // 网络流读取完成后立即恢复输入卡，允许继续发送下一条消息。
       setPhase('view');
       const latestWorkspace = await apiGetScriptWorkspace(projectId, { fresh: true });
+      if (!isCurrent()) return false;
       const latestMessages = normalizeScriptMessages(latestWorkspace?.messages);
       if (latestMessages.length > 0) setMessages(latestMessages);
     } catch (err) {
+      if (!isCurrent()) return false;
       // 504 网关超时
       if (err.isGatewayTimeout) {
         handleTimeout();
-        return;
+        return false;
       }
 
       // 网络层错误（DNS 失败、连接被拒等）→ 保留已有内容，不丢失
@@ -980,7 +1043,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         }
         setInputRestoreText(text);
         showToast('网络连接失败，请检查网络后重试');
-        return;
+        return false;
       }
 
       if (err.name === 'AbortError') {
@@ -1004,14 +1067,15 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
           setHasStarted(true);
           showToast('剧本创作已暂停', 'info');
         }
-        return;
+        return false;
       }
 
       console.error('[ScriptPage] 生成剧本失败:', err);
       updateAssistantMessage({ status: 'failed', errorMessage: err?.message || '剧本生成失败，请稍后重试' });
       setActiveMessageId(null);
       setInputRestoreText(text);
-      setPhase('initial');
+      setScriptContent(receivedContent || prevContent);
+      setPhase(receivedContent || prevContent ? 'view' : 'initial');
       setHasStarted(true);
       (() => {
         const rawMsg = err?.message || '';
@@ -1020,6 +1084,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         toastMsg = rawMsg || (err?.status ? `请求失败 (HTTP ${err.status})，请稍后重试` : '剧本生成失败，请稍后重试');
         showToast(toastMsg);
       })();
+      return false;
     } finally {
       clearClientTimeout();
       if (abortControllerRef.current === abortController) abortControllerRef.current = null;
@@ -1028,8 +1093,25 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   };
 
   const handleSend = async (text, model, epCount, duration) => {
-    if (!text) return false;
-    return performSend(text, model, epCount, duration);
+    if (!text || replacingChatRef.current) return false;
+    const scope = reopenScopeRef.current;
+    const session = getAuthSessionGeneration();
+    if (chatSendPromiseRef.current) {
+      replacingChatRef.current = true;
+      try {
+        const previousSend = chatSendPromiseRef.current;
+        handleStop();
+        const stopped = await chatInterruptPromiseRef.current;
+        await previousSend;
+        if (stopped === null || reopenScopeRef.current !== scope || getAuthSessionGeneration() !== session) return false;
+      } finally {
+        replacingChatRef.current = false;
+      }
+    }
+    const pending = performSend(text, model, epCount, duration);
+    chatSendPromiseRef.current = pending;
+    try { return await pending; }
+    finally { if (chatSendPromiseRef.current === pending) chatSendPromiseRef.current = null; }
   };
 
   const handleRequestModifyScript = useCallback(() => {
@@ -1139,7 +1221,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
               onRegenerateEpisode={handleRegenerateEpisode}
               onPatchStructure={handlePatchEpisodeStructure}
               onDeleteEpisode={handleDeleteEpisode}
-              episodeActionLoading={episodeActionLoading}
+              episodeActionLoading={episodeActionLoading || reopeningDialogue}
               episodeActionError={episodeActionError}
               hideEpisodeActions={isSubjectUnlocked && !scriptModificationMode}
               outlineType={scriptOutlineType}
@@ -1152,12 +1234,12 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
           {!scriptOutlineLoading && !scriptOutlineError && (
             <>
               <div style={{ position: 'absolute', top: 0, left: 0, zIndex: 3, display: 'flex', alignItems: 'flex-start' }}>
-                <Button type="button" variant="secondary" size="large" style={{ height: '32px' }} onClick={handleBackToConversation}>返回对话</Button>
+                <Button type="button" variant="secondary" size="large" style={{ height: '32px' }} disabled={reopeningDialogue || episodeActionLoading} onClick={handleBackToConversation}>{reopeningDialogue ? '正在返回…' : '返回对话'}</Button>
               </div>
               {isSubjectUnlocked && !scriptModificationMode ? (
                 <div style={{ position: 'absolute', top: 0, right: 0, zIndex: 3, display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
                   <Button type="button" variant="secondary" size="large" style={{ height: '32px' }} onClick={handleDownloadScript}>下载剧本</Button>
-                  <Button type="button" variant="accent" size="large" style={{ height: '32px' }} onClick={handleRequestModifyScript}>修改剧本</Button>
+                  <Button type="button" variant="accent" size="large" style={{ height: '32px' }} disabled={reopeningDialogue} onClick={handleRequestModifyScript}>修改剧本</Button>
                 </div>
               ) : (
                 <Button
@@ -1172,6 +1254,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
                   )}
                   iconPosition="right"
                   onClick={() => onGoToSubject?.('char')}
+                  disabled={reopeningDialogue}
                   style={{ position: 'absolute', top: 0, right: 0, zIndex: 3 }}
                 >
                   下一步：生成主体

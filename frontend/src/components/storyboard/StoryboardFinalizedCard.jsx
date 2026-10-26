@@ -3,6 +3,7 @@ import { Button } from '../ui';
 import DotsLoading from '../DotsLoading';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import StoryboardMediaPreview from './StoryboardMediaPreview';
+import RecoverableVideoPreview from '../creation/RecoverableVideoPreview';
 
 // 时间轴视频悬停时直接在卡片内播放 preview_video_url，不创建额外悬浮窗。
 export default function StoryboardFinalizedCard({ shot, media, loading = false, cardSize = { width: 240, height: 135 }, selected = false, onSelect, onCreate, onPreview, onDownload }) {
@@ -30,27 +31,20 @@ export default function StoryboardFinalizedCard({ shot, media, loading = false, 
       ? media.video_thumbnail_url || media.videoThumbnailUrl || media.poster_url || media.posterUrl
       : media.media_preview_url || media.mediaPreviewUrl || media.preview_url || media.previewUrl || media.thumbnail_url || media.thumbnailUrl || media.url;
     const url = previewVideoUrl || previewUrl;
-    if (url) setHoverPreview({ url: normalizeImageUrl(url), isVideo: Boolean(previewVideoUrl), x: event.clientX, y: event.clientY });
+    if (url) setHoverPreview({ url: normalizeImageUrl(url), isVideo: Boolean(previewVideoUrl), media, x: event.clientX, y: event.clientY });
   }
   function move(event) {
     setHoverPreview((prev) => prev ? { ...prev, x: event.clientX, y: event.clientY } : prev);
   }
   function leave() { setHovered(false); setHoverPreview(null); }
-  const isHoverVideo = hovered && hoverPreview?.isVideo;
+  const isHoverVideo = hovered && hoverPreview?.media === media && hoverPreview?.isVideo;
   return (
     <div data-storyboard-finalized-card="true" onClick={onSelect} onMouseEnter={enter} onMouseMove={move} onMouseLeave={leave} style={{ width: `${cardSize.width}px`, height: `${cardSize.height}px`, position: 'relative', flexShrink: 0, overflow: 'hidden', borderRadius: '8px', border: 0, boxShadow: `0 0 0 1px ${selected ? '#2DC3E1' : 'rgba(255,255,255,0.10)'}`, background: hasMedia ? '#101111' : '#242424', cursor: 'pointer', transition: 'border-color 150ms, box-shadow 150ms' }}>
       {hasMedia && <StoryboardMediaPreview media={media} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'fill' }} />}
       {isHoverVideo && (
-        <video
-          src={hoverPreview.url}
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="metadata"
-          onLoadedMetadata={(event) => event.target.play().catch(() => {})}
-          style={{ position: 'absolute', inset: 0, display: 'block', width: '100%', height: '100%', objectFit: 'fill', background: '#101111' }}
-        />
+        <div style={{ position: 'absolute', inset: 0, background: '#101111' }}>
+          <RecoverableVideoPreview key={hoverPreview.url} src={hoverPreview.url} hovered objectFit="fill" />
+        </div>
       )}
       <span style={{ position: 'absolute', top: '6px', left: '12px', padding: '0 8px', borderRadius: '3px', background: '#000000CC', color: '#FFFFFFCC', fontSize: '12px', lineHeight: '20px' }}>{String(shot.number).padStart(2, '0')}</span>
       {hasMedia && <span style={{ position: 'absolute', top: 0, right: 0, padding: '0 10px', background: '#00000080', color: '#FFFFFFCC', fontSize: '12px', lineHeight: '22px' }}>{isVideo ? '视频' : '图片'}</span>}

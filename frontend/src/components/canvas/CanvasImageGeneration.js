@@ -1,6 +1,10 @@
-/** 图片节点的有向素材连线、模型上限和生成快照规则。 */
+/** 图片节点的有向素材连线、模型上限和生成快照规则。
+ * 2026-10-26：生成结果逐项保留真实资产编号，使画布可保存并刷新恢复。
+ * 2026-10-26：批量结果独立卡片、统一上游、垂直/网格布局与组内归属。
+ */
 import { appendCanvasNode, createCanvasNode } from './canvasNodeUtils.js';
-import { getCanvasAbsolutePosition, setCanvasSelection } from './CanvasGroups.js';
+import { fitCanvasGroups, getCanvasAbsolutePosition, setCanvasSelection } from './CanvasGroups.js';
+import { getCanvasAssetNodeSize } from './CanvasMediaSize.js';
 
 function findNode(nodes, id) {
   return nodes.find((node) => node.id === id);
@@ -107,29 +111,110 @@ export function planCanvasImageGeneration(nodes, nodeId, prompt, model, params =
   const createsResult = Boolean(target.data.asset?.url);
   const mediaParams = { ...params };
   delete mediaParams.imageReferenceLimit;
-  return { nodeId, prompt, model, params: mediaParams, sources, requestId: crypto.randomUUID(), resultId: createsResult ? resultId : nodeId, createsResult, originalAsset: target.data.asset || null };
+  const count = Math.max(1, Number.parseInt(params.count, 10) || 1);
+  const firstId = createsResult ? resultId : nodeId;
+  const resultIds = Array.from({ length: count }, (_, index) => index ? 'canvas-image-' + crypto.randomUUID() : firstId);
+  return { nodeId, prompt, model, params: mediaParams, sources, requestId: crypto.randomUUID(), resultId: firstId, resultIds, createsResult, originalAsset: target.data.asset || null };
 }
 
 export function beginCanvasImageGeneration(nodes, plan) {
   const target = findNode(nodes, plan.nodeId);
   if (!target) return nodes;
-  const pending = nodes.map((node) => node.id === plan.nodeId ? { ...node, data: { ...node.data, creationPanelOpen: false, generating: !plan.createsResult, generationError: '', generationRequestId: plan.createsResult ? undefined : plan.requestId } } : node);
-  if (!plan.createsResult) return pending;
+  const ids = plan.resultIds || [plan.resultId];
   const position = getCanvasAbsolutePosition(nodes, target);
-  const result = createCanvasNode('image', { x: position.x + 320, y: position.y }, plan.resultId);
-  result.data = { ...result.data, model: plan.model, prompt: plan.prompt, imageReferenceLimit: target.data.imageReferenceLimit, generating: true, generationRequestId: plan.requestId, imageSourceIds: [...new Set([...plan.sources.map((source) => source.id)])] };
-  while (nodes.some((node) => { const p = getCanvasAbsolutePosition(nodes, node); return Math.abs(p.x - result.position.x) < 260 && Math.abs(p.y - result.position.y) < 280; })) result.position.y += 300;
-  return setCanvasSelection(appendCanvasNode(pending, result), [result.id], false);
+  const size = getCanvasAssetNodeSize(target.data.asset);
+  const anchor = { x: position.x + (plan.createsResult ? size.width + 80 : 0), y: position.y };
+  const data = { model: plan.model, prompt: plan.prompt, imageReferenceLimit: target.data.imageReferenceLimit,
+    generating: true, generationError: '', generationRequestId: plan.requestId,
+    imageSourceIds: [...new Set(plan.sources.map((source) => source.id))] };
+  let next = nodes.map((node) => node.id === plan.nodeId ? {
+    ...node, data: { ...node.data, creationPanelOpen: false, ...(!plan.createsResult ? data : {}) },
+  } : node);
+  for (const id of ids) {
+    if (id === target.id) continue;
+    const result = createCanvasNode('image', anchor, id);
+    result.data = { ...result.data, ...data };
+    next = appendCanvasNode(next, result, target.parentId);
+  }
+  return setCanvasSelection(layoutImageResults(next, plan, anchor, plan.createsResult), ids, false);
+}
+
+function layoutImageResults(nodes, plan, anchor, avoid = false) {
+  const ids = plan.resultIds || [plan.resultId];
+  const [ratioWidth, ratioHeight] = String(plan.params.ratio || '').split(':').map(Number);
+  const fallback = ratioWidth > 0 && ratioHeight > 0 ? { asset_type: 'image', width: ratioWidth, height: ratioHeight } : null;
+  const sizes = ids.map((id) => {
+    const asset = findNode(nodes, id)?.data.asset;
+    const size = getCanvasAssetNodeSize(asset || fallback);
+    // 加载中仍是默认空卡片，预留空间同时覆盖空态与预计成品尺寸。
+    return asset ? size : { width: Math.max(240, size.width), height: Math.max(264, size.height) };
+  });
+  const columns = ids.length < 4 ? 1 : Math.ceil(Math.sqrt(ids.length));
+  const width = Math.max(...sizes.map((size) => size.width));
+  const height = Math.max(...sizes.map((size) => size.height));
+  const start = { ...anchor };
+  if (avoid) {
+    const blockWidth = columns * (width + 48) - 48;
+    const blockHeight = Math.ceil(ids.length / columns) * (height + 48) - 48;
+    const occupied = nodes.filter((node) => !ids.includes(node.id) && node.type !== 'canvasGroup' && !node.hidden)
+      .map((node) => ({ ...getCanvasAbsolutePosition(nodes, node), ...getCanvasAssetNodeSize(node.data.asset) }));
+    for (const rect of occupied.sort((a, b) => a.y - b.y)) {
+      if (start.x < rect.x + rect.width + 32 && start.x + blockWidth + 32 > rect.x
+        && start.y < rect.y + rect.height + 32 && start.y + blockHeight + 32 > rect.y) start.y = rect.y + rect.height + 32;
+    }
+  }
+  const groups = new Set();
+  for (const id of ids) {
+    let parent = findNode(nodes, findNode(nodes, id)?.parentId);
+    while (parent && !groups.has(parent.id)) {
+      groups.add(parent.id);
+      parent = findNode(nodes, parent.parentId);
+    }
+  }
+  return fitCanvasGroups(nodes.map((node) => {
+    const index = ids.indexOf(node.id);
+    if (index < 0) return node;
+    const parent = findNode(nodes, node.parentId);
+    const origin = parent ? getCanvasAbsolutePosition(nodes, parent) : { x: 0, y: 0 };
+    return { ...node, position: {
+      x: start.x + (index % columns) * (width + 48) - origin.x,
+      y: start.y + Math.floor(index / columns) * (height + 48) - origin.y,
+    } };
+  }), groups);
 }
 
 export function recoverCanvasImageGenerationFailure(nodes, plan) {
-  return nodes.map((node) => node.id === plan.resultId && node.data.generationRequestId === plan.requestId
+  const ids = new Set(plan.resultIds || [plan.resultId]);
+  return nodes.map((node) => ids.has(node.id) && node.data.generationRequestId === plan.requestId
     ? { ...node, data: { ...node.data, generating: false, generationError: '', generationRequestId: undefined } } : node);
 }
 
 export function applyCanvasImageResult(nodes, plan, asset) {
-  const pending = nodes.find((node) => node.id === plan.resultId && node.data.generationRequestId === plan.requestId);
-  if (!pending) return nodes;
+  const ids = plan.resultIds || [plan.resultId];
+  const assets = Array.isArray(asset) ? asset : [asset];
+  const active = new Set(nodes.filter((node) => ids.includes(node.id) && node.data.generationRequestId === plan.requestId).map((node) => node.id));
+  if (!active.size) return nodes;
   const recovered = recoverCanvasImageGenerationFailure(nodes, plan);
-  return recovered.map((node) => node.id === plan.resultId && !node.data.asset?.url ? { ...node, data: { ...node.data, asset } } : node);
+  const next = recovered.map((node) => {
+    const index = ids.indexOf(node.id);
+    return active.has(node.id) && !node.data.asset?.url ? { ...node, data: { ...node.data,
+      asset: assets[index] || null, generationError: assets[index] ? '' : '本次生成未返回该图片，请重试',
+    } } : node;
+  });
+  const first = ids.map((id) => findNode(nodes, id)).find(Boolean);
+  const firstIndex = ids.indexOf(first.id);
+  const firstPosition = getCanvasAbsolutePosition(nodes, first);
+  // 删除首个结果后也保留原索引，避免将第二张误配成第一张。
+  const allExistingActive = nodes.filter((node) => ids.includes(node.id)).every((node) => active.has(node.id));
+  return firstIndex === 0 && allExistingActive ? layoutImageResults(next, plan, firstPosition) : next;
+}
+
+export function getCanvasImageResultAssets(result) {
+  const count = Math.max(result?.images?.length || 0, result?.imageDownloadUrls?.length || 0, result?.imageOriginalUrls?.length || 0);
+  return Array.from({ length: count }, (_, index) => {
+    const previewUrl = result.images?.[index];
+    const originalUrl = result.imageOriginalUrls?.[index] || result.imageDownloadUrls?.[index];
+    const url = originalUrl || previewUrl;
+    return url ? { url, previewUrl, originalUrl, asset_id: result.imageAssetIds?.[index], asset_type: 'image', source: 'ai-generated' } : null;
+  });
 }

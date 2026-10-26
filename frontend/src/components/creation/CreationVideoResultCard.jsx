@@ -1,18 +1,19 @@
 /**
  * @file CreationVideoResultCard.jsx
  * @structure-index
+ * 2026-10-23 媒体等待、失败及一次联网重载；恢复后点击播放。
  *
  * ─── 状态层 ─────────────────────────────────────────────────────
  *   hovered / starAnim / confirmDelete                         卡片悬停、收藏动画和删除确认状态
  *   extractingLastFrame                                         尾帧提取中的单卡片加载状态
- *   videoRef                                                    悬停播放的视频引用
+ *   RecoverableVideoPreview                                     媒体加载与悬停播放
  *
  * ─── 展示层 ────────────────────────────────────────────────────
  *   视频预览、加载/失败状态和批量选择标记
  *   收藏、重新编辑、尾帧转首帧、下载和删除操作
  *
  * ─── 副作用 ────────────────────────────────────────────────────
- *   hovered + isDone                                            悬停播放/离开重置视频
+ *   RecoverableVideoPreview                                     失败恢复后点击播放
  *
  * ─── 更新记录 ──────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离视频结果卡片；页面通过显式 props 注入业务回调
@@ -22,7 +23,8 @@
  *   2026-08-26  视频卡片使用后端封面地址作为静态预览
  */
 
-import { useEffect, useRef, useState } from 'react';
+import RecoverableVideoPreview from './RecoverableVideoPreview';
+import { useState } from 'react';
 import ConfirmDialog from '../ConfirmDialog';
 import DotsLoading from '../DotsLoading';
 import LoadingAnimation from '../LoadingAnimation';
@@ -37,21 +39,10 @@ export default function CreationVideoResultCard({ status, videoUrl, posterUrl = 
   const [starAnim, setStarAnim] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [extractingLastFrame, setExtractingLastFrame] = useState(false);
-  const videoRef = useRef(null);
+
   
 
   const isDone = status === 'done' && videoUrl;
-
-  // 悬停时自动播放视频
-  useEffect(() => {
-    if (!videoRef.current) return;
-    if (hovered && isDone) {
-      videoRef.current.play().catch(() => {});
-    } else {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-    }
-  }, [hovered, isDone]);
 
   function handleStarClick(e) {
     e.stopPropagation();
@@ -97,15 +88,7 @@ export default function CreationVideoResultCard({ status, videoUrl, posterUrl = 
             <LoadingAnimation width={88} />
           </div>
         ) : isDone ? (
-          <video
-            ref={videoRef}
-            src={videoUrl}
-            poster={posterUrl || undefined}
-            loop
-            muted
-            playsInline
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-          />
+          <RecoverableVideoPreview src={videoUrl} poster={posterUrl} hovered={hovered} />
         ) : (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ color: '#FFFFFF33', fontSize: '12px', fontFamily: FONT }}>生成失败</span>

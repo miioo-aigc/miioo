@@ -23,5 +23,5 @@ export { SubjectExtractionLoading, SubjectDataLoading, SubjectExtractionError } 
 export { default as SubjectEditorSlot } from './SubjectEditorSlot';
 export { default as SubjectGridViewport } from './SubjectGridViewport';
 export { default as SubjectWorkspace } from './SubjectWorkspace';
-export { normalizeSubjectImageModels, getFallbackSubjectImageModels } from './SubjectModelAdapter';
+export { normalizeSubjectImageModels } from './SubjectModelAdapter';
 export { buildSubjectCertificationMap, getCurrentSubjectCertification, getCurrentSubjectCertificationStatus } from './SubjectCertificationAdapter';

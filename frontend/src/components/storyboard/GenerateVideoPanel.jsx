@@ -51,13 +51,17 @@
  *   2026-08-03  参考主体、参考图、参考视频和参考音频分别归一化、去重，保留各自提交字段边界
  *   2026-07-15  将参考素材编辑区迁移至 ReferenceMediaEditor；本组件继续持有上传 API、模型能力限制、生成参数和页面级回调，所有依赖通过显式 props 传递
  *   2026-07-16  ReferenceMediaEditor 直接引入 StoryboardUploadSlots；本组件不再接收或转发 FrameUploadSlot / PanelUploadSlot，继续负责视频面板业务上传回调和生成参数
+
+ * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
+ * 当前定义定位：stripPromptMentions L102；normalizeDurationValue L106；areReferenceGroupsEqual L110；enrichReferenceSubject L114；GenerateVideoPanel L135。
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ShotViewerModal from '../ShotViewerModal';
 import ConfirmDialog from '../ConfirmDialog';
-import { apiListModels } from '../../api/config';
+import { useAvailableModels } from '../../hooks/useAvailableModels';
+import ModelReadStatus from '../feedback/ModelReadStatus';
 import { apiGetVideoLastFrame, apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { normalizeStoryboardReferenceGroups } from '../../utils/referenceMediaAdapter';
@@ -157,52 +161,46 @@ export default function GenerateVideoPanel({
   const [referenceMode, setReferenceMode] = useState(() => (
     formState?.referenceMode || formState?.tab || VIDEO_REFERENCE_MODES.ALL
   ));
-  const [modelsLoading, setModelsLoading] = useState(true);
+  const { models: availableModels, loading: modelsLoading, error: modelsError, retry: retryModels } = useAvailableModels('video');
+  const videoModels = useMemo(() => normalizeStoryboardModelList(availableModels, 'video'), [availableModels]);
   const [model, setModel] = useState(() => formState?.model || '');
-  const [videoModels, setVideoModels] = useState([]);
   const [resolution, setResolution] = useState(() => formState?.resolution || '');
   const [duration, setDuration] = useState(() => formState?.duration ?? null);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const data = await apiListModels({ category: 'video' });
-        const merged = normalizeStoryboardModelList(data, 'video');
-
-        setVideoModels(merged);
-
-        if (merged.length > 0) {
-          const first = merged.find(m => m.is_default) || merged[0];
-          const restoredOption = formState?.model && merged.find((item) => item.value === formState.model || item.sourceModelIds?.includes(formState.model));
-          const restoredModel = restoredOption
-            ? restoredOption.value
-            : first.value;
-          setModel(restoredModel);
-          const selectedModel = merged.find((item) => item.value === restoredModel) || first;
-          const caps = selectedModel.capabilities;
-          {
-            const resList = (caps?.supported_resolutions?.length ? caps.supported_resolutions : caps?.supported_sizes) || [];
-            if (resList.length > 0 && !formState?.resolution) setResolution(resList[0]);
-          }
-          {
-            const durList = caps?.supported_durations;
-            if (durList?.length > 0) {
-              const shotDur = shot?.params?.duration;
-              if (!formState?.duration) {
-                setDuration(normalizeDurationValue(shotDur || durList[0]));
-              }
+    if (modelsLoading) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      const merged = videoModels;
+      if (merged.length > 0) {
+        const first = merged.find(m => m.is_default) || merged[0];
+        const restoredOption = formState?.model && merged.find((item) => item.value === formState.model || item.sourceModelIds?.includes(formState.model));
+        const restoredModel = restoredOption
+          ? restoredOption.value
+          : first.value;
+        setModel(restoredModel);
+        const selectedModel = merged.find((item) => item.value === restoredModel) || first;
+        const caps = selectedModel.capabilities;
+        {
+          const resList = (caps?.supported_resolutions?.length ? caps.supported_resolutions : caps?.supported_sizes) || [];
+          if (resList.length > 0 && !formState?.resolution) setResolution(resList[0]);
+        }
+        {
+          const durList = caps?.supported_durations;
+          if (durList?.length > 0) {
+            const shotDur = shot?.params?.duration;
+            if (!formState?.duration) {
+              setDuration(normalizeDurationValue(shotDur || durList[0]));
             }
           }
         }
-      } catch {
-        setVideoModels([]);
-      } finally {
-        setModelsLoading(false);
       }
-    })();
-  // 模型列表只在面板挂载时读取；shot 时长仅用于首次默认值。
+
+    });
+    return () => { active = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [videoModels, modelsLoading]);
   const [sound, setSound] = useState(() => formState?.sound ?? true);
   // 提示词：仅暂存在当前弹窗的本地 state，编辑不回写分镜列表字段。
   // 全能参考与首尾帧各自持有独立提示词：fullPrompt 保留 @主体 标签绑定，
@@ -629,7 +627,7 @@ export default function GenerateVideoPanel({
   }
 
   async function handleGenerate() {
-    if (loading) return;
+    if (loading || modelsLoading || !videoModels.some(item => item.value === model)) return;
     const isFrameReference = referenceMode === VIDEO_REFERENCE_MODES.FRAME;
     const activePrompt = isFrameReference ? framePrompt : fullPrompt;
     const routeImages = [...refSubjects, ...refImages];
@@ -798,6 +796,7 @@ export default function GenerateVideoPanel({
               plainTextMode={referenceMode === VIDEO_REFERENCE_MODES.FRAME}
             />
 
+            <ModelReadStatus loading={modelsLoading} error={modelsError} empty={!videoModels.length} onRetry={retryModels} />
             <GenerationModelField
               value={modelsLoading ? '加载中...' : (currentVideoModel?.label || '请选择')}
               options={videoModels.map(m => m.label)}
@@ -909,7 +908,7 @@ export default function GenerateVideoPanel({
         >
           <GenerationSubmitButton
             loading={false}
-            disabled={loading}
+            disabled={loading || modelsLoading || !videoModels.some(item => item.value === model)}
             label="生成分镜视频"
             type="video"
             onClick={handleGenerate}

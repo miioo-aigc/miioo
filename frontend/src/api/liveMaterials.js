@@ -59,8 +59,8 @@ export async function apiUpdateLiveMaterialGroup(groupId, { name, description } 
 }
 
 /** 获取单个真人素材详情 */
-export async function apiGetLiveMaterialAsset(assetId) {
-  const res = await authFetch(`${BASE}/api/live-materials/assets/${assetId}`);
+export async function apiGetLiveMaterialAsset(assetId, { signal } = {}) {
+  const res = await authFetch(`${BASE}/api/live-materials/assets/${assetId}`, { signal });
   if (!res.ok) throw new Error(`获取素材详情失败: ${res.status}`);
   return res.json();
 }
@@ -96,8 +96,8 @@ function getLiveMaterialSourceUrl(asset) {
  * 受控素材下载地址不能直接交给 img 标签：标签请求无法附带 Bearer Token，
  * 短时令牌过期后会返回 401。这里经 authFetch 下载后转为当前页面可用的 Blob URL。
  */
-export async function apiGetLiveMaterialPreview(assetId) {
-  const payload = await apiGetLiveMaterialAsset(assetId);
+export async function apiGetLiveMaterialPreview(assetId, { signal } = {}) {
+  const payload = await apiGetLiveMaterialAsset(assetId, { signal });
   const asset = unwrapLiveMaterialAsset(payload);
   const sourceUrl = getLiveMaterialSourceUrl(asset);
   if (!sourceUrl) return { asset, previewUrl: null };
@@ -109,56 +109,46 @@ export async function apiGetLiveMaterialPreview(assetId) {
   }
 
   const mediaUrl = `${BASE || ''}${sourceUrl.startsWith('/') ? '' : '/'}${sourceUrl}`;
-  const res = await authFetch(mediaUrl);
+  const res = await authFetch(mediaUrl, { signal });
   if (!res.ok) throw new Error(`获取素材预览失败: ${res.status}`);
   const blob = await res.blob();
   return { asset, previewUrl: URL.createObjectURL(blob) };
 }
 
-const liveMaterialPreviewByRef = new Map();
+// 预览地址由调用会话持有，不缓存失败、空结果或短时地址。
 
 /**
  * 根据 Seedance 返回的 asset:// 身份反查真人素材，并获取当前页面可用的预览地址。
  * asset:// 不是浏览器地址，不能直接交给 img；反查只使用素材库已有的 asset_ref_url 映射。
  */
-export async function apiGetLiveMaterialPreviewByRef(assetRefUrl) {
+export async function apiGetLiveMaterialPreviewByRef(assetRefUrl, { signal } = {}) {
   if (!assetRefUrl) return null;
   if (!String(assetRefUrl).startsWith('asset://')) return assetRefUrl;
-
   const ref = String(assetRefUrl);
-  if (liveMaterialPreviewByRef.has(ref)) return liveMaterialPreviewByRef.get(ref);
-
-  const request = (async () => {
-    const groupsPayload = await apiListLiveMaterialGroups();
-    const groups = Array.isArray(groupsPayload)
-      ? groupsPayload
-      : (groupsPayload?.list ?? groupsPayload?.items ?? groupsPayload?.data ?? []);
-    const assetsByGroup = await Promise.all(groups.map(async (group) => {
-      if (!group?.id) return [];
-      try {
-        const payload = await apiListLiveMaterialAssets(group.id);
-        return Array.isArray(payload)
-          ? payload
-          : (payload?.list ?? payload?.items ?? payload?.data ?? []);
-      } catch {
-        return [];
-      }
-    }));
-    const asset = assetsByGroup.flat().find((item) => (
-      item?.asset_ref_url === ref || item?.assetRefUrl === ref
-    ));
-    if (!asset?.id) return null;
-    const { previewUrl } = await apiGetLiveMaterialPreview(asset.id);
-    return previewUrl;
-  })();
-
-  liveMaterialPreviewByRef.set(ref, request);
-  try {
-    return await request;
-  } catch (error) {
-    liveMaterialPreviewByRef.delete(ref);
-    throw error;
+  const readList = payload => {
+    const list = Array.isArray(payload) ? payload : (payload?.list ?? payload?.items ?? payload?.data);
+    if (!Array.isArray(list)) throw new Error('素材列表响应异常');
+    return list;
+  };
+  const groups = readList(await apiListLiveMaterialGroups({ signal }));
+  let partialError;
+  const assetsByGroup = await Promise.all(groups.map(async group => {
+    if (!group?.id) return [];
+    try {
+      return readList(await apiListLiveMaterialAssets(group.id, { signal }));
+    } catch (error) {
+      partialError = error;
+      return [];
+    }
+  }));
+  signal?.throwIfAborted();
+  const asset = assetsByGroup.flat().find(item => item?.asset_ref_url === ref || item?.assetRefUrl === ref);
+  if (!asset?.id) {
+    if (partialError) throw partialError;
+    return null;
   }
+  const { previewUrl } = await apiGetLiveMaterialPreview(asset.id, { signal });
+  return previewUrl;
 }
 
 /** 删除真人素材 */
@@ -180,8 +170,8 @@ export async function apiDeleteLiveMaterialGroup(groupId) {
 }
 
 /** 获取真人素材组列表，返回 LiveMaterialGroupResponse[] */
-export async function apiListLiveMaterialGroups() {
-  const res = await authFetch(`${BASE}/api/live-materials/groups`);
+export async function apiListLiveMaterialGroups({ signal } = {}) {
+  const res = await authFetch(`${BASE}/api/live-materials/groups`, { signal });
   if (!res.ok) throw new Error(`获取真人素材组失败: ${res.status}`);
   return res.json();
 }
@@ -212,11 +202,11 @@ export async function apiBindSubjectFinalAsset(groupId, { project_id, subject_id
  * @param {string} groupId
  * @param {{ refresh?: boolean }} options - refresh=true 触发从 OneLinkAI 上游同步最新状态
  */
-export async function apiListLiveMaterialAssets(groupId, { refresh } = {}) {
+export async function apiListLiveMaterialAssets(groupId, { refresh, signal } = {}) {
   const url = refresh
     ? `${BASE}/api/live-materials/groups/${groupId}/assets?refresh=true`
     : `${BASE}/api/live-materials/groups/${groupId}/assets`;
-  const res = await authFetch(url);
+  const res = await authFetch(url, { signal });
   if (!res.ok) throw new Error(`获取真人素材失败: ${res.status}`);
   return res.json();
 }

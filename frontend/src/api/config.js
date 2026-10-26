@@ -1,8 +1,20 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
-import { authFetch } from './request.js';
+import { authFetch as requestConfig, getAuthSessionGeneration } from './request.js';
+import { publishModelConfig } from './ModelConfigEvents.js';
 import { cached, invalidate } from '../utils/cache.js';
 import { K, TTL, MEDIUM } from '../utils/cacheKeys.js';
+
+async function authFetch(url, options) {
+  const generation = getAuthSessionGeneration();
+  const response = await requestConfig(url, options);
+  if (response.ok && options?.method && options.method !== 'GET'
+    && !url.endsWith('/test') && generation === getAuthSessionGeneration()) {
+    invalidate('models:');
+    publishModelConfig(generation);
+  }
+  return response;
+}
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -110,26 +122,28 @@ export async function apiOneClickCleanup() {
 
 // ── Models ────────────────────────────────────────────────────────────────────
 
-export async function apiListModels({ category, fresh = false } = {}) {
+export async function apiListModels({ category, fresh = false, availableOnly = false } = {}) {
   const unwrapModelResponse = (data) => {
     if (Array.isArray(data)) return data;
-    if (!data || typeof data !== 'object') return [];
+    if (!data || typeof data !== 'object') throw new Error('模型列表响应异常，请重试');
     for (const key of ['items', 'models', 'data', 'd', 'results']) {
       if (Array.isArray(data[key])) return data[key];
     }
-    return [];
+    throw new Error('模型列表响应异常，请重试');
   };
 
   const fetchModels = async () => {
     const params = new URLSearchParams();
     if (category) params.append('category', category);
+    if (availableOnly) params.append('available_only', 'true');
     const query = params.toString();
     const url = query ? `${BASE}/api/models?${query}` : `${BASE}/api/models`;
     const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
+    if (!res.ok) throw new Error('读取模型列表失败，请重试');
     return unwrapModelResponse(await res.json());
   };
 
-  if (fresh) return fetchModels();
+  if (fresh || availableOnly) return fetchModels();
 
   const cachedModels = await cached(
     K.models(category),
@@ -145,8 +159,14 @@ export async function apiCreateModel(data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+  if (!res.ok) throw new Error('新增模型失败，请重试');
+  const model = await res.json();
+  if (!model || typeof model.id !== 'string' || !model.id.trim()) {
+    invalidate('models:');
+    throw new Error('新增结果无法确认，请重新读取列表核对');
+  }
   invalidate('models:');
-  return res.json();
+  return model;
 }
 
 export async function apiUpdateModel(modelId, data) {

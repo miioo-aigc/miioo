@@ -1,3 +1,5 @@
+import { fitCanvasGroups, getCanvasAbsolutePosition } from './CanvasGroups.js';
+
 export const CANVAS_NODE_TYPES = ['text', 'image', 'video', 'audio'];
 
 const NODE_LABELS = {
@@ -45,7 +47,10 @@ export function getCreationPanelVisibility(node, selectedNodeId) {
   return Boolean(node?.selected && node?.id === selectedNodeId && node?.data?.creationPanelOpen);
 }
 
-export function appendCanvasNode(nodes, node) {
+export function appendCanvasNode(nodes, node, parentId) {
+  const parent = nodes.find((item) => item.id === parentId && item.type === 'canvasGroup' && !item.data.stacked);
+  if (parentId && !parent) return nodes;
+  const origin = parent ? getCanvasAbsolutePosition(nodes, parent) : null;
   const sequence = nodes.reduce((max, item) => (
     item.type === node.type && Number.isSafeInteger(item.data?.sequence)
       ? Math.max(max, item.data.sequence)
@@ -53,9 +58,18 @@ export function appendCanvasNode(nodes, node) {
   ), 0) + 1;
   const numberedNode = {
     ...node,
+    ...(parent ? { parentId, position: { x: node.position.x - origin.x, y: node.position.y - origin.y } } : {}),
     data: { ...node.data, sequence, label: `${NODE_LABELS[node.type]}${sequence}` },
   };
-  return updateSelectedNode([...nodes, numberedNode], node.id);
+  const next = updateSelectedNode([...nodes, numberedNode], node.id);
+  if (!parent) return next;
+  const groupIds = new Set();
+  let ancestor = parent;
+  while (ancestor && !groupIds.has(ancestor.id)) {
+    groupIds.add(ancestor.id);
+    ancestor = nodes.find((item) => item.id === ancestor.parentId);
+  }
+  return fitCanvasGroups(next, groupIds);
 }
 
 export function updateSelectedNode(nodes, selectedNodeId) {

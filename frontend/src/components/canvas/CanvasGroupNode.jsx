@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { Handle, Position, useStore, useStoreApi, useUpdateNodeInternals } from '@xyflow/react';
 import CanvasGroupStackPreview from './CanvasGroupStackPreview';
 import CanvasEditableName from './CanvasEditableName';
+import { Tooltip } from '../ui';
 
 export default function CanvasGroupNode({ id, data, selected }) {
   const updateNodeInternals = useUpdateNodeInternals();
@@ -18,6 +19,7 @@ export default function CanvasGroupNode({ id, data, selected }) {
   const stackRef = useRef(null);
   const frameRef = useRef(null);
   const previousStacked = useRef(Boolean(data.stacked));
+  const previousMembers = useRef(new Set((data.stackMembers || []).map((member) => member.id)));
   const interrupted = useRef(new Map());
   const stacked = Boolean(data.stacked);
   const zoom = data.viewportZoom || 1;
@@ -27,7 +29,11 @@ export default function CanvasGroupNode({ id, data, selected }) {
   useLayoutEffect(() => {
     const changed = previousStacked.current !== stacked;
     previousStacked.current = stacked;
-    if (!changed || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const members = JSON.parse(membersSnapshot);
+    const addedIds = new Set(members.filter((member) => !previousMembers.current.has(member.id)).map((member) => member.id));
+    previousMembers.current = new Set(members.map((member) => member.id));
+    const receiving = stacked && !changed && addedIds.size > 0;
+    if ((!changed && !receiving) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const interruptedFrames = interrupted.current;
     const options = { duration: 300, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' };
     const small = { transform: `translate(${stacked ? 0 : offsetX}px, ${stacked ? 0 : offsetY}px)`, width: '312px', height: '312px', opacity: 1, borderRadius: '20px' };
@@ -39,12 +45,14 @@ export default function CanvasGroupNode({ id, data, selected }) {
       tracked.push(element);
       animations.push(element.animate(start ? [start, ...frames.slice(1)] : frames, timing));
     };
-    play(frameRef.current, stacked ? [large, small] : [small, large]);
-    play(stackRef.current, [{ opacity: 1 }, { opacity: 1, offset: 0.8 }, { opacity: stacked ? 1 : 0 }], { ...options, duration: 375 });
-    const members = JSON.parse(membersSnapshot);
+    if (changed) {
+      play(frameRef.current, stacked ? [large, small] : [small, large]);
+      play(stackRef.current, [{ opacity: 1 }, { opacity: 1, offset: 0.8 }, { opacity: stacked ? 1 : 0 }], { ...options, duration: 375 });
+    }
     stackRef.current.querySelectorAll('[data-stack-member]').forEach((element, index) => {
       const member = members.find((item) => item.id === element.dataset.stackMember);
       if (!member) return;
+      if (receiving && !addedIds.has(member.id)) return;
       const compact = { transform: `translate(${stacked ? 0 : offsetX}px, ${stacked ? 0 : offsetY}px) ${element.style.transform}`, width: '240px', height: '240px', opacity: Number(element.style.opacity) };
       const expanded = { transform: `translate(${member.x - (stacked ? offsetX : 0)}px, ${member.y - (stacked ? offsetY : 0)}px) rotate(0deg)`, width: `${member.width}px`, height: `${member.height}px`, opacity: 1 };
       play(element, stacked ? [expanded, compact] : [compact, expanded], { ...options, delay: Math.min(index, 5) * 15, fill: 'both' });
@@ -73,11 +81,16 @@ export default function CanvasGroupNode({ id, data, selected }) {
     <div ref={stackRef} className="canvas-group-morph__stack" style={{ opacity: stacked ? 1 : 0, pointerEvents: stacked ? 'auto' : 'none' }} aria-hidden={!stacked}>
       <CanvasGroupStackPreview members={data.stackMembers} />
     </div>
+    {data.readOnly && stacked && <div className="absolute inset-0">
+      <Tooltip label="双击展开组" followCursor>
+        <span className="block h-[312px] w-[312px]" />
+      </Tooltip>
+    </div>}
     {/* 保持可测量的连接点常驻，收起时连线可直接复用已注册的端点。 */}
     <Handle type="target" position={Position.Left} id="stack-input" isConnectable={false} style={{ opacity: 0, pointerEvents: 'none' }} />
     <Handle type="source" position={Position.Right} id="stack-output" isConnectable={false} style={{ opacity: 0, pointerEvents: 'none' }} />
     <div className="canvas-group__name" style={{ '--canvas-group-name-zoom': zoom, '--canvas-group-name-inverse-zoom': 1 / zoom }}>
-      <CanvasEditableName name={data.label} onRename={data.onRename} onStart={data.onRenameStart} />
+      {data.readOnly ? <span title={data.label}>{data.label}</span> : <CanvasEditableName name={data.label} onRename={data.onRename} onStart={data.onRenameStart} />}
     </div>
   </div>;
 }

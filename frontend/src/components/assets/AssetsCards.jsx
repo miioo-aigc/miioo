@@ -1,15 +1,14 @@
-import { useState, useRef, useEffect } from 'react';
-import { apiGetAssetDetail, apiGetShotDetail, apiGetShotVideoDetail } from '../../api/assets';
+import AsyncImagePreview from '../AsyncImagePreview';
+import RecoverableVideoPreview from '../creation/RecoverableVideoPreview';
+import { useState } from 'react';
 import { apiGetCreationVideo, apiBasicEditCreationImage } from '../../api/creation';
 import { mergeCreationVideoDetail } from '../../utils/creationDetailAdapter';
-import ImageDetailModal from '../ImageDetailModal';
 import AssetsMoreMenu from './AssetsMoreMenu';
 import AssetCardMedia from './AssetCardMedia';
 import AssetCardCreativeDetail from './AssetCardCreativeDetail';
+import FinalVideoDetailModal from './FinalVideoDetailModal';
 import ProjectAssetDetail from './ProjectAssetDetail';
 import SubjectAssetDetailModal from './SubjectAssetDetailModal';
-import ShotDetailModal from './ShotDetailModal';
-import ShotVideoDetailModal from './ShotVideoDetailModal';
 import { useMultiAngleResults } from '../image-edit/useMultiAngleResults';
 import CreationImageResultCard from '../creation/CreationImageResultCard';
 import useLocalImageEdits from '../../hooks/useLocalImageEdits';
@@ -22,20 +21,25 @@ import { getAssetSubjectType } from '../../utils/assetsBatchAdapter';
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-export function AssetCard({ name, url = null, starred = false, selected = false, batchMode = false, showStar = false, assetType = 'asset', videoObjectFit = 'cover', onDownload, onDelete, onStar, onSelect, asset = {}, listedImages = [] }) {
+export function AssetCard({ name, url = null, starred = false, selected = false, batchMode = false, showStar = false, isFinalVideo = false, videoObjectFit = 'cover', onDownload, onDelete, onStar, onSelect, asset = {}, listedImages = [] }) {
   const angleResults = useMultiAngleResults(`asset:${asset.id || asset.backendId || url}`, { project_id: asset.project_id, session_id: asset.session_id });
   const [hov, setHov] = useState(false);
   const [starAnim, setStarAnim] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [detailData, setDetailData] = useState(null);
   const [creativeDetailAsset, setCreativeDetailAsset] = useState(null);
   const edits = useLocalImageEdits(creationEditScope(asset));
 
   function handleOpen() {
     if (batchMode) { onSelect?.(); return; }
-    // 创作视频列表是轻量摘要；打开后用详情接口补全参考素材。
-    if (asset.type === 'image' || asset.type === 'video') {
-      setCreativeDetailAsset(asset);
+    // 成片进入专属只读详情，创作资产继续使用创作详情。
+    if (isFinalVideo) { setDetailOpen(true); return; }
+    // 仅创作视频通过创作详情接口补全参考素材，成片沿用项目资产数据。
+    if (asset.type === 'image' || asset.type === 'video' || asset.assetType === 'video') {
+      setCreativeDetailAsset({
+        ...asset,
+        type: asset.type || asset.assetType,
+        createdAt: asset.createdAt || asset.created_at,
+      });
       setDetailOpen(true);
       if (asset.type === 'video' && asset.backendId) {
         const backendId = asset.backendId;
@@ -49,15 +53,6 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
             console.warn('[AssetsCards] 创作视频详情加载失败，保留列表摘要展示', error);
           });
       }
-      return;
-    }
-    const id = asset.id;
-    if (assetType === 'shot_video') {
-      apiGetShotVideoDetail(id).then((d) => { setDetailData(d); setDetailOpen(true); });
-    } else if (assetType === 'shot') {
-      apiGetShotDetail(id).then((d) => { setDetailData(d); setDetailOpen(true); });
-    } else {
-      apiGetAssetDetail(id).then((d) => { setDetailData(d); setDetailOpen(true); });
     }
   }
 
@@ -101,23 +96,13 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
         videoObjectFit={videoObjectFit}
       />
     </div>
-    {detailOpen && assetType === 'shot_video' && (
-      <ShotVideoDetailModal onClose={() => setDetailOpen(false)} onDownload={onDownload} onDelete={() => { setDetailOpen(false); onDelete?.(); }}
-        shotNumber={detailData?.shotNumber} prompt={detailData?.input_prompt ?? detailData?.prompt} model={detailData?.model}
-        resolution={detailData?.resolution} duration={detailData?.duration} ratio={detailData?.ratio}
-        generatedAt={detailData?.generatedAt} frames={detailData?.frames} videoSrc={detailData?.videoSrc}
-        refMode={detailData?.refMode || detailData?.reference_mode} refModeLabel={detailData?.refModeLabel || detailData?.reference_mode_label} firstFrame={detailData?.firstFrame} lastFrame={detailData?.lastFrame}
-        refImages={detailData?.refImages} refVideos={detailData?.refVideos}
-      />
-    )}
-    {detailOpen && assetType === 'shot' && (
-      <ShotDetailModal onClose={() => setDetailOpen(false)} onDownload={onDownload} onDelete={() => { setDetailOpen(false); onDelete?.(); }}
-        shotNumber={detailData?.shotNumber} prompt={detailData?.input_prompt ?? detailData?.prompt} model={detailData?.model}
-        resolution={detailData?.resolution} generatedAt={detailData?.generatedAt} images={detailData?.images}
-        refImages={detailData?.refImages}
-      />
-    )}
-    {detailOpen && creativeDetailAsset && (asset.type === 'image' || asset.type === 'video') && (
+    {detailOpen && isFinalVideo && <FinalVideoDetailModal
+      asset={asset}
+      onClose={() => setDetailOpen(false)}
+      onDownload={onDownload}
+      onDelete={() => { setDetailOpen(false); onDelete?.(); }}
+    />}
+    {detailOpen && !isFinalVideo && creativeDetailAsset && (
       <AssetCardCreativeDetail
         onGenerateImage={angleResults.generate}
         asset={creativeDetailAsset}
@@ -129,43 +114,6 @@ export function AssetCard({ name, url = null, starred = false, selected = false,
         onFavorite={() => onStar?.()}
         onBasicEdit={(edit) => apiBasicEditCreationImage(creativeDetailAsset.backendId || creativeDetailAsset.id, edit)}
         onCreateImage={edits.save}
-      />
-    )}
-    {detailOpen && assetType !== 'shot' && assetType !== 'shot_video' && !asset.type && showStar && (
-      <ImageDetailModal
-        onGenerateImage={angleResults.generate}
-       card={{
-         imageUrl: url || detailData?.url,
-          prompt: detailData?.input_prompt ?? detailData?.prompt,
-         model: detailData?.model,
-          ratio: detailData?.ratio,
-          resolution: detailData?.resolution,
-          refImages: detailData?.refImages,
-          generatedAt: detailData?.generatedAt,
-        }}
-        onClose={() => setDetailOpen(false)}
-        onDelete={() => { setDetailOpen(false); onDelete?.(); }}
-        favorited={starred}
-        onToggleFavorite={() => onStar?.()}
-        onCreateImage={edits.save}
-      />
-    )}
-    {detailOpen && assetType !== 'shot' && assetType !== 'shot_video' && !showStar && (
-      <ShotDetailModal
-        onClose={() => setDetailOpen(false)}
-        onDownload={onDownload}
-        onDelete={() => { setDetailOpen(false); onDelete?.(); }}
-        shotNumber={detailData?.shotNumber ?? detailData?.name ?? name}
-        prompt={detailData?.input_prompt ?? detailData?.prompt}
-        model={detailData?.model}
-        resolution={detailData?.resolution}
-        generatedAt={detailData?.generatedAt ?? detailData?.created_at}
-        images={(detailData?.images ?? []).map((image) => ({
-          ...image,
-          src: image.src ?? image.fileUrl ?? image.file_url ?? image.url,
-          finalized: image.finalized ?? image.is_finalized ?? image.is_primary ?? false,
-        }))}
-        refImages={detailData?.refImages}
       />
     )}
     {visibleCreationEdits(edits.images, listedImages).map((image) => <CreationImageResultCard key={image.id} {...image} editScope={edits.scope} onDownload={() => downloadLocalImage(image)} onDelete={() => edits.remove(image.id)} />)}
@@ -189,22 +137,8 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
   const isVideo = category === 'storyboard'
     ? asset.assetType === 'video'
     : category === 'storyboard_video';
-  const videoRef = useRef(null);
-
   const isStoryboard = category === 'storyboard' || category === 'storyboard_img' || category === 'storyboard_video';
   const cardAspectRatio = isStoryboard ? '16/9' : '200/246';
-
-  // 视频悬停播放
-  useEffect(() => {
-    const vid = videoRef.current;
-    if (!vid) return;
-    if (hov && isVideo) {
-      vid.currentTime = 0;
-      vid.play().catch(() => {});
-    } else {
-      vid.pause();
-    }
-  }, [hov, isVideo]);
 
   function handleClick() {
     if (batchMode) { onSelect?.(); return; }
@@ -251,26 +185,9 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
           }}
         >
           {isVideo && asset.videoUrl ? (
-            <video
-              ref={videoRef}
-              src={asset.videoUrl}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              muted
-              playsInline
-              loop
-              preload="metadata"
-            />
+            <RecoverableVideoPreview src={asset.videoUrl} hovered={hov} />
           ) : url ? (
-            <div
-              style={{
-                width: '100%',
-                height: '100%',
-                backgroundImage: `url(${url})`,
-                backgroundSize: 'cover',
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: '50%',
-              }}
-            />
+            <AsyncImagePreview visual plain src={url} alt={name} imageStyle={{ objectFit: 'cover' }} />
           ) : (
             <svg width="40" height="40" viewBox="0 0 40 40" fill="none" style={{ flexShrink: 0 }}>
               <circle cx="20" cy="20" r="20" fill="#FFFFFF0A" />
@@ -351,7 +268,6 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
       <ProjectAssetDetail
         onGenerateImage={angleResults.generate}
         open={detailOpen}
-        category={category}
         name={name}
         description={desc}
         url={url}
@@ -369,8 +285,6 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
         onShowToast={onShowToast}
         onCreateImage={edits.save}
         SubjectAssetDetailModal={SubjectAssetDetailModal}
-        ShotDetailModal={ShotDetailModal}
-        ShotVideoDetailModal={ShotVideoDetailModal}
       />
       {!isStoryboard && !isSubject && edits.images.map((image) => <CreationImageResultCard key={image.id} {...image} editScope={edits.scope} onDownload={() => downloadLocalImage(image)} onDelete={() => edits.remove(image.id)} />)}
       {angleResults.results.map((result) => <CreationImageResultCard key={result.id} {...result} onGenerateImage={angleResults.generate} onDelete={() => angleResults.remove(result.id)} />)}

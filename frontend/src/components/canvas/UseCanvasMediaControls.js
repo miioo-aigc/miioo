@@ -4,9 +4,12 @@
  * 2026-09-28：节点外壳持有媒体模型加载、能力适配及参数状态；不触发生成或持久化。
  * 2026-09-29：图片节点从后端能力字段 max_reference_images 读取图片参考上限。
  * 2026-09-30：Seedance 编辑仅覆盖画布对外参数，退出恢复底层选择；分辨率不变。
+
+ * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
+ * 当前定义定位：useCanvasMediaControls L19。
  */
-import { useEffect, useMemo, useState } from 'react';
-import { apiListModels } from '../../api/config';
+import { useMemo } from 'react';
+import { useAvailableModels } from '../../hooks/useAvailableModels';
 import { adaptModels, getModelParams } from '../../utils/modelAdapter';
 import { useCreationParamsState } from '../creation/useCreationParamsState';
 import { selectCanvasMediaModel } from './CanvasMediaModels';
@@ -15,23 +18,13 @@ import { adaptCanvasVideoModels, getCanvasVideoParams, getCanvasVideoControlValu
 
 export function useCanvasMediaControls(nodeType, selectedModel, onModelChange, onGenerationModeChange) {
   const genType = nodeType === 'audio' ? 'dubbing' : nodeType;
-  const [catalog, setCatalog] = useState({ models: [], options: [], capabilities: {}, loading: true, error: false });
-  useEffect(() => {
-    if (nodeType === 'text') return;
-    let cancelled = false;
-    apiListModels({ category: nodeType === 'audio' ? 'voice' : nodeType }).then((models) => {
-      const { modelOptions, capabilitiesMap } = nodeType === 'video'
-        ? (() => {
-          const catalog = adaptCanvasVideoModels(models);
-          return { modelOptions: catalog.options, capabilitiesMap: catalog.capabilitiesMap };
-        })()
-        : adaptModels(models, genType);
-      if (!cancelled) setCatalog({ models, options: modelOptions, capabilities: capabilitiesMap, loading: false, error: false });
-    }).catch(() => {
-      if (!cancelled) setCatalog({ models: [], options: [], capabilities: {}, loading: false, error: true });
-    });
-    return () => { cancelled = true; };
-  }, [nodeType, genType]);
+  const directory = useAvailableModels(nodeType === 'audio' ? 'voice' : nodeType, nodeType !== 'text');
+  const catalog = useMemo(() => {
+    const models = directory.models;
+    const adapted = nodeType === 'video' ? adaptCanvasVideoModels(models) : adaptModels(models, genType);
+    return { models, options: adapted.options || adapted.modelOptions, capabilities: adapted.capabilitiesMap,
+      loading: directory.loading, error: directory.error };
+  }, [directory.models, directory.loading, directory.error, nodeType, genType]);
   const model = selectCanvasMediaModel(catalog.options, catalog.models, selectedModel);
   const baseCreationParams = useMemo(() => {
     if (!model) return null;
@@ -54,5 +47,5 @@ export function useCanvasMediaControls(nodeType, selectedModel, onModelChange, o
     ? getCanvasVideoControlValues(creationParams, model, params)
     : { ...params, creationParams };
   const imageReferenceLimit = nodeType === 'image' && model ? getImageReferenceLimit(catalog.capabilities?.[model]) : undefined;
-  return { ...controls, model, requestModel, options: catalog.options, capabilities: catalog.capabilities, videoCapabilities, imageReferenceLimit, loading: catalog.loading, error: catalog.error, onModelChange, onGenerationModeChange };
+  return { ...controls, model, requestModel, options: catalog.options, capabilities: catalog.capabilities, videoCapabilities, imageReferenceLimit, loading: catalog.loading, error: catalog.error, retry: directory.retry, onModelChange, onGenerationModeChange };
 }

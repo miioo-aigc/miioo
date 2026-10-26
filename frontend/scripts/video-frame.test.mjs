@@ -76,3 +76,32 @@ test('worker resolves relative media URLs against the page before creating the d
   await self.onmessage({ data: { type: 'open', url: 'https://cdn.example/original.mp4', baseUrl: 'https://app.example/creation' } });
   assert.deepEqual(received, ['https://app.example/api/media/downloads/test', 'https://cdn.example/original.mp4']);
 });
+
+test('连续缩略帧按真实时间解码且不覆盖选中画布，失败不影响大图', async () => {
+  const source = await readFile(new URL('../src/components/video-edit/FrameDecoderWorker.js', import.meta.url), 'utf8');
+  const messages = [], sampled = [], closed = [];
+  const context = vm.createContext({
+    self: { postMessage: value => messages.push(value) },
+    OffscreenCanvas: class {
+      constructor(width, height) { this.width = width; this.height = height; }
+      getContext() { return {}; }
+      async convertToBlob() { return { width: this.width, height: this.height }; }
+    },
+    mockSink: { async getSample(time) {
+      sampled.push(time);
+      if (time === 0.09) throw new Error('decode');
+      return { displayWidth: 406, displayHeight: 720, draw() {}, close() { closed.push(time); } };
+    } },
+  });
+  vm.runInContext(source.split(String.fromCharCode(10)).filter(line => !line.startsWith('import ')).join(String.fromCharCode(10)), context);
+  vm.runInContext('times = [0, 0.04, 0.09, 0.12]; sink = mockSink; canvas = { original: true }; selected = 3; thumbnails = [0, 1, 2].map(index => ({ type: "thumbnail", index }));', context);
+  await context.drain();
+  assert.deepEqual(sampled, [0, 0.04, 0.09]);
+  assert.deepEqual(closed, [0, 0.04]);
+  assert.equal(messages[0].blob.height, 120);
+  assert.equal(messages[0].blob.width, 68);
+  assert.ok(messages.every(message => message.type === 'thumbnail'));
+  assert.equal(messages[2].error, true);
+  assert.equal(vm.runInContext('selected', context), 3);
+  assert.equal(vm.runInContext('canvas.original', context), true);
+});

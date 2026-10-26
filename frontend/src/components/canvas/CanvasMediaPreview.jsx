@@ -1,9 +1,12 @@
-import { useEffect } from 'react';
+import AsyncImagePreview from '../AsyncImagePreview';
+import { useMediaPlayback } from '../../hooks/useMediaPlayback';
+import MediaLoadStatus from '../feedback/MediaLoadStatus';
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 function getPreviewUrl(asset) {
-  return asset?.url || asset?.originalUrl || asset?.original_url || asset?.download_url || asset?.downloadUrl || '';
+  return asset?.originalUrl || asset?.original_url || asset?.download_url || asset?.downloadUrl || asset?.url || '';
 }
 
 export default function CanvasMediaPreview({ asset, nodeType, playback, onClose }) {
@@ -29,19 +32,25 @@ export default function CanvasMediaPreview({ asset, nodeType, playback, onClose 
         <X size={20} strokeWidth={1.5} />
       </button>
         {isVideo
-          ? <video className="canvas-media-preview__media" src={url} poster={asset.posterUrl || asset.poster_url} controls muted={playback?.muted ?? false} playsInline onLoadedMetadata={async (event) => {
-            const video = event.currentTarget;
-            video.currentTime = playback?.time || 0;
-            video.volume = playback?.volume ?? 1;
-            try { await video.play(); } catch (error) {
-              if (error.name === 'NotAllowedError' && video.isConnected) {
-                video.muted = true;
-                try { await video.play(); } catch { /* 保留手动播放控件。 */ }
-              }
-            }
-          }} />
-          : <img className="canvas-media-preview__media" src={url} alt={asset.name || '图片详情预览'} />}
+          ? <PreviewVideo key={url} url={url} poster={asset.posterUrl || asset.poster_url} playback={playback} onClose={onClose} />
+          : <AsyncImagePreview plain onMouseDown={event => { if (event.target === event.currentTarget) onClose?.(); }} src={url} alt={asset.name || '图片详情预览'} style={{ width: '80vw', height: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }} imageStyle={{ width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}
     </div>,
     document.body,
   );
+}
+
+function PreviewVideo({ url, poster, playback, onClose }) {
+  const ref = useRef(null);
+  const initialized = useRef(false);
+  useEffect(() => { if (ref.current) ref.current.volume = playback?.volume ?? 1; }, [playback?.volume]);
+  const media = useMediaPlayback(ref, url, { autoPlay: true, mutedFallback: true });
+  return <div onMouseDown={event => { if (event.target === event.currentTarget) onClose?.(); }} style={{ position: 'relative', width: '80vw', height: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <video ref={ref} className="canvas-media-preview__media" src={url} poster={poster} controls muted={playback?.muted ?? false} playsInline onLoadedMetadata={event => {
+      if (initialized.current) return;
+      initialized.current = true;
+      event.currentTarget.currentTime = playback?.time || 0;
+      event.currentTarget.volume = playback?.volume ?? 1;
+    }} />
+    <MediaLoadStatus {...media} onPause={media.pause} onRetry={media.retry} onPlay={() => media.play()} />
+  </div>;
 }

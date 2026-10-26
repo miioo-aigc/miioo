@@ -3,22 +3,24 @@
  * @structure-index
  *
  * ─── 状态 ─────────────────────────────────────────────────────
- *   scrollRef / sentinelRef                                      结果列表滚动容器与分页哨兵
- *   autoFillCountRef                                             视口未满时的自动分页次数
- *   prefillVersion / prefillData                                 重新编辑和参考图回填 InputCard 的数据
+ *   scrollRef / sentinelRef                                      结果列表滚动容器与分页哨兵 L93
+ *   autoFillCountRef                                             视口未满时的自动分页次数 L95
+ *   prefillVersion / prefillData                                 重新编辑和参考图回填 InputCard 的数据 L96
+ *   reeditPendingRef / reeditPending                            详情恢复去重与发送门禁 L98
  *
  * ─── 数据流与副作用 ───────────────────────────────────────────
- *   generations → allCards                                      生成记录扁平化与最新优先排序
+ *   generations → allCards                                      生成记录扁平化与最新优先排序 L102
  *   onLoadMore                                                    IntersectionObserver 与视口自动填充
  *   onVideoCardClick / onDownloadCard / onDeleteCard / toggleFavorite 页面业务回调
- *   renderInputCard                                               以渲染回调接入页面内 InputCard，避免反向依赖页面
+ *   renderInputCard                                               以渲染回调接入页面内 InputCard，避免反向依赖页面 L175
  *
  * ─── 组件结构 ─────────────────────────────────────────────────
- *   CreationResultState                                           结果滚动区、结果卡片、加载态和底部输入区
+ *   CreationResultState                                           结果滚动区、结果卡片、加载态和底部输入区 L60
  *   CreationVideoResultCard / CreationImageResultCard             图片与视频结果展示
  *   CreationAudioResultCard                                      配音结果展示（与图片/视频共用 240px 最小列宽、16px 间距、16:9 卡片）
  *
  * ─── 更新记录 ─────────────────────────────────────────────────
+ *   2026-10-23  详情恢复期间阻止提交，读取失败不沿用旧素材。
  *   2026-07-16  从 CreationPage.jsx 抽离结果列表容器；页面继续持有历史请求、生成请求、轮询、缓存和 Toast
  *   2026-07-16  统一后端视频参考模式到首尾帧/全能参考 UI 模式，保证重新编辑参数回填一致
  *   2026-07-16  复用 creationDetailAdapter，统一视频详情素材字段转换
@@ -93,6 +95,8 @@ export default function CreationResultState({
   const autoFillCountRef = useRef(0);
   const [prefillVersion, setPrefillVersion] = useState(0);
   const [prefillData, setPrefillData] = useState(null);
+  const reeditPendingRef = useRef(false);
+  const [reeditPending, setReeditPending] = useState(false);
 
   // Newest generation first — index 0 is the most recently generated image/video
   const allCards = [...generations].reverse().flatMap((gen) =>
@@ -169,9 +173,16 @@ export default function CreationResultState({
   const isAudio = genType === 'dubbing' || genType === 'music';
   const inputDisabled = isGenerating && (genType === 'dubbing' || genType === 'music');
   const inputCardProps = {
-    onGenerate,
+    onGenerate: (...args) => {
+      if (reeditPending) {
+        showToast?.('warning', '参考素材正在恢复，请稍后再发送');
+        args[0]?.onFail?.(args[0]?.prompt);
+        return { success: false };
+      }
+      return onGenerate?.(...args);
+    },
     onCancelGeneration,
-    disabled: inputDisabled,
+    disabled: inputDisabled || reeditPending,
     width: '100%',
     genType,
     onGenTypeChange,
@@ -273,22 +284,32 @@ export default function CreationResultState({
                   onToggleFavorite={() => toggleFavorite?.(key)}
                   onDownload={() => onDownloadCard?.(card)}
                   onReEdit={async () => {
-                    let refImages = card.refImages || [];
-                    let refVideos = card.refVideos || [];
-                    let refAudios = card.refAudios || [];
-                    if (card._needsDetail && card.backendId) {
-                      try {
-                        const detail = await apiGetCreationVideo(card.backendId);
-                        const detailMedia = normalizeCreationVideoDetailMedia(detail, { preferOriginalImageUrl: true });
-                        refImages = detailMedia.refImages;
-                        refVideos = detailMedia.refVideos;
-                        refAudios = detailMedia.refAudios;
-                      } catch (e) {
-                        console.warn('[CreationPage] re-edit: failed to fetch video detail', e);
+                    if (reeditPendingRef.current) return;
+                    reeditPendingRef.current = true;
+                    setReeditPending(true);
+                    try {
+                      let refImages = card.refImages || [];
+                      let refVideos = card.refVideos || [];
+                      let refAudios = card.refAudios || [];
+                      if (card._needsDetail && card.backendId) {
+                        try {
+                          const detail = await apiGetCreationVideo(card.backendId);
+                          const detailMedia = normalizeCreationVideoDetailMedia(detail, { preferOriginalImageUrl: true });
+                          refImages = detailMedia.refImages;
+                          refVideos = detailMedia.refVideos;
+                          refAudios = detailMedia.refAudios;
+                        } catch (e) {
+                          console.warn('[CreationPage] re-edit: failed to fetch video detail', e);
+                          showToast?.('error', '参考素材恢复失败，请重新点击“重新编辑”');
+                          return;
+                        }
                       }
+                      setPrefillData(buildCreationVideoReeditPrefill(card, { refImages, refVideos, refAudios }));
+                      setPrefillVersion((v) => v + 1);
+                    } finally {
+                      reeditPendingRef.current = false;
+                      setReeditPending(false);
                     }
-                    setPrefillData(buildCreationVideoReeditPrefill(card, { refImages, refVideos, refAudios }));
-                    setPrefillVersion((v) => v + 1);
                   }}
                   onUseAsFirstFrame={async () => {
                     try {

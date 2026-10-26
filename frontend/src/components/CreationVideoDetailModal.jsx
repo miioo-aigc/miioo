@@ -1,15 +1,17 @@
 /**
  * @file CreationVideoDetailModal.jsx
  * @structure-index
+ * 2026-10-26：媒体加载改用像素动效，失败刷新及继续播放仅显示图标。
  *
- * ─── 辅助组件与工具 ─────────────────────────────── L43–L255
+ * ─── 辅助组件与工具 ─────────────────────────────── L47–L259
  *   formatVideoDuration / ReferenceVideoCard / CopyPromptButton / PanelAction / EditTool 详情字段、参考素材与操作按钮
  *
- * ─── 创作视频详情弹窗 ───────────────────────────── L256–L753
+ * ─── 创作视频详情弹窗 ───────────────────────────── L260–L706
  *   CreationVideoDetailModal                        视频预览、详情信息和操作回调
  *   视频播放区                                      点击画面切换播放状态，中央反馈显示 0.5 秒后隐藏，保留原生 controls
  *   右侧信息区                                      顶部操作、中间滚动、底部视频编辑固定布局
  *
+ *   2026-10-23 媒体失败重载后点击播放，等待与播放状态分离
  * ─── 更新记录 ─────────────────────────────────────
  *   2026-10-10                                       四项编辑图标抽为 VideoEditIcon，与画布复用；选帧预览与原画下载分离
  *   2026-09-07                                       中央播放状态短暂显示 0.5 秒；外层圆角裁剪；右栏改为固定布局；更新视频编辑按钮图标
@@ -18,6 +20,8 @@
  *   2026-09-20                                       右侧顶部媒体动作按钮接入设计系统 Tooltip
  *   2026-10-09                                       参考视频抽帧使用本地媒体代理，生产地址保持不变
  */
+import { useMediaPlayback } from '../hooks/useMediaPlayback';
+import MediaLoadStatus from './feedback/MediaLoadStatus';
 import VideoEditIcon from './video-edit/VideoEditIcon';
 
 import { useState, useRef, useEffect } from 'react';
@@ -287,7 +291,7 @@ export default function CreationVideoDetailModal({
   }
 
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
-  const [isPlaying, setIsPlaying] = useState(false);
+
   const [upscaleOpen, setUpscaleOpen] = useState(false);
   const [subtitleOpen, setSubtitleOpen] = useState(false);
   const [trimOpen, setTrimOpen] = useState(false);
@@ -298,75 +302,22 @@ export default function CreationVideoDetailModal({
   const [hovClose, setHovClose] = useState(false);
   const [toastVisible] = useState(false);
   const videoRef = useRef(null);
+  const media = useMediaPlayback(videoRef, videoUrl, { autoPlay: true });
+  const isPlaying = media.status === 'playing';
   const playbackFeedbackTimerRef = useRef(null);
 
   function handleCopyPrompt() {
     showGlobalToast('您已复制提示词', 'success');
   }
 
-  useEffect(() => {
-    const vid = videoRef.current;
-    if (!vid) return;
-
-    const onLoaded = () => console.log('Video loaded:', vid.duration, vid.videoWidth, vid.videoHeight);
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
-    const onEnded = () => setIsPlaying(false);
-    const onError = (e) => {
-      console.error('Video error:', e, vid.error);
-    };
-
-    vid.addEventListener('loadedmetadata', onLoaded);
-    vid.addEventListener('play', onPlay);
-    vid.addEventListener('pause', onPause);
-    vid.addEventListener('ended', onEnded);
-    vid.addEventListener('error', onError);
-
-    return () => {
-      vid.removeEventListener('loadedmetadata', onLoaded);
-      vid.removeEventListener('play', onPlay);
-      vid.removeEventListener('pause', onPause);
-      vid.removeEventListener('ended', onEnded);
-      vid.removeEventListener('error', onError);
-    };
-  }, [videoUrl]);
-
-  useEffect(() => () => {
-    clearTimeout(playbackFeedbackTimerRef.current);
-  }, []);
-
-  // 弹窗打开后自动播放视频
-  useEffect(() => {
-    const vid = videoRef.current;
-    if (!vid || !videoUrl) return;
-    const onCanPlay = () => {
-      vid.play().then(() => setIsPlaying(true)).catch(() => {});
-    };
-    vid.addEventListener('canplay', onCanPlay, { once: true });
-    return () => vid.removeEventListener('canplay', onCanPlay);
-  }, [videoUrl]);
+  useEffect(() => () => clearTimeout(playbackFeedbackTimerRef.current), []);
 
   function togglePlay() {
-    const vid = videoRef.current;
-    if (!vid) return;
-
-    const shouldPlay = vid.paused;
+    if (isPlaying || media.status === 'loading') media.pause();
+    else void media.play();
     clearTimeout(playbackFeedbackTimerRef.current);
-    setIsPlaying(shouldPlay);
     setPlaybackFeedbackVisible(true);
-    playbackFeedbackTimerRef.current = setTimeout(() => {
-      setPlaybackFeedbackVisible(false);
-    }, 500);
-
-    if (shouldPlay) {
-      vid.play().catch(() => {
-        setIsPlaying(false);
-        setPlaybackFeedbackVisible(false);
-      });
-      return;
-    }
-
-    vid.pause();
+    playbackFeedbackTimerRef.current = setTimeout(() => setPlaybackFeedbackVisible(false), 500);
   }
 
   const isFrameReference = refMode === 'frame'
@@ -427,6 +378,7 @@ export default function CreationVideoDetailModal({
                 {/* Real video element */}
                 {videoUrl ? (
                   <video
+                    key={videoUrl}
                     ref={videoRef}
                     src={videoUrl}
                     poster={posterUrl || undefined}
@@ -441,6 +393,7 @@ export default function CreationVideoDetailModal({
                   </div>
                 )}
                 <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(in oklab 180deg, oklab(0% 0 0 / 0%) 40%, oklab(0% 0 0 / 40%) 100%)', pointerEvents: 'none' }} />
+                {videoUrl && <MediaLoadStatus visual {...media} onPause={media.pause} onRetry={media.retry} onPlay={() => media.play()} />}
                 {videoUrl && <VideoPlaybackControls isPlaying={isPlaying} feedbackVisible={playbackFeedbackVisible} onToggle={togglePlay} />}
               </div>
             </div>
@@ -499,7 +452,7 @@ export default function CreationVideoDetailModal({
                     </div>
                     <div className="rounded-md overflow-clip flex flex-col items-center gap-0 justify-center h-[84px] self-stretch shrink-0 bg-[#FFFFFF14] border border-solid border-[#FFFFFF14] p-0">
                       {getFrameImageUrl(firstFrameImage) ? (
-                        <AsyncImagePreview
+                        <AsyncImagePreview visual
                           src={getFrameImageUrl(firstFrameImage)}
                           alt="首帧参考"
                           resolveSrc={apiGetLiveMaterialPreviewByRef}
@@ -516,7 +469,7 @@ export default function CreationVideoDetailModal({
                     </div>
                     <div className="rounded-md overflow-clip flex flex-col items-center gap-0 justify-center h-[84px] self-stretch shrink-0 bg-[#FFFFFF14] border border-solid border-[#FFFFFF14] p-0">
                       {getFrameImageUrl(lastFrameImage) ? (
-                        <AsyncImagePreview
+                        <AsyncImagePreview visual
                           src={getFrameImageUrl(lastFrameImage)}
                           alt="尾帧参考"
                           resolveSrc={apiGetLiveMaterialPreviewByRef}
@@ -542,7 +495,7 @@ export default function CreationVideoDetailModal({
                         {refImages.map((img, i) => {
                           const imgUrl = typeof img === 'string' ? img : (img.url || img.previewUrl || '');
                           return (
-                            <AsyncImagePreview
+                            <AsyncImagePreview visual
                               key={`${i}-${imgUrl}`}
                               src={imgUrl}
                               alt="参考图"
@@ -695,22 +648,22 @@ export default function CreationVideoDetailModal({
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px', width: '100%' }}>
                 <EditTool
                   label="智能超清"
-                  onClick={() => { videoRef.current?.pause(); setUpscaleOpen(true); }}
+                  onClick={() => { media.pause(); setUpscaleOpen(true); }}
                   icon={<VideoEditIcon label="智能超清" />}
                 />
                 <EditTool
                   label="去字幕"
-                  onClick={() => { videoRef.current?.pause(); setSubtitleOpen(true); }}
+                  onClick={() => { media.pause(); setSubtitleOpen(true); }}
                   icon={<VideoEditIcon label="去字幕" />}
                 />
                 <EditTool
                   label="选帧"
-                  onClick={() => { videoRef.current?.pause(); setFrameOpen(true); }}
+                  onClick={() => { media.pause(); setFrameOpen(true); }}
                   icon={<VideoEditIcon label="选帧" />}
                 />
                 <EditTool
                   label="剪辑"
-                  onClick={() => { videoRef.current?.pause(); setTrimOpen(true); }}
+                  onClick={() => { media.pause(); setTrimOpen(true); }}
                   icon={<VideoEditIcon label="剪辑" />}
                 />
               </div>

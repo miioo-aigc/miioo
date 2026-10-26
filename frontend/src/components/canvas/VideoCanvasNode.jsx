@@ -1,4 +1,6 @@
+import AsyncImagePreview from '../AsyncImagePreview';
 import CanvasNodeShell from './CanvasNodeShell';
+import { getCanvasImagePreview, getCanvasOriginalImage, getCanvasVideoPoster } from './CanvasMediaSources';
 import FileUploadButton from '../ui/FileUploadButton';
 import CanvasVideoPlayer from './CanvasVideoPlayer';
 import CanvasAudioPlayer from './CanvasAudioPlayer';
@@ -17,10 +19,10 @@ export default function VideoCanvasNode({ id, data, selected }) {
   };
   return <CanvasNodeShell nodeType="video" title={data?.label || '视频'} selected={selected} data={{ ...data, nodeId: id, onToolbarAction: handleToolbarAction, onPreview: data?.onPreview }} onPromptChange={data?.onPromptChange} onAddReference={data?.onAddReference} onGenerate={data?.onGenerate}>
     {asset?.url ? asset.asset_type === 'image'
-      ? <img className="canvas-node__media" src={asset.url} alt={asset.name || '参考图片'} draggable={false} />
+      ? <AsyncImagePreview plain imageClassName="canvas-node__media" src={getCanvasImagePreview(asset)} fallbackSrc={getCanvasOriginalImage(asset)} imageStyle={{ objectFit: 'contain' }} alt={asset.name || '参考图片'} draggable={false} />
       : asset.asset_type === 'audio'
         ? <CanvasAudioPlayer key={asset.url} url={asset.url} name={asset.name} transcript={getCanvasAudioTranscript(asset)} />
-        : <CanvasVideoPlayer key={asset.url} src={asset.url} poster={asset.posterUrl} />
+        : <CanvasVideoPlayer key={asset.url} src={asset.url} poster={getCanvasVideoPoster(asset)} />
       : <div className="canvas-node__empty-state"><FileUploadButton className="nodrag nopan" onClick={() => data?.onSelectAsset?.(id, 'video')}>从资产库选择</FileUploadButton></div>}
   </CanvasNodeShell>;
 }

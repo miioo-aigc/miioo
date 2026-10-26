@@ -1,6 +1,6 @@
 /**
  * @file StoryboardPage.jsx
- * @structure-index
+ * @structure-index 2026-10-26：L2816 分镜详情启用媒体恢复；页面级加载与生成流程保留。
  *   当前定位（2026-10-21）：本地图片读取 L316、候选合并 L2558 均按账号隔离；executeEpisodeGeneration L2012。下方带日期条目为历史定位。
  *   2026-10-20：L439 beginMediaTask 协调任务标记；L533 归属切换重置；L1008 严格确认生成候选保存；L1495 轮询；L1530/L1549 视频/图片恢复持久候选；L1570 恢复 Hook；L1589/L1686 批量、L2899/L3060 单独入口校验访问归属并保留未确认任务。页面保留 API、缓存及持久化编排，不为行数移动副作用。
  *   2026-10-12：排序请求移出状态更新函数，串行提交并校验分集归属；失败提示刷新核对。
@@ -97,6 +97,9 @@
  *   2026-07-30  完成任务响应适配、重新分镜任务恢复和时间轴候选媒体兼容修复。
  *   2026-07-15  完成主要稳定 UI 区块迁移：镜头行、媒体列、主体参考列、生成面板、批量工具栏和弹窗。
  *   2026-07-01  建立页面结构索引；详细迁移历史见 docs/refactor/component-inventory.md 与 OpenSpec 任务清单。
+
+ * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
+ * 当前定义定位：areCreationFormStatesEqual L136；getStoryboardTaskId L142；getStoryboardTaskError L146；hasBackendStoryboardIds L162；needsLiveMaterialPreview L168；applySeedancePreviewToShot L176；StoryboardPage L273；fallbackCandidates L810；hasStoryboardMediaHint L824。
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -472,7 +475,7 @@ export default function StoryboardPage({ ownerId, projectId, projectName = '两�
 
   useEffect(() => {
     let cancelled = false;
-    apiListModels({ category: 'video' })
+    apiListModels({ category: 'video', fresh: true, availableOnly: true })
       .then((data) => {
         if (!cancelled) setVideoModels(normalizeStoryboardModelList(data, 'video'));
       })
@@ -2810,7 +2813,7 @@ function hasStoryboardMediaHint(shot = {}) {
       }}
     />
     {timelinePreviewMedia ? (
-      <StoryboardMediaDetailModal
+      <StoryboardMediaDetailModal visualMedia
         projectId={projectId}
         key={`${timelinePreviewMedia.shot?.id || 'shot'}-${timelinePreviewMedia.media?.id || timelinePreviewMedia.media?.url || 'media'}`}
         shot={timelinePreviewMedia.shot}

@@ -82,7 +82,7 @@ export function groupCanvasNodes(nodes, id) {
     }
     return true;
   });
-  if (members.length < 2) return nodes;
+  if (!members.length) return nodes;
   const parentId = members.every((node) => node.parentId === members[0].parentId) ? members[0].parentId : undefined;
   const parent = nodes.find((node) => node.id === parentId);
   const origin = parent ? getCanvasAbsolutePosition(nodes, parent) : { x: 0, y: 0 };
@@ -104,13 +104,13 @@ export function groupCanvasNodes(nodes, id) {
     ...node, parentId: id, position: { x: positions.get(node.id).x - box.x, y: positions.get(node.id).y - box.y },
   } : node);
   next.splice(next.findIndex((node) => memberIds.has(node.id)), 0, group);
-  const cleaned = cleanSmallGroups(next, new Set(members.map((node) => node.parentId).filter(Boolean)));
+  const cleaned = cleanSmallGroups(next, new Set(members.map((node) => node.parentId).filter((id) => id && id !== parentId)));
   return setCanvasSelection(fitCanvasGroups(orderParentsFirst(cleaned)), [id]);
 }
 
-export function fitCanvasGroups(nodes) {
+export function fitCanvasGroups(nodes, groupIds) {
   let next = nodes;
-  for (const group of nodes.filter((node) => node.type === 'canvasGroup').reverse()) {
+  for (const group of nodes.filter((node) => node.type === 'canvasGroup' && (!groupIds || groupIds.has(node.id))).reverse()) {
     const members = next.filter((node) => node.parentId === group.id);
     if (!members.length || members.some((node) => node.dragging)) continue;
     const box = bounds(members);
@@ -118,6 +118,11 @@ export function fitCanvasGroups(nodes) {
       if (node.id === group.id) return {
         ...node, position: { x: node.position.x + box.x, y: node.position.y + box.y },
         style: { ...node.style, width: box.width, height: box.height },
+        // 展开边界改变时抵消堆叠偏移，让折叠卡片留在原画布位置。
+        ...(node.data.stacked ? { data: { ...node.data, stackOffset: {
+          x: (node.data.stackOffset?.x || 0) - box.x,
+          y: (node.data.stackOffset?.y || 0) - box.y,
+        } } } : {}),
       };
       return node.parentId === group.id ? { ...node, position: { x: node.position.x - box.x, y: node.position.y - box.y } } : node;
     });

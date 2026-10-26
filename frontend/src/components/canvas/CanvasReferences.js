@@ -81,7 +81,9 @@ export function addCanvasReference(nodes, targetId, selectedAsset, mode = 'all')
     source.data[key] = target.data[key];
   }
   source.data.asset = asset;
-  const next = appendCanvasNode(nodes, source).map((node) => node.id === targetId ? {
+  const appended = appendCanvasNode(nodes, source, target.parentId);
+  if (appended === nodes) return nodes;
+  const next = appended.map((node) => node.id === targetId ? {
     ...node,
     data: { ...node.data, referenceInputs: [...references.map((reference) => ({ sourceId: reference.id, slot: reference.slot })), { sourceId: source.id, slot }], persistenceState: 'draft' },
   } : node);

@@ -90,7 +90,7 @@ export default function ScriptProgressCard({ title, status = 'pending', onClick 
       }}
       role={isClickable ? 'button' : undefined}
       tabIndex={isClickable ? 0 : undefined}
-      aria-label={isClickable ? `查看${title}的分镜` : undefined}
+      aria-label={isClickable ? `查看${title}的${normalizedStatus === 'generated' ? '剪辑草稿' : '分镜'}` : undefined}
       onClick={isClickable ? onClick : undefined}
       onKeyDown={isClickable ? (event) => {
         if (event.key === 'Enter' || event.key === ' ') {

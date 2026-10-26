@@ -3,12 +3,10 @@ import ImageDetailModal from '../ImageDetailModal';
 /**
  * 项目资产卡片的详情弹窗组合适配层。
  *
- * 分镜和主体详情弹窗目前仍定义在 AssetsPage 中，因此通过显式组件 props
- * 接入，避免资产组件反向引用页面；页面继续负责 API、状态和业务回调。
+ * 主体详情通过显式组件 props 接入；分镜详情由项目资产面板统一编排。
  */
 export default function ProjectAssetDetail({
   open = false,
-  category = '',
   name,
   description,
   url,
@@ -23,62 +21,8 @@ export default function ProjectAssetDetail({
   onCreateImage,
   onGenerateImage,
   SubjectAssetDetailModal,
-  ShotDetailModal,
-  ShotVideoDetailModal,
 }) {
   if (!open) return null;
-
-  const mappedImages = images.map((image) => ({
-    ...image,
-    src: image.fileUrl ?? image.url,
-    finalized: image.is_primary,
-  }));
-
-  const isStoryboardVideo = category === 'storyboard_video'
-    || (category === 'storyboard' && asset.assetType === 'video');
-
-  if (category === 'storyboard_img' || (category === 'storyboard' && !isStoryboardVideo)) {
-    return (
-      <ShotDetailModal
-        onClose={onClose}
-        onDownload={() => onDownload?.()}
-        onDelete={() => onDelete?.()}
-        onShowToast={onShowToast}
-        shotNumber={name}
-        prompt={asset.input_prompt ?? asset.prompt}
-        model={asset.model}
-        resolution={asset.resolution}
-        generatedAt={asset.created_at}
-        images={mappedImages}
-        refImages={asset.refImages}
-      />
-    );
-  }
-
-  if (isStoryboardVideo) {
-    return (
-      <ShotVideoDetailModal
-        onClose={onClose}
-        onDownload={() => onDownload?.()}
-        onDelete={() => onDelete?.()}
-        onShowToast={onShowToast}
-        shotNumber={name}
-        prompt={asset.input_prompt ?? asset.prompt}
-        model={asset.model}
-        resolution={asset.resolution}
-        ratio={asset.ratio}
-        generatedAt={asset.created_at}
-        videoSrc={asset.videoUrl}
-        frames={mappedImages}
-        refMode={asset.refMode}
-        refModeLabel={asset.refModeLabel || asset.reference_mode_label}
-        firstFrame={asset.firstFrame}
-        lastFrame={asset.lastFrame}
-        refImages={asset.refImages}
-        refVideos={asset.refVideos}
-      />
-    );
-  }
 
   if (images.length > 0) {
     return (
@@ -109,7 +53,7 @@ export default function ProjectAssetDetail({
   }
 
   return (
-    <ImageDetailModal
+    <ImageDetailModal visualMedia
       onGenerateImage={onGenerateImage}
       card={{
         imageUrl: asset.fileUrl || asset.url || url,

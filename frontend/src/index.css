@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* 原生播放控件仅调整播放状态，禁止被当作视频拖放。 */
+video[controls] {
+  -webkit-user-drag: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+
 @media (max-width: 560px) {
   .script-creation-upload-cards {
     flex-direction: column;

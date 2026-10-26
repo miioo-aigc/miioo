@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { copyCanvasNodes, pasteCanvasNodes, deleteCanvasNodes, hasCanvasDeletionTasks, moveCanvasNodesOut, setCanvasGroupsStacked, getCanvasStackPresentation } from '../src/components/canvas/CanvasNodeActions.js';
 import { createCanvasHistory } from '../src/components/canvas/CanvasHistory.js';
 import { getCanvasGroupFocus } from '../src/components/canvas/CanvasGroupFocus.js';
+import { duplicateCanvasNodes } from '../src/components/canvas/CanvasNodeActions.js';
+import { getCanvasAbsolutePosition } from '../src/components/canvas/CanvasGroups.js';
 
 test('聚焦使用组世界中心，小组不放大，大组保留边距缩小', () => {
   const group = { id: 'g', position: { x: 100, y: 200 }, style: { width: 400, height: 200 } };
@@ -19,6 +21,58 @@ const fixture = () => [
   { id: 'b', type: 'image', parentId: 'g', position: { x: 280, y: 8 }, data: { label: '图片', imageSourceIds: ['a', 'outside'] } },
   { id: 'outside', type: 'text', position: { x: 900, y: 0 }, data: { label: '外部', textSourceIds: ['a'] } },
 ];
+
+test('组内节点副本保留父组、偏移32并扩展边界，可单步撤销重做', () => {
+  const nodes = fixture().map((node) => ({ ...node, selected: node.id === 'b' }));
+  const before = structuredClone(nodes);
+  const history = createCanvasHistory(nodes);
+  history.setNodes((current) => duplicateCanvasNodes(current, () => 'copy'));
+  const result = history.getSnapshot().nodes;
+  const copy = result.at(-1);
+  assert.equal(copy.parentId, 'g');
+  assert.equal(copy.selected, true);
+  assert.deepEqual(getCanvasAbsolutePosition(result, copy), { x: 412, y: 140 });
+  assert.deepEqual(getCanvasAbsolutePosition(result, result[2]), { x: 380, y: 108 });
+  assert.ok(result[0].style.width >= copy.position.x + 240 + 8);
+  assert.deepEqual(nodes, before);
+  history.undo();
+  assert.equal(history.getSnapshot().nodes.length, nodes.length);
+  history.redo();
+  assert.equal(history.getSnapshot().nodes.at(-1).parentId, 'g');
+  history.dispose();
+});
+
+test('嵌套折叠组副本留在父组，内部层级、尺寸、折叠偏移和引用保留', () => {
+  const nodes = fixture();
+  nodes[0].parentId = 'outer';
+  nodes[0].data = { ...nodes[0].data, stacked: true, stackOffset: { x: 40, y: 60 } };
+  nodes.unshift({ id: 'outer', type: 'canvasGroup', position: { x: 1000, y: 2000 }, style: { width: 900, height: 800 }, data: {} });
+  let sequence = 0;
+  const result = duplicateCanvasNodes(nodes, () => String(++sequence));
+  const [group, a, b] = result.slice(nodes.length);
+  assert.equal(group.parentId, 'outer');
+  assert.deepEqual(group.style, nodes[1].style);
+  assert.equal(group.data.stacked, true);
+  assert.deepEqual(group.data.stackOffset, { x: 40, y: 60 });
+  assert.deepEqual(getCanvasAbsolutePosition(result, group), { x: 1132, y: 2132 });
+  assert.equal(a.parentId, group.id);
+  assert.deepEqual(a.position, nodes[2].position);
+  assert.deepEqual(b.data.imageSourceIds, [a.id]);
+  assert.equal(a.data.generating, undefined);
+  assert.deepEqual(result.filter((node) => node.selected).map((node) => node.id), [group.id]);
+});
+
+test('跨组多选副本分别保留父组；普通复制粘贴仍脱离原组按落点放置', () => {
+  const nodes = fixture().map((node) => ({ ...node, selected: ['a', 'outside'].includes(node.id) }));
+  let sequence = 0;
+  const result = duplicateCanvasNodes(nodes, () => String(++sequence));
+  assert.equal(result.at(-2).parentId, 'g');
+  assert.equal(result.at(-1).parentId, undefined);
+  assert.deepEqual(result.at(-1).position, { x: 932, y: 32 });
+  const pasted = pasteCanvasNodes(nodes, copyCanvasNodes(nodes), { x: -300, y: -400 });
+  assert.equal(pasted.at(-2).parentId, undefined);
+  assert.deepEqual(pasted.at(-2).position, { x: -300, y: -292 });
+});
 
 test('清空覆盖未选中节点和组，单步撤销恢复布局与内部引用，重做再次清空', () => {
   const nodes = fixture();

@@ -1,10 +1,11 @@
+import { getImageReferenceId, getImageReferenceUrl, isManagedImageUrl } from '../src/api/ImageReferences.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 
 const source = readFileSync(new URL('../src/api/canvasAssets.js', import.meta.url), 'utf8')
-  .replace(/^import \{[\s\S]*?\} from .*;\n/, '').replace(/export /g, '');
+  .replace(/^import \{[\s\S]*?\} from .*;\n/, '').replace(/^import .*;$/mg, '').replace(/export /g, '');
 const projectId = '10000000-0000-0000-0000-000000000001';
 const assetId = '20000000-0000-0000-0000-000000000001';
 const file = { name: '素材.png' };
@@ -12,7 +13,8 @@ const file = { name: '素材.png' };
 function setup(payload = { asset_id: assetId, uploaded_url: 'https://media.example.test/a' }) {
   const calls = [];
   const upload = async (args) => { calls.push(args); return payload; };
-  const api = runInNewContext(`${source}\n({uploadCanvasAsset,normalizeCanvasUploadedAsset})`, {
+  const api = runInNewContext(`${source}\n({uploadCanvasAsset,normalizeCanvasUploadedAsset,ensureCanvasImageAsset})`, {
+    getImageReferenceId, getImageReferenceUrl, isManagedImageUrl, getAuthSessionGeneration: () => 1, File, fetch,
     apiUploadCreationImage: upload, apiUploadCreationVideo: upload, apiUploadCreationAudio: upload,
   });
   return { ...api, calls };
@@ -47,5 +49,12 @@ test('只接受永久素材编号，明确的asset_id优先于嵌套普通id，�
     { asset_id: 'temporary', url: 'blob:a' },
     { file_id: assetId, url: 'https://media.example.test/a' },
   ]) assert.throws(() => normalize(payload, file, 'image'), /永久素材编号/);
-  assert.throws(() => normalize({ asset_id: assetId }, file, 'image'), /预览地址/);
+  assert.throws(() => normalize({ asset_id: assetId }, file, 'image'), /素材地址/);
+});
+
+test('后台上传与生成兜底复用同一临时图片，项目隔离', async () => {
+ const api = setup(); const asset = {url:'blob:one',file:new File(['x'],'x.png')};
+ const [a,b] = await Promise.all([api.ensureCanvasImageAsset(asset,{projectId}),api.ensureCanvasImageAsset(asset,{projectId})]);
+ assert.equal(api.calls.length,1); assert.equal(a,b);
+ await api.ensureCanvasImageAsset(asset,{}); assert.equal(api.calls.length,2);
 });

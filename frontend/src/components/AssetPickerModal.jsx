@@ -2,8 +2,10 @@
  * @file AssetPickerModal.jsx
  * @description 项目资产、创作资产与 Seedance 素材的统一选择弹窗。
  *
- * ─── 结构索引 ─────────────────────────────────────────── 2026-10-21：账号入口 L487、分页 L1085、读取反馈 L1580。
- *   更新：按账号重建弹窗临时状态；创作分页校验弹窗会话和认证代际；其他来源失败边界待续审。
+ * ─── 结构索引 ─────────────────────────────────────────── 2026-10-22：账号入口 L490、分页 L1125、读取反馈 L1637。
+ *   更新：关闭卸载及账号/父项目/类型切换隔离；非创作读取错误重试、旧请求写回拦截和异步确认锁。
+ *   更新：补全传入当前会话检查，失败走原重试反馈；共享补全限制并发并停止旧调度。
+ *   后续：全量分页与服务端定稿/范围契约待处理，本轮不代表大容量目标完成。
  *   AssetCard / 空态 / 悬浮预览：资产展示与预览
  *   AssetPickerModal：状态、数据适配、会话复位及请求
  *   toggle / handleConfirm / filteredAssets：选择、确认与筛选
@@ -487,7 +489,7 @@ function AssetHoverPreview({ url, mouseX, mouseY }) {
 
 export default function AssetPickerModal(props) {
   const ownerId = useCreationStore((state) => state.ownerId);
-  return <AccountAssetPickerModal key={ownerId ?? 'guest'} {...props} />;
+  return props.open ? <AccountAssetPickerModal key={JSON.stringify([ownerId, props.projectId, props.accept])} {...props} /> : null;
 }
 
 function AccountAssetPickerModal({
@@ -525,9 +527,13 @@ function AccountAssetPickerModal({
   const creativeRequestedPagesRef = useRef(new Set());
   const creativeSessionRef = useRef(0);
   useEffect(() => () => { creativeSessionRef.current += 1; }, []);
+  const confirmBusyRef = useRef(false);
+  const [confirmError, setConfirmError] = useState('');
   const [seedanceGroups, setSeedanceGroups] = useState([]);
   const [seedanceAssets, setSeedanceAssets] = useState([]);
   const [seedanceLoading, setSeedanceLoading] = useState(false);
+  const [seedanceError, setSeedanceError] = useState('');
+  const [seedanceRetry, setSeedanceRetry] = useState(0);
   const [activeSeedanceGroup, setActiveSeedanceGroup] = useState(null);
   const [seedanceSubTab, setSeedanceSubTab] = useState('real');
   const showSeedanceTab = includeSeedanceLibrary || isSeedanceModel(model);
@@ -796,17 +802,22 @@ function AccountAssetPickerModal({
   const projectBtnRef = useRef(null);
 
   useEffect(() => {
-    if (!open || !showSeedanceTab || activeTab !== 'seedance') return;
+    if (!open || !showSeedanceTab || activeTab !== 'seedance' || activeSeedanceGroup) return;
     let cancelled = false;
+    const authSession = getAuthSessionGeneration();
+    const isCurrent = () => !cancelled && authSession === getAuthSessionGeneration();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSeedanceLoading(true);
+    setSeedanceError('');
     apiListLiveMaterialGroups()
       .then(async (groups) => {
-        if (cancelled) return;
+        if (!isCurrent()) return;
         const normalizedGroups = Array.isArray(groups) ? groups : [];
         const groupsWithPreviews = await Promise.all(normalizedGroups.map(async (group) => {
           try {
+            if (!isCurrent()) return group;
             const assets = await apiListLiveMaterialAssets(group.id);
+            if (!isCurrent()) return group;
             return {
               ...group,
               images: (Array.isArray(assets) ? assets : []).slice(0, 2).map((asset) => {
@@ -826,40 +837,51 @@ function AccountAssetPickerModal({
             return { ...group, images: [] };
           }
         }));
-        if (!cancelled) setSeedanceGroups(groupsWithPreviews);
+        if (isCurrent()) setSeedanceGroups(groupsWithPreviews);
       })
       .catch((error) => {
-        if (!cancelled) console.error('[AssetPickerModal] 拉取Seedance素材组失败:', error);
+        if (isCurrent()) {
+          console.error('[AssetPickerModal] 拉取Seedance素材组失败:', error);
+          setSeedanceError('素材组读取失败，请重试');
+        }
       })
       .finally(() => {
-        if (!cancelled) setSeedanceLoading(false);
+        if (isCurrent()) setSeedanceLoading(false);
       });
     return () => { cancelled = true; };
-  }, [open, activeTab, showSeedanceTab]);
+  }, [open, activeTab, showSeedanceTab, activeSeedanceGroup, seedanceRetry]);
 
   useEffect(() => {
+    if (!open || activeTab !== 'seedance') return undefined;
     if (!activeSeedanceGroup) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSeedanceAssets([]);
       return undefined;
     }
     let cancelled = false;
+    const authSession = getAuthSessionGeneration();
+    const isCurrent = () => !cancelled && authSession === getAuthSessionGeneration();
     setSeedanceLoading(true);
+    setSeedanceAssets([]);
+    setSeedanceError('');
     apiListLiveMaterialAssets(activeSeedanceGroup.id)
       .then((assets) => {
-        if (cancelled) return;
+        if (!isCurrent()) return;
         setSeedanceAssets((Array.isArray(assets) ? assets : []).map((asset) => (
           toSeedancePickerAsset(asset, activeSeedanceGroup)
         )));
       })
       .catch((error) => {
-        if (!cancelled) console.error('[AssetPickerModal] 拉取Seedance素材失败:', error);
+        if (isCurrent()) {
+          console.error('[AssetPickerModal] 拉取Seedance素材失败:', error);
+          setSeedanceError('素材读取失败，请重试');
+        }
       })
       .finally(() => {
-        if (!cancelled) setSeedanceLoading(false);
+        if (isCurrent()) setSeedanceLoading(false);
       });
     return () => { cancelled = true; };
-  }, [activeSeedanceGroup]);
+  }, [open, activeTab, activeSeedanceGroup, seedanceRetry]);
 
   // ── 从后端拉取真实数据 ──────────────────────────────────────────────────
   const [apiProjects, setApiProjects] = useState(null);
@@ -870,6 +892,8 @@ function AccountAssetPickerModal({
   // 已加载完成的 tab key 集合：key = `${projectId}__${tabKey}`
   const [loadedTabKeys, setLoadedTabKeys] = useState(new Set());
   const [loadingTabKeys, setLoadingTabKeys] = useState(new Set());
+  const [projectTabErrors, setProjectTabErrors] = useState({});
+  const [projectTabRetry, setProjectTabRetry] = useState(0);
   const [loadingCreativeTabs, setLoadingCreativeTabs] = useState(new Set());
 
   useEffect(() => {
@@ -931,6 +955,8 @@ function AccountAssetPickerModal({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    const authSession = getAuthSessionGeneration();
+    const isCurrent = () => !cancelled && authSession === getAuthSessionGeneration();
     // 弹窗重新打开或显式重试时同步本次远程读取状态，不派生业务数据。
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setProjectsLoading(true);
@@ -939,15 +965,15 @@ function AccountAssetPickerModal({
       try {
         // 拉取所有项目列表
         const projList = await apiGetProjects();
-        if (cancelled) return;
+        if (!isCurrent()) return;
         const projs = Array.isArray(projList) ? [...projList].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)).map(p => ({ id: p.id, name: p.name })) : [];
         setApiProjects(projs);
       } catch (err) {
-        if (cancelled) return;
+        if (!isCurrent()) return;
         console.error('[AssetPickerModal] 拉取项目列表失败:', err);
         setProjectsError('项目列表读取失败，请重试');
       } finally {
-        if (!cancelled) setProjectsLoading(false);
+        if (isCurrent()) setProjectsLoading(false);
       }
     })();
     return () => { cancelled = true; };
@@ -1017,7 +1043,13 @@ function AccountAssetPickerModal({
     const categoryFilter = SUB_TAB_CATEGORY_MAP[projectSubTab];
     if (!categoryFilter) return;
 
+    let cancelled = false;
+    const authSession = getAuthSessionGeneration();
+    const isCurrent = () => !cancelled && authSession === getAuthSessionGeneration();
     setLoadingTabKeys(prev => new Set([...prev, pKey]));
+    // 分类请求开始时清理此前的读取失败，保留业务缓存。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setProjectTabErrors(prev => ({ ...prev, [pKey]: '' }));
 
     (async () => {
       try {
@@ -1038,6 +1070,7 @@ function AccountAssetPickerModal({
             let hasMore = true;
 
             while (hasMore) {
+              if (!isCurrent()) return;
               const page = await apiGetAssetsPage({
                 project_id: pullProjectId,
                 scope: 'project',
@@ -1046,6 +1079,7 @@ function AccountAssetPickerModal({
                 category: cat,
                 ...(assetType ? { asset_type: assetType } : {}),
               });
+              if (!isCurrent()) return;
               allItems.push(...page.list);
               hasMore = page.hasMore;
               cursor = page.nextCursor;
@@ -1057,7 +1091,9 @@ function AccountAssetPickerModal({
         // 分镜 Tab 需要用分镜板数据交叉比对，补全 is_primary / ratio 字段。
         // storyboard/reference 两类接口可能返回同一媒体，合并前按媒体地址去重。
         const isStoryboardTab = tabKey === 'storyboard';
-        const enriched = await enrichWithStoryboards(pullProjectId, allItems, isStoryboardTab);
+        if (!isCurrent()) return;
+        const enriched = await enrichWithStoryboards(pullProjectId, allItems, isStoryboardTab, { isCurrent });
+        if (!isCurrent()) return;
         // 主体分类只展示仍绑定主体的资产。主体删除时，创作资产可能按既有规则
         // 保留但解除 subject_id；这类资产不能再冒充已存在的角色/场景/道具。
         const subjectCategoryTabs = new Set(['chars', 'scenes', 'props']);
@@ -1070,16 +1106,19 @@ function AccountAssetPickerModal({
         }));
         setLoadedTabKeys(prev => new Set([...prev, pKey]));
       } catch (err) {
+        if (!isCurrent()) return;
         console.error('[AssetPickerModal] 拉取项目资产失败:', err);
+        setProjectTabErrors(prev => ({ ...prev, [pKey]: '项目资产读取失败，请重试' }));
       } finally {
-        setLoadingTabKeys(prev => {
+        if (isCurrent()) setLoadingTabKeys(prev => {
           const next = new Set(prev);
           next.delete(pKey);
           return next;
         });
       }
     })();
-  }, [open, activeTab, accept, projectId, activeProjectId, projectSubTab, loadedTabKeys]);
+    return () => { cancelled = true; };
+  }, [open, activeTab, accept, projectId, activeProjectId, projectSubTab, loadedTabKeys, projectTabRetry]);
 
   // 创作资产按类型独立分页。页码在请求发出前写入 ref，避免 effect、滚动事件或
   // React 严格模式重复触发同一页，尤其保证第一页在一次弹窗会话中只请求一次。
@@ -1209,11 +1248,20 @@ function AccountAssetPickerModal({
   };
 
   const handleRequestClose = () => {
+    creativeSessionRef.current += 1;
     onClose?.();
   };
 
   const handleConfirm = async () => {
-    if (confirming) return;
+    if (confirmBusyRef.current) return;
+    confirmBusyRef.current = true;
+    const session = creativeSessionRef.current;
+    const authSession = getAuthSessionGeneration();
+    const isCurrent = () => session === creativeSessionRef.current
+      && authSession === getAuthSessionGeneration();
+    setConfirmError('');
+    setConfirming(true);
+    try {
     // 构建全量 id→asset map，供按 ID 查完整对象
     const allAssets = [
       ...Object.values(projectAssetsMap).flatMap(p => Object.values(p).flat()),
@@ -1234,11 +1282,10 @@ function AccountAssetPickerModal({
 
     const selectedSeedanceAssets = selectedAssets.filter((asset) => asset.isSeedanceMaterial);
     if (selectedSeedanceAssets.length > 0) {
-      setConfirming(true);
-      try {
         // 素材列表可能只返回 asset:// 身份或旧审核状态。确认前获取详情，
         // 让保存到分镜的数据始终带可展示的 preview_url/source_url。
         const hydratedAssets = await Promise.all(selectedAssets.map(async (asset) => {
+          if (!isCurrent()) return asset;
           if (!asset.isSeedanceMaterial || !asset.id) return asset;
           // 虚拟人像列表接口已经返回完整的 source_url/preview_url，且列表卡片
           // 已经使用同一个对象完成渲染。确认时再次请求详情会引入另一套字段
@@ -1249,6 +1296,7 @@ function AccountAssetPickerModal({
           }
           try {
             const detail = await apiGetLiveMaterialAsset(asset.id);
+            if (!isCurrent()) return asset;
             const detailAsset = unwrapLiveMaterialAsset(detail);
             let hydrated = toSeedancePickerAsset({ ...asset, ...detailAsset }, {
               id: asset.groupId,
@@ -1259,6 +1307,7 @@ function AccountAssetPickerModal({
             // 获取当前页面真正可读取的地址，同时保留 assetRefUrl 供 Seedance 生成请求使用。
             if (asset.isAigcMaterial && !hydrated.url) {
               const preview = await apiGetLiveMaterialPreview(asset.id);
+              if (!isCurrent()) return asset;
               const previewUrl = normalizeSeedanceMediaUrl(preview?.previewUrl);
               if (previewUrl) {
                 hydrated = {
@@ -1273,21 +1322,28 @@ function AccountAssetPickerModal({
             }
             return hydrated;
           } catch (error) {
+            if (!isCurrent()) return asset;
             console.warn('[AssetPickerModal] 获取Seedance素材详情失败，使用列表数据继续保存:', error);
             return asset;
           }
         }));
+        if (!isCurrent()) return;
         selectedAssets = hydratedAssets;
-      } finally {
-        setConfirming(false);
-      }
     }
+    if (!isCurrent()) return;
     if (validateSelection && !validateSelection(selectedAssets)) return;
-    setConfirming(true);
-    try {
       if (await onConfirm?.(selectedAssets) === false) return;
+      if (!isCurrent()) return;
       handleRequestClose();
-    } finally { setConfirming(false); }
+    } catch (error) {
+      if (isCurrent()) {
+        console.error('[AssetPickerModal] 确认素材失败:', error);
+        setConfirmError('素材确认失败，请检查后重试');
+      }
+    } finally {
+      confirmBusyRef.current = false;
+      if (isCurrent()) setConfirming(false);
+    }
   };
 
   const handleSelectProject = (p) => {
@@ -1578,7 +1634,8 @@ function AccountAssetPickerModal({
 
         {/* ── 内容区（可滚动） ── */}
         <div onScroll={handleContentScroll} style={{ flex: 1, overflowY: 'auto', padding: '8px 24px', display: 'flex', flexDirection: 'column' }}>
-          {activeTab === 'project' && projectsError && !projectsLoading ? <RemoteReadStatus error={projectsError} onRetry={() => setProjectsRetry((value) => value + 1)} /> : contentLoading ? <LoadingState /> : activeTab === 'seedance' && !activeSeedanceGroup ? (
+          {confirmError && <RemoteReadStatus error={confirmError} />}
+          {activeTab === 'project' && projectsError && !projectsLoading ? <RemoteReadStatus error={projectsError} onRetry={() => setProjectsRetry((value) => value + 1)} /> : activeTab === 'project' && projectTabErrors[currentProjectTabKey] ? <RemoteReadStatus error={projectTabErrors[currentProjectTabKey]} onRetry={() => setProjectTabRetry(value => value + 1)} /> : activeTab === 'seedance' && seedanceError ? <RemoteReadStatus error={seedanceError} onRetry={() => setSeedanceRetry(value => value + 1)} /> : contentLoading ? <LoadingState /> : activeTab === 'seedance' && !activeSeedanceGroup ? (
             seedanceGroups.filter((group) => seedanceSubTab === 'virtual' ? String(group.group_type || '').toUpperCase() === 'AIGC' : String(group.group_type || '').toUpperCase() !== 'AIGC').length === 0 ? <EmptyState /> : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px', paddingTop: '8px', paddingBottom: '8px', alignContent: 'flex-start' }}>
                 {seedanceGroups.filter((group) => seedanceSubTab === 'virtual' ? String(group.group_type || '').toUpperCase() === 'AIGC' : String(group.group_type || '').toUpperCase() !== 'AIGC').map((group) => (

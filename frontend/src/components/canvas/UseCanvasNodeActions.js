@@ -1,7 +1,7 @@
 /** 菜单与快捷键共用动作入口；弹窗状态隔离画布快捷键。 */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { groupCanvasNodes, setCanvasSelection, ungroupCanvasNodes } from './CanvasGroups';
-import { copyCanvasNodes, pasteCanvasNodes, deleteCanvasNodes, hasCanvasDeletionTasks, moveCanvasNodesOut, setCanvasGroupsStacked } from './CanvasNodeActions';
+import { copyCanvasNodes, pasteCanvasNodes, duplicateCanvasNodes, deleteCanvasNodes, hasCanvasDeletionTasks, moveCanvasNodesOut, setCanvasGroupsStacked } from './CanvasNodeActions';
 import { getCanvasGroupFocus } from './CanvasGroupFocus';
 import { canMoveCanvasNodesInto, canvasTransferRoots, moveCanvasNodesInto } from './CanvasGroupTransfer';
 import { showGlobalToast } from '../../stores/toastStore';
@@ -60,11 +60,12 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
       showGlobalToast(`${label}已经移入${target.data.label}`, 'success');
     }
     if (action === 'copy') { setClipboard(copyCanvasNodes(nodes)); pasteCount.current = 0; }
-    if (action === 'paste' || action === 'duplicate') {
-      const contents = action === 'duplicate' ? copyCanvasNodes(nodes) : clipboard;
+    if (action === 'duplicate') setNodes(duplicateCanvasNodes);
+    if (action === 'paste') {
+      const contents = clipboard;
       const roots = contents.filter((node) => !node.parentId);
       if (roots.length) {
-        const offset = 32 * (action === 'duplicate' ? 1 : ++pasteCount.current);
+        const offset = 32 * ++pasteCount.current;
         const rect = containerRef.current?.getBoundingClientRect();
         const point = menu ? { x: menu.x, y: menu.y } : rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
         const position = action === 'paste' && point && flowInstance
@@ -77,7 +78,10 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
     }
     if (action === 'group') setNodes((current) => groupCanvasNodes(current, `canvas-group-${crypto.randomUUID()}`));
     if (action === 'ungroup') setNodes(ungroupCanvasNodes);
-    if (action === 'stack' || action === 'unstack') setNodes((current) => setCanvasGroupsStacked(current, ids, action === 'stack'));
+    if (action === 'stack' || action === 'unstack') {
+      const center = action === 'stack' && menu?.id ? menu.flowPosition : undefined;
+      setNodes((current) => setCanvasGroupsStacked(current, ids, action === 'stack', center));
+    }
     if (action === 'unstack') setFocusGroupId(selected.find((node) => node.type === 'canvasGroup')?.id || null);
     if (action === 'moveOut') {
       const messages = selected.flatMap((node) => {
@@ -87,7 +91,6 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
       setNodes((current) => moveCanvasNodesOut(current, ids));
       if (messages.length) showGlobalToast(messages.join('；'), 'success');
     }
-    if (action === 'rename' && selected.length === 1) setDialog({ type: 'rename', ids, value: selected[0].data.label });
     if (action === 'clear' && nodes.length) {
       const allIds = nodes.map((node) => node.id);
       if (hasCanvasDeletionTasks(nodes, allIds)) setDialog({ type: 'clear' });
@@ -113,7 +116,7 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
       let action;
       if (event.metaKey || event.ctrlKey) {
         if (key === 'g') action = event.altKey ? (event.shiftKey ? 'unstack' : 'stack') : (event.shiftKey ? 'ungroup' : 'group');
-        else if (!event.altKey && !event.shiftKey) action = { c: 'copy', d: 'duplicate', v: 'paste', r: 'rename' }[key];
+        else if (!event.altKey && !event.shiftKey) action = { c: 'copy', d: 'duplicate', v: 'paste' }[key];
         // macOS 的 Option+G 会改变 event.key，使用物理键码识别。
         if (event.altKey && event.code === 'KeyG') action = event.shiftKey ? 'unstack' : 'stack';
       } else if (!event.altKey && ['Backspace', 'Delete'].includes(event.key)) action = 'delete';
@@ -157,7 +160,8 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
       event.preventDefault();
       cancelPendingClicks();
       if (!node.selected) setNodes((current) => setCanvasSelection(current, [node.id]), { record: false });
-      setMenu({ id: node.id, x: event.clientX, y: event.clientY });
+      const point = { x: event.clientX, y: event.clientY };
+      setMenu({ id: node.id, ...point, flowPosition: flowInstance?.screenToFlowPosition(point, { snapToGrid: false }) });
     },
     confirm: () => {
       if (!dialog) return;

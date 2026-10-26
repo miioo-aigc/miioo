@@ -1,6 +1,6 @@
 /**
  * @file AssetsCreativePanel.jsx
- * @structure-index：2026-10-21 账号入口 L52、访问隔离 L57、历史分页 L261、读取反馈 L641。
+ * @structure-index：2026-10-26 账号入口 L56、访问隔离 L61、历史分页 L274、读取反馈 L656。
  *   更新：按账号重建局部状态；分页、音频详情及收藏回执校验账号与认证代际。
  *
  * ─── 组件职责 ───────────────────────────────────────
@@ -11,6 +11,8 @@
  *   通过全局 Store、创作 API 和显式 UI 组件组合，不读取页面入口闭包。
  *
  * ─── 更新记录 ───────────────────────────────────────
+ *   2026-10-26  列表读取保留原反馈；像素加载仅用于媒体预览占位框
+ *   2026-10-23  释放严格模式重放的旧请求锁；列表读取限时30秒，失败可重试并隔离旧回执
  *   2026-10-12  订阅视频编辑任务占位，复用视频加载卡；完成后仍写入本地历史
  *   2026-10-08  视频编辑完成事件按产物类型写入本地列表，不替换原资产
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
@@ -19,6 +21,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { getAuthSessionGeneration } from '../../api/request';
 import { createCreationHistoryVisit } from '../../utils/CreationHistoryScope';
+import { readCreationHistoryPage } from '../../api/CreationHistoryRead';
 import { createPortal } from 'react-dom';
 import { apiDeleteCreationImage, apiDeleteCreationVideo, apiDeleteCreationAudio, apiBatchDeleteImages, apiBatchDeleteVideos, apiBatchDeleteAudios, apiToggleImageFavorite, apiToggleVideoFavorite, apiToggleAudioFavorite, apiListCreationImages, apiListCreationVideos, apiListCreationAudios, apiGetCreationAudio, apiDownloadCreationImage, apiDownloadCreationVideo, apiDownloadCreationAudio } from '../../api/creation';
 import { useCreationStore } from '../../stores/creationStore';
@@ -61,7 +64,16 @@ function AccountCreativePanel({ isLoggedIn, ownerId }) {
     const visit = createCreationHistoryVisit(ownerId, getAuthSessionGeneration(),
       () => useCreationStore.getState().ownerId, getAuthSessionGeneration);
     visitRef.current = visit;
-    return () => visit.stop();
+    const requests = historyRequestTabsRef.current;
+    return () => {
+      visit.stop();
+      requests.forEach((request) => request.abort());
+      requests.clear();
+      // 严格模式重放保留 state/ref；释放旧访问的加载标记供新访问重读。
+      creationHistoryMetaRef.current = Object.fromEntries(
+        Object.entries(creationHistoryMetaRef.current).map(([tab, meta]) => [tab, { ...meta, loading: false }]),
+      );
+    };
   }, [ownerId]);
   const videoEditTasks = useVideoEditStore((state) => state.tasks);
   const [activeType, setActiveType] = useState('image');
@@ -97,7 +109,7 @@ function AccountCreativePanel({ isLoggedIn, ownerId }) {
   // 始终指向最新本地 state，供 loadHistoryPage 同步读取（对应原 useCreationStore.getState()）
   const creationGenerationsRef = useRef(creationGenerationsByTab);
   const creationHistoryMetaRef = useRef(creationHistoryMeta);
-  const historyRequestTabsRef = useRef(new Set());
+  const historyRequestTabsRef = useRef(new Map());
   const favorites = useCreationStore((s) => s.favorites);
   const storeToggleFavorite = useCreationStore((s) => s.toggleFavorite);
   const storeSyncFavorites = useCreationStore((s) => s.syncFavorites);
@@ -266,21 +278,20 @@ function AccountCreativePanel({ isLoggedIn, ownerId }) {
     const meta = creationHistoryMetaRef.current[tab];
     if (meta.loading || !meta.hasMore || historyRequestTabsRef.current.has(tab)) return;
 
-    historyRequestTabsRef.current.add(tab);
+    const request = new AbortController();
+    historyRequestTabsRef.current.set(tab, request);
     setCreationHistoryMeta((prev) => ({ ...prev, [tab]: { ...prev[tab], loading: true, error: '' } }));
     const nextPage = meta.page + 1;
     const pageSize = calcCreativePageSize();
 
     try {
-      let resp;
-      if (tab === 'image') {
-        // 资产库不传 exclude_hidden，保持「可见全部创作资产」的既有口径
-        resp = await apiListCreationImages({ page: nextPage, page_size: pageSize });
-      } else if (tab === 'video') {
-        resp = await apiListCreationVideos({ page: nextPage, page_size: pageSize });
-      } else {
-        resp = await apiListCreationAudios({ page: nextPage, page_size: pageSize });
-      }
+      // 资产库不传 exclude_hidden；只重试读取，不创建或删除资产。
+      const listApi = tab === 'image' ? apiListCreationImages
+        : tab === 'video' ? apiListCreationVideos : apiListCreationAudios;
+      const resp = await readCreationHistoryPage(
+        (signal) => listApi({ page: nextPage, page_size: pageSize }, { signal }),
+        { signal: request.signal },
+      );
 
       if (!visit.isCurrent()) return;
       const type = tab === 'dubbing' ? 'audio' : tab;
@@ -369,14 +380,14 @@ function AccountCreativePanel({ isLoggedIn, ownerId }) {
         ...prev,
         [tab]: { ...prev[tab], page: nextPage, hasMore, loading: false, initialized: true },
       }));
-    } catch {
+    } catch (error) {
       if (!visit.isCurrent()) return;
       setCreationHistoryMeta((prev) => ({
         ...prev,
-        [tab]: { ...prev[tab], loading: false, initialized: true, error: '创作资产读取失败，请重试' },
+        [tab]: { ...prev[tab], loading: false, initialized: true, error: error.message === '创作资产读取超时，请重试' ? error.message : '创作资产读取失败，请重试' },
       }));
     } finally {
-      historyRequestTabsRef.current.delete(tab);
+      if (historyRequestTabsRef.current.get(tab) === request) historyRequestTabsRef.current.delete(tab);
     }
   }, [isLoggedIn, storeSyncFavorites]);
 

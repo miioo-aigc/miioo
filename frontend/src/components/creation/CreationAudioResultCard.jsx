@@ -1,10 +1,12 @@
 /**
  * @file CreationAudioResultCard.jsx
  * @structure-index
+ * 2026-10-26：音频播放等待不显示像素加载与占位；失败刷新及继续播放保留图标。
+ * 2026-10-23 媒体等待、失败及一次联网重载；恢复后点击播放。
  *
  * ─── 状态层 ─────────────────────────────────────────────────────
  *   hovered / playing / starAnim / confirmDelete                 悬停、播放、收藏动画和删除确认状态
- *   activeAudioKey                                               共享播放器当前播放卡片
+ *   playback                                                     共享播放器状态与当前归属
  *
  * ─── 展示层 ────────────────────────────────────────────────────
  *   CreationAudioResultCard                                      配音结果卡、波形、收藏、批量选择和媒体操作
@@ -34,6 +36,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import MediaLoadStatus from '../feedback/MediaLoadStatus';
 import Checkbox from '../Checkbox';
 import ConfirmDialog from '../ConfirmDialog';
 import LoadingAnimation from '../LoadingAnimation';
@@ -41,9 +44,10 @@ import CreationCardActionButton from './CreationCardActionButton';
 import CreationDubbingPromptPreview from './CreationDubbingPromptPreview';
 import { DeleteIcon, FavoriteIcon } from '../ui';
 import {
-  getActiveVoicePreviewKey,
+  getVoicePreviewState,
+  retryVoicePreview,
   stopVoicePreview,
-  subscribeVoicePreview,
+  subscribeVoicePreviewState,
   toggleVoicePreview,
 } from '../../utils/voicePreviewPlayer';
 
@@ -75,12 +79,13 @@ export default function CreationAudioResultCard({
   onToggleFavorite,
 }) {
   const [hovered, setHovered] = useState(false);
-  const [activeAudioKey, setActiveAudioKey] = useState(() => getActiveVoicePreviewKey());
+  const [playback, setPlayback] = useState(() => getVoicePreviewState());
   const [starAnim, setStarAnim] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isDone = status === 'done' && audioUrl;
   const audioKey = String(playbackKey || audioId || id || `${audioUrl}:${prompt || ''}`);
-  const playing = activeAudioKey === audioKey;
+  const media = playback.key === audioKey ? playback : { status: 'idle' };
+  const playing = media.status === 'playing';
 
   function handleStarClick(e) {
     e.stopPropagation();
@@ -89,9 +94,9 @@ export default function CreationAudioResultCard({
     onToggleFavorite?.();
   }
 
-  useEffect(() => subscribeVoicePreview(setActiveAudioKey), []);
+  useEffect(() => subscribeVoicePreviewState(setPlayback), []);
 
-  useEffect(() => () => stopVoicePreview(audioKey), [audioKey]);
+  useEffect(() => () => stopVoicePreview(audioKey), [audioKey, audioUrl]);
 
   async function handlePlayClick(event) {
     event.stopPropagation();
@@ -121,6 +126,7 @@ export default function CreationAudioResultCard({
           </div>
         ) : isDone ? (
           <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '12px', padding: batchMode && selectionCheckboxPosition === 'left' ? '36px 16px 16px' : '16px', boxSizing: 'border-box' }}>
+            <MediaLoadStatus visual showLoading={false} {...media} overlay={false} onPause={handlePlayClick} onRetry={() => retryVoicePreview(audioKey)} onPlay={handlePlayClick} />
             <CreationDubbingPromptPreview
               prompt={prompt}
               advancedEnabled={advancedEnabled}
@@ -130,7 +136,7 @@ export default function CreationAudioResultCard({
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', paddingRight: hovered ? '56px' : 0, boxSizing: 'border-box', flexShrink: 0 }}>
               <button
                 type="button"
-                aria-label={playing ? '暂停播放' : '播放配音'}
+                aria-label={media.status === 'loading' ? '取消加载' : playing ? '暂停播放' : '播放配音'}
                 onClick={handlePlayClick}
                 style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', backgroundColor: '#2DC3E1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
               >

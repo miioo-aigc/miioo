@@ -13,7 +13,9 @@ export function toCanvasAsset(asset, nodeType) {
   const urls = [asset.fileUrl, asset.file_url, asset[`${type}Url`], asset[`${type}_url`], asset.sourceUrl, asset.source_url, asset.url];
   const url = urls.find((value) => typeof value === 'string' && /^(https?:\/\/|blob:|\/)/i.test(value));
   if (!url) return null;
-  return { ...asset, asset_type: type, url, name: asset.name || '未命名素材' };
+  const thumbnailUrl = asset.thumbnailUrl || asset.thumbnail_url
+    || (asset.fileUrl && asset.url !== url ? asset.url : undefined);
+  return { ...asset, thumbnailUrl, asset_type: type, url, name: asset.name || '未命名素材' };
 }
 
 export function applyCanvasAsset(nodes, nodeId, selectedAsset) {

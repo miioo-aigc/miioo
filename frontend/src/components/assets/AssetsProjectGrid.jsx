@@ -69,7 +69,7 @@ export default function AssetsProjectGrid({
         starred={asset.starred}
         selected={isSelected}
         batchMode={batchMode}
-        assetType={activeCategory === 'storyboard' ? 'shot' : 'asset'}
+        isFinalVideo={activeCategory === 'final'}
         videoObjectFit={activeCategory === 'final' ? 'contain' : 'cover'}
         onSelect={() => onSelect(asset.id)}
         onStar={() => onStar(asset.id)}

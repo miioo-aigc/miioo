@@ -1,10 +1,12 @@
 /**
  * 首页导航配置与图标展示。仅提供静态配置，不读取页面状态或执行导航副作用。
  * 2026-10-20：画布入口调整至项目之后、创作之前。
+ * 2026-10-23：画布入口由展示开关控制，完整版本发布前隐藏，路由保持可访问。
  */
 
 import { QRCodePopup } from './HomeBottomMenus';
 import canvasNavIcon from '../../assets/canvas-nav.svg';
+import { SHOW_CANVAS_ENTRIES } from '../../config/CanvasEntryVisibility';
 
 const ICON_STYLE = { flexShrink: '0' };
 
@@ -62,7 +64,7 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
-];
+].filter((item) => item.key !== 'canvas' || SHOW_CANVAS_ENTRIES);
 
 
 const BOTTOM_NAV_ITEMS = [

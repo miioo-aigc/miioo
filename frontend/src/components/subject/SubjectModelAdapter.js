@@ -7,11 +7,14 @@
  *
  * ─── 依赖边界 ───────────────────────────────────────────────────────
  *   只接收接口数据并返回新数组；不引用 React、页面、API、Store 或 Toast。
+
+ * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
+ * 当前定义定位：normalizeSubjectImageModels L15。
  */
 
 export function normalizeSubjectImageModels(data) {
   const list = Array.isArray(data) ? data : (data?.items || data?.models || []);
-  return list.map((model) => {
+  return list.filter(model => model.is_enabled !== false).map((model) => {
     const modelId = model.model_id || model.id;
     const capabilities = model.capabilities || {};
     return {
@@ -26,12 +29,4 @@ export function normalizeSubjectImageModels(data) {
       maxRefImages: capabilities.max_reference_images || 3,
     };
   });
-}
-
-export function getFallbackSubjectImageModels() {
-  return [
-    { value: 'doubao-seedream-5.0-lite', label: 'Doubao-Seed-5.0-Lite', resolutions: ['2K', '3K', '4K'], resolutionSizeMap: {}, ratios: ['1:1', '16:9', '9:16', '4:3', '3:4'], maxRefImages: 3 },
-    { value: 'doubao-seedream-4.5', label: 'Doubao-Seed-4.5', resolutions: ['2K', '4K'], resolutionSizeMap: {}, ratios: ['1:1', '16:9', '9:16', '4:3', '3:4'], maxRefImages: 3 },
-    { value: 'doubao-seedream-4.0', label: 'Doubao-Seed-4.0', resolutions: ['1K', '2K', '4K'], resolutionSizeMap: {}, ratios: ['1:1', '16:9', '9:16', '4:3', '3:4'], maxRefImages: 3 },
-  ];
 }

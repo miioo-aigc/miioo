@@ -5,6 +5,7 @@ import { readCanvasTextFile } from './CanvasTextFileReader';
 import CanvasTextResult from './CanvasTextResult';
 import CanvasInlineTextEditor from './CanvasInlineTextEditor';
 import { useCanvasTextOverflow } from './UseCanvasTextOverflow';
+import { useCanvasTextWheel } from './UseCanvasTextWheel';
 
 export default function TextCanvasNode({ id, data, selected }) {
   const [editing, setEditing] = useState(false);
@@ -12,6 +13,7 @@ export default function TextCanvasNode({ id, data, selected }) {
   const contentRef = useRef(null);
   const fileInputRef = useRef(null);
   useCanvasTextOverflow(contentRef, editing);
+  useCanvasTextWheel(contentRef);
 
   const handleDoubleClick = (event) => {
     if (event.target.closest('button, input')) return;
@@ -57,7 +59,7 @@ export default function TextCanvasNode({ id, data, selected }) {
   };
 
   return <CanvasNodeShell nodeType="text" title={data?.label || '文本'} selected={selected} data={{ ...data, nodeId: id, editing, onToolbarAction: handleToolbarAction }} onPromptChange={data?.onPromptChange} onAddReference={data?.onAddReference} onGenerate={data?.onGenerate}>
-    <div ref={contentRef} data-text-preview={!editing} className={`canvas-node__text-content ${editing ? 'nodrag nowheel nopan' : data?.content ? 'nowheel' : ''}`} onDoubleClick={handleDoubleClick}>
+    <div ref={contentRef} data-text-preview={!editing} className={`canvas-node__text-content ${editing ? 'nodrag nowheel nopan' : ''}`} onDoubleClick={handleDoubleClick}>
       {editing ? <CanvasInlineTextEditor
         initialContent={data?.content || ''}
         onContentChange={(content) => data?.onContentChange?.(id, content)}

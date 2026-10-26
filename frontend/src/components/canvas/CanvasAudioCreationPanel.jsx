@@ -3,6 +3,9 @@
  * 草稿由常驻节点外壳持有；这里只管理菜单、焦点及编辑器 DOM，不调用生成接口。
  * 2026-09-28 底栏分为参数行与高级操作行，发送按钮位于第二行右侧。
  * 2026-09-28 发送先补选音色，再校验台词；确认音色不自动发送。
+
+ * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
+ * 当前定义定位：CanvasAudioCreationPanel L24。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useViewport } from '@xyflow/react';
@@ -61,7 +64,9 @@ export default function CanvasAudioCreationPanel({ nodeId, prompt = '', controls
   }, [editorRef, syncDraft]);
 
   const updateEffects = (patch) => onDraftChange((current) => ({ ...current, effects: { ...effects, ...patch } }));
+  const modelAvailable = !controls.loading && controls.options.some(option => option.value === controls.model);
   const send = () => {
+    if (!modelAvailable) return;
     setFeedback('');
     if (!voice?.id) { setVoiceOpen(true); return; }
     const snapshot = getPromptSnapshot();
@@ -92,7 +97,7 @@ export default function CanvasAudioCreationPanel({ nodeId, prompt = '', controls
           onEffectToneChange={(key, value) => updateEffects({ toneValues: { ...effects.toneValues, [key]: value } })}
           onEffectToggle={(selectedEffects) => updateEffects({ selectedEffects })}
         />
-        <CreationSendButton onClick={send} />
+        <CreationSendButton onClick={send} disabled={!modelAvailable} />
       </div>
     </>}>
       <CreationPromptEditor

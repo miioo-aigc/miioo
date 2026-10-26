@@ -46,6 +46,9 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       // Prebuild lazy script-page dependencies before serving their module URLs.
       include: [
+        // 剪辑页面的字幕解析依赖需提前构建，避免首次进入时旧版本地址返回 504。
+        '@plussub/srt-vtt-parser',
+        'ass-compiler',
         'mammoth',
         'react-markdown',
         '@tiptap/react',

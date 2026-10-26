@@ -1,6 +1,5 @@
 import { getCanvasMediaSize, prepareCanvasMediaAsset } from './CanvasMediaSize.js';
 import { readCanvasDocument } from './CanvasDocument.js';
-import { getCanvasAbsolutePosition } from './CanvasGroups.js';
 
 export function safeCanvasMediaUrl(value) {
   if (typeof value !== 'string' || !value.trim()) return undefined;
@@ -16,7 +15,7 @@ export async function prepareCanvasShareMedia(graph) {
     const { asset, mediaType } = node.data;
     if (asset?.availability !== 'ready' || !['image', 'video'].includes(mediaType)) return node;
     const url = mediaType === 'image'
-      ? safeCanvasMediaUrl(asset.original_url) || safeCanvasMediaUrl(asset.preview_url) || safeCanvasMediaUrl(asset.thumbnail_url)
+      ? safeCanvasMediaUrl(asset.thumbnail_url) || safeCanvasMediaUrl(asset.preview_url) || safeCanvasMediaUrl(asset.original_url)
       : safeCanvasMediaUrl(asset.preview_url);
     const prepared = await prepareCanvasMediaAsset({ ...asset, asset_type: mediaType, url });
     const size = getCanvasMediaSize(prepared);
@@ -32,10 +31,12 @@ export function readCanvasShareDocument(payload) {
     throw new Error('此画布的文档格式暂不支持，需后端提供约定的公开文档');
   }
   const assets = new Map((Array.isArray(payload.assets) ? payload.assets : []).map((asset) => [asset.asset_id, asset]));
-  // 只读分享将组合成员换算为绝对坐标，不引入编辑态组合组件及其动作。
+  // 保留组层级与作者保存的折叠状态；展开仅属于分享页临时浏览状态。
   const restored = readCanvasDocument(payload).nodes;
   const ids = new Set();
-  const nodes = doc.records.filter((record) => record.type !== 'canvasGroup').map((record) => {
+  const nodes = doc.records.map((record) => {
+    const restoredNode = restored.find((node) => node.id === record.id);
+    if (record.type === 'canvasGroup') return { ...restoredNode, data: { ...restoredNode.data, readOnly: true } };
     if (record.type !== 'free-canvas-node' || typeof record.id !== 'string' || !record.id || ids.has(record.id)
       || !Number.isFinite(record.x) || !Number.isFinite(record.y) || !record.props || typeof record.props !== 'object') {
       throw new Error('分享画布包含无法识别的节点，请联系画布所有者');
@@ -46,7 +47,8 @@ export function readCanvasShareDocument(payload) {
     const mediaType = asset?.media_type || props.assetType || props.nodeType;
     const size = getCanvasMediaSize({ ...asset, asset_type: mediaType }) || { width: 240, height: 240 };
     return {
-      id: record.id, type: 'shared', position: getCanvasAbsolutePosition(restored, restored.find((node) => node.id === record.id)),
+      id: record.id, type: 'shared', position: restoredNode.position,
+      ...(restoredNode.parentId ? { parentId: restoredNode.parentId } : {}),
       data: { ...props, asset, mediaType, mediaSize: size }, style: { width: size.width },
     };
   });
@@ -73,5 +75,15 @@ export function readCanvasShareDocument(payload) {
       }
     }
   }
-  return { nodes, edges };
+  const ordered = [];
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const appended = new Set();
+  const append = (node) => {
+    if (appended.has(node.id)) return;
+    if (node.parentId) append(byId.get(node.parentId));
+    appended.add(node.id);
+    ordered.push(node);
+  };
+  nodes.forEach(append);
+  return { nodes: ordered, edges };
 }

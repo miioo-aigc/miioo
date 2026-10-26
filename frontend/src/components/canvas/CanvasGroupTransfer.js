@@ -1,4 +1,4 @@
-/** 批量归组：只移动选中根项，保留子树、引用和目标堆叠状态。 */
+/** 批量归组：只改选中根项归属，保留世界坐标、子树、引用和目标堆叠状态。 */
 import { canvasDescendantIds, deleteCanvasNodes } from './CanvasNodeActions.js';
 import { getCanvasAbsolutePosition, orderParentsFirst } from './CanvasGroups.js';
 
@@ -28,13 +28,10 @@ export function moveCanvasNodesInto(nodes, ids, targetId) {
   if (!canMoveCanvasNodesInto(nodes, ids, targetId)) return nodes;
   const roots = canvasTransferRoots(nodes, ids).filter((node) => node.parentId !== targetId);
   const positions = roots.map((node) => getCanvasAbsolutePosition(nodes, node));
-  const origin = { x: Math.min(...positions.map((p) => p.x)), y: Math.min(...positions.map((p) => p.y)) };
-  const members = nodes.filter((node) => node.parentId === targetId);
-  const x = members.length ? Math.max(...members.map((node) => node.position.x
-    + (node.type === 'canvasGroup' ? node.style?.width ?? 300 : node.measured?.width ?? 240))) + 24 : 8;
+  const origin = getCanvasAbsolutePosition(nodes, nodes.find((node) => node.id === targetId));
   const moved = new Map(roots.map((node, index) => [node.id, {
     ...node, parentId: targetId,
-    position: { x: positions[index].x - origin.x + x, y: positions[index].y - origin.y + 8 },
+    position: { x: positions[index].x - origin.x, y: positions[index].y - origin.y },
   }]));
   // 先保证父项在前，再清理移空的旧组并按新成员范围调整组框。
   return deleteCanvasNodes(orderParentsFirst(nodes.map((node) => moved.get(node.id) || node)), []);

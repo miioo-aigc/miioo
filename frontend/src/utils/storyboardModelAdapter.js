@@ -1,6 +1,9 @@
 /**
  * 将 Storyboard 生成相关模型接口响应转换为统一的选择器模型。
  * 只负责字段转换和能力读取，不调用 API、Store 或 React 状态。
+
+ * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
+ * 当前定义定位：normalizeStoryboardDurationOptions L11；normalizeStoryboardModelList L17。
  */
 import { getVideoModelCapabilities } from '../config';
 import { normalizeVideoModelList, sortVideoModelOptions } from './videoModelAdapter';
@@ -31,7 +34,7 @@ export function normalizeStoryboardModelList(data, category) {
       };
     });
   }
-  return list.map((item) => {
+  return list.filter(item => item.is_enabled !== false).map((item) => {
     const modelId = item.model_id || item.id;
     const capabilities = item.capabilities || {};
     const resolutions = (capabilities.supported_resolutions?.length

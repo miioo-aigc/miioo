@@ -10,6 +10,7 @@
  */
 
 import { normalizeImageUrl, toAbsoluteUrl } from './imageUrl';
+import { getImageReferenceUrl, isManagedImageUrl } from '../api/ImageReferences.js';
 
 export function subjectTypeFromCategory(category) {
   if (category === 'character') return 'char';
@@ -168,7 +169,7 @@ export function buildStoryboardRefFromAsset(asset) {
  * 将生成面板的参考图转换为后端可消费的绝对 URL，并过滤不支持的派生格式。
  */
 export function toSafeStoryboardReferenceUrls(refImages = []) {
-  return refImages
-    .map((item) => toAbsoluteUrl(typeof item === 'string' ? item : item?.url))
+  const urls = refImages.map((item) => getImageReferenceUrl(item));
+  return urls.map((url) => isManagedImageUrl(url) ? toAbsoluteUrl(url) : url)
     .filter((url) => url && !url.toLowerCase().endsWith('.avif') && !url.includes('/derived/assets/'));
 }

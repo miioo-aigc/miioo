@@ -1,3 +1,4 @@
+import { LoaderCircle, RefreshCw } from 'lucide-react';
 import {
   ActionButton,
   PaginationControls,
@@ -12,7 +13,7 @@ export default function AdminVoiceLibraryTable({
   pageSize,
   hasMore,
   loading = false,
-  playingKey = '',
+  playback = { key: '', status: 'idle' },
   deletingKey = '',
   getItemPlayingKey,
   resolveVoiceName,
@@ -37,6 +38,7 @@ export default function AdminVoiceLibraryTable({
         {items.map((item) => {
           const previewUrl = getPreviewUrl(item);
           const rowPlayingKey = getItemPlayingKey(item);
+          const status = playback.key === rowPlayingKey ? playback.status : 'idle';
           const voiceName = resolveVoiceName(item);
           return (
             <div key={item.id} className="rounded-medium border border-stroke-normal bg-neutral-300 p-[16px]">
@@ -69,8 +71,8 @@ export default function AdminVoiceLibraryTable({
               </div>
 
               <div className="mt-[16px] flex flex-wrap gap-[8px]">
-                <ActionButton variant="secondary" onClick={() => onTogglePlay(item)} disabled={!previewUrl}>
-                  {!previewUrl ? '暂无试听' : playingKey === rowPlayingKey ? '暂停试听' : '试听'}
+                <ActionButton variant="secondary" className="min-w-[60px] inline-flex items-center justify-center" aria-label={status === 'loading' ? '试听加载中' : status === 'error' ? '重新加载试听' : undefined} aria-busy={status === 'loading'} aria-disabled={status === 'loading'} onClick={() => { if (status !== 'loading') onTogglePlay(item); }} disabled={!previewUrl}>
+                  {!previewUrl ? '暂无试听' : status === 'loading' ? <LoaderCircle size={16} className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : status === 'error' ? <RefreshCw size={16} aria-hidden="true" /> : status === 'playing' ? '暂停试听' : '试听'}
                 </ActionButton>
                 <ActionButton variant="secondary" onClick={() => onEdit(item)}>
                   编辑音色

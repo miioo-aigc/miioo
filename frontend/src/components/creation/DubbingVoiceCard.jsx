@@ -1,6 +1,7 @@
 /**
  * @file DubbingVoiceCard.jsx
  * @structure-index
+ *   2026-10-26  试听完整状态、旋转等待及刷新；恢复仅重载，保留主动播放。
  *
  * ─── 组件职责 ───────────────────────────────────────────────────────
  *   配音选择弹窗中的单张音色卡片，负责选中、试听与收藏的展示及交互。
@@ -13,9 +14,11 @@
  *   2026-08-18  从 CreationDubbingVoiceModal 抽离音色卡片交互
  *   2026-08-18  优化横向滚动、表面 radio 与标题优先级
  *   2026-08-26  接入全局单例试听播放器，移除卡片级隐藏 audio 实例
+ * 当前定义定位：PlayIcon L27；PauseIcon L31；RadioIcon L35；DubbingVoiceCard L39。
  */
 import { useEffect, useState } from "react";
-import { getActiveVoicePreviewKey, stopVoicePreview, subscribeVoicePreview, toggleVoicePreview } from "../../utils/voicePreviewPlayer";
+import { getVoicePreviewState, stopVoicePreview, subscribeVoicePreviewState, toggleVoicePreview, retryVoicePreview } from "../../utils/voicePreviewPlayer";
+import { LoaderCircle, RefreshCw } from "lucide-react";
 import { FavoriteIcon } from "../ui";
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -40,21 +43,24 @@ export default function DubbingVoiceCard({ voice, selected = false, favorited = 
   const [starHovered, setStarHovered] = useState(false);
   const audioUrl = voice.audioUrl || voice.audio_url || voice.previewUrl || voice.preview_url || voice.url;
   const previewKey = `${voice.id || voice.voice_id || voice.name}:${audioUrl}`;
-  const [activePreviewKey, setActivePreviewKey] = useState(() => getActiveVoicePreviewKey());
-  const playing = activePreviewKey === previewKey;
+  const [playback, setPlayback] = useState(getVoicePreviewState);
+  const status = playback.key === previewKey ? playback.status : 'idle';
+  const playing = status === 'playing';
 
-  useEffect(() => subscribeVoicePreview(setActivePreviewKey), []);
+  useEffect(() => subscribeVoicePreviewState(setPlayback), []);
 
   useEffect(() => () => stopVoicePreview(previewKey), [previewKey]);
 
   const handlePlayerClick = async (event) => {
     event.stopPropagation();
-    if (!audioUrl) return;
+    const current = getVoicePreviewState();
+    if (!audioUrl || (current.key === previewKey && current.status === 'loading')) return;
+    if (current.key === previewKey && current.status === 'error') { retryVoicePreview(previewKey); return; }
 
     try {
       await toggleVoicePreview({ key: previewKey, url: audioUrl });
     } catch {
-      // 播放失败时由全局播放器清理播放状态。
+      // 完整状态订阅负责展示失败，不依赖播放承诺结束。
     }
   };
 
@@ -69,8 +75,8 @@ export default function DubbingVoiceCard({ voice, selected = false, favorited = 
   const showRadio = selected || hovered;
 
   return (
-    <div role="radio" aria-checked={selected} tabIndex={0} onClick={() => onSelect?.(voice)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect?.(voice); } }} onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setRadioHovered(false); setPlayerHovered(false); setStarHovered(false); }} style={{ position: "relative", display: "flex", alignItems: "flex-start", gap: "12px", minWidth: 0, padding: "12px 16px", border: 0, borderRadius: "8px", outline: selected ? "1px solid #2DC3E1" : "none", outlineOffset: "-1px", background: selected ? "linear-gradient(rgba(45,195,225,0.05), rgba(45,195,225,0.05)), #FFFFFF0D" : hovered ? "#FFFFFF1A" : "#FFFFFF0D", boxSizing: "border-box", cursor: "pointer", transition: "background 120ms, outline-color 120ms" }}>
-      <button type="button" aria-label={playing ? "暂停试听" : "播放试听"} onClick={handlePlayerClick} onMouseEnter={() => setPlayerHovered(true)} onMouseLeave={() => setPlayerHovered(false)} style={{ alignSelf: "center", width: "40px", height: "40px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, border: 0, borderRadius: "50%", flexShrink: 0, background: playerHovered ? "#FFFFFF14" : "#FFFFFF0D", cursor: "pointer", transition: "background 120ms" }}>{playing ? <PauseIcon /> : <PlayIcon />}</button>
+    <div role="radio" aria-checked={selected} tabIndex={0} onClick={() => onSelect?.(voice)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onSelect?.(voice); } }} onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setRadioHovered(false); setPlayerHovered(false); setStarHovered(false); }} style={{ position: "relative", display: "flex", alignItems: "flex-start", gap: "12px", minWidth: 0, padding: "12px 16px", border: 0, borderRadius: "8px", outline: selected ? "1px solid #2DC3E1" : "none", outlineOffset: "-1px", background: selected ? "linear-gradient(rgba(45,195,225,0.05), rgba(45,195,225,0.05)), #FFFFFF0D" : hovered ? "#FFFFFF1A" : "#FFFFFF0D", boxSizing: "border-box", cursor: "pointer", transition: "background 120ms, outline-color 120ms" }}>
+      <button type="button" aria-label={status === 'loading' ? '试听加载中' : status === 'error' ? '重新加载试听' : playing ? "暂停试听" : "播放试听"} aria-disabled={status === 'loading' || !audioUrl} aria-busy={status === 'loading'} onClick={handlePlayerClick} onMouseEnter={() => setPlayerHovered(true)} onMouseLeave={() => setPlayerHovered(false)} style={{ alignSelf: "center", width: "40px", height: "40px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, border: 0, borderRadius: "50%", flexShrink: 0, background: playerHovered ? "#FFFFFF14" : "#FFFFFF0D", cursor: "pointer", transition: "background 120ms" }}>{status === 'loading' ? <LoaderCircle size={20} className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : status === 'error' ? <RefreshCw size={20} aria-hidden="true" /> : playing ? <PauseIcon /> : <PlayIcon />}</button>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "6px", flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", alignSelf: "stretch", minWidth: 0 }}>
           <span style={{ flex: "0 1 auto", minWidth: 0, overflow: "hidden", color: "#FFFFFF", fontFamily: FONT_MEDIUM, fontSize: "14px", fontWeight: 500, lineHeight: "17px", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{voice.name}</span>

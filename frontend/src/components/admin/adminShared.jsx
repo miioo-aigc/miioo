@@ -31,6 +31,7 @@ export function ActionButton({
   disabled = false,
   className = '',
   type = 'button',
+  ...buttonProps
 }) {
   const styleMap = {
     primary: 'bg-blue-300 text-neutral-500 hover:brightness-110',
@@ -40,6 +41,7 @@ export function ActionButton({
 
   return (
     <button
+      {...buttonProps}
       type={type}
       onClick={onClick}
       disabled={disabled}

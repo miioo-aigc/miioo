@@ -6,15 +6,15 @@
  * 通过显式 props 组合展示组件，不把页面入口或目录入口作为隐式依赖。
  *
  * ─── 状态与数据流 ───────────────────────────────────
- *   项目、当前分类、资产数据、批量选择和弹窗状态                  L183
- *   首屏加载 L291；追加分页 L403；归属过滤 L500
+ *   项目、当前分类、资产数据、批量选择和弹窗状态                  L184
+ *   分镜页组装 L291；首屏加载 L365；追加分页 L411；归属过滤 L526
  *
  * ─── 业务动作 ───────────────────────────────────────
- *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L504
+ *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L530
  *   下载动作统一启动全局下载 Toast；有流式总长度时展示环形进度
  *
  * ─── 页面组合 ───────────────────────────────────────
- *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L737
+ *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L763
  *
  * ─── 更新记录 ───────────────────────────────────────
  *   2026-10-15  保留初始项目及分类、目标可见性校验；合并请求代际保护并校正索引
@@ -33,6 +33,7 @@
  *   2026-08-21 项目音频卡片接入统一详情弹窗，按 Asset/AudioClip 视图补全详情字段
  *   2026-09-07 项目音频复用创作配音卡片，并按分集/分镜切换为时间线分区展示
  *   2026-10-21 项目列表改为创建时间倒序，未指定项目时默认选中最新项目
+ *   2026-10-22 分镜按页追加、失败原页重试与4路候选调度；保留页面分页/动作集中编排。
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -287,6 +288,79 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
   const morePending = useRef(null);
   const visiblePageKey = useRef(null);
 
+  const loadStoryboardPageCards = useCallback(async (projectId, storyboards, isCurrent) => {
+    const assertCurrent = () => {
+      if (!isCurrent()) throw new DOMException('读取已失效', 'AbortError');
+    };
+    assertCurrent();
+    const episodes = await apiGetEpisodes(projectId).catch(() => []);
+    assertCurrent();
+    const episodeNumberById = new Map((episodes || []).map((episode, index) => [
+      String(episode.id),
+      episode.episode_number ?? episode.episodeNumber ?? episode.number ?? index + 1,
+    ]));
+    const buildCard = async (shot) => {
+      assertCurrent();
+      const normalizedShot = normalizeStoryboard(shot) || shot;
+      let candidates = await apiListStoryboardMediaCandidates(projectId, shot.id);
+      assertCurrent();
+      if (!Array.isArray(candidates)) throw new Error('分镜素材响应格式异常');
+      if (candidates.length === 0) {
+        candidates = [
+          normalizedShot.storyboardImage || shot.image_url || shot.imageUrl ? {
+            id: normalizedShot.storyboardImage?.id || shot.image_asset_id || shot.image_url || shot.imageUrl,
+            url: normalizedShot.storyboardImage?.url || shot.image_url || shot.imageUrl,
+            thumbnail_url: normalizedShot.storyboardImage?.thumbnail_url || shot.image_url || shot.imageUrl,
+            media_type: 'image', is_finalized: true, source: 'storyboard-existing',
+          } : null,
+          normalizedShot.storyboardVideo || shot.video_url || shot.videoUrl ? {
+            id: normalizedShot.storyboardVideo?.id || shot.video_asset_id || shot.video_url || shot.videoUrl,
+            url: normalizedShot.storyboardVideo?.url || shot.video_url || shot.videoUrl,
+            thumbnail_url: normalizedShot.storyboardVideo?.thumbnail_url || shot.video_thumbnail_url || null,
+            poster_url: normalizedShot.storyboardVideo?.poster_url || shot.video_thumbnail_url || null,
+            media_type: 'video',
+            is_finalized: !normalizedShot.storyboardImage && !shot.image_url && !shot.imageUrl,
+            source: 'storyboard-existing',
+          } : null,
+        ].filter((item) => item?.url);
+      }
+      candidates = candidates.filter((item) => item?.url || item?.file_url || item?.fileUrl);
+      if (candidates.length === 0) return null;
+      const active = candidates.find((item) => item.is_finalized) || candidates[0];
+      const episodeNumber = episodeNumberById.get(String(shot.episode_id ?? shot.episodeId))
+        ?? shot.episode_number ?? shot.episodeNumber ?? '';
+      const shotNumber = normalizedShot.number ?? shot.shot_number ?? shot.number ?? '';
+      return {
+        id: shot.id,
+        name: '第' + episodeNumber + '集_分镜' + String(shotNumber).padStart(2, '0'),
+        description: '',
+        url: active?.thumbnail_url || active?.poster_url || active?.url || null,
+        videoUrl: active?.media_type === 'video' ? active.url : null,
+        assetType: active?.media_type || null,
+        candidates,
+        storyboard: { ...shot, ...normalizedShot, number: shotNumber },
+        project_id: projectId,
+      };
+    };
+    const cards = new Array(storyboards.length);
+    let nextIndex = 0;
+    let failure = null;
+    // 整页成功才推进偏移；失败停止派发，已发请求收尾后保留原页供重试。
+    await Promise.all(Array.from({ length: Math.min(4, storyboards.length) }, async () => {
+      while (!failure && nextIndex < storyboards.length) {
+        const index = nextIndex++;
+        try {
+          cards[index] = await buildCard(storyboards[index]);
+        } catch (error) {
+          failure ||= error;
+        }
+      }
+    }));
+    if (failure) throw failure;
+    assertCurrent();
+    return cards.filter(Boolean);
+  }, []);
+
   // 首屏加载：切换项目或 tab 时触发
   const loadFirstPage = useCallback(async (projectId, category) => {
     const generation = ++listGeneration.current;
@@ -300,87 +374,21 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
     startPage(key);
     try {
       if (category === 'storyboard') {
-        const failedCandidateIds = new Set();
-        const [storyboards, episodes] = await Promise.all([
-          // 资产库只需要分镜基础信息和媒体字段，不需要加载生成参数。
-          apiGetStoryboards(projectId, { include_gen_params: false }),
-          apiGetEpisodes(projectId).catch(() => []),
-        ]);
-        const episodeNumberById = new Map(
-          (episodes || []).map((episode, index) => [
-            String(episode.id),
-            episode.episode_number ?? episode.episodeNumber ?? episode.number ?? index + 1,
-          ]),
-        );
-        const cards = (await Promise.all((storyboards || []).map(async (shot) => {
-          // 资产库与分镜页统一消费归一化后的镜头数据，兼容后端扁平字段和前端嵌套媒体字段。
-          const normalizedShot = normalizeStoryboard(shot) || shot;
-          let candidates = [];
-          try {
-            candidates = await apiListStoryboardMediaCandidates(projectId, shot.id);
-          } catch (error) {
-            failedCandidateIds.add(String(shot.id));
-            console.warn('[ProjectAssetsPanel] 获取分镜候选媒体失败:', error);
-          }
-          if (candidates.length === 0) {
-            const fallback = [
-              normalizedShot.storyboardImage || shot.image_url || shot.imageUrl
-                ? {
-                    id: normalizedShot.storyboardImage?.id || shot.image_asset_id || shot.image_url || shot.imageUrl,
-                    url: normalizedShot.storyboardImage?.url || shot.image_url || shot.imageUrl,
-                    thumbnail_url: normalizedShot.storyboardImage?.thumbnail_url || shot.image_url || shot.imageUrl,
-                    media_type: 'image',
-                    is_finalized: true,
-                    source: 'storyboard-existing',
-                  }
-                : null,
-              normalizedShot.storyboardVideo || shot.video_url || shot.videoUrl
-                ? {
-                    id: normalizedShot.storyboardVideo?.id || shot.video_asset_id || shot.video_url || shot.videoUrl,
-                    url: normalizedShot.storyboardVideo?.url || shot.video_url || shot.videoUrl,
-                    thumbnail_url: normalizedShot.storyboardVideo?.thumbnail_url || shot.video_thumbnail_url || null,
-                    poster_url: normalizedShot.storyboardVideo?.poster_url || shot.video_thumbnail_url || null,
-                    media_type: 'video',
-                    is_finalized: !normalizedShot.storyboardImage && !shot.image_url && !shot.imageUrl,
-                    source: 'storyboard-existing',
-                  }
-                : null,
-            ].filter((item) => item?.url);
-            candidates = fallback;
-          }
-          // 资产库只展示已经有真实媒体地址的候选，纯分镜数据不生成空卡片。
-          candidates = candidates.filter((item) => item?.url || item?.file_url || item?.fileUrl);
-          if (candidates.length === 0) return null;
-          const active = candidates.find((item) => item.is_finalized) || candidates[0];
-          const episodeNumber = episodeNumberById.get(String(shot.episode_id ?? shot.episodeId))
-            ?? shot.episode_number
-            ?? shot.episodeNumber
-            ?? '';
-          const shotNumber = normalizedShot.number ?? shot.shot_number ?? shot.number ?? '';
-          return {
-            id: shot.id,
-            name: `第${episodeNumber}集_分镜${String(shotNumber).padStart(2, '0')}`,
-            description: '',
-            url: active?.thumbnail_url || active?.poster_url || active?.url || null,
-            videoUrl: active?.media_type === 'video' ? active.url : null,
-            assetType: active?.media_type || null,
-            candidates,
-            storyboard: { ...shot, ...normalizedShot, number: shotNumber },
-            project_id: projectId,
-          };
-        }))).filter(Boolean);
-        if (generation !== listGeneration.current) return;
-        setAssetsMap((prev) => {
-          const previous = new Map((prev[category] || []).map((card) => [String(card.id), card]));
-          const next = new Map(cards.map((card) => [String(card.id), card]));
-          // 读取失败不等于素材被删除，同一项目重试时保留失败镜头的旧卡片。
-          for (const id of failedCandidateIds) {
-            if (previous.has(id)) next.set(id, previous.get(id));
-          }
-          return { ...prev, [category]: [...next.values()] };
+        const storyboards = await apiGetStoryboards(projectId, {
+          limit: 200,
+          offset: 0,
+          include_gen_params: false,
         });
-        completeFirstPage(key, { cursor: null, hasMore: false, rawList: [], error: failedCandidateIds.size ? `${failedCandidateIds.size} 个分镜的素材未完整读取，已有内容可能未更新，请重试` : '' });
+        const cards = await loadStoryboardPageCards(projectId, storyboards, () => generation === listGeneration.current);
+        if (generation !== listGeneration.current) return;
+        setAssetsMap((prev) => ({ ...prev, [category]: cards }));
+        completeFirstPage(key, {
+          cursor: storyboards.length,
+          hasMore: storyboards.length === 200,
+          rawList: cards,
+        });
         return;
+
       }
       const limit = calcProjectAssetsLimit(category);
       const result = await apiGetProjectAssetsPage(projectId, { category, limit });
@@ -397,7 +405,7 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
       console.error('[ProjectAssetsPanel] 加载失败:', err);
       if (generation === listGeneration.current) failFirstPage(key);
     }
-  }, [applySubjectMeta, completeFirstPage, failFirstPage, startPage]);
+  }, [applySubjectMeta, completeFirstPage, failFirstPage, loadStoryboardPageCards, startPage]);
 
   // 加载更多
   const loadMorePage = useCallback(async (projectId, category) => {
@@ -409,6 +417,24 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
     morePending.current = request;
     markPageLoading(key);
     try {
+      if (category === 'storyboard') {
+        const offset = Number.isFinite(Number(meta.cursor)) ? Number(meta.cursor) : 0;
+        const storyboards = await apiGetStoryboards(projectId, {
+          limit: 200,
+          offset,
+          include_gen_params: false,
+        });
+        const cards = await loadStoryboardPageCards(projectId, storyboards, () => generation === listGeneration.current);
+        if (generation !== listGeneration.current) return;
+        const merged = [...new Map([...(meta.rawList || []), ...cards].map((card) => [String(card.id), card])).values()];
+        setAssetsMap((prev) => ({ ...prev, [category]: merged }));
+        completeMorePage(key, {
+          cursor: offset + storyboards.length,
+          hasMore: storyboards.length === 200,
+          rawList: merged,
+        });
+        return;
+      }
       const limit = calcProjectAssetsLimit(category);
       const result = await apiGetProjectAssetsPage(projectId, { category, limit, cursor: meta.cursor });
       const accumulated = [...(meta.rawList || []), ...result.rawList];
@@ -428,7 +454,7 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
     } finally {
       if (morePending.current === request) morePending.current = null;
     }
-  }, [applySubjectMeta, completeMorePage, failMorePage, markPageLoading, pageMeta]);
+  }, [applySubjectMeta, completeMorePage, failMorePage, loadStoryboardPageCards, markPageLoading, pageMeta]);
 
   useEffect(() => {
     apiGetProjects().then((list) => {
@@ -794,7 +820,10 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
           subjectCardCategories={SUBJECT_CARD_CATEGORIES}
           scrollContainerRef={scrollContainerRef}
           sentinelRef={sentinelRef}
-          loading={pageMeta[getAssetPageKey(activeProject, activeCategory)]?.loading ?? Boolean(activeProject)}
+          loading={(pageMeta[getAssetPageKey(activeProject, activeCategory)]?.loading ?? Boolean(activeProject))
+            || (activeCategory === 'storyboard' && filtered.length === 0
+              && pageMeta[getAssetPageKey(activeProject, activeCategory)]?.hasMore
+              && !pageMeta[getAssetPageKey(activeProject, activeCategory)]?.error)}
           error={pageMeta[getAssetPageKey(activeProject, activeCategory)]?.error}
           onRetry={() => pageMeta[getAssetPageKey(activeProject, activeCategory)]?.failedPhase === 'more'
             ? loadMorePage(activeProject, activeCategory)
@@ -857,7 +886,7 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
         />
       )}
       {storyboardDetail && (
-        <StoryboardMediaDetailModal
+        <StoryboardMediaDetailModal visualMedia
           shot={storyboardDetail.shot}
           projectId={activeProject}
           candidates={storyboardDetail.candidates}

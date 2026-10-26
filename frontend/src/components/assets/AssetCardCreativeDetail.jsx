@@ -12,6 +12,7 @@ export default function AssetCardCreativeDetail({ asset = {}, url, starred = fal
         frameResultDestination="/workspace/assets"
         sourceAsset={asset}
         videoUrl={asset.videoUrl}
+        posterUrl={asset.posterUrl || asset.url}
         originalVideoUrl={asset.downloadUrl || asset.download_url || asset.originalUrl || asset.original_url || asset.videoUrl}
         prompt={asset.prompt}
         model={asset.model}
@@ -36,7 +37,7 @@ export default function AssetCardCreativeDetail({ asset = {}, url, starred = fal
 
   if (asset.type === 'image') {
     return (
-      <ImageDetailModal
+      <ImageDetailModal visualMedia
         onGenerateImage={onGenerateImage}
         imageId={asset.backendId || asset.id}
         onBasicEdit={onBasicEdit}

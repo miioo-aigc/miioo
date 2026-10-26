@@ -1,6 +1,7 @@
 /**
  * @file VoiceDubModal.jsx
  * @structure-index
+ *   2026-10-26  试听完整状态、旋转等待及刷新；恢复仅重载，保留主动播放。
  *
  * 台词分配弹窗：编辑配音角色、全局默认音色和台词内容。
  * 语速、音量已从台词分配数据模型中移除；音色选择复用创作域二级弹窗。
@@ -9,15 +10,17 @@
  *               重选按钮改用 secondary 变体，移除 primary 双层内层结构，还原设计稿尺寸；
  *               选择音色输入框补齐悬停态，并支持通过耳机图标试听当前音色；
  *               拆分耳机图标和音色名称的悬停状态，保证两者各自可触发高亮且耳机可点击试听。
+ * 当前定义定位：normalizeVoice L29；HeadsetIcon L40；VoiceField L44；VoiceDubModal L129。
  */
 import { useEffect, useRef, useState } from 'react';
+import { LoaderCircle, RefreshCw } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { DubbingVoiceModal } from '../creation';
 import { showGlobalToast } from '../../stores/toastStore';
 import { Button } from '../ui/Button';
 import { Select } from '../ui';
 import TextField from '../ui/TextField';
-import { getActiveVoicePreviewKey, subscribeVoicePreview, toggleVoicePreview, stopVoicePreview } from '../../utils/voicePreviewPlayer';
+import { getVoicePreviewState, subscribeVoicePreviewState, toggleVoicePreview, stopVoicePreview, retryVoicePreview } from '../../utils/voicePreviewPlayer';
 import { PlayingWaveIcon } from '../subject/SubjectVoiceSelectModal';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -43,16 +46,17 @@ function VoiceField({ voice, onClick }) {
   const [hovered, setHovered] = useState(false);
   const [headsetHovered, setHeadsetHovered] = useState(false);
   const [nameHovered, setNameHovered] = useState(false);
-  const [activePreviewKey, setActivePreviewKey] = useState(() => getActiveVoicePreviewKey());
+  const [playback, setPlayback] = useState(getVoicePreviewState);
   const previewUrl = selected?.voice_preview_url;
   const previewKey = selected ? `storyboard-voice-field:${selected.voice_id}:${previewUrl || ''}` : '';
-  const playing = Boolean(previewKey) && activePreviewKey === previewKey;
+  const status = previewKey && playback.key === previewKey ? playback.status : 'idle';
+  const playing = status === 'playing';
   const buttonClassName = selected
     ? '!box-border !h-[24px] !min-h-[24px] !px-[8px] !rounded-[6px] !gap-[4px]'
     : '!box-border !h-[24px] !min-h-[24px] !px-[0px] !rounded-[6px]';
   const buttonContentClassName = selected ? '!text-[12px] !leading-[16px]' : '!h-[22px] !min-h-[22px] !px-[7px] !rounded-[5px] !text-[12px] !leading-[16px]';
 
-  useEffect(() => subscribeVoicePreview(setActivePreviewKey), []);
+  useEffect(() => subscribeVoicePreviewState(setPlayback), []);
 
   useEffect(() => () => {
     if (previewKey) stopVoicePreview(previewKey);
@@ -60,12 +64,14 @@ function VoiceField({ voice, onClick }) {
 
   const handlePreviewClick = async (event) => {
     event.stopPropagation();
-    if (!previewUrl) return;
+    const current = getVoicePreviewState();
+    if (!previewUrl || (current.key === previewKey && current.status === 'loading')) return;
+    if (current.key === previewKey && current.status === 'error') { retryVoicePreview(previewKey); return; }
 
     try {
       await toggleVoicePreview({ key: previewKey, url: previewUrl });
     } catch {
-      // 播放失败时由全局播放器清理播放状态。
+      // 完整状态订阅负责展示失败，不依赖播放承诺结束。
     }
   };
 
@@ -86,15 +92,16 @@ function VoiceField({ voice, onClick }) {
         {selected && (
           <button
             type="button"
-            aria-label={playing ? '暂停音色试听' : '播放音色试听'}
-            title={previewUrl ? (playing ? '暂停试听' : '试听音色') : '暂无试听音频'}
+            aria-label={status === 'loading' ? '试听加载中' : status === 'error' ? '重新加载试听' : playing ? '暂停音色试听' : '播放音色试听'}
+            aria-disabled={status === 'loading'} aria-busy={status === 'loading'}
+            title={!previewUrl ? '暂无试听音频' : undefined}
             disabled={!previewUrl}
             onClick={handlePreviewClick}
             onMouseEnter={() => setHeadsetHovered(true)}
             onMouseLeave={() => setHeadsetHovered(false)}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', padding: 0, flexShrink: 0, border: 0, background: 'transparent', cursor: previewUrl ? 'pointer' : 'default' }}
           >
-            {playing ? <PlayingWaveIcon color="#2DC3E1" size={16} /> : <HeadsetIcon color={voiceColor} />}
+            {status === 'loading' ? <LoaderCircle size={16} className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : status === 'error' ? <RefreshCw size={16} aria-hidden="true" /> : playing ? <PlayingWaveIcon color="#2DC3E1" size={16} /> : <HeadsetIcon color={voiceColor} />}
           </button>
         )}
         <span

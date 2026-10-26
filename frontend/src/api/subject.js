@@ -1,4 +1,5 @@
 const BASE = import.meta.env.VITE_API_BASE_URL;
+import { assertImageReferenceUrls } from './ImageReferences.js';
 
 // 确认接口当前由后端 script_structure_service 支持的结构协议版本。
 export const SCRIPT_SCHEMA_VERSION = 'script_structure.v1';
@@ -246,6 +247,7 @@ export async function apiAddSubjectImageFromAsset(projectId, subjectId, assetId)
 }
 
 export async function apiGenerateSubjectImage(projectId, subjectId, params) {
+  assertImageReferenceUrls(params.reference_images, { allowAssetIds: true });
   const res = await authFetch(`${BASE}/api/projects/${projectId}/subjects/${subjectId}/generate-image`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -761,6 +763,21 @@ export async function apiGetScriptWorkspace(projectId, { fresh = false, signal }
     fetchWorkspace,
     { medium: MEDIUM.CONTENT, ttl: TTL.CONTENT },
   );
+}
+
+export async function apiReopenScriptDialogue(projectId, { expected_draft_revision, client_request_id } = {}) {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/script-workspace/reopen-dialogue`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expected_draft_revision, client_request_id }),
+  });
+  invalidate(K.script(projectId));
+  invalidate(K.projectOverview(projectId));
+  const workspace = await readScriptWorkspaceResponse(res);
+  if (workspace?.script?.project_id !== projectId || workspace?.script?.workflow_stage !== 'dialogue') {
+    throw new Error('服务端尚未确认恢复对话，请重新读取后再试');
+  }
+  return workspace;
 }
 
 export async function apiConfirmScriptWorkspace(projectId, { expected_draft_revision, schema_version, client_request_id, idempotency_key } = {}) {

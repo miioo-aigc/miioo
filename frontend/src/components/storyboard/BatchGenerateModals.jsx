@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import Toggle from '../Toggle';
 import Checkbox from '../Checkbox';
 import { Button, ModelIcon, Select } from '../ui';
-import { apiListModels } from '../../api/config';
+import { useAvailableModels } from '../../hooks/useAvailableModels';
+import ModelReadStatus from '../feedback/ModelReadStatus';
 import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter';
 
 /**
@@ -64,7 +65,7 @@ function ModalCloseButton({ onClick }) {
   );
 }
 
-function ModalActions({ onClose, onConfirm, onlyUndrafted, onOnlyUndraftedChange }) {
+function ModalActions({ disabled, onClose, onConfirm, onlyUndrafted, onOnlyUndraftedChange }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '16px 24px' }}>
       <label
@@ -78,7 +79,7 @@ function ModalActions({ onClose, onConfirm, onlyUndrafted, onOnlyUndraftedChange
       </label>
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
         <Button variant="secondary" size="large" onClick={onClose}>取消</Button>
-        <Button variant="accent" size="large" onClick={onConfirm}>开始生成</Button>
+        <Button variant="accent" size="large" disabled={disabled} onClick={onConfirm}>开始生成</Button>
       </div>
     </div>
   );
@@ -182,8 +183,8 @@ function isShotFinalized(shot, finalizedMediaMap) {
 }
 
 export function BatchImageModal({ shots = [], shotCount, finalizedMediaMap = {}, onClose, onConfirm, projectRatio }) {
-  const [modelList, setModelList] = useState([]);
-  const [modelsLoading, setModelsLoading] = useState(true);
+  const { models, loading: modelsLoading, error: modelsError, retry: retryModels } = useAvailableModels('image');
+  const modelList = useMemo(() => normalizeStoryboardModelList(models, 'image'), [models]);
   const [model, setModel] = useState('');
   const [resolution, setResolution] = useState('');
   const [onlyUndrafted, setOnlyUndrafted] = useState(true);
@@ -193,22 +194,15 @@ export function BatchImageModal({ shots = [], shotCount, finalizedMediaMap = {},
     : shotCount || 0;
 
   useEffect(() => {
+    if (modelsLoading) return;
     let active = true;
-    (async () => {
-      try {
-        const merged = normalizeStoryboardModelList(await apiListModels({ category: 'image' }), 'image');
-        if (!active) return;
-        setModelList(merged);
-        const first = merged.find((item) => item.is_default) || merged[0];
-        if (first) { setModel(first.value); setResolution(first.resolutions[0] || ''); }
-      } catch {
-        if (active) setModelList([]);
-      } finally {
-        if (active) setModelsLoading(false);
-      }
-    })();
+    queueMicrotask(() => {
+      if (!active) return;
+      const first = modelList.find((item) => item.is_default) || modelList[0];
+      if (first) { setModel(first.value); setResolution(first.resolutions[0] || ''); }
+    });
     return () => { active = false; };
-  }, []);
+  }, [modelList, modelsLoading]);
 
   const resolutionOptions = useMemo(() => resolutionOptionsFor(modelList, model, projectRatio), [model, modelList, projectRatio]);
   const handleModelChange = useCallback((nextModel) => {
@@ -218,11 +212,12 @@ export function BatchImageModal({ shots = [], shotCount, finalizedMediaMap = {},
     setResolution(selected.resolutions.includes(resolution) ? resolution : (selected.resolutions[0] || ''));
   }, [modelList, resolution]);
 
-  function confirm() { onConfirm?.({ model, resolution, only_undrafted: onlyUndrafted }); onClose?.(); }
+  function confirm() { if (modelsLoading || !modelList.some(item => item.value === model)) return; onConfirm?.({ model, resolution, only_undrafted: onlyUndrafted }); onClose?.(); }
 
   return (
-    <ModalShell title="批量生成分镜图" onClose={onClose} actions={<ModalActions onClose={onClose} onConfirm={confirm} onlyUndrafted={onlyUndrafted} onOnlyUndraftedChange={setOnlyUndrafted} />}>
+    <ModalShell title="批量生成分镜图" onClose={onClose} actions={<ModalActions disabled={modelsLoading || !modelList.some(item => item.value === model)} onClose={onClose} onConfirm={confirm} onlyUndrafted={onlyUndrafted} onOnlyUndraftedChange={setOnlyUndrafted} />}>
       <CountRow label="待生成的分镜图数量" count={onlyUndrafted ? undraftedCount : (shots.length || shotCount || 0)} />
+      <ModelReadStatus loading={modelsLoading} error={modelsError} empty={!modelList.length} onRetry={retryModels} />
       <ModelSelect modelList={modelList} model={model} loading={modelsLoading} onChange={handleModelChange} />
       <CapabilitySelect label="分辨率" value={resolution} options={resolutionOptions} onChange={setResolution} />
     </ModalShell>
@@ -230,8 +225,8 @@ export function BatchImageModal({ shots = [], shotCount, finalizedMediaMap = {},
 }
 
 export function BatchVideoModal({ shots, finalizedMediaMap = {}, onClose, onConfirm, projectRatio }) {
-  const [modelList, setModelList] = useState([]);
-  const [modelsLoading, setModelsLoading] = useState(true);
+  const { models, loading: modelsLoading, error: modelsError, retry: retryModels } = useAvailableModels('video');
+  const modelList = useMemo(() => normalizeStoryboardModelList(models, 'video'), [models]);
   const [model, setModel] = useState('');
   const [resolution, setResolution] = useState('');
   const [duration, setDuration] = useState('');
@@ -241,32 +236,27 @@ export function BatchVideoModal({ shots, finalizedMediaMap = {}, onClose, onConf
   const undraftedCount = (shots || []).filter((shot) => !isShotFinalized(shot, finalizedMediaMap)).length;
 
   useEffect(() => {
+    if (modelsLoading) return;
     let active = true;
-    (async () => {
-      try {
-        const merged = normalizeStoryboardModelList(await apiListModels({ category: 'video' }), 'video');
-        if (!active) return;
-        setModelList(merged);
-        const first = merged.find((item) => item.is_default) || merged[0];
-        if (first) {
-          setModel(first.value);
-          setResolution(first.resolutions[0] || '');
-          const counts = {};
-          (shots || []).forEach((shot) => {
-            const raw = shot?.params?.duration;
-            if (raw) { const value = String(raw).endsWith('s') ? String(raw) : `${raw}s`; counts[value] = (counts[value] || 0) + 1; }
-          });
-          const commonDuration = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
-          setDuration(durationForModel(first, commonDuration || ''));
+    queueMicrotask(() => {
+      if (!active) return;
+      const first = modelList.find(item => item.is_default) || modelList[0];
+      if (!first) return;
+      setModel(first.value);
+      setResolution(first.resolutions[0] || '');
+      const counts = {};
+      (shots || []).forEach(shot => {
+        const raw = shot?.params?.duration;
+        if (raw) {
+          const value = String(raw).endsWith('s') ? String(raw) : `${raw}s`;
+          counts[value] = (counts[value] || 0) + 1;
         }
-      } catch {
-        if (active) setModelList([]);
-      } finally {
-        if (active) setModelsLoading(false);
-      }
-    })();
+      });
+      const commonDuration = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+      setDuration(durationForModel(first, commonDuration || ''));
+    });
     return () => { active = false; };
-  }, [shots]);
+  }, [modelList, modelsLoading, shots]);
 
   const resolutionOptions = useMemo(() => resolutionOptionsFor(modelList, model, projectRatio), [model, modelList, projectRatio]);
   const durationOptions = useMemo(() => durationOptionsFor(modelList, model), [model, modelList]);
@@ -278,11 +268,12 @@ export function BatchVideoModal({ shots, finalizedMediaMap = {}, onClose, onConf
     setDuration(durationForModel(selected, duration));
   }, [duration, modelList, resolution]);
 
-  function confirm() { onConfirm?.({ model, resolution, duration, sound, only_undrafted: onlyUndrafted }); onClose?.(); }
+  function confirm() { if (modelsLoading || !modelList.some(item => item.value === model)) return; onConfirm?.({ model, resolution, duration, sound, only_undrafted: onlyUndrafted }); onClose?.(); }
 
   return (
-    <ModalShell title="批量生成分镜视频" onClose={onClose} actions={<ModalActions onClose={onClose} onConfirm={confirm} onlyUndrafted={onlyUndrafted} onOnlyUndraftedChange={setOnlyUndrafted} />}>
+    <ModalShell title="批量生成分镜视频" onClose={onClose} actions={<ModalActions disabled={modelsLoading || !modelList.some(item => item.value === model)} onClose={onClose} onConfirm={confirm} onlyUndrafted={onlyUndrafted} onOnlyUndraftedChange={setOnlyUndrafted} />}>
       <CountRow label="待生成的分镜视频数量" count={onlyUndrafted ? undraftedCount : (shots?.length || 0)} />
+      <ModelReadStatus loading={modelsLoading} error={modelsError} empty={!modelList.length} onRetry={retryModels} />
       <ModelSelect modelList={modelList} model={model} loading={modelsLoading} onChange={handleModelChange} />
       <CapabilitySelect label="分辨率" value={resolution} options={resolutionOptions} onChange={setResolution} />
       <CapabilitySelect label="时长" value={duration} options={durationOptions} onChange={setDuration} />

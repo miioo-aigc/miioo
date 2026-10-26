@@ -4,6 +4,8 @@ import { frameAtTime } from './FrameIndex';
 
 export default function useFrameSelection(url, canvasRef, { onExport, originalUrl = url } = {}) {
   const worker = useRef(null);
+  const thumbnailCache = useRef(new Map());
+  const [thumbnails, setThumbnails] = useState({});
   const sequence = useRef(0);
   const target = useRef(0);
   const timer = useRef(null);
@@ -18,6 +20,7 @@ export default function useFrameSelection(url, canvasRef, { onExport, originalUr
   useEffect(() => { exportHandler.current = onExport; }, [onExport]);
 
   useEffect(() => {
+    const cache = thumbnailCache.current;
     const decoder = new Worker(new URL('./FrameDecoderWorker.js', import.meta.url), { type: 'module' });
     worker.current = decoder;
     let watchdog;
@@ -33,7 +36,19 @@ export default function useFrameSelection(url, canvasRef, { onExport, originalUr
     };
     wait();
     decoder.onmessage = ({ data }) => {
-      if (data.type === 'ready') {
+      if (data.type === 'thumbnail') {
+        if (data.blob) {
+          if (cache.has(data.index)) URL.revokeObjectURL(cache.get(data.index));
+          cache.delete(data.index);
+          cache.set(data.index, URL.createObjectURL(data.blob));
+          while (cache.size > 120) {
+            const oldest = cache.keys().next().value;
+            URL.revokeObjectURL(cache.get(oldest));
+            cache.delete(oldest);
+          }
+          setThumbnails(Object.fromEntries(cache));
+        }
+      } else if (data.type === 'ready') {
         setTimes(data.times);
         decoder.postMessage({ type: 'seek', index: 0, id: sequence.current });
         wait();
@@ -73,6 +88,8 @@ export default function useFrameSelection(url, canvasRef, { onExport, originalUr
     decoder.postMessage({ type: 'open', url, baseUrl: document.baseURI });
     worker.current.wait = wait;
     return () => {
+      cache.forEach(value => URL.revokeObjectURL(value));
+      cache.clear();
       clearTimeout(timer.current);
       clearTimeout(watchdog);
       decoder.terminate();
@@ -93,6 +110,10 @@ export default function useFrameSelection(url, canvasRef, { onExport, originalUr
     timer.current = setTimeout(() => worker.current?.postMessage({ type: 'seek', index: value, id }), 70);
   }, [times.length, exporting]);
 
+  const requestThumbnails = useCallback((indices) => {
+    worker.current?.postMessage({ type: 'thumbnails', indices: indices.filter(value => !thumbnailCache.current.has(value)) });
+  }, []);
+
   const step = useCallback((direction) => select(target.current + direction), [select]);
   function seek(time) { select(frameAtTime(times, time)); }
   function download() {
@@ -107,5 +128,5 @@ export default function useFrameSelection(url, canvasRef, { onExport, originalUr
     worker.current?.wait();
     worker.current?.postMessage({ type: 'export', index, purpose: 'prepare', originalUrl, baseUrl: document.baseURI });
   }
-  return { times, index, busy, exporting, error, dimensions, step, seek, download, exportFrame };
+  return { thumbnails, requestThumbnails, select, times, index, busy, exporting, error, dimensions, step, seek, download, exportFrame };
 }

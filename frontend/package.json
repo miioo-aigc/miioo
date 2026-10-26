@@ -30,6 +30,7 @@
     "@xyflow/system": "0.0.82",
     "ass-compiler": "^0.1.16",
     "border-beam": "^1.4.1",
+    "img-fx": "^0.5.1",
     "lucide-react": "^1.42.0",
     "mammoth": "^1.12.1",
     "mediabunny": "^1.56.0",

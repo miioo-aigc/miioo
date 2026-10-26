@@ -3,7 +3,7 @@
  * @structure-index
  *
  * ─── 常量与局部组件 ─────────────────────────────────────────────────
- *   FALLBACK_MODELS / GENERATION_MODES  模型兜底数据和批量生成方式
+ *   GENERATION_MODES  批量生成方式；模型仅采用服务器可用目录
  *   CloseIcon                         弹窗关闭图标
  *   RadioGroup                        生成方式单选组
  *   BatchGenerateModal                模型、比例、分辨率和批量生成参数编排
@@ -31,10 +31,15 @@
  *   2026-07-22  批量生成进行中允许通过关闭和取消按钮退出弹窗
  *   2026-07-23  批量生成弹窗默认选中“仅生成未定稿”
  *   2026-08-07  批量生成弹窗默认画面比例改为 16:9，不再继承项目画幅
+
+ * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
+ * 当前定义定位：CloseIcon L56；RadioGroup L65；BatchGenerateModal L107。
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 // 模型能力直接从后端 capabilities 获取
-import { apiListModels } from '../api/config';
+import { useAvailableModels } from '../hooks/useAvailableModels';
+import ModelReadStatus from './feedback/ModelReadStatus';
+import { normalizeSubjectImageModels } from './subject/SubjectModelAdapter';
 import { Select } from './ui';
 import { imageRatios } from '../utils/ImageGenerationParams';
 
@@ -42,13 +47,6 @@ const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const ACCENT_BUTTON_GRADIENT =
   'linear-gradient(in oklab 107.50999999999999deg, oklab(84.6% -0.114 0.031 / 30%) 8.14%, oklab(84.6% -0.114 0.031 / 0%) 54.48%)';
-
-// 本地兜底模型列表（后端不可用时使用）
-const FALLBACK_MODELS = [
-  { value: 'doubao-seedream-5.0-lite', label: 'Doubao-Seed-5.0-Lite', resolutions: ['2K','3K','4K'], resolutionSizeMap: {}, ratios: ['1:1', '16:9', '9:16', '4:3', '3:4'] },
-  { value: 'doubao-seedream-4.5', label: 'Doubao-Seed-4.5', resolutions: ['2K','4K'], resolutionSizeMap: {}, ratios: ['1:1', '16:9', '9:16', '4:3', '3:4'] },
-  { value: 'doubao-seedream-4.0', label: 'Doubao-Seed-4.0', resolutions: ['1K','2K','4K'], resolutionSizeMap: {}, ratios: ['1:1', '16:9', '9:16', '4:3', '3:4'] },
-];
 
 const GENERATION_MODES = [
   { label: '多视图', value: 'three_view' },
@@ -108,38 +106,9 @@ function RadioGroup({ label, value, options, onChange }) {
 
 export default function BatchGenerateModal({ open, onClose, onConfirm, generating = false, activeTab = 'char', parametersOnly = false, availableModels, initialParams }) {
   // ── 从后端拉取模型列表，与本地能力表合并 ──────────────────────
-  const [modelList, setModelList] = useState(availableModels || FALLBACK_MODELS);
-  const [modelsLoading, setModelsLoading] = useState(!availableModels);
-
-  useEffect(() => {
-    if (!open || availableModels) return;
-    (async () => {
-      try {
-        const data = await apiListModels({ category: 'image' });
-        const list = Array.isArray(data) ? data : (data?.items || data?.models || []);
-        const merged = list.map((m) => {
-          const modelId = m.model_id || m.id;
-        const caps = m.capabilities || {};
-         const resolutions = (caps.supported_resolutions?.length ? caps.supported_resolutions : caps.supported_sizes) || [];
-         const resolutionSizeMap = caps.resolution_size_map || {};
-          const ratios = caps.supported_aspect_ratios || [];
-         return {
-           value: modelId,
-            label: m.name || modelId,
-            resolutions,
-            resolutionSizeMap,
-            ratios,
-            is_default: m.is_default,
-         };
-        });
-        setModelList(merged.length > 0 ? merged : FALLBACK_MODELS);
-      } catch {
-        setModelList(FALLBACK_MODELS);
-      } finally {
-        setModelsLoading(false);
-      }
-    })();
-  }, [open, availableModels]);
+  const { models, loading, error: modelsError, retry: retryModels } = useAvailableModels('image', open && !availableModels);
+  const modelList = useMemo(() => availableModels || normalizeSubjectImageModels(models), [availableModels, models]);
+  const modelsLoading = !availableModels && loading;
 
   const defaultModel = modelList.find(m => m.is_default) || modelList[0];
   const [model, setModel] = useState(defaultModel?.value || '');
@@ -212,6 +181,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
   }, [model, ratio, modelList]);
 
   const resetForm = useCallback(() => {
+    if (!modelList.length) return;
     if (parametersOnly) {
       const selected = modelList.find((m) => m.value === initialParams?.model) || modelList.find((m) => m.is_default) || modelList[0];
       const res = selected?.resolutions.includes(initialParams?.resolution) ? initialParams.resolution : selected?.resolutions[0];
@@ -261,6 +231,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
   if (!open) return null;
 
   const handleConfirm = async () => {
+    if (modelsLoading || !modelList.some(item => item.value === model)) return;
     if (parametersOnly && (!resolutionOptions.some((o) => o.value === resolution) || !ratioOptions.some((o) => o.value === ratio))) return;
     await onConfirm?.(parametersOnly ? { model, ratio, resolution } : { model, ratio, resolution, mode, only_undrafted: onlyUndrafted });
     // onClose 由父组件在成功后自行调用，避免异步请求未完成就关闭弹窗
@@ -294,6 +265,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
 
         {/* Body */}
         <div className="flex flex-col items-start gap-[16px] py-[8px] w-full px-[24px] bg-[#161616]">
+          <ModelReadStatus loading={modelsLoading} error={availableModels ? '' : modelsError} empty={!modelList.length} onRetry={retryModels} />
           <Select
             label="选择模型"
             width="100%"
@@ -383,7 +355,7 @@ export default function BatchGenerateModal({ open, onClose, onConfirm, generatin
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={generating || modelsLoading || (parametersOnly && (!model || !resolutionOptions.some((o) => o.value === resolution) || !ratioOptions.some((o) => o.value === ratio)))}
+            disabled={generating || modelsLoading || !modelList.some(item => item.value === model) || (parametersOnly && (!model || !resolutionOptions.some((o) => o.value === resolution) || !ratioOptions.some((o) => o.value === ratio)))}
             className="flex items-center h-[36px] shrink-0 rounded-lg px-[16px] gap-[4px] bg-[#2DC3E1] bg-origin-border border border-solid border-[#FFFFFF33] outline outline-1 outline-[#00000080] transition-colors hover:bg-[#53D3ED] active:bg-[#139EBA] disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ backgroundImage: ACCENT_BUTTON_GRADIENT }}
           >

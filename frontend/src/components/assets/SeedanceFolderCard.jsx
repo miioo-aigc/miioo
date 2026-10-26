@@ -1,3 +1,5 @@
+import AsyncImagePreview from '../AsyncImagePreview';
+import RecoverableVideoPreview from '../creation/RecoverableVideoPreview';
 /**
  * Seedance 素材库文件夹卡片。
  * 按 Paper 设计稿复刻文件夹层级，并使用路径插值实现挡板形状动画。
@@ -109,36 +111,11 @@ function FolderPreview({ preview, className, style }) {
   if (!data?.url) return null;
   const url = normalizeImageUrl(data.url);
   const posterUrl = data.posterUrl ? normalizeImageUrl(data.posterUrl) : undefined;
-  if (data.type === 'video' || data.type.startsWith('video/')) {
-    return (
-      <video
-        className={className}
-        src={url}
-        poster={posterUrl}
-        muted
-        playsInline
-        preload="auto"
-        aria-hidden="true"
-        style={{ ...style, objectFit: 'cover' }}
-        onLoadedData={(event) => {
-          try {
-            event.currentTarget.currentTime = 0;
-            event.currentTarget.pause();
-          } catch {
-            /* 浏览器可能尚未允许定位媒体 */
-          }
-        }}
-        onCanPlay={(event) => {
-          if (posterUrl) return;
-          const video = event.currentTarget;
-          video.play()
-            .then(() => window.setTimeout(() => video.pause(), 120))
-            .catch(() => {});
-        }}
-      />
-    );
-  }
-  return <div className={className} style={{ ...style, backgroundImage: `url(${url})` }} />;
+  return <div className={className} style={{ ...style, position: className.includes('absolute') ? 'absolute' : 'relative', overflow: 'hidden' }}>
+    {data.type === 'video' || data.type.startsWith('video/')
+      ? <RecoverableVideoPreview src={url} poster={posterUrl} hovered={false} />
+      : <AsyncImagePreview visual plain src={url} alt="文件夹素材预览" />}
+  </div>;
 }
 
 function getPreviewTransform(index, previewCount, isHovered) {

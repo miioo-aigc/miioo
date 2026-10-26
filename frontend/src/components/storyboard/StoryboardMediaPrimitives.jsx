@@ -9,9 +9,11 @@
  *
  * ─── 依赖边界 ───────────────────────────────────────────────────────
  *   只接收媒体数据和显式交互回调，不调用上传 API、不读取 Store
+ *   2026-10-26  固定媒体框接入有限恢复；刷新与业务操作隔离。
+ * 当前定义定位：MediaRemoveButton L21；MediaContent L25；ShortcutMediaCard L35。
  */
 import { useState } from 'react';
-import { normalizeImageUrl } from '../../utils/imageUrl';
+import StoryboardMediaPreview from './StoryboardMediaPreview';
 import { ReferenceRemoveButton } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -21,15 +23,13 @@ export function MediaRemoveButton({ visible = false, onClick, ariaLabel = '移�
 }
 
 export function MediaContent({ media, className, style }) {
-  const url = normalizeImageUrl(media?.url) || null;
   const contentStyle = { width: '100%', height: '100%', objectFit: 'cover', ...style };
-  if (media?.type?.startsWith('video')) return <video className={className} src={url} style={contentStyle} muted playsInline />;
   if (media?.type?.startsWith('audio')) {
     return <div className={className} style={{ width: '100%', height: '100%', backgroundColor: '#1D1E1E', display: 'flex', alignItems: 'center', justifyContent: 'center', ...style }}>
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 18V5l12-2v13" stroke="rgba(255,255,255,0.50)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /><circle cx="6" cy="18" r="3" stroke="rgba(255,255,255,0.50)" strokeWidth="1.5" /><circle cx="18" cy="16" r="3" stroke="rgba(255,255,255,0.50)" strokeWidth="1.5" /></svg>
     </div>;
   }
-  return <img className={className} src={url} alt="" style={contentStyle} />;
+  return <StoryboardMediaPreview media={media} className={className} style={contentStyle} />;
 }
 
 export function ShortcutMediaCard({ image, label, tooltip, onSelect, enabled = Boolean(image), stretch = false }) {

@@ -56,6 +56,34 @@ export function pasteCanvasNodes(nodes, clipboard, position, makeId = () => cryp
   return setCanvasSelection([...nodes, ...copies], copies.filter((node) => !node.parentId).map((node) => node.id));
 }
 
+/** 原地副本保留根节点的父组；剪贴板粘贴仍使用画布坐标。 */
+export function duplicateCanvasNodes(nodes, makeId = () => crypto.randomUUID()) {
+  const contents = copyCanvasNodes(nodes);
+  const roots = contents.filter((node) => !node.parentId);
+  if (!roots.length) return nodes;
+  const position = {
+    x: Math.min(...roots.map((node) => node.position.x)) + 32,
+    y: Math.min(...roots.map((node) => node.position.y)) + 32,
+  };
+  const pasted = pasteCanvasNodes(nodes, contents, position, makeId);
+  const originals = new Map(nodes.map((node) => [node.id, node]));
+  const copies = pasted.slice(nodes.length).map((node, index) => {
+    if (contents[index].parentId) return node;
+    const source = originals.get(contents[index].id);
+    return { ...node, parentId: source.parentId,
+      position: { x: source.position.x + 32, y: source.position.y + 32 } };
+  });
+  const ancestors = new Set();
+  roots.forEach((root) => {
+    let parent = originals.get(originals.get(root.id)?.parentId);
+    while (parent && !ancestors.has(parent.id)) {
+      ancestors.add(parent.id);
+      parent = originals.get(parent.parentId);
+    }
+  });
+  return fitCanvasGroups([...pasted.slice(0, nodes.length), ...copies], ancestors);
+}
+
 /** 删除组时同时检查嵌套成员，排队中的结果同样需要确认。 */
 export function hasCanvasDeletionTasks(nodes, ids) {
   const removed = canvasDescendantIds(nodes, ids);
@@ -122,6 +150,8 @@ export function getCanvasStackPresentation(nodes, edges) {
   return {
     nodes: nodes.map((node) => ({ ...node, hidden: Boolean(owners.get(node.id)),
       ...(node.type === 'canvasGroup' ? {
+        // React Flow 选中会提升1000层；组仍须低于连线，避免背景模糊遮住连线。
+        zIndex: -2000,
         ...(node.data.stacked ? { position: {
           x: node.position.x + (node.data.stackOffset?.x || 0),
           y: node.position.y + (node.data.stackOffset?.y || 0),

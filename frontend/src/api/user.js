@@ -10,14 +10,19 @@ export async function apiUpdateProfile({ nickname, avatar_url }) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nickname, avatar_url }),
   });
-  return res.json();
+  const data = await requirePhoneSuccess(res);
+  if (!data?.id || typeof data.nickname !== 'string') throw new Error('资料保存结果未确认，请重新打开资料核对');
+  if (avatar_url !== undefined && (typeof data.avatar_url !== 'string' || !data.avatar_url || data.avatar_url.startsWith('blob:'))) throw new Error('头像保存结果未确认');
+  return data;
 }
 
 export async function apiDeleteAccount() {
-  await authFetch(`${BASE}/api/users/me`, {
+  const res = await authFetch(`${BASE}/api/users/me`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });
+  const data = await requirePhoneSuccess(res);
+  if (typeof data?.message !== 'string') throw new Error('注销结果未确认，请重新登录核对账号状态');
 }
 
 export async function apiGetCurrentUser() {
@@ -141,20 +146,18 @@ export async function apiUpdateUser(data) {
   return apiUpdateProfile(data);
 }
 
-// ── 后端无对应接口的功能（暂保留 mock，待后端确认是否规划）─────────────────
-// 以下接口后端均未提供：手机换绑（使用新接口 /api/users/me/phone/unbind/*）
-
 export async function apiUploadAvatar(file) {
-  // 后端仅有 /api/images/upload（通用图片上传），无专属头像接口
-  // 此处调用通用上传后，需配合 apiUpdateProfile({ avatar_url }) 更新
+  // 保留通用上传：专用头像接口已存在，但正式合同尚未规定返回地址字段。
+  // 上传不等于资料保存，调用方还需 PATCH avatar_url。
   const form = new FormData();
   form.append('file', file);
   const res = await authFetch(`${BASE}/api/images/upload`, {
     method: 'POST',
     body: form,
   });
-  const data = await res.json();
-  return { avatarUrl: data.url || data.file_url };
+  const data = await requirePhoneSuccess(res);
+  if (typeof data?.url !== 'string' || !data.url || data.url.startsWith('blob:')) throw new Error('头像上传结果未确认，请核对后重试');
+  return { avatarUrl: data.url };
 }
 
 export async function apiGetWechatQrCode() {
@@ -194,9 +197,12 @@ export async function apiBindWechat({ wechat_id, wechat_nickname, wechat_avatar_
 }
 
 export async function apiUnbindWechat() {
-  await authFetch(`${BASE}/api/users/me/wechat`, {
+  const res = await authFetch(`${BASE}/api/users/me/wechat`, {
     method: 'DELETE',
   });
+  const data = await requirePhoneSuccess(res);
+  if (!data?.id || data.wechat_bound !== false) throw new Error('解绑结果未确认，请重新打开个人资料核对');
+  return data;
 }
 
 export async function apiSendPhoneCode(phone) {
@@ -205,13 +211,15 @@ export async function apiSendPhoneCode(phone) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone }),
   });
-  await requirePhoneSuccess(res);
+  const data = await requirePhoneSuccess(res);
+  if (data?.success !== true) throw new Error('验证码发送结果未确认，请稍后重试');
 }
 
 async function requirePhoneSuccess(res) {
   const data = await res.json().catch(() => null);
   if (!res.ok || data?.success === false) {
-    const message = typeof data?.detail === 'string' ? data.detail : '手机操作失败，请重试';
+    const message = res.status >= 500 ? '服务暂时不可用，操作结果未确认，请稍后核对'
+      : (typeof data?.detail === 'string' ? data.detail : '操作未通过，请检查输入或稍后重试');
     const error = new Error(message);
     error.status = res.status;
     throw error;
@@ -220,17 +228,14 @@ async function requirePhoneSuccess(res) {
 }
 
 export async function apiVerifyPhoneCode(phone, code) {
-  try {
-    const res = await authFetch(`${BASE}/api/auth/verify-code-login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, code }),
-    });
-    const data = await requirePhoneSuccess(res);
-    return { valid: Boolean(data?.access_token) };
-  } catch {
-    return { valid: false };
-  }
+  const res = await authFetch(`${BASE}/api/auth/verify-code-login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, code }),
+  });
+  const data = await requirePhoneSuccess(res);
+  if (typeof data?.access_token !== 'string' || !data.access_token) throw new Error('验证结果未确认，请重试');
+  return { valid: true };
 }
 
 export async function apiRebindPhone(newPhone, code) {

@@ -3,10 +3,12 @@ import { Copy, Download, Eye, Pencil, Ellipsis } from 'lucide-react';
 import { IconButton, Tooltip } from '../ui';
 import ImageEditIcon from '../image-edit/ImageEditIcon';
 import VideoEditIcon from '../video-edit/VideoEditIcon';
+import { SHOW_MULTI_ANGLE_ENTRIES } from '../../config/MultiAngleEntryVisibility';
 
 const VIDEO_ACTIONS = ['智能超清', '去字幕', '选帧', '剪辑'].map((label) => ({ key: label, label }));
 
 const IMAGE_ACTIONS = ['裁剪', '翻转', '多机位', '局部重绘', '智能超清', '消除笔', '扩图']
+  .filter((label) => label !== '多机位' || SHOW_MULTI_ANGLE_ENTRIES)
   .map((label) => ({ key: label, label }));
 
 const ACTIONS = [

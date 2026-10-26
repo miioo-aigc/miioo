@@ -1,5 +1,9 @@
 /** 堆叠成员的只读预览；2026-10-13：内层承载悬停旋转，与外层展开动画隔离。 */
+import { useRef } from 'react';
+import { useMediaPlayback } from '../../hooks/useMediaPlayback';
+import AsyncImagePreview from '../AsyncImagePreview';
 import { Music2 } from 'lucide-react';
+import { getCanvasImagePreview, getCanvasOriginalImage, getCanvasVideoPoster } from './CanvasMediaSources';
 
 // 240px 卡片旋转后的中心统一对齐 312px 外框中心 (156, 156)。
 const CARD_TRANSFORMS = [
@@ -9,10 +13,13 @@ const CARD_TRANSFORMS = [
 ];
 
 function MemberPreview({ member }) {
-  if (member.type === 'image' && member.asset?.url) return <img className="canvas-stack-preview__media" src={member.asset.url} alt="" draggable={false} />;
-  if (member.type === 'video' && member.asset?.url) return <video className="canvas-stack-preview__media" src={member.asset.url} muted playsInline preload="metadata" />;
+  if (member.type === 'image' && member.asset?.url) return <AsyncImagePreview plain decorative imageClassName="canvas-stack-preview__media" src={getCanvasImagePreview(member.asset)} fallbackSrc={getCanvasOriginalImage(member.asset)} alt="" draggable={false} decoding="async" />;
+  if (member.type === 'video' && member.asset?.url) return getCanvasVideoPoster(member.asset)
+    ? <AsyncImagePreview plain decorative imageClassName="canvas-stack-preview__media" src={getCanvasVideoPoster(member.asset)} alt="" draggable={false} decoding="async" />
+    : <StackVideo key={member.asset.url} src={member.asset.url} />;
   if (member.type === 'audio' && member.asset?.url) return <div className="canvas-stack-preview__empty"><Music2 size={28} /><span>{member.asset.name || member.label}</span></div>;
   if (member.content) return <div className="canvas-stack-preview__text">{member.content}</div>;
+  if (member.readOnly) return <div className="canvas-stack-preview__empty">暂无内容</div>;
   const hint = { text: '支持.docx/.txt/.md', image: '支持图片上传', video: '支持视频上传', audio: '支持音频上传' }[member.type];
   return <>
     {member.type === 'text' && <span className="canvas-stack-preview__placeholder">双击编辑</span>}
@@ -29,4 +36,11 @@ export default function CanvasGroupStackPreview({ members = [] }) {
       <div className="canvas-stack-preview__surface"><MemberPreview member={member} /></div>
     </div>)}
   </div>;
+}
+
+/** 装饰层仅自动恢复；手动操作在展开后的节点进行。 */
+function StackVideo({ src }) {
+  const ref = useRef(null);
+  useMediaPlayback(ref, src);
+  return <video ref={ref} className="canvas-stack-preview__media" src={src} muted playsInline preload="metadata" />;
 }

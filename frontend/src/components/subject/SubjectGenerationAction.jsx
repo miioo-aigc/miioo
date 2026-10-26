@@ -12,6 +12,9 @@
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 SubjectPage 的 EditSubjectPanel 抽离生成动作区
  *   2026-07-15  生成按钮统一复用 components/ui/Button
+
+ * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
+ * 当前定义定位：GenerateImageIcon L21；SubjectGenerationAction L32。
  */
 import { Button } from '../ui';
 
@@ -26,7 +29,7 @@ function GenerateImageIcon() {
   );
 }
 
-export default function SubjectGenerationAction({ onGenerate }) {
+export default function SubjectGenerationAction({ onGenerate, disabled = false }) {
   return (
     <div
       style={{
@@ -53,6 +56,7 @@ export default function SubjectGenerationAction({ onGenerate }) {
           backgroundImage: 'linear-gradient(in oklab 107.51deg, oklab(84.6% -0.114 0.031 / 30%) 8.14%, oklab(84.6% -0.114 0.031 / 0%) 54.48%)',
         }}
         onClick={onGenerate}
+        disabled={disabled}
       >
         生成图片
       </Button>

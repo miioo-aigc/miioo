@@ -26,7 +26,7 @@ export default function CanvasConnectionEdge({ id, sourceX, sourceY, targetX, ta
     {highlighted && !data?.overflow && <path d={edgePath} fill="none" stroke="var(--color-white-50)" strokeWidth="2" className="pointer-events-none" />}
     {data?.pulses?.map((pulse) => <CanvasPulsePath key={pulse.id} path={edgePath} pulse={pulse} onMeasure={data.onPulseMeasure} />)}
     <EdgeLabelRenderer>
-      <div className={`nodrag nopan pointer-events-auto absolute transition-opacity ${hovered ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+      <div className={`canvas-edge-action nodrag nopan absolute transition-opacity ${hovered ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
         style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
         onPointerEnter={() => setEdgeHover(true)} onPointerLeave={() => setEdgeHover(false)}>
         <Tooltip label="删除连线" offset={6}>

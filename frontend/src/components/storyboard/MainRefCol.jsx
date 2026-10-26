@@ -1,9 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import AssetPickerModal from '../AssetPickerModal';
-import { normalizeImageUrl } from '../../utils/imageUrl';
-import NarrationAddButton from './NarrationAddButton';
-
 /**
  * @file MainRefCol.jsx
  * @structure-index
@@ -12,7 +6,7 @@ import NarrationAddButton from './NarrationAddButton';
  *   MainRefColWrapper       标题、边框和列布局容器
  *   MainRefCol               主体参考图网格、添加菜单、资产选择和删除交互
  *   AddSlotDropdown          本地上传/资产库选择菜单
- *   MediaHoverPreview        图片/视频悬浮预览
+ *   MediaHoverPreview        独立模块导入，图片/视频失败锁定及刷新
  *   StoryboardAddSlotButton   主体参考列的虚线添加格
  *
  * ─── 依赖边界 ─────────────────────────────────────────────────────
@@ -20,11 +14,22 @@ import NarrationAddButton from './NarrationAddButton';
  *   上传 API、资产字段映射、页面状态、Toast 和持久化副作用由页面负责。
  *   组件不读取 StoryboardPage 的闭包变量，不直接调用业务 API。
  *
+ *   2026-10-26  悬停预览失败固定浮层并就地刷新，正常移出及素材移除行为保留
+ *
  * ─── 更新记录 ─────────────────────────────────────────────────────
  *   2026-08-04  分镜/时间轴视频悬浮预览统一使用 preview_video_url，封面不再误作为视频源
  *   2026-08-03  主体参考列过滤无有效图片地址的失效引用，避免后端残留对象渲染成问号占位框
  *   2026-07-15  抽离 StoryboardPage 主体参考列，保留临时预览、资产选择、删除和悬浮预览行为
+ *   2026-10-26  固定媒体框接入有限恢复；刷新与业务操作隔离。
+ * 当前定义定位：IconPlus L36；StoryboardAddSlotButton L44；AddSlotDropdown L79；MainRefCol L154；MainRefColWrapper L320。
  */
+import StoryboardMediaPreview from './StoryboardMediaPreview';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import AssetPickerModal from '../AssetPickerModal';
+import NarrationAddButton from './NarrationAddButton';
+import MediaHoverPreview from './MediaHoverPreview';
+import { useHoverPreviewBoundary } from '../../hooks/useHoverPreviewBoundary';
 
 const FONT = '"Alibaba PuHuiTi 2.0", system-ui, sans-serif';
 
@@ -154,10 +159,14 @@ function MainRefCol({ shot, onChange, projectId, onUploadFile, onAssetConfirm })
   const [previewImage, setPreviewImage] = useState(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const hoverTimerRef = useRef(null);
+  const hoverBoundary = useHoverPreviewBoundary(() => setPreviewImage(null));
+  useEffect(() => () => clearTimeout(hoverTimerRef.current), []);
   const addButtonRef = useRef(null);
   const fileInputRef = useRef(null);
 
   function handleImageMouseEnter(event, image) {
+    hoverBoundary.enter();
+    clearTimeout(hoverTimerRef.current);
     setMousePosition({ x: event.clientX, y: event.clientY });
     hoverTimerRef.current = setTimeout(() => {
       if (image?.url) setPreviewImage(image.url);
@@ -170,7 +179,7 @@ function MainRefCol({ shot, onChange, projectId, onUploadFile, onAssetConfirm })
 
   function handleImageMouseLeave() {
     clearTimeout(hoverTimerRef.current);
-    setPreviewImage(null);
+    hoverBoundary.leave();
   }
 
   function handleDelete(refToDelete) {
@@ -277,7 +286,7 @@ function MainRefCol({ shot, onChange, projectId, onUploadFile, onAssetConfirm })
             }}
           >
             {image.url ? (
-              <img src={normalizeImageUrl(image.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <StoryboardMediaPreview media={image} />
             ) : (
               <div style={{ width: '100%', height: '100%', backgroundColor: image.bgColor ?? '#252525', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.50)', fontFamily: FONT }}>{(image.name ?? '?')[0]}</span>
@@ -301,83 +310,8 @@ function MainRefCol({ shot, onChange, projectId, onUploadFile, onAssetConfirm })
       </div>
 
       {previewImage && createPortal(
-        <MediaHoverPreview url={previewImage} isVideo={false} mouseX={mousePosition.x} mouseY={mousePosition.y} />,
+        <MediaHoverPreview onPinnedChange={hoverBoundary.pin} onDismiss={hoverBoundary.dismiss} url={previewImage} isVideo={false} mouseX={mousePosition.x} mouseY={mousePosition.y} />,
         document.body,
-      )}
-    </div>
-  );
-}
-
-export function MediaHoverPreview({ url, isVideo, mouseX, mouseY }) {
-  const [loadedMedia, setLoadedMedia] = useState(null);
-  const GAP = 16;
-  const mediaKey = `${isVideo ? 'video' : 'image'}:${url}`;
-
-  useEffect(() => {
-    if (isVideo || !url) return undefined;
-
-    const image = new Image();
-    image.onload = () => {
-      if (image.naturalWidth && image.naturalHeight) {
-        setLoadedMedia({
-          key: mediaKey,
-          size: { w: image.naturalWidth, h: image.naturalHeight },
-        });
-      }
-    };
-    image.src = normalizeImageUrl(url);
-    return () => { image.onload = null; };
-  }, [url, isVideo, mediaKey]);
-
-  // 视频元数据加载前也先按默认比例渲染容器，避免悬停时窗口因尺寸未知直接消失。
-  const size = isVideo
-    ? (loadedMedia?.key === mediaKey ? loadedMedia.size : { w: 16, h: 9 })
-    : loadedMedia?.key === mediaKey ? loadedMedia.size : null;
-
-  if (!size) return null;
-
-  const maxW = window.innerWidth * 0.35;
-  const maxH = window.innerHeight * 0.35;
-  const ratio = size.w / size.h;
-  let previewW;
-  let previewH;
-
-  if (ratio >= 1) {
-    previewW = maxW;
-    previewH = previewW / ratio;
-    if (previewH > maxH) { previewH = maxH; previewW = previewH * ratio; }
-  } else {
-    previewH = maxH;
-    previewW = previewH * ratio;
-    if (previewW > maxW) { previewW = maxW; previewH = previewW / ratio; }
-  }
-
-  let left = mouseX + GAP;
-  let top = mouseY + GAP;
-  if (left + previewW > window.innerWidth - GAP) left = mouseX - previewW - GAP;
-  if (top + previewH > window.innerHeight - GAP) top = mouseY - previewH - GAP;
-  left = Math.max(GAP, left);
-  top = Math.max(GAP, top);
-
-  return (
-    <div style={{ position: 'fixed', left, top, width: previewW, height: previewH, zIndex: 99999, pointerEvents: 'none', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.12)', backgroundColor: '#111' }}>
-      {isVideo ? (
-        <video
-          src={normalizeImageUrl(url)}
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="metadata"
-          onLoadedMetadata={(event) => {
-            const { videoWidth: w, videoHeight: h } = event.target;
-            if (w && h) setLoadedMedia({ key: mediaKey, size: { w, h } });
-            event.target.play().catch(() => {});
-          }}
-          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-        />
-      ) : (
-        <img src={normalizeImageUrl(url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
       )}
     </div>
   );

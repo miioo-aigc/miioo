@@ -3,26 +3,37 @@
  * @structure-index
  *
  * ─── 通用配置组件 ────────────────────────────────────────────────
- *   ConfigModelModal()       服务商 API Key、模型 Tab 与保存操作      L714
- *   PrimaryButton()          弹窗主按钮视觉和禁用状态                 L199
+ *   ConfigModelModal()       服务商 API Key、模型 Tab 与保存操作      L757
+ *   PrimaryButton()          弹窗主按钮视觉和禁用状态                 L236
  *
  * ─── 页面级状态与动作 ────────────────────────────────────────────
- *   ApiConfigModal()         API 配置弹窗状态、服务商请求和子弹窗编排 L956
- *   saveOneLinkConfig()      OneLinkAI 配置保存与测试通过校验         L1575
+ *   ApiConfigModal()         每次打开创建独立配置会话                 L999
+ *   testConnection()        主服务商配置写入互斥、归属和补读           L1230
+ *   toggleOtherProvider()    服务商开关即时显示、排队和失败核对       L1481
+ *   beginOtherModelMutation() 模型写入互斥、认证与会话归属            L1607
+ *   saveOneLinkConfig()      OneLinkAI 等待写入后保存退出             L1718
  *
  * ─── 更新记录 ───────────────────────────────────────────────────
+ *   2026-10-23  乙方案：服务商开关排队核对，其他模型写入隔离及补读版本保护。
+ *   2026-10-22  其他服务商严格测试结果，保存失败停止，输入与会话隔离在途结果。
+ *   2026-10-22  初始化成功后开放配置，失败可重试；其他服务商读取隔离迟到响应。
+ *   2026-10-22  主模型写入成功后更新；读取和写入增加请求归属及重复提交保护。
  *   2026-10-12  编辑服务商模型三动作移出状态更新函数，失败保留列表并提示。
  *   2026-08-26  OneLinkAI API Key 清空时禁用保存并显示原因 Tooltip
  *   2026-09-28  严格校验连接结果，新密钥测试通过后才允许保存；忽略过期测试
- *   保留原因：本次仅修复 OneLinkAI 校验，不迁移服务商编排和历史弹窗 UI。
- *   后续拆分边界：配置子弹窗；验证范围：测试、输入变更、保存及请求竞态。
+ *   保留原因：服务商会话、认证及读写编排集中维护，本批不混入历史弹窗结构迁移。
+ *   后续拆分边界：配置子弹窗；验证范围：测试、输入变更、保存及请求竞态；2026-10-23 增加规范实体与跨服务商默认同步。
+ *   2026-10-23  主服务商共享在途锁；补读等待、认证归属及新增草稿保护。
  */
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Toggle from './Toggle';
 import ConfirmDialog from './ConfirmDialog';
 import Tooltip from './ui/Tooltip';
+import RemoteReadStatus from './feedback/RemoteReadStatus';
 import { apiOneClickSetup, apiCreateModel, apiCreateProvider, apiListModels, apiUpdateModel, apiDeleteModel, apiGetBanner, apiListProviders, apiTestConnection, apiUpdateProvider, apiGetCardVisibility } from '../api/config';
-import { getToken } from '../api/request.js';
+import { getToken, getAuthSessionGeneration } from '../api/request.js';
+import { createProviderEnableQueue } from '../api/ProviderEnableQueue.js';
+import { applyModelResult, validateModelResult } from '../utils/ModelConfigState.js';
 // 全局 API 卡片背景图（本地打包，保证离线可用）
 import globalApiBg from '../assets/api-global-bg.png';
 import { showGlobalToast } from '../stores/toastStore';
@@ -42,6 +53,31 @@ const CARD_ACCENT_BUTTON_GRADIENT =
 const CREATION_MANUAL_URL = 'https://gcn0je6sgrhe.feishu.cn/wiki/QaKLwOx0ii2qWakn4cXcybbMnrf?from=from_copylink';
 const MODEL_DESCRIPTION = 'GPT-5.2 是 GPT-5 系列最新一代旗舰级智能模型，在架构设计、推理能力和应用性能上实现重大突破。相比 GPT-5.1…';
 const MODEL_TABS = ['对话模型', '图片模型', '视频模型', '配音模型', '音乐模型'];
+// 跨弹窗会话保留在途锁，避免关闭重开后并发写同一服务商。
+const providerTestPending = new Set();
+const otherModelPending = new Map();
+const primaryPending = new Map();
+const getPrimaryPending = () => primaryPending.get(getAuthSessionGeneration());
+function acquirePrimaryRequest(isCurrent) {
+  const generation = getAuthSessionGeneration();
+  if (primaryPending.has(generation)) return null;
+  let complete;
+  const done = new Promise(resolve => { complete = resolve; });
+  const request = { isCurrent, done, finish() {
+    if (primaryPending.get(generation) === request) primaryPending.delete(generation);
+    complete();
+  } };
+  primaryPending.set(generation, request);
+  return request;
+}
+const providerEnableQueue = createProviderEnableQueue({
+  update: apiUpdateProvider, read: apiListProviders, getGeneration: getAuthSessionGeneration,
+});
+const pendingOtherModels = () => [
+  ...[...otherModelPending].filter(([key]) => key.startsWith(`${getAuthSessionGeneration()}:`))
+    .map(([, request]) => request.done),
+  ...(getPrimaryPending() ? [getPrimaryPending().done] : []),
+];
 const TAB_SLIDE_DURATION = 220;
 
 const CARD_KEY_NAMES = {
@@ -534,6 +570,8 @@ function ConfiguredProviderCard({ title, modelCount, date, enabled, onEdit, onTe
 // }
 
 function MainModal({
+  readStatus,
+  onRetry,
   configured,
   onelinkEnabled,
   onelinkModelsByTab,
@@ -563,6 +601,9 @@ function MainModal({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-[16px] overflow-y-auto bg-surface-modal px-[24px] py-[8px]">
+        {readStatus !== 'ready' ? (
+          <RemoteReadStatus loading={readStatus === 'loading'} error={readStatus === 'error' ? '配置读取失败，请重试' : ''} onRetry={onRetry} />
+        ) : <>
         <RecommendationBanner bannerData={bannerData} />
 
         <div className="flex flex-col gap-[8px] self-stretch">
@@ -606,6 +647,7 @@ function MainModal({
             ))}
           </div>
         </div>
+        </>}
       </div>
 
       <div className="flex items-center justify-between gap-[16px] rounded-b-2xl bg-surface-modal px-[24px] py-[16px]">
@@ -955,11 +997,46 @@ function EditModelModal({ draft, onChange, onCancel, onSave, title = '添加模�
 // }
 
 export default function ApiConfigModal({ open, onClose, onConfigured }) {
-  const modelMutationPending = useRef(false);
+  if (!open) return null;
+  return <ApiConfigSession open={open} onClose={onClose} onConfigured={onConfigured} />;
+}
+
+function ApiConfigSession({ open, onClose, onConfigured }) {
   const [state, setState] = useState(createDefaultState);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [bannerData, setBannerData] = useState(null);
+  const [readStatus, setReadStatus] = useState('loading');
+  const initializationRequest = useRef(null);
+  const otherProviderRequest = useRef(null);
+  const primaryReadRequest = useRef(null);
+  const providerInputRevision = useRef(0);
   const oneLinkTestRequest = useRef(0);
+  const modelScope = useRef(0);
+  const modelRevision = useRef(0);
+  const primaryMutation = useRef(null);
+  const providerSession = useRef(0);
+
+  useLayoutEffect(() => {
+    providerSession.current += 1;
+    return () => { providerSession.current += 1; };
+  }, []);
+
+  const captureProviderScope = () => {
+    const session = providerSession.current;
+    const auth = getAuthSessionGeneration();
+    return () => providerSession.current === session && getAuthSessionGeneration() === auth;
+  };
+
+  useLayoutEffect(() => {
+    modelScope.current += 1;
+    return () => { modelScope.current += 1; };
+  }, [open]);
+
+  const captureModelScope = useCallback(() => {
+    const scope = modelScope.current;
+    const auth = getAuthSessionGeneration();
+    return () => modelScope.current === scope && getAuthSessionGeneration() === auth;
+  }, []);
 
   useEffect(() => () => {
     oneLinkTestRequest.current += 1;
@@ -969,13 +1046,17 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
     showGlobalToast(type, message);
   }, []);
 
-  const loadModelsFromBackend = useCallback(() => {
-    apiListModels({ fresh: true }).then((models) => {
-      if (!models || !models.length) return;
+  const loadModelsFromBackend = useCallback(async (providerId, guard = () => true, reportFailure = false) => {
+    if (primaryMutation.current?.isCurrent()) return;
+    const isCurrent = captureModelScope();
+    const revision = ++modelRevision.current;
+    return apiListModels({ fresh: true }).then((models) => {
+      if (!guard() || !isCurrent() || revision !== modelRevision.current) return;
       setState((current) => {
+        if (!guard() || !isCurrent() || revision !== modelRevision.current) return current;
         const modelsByTab = createEmptyModelsByTab();
         models.forEach((model) => {
-          if (current.onelinkProviderId && model.provider_id !== current.onelinkProviderId) return;
+          if (model.provider_id !== (providerId || current.onelinkProviderId)) return;
           const tab = getCategoryTab(model.category);
           if (!tab) return;
           modelsByTab[tab].push({
@@ -994,25 +1075,49 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
           ),
         };
       });
+      return true;
     }).catch((err) => {
+      if (!guard() || !isCurrent() || revision !== modelRevision.current) return;
+      if (reportFailure) throw err;
+      showToast('error', '读取模型列表失败，请关闭配置后重试');
       console.error('加载模型列表失败:', err);
     });
-  }, []);
+  }, [captureModelScope, showToast]);
 
   const initializeFromBackend = useCallback(() => {
-    if (!getToken()) return;
+    if (initializationRequest.current?.isCurrent()) return;
+    const isCurrent = captureModelScope();
+    const revision = modelRevision.current;
+    const request = { isCurrent };
+    initializationRequest.current = request;
+    setReadStatus('loading');
+    if (!getToken()) {
+      setReadStatus('error');
+      initializationRequest.current = null;
+      return;
+    }
+    setBannerData(null);
+    apiGetBanner().then(result => {
+      if (isCurrent()) setBannerData(result);
+    }).catch(() => {});
 
     Promise.all([
-      apiListProviders().catch(() => []),
-      apiListModels({ fresh: true }).catch(() => null),
-      apiGetBanner().catch(() => null),
+      (providerEnableQueue.hasPending() || pendingOtherModels().length
+        ? Promise.all([providerEnableQueue.wait(), ...pendingOtherModels()]).then(() => {
+        if (!isCurrent()) throw new Error('配置会话已失效');
+        return apiListProviders();
+        }) : apiListProviders()),
+      (pendingOtherModels().length
+        ? Promise.all(pendingOtherModels()).then(() => {
+          if (!isCurrent()) throw new Error('配置会话已失效');
+          return apiListModels({ fresh: true });
+        }) : apiListModels({ fresh: true })),
       apiGetCardVisibility().catch(() => []),
-    ]).then(([providersData, allModels, bannerResult, cardVisibility]) => {
-      if (!getToken()) return;
+    ]).then(([providersData, allModels, cardVisibility]) => {
+      if (!getToken() || !isCurrent() || revision !== modelRevision.current) return;
 
-      if (bannerResult) setBannerData(bannerResult);
-
-      const rawList = Array.isArray(providersData) ? providersData : (providersData?.items ?? providersData?.providers ?? []);
+      const rawList = Array.isArray(providersData) ? providersData : (providersData?.items ?? providersData?.providers);
+      if (!Array.isArray(rawList)) throw new Error('服务商响应异常');
       const onelinkProvider = rawList.find(p => p.provider_type === 'onelink' || p.name === 'OneLinkAI');
       const otherProvidersList = rawList.filter(p => p !== onelinkProvider);
 
@@ -1042,7 +1147,12 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
         MODEL_TABS.forEach(tab => { if (byTab[tab]) byTab[tab] = sortModels(byTab[tab]); });
       });
 
-      let onelinkUpdate = {};
+      const defaults = createDefaultState();
+      let onelinkUpdate = {
+        mainConfigured: false, onelinkEnabled: false, onelinkProviderId: null,
+        onelinkCreatedAt: defaults.onelinkCreatedAt, onelinkApiKey: '', onelinkApiKeyActual: '',
+        onelinkKeyIsFromServer: false, apiTested: false, onelinkModelsByTab: createEmptyModelsByTab(),
+      };
       if (onelinkProvider) {
         const maskedKey = onelinkProvider.api_key_masked || '';
         onelinkUpdate = {
@@ -1096,7 +1206,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
         };
       });
 
-      setState(current => ({
+      setState(current => !isCurrent() ? current : ({
         ...current,
         ...onelinkUpdate,
         otherProviders: formattedOtherProviders.map((provider) => {
@@ -1106,22 +1216,38 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
         }),
         visibleCardKeys,
       }));
+      setReadStatus('ready');
 
     }).catch(err => {
+      if (!isCurrent() || revision !== modelRevision.current) return;
+      setReadStatus('error');
       console.warn('初始化配置失败:', err);
+    }).finally(() => {
+      if (initializationRequest.current === request) initializationRequest.current = null;
     });
-  }, []);
+  }, [captureModelScope]);
 
   const testConnection = useCallback(async () => {
+    if (pendingOtherModels().length || getPrimaryPending() || providerEnableQueue.has(state.onelinkProviderId)) {
+      showToast('warning', '主服务商仍在处理请求，请稍候再试');
+      return;
+    }
     const requestId = ++oneLinkTestRequest.current;
+    const scopeCurrent = captureModelScope();
+    const isCurrent = () => scopeCurrent() && requestId === oneLinkTestRequest.current;
+    const request = acquirePrimaryRequest(isCurrent);
+    if (!request) return;
+    modelRevision.current += 1;
+    const fromServer = state.onelinkKeyIsFromServer && state.onelinkProviderId;
+    let stage = fromServer ? 'test' : 'setup';
     setState((current) => ({ ...current, apiTested: false }));
     try {
       // key 来自后端（脱敏值），直接让后端用已存的 key 测试
       if (state.onelinkKeyIsFromServer && state.onelinkProviderId) {
         const result = await apiTestConnection(state.onelinkProviderId);
-        if (requestId !== oneLinkTestRequest.current) return;
+        if (!isCurrent()) return;
         const passed = result?.success === true;
-        setState((current) => ({ ...current, apiTested: passed }));
+        setState((current) => !isCurrent() ? current : ({ ...current, apiTested: passed }));
         showToast(passed ? 'success' : 'error', passed ? '连接成功！' : '当前key不可用');
         return;
       }
@@ -1132,31 +1258,32 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
         return;
       }
       const result = await apiOneClickSetup({ api_key: keyToTest });
-      if (requestId !== oneLinkTestRequest.current) return;
-      const passed = result?.success !== undefined
-        ? result.success === true
-        : result?.test_success === true;
+      if (!isCurrent()) return;
+      if (typeof result?.provider?.id !== 'string' || !result.provider.id.trim()
+        || typeof result?.test_success !== 'boolean') throw new Error('配置响应异常');
+      const passed = result.test_success === true;
 
       // oneclick-setup 已将模型写入后端，直接从 /api/models 拉取带真实 id 的完整数据
       if (passed) {
-        setState((current) => ({
+        setState((current) => !isCurrent() ? current : ({
           ...current,
           apiTested: true,
-          onelinkProviderId: result.provider?.id || current.onelinkProviderId,
+          onelinkProviderId: result.provider.id,
         }));
-        loadModelsFromBackend();
+        stage = 'models';
+        await loadModelsFromBackend(result.provider.id, isCurrent, true);
       }
 
-      showToast(passed ? 'success' : 'error', passed ? '连接成功！' : '当前key不可用');
-    } catch (error) {
-      if (requestId !== oneLinkTestRequest.current) return;
-      console.error('测试连接失败:', error);
-      const msg = error?.message && !error.message.startsWith('请求失败') && error.message !== 'Unauthorized'
-        ? error.message
-        : '连接失败，请检查API是否正确';
-      showToast('error', msg);
+      if (isCurrent()) showToast(passed ? 'success' : 'error', passed ? '连接成功！' : '当前key不可用');
+    } catch {
+      if (!isCurrent()) return;
+      showToast('error', stage === 'setup' ? '配置结果未能确认，请重新打开配置核对后重试'
+        : stage === 'models' ? '连接已通过，但模型列表读取失败，请重新打开配置核对'
+          : '连接测试失败，请稍后重试');
+    } finally {
+      request.finish();
     }
-  }, [showToast, state.onelinkApiKeyActual, state.onelinkKeyIsFromServer, state.onelinkProviderId, loadModelsFromBackend]);
+  }, [captureModelScope, showToast, state.onelinkApiKeyActual, state.onelinkKeyIsFromServer, state.onelinkProviderId, loadModelsFromBackend]);
 
   const requestDelete = useCallback((type, id) => {
     setConfirmDelete({ type, id });
@@ -1164,11 +1291,16 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
 
   // 加载广告位数据和 provider 信息
   useEffect(() => {
-    if (!open || !getToken()) return;
-    initializeFromBackend();
+    if (!open) return;
+    let active = true;
+    queueMicrotask(() => { if (active) initializeFromBackend(); });
+    return () => { active = false; };
   }, [open, initializeFromBackend]);
 
   function resetState() {
+    providerSession.current += 1;
+    setReadStatus('loading');
+    modelScope.current += 1;
     oneLinkTestRequest.current += 1;
     setState(createDefaultState);
   }
@@ -1179,6 +1311,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   }
 
   function closeChild() {
+    modelScope.current += 1;
     oneLinkTestRequest.current += 1;
     setState((current) => ({
       ...current,
@@ -1197,6 +1330,9 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
         return;
       }
       setState(createDefaultState);
+      setReadStatus('loading');
+      providerSession.current += 1;
+      modelScope.current += 1;
       oneLinkTestRequest.current += 1;
       onClose?.();
     };
@@ -1222,20 +1358,51 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   // const updateCustomProviderDraft = (field, value) =>
   //   setState((current) => ({ ...current, customProviderDraft: { ...current.customProviderDraft, [field]: value } }));
 
-  const openOneLinkConfig = () => {
-    // 打开配置弹窗时重新拉取最新的模型列表
-    loadModelsFromBackend();
-    setState((current) => ({ ...current, childView: 'onelink-config' }));
+  const openOneLinkConfig = async () => {
+    if (readStatus !== 'ready') return;
+    if (primaryReadRequest.current?.isCurrent()) return;
+    if (getPrimaryPending()) {
+      showToast('warning', '主服务商仍在处理请求，请稍候再打开配置');
+      return;
+    }
+    modelScope.current += 1;
+    const isCurrent = captureModelScope();
+    const request = { isCurrent };
+    primaryReadRequest.current = request;
+    try {
+      await Promise.all(pendingOtherModels());
+      if (!isCurrent()) return;
+      const loaded = await loadModelsFromBackend(undefined, isCurrent, true);
+      if (loaded && isCurrent()) setState((current) => ({ ...current, childView: 'onelink-config' }));
+    } catch {
+      if (isCurrent()) showToast('error', '读取模型列表失败，请再次点击配置重试');
+    } finally {
+      if (primaryReadRequest.current === request) primaryReadRequest.current = null;
+    }
   };
 
   const openOtherProviderConfig = (providerId) => {
+    if (readStatus !== 'ready') return;
     const provider = state.otherProviders.find(p => p.id === providerId);
+    const lockKey = getAuthSessionGeneration() + ':' + (provider?.cardKey || providerId);
+    if (otherModelPending.has(lockKey)) {
+      showToast('warning', '该服务商模型仍在保存，请稍候再打开配置');
+      return;
+    }
+    if (otherProviderRequest.current?.providerId === providerId && otherProviderRequest.current.isCurrent()) return;
+    modelScope.current += 1;
     if (!provider) return;
+    const isCurrent = captureModelScope();
+    const request = { providerId, isCurrent };
+    otherProviderRequest.current = request;
 
     // 打开配置弹窗时重新拉取该 provider 的最新模型列表
     if (provider.configured) {
-      apiListModels({ fresh: true }).then((models) => {
-        if (!models || !models.length) return;
+      (pendingOtherModels().length ? Promise.all(pendingOtherModels()).then(() => {
+        if (!isCurrent()) return null;
+        return apiListModels({ fresh: true });
+      }) : apiListModels({ fresh: true })).then((models) => {
+        if (!isCurrent()) return;
         const providerModels = models.filter(m => m.provider_id === providerId);
         const modelsByTab = createEmptyModelsByTab();
         providerModels.forEach(model => {
@@ -1250,13 +1417,13 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             modelId: model.model_id,
           });
       });
-        setState(current => ({
+        setState(current => !isCurrent() ? current : ({
           ...current,
           activeOtherProviderId: providerId,
           editProviderApiKey: provider.apiKeyMasked,
           editProviderApiKeyActual: provider.apiKeyMasked,
           editProviderKeyIsFromServer: provider.configured,
-          editProviderApiTested: provider.configured,
+          editProviderApiTested: false,
           editProviderModelsByTab: Object.fromEntries(
             Object.entries(modelsByTab).map(([tab, list]) => [tab, sortModels(list)])
           ),
@@ -1264,15 +1431,20 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
           childView: 'other-provider-config',
           activeModelTab: '对话模型',
         }));
-      }).catch(err => console.error('加载模型列表失败:', err));
+      }).catch(() => {
+        if (isCurrent()) showToast('error', '读取模型列表失败，请再次点击配置重试');
+      }).finally(() => {
+        if (otherProviderRequest.current === request) otherProviderRequest.current = null;
+      });
     } else {
+      otherProviderRequest.current = null;
       setState(current => ({
         ...current,
         activeOtherProviderId: providerId,
         editProviderApiKey: provider.apiKeyMasked,
         editProviderApiKeyActual: provider.apiKeyMasked,
         editProviderKeyIsFromServer: provider.configured,
-        editProviderApiTested: provider.configured,
+        editProviderApiTested: false,
         editProviderModelsByTab: provider.modelsByTab,
         editProviderModelDraft: createEmptyModelDraft(),
         childView: 'other-provider-config',
@@ -1289,6 +1461,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   };
 
   const saveOtherProviderConfig = () => {
+    modelScope.current += 1;
     const providerId = state.activeOtherProviderId;
     if (providerId) {
       setState(current => {
@@ -1308,231 +1481,194 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   const toggleOtherProvider = (providerId) => {
     const provider = state.otherProviders.find(p => p.id === providerId);
     if (!provider || !provider.configured) return;
-    const newEnabled = !provider.enabled;
-    // 乐观更新
-    setState(current => ({
-      ...current,
-      otherProviders: current.otherProviders.map(p =>
-        p.id === providerId ? { ...p, enabled: newEnabled } : p
-      ),
-    }));
-    apiUpdateProvider(providerId, { is_enabled: newEnabled }).catch(err => {
-      // 回滚
-      setState(current => ({
+    const isCurrent = captureProviderScope();
+    providerEnableQueue.toggle(providerId, provider.enabled, enabled => {
+      if (!isCurrent()) return;
+      setState(current => !isCurrent() ? current : ({
         ...current,
         otherProviders: current.otherProviders.map(p =>
-          p.id === providerId ? { ...p, enabled: !newEnabled } : p
+          p.id === providerId ? { ...p, enabled } : p
         ),
       }));
-      showToast('error', '更新服务商状态失败');
-      console.error('更新服务商状态失败:', err);
-    });
+    }, message => { if (isCurrent()) showToast('error', message); });
   };
 
-  const testOtherProviderFromCard = async (providerId) => {
+  const toggleOneLinkProvider = () => {
+    const providerId = state.onelinkProviderId;
+    if (!providerId || !state.mainConfigured) return;
+    if (getPrimaryPending()) {
+      showToast('warning', '主服务商仍在处理请求，请稍候再试');
+      return;
+    }
+    const isCurrent = captureProviderScope();
+    providerEnableQueue.toggle(providerId, state.onelinkEnabled, enabled => {
+      if (!isCurrent()) return;
+      setState(current => !isCurrent() || current.onelinkProviderId !== providerId
+        ? current : { ...current, onelinkEnabled: enabled });
+    }, message => { if (isCurrent()) showToast('error', message); });
+  };
+
+  const runOtherProviderTest = async (providerId, fromCard = false) => {
     const provider = state.otherProviders.find(p => p.id === providerId);
-    if (!provider?.configured) return;
-    try {
-      const result = await apiTestConnection(providerId);
-      if (result?.test_success === false) {
-        showToast('error', result?.test_message || '连接失败，请检查API是否正确');
-      } else {
-        showToast('success', '连接成功！');
-      }
-    } catch (error) {
-      console.error('测试连接失败:', error);
-      showToast('error', '连接失败，请检查API是否正确');
+    if (!provider || (fromCard && !provider.configured)) return;
+    const lockKey = getAuthSessionGeneration() + ':' + (provider.cardKey || provider.id);
+    if (providerTestPending.has(lockKey)) {
+      showToast('warning', '该服务商仍在保存或测试，请稍候再试');
+      return;
     }
-  };
-
-  const testOtherProviderConnection = async () => {
-    const providerId = state.activeOtherProviderId;
-    if (!providerId) return;
+    const scopeCurrent = captureModelScope();
+    const inputRevision = providerInputRevision.current;
+    const isCurrent = () => scopeCurrent() && (fromCard || providerInputRevision.current === inputRevision);
+    const key = state.editProviderApiKeyActual.trim();
+    const maskedKey = state.editProviderApiKey;
+    if (!fromCard && !state.editProviderKeyIsFromServer && !key) {
+      showToast('error', '请先输入API');
+      return;
+    }
+    providerTestPending.add(lockKey);
+    if (!fromCard) setState(current => ({ ...current, editProviderApiTested: false }));
+    let stage = 'test';
+    let targetId = providerId;
     try {
-      if (!state.editProviderKeyIsFromServer && state.editProviderApiKeyActual.trim()) {
-        // 判断是否已配置（已配置的有 UUID，未配置的用 cardKey 作占位 ID）
-        const provider = state.otherProviders.find(p => p.id === providerId);
-        const isConfigured = provider?.configured;
-        try {
-          if (isConfigured) {
-            await apiUpdateProvider(providerId, { api_key: state.editProviderApiKeyActual.trim() });
-          } else {
-            // 未配置的服务商需要先创建，再测试
-            const created = await apiCreateProvider({
-              name: provider?.name || providerId,
-              provider_type: providerId,
-              api_key: state.editProviderApiKeyActual.trim(),
-            });
-            // 更新 providerId 为后端返回的真实 UUID
-            setState(current => ({
-              ...current,
-              activeOtherProviderId: created.id,
-              editProviderKeyIsFromServer: true,
-              otherProviders: current.otherProviders.map(p =>
-                p.id === providerId ? { ...p, id: created.id, configured: true, apiKeyMasked: current.editProviderApiKey } : p
-              ),
-            }));
-            // 用新 UUID 测试连接
-            const result = await apiTestConnection(created.id);
-            if (result?.test_success === false) {
-              showToast('error', result?.test_message || '连接失败，请检查API是否正确');
-            } else {
-              showToast('success', '连接成功！');
-              setState(current => ({ ...current, editProviderApiTested: true }));
-              // 拉取该 provider 的模型列表
-              const models = await apiListModels().catch(() => []);
-              const providerModels = (models || []).filter(m => m.provider_id === created.id);
-              if (providerModels.length > 0) {
-                setState(current => {
-                  const modelsByTab = createEmptyModelsByTab();
-                  providerModels.forEach(model => {
-                    const tab = getCategoryTab(model.category);
-                    if (!tab) return;
-                    modelsByTab[tab].push({
-                      id: model.id,
-                      name: model.name || model.model_id,
-                      description: model.description || MODEL_DESCRIPTION,
-                      enabled: model.is_enabled ?? false,
-                      isDefault: model.is_default ?? false,
-                      modelId: model.model_id,
-                    });
-                  });
-                  return {
-                    ...current,
-                    editProviderModelsByTab: Object.fromEntries(
-                      Object.entries(modelsByTab).map(([tab, list]) => [tab, sortModels(list)])
-                    ),
-                  };
-                });
-              }
-            }
-            return;
-          }
-          setState(current => ({
-          ...current,
-            editProviderKeyIsFromServer: true,
-          otherProviders: current.otherProviders.map(p =>
-              p.id === providerId ? { ...p, apiKeyMasked: current.editProviderApiKey } : p
-            ),
-          }));
-        } catch (e) {
-          console.warn('保存 API Key 失败，继续测试连接:', e.message);
-        }
-      }
-      const result = await apiTestConnection(providerId);
-      if (result?.test_success === false) {
-        showToast('error', result?.test_message || '连接失败，请检查API是否正确');
-      } else {
-        showToast('success', '连接成功！');
-        setState(current => ({ ...current, editProviderApiTested: true }));
-        // 拉取该 provider 的模型列表
-        apiListModels().then((models) => {
-          if (!models || !models.length) return;
-          const providerModels = models.filter(m => m.provider_id === providerId);
-          if (providerModels.length === 0) return;
-          setState(current => {
-            const modelsByTab = createEmptyModelsByTab();
-            providerModels.forEach(model => {
-              const tab = getCategoryTab(model.category);
-              if (!tab) return;
-              modelsByTab[tab].push({
-                id: model.id,
-                name: model.name || model.model_id,
-                description: model.description || MODEL_DESCRIPTION,
-                enabled: model.is_enabled ?? false,
-                isDefault: model.is_default ?? false,
-                modelId: model.model_id,
-              });
-            });
-            return {
-              ...current,
-              editProviderModelsByTab: Object.fromEntries(
-                Object.entries(modelsByTab).map(([tab, list]) => [tab, sortModels(list)])
-              ),
-            };
+      if (!fromCard && !state.editProviderKeyIsFromServer) {
+        stage = 'save';
+        if (provider.configured) {
+          await apiUpdateProvider(providerId, { api_key: key });
+        } else {
+          const created = await apiCreateProvider({
+            name: provider.name || providerId,
+            provider_type: provider.cardKey || providerId,
+            api_key: key,
           });
-        }).catch(err => console.error('加载模型列表失败:', err));
+          if (!created || typeof created.id !== 'string' || !created.id.trim()) throw new Error('保存结果缺少编号');
+          targetId = created.id;
+        }
+        if (!isCurrent()) return;
+        setState(current => !isCurrent() ? current : ({
+          ...current, activeOtherProviderId: targetId, editProviderKeyIsFromServer: true,
+          otherProviders: current.otherProviders.map(p => p.id === providerId
+            ? { ...p, id: targetId, configured: true, apiKeyMasked: maskedKey } : p),
+        }));
       }
-    } catch (error) {
-      console.error('测试连接失败:', error);
-      const msg = error?.message && !error.message.startsWith('请求失败') && error.message !== 'Unauthorized'
-        ? error.message
-        : '连接失败，请检查API是否正确';
-      showToast('error', msg);
+      stage = 'test';
+      const result = await apiTestConnection(targetId);
+      if (!isCurrent()) return;
+      if (result?.success !== true) {
+        showToast('error', '连接未通过，请检查当前密钥后重试');
+        return;
+      }
+      if (fromCard) {
+        showToast('success', '连接成功！');
+        return;
+      }
+      setState(current => !isCurrent() ? current : ({ ...current, editProviderApiTested: true }));
+      stage = 'models';
+      const revision = modelRevision.current;
+      const modelLockKey = getAuthSessionGeneration() + ':' + (provider.cardKey || provider.id);
+      if (otherModelPending.has(modelLockKey)) {
+        showToast('success', '连接成功！模型修改进行中，保留当前列表');
+        return;
+      }
+      const models = await apiListModels({ fresh: true });
+      if (!isCurrent()) return;
+      if (revision !== modelRevision.current) {
+        showToast('success', '连接成功！模型已修改，保留当前列表');
+        return;
+      }
+      const modelsByTab = createEmptyModelsByTab();
+      models.filter(model => model.provider_id === targetId).forEach(model => {
+        const tab = getCategoryTab(model.category);
+        if (!tab) return;
+        modelsByTab[tab].push({
+          id: model.id, name: model.name || model.model_id,
+          description: model.description || MODEL_DESCRIPTION,
+          enabled: model.is_enabled ?? false, isDefault: model.is_default ?? false, modelId: model.model_id,
+        });
+      });
+      setState(current => !isCurrent() || revision !== modelRevision.current ? current : ({
+        ...current, editProviderModelsByTab: Object.fromEntries(
+          Object.entries(modelsByTab).map(([tab, list]) => [tab, sortModels(list)])),
+      }));
+      showToast('success', '连接成功！');
+    } catch {
+      if (!isCurrent()) return;
+      const message = stage === 'save' ? '密钥保存结果未能确认，请重新打开配置核对后重试'
+        : stage === 'models' ? '连接已通过，但模型列表读取失败，请重新打开配置重试'
+          : '连接测试失败，请稍后重试';
+      showToast('error', message);
+    } finally {
+      providerTestPending.delete(lockKey);
     }
   };
 
-  const toggleEditProviderModel = async (modelId) => {
-    if (modelMutationPending.current) return;
+  const testOtherProviderFromCard = providerId => runOtherProviderTest(providerId, true);
+  const testOtherProviderConnection = () => runOtherProviderTest(state.activeOtherProviderId);
+
+  const beginOtherModelMutation = () => {
+    if (pendingOtherModels().length) {
+      showToast('warning', '模型配置仍在保存，请稍候再试');
+      return null;
+    }
+    const providerId = state.activeOtherProviderId;
+    const provider = state.otherProviders.find(item => item.id === providerId);
+    if (!provider?.configured) {
+      showToast('warning', '请先保存服务商密钥，再添加或修改模型');
+      return null;
+    }
+    const key = getAuthSessionGeneration() + ':' + (provider.cardKey || providerId);
+    if (otherModelPending.has(key) || providerTestPending.has(key) || providerEnableQueue.has(providerId)) {
+      showToast('warning', '该服务商仍在处理请求，请稍候再试');
+      return null;
+    }
+    const isCurrent = captureModelScope();
+    let complete;
+    const done = new Promise(resolve => { complete = resolve; });
+    const request = { isCurrent, providerId, done };
+    otherModelPending.set(key, request);
+    modelRevision.current += 1;
+    return {
+      ...request,
+      finish() {
+        if (isCurrent()) modelRevision.current += 1;
+        if (otherModelPending.get(key) === request) otherModelPending.delete(key);
+        complete();
+      },
+    };
+  };
+
+  const mutateOtherProviderModel = async (modelId, action) => {
     const tab = state.activeModelTab;
-    const target = (state.editProviderModelsByTab[tab] ?? []).find((model) => model.id === modelId);
+    const target = (state.editProviderModelsByTab[tab] ?? []).find(model => model.id === modelId);
     if (!target) return;
-    modelMutationPending.current = true;
+    const request = beginOtherModelMutation();
+    if (!request) return;
+    const enabled = !target.enabled;
+    const isDefault = !target.isDefault;
+    const update = action === 'toggle'
+      ? { is_enabled: enabled, ...(!enabled ? { is_default: false } : {}) }
+      : { is_default: isDefault, ...(isDefault && !target.enabled ? { is_enabled: true } : {}) };
     try {
-      await apiUpdateModel(modelId, { is_enabled: !target.enabled, ...(!target.enabled ? {} : { is_default: false }) });
-      setState((current) => {
-      const updated = (current.editProviderModelsByTab[tab] ?? []).map((model) => {
-        if (model.id !== modelId) return model;
-        const nowEnabled = !target.enabled;
-        const nowDefault = nowEnabled ? model.isDefault : false;
-        return { ...model, enabled: nowEnabled, isDefault: nowDefault, isNew: false, justDisabled: !nowEnabled };
+      let result = null;
+      if (action === 'delete') await apiDeleteModel(modelId);
+      else result = await apiUpdateModel(modelId, update);
+      if (!request.isCurrent()) return;
+      if (action !== 'delete') validateModelResult(result, request.providerId, getTabCategory(tab), modelId);
+      setState(current => {
+        if (!request.isCurrent() || current.activeOtherProviderId !== request.providerId) return current;
+        return applyModelResult(current, tab, request.providerId, modelId, result, sortModels);
       });
-      return {
-        ...current,
-        editProviderModelsByTab: { ...current.editProviderModelsByTab, [tab]: sortModels(updated) },
-      };
-      });
-    } catch { showToast('error', '更新模型失败，请重试'); }
-    finally { modelMutationPending.current = false; }
+    } catch {
+      if (request.isCurrent()) showToast('error', '模型操作未能确认，请重新打开配置核对后重试');
+    } finally { request.finish(); }
   };
 
-  const setDefaultEditProviderModel = async (modelId) => {
-    if (modelMutationPending.current) return;
-      const tab = state.activeModelTab;
-      const targetModel = (state.editProviderModelsByTab[tab] ?? []).find(m => m.id === modelId);
-      if (!targetModel) return;
-      const isCurrentlyDefault = targetModel?.isDefault;
-      const newIsDefault = !isCurrentlyDefault;
-      const needEnable = newIsDefault && !targetModel?.enabled;
-      modelMutationPending.current = true;
-      try {
-      await apiUpdateModel(modelId, { is_default: newIsDefault, ...(needEnable ? { is_enabled: true } : {}) });
-      setState((current) => {
-      if (!(current.editProviderModelsByTab[tab] ?? []).some((model) => model.id === modelId)) return current;
-      const updated = (current.editProviderModelsByTab[tab] ?? []).map(model => ({
-        ...model,
-        isDefault: isCurrentlyDefault ? false : model.id === modelId,
-        enabled: model.id === modelId && needEnable ? true : model.enabled,
-      }));
-      return {
-        ...current,
-        editProviderModelsByTab: { ...current.editProviderModelsByTab, [tab]: sortModels(updated) },
-      };
-    });
-    } catch { showToast('error', '设置默认模型失败，请重试'); }
-    finally { modelMutationPending.current = false; }
-  };
-
-  const deleteEditProviderModel = async (modelId) => {
-    if (modelMutationPending.current) return;
-    const tab = state.activeModelTab;
-    modelMutationPending.current = true;
-    try {
-      await apiDeleteModel(modelId);
-      setState((current) => {
-      return {
-        ...current,
-        editProviderModelsByTab: {
-          ...current.editProviderModelsByTab,
-          [tab]: (current.editProviderModelsByTab[tab] ?? []).filter(m => m.id !== modelId),
-        },
-      };
-      });
-    } catch { showToast('error', '删除模型失败，请重试'); }
-    finally { modelMutationPending.current = false; }
-  };
+  const toggleEditProviderModel = modelId => mutateOtherProviderModel(modelId, 'toggle');
+  const setDefaultEditProviderModel = modelId => mutateOtherProviderModel(modelId, 'default');
+  const deleteEditProviderModel = modelId => mutateOtherProviderModel(modelId, 'delete');
 
   const addEditProviderModelWithValidation = async () => {
+    const request = beginOtherModelMutation();
+    if (!request) return;
     try {
       const draft = state.editProviderModelDraft;
       const tab = state.activeModelTab;
@@ -1542,40 +1678,51 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
         return;
       }
       const result = await apiCreateModel({
-        provider_id: state.activeOtherProviderId,
+        provider_id: request.providerId,
         model_id: draft.identifier,
         name: draft.name || draft.identifier,
         category,
         description: draft.note || null,
         is_enabled: true,
       });
+      if (!request.isCurrent()) return;
+      validateModelResult(result, request.providerId, category);
       const newModel = {
         id: result.id,
         name: result.name,
         description: result.description || MODEL_DESCRIPTION,
-        enabled: result.is_enabled ?? true,
+        enabled: result.is_enabled,
+        isDefault: result.is_default,
         isNew: true,
         modelId: result.model_id,
       };
       setState((current) => {
+        if (!request.isCurrent() || current.activeOtherProviderId !== request.providerId) return current;
+        current = applyModelResult(current, tab, request.providerId, result.id, result, sortModels);
         const sorted = sortModels([...(current.editProviderModelsByTab[tab] ?? []), newModel]);
         return {
           ...current,
           editProviderModelsByTab: { ...current.editProviderModelsByTab, [tab]: sorted },
-          editProviderModelDraft: createEmptyModelDraft(),
-          childView: 'other-provider-config',
+          otherProviders: current.otherProviders.map(provider => provider.id === request.providerId
+            ? { ...provider, modelsByTab: { ...provider.modelsByTab, [tab]: sorted } } : provider),
+          editProviderModelDraft: current.editProviderModelDraft === draft ? createEmptyModelDraft() : current.editProviderModelDraft,
+          childView: current.editProviderModelDraft === draft ? 'other-provider-config' : current.childView,
         };
       });
       showToast('success', '模型添加成功！');
-    } catch (error) {
-      console.error('添加模型失败:', error);
-      showToast('error', '模型添加失败！id不匹配');
-    }
+    } catch {
+      if (request.isCurrent()) showToast('error', '新增结果未能确认，请重新打开配置核对后重试');
+    } finally { request.finish(); }
   };
 
   const saveOneLinkConfig = () => {
+    if (getPrimaryPending()) {
+      showToast('warning', '主服务商仍在处理请求，请稍候再保存');
+      return;
+    }
     if (!state.onelinkApiKeyActual.trim() || !state.apiTested) return;
-    setState((current) => ({ ...current, mainConfigured: true, onelinkEnabled: true, childView: null }));
+    modelScope.current += 1;
+    setState((current) => ({ ...current, mainConfigured: true, childView: null }));
     onConfigured?.();
   };
 
@@ -1610,6 +1757,23 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   //   });
 
   const addOnelinkModelWithValidation = async () => {
+    if (pendingOtherModels().length) {
+      showToast('warning', '模型配置仍在保存，请稍候再试');
+      return;
+    }
+    if (getPrimaryPending() || providerEnableQueue.has(state.onelinkProviderId)) {
+      showToast('warning', '主服务商仍在处理请求，请稍候再试');
+      return;
+    }
+    if (!state.onelinkProviderId) {
+      showToast('warning', '请先测试连接并完成服务商配置');
+      return;
+    }
+    const isCurrent = captureModelScope();
+    const request = acquirePrimaryRequest(isCurrent);
+    if (!request) return;
+    primaryMutation.current = request;
+    modelRevision.current += 1;
     try {
       const draft = state.onelinkModelDraft;
       const tab = state.activeModelTab;
@@ -1630,30 +1794,40 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
         is_enabled: true,
       });
 
+      if (!isCurrent()) return;
       // 成功后添加到列表（ModelConfigResponse 字段：name / is_enabled）
+      validateModelResult(result, state.onelinkProviderId, category);
       const newModel = {
         id: result.id,
         name: result.name,
         description: result.description || MODEL_DESCRIPTION,
-        enabled: result.is_enabled ?? true,
+        enabled: result.is_enabled,
+        isDefault: result.is_default,
         isNew: true,
         modelId: result.model_id,
       };
 
       setState((current) => {
+        if (!isCurrent()) return current;
+        current = applyModelResult(current, tab, state.onelinkProviderId, result.id, result, sortModels);
         const sorted = sortModels([...(current.onelinkModelsByTab[tab] ?? []), newModel]);
         return {
           ...current,
           onelinkModelsByTab: { ...current.onelinkModelsByTab, [tab]: sorted },
-          onelinkModelDraft: createEmptyModelDraft(),
-          childView: 'onelink-config',
+          onelinkModelDraft: current.onelinkModelDraft === draft ? createEmptyModelDraft() : current.onelinkModelDraft,
+          childView: current.onelinkModelDraft === draft ? 'onelink-config' : current.childView,
         };
       });
 
       showToast('success', '模型添加成功！');
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('添加模型失败:', error);
-      showToast('error', '模型添加失败！id不匹配');
+      showToast('error', '新增结果未能确认，请重新打开配置核对后重试');
+    } finally {
+      if (isCurrent()) modelRevision.current += 1;
+      if (primaryMutation.current === request) primaryMutation.current = null;
+      request.finish();
     }
   };
 
@@ -1674,105 +1848,51 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
   //     };
   //   });
 
-  const deleteOnelinkModel = (modelId) =>
-    setState((current) => {
-      const tab = current.activeModelTab;
-      apiDeleteModel(modelId).catch((err) => {
-        console.error('删除模型失败:', err);
+  const mutateOnelinkModel = async (modelId, action) => {
+    if (pendingOtherModels().length) {
+      showToast('warning', '模型配置仍在保存，请稍候再试');
+      return;
+    }
+    if (getPrimaryPending() || providerEnableQueue.has(state.onelinkProviderId)) {
+      showToast('warning', '主服务商仍在处理请求，请稍候再试');
+      return;
+    }
+    const tab = state.activeModelTab;
+    const providerId = state.onelinkProviderId;
+    const target = (state.onelinkModelsByTab[tab] ?? []).find(model => model.id === modelId);
+    if (!target) return;
+    const isCurrent = captureModelScope();
+    const request = acquirePrimaryRequest(isCurrent);
+    if (!request) return;
+    primaryMutation.current = request;
+    modelRevision.current += 1;
+    const enabled = !target.enabled;
+    const isDefault = !target.isDefault;
+    const update = action === 'toggle'
+      ? { is_enabled: enabled, ...(!enabled ? { is_default: false } : {}) }
+      : { is_default: isDefault, ...(isDefault && !target.enabled ? { is_enabled: true } : {}) };
+    try {
+      let result = null;
+      if (action === 'delete') await apiDeleteModel(modelId);
+      else result = await apiUpdateModel(modelId, update);
+      if (!isCurrent()) return;
+      if (action !== 'delete') validateModelResult(result, providerId, getTabCategory(tab), modelId);
+      setState(current => {
+        if (!isCurrent() || current.onelinkProviderId !== providerId) return current;
+        return applyModelResult(current, tab, providerId, modelId, result, sortModels);
       });
-      return {
-        ...current,
-        onelinkModelsByTab: {
-          ...current.onelinkModelsByTab,
-          [tab]: (current.onelinkModelsByTab[tab] ?? []).filter((m) => m.id !== modelId),
-        },
-      };
-    });
-
-  // const deleteCustomProviderModel = (modelId) =>
-  //   setState((current) => {
-  //     const tab = current.activeModelTab;
-  //     return {
-  //       ...current,
-  //       customProviders: current.customProviders.map((provider) =>
-  //         provider.id === current.activeCustomProviderId
-  //           ? { ...provider, modelsByTab: { ...(provider.modelsByTab ?? createEmptyModelsByTab()), [tab]: (provider.modelsByTab?.[tab] ?? []).filter((m) => m.id !== modelId) } }
-  //           : provider,
-  //       ),
-  //     };
-  //   });
-
-  // const deleteCustomProvider = (providerId) =>
-  //   setState((current) => ({ ...current, customProviders: current.customProviders.filter((provider) => provider.id !== providerId) }));
-
-  const toggleOnelinkModel = (modelId) =>
-    setState((current) => {
-      const tab = current.activeModelTab;
-      const updated = (current.onelinkModelsByTab[tab] ?? []).map((model) => {
-        if (model.id !== modelId) return model;
-        const nowEnabled = !model.enabled;
-        // 如果关闭启用且该模型是默认模型，则清除默认状态
-        const nowDefault = nowEnabled ? model.isDefault : false;
-
-        // 同步后端
-        apiUpdateModel(model.id, {
-          is_enabled: nowEnabled,
-          ...(nowDefault !== model.isDefault ? { is_default: nowDefault } : {})
-        }).catch((err) => {
-          console.error('更新模型状态失败:', err);
-      });
-
-        return { ...model, enabled: nowEnabled, isDefault: nowDefault, isNew: false, justDisabled: !nowEnabled };
-      });
-      return {
-        ...current,
-        onelinkModelsByTab: { ...current.onelinkModelsByTab, [tab]: sortModels(updated) },
-      };
-    });
-
-  // const toggleCustomProviderModel = (modelId) =>
-  //   setState((current) => {
-  //     const tab = current.activeModelTab;
-  //     return {
-  //       ...current,
-  //       customProviders: current.customProviders.map((provider) =>
-  //         provider.id === current.activeCustomProviderId
-  //           ? { ...provider, modelsByTab: { ...(provider.modelsByTab ?? createEmptyModelsByTab()), [tab]: sortModels((provider.modelsByTab?.[tab] ?? []).map((model) => { if (model.id !== modelId) return model; const nowEnabled = !model.enabled; return { ...model, enabled: nowEnabled, isNew: false, justDisabled: !nowEnabled }; })) } }
-  //           : provider,
-  //       ),
-  //     };
-  //   });
-
-  const setDefaultOnelinkModel = (modelId) => {
-    setState((current) => {
-      const tab = current.activeModelTab;
-      const targetModel = (current.onelinkModelsByTab[tab] ?? []).find((m) => m.id === modelId);
-      const isCurrentlyDefault = targetModel?.isDefault;
-      const newIsDefault = !isCurrentlyDefault;
-
-      // 如果设为默认且模型未启用，则同时启用
-      const needEnable = newIsDefault && !targetModel?.enabled;
-
-      // 同步后端
-      const updateData = { is_default: newIsDefault };
-      if (needEnable) {
-        updateData.is_enabled = true;
-      }
-      apiUpdateModel(modelId, updateData).catch((err) => {
-        console.error('设为默认失败:', err);
-      });
-
-      const updated = (current.onelinkModelsByTab[tab] ?? []).map((model) => ({
-        ...model,
-        isDefault: isCurrentlyDefault ? false : model.id === modelId,
-        enabled: model.id === modelId && needEnable ? true : model.enabled,
-      }));
-      return {
-        ...current,
-        onelinkModelsByTab: { ...current.onelinkModelsByTab, [tab]: sortModels(updated) },
-      };
-    });
+    } catch {
+      if (isCurrent()) showToast('error', '模型操作未能确认，请重新打开配置核对后重试');
+    } finally {
+      if (isCurrent()) modelRevision.current += 1;
+      if (primaryMutation.current === request) primaryMutation.current = null;
+      request.finish();
+    }
   };
+
+  const deleteOnelinkModel = modelId => mutateOnelinkModel(modelId, 'delete');
+  const toggleOnelinkModel = modelId => mutateOnelinkModel(modelId, 'toggle');
+  const setDefaultOnelinkModel = modelId => mutateOnelinkModel(modelId, 'default');
 
   // const setDefaultCustomProviderModel = (modelId) =>
   //   setState((current) => {
@@ -1849,7 +1969,10 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             draft={state.onelinkModelDraft}
             title="添加模型"
             onChange={(field, value) => updateDraft('onelinkModelDraft', field, value)}
-            onCancel={() => updateState('childView', 'onelink-config')}
+            onCancel={() => {
+              modelScope.current += 1;
+              updateState('childView', 'onelink-config');
+            }}
             onSave={addOnelinkModelWithValidation}
           />
         );
@@ -1861,6 +1984,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             apiValue={state.editProviderApiKey}
             apiPlaceholder="输入你的API"
             onApiChange={(event) => {
+              providerInputRevision.current += 1;
               const inputValue = event.target.value;
               const maskedValue = inputValue.length > 7
                 ? `${inputValue.slice(0, 3)}${'*'.repeat(Math.max(7, inputValue.length - 7))}${inputValue.slice(-4)}`
@@ -1870,6 +1994,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
                 editProviderApiKeyActual: inputValue,
                 editProviderApiKey: maskedValue,
                 editProviderKeyIsFromServer: false,
+                editProviderApiTested: false,
               }));
             }}
             activeTab={state.activeModelTab}
@@ -1892,7 +2017,10 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             draft={state.editProviderModelDraft}
             title="添加模型"
             onChange={(field, value) => updateDraft('editProviderModelDraft', field, value)}
-            onCancel={() => updateState('childView', 'other-provider-config')}
+            onCancel={() => {
+              modelScope.current += 1;
+              updateState('childView', 'other-provider-config');
+            }}
             onSave={addEditProviderModelWithValidation}
           />
         );
@@ -1916,6 +2044,8 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
       <div className="fixed inset-0 z-[60] flex items-center justify-center bg-surface-overlay p-[24px] backdrop-blur-[20px]">
         <div className="relative overflow-hidden rounded-2xl" onClick={(event) => event.stopPropagation()}>
           <MainModal
+            readStatus={readStatus}
+            onRetry={initializeFromBackend}
             configured={state.mainConfigured}
             onelinkEnabled={state.onelinkEnabled}
             onelinkModelsByTab={state.onelinkModelsByTab}
@@ -1924,27 +2054,7 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
             onOpenOneLink={openOneLinkConfig}
             onComplete={closeMain}
             onEditOneLink={openOneLinkConfig}
-            onToggleOneLink={() => {
-              const providerId = state.onelinkProviderId;
-              if (!providerId) return;
-              if (!state.mainConfigured) {
-                setState((current) => ({ ...current, childView: 'onelink-config' }));
-                return;
-              }
-              const newEnabled = !state.onelinkEnabled;
-              // 乐观更新
-              setState((current) => ({ ...current, onelinkEnabled: newEnabled }));
-              apiUpdateProvider(providerId, { is_enabled: newEnabled })
-                .catch((err) => {
-                  // 回滚
-                  setState((current) => ({
-                    ...current,
-                    onelinkEnabled: !newEnabled,
-                  }));
-                  showToast('error', '更新服务商状态失败');
-                  console.error('更新OneLinkAI状态失败:', err);
-                });
-            }}
+            onToggleOneLink={toggleOneLinkProvider}
             onTestOneLink={testConnection}
             bannerData={bannerData}
           otherProviders={state.otherProviders}

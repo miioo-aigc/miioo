@@ -3,10 +3,32 @@ import assert from 'node:assert/strict';
 import { canMoveCanvasNodesInto, moveCanvasNodesInto } from '../src/components/canvas/CanvasGroupTransfer.js';
 import { getCanvasStackPresentation } from '../src/components/canvas/CanvasNodeActions.js';
 import { createCanvasHistory } from '../src/components/canvas/CanvasHistory.js';
+import { getCanvasAbsolutePosition } from '../src/components/canvas/CanvasGroups.js';
+import { setCanvasGroupsStacked } from '../src/components/canvas/CanvasNodeActions.js';
 
 const group = (id, parentId, stacked = false) => ({ id, parentId, type: 'canvasGroup', position: { x: 0, y: 0 }, style: { width: 300, height: 300 }, data: { label: id, stacked } });
 const node = (id, parentId) => ({ id, parentId, type: 'text', position: { x: 8, y: 8 }, data: { label: id } });
 const fixture = () => [group('a'), node('a1', 'a'), group('b', undefined, true), node('b1', 'b'), node('free')];
+test('归组扩展边界而不移动成员，折叠卡片位置保持且展开恢复归组前位置', () => {
+  for (const stacked of [false, true]) {
+    const nodes = [group('outer'), { ...group('target', 'outer', stacked), position: { x: 400, y: 300 }, data: { stacked, stackOffset: { x: 50, y: 60 } } },
+      node('member', 'target'), { ...node('free'), position: { x: -600, y: -400 } }];
+    const before = new Map(nodes.filter((n) => n.type !== 'canvasGroup').map((n) => [n.id, getCanvasAbsolutePosition(nodes, n)]));
+    const beforeView = getCanvasStackPresentation(nodes, []);
+    const next = moveCanvasNodesInto(nodes, ['free'], 'target');
+    assert.equal(next.find((n) => n.id === 'free').parentId, 'target');
+    for (const [id, position] of before) assert.deepEqual(getCanvasAbsolutePosition(next, next.find((n) => n.id === id)), position);
+    const view = getCanvasStackPresentation(next, [{ source: 'free', target: 'member' }]);
+    if (stacked) {
+      assert.deepEqual(getCanvasAbsolutePosition(view.nodes, view.nodes.find((n) => n.id === 'target')), getCanvasAbsolutePosition(beforeView.nodes, beforeView.nodes.find((n) => n.id === 'target')));
+      assert.equal(view.nodes.find((n) => n.id === 'free').hidden, true);
+      assert.equal(view.edges[0].hidden, true);
+    }
+    const expanded = getCanvasStackPresentation(setCanvasGroupsStacked(next, ['target'], false), []);
+    assert.deepEqual(getCanvasAbsolutePosition(expanded.nodes, expanded.nodes.find((n) => n.id === 'free')), before.get('free'));
+    assert.ok(view.nodes.filter((n) => n.type === 'canvasGroup').every((n) => n.zIndex < -1000));
+  }
+});
 
 test('禁止自身和后代目标，无变化的当前父组不可选', () => {
   const nodes = [...fixture(), group('child', 'a')];

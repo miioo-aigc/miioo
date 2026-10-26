@@ -3,12 +3,23 @@ import { apiGetSharedCanvas } from '../api/canvas';
 import { readCanvasShareDocument, prepareCanvasShareMedia } from '../components/canvas/CanvasShareDocument';
 import { buildCanvasShareLink, copyCanvasShareLink } from '../components/canvas/CanvasShareLink';
 import SharedCanvasView from '../components/canvas/SharedCanvasView';
+import { serializeSharedCanvasFile, downloadSharedCanvasFile } from '../components/canvas/SharedCanvasFile';
 import { showGlobalToast } from '../stores/toastStore';
 
 export default function SharedCanvasPage({ token }) {
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState({ loading: true });
   const [copying, setCopying] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const download = async () => {
+    if (downloading || state.loading || state.error || state.token !== token || !state.payload) return;
+    setDownloading(true);
+    try {
+      const text = await serializeSharedCanvasFile(state.payload, window.location.origin);
+      downloadSharedCanvasFile(text, state.title);
+    } catch (error) { showGlobalToast(error.message || '下载画布失败，请重试', 'error'); }
+    finally { setDownloading(false); }
+  };
   const copy = async () => {
     if (copying) return;
     setCopying(true);
@@ -26,7 +37,7 @@ export default function SharedCanvasPage({ token }) {
         if (!token) throw new Error('分享链接格式不正确');
         const payload = await apiGetSharedCanvas(token, { signal: controller.signal });
         const graph = await prepareCanvasShareMedia(readCanvasShareDocument(payload));
-        if (!controller.signal.aborted) setState({ loading: false, title: typeof payload.title === 'string' ? payload.title : '', graph });
+        if (!controller.signal.aborted) setState({ loading: false, title: typeof payload.title === 'string' ? payload.title : '', graph, payload, token });
       } catch (error) {
         if (!controller.signal.aborted) setState({ loading: false, error: error.status === 404 || error.code === 'CANVAS_SHARE_NOT_FOUND'
           ? '分享链接已失效，或画布已停止分享' : error.message || '加载失败，请稍后重试' });
@@ -35,5 +46,5 @@ export default function SharedCanvasPage({ token }) {
     load();
     return () => controller.abort();
   }, [token, attempt]);
-  return <SharedCanvasView {...state} copying={copying} onCopy={copy} onRetry={() => setAttempt((value) => value + 1)} />;
+  return <SharedCanvasView {...state} downloading={downloading} canDownload={Boolean(state.payload) && state.token === token} onDownload={download} copying={copying} onCopy={copy} onRetry={() => setAttempt((value) => value + 1)} />;
 }

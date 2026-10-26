@@ -1,12 +1,16 @@
 /**
  * @file CreationAudioDetailModal.jsx
  * @structure-index
+ * 2026-10-26：音频播放等待不显示像素加载与占位；失败刷新及继续播放保留图标。
+ * 2026-10-23 媒体等待、失败及一次联网重载；恢复后点击播放。
  *
  * 独立负责配音结果详情展示、音频播放、波形进度和媒体动作；页面只注入数据与回调。
  * 音色名称以后端返回的音色名称为准。
  * 右侧信息区完整对齐图片详情弹窗，保留配音业务字段和高级提示词预览。
  */
 
+import { useMediaPlayback } from '../../hooks/useMediaPlayback';
+import MediaLoadStatus from '../feedback/MediaLoadStatus';
 import { useEffect, useRef, useState } from 'react';
 import { useModalSize } from '../../utils/useModalSize';
 import ConfirmDialog from '../ConfirmDialog';
@@ -81,7 +85,8 @@ export default function CreationAudioDetailModal({
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const audioRef = useRef(null);
   const waveformRef = useRef(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const media = useMediaPlayback(audioRef, audioUrl, { autoPlay: true });
+  const isPlaying = media.status === 'playing';
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [playbackVolume, setPlaybackVolume] = useState(0.7);
@@ -96,43 +101,23 @@ export default function CreationAudioDetailModal({
     if (!audio) return undefined;
     const onLoaded = () => setAudioDuration(audio.duration);
     const onTime = () => setCurrentTime(audio.currentTime);
-    const onEnded = () => setIsPlaying(false);
+
     audio.addEventListener('loadedmetadata', onLoaded);
     audio.addEventListener('timeupdate', onTime);
-    audio.addEventListener('ended', onEnded);
+
     return () => {
       audio.removeEventListener('loadedmetadata', onLoaded);
       audio.removeEventListener('timeupdate', onTime);
-      audio.removeEventListener('ended', onEnded);
+
     };
   }, [audioUrl]);
 
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !audioUrl) {
-      setIsPlaying(false);
-      return undefined;
-    }
-
-    // 详情弹窗使用独立 audio 实例，开始播放前先停止结果卡的全局试听。
     stopVoicePreview();
-    setCurrentTime(0);
-    setAudioDuration(0);
-
-    const playAudio = () => {
-      audio.play()
-        .then(() => setIsPlaying(true))
-        .catch(() => setIsPlaying(false));
-    };
-
-    if (audio.readyState >= 1) playAudio();
-    else audio.addEventListener('loadedmetadata', playAudio, { once: true });
-
-    return () => {
-      audio.removeEventListener('loadedmetadata', playAudio);
-      audio.pause();
-      setIsPlaying(false);
-    };
+    const reset = () => { setCurrentTime(0); setAudioDuration(0); };
+    const audio = audioRef.current;
+    audio?.addEventListener('emptied', reset);
+    return () => audio?.removeEventListener('emptied', reset);
   }, [audioUrl]);
 
   useEffect(() => {
@@ -146,15 +131,8 @@ export default function CreationAudioDetailModal({
   useEffect(() => () => clearTimeout(copyPromptTimerRef.current), []);
 
   function togglePlay() {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (audio.paused) {
-      stopVoicePreview();
-      audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
-    } else {
-      audio.pause();
-      setIsPlaying(false);
-    }
+    if (isPlaying || media.status === 'loading') media.pause();
+    else { stopVoicePreview(); void media.play(); }
   }
 
   function seek(event) {
@@ -208,7 +186,8 @@ export default function CreationAudioDetailModal({
                   <div role="slider" aria-label="音量" onClick={handleVolume} style={{ width: '60px', height: '3px', borderRadius: '2px', background: '#FFFFFF1F', cursor: 'pointer' }}><div style={{ width: `${muted ? 0 : playbackVolume * 100}%`, height: '100%', background: '#FFFFFF99' }} /></div>
                 </div>
               </div>
-              <audio ref={audioRef} src={audioUrl} preload="metadata" />
+              <MediaLoadStatus visual showLoading={false} {...media} overlay={false} onPause={media.pause} onRetry={media.retry} onPlay={() => { stopVoicePreview(); void media.play(); }} />
+              <audio key={audioUrl} ref={audioRef} src={audioUrl} preload="metadata" />
             </div>
             <div style={{ width: '340px', display: 'flex', flexDirection: 'column', minHeight: 0, flexShrink: 0, background: '#161616', borderLeft: '1px solid #FFFFFF0F', color: '#FFFFFF', position: 'relative' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, padding: '12px 20px', borderBottom: '1px solid #FFFFFF0A', backgroundColor: '#161616' }}>

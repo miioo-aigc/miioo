@@ -26,13 +26,17 @@
  *   2026-08-10  合并当前主体引用与普通参考图时统一去重，删除同图重复项时同步清理旧快照副本
  *   2026-07-30  修复主体参考列新增资产未带入创作图片面板：保留已保存表单状态，实时合并当前分镜主体引用，不再过滤 avif/derived 预览地址
  *   2026-08-03  参考主体与普通参考图分别归一化后再合并为图片生成输入，避免类型和重复项混淆
+
+ * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
+ * 当前定义定位：normalizeShotReference L54；GenerateImagePanel L65。
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AssetPickerModal from '../AssetPickerModal';
 import MediaDetailModal from '../MediaDetailModal';
-import { apiListModels } from '../../api/config';
+import { useAvailableModels } from '../../hooks/useAvailableModels';
+import ModelReadStatus from '../feedback/ModelReadStatus';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { downloadUrlWithFeedback } from '../../utils/downloadFeedback';
@@ -80,37 +84,35 @@ export default function GenerateImagePanel({
   formState,
   onFormStateChange,
 }) {
-  const [modelList, setModelList] = useState([]);
-  const [modelsLoading, setModelsLoading] = useState(true);
+  const { models: availableModels, loading: modelsLoading, error: modelsError, retry: retryModels } = useAvailableModels('image');
+  const modelList = useMemo(() => normalizeStoryboardModelList(availableModels, 'image'), [availableModels]);
   const [model, setModel] = useState(() => formState?.model || '');
   const [resolution, setResolution] = useState(() => formState?.resolution || '');
   const formStateHydratedRef = useRef(Array.isArray(formState?.refImages));
 
   useEffect(() => {
-    (async () => {
-      try {
-        const data = await apiListModels({ category: 'image' });
-        const merged = normalizeStoryboardModelList(data, 'image');
-        setModelList(merged);
-        if (merged.length > 0) {
-          const first = merged.find(m => m.is_default) || merged[0];
-          const restoredModel = formState?.model && merged.some((item) => item.value === formState.model)
-            ? formState.model
-            : first.value;
-          setModel(restoredModel);
-          const caps = first.capabilities;
-          {
-            const resList = (caps?.supported_resolutions?.length ? caps.supported_resolutions : caps?.supported_sizes) || [];
-            if (resList.length > 0 && !formState?.resolution) setResolution(resList[0]);
-          }
+    if (modelsLoading) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      const merged = modelList;
+      if (merged.length > 0) {
+        const first = merged.find(m => m.is_default) || merged[0];
+        const restoredModel = formState?.model && merged.some((item) => item.value === formState.model)
+          ? formState.model
+          : first.value;
+        setModel(restoredModel);
+        const caps = first.capabilities;
+        {
+          const resList = (caps?.supported_resolutions?.length ? caps.supported_resolutions : caps?.supported_sizes) || [];
+          if (resList.length > 0 && !formState?.resolution) setResolution(resList[0]);
         }
-      } catch {
-        setModelList([]);
-      } finally {
-        setModelsLoading(false);
       }
-    })();
-  }, [formState?.model, formState?.resolution]);
+
+    });
+    return () => { active = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelList, modelsLoading]);
   // 提示词：仅暂存在当前弹窗的本地 state，编辑不回写分镜列表字段。
   // 关闭面板时组件卸载、本地态丢弃，下次打开按 shot 当前字段重新生成初始内容。
   // 手动新增的空白分镜保持空提示词，不代入后端返回的默认内容。
@@ -277,7 +279,7 @@ export default function GenerateImagePanel({
   }
 
   async function handleGenerate() {
-    if (loading) return;
+    if (loading || modelsLoading || !modelList.some(item => item.value === model)) return;
     setLoading(true);
     const placeholder = `pending-${Date.now()}`;
     const refImagesSnapshot = refImages.map(r => ({ url: r.url, fileUrl: r.url }));
@@ -354,6 +356,7 @@ export default function GenerateImagePanel({
           {/* 左侧表单 */}
           <div style={{ display: 'flex', flexDirection: 'column', width: embedded ? '457px' : '419px', flexShrink: 0, padding: embedded ? '16px 16px 80px 24px' : '8px 12px 80px 24px', gap: '20px', overflowY: 'auto', boxSizing: 'border-box' }}>
             <PanelPromptInput value={prompt} onChange={setPrompt} referenceItems={imageReferenceItems} />
+            <ModelReadStatus loading={modelsLoading} error={modelsError} empty={!modelList.length} onRetry={retryModels} />
             <GenerationModelField
               value={modelsLoading ? '加载中...' : (modelList.find(m => m.value === model)?.label || '请选择')}
               options={modelList.map(m => m.label)}
@@ -448,7 +451,7 @@ export default function GenerateImagePanel({
         >
           <GenerationSubmitButton
             loading={false}
-            disabled={loading}
+            disabled={loading || modelsLoading || !modelList.some(item => item.value === model)}
             label="生成分镜图"
             type="image"
             onClick={handleGenerate}

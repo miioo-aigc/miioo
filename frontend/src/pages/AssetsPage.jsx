@@ -6,11 +6,11 @@
  * 分别由 src/components/assets/ 目录承载，页面不持有资产 API 或卡片细节。
  *
  * ─── 主页面入口 ────────────────────────────────────
- *   AssetsPage：模块切换（项目资产 / 画布资产 / 创作资产 / seedance素材库）与页面外框 L37
+ *   AssetsPage：模块切换（项目资产 / 画布资产 / 创作资产 / seedance素材库）与页面外框 L41
  *   AssetsProjectPanel：项目资产筛选、分页、批量操作和详情回调编排
  *   AssetsCreativePanel：创作资产历史分页、收藏和批量操作编排
  *   SeedanceAssetLibraryPanel：Seedance2.0素材库子 Tab 和文件夹组合
- *   CanvasAssetLibraryPanel：左侧集合与右侧目录管理，接入位置 L66
+ *   CanvasAssetLibraryPanel：左侧集合与右侧目录管理，接入位置 L70
  *
  * ─── 页面级边界 ───────────────────────────────────
  *   页面入口不直接调用资产 API；业务面板继续持有各自 API、Store、副作用和回调。
@@ -22,10 +22,12 @@
  *   2026-07-16  抽离 AssetsProjectPanel、AssetsCreativePanel 和资产卡片组合，
  *               页面入口收敛为模块切换与面板组合；同步真实行号和引用边界
  *   2026-07-24  接入 Seedance2.0素材库模块，由业务组件承载子 Tab 与文件夹展示
+ *   2026-10-23  暂时隐藏画布资产页签，保留完整模块定义、网址参数识别和业务面板
  */
 
 import { useState } from 'react';
 import { AssetsModuleTabBar, AssetsProjectPanel, AssetsCreativePanel, CanvasAssetLibraryPanel, SeedanceAssetLibraryPanel } from '../components/assets';
+import { SHOW_CANVAS_ENTRIES } from '../config/CanvasEntryVisibility';
 
 const MODULE_TABS = [
   { key: 'project', label: '项目资产' },
@@ -33,6 +35,8 @@ const MODULE_TABS = [
   { key: 'creative', label: '创作资产' },
   { key: 'seedance', label: 'seedance素材库' },
 ];
+// 展示列表与可访问模块分离，隐藏页签不影响 module=canvas 直达。
+const VISIBLE_MODULE_TABS = MODULE_TABS.filter((tab) => tab.key !== 'canvas' || SHOW_CANVAS_ENTRIES);
 
 export default function AssetsPage({ isLoggedIn, initialModule = 'project', initialSeedanceTab = 'real' }) {
   const [entry] = useState(() => {
@@ -60,7 +64,7 @@ export default function AssetsPage({ isLoggedIn, initialModule = 'project', init
         backgroundColor: '#161616',
         overflow: 'hidden',
       }}>
-        <AssetsModuleTabBar tabs={MODULE_TABS} active={activeModule} onChange={setActiveModule} />
+        <AssetsModuleTabBar tabs={VISIBLE_MODULE_TABS} active={activeModule} onChange={setActiveModule} />
         {activeModule === 'project' && <AssetsProjectPanel initialProjectId={entry.projectId} initialCategory={entry.category} />}
         {activeModule === 'creative' && <AssetsCreativePanel isLoggedIn={isLoggedIn} />}
         {activeModule === 'canvas' && <CanvasAssetLibraryPanel />}

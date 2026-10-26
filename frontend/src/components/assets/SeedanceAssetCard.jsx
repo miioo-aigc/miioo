@@ -3,10 +3,12 @@
  * 统一资产库文件夹详情页和资产选择弹窗的媒体展示；选择逻辑由调用方传入。
  */
 
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { createVideoFirstFrame } from './SeedanceUploadValidation';
 import DotsLoading from '../DotsLoading';
+import AsyncImagePreview from '../AsyncImagePreview';
+import AssetLibraryPlayer from './AssetLibraryPlayer';
 import { DeleteIcon } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -98,14 +100,13 @@ const SeedanceAssetCard = memo(function SeedanceAssetCard({
   const [generatedPoster, setGeneratedPoster] = useState(null);
   const [isHovered, setIsHovered] = useState(false);
   const [failedMediaUrls, setFailedMediaUrls] = useState(() => new Set());
-  const videoRef = useRef(null);
   const assetType = getAssetType(asset);
   const isVideo = assetType === 'video';
   const isAudio = assetType === 'audio';
   const imageUrls = getImageUrls(asset);
   const videoUrls = isVideo ? getVideoUrls(asset) : [];
   const imageUrl = getFallbackUrl(imageUrls, failedMediaUrls);
-  const videoUrl = getFallbackUrl(videoUrls, failedMediaUrls);
+  const videoUrl = getFallbackUrl(videoUrls, failedMediaUrls) || videoUrls.at(-1);
   const normalizedImageUrl = imageUrl ? normalizeImageUrl(imageUrl) : null;
   const normalizedVideoUrl = videoUrl ? normalizeImageUrl(videoUrl) : null;
   const posterUrl = generatedPoster || normalizedImageUrl;
@@ -124,29 +125,8 @@ const SeedanceAssetCard = memo(function SeedanceAssetCard({
     return () => { cancelled = true; };
   }, [asset.localFile, asset.name, imageUrl, isVideo, normalizedVideoUrl, videoUrl]);
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !isVideo || !normalizedVideoUrl) return undefined;
-    if (isHovered) {
-      video.currentTime = 0;
-      video.play().catch(() => {});
-    } else {
-      video.pause();
-      video.currentTime = 0;
-    }
-    return undefined;
-  }, [isHovered, isVideo, normalizedVideoUrl]);
-
   const handleClick = () => {
     if (!disabled) onClick?.(asset);
-  };
-
-  const handleImageError = () => {
-    if (!imageUrl) return;
-    setFailedMediaUrls((current) => {
-      if (current.has(imageUrl)) return current;
-      return new Set([...current, imageUrl]);
-    });
   };
 
   return (
@@ -158,36 +138,12 @@ const SeedanceAssetCard = memo(function SeedanceAssetCard({
       onMouseLeave={() => setIsHovered(false)}
     >
       {isVideo && normalizedVideoUrl ? (
-        <video
-          ref={videoRef}
-          src={normalizedVideoUrl}
-          poster={posterUrl || undefined}
-          muted
-          playsInline
-          preload="auto"
-          aria-label={asset.name || '视频素材'}
-          onLoadedData={(event) => {
-            if (posterUrl) return;
-            const video = event.currentTarget;
-            try {
-              video.currentTime = 0;
-              video.pause();
-            } catch {
-              // 视频已加载首帧时，保留浏览器当前画面。
-            }
-          }}
-          onError={() => {
-            setFailedMediaUrls((current) => {
-              if (current.has(videoUrl)) return current;
-              return new Set([...current, videoUrl]);
-            });
-          }}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', background: '#1A1A1A', pointerEvents: 'none' }}
-        />
+        <AssetLibraryPlayer src={normalizedVideoUrl} poster={posterUrl || undefined} label={asset.name || '视频素材'} muted hovered={isHovered} controls={false} objectFit="cover"
+          onError={() => setFailedMediaUrls(current => current.has(videoUrl) ? current : new Set([...current, videoUrl]))} />
       ) : isAudio ? (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', background: '#1A1A1A' }}><audio src={normalizeImageUrl(asset.source_url || asset.preview_url)} controls preload="metadata" aria-label={asset.name || '音频素材'} style={{ width: '100%' }} /></div>
+        <AssetLibraryPlayer type="audio" src={normalizeImageUrl(asset.source_url || asset.preview_url)} label={asset.name || '音频素材'} />
       ) : normalizedImageUrl ? (
-        <img key={normalizedImageUrl} src={normalizedImageUrl} alt={asset.name || '图片素材'} onError={handleImageError} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        <AsyncImagePreview visual plain src={normalizedImageUrl} fallbackSrc={imageUrls.length > 1 ? normalizeImageUrl(imageUrls.at(-1)) : undefined} alt={asset.name || '图片素材'} />
       ) : null}
 
       {isUploading || reviewState !== 'approved' ? (

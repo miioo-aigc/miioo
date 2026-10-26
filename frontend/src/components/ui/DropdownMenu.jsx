@@ -9,6 +9,7 @@
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-22  按标准菜单元素新增通用下拉菜单组件
  *   2026-10-09  二级菜单支持可视项上限、滚动与视口边缘避让
+ *   2026-10-22  新增分割线和仅悬停危险态
  */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -60,6 +61,8 @@ function DropdownMenuItem({ item, onClose, openSubmenuKey, onOpenSubmenu }) {
     item.onClick?.(item);
   }
 
+  if (item.type === 'separator') return <div role="separator" style={{ height: '1px', flexShrink: 0, margin: '4px 8px', backgroundColor: 'var(--color-stroke-normal)' }} />;
+
   return (
     <div
       ref={itemRef}
@@ -78,7 +81,7 @@ function DropdownMenuItem({ item, onClose, openSubmenuKey, onOpenSubmenu }) {
           gap: '4px',
           justifyContent: item.endIcon || hasSubmenu ? 'space-between' : 'flex-start',
           backgroundColor: active ? '#FFFFFF14' : 'transparent',
-          color: disabled ? '#FFFFFF33' : item.danger ? '#F75F5F' : '#FFFFFFCC',
+          color: disabled ? '#FFFFFF33' : (item.danger || (item.dangerOnHover && active)) ? '#F75F5F' : '#FFFFFFCC',
           cursor: disabled ? 'not-allowed' : 'pointer',
           fontFamily: FONT,
           fontSize: '14px',

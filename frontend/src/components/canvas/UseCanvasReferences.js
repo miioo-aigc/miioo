@@ -5,8 +5,6 @@ import { appendCanvasNode } from './canvasNodeUtils';
 import { CANVAS_CARD_PULSE_DURATION, getCanvasPulseTiming } from './CanvasPulseMotion';
 import { showGlobalToast } from '../../stores/toastStore';
 import { getCanvasReferenceEdges, removeCanvasReference } from './CanvasReferences';
-import { planCanvasReferenceBatch } from './CanvasReferenceBatch';
-import { prepareCanvasMediaAsset } from './CanvasMediaSize';
 import { getCanvasPromptReferences } from './CanvasPromptReferences';
 import { connectTextToAudio, disconnectTextAudio, getTextAudioEdges, isTextAudioConnection } from './CanvasTextAudio';
 import { getCanvasMediaFileType } from './CanvasLocalMedia';
@@ -14,7 +12,7 @@ import { connectCanvasText, disconnectCanvasText, getCanvasTextEdges, isCanvasTe
 import { canConnectCanvasImage, connectCanvasImage, disconnectCanvasImage, getCanvasImageEdges, isCanvasImageConnection } from './CanvasImageGeneration';
 import { canConnectCanvasVideo, connectCanvasVideo, disconnectCanvasVideo, getCanvasVideoEdges, isCanvasVideoConnection } from './CanvasVideoGeneration';
 
-export function useCanvasReferences(nodes, setNodes, openPicker) {
+export function useCanvasReferences(nodes, setNodes, openPicker, uploadFilesRef) {
   const [pulses, setPulses] = useState([]);
   const pendingNewConnections = useRef([]);
   useEffect(() => {
@@ -54,16 +52,8 @@ export function useCanvasReferences(nodes, setNodes, openPicker) {
     if (!file) return;
     const files = Array.isArray(file) ? file : [file];
     if (files.some((item) => !getCanvasMediaFileType(item, nodeType))) return;
-    const assets = await Promise.all(files.map((item) => prepareCanvasMediaAsset({ name: item.name, url: URL.createObjectURL(item), asset_type: getCanvasMediaFileType(item, nodeType), source: 'local-preview' })));
-    setNodes((current) => {
-      const result = planCanvasReferenceBatch(current, nodeId, assets, mode);
-      if (!result.allowed) {
-        assets.forEach((asset) => URL.revokeObjectURL(asset.url));
-        showGlobalToast('warning', result.message);
-      }
-      return result.nodes;
-    });
-  }, [nodes, openPicker, setNodes]);
+    await uploadFilesRef.current?.(files, { nodeId, purpose: 'reference', mode });
+  }, [nodes, openPicker, uploadFilesRef]);
   const removeReference = useCallback((nodeId, sourceId) => {
     setNodes((current) => disconnectCanvasImage(removeCanvasReference(current, nodeId, sourceId), nodeId, sourceId));
   }, [setNodes]);

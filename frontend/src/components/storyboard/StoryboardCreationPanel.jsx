@@ -10,6 +10,8 @@
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-10-08         编辑任务候选占位复用 LoadingAnimation
  *   2026-07-23         按 Paper 设计稿重写创作弹窗布局和候选区样式
+ *   2026-10-26  固定媒体框接入有限恢复；刷新与业务操作隔离。
+ * 当前定义定位：getUploadMediaType L32；parseAssetMetadata L52；parseObjectValue L63；getAssetParameterContainers L75；getAssetGenerationParams L86；CandidateItem L105；UploadEntry L165；StoryboardCreationPanel L176。
  */
 
 import { useRef, useState } from 'react';
@@ -22,6 +24,7 @@ import { ModalCloseBtn } from './StoryboardControls';
 import FileUploadButton from '../ui/FileUploadButton';
 import DotsLoading from '../DotsLoading';
 import LoadingAnimation from '../LoadingAnimation';
+import StoryboardMediaPreview from './StoryboardMediaPreview';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -113,14 +116,13 @@ function CandidateItem({ item, onSelect, onPreview, onDownload }) {
     );
   }
   const isVideo = item.media_type === 'video' || item.type?.startsWith('video');
-  const source = normalizeImageUrl(item.thumbnail_url || item.poster_url || item.url);
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={onSelect}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
+        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
           event.preventDefault();
           onSelect?.();
         }
@@ -130,7 +132,7 @@ function CandidateItem({ item, onSelect, onPreview, onDownload }) {
       aria-label={item.is_finalized ? '取消定稿' : '设为定稿'}
       style={{ width: '100px', height: '100px', position: 'relative', overflow: 'hidden', flexShrink: 0, borderRadius: '6px', border: `1px solid ${item.is_finalized ? '#2DC3E1' : hovered ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.12)'}`, background: '#1D1E1E', padding: 0, cursor: 'pointer', display: 'block', transition: 'border-color 120ms, box-shadow 120ms', boxShadow: hovered ? '0 4px 16px rgba(0,0,0,0.35)' : 'none' }}
     >
-      {isVideo ? <video src={normalizeImageUrl(item.url)} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <img src={source} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+      <StoryboardMediaPreview media={item} />
       <span style={{ position: 'absolute', left: '4px', top: '4px', padding: '1px 4px', borderRadius: '2px', background: '#00000099', color: '#FFFFFFCC', fontFamily: FONT, fontSize: '10px', lineHeight: '14px' }}>{isVideo ? '视频' : '图片'}</span>
       <Checkbox
         checked={item.is_finalized}

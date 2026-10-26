@@ -9,6 +9,9 @@
  * 2026-09-28：视频支持三类参考素材，首尾帧发送仅携带前两槽图片。
  * 2026-09-28：媒体底栏替换占位，发送回调携带当前参数，未接入实际生成。
  * 2026-09-28：输入框点击不冒泡触发节点延迟选中；仅结果生成中阻止重复写入。
+
+ * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
+ * 当前定义定位：CanvasCreationPanel L27。
  */
 import { useRef, useState } from 'react';
 import CanvasMediaControls from './CanvasMediaControls';
@@ -38,6 +41,9 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', pro
   const textNode = nodeType === 'text';
   const selectedModel = getCanvasTextModelValue(modelState.options, model);
   const c = mediaControls;
+  const modelAvailable = textNode
+    ? !modelState.loading && modelState.options.some(option => option.value === selectedModel)
+    : !c?.loading && c?.options.some(option => option.value === c.model);
   const placeholder = nodeType === 'video'
     ? getCanvasVideoPromptPlaceholder(c?.model, c?.refMode)
     : nodeType === 'audio' ? '输入文字，生成音频' : '描述你想要创作的内容';
@@ -55,7 +61,7 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', pro
       ? references.filter((reference) => reference.slot < 2 && reference.asset.asset_type === 'image')
       : references;
   const send = (snapshot = mediaSnapshotRef.current) => {
-    if (generating || composingRef.current) return;
+    if (generating || composingRef.current || !modelAvailable) return;
     onGenerate?.({ nodeId, prompt: hasReferences ? snapshot?.requestText ?? draft : draft,
       references: activeReferences, model: textNode ? selectedModel : (nodeType === 'video' ? c.requestModel : c.model),
       ...(!textNode ? { promptHTML: snapshot?.html, params: mediaParams, imageReferenceLimit: c?.imageReferenceLimit,
@@ -76,7 +82,7 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', pro
         onChange={onModelChange}
       /> : <CanvasMediaControls nodeType={nodeType} controls={mediaControls} />}
       <div className="canvas-creation-panel__actions">
-        <CreationSendButton onClick={() => send()} />
+        <CreationSendButton onClick={() => send()} disabled={generating || !modelAvailable} />
       </div>
     </>}>
       {hasReferences && <CanvasReferenceBar nodeType={nodeType} references={references} mode={referenceMode} collapsed={videoTextMode} onAdd={onAddReference} onRemove={onRemoveReference}

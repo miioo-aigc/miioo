@@ -49,7 +49,7 @@ export default function SubtitleProperties({ segment }) {
   };
   const change = (patch, immediate = false) => {
     begin();
-    useCompositionEditorStore.getState().previewSubtitle(segment.id, patch);
+    useCompositionEditorStore.getState().previewSubtitle(segment.id, patch, before.current);
     if (immediate) commit();
   };
   return <aside className="timeline-scrollbar flex w-full min-w-0 min-h-0 flex-col gap-[16px] overflow-y-auto overflow-x-hidden bg-neutral-200 px-[20px] py-[16px] [&>*]:shrink-0 [&>*]:min-w-0">

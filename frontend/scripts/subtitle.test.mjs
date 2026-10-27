@@ -118,7 +118,42 @@ test('切换对齐保留坐标，描边开关保留宽度与颜色并支持撤�
   assert.equal(store.getState().segments[0].style.align, seg.style.align);
 });
 
-test('字幕总时长保持起点、拒绝同轨重叠，背景颜色和开关支持撤销及序列化', () => {
+test('字幕时长预览从原始快照推移，缩短遵循吸附，多轨隔离及撤销', () => {
+  for (const excludeGaps of [false, true]) {
+    reset();
+    const segments = [
+      { id: 'first', type: 'subtitle', track: 'S1', start: 0, duration: 2 },
+      { id: 'middle', type: 'subtitle', track: 'S1', start: 2, duration: 3 },
+      { id: 'next', type: 'subtitle', track: 'S1', start: 5, duration: 2 },
+      { id: 'last', type: 'subtitle', track: 'S1', start: 8, duration: 2 },
+      { id: 'other', type: 'subtitle', track: 'S2', start: 5, duration: 2 },
+      { id: 'video', type: 'video', track: 'V1', start: 0, duration: 10 },
+    ];
+    store.setState({ segments, past: [], trackSettings: { S1: { excludeGaps } } });
+    const before = { segments, selectedId: 'middle' };
+    const preview = (duration) => store.getState().previewSubtitle('middle', { duration }, before);
+    preview(8);
+    assert.deepEqual(store.getState().segments.slice(0, 4).map((seg) => seg.start), [0, 2, 10, 12]);
+    preview(4);
+    assert.deepEqual(store.getState().segments.slice(0, 4).map((seg) => seg.start), [0, 2, 6, 8]);
+    preview(3);
+    assert.deepEqual(store.getState().segments.slice(0, 4).map((seg) => seg.start), [0, 2, 5, 8]);
+    preview(1);
+    const result = store.getState().segments;
+    assert.deepEqual(result.slice(0, 4).map((seg) => seg.start), excludeGaps ? [0, 2, 3, 5] : [0, 2, 5, 8]);
+    assert.equal(result[4], segments[4]);
+    assert.equal(result[5], segments[5]);
+    assert.equal(result[2].duration, 2);
+    store.getState().commitVisualSegment('middle', before);
+    assert.equal(store.getState().past.length, 1);
+    store.getState().undo();
+    assert.deepEqual(store.getState().segments, segments);
+    store.getState().redo();
+    assert.deepEqual(store.getState().segments, result);
+  }
+});
+
+test('字幕总时长保持起点并推后碰撞字幕，背景颜色和开关支持撤销及序列化', () => {
   reset();
   store.getState().importSubtitles([{ text: 'first', start: 1, duration: 2 }, { text: 'next', start: 6, duration: 2 }]);
   const seg = store.getState().segments[0];
@@ -127,7 +162,8 @@ test('字幕总时长保持起点、拒绝同轨重叠，背景颜色和开关�
   assert.equal(store.getState().segments[0].start, 1);
   assert.equal(store.getState().segments[0].duration, 4);
   store.getState().previewSubtitle(seg.id, { duration: 6 });
-  assert.equal(store.getState().segments[0].duration, 4);
+  assert.equal(store.getState().segments[0].duration, 6);
+  assert.equal(store.getState().segments[1].start, 7);
   store.getState().previewSubtitle(seg.id, { style: { background: '#336699', backgroundOn: true } });
   store.getState().commitVisualSegment(seg.id, before);
   assert.equal(serializeTimeline(store.getState().segments)[0].style.background, '#336699');

@@ -24,6 +24,6 @@ export default function SubtitleTrimHandles({ segment, zoom }) {
       const delta = (event.clientX - drag.current.x) / zoom;
       const start = side === 'left' ? Math.max(0, Math.min(original.start + original.duration - 0.01, original.start + delta)) : original.start;
       const end = side === 'right' ? Math.max(start + 0.01, original.start + original.duration + delta) : original.start + original.duration;
-      useCompositionEditorStore.getState().previewSubtitle(segment.id, { start, duration: end - start });
+      useCompositionEditorStore.getState().previewSubtitle(segment.id, { start, duration: end - start }, drag.current.before);
     }} onPointerUp={() => finish(false)} onPointerCancel={() => finish(true)} onLostPointerCapture={() => finish(true)} />);
 }

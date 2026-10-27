@@ -191,6 +191,7 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
               const added = addedSet.has(asset.id);
               const isVideo = asset.asset_type === 'video';
               const isAudio = asset.asset_type === 'audio';
+              const showDuration = (isVideo || isAudio) && asset.duration != null;
               const thumb = asset.thumbnailUrl || asset.posterUrl;
               return (
                 <div
@@ -201,7 +202,7 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
                   }}
                   role="button"
                   tabIndex={0}
-                  title={`添加到时间线：${asset.name || '未命名素材'}${asset.duration != null ? ` · ${formatTime(asset.duration)}` : ''}`}
+                  title={`添加到时间线：${asset.name || '未命名素材'}${showDuration ? ` · ${formatTime(asset.duration)}` : ''}`}
                   className={`group relative flex min-w-0 w-full flex-col items-start gap-[6px] cursor-pointer text-left ${added ? 'text-brand-main' : ''}`}
                 >
                   <span className="relative flex items-center justify-center w-full aspect-video rounded-[8px] bg-neutral-500 overflow-hidden shrink-0 border border-white-10 transition-colors group-hover:border-white-30">
@@ -229,7 +230,7 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
                         <span>已添加</span>
                       </span>
                     )}
-                    {asset.duration != null && (
+                    {showDuration && (
                       <span className="absolute right-[8px] top-[8px] flex h-[24px] items-center rounded-[4px] bg-transparent bg-gradient-to-b from-[rgba(0,0,0,0.6)] to-[rgba(0,0,0,0.6)] px-[8px] text-[12px] text-[rgba(255,255,255,0.8)]" style={{ fontFamily: FONT }}>
                         {formatTime(asset.duration)}
                       </span>

@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { Minus, Plus } from 'lucide-react';
 import Slider from '../ui/Slider';
 
 function timeText(value) {
@@ -12,6 +12,8 @@ export default function PropertySlider({ label, value, min, max, step = 0.1, sli
   unit = '秒', disabled = false, hint, onCommit, onChange, sliderProps = {}, inputOnly = false, integer = false, unitInside = true, hideLabel = false, leftAligned = false, inlineSlider = false, compact = false, precision }) {
   const id = useId();
   const [draft, setDraft] = useState(null);
+  const middleTick = (min + max) / 2;
+  const showMiddleTick = middleTick > min && middleTick < max;
   const format = precision != null ? (number) => String(Number(number.toFixed(precision))) : integer ? (number) => String(Math.round(number)) : unit === '秒' ? timeText : String;
   const parse = (text) => {
     if (!text.trim()) return NaN;
@@ -34,14 +36,26 @@ export default function PropertySlider({ label, value, min, max, step = 0.1, sli
     const base = Number.isFinite(parsed) ? parsed : value;
     submit((integer ? Math.round(base) : base) + direction * step);
   };
+  const stepButton = (direction) => {
+    const Icon = direction === 1 ? Plus : Minus;
+    const name = `${direction === 1 ? '增加' : '减少'}${label}`;
+    return <button type="button" aria-label={name} title={name}
+      disabled={disabled || (direction === 1 ? value >= max : value <= min)}
+      onMouseDown={(event) => event.preventDefault()} onClick={() => move(direction)}
+      className={`flex h-full w-[24px] shrink-0 cursor-pointer items-center justify-center border-stroke-normal text-text-secondary hover:bg-white-10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-secondary ${direction === 1 ? 'border-l' : 'border-r'}`}>
+      <Icon size={14} />
+    </button>;
+  };
   return (
     <div className="flex min-w-0 shrink-0 flex-col gap-[8px]">
       <div className={`flex items-center ${leftAligned ? 'gap-[12px]' : 'justify-between gap-[8px]'}`}>
         <label htmlFor={id} className={hideLabel ? 'sr-only' : `${leftAligned ? 'w-[64px] shrink-0 ' : ''}text-font-size-14 text-text-secondary`}>{label}</label>
         {inlineSlider && <Slider {...sliderProps} aria-label={`${label}滑轨`} className="min-w-0 flex-1" min={min} max={max} step={sliderStep} value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} />}
         <div className="flex shrink-0 items-center gap-[8px]">
-          <div className={`flex h-[28px] ${compact ? 'w-[76px]' : 'w-[88px]'} items-center overflow-hidden rounded-small bg-white-10 focus-within:outline focus-within:outline-brand-main`}>
-            <input id={id} aria-label={`${label}数值`} disabled={disabled} value={draft ?? format(value)}
+          <div className={`flex h-[28px] ${compact ? 'w-[112px]' : 'w-[128px]'} items-center overflow-hidden rounded-small border border-stroke-normal bg-neutral-100 focus-within:outline focus-within:outline-brand-main`}>
+            {stepButton(-1)}
+            <div className="flex min-w-0 flex-1 items-center justify-center px-[4px]">
+            <input id={id} aria-label={`${label}数值`} inputMode="decimal" disabled={disabled} value={draft ?? format(value)}
               onChange={(event) => setDraft(event.target.value)}
               onBlur={() => { if (draft !== null) submit(parse(draft)); }}
               onKeyDown={(event) => {
@@ -51,20 +65,10 @@ export default function PropertySlider({ label, value, min, max, step = 0.1, sli
                   event.preventDefault(); move(event.key === 'ArrowUp' ? 1 : -1);
                 }
               }}
-              className="w-full min-w-0 bg-transparent pl-[8px] text-font-size-14 text-text-primary outline-none disabled:opacity-40" />
-            {unitInside && unit && <span className={`shrink-0 px-[4px] text-font-size-12 text-text-secondary ${disabled ? 'opacity-40' : ''}`}>{unit}</span>}
-            <div className="flex h-full w-[20px] shrink-0 flex-col">
-              {[1, -1].map((direction) => {
-                const Icon = direction === 1 ? ChevronUp : ChevronDown;
-                const name = `${direction === 1 ? '增加' : '减少'}${label}`;
-                return <button key={direction} type="button" aria-label={name} title={name}
-                  disabled={disabled || (direction === 1 ? value >= max : value <= min)}
-                  onMouseDown={(event) => event.preventDefault()} onClick={() => move(direction)}
-                  className="flex min-h-0 flex-1 items-center justify-center text-text-secondary hover:bg-white-10 hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed">
-                  <Icon size={12} />
-                </button>;
-              })}
+              className="w-full min-w-0 bg-transparent text-center text-font-size-14 text-text-primary tabular-nums outline-none disabled:opacity-40" />
+            {unitInside && unit && <span className={`shrink-0 text-font-size-12 text-text-secondary ${disabled ? 'opacity-40' : ''}`}>{unit}</span>}
             </div>
+            {stepButton(1)}
           </div>
           {unit && !unitInside && <span className="text-font-size-14 text-text-secondary">{unit}</span>}
         </div>
@@ -73,8 +77,12 @@ export default function PropertySlider({ label, value, min, max, step = 0.1, sli
         <Slider {...sliderProps} aria-label={label} min={min} max={max} step={sliderStep}
           value={Math.min(max, Math.max(min, value))} disabled={disabled}
           onChange={(event) => onChange(Number(event.target.value))} />
-        <div className="flex justify-between text-font-size-12 text-text-secondary tabular-nums" aria-hidden="true">
-          {[min, (min + max) / 2, max].map((tick, index) => <span key={index}>{format(tick)}{unit !== '秒' ? unit : ''}</span>)}
+        <div className="relative flex justify-between text-font-size-12 text-text-secondary tabular-nums" aria-hidden="true">
+          <span>{format(min)}{unit !== '秒' ? unit : ''}</span>
+          {showMiddleTick && <span className="absolute left-1/2 -translate-x-1/2">
+            {format(middleTick)}{unit !== '秒' ? unit : ''}
+          </span>}
+          <span>{format(max)}{unit !== '秒' ? unit : ''}</span>
         </div>
       </div>}
       {hint && <span className="text-font-size-12 text-text-hint">{hint}</span>}

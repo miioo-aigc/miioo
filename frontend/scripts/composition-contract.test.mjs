@@ -4,8 +4,8 @@ import { createServer } from 'vite';
 
 const server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom' });
 after(() => server.close());
-const { buildCompositionBody, normalizeComposition } = await server.ssrLoadModule('/src/api/compositions.js');
-const { serializeTimeline, useCompositionEditorStore: store } = await server.ssrLoadModule('/src/stores/compositionEditorStore.js');
+const { buildCompositionBody, normalizeComposition, apiGetCompositions, apiCreateComposition } = await server.ssrLoadModule('/src/api/compositions.js');
+const { serializeTimeline, formatTime, durationClampOf, useCompositionEditorStore: store } = await server.ssrLoadModule('/src/stores/compositionEditorStore.js');
 const { prepareCompositionAsset } = await server.ssrLoadModule('/src/api/CompositionAssetImport.js');
 const { buildInitialStoryboardTimeline } = await server.ssrLoadModule('/src/utils/InitialStoryboardTimeline.js');
 const { exportProgress } = await server.ssrLoadModule('/src/stores/CompositionExportStore.js');
@@ -27,7 +27,7 @@ test('在线剪辑有草稿仅查询，无草稿创建一次；查询或创建�
       if (mode === 'missing-id') return Response.json({});
       return Response.json({ id: 'new-draft', ...JSON.parse(options.body) });
     }
-    if (String(url).endsWith('/compositions')) return Response.json(mode === 'existing' ? [{ id: 'existing' }] : []);
+    if (String(url).includes('/compositions?')) return Response.json(mode === 'existing' ? [{ id: 'existing', episode_id: 'episode' }, { id: 'other', episode_id: 'other' }] : [{ id: 'other', episode_id: 'other' }, { id: 'legacy' }]);
     return Response.json([]);
   };
   try {
@@ -38,7 +38,7 @@ test('在线剪辑有草稿仅查询，无草稿创建一次；查询或创建�
     assert.equal(result.draft.id, 'new-draft');
     const posts = calls.filter(({ options }) => options.method === 'POST');
     assert.equal(posts.length, 1);
-    assert.deepEqual(JSON.parse(posts[0].options.body), { name: '草稿01', resolution: '1080p', aspect_ratio: '16:9' });
+    assert.deepEqual(JSON.parse(posts[0].options.body), { episode_id: 'episode', name: '草稿01', resolution: '1080p', aspect_ratio: '16:9' });
     mode = 'query-error';
     const count = calls.length;
     await assert.rejects(prepareOnlineEditing('project', 'episode'));
@@ -49,6 +49,56 @@ test('在线剪辑有草稿仅查询，无草稿创建一次；查询或创建�
     globalThis.localStorage = originalStorage;
     globalThis.window = originalWindow;
   }
+});
+
+test('草稿按分集查询和过滤，创建必须持久化归属，复制沿用归属', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalStorage = globalThis.localStorage;
+  const originalWindow = globalThis.window;
+  globalThis.window = { dispatchEvent: () => {} };
+  globalThis.localStorage = { getItem: () => 'test-only-token' };
+  let wrongResponse = false;
+  globalThis.fetch = async (url, options = {}) => {
+    if (options.method === 'POST') {
+      const body = JSON.parse(options.body);
+      assert.equal(body.episode_id, 'ep/2');
+      return Response.json({ id: 'copy', ...body, ...(wrongResponse ? { episode_id: null } : {}) });
+    }
+    assert.equal(new URL(String(url), 'https://example.test').searchParams.get('episode_id'), 'ep/2');
+    return Response.json([{ id: 'a', episode_id: 'ep/1' }, { id: 'b', episode_id: 'ep/2' }, { id: 'old' }]);
+  };
+  try {
+    const drafts = await apiGetCompositions('project', 'ep/2');
+    assert.deepEqual(drafts.map((item) => item.id), ['b']);
+    assert.equal((await apiCreateComposition('project', { ...drafts[0], name: '副本' })).episodeId, 'ep/2');
+    wrongResponse = true;
+    await assert.rejects(apiCreateComposition('project', { episodeId: 'ep/2' }), /分集归属/);
+    await assert.rejects(apiCreateComposition('project', {}), /分集 ID/);
+    await assert.rejects(prepareOnlineEditing('project'), /选择分集/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.localStorage = originalStorage;
+    globalThis.window = originalWindow;
+  }
+});
+
+test('音视频小数时长显示与源窗口上限保持精确', () => {
+  assert.equal(formatTime(7.4, 1), '00:07.4');
+  assert.equal(formatTime(59.96, 1), '01:00.0');
+  assert.equal(formatTime(7.437, 2), '00:07.44');
+  assert.equal(formatTime(59.996, 2), '01:00.00');
+  assert.equal(formatTime(7.4), '00:07');
+  for (const type of ['video', 'audio']) {
+    store.setState({ ...store.getInitialState(), segments: [{ id: 'decimal', type, duration: 7, sourceDuration: 7.437, track: type === 'audio' ? 'A1' : 'V1' }] });
+    const max = durationClampOf(store.getState().segments[0]).max;
+    assert.equal(max, 7.437);
+    store.getState().updateSegment('decimal', { duration: 7.43 });
+    assert.equal(store.getState().segments[0].duration, 7.43);
+    store.getState().updateSegment('decimal', { duration: max });
+    assert.equal(store.getState().segments[0].duration, max);
+    assert.equal(serializeTimeline(store.getState().segments)[0].duration, max);
+  }
+  store.setState({ ...store.getInitialState() });
 });
 
 test('关闭导出弹窗只隐藏 UI，真实百分比缺失不伪造', () => {

@@ -53,6 +53,8 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-10-20  共用任务存储读写异常显式提示；提交前门禁，编号写失败保留会话记录，清理失败保留占位；批量中断不报全部完成。页面超规模因 API、缓存及持久化集中编排暂不拆；验证提交/恢复/收尾，视频恢复只入候选。
+ *   2026-10-23  在线剪辑跳转保留分集参数。
+ *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-09-18  删除已无运行时引用的旧分镜页 Toast 展示；反馈统一由 GlobalToast 承接
  *   2026-09-07  修复兼容分镜媒体覆盖后端候选 UUID：后端候选合并优先，并在定稿前确保候选已持久化
  *   2026-09-04  台词分配移除语速/音量，新增角色与旁白音色选择；普通角色复用主体音色接口，旁白使用项目级音色设置，
@@ -1929,8 +1931,8 @@ function hasStoryboardMediaHint(shot = {}) {
   function handleStartEdit(compositionId, episodeId) {
     const query = new URLSearchParams();
     if (compositionId) query.set('comp_id', compositionId);
-    if (compositionId && episodeId) query.set('episode_id', episodeId);
-    window.history.pushState({}, '', `/project/${encodeURIComponent(projectId)}/edit${compositionId ? '/editor?' + query : ''}`);
+    if (episodeId) query.set('episode_id', episodeId);
+    window.history.pushState({}, '', `/project/${encodeURIComponent(projectId)}/edit${compositionId ? '/editor' : ''}${query.size ? '?' + query : ''}`);
     onUnlockStep?.('edit');
     onStartEdit?.();
   }

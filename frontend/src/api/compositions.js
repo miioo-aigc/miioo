@@ -29,6 +29,7 @@ export function normalizeComposition(raw) {
   if (!raw || typeof raw !== 'object') return null;
   return {
     id: raw.id ?? null,
+    episodeId: raw.episodeId ?? raw.episode_id ?? null,
     name: raw.name ?? '',
     timeline: Array.isArray(raw.timeline) ? raw.timeline : [],
     libraryAssetIds: raw.libraryAssetIds ?? raw.library_asset_ids ?? [],
@@ -54,8 +55,9 @@ export function invalidateCompositionDependents(projectId) {
 }
 
 // 仅把提供的字段放入请求体，未传字段保持 undefined 不入 body（PATCH 语义）。
-export function buildCompositionBody({ name, timeline, resolution, aspectRatio, libraryAssetIds, trackSettings }) {
+export function buildCompositionBody({ name, timeline, resolution, aspectRatio, libraryAssetIds, trackSettings, episodeId }) {
   const body = {};
+  if (episodeId !== undefined) body.episode_id = episodeId;
   if (name !== undefined) body.name = name;
   if (timeline !== undefined) body.timeline = timeline;
   if (resolution !== undefined) body.resolution = resolution;
@@ -65,19 +67,21 @@ export function buildCompositionBody({ name, timeline, resolution, aspectRatio, 
   return body;
 }
 
-export async function apiGetCompositions(projectId) {
+export async function apiGetCompositions(projectId, episodeId) {
   const normalizedProjectId = assertId(projectId, '项目 ID ');
-  const res = await authFetch(`${BASE}/api/projects/${normalizedProjectId}/compositions`, {
+  const query = episodeId != null ? '?' + new URLSearchParams({ episode_id: assertId(episodeId, '分集 ID ') }) : '';
+  const res = await authFetch(`${BASE}/api/projects/${normalizedProjectId}/compositions${query}`, {
     headers: { 'Content-Type': 'application/json' },
   });
   await ensureOk(res, `加载成片工程列表失败（${res.status}）`);
   const data = await res.json();
   const list = Array.isArray(data) ? data : (Array.isArray(data?.list) ? data.list : []);
-  return list.map(normalizeComposition).filter(Boolean);
+  return list.map(normalizeComposition).filter((item) => item && (episodeId == null || String(item.episodeId) === String(episodeId)));
 }
 
 export async function apiCreateComposition(projectId, opts = {}) {
   const normalizedProjectId = assertId(projectId, '项目 ID ');
+  assertId(opts.episodeId, '分集 ID ');
   const res = await authFetch(`${BASE}/api/projects/${normalizedProjectId}/compositions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -86,7 +90,11 @@ export async function apiCreateComposition(projectId, opts = {}) {
   await ensureOk(res, `创建成片工程失败（${res.status}）`);
   const data = await res.json();
   invalidateCompositionDependents(normalizedProjectId);
-  return normalizeComposition(data || {});
+  const draft = normalizeComposition(data || {});
+  if (String(draft.episodeId) !== String(opts.episodeId)) {
+    throw createDisplayError('后端未正确返回草稿分集归属，请联系后端确认 episode_id 支持后再重试');
+  }
+  return draft;
 }
 
 export async function apiUpdateComposition(projectId, compId, opts = {}) {

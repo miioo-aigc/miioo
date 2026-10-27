@@ -2,11 +2,11 @@
  * @file TimelineBar.jsx
  * @structure-index
  *
- * 时间线结构：素材展示辅助组件 L55；状态与缩放 L116；拖拽预览与提交 L212；
- * 定位与播放游标 L394；片段卡片 L452；轨道布局与工具栏 L519。
+ * 时间线结构：素材展示辅助组件 L63；状态与缩放 L116；拖拽预览与提交 L220；
+ * 定位与播放游标 L402；片段卡片 L460；轨道布局与工具栏 L527。
  *
  * 更新记录：2026-10-09 增强时间刻度对比度；吸顶刻度内补齐手柄到轨道游标线连接段。
- * 2026-10-15 全选高亮、拖拽快捷键隔离及 Esc 取消；键盘分发独立于时间线展示。
+ * 2026-10-15 全选高亮、拖拽快捷键隔离及 Esc 取消；键盘分发独立于时间线展示。2026-10-23 倍速文字改为 80% 白色，隔离横向滚动边界手势。
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import TimelineToolbar from './TimelineToolbar';
@@ -87,7 +87,7 @@ function VideoFilmstrip({ src, poster, offset = 0, duration = 0, speed = 1 }) {
           poster={poster || undefined}
           muted
           playsInline
-          preload="auto"
+          preload="metadata"
           onLoadedMetadata={(event) => setFrame(index, event)}
           onLoadedData={(event) => setFrame(index, event)}
           onSeeked={() => markReady(index)}
@@ -178,7 +178,15 @@ export default function TimelineBar({ showToast }) {
     const container = scrollRef.current;
     if (!container) return undefined;
     const onWheel = (event) => {
-      if (!event.ctrlKey && !event.metaKey) return; // 无修饰键：不拦截，保持原生横向滚动
+      if (!event.ctrlKey && !event.metaKey) {
+        const deltaX = event.deltaX || (event.shiftKey ? event.deltaY : 0);
+        const atStart = container.scrollLeft <= 1;
+        const atEnd = container.scrollLeft >= container.scrollWidth - container.clientWidth - 1;
+        // 边界外的横向手势不交给浏览器历史导航，轨道内部仍使用原生滚动。
+        if (Math.abs(deltaX) > 0 && (event.shiftKey || Math.abs(deltaX) >= Math.abs(event.deltaY))
+          && ((deltaX < 0 && atStart) || (deltaX > 0 && atEnd))) event.preventDefault();
+        return;
+      }
       event.preventDefault(); // 阻止浏览器页面缩放（含触控板 pinch 合成的 ctrl+wheel）
       const oldZoom = useCompositionEditorStore.getState().zoom;
       const sign = event.deltaY < 0 ? 1 : -1; // 滚轮向上 = 放大
@@ -507,7 +515,7 @@ export default function TimelineBar({ showToast }) {
         {seg.type === 'subtitle' && seg.id === selectedId && <SubtitleTrimHandles segment={seg} zoom={zoom} />}
 
         <div className="absolute inset-x-[6px] bottom-[3px] flex items-center justify-between gap-[2px]">
-          <span className="text-font-size-12 text-text-hint whitespace-nowrap" style={{ fontFamily: FONT }}>
+          <span className="text-font-size-12 text-white-80 whitespace-nowrap" style={{ fontFamily: FONT }}>
             {speedText.replace(' · ', '')}
           </span>
         </div>
@@ -533,7 +541,7 @@ export default function TimelineBar({ showToast }) {
         ))}
       </div>
       </div>
-      <div ref={scrollRef} className="timeline-scrollbar h-full min-h-0 min-w-0 flex-1 overflow-auto" onScroll={(event) => { if (trackLabelRef.current) trackLabelRef.current.style.transform = `translateY(${-event.currentTarget.scrollTop}px)`; }} style={{ scrollbarGutter: 'stable both-edges' }}>
+      <div ref={scrollRef} className="timeline-scrollbar h-full min-h-0 min-w-0 flex-1 overflow-auto" onScroll={(event) => { if (trackLabelRef.current) trackLabelRef.current.style.transform = `translateY(${-event.currentTarget.scrollTop}px)`; }} style={{ scrollbarGutter: 'stable both-edges', overscrollBehaviorX: 'contain' }}>
         <div className="relative flex-shrink-0" style={{ width: contentWidth, minWidth: '100%', minHeight: RULER_H + trackHeight + 16, height: RULER_H + trackHeight + 16 }}>
           {/* 刻度（步进自适应，每格一个刻度 + 标签） */}
           <div className="sticky top-0 z-[60] bg-neutral-200" style={{ height: RULER_H, cursor: 'pointer' }} onClick={clickTrack}>

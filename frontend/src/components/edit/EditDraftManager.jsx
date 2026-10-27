@@ -23,6 +23,7 @@ export default function EditDraftManager({ projectId, drafts, onChange, showToas
         onChange((items) => items.map((item) => item.id === draft.id ? { ...item, name: updated.name || trimmedName, updatedAt: updated.updatedAt || item.updatedAt } : item));
       } else if (action === 'copy') {
         const copied = await apiCreateComposition(projectId, {
+          episodeId: draft.episodeId,
           name: (draft.name || '草稿') + '副本',
           timeline: draft.timeline,
           resolution: draft.resolution,

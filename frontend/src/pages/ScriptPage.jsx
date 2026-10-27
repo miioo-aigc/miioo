@@ -3,22 +3,24 @@
  * @structure-index
  *
  * ─── 全局常量 & 工具函数 ─────────────────────────────────────────────
- *   FONT / CHAT_TIMEOUT_MS / 页面级常量                                  L67
- *   formatEpisodeHeaders                                                   L93
+ *   FONT / CHAT_TIMEOUT_MS / 页面级常量                                  L70
+ *   formatEpisodeHeaders                                                   L96
  *
  * ─── 反馈与输入区组件 ─────────────────────────────────────────────────
- *   Toast                                                                  L190
+ *   Toast                                                                  L193
  *
  * ─── 剧本展示与编辑组件 ───────────────────────────────────────────────
  *   ScriptOutlineLoading / ScriptOutlineWorkspace / ScriptEpisodeOutline / ScriptStoryboardDocument / ScriptModifyConfirmModal src/components/script/
  *
  * ─── 主页面入口 ───────────────────────────────────────────────────────
- *   export default ScriptPage()                                         L234
+ *   export default ScriptPage()                                         L237
  *     ├─ [状态] 受控/非受控 phase、剧本内容、入口文件、模型、集数/时长、消息和编排任务
- *     ├─ [函数] handleSend L1095 / handleScriptFileSelect L809 / handleOpenScriptOutline L293 / handleStop L780 / handleBackToConversation L421 / handleBackToScriptOutline L456
+ *     ├─ [函数] handleSend L1120 / handleScriptFileSelect L830 / handleOpenScriptOutline L301 / handleStop L801 / handleBackToConversation L430 / handleBackToScriptOutline L471
  *     └─ [副作用] 工作区加载、编排任务恢复与轮询、流式请求、剧本和分集同步
  *
  * ─── 更新记录 ────────────────────────────────────────────────────────
+ *   2026-10-27  按项目保存最后停留页面，无记录时优先解构；恢复读取不覆盖偏好。
+ *   2026-10-27  返回对话保留上次解构，刷新恢复入口；允许编辑旧结构并继续生成。
  *   2026-10-12  工作区读取增加错误提示、重试与卸载/切项目失效保护。
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
  *   2026-07-15  抽离 InputCard、ScriptEmptyState 及输入区子组件，页面仅保留输入区编排
@@ -56,6 +58,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiReopenScriptDialogue } from '../api/subject';
 import { getAuthSessionGeneration } from '../api/request';
+import { rememberScriptView, restoreScriptView } from '../utils/ScriptViewPreference';
 import { prepareScriptChat } from '../components/script/PrepareScriptChat';
 import { apiGetScriptWorkspace, normalizeScriptMessages, normalizeScriptStructure, normalizeStoryboardFileInfo, isStoryboardScriptSource, apiChatScriptWorkspaceStream, apiInterruptScriptChatTurn, apiUploadScriptWorkspace, apiImportStoryboardXlsx, apiDownloadStoryboardFile, apiConfirmScriptWorkspace, apiGetScriptStructure, apiGetScriptTask, apiResplitScriptStructure, apiRegenerateScriptEpisode, apiPatchScriptStructure, SCRIPT_SCHEMA_VERSION } from '../api/subject';
 import { Button } from '../components/ui';
@@ -258,10 +261,15 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   const reopenScopeRef = useRef(null);
   const workspaceReadVersionRef = useRef(0);
   const [activeMessageId, setActiveMessageId] = useState(null);
-  const [scriptOutlineMode, setScriptOutlineMode] = useState(false);
+  const [scriptOutlineMode, setScriptOutlineModeRaw] = useState(false);
+  const setScriptOutlineMode = useCallback((outline) => {
+    rememberScriptView(projectId, outline);
+    setScriptOutlineModeRaw(outline);
+  }, [projectId]);
   const [scriptOutlineLoading, setScriptOutlineLoading] = useState(false);
   const [scriptOutlineError, setScriptOutlineError] = useState('');
   const [scriptOutlineData, setScriptOutlineData] = useState(null);
+  const [outlineIsSnapshot, setOutlineIsSnapshot] = useState(false);
   const [scriptOutlineTaskId, setScriptOutlineTaskId] = useState(null);
   const [scriptOutlineType, setScriptOutlineType] = useState('script');
   const [storyboardFileName, setStoryboardFileName] = useState('');
@@ -299,6 +307,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
 
     setScriptOutlineMode(true);
     setScriptOutlineLoading(true);
+    setOutlineIsSnapshot(false);
     setScriptOutlineError('');
     setScriptOutlineData(null);
     setScriptOutlineTaskId(null);
@@ -391,7 +400,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         : error?.message || '剧本解析失败，请重试';
       setScriptOutlineError(message);
     }
-  }, [projectId, scriptOutlineLoading]);
+  }, [projectId, scriptOutlineLoading, setScriptOutlineMode]);
 
   const waitForScriptOperation = useCallback(async (taskId) => {
     if (!taskId) throw new Error('剧本操作未返回任务编号');
@@ -419,6 +428,10 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   }, [projectId]);
 
   const handleBackToConversation = useCallback(async () => {
+    if (outlineIsSnapshot) {
+      setScriptOutlineMode(false);
+      return;
+    }
     const scope = reopenScopeRef.current;
     if (!projectId || !scope || scope.pending || episodeActionLoading) return;
     const session = getAuthSessionGeneration();
@@ -438,8 +451,10 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       setScriptContent(workspace.script.content || '');
       setHasStarted(true);
       setPhase('view');
-      // 后端保留结构快照；前端新一轮创作必须重新确认，不能复用旧编排。
-      setScriptOutlineData(null);
+      // 保留已有结构，支持返回编辑和继续生成；重新确认则生成当前稿的新结构。
+      const previousStructure = workspace.structure || latest.structure;
+      if (previousStructure) setScriptOutlineData(normalizeScriptStructure(previousStructure));
+      setOutlineIsSnapshot(true);
       setScriptOutlineTaskId(null);
       clearStoredScriptOperation(projectId);
       setScriptOutlineError('');
@@ -451,11 +466,11 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       scope.pending = false;
       if (isCurrent()) setReopeningDialogue(false);
     }
-  }, [projectId, episodeActionLoading, setScriptContent, setHasStarted, setPhase]);
+  }, [projectId, episodeActionLoading, setScriptContent, setHasStarted, setPhase, outlineIsSnapshot, setScriptOutlineMode]);
 
   const handleBackToScriptOutline = useCallback(() => {
     setScriptOutlineMode(true);
-  }, []);
+  }, [setScriptOutlineMode]);
 
   const refreshScriptOutline = useCallback(async () => {
     const structure = await apiGetScriptStructure(projectId);
@@ -586,6 +601,8 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
   useEffect(() => {
     if (!projectId) return;
     let active = true;
+    setOutlineIsSnapshot(false);
+    setScriptOutlineData(null);
     const readVersion = ++workspaceReadVersionRef.current;
     apiGetScriptWorkspace(projectId)
       .then((data) => {
@@ -618,15 +635,18 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
         const activeTaskId = getScriptTaskId(activeTask);
         const hasStoryboardFile = Boolean(restoredStoryboard.fileName || restoredStoryboard.downloadUrl || restoredStoryboard.fileId);
         const storedTaskId = readStoredScriptOperationTaskId(projectId);
+        setScriptOutlineModeRaw(false);
         if (data?.script?.workflow_stage === 'dialogue') {
           setHasStarted(Boolean(content || restoredMessages.length));
           setPhase(content || restoredMessages.length ? 'view' : 'initial');
-          setScriptOutlineMode(false);
-          setScriptOutlineData(null);
+          setScriptOutlineModeRaw(restoreScriptView(projectId, Boolean(data.structure)));
+          setScriptOutlineData(data.structure ? normalizeScriptStructure(data.structure) : null);
+          setOutlineIsSnapshot(true);
+          setOutlineType(isStoryboardUpload ? 'storyboard' : 'script');
           setScriptOutlineTaskId(null);
           setScriptOutlineLoading(false);
         } else if (data?.structure || activeTaskId || hasStoryboardFile || storedTaskId) {
-          setScriptOutlineMode(true);
+          setScriptOutlineModeRaw(restoreScriptView(projectId, Boolean(data.structure || activeTaskId || hasStoryboardFile || storedTaskId)));
           const storedOutlineType = readStoredScriptOutlineType(projectId);
           setOutlineType(isStoryboardUpload || storedOutlineType === 'storyboard' ? 'storyboard' : 'script');
           setScriptOutlineError('');
@@ -698,7 +718,8 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
           const structure = await apiGetScriptStructure(projectId);
           if (disposed) return;
           if (scriptOutlineType === 'storyboard' || isStoryboardScriptSource(task)) {
-            setOutlineType('storyboard');
+            setOutlineIsSnapshot(false);
+    setOutlineType('storyboard');
             const workspace = await apiGetScriptWorkspace(projectId, { fresh: true });
             const fileInfo = normalizeStoryboardFileInfo(workspace);
             if (fileInfo.fileName) setStoryboardFileName(fileInfo.fileName);
@@ -837,6 +858,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     setPhase('thinking');
     setScriptContent('');
     setMessages([]);
+    setOutlineIsSnapshot(false);
     setOutlineType('storyboard');
     setScriptOutlineMode(true);
     setScriptOutlineLoading(true);
@@ -854,7 +876,8 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       if (fileInfo.downloadUrl) setStoryboardDownloadUrl(fileInfo.downloadUrl);
       const taskId = result?.taskId || getScriptTaskId(result);
       if (taskId) {
-        setOutlineType('storyboard');
+        setOutlineIsSnapshot(false);
+    setOutlineType('storyboard');
         setScriptOutlineTaskId(taskId);
         return;
       }
@@ -864,12 +887,14 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
       if (workspaceFile.downloadUrl) setStoryboardDownloadUrl(workspaceFile.downloadUrl);
       const activeTaskId = getScriptTaskId(workspace?.active_task || workspace?.active_operation || workspace);
       if (activeTaskId) {
-        setOutlineType('storyboard');
+        setOutlineIsSnapshot(false);
+    setOutlineType('storyboard');
         setScriptOutlineTaskId(activeTaskId);
         return;
       }
       if (workspace?.structure) {
-        setOutlineType('storyboard');
+        setOutlineIsSnapshot(false);
+    setOutlineType('storyboard');
         setScriptOutlineData(normalizeScriptStructure(workspace.structure));
         setScriptOutlineLoading(false);
         return;
@@ -1133,7 +1158,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
     } finally {
       setScriptOutlineLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, setScriptOutlineMode]);
 
   const handleDownloadScript = useCallback(async () => {
     const feedback = startDownloadFeedback();
@@ -1223,7 +1248,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
               onDeleteEpisode={handleDeleteEpisode}
               episodeActionLoading={episodeActionLoading || reopeningDialogue}
               episodeActionError={episodeActionError}
-              hideEpisodeActions={isSubjectUnlocked && !scriptModificationMode}
+              hideEpisodeActions={!outlineIsSnapshot && isSubjectUnlocked && !scriptModificationMode}
               outlineType={scriptOutlineType}
               storyboardFileName={storyboardFileName || storyboardInputFile?.name || ''}
               storyboardDownloadUrl={storyboardDownloadUrl}
@@ -1236,7 +1261,7 @@ export default function ScriptPage({ projectId, projectName = '', projectVisualS
               <div style={{ position: 'absolute', top: 0, left: 0, zIndex: 3, display: 'flex', alignItems: 'flex-start' }}>
                 <Button type="button" variant="secondary" size="large" style={{ height: '32px' }} disabled={reopeningDialogue || episodeActionLoading} onClick={handleBackToConversation}>{reopeningDialogue ? '正在返回…' : '返回对话'}</Button>
               </div>
-              {isSubjectUnlocked && !scriptModificationMode ? (
+              {!outlineIsSnapshot && isSubjectUnlocked && !scriptModificationMode ? (
                 <div style={{ position: 'absolute', top: 0, right: 0, zIndex: 3, display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
                   <Button type="button" variant="secondary" size="large" style={{ height: '32px' }} onClick={handleDownloadScript}>下载剧本</Button>
                   <Button type="button" variant="accent" size="large" style={{ height: '32px' }} disabled={reopeningDialogue} onClick={handleRequestModifyScript}>修改剧本</Button>

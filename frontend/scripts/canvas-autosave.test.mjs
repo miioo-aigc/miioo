@@ -29,7 +29,7 @@ test('实际Hook接线：刷新保护、页面离开先保存、后退取消及�
   const messages = [];
   let restored = '';
   const use = runInNewContext(source + ';useCanvasAutosave', {
-    useLayoutEffect: (fn) => effects.push(fn), useRef: () => ref, createCanvasAutosave,
+    useState: () => ['idle', () => {}], useLayoutEffect: (fn) => effects.push(fn), useRef: () => ref, createCanvasAutosave,
     serializeCanvasDocument: (nodes) => ({ nodes }),
     showGlobalToast: (...args) => messages.push(args),
     window: { location: { href: '/canvas/a' }, confirm: () => false, history: { pushState: (_, __, url) => { restored = url; } },
@@ -118,4 +118,37 @@ test('上传或生成未就绪不保存，恢复就绪后补存；销毁后不�
   saver.dispose();
   await tick();
   assert.equal(calls, 1);
+});
+
+test('状态绑定真实请求，成功保持一秒；新修改立即取消成功态', async () => {
+  const states = []; const jobs = new Map(); let id = 0;
+  const saver = createCanvasAutosave({ onState: (state) => states.push(state),
+    schedule: (fn) => { jobs.set(++id, fn); return id; }, cancel: (key) => jobs.delete(key) });
+  saver.update('initial', true, () => {});
+  saver.update('edited', false, () => {});
+  assert.equal(states.at(-1), 'pending');
+  saver.start(); assert.equal(states.at(-1), 'saving');
+  saver.acknowledge('edited'); assert.equal(states.at(-1), 'success');
+  for (const fn of [...jobs.values()]) fn(); jobs.clear();
+  assert.equal(states.at(-1), 'idle');
+  saver.start(); saver.acknowledge('edited');
+  saver.update('next', false, () => {});
+  assert.equal(states.at(-1), 'pending'); assert.equal(jobs.size, 0);
+  saver.start(); saver.fail(); assert.equal(states.at(-1), 'error');
+  saver.update('next', false, () => {}); assert.equal(states.at(-1), 'error');
+  saver.start(); assert.equal(states.at(-1), 'saving');
+  saver.acknowledge('next'); assert.equal(states.at(-1), 'success');
+  saver.dispose(); assert.equal(jobs.size, 0);
+});
+
+test('旧保存完成不能覆盖更新修改，销毁后迟到结果不能更新图标', () => {
+  const states = [];
+  const saver = createCanvasAutosave({ onState: (state) => states.push(state) });
+  saver.update('initial', false, () => {});
+  saver.update('first', false, () => {}); saver.start();
+  saver.update('second', false, () => {}); saver.acknowledge('first');
+  assert.equal(states.at(-1), 'pending');
+  saver.start(); saver.dispose(); const count = states.length;
+  saver.acknowledge('second'); saver.fail();
+  assert.equal(states.length, count);
 });

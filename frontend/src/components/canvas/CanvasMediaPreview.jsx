@@ -1,4 +1,5 @@
 import AsyncImagePreview from '../AsyncImagePreview';
+import { getCanvasOriginalImage } from './CanvasMediaSources.js';
 import { useMediaPlayback } from '../../hooks/useMediaPlayback';
 import MediaLoadStatus from '../feedback/MediaLoadStatus';
 import { useEffect, useRef } from 'react';
@@ -6,7 +7,7 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 function getPreviewUrl(asset) {
-  return asset?.originalUrl || asset?.original_url || asset?.download_url || asset?.downloadUrl || asset?.url || '';
+  return getCanvasOriginalImage(asset) || '';
 }
 
 export default function CanvasMediaPreview({ asset, nodeType, playback, onClose }) {

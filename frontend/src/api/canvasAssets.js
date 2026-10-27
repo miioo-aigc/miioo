@@ -48,7 +48,9 @@ export function normalizeCanvasUploadedAsset(result, file, assetType) {
   const item = result?.asset || result?.image || result?.video || result?.audio || result;
   const assetId = firstValue(item, ['asset_id', 'assetId']) || firstValue(result, ['asset_id', 'assetId'])
     || firstValue(item, ['id']) || firstValue(result, ['id']);
-  const url = firstValue(result, ['uploaded_url', 'uploadedUrl'])
+  const url = firstValue(item, ['original_url', 'originalUrl', 'file_url', 'fileUrl'])
+    || firstValue(result, ['original_url', 'originalUrl', 'file_url', 'fileUrl'])
+    || firstValue(result, ['uploaded_url', 'uploadedUrl'])
     || firstValue(item, ['original_url', 'originalUrl', 'file_url', 'fileUrl', 'uploaded_url', 'uploadedUrl', 'url'])
     || firstValue(result, ['file_url', 'fileUrl', 'url']);
   if (typeof assetId !== 'string' || !UUID.test(assetId)) throw new Error('上传响应未提供合法的永久素材编号，不能保存画布');
@@ -60,6 +62,7 @@ export function normalizeCanvasUploadedAsset(result, file, assetType) {
     name: item?.name || file.name,
     url,
     persistentUrl: url,
+    originalUrl: url,
     previewUrl: firstValue(item, ['preview_url', 'previewUrl', 'thumbnail_url', 'thumbnailUrl']) || url,
     source: 'local-upload',
     uploadStatus: 'ready',

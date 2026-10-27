@@ -8,7 +8,8 @@ const CREATION_POLL_INTERVAL_MS = 3000;
 const CREATION_POLL_TRANSIENT_FAILURE_LIMIT = 5;
 const CREATION_POLL_TRANSIENT_STATUSES = new Set([502, 503, 504]);
 import { readResponseBlobWithProgress } from '../utils/responseBlobProgress';
-import { waitForCreationVideoImages } from './CreationVideoReferences.js';
+import { validateVideoRequestImages } from './VideoReferenceValidation.js';
+import { assertVideoReferencePixels } from '../utils/VideoReferencePixels.js';
 
 function isLikelyImageMediaUrl(url) {
   return /\.(?:avif|bmp|gif|jpe?g|png|webp)(?:[?#].*)?$/i.test(String(url || ''));
@@ -235,24 +236,24 @@ async function pollBasicEditCreationImageTask(taskId, { signal } = {}) {
 /**
  * 结构索引（api/creation.js）
  * ─── 音乐生成（自由函数）────────────────────────
- *   [接口] apiGenerateCreationMusic()              L735   POST /api/music/generate （音乐生成/翻唱）
- *   [提取] extractMusicResultUrl()                  L745   从 url/audio_url/result/results[] 提取音乐结果
- *   [轮询] apiPollCreationMusicTask()                L763   GET /api/tasks/{task_id} 最多 600 秒，支持 AbortSignal
+ *   [接口] apiGenerateCreationMusic()              L743   POST /api/music/generate （音乐生成/翻唱）
+ *   [提取] extractMusicResultUrl()                  L753   从 url/audio_url/result/results[] 提取音乐结果
+ *   [轮询] apiPollCreationMusicTask()                L771   GET /api/tasks/{task_id} 最多 600 秒，支持 AbortSignal
  * ─── 视频生成（apiGenerateCreation）────────────────────────
- *   [函数] apiGenerateCreation()                    L1028  入口：按 genType 分流 图片/视频/配音/音乐
- *   [上传] 参考文件分类循环                           L1115  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
+ *   [函数] apiGenerateCreation()                    L1036  入口：按 genType 分流 图片/视频/配音/音乐
+ *   [上传] 参考文件分类循环                           L1135  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
  *                                                        （图片 asset_id 兜底：assetId || backendId || asset_id）
- *   [上传] 首/尾帧上传                               L1186  仅视频首尾帧模式使用
- *   [分支] 配音同步/异步生成与任务轮询                L1218  短文本直取音频，长文本轮询
+ *   [上传] 首/尾帧上传                               L1200  仅视频首尾帧模式使用
+ *   [分支] 配音同步/异步生成与任务轮询                L1233  短文本直取音频，长文本轮询
  *                                                        普通/高级模式统一透传 voice_setting
  *                                                        配音任务轮询最多 600 秒，可通过 AbortSignal 停止
- *   [分支] 音乐生成与任务轮询                        L1362  上传参考音频 → POST /api/music/generate → 轮询任务
- *   [分支] 图片生成（多张并行）                      L1419  count>1 可返回多 task_ids 并行轮询
- *   [分支] 视频生成                                  L1495  generation_mode / reference_mode / attachments
- *   [校验] 视频能力与音频门禁                         L1100  上传前校验 generation_mode、reference_mode 与能力映射
- *   [组装] @ 数字资产绑定 attachments                L1519  CreationAssetBinding[]，source:'mention'
- *   [组装] 视频生成请求体 body                       L1527  generation_mode / reference_mode / attachments / reference_image_asset_ids / first_frame_url
- *   [日志] [video-generate] 调试日志                 L1563  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
+ *   [分支] 音乐生成与任务轮询                        L1377  上传参考音频 → POST /api/music/generate → 轮询任务
+ *   [分支] 图片生成（多张并行）                      L1434  count>1 可返回多 task_ids 并行轮询
+ *   [分支] 视频生成                                  L1509  generation_mode / reference_mode / attachments
+ *   [校验] 视频能力与音频门禁                         L1103  上传前校验 generation_mode、reference_mode 与能力映射
+ *   [组装] @ 数字资产绑定 attachments                L1528  CreationAssetBinding[]，source:'mention'
+ *   [组装] 视频生成请求体 body                       L1536  generation_mode / reference_mode / attachments / reference_image_asset_ids / first_frame_url
+ *   [日志] [video-generate] 调试日志                 L1572  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *  2026-08-28  视频新请求不再发送已下线的 multi_shot 参数；参考模式继续由后端映射结果决定
  *   2026-08-12  新增音乐生成支持：POST /api/music/generate、通用任务中心 GET /api/tasks/{task_id} 轮询（最多 600 秒），
@@ -267,6 +268,7 @@ async function pollBasicEditCreationImageTask(taskId, { signal } = {}) {
  *   2026-08-21  配音同步/异步请求透传高级参数，并识别 speech-* MiniMax 长文本模型
  *   2026-08-21  普通配音模式将 speed / pitch / volume 归一到 voice_setting.speed / pitch / vol
  *   2026-10-08  配音分支增加画布参考音频全量 attachments 及临时地址上传；其他入口保持原行为。
+ *   2026-10-27  视频统一校验原图 3600 万像素上限；本地文件上传前检查，三入口提交前兜底。
  *   2026-10-09  apiGenerateCreation 增加可选 onProgress，透传轮询 message；未返回时由画布兜底。
  *   2026-10-26  图片轮询额外保留 imageAssetIds，按结果索引含空位合并，独立于创作记录 cardIds。
  *   2026-10-26  图片参考统一上传、资产绑定与地址校验，上传失败停止生成；视频分支保留原契约。
@@ -650,9 +652,12 @@ export async function apiListCreationVideos({ page, page_size, exclude_hidden } 
   return data;
 }
 
-export async function apiGenerateCreationVideo(data) {
+export async function apiGenerateCreationVideo(data, { signal } = {}) {
+  await validateVideoRequestImages(data, { signal });
+  throwIfAborted(signal);
   const res = await authFetch(`${BASE}/api/creation/videos/generate`, {
     method: 'POST',
+    signal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
@@ -660,9 +665,12 @@ export async function apiGenerateCreationVideo(data) {
   return res.json();
 }
 
-export async function apiGenerateShotVideo(shotId, data) {
+export async function apiGenerateShotVideo(shotId, data, { signal } = {}) {
+  await validateVideoRequestImages(data, { signal });
+  throwIfAborted(signal);
   const res = await authFetch(`${BASE}/api/creation/shots/${shotId}/generate-video`, {
     method: 'POST',
+    signal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
@@ -1106,6 +1114,13 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
       hasAudio: hasAudioFile || Boolean(params.reference_audio_url),
     });
   }
+  if (isVideo) {
+    for (const file of [...files, params.firstFrameFile, params.lastFrameFile]) {
+      if (file instanceof File && !/^(video|audio)\//i.test(file.type)) {
+        await assertVideoReferencePixels(file, file.name || '参考图片', { signal });
+      }
+    }
+  }
   const refUrls = [];
   const refAssetIds = [];
   const uploadedRefVideos = [];
@@ -1501,11 +1516,6 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
     || (params.lastFrameFile && !lastFrameUrl)) {
     throw new Error('参考素材未完整上传，请重新添加后再发送');
   }
-  await waitForCreationVideoImages([
-    ...uploadedMediaReferences.filter((item) => item.asset_type === 'image').map((item) => ({ url: item.url, assetId: item.asset_id })),
-    ...(firstFrameUrl || params.firstFrameUrl ? [{ url: firstFrameUrl || params.firstFrameUrl, name: '首帧图片' }] : []),
-    ...(lastFrameUrl || params.lastFrameUrl ? [{ url: lastFrameUrl || params.lastFrameUrl, name: '尾帧图片' }] : []),
-  ], { signal });
   throwIfAborted(signal);
   const uploadedRefAudioUrl = uploadedRefAudios[0];
   const hasRefMedia = uploadedMediaReferences.length > 0 || (liveMaterialParam && liveMaterialParam.length > 0);
@@ -1560,7 +1570,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
     project_id: uploadContext.project_id,
   };
   console.log('[video-generate]', { model: params.model, generation_mode: body.generation_mode, reference_mode: body.reference_mode, refUrls, refAssetIds, attachments, firstFrameUrl, uploadedRefVideoUrl, hasRefMedia });
-  const genData = await apiGenerateCreationVideo(body);
+  const genData = await apiGenerateCreationVideo(body, { signal });
   const taskId = genData.task_id || genData.id;
   if (!taskId) throw new Error('No task_id returned');
 

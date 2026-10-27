@@ -7,6 +7,18 @@ import { createCanvasSaveSession } from '../src/components/canvas/CanvasSaveSess
 
 const assetId = '12345678-1234-1234-1234-123456789abc';
 
+test('刷新后下载原图优先于预览，并独立保留原图与缩略图', async () => {
+  const nodes = [{ id: 'image', type: 'image', data: { asset: { asset_id: assetId } } }];
+  const restored = await resolveCanvasDocumentAssets('canvas', nodes, async () => ({ items: [{
+    asset_id: assetId, availability: 'ready', media_type: 'image',
+    preview_url: '/preview.webp', thumbnail_url: '/thumb.webp', download_url: '/full.png',
+  }] }));
+  assert.equal(restored[0].data.asset.originalUrl, '/full.png');
+  assert.equal(restored[0].data.asset.url, '/full.png');
+  assert.equal(restored[0].data.asset.previewUrl, '/preview.webp');
+  assert.equal(restored[0].data.asset.thumbnailUrl, '/thumb.webp');
+});
+
 test('四类节点、组合、完整业务参数和引用往返，媒体地址与运行态不持久化', () => {
   const nodes = ['text', 'image', 'video', 'audio'].map((type) => createCanvasNode(type, { x: 20, y: 30 }, type));
   nodes[1].parentId = 'group';

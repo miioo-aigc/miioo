@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createServer } from 'vite';
+import { createTestViteServer as createServer } from './lib/create-test-vite-server.mjs';
 
 test('工具栏添加入口只定位共用菜单，不嵌套另一套面板', () => {
   const source = readFileSync(new URL('../src/components/canvas/CanvasToolbar.jsx', import.meta.url), 'utf8');

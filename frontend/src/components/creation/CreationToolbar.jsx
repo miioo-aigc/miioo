@@ -10,6 +10,7 @@
  *   常规操作按钮统一复用 components/ui/Button；Tab 保留导航型按钮语义
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-10-27  清空和批量操作入口统一使用二级按钮样式
  *   2026-07-15  从 CreationPage 抽离顶部 Tab、批量操作和清空历史展示层
  *   2026-07-15  批量操作、清空历史、全选、下载、删除和取消按钮统一复用 components/ui/Button
  */
@@ -46,7 +47,7 @@ function CreationTabBar({ tabs, activeTab, onChange, font, fontMedium }) {
 function BatchButton({ onClick, font }) {
   return (
     <Button
-      variant="primary"
+      variant="secondary"
       size="large"
       type="button"
       icon={<BatchIcon />}
@@ -85,7 +86,7 @@ function CreationPlainBtn({ children, onClick, font, danger = false }) {
 function ClearHistoryButton({ onClick, font }) {
   const [hov, setHov] = useState(false);
   return (
-    <Button type="button" variant="primary" size="large" icon={<ClearIcon />} onClick={onClick} style={{ position: 'relative', fontFamily: font }} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}>
+    <Button type="button" variant="secondary" size="large" icon={<ClearIcon />} onClick={onClick} style={{ position: 'relative', fontFamily: font }} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}>
       清空
       {hov && <span style={{ position: 'absolute', bottom: 'calc(100% + 8px)', right: 0, whiteSpace: 'nowrap', padding: '6px 10px', borderRadius: '8px', backgroundColor: '#262626', border: '1px solid #FFFFFF1A', fontFamily: font, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFE6', boxShadow: '#00000066 0px 4px 12px', pointerEvents: 'none', zIndex: 1200 }}>仅清除本页记录，创作资产仍可在资产库找到</span>}
     </Button>

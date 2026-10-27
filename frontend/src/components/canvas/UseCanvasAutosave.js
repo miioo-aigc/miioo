@@ -1,10 +1,11 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createCanvasAutosave } from './CanvasAutosave';
 import { serializeCanvasDocument } from './CanvasDocument';
 import { showGlobalToast } from '../../stores/toastStore';
 
-export function useCanvasAutosave({ enabled, nodes, edges, viewport, persist, paused, acknowledgeRef }) {
+export function useCanvasAutosave({ enabled, nodes, edges, viewport, persist, paused, acknowledgeRef, canvasId, onSaveError }) {
   const controller = useRef(null);
+  const [status, setStatus] = useState('idle');
   let key;
   let canSave = !paused && !nodes.some((node) => node.data?.generating || node.data?.generationPending);
   try { key = JSON.stringify(serializeCanvasDocument(nodes, edges, viewport)); }
@@ -15,10 +16,13 @@ export function useCanvasAutosave({ enabled, nodes, edges, viewport, persist, pa
   }
   useLayoutEffect(() => {
     const instance = createCanvasAutosave({
-      onError: (error) => showGlobalToast('error', '画布自动保存失败：' + error.message + '。请勿刷新或离开，稍后重试。'),
+      onState: setStatus,
+      onError: (error) => onSaveError?.(error),
     });
     controller.current = instance;
     acknowledgeRef.current = (document) => instance.acknowledge(JSON.stringify(document));
+    acknowledgeRef.current.start = () => instance.start();
+    acknowledgeRef.current.fail = () => instance.fail();
     const beforeUnload = (event) => {
       if (!instance.dirty()) return;
       event.preventDefault();
@@ -37,17 +41,17 @@ export function useCanvasAutosave({ enabled, nodes, edges, viewport, persist, pa
       window.removeEventListener('beforeunload', beforeUnload);
       window.removeEventListener('popstate', popState, true);
     };
-  }, [acknowledgeRef]);
+  }, [acknowledgeRef, canvasId, onSaveError]);
   useLayoutEffect(() => {
     if (enabled) controller.current.update(key, canSave, persist);
-  }, [enabled, key, canSave, persist]);
+  }, [enabled, key, canSave, persist, canvasId]);
   const leave = async (action) => {
     if (!action) return;
     const instance = controller.current;
     if (instance?.dirty()) {
       showGlobalToast('warning', '画布尚未保存完成，正在尝试保存，请稍候');
       try { await instance.flush(); }
-      catch (error) { showGlobalToast('error', '画布保存失败：' + error.message); return; }
+      catch (error) { if (controller.current === instance) onSaveError?.(error); return; }
       if (instance.dirty()) {
         showGlobalToast('warning', '画布仍有未保存内容，请等待上传或生成完成后重试');
         return;
@@ -55,5 +59,5 @@ export function useCanvasAutosave({ enabled, nodes, edges, viewport, persist, pa
     }
     action();
   };
-  return { acknowledge: (document) => controller.current?.acknowledge(JSON.stringify(document)), leave };
+  return { status, acknowledge: (document) => controller.current?.acknowledge(JSON.stringify(document)), leave };
 }

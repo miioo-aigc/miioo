@@ -12,13 +12,14 @@
  *   不创建删除确认弹窗。删除确认和下载实现仍由 AssetsPage 持有。
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-10-27  项目资产和创作资产的批量操作入口统一复用二级按钮
  *   2026-07-15  从 AssetsPage 抽离项目资产和创作资产共用批量工具栏
  *   2026-08-14  非批量模式下新增可选的「仅显示收藏」过滤开关，仅创作资产传入
  */
 
 import { useState } from 'react';
 import Checkbox from '../Checkbox';
-import { DeleteIcon } from '../ui';
+import { Button, DeleteIcon } from '../ui';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -178,10 +179,9 @@ export default function AssetsBatchToolbar({
         {typeof onToggleFavoritesOnly === 'function' && (
           <FavoriteFilterToggle checked={favoritesOnly} onToggle={onToggleFavoritesOnly} />
         )}
-        <BatchToolbarButton onClick={onEnterBatch}>
-          <BatchModeIcon />
-          <ToolbarLabel>批量操作</ToolbarLabel>
-        </BatchToolbarButton>
+        <Button variant="secondary" size="large" icon={<BatchModeIcon />} onClick={onEnterBatch} style={{ fontFamily: FONT }}>
+          批量操作
+        </Button>
       </div>
     );
   }

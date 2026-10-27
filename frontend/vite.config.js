@@ -42,6 +42,8 @@ export default defineConfig(({ mode }) => {
   const apiTarget = directTarget || target
 
   return {
+    // 开发服务独占缓存，避免测试重建默认缓存后导致模块持续返回 504。
+    cacheDir: 'node_modules/.vite/dev',
     plugins: [serveAboutPage(), react(), tailwindcss()],
     optimizeDeps: {
       // Prebuild lazy script-page dependencies before serving their module URLs.

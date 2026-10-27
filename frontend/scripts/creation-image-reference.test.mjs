@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
-import { createServer } from 'vite';
+import { createTestViteServer as createServer } from './lib/create-test-vite-server.mjs';
 
 const server = await createServer({
   server: { middlewareMode: true, hmr: false, watch: null },

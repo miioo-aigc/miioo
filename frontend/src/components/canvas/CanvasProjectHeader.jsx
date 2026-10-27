@@ -3,19 +3,21 @@
  * @structure-index
  *
  * ─── 展示层 ─────────────────────────────────────────────────────
- *   CanvasProjectHeader 画布左上角品牌、项目名称和项目入口 L18
+ *   CanvasProjectHeader 画布左上角品牌、项目名称和项目入口 L20
+ *   2026-10-27 新增独立保存状态组件，接收真实保存状态，复用 Tooltip。
  *   2026-10-10 新建项目接收显式回调；未提供时保留原暂不支持行为。名称和菜单样式不变。
  *   2026-10-14 项目菜单图标线宽1.7，继承按钮颜色，默认80%、悬停100%、按下60%白色；菜单文字与项目名称左边缘对齐。
  *   2026-10-15 项目菜单按内容自适应宽度，图标与项目名称左对齐；新建使用方框加号，返回使用指定图标，颜色跟随文字。
  */
 
 import { useEffect, useRef, useState } from 'react';
+import CanvasSaveIndicator from './CanvasSaveIndicator';
 import HomeLogo from '../home/HomeLogo';
 import { DropdownMenu } from '../ui';
 import { ChevronDown, Copy, FileInput, Trash2 } from 'lucide-react';
 import { normalizeProjectName, PROJECT_NAME_MAX_LENGTH, validateProjectName } from './CanvasProjectName';
 
-export default function CanvasProjectHeader({ canvasName, onBackHome, onBackProjects, onRename, onImport, onUnsupported, onCreateProject }) {
+export default function CanvasProjectHeader({ saveStatus, canvasName, onBackHome, onBackProjects, onRename, onImport, onUnsupported, onCreateProject }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(canvasName || '未命名项目');
@@ -126,6 +128,7 @@ export default function CanvasProjectHeader({ canvasName, onBackHome, onBackProj
             <ChevronDown size={16} strokeWidth={1.7} />
           </button>
         </div>
+        <CanvasSaveIndicator status={saveStatus} />
         {menuOpen && <DropdownMenu width="max-content" className="whitespace-nowrap" onClose={() => setMenuOpen(false)} style={{ top: 'calc(100% + 8px)', bottom: 'auto', left: '-16px', right: 'auto', marginBottom: 0 }} items={[
           { key: 'new', label: '新建项目', icon: (
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeLinejoin="round" aria-hidden="true">

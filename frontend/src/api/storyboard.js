@@ -1,3 +1,4 @@
+import { validateVideoRequestImages } from './VideoReferenceValidation.js';
 const BASE = import.meta.env.VITE_API_BASE_URL;
 import { assertImageReferenceUrls } from './ImageReferences.js';
 
@@ -813,6 +814,7 @@ export async function apiGenerateStoryboardImage(projectId, storyboardId, params
 }
 
 export async function apiGenerateStoryboardVideo(projectId, storyboardId, params) {
+  await validateVideoRequestImages(params);
   if (params.videoCapabilities || params.supportedGenerationModes) {
     assertVideoRequestCapabilities({
       generationMode: params.generate_mode,

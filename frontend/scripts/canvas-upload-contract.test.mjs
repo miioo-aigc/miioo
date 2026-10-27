@@ -10,6 +10,17 @@ const projectId = '10000000-0000-0000-0000-000000000001';
 const assetId = '20000000-0000-0000-0000-000000000001';
 const file = { name: '素材.png' };
 
+test('上传回填独立原图地址，预览地址不替代详情原图', () => {
+  const { normalizeCanvasUploadedAsset: normalize } = setup();
+  const result = normalize({ asset_id: assetId, uploaded_url: '/original.png',
+    image: { preview_url: '/preview.webp', thumbnail_url: '/thumb.webp' } }, file, 'image');
+  assert.equal(result.originalUrl, '/original.png');
+  assert.equal(result.previewUrl, '/preview.webp');
+  const explicit = normalize({ asset_id: assetId, uploaded_url: '/preview.webp',
+    image: { file_url: '/full.png' } }, file, 'image');
+  assert.equal(explicit.originalUrl, '/full.png');
+});
+
 function setup(payload = { asset_id: assetId, uploaded_url: 'https://media.example.test/a' }) {
   const calls = [];
   const upload = async (args) => { calls.push(args); return payload; };

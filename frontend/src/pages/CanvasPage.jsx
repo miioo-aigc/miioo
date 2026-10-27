@@ -3,7 +3,10 @@
  * @structure-index
  *
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L147；grouping L193；referenceGraph L207；mediaPreview L173；文档加载 L220；handleNodesChange L303；addNode L383；工具栏新增 L419；批量导入 L431；React Flow L794
+ *   CanvasPage L150；grouping L196；referenceGraph L210；mediaPreview L176；文档加载 L223；handleNodesChange L306；addNode L386；工具栏新增 L422；批量导入 L434；React Flow L815
+ *   2026-10-27：保存失败复用带下载操作的提示，点击时导出最新草稿。
+ *   2026-10-27：顶部云上传图标接入真实保存开始、成功、失败；旧请求不覆盖新改动。
+ *   2026-10-27：上传整批完成统一提示，保存失败独立反馈；保留页面级会话与上传回填编排。
  *   2026-10-26：参考入口复用后台上传；上传与生成复用请求，迟到回填校验会话和素材身份。
  *   2026-10-21：素材恢复支持合法相对地址，复用媒体地址归一化；可用素材缺有效地址则停止加载并禁止保存，不静默变空节点。
  *   2026-10-21：上传与资产选择动作在节点渲染时统一注入，刷新恢复节点不再依赖新建时绑定。
@@ -492,15 +495,24 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     const owner = saveSessionRef.current;
     const session = getAuthSessionGeneration();
     const document = serializeCanvasDocument(snapshot.nodes, referenceGraph.edges, viewport);
-    const result = await owner.session.save(canvasId, canvasRevision, document);
+    const feedback = acknowledgeSaveRef.current;
+    feedback?.start?.();
+    let result;
+    try {
+      result = await owner.session.save(canvasId, canvasRevision, document);
+    } catch (saveError) {
+      if (saveSessionRef.current === owner && session === getAuthSessionGeneration()) feedback?.fail?.();
+      throw saveError;
+    }
     if (saveSessionRef.current !== owner || session !== getAuthSessionGeneration()) return false;
-    acknowledgeSaveRef.current?.(document);
+    feedback?.(document);
     if (Number.isInteger(result?.revision)) setCanvasRevision(result.revision);
     return true;
   }, [canvasId, loadedCanvasId, error, canvasRevision, history, referenceGraph.edges, viewport]);
   const canvasList = useCanvasList({ canvas, persistCanvas, onSelectCanvas, onBackProjects,
     onRenamed: (title, revision) => { setCanvas((current) => ({ ...current, title })); setCanvasRevision(revision); } });
-  const autosave = useCanvasAutosave({ enabled: loadedCanvasId === canvasId && !error,
+  const reportSaveError = canvasFiles.reportSaveError;
+  const autosave = useCanvasAutosave({ canvasId, onSaveError: reportSaveError, enabled: loadedCanvasId === canvasId && !error,
     nodes, edges: referenceGraph.edges, viewport, persist: persistCanvas, paused: canvasList.busy, acknowledgeRef: acknowledgeSaveRef });
   const uploadFiles = useCallback(async (files, target = null) => {
     const owner = saveSessionRef.current;
@@ -528,7 +540,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       return;
     }
     const importedNodes = history.getSnapshot().nodes.filter((node) => assets.some((asset) => node.data?.asset?.url === asset.url));
-    await Promise.all(assets.map(async (asset) => {
+    const outcomes = await Promise.all(assets.map(async (asset) => {
       const node = importedNodes.find((item) => item.data?.asset?.url === asset.url);
       if (!node) return;
       try {
@@ -539,20 +551,29 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
         setNodes((current) => current.map((item) => item.id === node.id && item.data?.asset?.url === asset.url
           ? { ...item, data: { ...item.data, asset: { ...item.data.asset, ...uploaded, file: undefined } } }
           : item));
+        return true;
       } catch (uploadError) {
         if (!isCurrent()) return;
         setNodes((current) => current.map((item) => item.id === node.id && item.data?.asset?.url === asset.url
           ? { ...item, data: { ...item.data, asset: { ...item.data.asset, uploadStatus: 'error', uploadError: uploadError.message } } }
           : item));
-        showGlobalToast('error', `${asset.name} 上传失败：${uploadError.message}`);
+        return { name: asset.name, message: uploadError.message };
       }
     }));
+    if (!isCurrent()) return;
+    const failures = outcomes.filter((result) => result && result !== true);
+    const succeeded = outcomes.filter((result) => result === true).length;
+    if (failures.length) {
+      showGlobalToast('error', `上传失败${failures.length}个，已成功${succeeded}个：${failures.map((item) => `${item.name}：${item.message}`).join('；')}`);
+    } else if (succeeded) {
+      showGlobalToast('success', '上传成功');
+    }
     try {
       if (isCurrent()) await persistCanvas();
     } catch (saveError) {
-      showGlobalToast('error', `素材已上传，但画布保存失败：${saveError.message}`);
+      if (isCurrent()) reportSaveError(saveError);
     }
-  }, [canvas, history, importAssets, persistCanvas, setNodes]);
+  }, [canvas, history, importAssets, persistCanvas, setNodes, reportSaveError]);
   useEffect(() => { uploadFilesRef.current = uploadFiles; }, [uploadFiles]);
   const handleCanvasDrop = useCallback((event) => {
     event.preventDefault();
@@ -788,7 +809,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     {imageEdits.editor && <LocalImageEditor key={`${imageEdits.editor.card.imageUrl}:${imageEdits.editor.mode}`} {...imageEdits.editor} onClose={imageEdits.close} />}
     {videoEdits.editor && <CanvasVideoEditor key={`${videoEdits.editor.videoUrl}:${videoEdits.editor.mode}`} editor={videoEdits.editor} onClose={videoEdits.close} />}
     <CanvasFileInput inputRef={canvasFiles.inputRef} onChange={canvasFiles.importFile} />
-    <CanvasProjectHeader canvasName={projectName} onBackHome={() => autosave.leave(onBackHome)} onBackProjects={() => autosave.leave(onBackProjects)} onCreateProject={() => autosave.leave(onCreateProject)} onImport={canvasFiles.open} onUnsupported={handleUnsupported} onRename={renameProject} />
+    <CanvasProjectHeader saveStatus={autosave.status} canvasName={projectName} onBackHome={() => autosave.leave(onBackHome)} onBackProjects={() => autosave.leave(onBackProjects)} onCreateProject={() => autosave.leave(onCreateProject)} onImport={canvasFiles.open} onUnsupported={handleUnsupported} onRename={renameProject} />
     <CanvasUserMenu currentUser={currentUser} onLogout={() => autosave.leave(handleLogout)} onOpenProfile={() => setProfileOpen(true)} />
     <div ref={canvasContainerRef} className="absolute inset-0 bg-surface-toolbar">
       <ReactFlow viewport={viewport} minZoom={0.01}

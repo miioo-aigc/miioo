@@ -24,9 +24,10 @@ export async function resolveCanvasDocumentAssets(canvasId, nodes, resolve, { si
       const view = response.items.find((item) => item.asset_id === id);
       if (!view || !['ready', 'trashed', 'forbidden', 'missing'].includes(view.availability)) throw new Error('素材解析响应缺少完整的可用状态');
       const visible = ['ready', 'trashed'].includes(view.availability);
-      const url = visible ? [view.original_url, view.preview_url, view.download_url].map((value) => mediaUrl(value, normalizeMediaUrl)).find(Boolean) : undefined;
+      const url = visible ? [view.original_url, view.download_url, view.preview_url].map((value) => mediaUrl(value, normalizeMediaUrl)).find(Boolean) : undefined;
       if (visible && !url) throw new Error('画布素材恢复失败：可用素材缺少有效媒体地址，已停止加载以保护原内容');
       views.set(id, { asset_id: id, asset_type: view.media_type, availability: view.availability,
+        ...(visible ? { originalUrl: mediaUrl(view.original_url, normalizeMediaUrl) || mediaUrl(view.download_url, normalizeMediaUrl) } : {}),
         ...(visible ? { name: view.title, url, thumbnailUrl: mediaUrl(view.thumbnail_url, normalizeMediaUrl), previewUrl: mediaUrl(view.preview_url, normalizeMediaUrl), posterUrl: mediaUrl(view.poster_url, normalizeMediaUrl),
           width: view.width, height: view.height, duration_ms: view.duration_ms } : {}) });
     }

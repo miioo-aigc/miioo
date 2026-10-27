@@ -1,0 +1,24 @@
+.canvas-save-indicator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  margin-left: 10px;
+  color: var(--color-white-60);
+}
+.canvas-save-indicator[data-status='success'] { color: var(--color-brand-main); }
+.canvas-save-indicator[data-status='error'] { color: var(--color-text-danger); }
+.canvas-save-indicator__progress {
+  position: absolute;
+  color: var(--color-brand-main);
+  animation: canvas-save-outline 1.2s ease-in-out infinite;
+}
+@keyframes canvas-save-outline {
+  0% { clip-path: inset(100% 0 0 0); }
+  80%, 100% { clip-path: inset(0 0 0 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-save-indicator__progress { animation: none; clip-path: inset(50% 0 0 0); }
+}

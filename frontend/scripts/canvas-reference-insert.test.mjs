@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createServer } from 'vite';
+import { createTestViteServer as createServer } from './lib/create-test-vite-server.mjs';
 import react from '@vitejs/plugin-react';
 import { getCanvasPromptFiles } from '../src/components/canvas/CanvasPromptReferences.js';
 

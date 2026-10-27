@@ -11,5 +11,6 @@ export function getCanvasVideoPoster(asset) {
 }
 
 export function getCanvasOriginalImage(asset) {
-  return first(asset?.originalUrl, asset?.original_url, asset?.downloadUrl, asset?.download_url, asset?.url);
+  return first(asset?.originalUrl, asset?.original_url, asset?.downloadUrl, asset?.download_url,
+    asset?.fileUrl, asset?.file_url, asset?.persistentUrl, asset?.uploadedUrl, asset?.uploaded_url, asset?.url);
 }

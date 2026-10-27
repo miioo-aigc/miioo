@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'vite';
+import { createTestViteServer as createServer } from './lib/create-test-vite-server.mjs';
 import { createCanvasNode } from '../src/components/canvas/canvasNodeUtils.js';
 import { connectCanvasText, disconnectCanvasText, isCanvasTextConnection, getCanvasTextEdges, planCanvasTextGeneration, beginCanvasTextGeneration, applyCanvasTextResult, recoverCanvasTextGenerationFailure } from '../src/components/canvas/CanvasTextGeneration.js';
 

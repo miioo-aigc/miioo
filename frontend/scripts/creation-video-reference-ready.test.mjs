@@ -7,12 +7,13 @@ import { waitForCreationVideoImages } from '../src/api/CreationVideoReferences.j
 class DeferredImage {
   static instances = [];
   naturalWidth = 100;
+  naturalHeight = 100;
   constructor() { DeferredImage.instances.push(this); }
 }
 
 test('原图加载完成之前必须等待', async () => {
   let ready = false;
-  const pending = waitForCreationVideoImages([{ url: '/uploads/image.png' }], { ImageClass: DeferredImage })
+  const pending = waitForCreationVideoImages([{ url: '/uploads/image.png' }], { ImageClass: DeferredImage, retries: 0 })
     .then(() => { ready = true; });
   await Promise.resolve();
   assert.equal(ready, false);
@@ -22,23 +23,24 @@ test('原图加载完成之前必须等待', async () => {
 });
 
 test('加载失败、超时和取消均阻止继续', async () => {
-  let pending = waitForCreationVideoImages([{ url: '/image.png' }], { ImageClass: DeferredImage });
+  let pending = waitForCreationVideoImages([{ url: '/image.png' }], { ImageClass: DeferredImage, retries: 0 });
   DeferredImage.instances.at(-1).onerror();
   await assert.rejects(pending, /加载失败/);
-  await assert.rejects(waitForCreationVideoImages([{ url: '/image.png' }], { ImageClass: DeferredImage, timeoutMs: 1 }), /超时/);
+  await assert.rejects(waitForCreationVideoImages([{ url: '/image.png' }], { ImageClass: DeferredImage, timeoutMs: 1, retries: 0 }), /超时/);
   const controller = new AbortController();
-  pending = waitForCreationVideoImages([{ url: '/image.png' }], { ImageClass: DeferredImage, signal: controller.signal });
+  pending = waitForCreationVideoImages([{ url: '/image.png' }], { ImageClass: DeferredImage, signal: controller.signal, retries: 0 });
   const image = DeferredImage.instances.at(-1);
   controller.abort();
   await assert.rejects(pending, { name: 'AbortError' });
-  assert.equal(image.onload, null);
+  image.onload(); // 取消等待者不破坏共享读取。
 });
 
 test('临时地址、派生预览和下载入口不能作为原图', async () => {
-  for (const url of ['', 'blob:expired', 'data:image/png;base64,abc', '/a.avif?x=1', '/uploads/derived/assets/a.png', '/api/media/downloads/a']) {
+  for (const url of ['', 'blob:expired', 'data:image/png;base64,abc', '/uploads/derived/assets/a.png', '/api/media/downloads/a']) {
     await assert.rejects(waitForCreationVideoImages([{ url }]), /可用原图/);
   }
-  await waitForCreationVideoImages([{ assetId: 'asset-1' }, { url: 'asset://provider' }]);
+  await assert.rejects(waitForCreationVideoImages([{ assetId: 'asset-1' }]), /可用原图/);
+  await assert.rejects(waitForCreationVideoImages([{ url: 'asset://provider' }]), /可用原图/);
 });
 
 const source = readFileSync(new URL('../src/utils/creationDetailAdapter.js', import.meta.url), 'utf8')
@@ -73,7 +75,7 @@ function loadApi(fetcher, wait = async () => {}) {
   return runInNewContext(apiSource + '\n({apiGenerateCreation})', {
     authFetch: fetcher, File, FormData, URLSearchParams, URL,
     setTimeout, clearTimeout, console: { log() {}, warn() {} },
-    waitForCreationVideoImages: wait, assertVideoRequestCapabilities() {},
+    validateVideoRequestImages: wait, assertVideoReferencePixels: async () => {}, assertVideoRequestCapabilities() {},
     toAbsoluteUrl: (url) => url,
     throwResponseError: async () => { throw new Error('请求失败'); },
   });

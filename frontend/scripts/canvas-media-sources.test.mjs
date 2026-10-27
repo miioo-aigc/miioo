@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getCanvasImagePreview, getCanvasVideoPoster } from '../src/components/canvas/CanvasMediaSources.js';
+import { getCanvasOriginalImage, getCanvasImagePreview, getCanvasVideoPoster } from '../src/components/canvas/CanvasMediaSources.js';
 import { prepareCanvasMediaAsset } from '../src/components/canvas/CanvasMediaSize.js';
 import { toCanvasAsset } from '../src/components/canvas/CanvasAssets.js';
 import { readFileSync } from 'node:fs';
@@ -67,4 +67,12 @@ test('视频悬停延迟结束后才挂载地址，快速移出取消加载', as
   player.start({ buttons: 0 });
   await pending();
   assert.equal(loads, 1);
+});
+
+test('详情优先原图及文件地址，卡片继续使用缩略图', () => {
+  for (const key of ['originalUrl', 'original_url', 'fileUrl', 'file_url', 'persistentUrl', 'uploaded_url']) {
+    const asset = { [key]: '/full.png', url: '/preview.webp', thumbnailUrl: '/thumb.webp' };
+    assert.equal(getCanvasOriginalImage(asset), '/full.png');
+    assert.equal(getCanvasImagePreview(asset), '/thumb.webp');
+  }
 });

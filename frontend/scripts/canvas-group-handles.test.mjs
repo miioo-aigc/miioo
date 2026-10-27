@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ReactFlow } from '@xyflow/react';
-import { createServer } from 'vite';
+import { createTestViteServer as createServer } from './lib/create-test-vite-server.mjs';
 import react from '@vitejs/plugin-react';
 
 let server;

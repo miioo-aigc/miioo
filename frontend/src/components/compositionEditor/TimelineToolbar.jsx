@@ -42,7 +42,7 @@ export default function TimelineToolbar({ showToast }) {
             style={{ width: 24, height: 24, padding: 0, border: 'none', borderRadius: 6, boxShadow: 'none', backgroundImage: 'none' }}
             className="cursor-pointer !bg-transparent enabled:hover:!bg-white-10 enabled:active:!bg-white-10 disabled:!bg-transparent"
             contentClassName={danger
-              ? '!text-btn-danger-text group-enabled:group-hover:!text-btn-danger-text-hover group-enabled:group-active:!text-btn-danger-text group-disabled:!text-red-alpha-60'
+              ? '!text-white-80 group-enabled:group-hover:!text-btn-danger-text group-enabled:group-active:!text-btn-danger-text group-disabled:!text-white-30'
               : '!text-white-80 group-enabled:group-hover:!text-white group-enabled:group-active:!text-white group-disabled:!text-white-30'}
             disabled={disabled || !state.loaded}
             onClick={onClick}

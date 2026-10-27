@@ -194,7 +194,7 @@ test('声音字段分类型输出，同素材多个引用保留', () => {
 test('初始化恢复音量、原声开关、素材引用和轨道设置', async () => {
   store.setState({ ...store.getInitialState(), album: [{ id: 'asset', type: 'video', duration: 10 }] });
   await store.getState().init({ projectId: 'p', compId: 'c', compositions: [{
-    id: 'c', libraryAssetIds: ['asset', 'unavailable'], trackSettings: { V2: { hidden: true, volume: 0 } },
+    id: 'c', libraryAssetIds: ['asset', 'unavailable'], trackSettings: { V2: { hidden: true, volume: 0, isMain: true }, A2: { isMain: true }, S3: { isMain: true } },
     timeline: [
       { type: 'video', clip_id: 'asset', track: 'V2', duration: 2, has_audio: false },
       { type: 'audio', clip_id: 'asset', track: 'A2', duration: 2, volume: 2 },
@@ -203,6 +203,7 @@ test('初始化恢复音量、原声开关、素材引用和轨道设置', async
   assert.equal(store.getState().segments[0].hasAudio, false);
   assert.equal(store.getState().segments[1].volume, 2);
   assert.equal(store.getState().trackSettings.V2.hidden, true);
+  assert.deepEqual(store.getState().mainTracks, { V: 'V2', A: 'A2', S: 'S3' });
   assert.deepEqual(store.getState().libraryAssetIds, ['asset', 'unavailable']);
   store.setState({ projectId: null });
 });
@@ -245,6 +246,18 @@ test('保存实际请求携带新字段，400 保留未保存状态与原时间�
     assert.equal(requests[0].body.track_settings.A1.volume, 0);
     assert.equal(requests[0].body.timeline[0].has_audio, false);
     assert.equal(store.getState().dirty, false);
+    store.getState().setMainTrack('V1');
+    assert.equal(store.getState().dirty, true);
+    await store.getState().save();
+    assert.equal(requests.at(-1).body.track_settings.V1.isMain, true);
+    const saved = requests.at(-1).body;
+    await store.getState().init({ projectId: 'p', compId: 'c', compositions: [{ id: 'c', ...saved }] });
+    assert.equal(store.getState().mainTracks.V, 'V1');
+    store.getState().setMainTrack('V1');
+    await store.getState().save();
+    assert.equal(requests.at(-1).body.track_settings.V1.isMain, false);
+    await store.getState().init({ projectId: 'p', compId: 'c', compositions: [{ id: 'c', ...requests.at(-1).body }] });
+    assert.deepEqual(store.getState().mainTracks, { V: null, A: null, S: null });
     globalThis.fetch = async () => new Response(JSON.stringify({ detail: '至少需要一个图片或视频片段才能导出成片' }), { status: 400 });
     store.setState({ segments: [], dirty: true });
     await assert.rejects(store.getState().save(), /至少需要一个/);

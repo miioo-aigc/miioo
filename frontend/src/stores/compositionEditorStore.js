@@ -416,7 +416,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     if (!/^[VAS][1-6]$/.test(track)) return {};
     return { mainTracks: { ...state.mainTracks, [track[0]]: state.mainTracks[track[0]] === track ? null : track },
       trackSettings: { ...state.trackSettings, [track]: state.trackSettings[track] || { hidden: false, volume: 1, excludeGaps: false } },
-      past: [...state.past, snapshot(state)].slice(-100), future: [] };
+      past: [...state.past, snapshot(state)].slice(-100), future: [], dirty: true, dirtyRev: state.dirtyRev + 1 };
   }),
   commitTrackDrag: (id, before, insertAt = null) => rawSet((state) => {
     if (!before || state.segments === before.segments) return {};
@@ -470,13 +470,32 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     const end = computeTotalDuration(state.segments);
     state.importSubtitles([{ text: '请输入字幕', start: state.cursor, duration: end > state.cursor ? Math.min(3, end - state.cursor) : 3 }]);
   },
-  previewSubtitle: (id, patch) => rawSet((state) => {
+  previewSubtitle: (id, patch, before) => rawSet((state) => {
     const source = state.segments.find((seg) => seg.id === id && seg.type === 'subtitle');
     if (!source) return {};
     const next = { ...source, ...patch, style: { ...DEFAULT_SUBTITLE_STYLE, ...source.style, ...patch.style } };
     if (!Number.isFinite(next.start) || !Number.isFinite(next.duration) || next.start < 0 || next.duration <= 0) return {};
-    if (state.segments.some((seg) => seg.id !== id && seg.type === 'subtitle' && (seg.track || 'S1') === (next.track || 'S1') && next.start < seg.start + seg.duration && next.start + next.duration > seg.start)) return {};
-    return { segments: state.segments.map((seg) => seg.id === id ? next : seg), playing: false };
+    const timingChanged = Object.hasOwn(patch, 'duration') || Object.hasOwn(patch, 'start');
+    if (!timingChanged) return { segments: state.segments.map((seg) => seg.id === id ? next : seg), playing: false };
+    const baseline = before?.segments || state.segments;
+    const track = segmentTrack(source);
+    const windows = computeSubtitleWindows(baseline, track).windows.sort((a, b) => a.start - b.start);
+    const index = windows.findIndex(({ seg }) => seg.id === id);
+    if (index < 0 || segmentTrack(next) !== track) return {};
+    // Earlier subtitles retain their timing; extending to the right ripples only later cues.
+    if (windows.slice(0, index).some((window) => next.start < window.end)) return {};
+    const original = windows[index];
+    const shrinking = next.start === original.start && next.start + next.duration < original.end;
+    const closeGaps = shrinking && state.trackSettings[track]?.excludeGaps;
+    const starts = new Map();
+    let end = next.start + next.duration;
+    windows.slice(index + 1).forEach((window) => {
+      const start = closeGaps ? end : Math.max(window.start, end);
+      starts.set(window.seg.id, start);
+      end = start + window.seg.duration;
+    });
+    return { segments: state.segments.map((seg) => seg.id === id ? next
+      : starts.has(seg.id) ? { ...seg, start: starts.get(seg.id) } : seg), playing: false };
   }),
   applySubtitleStyle: (id) => set((state) => {
     const source = state.segments.find((seg) => seg.id === id && seg.type === 'subtitle');
@@ -601,6 +620,10 @@ export const useCompositionEditorStore = create((rawSet, get) => {
           aspectRatio: comp.aspectRatio || comp.aspect_ratio || '16:9',
           libraryAssetIds: comp.libraryAssetIds ?? comp.library_asset_ids ?? [],
           trackSettings: { ...get().trackSettings, ...(comp.trackSettings ?? comp.track_settings ?? {}) },
+          mainTracks: Object.fromEntries(['V', 'A', 'S'].map((prefix) => [prefix,
+            Object.entries(comp.trackSettings ?? comp.track_settings ?? {})
+              .filter(([track, settings]) => new RegExp(`^${prefix}[1-6]$`).test(track) && settings?.isMain === true)
+              .map(([track]) => track).sort()[0] ?? null])),
         });
         segments = (Array.isArray(comp.timeline) ? comp.timeline : []).map((item) => {
           if (item.type === 'subtitle') return { id: randomId(), type: 'subtitle', text: item.text || '', name: item.text || '字幕', start: Math.max(0, Number(item.start) || 0), duration: Math.max(0.001, Number(item.duration) || 3), track: item.track || 'S1', offset: 0, style: { ...DEFAULT_SUBTITLE_STYLE, ...item.style } };
@@ -949,7 +972,10 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       aspectRatio: state.aspectRatio,
       timeline,
       libraryAssetIds: state.libraryAssetIds,
-      trackSettings: state.trackSettings,
+      trackSettings: Object.fromEntries([...new Set([...Object.keys(state.trackSettings),
+        ...Object.values(state.mainTracks).filter(Boolean)])].map((track) => [track, {
+        ...state.trackSettings[track], isMain: state.mainTracks[track[0]] === track,
+      }])),
     };
     const revAtStart = state.dirtyRev;
     set({ saving: true });

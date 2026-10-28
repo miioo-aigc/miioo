@@ -8,6 +8,8 @@ import {
   durationClampOf,
   useCompositionEditorStore,
 } from '../../stores/compositionEditorStore';
+import { Button } from '../ui';
+import ConfirmDialog from '../ConfirmDialog';
 
 const FONT = "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -19,7 +21,7 @@ const ASPECTS = [
   { key: '1:1', label: '1:1', Icon: Square },
 ];
 
-const settingOptionClass = (active) => `flex h-[40px] min-w-0 flex-1 items-center justify-center gap-[8px] rounded-medium border text-font-size-14 text-text-secondary cursor-pointer ${active ? 'border-brand-main bg-tag-bg-blue text-text-primary' : 'border-transparent bg-white-10 hover:text-text-primary'} `;
+const settingOptionClass = (active) => `flex h-[40px] min-w-0 flex-1 items-center justify-center gap-[8px] rounded-medium border text-font-size-14 cursor-pointer ${active ? 'border-white-20 bg-white-10 text-white-100' : 'border-transparent bg-white-5 text-text-secondary hover:text-text-primary'} `;
 
 const TYPE_LABEL = {
   video: '视频片段',
@@ -38,18 +40,23 @@ function SectionTitle({ children }) {
 export default function PropsPanel() {
   const segments = useCompositionEditorStore((s) => s.segments);
   const selectedId = useCompositionEditorStore((s) => s.selectedId);
-  const updateSegment = useCompositionEditorStore((s) => s.updateSegment);
+  const selectedIds = useCompositionEditorStore((s) => s.selectedIds);
   const setSpeed = useCompositionEditorStore((s) => s.setSpeed);
   const resolution = useCompositionEditorStore((s) => s.resolution);
   const setResolution = useCompositionEditorStore((s) => s.setResolution);
   const aspectRatio = useCompositionEditorStore((s) => s.aspectRatio);
-  const setAspectRatio = useCompositionEditorStore((s) => s.setAspectRatio);
+  const requestAspectRatio = useCompositionEditorStore((s) => s.requestAspectRatio);
+  const confirmAspectRatio = useCompositionEditorStore((s) => s.confirmAspectRatio);
+  const cancelAspectRatio = useCompositionEditorStore((s) => s.cancelAspectRatio);
+  const aspectConfirmation = useCompositionEditorStore((s) => s.aspectConfirmation);
+  const updateSegment = useCompositionEditorStore((s) => s.updateSegment);
 
   const selected = segments.find((s) => s.id === selectedId) || null;
 
   if (!selected) {
     return (
-      <aside className="timeline-scrollbar w-full min-w-0 min-h-0 flex flex-col bg-neutral-200 overflow-y-auto overflow-x-hidden px-[20px] py-[16px] gap-[24px]">
+      <aside className="timeline-scrollbar w-full min-w-0 min-h-0 flex flex-col bg-neutral-200 overflow-y-auto overflow-x-hidden px-[20px] py-[16px] gap-[16px]">
+        {aspectConfirmation && <ConfirmDialog title="切换画面比例" description="切换画面比例将重置素材构图，是否继续？" confirmText="继续" onConfirm={confirmAspectRatio} onCancel={cancelAspectRatio} />}
         {segments.length === 0 ? (
           <div className="text-text-hint text-font-size-14" style={{ fontFamily: FONT }}>
             请从素材库添加素材
@@ -85,7 +92,7 @@ export default function PropsPanel() {
                   <button
                     key={a.key}
                     type="button"
-                    onClick={() => setAspectRatio(a.key)}
+                    onClick={() => requestAspectRatio(a.key)}
                     aria-pressed={aspectRatio === a.key}
                     className={settingOptionClass(aspectRatio === a.key)}
                     style={{ fontFamily: FONT }}
@@ -147,6 +154,7 @@ export default function PropsPanel() {
           onChange={(value) => setSpeed(selected.id, value)}
           onCommit={(value) => setSpeed(selected.id, value)} />
       )}
+      {(isVideo || isImage) && selectedIds.length <= 1 && <Button variant="secondary" size="small" onClick={() => updateSegment(selected.id, { visualTransform: { version: 1, mode: 'cover' } })}>恢复默认铺满</Button>}
 
     </aside>
   );

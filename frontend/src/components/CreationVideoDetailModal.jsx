@@ -1,7 +1,7 @@
 /**
  * @file CreationVideoDetailModal.jsx
  * @structure-index
- * 2026-10-26：媒体加载改用像素动效，失败刷新及继续播放仅显示图标。
+ * 2026-10-28：恢复主视频原生 controls；参考图片失败只显示文字，保留主媒体恢复反馈。
  *
  * ─── 辅助组件与工具 ─────────────────────────────── L47–L259
  *   formatVideoDuration / ReferenceVideoCard / CopyPromptButton / PanelAction / EditTool 详情字段、参考素材与操作按钮
@@ -393,7 +393,7 @@ export default function CreationVideoDetailModal({
                   </div>
                 )}
                 <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(in oklab 180deg, oklab(0% 0 0 / 0%) 40%, oklab(0% 0 0 / 40%) 100%)', pointerEvents: 'none' }} />
-                {videoUrl && <MediaLoadStatus visual {...media} onPause={media.pause} onRetry={media.retry} onPlay={() => media.play()} />}
+                {videoUrl && <MediaLoadStatus visual loadingVariant="spinner" {...media} onPause={media.pause} onRetry={media.retry} onPlay={() => media.play()} />}
                 {videoUrl && <VideoPlaybackControls isPlaying={isPlaying} feedbackVisible={playbackFeedbackVisible} onToggle={togglePlay} />}
               </div>
             </div>
@@ -452,7 +452,7 @@ export default function CreationVideoDetailModal({
                     </div>
                     <div className="rounded-md overflow-clip flex flex-col items-center gap-0 justify-center h-[84px] self-stretch shrink-0 bg-[#FFFFFF14] border border-solid border-[#FFFFFF14] p-0">
                       {getFrameImageUrl(firstFrameImage) ? (
-                        <AsyncImagePreview visual
+                        <AsyncImagePreview retryOnError={false} visual
                           src={getFrameImageUrl(firstFrameImage)}
                           alt="首帧参考"
                           resolveSrc={apiGetLiveMaterialPreviewByRef}
@@ -469,7 +469,7 @@ export default function CreationVideoDetailModal({
                     </div>
                     <div className="rounded-md overflow-clip flex flex-col items-center gap-0 justify-center h-[84px] self-stretch shrink-0 bg-[#FFFFFF14] border border-solid border-[#FFFFFF14] p-0">
                       {getFrameImageUrl(lastFrameImage) ? (
-                        <AsyncImagePreview visual
+                        <AsyncImagePreview retryOnError={false} visual
                           src={getFrameImageUrl(lastFrameImage)}
                           alt="尾帧参考"
                           resolveSrc={apiGetLiveMaterialPreviewByRef}
@@ -495,7 +495,7 @@ export default function CreationVideoDetailModal({
                         {refImages.map((img, i) => {
                           const imgUrl = typeof img === 'string' ? img : (img.url || img.previewUrl || '');
                           return (
-                            <AsyncImagePreview visual
+                            <AsyncImagePreview retryOnError={false} visual
                               key={`${i}-${imgUrl}`}
                               src={imgUrl}
                               alt="参考图"

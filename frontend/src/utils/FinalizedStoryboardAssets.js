@@ -1,6 +1,7 @@
 import { apiGetStoryboards, apiListStoryboardMediaCandidates } from '../api/storyboard';
 import { normalizeImageUrl } from './imageUrl';
 import { apiGetAssetDetail, apiGetAssetsPage } from '../api/assets';
+import { compositionMediaSource } from './CompositionMediaSource';
 
 function mediaKey(type, url) {
   if (!url) return null;
@@ -32,10 +33,30 @@ export async function resolveFinalizedStoryboardAssets(projectId, finalized) {
       offset += page.list.length;
     }
   }
+  // 旧候选可能没有原文件字段，按稳定资产 ID 补详情，不能直接把预览当成原片。
+  const videoIds = [...new Set(entries.filter(({ media }) => (media.mediaType ?? media.media_type) === 'video'
+    && !(media.downloadUrl || media.download_url))
+    .map(({ media }) => media.assetId ?? media.asset_id ?? media.metadata?.asset_id ?? media.metadata?.assetId).filter(Boolean))];
+  const details = new Map();
+  for (let start = 0; start < videoIds.length; start += 6) {
+    const batch = await Promise.allSettled(videoIds.slice(start, start + 6).map(async (id) => {
+      const asset = await apiGetAssetDetail(id);
+      if (String(asset?.id) !== String(id) || asset.asset_type !== 'video'
+        || asset.is_deleted || asset.deleted_at || !asset.file_url) throw new Error('原视频不可用');
+      return [String(id), asset];
+    }));
+    batch.forEach((result) => { if (result.status === 'fulfilled') details.set(...result.value); });
+  }
   const assets = [];
   let unavailable = 0;
   entries.forEach((entry) => {
-    const asset = finalizedMediaToAsset(entry);
+    const media = entry.media;
+    const id = media.assetId ?? media.asset_id ?? media.metadata?.asset_id ?? media.metadata?.assetId;
+    const needsDetail = (media.mediaType ?? media.media_type) === 'video' && !(media.downloadUrl || media.download_url);
+    const detail = details.get(String(id));
+    const asset = needsDetail && !detail ? null : finalizedMediaToAsset(detail
+      ? { ...entry, media: { ...media, file_url: detail.file_url, downloadUrl: detail.download_url || detail.file_url } }
+      : entry);
     if (asset) assets.push(asset);
     else unavailable += 1;
   });
@@ -44,19 +65,20 @@ export async function resolveFinalizedStoryboardAssets(projectId, finalized) {
 
 export function finalizedMediaToAsset({ media, shot }) {
   const assetId = media.assetId ?? media.asset_id ?? media.metadata?.asset_id ?? media.metadata?.assetId;
-  if (!assetId || !media.url) return null;
+  const source = compositionMediaSource(media);
+  if (!assetId || !source) return null;
   return {
     id: assetId,
     asset_type: media.mediaType ?? media.media_type,
     name: media.name || `分镜${shot.shot_number ?? shot.sort_order ?? ''}定稿素材`,
-    file_url: media.url,
+    file_url: source,
     thumbnail_url: media.thumbnailUrl ?? media.thumbnail_url ?? (media.mediaType === 'image' ? media.url : null),
     poster_url: media.posterUrl ?? media.poster_url,
     download_url: media.downloadUrl ?? media.download_url,
     duration: media.duration ?? media.metadata?.duration,
     ratio: media.ratio,
     resolution: media.resolution,
-    metadata_json: { ...media.metadata, storyboard_id: shot.id, shot_number: shot.shot_number },
+    metadata_json: { ...media.metadata, storyboard_id: shot.id, shot_number: shot.shot_number, storyboard_media_url: media.url },
   };
 }
 
@@ -103,10 +125,10 @@ export function selectFinalizedStoryboardAssets(assets, finalized, episodeId) {
   const mediaUrls = new Set();
   finalized.forEach(({ media, shot }) => {
     if (episodeId && String(shot.episode_id ?? shot.episodeId) !== String(episodeId)) return;
-    const assetId = media.assetId ?? media.asset_id;
+    const assetId = media.assetId ?? media.asset_id ?? media.metadata?.asset_id ?? media.metadata?.assetId;
     if (assetId) assetIds.add(String(assetId));
     if (media.url) mediaUrls.add(mediaKey(media.mediaType ?? media.media_type, media.url));
   });
   return assets.filter((asset) => asset.manuallyAdded || assetIds.has(String(asset.id))
-    || mediaUrls.has(mediaKey(asset.asset_type, asset.fileUrl)));
+    || mediaUrls.has(mediaKey(asset.asset_type, asset.storyboardMediaUrl || asset.fileUrl)));
 }

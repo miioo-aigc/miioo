@@ -43,7 +43,7 @@ export default function StoryboardFinalizedCard({ shot, media, loading = false, 
       {hasMedia && <StoryboardMediaPreview media={media} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'fill' }} />}
       {isHoverVideo && (
         <div style={{ position: 'absolute', inset: 0, background: '#101111' }}>
-          <RecoverableVideoPreview key={hoverPreview.url} src={hoverPreview.url} hovered objectFit="fill" />
+          <RecoverableVideoPreview key={hoverPreview.url} src={hoverPreview.url} poster={src} hovered objectFit="fill" />
         </div>
       )}
       <span style={{ position: 'absolute', top: '6px', left: '12px', padding: '0 8px', borderRadius: '3px', background: '#000000CC', color: '#FFFFFFCC', fontSize: '12px', lineHeight: '20px' }}>{String(shot.number).padStart(2, '0')}</span>

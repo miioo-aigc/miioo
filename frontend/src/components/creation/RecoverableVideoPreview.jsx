@@ -1,9 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMediaPlayback } from '../../hooks/useMediaPlayback';
 import MediaLoadStatus from '../feedback/MediaLoadStatus';
 
-export default function RecoverableVideoPreview({ src, poster, hovered, objectFit = 'cover' }) {
+function VideoPreviewSession({ src, poster, hovered, objectFit = 'cover' }) {
   const ref = useRef(null);
+  const [posterReady, setPosterReady] = useState(false);
+  const [frameReady, setFrameReady] = useState(false);
   const media = useMediaPlayback(ref, src);
   const { play, pause } = media;
   const hoverRecoveryAttempted = useRef(false);
@@ -17,8 +19,15 @@ export default function RecoverableVideoPreview({ src, poster, hovered, objectFi
     hoverRecoveryAttempted.current = true;
     void play({ automatic: true, hover: true });
   }, [hovered, media.status, media.requiresClick, play]);
+  const showVideo = frameReady && (!posterReady || (hovered && media.status !== 'error'));
   return <>
-    <video key={src} ref={ref} src={src} poster={poster || undefined} muted loop playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit, display: 'block' }} />
-    <MediaLoadStatus visual {...media} requiresClick={false} onPause={media.pause} onRetry={media.retry} onPlay={() => media.play()} />
+    {poster && <img src={poster} alt="" onLoad={() => setPosterReady(true)} onError={() => setPosterReady(false)}
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit, opacity: posterReady && !showVideo ? 1 : 0, pointerEvents: 'none' }} />}
+    <video key={src} ref={ref} src={src} poster={poster || undefined} muted loop playsInline preload="metadata" onLoadedData={() => setFrameReady(true)} style={{ width: '100%', height: '100%', objectFit, display: 'block', position: 'relative', opacity: showVideo ? 1 : 0 }} />
+    {!posterReady && !(frameReady && media.status === 'error') && <MediaLoadStatus showLoading={!frameReady} visual {...media} requiresClick={false} onPause={media.pause} onRetry={media.retry} onPlay={() => media.play()} />}
   </>;
+}
+
+export default function RecoverableVideoPreview(props) {
+  return <VideoPreviewSession key={JSON.stringify([props.src, props.poster])} {...props} />;
 }

@@ -18,6 +18,7 @@ export function AssetsTabBar({ tabs, active, onChange }) {
           <button
             key={tab.key}
             type="button"
+            className={`transition-colors duration-150 ${isActive ? 'text-white-100' : 'text-white-60 hover:text-white-80'}`}
             style={{
               display: 'flex',
               flexDirection: 'column',
@@ -30,8 +31,6 @@ export function AssetsTabBar({ tabs, active, onChange }) {
               fontFamily: isActive ? FONT_MEDIUM : FONT,
               fontSize: '14px',
               lineHeight: '18px',
-              color: isActive ? '#FFFFFF' : '#FFFFFF99',
-              transition: 'color 0.12s',
             }}
             onClick={() => onChange(tab.key)}
           >
@@ -59,6 +58,7 @@ export function AssetsModuleTabBar({ tabs, active, onChange }) {
           <button
             key={tab.key}
             type="button"
+            className={`transition-colors duration-150 ${isActive ? 'text-brand-main' : 'text-white-60 hover:text-white-80'}`}
             style={{
               background: 'none',
               border: 'none',
@@ -68,8 +68,6 @@ export function AssetsModuleTabBar({ tabs, active, onChange }) {
               cursor: 'pointer',
               fontFamily: isActive ? FONT_MEDIUM : FONT,
               fontSize: '16px',
-              color: isActive ? '#2DC3E1' : '#FFFFFF99',
-              transition: 'color 0.12s',
             }}
             onClick={() => onChange(tab.key)}
           >

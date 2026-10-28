@@ -10,6 +10,7 @@
  *   常规操作按钮统一复用 components/ui/Button；Tab 保留导航型按钮语义
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-10-28  标签未选中悬停提亮至 white-80
  *   2026-10-27  清空和批量操作入口统一使用二级按钮样式
  *   2026-07-15  从 CreationPage 抽离顶部 Tab、批量操作和清空历史展示层
  *   2026-07-15  批量操作、清空历史、全选、下载、删除和取消按钮统一复用 components/ui/Button
@@ -32,9 +33,10 @@ function CreationTabBar({ tabs, activeTab, onChange, font, fontMedium }) {
             key={key}
             type="button"
             onClick={() => onChange(key)}
+            className={`transition-colors duration-150 ${isActive ? 'text-white-100' : 'text-white-60 hover:text-white-80'}`}
             style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', outline: 'none' }}
           >
-            <span style={{ fontFamily: isActive ? fontMedium : font, fontWeight: isActive ? 500 : 400, fontSize: '16px', lineHeight: isActive ? '20px' : '18px', color: isActive ? '#FFFFFF' : '#FFFFFF99', transition: 'color 0.2s, font-weight 0.2s', whiteSpace: 'pre' }}>
+            <span style={{ fontFamily: isActive ? fontMedium : font, fontWeight: isActive ? 500 : 400, fontSize: '16px', lineHeight: isActive ? '20px' : '18px', whiteSpace: 'pre' }}>
               {label}
             </span>
           </button>

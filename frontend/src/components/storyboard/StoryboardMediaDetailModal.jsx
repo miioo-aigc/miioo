@@ -19,6 +19,7 @@ import { useModalSize } from '../../utils/useModalSize';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { formatReferenceMode } from '../../utils/referenceMode';
 import { mergeStoryboardMediaItems } from './StoryboardMediaItems';
+import { storyboardMediaType } from '../../utils/storyboardMediaDedup';
 
 // 详情弹窗尺寸由 useModalSize 统一计算：基准 1200×800，内部内容整体等比缩放。
 
@@ -26,7 +27,7 @@ const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 function isVideoMedia(media) {
-  return media?.media_type === 'video' || media?.type?.startsWith('video');
+  return storyboardMediaType(media) === 'video';
 }
 
 function mediaPreviewUrl(media) {
@@ -648,7 +649,7 @@ export default function StoryboardMediaDetailModal({ projectId, shot, candidates
           <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', background: '#0D0D0D' }}>
             <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', background: '#0A0A0A', position: 'relative' }}>
               {video ? <video ref={videoRef} key={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)} src={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)} poster={activePoster || undefined} controls autoPlay={!visualMedia} playsInline style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : visualMedia ? <AsyncImagePreview visual plain src={mediaImageUrl(activeMedia)} imageStyle={{ objectFit: 'contain' }} /> : <img src={mediaImageUrl(activeMedia)} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}
-              {visualMedia && video && <MediaLoadStatus visual {...playback} onPause={playback.pause} onRetry={playback.retry} onPlay={() => playback.play()} />}
+              {visualMedia && video && <MediaLoadStatus visual loadingVariant="spinner" {...playback} onPause={playback.pause} onRetry={playback.retry} onPlay={() => playback.play()} />}
             </div>
             <div style={{ flexShrink: 0, minHeight: '108px', padding: '16px', display: 'flex', gap: '12px', overflowX: 'auto', borderTop: '1px solid #FFFFFF0F', background: '#161616' }}>
               {items.map((item) => <CandidateThumbnail visualMedia={visualMedia} key={item.id || item.url} media={item} active={(item.id || item.url) === (activeMedia.id || activeMedia.url)} onClick={() => setActiveKey(item.id || item.url)} />)}

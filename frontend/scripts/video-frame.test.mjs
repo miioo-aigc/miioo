@@ -105,3 +105,34 @@ test('连续缩略帧按真实时间解码且不覆盖选中画布，失败不�
   assert.equal(vm.runInContext('selected', context), 3);
   assert.equal(vm.runInContext('canvas.original', context), true);
 });
+
+test('原片地址优先使用下载字段，禁止已知预览地址兜底', async () => {
+  const { resolveFrameOriginalUrl } = await import('../src/components/video-edit/FrameOriginalSource.js');
+  assert.equal(resolveFrameOriginalUrl({ originalVideoUrl: '/preview.mp4', videoUrl: '/preview.mp4', sourceAsset: { preview_video_url: '/preview.mp4', download_url: '/original.mp4' } }), '/original.mp4');
+  assert.equal(resolveFrameOriginalUrl({ videoUrl: '/preview.mp4', sourceAsset: { preview_video_url: '/preview.mp4' } }), '');
+  assert.equal(resolveFrameOriginalUrl({ originalVideoUrl: '/original.mp4' }), '/original.mp4');
+});
+
+test('原视频提帧失败不输出预览图片，重试成功携带锁定时间', async () => {
+  const source = await readFile(new URL('../src/components/video-edit/FrameDecoderWorker.js', import.meta.url), 'utf8');
+  const messages = [];
+  let attempts = 0;
+  const context = vm.createContext({
+    self: { postMessage: value => messages.push(value) }, URL, ALL_FORMATS: [],
+    toVideoMediaUrl: url => url,
+    createFrameMediaSource: async () => { if (++attempts === 1) throw new Error('network'); return {}; },
+    Input: class { async getPrimaryVideoTrack() { return { canDecode: async () => true }; } dispose() {} },
+    VideoSampleSink: class { async getSample(time) { assert.equal(time, 1.25); return { displayWidth: 1920, displayHeight: 1080, draw() {}, close() {} }; } },
+    OffscreenCanvas: class { getContext() { return {}; } async convertToBlob() { return 'original'; } },
+  });
+  vm.runInContext(source.replace(/^import .*;\n/gm, ''), context);
+  vm.runInContext("previewSourceUrl = 'https://example.com/preview.mp4'; times = [1.25]; selected = 0; canvas = { convertToBlob() { throw new Error('不能使用预览图片'); } };", context);
+  const request = { data: { type: 'export', purpose: 'prepare', index: 0, originalUrl: '/original.mp4', baseUrl: 'https://example.com/' } };
+  await context.self.onmessage(request);
+  assert.equal(messages[0].type, 'export-error');
+  assert.equal(messages[0].blob, undefined);
+  await context.self.onmessage(request);
+  assert.equal(messages[1].blob, 'original');
+  assert.equal(messages[1].timestamp, 1.25);
+  assert.equal(messages[1].purpose, 'prepare');
+});

@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { downloadBlobWithFeedback } from '../../utils/downloadFeedback';
+import { showGlobalToast } from '../../stores/toastStore';
 import { frameAtTime } from './FrameIndex';
 
-export default function useFrameSelection(url, canvasRef, { onExport, originalUrl = url } = {}) {
+export default function useFrameSelection(url, canvasRef, { onExport, originalUrl = '' } = {}) {
   const worker = useRef(null);
+  const exportPending = useRef(false);
+  const [exportPurpose, setExportPurpose] = useState('');
   const thumbnailCache = useRef(new Map());
   const [thumbnails, setThumbnails] = useState({});
   const sequence = useRef(0);
@@ -65,8 +68,14 @@ export default function useFrameSelection(url, canvasRef, { onExport, originalUr
           clearTimeout(watchdog);
         }
         data.bitmap.close();
+      } else if (data.type === 'export-error') {
+        exportPending.current = false;
+        setExporting(false);
+        clearTimeout(watchdog);
+        showGlobalToast(data.message || '原视频提帧失败，请重试', 'error');
       } else if (data.type === 'export') {
-        if (data.purpose === 'prepare') exportHandler.current?.(data.blob, data.index);
+        exportPending.current = false;
+        if (data.purpose === 'prepare') exportHandler.current?.(data.blob, data.index, data.timestamp);
         else downloadBlobWithFeedback(data.blob, `视频选帧-${data.index + 1}.png`).catch(() => {});
         setExporting(false);
         clearTimeout(watchdog);
@@ -84,6 +93,7 @@ export default function useFrameSelection(url, canvasRef, { onExport, originalUr
       clearTimeout(watchdog);
       decoder.terminate();
       worker.current = null;
+      exportPending.current = false;
     };
     decoder.postMessage({ type: 'open', url, baseUrl: document.baseURI });
     worker.current.wait = wait;
@@ -94,6 +104,7 @@ export default function useFrameSelection(url, canvasRef, { onExport, originalUr
       clearTimeout(watchdog);
       decoder.terminate();
       worker.current = null;
+      exportPending.current = false;
     };
   }, [url, canvasRef]);
 
@@ -116,17 +127,19 @@ export default function useFrameSelection(url, canvasRef, { onExport, originalUr
 
   const step = useCallback((direction) => select(target.current + direction), [select]);
   function seek(time) { select(frameAtTime(times, time)); }
-  function download() {
-    if (busy || exporting || error) return;
+  function requestExport(purpose) {
+    if (busy || exportPending.current || error || !worker.current) return;
+    if (!originalUrl) {
+      showGlobalToast('未找到原视频地址，无法保存或下载原画图片，请重新打开后重试', 'error');
+      return;
+    }
+    exportPending.current = true;
+    setExportPurpose(purpose);
     setExporting(true);
-    worker.current?.wait();
-    worker.current?.postMessage({ type: 'export', index, originalUrl, baseUrl: document.baseURI });
+    worker.current.wait();
+    worker.current.postMessage({ type: 'export', index, purpose, originalUrl, baseUrl: document.baseURI });
   }
-  function exportFrame() {
-    if (busy || exporting || error) return;
-    setExporting(true);
-    worker.current?.wait();
-    worker.current?.postMessage({ type: 'export', index, purpose: 'prepare', originalUrl, baseUrl: document.baseURI });
-  }
-  return { thumbnails, requestThumbnails, select, times, index, busy, exporting, error, dimensions, step, seek, download, exportFrame };
+  function download() { requestExport('download'); }
+  function exportFrame() { requestExport('prepare'); }
+  return { thumbnails, requestThumbnails, select, times, index, busy, exporting, error, dimensions, step, seek, download, exportFrame, exportPurpose };
 }

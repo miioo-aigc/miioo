@@ -1,9 +1,10 @@
 import AsyncImagePreview from '../AsyncImagePreview';
 import RecoverableVideoPreview from '../creation/RecoverableVideoPreview';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { storyboardMediaType } from '../../utils/storyboardMediaDedup';
 
 function isVideoMedia(media) {
-  return media?.media_type === 'video' || media?.mediaType === 'video' || media?.type?.startsWith('video');
+  return storyboardMediaType(media) === 'video';
 }
 
 function getPreviewUrl(media) {
@@ -23,7 +24,7 @@ function getSourceUrl(media) {
 }
 
 /** 按源隔离预览；无封面视频直接使用原生首帧，不缓存跨资源截图。 */
-export default function StoryboardMediaPreview({ media, alt = '', style, className, hovered = false }) {
+export default function StoryboardMediaPreview({ media, alt = '', style, className, hovered = false, retryOnError = true }) {
   const video = isVideoMedia(media);
   const previewUrl = getPreviewUrl(media);
   const sourceUrl = getSourceUrl(media);
@@ -31,6 +32,6 @@ export default function StoryboardMediaPreview({ media, alt = '', style, classNa
   return <div className={className} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', ...style }}>
     {video && !previewUrl
       ? <RecoverableVideoPreview key={sourceUrl} src={sourceUrl} hovered={hovered} objectFit={objectFit} />
-      : <AsyncImagePreview visual plain src={previewUrl || sourceUrl} fallbackSrc={!video ? sourceUrl : undefined} alt={alt} imageStyle={{ objectFit }} />}
+      : <AsyncImagePreview retryOnError={retryOnError} visual plain src={previewUrl || sourceUrl} fallbackSrc={!video ? sourceUrl : undefined} alt={alt} imageStyle={{ objectFit }} />}
   </div>;
 }

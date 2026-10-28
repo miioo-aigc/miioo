@@ -1,12 +1,12 @@
 import { Pause, Play } from 'lucide-react';
 
-export default function VideoPlaybackControls({ isPlaying, feedbackVisible, onToggle }) {
+export default function VideoPlaybackControls({ isPlaying, feedbackVisible, onToggle, bottomInset = 48 }) {
   return <>
     <button
       type="button"
       aria-label={isPlaying ? '暂停视频' : '播放视频'}
       title={isPlaying ? '暂停视频' : '播放视频'}
-      style={{ position: 'absolute', inset: '0 0 48px', cursor: 'pointer', padding: '0 24px', border: 0, background: 'transparent' }}
+      style={{ position: 'absolute', inset: 0, bottom: bottomInset, cursor: 'pointer', padding: '0 24px', border: 0, background: 'transparent' }}
       onClick={onToggle}
     />
     {feedbackVisible && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }} aria-hidden="true">

@@ -1,5 +1,6 @@
 /**
  * @file Home.jsx
+ *   2026-10-28 主体页账号接线：SubjectPage L2070，传入当前登录账号，按项目及账号重建生成会话。
  *   2026-10-26 微信回调：内嵌窗口仅发送会话通知；顶层登录/绑定显式编排，保留页面认证副作用。
  * @structure-update：2026-10-21 正式项目入口由 UseCanvasProjects 编排（L302）；账号变化同步重置创作 Store（L401），认证与恢复编排仍保留首页。
  * @structure-index：2026-10-21 readProjects L318；详情读取 L575；主体抽取 L1227；智能分镜 L1493；重新分镜 L1722；恢复 L1741。
@@ -2067,7 +2068,8 @@ export default function Home({ onGoToAdmin }) {
             )}
             {activeKey === 'project' && activeProject && activeStep === 'subject' && (
               <SubjectPage
-                key={activeProject.id}
+                key={`${activeProject.id}:${isLoggedIn ? currentUser.id || '' : ''}`}
+                ownerId={isLoggedIn ? currentUser.id : null}
                 onRefreshSubjects={(projectId, session) => {
                   if (!getToken() || getAuthSessionGeneration() !== session
                     || projectDetailOwner.current?.id !== projectId

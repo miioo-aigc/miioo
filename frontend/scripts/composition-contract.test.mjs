@@ -10,6 +10,57 @@ const { prepareCompositionAsset } = await server.ssrLoadModule('/src/api/Composi
 const { buildInitialStoryboardTimeline } = await server.ssrLoadModule('/src/utils/InitialStoryboardTimeline.js');
 const { exportProgress } = await server.ssrLoadModule('/src/stores/CompositionExportStore.js');
 const { prepareOnlineEditing } = await server.ssrLoadModule('/src/api/CompositionDraftCreation.js');
+const { apiCompositionPreview } = await server.ssrLoadModule('/src/api/CompositionPreview.js');
+
+test('预览请求校验资产身份和显示比例，重建任务使用独立接口', async () => {
+  const previous = { fetch: globalThis.fetch, localStorage: globalThis.localStorage, window: globalThis.window };
+  globalThis.window = { dispatchEvent: () => {} };
+  globalThis.localStorage = { getItem: () => 'test-only-token' };
+  let data = { asset_id: 'video', asset_type: 'video', source_version: '1', source: { display_aspect_ratio: { num: 864, den: 496 } }, preview: { status: 'ready', url: 'https://example.test/preview.mp4', display_aspect_ratio: { num: 108, den: 62 } } };
+  let request;
+  globalThis.fetch = async (url, options) => { request = { url, options }; return Response.json(data); };
+  try {
+    await apiCompositionPreview('video');
+    assert.ok(String(request.url).endsWith('/api/assets/video/composition-preview'));
+    assert.equal(request.options.method, 'GET');
+    await apiCompositionPreview('video', { create: true });
+    assert.equal(request.options.method, 'POST');
+    assert.equal(request.options.body, '{}');
+    data = { ...data, asset_id: 'wrong' };
+    await assert.rejects(apiCompositionPreview('video'), /元数据无效/);
+    data = { ...data, asset_id: 'video', preview: { ...data.preview, display_aspect_ratio: { num: 16, den: 9 } } };
+    await assert.rejects(apiCompositionPreview('video'), /比例不一致/);
+  } finally { Object.assign(globalThis, previous); }
+});
+
+test('构图拖拽一次撤销、比例确认重置与旧片段兼容', () => {
+  const manual = { version: 1, mode: 'manual', center_x: 0.2, center_y: 0.6, width: 1.3, height: 0.9 };
+  store.setState({ ...store.getInitialState(), loaded: true, segments: [
+    { id: 'old', assetId: 'old', type: 'image', duration: 3 },
+    { id: 'new', assetId: 'new', type: 'video', duration: 3, visualTransform: { version: 1, mode: 'cover' } },
+  ] });
+  const before = store.getState();
+  store.getState().previewTransform('new', manual);
+  assert.equal(store.getState().past.length, 0);
+  store.getState().commitTransform(before);
+  assert.equal(store.getState().past.length, 1);
+  assert.deepEqual(serializeTimeline(store.getState().segments)[1].visual_transform, manual);
+  assert.equal('visual_transform' in serializeTimeline(store.getState().segments)[0], false);
+  store.getState().requestAspectRatio('9:16');
+  assert.equal(store.getState().aspectRatio, '16:9');
+  store.getState().cancelAspectRatio();
+  assert.equal(store.getState().segments[1].visualTransform.mode, 'manual');
+  store.getState().requestAspectRatio('9:16');
+  store.getState().confirmAspectRatio();
+  assert.equal(store.getState().segments[1].visualTransform.mode, 'cover');
+  assert.equal(store.getState().segments[0].visualTransform, undefined);
+  store.getState().undo();
+  assert.equal(store.getState().aspectRatio, '16:9');
+  assert.deepEqual(store.getState().segments[1].visualTransform, manual);
+  store.getState().undo();
+  assert.equal(store.getState().segments[1].visualTransform.mode, 'cover');
+  store.setState({ ...store.getInitialState() });
+});
 
 test('在线剪辑有草稿仅查询，无草稿创建一次；查询或创建失败不进入工作台', async () => {
   const originalFetch = globalThis.fetch;
@@ -246,6 +297,8 @@ test('保存实际请求携带新字段，400 保留未保存状态与原时间�
     assert.equal(requests[0].body.track_settings.A1.volume, 0);
     assert.equal(requests[0].body.timeline[0].has_audio, false);
     assert.equal(store.getState().dirty, false);
+    assert.equal(store.getState().saveError, null);
+    assert.equal(store.getState().saveSequence, 1);
     store.getState().setMainTrack('V1');
     assert.equal(store.getState().dirty, true);
     await store.getState().save();
@@ -263,10 +316,55 @@ test('保存实际请求携带新字段，400 保留未保存状态与原时间�
     await assert.rejects(store.getState().save(), /至少需要一个/);
     assert.equal(store.getState().dirty, true);
     assert.deepEqual(store.getState().segments, []);
+    assert.match(store.getState().saveError, /至少需要一个/);
+    assert.equal(store.getState().saving, false);
+    const sequenceBeforeRetry = store.getState().saveSequence;
+    globalThis.fetch = async () => Response.json({ id: 'c', name: '草稿' });
+    const retry = store.getState().save();
+    assert.equal(store.getState().saving, true);
+    assert.equal(store.getState().saveError, null);
+    await retry;
+    assert.equal(store.getState().saveSequence, sequenceBeforeRetry + 1);
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.localStorage = originalStorage;
     globalThis.window = originalWindow;
     store.setState({ projectId: null });
+  }
+});
+
+
+test('并发保存按顺序提交，后一次保存包含最新构图', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalStorage = globalThis.localStorage;
+  const originalWindow = globalThis.window;
+  globalThis.localStorage = { getItem: () => 'test-only-token' };
+  globalThis.window = { dispatchEvent: () => {} };
+  const writes = [];
+  let release;
+  globalThis.fetch = async (_url, options) => {
+    writes.push(JSON.parse(options.body));
+    if (writes.length === 1) await new Promise(resolve => { release = resolve; });
+    return Response.json({ id: 'c', name: '草稿' });
+  };
+  try {
+    store.setState({ ...store.getInitialState(), projectId: 'p', compositionId: 'c', loaded: true, dirty: true,
+      segments: [{ id: 'v', assetId: 'asset', type: 'video', duration: 3, track: 'V1', visualTransform: { version: 1, mode: 'cover' } }] });
+    const first = store.getState().save();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    store.getState().updateSegment('v', { visualTransform: { version: 1, mode: 'manual', center_x: 0.5, center_y: 0.5, width: 2, height: 1 } });
+    const second = store.getState().save();
+    assert.equal(writes.length, 1);
+    release();
+    await Promise.all([first, second]);
+    assert.equal(writes.length, 2);
+    assert.equal(writes[0].timeline[0].visual_transform.mode, 'cover');
+    assert.equal(writes[1].timeline[0].visual_transform.mode, 'manual');
+    assert.equal(store.getState().dirty, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.localStorage = originalStorage;
+    globalThis.window = originalWindow;
+    store.setState({ projectId: null, dirty: false });
   }
 });

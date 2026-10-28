@@ -1,6 +1,6 @@
 /**
  * @file StoryboardPage.jsx
- * @structure-index 2026-10-26：L2816 分镜详情启用媒体恢复；页面级加载与生成流程保留。
+ * @structure-index 2026-10-28：L1015 选帧新增候选并保留定稿；L2563 与资产库共用展示合并；L2824 详情读取实时候选。页面级加载与生成流程保留。
  *   当前定位（2026-10-21）：本地图片读取 L316、候选合并 L2558 均按账号隔离；executeEpisodeGeneration L2012。下方带日期条目为历史定位。
  *   2026-10-20：L439 beginMediaTask 协调任务标记；L533 归属切换重置；L1008 严格确认生成候选保存；L1495 轮询；L1530/L1549 视频/图片恢复持久候选；L1570 恢复 Hook；L1589/L1686 批量、L2899/L3060 单独入口校验访问归属并保留未确认任务。页面保留 API、缓存及持久化编排，不为行数移动副作用。
  *   2026-10-12：排序请求移出状态更新函数，串行提交并校验分集归属；失败提示刷新核对。
@@ -210,6 +210,7 @@ import {
 } from '../utils/storyboardVideoRequestAdapter';
 import { buildStoryboardCandidatePayload, normalizeSavedStoryboardCandidate } from '../utils/storyboardCandidateAdapter';
 import { areStoryboardMediaSame, mergeStoryboardMediaItems } from '../utils/storyboardMediaDedup';
+import { mergeStoryboardMediaItems as mergeDisplayCandidates } from '../components/storyboard/StoryboardMediaItems';
 import { insertStoryboardShot, moveStoryboardShot, removeStoryboardShot, renumberStoryboardShots } from '../utils/storyboardShotUtils';
 import useStoryboardTaskRecovery from '../hooks/useStoryboardTaskRecovery';
 import { loadLocalImages, useLocalImageEditStore } from '../stores/LocalImageEdits';
@@ -1017,7 +1018,7 @@ function hasStoryboardMediaHint(shot = {}) {
     const assetId = result?.asset_id || result?.assetId || result?.id;
     if (!isBackendStoryboardId(shotId) || !imageUrl || !assetId) {
       showGlobalToast('选帧结果缺少分镜关联信息，请稍后重试', 'error');
-      return;
+      return false;
     }
     const candidate = await saveCandidateMedia(shotId, {
       id: assetId,
@@ -1030,10 +1031,10 @@ function hasStoryboardMediaHint(shot = {}) {
     });
     if (!candidate) {
       showGlobalToast('选帧图片保存到分镜失败，请稍后重试', 'error');
-      return;
+      return false;
     }
-    await refreshCandidateForShot(shot);
-    showGlobalToast('选帧图片已经保存成功，请查看', 'success');
+    // 创建响应已写入候选列表，不再用额外回读覆盖原定稿状态。
+    showGlobalToast('选帧图片已添加到当前分镜候选列表', 'success');
   }
 
   async function copyPersistedCandidateMedia(sourceShot, targetShotId) {
@@ -2559,12 +2560,12 @@ function hasStoryboardMediaHint(shot = {}) {
   const resolvedMediaLoadingMap = Object.fromEntries(
     shots.map((shot) => [shot.id, isMediaLoading(shot)]),
   );
-  const getCreationCandidates = (shotId) => mergeStoryboardMediaItems(
-    [...(pendingCandidateMap[shotId] || []), ...(localImageScopes[accountImageEditScope(`storyboard:${projectId}:${shotId}`, ownerId)] || [])],
-    mergeStoryboardMediaItems(
-      fallbackCandidates(shots.find((shot) => shot.id === shotId)),
+  const getCreationCandidates = (shotId) => mergeDisplayCandidates(
+    mergeDisplayCandidates(
       candidateMediaMap[shotId] || [],
+      fallbackCandidates(shots.find((shot) => shot.id === shotId)),
     ),
+    [...(pendingCandidateMap[shotId] || []), ...(localImageScopes[accountImageEditScope(`storyboard:${projectId}:${shotId}`, ownerId)] || [])],
   );
   const currentShotImages = useMemo(() => {
     const shotId = videoPanel?.shot?.id;
@@ -2820,7 +2821,7 @@ function hasStoryboardMediaHint(shot = {}) {
         key={`${timelinePreviewMedia.shot?.id || 'shot'}-${timelinePreviewMedia.media?.id || timelinePreviewMedia.media?.url || 'media'}`}
         shot={timelinePreviewMedia.shot}
         media={timelinePreviewMedia.media}
-        candidates={timelinePreviewMedia.candidates}
+        candidates={getCreationCandidates(timelinePreviewMedia.shot.id)}
         onClose={() => setTimelinePreviewMedia(null)}
         onFinalizeChange={handleTimelineFinalizeChange}
         onDownload={(media) => downloadCandidateMedia(media, timelinePreviewMedia.shot)}

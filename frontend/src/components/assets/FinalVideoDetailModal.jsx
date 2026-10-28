@@ -59,7 +59,7 @@ export default function FinalVideoDetailModal({ asset, onClose, onDownload, onDe
               onBlur={() => setHovered(false)}
               onTouchStart={() => setHovered(true)}
             /> : null}
-            {asset.videoUrl && <MediaLoadStatus visual {...media} onPause={media.pause} onRetry={media.retry} onPlay={() => media.play()} />}
+            {asset.videoUrl && <MediaLoadStatus visual loadingVariant="spinner" {...media} onPause={media.pause} onRetry={media.retry} onPlay={() => media.play()} />}
           </div>
           <aside className="final-video-detail-info">
             <div className="final-video-detail-scroll">

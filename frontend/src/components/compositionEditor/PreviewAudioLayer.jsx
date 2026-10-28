@@ -1,10 +1,14 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { useCompositionMediaSource } from './UseCompositionMediaSource';
 import { useCompositionEditorStore } from '../../stores/compositionEditorStore';
 
 const graphs = new WeakMap();
 let context;
 
-export default function PreviewAudioLayer({ active, playing, settings, clock, track, seekEpoch }) {
+export default function PreviewAudioLayer({ active, playing, settings, clock, track, seekEpoch, outputVolume = 1 }) {
+  const playback = useCompositionMediaSource(active?.seg.sourceUrl);
+  const playbackActive = useMemo(() => active
+    ? { ...active, seg: { ...active.seg, sourceUrl: playback.source } } : active, [active, playback.source]);
   const ref = useRef(null);
   const graphRef = useRef(null);
   useEffect(() => {
@@ -34,13 +38,12 @@ export default function PreviewAudioLayer({ active, playing, settings, clock, tr
   useEffect(() => {
     const graph = graphRef.current;
     const volume = settings?.hidden ? 0 : (settings?.volume ?? 1) * (active?.seg.volume ?? 1);
-    graph?.gain.gain.setValueAtTime(Math.max(0, Math.min(2, volume)), graph.context.currentTime);
+    graph?.gain.gain.setValueAtTime(Math.max(0, Math.min(2, volume * outputVolume)), graph.context.currentTime);
     if (playing) graph?.context.resume().catch(() => {});
-  }, [active, playing, settings]);
+  }, [active, playing, settings, outputVolume]);
   const audible = !settings?.hidden && (settings?.volume ?? 1) * (active?.seg.volume ?? 1) > 0;
-  useEffect(() => clock.register(track, ref.current, active, audible, playing,
-    () => useCompositionEditorStore.getState().cursor,
-    () => useCompositionEditorStore.getState().pause()),
-  [clock, track, active, audible, playing, seekEpoch]);
+  useEffect(() => clock.register(track, ref.current, playbackActive, audible, playing,
+    () => useCompositionEditorStore.getState().cursor),
+  [clock, track, playbackActive, audible, playing, seekEpoch]);
   return <audio ref={ref} crossOrigin="anonymous" preload="auto" hidden />;
 }

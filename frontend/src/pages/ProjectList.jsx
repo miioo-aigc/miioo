@@ -1,29 +1,14 @@
 /**
  * @file ProjectList.jsx
- * @structure-index：2026-10-14 入口 L424 接收可选读取状态，L452 复用反馈；默认参数保持其他调用行为。
- *
- * ─── 全局常量 & 工具函数 ────────────────────────────────────────────
- *   FONT / FONT_MEDIUM              页面字体常量                         L43–L44
- *
- * ─── 图标组件 ───────────────────────────────────────────────────────
- *   SearchIcon / PlusIcon / MoreIcon / PencilIcon / CopyIcon / CloseIcon（DeleteIcon 从 ui 导入）
- *                                                                        L48–L100
- *
- * ─── 菜单与弹窗组件 ────────────────────────────────────────────────
- *   MoreMenu                         项目操作菜单                         L104
- *   RenameModal                      项目重命名弹窗                       L120
- *   ConfirmDialog                    删除确认弹窗                         页面底部组合
- *
- * ─── 结果/状态展示组件 ─────────────────────────────────────────────
- *   NewProjectCard                   新建项目卡片                         L251
- *   ProjectCard                      项目卡片与更多操作                   L291
- *
- * ─── 主页面入口 ─────────────────────────────────────────────────────
- *   export default ProjectList()     搜索、项目筛选和弹窗编排             L420
- *     ├─ [状态] searchValue / searchFocused / searchHovered              L421–L423
- *     ├─ [状态] renameTarget / deleteTarget                               L424–L425
- *     └─ [函数] filtered             根据项目名称过滤列表                  L427
- *   2026-09-22  标题通过 title 参数传入，区分自由画布项目与工作流项目
+ * @structure-index：2026-10-27
+ * 页面职责：项目筛选、卡片操作与弹窗编排；新建入口复用 CreateCard。
+ * FONT L32
+ * 图标组件 L37
+ * MoreMenu L84
+ * RenameModal L101
+ * NewProjectCard L232
+ * ProjectCard L236
+ * ProjectList L366
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-22  项目删除二次确认改用标准 ConfirmDialog
  *   2026-07-22  移除更多操作下拉菜单选项的黑色描边
@@ -33,12 +18,14 @@
  *   2026-07-15  抽离通用按钮组件并迁移弹窗操作按钮
  *   2026-07-15  将项目操作菜单项迁移到 Button 基础能力
  *   2026-07-15  按当前代码补齐结构索引行号
+
+ *   2026-10-27 新建项目与新建草稿共用 CreateCard 视觉。
  */
 import { useState, useRef, useEffect } from 'react';
 import defaultCover from '../assets/project-default-cover.png';
 import { formatRelativeTime } from '../utils/formatTime';
 import { normalizeImageUrl } from '../utils/imageUrl';
-import { Button, ButtonGroup, DeleteIcon, DropdownMenu, IconButton, TextButton } from '../components/ui';
+import { Button, ButtonGroup, CreateCard, DeleteIcon, DropdownMenu, IconButton, TextButton } from '../components/ui';
 import ConfirmDialog from '../components/ConfirmDialog';
 import RemoteReadStatus from '../components/feedback/RemoteReadStatus';
 
@@ -52,15 +39,6 @@ function SearchIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
       <path d="M7 12.667C10.13 12.667 12.667 10.13 12.667 7C12.667 3.87 10.13 1.333 7 1.333C3.87 1.333 1.333 3.87 1.333 7C1.333 10.13 3.87 12.667 7 12.667Z" stroke="#FFFFFF" strokeLinejoin="round" />
       <path d="M11.074 11.074L13.902 13.902" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-      <line x1="10" y1="4" x2="10" y2="16" stroke="#FFFFFF33" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="4" y1="10" x2="16" y2="10" stroke="#FFFFFF33" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
@@ -252,43 +230,7 @@ function RenameModal({ initialName, onConfirm, onCancel }) {
 // ── Project Card ───────────────────────────────────────────────────────────
 
 function NewProjectCard({ onClick }) {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <div
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        width: '100%',
-        aspectRatio: '3/2',
-        borderRadius: '8px',
-        background: hovered ? '#252626' : '#1D1E1E',
-        border: '1.5px dashed #FFFFFF33',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '8px',
-        cursor: 'pointer',
-        transition: 'background 150ms',
-      }}
-    >
-      <div
-        style={{
-          width: '32px',
-          height: '32px',
-          borderRadius: '50%',
-          background: '#FFFFFF14',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <PlusIcon />
-      </div>
-      <span style={{ fontFamily: FONT, fontSize: '13px', color: '#FFFFFF66' }}>新建项目</span>
-    </div>
-  );
+  return <CreateCard onClick={onClick} label="新建项目" />;
 }
 
 function ProjectCard({ project, onRename, onCopy, onDelete, onOpen }) {

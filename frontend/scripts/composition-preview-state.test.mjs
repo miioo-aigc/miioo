@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import { after, test } from 'node:test';
+import { createTestViteServer } from './lib/create-test-vite-server.mjs';
+const server = await createTestViteServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom' });
+after(() => server.close());
+const { useCompositionEditorStore: store } = await server.ssrLoadModule('/src/stores/compositionEditorStore.js');
+test('拖动与末尾重播递增定位序号，逐帧推进和暂停不递增，空时间线不起播', () => {
+  store.setState({ segments: [{ id: 'a', type: 'audio', duration: 10, start: 0 }], cursor: 0, seekEpoch: 4, playing: false });
+  store.getState().play();
+  assert.equal(store.getState().seekEpoch, 4);
+  store.getState().onCursorTick(3);
+  store.getState().pause();
+  assert.equal(store.getState().seekEpoch, 4);
+  store.getState().seek(99);
+  assert.equal(store.getState().cursor, 10);
+  assert.equal(store.getState().seekEpoch, 5);
+  store.getState().play();
+  assert.equal(store.getState().cursor, 0);
+  assert.equal(store.getState().seekEpoch, 6);
+  store.getState().seek(-1);
+  assert.equal(store.getState().cursor, 0);
+  assert.equal(store.getState().seekEpoch, 7);
+  store.setState({ segments: [] });
+  store.getState().play();
+  assert.equal(store.getState().playing, false);
+});

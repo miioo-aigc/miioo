@@ -124,9 +124,11 @@ self.onmessage = async ({ data }) => {
       if (!canvas || pending || data.index !== selected) throw new Error('画面尚未就绪，请稍后下载');
       if (!data.originalUrl) throw new Error('未找到原视频地址，无法下载原画图片');
       const blob = await exportOriginal(data);
-      self.postMessage({ type: 'export', blob, index: selected, purpose: data.purpose || 'download' });
+      self.postMessage({ type: 'export', blob, index: selected, timestamp: times[data.index], purpose: data.purpose || 'download' });
     }
   } catch (error) {
-    fail(error.message || '视频读取失败，请检查视频地址和跨域权限', data.id);
+    if (data.type === 'export') {
+      self.postMessage({ type: 'export-error', message: /^[\u4e00-\u9fff]/u.test(error.message || '') ? error.message : '原视频提帧失败，请重试' });
+    } else fail(error.message || '视频读取失败，请检查视频地址和跨域权限', data.id);
   }
 };

@@ -65,12 +65,12 @@ function DownloadIcon() {
 
 function ReferenceImageGrid({ title, items = [] }) {
   if (!items.length) return null;
-  return <>{DIVIDER}<section style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 20px' }}><span style={{ color: '#FFFFFF99', font: `12px/14px ${FONT}`, letterSpacing: '0.06em' }}>{title}</span><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px' }}>{items.map((item, index) => <div key={`${item.url}-${index}`} style={{ width: '100%', aspectRatio: '1', overflow: 'hidden', borderRadius: '6px', border: '1px solid #FFFFFF14', background: '#FFFFFF14' }}><StoryboardMediaPreview media={item} alt={item.name || title} /></div>)}</div></section></>;
+  return <>{DIVIDER}<section style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 20px' }}><span style={{ color: '#FFFFFF99', font: `12px/14px ${FONT}`, letterSpacing: '0.06em' }}>{title}</span><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px' }}>{items.map((item, index) => <div key={`${item.url}-${index}`} style={{ width: '100%', aspectRatio: '1', overflow: 'hidden', borderRadius: '6px', border: '1px solid #FFFFFF14', background: '#FFFFFF14' }}><StoryboardMediaPreview retryOnError={false} media={item} alt={item.name || title} /></div>)}</div></section></>;
 }
 
 function FrameReferenceGrid({ firstFrame, lastFrame }) {
   if (!firstFrame && !lastFrame) return null;
-  return <>{DIVIDER}<section style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px', padding: '16px 20px' }}>{[['首帧', firstFrame], ['尾帧', lastFrame]].map(([title, item]) => <div key={title} style={{ display: 'flex', minWidth: 0, flexDirection: 'column', gap: '12px' }}><span style={{ color: '#FFFFFF99', font: `11px/14px ${FONT}`, letterSpacing: '0.06em' }}>{title}</span><div style={{ width: '100%', height: '84px', overflow: 'hidden', borderRadius: '6px', border: '1px solid #FFFFFF14', background: '#FFFFFF14' }}>{item ? <StoryboardMediaPreview media={item} alt={title} /> : null}</div></div>)}</section></>;
+  return <>{DIVIDER}<section style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px', padding: '16px 20px' }}>{[['首帧', firstFrame], ['尾帧', lastFrame]].map(([title, item]) => <div key={title} style={{ display: 'flex', minWidth: 0, flexDirection: 'column', gap: '12px' }}><span style={{ color: '#FFFFFF99', font: `11px/14px ${FONT}`, letterSpacing: '0.06em' }}>{title}</span><div style={{ width: '100%', height: '84px', overflow: 'hidden', borderRadius: '6px', border: '1px solid #FFFFFF14', background: '#FFFFFF14' }}>{item ? <StoryboardMediaPreview retryOnError={false} media={item} alt={title} /> : null}</div></div>)}</section></>;
 }
 
 function ReferenceVideoGrid({ items = [] }) {

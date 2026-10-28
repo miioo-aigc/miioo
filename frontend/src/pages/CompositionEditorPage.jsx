@@ -1,7 +1,14 @@
+/**
+ * 结构索引（2026-10-28）
+ * 导入与常量：L7–L25；素材归一化：L27–L68；页面入口与数据恢复：L70–L180；视图编排：L182–L224。
+ * 更新：保留原文件身份与导出来源；中央视频预览由 PreviewCanvas 独立请求轻量预览；图片使用原图。
+ * 页面仅负责加载、草稿恢复和面板编排；媒体鉴权由 API 与播放 Hook 承担。
+ */
 import { useCallback, useEffect, useState } from 'react';
 import { apiGetCompositions } from '../api/compositions';
 import { getErrorMessage } from '../api/error';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import { compositionMediaSource } from '../utils/CompositionMediaSource';
 import { resolveFinalizedStoryboardAssets, getFinalizedStoryboardMedia, getMissingCompositionAssets, selectFinalizedStoryboardAssets } from '../utils/FinalizedStoryboardAssets';
 import { useCompositionEditorStore } from '../stores/compositionEditorStore';
 import EditorHeader from '../components/compositionEditor/EditorHeader';
@@ -28,7 +35,7 @@ function toEditorAsset(item) {
   const assetType = item.asset_type || item.type || '';
   const isVideo = assetType === 'video';
   const thumbnail = normalizeImageUrl(item.thumbnail_url || meta.thumbnail_url) || null;
-  const fileUrl = normalizeImageUrl(item.file_url) || null;
+  const fileUrl = compositionMediaSource(item) || null;
   const rawDuration = meta.duration ?? item.duration;
   return {
     id: item.id,
@@ -52,6 +59,7 @@ function toEditorAsset(item) {
     category: item.category || '',
     shot_number: meta.shot_number ?? null,
     storyboard_id: meta.storyboard_id ?? null,
+    storyboardMediaUrl: meta.storyboard_media_url ?? null,
     episode_number: meta.episode_number ?? null,
     is_primary: item.is_primary ?? false,
     scope: item.scope || 'personal',
@@ -177,7 +185,7 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
       style={{ fontFamily: FONT, ...(embedded ? { marginBottom: '24px', marginRight: '32px' } : {}) }}
     >
       <section
-        className={embedded ? 'flex min-h-0 flex-1 flex-col gap-[12px] overflow-hidden rounded-[12px] border border-stroke-normal bg-[#060606] px-[16px] py-[16px]' : 'flex min-h-0 flex-1 flex-col'}
+        className={embedded ? 'flex min-h-0 flex-1 flex-col gap-[8px] overflow-hidden rounded-[12px] border border-stroke-normal bg-[#060606] px-[16px] pt-[8px] pb-[16px]' : 'flex min-h-0 flex-1 flex-col'}
         style={embedded ? { borderRadius: '12px' } : undefined}
       >
       {embedded ? <WorkspaceHeader projectName={projectName} episodes={episodes} episode={episode} onEpisodeChange={setEpisode} onBack={onBack} showToast={showToast} ready={initialized && isLoaded} /> : <EditorHeader />}

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { coverTransform } from '../utils/CompositionTransform';
 import { getTrackDeletionState, segmentTrack } from '../utils/TrackDeletion';
 import { allocateSubtitles, DEFAULT_SUBTITLE_STYLE } from '../utils/SubtitleImport';
 import {
@@ -178,6 +179,7 @@ export function serializeTimeline(segments = []) {
       item.speed = segmentSpeedOf(seg);
     }
     if (seg.type === 'video') item.has_audio = seg.hasAudio !== false;
+    if ((seg.type === 'image' || seg.type === 'video') && seg.visualTransform) item.visual_transform = seg.visualTransform;
     if (seg.type === 'audio') item.volume = Math.round(clampNumber(seg.volume ?? 1, 0, 2) * 100) / 100;
     // transition 仅图片段输出
     if (seg?.type === 'image') {
@@ -231,11 +233,12 @@ export function offsetClampOf(seg) {
  */
 function normalizeSegmentExtras(item, type) {
   if (type === 'image') {
-    return { start: Number.isFinite(Number(item?.start)) ? Math.max(0, Number(item.start)) : undefined, speed: 1, transition: 'none' };
+    return { visualTransform: item.visual_transform ?? null, start: Number.isFinite(Number(item?.start)) ? Math.max(0, Number(item.start)) : undefined, speed: 1, transition: 'none' };
   }
   const speed = Number(item?.speed);
   const extras = { speed: Number.isFinite(speed) && speed > 0 ? clampNumber(speed, 0.5, 4) : 1 };
   if (type === 'video') extras.hasAudio = item.has_audio !== false;
+  if (type === 'video') extras.visualTransform = item.visual_transform ?? null;
   if (type === 'audio') extras.volume = clampNumber(item.volume ?? 1, 0, 2);
   if (type === 'audio' || type === 'video' || type === 'subtitle') {
     const start = Number(item?.start);
@@ -258,7 +261,8 @@ const initialExportState = {
 };
 
 export const useCompositionEditorStore = create((rawSet, get) => {
-  const snapshot = (state) => ({ segments: state.segments, selectedId: state.selectedId, selectedIds: state.selectedIds, album: state.album, libraryAssetIds: state.libraryAssetIds, trackSettings: state.trackSettings, mainTracks: state.mainTracks });
+  let saveQueue = Promise.resolve();
+  const snapshot = (state) => ({ aspectRatio: state.aspectRatio, segments: state.segments, selectedId: state.selectedId, selectedIds: state.selectedIds, album: state.album, libraryAssetIds: state.libraryAssetIds, trackSettings: state.trackSettings, mainTracks: state.mainTracks });
   const moveVisualSegments = (state, id, start, insertion) => {
     if (!Number.isFinite(start) || start < 0) return null;
     const windows = computeVisualWindows(state.segments).windows;
@@ -364,7 +368,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     const remainder = window.end - state.cursor;
     if (!Number.isFinite(duration) || !Number.isFinite(remainder) || duration <= 0 || remainder <= 0) return;
     const segment = window.seg;
-    const right = { ...segment, id: randomId(), duration: remainder, offset: segment.type === 'image' ? 0 : (Number(segment.offset) || 0) + duration * segmentSpeedOf(segment), ...(segment.type === 'audio' ? { start: state.cursor } : {}) };
+    const right = { ...segment, id: randomId(), duration: remainder, offset: segment.type === 'image' ? 0 : (Number(segment.offset) || 0) + duration * segmentSpeedOf(segment), start: state.cursor };
     set({ segments: state.segments.flatMap((item) => item.id === segment.id ? [{ ...item, duration }, right] : [item]), selectedId: right.id, dirty: true, dirtyRev: state.dirtyRev + 1, playing: false });
   },
   trimSelected: (side) => {
@@ -401,6 +405,8 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   dirty: false,
   dirtyRev: 0, // 每次置 dirty 的编辑自增，自动保存据此识别「有新修改」并防重复请求
   saving: false,
+  saveError: null,
+  saveSequence: 0,
   loaded: false,
   album: [],
   libraryAssetIds: [],
@@ -590,7 +596,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   }),
 
   init: async ({ projectId, compId, episodeId, compositions, isCancelled = () => false } = {}) => {
-    set({ compositionId: null, episodeId: episodeId ?? null, segments: [], playing: false, dirty: false, exportModalOpen: false, exportState: { ...initialExportState } });
+    set({ saveError: null, saveSequence: 0, compositionId: null, episodeId: episodeId ?? null, segments: [], playing: false, dirty: false, exportModalOpen: false, exportState: { ...initialExportState } });
     if (!projectId) {
       set({ projectId: null, dirty: false, dirtyRev: 0, loaded: true, exportState: { ...initialExportState } });
       return;
@@ -690,6 +696,8 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       assetId: asset.id,
       type,
       name: asset.name || '未命名素材',
+      sourceAspectRatio: asset.ratio || asset.resolution || null,
+      visualTransform: type === 'image' || type === 'video' ? coverTransform() : undefined,
       sourceUrl: asset.videoUrl || asset.fileUrl || null,
       posterUrl: asset.posterUrl || null,
       thumbnailUrl: asset.url || asset.thumbnailUrl || null,
@@ -862,7 +870,54 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       return { segments, dirty: true, dirtyRev: state.dirtyRev + 1, playing: false };
     }),
 
-  select: (id) => set({ selectedId: id }),
+  selectMany: (ids) => rawSet((state) => {
+    const valid = [...new Set(ids)].filter((id) => state.segments.some((seg) => seg.id === id));
+    return { selectedIds: valid, selectedId: valid.length === 1 ? valid[0] : null };
+  }),
+  applySelectionAction: (action, value) => {
+    const before = get();
+    const ids = before.selectedIds.length ? before.selectedIds : before.selectedId ? [before.selectedId] : [];
+    if (!ids.length || !['split', 'trimLeft', 'trimRight', 'detach', 'speed', 'volume', 'delete'].includes(action)) return;
+    // 先对整个选择集验证，再批量执行；一次批量操作只写一条撤销记录。
+    const chosen = ids.map((id) => before.segments.find((seg) => seg.id === id));
+    const windows = [...computeVisualWindows(before.segments).windows, ...computeAudioWindows(before.segments).windows];
+    if (chosen.some((seg) => !seg || seg.type === 'subtitle')) return;
+    if (['split', 'trimLeft', 'trimRight'].includes(action) && !ids.every((id) => {
+      const win = windows.find((item) => item.seg.id === id);
+      return win && before.cursor > win.start && before.cursor < win.end;
+    })) return;
+    if (action === 'detach' && !chosen.every((seg) => seg.type === 'video' && !before.hasDetachedAudio(seg.id))) return;
+    if (action === 'speed' && !chosen.every((seg) => ['video', 'audio'].includes(seg.type))) return;
+    if (action === 'volume' && !chosen.every((seg) => seg.type === 'audio')) return;
+    if (action === 'delete') { before.deleteSelected(); return; }
+    const resultIds = [];
+    // 从右往左处理，避免前段裁剪导致后段串行窗口位移。
+    const ordered = [...ids].sort((a, b) => (windows.find((w) => w.seg.id === b)?.start || 0) - (windows.find((w) => w.seg.id === a)?.start || 0));
+    ordered.forEach((id) => {
+      rawSet({ selectedId: id, selectedIds: [], cursor: before.cursor });
+      if (action === 'split') get().splitSelected();
+      if (action === 'trimLeft' || action === 'trimRight') get().trimSelected(action === 'trimLeft' ? 'left' : 'right');
+      if (action === 'detach') get().detachAudio(id);
+      if (action === 'speed') get().setSpeed(id, value);
+      if (action === 'volume') get().updateSegment(id, { volume: clampNumber(value, 0, 2) });
+      resultIds.push(get().selectedId || id);
+    });
+    const changed = get().segments !== before.segments;
+    rawSet({ cursor: before.cursor, selectedId: resultIds.length === 1 ? resultIds[0] : null, selectedIds: resultIds,
+      past: changed && before.loaded ? [...before.past, snapshot(before)].slice(-100) : before.past,
+      future: changed ? [] : before.future });
+  },
+
+  select: (id) => set({ selectedId: id, selectedIds: [], playing: false }),
+
+  previewTransform: (id, visualTransform) => rawSet((state) => ({
+    segments: state.segments.map((seg) => seg.id === id ? { ...seg, visualTransform } : seg), playing: false, transformInProgress: true,
+  })),
+  commitTransform: (before, cancel = false) => rawSet((state) => {
+    if (cancel) return { segments: before.segments, transformInProgress: false };
+    if (JSON.stringify(before.segments) === JSON.stringify(state.segments)) return { transformInProgress: false };
+    return { transformInProgress: false, past: [...state.past, snapshot(before)].slice(-100), future: [], dirty: true, dirtyRev: state.dirtyRev + 1 };
+  }),
 
   /** 设置片段倍速（仅 video/audio；图片恒 1 不可设置）。保持源窗口不变重算时间线时长 */
   setSpeed: (id, speed) => {
@@ -882,7 +937,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   detachAudio: (segmentId) => {
     const state = get();
     const seg = state.segments.find((s) => s.id === segmentId);
-    if (!seg || seg.type !== 'video' || seg.hasAudio === false || state.hasDetachedAudio(segmentId)) return;
+    if (!seg || seg.type !== 'video' || state.hasDetachedAudio(segmentId)) return;
     // 视频段当前时间线起点（V1 串行窗口）
     const { windows } = computeVisualWindows(state.segments);
     const win = windows.find((w) => w.seg.id === segmentId);
@@ -917,12 +972,11 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     });
   },
 
-  /** 判定视频段是否已分离过音频：A1 存在同 assetId 且时间线起点对齐（容差 0.05s）的音频段 */
+  /** 判定是否仍有同资产、起点对齐的独立音频（容差 0.05s）；原声关闭不代表独立音频仍存在。 */
   hasDetachedAudio: (segmentId) => {
     const state = get();
     const seg = state.segments.find((s) => s.id === segmentId);
     if (!seg || seg.type !== 'video') return false;
-    if (seg.hasAudio === false) return true;
     const { windows } = computeVisualWindows(state.segments);
     const win = windows.find((w) => w.seg.id === segmentId);
     if (!win) return false;
@@ -958,12 +1012,31 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   setAspectRatio: (aspectRatio) =>
     set((state) => {
       if (aspectRatio === state.aspectRatio) return {};
-      return { aspectRatio, dirty: true, dirtyRev: state.dirtyRev + 1 };
+      return { aspectRatio, segments: state.segments.map((seg) => seg.visualTransform && seg.visualTransform.mode !== 'legacy_contain'
+        ? { ...seg, visualTransform: coverTransform() } : seg), playing: false, dirty: true, dirtyRev: state.dirtyRev + 1 };
     }),
+
+  aspectConfirmation: null,
+  requestAspectRatio: (aspectRatio) => {
+    const state = get();
+    if (aspectRatio === state.aspectRatio) return;
+    const hasManual = state.segments.some((seg) => seg.visualTransform?.mode === 'manual');
+    if (hasManual) set({ aspectConfirmation: aspectRatio });
+    else get().setAspectRatio(aspectRatio);
+  },
+  cancelAspectRatio: () => set({ aspectConfirmation: null }),
+  confirmAspectRatio: () => {
+    const aspectRatio = get().aspectConfirmation;
+    if (!aspectRatio) return;
+    get().setAspectRatio(aspectRatio);
+    set({ aspectConfirmation: null });
+  },
 
   buildTimeline: () => serializeTimeline(get().segments),
 
-  save: async () => {
+  save: () => {
+    set({ saving: true, saveError: null });
+    const task = saveQueue.catch(() => {}).then(async () => {
     const state = get();
     const timeline = serializeTimeline(state.segments);
     const payload = {
@@ -978,7 +1051,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       }])),
     };
     const revAtStart = state.dirtyRev;
-    set({ saving: true });
+    set({ saving: true, saveError: null });
     try {
       let comp;
       if (!state.compositionId) {
@@ -995,14 +1068,19 @@ export const useCompositionEditorStore = create((rawSet, get) => {
         aspectRatio: changedDuringSave ? current.aspectRatio : comp.aspectRatio || comp.aspect_ratio || current.aspectRatio,
         // 保存期间又有新编辑时保持未保存态，由自动保存继续承接
         dirty: changedDuringSave,
+        saveError: null,
+        saveSequence: current.saveSequence + 1,
         saving: false,
       });
       if (changedDuringSave) scheduleAutoSave();
       return comp;
     } catch (err) {
-      set({ saving: false });
+      set({ saving: false, saveError: getErrorMessage(err, '保存草稿失败') });
       throw err;
     }
+    });
+    saveQueue = task;
+    return task;
   },
 
   startExport: async () => {
@@ -1020,6 +1098,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     // 先确保工程已保存
     try {
       await state.save();
+      while (get().dirty) await get().save();
     } catch (error) {
       set({ exportSubmitting: false, exportState: { ...initialExportState, status: 'failed', error: getErrorMessage(error, '保存工程失败，无法导出') } });
       return;
@@ -1095,7 +1174,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     set((state) => {
       const total = computeTotalDuration(state.segments);
       const next = clampNumber(time, 0, total);
-      return { cursor: next, seekEpoch: state.seekEpoch + 1 };
+      return { cursor: next, seekEpoch: state.seekEpoch + 1, playing: false };
     }),
 
   onCursorTick: (time) =>
@@ -1118,6 +1197,7 @@ function scheduleAutoSave() {
 
 function runAutoSave() {
   const st = useCompositionEditorStore.getState();
+  if (st.transformInProgress) { scheduleAutoSave(); return; }
   if (!st.dirty || st.saving) return;
   st.save().catch(() => {
     // 失败不自动重试：等待用户再次产生新修改，或手动点「保存草稿」

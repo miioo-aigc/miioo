@@ -13,7 +13,7 @@ export default function useVideoEditSubmission(source, onComplete, mode = 'trim'
   }, []);
   async function submit(options, onStarted) {
     const result = await (submitFromHost || runVideoEdit)(source, options, onStarted);
-    if (result && mounted.current) onComplete?.(result);
+    if (result && mounted.current) await onComplete?.(result);
   }
   return { ...state, submit };
 }

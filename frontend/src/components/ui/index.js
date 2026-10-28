@@ -19,3 +19,8 @@ export { FavoriteIcon, DeleteIcon } from './ActionIcons';
 export { CropIcon, RotateCounterClockwiseIcon, RotateClockwiseIcon, FlipHorizontalIcon, FlipVerticalIcon, OriginalRatioIcon, CustomRatioIcon } from './ImageEditIcons';
 export { RatioIcon } from './RatioIcon';
 export { EditFilmIcon, EditExportIcon } from './EditIcons';
+
+export { default as CreateCard } from './CreateCard';
+export { default as CloudSaveIndicator } from './CloudSaveIndicator';
+
+export { default as VideoPlayerBar } from './VideoPlayerBar';

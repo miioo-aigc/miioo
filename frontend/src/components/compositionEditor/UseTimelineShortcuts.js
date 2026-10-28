@@ -41,6 +41,7 @@ export default function useTimelineShortcuts(showToast) {
       if (action === 'save') { void state.save().catch((error) => showToast?.(error.message, 'error')); return; }
       if (action === 'togglePlay') { if (state.playing) state.pause(); else state.play(); return; }
       if (action === 'zoomIn' || action === 'zoomOut') { state.setZoom(state.zoom * (action === 'zoomIn' ? 1.25 : 0.8)); return; }
+      if (state.selectedIds.length > 1 && ['splitSelected', 'trimLeft', 'trimRight'].includes(action)) { state.applySelectionAction(action === 'splitSelected' ? 'split' : action); return; }
       if (action === 'trimLeft' || action === 'trimRight') { state.trimSelected(action === 'trimLeft' ? 'left' : 'right'); return; }
       if (action === 'previous' || action === 'next') {
         const selected = state.segments.find((segment) => segment.id === state.selectedId);

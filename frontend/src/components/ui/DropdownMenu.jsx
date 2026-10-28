@@ -10,8 +10,9 @@
  *   2026-07-22  按标准菜单元素新增通用下拉菜单组件
  *   2026-10-09  二级菜单支持可视项上限、滚动与视口边缘避让
  *   2026-10-22  新增分割线和仅悬停危险态
+ *   2026-10-28  二级菜单支持最小宽度和内容自适应，按实际宽度避让
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -30,6 +31,7 @@ function DropdownMenuItem({ item, onClose, openSubmenuKey, onOpenSubmenu }) {
   const [childSubmenuKey, setChildSubmenuKey] = useState(null);
   const [submenuPosition, setSubmenuPosition] = useState({ left: 0, top: 0 });
   const itemRef = useRef(null);
+  const submenuRef = useRef(null);
   const disabled = item.disabled === true;
   const submenuItems = Array.isArray(item.items) ? item.items : null;
   const hasSubmenu = submenuItems?.length > 0;
@@ -38,6 +40,16 @@ function DropdownMenuItem({ item, onClose, openSubmenuKey, onOpenSubmenu }) {
   const active = hovered || pressed;
   const submenuWidth = item.submenuWidth || 178;
   const submenuHeight = Math.min(submenuItems?.length || 0, item.submenuMaxVisible || Infinity) * 34 + 10;
+
+  useLayoutEffect(() => {
+    if (!submenuOpen || !submenuRef.current || !itemRef.current) return;
+    const anchor = itemRef.current.getBoundingClientRect();
+    const panel = submenuRef.current;
+    const { width, height } = panel.getBoundingClientRect();
+    const left = anchor.right + 5 + width <= window.innerWidth - 8 ? anchor.right + 5 : anchor.left - width - 5;
+    panel.style.left = Math.max(8, Math.min(left, window.innerWidth - width - 8)) + 'px';
+    panel.style.top = Math.max(8, Math.min(anchor.top - 5, window.innerHeight - height - 8)) + 'px';
+  });
 
   function openSubmenu() {
     if (disabled || !hasSubmenu) { onOpenSubmenu?.(null); return; }
@@ -109,6 +121,7 @@ function DropdownMenuItem({ item, onClose, openSubmenuKey, onOpenSubmenu }) {
       </button>
       {hasSubmenu && submenuOpen && createPortal(
         <div
+          ref={submenuRef}
           role="menu"
           onMouseDown={(event) => event.stopPropagation()}
           onMouseEnter={(event) => event.stopPropagation()}
@@ -117,7 +130,9 @@ function DropdownMenuItem({ item, onClose, openSubmenuKey, onOpenSubmenu }) {
             position: 'fixed',
             ...submenuPosition,
             zIndex: 110,
-            width: submenuWidth,
+            width: item.submenuMinWidth != null ? 'max-content' : submenuWidth,
+            minWidth: item.submenuMinWidth,
+            whiteSpace: item.submenuMinWidth != null ? 'nowrap' : undefined,
             maxWidth: 'calc(100vw - 16px)',
             maxHeight: Math.min(submenuHeight, window.innerHeight - 16),
             overflowY: 'auto',

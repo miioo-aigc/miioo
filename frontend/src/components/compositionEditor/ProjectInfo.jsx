@@ -7,7 +7,7 @@ export default function ProjectInfo({ segments }) {
   const counts = Object.fromEntries(TYPES.map(([type]) => [type, 0]));
   segments.forEach(({ type }) => { if (type in counts) counts[type] += 1; });
 
-  return <section className="flex shrink-0 flex-col gap-[8px] text-font-size-14 text-text-secondary">
+  return <section className="flex shrink-0 flex-col gap-[8px] pt-[8px] text-font-size-14 text-text-secondary">
     <span>工程信息</span>
     <dl className="grid grid-cols-[64px_minmax(0,1fr)] items-start gap-x-[12px] gap-y-[8px]">
       <dt>总时长</dt>

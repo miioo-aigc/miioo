@@ -21,6 +21,7 @@
  *             - resplit         AI 重新分集弹窗中的等宽目标集数切换，支持输入项和单位
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-10-28  文字标签未选中悬停提亮至 white-80
  *   2026-07-22  为 resplit 变体增加可编辑输入项和单位插槽
  *   2026-08-04  为 resplit 输入项增加两侧 8px 计步器，数字和单位保持居中
  */
@@ -143,9 +144,9 @@ export default function Tabs({
         // ── 文字颜色 ──────────────────────────────────────────────
         let color;
         if (active) {
-          color = hasUnderline ? '#2DC3E1' : '#FFFFFF';
+          color = hasUnderline ? 'text-brand-main' : 'text-white-100';
         } else {
-          color = '#FFFFFF99';
+          color = 'text-white-60 hover:text-white-80';
         }
 
         // ── 字体粗细 ──────────────────────────────────────────────
@@ -160,11 +161,11 @@ export default function Tabs({
             key={opt.value}
             type="button"
             onClick={() => onChange?.(opt.value)}
-            className={btnClass}
+            className={`${btnClass} transition-colors duration-150 ${color}`}
           >
             <span
               className={lineHeightClass}
-              style={{ fontFamily, color }}
+              style={{ fontFamily }}
             >
               {opt.label}
             </span>

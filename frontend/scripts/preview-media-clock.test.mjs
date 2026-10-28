@@ -9,10 +9,29 @@ function media() {
     addEventListener(name, fn) { this.listeners.set(name, fn); },
     removeEventListener(name) { this.listeners.delete(name); },
     pause() { this.paused = true; },
-    play() { this.plays++; this.paused = false; return Promise.resolve(); },
+    play() { this.plays++; this.paused = false; this.listeners.get('playing')?.(); return Promise.resolve(); },
   };
 }
 const window = { start: 0, end: 10, seg: { type: 'audio', sourceUrl: 'test.mp3', offset: 0, speed: 1 } };
+
+test('尚未注册的预览和外部加载门控冻结指针与声音，取消播放后不会自动续播', async () => {
+  const clock = new PreviewMediaClock();
+  const audio = media();
+  const cleanup = clock.register('A1', audio, window, true, true, () => 2);
+  await Promise.resolve();
+  await Promise.resolve();
+  clock.require(['A1', 'video-new']);
+  assert.equal(clock.tick(2, 1, 1000, 10), 2);
+  assert.equal(audio.paused, true);
+  clock.require(['A1']);
+  clock.setBlocked(true);
+  assert.equal(clock.tick(2, 1, 2000, 10), 2);
+  cleanup();
+  clock.register('A1', audio, window, true, false, () => 2);
+  clock.setBlocked(false);
+  clock.tick(2, 1, 3000, 10);
+  assert.equal(audio.paused, true);
+});
 
 test('offset and speed conversions are inverse', () => {
   const item = { start: 3, seg: { offset: 2, speed: 1.5 } };
@@ -49,12 +68,12 @@ test('muted audio is not master and exceptional jumps are rate limited', () => {
   assert.equal(clock.tick(0, 0.1, 0, 10), 0.1);
   clock.register('A1', audio, window, true, true, () => 0);
   audio.currentTime = 5;
-  assert.equal(clock.tick(0, 0.1, 0, 10), 0);
-  assert.equal(audio.currentTime, 5);
-  assert.equal(clock.tick(0, 0.1, 1000, 10), 0);
-  assert.equal(audio.currentTime, 0);
+  assert.equal(clock.tick(0, 0.1, 0, 10), 0.25);
+  assert.equal(audio.currentTime, 0.25);
+  assert.equal(clock.tick(0.25, 0.1, 16, 10), 0.25);
+  assert.equal(audio.currentTime, 0.25);
 });
-test('buffering freezes timeline and pauses followers; recovery resumes them', async () => {
+test('缓冲时冻结全部轨道，全部就绪后采用音频时钟', async () => {
   const clock = new PreviewMediaClock();
   const audio = media();
   const follower = media();
@@ -67,7 +86,7 @@ test('buffering freezes timeline and pauses followers; recovery resumes them', a
   assert.equal(follower.paused, true);
   audio.readyState = 4;
   audio.currentTime = 0.1;
-  assert.equal(clock.tick(0, 0.1, 200, 10), 0.1);
+  assert.equal(clock.tick(0, 0.1, 200, 10), 0);
   assert.equal(follower.paused, false);
 });
 test('gaps retain source and use wall time bounded by next segment', () => {
@@ -98,4 +117,50 @@ test('master cannot advance past a clip boundary and ended media advances to its
   assert.equal(clock.tick(0, 0.3, 300, 0.2), 0.2);
   audio.ended = true;
   assert.equal(clock.tick(9.9, 0.1, 10000, 10), 10);
+});
+
+test('冷加载直到真实播放才采用媒体时间，定位期间不重复纠偏', () => {
+  const clock = new PreviewMediaClock();
+  const audio = media();
+  audio.src = 'old.mp3';
+  audio.play = function () { this.plays++; this.paused = false; return Promise.resolve(); };
+  clock.register('A1', audio, window, true, true, () => 0);
+  audio.listeners.get('loadedmetadata')();
+  audio.currentTime = 2;
+  assert.equal(clock.tick(0, 0.1, 100, 10), 0);
+  audio.listeners.get('playing')();
+  assert.equal(clock.tick(0.1, 0.1, 200, 10), 0.35);
+  audio.seeking = true;
+  assert.equal(clock.tick(0.35, 0.1, 216, 10), 0.35);
+  assert.equal(audio.currentTime, 0.35);
+  assert.equal(audio.plays, 1);
+});
+test('缓冲较久恢复后仍从冻结位置同步启动', async () => {
+  const clock = new PreviewMediaClock();
+  const audio = media();
+  const follower = media();
+  clock.register('A1', audio, window, true, true, () => 0);
+  clock.register('A2', follower, window, true, true, () => 0);
+  await Promise.resolve();
+  await Promise.resolve();
+  audio.readyState = 2;
+  assert.equal(clock.tick(0, 1, 1000, 10), 0);
+  assert.equal(follower.paused, true);
+  audio.readyState = 4;
+  assert.equal(clock.tick(0, 0.1, 1100, 10), 0);
+  assert.equal(audio.currentTime, 0);
+  assert.equal(follower.plays, 2);
+});
+test('附加音轨缓冲恢复事件按最新游标对齐', () => {
+  const clock = new PreviewMediaClock();
+  const audio = media();
+  let cursor = 0;
+  clock.register('A2', audio, window, true, true, () => cursor);
+  audio.listeners.get('waiting')();
+  cursor = 2;
+  audio.listeners.get('playing')();
+  assert.equal(audio.currentTime, 2);
+  audio.currentTime = 2.2;
+  audio.listeners.get('playing')();
+  assert.equal(audio.currentTime, 2.2);
 });

@@ -2,7 +2,7 @@
  * @file AssetPickerModal.jsx
  * @description 项目资产、创作资产与 Seedance 素材的统一选择弹窗。
  *
- * ─── 结构索引 ─────────────────────────────────────────── 2026-10-22：账号入口 L490、分页 L1125、读取反馈 L1637。
+ * ─── 结构索引 ─────────────────────────────────────────── 2026-10-28：账号入口 L491、分页 L1126、内容读取反馈 L1639。
  *   更新：关闭卸载及账号/父项目/类型切换隔离；非创作读取错误重试、旧请求写回拦截和异步确认锁。
  *   更新：补全传入当前会话检查，失败走原重试反馈；共享补全限制并发并停止旧调度。
  *   后续：全量分页与服务端定稿/范围契约待处理，本轮不代表大容量目标完成。
@@ -14,6 +14,7 @@
  *   2026-09-28：配音资产透传台词，项目资产仅保留明确台词字段，不把音乐提示词当台词。
  *   2026-10-09：可选批量选择校验，等待异步确认结束后关闭，确认失败保留弹窗；默认不影响其他调用方。
  *
+ *   2026-10-28  各级标签悬停提亮至 white-80；选中态不变。
  *   2026-08-20  Seedance 视频对齐资产库，通过原生视频短暂解码后停帧展示封面
  */
 
@@ -1467,20 +1468,20 @@ function AccountAssetPickerModal({
             return (
               <div
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => setActiveTab(tab)} className={`transition-colors duration-150 ${isActive ? 'text-brand-main' : 'text-white-60 hover:text-white-80'}`}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '4px',
                   paddingTop: '12px', paddingBottom: '6px',
                   borderBottom: '2px solid transparent',
-                  cursor: 'pointer', flexShrink: 0, transition: 'border-color 100ms',
+                  cursor: 'pointer', flexShrink: 0,
                 }}
               >
                 <span style={{
                   fontFamily: isActive ? FONT_MEDIUM : FONT,
                   fontWeight: isActive ? 500 : 400,
                   fontSize: '14px', lineHeight: '20px',
-                  color: isActive ? '#2DC3E1' : '#FFFFFF99',
-                  transition: 'color 100ms',
+                  color: 'inherit',
+                  transition: 'none',
                 }}>{label}</span>
               </div>
             );
@@ -1586,10 +1587,10 @@ function AccountAssetPickerModal({
                   return (
                     <div
                       key={tab}
-                      onClick={() => setProjectSubTab(tab)}
+                      onClick={() => setProjectSubTab(tab)} className={`transition-colors duration-150 ${isActive ? 'text-white-100' : 'text-white-60 hover:text-white-80'}`}
                       style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
                     >
-                      <span style={{ fontFamily: isActive ? FONT_MEDIUM : FONT, fontWeight: isActive ? 500 : 400, fontSize: '14px', lineHeight: '18px', color: isActive ? '#FFFFFF' : '#FFFFFF99', transition: 'color 100ms', whiteSpace: 'nowrap' }}>{tab}</span>
+                      <span style={{ fontFamily: isActive ? FONT_MEDIUM : FONT, fontWeight: isActive ? 500 : 400, fontSize: '14px', lineHeight: '18px', color: 'inherit', transition: 'none', whiteSpace: 'nowrap' }}>{tab}</span>
                     </div>
                   );
                 })}
@@ -1603,10 +1604,10 @@ function AccountAssetPickerModal({
                 return (
                   <div
                     key={tab}
-                    onClick={() => setCreativeSubTab(tab)}
+                    onClick={() => setCreativeSubTab(tab)} className={`transition-colors duration-150 ${isActive ? 'text-white-100' : 'text-white-60 hover:text-white-80'}`}
                     style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
                   >
-                    <span style={{ fontFamily: isActive ? FONT_MEDIUM : FONT, fontWeight: isActive ? 500 : 400, fontSize: '14px', lineHeight: '18px', color: isActive ? '#FFFFFF' : '#FFFFFF99', transition: 'color 100ms', whiteSpace: 'nowrap' }}>{tab}</span>
+                    <span style={{ fontFamily: isActive ? FONT_MEDIUM : FONT, fontWeight: isActive ? 500 : 400, fontSize: '14px', lineHeight: '18px', color: 'inherit', transition: 'none', whiteSpace: 'nowrap' }}>{tab}</span>
                   </div>
                 );
               })}
@@ -1621,7 +1622,7 @@ function AccountAssetPickerModal({
               ) : (
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '24px' }}>
                   {['real', 'virtual'].map((tab) => (
-                    <button key={tab} type="button" onClick={() => setSeedanceSubTab(tab)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: seedanceSubTab === tab ? FONT_MEDIUM : FONT, fontSize: '14px', lineHeight: '18px', color: seedanceSubTab === tab ? '#FFFFFF' : '#FFFFFF99' }}>
+                    <button key={tab} type="button" onClick={() => setSeedanceSubTab(tab)} className={`transition-colors duration-150 ${seedanceSubTab === tab ? 'text-white-100' : 'text-white-60 hover:text-white-80'}`} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: seedanceSubTab === tab ? FONT_MEDIUM : FONT, fontSize: '14px', lineHeight: '18px' }}>
                       {tab === 'real' ? '真人人像' : '虚拟人像'}
                     </button>
                   ))}

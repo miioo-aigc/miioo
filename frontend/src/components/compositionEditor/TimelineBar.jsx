@@ -2,14 +2,19 @@
  * @file TimelineBar.jsx
  * @structure-index
  *
- * 时间线结构：素材展示辅助组件 L63；状态与缩放 L116；拖拽预览与提交 L220；
- * 定位与播放游标 L402；片段卡片 L460；轨道布局与工具栏 L527。
+ * 时间线结构：素材展示辅助组件 L60；状态与缩放 L108；拖拽预览与提交 L324；
+ * 定位与播放游标 L402；片段卡片 L457；轨道布局与工具栏 L527。
  *
+ * 2026-10-28 真实波形独立Hook；常驻音轨与默认V1，补齐按键多选、相交框选与共同操作菜单。
  * 更新记录：2026-10-09 增强时间刻度对比度；吸顶刻度内补齐手柄到轨道游标线连接段。
  * 2026-10-15 全选高亮、拖拽快捷键隔离及 Esc 取消；键盘分发独立于时间线展示。2026-10-23 倍速文字改为 80% 白色，隔离横向滚动边界手势。
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import WaveformDisplay from './WaveformDisplay';
+import { useCompositionWaveforms } from './UseCompositionWaveforms';
 import TimelineToolbar from './TimelineToolbar';
+import useTimelineSelection from './UseTimelineSelection';
+import TimelineContextMenu from './TimelineContextMenu';
 import { ZoomIn, ZoomOut } from 'lucide-react';
 import TrackControls from './TrackControls';
 import MainTrackButton from './MainTrackButton';
@@ -43,14 +48,6 @@ const TRACK_TOP_GAP = 4;
 const VIDEO_ROW_H = TRACK_TOP_GAP + CLIP_H;
 const AUDIO_ROW_H = TRACK_TOP_GAP + AUDIO_CLIP_H;
 const RULER_H = 26;
-const PREVIEW_WAVEFORM = [
-  0.08, 0.12, 0.2, 0.16, 0.28, 0.42, 0.56, 0.38, 0.24, 0.18, 0.3, 0.48,
-  0.64, 0.58, 0.76, 0.62, 0.44, 0.32, 0.26, 0.2, 0.34, 0.5, 0.68, 0.8,
-  0.72, 0.54, 0.46, 0.38, 0.24, 0.18, 0.26, 0.42, 0.56, 0.48, 0.36, 0.3,
-  0.22, 0.16, 0.12, 0.2, 0.32, 0.46, 0.62, 0.74, 0.66, 0.5, 0.38, 0.28,
-  0.2, 0.14, 0.18, 0.3, 0.44, 0.58, 0.7, 0.62, 0.48, 0.34, 0.24, 0.18,
-  0.12, 0.16, 0.3, 0.54, 0.72, 0.86, 0.78, 0.6, 0.42, 0.3, 0.22, 0.14,
-];
 
 function ZoomInIcon() {
   return <ZoomIn size={16} />;
@@ -108,13 +105,11 @@ function ImageFilmstrip({ src }) {
   );
 }
 
-function PreviewWaveform({ values }) {
-  const points = values.map((amplitude, index) => `${(index / Math.max(1, values.length - 1)) * 100},${100 - Math.max(8, Math.min(100, Number(amplitude) * 100))}`).join(' ');
-  return <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full" aria-hidden="true"><polygon points={`0,100 ${points} 100,100`} fill="currentColor" /></svg>;
-}
-
 export default function TimelineBar({ showToast }) {
   const segments = useCompositionEditorStore((s) => s.segments);
+  const projectId = useCompositionEditorStore((s) => s.projectId);
+  const compositionId = useCompositionEditorStore((s) => s.compositionId);
+  const { waveforms, retryWaveform } = useCompositionWaveforms(segments, projectId, compositionId);
   const cursor = useCompositionEditorStore((s) => s.cursor);
   const zoom = useCompositionEditorStore((s) => s.zoom);
   const selectedId = useCompositionEditorStore((s) => s.selectedId);
@@ -128,6 +123,7 @@ export default function TimelineBar({ showToast }) {
   const setTrackSetting = useCompositionEditorStore((s) => s.setTrackSetting);
 
   const scrollRef = useRef(null);
+  const selection = useTimelineSelection(scrollRef);
   const trackLabelRef = useRef(null);
   // 指针锚定：缩放后待校正的 scrollLeft，待 zoom 变更提交 DOM 后再落地
   const pendingScrollRef = useRef(null);
@@ -145,7 +141,7 @@ export default function TimelineBar({ showToast }) {
   const { windows: subtitleAux } = computeSubtitleWindows(segments);
   const visualTracks = [...new Set(['V1', ...layoutSegments.filter((seg) => seg.type === 'video' || seg.type === 'image').map((seg) => seg.track || 'V1')])]
     .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
-  const audioTracks = [...new Set(['A1', ...layoutSegments.filter((seg) => seg.type === 'audio').map((seg) => seg.track || 'A1')])]
+  const audioTracks = [...new Set(['A1', ...Object.keys(trackSettings).filter((track) => /^A[1-6]$/.test(track)), ...layoutSegments.filter((seg) => seg.type === 'audio').map((seg) => seg.track || 'A1')])]
     .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
   const subtitleTracks = [...new Set(['S1', ...layoutSegments.filter((seg) => seg.type === 'subtitle').map((seg) => seg.track || 'S1')])];
   const trackRows = [[subtitleTracks, 'S', 'subtitle'], [visualTracks, 'V', 'visual'], [audioTracks, 'A', 'audio']].flatMap(([tracks, prefix, type]) => {
@@ -153,7 +149,7 @@ export default function TimelineBar({ showToast }) {
     return Array.from({ length: max }, (_, index) => {
       const track = `${prefix}${index + 1}`;
       if (!tracks.includes(track)) return [];
-      if (!layoutSegments.some((seg) => (prefix === 'V' ? seg.type === 'video' || seg.type === 'image' : seg.type === type) && (seg.track || `${prefix}1`) === track)) return [];
+      if (prefix !== 'A' && track !== 'V1' && !layoutSegments.some((seg) => (prefix === 'V' ? seg.type === 'video' || seg.type === 'image' : seg.type === type) && (seg.track || `${prefix}1`) === track)) return [];
       const height = prefix === 'S' ? TRACK_TOP_GAP + SUBTITLE_CLIP_H : prefix === 'A' ? AUDIO_ROW_H : VIDEO_ROW_H;
       const row = { track, type, height };
       return draggingId && showNewTrack?.after === track && max < 6
@@ -327,6 +323,7 @@ export default function TimelineBar({ showToast }) {
 
   const startTrackPointerDrag = (event, seg, win, isAudio) => {
     if (event.button !== 0 || event.target.closest('button') || pointerDragRef.current) return;
+    if (selection.modified(event) && seg.type !== 'subtitle') { suppressClickRef.current = false; return; }
     event.preventDefault();
     event.stopPropagation();
     const content = scrollRef.current?.firstElementChild;
@@ -471,9 +468,12 @@ export default function TimelineBar({ showToast }) {
       <div
         key={seg.id}
         draggable={false}
+        data-clip-id={seg.id}
+        data-box-selectable={seg.type !== 'subtitle'}
+        onContextMenu={(event) => { if (seg.type !== 'subtitle') selection.openMenu(event, seg.id); }}
         onDoubleClick={() => { if (seg.type === 'subtitle') document.getElementById('subtitle-text-editor')?.focus(); }}
         onPointerDown={(event) => { if (draggableSegment) startTrackPointerDrag(event, seg, win, isAudio); }}
-        onClick={(event) => { event.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } select(seg.id); seekAtPointer(event.clientX); }}
+        onClick={(event) => { event.stopPropagation(); if (seg.type !== 'subtitle' && selection.toggle(event, seg.id)) return; if (suppressClickRef.current) { suppressClickRef.current = false; return; } select(seg.id); seekAtPointer(event.clientX); }}
         className={`group absolute top-0 overflow-hidden rounded-medium border-2 flex flex-col justify-between !cursor-default ${
           selected
             ? 'bg-white-10 border-stroke-active'
@@ -503,18 +503,18 @@ export default function TimelineBar({ showToast }) {
           <span className="ml-auto shrink-0 text-[11px] text-white-60" style={{ fontFamily: FONT }}>{formatTime(seg.duration)}</span>
         </div>}
 
-        {isAudio && <div className="absolute inset-x-[6px] top-[22px] bottom-[6px] text-timeline-audio-waveform" aria-hidden="true">
-          <PreviewWaveform values={Array.isArray(seg.waveform) && seg.waveform.length > 0 ? seg.waveform : PREVIEW_WAVEFORM} />
+        {isAudio && <div className="absolute inset-x-[6px] top-[22px] bottom-[6px] text-timeline-audio-waveform">
+          <WaveformDisplay segment={seg} waveform={waveforms[seg.assetId]} onRetry={retryWaveform} />
         </div>}
 
-        {seg.type === 'video' && seg.hasAudio !== false && <div className="absolute inset-x-[6px] bottom-[2px] z-10 flex h-[14px] items-center gap-[2px] text-timeline-audio-waveform" aria-hidden="true">
-          <PreviewWaveform values={Array.isArray(seg.waveform) && seg.waveform.length > 0 ? seg.waveform : PREVIEW_WAVEFORM} />
+        {seg.type === 'video' && <div className="absolute inset-x-[6px] bottom-[2px] z-10 flex h-[14px] items-center gap-[2px] text-timeline-audio-waveform">
+          <WaveformDisplay segment={seg} waveform={waveforms[seg.assetId]} onRetry={retryWaveform} />
         </div>}
 
         {seg.type === 'subtitle' && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-purple-500/20 px-[6px] text-center text-[11px] text-white"><span className="truncate">{seg.text || '字幕'}</span></div>}
         {seg.type === 'subtitle' && seg.id === selectedId && <SubtitleTrimHandles segment={seg} zoom={zoom} />}
 
-        <div className="absolute inset-x-[6px] bottom-[3px] flex items-center justify-between gap-[2px]">
+        <div className="pointer-events-none absolute inset-x-[6px] bottom-[3px] flex items-center justify-between gap-[2px]">
           <span className="text-font-size-12 text-white-80 whitespace-nowrap" style={{ fontFamily: FONT }}>
             {speedText.replace(' · ', '')}
           </span>
@@ -526,6 +526,7 @@ export default function TimelineBar({ showToast }) {
 
   return (
     <div className="relative flex h-full w-full min-h-0 select-none flex-col bg-neutral-200">
+      {selection.menu && <TimelineContextMenu position={selection.menu} onClose={() => selection.setMenu(null)} />}
       <div className="shrink-0 pr-[208px]"><TimelineToolbar showToast={showToast} /></div>
       {/* 滚动容器：承载全部时间线内容，Ctrl/Cmd+滚轮缩放绑定其上 */}
       <div className="flex h-full min-h-0 flex-1 overflow-hidden">
@@ -542,7 +543,7 @@ export default function TimelineBar({ showToast }) {
       </div>
       </div>
       <div ref={scrollRef} className="timeline-scrollbar h-full min-h-0 min-w-0 flex-1 overflow-auto" onScroll={(event) => { if (trackLabelRef.current) trackLabelRef.current.style.transform = `translateY(${-event.currentTarget.scrollTop}px)`; }} style={{ scrollbarGutter: 'stable both-edges', overscrollBehaviorX: 'contain' }}>
-        <div className="relative flex-shrink-0" style={{ width: contentWidth, minWidth: '100%', minHeight: RULER_H + trackHeight + 16, height: RULER_H + trackHeight + 16 }}>
+        <div className="relative flex-shrink-0" onPointerDown={selection.startBox} onClickCapture={selection.captureClick} style={{ width: contentWidth, minWidth: '100%', minHeight: RULER_H + trackHeight + 16, height: RULER_H + trackHeight + 16 }}>
           {/* 刻度（步进自适应，每格一个刻度 + 标签） */}
           <div className="sticky top-0 z-[60] bg-neutral-200" style={{ height: RULER_H, cursor: 'pointer' }} onClick={clickTrack}>
             {minorTicks.map((time) => <div key={time} className="absolute top-0 h-[5px] w-px bg-white/45" style={{ left: time * zoom }} />)}
@@ -576,6 +577,7 @@ export default function TimelineBar({ showToast }) {
             </div>;
           })}
 
+          {selection.box && <div aria-hidden="true" className="pointer-events-none absolute z-[55] border border-stroke-active bg-tag-bg-blue" style={{ left: selection.box.left, top: selection.box.top, width: selection.box.right - selection.box.left, height: selection.box.bottom - selection.box.top }} />}
           {/* 游标线 */}
           <div className="absolute top-0 bottom-0 z-30 w-[2px] bg-[#CCCCCC] pointer-events-none" style={{ left: playheadLeft, transform: 'translateX(-1px)' }} />
         </div>

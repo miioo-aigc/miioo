@@ -1,45 +1,72 @@
-export function mediaSpeed(segment) {
-  const speed = Number(segment?.speed);
-  return Number.isFinite(speed) && speed > 0 ? speed : 1;
-}
+import { adoptAudioCursor, audioTargetTime, audioTimelineTime, speedOf } from './PreviewAudioClock.js';
+
+export const mediaSpeed = speedOf;
 export function mediaTime(window, cursor) {
-  return Math.max(0, (Number(window.seg.offset) || 0) + (cursor - window.start) * mediaSpeed(window.seg));
+  return audioTargetTime({ seg: window.seg, windowStart: window.start, cursor });
 }
 export function timelineTime(window, time) {
-  return window.start + (time - (Number(window.seg.offset) || 0)) / mediaSpeed(window.seg);
+  return audioTimelineTime({ seg: window.seg, windowStart: window.start, mediaTime: time });
 }
 
 // A single coordinator owns commands; animation frames read, rather than seek, the master.
 export class PreviewMediaClock {
   entries = new Map();
   master = null;
-  lastCorrection = 0;
+  lastMediaTime = null;
+  lastCorrection = -Infinity;
+  blocked = false;
+  externalBlocked = false;
+  required = [];
+
+  require(keys) { this.required = keys; }
+
+  setBlocked(value) {
+    this.externalBlocked = value;
+    if (value) {
+      this.blocked = true;
+      this.entries.forEach((entry) => entry.element.pause());
+    }
+  }
 
   register(key, element, window, audible, playing, cursor, onError) {
-    const entry = { element, window, audible, playing, pending: false, failed: false, onError };
+    const entry = { element, window, audible, playing, pending: false, failed: false, cold: true, onError };
     this.entries.set(key, entry);
     if (!window?.seg.sourceUrl) { element.pause(); return () => this.remove(key, entry); }
     const changed = element.getAttribute('src') !== window.seg.sourceUrl;
     if (changed) { element.pause(); element.src = window.seg.sourceUrl; }
+    entry.cold = changed || element.paused;
     element.playbackRate = mediaSpeed(window.seg);
     const position = () => {
       if (element.readyState < 1) return;
       const target = mediaTime(window, cursor());
-      if (Math.abs(element.currentTime - target) > 0.02) element.currentTime = target;
+      if (Math.abs(element.currentTime - target) > (playing ? 0.3 : 0.05)) element.currentTime = target;
     };
     const start = () => { if (playing) this.start(entry); };
     const loaded = () => { position(); start(); };
+    const canPlay = () => {
+      if (playing && !this.blocked && element.paused) { position(); start(); }
+    };
+    let recovering = false;
+    const waiting = () => { recovering = true; };
+    const didPlay = () => {
+      if (recovering) { recovering = false; position(); }
+      entry.cold = false;
+    };
     const error = () => { entry.failed = true; element.pause(); onError?.(); };
     element.addEventListener('loadedmetadata', loaded);
-    element.addEventListener('canplay', start);
+    element.addEventListener('canplay', canPlay);
     element.addEventListener('error', error);
+    element.addEventListener('playing', didPlay);
+    element.addEventListener('waiting', waiting);
     if (!changed) position();
     if (element.error) error();
     if (playing) { if (!changed) start(); } else element.pause();
     return () => {
       element.removeEventListener('loadedmetadata', loaded);
-      element.removeEventListener('canplay', start);
+      element.removeEventListener('canplay', canPlay);
       element.removeEventListener('error', error);
+      element.removeEventListener('playing', didPlay);
+      element.removeEventListener('waiting', waiting);
       this.remove(key, entry);
     };
   }
@@ -51,8 +78,8 @@ export class PreviewMediaClock {
   }
 
   start(entry) {
-    if (!entry.playing || entry.pending || entry.failed || entry.held || !entry.element.paused
-      || entry.element.readyState < 2) return;
+    if (this.blocked || !entry.playing || entry.pending || entry.failed || !entry.element.paused
+      || entry.element.readyState < 3) return;
     entry.pending = true;
     entry.element.play().catch((error) => {
       if (error.name !== 'AbortError' && entry.playing) {
@@ -67,40 +94,56 @@ export class PreviewMediaClock {
       && entry.window?.seg.sourceUrl && cursor >= entry.window.start && cursor < entry.window.end);
     const master = active.find((entry) => entry.audible && entry.window.seg.type === 'audio')
       || active.find((entry) => entry.window.seg.type === 'video');
-    if (!master) return Math.min(cursor + dt, boundary);
-    if (this.master !== master) { this.master = master; this.lastCorrection = now; }
-    master.held = false;
+    const wallNext = Math.min(cursor + Math.max(0, dt), boundary);
+    if (this.master !== master) {
+      this.master = master;
+      this.lastMediaTime = null;
+      this.lastCorrection = -Infinity;
+    }
+    if (this.externalBlocked || this.required.some((key) => !this.entries.get(key)?.window?.seg.sourceUrl)) {
+      active.forEach((entry) => entry.element.pause());
+      this.blocked = true;
+      this.lastMediaTime = null;
+      return cursor;
+    }
+    const allReady = active.every((entry) => !entry.failed && !entry.element.seeking && entry.element.readyState >= 3);
+    if (!allReady) {
+      this.blocked = true;
+      active.forEach((entry) => entry.element.pause());
+      this.lastMediaTime = null;
+      return cursor;
+    }
+    if (this.blocked) {
+      this.blocked = false;
+      active.forEach((entry) => {
+        const target = mediaTime(entry.window, cursor);
+        if (entry.element.readyState >= 1 && Math.abs(entry.element.currentTime - target) > 0.05) entry.element.currentTime = target;
+        this.start(entry);
+      });
+    }
+    active.forEach((entry) => this.start(entry));
+    if (!master) return wallNext;
     const media = master.element;
     if (media.ended) return Math.min(master.window.end, boundary);
-    if (media.seeking || media.readyState < 3 || media.paused || master.failed) {
-      active.forEach((entry) => { if (entry !== master) { entry.held = true; entry.element.pause(); } });
-      master.held = false;
-      this.start(master);
+    const healthy = !master.cold && !master.failed && !media.seeking
+      && !media.paused && !media.ended && media.readyState >= 3
+      && media.getAttribute('src') === master.window.seg.sourceUrl;
+    // 主媒体等待时钟冻结；所有活跃媒体均可解码后才恢复。
+    if (!healthy) {
+      this.lastMediaTime = null;
       return cursor;
     }
-    const next = timelineTime(master.window, media.currentTime);
-    if (!Number.isFinite(next)) return cursor;
-    // Exceptional jumps are corrected at most once a second, never on a buffer stall.
-    if (next < cursor - 0.1 || next > cursor + Math.max(0.5, dt * 2)) {
-      if (now - this.lastCorrection >= 1000) {
-        media.currentTime = mediaTime(master.window, cursor);
-        this.lastCorrection = now;
-      }
-      return cursor;
-    }
-    const target = Math.min(Math.max(cursor, next), boundary);
-    const correct = now - this.lastCorrection >= 1000;
-    active.forEach((entry) => {
-      if (entry === master) return;
-      entry.held = false;
-      const follower = entry.element;
-      if (correct && follower.readyState >= 2 && !follower.seeking
-        && Math.abs(timelineTime(entry.window, follower.currentTime) - target) > 0.3) {
-        follower.currentTime = mediaTime(entry.window, target);
-      }
-      this.start(entry);
+    const result = adoptAudioCursor({
+      prevCursor: cursor, prevMediaTime: this.lastMediaTime, mediaTime: media.currentTime,
+      seg: master.window.seg, windowStart: master.window.start, dt,
     });
-    if (correct) this.lastCorrection = now;
-    return target;
+    this.lastMediaTime = media.currentTime;
+    // seeking 门控未完成的定位；异常媒体持续返回旧时间时最多每秒纠偏一次。
+    if (result.resyncTo != null && now - this.lastCorrection >= 1000) {
+      media.currentTime = result.resyncTo;
+      this.lastMediaTime = null;
+      this.lastCorrection = now;
+    }
+    return Math.min(result.next, boundary);
   }
 }

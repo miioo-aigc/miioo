@@ -7,7 +7,7 @@ export default function EditDraftCard({ draft, index, disabled, onOpen, onRename
   const [menuOpen, setMenuOpen] = useState(false);
   const name = draft.name || '草稿' + String(index + 1).padStart(2, '0');
   const unavailable = disabled || !draft.id;
-  const savedAt = draft.updatedAt || draft.createdAt;
+  const savedAt = draft.updatedAt;
   const savedDate = savedAt ? new Date(savedAt) : null;
   const validSavedDate = savedDate && Number.isFinite(savedDate.getTime());
   return (

@@ -2,7 +2,7 @@
  * 分镜媒体结果的身份匹配与合并工具。
  *
  * 生成结果可能先使用前端临时 ID，保存候选后又返回后端正式 ID。
- * 因此不能只比较 id；只要任一稳定 ID 或媒体地址相同，就视为同一条结果。
+ * 2026-10-28：先隔离媒体类型及不同资产，再匹配稳定编号或地址，防止选帧图片覆盖源视频。
  */
 
 const MEDIA_ID_FIELDS = [
@@ -80,8 +80,21 @@ export function getStoryboardMediaIdentityKeys(media) {
 
 export function areStoryboardMediaSame(first, second) {
   if (!first || !second) return false;
+  const firstType = storyboardMediaType(first);
+  const secondType = storyboardMediaType(second);
+  if (firstType && secondType && firstType !== secondType) return false;
+  const firstAsset = first.asset_id || first.assetId || first.creationAssetId;
+  const secondAsset = second.asset_id || second.assetId || second.creationAssetId;
+  if (firstAsset && secondAsset && String(firstAsset) !== String(secondAsset)) return false;
   const secondKeys = new Set(getStoryboardMediaIdentityKeys(second));
   return getStoryboardMediaIdentityKeys(first).some((key) => secondKeys.has(key));
+}
+
+export function storyboardMediaType(media) {
+  const type = media?.media_type || media?.mediaType || media?.type || '';
+  if (type.startsWith('image')) return 'image';
+  if (type.startsWith('video')) return 'video';
+  return '';
 }
 
 /**

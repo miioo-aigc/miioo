@@ -1,3 +1,5 @@
+import { storyboardMediaType } from '../../utils/storyboardMediaDedup.js';
+
 function assetId(item) {
   return String(item.asset_id || item.assetId || item.creationAssetId || item.backendId || '');
 }
@@ -9,8 +11,8 @@ function originalUrls(item) {
 }
 
 function sameMedia(left, right) {
-  const leftType = left.media_type || left.type || 'image';
-  const rightType = right.media_type || right.type || 'image';
+  const leftType = storyboardMediaType(left) || 'image';
+  const rightType = storyboardMediaType(right) || 'image';
   if (leftType !== rightType) return false;
   if (left.id && right.id && String(left.id) === String(right.id)) return true;
   if (left.pending || right.pending) return false;

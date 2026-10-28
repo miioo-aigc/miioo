@@ -1,36 +1,54 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { computeVisualWindows, computeAudioWindows, computeSubtitleWindows, computeTotalDuration, useCompositionEditorStore } from '../../stores/compositionEditorStore';
-import PlaybackControls from './PlaybackControls';
+import VideoPlayerBar from '../ui/VideoPlayerBar';
+import VideoPlaybackControls from '../ui/VideoPlaybackControls';
 import PreviewAudioLayer from './PreviewAudioLayer';
 import SubtitlePreview from './SubtitlePreview';
 import { PreviewMediaClock } from './PreviewMediaClock';
+import CompositionVisualItem from './CompositionVisualItem';
+import LoadingAnimation from '../LoadingAnimation';
+import { editorView, pointInRect, transformRect, rectTransform, resizeRect, canvasRatio } from '../../utils/CompositionTransform';
 
 const FONT = "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-function activeIndexFor(windows, cursor, total) {
-  if (!windows.length) return -1;
-  for (let i = 0; i < windows.length; i += 1) {
-    if (cursor >= windows[i].start && cursor < windows[i].end) return i;
-  }
-  if (total > 0 && cursor >= total) return windows.length - 1;
-  return -1;
-}
-
 export default function PreviewCanvas() {
+  const playerRef = useRef(null);
+  const [previewVolume, setPreviewVolume] = useState(1);
+  const [previewMuted, setPreviewMuted] = useState(false);
+  const outputVolume = previewMuted ? 0 : previewVolume;
+  const seek = useCompositionEditorStore(s => s.seek);
   const [clock] = useState(() => new PreviewMediaClock());
+  const [feedbackVisible, setFeedbackVisible] = useState(false);
+  const feedbackTimer = useRef(null);
+  const canvasClickTimer = useRef(null);
+  useEffect(() => () => { clearTimeout(feedbackTimer.current); clearTimeout(canvasClickTimer.current); }, []);
   const seekEpoch = useCompositionEditorStore((s) => s.seekEpoch);
   const segments = useCompositionEditorStore((s) => s.segments);
   const playing = useCompositionEditorStore((s) => s.playing);
   const cursor = useCompositionEditorStore((s) => s.cursor);
   const play = useCompositionEditorStore((s) => s.play);
   const pause = useCompositionEditorStore((s) => s.pause);
-  const seek = useCompositionEditorStore((s) => s.seek);
   const onCursorTick = useCompositionEditorStore((s) => s.onCursorTick);
   const trackSettings = useCompositionEditorStore((s) => s.trackSettings);
   const aspectRatio = useCompositionEditorStore((s) => s.aspectRatio);
+  const selectedId = useCompositionEditorStore((s) => s.selectedId);
+  const selectedIds = useCompositionEditorStore((s) => s.selectedIds);
+  const select = useCompositionEditorStore((s) => s.select);
+  const previewTransform = useCompositionEditorStore((s) => s.previewTransform);
+  const commitTransform = useCompositionEditorStore((s) => s.commitTransform);
+  const [mediaStatus, setMediaStatus] = useState({});
+  const [imageRatios, setImageRatios] = useState({});
+  const [drag, setDrag] = useState(null);
+  const dragRef = useRef(null);
+  useEffect(() => () => {
+    const gesture = dragRef.current;
+    if (gesture) commitTransform(gesture.snapshot, true);
+  }, [commitTransform]);
+  const readiness = useRef(false);
+  const [clockWaiting, setClockWaiting] = useState(false);
   const viewportRef = useRef(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
-  const ratio = aspectRatio === '9:16' ? 9 / 16 : aspectRatio === '1:1' ? 1 : 16 / 9;
+  const ratio = canvasRatio(aspectRatio);
   const canvasWidth = Math.min(viewportSize.width, viewportSize.height * ratio);
 
   useEffect(() => {
@@ -43,27 +61,88 @@ export default function PreviewCanvas() {
 
   const windows = useMemo(() => computeVisualWindows(segments).windows
     .filter((item) => !trackSettings[item.seg.track || 'V1']?.hidden)
-    .sort((a, b) => Number((b.seg.track || 'V1').slice(1)) - Number((a.seg.track || 'V1').slice(1))), [segments, trackSettings]);
+    .sort((a, b) => Number((a.seg.track || 'V1').slice(1)) - Number((b.seg.track || 'V1').slice(1))), [segments, trackSettings]);
   const total = computeTotalDuration(segments);
   const activeSubtitles = computeSubtitleWindows(segments).windows.filter((item) => cursor >= item.start && cursor < item.end && !trackSettings[item.seg.track || 'S1']?.hidden)
     .sort((a, b) => Number((b.seg.track || 'S1').slice(1)) - Number((a.seg.track || 'S1').slice(1)));
-  const activeIndex = activeIndexFor(windows, cursor, total);
-  const active = activeIndex >= 0 ? windows[activeIndex] : null;
-  const v1Settings = trackSettings[active?.seg.track || 'V1'] || { hidden: false, volume: 1 };
+  const activeWindows = useMemo(() => windows.filter((item) => cursor >= item.start && cursor < item.end), [windows, cursor]);
 
   // A1 音轨窗口与 cursor 所在的活跃音频段（含分离自视频的音频段）
   const allAudioWindows = useMemo(() => computeAudioWindows(segments).windows, [segments]);
   const audioTracks = [...new Set(allAudioWindows.map((item) => item.seg.track || 'A1'))];
-  const videoRef = useRef(null);
+  const onVideoStatus = useCallback((id, value) => setMediaStatus((state) => {
+    if (!value) { if (!(id in state)) return state; const next = { ...state }; delete next[id]; return next; }
+    if (state[id]?.status === value.status && state[id]?.data === value.data && state[id]?.error === value.error && state[id]?.playable === value.playable) return state;
+    return { ...state, [id]: value };
+  }), []);
+  const onImageStatus = useCallback((id, value) => setImageRatios((state) => {
+    if (state[id]?.status === value.status && state[id]?.ratio === value.ratio) return state;
+    return { ...state, [id]: value };
+  }), []);
+  const topSelected = selectedIds.length <= 1 ? activeWindows.find((item) => item.seg.id === selectedId) : null;
+  const activeVideoStatuses = activeWindows.filter((item) => item.seg.type === 'video')
+    .map((item) => mediaStatus[item.seg.id]).filter(Boolean);
+  const pending = activeWindows.some((item) => item.seg.type === 'video' && !mediaStatus[item.seg.id]?.playable && mediaStatus[item.seg.id]?.status !== 'failed');
+  const failed = activeVideoStatuses.find((item) => item.status === 'failed');
+  const imageFailed = activeWindows.some((item) => item.seg.type === 'image' && imageRatios[item.seg.id]?.status === 'failed');
+  useEffect(() => { if (failed || imageFailed) pause(); }, [failed, imageFailed, pause]);
+  const allReady = activeWindows.every((item) => item.seg.type === 'video' ? mediaStatus[item.seg.id]?.playable === true : imageRatios[item.seg.id]?.status === 'ready');
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || active?.seg.type !== 'video') return;
-    return clock.register('video', video, active, false, playing,
-      () => useCompositionEditorStore.getState().cursor, pause);
-  }, [clock, active, playing, seekEpoch, pause]);
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.volume = Math.max(0, Math.min(1, v1Settings.volume ?? 1));
-  }, [active, v1Settings.volume]);
+    readiness.current = allReady;
+    clock.setBlocked(!allReady);
+    clock.require([
+      ...activeWindows.filter((item) => item.seg.type === 'video').map((item) => 'video-' + item.seg.id),
+      ...allAudioWindows.filter((item) => cursor >= item.start && cursor < item.end).map((item) => item.seg.track || 'A1'),
+    ]);
+  }, [allReady, clock, activeWindows, allAudioWindows, cursor]);
+  const resumeAfterWait = !allReady;
+
+  const selectedRatio = topSelected ? (topSelected.seg.type === 'image'
+    ? imageRatios[topSelected.seg.id]?.ratio
+    : (mediaStatus[topSelected.seg.id]?.data?.source.display_aspect_ratio.num / mediaStatus[topSelected.seg.id]?.data?.source.display_aspect_ratio.den)) : null;
+  const canvasHeight = canvasWidth / ratio;
+  const baseRect = selectedRatio ? transformRect(topSelected.seg.visualTransform, selectedRatio, canvasWidth, canvasHeight) : null;
+  const editing = Boolean(topSelected && selectedRatio && !playing && !trackSettings[topSelected.seg.track || 'V1']?.locked);
+  const fittedView = editing ? editorView(canvasWidth, canvasHeight, baseRect, viewportSize)
+    : { scale: 1, left: (viewportSize.width - canvasWidth) / 2, top: (viewportSize.height - canvasHeight) / 2 };
+  const view = drag?.view || fittedView;
+  const activeRect = (item, index) => {
+    const sourceRatio = item.seg.type === 'image' ? imageRatios[item.seg.id]?.ratio
+      : (() => { const source = mediaStatus[item.seg.id]?.data?.source.display_aspect_ratio; return source?.num / source?.den; })();
+    if (!sourceRatio) return null;
+    const rect = transformRect(item.seg.visualTransform || { mode: 'legacy_contain' }, sourceRatio, canvasWidth, canvasHeight);
+    return rect ? { ...rect, x: rect.x * view.scale, y: rect.y * view.scale, width: rect.width * view.scale, height: rect.height * view.scale, zIndex: index + 1 } : null;
+  };
+  const selectedRect = topSelected ? activeRect(topSelected, activeWindows.indexOf(topSelected)) : null;
+  const beginTransform = (event, handle) => {
+    if (event.button !== 0 || !topSelected || !selectedRect || trackSettings[topSelected.seg.track || 'V1']?.locked) return;
+    event.preventDefault(); event.stopPropagation();
+    const rect = transformRect(topSelected.seg.visualTransform || { mode: 'legacy_contain' }, selectedRatio, canvasWidth, canvasHeight);
+    const before = useCompositionEditorStore.getState();
+    const snapshot = { segments: before.segments, aspectRatio: before.aspectRatio, selectedId: before.selectedId, selectedIds: before.selectedIds, album: before.album, libraryAssetIds: before.libraryAssetIds, trackSettings: before.trackSettings, mainTracks: before.mainTracks };
+    const gesture = { id: topSelected.seg.id, view, pointerId: event.pointerId, handle, x: event.clientX, y: event.clientY, rect, snapshot };
+    dragRef.current = gesture;
+    setDrag(gesture);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const moveTransform = (event) => {
+    const drag = dragRef.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const next = resizeRect(drag.rect, drag.handle, (event.clientX - drag.x) / drag.view.scale, (event.clientY - drag.y) / drag.view.scale);
+    previewTransform(drag.id, rectTransform(next, canvasWidth, canvasHeight));
+  };
+  const endTransform = (cancel = false) => { const gesture = dragRef.current; if (gesture) { dragRef.current = null; commitTransform(gesture.snapshot, cancel); setDrag(null); } };
+  const handleDoubleClick = (event) => {
+    clearTimeout(canvasClickTimer.current);
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - bounds.left) / view.scale;
+    const y = (event.clientY - bounds.top) / view.scale;
+    if (!pointInRect(x, y, { x: 0, y: 0, width: canvasWidth, height: canvasHeight })) return;
+    for (let i = activeWindows.length - 1; i >= 0; i -= 1) {
+      const item = activeWindows[i];
+      if (!trackSettings[item.seg.track || 'V1']?.hidden && !trackSettings[item.seg.track || 'V1']?.locked && pointInRect(x, y, transformRect(item.seg.visualTransform || { mode: 'legacy_contain' }, item.seg.type === 'image' ? imageRatios[item.seg.id]?.ratio : (() => { const r = mediaStatus[item.seg.id]?.data?.source.display_aspect_ratio; return r?.num / r?.den; })(), canvasWidth, canvasHeight))) { select(item.seg.id); pause(); return; }
+    }
+  };
 
   // Stop at every media boundary so the next frame uses the newly registered segment.
   useEffect(() => {
@@ -78,7 +157,9 @@ export default function PreviewCanvas() {
       const cursorNow = useCompositionEditorStore.getState().cursor;
       const boundaries = [...windows, ...allAudioWindows].flatMap((window) => [window.start, window.end]);
       const boundary = Math.min(total, ...boundaries.filter((time) => time > cursorNow + 1e-6));
+      clock.setBlocked(!readiness.current);
       const next = clock.tick(cursorNow, dt, now, boundary);
+      setClockWaiting(clock.blocked);
       if (next >= total - 1e-6) {
         onCursorTick(total);
         pause();
@@ -92,56 +173,54 @@ export default function PreviewCanvas() {
   }, [playing, total, onCursorTick, pause, clock, windows, allAudioWindows, seekEpoch]);
 
   const togglePlay = () => {
+    if (total <= 0) return;
     if (playing) pause();
     else play();
-  };
-
-  const restart = () => {
-    seek(0);
-    if (total > 0) play();
+    clearTimeout(feedbackTimer.current);
+    setFeedbackVisible(true);
+    feedbackTimer.current = setTimeout(() => setFeedbackVisible(false), 500);
   };
 
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div ref={viewportRef} className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-surface-content-area px-[12px] flex items-center justify-center">
-        <div aria-label={`成片画布 ${aspectRatio}`} className="relative shrink-0 overflow-hidden bg-black" style={{ width: canvasWidth, height: canvasWidth / ratio }}>
-        <div className="absolute inset-0 overflow-hidden flex items-center justify-center">
-          {!active ? (
+    <div ref={playerRef} className="flex-1 flex flex-col overflow-hidden min-h-0 bg-surface-content-area">
+      <div ref={viewportRef} className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-surface-content-area mx-[12px]">
+        <div aria-label={`成片画布 ${aspectRatio}`} onDoubleClick={handleDoubleClick} className="absolute overflow-visible bg-black" style={{ left: view.left, top: view.top, width: canvasWidth * view.scale, height: canvasHeight * view.scale }}>
+        <div className="absolute inset-0" style={{ clipPath: editing && selectedRect ? `inset(${Math.min(0, selectedRect.y)}px ${Math.min(0, canvasWidth * view.scale - selectedRect.x - selectedRect.width)}px ${Math.min(0, canvasHeight * view.scale - selectedRect.y - selectedRect.height)}px ${Math.min(0, selectedRect.x)}px)` : 'inset(0)' }}>
+          {!activeWindows.length ? (
             <span className="text-text-hint text-font-size-14" style={{ fontFamily: FONT, visibility: segments.length ? 'hidden' : 'visible' }}>
               从左侧添加素材开始剪辑
             </span>
-          ) : active.seg.type === 'video' && active.seg.sourceUrl && !v1Settings.hidden ? (
-            <video
-              key={active.seg.sourceUrl}
-              ref={videoRef}
-              src={active.seg.sourceUrl}
-              className="w-full h-full object-contain"
-              muted={v1Settings.volume <= 0 || active.seg.hasAudio === false}
-              volume={v1Settings.volume}
-              playsInline
-            />
-          ) : active.seg.type === 'video' && v1Settings.hidden ? (
-            <div className="h-full w-full bg-surface-content-area" aria-label="V1 轨道已隐藏" />
-          ) : (
-            <img
-              key={active.seg.id}
-              src={active.seg.posterUrl || active.seg.thumbnailUrl || active.seg.sourceUrl}
-              alt=""
-              className="w-full h-full object-contain"
-            />
-          )}
+          ) : null}
+          {activeWindows.map((item, index) => <CompositionVisualItem key={item.seg.id} window={item}
+            clipBounds={editing && topSelected?.seg.id === item.seg.id ? null : { width: canvasWidth * view.scale, height: canvasHeight * view.scale }}
+            rect={activeRect(item, index)} playing={playing} clock={clock} seekEpoch={seekEpoch}
+            settings={trackSettings[item.seg.track || 'V1']} outputVolume={outputVolume}
+            onStatus={onVideoStatus} onImageStatus={onImageStatus} />)}
         </div>
+        {editing && <div className="pointer-events-none absolute inset-0" style={{ zIndex: 90, boxShadow: '0 0 0 100000px rgba(0,0,0,0.6)', outline: '1px solid var(--color-stroke-accent)' }} />}
+        {editing && selectedRect && <div onPointerMove={moveTransform} onPointerUp={() => endTransform()} onPointerCancel={() => endTransform(true)} onLostPointerCapture={() => endTransform(true)} style={{ position: 'absolute', left: selectedRect.x, top: selectedRect.y, width: selectedRect.width, height: selectedRect.height, border: '1px solid #2DC3E1', zIndex: 100, touchAction: 'none', cursor: drag ? 'grabbing' : 'move' }} onPointerDown={(event) => beginTransform(event, 'move')}>
+          {['nw','n','ne','e','se','s','sw','w'].map((handle) => <span key={handle} onPointerDown={(event) => beginTransform(event, handle)} style={{ position: 'absolute', width: handle.length === 2 ? 10 : (handle === 'n' || handle === 's' ? 24 : 5), height: handle.length === 2 ? 10 : (handle === 'e' || handle === 'w' ? 24 : 5), left: handle.includes('w') ? 0 : handle.includes('e') ? '100%' : '50%', top: handle.includes('n') ? 0 : handle.includes('s') ? '100%' : '50%', transform: 'translate(-50%, -50%)', borderRadius: 2, background: '#2DC3E1', cursor: handle.length === 2 ? handle + '-resize' : handle + '-resize' }} />)}
+        </div>}
+        {(pending || (playing && clockWaiting)) && !failed && <div role="status" aria-label="预览视频加载中" style={{ position: 'absolute', inset: 0, zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', background: '#0008' }}><LoadingAnimation width={180} /><span className="sr-only">{resumeAfterWait ? '正在缓冲，加载完成后继续播放' : '正在加载预览视频'}</span></div>}
+        {failed && <button type="button" onClick={() => failed.retry()} style={{ position: 'absolute', zIndex: 121, left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>预览视频暂不可用，点击重试</button>}
+        {imageFailed && <span role="status" className="absolute inset-0 flex items-center justify-center text-text-secondary text-font-size-14 pointer-events-none z-[120]">图片加载失败，请重新添加素材</span>}
         <SubtitlePreview cues={activeSubtitles} />
+        {total > 0 && <VideoPlaybackControls isPlaying={playing} feedbackVisible={feedbackVisible}
+          onToggle={() => { clearTimeout(canvasClickTimer.current); canvasClickTimer.current = setTimeout(togglePlay, 250); }} bottomInset={0} />}
         </div>
       </div>
 
-      {/* 控制条 */}
-      <PlaybackControls playing={playing} cursor={cursor} total={total} onToggle={togglePlay} onRestart={restart} onSeek={seek} />
-
+      <VideoPlayerBar playing={playing} currentTime={cursor} duration={total} disabled={total <= 0}
+        onToggle={togglePlay} onSeek={seek} volume={previewVolume} muted={previewMuted}
+        onVolumeChange={setPreviewVolume} onMutedChange={setPreviewMuted}
+        onFullscreen={() => {
+          if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+          else void playerRef.current?.requestFullscreen?.().catch(() => {});
+        }} />
       {audioTracks.map((track) => <PreviewAudioLayer key={track} track={track} clock={clock} seekEpoch={seekEpoch}
         active={allAudioWindows.find((item) => (item.seg.track || 'A1') === track && cursor >= item.start && cursor < item.end)}
-        playing={playing} settings={trackSettings[track]} />)}
+        playing={playing} settings={trackSettings[track]} outputVolume={outputVolume} />)}
     </div>
   );
 }

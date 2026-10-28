@@ -6,6 +6,7 @@ import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo 
 import { apiGetAssetDetail } from '../../api/assets';
 import { prepareCompositionAsset } from '../../api/CompositionAssetImport';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import { compositionMediaSource } from '../../utils/CompositionMediaSource';
 import { readMediaDuration } from '../../utils/ReadMediaDuration';
 import { formatTime, useCompositionEditorStore } from '../../stores/compositionEditorStore';
 
@@ -53,8 +54,9 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
       id: asset?.assetId || asset?.asset_id || asset?.id,
       asset_type: asset?.asset_type || asset?.type || mediaType,
       name: asset?.name || file?.name || '未命名素材',
-      fileUrl: normalizeImageUrl(asset?.file_url || asset?.fileUrl || asset?.url),
-      videoUrl: (asset?.asset_type || mediaType) === 'video' ? normalizeImageUrl(asset?.file_url || asset?.fileUrl || asset?.url) : null,
+      fileUrl: compositionMediaSource({ ...asset, asset_type: asset?.asset_type || asset?.type || mediaType }),
+      videoUrl: (asset?.asset_type || asset?.type || mediaType) === 'video'
+        ? compositionMediaSource({ ...asset, asset_type: 'video' }) : null,
       url: normalizeImageUrl(asset?.thumbnail_url || asset?.thumbnailUrl || asset?.poster_url || (mediaType === 'image' ? asset?.file_url || asset?.url : null)),
       thumbnailUrl: normalizeImageUrl(asset?.thumbnail_url || asset?.thumbnailUrl),
       posterUrl: normalizeImageUrl(asset?.poster_url || asset?.posterUrl),
@@ -180,11 +182,12 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
           <div className="grid grid-cols-2 gap-x-[12px] gap-y-[12px]">
             {visiblePendingAssets.map((pendingAsset, index) => (
               <div key={`pending-${index}`} role="status" aria-live="polite" aria-busy="true" className="flex min-w-0 flex-col gap-[6px]">
-                <div className="flex aspect-video w-full items-center justify-center gap-[8px] rounded-[8px] border border-white-10 bg-neutral-500 text-[12px] text-text-secondary">
+                <div className="relative overflow-hidden flex aspect-video w-full items-center justify-center gap-[8px] rounded-[8px] border border-white-10 bg-neutral-500 text-[12px] text-text-secondary">
                   <span aria-hidden="true" className="h-[16px] w-[16px] animate-spin rounded-full border-2 border-white/20 border-t-brand-main" />
                   {pendingAsset.label}
+                  <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-[33.333%]" style={{ background: 'linear-gradient(to top, var(--color-black-50), transparent)' }} />
+                  <span className="absolute bottom-[4px] left-[8px] right-[8px] truncate text-font-size-14 text-text-primary" title={pendingAsset.name}>{pendingAsset.name}</span>
                 </div>
-                <span className="w-full truncate text-[14px] text-text-secondary" title={pendingAsset.name}>{pendingAsset.name}</span>
               </div>
             ))}
             {assets.map((asset) => {
@@ -235,19 +238,16 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
                         {formatTime(asset.duration)}
                       </span>
                     )}
-                  </span>
-
-                  <span
-                    className="min-w-0 w-full truncate text-text-primary text-font-size-14"
-                    style={{ fontFamily: FONT }}
-                  >
-                    {asset.name || '未命名素材'}
+                    <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-[33.333%]" style={{ background: 'linear-gradient(to top, var(--color-black-50), transparent)' }} />
+                    <span className="pointer-events-none absolute bottom-[4px] left-[8px] right-[32px] truncate text-text-primary text-font-size-14" style={{ fontFamily: FONT }}>
+                      {asset.name || '未命名素材'}
+                    </span>
                   </span>
                   <button
                     type="button"
                     aria-label={`从素材区移除${asset.name || '素材'}`}
                     onClick={(event) => { event.stopPropagation(); onRemoveAsset?.(asset); }}
-                    className="absolute bottom-[30px] right-[6px] hidden h-[20px] w-[20px] cursor-pointer items-center justify-center rounded-[4px] bg-black/40 text-[#FF4D5A] transition-colors hover:bg-black/65 hover:text-[#FF7A83] group-hover:flex focus-visible:flex focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#FF4D5A]"
+                    className="absolute bottom-[6px] right-[6px] hidden h-[20px] w-[20px] cursor-pointer items-center justify-center rounded-[4px] bg-black/40 text-[#FF4D5A] transition-colors hover:bg-black/65 hover:text-[#FF7A83] group-hover:flex focus-visible:flex focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#FF4D5A]"
                   >
                     <DeleteIcon size={16} color="currentColor" aria-hidden="true" />
                   </button>

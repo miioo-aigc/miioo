@@ -201,7 +201,8 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
                   key={asset.id}
                   onClick={() => handleClick(asset)}
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handleClick(asset); }
+                    if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); return; }
+                    if (event.key === ' ') { event.preventDefault(); handleClick(asset); }
                   }}
                   role="button"
                   tabIndex={0}

@@ -11,6 +11,11 @@ import { editorView, pointInRect, transformRect, rectTransform, resizeRect, canv
 
 const FONT = "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
+// 仅剪辑预览屏蔽回车激活播放，保留其他宿主的键盘行为。
+function preventPlaybackEnter(event) {
+  if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); }
+}
+
 export default function PreviewCanvas() {
   const playerRef = useRef(null);
   const [previewVolume, setPreviewVolume] = useState(1);
@@ -206,13 +211,13 @@ export default function PreviewCanvas() {
         {failed && <button type="button" onClick={() => failed.retry()} style={{ position: 'absolute', zIndex: 121, left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>预览视频暂不可用，点击重试</button>}
         {imageFailed && <span role="status" className="absolute inset-0 flex items-center justify-center text-text-secondary text-font-size-14 pointer-events-none z-[120]">图片加载失败，请重新添加素材</span>}
         <SubtitlePreview cues={activeSubtitles} />
-        {total > 0 && <VideoPlaybackControls isPlaying={playing} feedbackVisible={feedbackVisible}
+        {total > 0 && <VideoPlaybackControls isPlaying={playing} feedbackVisible={feedbackVisible} onToggleKeyDown={preventPlaybackEnter}
           onToggle={() => { clearTimeout(canvasClickTimer.current); canvasClickTimer.current = setTimeout(togglePlay, 250); }} bottomInset={0} />}
         </div>
       </div>
 
       <VideoPlayerBar playing={playing} currentTime={cursor} duration={total} disabled={total <= 0}
-        onToggle={togglePlay} onSeek={seek} volume={previewVolume} muted={previewMuted}
+        onToggle={togglePlay} onToggleKeyDown={preventPlaybackEnter} onSeek={seek} volume={previewVolume} muted={previewMuted}
         onVolumeChange={setPreviewVolume} onMutedChange={setPreviewMuted}
         onFullscreen={() => {
           if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});

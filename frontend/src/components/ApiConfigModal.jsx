@@ -3,17 +3,18 @@
  * @structure-index
  *
  * ─── 通用配置组件 ────────────────────────────────────────────────
- *   ConfigModelModal()       服务商 API Key、模型 Tab 与保存操作      L757
- *   PrimaryButton()          弹窗主按钮视觉和禁用状态                 L236
+ *   ConfigModelModal()       服务商 API Key、模型 Tab 与保存操作      L707
+ *   PrimaryButton()          弹窗主按钮视觉和禁用状态                 L225
  *
  * ─── 页面级状态与动作 ────────────────────────────────────────────
- *   ApiConfigModal()         每次打开创建独立配置会话                 L999
- *   testConnection()        主服务商配置写入互斥、归属和补读           L1230
- *   toggleOtherProvider()    服务商开关即时显示、排队和失败核对       L1481
- *   beginOtherModelMutation() 模型写入互斥、认证与会话归属            L1607
- *   saveOneLinkConfig()      OneLinkAI 等待写入后保存退出             L1718
+ *   ApiConfigModal()         每次打开创建独立配置会话                 L949
+ *   testConnection()        主服务商配置写入互斥、归属和补读           L1174
+ *   toggleOtherProvider()    服务商开关即时显示、排队和失败核对       L1425
+ *   beginOtherModelMutation() 模型写入互斥、认证与会话归属            L1551
+ *   saveOneLinkConfig()      OneLinkAI 等待写入后保存退出             L1662
  *
  * ─── 更新记录 ───────────────────────────────────────────────────
+ *   2026-10-29  推荐横幅独立为动态背景、本地客服二维码及标题官网链接。
  *   2026-10-23  乙方案：服务商开关排队核对，其他模型写入隔离及补读版本保护。
  *   2026-10-22  其他服务商严格测试结果，保存失败停止，输入与会话隔离在途结果。
  *   2026-10-22  初始化成功后开放配置，失败可重试；其他服务商读取隔离迟到响应。
@@ -27,10 +28,11 @@
  */
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Toggle from './Toggle';
+import ApiRecommendationBanner from './apiConfig/ApiRecommendationBanner';
 import ConfirmDialog from './ConfirmDialog';
 import Tooltip from './ui/Tooltip';
 import RemoteReadStatus from './feedback/RemoteReadStatus';
-import { apiOneClickSetup, apiCreateModel, apiCreateProvider, apiListModels, apiUpdateModel, apiDeleteModel, apiGetBanner, apiListProviders, apiTestConnection, apiUpdateProvider, apiGetCardVisibility } from '../api/config';
+import { apiOneClickSetup, apiCreateModel, apiCreateProvider, apiListModels, apiUpdateModel, apiDeleteModel, apiListProviders, apiTestConnection, apiUpdateProvider, apiGetCardVisibility } from '../api/config';
 import { getToken, getAuthSessionGeneration } from '../api/request.js';
 import { createProviderEnableQueue } from '../api/ProviderEnableQueue.js';
 import { applyModelResult, validateModelResult } from '../utils/ModelConfigState.js';
@@ -49,8 +51,6 @@ const PRIMARY_BUTTON_GRADIENT =
 // OneLinkAI 高亮卡片主按钮渐变（白底青绿）
 const CARD_ACCENT_BUTTON_GRADIENT =
   'linear-gradient(in oklab 108.35000000000002deg, oklab(63.1% 0.005 -0.180 / 40%) 24.34%, oklab(84.6% -0.114 0.031 / 0%) 86.04%)';
-// 教程按钮跳转链接（创作手册，与 Home.jsx 中 CREATION_MANUAL_URL 保持一致）
-const CREATION_MANUAL_URL = 'https://gcn0je6sgrhe.feishu.cn/wiki/QaKLwOx0ii2qWakn4cXcybbMnrf?from=from_copylink';
 const MODEL_DESCRIPTION = 'GPT-5.2 是 GPT-5 系列最新一代旗舰级智能模型，在架构设计、推理能力和应用性能上实现重大突破。相比 GPT-5.1…';
 const MODEL_TABS = ['对话模型', '图片模型', '视频模型', '配音模型', '音乐模型'];
 // 跨弹窗会话保留在途锁，避免关闭重开后并发写同一服务商。
@@ -200,17 +200,6 @@ function EditIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: '0' }}>
       <path d="M14 8.667V13.333C14 13.701 13.701 14 13.333 14H2.667C2.298 14 2 13.701 2 13.333V2.667C2 2.298 2.298 2 2.667 2H7.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M4.667 8.907V11.333H7.106L14 4.436L11.565 2L4.667 8.907Z" stroke="#FFFFFF" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function TutorialIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: '0' }}>
-      <path d="M9.646 0.98C9.842 0.785 10.158 0.785 10.354 0.98L13.687 4.313C13.882 4.508 13.882 4.825 13.687 5.02C13.491 5.215 13.175 5.215 12.979 5.02L9.646 1.687C9.451 1.492 9.451 1.175 9.646 0.98Z" fill="#FFFFFF" />
-      <path d="M3.333 14.667H12.667C13.035 14.667 13.333 14.368 13.333 14V4.667H10V1.333H3.333C2.965 1.333 2.667 1.632 2.667 2V14C2.667 14.368 2.965 14.667 3.333 14.667Z" fill="#FFFFFF" />
-      <path d="M2.167 14V2C2.167 1.356 2.689 0.833 3.334 0.833H10C10.276 0.833 10.5 1.057 10.5 1.333V4.166H13.334C13.61 4.167 13.833 4.391 13.834 4.666V14C13.833 14.645 13.311 15.166 12.667 15.166H3.334C2.689 15.166 2.167 14.645 2.167 14ZM3.167 14C3.167 14.092 3.242 14.166 3.334 14.166H12.667C12.759 14.166 12.833 14.092 12.834 14V5.166H10C9.724 5.166 9.5 4.942 9.5 4.666V1.833H3.334C3.242 1.833 3.167 1.908 3.167 2V14Z" fill="#FFFFFF" />
-      <path d="M6.969 9.923C6.921 10.07 6.897 10.143 6.857 10.156C6.84 10.162 6.821 10.162 6.803 10.156C6.764 10.143 6.74 10.07 6.691 9.923C6.49 9.31 6.389 9.004 6.199 8.761C6.112 8.65 6.011 8.549 5.899 8.461C5.657 8.271 5.35 8.17 4.737 7.969C4.591 7.921 4.518 7.897 4.504 7.857C4.499 7.84 4.499 7.821 4.504 7.803C4.518 7.764 4.591 7.74 4.737 7.691C5.35 7.49 5.657 7.389 5.899 7.199C6.011 7.112 6.112 7.011 6.199 6.899C6.389 6.656 6.49 6.35 6.691 5.737C6.74 5.591 6.764 5.518 6.803 5.504C6.821 5.499 6.84 5.499 6.857 5.504C6.897 5.518 6.921 5.591 6.969 5.737C7.17 6.35 7.271 6.657 7.461 6.899C7.549 7.011 7.65 7.111 7.761 7.199C8.004 7.389 8.311 7.49 8.924 7.692C9.07 7.74 9.143 7.764 9.157 7.804C9.162 7.821 9.162 7.84 9.157 7.857C9.143 7.897 9.07 7.921 8.924 7.969C8.311 8.17 8.004 8.271 7.761 8.461C7.65 8.549 7.549 8.65 7.462 8.761C7.272 9.004 7.17 9.31 6.969 9.923ZM10.03 11.168C9.998 11.265 9.982 11.314 9.955 11.323C9.943 11.327 9.931 11.327 9.919 11.323C9.893 11.314 9.877 11.265 9.845 11.168C9.711 10.759 9.643 10.555 9.517 10.393C9.458 10.318 9.391 10.251 9.316 10.193C9.154 10.066 8.95 9.999 8.542 9.865C8.445 9.832 8.395 9.816 8.387 9.79C8.383 9.778 8.383 9.766 8.387 9.754C8.395 9.728 8.444 9.712 8.542 9.68C8.95 9.545 9.155 9.478 9.316 9.352C9.391 9.293 9.458 9.226 9.516 9.151C9.643 8.989 9.711 8.785 9.844 8.377C9.877 8.279 9.893 8.23 9.919 8.221C9.931 8.217 9.943 8.217 9.955 8.221C9.982 8.23 9.998 8.279 10.03 8.377C10.164 8.785 10.231 8.989 10.358 9.151C10.416 9.226 10.483 9.293 10.558 9.351C10.72 9.478 10.924 9.545 11.333 9.679C11.43 9.712 11.479 9.728 11.488 9.754C11.492 9.766 11.492 9.778 11.488 9.79C11.479 9.816 11.43 9.832 11.333 9.864C10.924 9.999 10.72 10.066 10.558 10.193C10.483 10.251 10.416 10.318 10.358 10.393C10.231 10.555 10.164 10.759 10.03 11.168L10.03 11.168ZM7.859 12.392C7.839 12.453 7.829 12.483 7.812 12.489C7.805 12.491 7.797 12.491 7.79 12.489C7.774 12.483 7.763 12.453 7.743 12.392C7.659 12.136 7.617 12.009 7.538 11.908C7.502 11.861 7.46 11.819 7.413 11.783C7.312 11.704 7.184 11.662 6.929 11.578C6.868 11.557 6.838 11.547 6.832 11.531C6.83 11.524 6.83 11.516 6.832 11.508C6.838 11.492 6.868 11.482 6.929 11.462C7.184 11.378 7.312 11.336 7.413 11.257C7.46 11.22 7.502 11.178 7.538 11.132C7.617 11.03 7.659 10.903 7.743 10.648C7.763 10.587 7.774 10.556 7.79 10.55C7.797 10.548 7.805 10.548 7.812 10.55C7.829 10.556 7.839 10.587 7.859 10.648C7.943 10.903 7.985 11.03 8.064 11.132C8.1 11.178 8.142 11.22 8.189 11.257C8.29 11.336 8.418 11.378 8.673 11.462C8.734 11.482 8.765 11.492 8.77 11.508C8.773 11.516 8.773 11.524 8.77 11.531C8.765 11.547 8.734 11.557 8.673 11.578C8.418 11.661 8.29 11.704 8.189 11.783C8.142 11.819 8.1 11.861 8.064 11.908C7.985 12.009 7.943 12.136 7.859 12.392Z" fill="#9697EE" />
     </svg>
   );
 }
@@ -413,44 +402,6 @@ function Field({ label, children }) {
 //   );
 // }
 
-function RecommendationBanner({ bannerData }) {
-  const { image_url, link_url } = bannerData || {};
-
-  if (!image_url) return null;
-
-  const fullImageUrl = image_url.startsWith('http') ? image_url : `${import.meta.env.VITE_API_BASE_URL}${image_url}`;
-
-  return (
-    <div
-      className="flex items-start gap-[12px] px-[16px] py-[12px] rounded-lg justify-end h-[96px] shrink-0 bg-[#1D1E1E] bg-cover bg-[position:50%] [box-shadow:#FFFFFF14_0px_0px_0px_1px_inset]"
-      style={{ backgroundImage: `url(${fullImageUrl})` }}
-    >
-      <div className="flex items-end gap-[12px] self-stretch">
-        <button
-          type="button"
-          onClick={() => window.open(CREATION_MANUAL_URL, '_blank')}
-          className="flex items-center h-[32px] rounded-lg px-[12px] gap-[4px] bg-[#FFFFFF66] [box-shadow:#FFFFFF66_3px_3px_8px] [outline:1px_solid_#FFFFFF99] transition-colors hover:bg-[#FFFFFF80] active:bg-[#FFFFFF4D]"
-        >
-          <TutorialIcon />
-          <div className="inline-block w-max shrink-0 text-white text-sm/4.5" style={{ fontFamily: FONT }}>
-            教程
-          </div>
-        </button>
-        <button
-          type="button"
-          onClick={() => window.open(link_url || 'https://www.onelinkai.cloud/', '_blank')}
-          className="flex items-center h-[32px] rounded-lg px-[12px] gap-[4px] bg-white bg-origin-border border border-solid border-[#FFFFFF33] [outline:1px_solid_#FFFFFF80] transition-[filter] hover:brightness-105 active:brightness-95"
-          style={{ backgroundImage: ACCENT_BUTTON_GRADIENT }}
-        >
-          <div className="inline-block text-center font-medium text-[#000000CC] text-sm/4.5" style={{ fontFamily: FONT_MEDIUM }}>
-            去官网获取
-          </div>
-        </button>
-      </div>
-    </div>
-  );
-}
-
 const CARD_BASE = 'relative flex flex-col justify-center gap-3 px-[16px] py-3 rounded-lg h-[140px] overflow-clip text-xs/4 cursor-pointer transition-colors';
 // OneLinkAI 高亮变体（蓝紫底 + 描边）
 const CARD_VARIANT_ONELINK = 'bg-[#647DF533] border border-solid border-[#647DF580] hover:bg-[#647DF566] active:bg-[#647DF54D]';
@@ -582,7 +533,6 @@ function MainModal({
   onEditOneLink,
   onToggleOneLink,
   onTestOneLink,
-  bannerData,
   otherProviders = [],
   onEditOtherProvider,
   onToggleOtherProvider,
@@ -601,10 +551,10 @@ function MainModal({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-[16px] overflow-y-auto bg-surface-modal px-[24px] py-[8px]">
+        <ApiRecommendationBanner />
         {readStatus !== 'ready' ? (
           <RemoteReadStatus loading={readStatus === 'loading'} error={readStatus === 'error' ? '配置读取失败，请重试' : ''} onRetry={onRetry} />
         ) : <>
-        <RecommendationBanner bannerData={bannerData} />
 
         <div className="flex flex-col gap-[8px] self-stretch">
           <div className="self-stretch text-sm/4.5 font-medium text-text-primary" style={{ fontFamily: FONT_MEDIUM }}>
@@ -1004,7 +954,6 @@ export default function ApiConfigModal({ open, onClose, onConfigured }) {
 function ApiConfigSession({ open, onClose, onConfigured }) {
   const [state, setState] = useState(createDefaultState);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [bannerData, setBannerData] = useState(null);
   const [readStatus, setReadStatus] = useState('loading');
   const initializationRequest = useRef(null);
   const otherProviderRequest = useRef(null);
@@ -1096,11 +1045,6 @@ function ApiConfigSession({ open, onClose, onConfigured }) {
       initializationRequest.current = null;
       return;
     }
-    setBannerData(null);
-    apiGetBanner().then(result => {
-      if (isCurrent()) setBannerData(result);
-    }).catch(() => {});
-
     Promise.all([
       (providerEnableQueue.hasPending() || pendingOtherModels().length
         ? Promise.all([providerEnableQueue.wait(), ...pendingOtherModels()]).then(() => {
@@ -2056,7 +2000,6 @@ function ApiConfigSession({ open, onClose, onConfigured }) {
             onEditOneLink={openOneLinkConfig}
             onToggleOneLink={toggleOneLinkProvider}
             onTestOneLink={testConnection}
-            bannerData={bannerData}
           otherProviders={state.otherProviders}
             onEditOtherProvider={openOtherProviderConfig}
             onToggleOtherProvider={toggleOtherProvider}

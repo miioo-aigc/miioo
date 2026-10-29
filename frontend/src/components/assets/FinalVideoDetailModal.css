@@ -31,7 +31,7 @@
 .final-video-detail-body { display: flex; flex: 1; min-height: 0; }
 .final-video-detail-player {
   position: relative;
-  position: relative;
+  flex-direction: column;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -51,5 +51,4 @@
 .final-video-detail-row dt { color: var(--color-text-secondary); }
 .final-video-detail-row dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
 .final-video-detail-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 20px; border-top: 1px solid #ffffff0d; flex-shrink: 0; }
-/* Chrome 原生控制栏在悬停期间持续显示，离开后由 controls 属性移除。 */
-.final-video-detail-player:hover video::-webkit-media-controls-panel { opacity: 1; }
+.final-video-detail-frame { position: relative; flex: 1; width: 100%; min-height: 0; }

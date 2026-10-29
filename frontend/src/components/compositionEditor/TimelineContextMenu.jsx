@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { Gauge, Volume2, VolumeX } from 'lucide-react';
-import { AssetIcon, DetachAudioIcon } from './TimelineActionIcons';
+import { AssetIcon, DetachAudioIcon, ShowEditorIcon } from './TimelineActionIcons';
 import cutIcon from '../../assets/compositionEditor/Cut.svg';
 import splitLeftIcon from '../../assets/compositionEditor/SplitLeft.svg';
 import splitRightIcon from '../../assets/compositionEditor/SplitRight.svg';
@@ -44,7 +44,8 @@ export default function TimelineContextMenu({ position, onClose }) {
     } : { onClick: () => state.applySelectionAction(key) }),
   }));
   const selected = state.segments.find(seg => seg.id === state.selectedId);
-  items.unshift({ key: 'show-editor', label: '显示编辑框', disabled: state.selectedIds.length > 1 || !selected || !['image', 'video'].includes(selected.type) || Boolean(state.trackSettings[selected.track || 'V1']?.locked || state.trackSettings[selected.track || 'V1']?.hidden), onClick: state.showVisualEditor });
+  const deleteIndex = items.findIndex(item => item.key === 'delete');
+  items.splice(deleteIndex < 0 ? items.length : deleteIndex, 0, { key: 'show-editor', icon: <ShowEditorIcon />, label: '显示编辑框', disabled: state.selectedIds.length > 1 || !selected || !['image', 'video'].includes(selected.type) || Boolean(state.trackSettings[selected.track || 'V1']?.locked || state.trackSettings[selected.track || 'V1']?.hidden), onClick: state.showVisualEditor });
   return createPortal(<div ref={panelRef} style={{ position: 'fixed', left: position.x, top: position.y, zIndex: 100, width: 'max-content', minWidth: 120, maxWidth: 'calc(100vw - 16px)' }}>
     <DropdownMenu items={items} onClose={onClose} width="max-content" style={{
       position: 'relative', minWidth: 120, maxWidth: 'calc(100vw - 16px)', whiteSpace: 'nowrap',

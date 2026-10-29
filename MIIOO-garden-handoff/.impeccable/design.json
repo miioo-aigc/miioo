@@ -1,0 +1,231 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-29T02:18:44.890168+00:00",
+  "title": "Design System: MIIOO Botanical Homepage",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "background",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(37% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(60% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "ink",
+        "tonalRamp": [
+          "oklch(15% 0.006 95)",
+          "oklch(26% 0.006 95)",
+          "oklch(37% 0.006 95)",
+          "oklch(49% 0.006 95)",
+          "oklch(60% 0.006 95)",
+          "oklch(72% 0.006 95)",
+          "oklch(84% 0.006 95)",
+          "oklch(95% 0.006 95)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "muted",
+        "tonalRamp": [
+          "oklch(15% 0.012 130)",
+          "oklch(26% 0.012 130)",
+          "oklch(37% 0.012 130)",
+          "oklch(49% 0.012 130)",
+          "oklch(60% 0.012 130)",
+          "oklch(72% 0.012 130)",
+          "oklch(84% 0.012 130)",
+          "oklch(95% 0.012 130)"
+        ]
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "focus",
+        "tonalRamp": [
+          "oklch(15% 0.045 145)",
+          "oklch(26% 0.045 145)",
+          "oklch(37% 0.045 145)",
+          "oklch(49% 0.045 145)",
+          "oklch(60% 0.045 145)",
+          "oklch(72% 0.045 145)",
+          "oklch(84% 0.045 145)",
+          "oklch(95% 0.045 145)"
+        ]
+      },
+      "action-mint": {
+        "role": "primary",
+        "displayName": "action-mint",
+        "tonalRamp": [
+          "oklch(15% 0.04 190)",
+          "oklch(26% 0.04 190)",
+          "oklch(37% 0.04 190)",
+          "oklch(49% 0.04 190)",
+          "oklch(60% 0.04 190)",
+          "oklch(72% 0.04 190)",
+          "oklch(84% 0.04 190)",
+          "oklch(95% 0.04 190)"
+        ]
+      },
+      "action-lilac": {
+        "role": "secondary",
+        "displayName": "action-lilac",
+        "tonalRamp": [
+          "oklch(15% 0.035 310)",
+          "oklch(26% 0.035 310)",
+          "oklch(37% 0.035 310)",
+          "oklch(49% 0.035 310)",
+          "oklch(60% 0.035 310)",
+          "oklch(72% 0.035 310)",
+          "oklch(84% 0.035 310)",
+          "oklch(95% 0.035 310)"
+        ]
+      },
+      "action-peach": {
+        "role": "tertiary",
+        "displayName": "action-peach",
+        "tonalRamp": [
+          "oklch(15% 0.045 65)",
+          "oklch(26% 0.045 65)",
+          "oklch(37% 0.045 65)",
+          "oklch(49% 0.045 65)",
+          "oklch(60% 0.045 65)",
+          "oklch(72% 0.045 65)",
+          "oklch(84% 0.045 65)",
+          "oklch(95% 0.045 65)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "首页主标题",
+        "purpose": "两行短句，无衬线主体。"
+      },
+      "display-emphasis": {
+        "displayName": "衬线斜体强调",
+        "purpose": "只用于标题中的单个强调词。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "workspace-depth",
+        "value": "0 22px 90px #0008, inset 0 1px 0 #ffffff04",
+        "purpose": "工作台和摄影背景之间的深度。"
+      },
+      {
+        "name": "action-lift",
+        "value": "0 6px 30px rgba(183,213,195,.08)",
+        "purpose": "主入口的轻微底光。"
+      },
+      {
+        "name": "action-lift-hover",
+        "value": "0 8px 35px rgba(183,213,195,.16)",
+        "purpose": "主入口悬停时已有的轻微底光。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(.16,1,.3,1)",
+        "purpose": "按钮与沉浸内容切换。"
+      },
+      {
+        "name": "continuous-vegetation",
+        "value": "position-blended wind with local zero-boundary deformation",
+        "purpose": "摄影植被使用连续网格，鼠标阵风下保持花叶、茎与区域边界的连接；可暂停并响应减少动态效果。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "mobile",
+        "value": "700px"
+      },
+      {
+        "name": "compact-desktop",
+        "value": "1100px"
+      },
+      {
+        "name": "wide-desktop",
+        "value": "1600px"
+      },
+      {
+        "name": "short-viewport-height",
+        "value": "820px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "首页唯一的淡彩主入口。",
+      "html": "<button class=\"ds-primary\">开始免费创作 <svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M5 12h14M13 6l6 6-6 6\"/></svg></button>",
+      "css": ".ds-primary{display:inline-flex;gap:15px;align-items:center;min-height:44px;padding:11px 24px;border:1px solid #d9e3d9;border-radius:999px;background:linear-gradient(110deg,#c7eae7 2%,#e8dced 48%,#f6dcc5 100%);color:#1e2723;font:600 12px var(--sans,sans-serif);cursor:pointer;box-shadow:0 6px 30px rgba(183,213,195,.08);transition:transform .4s cubic-bezier(.16,1,.3,1),box-shadow .4s,filter .4s}.ds-primary:hover{transform:translateY(-2px);filter:brightness(1.07);box-shadow:0 8px 35px rgba(183,213,195,.16)}.ds-primary:active{transform:none}.ds-primary:focus-visible{outline:2px solid #cfe8d0;outline-offset:5px}"
+    },
+    {
+      "name": "Header action",
+      "kind": "button",
+      "description": "右侧浅色工作台入口。",
+      "html": "<a class=\"ds-header-action\" href=\"https://miiooai.com/creation\">进入工作台</a>",
+      "css": ".ds-header-action{display:inline-flex;padding:8px 15px;background:#f5f5f1;color:#1b211b;border-radius:6px;font:600 12px var(--sans,sans-serif);text-decoration:none;transition:background .2s}.ds-header-action:hover{background:#dae9da}.ds-header-action:focus-visible{outline:2px solid #cfe8d0;outline-offset:5px}"
+    },
+    {
+      "name": "Scene control",
+      "kind": "button",
+      "description": "背景播放与沉浸控制。",
+      "html": "<button class=\"ds-scene\">暂停动画</button>",
+      "css": ".ds-scene{min-height:34px;padding:7px 11px;border:1px solid #dae8ce20;border-radius:50px;background:#050905a8;color:#c1cfb7;font:400 11px var(--sans,sans-serif);cursor:pointer;transition:background .25s,border-color .25s}.ds-scene:hover{background:#192218e6;border-color:#dae8ce50}.ds-scene:focus-visible{outline:2px solid #cfe8d0;outline-offset:5px}.ds-scene:disabled{opacity:.5;cursor:default}"
+    },
+    {
+      "name": "Demo badge",
+      "kind": "chip",
+      "description": "表明工作台内容为演示，避免误认真实项目。",
+      "html": "<span class=\"ds-demo\">交互示例</span>",
+      "css": ".ds-demo{display:inline-block;padding:3px 8px;color:#b8c5b5;border:1px solid #c6d6be1c;border-radius:50px;background:#acbda105;font:400 9px var(--sans,sans-serif);letter-spacing:.03em}"
+    },
+    {
+      "name": "Glass workspace",
+      "kind": "card",
+      "refersTo": "workspace",
+      "description": "让摄影背景透过的工作台容器。",
+      "html": "<section class=\"ds-workspace\"><h2>分镜工作台</h2><p>一座会呼吸的花园 · 交互示例</p></section>",
+      "css": ".ds-workspace{padding:25px 28px;border:1px solid rgba(207,226,210,.12);border-radius:19px 19px 0 0;background:linear-gradient(130deg,rgba(18,23,22,.66),rgba(8,15,14,.36) 52%,rgba(16,20,16,.6));box-shadow:0 22px 90px #0008;backdrop-filter:blur(5px);color:var(--ink,#f4f4f1);font-family:var(--sans,sans-serif)}.ds-workspace h2{font-size:15px;font-weight:500}.ds-workspace p{font-size:11px;color:#a2b29a}"
+    },
+    {
+      "name": "Main navigation",
+      "kind": "nav",
+      "description": "克制的小字号导航；当前项更明亮。",
+      "html": "<nav class=\"ds-nav\" aria-label=\"主导航\"><a href=\"#\" aria-current=\"page\">首页</a><a href=\"https://miiooai.com/script\">剧本创作</a><a href=\"https://miiooai.com/about\">关于我们</a></nav>",
+      "css": ".ds-nav{display:flex;gap:28px;font:500 12px var(--sans,sans-serif)}.ds-nav a{color:#c4c9c4;text-decoration:none;transition:color .2s}.ds-nav a:hover,.ds-nav a[aria-current]{color:#fff}.ds-nav a:focus-visible{outline:2px solid #cfe8d0;outline-offset:5px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "黑色留白中的摄影花园",
+    "overview": "视觉方向由用户指定的 Neuralyn 参考与保留 MIIOO 品牌的确认锁定。大面积纯黑承托白色标题，植物与薄雾提供深度，界面保持克制；本文件记录已实现系统，不引入新的视觉方向。",
+    "keyCharacteristics": [
+      "摄影感植物包围中央空间。",
+      "无衬线主标题与单个衬线斜体强调。",
+      "淡彩入口、低对比玻璃工作台。",
+      "可见的花茎弯曲、叶片翻动与少量叶瓣飞舞，并保留暂停控制。"
+    ],
+    "rules": [],
+    "dos": [
+      "Do 保留大面积黑色留白和清晰的标题层级。",
+      "Do 让静态回退与动态场景共享同一素材和构图。",
+      "Do 让演示内容、真实站点入口与本地功能边界可辨认。"
+    ],
+    "donts": [
+      "Don't 用更多高精度三维几何替代摄影质感。",
+      "Don't 增加未经证实的客户、指标或评价。",
+      "Don't 宣称重建素材与参考原站像素完全一致。"
+    ]
+  }
+}

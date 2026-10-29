@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { toVideoMediaUrl } from '../../utils/VideoMediaUrl';
 import { isProtectedCompositionSource, loadCompositionMediaBlob } from '../../api/CompositionMediaPlayback';
 
-export function useCompositionMediaSource(source) {
+export function useCompositionMediaSource(source, retryKey = 0) {
   const [loaded, setLoaded] = useState(null);
   const protectedSource = isProtectedCompositionSource(source);
   useEffect(() => {
@@ -11,17 +12,17 @@ export function useCompositionMediaSource(source) {
     loadCompositionMediaBlob(source, controller.signal).then((blob) => {
       if (controller.signal.aborted) return;
       objectUrl = URL.createObjectURL(blob);
-      setLoaded({ source, url: objectUrl });
+      setLoaded({ source, retryKey, url: objectUrl });
     }).catch((error) => {
-      if (!controller.signal.aborted) setLoaded({ source, error: error.message });
+      if (!controller.signal.aborted) setLoaded({ source, retryKey, error: error.message });
     });
     return () => {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [source, protectedSource]);
+  }, [source, protectedSource, retryKey]);
   return {
-    source: protectedSource ? (loaded?.source === source ? loaded.url : null) : source,
-    error: protectedSource && loaded?.source === source ? loaded.error : null,
+    source: protectedSource ? (loaded?.source === source && loaded?.retryKey === retryKey ? loaded.url : null) : toVideoMediaUrl(source),
+    error: protectedSource && loaded?.source === source && loaded?.retryKey === retryKey ? loaded.error : null,
   };
 }

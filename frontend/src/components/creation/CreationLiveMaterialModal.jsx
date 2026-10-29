@@ -3,14 +3,14 @@
  * @structure-index
  *
  * ─── 组件职责 ─────────────────────────────────────────────────────
- *   CreationLiveMaterialModal 真人素材组、素材选择、扫码授权和上传审核状态展示 L333
- *   GroupCard / AssetCard 模态框内部展示与交互卡片 L64 / L196
+ *   CreationLiveMaterialModal 真人素材组、素材选择、扫码授权和上传审核状态展示 L334
+ *   GroupCard / AssetCard 模态框内部展示与交互卡片 L65 / L197
  *
  * ─── 数据流与副作用 ─────────────────────────────────────────────
  *   open / initialSelected → 加载素材组并恢复已选素材
  *   onConfirm → 向 InputCard 返回可用于生成请求的真人素材元数据
  *   qrOnly / onCreated → 为资产库复用仅扫码录入流程，不展示素材库管理页
- *   API、认证轮询、上传审核轮询和删除操作均封装在本业务域组件内；认证错误状态 L342，创建与关闭提示 L393 / L435，确认弹窗 L588
+ *   API、认证轮询、上传审核轮询和删除操作均封装在本业务域组件内；认证错误状态 L343，创建与关闭提示 L394 / L436，确认弹窗 L589
  *
  * ─── 引用边界 ─────────────────────────────────────────────────────
  *   通过显式 props 接入页面；不读取 CreationPage 闭包
@@ -18,6 +18,7 @@
  *
  * ─── 更新记录 ─────────────────────────────────────────────────────
  *   2026-07-16  从 CreationPage.jsx 抽离真人素材入口及弹窗组合
+ *   2026-10-29  真人录入遮罩补充20px背景模糊；仅扫码模式避免叠加模糊，成功状态保持一致。
  *   2026-09-21  创建认证会话失败时仅对 400 且含有效 detail 的响应复用确认弹窗，其他错误保留短提示
  */
 
@@ -581,7 +582,7 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
   const groupAssets = activeGroup ? (assetsMap[activeGroup.id] || []) : [];
 
   return createPortal(
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#00000080', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    <div className="backdrop-blur-[20px]" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#00000080', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* Main modal：资产库的 qrOnly 模式只显示下面的扫码弹窗。 */}
@@ -705,7 +706,7 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
 
       {/* QR scanning sub-modal */}
       {qrState?.phase === 'scanning' && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1001, background: '#00000080', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        <div className={qrOnly ? undefined : 'backdrop-blur-[20px]'} style={{ position: 'fixed', inset: 0, zIndex: 1001, background: '#00000080', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={(e) => { if (e.target === e.currentTarget) { clearInterval(pollTimerRef.current); setQrState(null); if (qrOnly) onClose?.(); } }}
         >
           <div style={{ width: 400, background: '#161616', borderRadius: '12px', border: '1px solid #FFFFFF0D', boxShadow: '0 8px 32px #00000099', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -725,7 +726,7 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
 
       {/* Success + name editing sub-modal */}
       {qrState?.phase === 'success' && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1001, background: '#00000080', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className={qrOnly ? undefined : 'backdrop-blur-[20px]'} style={{ position: 'fixed', inset: 0, zIndex: 1001, background: '#00000080', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: 400, background: '#161616', borderRadius: '12px', border: '1px solid #FFFFFF0D', boxShadow: '0 8px 32px #00000099', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px' }}>
               <span style={{ fontFamily: FONT, fontSize: '14px', fontWeight: 500, color: '#FFFFFFCC' }}>扫码授权人像资产</span>

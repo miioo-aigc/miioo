@@ -1,14 +1,14 @@
 /**
  * @file CreationVideoDetailModal.jsx
  * @structure-index
- * 2026-10-28：恢复主视频原生 controls；参考图片失败只显示文字，保留主媒体恢复反馈。
+ * 2026-10-29：主视频改用共享 VideoPlayerBar；参考图片失败只显示文字，保留主媒体恢复反馈。
  *
- * ─── 辅助组件与工具 ─────────────────────────────── L47–L259
+ * ─── 辅助组件与工具 ─────────────────────────────── L48–L260
  *   formatVideoDuration / ReferenceVideoCard / CopyPromptButton / PanelAction / EditTool 详情字段、参考素材与操作按钮
  *
- * ─── 创作视频详情弹窗 ───────────────────────────── L260–L706
+ * ─── 创作视频详情弹窗 ───────────────────────────── L261–L707
  *   CreationVideoDetailModal                        视频预览、详情信息和操作回调
- *   视频播放区                                      点击画面切换播放状态，中央反馈显示 0.5 秒后隐藏，保留原生 controls
+ *   视频播放区                                      点击画面切换播放状态，中央反馈显示 0.5 秒后隐藏，底部复用共享控制栏
  *   右侧信息区                                      顶部操作、中间滚动、底部视频编辑固定布局
  *
  *   2026-10-23 媒体失败重载后点击播放，等待与播放状态分离
@@ -36,6 +36,7 @@ import { showGlobalToast } from '../stores/toastStore';
 import CopyPromptButton from './ui/CopyPromptButton';
 import { DeleteIcon, FavoriteIcon, Tooltip } from './ui';
 import VideoPlaybackControls from './ui/VideoPlaybackControls';
+import MediaVideoPlayerBar from './ui/MediaVideoPlayerBar';
 import VideoUpscaleModal from './video-edit/VideoUpscaleModal';
 import VideoSubtitleModal from './video-edit/VideoSubtitleModal';
 import VideoTrimModal from './video-edit/VideoTrimModal';
@@ -385,7 +386,6 @@ export default function CreationVideoDetailModal({
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
                     preload="metadata"
                     playsInline
-                    controls
                   />
                 ) : (
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF66', fontFamily: FONT, fontSize: '14px' }}>
@@ -394,9 +394,10 @@ export default function CreationVideoDetailModal({
                 )}
                 <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(in oklab 180deg, oklab(0% 0 0 / 0%) 40%, oklab(0% 0 0 / 40%) 100%)', pointerEvents: 'none' }} />
                 {videoUrl && <MediaLoadStatus visual loadingVariant="spinner" {...media} onPause={media.pause} onRetry={media.retry} onPlay={() => media.play()} />}
-                {videoUrl && <VideoPlaybackControls isPlaying={isPlaying} feedbackVisible={playbackFeedbackVisible} onToggle={togglePlay} />}
+                {videoUrl && <VideoPlaybackControls isPlaying={isPlaying} feedbackVisible={playbackFeedbackVisible} onToggle={togglePlay} bottomInset={0} />}
               </div>
             </div>
+            <MediaVideoPlayerBar displayScale={modalScale} videoRef={videoRef} src={videoUrl} onToggle={togglePlay} />
           </div>
 
           {/* Right: params panel */}

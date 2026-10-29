@@ -8,6 +8,7 @@ import { prepareCompositionAsset } from '../../api/CompositionAssetImport';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { compositionMediaSource } from '../../utils/CompositionMediaSource';
 import { readMediaDuration } from '../../utils/ReadMediaDuration';
+import { compositionUploadAccept, validateCompositionUpload } from '../../utils/CompositionUploadPolicy';
 import { formatTime, useCompositionEditorStore } from '../../stores/compositionEditorStore';
 
 const FONT = "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -29,6 +30,8 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
   const [pendingAssets, setPendingAssets] = useState([]);
   const [uploadError, setUploadError] = useState(null);
   const fileInputRef = useRef(null);
+  const uploadTypeRef = useRef(null);
+  const uploadBusyRef = useRef(false);
   const scrollRef = useRef(null);
   const visiblePendingAssets = pendingAssets.filter((item) => item.type === mediaType);
   const addAsset = useCompositionEditorStore((s) => s.addAsset);
@@ -46,18 +49,18 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
     addAsset(asset);
   };
 
-  const normalizeAddedAsset = (raw, file) => {
+  const normalizeAddedAsset = (raw, file, sourceType = mediaType) => {
     const asset = raw?.asset || raw?.data || raw;
     return {
       ...asset,
       manuallyAdded: true,
       id: asset?.assetId || asset?.asset_id || asset?.id,
-      asset_type: asset?.asset_type || asset?.type || mediaType,
+      asset_type: asset?.asset_type || asset?.type || sourceType,
       name: asset?.name || file?.name || '未命名素材',
-      fileUrl: compositionMediaSource({ ...asset, asset_type: asset?.asset_type || asset?.type || mediaType }),
-      videoUrl: (asset?.asset_type || asset?.type || mediaType) === 'video'
+      fileUrl: compositionMediaSource({ ...asset, asset_type: asset?.asset_type || asset?.type || sourceType }),
+      videoUrl: (asset?.asset_type || asset?.type || sourceType) === 'video'
         ? compositionMediaSource({ ...asset, asset_type: 'video' }) : null,
-      url: normalizeImageUrl(asset?.thumbnail_url || asset?.thumbnailUrl || asset?.poster_url || (mediaType === 'image' ? asset?.file_url || asset?.url : null)),
+      url: normalizeImageUrl(asset?.thumbnail_url || asset?.thumbnailUrl || asset?.poster_url || (sourceType === 'image' ? asset?.file_url || asset?.url : null)),
       thumbnailUrl: normalizeImageUrl(asset?.thumbnail_url || asset?.thumbnailUrl),
       posterUrl: normalizeImageUrl(asset?.poster_url || asset?.posterUrl),
       duration: asset?.duration || asset?.metadata_json?.duration || null,
@@ -74,21 +77,24 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
 
   const handleUpload = async (event) => {
     const file = event.target.files?.[0];
+    const uploadType = uploadTypeRef.current || mediaType;
     event.target.value = '';
-    if (!file || !projectId) return;
+    if (!file || !projectId || uploadBusyRef.current) return;
+    uploadBusyRef.current = true;
     setUploading(true);
-    setPendingAssets([{ name: file.name, type: mediaType, label: '上传处理中…' }]);
     scrollRef.current?.scrollTo({ top: 0 });
     setMenuOpen(false);
     setUploadError(null);
     try {
-      const upload = mediaType === 'video' ? apiUploadCreationVideo : mediaType === 'audio' ? apiUploadCreationAudio : apiUploadCreationImage;
+      const validatedFile = await validateCompositionUpload(file, uploadType);
+      setPendingAssets([{ name: file.name, type: uploadType, label: '上传处理中…' }]);
+      const upload = uploadType === 'video' ? apiUploadCreationVideo : uploadType === 'audio' ? apiUploadCreationAudio : apiUploadCreationImage;
       const [result, localDuration] = await Promise.all([
-        upload({ file, category: 'reference', project_id: projectId, asset_name: file.name }),
-        readMediaDuration(file, mediaType),
+        upload({ file: validatedFile, category: 'reference', project_id: projectId, asset_name: file.name }),
+        readMediaDuration(validatedFile, uploadType),
       ]);
       if (!result.asset_id) throw new Error('上传失败，未返回资产 ID');
-      const asset = normalizeAddedAsset(await apiGetAssetDetail(result.asset_id), file);
+      const asset = normalizeAddedAsset(await apiGetAssetDetail(result.asset_id), file, uploadType);
       if (!asset.id || !asset.fileUrl) throw new Error('上传结果缺少素材信息，请重试');
       const responseMedia = result.video || result.audio || {};
       asset.duration = [asset.duration, responseMedia.duration, responseMedia.metadata_json?.duration, localDuration]
@@ -97,6 +103,7 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
     } catch (error) {
       setUploadError(error.message || '上传失败，请重试');
     } finally {
+      uploadBusyRef.current = false;
       setUploading(false);
       setPendingAssets([]);
       setMenuOpen(false);
@@ -108,14 +115,14 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
       <div className="flex min-w-0 items-center justify-between gap-[8px]">
         <Tabs options={[{ value: 'video', label: '视频' }, { value: 'image', label: '图片' }, { value: 'audio', label: '音频' }, { value: 'subtitle', label: '字幕' }]} value={mediaType} onChange={setMediaType} gap="12px" variant="plain-ghost" />
         <div className={`relative shrink-0 ${mediaType === 'subtitle' ? 'hidden' : ''}`}>
-          <input ref={fileInputRef} type="file" accept={mediaType === 'video' ? 'video/*' : mediaType === 'audio' ? 'audio/*' : 'image/*'} className="hidden" onChange={handleUpload} />
+          <input ref={fileInputRef} type="file" accept={compositionUploadAccept(mediaType)} className="hidden" onChange={handleUpload} />
           <button type="button" onClick={() => setMenuOpen((open) => !open)} disabled={uploading} className="flex h-[28px] cursor-pointer items-center justify-center gap-[4px] rounded-[4px] px-[6px] text-[14px] leading-[16px] text-text-secondary hover:bg-white-10 disabled:cursor-not-allowed disabled:opacity-50">
             <span>添加素材</span>
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
               <path d="M4.5 6.25L8 9.75L11.5 6.25" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          {menuOpen && <DropdownMenu width="140px" style={{ top: '100%', bottom: 'auto', marginTop: '4px' }} items={[{ key: 'upload', label: '本地上传', onClick: () => fileInputRef.current?.click() }, { key: 'library', label: '从资产库选择', onClick: () => { setPickerOpen(true); setMenuOpen(false); } }]} onClose={() => setMenuOpen(false)} />}
+          {menuOpen && <DropdownMenu width="140px" style={{ top: '100%', bottom: 'auto', marginTop: '4px' }} items={[{ key: 'upload', label: '本地上传', onClick: () => { uploadTypeRef.current = mediaType; fileInputRef.current?.click(); } }, { key: 'library', label: '从资产库选择', onClick: () => { setPickerOpen(true); setMenuOpen(false); } }]} onClose={() => setMenuOpen(false)} />}
         </div>
       </div>
       <AssetPickerModal
@@ -201,13 +208,15 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
                   key={asset.id}
                   onClick={() => handleClick(asset)}
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); return; }
-                    if (event.key === ' ') { event.preventDefault(); handleClick(asset); }
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }
                   }}
                   role="button"
                   tabIndex={0}
                   title={`添加到时间线：${asset.name || '未命名素材'}${showDuration ? ` · ${formatTime(asset.duration)}` : ''}`}
-                  className={`group relative flex min-w-0 w-full flex-col items-start gap-[6px] cursor-pointer text-left ${added ? 'text-brand-main' : ''}`}
+                  className={`group relative flex min-w-0 w-full flex-col items-start gap-[6px] cursor-pointer text-left outline-none focus-visible:outline-none ${added ? 'text-brand-main' : ''}`}
                 >
                   <span className="relative flex items-center justify-center w-full aspect-video rounded-[8px] bg-neutral-500 overflow-hidden shrink-0 border border-white-10 transition-colors group-hover:border-white-30">
                     {isAudio ? (

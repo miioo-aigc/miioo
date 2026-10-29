@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>花园运动连续性检查</title>
+<style>
+html,body{margin:0;background:#000;color:#eee;font:13px system-ui}
+#garden-stage{position:fixed;inset:0;pointer-events:none}
+#garden-poster,#garden-canvas{position:absolute;width:100%;height:100%;object-fit:contain;object-position:center bottom}
+#garden-canvas{opacity:0}#garden-canvas.ready{opacity:1}#garden-poster.rendered{visibility:hidden}
+nav{position:fixed;inset:16px 16px auto;display:flex;gap:8px;align-items:center}
+button{padding:8px 12px;border:1px solid #555;background:#171717;color:inherit;border-radius:5px}
+output{font-size:12px}
+</style>
+<main id="garden-stage"><img id="garden-poster" src="../assets/neuralyn-garden.webp" alt="静态花园"><canvas id="garden-canvas"></canvas></main>
+<nav><button id="right">右侧连续摇晃</button><button id="left">左侧连续摇晃</button><button id="sweep">全画幅快速扫动</button><button id="resume">恢复常态风</button><output id="result">等待场景</output></nav>
+<script type="module">
+// A reproducible stress fixture, not a production interaction or benchmark.
+const output=document.querySelector('#result'),canvas=document.querySelector('#garden-canvas');
+let run=0;
+window.addEventListener('garden-state',event=>{output.textContent=event.detail.available?'场景就绪':'静态回退';});
+function play(){window.dispatchEvent(new CustomEvent('garden-motion',{detail:{paused:false}}));}
+function shake(region){
+  const token=++run,start=performance.now();let frame=0;play();
+  const before=Number(canvas.dataset.interactions||0);
+  function move(now){
+    if(token!==run)return;
+    const elapsed=(now-start)/1000;
+    const rect=document.querySelector('#garden-stage').getBoundingClientRect();
+    const scale=Math.min(rect.width/1672,rect.height/940),w=1672*scale,h=940*scale;
+    const x=region==='sweep'?.5+Math.sin(elapsed*13)*.44:(region==='right'?.86:.20)+Math.sin(elapsed*21)*.12;
+    const y=region==='sweep'?.68:region==='right'?.55:.43;
+    window.dispatchEvent(new PointerEvent('pointermove',{clientX:rect.left+(rect.width-w)/2+x*w,clientY:rect.top+rect.height-h+y*h,pointerType:'mouse'}));
+    frame++;
+    if(elapsed<4){requestAnimationFrame(move);return;}
+    window.dispatchEvent(new CustomEvent('garden-motion',{detail:{paused:true}}));
+    output.textContent=`${region}：${frame} 次输入，${Number(canvas.dataset.interactions||0)-before} 次响应；已定格检查连接处`;
+  }
+  requestAnimationFrame(move);
+}
+for(const region of ['right','left','sweep'])document.getElementById(region).onclick=()=>shake(region);
+document.querySelector('#resume').onclick=()=>{run++;play();output.textContent='常态风';};
+await import('../neural-garden.js?v=20261029-continuous-r3');
+</script>
+</html>

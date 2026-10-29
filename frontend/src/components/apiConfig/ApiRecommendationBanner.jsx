@@ -27,7 +27,10 @@ export default function ApiRecommendationBanner() {
       <div className="api-recommendation-banner__scrim" />
     </div>
     <div className="api-recommendation-banner__copy">
-      <div className="api-recommendation-banner__title">推荐使用<a href={OFFICIAL_URL} target="_blank" rel="noopener noreferrer">OneLinkAI API</a></div>
+      <div className="api-recommendation-banner__title">推荐使用<a href={OFFICIAL_URL} target="_blank" rel="noopener noreferrer">OneLinkAI API<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: 4 }}>
+        <path d="M6.33337 3.66663H12.3334V9.66663" strokeLinecap="round" strokeLinejoin="round" stroke="white" />
+        <path d="M3.84802 12.1519L12.3333 3.66663" strokeLinecap="round" strokeLinejoin="round" stroke="white" />
+      </svg></a></div>
       <div className="api-recommendation-banner__description">
         <div className="api-recommendation-banner__models">
           <span>集合</span>

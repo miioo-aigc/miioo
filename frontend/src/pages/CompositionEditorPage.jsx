@@ -1,6 +1,7 @@
 /**
- * 结构索引（2026-10-28）
- * 导入与常量：L7–L25；素材归一化：L27–L68；页面入口与数据恢复：L70–L180；视图编排：L182–L224。
+ * 结构索引（2026-10-29）
+ * 导入与常量：L8–L26；素材归一化：L28–L69；页面入口与数据恢复：L71–L181；视图编排：L183–L222。
+ * 2026-10-29 导出弹窗关闭仅收起，不触发页面返回。
  * 更新：保留原文件身份与导出来源；中央视频预览由 PreviewCanvas 独立请求轻量预览；图片使用原图。
  * 页面仅负责加载、草稿恢复和面板编排；媒体鉴权由 API 与播放 Hook 承担。
  */
@@ -208,10 +209,7 @@ export default function CompositionEditorPage({ embedded = false, projectId: sup
         />
       )}
       </section>
-      {exportModalOpen && exportState.status !== 'idle' && <ExportModal onClose={onBack || (() => {
-        window.history.pushState({}, '', `/project/${encodeURIComponent(projectId)}/edit`);
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      })} />}
+      {exportModalOpen && exportState.status !== 'idle' && <ExportModal />}
       {pendingRemoval && <ConfirmDialog
         title="删除素材"
         description={`当前素材「${pendingRemoval.asset.name || '未命名素材'}」已应用到轨道中，共关联 ${pendingRemoval.count} 个片段。删除后，将从素材区移除该素材，并同步删除当前工程所有轨道中的关联片段。资产库原文件和其他草稿不受影响。确定删除吗？`}

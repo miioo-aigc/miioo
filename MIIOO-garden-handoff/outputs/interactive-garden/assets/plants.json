@@ -1,0 +1,97 @@
+[
+  {
+    "name": "dandelion",
+    "bounds": [
+      174,
+      266,
+      140,
+      449
+    ],
+    "root": [
+      222,
+      700
+    ],
+    "head": [
+      240,
+      333
+    ],
+    "radius": 65,
+    "stiffness": 0.8
+  },
+  {
+    "name": "white-umbel",
+    "bounds": [
+      1101,
+      350,
+      176,
+      376
+    ],
+    "root": [
+      1166,
+      711
+    ],
+    "head": [
+      1186,
+      400
+    ],
+    "radius": 81,
+    "stiffness": 1.1
+  },
+  {
+    "name": "white-daisy",
+    "bounds": [
+      1209,
+      431,
+      125,
+      294
+    ],
+    "root": [
+      1225,
+      710
+    ],
+    "head": [
+      1273,
+      479
+    ],
+    "radius": 52,
+    "stiffness": 1.2
+  },
+  {
+    "name": "orange-left",
+    "bounds": [
+      454,
+      810,
+      97,
+      132
+    ],
+    "root": [
+      487,
+      925
+    ],
+    "head": [
+      501,
+      855
+    ],
+    "radius": 40,
+    "stiffness": 1.8
+  },
+  {
+    "name": "orange-right",
+    "bounds": [
+      1001,
+      836,
+      92,
+      120
+    ],
+    "root": [
+      1066,
+      940
+    ],
+    "head": [
+      1047,
+      865
+    ],
+    "radius": 36,
+    "stiffness": 1.7
+  }
+]

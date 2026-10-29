@@ -3,6 +3,7 @@
  * @description 项目资产、创作资产与 Seedance 素材的统一选择弹窗。
  *
  * ─── 结构索引 ─────────────────────────────────────────── 2026-10-28：账号入口 L491、分页 L1126、内容读取反馈 L1639。
+ *   2026-10-29：修复共用弹窗项目选择回写；切换重新读取，加载和空态分离。
  *   更新：关闭卸载及账号/父项目/类型切换隔离；非创作读取错误重试、旧请求写回拦截和异步确认锁。
  *   更新：补全传入当前会话检查，失败走原重试反馈；共享补全限制并发并停止旧调度。
  *   后续：全量分页与服务端定稿/范围契约待处理，本轮不代表大容量目标完成。
@@ -14,6 +15,7 @@
  *   2026-09-28：配音资产透传台词，项目资产仅保留明确台词字段，不把音乐提示词当台词。
  *   2026-10-09：可选批量选择校验，等待异步确认结束后关闭，确认失败保留弹窗；默认不影响其他调用方。
  *
+ *   2026-10-29  修复共用弹窗项目选择回写；切换重新读取，加载和空态分离。
  *   2026-10-28  各级标签悬停提亮至 white-80；选中态不变。
  *   2026-08-20  Seedance 视频对齐资产库，通过原生视频短暂解码后停帧展示封面
  */
@@ -967,7 +969,7 @@ function AccountAssetPickerModal({
         // 拉取所有项目列表
         const projList = await apiGetProjects();
         if (!isCurrent()) return;
-        const projs = Array.isArray(projList) ? [...projList].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)).map(p => ({ id: p.id, name: p.name })) : [];
+        const projs = Array.isArray(projList) ? projList.map(p => ({ id: p.id, name: p.name })) : [];
         setApiProjects(projs);
       } catch (err) {
         if (!isCurrent()) return;
@@ -1033,7 +1035,7 @@ function AccountAssetPickerModal({
   // 切换 Tab 时一次性拉取该 Tab 的全部数据（循环翻页直到 hasMore=false）
   useEffect(() => {
     if (!open || activeTab !== 'project') return;
-    const pullProjectId = activeProjectId || projectId;
+    const pullProjectId = activeProjectId;
     if (!pullProjectId) return;
 
     const tabKey = SUB_TAB_KEY_MAP[projectSubTab];
@@ -1109,7 +1111,7 @@ function AccountAssetPickerModal({
       } catch (err) {
         if (!isCurrent()) return;
         console.error('[AssetPickerModal] 拉取项目资产失败:', err);
-        setProjectTabErrors(prev => ({ ...prev, [pKey]: '项目资产读取失败，请重试' }));
+        setProjectTabErrors(prev => ({ ...prev, [pKey]: err?.status === 404 ? '该项目不存在或暂无访问权限，请切换项目或重试' : '项目资产读取失败，请重试' }));
       } finally {
         if (isCurrent()) setLoadingTabKeys(prev => {
           const next = new Set(prev);
@@ -1206,20 +1208,16 @@ function AccountAssetPickerModal({
   const projectAssetsMap = apiAssetsMap ?? {};
   // 从 store 读取创作资产数据（当 prop 未传入时）
 
-  // 当 projects 列表变化时，同步 activeProjectId（优先使用 projectId）
+  // 父项目由会话 key 和 useState 提供默认值；列表刷新不能覆盖用户已选项目。
   useEffect(() => {
-    if (projectId) {
-      // projectId 是父页面传入的外部上下文，需要同步到弹窗本地选择状态。
-      setActiveProjectId(projectId);
-      return;
-    }
-    if (projects.length > 0 && !projects.find(p => p.id === activeProjectId)) {
-      // 项目列表首次加载后选择第一个可用项目。
-      setActiveProjectId(projects[0].id);
-    } else if (apiProjects !== null && projects.length === 0) {
-      setActiveProjectId(null);
-    }
-  }, [projects, projectId, activeProjectId, apiProjects]);
+    if (apiProjects === null) return;
+    // 远程列表返回后仅修复不存在的选择，避免迟到列表回写用户选择。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActiveProjectId(current => {
+      if (projects.some(project => project.id === current)) return current;
+      return projects.find(project => project.id === projectId)?.id ?? projects[0]?.id ?? null;
+    });
+  }, [projects, projectId, apiProjects]);
 
   // 当 accept 变化时，重置子 Tab 到第一个可用项
   useEffect(() => {
@@ -1348,6 +1346,12 @@ function AccountAssetPickerModal({
   };
 
   const handleSelectProject = (p) => {
+    if (p.id !== activeProjectId) {
+      // 切换后重新读取；保留数据以支持已选资产的跨项目确认。
+      const prefix = p.id + '__';
+      setLoadedTabKeys(keys => new Set([...keys].filter(key => !key.startsWith(prefix))));
+      setProjectTabErrors(errors => Object.fromEntries(Object.entries(errors).filter(([key]) => !key.startsWith(prefix))));
+    }
     setActiveProjectId(p.id);
     setProjectOpen(false);
     setProjectHovIdx(null);
@@ -1402,7 +1406,7 @@ function AccountAssetPickerModal({
   const activeCreativeType = CREATIVE_SUB_TAB_TYPE_MAP[creativeSubTab];
   const creativeLoading = !creativeAssetsProp && loadingCreativeTabs.has(activeCreativeType);
   const contentLoading = activeTab === 'project'
-    ? (projectsLoading || Boolean(activeProjectId && currentProjectTabKey && loadingTabKeys.has(currentProjectTabKey)))
+    ? (projectsLoading || Boolean(activeProjectId && currentProjectTabKey && (loadingTabKeys.has(currentProjectTabKey) || (!loadedTabKeys.has(currentProjectTabKey) && !projectTabErrors[currentProjectTabKey]))))
     : activeTab === 'creative'
       ? (creativeLoading && rawAssets.length === 0)
       : seedanceLoading;

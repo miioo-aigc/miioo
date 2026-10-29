@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>夜间花园</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}#garden{position:fixed;inset:0;width:100%;height:100%;display:block;object-fit:cover;object-position:center bottom}canvas{position:fixed;inset:0;display:block;touch-action:none;opacity:0;transition:opacity .8s}canvas.ready{opacity:1}#garden,canvas{filter:saturate(.82)}#notice{position:fixed;bottom:20px;left:20px;right:20px;color:#d4ddd4;font:12px/1.6 sans-serif;display:none}#notice.visible{display:block}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(to top,#000 0%,rgba(0,0,0,.72) 5%,rgba(0,0,0,.27) 16%,transparent 33%),radial-gradient(ellipse at bottom left,rgba(0,0,0,.92) 0%,rgba(0,0,0,.45) 18%,transparent 48%),radial-gradient(ellipse at bottom right,rgba(0,0,0,.92) 0%,rgba(0,0,0,.45) 18%,transparent 48%);z-index:2}
+</style>
+
+</head>
+<body>
+<img id="garden" src="assets/garden-clean-v1.png" alt="黑色背景中的真实质感花园：绿色苔藓、蒲公英、白花与橙色小花。">
+<div id="notice" role="status"></div>
+<script type="module" src="garden-3d.js"></script>
+</body>
+</html>

@@ -4,6 +4,39 @@ import { createWaveformSession } from '../src/components/compositionEditor/Compo
 import { waveformPoints } from '../src/utils/CompositionWaveform.js';
 const wait = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
 
+test('增益、静音及同一峰值的蓝黄红高度分层', () => {
+  const waveform = { status: 'ready', duration: 1, peaks: [0.25] };
+  const flat = '0,100 0,100 100,100 100,100 100,100';
+  assert.ok(waveformPoints({ duration: 1, volume: 2 }, waveform).includes('0,50'));
+  assert.equal(waveform.peaks[0], 0.25);
+  assert.equal(waveformPoints({ duration: 1, volume: 0 }, waveform), flat);
+  assert.equal(waveformPoints({ duration: 1 }, waveform, { volume: 0 }), flat);
+  assert.equal(waveformPoints({ duration: 1 }, waveform, { hidden: true }), flat);
+  const threshold = 10 ** (-6 / 20);
+  const height = (peak, level, volume = 1) => {
+    const points = waveformPoints({ duration: 1, volume }, { ...waveform, peaks: [peak] }, {}, level);
+    return 100 - Number(points.split(' ')[1].split(',')[1]);
+  };
+  for (const peak of [0, threshold - 0.000001, threshold, 0.999, 1]) {
+    if (peak <= threshold) assert.equal(height(peak, 'normal'), height(peak, 'warning'));
+    else assert.equal(height(peak, 'normal'), height(threshold, 'normal'));
+    assert.equal(height(peak, 'danger'), height(peak, 'warning'));
+  }
+  // 超过0分贝时仅顶部露红，黄色止于满刻度，蓝色主体仍保留。
+  assert.ok(height(0.75, 'danger', 2) > height(0.75, 'warning', 2));
+  assert.equal(height(0.75, 'warning', 2), height(1, 'warning'));
+  assert.equal(height(0.75, 'normal', 2), height(threshold, 'normal'));
+  assert.equal(height(1, 'danger', 2), 100);
+  for (const level of ['normal', 'warning', 'danger']) assert.equal(height(1, level, 0), 0);
+  // 常见中低峰值获得足够高度，同时保留底噪、轻声、强声之间的差异。
+  assert.ok(height(0.1, 'normal') > 55 && height(0.1, 'normal') < 65);
+  assert.ok(height(0.001, 'normal') < 10);
+  const peaks = [0, 0.001, 0.01, 0.05, 0.1, 0.25, 0.5];
+  for (let i = 1; i < peaks.length; i++) assert.ok(height(peaks[i], 'normal') > height(peaks[i - 1], 'normal'));
+  assert.ok(height(0.1, 'normal', 2) > height(0.1, 'normal'));
+  assert.ok(height(0.1, 'normal', 0.5) < height(0.1, 'normal'));
+});
+
 test('裁剪与倍速映射源区间，静音为零，高低精度均可绘制', () => {
   const waveform = { status: 'ready', duration: 4, peaks: [0, 0.25, 0.5, 1] };
   assert.equal(waveformPoints({ offset: 1, duration: 1, speed: 2 }, waveform), '0,100 0,75 50,75 50,50 100,50 100,100 100,100');

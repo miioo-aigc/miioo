@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "outputs/interactive-garden/index.html"
+        ],
+        "createdAt": "2026-10-29T02:18:30.532Z",
+        "reason": "Agent: existing primary-action ambient shadows are recorded as action-lift in .impeccable/design.json; user requested preserving the incumbent homepage visual while fixing garden motion seams. Preserve this intentional homepage treatment."
+      }
+    ]
+  }
+}

@@ -1,7 +1,8 @@
 /**
+ * 2026-10-29 视频详情与剪辑预览共享播放控制栏
  * 结构索引
  * ========
- *   组件 MediaDetailModal       通用媒体详情弹窗（图片/视频）     L99–L580
+ *   组件 MediaDetailModal       通用媒体详情弹窗（图片/视频）     L101–L585
  *     - 复用自 AssetsPage 的 SubjectAssetDetailModal
  *     - 左侧：大图/视频预览 + 缩略图列表（始终显示，不设数量下限）
  *     - 右侧：创作信息面板（名称/描述/提示词/参数/按钮）
@@ -41,7 +42,8 @@
  *   2026-10-23  隐藏多机位入口；图片编辑使用连续四列网格，扩图自动补位，保留编辑功能
  */
 
-import { useContext, useState } from 'react';
+import { useContext, useRef, useState } from 'react';
+import MediaVideoPlayerBar from './ui/MediaVideoPlayerBar';
 import { createPortal } from 'react-dom';
 import { useModalSize } from '../utils/useModalSize';
 import LocalImageEditor from './image-edit/LocalImageEditor';
@@ -118,6 +120,7 @@ export default function MediaDetailModal({
   showPrimaryBadge = true,
 }) {
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
+  const videoRef = useRef(null);
   const imgs = images ?? [];
   const defaultIdx = activeIndex >= 0 && activeIndex < imgs.length ? activeIndex : imgs.findIndex((img) => img.is_primary);
   const [activeImg, setActiveImg] = useState(defaultIdx >= 0 ? defaultIdx : 0);
@@ -232,7 +235,7 @@ export default function MediaDetailModal({
                 {mode === 'video' && videoUrl ? (
                   <video
                     src={videoUrl}
-                    controls
+                    ref={videoRef} playsInline
                     style={{ maxWidth: '100%', maxHeight: '100%', display: 'block', padding: '16px', boxSizing: 'border-box' }}
                   />
                 ) : (
@@ -243,6 +246,8 @@ export default function MediaDetailModal({
                   />
                 )}
               </div>
+
+              {mode === 'video' && videoUrl && <MediaVideoPlayerBar displayScale={modalScale} videoRef={videoRef} src={videoUrl} />}
 
               {/* Thumbnails */}
                 <div style={{

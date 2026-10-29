@@ -164,3 +164,73 @@ test('附加音轨缓冲恢复事件按最新游标对齐', () => {
   audio.listeners.get('playing')();
   assert.equal(audio.currentTime, 2.2);
 });
+
+
+test('图片就绪且没有视频或音频时，时间线连续推进', () => {
+  const clock = new PreviewMediaClock();
+  clock.setBlocked(true);
+  assert.equal(clock.tick(0, 0.1, 100, 3), 0);
+  clock.setBlocked(false);
+  let cursor = 0;
+  for (let i = 0; i < 30; i++) cursor = clock.tick(cursor, 0.1, i * 100, 3);
+  assert.equal(cursor, 3);
+});
+
+test('音频跨域加载失败上报，替换为同源地址后可恢复播放', () => {
+  const clock = new PreviewMediaClock();
+  const audio = media();
+  audio.readyState = 0;
+  let failures = 0;
+  const cleanup = clock.register('A1', audio, window, true, true, () => 0, () => failures++);
+  audio.listeners.get('error')();
+  assert.equal(failures, 1);
+  assert.equal(clock.tick(0, 0.1, 100, 10), 0);
+  cleanup();
+  audio.readyState = 4;
+  clock.register('A1', audio, { ...window, seg: { ...window.seg, sourceUrl: '/__dev-media/media/origin/audio.mp3' } }, true, true, () => 0);
+  clock.tick(0, 0.1, 200, 10);
+  audio.currentTime = 0.1;
+  assert.equal(clock.tick(0, 0.1, 300, 10), 0.1);
+});
+
+for (const type of ['audio', 'video']) test(type + '自然结束后不重新启动旧素材，穿过空档并接续下一段', async () => {
+  const clock = new PreviewMediaClock();
+  const el = media();
+  el.play = function () {
+    if (this.ended) { this.ended = false; this.currentTime = 0; }
+    this.plays++; this.paused = false; this.listeners.get('playing')?.();
+    return Promise.resolve();
+  };
+  let cursor = 9.95;
+  const cleanup = clock.register('track', el, { ...window, seg: { ...window.seg, type } }, true, true, () => cursor);
+  await new Promise(resolve => setImmediate(resolve));
+  el.currentTime = 10; el.ended = true; el.paused = true; el.readyState = 2;
+  clock.require(['track']);
+  assert.equal(clock.tick(cursor, 0.05, 100, 10), 10);
+  assert.equal(el.plays, 1);
+  cleanup();
+  clock.register('track', el, null, false, true, () => cursor);
+  clock.require([]);
+  cursor = 10;
+  for (let i = 0; i < 10; i++) cursor = clock.tick(cursor, 0.5, 200 + i * 500, 15);
+  assert.equal(cursor, 15);
+  assert.equal(el.plays, 1);
+  const next = media();
+  clock.register('track', next, { ...window, start: 15, end: 25, seg: { ...window.seg, type } }, true, true, () => cursor);
+  clock.require(['track']);
+  next.currentTime = 0.1;
+  assert.equal(clock.tick(cursor, 0.1, 6000, 25), 15.1);
+});
+
+test('片段自然结束后就绪状态正常也不能重播，其他音轨继续推进', async () => {
+  const clock = new PreviewMediaClock();
+  const ended = media();
+  const other = media();
+  clock.register('A1', ended, window, true, true, () => 5);
+  clock.register('A2', other, window, true, true, () => 5);
+  await new Promise(resolve => setImmediate(resolve));
+  ended.ended = true; ended.paused = true;
+  other.currentTime = 5.1;
+  assert.equal(clock.tick(5, 0.1, 100, 10), 5.1);
+  assert.equal(ended.plays, 1);
+});

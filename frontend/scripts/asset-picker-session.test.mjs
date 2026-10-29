@@ -134,3 +134,20 @@ for (const kind of ['project', 'seedance']) {
     });
   }
 }
+
+test("项目列表刷新保留弹窗内选择", () => {
+  const start = source.indexOf("  // 父项目由会话 key");
+  const end = source.indexOf("  // 当 accept 变化时", start);
+  const effect = source.slice(start, end);
+  assert.match(effect, /setActiveProjectId\(current =>/);
+  assert.doesNotMatch(effect, /\[projects, projectId, activeProjectId/);
+  assert.match(source, /const pullProjectId = activeProjectId;/);
+});
+
+test("项目切换清理目标缓存并保持加载态", () => {
+  const start = source.indexOf("  const handleSelectProject = (p) => {");
+  const end = source.indexOf("  const toggleProjectMenu", start);
+  const handler = source.slice(start, end);
+  assert.match(handler, /setLoadedTabKeys/);
+  assert.match(source, /!loadedTabKeys\.has\(currentProjectTabKey\)/);
+});

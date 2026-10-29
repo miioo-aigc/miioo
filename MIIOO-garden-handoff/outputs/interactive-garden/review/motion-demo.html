@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MIIOO · 动态验收</title>
+<style>html,body{margin:0;background:#000;color:#ddd;font:12px sans-serif}#garden-stage{position:fixed;inset:0;pointer-events:none}#garden-poster,#garden-canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center bottom}#garden-canvas{opacity:0}#garden-canvas.ready{opacity:1}#garden-poster.rendered{visibility:hidden}.tools{position:fixed;bottom:20px;left:20px;display:flex;gap:12px;align-items:center}button,a{font:12px sans-serif;color:#ddd;background:#0c160cdc;border:1px solid #ffffff33;border-radius:20px;padding:10px 18px;text-decoration:none}button{cursor:pointer}button:disabled{opacity:.5}video{display:none}</style>
+<main id="garden-stage"><img id="garden-poster" src="../assets/neuralyn-garden.webp" alt="花园静态回退"><canvas id="garden-canvas"></canvas></main>
+<div class="tools"><button id="record" disabled>录制 8 秒动态</button><span id="state" role="status">正在准备</span><a id="download" hidden download="miioo-garden-motion.webm">下载动态录像</a></div><video id="recording" muted playsinline controls></video>
+<script type="module">
+const record=document.querySelector('#record'),status=document.querySelector('#state'),download=document.querySelector('#download');
+window.addEventListener('garden-state',event=>{if(event.detail.available){record.disabled=false;status.textContent='Three.js 场景已准备';}});
+record.addEventListener('click',()=>{
+  record.disabled=true;status.textContent='正在录制';download.hidden=true;
+  const stream=document.querySelector('#garden-canvas').captureStream(30);
+  const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm';
+  const recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:5500000}),chunks=[];
+  recorder.ondataavailable=event=>{if(event.data.size)chunks.push(event.data);};
+  recorder.onstop=()=>{
+    stream.getTracks().forEach(track=>track.stop());
+    const url=URL.createObjectURL(new Blob(chunks,{type:mime}));
+    document.querySelector('#recording').src=url;download.href=url;download.hidden=false;
+    status.textContent='录制完成';record.disabled=false;
+  };
+  window.dispatchEvent(new CustomEvent('garden-motion',{detail:{paused:false}}));
+  recorder.start();
+  setTimeout(()=>window.dispatchEvent(new CustomEvent('garden-gust')),1000);
+  setTimeout(()=>window.dispatchEvent(new CustomEvent('garden-gust')),4200);
+  setTimeout(()=>recorder.stop(),8000);
+});
+await import('../neural-garden.js');
+</script></html>

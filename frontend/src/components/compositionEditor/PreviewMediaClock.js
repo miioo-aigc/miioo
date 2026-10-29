@@ -78,7 +78,7 @@ export class PreviewMediaClock {
   }
 
   start(entry) {
-    if (this.blocked || !entry.playing || entry.pending || entry.failed || !entry.element.paused
+    if (this.blocked || !entry.playing || entry.pending || entry.failed || entry.element.ended || !entry.element.paused
       || entry.element.readyState < 3) return;
     entry.pending = true;
     entry.element.play().catch((error) => {
@@ -92,8 +92,10 @@ export class PreviewMediaClock {
   tick(cursor, dt, now, boundary) {
     const active = [...this.entries.values()].filter((entry) => entry.playing
       && entry.window?.seg.sourceUrl && cursor >= entry.window.start && cursor < entry.window.end);
-    const master = active.find((entry) => entry.audible && entry.window.seg.type === 'audio')
-      || active.find((entry) => entry.window.seg.type === 'video');
+    // 自然结束是完成状态，不是缓冲；不能再次 play，否则浏览器从头重播。
+    const unfinished = active.filter((entry) => !entry.element.ended);
+    const master = unfinished.find((entry) => entry.audible && entry.window.seg.type === 'audio')
+      || unfinished.find((entry) => entry.window.seg.type === 'video');
     const wallNext = Math.min(cursor + Math.max(0, dt), boundary);
     if (this.master !== master) {
       this.master = master;
@@ -106,7 +108,7 @@ export class PreviewMediaClock {
       this.lastMediaTime = null;
       return cursor;
     }
-    const allReady = active.every((entry) => !entry.failed && !entry.element.seeking && entry.element.readyState >= 3);
+    const allReady = active.every((entry) => !entry.failed && (entry.element.ended || (!entry.element.seeking && entry.element.readyState >= 3)));
     if (!allReady) {
       this.blocked = true;
       active.forEach((entry) => entry.element.pause());
@@ -115,7 +117,7 @@ export class PreviewMediaClock {
     }
     if (this.blocked) {
       this.blocked = false;
-      active.forEach((entry) => {
+      unfinished.forEach((entry) => {
         const target = mediaTime(entry.window, cursor);
         if (entry.element.readyState >= 1 && Math.abs(entry.element.currentTime - target) > 0.05) entry.element.currentTime = target;
         this.start(entry);
@@ -124,7 +126,6 @@ export class PreviewMediaClock {
     active.forEach((entry) => this.start(entry));
     if (!master) return wallNext;
     const media = master.element;
-    if (media.ended) return Math.min(master.window.end, boundary);
     const healthy = !master.cold && !master.failed && !media.seeking
       && !media.paused && !media.ended && media.readyState >= 3
       && media.getAttribute('src') === master.window.seg.sourceUrl;

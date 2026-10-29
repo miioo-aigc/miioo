@@ -7,6 +7,29 @@ const { parseSubtitleFile, readSubtitleFile, subtitleColorWithOpacity } = await 
 const { useCompositionEditorStore: store, serializeTimeline } = await server.ssrLoadModule('/src/stores/compositionEditorStore.js');
 const reset = () => store.setState({ segments: [], selectedId: null, loaded: true, projectId: null, cursor: 0, past: [], future: [], mainTracks: { S: null }, trackSettings: {} });
 
+test('字幕位置连续预览同步属性数据，松手一次提交，撤销重做保留定位', () => {
+  reset();
+  store.getState().addSubtitle();
+  const seg = store.getState().segments[0];
+  store.getState().select(seg.id);
+  const before = { segments: store.getState().segments, selectedId: seg.id };
+  const historyCount = store.getState().past.length;
+  for (const [x, y] of [[40, 70], [35.5, 65.2], [20, 30]]) {
+    store.getState().previewSubtitle(seg.id, { style: { x, y } });
+    const selected = store.getState().segments.find((item) => item.id === store.getState().selectedId);
+    assert.equal(selected.style.x, x);
+    assert.equal(selected.style.y, y);
+    assert.equal(store.getState().past.length, historyCount);
+  }
+  store.getState().commitVisualSegment(seg.id, before);
+  assert.equal(store.getState().past.length, historyCount + 1);
+  assert.equal(serializeTimeline(store.getState().segments)[0].style.x, 20);
+  store.getState().undo();
+  assert.deepEqual(store.getState().segments[0].style, seg.style);
+  store.getState().redo();
+  assert.equal(store.getState().segments[0].style.y, 30);
+});
+
 test('新建字幕追加主轨末尾，忽略游标，取消主轨后恢复游标定位', () => {
   reset();
   store.getState().importSubtitles([{ text: 'first', start: 2, duration: 2 }, { text: 'overlap', start: 2, duration: 4 }]);

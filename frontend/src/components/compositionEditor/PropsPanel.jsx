@@ -124,7 +124,6 @@ export default function PropsPanel() {
   // 有效倍速（图片恒 1；缺省 / 非法值回退 1）
   const speed = isImage || !(Number(selected.speed) > 0) ? 1 : Number(selected.speed);
 
-  // 已分离判定（A1 存在同素材且起点对齐的音频段）；已分离时视觉禁用并以 title 提示
   return (
     <aside className="timeline-scrollbar w-full min-w-0 min-h-0 flex flex-col bg-neutral-200 overflow-y-auto overflow-x-hidden px-[20px] py-[16px] gap-[20px] [&>div]:shrink-0">
       <div className="flex items-center gap-[8px]">

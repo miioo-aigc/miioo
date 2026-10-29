@@ -206,7 +206,7 @@ function EditIcon() {
 
 function CardWatermark() {
   return (
-    <svg width="82" height="82" viewBox="58 75.5 82 82" fill="none" xmlns="http://www.w3.org/2000/svg" className="pointer-events-none absolute left-[-9px] top-[74px]">
+    <svg width="123" height="123" viewBox="58 75.5 82 82" fill="none" xmlns="http://www.w3.org/2000/svg" className="pointer-events-none absolute left-[-9px] bottom-[-18px]">
       <path d="M121.043 104.998L109.978 93.934L76.782 127.129L87.847 138.194L121.043 104.998Z" fill="#647DF533" />
       <path d="M140.001 101.828L140.001 126.427C140.001 128.912 139.013 131.297 137.256 133.053L115.985 154.323C114.228 156.08 111.844 157.068 109.359 157.068L84.587 157.068L76.783 149.264L87.849 138.199L98.914 149.264L132.109 116.068L121.046 105.004L132.109 93.938L140.001 101.828Z" fill="#FFFFFF14" />
       <path d="M121.01 82.963L109.951 94.16L98.892 82.963L65.713 116.551L76.772 127.748L65.713 138.942L58 131.135L58 105.895C58 103.38 58.987 100.969 60.743 99.19L81.829 77.845C83.585 76.067 85.968 75.068 88.452 75.068L113.211 75.068L121.01 82.963Z" fill="#FFFFFF14" />
@@ -402,7 +402,7 @@ function Field({ label, children }) {
 //   );
 // }
 
-const CARD_BASE = 'relative flex flex-col justify-center gap-3 px-[16px] py-3 rounded-lg h-[140px] overflow-clip text-xs/4 cursor-pointer transition-colors';
+const CARD_BASE = 'relative flex flex-col justify-center gap-3 px-[16px] py-3 rounded-lg h-[280px] overflow-clip text-xs/4 cursor-pointer transition-colors';
 // OneLinkAI 高亮变体（蓝紫底 + 描边）
 const CARD_VARIANT_ONELINK = 'bg-[#647DF533] border border-solid border-[#647DF580] hover:bg-[#647DF566] active:bg-[#647DF54D]';
 // 其他服务商普通变体（深色底）

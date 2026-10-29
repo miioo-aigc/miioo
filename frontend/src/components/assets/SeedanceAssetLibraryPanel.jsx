@@ -1,7 +1,7 @@
 /**
  * @file SeedanceAssetLibraryPanel.jsx
  * @structure-index
- *   2026-10-14：folderReadVersion L181；handleOpenFolder L252 / handleBackToFolders L605 隔离读取、上传与轮询；详情提供错误重试。
+ *   2026-10-14：folderReadVersion L162；handleOpenFolder L233 / handleBackToFolders L586 隔离读取、上传与轮询；详情提供错误重试。
  * ─── 页面区块 ───────────────────────────────────────
  *   SeedanceAssetLibraryPanel：Seedance2.0素材库子 Tab 和文件夹网格
  *   真人素材组：从真人素材接口读取，空数据时仅展示录入入口
@@ -10,6 +10,7 @@
  *   ConfirmDialog / AssetsProjectRenameModal：删除确认与素材库重命名
  *   CreationLiveMaterialModal：复用创作模块的真人素材录入流程
  *
+ *   2026-10-29 新建入口复用 CreateCard，尺寸与业务行为不变。
  * ─── 更新记录 ───────────────────────────────────────
  *   2026-07-24  按 Paper 设计稿新增真人人像素材库 UI，抽离文件夹卡片
  *   2026-07-24  按 Paper 设计稿校准「录入新的真人」卡片的渐变、描边和文字颜色
@@ -32,6 +33,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Tabs from '../ui/Tabs';
+import { CreateCard } from '../ui';
 import ConfirmDialog from '../ConfirmDialog';
 import CreationLiveMaterialModal from '../creation/CreationLiveMaterialModal';
 import { showGlobalToast } from '../../stores/toastStore';
@@ -133,27 +135,6 @@ function isLiveAssetRejected(asset) {
 
 function isLiveAssetPending(asset) {
   return !isLiveAssetApproved(asset) && !isLiveAssetRejected(asset);
-}
-
-function AddRealPersonCard({ onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="aspect-[3/2] flex w-full min-w-0 max-w-[270px] items-center rounded-[8px] border border-solid border-white/12 p-[12px] text-white/80 transition-colors hover:border-white/25 hover:text-white"
-      style={{
-        backgroundImage: 'linear-gradient(121.71deg, oklab(0.2 0 0) 0.7%, oklab(0.274 -0.039 -0.028) 99.92%)',
-        justifyContent: 'center',
-        alignItems: 'center',
-      }}
-      aria-label="录入新的真人"
-    >
-      <span className="flex items-center gap-[6px] text-[14px] leading-[18px] text-white/80" style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif" }}>
-        <svg width="20" height="20" viewBox="0 0 102.4 102.4" aria-hidden="true"><path d="M50.035 10.618a41.697 41.697 0 1 0 41.698 41.697 41.744 41.744 0 0 0-41.698-41.697Zm0 76.77a35.072 35.072 0 1 1 35.072-35.073 35.072 35.072 0 0 1-35.072 35.073Z" fill="currentColor" /><path d="M66.163 55.388H33.907a3.072 3.072 0 1 1 0-6.145h32.256a3.072 3.072 0 1 1 0 6.145Zm-16.128 16.127a3.072 3.072 0 0 1-3.072-3.072V36.188a3.072 3.072 0 0 1 6.144 0v32.255a3.072 3.072 0 0 1-3.072 3.072Z" fill="currentColor" /></svg>
-        录入新的真人
-      </span>
-    </button>
-  );
 }
 
 export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
@@ -640,7 +621,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
         </>
       ) : activeTab === 'real' ? (
         <AssetFolderGrid className="min-h-0 flex-1 content-start overflow-y-auto px-[24px] py-[6px]">
-          <AddRealPersonCard onClick={handleOpenLiveMaterialModal} />
+          <CreateCard label="录入新的真人" onClick={handleOpenLiveMaterialModal} className="max-w-[270px]" />
           {folders.map((folder) => (
             <SeedanceFolderCard
               key={folder.id}

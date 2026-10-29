@@ -39,8 +39,8 @@ export default function EditorHeader() {
 
   const exporting = exportState.status === 'exporting';
   const ready = useCompositionEditorStore((s) => s.loaded);
-  const exportDisabledReason = !ready ? '工程加载中，请稍候'
-    : exporting ? '正在导出成片，请等待完成'
+  const openExport = useCompositionEditorStore((s) => s.openExport);
+  const exportDisabledReason = exporting ? '' : !ready ? '工程加载中，请稍候'
       : saving ? '正在保存，请等待保存完成'
         : !segments.length ? '请先向轨道添加素材再导出' : '';
 
@@ -118,10 +118,10 @@ export default function EditorHeader() {
           </span>
         )}
 
-        <Tooltip label={exportDisabledReason || '导出成片'} placement="bottom" offset={8}>
+        <Tooltip label={exportDisabledReason || (exporting ? '查看导出进度' : '导出成片')} placement="bottom" offset={8}>
           <button
             type="button"
-            onClick={() => { if (!exportDisabledReason) void startExport(); }}
+            onClick={() => { if (exporting) openExport(); else if (!exportDisabledReason) void startExport(); }}
             aria-disabled={Boolean(exportDisabledReason)}
             aria-description={exportDisabledReason || undefined}
             className="flex items-center h-9 shrink-0 rounded-medium px-[16px] gap-[4px] bg-btn-accent-bg-normal hover:bg-btn-accent-bg-hover active:bg-btn-accent-bg-active disabled:bg-btn-accent-bg-disabled border border-btn-accent-border disabled:border-transparent cursor-pointer disabled:cursor-not-allowed"
@@ -131,7 +131,7 @@ export default function EditorHeader() {
             }}
           >
             <span className="text-btn-accent-text text-font-size-14 font-font-weight-medium shrink-0" style={{ fontFamily: FONT_MEDIUM }}>
-              导出成片
+              {exporting ? '成片导出中' : '导出成片'}
             </span>
           </button>
         </Tooltip>

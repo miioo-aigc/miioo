@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { coverTransform, fitAxisTransform, canvasRatio } from '../utils/CompositionTransform';
+import { containTransform, fitAxisTransform, canvasRatio } from '../utils/CompositionTransform';
 import { getTrackDeletionState, segmentTrack } from '../utils/TrackDeletion';
 import { allocateSubtitles, DEFAULT_SUBTITLE_STYLE } from '../utils/SubtitleImport';
 import {
@@ -12,6 +12,8 @@ import { useCompositionExportStore } from './CompositionExportStore';
 import { apiDownloadAsset } from '../api/assets';
 import { authFetch } from '../api/request';
 import { getErrorMessage } from '../api/error';
+import { startDownloadFeedback } from '../utils/downloadFeedback';
+import { downloadBlob } from '../utils/downloadBlob';
 
 /**
  * 轻量剪辑工作台 —— 单一事实源 store。
@@ -21,6 +23,8 @@ import { getErrorMessage } from '../api/error';
  * clip_id 引用的是「资产 id」。
  * speed：素材消费速率（源窗口不变时，时间线时长 = 源窗口 ÷ speed；仅 video/audio，默认 1）。
  * transition：图片段固定输出 'none'，避免后端缺省启用淡入淡出。
+ * 2026-10-29：分离落点优先音频主轨，按目标轨磁吸及占位排布，不移动已有片段。
+ * 2026-10-29：分离状态以片段 hasAudio=false 为准，仅撤销分离恢复；删除或移动音频不重置。
  * 音频段允许显式 start（对齐分离出的视频原声位置；缺省沿用 A1 串行游标）。
  */
 
@@ -337,7 +341,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     if (Object.hasOwn(next, 'selectedId') || Object.hasOwn(next, 'selectedIds')) next.editingVisualId = null;
     if (Object.hasOwn(next, 'selectedId') && !Object.hasOwn(next, 'selectedIds')) next.selectedIds = [];
     if (state.loaded && next.segments && next.segments !== state.segments && next.dirty === true) {
-      return { ...next, past: [...state.past, snapshot(state)].slice(-100), future: [] };
+      return { ...next, past: [...state.past, snapshot(state)].slice(-50), future: [] };
     }
     return next;
   });
@@ -442,7 +446,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     if (!/^[VAS][1-6]$/.test(track)) return {};
     return { mainTracks: { ...state.mainTracks, [track[0]]: state.mainTracks[track[0]] === track ? null : track },
       trackSettings: { ...state.trackSettings, [track]: state.trackSettings[track] || { hidden: false, volume: 1, excludeGaps: false } },
-      past: [...state.past, snapshot(state)].slice(-100), future: [], dirty: true, dirtyRev: state.dirtyRev + 1 };
+      past: [...state.past, snapshot(state)].slice(-50), future: [], dirty: true, dirtyRev: state.dirtyRev + 1 };
   }),
   commitTrackDrag: (id, before, insertAt = null) => rawSet((state) => {
     if (!before || state.segments === before.segments) return {};
@@ -469,7 +473,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       trackSettings[`${prefix}${insertAt}`] = { hidden: false, volume: 1, excludeGaps: false };
       mainTracks = Object.fromEntries(Object.entries(mainTracks).map(([type, track]) => [type, track ? rename(track) : null]));
     }
-    return { segments, trackSettings, mainTracks, past: [...state.past, before].slice(-100), future: [], selectedId: id, selectedIds: [], dirty: true, dirtyRev: state.dirtyRev + 1 };
+    return { segments, trackSettings, mainTracks, past: [...state.past, before].slice(-50), future: [], selectedId: id, selectedIds: [], dirty: true, dirtyRev: state.dirtyRev + 1 };
   }),
   zoom: 24, // 时间线缩放：pxPerSecond（会话级，不持久化）
 
@@ -612,7 +616,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   }),
   commitVisualSegment: (id, before) => rawSet((state) => {
     if (!before || state.segments === before.segments || JSON.stringify(state.segments) === JSON.stringify(before.segments)) return {};
-    return { past: [...state.past, before].slice(-100), future: [], selectedId: id, dirty: true, dirtyRev: state.dirtyRev + 1 };
+    return { past: [...state.past, before].slice(-50), future: [], selectedId: id, dirty: true, dirtyRev: state.dirtyRev + 1 };
   }),
 
   init: async ({ projectId, compId, episodeId, compositions, isCancelled = () => false } = {}) => {
@@ -717,7 +721,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       type,
       name: asset.name || '未命名素材',
       sourceAspectRatio: asset.ratio || asset.resolution || null,
-      visualTransform: type === 'image' || type === 'video' ? coverTransform() : undefined,
+      visualTransform: type === 'image' || type === 'video' ? containTransform() : undefined,
       sourceUrl: asset.videoUrl || asset.fileUrl || null,
       posterUrl: asset.posterUrl || null,
       thumbnailUrl: asset.url || asset.thumbnailUrl || null,
@@ -822,7 +826,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   }),
   commitAudioSegment: (id, before) => rawSet((state) => {
     if (!before || state.segments === before.segments || JSON.stringify(state.segments) === JSON.stringify(before.segments)) return {};
-    return { past: [...state.past, before].slice(-100), future: [], selectedId: id, dirty: true, dirtyRev: state.dirtyRev + 1 };
+    return { past: [...state.past, before].slice(-50), future: [], selectedId: id, dirty: true, dirtyRev: state.dirtyRev + 1 };
   }),
 
   previewAudioVolume: (id, value) => rawSet((state) => {
@@ -833,7 +837,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   }),
   commitAudioVolume: (before) => rawSet((state) => {
     if (!before || state.segments.every((segment, index) => (segment.volume ?? 1) === (before.segments[index]?.volume ?? 1))) return {};
-    return { past: [...state.past, before].slice(-100), future: [], dirty: true, dirtyRev: state.dirtyRev + 1 };
+    return { past: [...state.past, before].slice(-50), future: [], dirty: true, dirtyRev: state.dirtyRev + 1 };
   }),
 
   setSegmentInPoint: (id) => set((state) => {
@@ -924,7 +928,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     });
     const changed = get().segments !== before.segments;
     rawSet({ cursor: before.cursor, selectedId: resultIds.length === 1 ? resultIds[0] : null, selectedIds: resultIds,
-      past: changed && before.loaded ? [...before.past, snapshot(before)].slice(-100) : before.past,
+      past: changed && before.loaded ? [...before.past, snapshot(before)].slice(-50) : before.past,
       future: changed ? [] : before.future });
   },
 
@@ -936,7 +940,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   commitTransform: (before, cancel = false) => rawSet((state) => {
     if (cancel) return { segments: before.segments, transformInProgress: false };
     if (JSON.stringify(before.segments) === JSON.stringify(state.segments)) return { transformInProgress: false };
-    return { transformInProgress: false, past: [...state.past, snapshot(before)].slice(-100), future: [], dirty: true, dirtyRev: state.dirtyRev + 1 };
+    return { transformInProgress: false, past: [...state.past, snapshot(before)].slice(-50), future: [], dirty: true, dirtyRev: state.dirtyRev + 1 };
   }),
 
   /** 设置片段倍速（仅 video/audio；图片恒 1 不可设置）。保持源窗口不变重算时间线时长 */
@@ -953,15 +957,28 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     get().updateSegment(id, { speed: nextSpeed, duration: sourceWindow / nextSpeed });
   },
 
-  /** 分离视频段原声：原视频关闭音频，在 A1 生成对齐的独立音频段。 */
+  /** 分离原声：优先音频主轨；磁吸接末尾，否则从视频起点向后寻找完整空位。 */
   detachAudio: (segmentId) => {
     const state = get();
     const seg = state.segments.find((s) => s.id === segmentId);
     if (!seg || seg.type !== 'video' || state.hasDetachedAudio(segmentId)) return;
-    // 视频段当前时间线起点（V1 串行窗口）
+    // 读取视频所在轨道的实际时间线起点。
     const { windows } = computeVisualWindows(state.segments);
     const win = windows.find((w) => w.seg.id === segmentId);
     if (!win) return;
+    const track = state.mainTracks.A || 'A1';
+    const duration = Math.max(0, Number(seg.duration) || 0);
+    const occupied = computeAudioWindows(state.segments, track).windows.sort((a, b) => a.start - b.start);
+    let start = win.start;
+    if (state.trackSettings[track]?.excludeGaps) {
+      start = occupied.reduce((end, window) => Math.max(end, window.end), 0);
+    } else {
+      for (const window of occupied) {
+        if (window.end <= start) continue;
+        if (start + duration <= window.start) break;
+        start = window.end;
+      }
+    }
     const audioSegment = {
       id: randomId(),
       assetId: seg.assetId,
@@ -974,11 +991,11 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       offset: Number(seg.offset) || 0,
       sourceDuration: seg.sourceDuration ?? null,
       speed: segmentSpeedOf(seg),
-      start: win.start, // 显式时间线起点，与视频段对齐
-      track: 'A1',
+      start,
+      track,
     };
     set((st) => {
-      // 追加到 A1 区域（最后一个音频段之后），保持 V1 顺序不变
+      // 追加音频记录，不改变已有片段的位置和隐式时间起点。
       let insertAt = st.segments.length;
       for (let i = st.segments.length - 1; i >= 0; i -= 1) {
         if (st.segments[i].type === 'audio') {
@@ -992,19 +1009,10 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     });
   },
 
-  /** 判定是否仍有同资产、起点对齐的独立音频（容差 0.05s）；原声关闭不代表独立音频仍存在。 */
+  /** 原声已分离的片段不可再次分离；沿用持久化 has_audio，移动/删除独立音频不重置。 */
   hasDetachedAudio: (segmentId) => {
-    const state = get();
-    const seg = state.segments.find((s) => s.id === segmentId);
-    if (!seg || seg.type !== 'video') return false;
-    const { windows } = computeVisualWindows(state.segments);
-    const win = windows.find((w) => w.seg.id === segmentId);
-    if (!win) return false;
-    return state.segments.some((s) => (
-      s.type === 'audio'
-      && s.assetId === seg.assetId
-      && Math.abs((Number(s.start) || 0) - win.start) < 0.05
-    ));
+    const seg = get().segments.find((s) => s.id === segmentId);
+    return seg?.type === 'video' && seg.hasAudio === false;
   },
 
   /** 时间线缩放（pxPerSecond，钳制 4~240；会话级状态，不持久化、不计 dirty） */
@@ -1033,7 +1041,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     set((state) => {
       if (aspectRatio === state.aspectRatio) return {};
       return { aspectRatio, segments: state.segments.map((seg) => seg.visualTransform && seg.visualTransform.mode !== 'legacy_contain'
-        ? { ...seg, visualTransform: coverTransform() } : seg), playing: false, dirty: true, dirtyRev: state.dirtyRev + 1 };
+        ? { ...seg, visualTransform: containTransform() } : seg), playing: false, dirty: true, dirtyRev: state.dirtyRev + 1 };
     }),
 
   aspectConfirmation: null,
@@ -1134,7 +1142,10 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       }
       set({ playing: false });
       void useCompositionExportStore.getState().watch({ taskId, projectId: state.projectId, compositionId, name: state.name }, (task) => {
-        if (get().projectId === task.projectId && get().compositionId === task.compositionId) set({ exportState: task });
+        if (get().projectId === task.projectId && get().compositionId === task.compositionId) {
+          const completedNow = task.status === 'completed' && get().exportState.status !== 'completed';
+          set({ exportState: task, ...(completedNow ? { exportModalOpen: true } : {}) });
+        }
       });
     } catch (error) {
       set({ exportState: { ...initialExportState, status: 'failed', error: getErrorMessage(error, '导出任务提交失败') } });
@@ -1148,12 +1159,15 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     get().startExport();
   },
 
+  openExport: () => set({ exportModalOpen: true }),
+
   closeExport: () =>
     set({ exportModalOpen: false }),
 
   downloadExport: async () => {
     const st = get();
     const { assetId, outputUrl } = st.exportState;
+    const feedback = startDownloadFeedback();
     try {
       let blob;
       if (assetId) {
@@ -1165,15 +1179,10 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       } else {
         throw new Error('暂无可用文件');
       }
-      triggerDownload(blob, `${st.name || '未命名成片'}.mp4`);
+      downloadBlob(blob, `${st.name || '未命名成片'}.mp4`);
+      await feedback.complete();
     } catch (err) {
-      set((state) => ({
-        exportState: {
-          ...state.exportState,
-          status: 'failed',
-          error: getErrorMessage(err, '导出文件下载失败'),
-        },
-      }));
+      await feedback.fail(getErrorMessage(err, '导出文件下载失败'));
     }
   },
 
@@ -1238,15 +1247,4 @@ function randomId() {
     return crypto.randomUUID();
   }
   return `seg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function triggerDownload(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { computeVisualWindows, computeAudioWindows, computeSubtitleWindows, computeTotalDuration, useCompositionEditorStore } from '../../stores/compositionEditorStore';
+import { useOriginalVideoSources } from './UseOriginalVideoSources';
+import Select from '../ui/Select';
 import VideoPlayerBar from '../ui/VideoPlayerBar';
-import VideoPlaybackControls from '../ui/VideoPlaybackControls';
 import PreviewAudioLayer from './PreviewAudioLayer';
 import SubtitlePreview from './SubtitlePreview';
 import { PreviewMediaClock } from './PreviewMediaClock';
@@ -17,18 +18,15 @@ function preventPlaybackEnter(event) {
 }
 
 export default function PreviewCanvas() {
-  const playerRef = useRef(null);
+  const [quality, setQuality] = useState('smooth');
   const [previewVolume, setPreviewVolume] = useState(1);
   const [previewMuted, setPreviewMuted] = useState(false);
   const outputVolume = previewMuted ? 0 : previewVolume;
   const seek = useCompositionEditorStore(s => s.seek);
   const [clock] = useState(() => new PreviewMediaClock());
-  const [feedbackVisible, setFeedbackVisible] = useState(false);
-  const feedbackTimer = useRef(null);
-  const canvasClickTimer = useRef(null);
-  useEffect(() => () => { clearTimeout(feedbackTimer.current); clearTimeout(canvasClickTimer.current); }, []);
   const seekEpoch = useCompositionEditorStore((s) => s.seekEpoch);
   const segments = useCompositionEditorStore((s) => s.segments);
+  const originals = useOriginalVideoSources(segments, quality === 'original');
   const playing = useCompositionEditorStore((s) => s.playing);
   const cursor = useCompositionEditorStore((s) => s.cursor);
   const play = useCompositionEditorStore((s) => s.play);
@@ -44,6 +42,14 @@ export default function PreviewCanvas() {
   const previewTransform = useCompositionEditorStore((s) => s.previewTransform);
   const commitTransform = useCompositionEditorStore((s) => s.commitTransform);
   const [mediaStatus, setMediaStatus] = useState({});
+  const [audioErrors, setAudioErrors] = useState({});
+  const onAudioError = useCallback((id, error) => setAudioErrors((state) => {
+    if (state[id] === error || (!error && !(id in state))) return state;
+    const next = { ...state };
+    if (error) next[id] = error;
+    else delete next[id];
+    return next;
+  }), []);
   const [imageRatios, setImageRatios] = useState({});
   const [drag, setDrag] = useState(null);
   const dragRef = useRef(null);
@@ -92,7 +98,9 @@ export default function PreviewCanvas() {
   const pending = activeWindows.some((item) => item.seg.type === 'video' && !mediaStatus[item.seg.id]?.playable && mediaStatus[item.seg.id]?.status !== 'failed');
   const failed = activeVideoStatuses.find((item) => item.status === 'failed');
   const imageFailed = activeWindows.some((item) => item.seg.type === 'image' && imageRatios[item.seg.id]?.status === 'failed');
-  useEffect(() => { if (failed || imageFailed) pause(); }, [failed, imageFailed, pause]);
+  const audioError = allAudioWindows.find((item) => cursor >= item.start && cursor < item.end && audioErrors[item.seg.id]);
+  const audioErrorMessage = audioError ? audioErrors[audioError.seg.id] : null;
+  useEffect(() => { if (failed || imageFailed || audioErrorMessage) pause(); }, [failed, imageFailed, audioErrorMessage, playing, pause]);
   const allReady = activeWindows.every((item) => item.seg.type === 'video' ? mediaStatus[item.seg.id]?.playable === true : imageRatios[item.seg.id]?.status === 'ready');
   useEffect(() => {
     readiness.current = allReady;
@@ -137,12 +145,13 @@ export default function PreviewCanvas() {
     previewTransform(drag.id, rectTransform(next, canvasWidth, canvasHeight));
   };
   const endTransform = (cancel = false) => { const gesture = dragRef.current; if (gesture) { dragRef.current = null; commitTransform(gesture.snapshot, cancel); setDrag(null); } };
-  const handleDoubleClick = (event) => {
-    clearTimeout(canvasClickTimer.current);
+  const handleCanvasClick = (event) => {
+    if (event.target.closest('button')) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const x = (event.clientX - bounds.left) / view.scale;
     const y = (event.clientY - bounds.top) / view.scale;
     if (!pointInRect(x, y, { x: 0, y: 0, width: canvasWidth, height: canvasHeight })) return;
+    pause();
     for (let i = activeWindows.length - 1; i >= 0; i -= 1) {
       const item = activeWindows[i];
       if (!trackSettings[item.seg.track || 'V1']?.hidden && !trackSettings[item.seg.track || 'V1']?.locked && pointInRect(x, y, transformRect(item.seg.visualTransform || { mode: 'legacy_contain' }, item.seg.type === 'image' ? imageRatios[item.seg.id]?.ratio : (() => { const r = mediaStatus[item.seg.id]?.data?.source.display_aspect_ratio; return r?.num / r?.den; })(), canvasWidth, canvasHeight))) { select(item.seg.id); showVisualEditor(); return; }
@@ -181,23 +190,20 @@ export default function PreviewCanvas() {
     if (total <= 0) return;
     if (playing) pause();
     else play();
-    clearTimeout(feedbackTimer.current);
-    setFeedbackVisible(true);
-    feedbackTimer.current = setTimeout(() => setFeedbackVisible(false), 500);
   };
 
 
   return (
-    <div ref={playerRef} className="flex-1 flex flex-col overflow-hidden min-h-0 bg-surface-content-area">
-      <div ref={viewportRef} onClick={() => { if (topSelected && !playing) showVisualEditor(); }} className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-surface-content-area mx-[16px]">
-        <div aria-label={`成片画布 ${aspectRatio}`} onDoubleClick={handleDoubleClick} className="absolute overflow-visible bg-black" style={{ left: view.left, top: view.top, width: canvasWidth * view.scale, height: canvasHeight * view.scale }}>
+    <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-surface-content-area">
+      <div ref={viewportRef} className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-surface-content-area mx-[16px]">
+        <div aria-label={`成片画布 ${aspectRatio}`} onClick={handleCanvasClick} className="absolute overflow-visible bg-black" style={{ left: view.left, top: view.top, width: canvasWidth * view.scale, height: canvasHeight * view.scale }}>
         <div className="absolute inset-0" style={{ clipPath: editing && selectedRect ? `inset(${Math.min(0, selectedRect.y)}px ${Math.min(0, canvasWidth * view.scale - selectedRect.x - selectedRect.width)}px ${Math.min(0, canvasHeight * view.scale - selectedRect.y - selectedRect.height)}px ${Math.min(0, selectedRect.x)}px)` : 'inset(0)' }}>
           {!activeWindows.length ? (
             <span className="text-text-hint text-font-size-14" style={{ fontFamily: FONT, visibility: segments.length ? 'hidden' : 'visible' }}>
               从左侧添加素材开始剪辑
             </span>
           ) : null}
-          {activeWindows.map((item, index) => <CompositionVisualItem key={item.seg.id} window={item}
+          {activeWindows.map((item, index) => <CompositionVisualItem key={item.seg.id + quality} window={item} quality={quality} original={originals.sources[item.seg.assetId]} refreshOriginal={originals.refresh}
             clipBounds={editing && topSelected?.seg.id === item.seg.id ? null : { width: canvasWidth * view.scale, height: canvasHeight * view.scale }}
             rect={activeRect(item, index)} playing={playing} clock={clock} seekEpoch={seekEpoch}
             settings={trackSettings[item.seg.track || 'V1']} outputVolume={outputVolume}
@@ -210,28 +216,27 @@ export default function PreviewCanvas() {
           </div>
           <div className="pointer-events-none absolute inset-0" style={{ zIndex: 90, outline: '1px solid var(--color-stroke-accent)' }} />
         </>}
-        {editing && selectedRect && <div onPointerMove={moveTransform} onPointerUp={() => endTransform()} onPointerCancel={() => endTransform(true)} onLostPointerCapture={() => endTransform(true)} style={{ position: 'absolute', left: selectedRect.x, top: selectedRect.y, width: selectedRect.width, height: selectedRect.height, border: '1px solid #2DC3E1', zIndex: 100, touchAction: 'none', cursor: drag ? 'grabbing' : 'move' }} onPointerDown={(event) => beginTransform(event, 'move')}>
+        {editing && selectedRect && <div onClick={(event) => event.stopPropagation()} onPointerMove={moveTransform} onPointerUp={() => endTransform()} onPointerCancel={() => endTransform(true)} onLostPointerCapture={() => endTransform(true)} style={{ position: 'absolute', left: selectedRect.x, top: selectedRect.y, width: selectedRect.width, height: selectedRect.height, border: '1px solid #2DC3E1', zIndex: 100, touchAction: 'none', cursor: drag ? 'grabbing' : 'move' }} onPointerDown={(event) => beginTransform(event, 'move')}>
           {['nw','n','ne','e','se','s','sw','w'].map((handle) => <span key={handle} onPointerDown={(event) => beginTransform(event, handle)} style={{ position: 'absolute', width: handle.length === 2 ? 10 : (handle === 'n' || handle === 's' ? 24 : 5), height: handle.length === 2 ? 10 : (handle === 'e' || handle === 'w' ? 24 : 5), left: handle.includes('w') ? 0 : handle.includes('e') ? '100%' : '50%', top: handle.includes('n') ? 0 : handle.includes('s') ? '100%' : '50%', transform: 'translate(-50%, -50%)', borderRadius: 2, background: '#2DC3E1', cursor: handle.length === 2 ? handle + '-resize' : handle + '-resize' }} />)}
         </div>}
-        {(pending || (playing && clockWaiting)) && !failed && <div role="status" aria-label="预览视频加载中" style={{ position: 'absolute', inset: 0, zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', background: '#0008' }}><LoadingAnimation width={180} /><span className="sr-only">{resumeAfterWait ? '正在缓冲，加载完成后继续播放' : '正在加载预览视频'}</span></div>}
+        {(pending || (playing && clockWaiting)) && !failed && !audioErrorMessage && <div role="status" aria-label="预览视频加载中" style={{ position: 'absolute', inset: 0, zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', background: '#0008' }}><LoadingAnimation width={180} /><span className="sr-only">{resumeAfterWait ? '正在缓冲，加载完成后继续播放' : '正在加载预览视频'}</span></div>}
         {failed && <button type="button" onClick={() => failed.retry()} style={{ position: 'absolute', zIndex: 121, left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>预览视频暂不可用，点击重试</button>}
+        {audioErrorMessage && <span role="alert" className="absolute inset-0 flex items-center justify-center text-text-secondary text-font-size-14 pointer-events-none z-[120]">{audioErrorMessage}</span>}
         {imageFailed && <span role="status" className="absolute inset-0 flex items-center justify-center text-text-secondary text-font-size-14 pointer-events-none z-[120]">图片加载失败，请重新添加素材</span>}
         <SubtitlePreview cues={activeSubtitles} />
-        {total > 0 && <VideoPlaybackControls isPlaying={playing} feedbackVisible={feedbackVisible} onToggleKeyDown={preventPlaybackEnter}
-          onToggle={() => { clearTimeout(canvasClickTimer.current); if (topSelected && !playing) { showVisualEditor(); return; } canvasClickTimer.current = setTimeout(togglePlay, 250); }} bottomInset={0} />}
         </div>
       </div>
 
       <VideoPlayerBar playing={playing} currentTime={cursor} duration={total} disabled={total <= 0}
+        trailingControl={<Select width="120px" value={quality} displayValue={quality === 'original' ? '画质优先' : '流畅优先'}
+          options={[{ value: 'smooth', label: '流畅优先' }, { value: 'original', label: '画质优先' }]} menuPlacement="up"
+          onChange={value => { if (value === quality) return; clock.setBlocked(true); readiness.current = false; setMediaStatus({}); setQuality(value); }} />}
         onToggle={togglePlay} onToggleKeyDown={preventPlaybackEnter} onSeek={seek} volume={previewVolume} muted={previewMuted}
         onVolumeChange={setPreviewVolume} onMutedChange={setPreviewMuted}
-        onFullscreen={() => {
-          if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
-          else void playerRef.current?.requestFullscreen?.().catch(() => {});
-        }} />
+        />
       {audioTracks.map((track) => <PreviewAudioLayer key={track} track={track} clock={clock} seekEpoch={seekEpoch}
         active={allAudioWindows.find((item) => (item.seg.track || 'A1') === track && cursor >= item.start && cursor < item.end)}
-        playing={playing} settings={trackSettings[track]} outputVolume={outputVolume} />)}
+        playing={playing} settings={trackSettings[track]} outputVolume={outputVolume} onError={onAudioError} />)}
     </div>
   );
 }

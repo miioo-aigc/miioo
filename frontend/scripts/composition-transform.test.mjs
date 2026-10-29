@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { transformRect, rectTransform, resizeRect, fitAxisTransform, scaleVisualTransform, visualScalePercent } from '../src/utils/CompositionTransform.js';
+import { containTransform, transformRect, rectTransform, resizeRect, fitAxisTransform, scaleVisualTransform, visualScalePercent } from '../src/utils/CompositionTransform.js';
 
-test('默认铺满不变形，旧构图完整显示，手动坐标可跨视口复用', () => {
+test('历史铺满不变形，旧构图完整显示，手动坐标可跨视口复用', () => {
   const cover = transformRect({ mode: 'cover' }, 864 / 496, 1600, 900);
   assert.ok(cover.width >= 1600 && cover.height >= 900);
   assert.equal(cover.width / cover.height, 864 / 496);
@@ -46,4 +46,18 @@ test('尺寸滑杆固定基准，保留拉伸并以画布中心缩放偏移', ()
   assert.equal(restored.width, original.width);
   assert.equal(restored.height, original.height);
   assert.equal(scaleVisualTransform(original, 16 / 9, 16 / 9, 1).width, 0.01);
+});
+
+test('默认完整居中显示横竖素材，缩放100%恢复完整尺寸', () => {
+  for (const ratio of [9 / 16, 16 / 9, 4 / 3, 2.4]) {
+    for (const outputRatio of [16 / 9, 9 / 16, 1]) {
+      const rect = transformRect(containTransform(), ratio, outputRatio * 900, 900);
+      assert.ok(rect.x >= -1e-9 && rect.y >= -1e-9);
+      assert.ok(rect.width <= outputRatio * 900 + 1e-9 && rect.height <= 900 + 1e-9);
+      assert.ok(Math.abs(rect.width / rect.height - ratio) < 1e-9);
+      assert.equal(visualScalePercent(containTransform(), ratio, outputRatio), 100);
+      const scaled = scaleVisualTransform(containTransform(), ratio, outputRatio, 150);
+      assert.ok(Math.abs(visualScalePercent(scaled, ratio, outputRatio) - 150) < 1e-9);
+    }
+  }
 });

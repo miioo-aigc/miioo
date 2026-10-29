@@ -1,8 +1,8 @@
 /** 构图以成片画布归一化，不依赖预览分辨率和编辑视图倍率。 */
-export const coverTransform = () => ({ version: 1, mode: 'cover' });
-// 固定以默认铺满宽度为100%，非等比形变仍保留当前宽高比。
+export const containTransform = () => ({ version: 1, mode: 'legacy_contain' });
+// 固定以默认完整显示宽度为100%，非等比形变仍保留当前宽高比。
 export function visualScalePercent(transform, sourceRatio, outputRatio) {
-  const base = transformRect(coverTransform(), sourceRatio, outputRatio, 1);
+  const base = transformRect(containTransform(), sourceRatio, outputRatio, 1);
   const current = transformRect(transform, sourceRatio, outputRatio, 1);
   return base && current ? current.width / base.width * 100 : 100;
 }

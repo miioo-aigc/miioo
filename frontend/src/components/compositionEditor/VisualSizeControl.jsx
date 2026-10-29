@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import PropertySlider from './PropertySlider';
 import { Button } from '../ui';
 import { useCompositionEditorStore } from '../../stores/compositionEditorStore';
-import { canvasRatio, scaleVisualTransform, visualScalePercent } from '../../utils/CompositionTransform';
+import { containTransform, canvasRatio, scaleVisualTransform, visualScalePercent } from '../../utils/CompositionTransform';
 
 /** 尺寸调整复用属性滑杆；一次手势对应一次构图撤销。 */
 export default function VisualSizeControl({ segment }) {
@@ -40,7 +40,7 @@ export default function VisualSizeControl({ segment }) {
     <div className="flex gap-[8px] w-full">
       <Button className="flex-1 min-w-0" variant="secondary" size="small" disabled={disabled} onClick={() => useCompositionEditorStore.getState().fitVisualAxis(segment.id, 'width')}>宽度铺满</Button>
       <Button className="flex-1 min-w-0" variant="secondary" size="small" disabled={disabled} onClick={() => useCompositionEditorStore.getState().fitVisualAxis(segment.id, 'height')}>高度铺满</Button>
-      <Button className="flex-1 min-w-0" variant="secondary" size="small" disabled={locked} onClick={() => useCompositionEditorStore.getState().updateSegment(segment.id, { visualTransform: { version: 1, mode: 'cover' } })}>恢复默认</Button>
+      <Button className="flex-1 min-w-0" variant="secondary" size="small" disabled={locked} onClick={() => useCompositionEditorStore.getState().updateSegment(segment.id, { visualTransform: containTransform() })}>恢复默认</Button>
     </div>
   </div>;
 }

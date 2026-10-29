@@ -1,14 +1,26 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCompositionMediaSource } from './UseCompositionMediaSource';
 import { useVideoPreview } from './UseVideoPreview';
 import { useCompositionEditorStore } from '../../stores/compositionEditorStore';
 
 /** 单个时间线上活跃的图片/视频层，源尺寸决定真实素材外框。 */
-export default function CompositionVisualItem({ window, rect, clipBounds, playing, clock, seekEpoch, settings, outputVolume, onStatus, onImageStatus }) {
+export default function CompositionVisualItem({ window, quality, original, refreshOriginal, rect, clipBounds, playing, clock, seekEpoch, settings, outputVolume, onStatus, onImageStatus }) {
   const { seg } = window;
   const { start, end } = window;
   const { offset, duration, speed } = seg;
   const active = true;
-  const video = useVideoPreview(seg.type === 'video' && active ? seg.assetId : null);
+  const compressed = useVideoPreview(seg.type === 'video' && active && quality !== 'original' ? seg.assetId : null);
+  const [originalError, setOriginalError] = useState(null);
+  const [originalRetry, setOriginalRetry] = useState(0);
+  const originalMedia = useCompositionMediaSource(quality === 'original' ? original?.url : null, originalRetry);
+  const [originalRatio, setOriginalRatio] = useState(null);
+  const retryOriginal = useCallback(() => { setOriginalError(null); setOriginalRetry(n => n + 1); refreshOriginal(seg.assetId); }, [refreshOriginal, seg.assetId]);
+  const failOriginal = useCallback(() => setOriginalError('原视频加载失败，请重试'), []);
+  const originalData = useMemo(() => ({ source: { display_aspect_ratio: originalRatio }, preview: { url: originalMedia.source } }), [originalRatio, originalMedia.source]);
+  const video = quality === 'original' ? {
+    status: original?.status === 'failed' || originalMedia.error || originalError ? 'failed' : original?.status === 'ready' && originalMedia.source ? 'ready' : 'loading',
+    data: originalData, error: original?.error || originalMedia.error || originalError, retry: retryOriginal, mediaError: failOriginal,
+  } : compressed;
   const reportMediaError = video.mediaError;
   const videoRef = useRef(null);
   const bufferTimer = useRef(null);
@@ -25,7 +37,7 @@ export default function CompositionVisualItem({ window, rect, clipBounds, playin
   useEffect(() => {
     const ratio = video.data?.source?.display_aspect_ratio;
     if (ratio) useCompositionEditorStore.getState().reportSourceRatio(seg.id, ratio.num / ratio.den);
-    if (seg.type === 'video' && active) onStatus(seg.id, { status: video.status, playable: video.status === 'ready' && videoRef.current?.readyState >= 3 && !videoRef.current?.seeking, data: video.data, retry: video.retry, error: video.error });
+    if (seg.type === 'video' && active) onStatus(seg.id, { status: video.status, playable: video.status === 'ready' && (videoRef.current?.ended || videoRef.current?.readyState >= 3) && !videoRef.current?.seeking, data: video.data, retry: video.retry, error: video.error });
     else if (seg.type === 'video') onStatus(seg.id, null);
   }, [seg.id, seg.type, active, video.status, video.data, video.error, video.retry, onStatus]);
   useEffect(() => {
@@ -54,7 +66,11 @@ export default function CompositionVisualItem({ window, rect, clipBounds, playin
       {poster && <img src={poster} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill' }} />}
       {video.status === 'ready' && <video ref={videoRef} src={video.data.preview.url} poster={poster || undefined} preload="auto" playsInline
         muted={settings?.hidden || (settings?.volume ?? 1) <= 0 || outputVolume <= 0 || seg.hasAudio === false}
+        onLoadedMetadata={event => {
+          if (quality === 'original' && event.currentTarget.videoWidth > 0) setOriginalRatio({ num: event.currentTarget.videoWidth, den: event.currentTarget.videoHeight });
+        }}
         onCanPlay={mediaReady}
+        onEnded={mediaReady}
         onSeeking={waitForMedia}
         onSeeked={() => { if (videoRef.current?.readyState >= 3) mediaReady(); }}
         onWaiting={waitForMedia}

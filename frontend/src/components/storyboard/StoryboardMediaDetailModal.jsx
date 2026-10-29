@@ -1,3 +1,4 @@
+import MediaVideoPlayerBar from '../ui/MediaVideoPlayerBar';
 import StoryboardMediaPreview from './StoryboardMediaPreview';
 import AsyncImagePreview from '../AsyncImagePreview';
 import { useMediaPlayback } from '../../hooks/useMediaPlayback';
@@ -648,9 +649,10 @@ export default function StoryboardMediaDetailModal({ projectId, shot, candidates
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
           <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', background: '#0D0D0D' }}>
             <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', background: '#0A0A0A', position: 'relative' }}>
-              {video ? <video ref={videoRef} key={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)} src={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)} poster={activePoster || undefined} controls autoPlay={!visualMedia} playsInline style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : visualMedia ? <AsyncImagePreview visual plain src={mediaImageUrl(activeMedia)} imageStyle={{ objectFit: 'contain' }} /> : <img src={mediaImageUrl(activeMedia)} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}
+              {video ? <video ref={videoRef} key={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)} src={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)} poster={activePoster || undefined} autoPlay={!visualMedia} playsInline style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : visualMedia ? <AsyncImagePreview visual plain src={mediaImageUrl(activeMedia)} imageStyle={{ objectFit: 'contain' }} /> : <img src={mediaImageUrl(activeMedia)} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}
               {visualMedia && video && <MediaLoadStatus visual loadingVariant="spinner" {...playback} onPause={playback.pause} onRetry={playback.retry} onPlay={() => playback.play()} />}
             </div>
+            {video && <MediaVideoPlayerBar displayScale={modalScale} videoRef={videoRef} src={normalizeImageUrl(activeMedia.url || activeMedia.preview_video_url || activeMedia.previewVideoUrl)} onToggle={visualMedia ? () => { if (videoRef.current?.paused) void playback.play(); else playback.pause(); } : undefined} />}
             <div style={{ flexShrink: 0, minHeight: '108px', padding: '16px', display: 'flex', gap: '12px', overflowX: 'auto', borderTop: '1px solid #FFFFFF0F', background: '#161616' }}>
               {items.map((item) => <CandidateThumbnail visualMedia={visualMedia} key={item.id || item.url} media={item} active={(item.id || item.url) === (activeMedia.id || activeMedia.url)} onClick={() => setActiveKey(item.id || item.url)} />)}
             </div>

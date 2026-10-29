@@ -24,3 +24,5 @@ export { default as CreateCard } from './CreateCard';
 export { default as CloudSaveIndicator } from './CloudSaveIndicator';
 
 export { default as VideoPlayerBar } from './VideoPlayerBar';
+
+export { default as MediaVideoPlayerBar } from './MediaVideoPlayerBar';

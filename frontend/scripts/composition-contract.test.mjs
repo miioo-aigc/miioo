@@ -52,7 +52,7 @@ test('构图拖拽一次撤销、比例确认重置与旧片段兼容', () => {
   assert.equal(store.getState().segments[1].visualTransform.mode, 'manual');
   store.getState().requestAspectRatio('9:16');
   store.getState().confirmAspectRatio();
-  assert.equal(store.getState().segments[1].visualTransform.mode, 'cover');
+  assert.equal(store.getState().segments[1].visualTransform.mode, 'legacy_contain');
   assert.equal(store.getState().segments[0].visualTransform, undefined);
   store.getState().undo();
   assert.equal(store.getState().aspectRatio, '16:9');
@@ -252,6 +252,7 @@ test('初始化恢复音量、原声开关、素材引用和轨道设置', async
     ],
   }] });
   assert.equal(store.getState().segments[0].hasAudio, false);
+  assert.equal(store.getState().hasDetachedAudio(store.getState().segments[0].id), true);
   assert.equal(store.getState().segments[1].volume, 2);
   assert.equal(store.getState().trackSettings.V2.hidden, true);
   assert.deepEqual(store.getState().mainTracks, { V: 'V2', A: 'A2', S: 'S3' });
@@ -367,4 +368,54 @@ test('并发保存按顺序提交，后一次保存包含最新构图', async ()
     globalThis.window = originalWindow;
     store.setState({ projectId: null, dirty: false });
   }
+});
+
+test('导出窗口可收起重开，当前工程任务完成自动弹出，其他工程不受影响', async () => {
+  const { useCompositionExportStore: exports } = await server.ssrLoadModule('/src/stores/CompositionExportStore.js');
+  const original = { fetch: globalThis.fetch, localStorage: globalThis.localStorage, window: globalThis.window };
+  const previousExports = exports.getState();
+  let update;
+  globalThis.localStorage = { getItem: () => 'test-only-token' };
+  globalThis.window = { dispatchEvent() {} };
+  globalThis.fetch = async () => Response.json({ task_id: 'export-test' });
+  exports.setState({ tasks: [], watch: (_record, callback) => { update = callback; } });
+  store.setState({ ...store.getInitialState(), projectId: 'p', compositionId: 'c', dirty: false,
+    segments: [{ id: 'v', type: 'video', duration: 3 }], save: async () => {} });
+  try {
+    await store.getState().startExport();
+    update({ projectId: 'p', compositionId: 'c', taskId: 'export-test', status: 'exporting' });
+    store.getState().closeExport();
+    update({ projectId: 'p', compositionId: 'c', taskId: 'export-test', status: 'exporting', progress: 50 });
+    assert.equal(store.getState().exportModalOpen, false);
+    store.getState().openExport();
+    assert.equal(store.getState().exportModalOpen, true);
+    store.getState().closeExport();
+    update({ projectId: 'p', compositionId: 'c', taskId: 'export-test', status: 'completed', assetId: 'result' });
+    assert.equal(store.getState().exportModalOpen, true);
+    assert.equal(store.getState().exportState.assetId, 'result');
+    store.getState().closeExport();
+    update({ projectId: 'p', compositionId: 'c', taskId: 'export-test', status: 'completed', assetId: 'result' });
+    assert.equal(store.getState().exportModalOpen, false);
+    store.setState({ compositionId: 'other' });
+    update({ projectId: 'p', compositionId: 'c', taskId: 'export-test', status: 'completed' });
+    assert.equal(store.getState().exportModalOpen, false);
+  } finally {
+    Object.assign(globalThis, original);
+    exports.setState(previousExports, true);
+    store.setState({ ...store.getInitialState() });
+  }
+});
+
+test('旧草稿原声已关闭且独立音频已删除时恢复后仍不能分离', async () => {
+  store.setState({ ...store.getInitialState(), album: [{ id: 'asset', type: 'video', duration: 10 }] });
+  await store.getState().init({ projectId: 'p', compId: 'c', compositions: [{
+    id: 'c', timeline: [{ type: 'video', clip_id: 'asset', duration: 2, has_audio: false }],
+  }] });
+  const video = store.getState().segments[0];
+  assert.equal(store.getState().hasDetachedAudio(video.id), true);
+  const before = store.getState().segments;
+  store.getState().detachAudio(video.id);
+  assert.equal(store.getState().segments, before);
+  assert.equal(store.getState().buildTimeline()[0].has_audio, false);
+  store.setState({ projectId: null });
 });

@@ -1,4 +1,4 @@
-/** 本地抽帧使用同源代理；业务提交和生产环境仍使用原始媒体地址。 */
+/** 本地抽帧和剪辑音频使用同源媒体代理；业务提交和生产环境仍使用原始媒体地址。 */
 export function toVideoMediaUrl(url, isDevelopment = import.meta.env?.DEV === true) {
   if (!isDevelopment || !url) return url;
   try {

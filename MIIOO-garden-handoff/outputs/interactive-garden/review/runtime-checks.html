@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Garden compatibility checks</title>
+<style>html,body{margin:0;background:#000;color:white}#garden-stage{position:fixed;inset:0}img,canvas{position:absolute;width:100%;height:100%;object-fit:contain;object-position:center bottom}canvas{opacity:0}canvas.ready{opacity:1}output{position:fixed;z-index:3;top:20px;left:20px;background:#000;padding:12px;font:14px monospace}</style>
+<main id="garden-stage"><img id="garden-poster" src="../assets/neuralyn-garden.webp" alt="Static garden"><canvas id="garden-canvas"></canvas></main>
+<output id="result">Waiting</output>
+<script type="module">
+const scenario = new URL(location.href).searchParams.get('case');
+const result = document.querySelector('#result');
+if (scenario === 'no-webgl') {
+  const nativeContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function(type,...args) {
+    return type === 'webgl' || type === 'webgl2' ? null : nativeContext.call(this,type,...args);
+  };
+}
+if (scenario === 'reduced-motion') {
+  const nativeMatchMedia = window.matchMedia.bind(window);
+  window.matchMedia = query => query === '(prefers-reduced-motion: reduce)'
+    ? {matches:true,media:query,addEventListener(){},removeEventListener(){}}
+    : nativeMatchMedia(query);
+}
+let hasLost = false;
+const transitions = [];
+window.addEventListener('garden-state', event => {
+  const canvas = document.querySelector('#garden-canvas');
+  transitions.push(canvas.dataset.status);
+  result.textContent = JSON.stringify({scenario,status:canvas.dataset.status,motion:canvas.dataset.motion,...event.detail,transitions});
+  if (scenario === 'context-restore' && event.detail.available && !hasLost) {
+    hasLost = true;
+    const extension = canvas.getContext('webgl2').getExtension('WEBGL_lose_context');
+    if (extension) { extension.loseContext(); setTimeout(()=>extension.restoreContext(),200); }
+    else result.textContent = 'Context loss extension unavailable';
+  }
+});
+await import('../neural-garden.js?v=20261029-continuous-r3');
+</script></html>

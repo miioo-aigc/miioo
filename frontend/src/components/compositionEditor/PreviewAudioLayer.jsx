@@ -1,14 +1,22 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useCompositionMediaSource } from './UseCompositionMediaSource';
 import { useCompositionEditorStore } from '../../stores/compositionEditorStore';
 
 const graphs = new WeakMap();
 let context;
 
-export default function PreviewAudioLayer({ active, playing, settings, clock, track, seekEpoch, outputVolume = 1 }) {
+export default function PreviewAudioLayer({ active, playing, settings, clock, track, seekEpoch, outputVolume = 1, onError }) {
   const playback = useCompositionMediaSource(active?.seg.sourceUrl);
   const playbackActive = useMemo(() => active
     ? { ...active, seg: { ...active.seg, sourceUrl: playback.source } } : active, [active, playback.source]);
+  const id = active?.seg.id;
+  const reportError = useCallback(() => {
+    if (id) onError(id, '音频加载失败，请检查资源访问或重新添加素材');
+  }, [id, onError]);
+  useEffect(() => {
+    if (playback.error) reportError();
+  }, [playback.error, reportError]);
+  useEffect(() => () => { if (id) onError(id, null); }, [id, playback.source, onError]);
   const ref = useRef(null);
   const graphRef = useRef(null);
   useEffect(() => {
@@ -43,7 +51,7 @@ export default function PreviewAudioLayer({ active, playing, settings, clock, tr
   }, [active, playing, settings, outputVolume]);
   const audible = !settings?.hidden && (settings?.volume ?? 1) * (active?.seg.volume ?? 1) > 0;
   useEffect(() => clock.register(track, ref.current, playbackActive, audible, playing,
-    () => useCompositionEditorStore.getState().cursor),
-  [clock, track, playbackActive, audible, playing, seekEpoch]);
+    () => useCompositionEditorStore.getState().cursor, reportError),
+  [clock, track, playbackActive, audible, playing, seekEpoch, reportError]);
   return <audio ref={ref} crossOrigin="anonymous" preload="auto" hidden />;
 }

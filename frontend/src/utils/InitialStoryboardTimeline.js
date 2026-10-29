@@ -1,3 +1,4 @@
+import { containTransform } from './CompositionTransform';
 import { getFinalizedStoryboardMedia, resolveFinalizedStoryboardAssets } from './FinalizedStoryboardAssets';
 
 export function buildInitialStoryboardTimeline(assets) {
@@ -6,7 +7,7 @@ export function buildInitialStoryboardTimeline(assets) {
     const duration = Number(asset.duration);
     if (asset.asset_type !== 'video' || !asset.id || !asset.file_url
       || !Number.isFinite(duration) || duration < 0.5 || duration > 3600) return [];
-    const segment = { type: 'video', clip_id: asset.id, track: 'V1', start, duration, offset: 0, speed: 1, has_audio: true, visual_transform: { version: 1, mode: 'cover' } };
+    const segment = { type: 'video', clip_id: asset.id, track: 'V1', start, duration, offset: 0, speed: 1, has_audio: true, visual_transform: containTransform() };
     start = Math.round((start + duration) * 1000000) / 1000000;
     return [segment];
   });

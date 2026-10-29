@@ -1,3 +1,4 @@
+import MediaVideoPlayerBar from '../ui/MediaVideoPlayerBar';
 import { useMediaPlayback } from '../../hooks/useMediaPlayback';
 import MediaLoadStatus from '../feedback/MediaLoadStatus';
 import { useRef, useState } from 'react';
@@ -22,7 +23,6 @@ export default function FinalVideoDetailModal({ asset, onClose, onDownload, onDe
   const { width, height, scale } = useModalSize();
   const videoRef = useRef(null);
   const media = useMediaPlayback(videoRef, asset.videoUrl, { autoPlay: true });
-  const [hovered, setHovered] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const duration = asset.duration == null || asset.duration === ''
     ? '' : /s$/i.test(String(asset.duration)) ? asset.duration : `${asset.duration}s`;
@@ -47,19 +47,17 @@ export default function FinalVideoDetailModal({ asset, onClose, onDownload, onDe
           />
         </header>
         <div className="final-video-detail-body">
-          <div className="final-video-detail-player"
-            onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-          >
+          <div className="final-video-detail-player">
+            <div className="final-video-detail-frame">
             {asset.videoUrl ? <video
               ref={videoRef} src={asset.videoUrl}
               poster={asset.posterUrl || asset.url || undefined}
-              controls={hovered} playsInline preload="metadata"
+              playsInline preload="metadata"
               aria-label="成片视频"
-              onFocus={() => setHovered(true)}
-              onBlur={() => setHovered(false)}
-              onTouchStart={() => setHovered(true)}
             /> : null}
             {asset.videoUrl && <MediaLoadStatus visual loadingVariant="spinner" {...media} onPause={media.pause} onRetry={media.retry} onPlay={() => media.play()} />}
+            </div>
+            <MediaVideoPlayerBar displayScale={scale} videoRef={videoRef} src={asset.videoUrl} onToggle={() => { if (videoRef.current?.paused) void media.play(); else media.pause(); }} />
           </div>
           <aside className="final-video-detail-info">
             <div className="final-video-detail-scroll">

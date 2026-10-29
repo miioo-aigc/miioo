@@ -25,3 +25,10 @@ test('不改写第三方、其他路径、本地地址和异常输入', () => {
     'invalid-url',
   ]) assert.equal(toVideoMediaUrl(url, true), url);
 });
+
+
+test('剪辑音频复用本地同源代理，不改写生产地址', () => {
+  const audio = 'https://www.chengxvblog.top/media/origin/bucket/raw/creation/audio/test.mp3';
+  assert.equal(toVideoMediaUrl(audio, true), '/__dev-media/media/origin/bucket/raw/creation/audio/test.mp3');
+  assert.equal(toVideoMediaUrl(audio, false), audio);
+});

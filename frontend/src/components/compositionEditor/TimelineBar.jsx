@@ -2,9 +2,11 @@
  * @file TimelineBar.jsx
  * @structure-index
  *
- * 时间线结构：素材展示辅助组件 L60；状态与缩放 L108；拖拽预览与提交 L324；
- * 定位与播放游标 L402；片段卡片 L457；轨道布局与工具栏 L527。
+ * 时间线结构：素材展示辅助组件 L62；状态与缩放 L110；拖拽预览与提交 L326；
+ * 定位与播放游标 L404；片段卡片 L459；轨道布局与工具栏 L529。
  *
+ * 2026-10-29 音频波形随音量变化并分级告警；分离原声后隐藏视频片段波形。
+ * 2026-10-29 点击时间轴内容时主动接管焦点，修复素材卡片拦截空格后无法播放。
  * 2026-10-28 真实波形独立Hook；常驻音轨与默认V1，补齐按键多选、相交框选与共同操作菜单。
  * 更新记录：2026-10-09 增强时间刻度对比度；吸顶刻度内补齐手柄到轨道游标线连接段。
  * 2026-10-15 全选高亮、拖拽快捷键隔离及 Esc 取消；键盘分发独立于时间线展示。2026-10-23 倍速文字改为 80% 白色，隔离横向滚动边界手势。
@@ -504,10 +506,10 @@ export default function TimelineBar({ showToast }) {
         </div>}
 
         {isAudio && <div className="absolute inset-x-[6px] top-[22px] bottom-[6px] text-timeline-audio-waveform">
-          <WaveformDisplay segment={seg} waveform={waveforms[seg.assetId]} onRetry={retryWaveform} />
+          <WaveformDisplay segment={seg} waveform={waveforms[seg.assetId]} onRetry={retryWaveform} trackSettings={trackSettings[track]} />
         </div>}
 
-        {seg.type === 'video' && <div className="absolute inset-x-[6px] bottom-[2px] z-10 flex h-[14px] items-center gap-[2px] text-timeline-audio-waveform">
+        {seg.type === 'video' && seg.hasAudio !== false && <div className="absolute inset-x-[6px] bottom-[2px] z-10 flex h-[14px] items-center gap-[2px] text-timeline-audio-waveform">
           <WaveformDisplay segment={seg} waveform={waveforms[seg.assetId]} onRetry={retryWaveform} />
         </div>}
 
@@ -542,7 +544,14 @@ export default function TimelineBar({ showToast }) {
         ))}
       </div>
       </div>
-      <div ref={scrollRef} className="timeline-scrollbar h-full min-h-0 min-w-0 flex-1 overflow-auto" onScroll={(event) => { if (trackLabelRef.current) trackLabelRef.current.style.transform = `translateY(${-event.currentTarget.scrollTop}px)`; }} style={{ scrollbarGutter: 'stable both-edges', overscrollBehaviorX: 'contain' }}>
+      <div ref={scrollRef} tabIndex={-1}
+        onPointerDownCapture={(event) => {
+          // 在拖拽和框选阻止默认聚焦前接管焦点，避免空格仍被素材卡片拦截。
+          if (event.button === 0 && !event.target.closest('button, input, textarea, select, [contenteditable], [role="menu"]')) {
+            event.currentTarget.focus({ preventScroll: true });
+          }
+        }}
+        className="timeline-scrollbar h-full min-h-0 min-w-0 flex-1 overflow-auto outline-none focus-visible:outline-none" onScroll={(event) => { if (trackLabelRef.current) trackLabelRef.current.style.transform = `translateY(${-event.currentTarget.scrollTop}px)`; }} style={{ scrollbarGutter: 'stable both-edges', overscrollBehaviorX: 'contain' }}>
         <div className="relative flex-shrink-0" onPointerDown={selection.startBox} onClickCapture={selection.captureClick} style={{ width: contentWidth, minWidth: '100%', minHeight: RULER_H + trackHeight + 16, height: RULER_H + trackHeight + 16 }}>
           {/* 刻度（步进自适应，每格一个刻度 + 标签） */}
           <div className="sticky top-0 z-[60] bg-neutral-200" style={{ height: RULER_H, cursor: 'pointer' }} onClick={clickTrack}>

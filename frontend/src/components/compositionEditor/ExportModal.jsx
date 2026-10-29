@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { LoaderCircle } from 'lucide-react';
+import LoadingAnimation from '../LoadingAnimation';
 import { Button } from '../ui/Button';
 import { formatTime, computeTotalDuration, useCompositionEditorStore } from '../../stores/compositionEditorStore';
 
@@ -15,7 +15,7 @@ function CloseIcon() {
   );
 }
 
-export default function ExportModal({ onClose }) {
+export default function ExportModal() {
   const exportState = useCompositionEditorStore((s) => s.exportState);
   const name = useCompositionEditorStore((s) => s.name);
   const segments = useCompositionEditorStore((s) => s.segments);
@@ -28,7 +28,6 @@ export default function ExportModal({ onClose }) {
   const { status, error } = exportState;
   const closeExport = () => {
     hideExport();
-    onClose?.();
   };
   const viewResult = () => {
     const targetProjectId = exportState.projectId || projectId;
@@ -44,11 +43,11 @@ export default function ExportModal({ onClose }) {
       return (
         <>
           <div role="status" className="flex items-center justify-center gap-[8px] text-[14px] text-white-80" style={{ fontFamily: FONT }}>
-            <LoaderCircle size={16} aria-hidden="true" className="shrink-0 animate-spin text-brand-main" />
+            <LoadingAnimation width="auto" style={{ height: 24 }} />
             <span>正在导出</span>
           </div>
           <p className="text-font-size-12 text-text-secondary text-center" style={{ fontFamily: FONT }}>
-            关闭后返回草稿列表，导出将继续进行
+            关闭弹窗，导出将在后台继续进行
           </p>
         </>
       );
@@ -101,7 +100,7 @@ export default function ExportModal({ onClose }) {
         <div className="flex min-h-0 flex-1 flex-col justify-center gap-[16px] overflow-y-auto px-[24px] py-[8px]">{renderBody()}</div>
         <div className="flex shrink-0 items-center justify-end gap-[16px] px-[24px] py-[16px]">
           {status === 'completed' ? <>
-            <Button variant="secondary" onClick={downloadExport}>下载</Button>
+            <Button variant="secondary" onClick={() => { void downloadExport(); hideExport(); }}>下载</Button>
             <Button variant="primary" onClick={viewResult}>查看</Button>
           </> : <Button variant="secondary" onClick={closeExport}>关闭</Button>}
           {status === 'failed' && <Button variant="primary" onClick={retryExport}>重试</Button>}

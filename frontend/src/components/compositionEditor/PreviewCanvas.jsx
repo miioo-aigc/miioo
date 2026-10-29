@@ -7,7 +7,7 @@ import SubtitlePreview from './SubtitlePreview';
 import { PreviewMediaClock } from './PreviewMediaClock';
 import CompositionVisualItem from './CompositionVisualItem';
 import LoadingAnimation from '../LoadingAnimation';
-import { editorView, pointInRect, transformRect, rectTransform, resizeRect, canvasRatio } from '../../utils/CompositionTransform';
+import { pointInRect, transformRect, rectTransform, resizeRect, canvasRatio } from '../../utils/CompositionTransform';
 
 const FONT = "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -36,6 +36,8 @@ export default function PreviewCanvas() {
   const onCursorTick = useCompositionEditorStore((s) => s.onCursorTick);
   const trackSettings = useCompositionEditorStore((s) => s.trackSettings);
   const aspectRatio = useCompositionEditorStore((s) => s.aspectRatio);
+  const editingVisualId = useCompositionEditorStore((s) => s.editingVisualId);
+  const showVisualEditor = useCompositionEditorStore((s) => s.showVisualEditor);
   const selectedId = useCompositionEditorStore((s) => s.selectedId);
   const selectedIds = useCompositionEditorStore((s) => s.selectedIds);
   const select = useCompositionEditorStore((s) => s.select);
@@ -106,10 +108,8 @@ export default function PreviewCanvas() {
     ? imageRatios[topSelected.seg.id]?.ratio
     : (mediaStatus[topSelected.seg.id]?.data?.source.display_aspect_ratio.num / mediaStatus[topSelected.seg.id]?.data?.source.display_aspect_ratio.den)) : null;
   const canvasHeight = canvasWidth / ratio;
-  const baseRect = selectedRatio ? transformRect(topSelected.seg.visualTransform, selectedRatio, canvasWidth, canvasHeight) : null;
-  const editing = Boolean(topSelected && selectedRatio && !playing && !trackSettings[topSelected.seg.track || 'V1']?.locked);
-  const fittedView = editing ? editorView(canvasWidth, canvasHeight, baseRect, viewportSize)
-    : { scale: 1, left: (viewportSize.width - canvasWidth) / 2, top: (viewportSize.height - canvasHeight) / 2 };
+  const editing = Boolean(topSelected && editingVisualId === topSelected.seg.id && selectedRatio && !playing && !trackSettings[topSelected.seg.track || 'V1']?.locked);
+  const fittedView = { scale: 1, left: (viewportSize.width - canvasWidth) / 2, top: (viewportSize.height - canvasHeight) / 2 };
   const view = drag?.view || fittedView;
   const activeRect = (item, index) => {
     const sourceRatio = item.seg.type === 'image' ? imageRatios[item.seg.id]?.ratio
@@ -145,7 +145,7 @@ export default function PreviewCanvas() {
     if (!pointInRect(x, y, { x: 0, y: 0, width: canvasWidth, height: canvasHeight })) return;
     for (let i = activeWindows.length - 1; i >= 0; i -= 1) {
       const item = activeWindows[i];
-      if (!trackSettings[item.seg.track || 'V1']?.hidden && !trackSettings[item.seg.track || 'V1']?.locked && pointInRect(x, y, transformRect(item.seg.visualTransform || { mode: 'legacy_contain' }, item.seg.type === 'image' ? imageRatios[item.seg.id]?.ratio : (() => { const r = mediaStatus[item.seg.id]?.data?.source.display_aspect_ratio; return r?.num / r?.den; })(), canvasWidth, canvasHeight))) { select(item.seg.id); pause(); return; }
+      if (!trackSettings[item.seg.track || 'V1']?.hidden && !trackSettings[item.seg.track || 'V1']?.locked && pointInRect(x, y, transformRect(item.seg.visualTransform || { mode: 'legacy_contain' }, item.seg.type === 'image' ? imageRatios[item.seg.id]?.ratio : (() => { const r = mediaStatus[item.seg.id]?.data?.source.display_aspect_ratio; return r?.num / r?.den; })(), canvasWidth, canvasHeight))) { select(item.seg.id); showVisualEditor(); return; }
     }
   };
 
@@ -189,7 +189,7 @@ export default function PreviewCanvas() {
 
   return (
     <div ref={playerRef} className="flex-1 flex flex-col overflow-hidden min-h-0 bg-surface-content-area">
-      <div ref={viewportRef} className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-surface-content-area mx-[12px]">
+      <div ref={viewportRef} onClick={() => { if (topSelected && !playing) showVisualEditor(); }} className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-surface-content-area mx-[16px]">
         <div aria-label={`成片画布 ${aspectRatio}`} onDoubleClick={handleDoubleClick} className="absolute overflow-visible bg-black" style={{ left: view.left, top: view.top, width: canvasWidth * view.scale, height: canvasHeight * view.scale }}>
         <div className="absolute inset-0" style={{ clipPath: editing && selectedRect ? `inset(${Math.min(0, selectedRect.y)}px ${Math.min(0, canvasWidth * view.scale - selectedRect.x - selectedRect.width)}px ${Math.min(0, canvasHeight * view.scale - selectedRect.y - selectedRect.height)}px ${Math.min(0, selectedRect.x)}px)` : 'inset(0)' }}>
           {!activeWindows.length ? (
@@ -203,7 +203,13 @@ export default function PreviewCanvas() {
             settings={trackSettings[item.seg.track || 'V1']} outputVolume={outputVolume}
             onStatus={onVideoStatus} onImageStatus={onImageStatus} />)}
         </div>
-        {editing && <div className="pointer-events-none absolute inset-0" style={{ zIndex: 90, boxShadow: '0 0 0 100000px rgba(0,0,0,0.6)', outline: '1px solid var(--color-stroke-accent)' }} />}
+        {editing && selectedRect && <>
+          {/* 将画布外暗化限制在素材真实外框内，外围空白背景保持原色。 */}
+          <div className="pointer-events-none absolute overflow-hidden" style={{ zIndex: 90, left: selectedRect.x, top: selectedRect.y, width: selectedRect.width, height: selectedRect.height }}>
+            <div style={{ position: 'absolute', left: -selectedRect.x, top: -selectedRect.y, width: canvasWidth * view.scale, height: canvasHeight * view.scale, boxShadow: '0 0 0 100000px rgba(0,0,0,0.75)' }} />
+          </div>
+          <div className="pointer-events-none absolute inset-0" style={{ zIndex: 90, outline: '1px solid var(--color-stroke-accent)' }} />
+        </>}
         {editing && selectedRect && <div onPointerMove={moveTransform} onPointerUp={() => endTransform()} onPointerCancel={() => endTransform(true)} onLostPointerCapture={() => endTransform(true)} style={{ position: 'absolute', left: selectedRect.x, top: selectedRect.y, width: selectedRect.width, height: selectedRect.height, border: '1px solid #2DC3E1', zIndex: 100, touchAction: 'none', cursor: drag ? 'grabbing' : 'move' }} onPointerDown={(event) => beginTransform(event, 'move')}>
           {['nw','n','ne','e','se','s','sw','w'].map((handle) => <span key={handle} onPointerDown={(event) => beginTransform(event, handle)} style={{ position: 'absolute', width: handle.length === 2 ? 10 : (handle === 'n' || handle === 's' ? 24 : 5), height: handle.length === 2 ? 10 : (handle === 'e' || handle === 'w' ? 24 : 5), left: handle.includes('w') ? 0 : handle.includes('e') ? '100%' : '50%', top: handle.includes('n') ? 0 : handle.includes('s') ? '100%' : '50%', transform: 'translate(-50%, -50%)', borderRadius: 2, background: '#2DC3E1', cursor: handle.length === 2 ? handle + '-resize' : handle + '-resize' }} />)}
         </div>}
@@ -212,7 +218,7 @@ export default function PreviewCanvas() {
         {imageFailed && <span role="status" className="absolute inset-0 flex items-center justify-center text-text-secondary text-font-size-14 pointer-events-none z-[120]">图片加载失败，请重新添加素材</span>}
         <SubtitlePreview cues={activeSubtitles} />
         {total > 0 && <VideoPlaybackControls isPlaying={playing} feedbackVisible={feedbackVisible} onToggleKeyDown={preventPlaybackEnter}
-          onToggle={() => { clearTimeout(canvasClickTimer.current); canvasClickTimer.current = setTimeout(togglePlay, 250); }} bottomInset={0} />}
+          onToggle={() => { clearTimeout(canvasClickTimer.current); if (topSelected && !playing) { showVisualEditor(); return; } canvasClickTimer.current = setTimeout(togglePlay, 250); }} bottomInset={0} />}
         </div>
       </div>
 

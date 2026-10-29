@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Tooltip } from '../ui';
 import { useCompositionEditorStore } from '../../stores/compositionEditorStore';
 
 const FONT = "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -37,7 +38,11 @@ export default function EditorHeader() {
   }
 
   const exporting = exportState.status === 'exporting';
-  const canExport = segments.length > 0 && !exporting;
+  const ready = useCompositionEditorStore((s) => s.loaded);
+  const exportDisabledReason = !ready ? '工程加载中，请稍候'
+    : exporting ? '正在导出成片，请等待完成'
+      : saving ? '正在保存，请等待保存完成'
+        : !segments.length ? '请先向轨道添加素材再导出' : '';
 
   const commitName = () => {
     const trimmed = editingName.trim();
@@ -113,26 +118,23 @@ export default function EditorHeader() {
           </span>
         )}
 
-        <div className="relative group">
+        <Tooltip label={exportDisabledReason || '导出成片'} placement="bottom" offset={8}>
           <button
             type="button"
-            onClick={() => canExport && startExport()}
-            disabled={!canExport}
+            onClick={() => { if (!exportDisabledReason) void startExport(); }}
+            aria-disabled={Boolean(exportDisabledReason)}
+            aria-description={exportDisabledReason || undefined}
             className="flex items-center h-9 shrink-0 rounded-medium px-[16px] gap-[4px] bg-btn-accent-bg-normal hover:bg-btn-accent-bg-hover active:bg-btn-accent-bg-active disabled:bg-btn-accent-bg-disabled border border-btn-accent-border disabled:border-transparent cursor-pointer disabled:cursor-not-allowed"
             style={{
               backgroundImage: 'linear-gradient(157.78deg, #7AE5B94D 2.88%, #7AE5B900 56.77%)',
+              cursor: exportDisabledReason ? 'not-allowed' : 'pointer',
             }}
           >
             <span className="text-btn-accent-text text-font-size-14 font-font-weight-medium shrink-0" style={{ fontFamily: FONT_MEDIUM }}>
-              {exporting ? '导出中' : '导出成片'}
+              导出成片
             </span>
           </button>
-          {segments.length === 0 && (
-            <span className="pointer-events-none absolute top-[120%] left-1/2 -translate-x-1/2 whitespace-nowrap rounded-medium bg-tooltip-bg backdrop-blur-[10px] px-[12px] py-[8px] text-text-primary text-font-size-12 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-              请先添加素材
-            </span>
-          )}
-        </div>
+        </Tooltip>
       </div>
     </header>
   );

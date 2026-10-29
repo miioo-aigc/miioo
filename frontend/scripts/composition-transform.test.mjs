@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { transformRect, rectTransform, resizeRect, editorView } from '../src/utils/CompositionTransform.js';
+import { transformRect, rectTransform, resizeRect, fitAxisTransform, scaleVisualTransform, visualScalePercent } from '../src/utils/CompositionTransform.js';
 
 test('默认铺满不变形，旧构图完整显示，手动坐标可跨视口复用', () => {
   const cover = transformRect({ mode: 'cover' }, 864 / 496, 1600, 900);
@@ -22,9 +22,28 @@ test('角缩放固定对角并保持当前比例，边缩放可变形且不能�
   assert.equal(edge.height, 100);
   assert.equal(edge.x + edge.width, 210);
 });
-test('编辑视图同时容纳画布与越界素材', () => {
-  const rect = { x: -500, y: -200, width: 2000, height: 1500 };
-  const view = editorView(1000, 600, rect, { width: 800, height: 500 });
-  assert.ok(view.left + rect.x * view.scale >= 23.9);
-  assert.ok(view.top + (rect.y + rect.height) * view.scale <= 476.1);
+test('按宽高铺满恢复原始比例并居中，使用已有手动构图协议', () => {
+  for (const axis of ['width', 'height']) {
+    const result = fitAxisTransform(4 / 3, 16 / 9, axis);
+    const rect = transformRect(result, 4 / 3, 1600, 900);
+    assert.equal(rect.width / rect.height, 4 / 3);
+    assert.equal(rect.x + rect.width / 2, 800);
+    assert.equal(rect.y + rect.height / 2, 450);
+    assert.equal(axis === 'width' ? rect.width : rect.height, axis === 'width' ? 1600 : 900);
+  }
+  assert.equal(fitAxisTransform(null, 16 / 9, 'width'), null);
+});
+
+test('尺寸滑杆固定基准，保留拉伸并以画布中心缩放偏移', () => {
+  const original = { version: 1, mode: 'manual', width: 1, height: 0.5, center_x: 0.7, center_y: 0.4 };
+  assert.equal(visualScalePercent({ mode: 'cover' }, 16 / 9, 16 / 9), 100);
+  const enlarged = scaleVisualTransform(original, 16 / 9, 16 / 9, 200);
+  assert.equal(enlarged.width, 2);
+  assert.equal(enlarged.height, 1);
+  assert.ok(Math.abs(enlarged.center_x - 0.9) < 1e-9);
+  assert.ok(Math.abs(enlarged.center_y - 0.3) < 1e-9);
+  const restored = scaleVisualTransform(enlarged, 16 / 9, 16 / 9, 100);
+  assert.equal(restored.width, original.width);
+  assert.equal(restored.height, original.height);
+  assert.equal(scaleVisualTransform(original, 16 / 9, 16 / 9, 1).width, 0.01);
 });

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { coverTransform } from '../utils/CompositionTransform';
+import { coverTransform, fitAxisTransform, canvasRatio } from '../utils/CompositionTransform';
 import { getTrackDeletionState, segmentTrack } from '../utils/TrackDeletion';
 import { allocateSubtitles, DEFAULT_SUBTITLE_STYLE } from '../utils/SubtitleImport';
 import {
@@ -334,6 +334,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   };
   const set = (update) => rawSet((state) => {
     const next = typeof update === 'function' ? update(state) : update;
+    if (Object.hasOwn(next, 'selectedId') || Object.hasOwn(next, 'selectedIds')) next.editingVisualId = null;
     if (Object.hasOwn(next, 'selectedId') && !Object.hasOwn(next, 'selectedIds')) next.selectedIds = [];
     if (state.loaded && next.segments && next.segments !== state.segments && next.dirty === true) {
       return { ...next, past: [...state.past, snapshot(state)].slice(-100), future: [] };
@@ -392,6 +393,25 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   compositionId: null,
   name: '未命名成片',
   segments: [],
+  editingVisualId: null,
+  sourceRatios: {},
+  reportSourceRatio: (id, ratio) => {
+    if (Number.isFinite(ratio) && ratio > 0 && get().sourceRatios[id] !== ratio) rawSet((state) => ({ sourceRatios: { ...state.sourceRatios, [id]: ratio } }));
+  },
+  showVisualEditor: () => {
+    const state = get();
+    if (state.selectedIds.length > 1) return;
+    const win = computeVisualWindows(state.segments).windows.find(item => item.seg.id === state.selectedId);
+    if (!win || state.trackSettings[win.seg.track || 'V1']?.locked || state.trackSettings[win.seg.track || 'V1']?.hidden) return;
+    rawSet({ editingVisualId: win.seg.id, playing: false, cursor: state.cursor >= win.start && state.cursor < win.end ? state.cursor : win.start });
+  },
+  fitVisualAxis: (id, axis) => {
+    const state = get();
+    const seg = state.segments.find(item => item.id === id);
+    if (!seg || state.trackSettings[seg.track || 'V1']?.locked) return;
+    const transform = fitAxisTransform(state.sourceRatios[id], canvasRatio(state.aspectRatio), axis);
+    if (transform) state.updateSegment(id, { visualTransform: transform });
+  },
   selectedId: null,
   selectedIds: [],
   selectAll: () => set((state) => ({ selectedIds: state.segments.map((segment) => segment.id), selectedId: state.segments.length === 1 ? state.segments[0].id : null })),
@@ -872,7 +892,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
 
   selectMany: (ids) => rawSet((state) => {
     const valid = [...new Set(ids)].filter((id) => state.segments.some((seg) => seg.id === id));
-    return { selectedIds: valid, selectedId: valid.length === 1 ? valid[0] : null };
+    return { editingVisualId: null, selectedIds: valid, selectedId: valid.length === 1 ? valid[0] : null };
   }),
   applySelectionAction: (action, value) => {
     const before = get();

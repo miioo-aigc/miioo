@@ -38,7 +38,7 @@ export default function VideoPlayerBar({ playing, currentTime = 0, duration = 0,
   return <div className="video-player-bar" role="group" aria-label="视频播放控制"
     onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
     <div className="video-player-actions">
-      <IconButton className="video-player-button" variant="link" aria-label={playing ? '暂停视频' : '播放视频'} title={playing ? '暂停视频' : '播放视频'} disabled={disabled} onClick={onToggle} onKeyDown={onToggleKeyDown}>
+      <IconButton className="video-player-button video-player-toggle" variant="link" aria-label={playing ? '暂停视频' : '播放视频'} title={playing ? '暂停视频' : '播放视频'} disabled={disabled} onClick={onToggle} onKeyDown={onToggleKeyDown}>
         {playing ? <Pause size={20} fill="currentColor" strokeWidth={0} /> : <Play size={20} fill="currentColor" strokeWidth={0} />}
       </IconButton>
       <span className="video-player-time">{playerTime(position)} / {playerTime(duration)}</span>

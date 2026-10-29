@@ -23,6 +23,8 @@ export default function CompositionVisualItem({ window, rect, clipBounds, playin
     onStatus(seg.id, { status: 'ready', playable: true, data: video.data, retry: video.retry });
   };
   useEffect(() => {
+    const ratio = video.data?.source?.display_aspect_ratio;
+    if (ratio) useCompositionEditorStore.getState().reportSourceRatio(seg.id, ratio.num / ratio.den);
     if (seg.type === 'video' && active) onStatus(seg.id, { status: video.status, playable: video.status === 'ready' && videoRef.current?.readyState >= 3 && !videoRef.current?.seeking, data: video.data, retry: video.retry, error: video.error });
     else if (seg.type === 'video') onStatus(seg.id, null);
   }, [seg.id, seg.type, active, video.status, video.data, video.error, video.retry, onStatus]);
@@ -75,7 +77,7 @@ function ImageLayer({ segment, style, onStatus }) {
       if (!image.naturalWidth || !image.naturalHeight) { onStatus(segment.id, { status: 'failed' }); return; }
       try {
         await image.decode();
-        if (!cancelled) { setLoaded(true); onStatus(segment.id, { status: 'ready', ratio: image.naturalWidth / image.naturalHeight }); }
+        if (!cancelled) { useCompositionEditorStore.getState().reportSourceRatio(segment.id, image.naturalWidth / image.naturalHeight); setLoaded(true); onStatus(segment.id, { status: 'ready', ratio: image.naturalWidth / image.naturalHeight }); }
       } catch { if (!cancelled) onStatus(segment.id, { status: 'failed' }); }
     };
     image.addEventListener('load', report);

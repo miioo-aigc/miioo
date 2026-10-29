@@ -24,3 +24,28 @@ test('拖动与末尾重播递增定位序号，逐帧推进和暂停不递增�
   store.getState().play();
   assert.equal(store.getState().playing, false);
 });
+
+test('选中不自动编辑，显式开启、多选禁用与切换素材关闭', () => {
+  store.setState({ segments: [{ id: 'image', type: 'image', duration: 5, start: 0, track: 'V1' }], cursor: 2, selectedIds: [], trackSettings: {}, loaded: false });
+  store.getState().select('image');
+  assert.equal(store.getState().editingVisualId, null);
+  store.getState().showVisualEditor();
+  assert.equal(store.getState().editingVisualId, 'image');
+  assert.equal(store.getState().cursor, 2);
+  store.getState().select('image');
+  assert.equal(store.getState().editingVisualId, null);
+  store.setState({ selectedIds: ['image', 'other'] });
+  store.getState().showVisualEditor();
+  assert.equal(store.getState().editingVisualId, null);
+});
+test('铺满按钮忽略此前拉伸，按原始比例生成可保存的构图', () => {
+  store.setState({ segments: [{ id: 'image', type: 'image', duration: 5, start: 0, track: 'V1', visualTransform: { mode: 'manual', width: 3, height: 0.2, center_x: 2, center_y: -1 } }], aspectRatio: '16:9', trackSettings: {}, loaded: true, past: [], future: [], selectedId: 'image', selectedIds: [], dirtyRev: 0 });
+  store.getState().reportSourceRatio('image', 4 / 3);
+  store.getState().fitVisualAxis('image', 'width');
+  const transform = store.getState().segments[0].visualTransform;
+  assert.equal(transform.width, 1);
+  assert.equal(transform.height, (16 / 9) / (4 / 3));
+  assert.equal(transform.center_x, 0.5);
+  assert.equal(transform.center_y, 0.5);
+  assert.equal(store.getState().past.length, 1);
+});

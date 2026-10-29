@@ -1,5 +1,27 @@
 /** 构图以成片画布归一化，不依赖预览分辨率和编辑视图倍率。 */
 export const coverTransform = () => ({ version: 1, mode: 'cover' });
+// 固定以默认铺满宽度为100%，非等比形变仍保留当前宽高比。
+export function visualScalePercent(transform, sourceRatio, outputRatio) {
+  const base = transformRect(coverTransform(), sourceRatio, outputRatio, 1);
+  const current = transformRect(transform, sourceRatio, outputRatio, 1);
+  return base && current ? current.width / base.width * 100 : 100;
+}
+export function scaleVisualTransform(transform, sourceRatio, outputRatio, percent) {
+  const current = transformRect(transform, sourceRatio, outputRatio, 1);
+  if (!current || !Number.isFinite(percent)) return null;
+  const factor = Math.max(1, Math.min(200, percent)) / visualScalePercent(transform, sourceRatio, outputRatio);
+  const normalized = rectTransform(current, outputRatio, 1);
+  return { ...normalized, width: normalized.width * factor, height: normalized.height * factor,
+    center_x: 0.5 + (normalized.center_x - 0.5) * factor,
+    center_y: 0.5 + (normalized.center_y - 0.5) * factor };
+}
+/** 按原始素材比例居中铺满指定轴，输出既有 manual 协议，不继承拉伸。 */
+export function fitAxisTransform(sourceRatio, outputRatio, axis) {
+  if (!(sourceRatio > 0) || !(outputRatio > 0) || !['width', 'height'].includes(axis)) return null;
+  return { version: 1, mode: 'manual', center_x: 0.5, center_y: 0.5,
+    width: axis === 'width' ? 1 : sourceRatio / outputRatio,
+    height: axis === 'height' ? 1 : outputRatio / sourceRatio };
+}
 export function canvasRatio(value) {
   const [w, h] = String(value).split(':').map(Number);
   return w > 0 && h > 0 ? w / h : 16 / 9;
@@ -36,14 +58,6 @@ export function resizeRect(rect, handle, dx, dy, minimum = 0.000001) {
   }
   return { x: west ? rect.x + rect.width - width : rect.x,
     y: north ? rect.y + rect.height - height : rect.y, width, height };
-}
-export function editorView(width, height, selected, viewport) {
-  const left = Math.min(0, selected?.x ?? 0), top = Math.min(0, selected?.y ?? 0);
-  const right = Math.max(width, selected ? selected.x + selected.width : width);
-  const bottom = Math.max(height, selected ? selected.y + selected.height : height);
-  const scale = Math.max(0.000001, Math.min(Math.max(1, viewport.width - 48) / (right - left), Math.max(1, viewport.height - 48) / (bottom - top)));
-  return { scale, left: (viewport.width - (right - left) * scale) / 2 - left * scale,
-    top: (viewport.height - (bottom - top) * scale) / 2 - top * scale };
 }
 export function pointInRect(x, y, rect) {
   return rect && x >= rect.x && y >= rect.y && x <= rect.x + rect.width && y <= rect.y + rect.height;

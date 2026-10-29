@@ -14,6 +14,10 @@ export default function WorkspaceHeader({ projectName, episode, onBack, showToas
   const startExport = useCompositionEditorStore((state) => state.startExport);
   const hasSegments = useCompositionEditorStore((state) => state.segments.length > 0);
   const exporting = useCompositionEditorStore((state) => state.exportState.status === 'exporting');
+  const exportDisabledReason = !ready ? '工程加载中，请稍候'
+    : exporting ? '正在导出成片，请等待完成'
+      : saving ? '正在保存，请等待保存完成'
+        : !hasSegments ? '请先向轨道添加素材再导出' : '';
   async function handleBack() {
     if (dirty) {
       try { await save(); }
@@ -38,7 +42,11 @@ export default function WorkspaceHeader({ projectName, episode, onBack, showToas
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-[8px]">
-        <Button size="large" className="cursor-pointer" variant="accent" icon={<EditExportIcon />} onClick={() => startExport()} disabled={!ready || saving || !hasSegments || exporting}>导出成片</Button>
+        <Tooltip label={exportDisabledReason || '导出成片'} placement="bottom" offset={8}>
+          <Button size="large" className={exportDisabledReason ? 'cursor-not-allowed' : 'cursor-pointer'} variant="accent" icon={<EditExportIcon />}
+            aria-disabled={Boolean(exportDisabledReason)} aria-description={exportDisabledReason || undefined}
+            onClick={() => { if (!exportDisabledReason) void startExport(); }}>导出成片</Button>
+        </Tooltip>
       </div>
     </header>
   );

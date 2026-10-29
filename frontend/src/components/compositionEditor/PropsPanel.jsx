@@ -8,7 +8,7 @@ import {
   durationClampOf,
   useCompositionEditorStore,
 } from '../../stores/compositionEditorStore';
-import { Button } from '../ui';
+import VisualSizeControl from './VisualSizeControl';
 import ConfirmDialog from '../ConfirmDialog';
 
 const FONT = "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -154,7 +154,7 @@ export default function PropsPanel() {
           onChange={(value) => setSpeed(selected.id, value)}
           onCommit={(value) => setSpeed(selected.id, value)} />
       )}
-      {(isVideo || isImage) && selectedIds.length <= 1 && <Button variant="secondary" size="small" onClick={() => updateSegment(selected.id, { visualTransform: { version: 1, mode: 'cover' } })}>恢复默认铺满</Button>}
+      {(isVideo || isImage) && selectedIds.length <= 1 && <VisualSizeControl key={selected.id} segment={selected} />}
 
     </aside>
   );

@@ -12,6 +12,7 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────
  *   2026-08-14  下拉菜单限制最大高度为 5 个选项，超出后固定面板内滚动；打开时自动滚到当前选中项
+ *   2026-10-30  模型菜单按实际行高限制为最多 7.5 项，超出后内部滚动
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -48,7 +49,7 @@ function ModalSelectItem({ label, icon, active, onSelect }) {
   );
 }
 
-export default function PanelSelect({ label, value, options = [], onChange, disabled = false, startIcon }) {
+export default function PanelSelect({ label, value, options = [], onChange, disabled = false, startIcon, menuMaxHeight = MENU_MAX_HEIGHT }) {
   const [open, setOpen] = useState(false);
   const [hov, setHov] = useState(false);
   const ref = useRef(null);
@@ -108,7 +109,7 @@ export default function PanelSelect({ label, value, options = [], onChange, disa
             backgroundColor: '#1D1E1E', border: '1px solid rgba(255,255,255,0.10)',
             borderRadius: '8px', padding: '4px', zIndex: 10,
             boxShadow: '0 4px 16px rgba(0,0,0,0.40)',
-            maxHeight: MENU_MAX_HEIGHT, overflowY: 'auto', overflowX: 'hidden',
+            maxHeight: menuMaxHeight, overflowY: 'auto', overflowX: 'hidden',
             boxSizing: 'border-box',
           }}>
             {options.map((opt) => {

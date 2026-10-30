@@ -225,7 +225,7 @@ test('最后一条轨道、最后一条画面轨及不存在的轨道删除不�
   assert.equal(store.getState().past.length, 0);
 });
 
-test('空轨直接删除，视频轨删除不重排其他轨道，非目标选中保持', () => {
+test('空轨直接删除，视频轨删除后连续编号，非目标选中和时间保持', () => {
   setup();
   store.setState({ trackSettings: { V1: {}, V2: {}, S2: {} } });
   store.getState().deleteTrack('S2');
@@ -237,7 +237,7 @@ test('空轨直接删除，视频轨删除不重排其他轨道，非目标选�
   store.setState({ segments: [...store.getState().segments, other], selectedId: 'v2', past: [], future: [] });
   store.getState().deleteTrack('V1');
   assert.equal(store.getState().selectedId, 'v2');
-  assert.equal(store.getState().segments.find((segment) => segment.id === 'v2'), other);
+  assert.deepEqual(store.getState().segments.find((segment) => segment.id === 'v2'), { ...other, track: 'V1' });
   assert.equal(store.getState().past.length, 1);
 });
 
@@ -533,4 +533,57 @@ test('释放只记录一次历史，撤销和重做整体恢复排布', () => {
   assert.deepEqual(store.getState().segments, before.segments);
   store.getState().redo();
   assert.deepEqual(store.getState().segments, result);
+});
+
+test('左右裁剪遵循各视频音频轨道吸附开关，固定隐式起点且支持撤销恢复', () => {
+  for (const [type, track] of [['video', 'V2'], ['audio', 'A2']]) {
+    for (const snap of [true, false]) for (const side of ['left', 'right']) {
+      const segments = [
+        { id: 'first', type, track, duration: 2 },
+        { id: 'trim', type, track, duration: 6, offset: 1, speed: 2 },
+        { id: 'last', type, track, duration: 3 },
+        { id: 'other', type: 'video', track: 'V3', start: 7, duration: 9 },
+      ];
+      store.setState({ ...store.getInitialState(), loaded: true, segments, selectedId: 'trim', cursor: 4, trackSettings: { [track]: { excludeGaps: snap } } });
+      store.getState().trimSelected(side);
+      const result = store.getState().segments;
+      const duration = side === 'left' ? 4 : 2;
+      assert.deepEqual(result.slice(0, 3).map(s => s.start), [0, snap || side === 'right' ? 2 : 4, snap ? 2 + duration : 8]);
+      assert.equal(result[1].duration, duration);
+      assert.equal(result[1].offset, side === 'left' ? 5 : 1);
+      assert.equal(result[3], segments[3]);
+      assert.equal(store.getState().past.length, 1);
+      store.getState().undo();
+      assert.deepEqual(store.getState().segments, segments);
+      store.getState().redo();
+      assert.deepEqual(store.getState().segments, result);
+    }
+  }
+});
+
+test('三类轨道顶部、底部和中间插入均顺延编号并保留设置及撤销', () => {
+  for (const [prefix, type] of [['V', 'video'], ['A', 'audio'], ['S', 'subtitle']]) {
+    for (const insertAt of [1, 2, 3]) {
+      const segments = [
+        { id: 'move', type, track: `${prefix}1`, start: 0, duration: 3 },
+        { id: 'stay', type, track: `${prefix}1`, start: 4, duration: 3 },
+        { id: 'upper', type, track: `${prefix}2`, start: 0, duration: 3 },
+      ];
+      const trackSettings = { [`${prefix}1`]: { excludeGaps: true, volume: 0.5 }, [`${prefix}2`]: { hidden: true, locked: true } };
+      const mainTracks = { V: null, A: null, S: null, [prefix]: `${prefix}1` };
+      store.setState({ ...store.getInitialState(), loaded: true, segments, trackSettings, mainTracks });
+      const before = { segments, trackSettings, mainTracks };
+      store.getState().previewTrackSegment('move', `${prefix}3`, 0, before);
+      store.getState().commitTrackDrag('move', before, insertAt);
+      const result = store.getState();
+      assert.equal(result.segments.find(s => s.id === 'move').track, `${prefix}${insertAt}`);
+      assert.equal(result.segments.find(s => s.id === 'stay').track, `${prefix}${insertAt === 1 ? 2 : 1}`);
+      assert.equal(result.segments.find(s => s.id === 'upper').track, `${prefix}${insertAt <= 2 ? 3 : 2}`);
+      assert.deepEqual(result.trackSettings[`${prefix}${insertAt === 1 ? 2 : 1}`], trackSettings[`${prefix}1`]);
+      assert.equal(result.mainTracks[prefix], `${prefix}${insertAt === 1 ? 2 : 1}`);
+      store.getState().undo();
+      assert.deepEqual(store.getState().segments, segments);
+      assert.deepEqual(store.getState().trackSettings, trackSettings);
+    }
+  }
 });

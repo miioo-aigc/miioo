@@ -1,5 +1,9 @@
 /**
+ * 2026-10-30 分集剪辑进度以服务器 editing/edited 为准；页面保留会话、请求及跳转编排。
+ * 当前任务定位：项目入口 L268；项目详情读取 L589；导航解锁聚合 L1112；分集剪辑推进 L1120。
  * @file Home.jsx
+ *   当前恢复/认证入口：L919（2026-10-30）。
+ *   2026-10-30 登录启动复用当前凭证，取消开页时两次主动刷新；过期由请求层处理。
  *   2026-10-28 主体页账号接线：SubjectPage L2070，传入当前登录账号，按项目及账号重建生成会话。
  *   2026-10-26 微信回调：内嵌窗口仅发送会话通知；顶层登录/绑定显式编排，保留页面认证副作用。
  * @structure-update：2026-10-21 正式项目入口由 UseCanvasProjects 编排（L302）；账号变化同步重置创作 Store（L401），认证与恢复编排仍保留首页。
@@ -88,12 +92,15 @@
  *   2026-10-22  剧本进度按显示状态跳转，剪辑中进入草稿列表并携带分集；保持页面业务编排边界。
  */
 
+import { apiStartEpisodeEditing } from '../api/EpisodeEditing';
+import { prepareOnlineEditing } from '../api/CompositionDraftCreation';
+import { resolveEpisodeSteps, isEpisodeEditingUnlocked } from '../utils/EpisodeEditingProgress';
 import { createWechatCallbackNotice } from '../utils/WechatCallbackMessage';
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useStoryboardGenerationScope from '../hooks/useStoryboardGenerationScope';
 import { apiGetProjects, apiUpdateProject, apiCopyProject, apiDeleteProject, apiGetProject, apiGetProjectOverview } from '../api/project';
 import { useCanvasProjects } from '../components/canvas/UseCanvasProjects';
-import { getToken, getRefreshToken, refreshAccessToken, getAuthSessionGeneration } from '../api/request';
+import { getToken, getAuthSessionGeneration } from '../api/request';
 import { clearTokens, apiLogout, apiCompleteWechatCallback } from '../api/auth';
 import { apiListProviders } from '../api/config';
 import { apiAcknowledgeStorageReminder, apiGetCurrentUser, apiGetNotifications, apiGetStorageUsage } from '../api/user';
@@ -251,7 +258,7 @@ function readUnlockedSteps(projectId) {
   try {
     const raw = localStorage.getItem(`miioo_unlocked_steps_${projectId}`);
     const value = raw ? JSON.parse(raw) : [];
-    return new Set(Array.isArray(value) ? value : []);
+    return new Set((Array.isArray(value) ? value : []).filter(step => step !== 'edit'));
   } catch {
     localStorage.removeItem(`miioo_unlocked_steps_${projectId}`);
     return new Set();
@@ -269,6 +276,7 @@ export default function Home({ onGoToAdmin }) {
   const projectDetailVersion = useRef(0);
   const projectDetailOwner = useRef(null);
   const scriptEditVersion = useRef(0);
+  const episodeEditPending = useRef(new Set());
   const [projectRead, setProjectRead] = useState(null);
   const cancelProjectRead = useCallback(() => {
     projectDetailVersion.current++;
@@ -914,14 +922,9 @@ export default function Home({ onGoToAdmin }) {
       return;
     }
 
-    // 启动验证：先尝试刷新 token（避免过期 token 直接发 401），再确认 token 有效
+    // 验证现有凭证；过期时由请求层刷新，避免新标签页主动轮换凭证。
     const doAuth = async () => {
-      // 先静默刷新一次 token（有 refresh_token 才尝试）
-      if (getRefreshToken()) {
-        await refreshAccessToken();
-      }
-
-      // token 刷新后仍然无效 → 跳过 API 请求，避免无意义的 401
+      // 凭证已被清除时跳过鉴权请求
       if (!getToken()) {
         setProjectsLoaded(true);
         return;
@@ -959,16 +962,14 @@ export default function Home({ onGoToAdmin }) {
       }
       // 仅在验证成功时加载鉴权数据（此时 token 必然有效）
       if (!getToken()) return;
-      refreshAccessToken().finally(() => {
       void readProjects();
-          apiGetNotifications().then(setNotifications).catch(() => {});
-          apiListProviders().then((data) => {
-            const providers = Array.isArray(data) ? data : (data?.providers || []);
-            if (providers.length > 0) setApiConfigured(true);
-          }).catch(() => {});
-        });
-      };
-      doAuth(); // 启动鉴权流程
+      apiGetNotifications().then(setNotifications).catch(() => {});
+      apiListProviders().then((data) => {
+        const providers = Array.isArray(data) ? data : (data?.providers || []);
+        if (providers.length > 0) setApiConfigured(true);
+      }).catch(() => {});
+    };
+    doAuth(); // 启动鉴权流程
       // 鉴权初始化只执行一次，避免 loadProjectDetails 重建后重复请求项目数据。
       // eslint-disable-next-line react-hooks/exhaustive-deps -- 启动 effect 的生命周期由 token 初始化控制
   }, []);
@@ -1099,6 +1100,7 @@ export default function Home({ onGoToAdmin }) {
   }, [activeProject?.id, projectRouteRestore, cancelProjectRead, bumpSubjectRequest, isCurrentSubjectRequest]);
 
   const handleUnlockStep = (stepKey) => {
+    if (stepKey === 'edit') return;
     setUnlockedSteps((prev) => {
       if (prev.has(stepKey)) return prev;
       const next = new Set(prev);
@@ -1107,19 +1109,39 @@ export default function Home({ onGoToAdmin }) {
     });
   };
 
-  // 项目步骤只决定状态上限，单集是否已有分镜数据决定该集能否进入下一状态。
-  const displayEpisodeStatuses = useMemo(() => Object.fromEntries(
-    scriptEpisodes.map((episode, index) => {
-      const completed = episodeStatuses[index] === 'edited' || String(episode?.status || '').toLowerCase() === 'edited';
-      if (completed) return [index, 'edited'];
-      const hasStoryboard = ['storyboarded', 'generated'].includes(episodeStatuses[index])
-        || Number(episode?.storyboard_count ?? episode?.storyboardCount) > 0
-        || ['storyboarded', 'generated', 'videos_ready', 'no_image', 'images_ready'].includes(String(episode?.status || '').toLowerCase());
-      if (hasStoryboard && unlockedSteps.has('edit')) return [index, 'generated'];
-      if (hasStoryboard && unlockedSteps.has('storyboard')) return [index, 'storyboarded'];
-      return [index, 'pending'];
-    }),
-  ), [episodeStatuses, scriptEpisodes, unlockedSteps]);
+  const effectiveUnlockedSteps = useMemo(() => resolveEpisodeSteps(unlockedSteps, projectRead?.loading || projectRead?.error ? [] : scriptEpisodes), [unlockedSteps, scriptEpisodes, projectRead]);
+  const displayEpisodeStatuses = useMemo(() => buildEpisodeStatusMap({
+    episode_progress: scriptEpisodes.map((episode, index) => ({
+      episode_id: episode.id,
+      storyboard_count: ['storyboarded', 'generated', 'edited'].includes(episodeStatuses[index]) ? 1 : 0,
+    })),
+  }, scriptEpisodes), [episodeStatuses, scriptEpisodes]);
+
+  const handleStartEpisodeEdit = async (episodeId) => {
+    const projectId = activeProject?.id;
+    const session = getAuthSessionGeneration();
+    const version = projectDetailVersion.current;
+    const isCurrent = () => session === getAuthSessionGeneration() && version === projectDetailVersion.current
+      && projectDetailOwner.current?.id === projectId;
+    const requestKey = String(projectId) + ':' + String(episodeId);
+    if (episodeEditPending.current.has(requestKey)) return;
+    episodeEditPending.current.add(requestKey);
+    try {
+      const updated = await apiStartEpisodeEditing(projectId, episodeId);
+      if (!isCurrent()) return;
+      setScriptEpisodes(previous => previous.map(episode => String(episode.id) === String(updated.id) ? { ...episode, ...updated } : episode));
+      const { draft, skipped } = await prepareOnlineEditing(projectId, episodeId);
+      if (!isCurrent()) return;
+      const query = new URLSearchParams({ episode_id: episodeId });
+      if (draft?.id) query.set('comp_id', draft.id);
+      window.history.pushState({}, '', '/project/' + encodeURIComponent(projectId) + '/edit' + (draft?.id ? '/editor' : '') + '?' + query);
+      setEditEntry({ projectId, episodeId });
+      setActiveStep('edit');
+      if (skipped) showToast('部分定稿视频缺少有效资产或时长，未自动加入轨道', 'warning');
+    } finally {
+      episodeEditPending.current.delete(requestKey);
+    }
+  };
 
   // 加载更多主体（滚动触底时调用）
   const loadMoreSubjects = async (type) => {
@@ -1882,7 +1904,7 @@ export default function Home({ onGoToAdmin }) {
         <WorkflowHeadbar
           activeStep={activeStep}
           onStepChange={setActiveStep}
-          unlockedSteps={unlockedSteps}
+          unlockedSteps={effectiveUnlockedSteps}
           isLoggedIn={isLoggedIn}
           currentUser={currentUser}
           onLoginClick={() => setLoginOpen(true)}
@@ -2052,8 +2074,9 @@ export default function Home({ onGoToAdmin }) {
                   setActiveStep('subject');
                 }}
                 onGoToEdit={(_episodeIndex, episode) => {
+                  if (!isEpisodeEditingUnlocked(episode)) return;
+                  window.history.pushState({}, '', '/project/' + encodeURIComponent(activeProject.id) + '/edit?episode_id=' + encodeURIComponent(episode.id));
                   setEditEntry({ projectId: activeProject.id, episodeId: episode.id });
-                  handleUnlockStep('edit');
                   setActiveStep('edit');
                 }}
                 onGoToStoryboard={(episodeIndex) => {
@@ -2149,10 +2172,7 @@ export default function Home({ onGoToAdmin }) {
                 episodes={scriptEpisodes}
                 initialEpisodeIndex={storyboardInitialEpisodeIndex}
                 onUnlockStep={handleUnlockStep}
-                onStartEdit={() => {
-                  handleUnlockStep('edit');
-                  setActiveStep('edit');
-                }}
+                onStartEdit={handleStartEpisodeEdit}
                 onGenerateStoryboards={handleGenerateStoryboards}
                 onRetryGenerateStoryboards={handleRetryGenerateStoryboards}
                 isGenerating={isGeneratingStoryboards}
@@ -2167,7 +2187,7 @@ export default function Home({ onGoToAdmin }) {
                 initialEpisodeId={editEntry?.projectId === activeProject.id ? editEntry.episodeId : null}
                 projectId={activeProject.id}
                 projectName={activeProject.name}
-                episodes={scriptEpisodes}
+                episodes={projectRead?.loading || projectRead?.error ? [] : scriptEpisodes}
                 onStepChange={setActiveStep}
                 showToast={showToast}
               />

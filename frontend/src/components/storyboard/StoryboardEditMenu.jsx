@@ -5,7 +5,6 @@ import { apiExportJianyingDraft } from '../../api/compositions';
 import { downloadResponse } from '../../api/download';
 import { getErrorMessage } from '../../api/error';
 import { showGlobalToast } from '../../stores/toastStore';
-import { prepareOnlineEditing } from '../../api/CompositionDraftCreation';
 
 // 分镜域剪辑动作：独立管理导出请求与菜单状态，不读取页面闭包。
 export default function StoryboardEditMenu({ projectId, projectName, episodeId, storyboardIds = [], onStartEdit, icon }) {
@@ -19,10 +18,7 @@ export default function StoryboardEditMenu({ projectId, projectName, episodeId, 
     lock.current = true;
     setOpening(true);
     try {
-      const { draft, skipped } = await prepareOnlineEditing(projectId, episodeId);
-      onStartEdit(draft?.id, episodeId);
-      if (draft) showGlobalToast('新建剪辑成功', 'success');
-      if (skipped) showGlobalToast(`${skipped} 个定稿视频缺少有效资产或时长，未自动加入轨道`, 'warning');
+      await onStartEdit(episodeId);
     } catch (error) {
       showGlobalToast(getErrorMessage(error, '进入在线剪辑失败，请重试'), 'error');
     } finally {

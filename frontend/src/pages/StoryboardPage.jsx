@@ -1,6 +1,9 @@
 /**
+ * 2026-10-30 分集剪辑进度以服务器 editing/edited 为准；页面保留会话、请求及跳转编排。
+ * 当前任务定位：页面入口 L282；按当前分集进入剪辑 L1957。
  * @file StoryboardPage.jsx
- * @structure-index 2026-10-28：L1015 选帧新增候选并保留定稿；L2563 与资产库共用展示合并；L2824 详情读取实时候选。页面级加载与生成流程保留。
+ * 2026-10-29 单个视频下载按项目、分集、分镜编号及候选视频展示顺序命名。
+ * @structure-index 2026-10-29：L280 页面入口；L1904 单个媒体下载；L2586 候选展示合并；L2847 详情读取实时候选。页面级加载与生成流程保留。
  *   当前定位（2026-10-21）：本地图片读取 L316、候选合并 L2558 均按账号隔离；executeEpisodeGeneration L2012。下方带日期条目为历史定位。
  *   2026-10-20：L439 beginMediaTask 协调任务标记；L533 归属切换重置；L1008 严格确认生成候选保存；L1495 轮询；L1530/L1549 视频/图片恢复持久候选；L1570 恢复 Hook；L1589/L1686 批量、L2899/L3060 单独入口校验访问归属并保留未确认任务。页面保留 API、缓存及持久化编排，不为行数移动副作用。
  *   2026-10-12：排序请求移出状态更新函数，串行提交并校验分集归属；失败提示刷新核对。
@@ -220,6 +223,9 @@ import buildStoryboardPrompt from '../utils/buildStoryboardPrompt';
 import { addPendingTask, removePendingTask, getPendingTasks, assertPendingTaskStorageReady } from '../utils/taskPersistence';
 import { createStoryboardGenerationTracker } from '../utils/StoryboardGenerationTracker';
 import { downloadBlob } from '../utils/downloadBlob';
+import { downloadMediaUrl } from '../utils/downloadMediaUrl';
+import { storyboardVideoDownloadName } from '../utils/StoryboardDownloadName';
+import { storyboardMediaType } from '../utils/storyboardMediaDedup';
 import { startDownloadFeedback, triggerAnchorDownload } from '../utils/downloadFeedback';
 import { createLatestPersistenceQueue } from '../utils/referenceMediaPersistence';
 import {
@@ -1898,6 +1904,17 @@ function hasStoryboardMediaHint(shot = {}) {
   }
 
   async function downloadCandidateMedia(media, shot) {
+    const isVideo = storyboardMediaType(media) === 'video';
+    let filename = media.name || `storyboard-${media?.id || 'media'}`;
+    try {
+      if (isVideo) filename = storyboardVideoDownloadName({
+        projectName, episode, shot: shots.find((item) => item.id === shot.id) || shot,
+        media, candidates: getCreationCandidates(shot.id),
+      });
+    } catch (error) {
+      showToast(error.message, 'warning');
+      return;
+    }
     const feedback = startDownloadFeedback();
     const fallbackUrl = normalizeImageUrl(media?.downloadUrl || media?.download_url || media?.url);
     try {
@@ -1908,7 +1925,7 @@ function hasStoryboardMediaHint(shot = {}) {
           media.id,
           { onProgress: feedback.setProgress },
         );
-        downloadBlob(blob, media.name || `storyboard-${media.id}`);
+        downloadBlob(blob, filename);
         await feedback.complete('下载成功');
         return;
       }
@@ -1916,7 +1933,8 @@ function hasStoryboardMediaHint(shot = {}) {
         await feedback.fail('下载链接不存在');
         return;
       }
-      triggerAnchorDownload(fallbackUrl, media.name || `storyboard-${media?.id || 'media'}`);
+      if (isVideo) await downloadMediaUrl(fallbackUrl, filename, feedback.setProgress);
+      else triggerAnchorDownload(fallbackUrl, filename);
       await feedback.complete('下载已开始');
     } catch (error) {
       console.warn('[StoryboardPage] 候选媒体受控下载失败，回退直链:', error);
@@ -1924,18 +1942,20 @@ function hasStoryboardMediaHint(shot = {}) {
         await feedback.fail('下载失败，请重试');
         return;
       }
-      triggerAnchorDownload(fallbackUrl, media.name || `storyboard-${media?.id || 'media'}`);
+      if (isVideo) {
+        try {
+          await downloadMediaUrl(fallbackUrl, filename, feedback.setProgress);
+        } catch {
+          await feedback.fail('下载失败，请重试');
+          return;
+        }
+      } else triggerAnchorDownload(fallbackUrl, filename);
       await feedback.complete('下载已开始');
     }
   }
 
-  function handleStartEdit(compositionId, episodeId) {
-    const query = new URLSearchParams();
-    if (compositionId) query.set('comp_id', compositionId);
-    if (episodeId) query.set('episode_id', episodeId);
-    window.history.pushState({}, '', `/project/${encodeURIComponent(projectId)}/edit${compositionId ? '/editor' : ''}${query.size ? '?' + query : ''}`);
-    onUnlockStep?.('edit');
-    onStartEdit?.();
+  function handleStartEdit(episodeId) {
+    return onStartEdit?.(episodeId || getEpisodeId(episode));
   }
 
   function openRegenerateModal() {

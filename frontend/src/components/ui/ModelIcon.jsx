@@ -16,14 +16,25 @@
  *     { id: 'xxx', keywords: ['关键词1', '中文名'], el: <XxxIcon /> }
  *   关键词为「不区分大小写 + 忽略空格/连接符」的子串匹配，命中任意一个即显示该图标。
  *
+ *   Vega 按 modelId 匹配，使用白色填充及选择器原有透明度规则。
  * ─── 更新记录 ─────────────────────────────────────────────────────────
+ *   2026-10-30  接入 Vega 原始矢量图形及模型标识匹配。
  *   2026-08-19  新增 5 个图片模型图标（Seedream/Kling/Vidu/GPT/Nano banana）
  *   2026-08-19  补充视频/音频图标（HappyHorse/Wan/Veo/MiniMax）；Seedance 复用 Seedream 图标；匹配忽略空格与连接符
  *   2026-08-19  从创作域提升为通用基础组件，供主体页/分镜页复用
  */
 import { cloneElement } from 'react';
+import { isVegaModelIcon } from '../../utils/ModelIconMatch';
 
 const FILL = '#FFFFFF';
+
+function VegaIcon({ size = 16 }) {
+  return (
+    <svg viewBox="0 0 36 25" width={size} height={size} style={{ flexShrink: 0 }} aria-hidden="true">
+      <path d="M16 10L0 25V16L16 0V10ZM24 13L14 22V11.876L24 2.5V13ZM30 7.5C30 11.35 31.65 13 35.5 13C31.65 13 30 14.65 30 18.5C30 14.65 28.35 13 24.5 13C28.35 13 30 11.35 30 7.5Z" fill={FILL} />
+    </svg>
+  );
+}
 
 function SeedreamIcon({ size = 16 }) {
   return (
@@ -127,7 +138,8 @@ function getModelIconElement(name) {
 }
 
 /** 渲染匹配到的模型图标；未匹配返回 null。 */
-export function ModelIcon({ name, size = 16 }) {
+export function ModelIcon({ name, modelId, size = 16 }) {
+  if (isVegaModelIcon(modelId)) return <VegaIcon size={size} />;
   const element = getModelIconElement(name);
   return element ? cloneElement(element, { size }) : null;
 }

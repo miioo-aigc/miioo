@@ -21,8 +21,10 @@ import { normalizeStoryboardModelList } from '../../utils/storyboardModelAdapter
  *   模型能力请求只服务于选择器展示，不读取页面 Store 或页面闭包。
  *
  * ─── 更新记录 ─────────────────────────────────────────────────────
+ *   2026-10-30  批量视频模型接入 Vega 标识匹配，沿用现有图标淡化规则。
  *   2026-07-15  从 StoryboardPage 抽离批量生成图片/视频弹窗，选择器复用 ui/Select
  *   2026-07-29  批量生成图/视频增加“仅生成未定稿”筛选，状态随确认参数返回页面
+ *   2026-10-30  模型菜单按实际行高限制为最多 7.5 项，超出后内部滚动
  */
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -90,13 +92,14 @@ function ModelSelect({ modelList, model, loading, onChange }) {
   return (
     <Select
       label="选择模型"
+      menuMaxHeight={34 * 7.5 + 4 + 2} // 7.5 项 + 顶部内距 + 上下边框
       width="100%"
       value={model}
       displayValue={loading ? '加载中...' : (currentLabel || '请选择')}
-      options={modelList.map((item) => ({ ...item, icon: <ModelIcon name={item.label} /> }))}
+      options={modelList.map((item) => ({ ...item, icon: <ModelIcon name={item.label} modelId={item.value} /> }))}
       startIcon={(
         <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0, opacity: 0.8 }}>
-          <ModelIcon name={currentLabel} />
+          <ModelIcon name={currentLabel} modelId={model} />
         </span>
       )}
       loading={loading}

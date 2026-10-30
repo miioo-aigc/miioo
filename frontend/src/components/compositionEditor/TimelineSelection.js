@@ -9,7 +9,8 @@ export function intersectsSelection(a, b) {
 export function commonClipActions(state, windows) {
   const ids = selectionIds(state);
   const selected = ids.map((id) => state.segments.find((seg) => seg.id === id));
-  if (!selected.length || selected.some((seg) => !seg || seg.type === 'subtitle')) return [];
+  if (!selected.length || selected.some((seg) => !seg)) return [];
+  if (selected.some(seg => seg.type === 'subtitle')) return ['delete'];
   const actions = [];
   const inside = selected.every((seg) => {
     const window = windows.find((item) => item.seg.id === seg.id);

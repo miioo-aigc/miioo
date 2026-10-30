@@ -1,3 +1,4 @@
+import IconDrag from '../ui/DragHandleIcon';
 import { createPortal } from 'react-dom';
 import { useRef, useState } from 'react';
 import Checkbox from '../Checkbox';
@@ -11,9 +12,6 @@ const NUMBER_BTNS = [
   { key: 'delete', icon: <DeleteIcon size={16} color="#FFFFFF" />, label: '删除分镜' },
 ];
 
-function IconDrag() {
-  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path fillRule="evenodd" clipRule="evenodd" d="M6.333 3.333C6.333 4.07 5.736 4.667 5 4.667C4.264 4.667 3.667 4.07 3.667 3.333C3.667 2.597 4.264 2 5 2C5.736 2 6.333 2.597 6.333 3.333ZM5 9.333C5.736 9.333 6.333 8.736 6.333 8C6.333 7.264 5.736 6.667 5 6.667C4.264 6.667 3.667 7.264 3.667 8C3.667 8.736 4.264 9.333 5 9.333ZM5 14C5.736 14 6.333 13.403 6.333 12.667C6.333 11.93 5.736 11.333 5 11.333C4.264 11.333 3.667 11.93 3.667 12.667C3.667 13.403 4.264 14 5 14Z" fill="#FFFFFF"/><path fillRule="evenodd" clipRule="evenodd" d="M12.333 3.333C12.333 4.07 11.736 4.667 11 4.667C10.264 4.667 9.667 4.07 9.667 3.333C9.667 2.597 10.264 2 11 2C11.736 2 12.333 2.597 12.333 3.333ZM11 9.333C11.736 9.333 12.333 8.736 12.333 8C12.333 7.264 11.736 6.667 11 6.667C10.264 6.667 9.667 7.264 9.667 8C9.667 8.736 10.264 9.333 10.264 9.333ZM11 14C11.736 14 12.333 13.403 12.333 12.667C12.333 11.93 11.736 11.333 11 11.333C10.264 11.333 9.667 11.93 9.667 12.667C9.667 13.403 10.264 14 11 14Z" fill="#FFFFFF"/></svg>;
-}
 
 function IconAdd() {
   return <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 10.667V5.333M14 9V7M2 9V7M4.667 2H2.667C2.298 2 2 2.298 2 2.667V4.667M11.333 2H13.333C13.702 2 14 2.298 14 2.667V4.667M11.333 14H13.333C13.702 14 14 13.702 14 13.333V11.333M4.667 14H2.667C2.298 14 2 13.702 2 13.333V11.333M9 2H7M10.667 8H5.333M9 14H7" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round"/></svg>;

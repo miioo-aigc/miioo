@@ -234,3 +234,25 @@ test('片段自然结束后就绪状态正常也不能重播，其他音轨继�
   assert.equal(clock.tick(5, 0.1, 100, 10), 5.1);
   assert.equal(ended.plays, 1);
 });
+
+test('切换画质时冻结指针，替换媒体后保留裁切倍速并自动续播', async () => {
+  const clock = new PreviewMediaClock();
+  const oldMedia = media();
+  const clip = { start: 1, end: 10, seg: { type: 'video', sourceUrl: 'preview.mp4', offset: 2, speed: 1.5 } };
+  const dispose = clock.register('video-1', oldMedia, clip, false, true, () => 3);
+  clock.require(['video-1']);
+  clock.setBlocked(true);
+  assert.equal(clock.tick(3, 0.1, 1000, 10), 3);
+  assert.equal(oldMedia.paused, true);
+  dispose();
+  const original = media();
+  original.src = 'original.mp4';
+  clock.register('video-1', original, { ...clip, seg: { ...clip.seg, sourceUrl: original.src } }, false, true, () => 3);
+  assert.equal(original.currentTime, 5);
+  assert.equal(original.paused, true);
+  clock.setBlocked(false);
+  clock.tick(3, 0.1, 2000, 10);
+  await Promise.resolve();
+  assert.equal(original.paused, false);
+  assert.equal(original.playbackRate, 1.5);
+});

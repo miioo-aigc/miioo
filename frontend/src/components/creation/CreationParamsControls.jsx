@@ -3,7 +3,9 @@
  *
  * 这里负责把生成类型、模型、配音参数、图片参数和视频参数按生成类型组合起来。
  * 具体选择器仍通过 props 注入，避免把页面内既有视觉实现和状态迁移混在同一轮。
- * 页面继续持有参数状态、模型能力筛选、联动回调和真人素材弹窗状态。
+ * 页面继续持有参数状态、模型能力筛选和联动回调。
+ * 2026-10-30 移除真人素材入口，认证统一由资产库承接。
+ *   2026-10-30  模型菜单按实际行高限制为最多 7.5 项，超出后内部滚动
  */
 export default function CreationParamsControls({
   genType,
@@ -47,8 +49,6 @@ export default function CreationParamsControls({
   onVideoDurationChange,
   soundEnabled,
   onSoundChange,
-  showLiveMaterial = false,
-  onOpenLiveMaterial,
   GenTypeSelector,
   ModelSelector,
   DubbingAdjust,
@@ -63,6 +63,7 @@ export default function CreationParamsControls({
         value={model}
         onChange={onModelChange}
         options={modelOptions}
+        menuMaxHeight={32 * 7.5}
         disabled={disabled}
         onBeforeOpen={onBeforeModelOpen}
       />
@@ -128,46 +129,6 @@ export default function CreationParamsControls({
             soundEnabled={soundEnabled}
             onSoundChange={onSoundChange}
           />
-          {showLiveMaterial && (
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => !disabled && onOpenLiveMaterial?.()}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '4px',
-                height: '32px', paddingInline: '12px',
-                borderRadius: '8px', flexShrink: 0,
-                border: '1px solid #FFFFFF14',
-                background: '#1D1E1E',
-                outline: '1px solid #00000080',
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                opacity: disabled ? 0.45 : 1,
-                transition: 'background 0.2s, border-color 0.2s',
-              }}
-              onMouseEnter={(event) => {
-                if (!disabled) {
-                  event.currentTarget.style.background = '#252525';
-                  event.currentTarget.style.borderColor = '#FFFFFF29';
-                }
-              }}
-              onMouseLeave={(event) => {
-                if (!disabled) {
-                  event.currentTarget.style.background = '#1D1E1E';
-                  event.currentTarget.style.borderColor = '#FFFFFF14';
-                }
-              }}
-              onMouseDown={(event) => {
-                if (!disabled) event.currentTarget.style.background = '#161616';
-              }}
-              onMouseUp={(event) => {
-                if (!disabled) event.currentTarget.style.background = '#252525';
-              }}
-            >
-              <span style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif", fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC' }}>
-                真人素材
-              </span>
-            </button>
-          )}
         </>
       )}
     </div>

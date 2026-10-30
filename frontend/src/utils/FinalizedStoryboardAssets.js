@@ -1,6 +1,7 @@
 import { apiGetStoryboards, apiListStoryboardMediaCandidates } from '../api/storyboard';
 import { normalizeImageUrl } from './imageUrl';
 import { apiGetAssetDetail, apiGetAssetsPage } from '../api/assets';
+import { compositionAssetCoverUrls } from './CompositionAssetCover';
 import { compositionMediaSource } from './CompositionMediaSource';
 
 function mediaKey(type, url) {
@@ -55,7 +56,7 @@ export async function resolveFinalizedStoryboardAssets(projectId, finalized) {
     const needsDetail = (media.mediaType ?? media.media_type) === 'video' && !(media.downloadUrl || media.download_url);
     const detail = details.get(String(id));
     const asset = needsDetail && !detail ? null : finalizedMediaToAsset(detail
-      ? { ...entry, media: { ...media, file_url: detail.file_url, downloadUrl: detail.download_url || detail.file_url } }
+      ? { ...entry, media: { ...media, coverUrls: [...compositionAssetCoverUrls(media), ...compositionAssetCoverUrls(detail)], file_url: detail.file_url, downloadUrl: detail.download_url || detail.file_url } }
       : entry);
     if (asset) assets.push(asset);
     else unavailable += 1;
@@ -72,7 +73,8 @@ export function finalizedMediaToAsset({ media, shot }) {
     asset_type: media.mediaType ?? media.media_type,
     name: media.name || `分镜${shot.shot_number ?? shot.sort_order ?? ''}定稿素材`,
     file_url: source,
-    thumbnail_url: media.thumbnailUrl ?? media.thumbnail_url ?? (media.mediaType === 'image' ? media.url : null),
+    thumbnail_url: compositionAssetCoverUrls(media)[0] || null,
+    coverUrls: compositionAssetCoverUrls(media),
     poster_url: media.posterUrl ?? media.poster_url,
     download_url: media.downloadUrl ?? media.download_url,
     duration: media.duration ?? media.metadata?.duration,

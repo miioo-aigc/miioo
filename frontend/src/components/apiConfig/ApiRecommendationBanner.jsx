@@ -19,10 +19,10 @@ export default function ApiRecommendationBanner() {
   return <section className="api-recommendation-banner" aria-label="OneLinkAI 推荐">
     <div className="api-recommendation-banner__background" aria-hidden="true">
       <GrainGradient speed={reducedMotion ? 0 : 1} scale={1} rotation={0} offsetX={1} offsetY={0}
-        softness={1} intensity={0.09} noise={0} shape="wave" frame={2887750.8970015626}
+        softness={1} intensity={0.09} noise={0} shape="wave" frame={7837754.347002896}
         colors={['#2218E0', '#2B17E6', '#668BE8', '#98E1FF']} colorBack="#00000000" style={layerStyle} />
-      <DotOrbit scale={0.16} size={0.6} sizeRange={0.16} spreading={0.18} speed={reducedMotion ? 0 : 1.2}
-        stepsPerColor={1} frame={2289917.218003072} colors={['#00C9FF']} colorBack="#00000000"
+      <DotOrbit scale={0.16} size={0.6} sizeRange={0.6} spreading={0.18} speed={reducedMotion ? 0 : 1}
+        stepsPerColor={1} frame={7222974.438006232} colors={['#00C9FF']} colorBack="#00000000"
         style={{ ...layerStyle, mixBlendMode: 'saturation' }} />
       <div className="api-recommendation-banner__scrim" />
     </div>

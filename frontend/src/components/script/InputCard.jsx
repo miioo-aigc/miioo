@@ -22,7 +22,8 @@
  *   2026-09-21  外观迁移至 ComposerSurface，保留文本、模型和发送行为
 
  * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
- * 当前定义定位：InputCard L35。
+ *   2026-10-30  模型菜单最多显示 7.5 项，超出后内部滚动。
+ * 当前定义定位：InputCard L36。
  */
 import { useEffect, useRef, useState } from 'react';
 import { useAvailableModels } from '../../hooks/useAvailableModels';
@@ -88,6 +89,7 @@ function InputCard({ onSend, onStop, restoreText = '', selectedModel, onModelCha
               loading={modelsLoading}
               onChange={onModelChange}
               menuPlacement="up"
+              menuMaxHeight={34 * 7.5 + 4 + 2} // 7.5 项 + 顶部内距 + 上下边框
             />
             <EpisodeDurationSelector value={episodeDuration} onChange={onEpisodeDurationChange} disabled={disabled} />
             <EpisodeCountSelector value={episodeCount} onChange={onEpisodeCountChange} disabled={disabled} />

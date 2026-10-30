@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { Tabs, DropdownMenu, DeleteIcon } from '../ui';
 import AssetPickerModal from '../AssetPickerModal';
+import AssetCover from './AssetCover';
+import { compositionAssetCoverUrls } from '../../utils/CompositionAssetCover';
 import SubtitleLibraryPanel from './SubtitleLibraryPanel';
 import { apiUploadCreationAudio, apiUploadCreationImage, apiUploadCreationVideo } from '../../api/creation';
 import { apiGetAssetDetail } from '../../api/assets';
@@ -51,6 +53,7 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
 
   const normalizeAddedAsset = (raw, file, sourceType = mediaType) => {
     const asset = raw?.asset || raw?.data || raw;
+    const covers = compositionAssetCoverUrls({ ...asset, asset_type: asset?.asset_type || sourceType });
     return {
       ...asset,
       manuallyAdded: true,
@@ -61,7 +64,8 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
       videoUrl: (asset?.asset_type || asset?.type || sourceType) === 'video'
         ? compositionMediaSource({ ...asset, asset_type: 'video' }) : null,
       url: normalizeImageUrl(asset?.thumbnail_url || asset?.thumbnailUrl || asset?.poster_url || (sourceType === 'image' ? asset?.file_url || asset?.url : null)),
-      thumbnailUrl: normalizeImageUrl(asset?.thumbnail_url || asset?.thumbnailUrl),
+      thumbnailUrl: covers[0] || null,
+      coverUrls: covers,
       posterUrl: normalizeImageUrl(asset?.poster_url || asset?.posterUrl),
       duration: asset?.duration || asset?.metadata_json?.duration || null,
     };
@@ -202,7 +206,6 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
               const isVideo = asset.asset_type === 'video';
               const isAudio = asset.asset_type === 'audio';
               const showDuration = (isVideo || isAudio) && asset.duration != null;
-              const thumb = asset.thumbnailUrl || asset.posterUrl;
               return (
                 <div
                   key={asset.id}
@@ -221,19 +224,7 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
                   <span className="relative flex items-center justify-center w-full aspect-video rounded-[8px] bg-neutral-500 overflow-hidden shrink-0 border border-white-10 transition-colors group-hover:border-white-30">
                     {isAudio ? (
                       <span className="text-text-secondary"><AudioIcon /></span>
-                    ) : thumb ? (
-                      <img
-                        src={thumb}
-                        alt=""
-                        className="w-full h-full object-contain"
-                        loading="lazy"
-                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                      />
-                    ) : (
-                      <span className="text-text-hint text-font-size-12" style={{ fontFamily: FONT }}>
-                        {isVideo ? '视频' : '图片'}
-                      </span>
-                    )}
+                    ) : <AssetCover asset={asset} />}
                     {added && (
                       <span aria-label="已添加到时间线" className="absolute left-[8px] top-[8px] flex h-[24px] items-center gap-[4px] rounded-[4px] bg-transparent bg-gradient-to-b from-[rgba(0,0,0,0.6)] to-[rgba(0,0,0,0.6)] px-[8px] text-[12px] text-[#2DC3E1]" style={{ fontFamily: FONT_MEDIUM }}>
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">

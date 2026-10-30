@@ -1,12 +1,9 @@
 import { assertImageReferenceUrls, buildImageReferences } from './ImageReferences.js';
 const BASE = import.meta.env.VITE_API_BASE_URL;
-const CREATION_DEFAULT_POLL_TIMEOUT_MS = 1800000;
 const CREATION_VIDEO_POLL_TIMEOUT_MS = 3600000;
-const CREATION_AUDIO_POLL_TIMEOUT_MS = 600000;
 const CREATION_BASIC_EDIT_POLL_TIMEOUT_MS = 600000;
 const CREATION_POLL_INTERVAL_MS = 3000;
-const CREATION_POLL_TRANSIENT_FAILURE_LIMIT = 5;
-const CREATION_POLL_TRANSIENT_STATUSES = new Set([502, 503, 504]);
+const CREATION_POLL_TRANSIENT_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 import { readResponseBlobWithProgress } from '../utils/responseBlobProgress';
 import { validateVideoRequestImages } from './VideoReferenceValidation.js';
 import { assertVideoReferencePixels } from '../utils/VideoReferencePixels.js';
@@ -67,12 +64,6 @@ function createPollResponseError(message, status) {
 
 function recordTransientPollFailure(retryState, error, pollUrl) {
   retryState.consecutiveFailures += 1;
-  if (retryState.consecutiveFailures >= CREATION_POLL_TRANSIENT_FAILURE_LIMIT) {
-    throw createPollResponseError(
-      '任务状态查询暂时不可用，请稍后刷新页面恢复任务',
-      error?.status,
-    );
-  }
   console.warn('[creation-poll] 临时查询失败，继续轮询', {
     pollUrl,
     consecutiveFailures: retryState.consecutiveFailures,
@@ -238,7 +229,7 @@ async function pollBasicEditCreationImageTask(taskId, { signal } = {}) {
  * ─── 音乐生成（自由函数）────────────────────────
  *   [接口] apiGenerateCreationMusic()              L743   POST /api/music/generate （音乐生成/翻唱）
  *   [提取] extractMusicResultUrl()                  L753   从 url/audio_url/result/results[] 提取音乐结果
- *   [轮询] apiPollCreationMusicTask()                L771   GET /api/tasks/{task_id} 最多 600 秒，支持 AbortSignal
+ *   [轮询] apiPollCreationMusicTask()                L771   GET /api/tasks/{task_id} 持续查询到终态，支持 AbortSignal
  * ─── 视频生成（apiGenerateCreation）────────────────────────
  *   [函数] apiGenerateCreation()                    L1036  入口：按 genType 分流 图片/视频/配音/音乐
  *   [上传] 参考文件分类循环                           L1135  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
@@ -296,11 +287,7 @@ function normalizeDubbingVoiceSetting(params) {
 export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = {}) {
   const start = Date.now();
   const retryState = { consecutiveFailures: 0 };
-  const effectiveTimeoutMs = timeoutMs ?? (type === 'audio'
-    ? CREATION_AUDIO_POLL_TIMEOUT_MS
-    : type === 'video'
-      ? CREATION_VIDEO_POLL_TIMEOUT_MS
-      : CREATION_DEFAULT_POLL_TIMEOUT_MS);
+  const effectiveTimeoutMs = timeoutMs ?? Infinity;
   const pollUrl = type === 'image'
     ? `${BASE}/api/creation/tasks/${taskId}`
     : type === 'audio'
@@ -767,16 +754,16 @@ function extractMusicResultUrl(data) {
 }
 
 // 音乐任务走通用任务中心（GET /api/tasks/{task_id}，GenTaskResponse），
-// 轮询最多 600 秒，可通过 AbortSignal 停止。
-export async function apiPollCreationMusicTask(taskId, timeoutMs = CREATION_AUDIO_POLL_TIMEOUT_MS, { signal } = {}) {
+// 默认持续查询到终态；离页或账号变化可停止当前页面查询。
+export async function apiPollCreationMusicTask(taskId, timeoutMs = Infinity, { signal } = {}) {
   const start = Date.now();
+  const retryState = { consecutiveFailures: 0 };
   while (Date.now() - start < timeoutMs) {
     await waitForPollInterval(signal);
     if (Date.now() - start >= timeoutMs) break;
     throwIfAborted(signal);
-    const pollRes = await authFetch(`${BASE}/api/tasks/${taskId}`, { signal });
-    if (!pollRes.ok) throw new Error('音乐任务状态读取失败');
-    const pollData = await pollRes.json();
+    const pollData = await fetchCreationPollData(BASE + '/api/tasks/' + taskId, { signal, retryState });
+    if (!pollData) continue;
     const status = pollData.status;
     if (status === 'done' || status === 'completed' || status === 'success' || status === 'succeeded' || status === 'partial') {
       const audioUrl = extractMusicResultUrl(pollData);
@@ -1042,11 +1029,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
   async function pollTask(
     pollUrl,
     extractFn,
-    timeoutMs = isDubbing
-      ? CREATION_AUDIO_POLL_TIMEOUT_MS
-      : isVideo
-        ? CREATION_VIDEO_POLL_TIMEOUT_MS
-        : CREATION_DEFAULT_POLL_TIMEOUT_MS,
+    timeoutMs = Infinity,
   ) {
     const start = Date.now();
     const retryState = { consecutiveFailures: 0 };

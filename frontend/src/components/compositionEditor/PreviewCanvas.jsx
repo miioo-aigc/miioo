@@ -114,19 +114,21 @@ export default function PreviewCanvas() {
 
   const selectedRatio = topSelected ? (topSelected.seg.type === 'image'
     ? imageRatios[topSelected.seg.id]?.ratio
-    : (mediaStatus[topSelected.seg.id]?.data?.source.display_aspect_ratio.num / mediaStatus[topSelected.seg.id]?.data?.source.display_aspect_ratio.den)) : null;
+    : (mediaStatus[topSelected.seg.id]?.data?.source?.display_aspect_ratio?.num / mediaStatus[topSelected.seg.id]?.data?.source?.display_aspect_ratio?.den)) : null;
   const canvasHeight = canvasWidth / ratio;
   const editing = Boolean(topSelected && editingVisualId === topSelected.seg.id && selectedRatio && !playing && !trackSettings[topSelected.seg.track || 'V1']?.locked);
   const fittedView = { scale: 1, left: (viewportSize.width - canvasWidth) / 2, top: (viewportSize.height - canvasHeight) / 2 };
   const view = drag?.view || fittedView;
-  const activeRect = (item, index) => {
+  const activeRect = (item) => {
     const sourceRatio = item.seg.type === 'image' ? imageRatios[item.seg.id]?.ratio
-      : (() => { const source = mediaStatus[item.seg.id]?.data?.source.display_aspect_ratio; return source?.num / source?.den; })();
+      : (() => { const source = mediaStatus[item.seg.id]?.data?.source?.display_aspect_ratio; return source?.num / source?.den; })();
     if (!sourceRatio) return null;
     const rect = transformRect(item.seg.visualTransform || { mode: 'legacy_contain' }, sourceRatio, canvasWidth, canvasHeight);
-    return rect ? { ...rect, x: rect.x * view.scale, y: rect.y * view.scale, width: rect.width * view.scale, height: rect.height * view.scale, zIndex: index + 1 } : null;
+    // 视觉轨道按编号递增向上覆盖：V2 高于 V1，V3 高于 V2。
+    const trackNumber = Number.parseInt(String(item.seg.track || 'V1').slice(1), 10) || 1;
+    return rect ? { ...rect, x: rect.x * view.scale, y: rect.y * view.scale, width: rect.width * view.scale, height: rect.height * view.scale, zIndex: 100 + trackNumber } : null;
   };
-  const selectedRect = topSelected ? activeRect(topSelected, activeWindows.indexOf(topSelected)) : null;
+  const selectedRect = topSelected ? activeRect(topSelected) : null;
   const beginTransform = (event, handle) => {
     if (event.button !== 0 || !topSelected || !selectedRect || trackSettings[topSelected.seg.track || 'V1']?.locked) return;
     event.preventDefault(); event.stopPropagation();
@@ -154,7 +156,7 @@ export default function PreviewCanvas() {
     pause();
     for (let i = activeWindows.length - 1; i >= 0; i -= 1) {
       const item = activeWindows[i];
-      if (!trackSettings[item.seg.track || 'V1']?.hidden && !trackSettings[item.seg.track || 'V1']?.locked && pointInRect(x, y, transformRect(item.seg.visualTransform || { mode: 'legacy_contain' }, item.seg.type === 'image' ? imageRatios[item.seg.id]?.ratio : (() => { const r = mediaStatus[item.seg.id]?.data?.source.display_aspect_ratio; return r?.num / r?.den; })(), canvasWidth, canvasHeight))) { select(item.seg.id); showVisualEditor(); return; }
+      if (!trackSettings[item.seg.track || 'V1']?.hidden && !trackSettings[item.seg.track || 'V1']?.locked && pointInRect(x, y, transformRect(item.seg.visualTransform || { mode: 'legacy_contain' }, item.seg.type === 'image' ? imageRatios[item.seg.id]?.ratio : (() => { const r = mediaStatus[item.seg.id]?.data?.source?.display_aspect_ratio; return r?.num / r?.den; })(), canvasWidth, canvasHeight))) { select(item.seg.id); showVisualEditor(); return; }
     }
   };
 
@@ -203,9 +205,9 @@ export default function PreviewCanvas() {
               从左侧添加素材开始剪辑
             </span>
           ) : null}
-          {activeWindows.map((item, index) => <CompositionVisualItem key={item.seg.id + quality} window={item} quality={quality} original={originals.sources[item.seg.assetId]} refreshOriginal={originals.refresh}
+          {activeWindows.map((item) => <CompositionVisualItem key={item.seg.id + quality} window={item} quality={quality} original={originals.sources[item.seg.assetId]} refreshOriginal={originals.refresh}
             clipBounds={editing && topSelected?.seg.id === item.seg.id ? null : { width: canvasWidth * view.scale, height: canvasHeight * view.scale }}
-            rect={activeRect(item, index)} playing={playing} clock={clock} seekEpoch={seekEpoch}
+            rect={activeRect(item)} playing={playing} clock={clock} seekEpoch={seekEpoch}
             settings={trackSettings[item.seg.track || 'V1']} outputVolume={outputVolume}
             onStatus={onVideoStatus} onImageStatus={onImageStatus} />)}
         </div>
@@ -230,7 +232,7 @@ export default function PreviewCanvas() {
       <VideoPlayerBar playing={playing} currentTime={cursor} duration={total} disabled={total <= 0}
         trailingControl={<Select width="120px" value={quality} displayValue={quality === 'original' ? '画质优先' : '流畅优先'}
           options={[{ value: 'smooth', label: '流畅优先' }, { value: 'original', label: '画质优先' }]} menuPlacement="up"
-          onChange={value => { if (value === quality) return; clock.setBlocked(true); readiness.current = false; setMediaStatus({}); setQuality(value); }} />}
+          onChange={value => { if (value === quality) return; clock.setBlocked(true); readiness.current = false; setMediaStatus({}); originals.reset(); setQuality(value); }} />}
         onToggle={togglePlay} onToggleKeyDown={preventPlaybackEnter} onSeek={seek} volume={previewVolume} muted={previewMuted}
         onVolumeChange={setPreviewVolume} onMutedChange={setPreviewMuted}
         />

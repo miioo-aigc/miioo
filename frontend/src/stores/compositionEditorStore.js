@@ -1,3 +1,4 @@
+import { insertSelectionTracks, compactTimelineTracks, insertTimelineTrack, swapTimelineTracks, moveTimelineSelection, cleanEmptyTimelineTracks } from '../utils/TimelineTrackEditing';
 import { create } from 'zustand';
 import { containTransform, fitAxisTransform, canvasRatio } from '../utils/CompositionTransform';
 import { getTrackDeletionState, segmentTrack } from '../utils/TrackDeletion';
@@ -25,6 +26,7 @@ import { downloadBlob } from '../utils/downloadBlob';
  * transition：图片段固定输出 'none'，避免后端缺省启用淡入淡出。
  * 2026-10-29：分离落点优先音频主轨，按目标轨磁吸及占位排布，不移动已有片段。
  * 2026-10-29：分离状态以片段 hasAudio=false 为准，仅撤销分离恢复；删除或移动音频不重置。
+ * 2026-10-30：批量分离按轨道从上到下、轨道内从左到右排布，关闭磁吸也保持批内顺序。
  * 音频段允许显式 start（对齐分离出的视频原声位置；缺省沿用 A1 串行游标）。
  */
 
@@ -338,6 +340,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   };
   const set = (update) => rawSet((state) => {
     const next = typeof update === 'function' ? update(state) : update;
+    if (next.segments && next.dirty) Object.assign(next, cleanEmptyTimelineTracks({ ...state, ...next }));
     if (Object.hasOwn(next, 'selectedId') || Object.hasOwn(next, 'selectedIds')) next.editingVisualId = null;
     if (Object.hasOwn(next, 'selectedId') && !Object.hasOwn(next, 'selectedIds')) next.selectedIds = [];
     if (state.loaded && next.segments && next.segments !== state.segments && next.dirty === true) {
@@ -389,8 +392,19 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     const patch = side === 'left'
       ? { offset: segment.type === 'image' ? 0 : (Number(segment.offset) || 0) + left * speed, duration: right }
       : { duration: left };
-    const nextSegments = state.segments.map((item) => item.id === segment.id ? { ...item, ...patch, ...(segment.type === 'audio' && side === 'left' ? { start: state.cursor } : {}) } : item);
-    set({ segments: nextSegments, selectedId: segment.id, dirty: true, dirtyRev: state.dirtyRev + 1, playing: false, cursor: side === 'left' ? state.cursor : window.start });
+    // 2026-10-30：裁剪按所在轨道吸附开关排布；关闭时固定原窗口，保留裁剪空隙。
+    const track = segmentTrack(segment);
+    const snap = Boolean(state.trackSettings[track]?.excludeGaps);
+    const starts = new Map();
+    let nextStart = 0;
+    windows.filter(({ seg }) => segmentTrack(seg) === track)
+      .sort((a, b) => a.start - b.start).forEach(({ seg, start }) => {
+        starts.set(seg.id, snap ? nextStart : seg.id === segment.id && side === 'left' ? state.cursor : start);
+        nextStart += Number(seg.id === segment.id ? patch.duration : seg.duration) || 0;
+      });
+    const nextSegments = state.segments.map((item) => starts.has(item.id)
+      ? { ...item, ...(item.id === segment.id ? patch : {}), start: starts.get(item.id) } : item);
+    set({ segments: nextSegments, selectedId: segment.id, dirty: true, dirtyRev: state.dirtyRev + 1, playing: false, cursor: snap ? starts.get(segment.id) : side === 'left' ? state.cursor : window.start });
   },
   projectId: null,
   episodeId: null,
@@ -448,6 +462,27 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       trackSettings: { ...state.trackSettings, [track]: state.trackSettings[track] || { hidden: false, volume: 1, excludeGaps: false } },
       past: [...state.past, snapshot(state)].slice(-50), future: [], dirty: true, dirtyRev: state.dirtyRev + 1 };
   }),
+  insertTrack: (anchor, side) => set((state) => {
+    const next = insertTimelineTrack(state, anchor, side);
+    return next ? { ...next, playing: false, dirty: true, dirtyRev: state.dirtyRev + 1 } : {};
+  }),
+  swapTracks: (source, target) => set((state) => {
+    const next = swapTimelineTracks(state, source, target);
+    return next ? { ...next, playing: false, dirty: true, dirtyRev: state.dirtyRev + 1 } : {};
+  }),
+  planSelectionInsertion: (ids, draggedId, deltaTime, before, insertion) => {
+    const windows = [...computeVisualWindows(before.segments).windows, ...computeAudioWindows(before.segments).windows, ...computeSubtitleWindows(before.segments).windows];
+    return insertSelectionTracks(before, windows, ids, draggedId, deltaTime, insertion);
+  },
+  previewSelectionDrag: (ids, deltaTime, rowDelta, before) => {
+    const windows = [...computeVisualWindows(before.segments).windows, ...computeAudioWindows(before.segments).windows, ...computeSubtitleWindows(before.segments).windows];
+    const segments = moveTimelineSelection(before, windows, ids, deltaTime, rowDelta);
+    rawSet({ segments: segments || before.segments, playing: false });
+    return Boolean(segments);
+  },
+  commitSelectionDrag: (before, plan = null) => rawSet((state) => !plan && state.segments === before.segments ? {} : ({
+    ...cleanEmptyTimelineTracks(plan || state), past: [...state.past, snapshot(before)].slice(-50), future: [], dirty: true, dirtyRev: state.dirtyRev + 1,
+  })),
   commitTrackDrag: (id, before, insertAt = null) => rawSet((state) => {
     if (!before || state.segments === before.segments) return {};
     let segments = state.segments;
@@ -473,7 +508,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       trackSettings[`${prefix}${insertAt}`] = { hidden: false, volume: 1, excludeGaps: false };
       mainTracks = Object.fromEntries(Object.entries(mainTracks).map(([type, track]) => [type, track ? rename(track) : null]));
     }
-    return { segments, trackSettings, mainTracks, past: [...state.past, before].slice(-50), future: [], selectedId: id, selectedIds: [], dirty: true, dirtyRev: state.dirtyRev + 1 };
+    return { segments, ...cleanEmptyTimelineTracks({ segments, trackSettings, mainTracks }), past: [...state.past, before].slice(-50), future: [], selectedId: id, selectedIds: [], dirty: true, dirtyRev: state.dirtyRev + 1 };
   }),
   zoom: 24, // 时间线缩放：pxPerSecond（会话级，不持久化）
 
@@ -748,9 +783,11 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       const trackSettings = { ...state.trackSettings };
       delete trackSettings[track];
       return {
-        segments, trackSettings,
-        mainTracks: { ...state.mainTracks, [track[0]]: state.mainTracks[track[0]] === track ? null : state.mainTracks[track[0]] },
+        ...compactTimelineTracks({ segments, trackSettings,
+          mainTracks: { ...state.mainTracks, [track[0]]: state.mainTracks[track[0]] === track ? null : state.mainTracks[track[0]] },
+        }, false),
         selectedId: segments.some((segment) => segment.id === state.selectedId) ? state.selectedId : null,
+        selectedIds: state.selectedIds.filter(id => segments.some(segment => segment.id === id)),
         dirty: true, dirtyRev: state.dirtyRev + 1, playing: false,
       };
     }),
@@ -904,8 +941,9 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     if (!ids.length || !['split', 'trimLeft', 'trimRight', 'detach', 'speed', 'volume', 'delete'].includes(action)) return;
     // 先对整个选择集验证，再批量执行；一次批量操作只写一条撤销记录。
     const chosen = ids.map((id) => before.segments.find((seg) => seg.id === id));
-    const windows = [...computeVisualWindows(before.segments).windows, ...computeAudioWindows(before.segments).windows];
-    if (chosen.some((seg) => !seg || seg.type === 'subtitle')) return;
+    const windows = [...computeVisualWindows(before.segments).windows, ...computeAudioWindows(before.segments).windows, ...computeSubtitleWindows(before.segments).windows];
+    if (chosen.some((seg) => !seg)) return;
+    if (chosen.some((seg) => seg.type === 'subtitle') && action !== 'delete') return;
     if (['split', 'trimLeft', 'trimRight'].includes(action) && !ids.every((id) => {
       const win = windows.find((item) => item.seg.id === id);
       return win && before.cursor > win.start && before.cursor < win.end;
@@ -915,13 +953,22 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     if (action === 'volume' && !chosen.every((seg) => seg.type === 'audio')) return;
     if (action === 'delete') { before.deleteSelected(); return; }
     const resultIds = [];
-    // 从右往左处理，避免前段裁剪导致后段串行窗口位移。
-    const ordered = [...ids].sort((a, b) => (windows.find((w) => w.seg.id === b)?.start || 0) - (windows.find((w) => w.seg.id === a)?.start || 0));
+    // 分离按界面轨道顺序（V1、V2…）及轨内起点执行；其他操作保留倒序，避免裁剪位移。
+    const ordered = [...ids].sort((a, b) => {
+      const left = windows.find((w) => w.seg.id === a);
+      const right = windows.find((w) => w.seg.id === b);
+      if (action === 'detach') {
+        return Number(segmentTrack(left.seg).slice(1)) - Number(segmentTrack(right.seg).slice(1))
+          || left.start - right.start || left.index - right.index;
+      }
+      return (right?.start || 0) - (left?.start || 0);
+    });
+    let detachedEnd = 0;
     ordered.forEach((id) => {
       rawSet({ selectedId: id, selectedIds: [], cursor: before.cursor });
       if (action === 'split') get().splitSelected();
       if (action === 'trimLeft' || action === 'trimRight') get().trimSelected(action === 'trimLeft' ? 'left' : 'right');
-      if (action === 'detach') get().detachAudio(id);
+      if (action === 'detach') detachedEnd = get().detachAudio(id, detachedEnd) ?? detachedEnd;
       if (action === 'speed') get().setSpeed(id, value);
       if (action === 'volume') get().updateSegment(id, { volume: clampNumber(value, 0, 2) });
       resultIds.push(get().selectedId || id);
@@ -958,7 +1005,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
   },
 
   /** 分离原声：优先音频主轨；磁吸接末尾，否则从视频起点向后寻找完整空位。 */
-  detachAudio: (segmentId) => {
+  detachAudio: (segmentId, earliestStart = 0) => {
     const state = get();
     const seg = state.segments.find((s) => s.id === segmentId);
     if (!seg || seg.type !== 'video' || state.hasDetachedAudio(segmentId)) return;
@@ -969,7 +1016,8 @@ export const useCompositionEditorStore = create((rawSet, get) => {
     const track = state.mainTracks.A || 'A1';
     const duration = Math.max(0, Number(seg.duration) || 0);
     const occupied = computeAudioWindows(state.segments, track).windows.sort((a, b) => a.start - b.start);
-    let start = win.start;
+    // 批量分离不允许后续音频回填到前一条音频之前，保持用户指定的卡片顺序。
+    let start = Math.max(win.start, earliestStart);
     if (state.trackSettings[track]?.excludeGaps) {
       start = occupied.reduce((end, window) => Math.max(end, window.end), 0);
     } else {
@@ -1007,6 +1055,7 @@ export const useCompositionEditorStore = create((rawSet, get) => {
       next.splice(insertAt, 0, audioSegment);
       return { segments: next, dirty: true, dirtyRev: st.dirtyRev + 1, playing: false };
     });
+    return start + duration;
   },
 
   /** 原声已分离的片段不可再次分离；沿用持久化 has_audio，移动/删除独立音频不重置。 */

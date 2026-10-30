@@ -13,6 +13,7 @@
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 SubjectPage 抽离主体生图选项区
  *   2026-07-15  改为复用 components/ui/Select 基础选择器
+ *   2026-10-30  模型菜单按实际行高限制为最多 7.5 项，超出后内部滚动
  */
 import { ModelIcon, Select } from '../ui';
 
@@ -34,6 +35,7 @@ export default function SubjectGenerationOptions({
     <>
       <Select
         label="选择模型"
+        menuMaxHeight={34 * 7.5 + 4 + 2} // 7.5 项 + 顶部内距 + 上下边框
         width="100%"
         value={selectedModel}
         displayValue={selectedModelLabel}

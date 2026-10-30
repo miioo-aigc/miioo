@@ -140,6 +140,7 @@ export default function PropsPanel() {
 
       <PropertySlider key={`duration-${selected.id}`} label="片段时长"
         value={selected.duration} min={dc.min} max={dc.max} step={1} sliderStep="any" precision={2}
+        middleValue={Math.round((dc.min + dc.max) / 2)}
         hint={isImage ? undefined : `素材时长 ${srcDurationText}`}
         onChange={(duration) => updateSegment(selected.id, { duration })}
         onCommit={(duration) => updateSegment(selected.id, { duration })} />

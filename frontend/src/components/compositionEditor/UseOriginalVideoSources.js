@@ -25,5 +25,6 @@ export function useOriginalVideoSources(segments, enabled) {
     if (enabled) JSON.parse(ids).forEach(refresh);
     return () => active.clear();
   }, [ids, enabled, refresh]);
-  return { sources, refresh };
+  const reset = useCallback(() => { requests.current.clear(); setSources({}); }, []);
+  return { sources, refresh, reset };
 }

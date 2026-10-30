@@ -93,7 +93,7 @@ function DropdownMenuItem({ item, onClose, openSubmenuKey, onOpenSubmenu }) {
           gap: '4px',
           justifyContent: item.endIcon || hasSubmenu ? 'space-between' : 'flex-start',
           backgroundColor: active ? '#FFFFFF14' : 'transparent',
-          color: disabled ? '#FFFFFF33' : (item.danger || (item.dangerOnHover && active)) ? '#F75F5F' : '#FFFFFFCC',
+          color: disabled ? '#FFFFFF33' : (item.danger || (item.dangerOnHover && active)) ? '#F75F5F' : (item.color || '#FFFFFFCC'),
           cursor: disabled ? 'not-allowed' : 'pointer',
           fontFamily: FONT,
           fontSize: '14px',

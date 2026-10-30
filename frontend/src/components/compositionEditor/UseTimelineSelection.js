@@ -28,8 +28,6 @@ export default function useTimelineSelection(scrollRef) {
   const startBox = (event) => {
     suppress.current = false;
     if (event.button !== 0 || event.target.closest('[data-clip-id],button,[role="menu"]')) return;
-    const row = event.target.closest('[data-drop-track]');
-    if (row && !/^[VA]/.test(row.dataset.dropTrack)) return;
     const container = scrollRef.current;
     const content = container?.firstElementChild;
     if (!content || event.clientY < content.getBoundingClientRect().top + 26) return;

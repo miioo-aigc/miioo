@@ -12,21 +12,16 @@ test('多任务恢复：任一结果未完整时不能消费整组快照', () =>
   assert.throws(() => mergeCreationRecoveryResults([{ images: ['a'] }, { images: [] }]), error => !error.taskFailed);
   assert.throws(() => mergeCreationRecoveryResults([{ failed: true }, { failed: true }]), error => error.taskFailed);
 });
-test('存储静默丢写也会暂停新提交', () => {
-  const { state, store } = fixture();
-  state.silent = true;
-  assert.throws(() => store.save(record()));
-  assert.throws(() => store.assertReady('a'));
-  assert.equal(store.list('a').length, 1);
-});
-
 const storeSource = readFileSync(new URL('../src/utils/CreationPendingStore.js', import.meta.url), 'utf8');
 const hookSource = readFileSync(new URL('../src/components/creation/useCreationGeneration.js', import.meta.url), 'utf8');
 function fixture(raw = '[]') {
   const state = { raw, fail: false, silent: false };
+  const entries = new Map();
   const storage = {
-    getItem: () => state.raw,
-    setItem: (_key, value) => { if (state.fail) throw new Error('空间不足'); if (!state.silent) state.raw = value; },
+    get length() { return entries.size; },
+    key: index => [...entries.keys()][index],
+    getItem: key => key === 'miioo_pending_tasks' ? state.raw : entries.get(key) ?? null,
+    setItem: (key, value) => { if (state.fail) throw new Error('空间不足'); if (!state.silent) entries.set(key, value); },
   };
   const factory = new Function('localStorage', storeSource.replaceAll('export ', '') + '\nreturn createCreationPendingStore;')(storage);
   return { state, store: factory(() => storage) };
@@ -35,15 +30,15 @@ const record = (extra = {}) => ({ ownerId: 'a', genId: 'g', genType: 'image', ta
 for (const raw of ['{', '{}', '[null]', '[{"genId":"g","genType":"image","count":-1}]']) {
   test(`损坏记录不覆盖：${raw}`, () => {
     const { state, store } = fixture(raw);
-    assert.throws(() => store.assertReady('a'));
-    assert.throws(() => store.save(record()));
+    assert.doesNotThrow(() => store.assertReady('a'));
+    assert.doesNotThrow(() => store.save(record()));
     assert.equal(state.raw, raw);
   });
 }
-test('未知提交只锁原账号，有编号允许独立任务', () => {
+test('未知提交允许独立新任务，账号记录仍隔离', () => {
   const { store } = fixture();
   store.save(record());
-  assert.throws(() => store.assertReady('a'));
+  assert.doesNotThrow(() => store.assertReady('a'));
   store.assertReady('b');
   assert.deepEqual(store.list('b'), []);
   store.save(record({ taskId: 't', taskIds: ['t', 't2'] }));
@@ -53,7 +48,7 @@ test('未知提交只锁原账号，有编号允许独立任务', () => {
 test('旧记录无归属保留但不认领', () => {
   const { state, store } = fixture(JSON.stringify([record({ ownerId: undefined, taskId: 'old' })]));
   const raw = state.raw;
-  assert.throws(() => store.assertReady('a'));
+  assert.doesNotThrow(() => store.assertReady('a'));
   assert.deepEqual(store.list('a'), []);
   assert.equal(state.raw, raw);
 });
@@ -61,12 +56,12 @@ test('迟到编号写入失败驻留会话，清理失败不丢磁盘记录', ()
   const { state, store } = fixture();
   store.save(record());
   state.fail = true;
-  assert.throws(() => store.save(record({ taskId: 'late' })));
+  assert.doesNotThrow(() => store.save(record({ taskId: 'late' })));
   assert.equal(store.list('a')[0].taskId, 'late');
-  assert.throws(() => store.assertReady('a'));
-  assert.throws(() => store.remove('a', 'g'));
+  assert.doesNotThrow(() => store.assertReady('a'));
+  assert.doesNotThrow(() => store.remove('a', 'g'));
   state.fail = false;
-  store.save(store.list('a')[0]);
+  store.save(record({ taskId: 'late' }));
   store.assertReady('a');
   store.remove('a', 'g');
   assert.deepEqual(store.list('a'), []);
@@ -104,16 +99,16 @@ test('已完成卡在关联保存等待期间离页仍保留，计数只减一�
   await running;
   assert.equal(f.active, 0);
 });
-test('真实生成入口：存储失败不提交、不创建假占位', async () => {
+test('真实生成入口：存储失败仍允许独立提交', async () => {
   let calls = 0;
   const f = hookFixture(async () => { calls++; });
   f.state.fail = true;
   await f.actions.generateCreation({ genType: 'image', count: 1 });
-  assert.equal(calls, 0);
+  assert.equal(calls, 1);
   assert.equal(f.rows.size, 0);
   assert.equal(f.active, 0);
 });
-test('真实生成入口：轮询断网保留编号，未知受理阻止重发', async () => {
+test('真实生成入口：轮询断网保留编号，未知受理允许新任务', async () => {
   const f = hookFixture(async (_params, { onTaskCreated }) => {
     onTaskCreated({ taskId: 'original', taskIds: ['original', 'second'] });
     throw new Error('断网');
@@ -123,9 +118,9 @@ test('真实生成入口：轮询断网保留编号，未知受理阻止重发',
   assert.equal(f.rows.size, 0);
   assert.equal(f.active, 0);
   f.store.save(record({ genId: 'unknown' }));
-  const before = f.state.raw;
+  const before = f.store.list('a').length;
   await f.actions.generateCreation({ genType: 'image', count: 1 });
-  assert.equal(f.state.raw, before);
+  assert.equal(f.store.list('a').length, before + 1);
 });
 test('真实取消：迟到编号仍落盘，不写完成卡', async () => {
   let finish;

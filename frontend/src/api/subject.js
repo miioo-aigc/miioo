@@ -650,12 +650,11 @@ export function normalizeEpisodeListResponse(payload) {
 }
 
 export async function apiGetEpisodes(projectId) {
-  // TODO: 后端需要在 episodes 接口返回中添加 status 字段
-  // 期望字段：status（可选值：pending/generated/edited）
+  // 分集状态由服务器持久化；editing/edited 解锁当前集剪辑，见分集进度契约。
   if (import.meta.env.VITE_USE_MOCK === 'true') {
     // Mock 数据：返回带状态的剧集列表
     return [
-      { id: 1, title: '第一集', episode_number: 1, status: 'generated' },
+      { id: 1, title: '第一集', episode_number: 1, status: 'storyboarded' },
       { id: 2, title: '第二集', episode_number: 2, status: 'pending' },
       { id: 3, title: '第三集', episode_number: 3, status: 'pending' },
     ];
@@ -666,6 +665,7 @@ export async function apiGetEpisodes(projectId) {
       const res = await authFetch(`${BASE}/api/projects/${projectId}/episodes`, {
         headers: { 'Content-Type': 'application/json' },
       });
+      if (!res.ok) await throwResponseError(res, '读取分集进度失败');
       return res.json();
     },
     { medium: MEDIUM.CONTENT, ttl: TTL.CONTENT },

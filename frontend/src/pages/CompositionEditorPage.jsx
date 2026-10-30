@@ -1,7 +1,8 @@
 /**
- * 结构索引（2026-10-29）
- * 导入与常量：L8–L26；素材归一化：L28–L69；页面入口与数据恢复：L71–L181；视图编排：L183–L222。
+ * 结构索引（2026-10-30）
+ * 导入与常量：L9–L28；素材归一化：L30–L73；页面入口与数据恢复：L75–L185；视图编排：L187–L226。
  * 2026-10-29 导出弹窗关闭仅收起，不触发页面返回。
+ * 2026-10-30 素材箱保留完整小图候选链；原始媒体仅用于兜底与实际剪辑。
  * 更新：保留原文件身份与导出来源；中央视频预览由 PreviewCanvas 独立请求轻量预览；图片使用原图。
  * 页面仅负责加载、草稿恢复和面板编排；媒体鉴权由 API 与播放 Hook 承担。
  */
@@ -9,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiGetCompositions } from '../api/compositions';
 import { getErrorMessage } from '../api/error';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import { compositionAssetCoverUrls } from '../utils/CompositionAssetCover';
 import { compositionMediaSource } from '../utils/CompositionMediaSource';
 import { resolveFinalizedStoryboardAssets, getFinalizedStoryboardMedia, getMissingCompositionAssets, selectFinalizedStoryboardAssets } from '../utils/FinalizedStoryboardAssets';
 import { useCompositionEditorStore } from '../stores/compositionEditorStore';
@@ -35,7 +37,8 @@ function toEditorAsset(item) {
   const meta = item.metadata_json || {};
   const assetType = item.asset_type || item.type || '';
   const isVideo = assetType === 'video';
-  const thumbnail = normalizeImageUrl(item.thumbnail_url || meta.thumbnail_url) || null;
+  const coverUrls = compositionAssetCoverUrls(item);
+  const thumbnail = coverUrls[0] || null;
   const fileUrl = compositionMediaSource(item) || null;
   const rawDuration = meta.duration ?? item.duration;
   return {
@@ -54,6 +57,7 @@ function toEditorAsset(item) {
     downloadUrl: normalizeImageUrl(item.download_url || item.file_url) || null,
     posterUrl: isVideo ? (normalizeImageUrl(item.poster_url || item.posterUrl || meta.poster_url) || thumbnail) : null,
     thumbnailUrl: thumbnail,
+    coverUrls,
     duration: rawDuration && Number(rawDuration) > 0 ? Number(rawDuration) : null,
     ratio: item.ratio || meta.ratio || '',
     resolution: item.resolution || meta.resolution || '',

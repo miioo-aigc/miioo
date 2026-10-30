@@ -6,11 +6,11 @@
  * 页面继续负责生成请求、任务轮询、缓存和全局状态写回。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   草稿文件恢复工具                                   L106–L128
- *   InputCard 状态、Hook 与草稿接线                    L132–L487
- *   模式回退、素材选择与参数预填充                     L489–L728
- *   发送、失败/取消恢复与参数组装                      L730–L937
- *   CreationInputSurface 组合                           L939–L1143
+ *   草稿文件恢复工具                                   L111–L133
+ *   InputCard 状态、Hook 与草稿接线                    L136–L478
+ *   模式回退、素材选择与参数预填充                     L479–L783
+ *   发送、失败/取消恢复与参数组装                      L784–L963
+ *   CreationInputSurface 组合                           L969–L1147
  *
  *   2026-08-18  配音面板改为语速/声调/音量，草稿与失败恢复同步新字段
  *   2026-08-11  图片/视频生成轮询期间保持输入区可用；IndexedDB 临时缓存各类型完整创作草稿
@@ -39,6 +39,8 @@
  *   2026-08-28  全能参考仅支持文生但支持首尾帧的模型，在添加图片时确认切换，避免发送后才提示不支持
  *   2026-08-28  切换至纯文生全能参考模型时，确认后静默保留前两张图片为首尾帧；取消不提交模型切换
  *   2026-09-02  创作页首尾帧已有图片切换至不支持图片参考的全能参考时拦截切换
+ * 2026-10-30 移除真人素材按钮及专属弹窗接线，保留资产库素材引用。
+ * 保留原因：输入区草稿恢复、素材状态与发送适配集中编排；验证资产选择与生成接线。
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -55,7 +57,6 @@ import {
   readCreationDraftFromMemory,
   saveCreationDraft,
 } from './CreationDraftStorage';
-import { isSeedanceModel } from '../../utils/seedanceModel';
 import { readCreationDocumentText } from './CreationDocumentTextReader';
 import {
   MAX_CREATION_FILES,
@@ -135,7 +136,6 @@ function restoreDraftFile(file, restoredFiles) {
 function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled = false, genType, onGenTypeChange,
   model, onModelChange, modelOptions = [], creationParams, prefillVersion = 0, prefillData = null, onBeforeModelOpen, showToast, activeCount = 0, capabilitiesMap = {}, onRegisterSaveDraft,
   dubbingAdvancedEnabled = false, onDubbingAdvancedChange }) {
-  const [liveMaterialModalOpen, setLiveMaterialModalOpen] = useState(false);
   const [pendingFrameModeImages, setPendingFrameModeImages] = useState(null);
   const [pendingModelChange, setPendingModelChange] = useState(null);
   const [pendingReferenceModeChange, setPendingReferenceModeChange] = useState(null);
@@ -475,12 +475,6 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       showToast?.('error', error?.message || '文件正文读取失败，请重试');
     }
   }, [persistDraft, restoreContent, showToast]);
-
-  // 是否显示真人素材入口：仅视频模式、当前模型支持，且不属于 Seedance 系列。
-  const showLiveMaterial = useMemo(() => {
-    if (genType !== 'video') return false;
-    return !!(currentModel?.supportsLiveMaterial) && !isSeedanceModel(currentModel);
-  }, [currentModel, genType]);
 
   const handleRefModeChange = useCallback((newRefMode) => {
     const currentFiles = getCurrentFiles();
@@ -1073,8 +1067,6 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
         onVideoDurationChange: setVideoDuration,
         soundEnabled,
         onSoundChange: setSoundEnabled,
-        showLiveMaterial,
-        onOpenLiveMaterial: () => setLiveMaterialModalOpen(true),
       }}
       send={{
         onClick: handleSendOrCancel,
@@ -1101,33 +1093,6 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
           setVoiceModalOpen(false);
         },
         showToast,
-        liveMaterialModalOpen,
-        onLiveMaterialModalClose: () => setLiveMaterialModalOpen(false),
-        onLiveMaterialConfirm: (items) => {
-          const liveMats = items.map((item) => ({
-            ...item,
-            isAsset: true,
-            isLiveMaterial: true,
-            assetId: item.assetId,
-            groupId: item.groupId,
-            groupType: item.groupType,
-            assetRefUrl: item.assetRefUrl,
-            url: item.previewUrl,
-            previewUrl: item.previewUrl,
-            sourceUrl: item.sourceUrl || item.source_url || null,
-            fileUrl: item.fileUrl || item.file_url || null,
-            name: item.name || '真人素材',
-            type: String(item.assetType || item.asset_type || item.type || '').toLowerCase().startsWith('video') ? 'video/mp4' : 'image/jpeg',
-            size: 0,
-          }));
-          safeSetFiles((prev) => [...prev, ...liveMats]);
-        },
-        liveMaterialInitialSelected: files.filter((file) => file.isLiveMaterial).map((file) => ({
-          assetId: file.assetId,
-          assetRefUrl: file.assetRefUrl,
-          previewUrl: file.previewUrl,
-          name: file.name,
-        })),
       }}
       />
       {advancedExitConfirmOpen && (

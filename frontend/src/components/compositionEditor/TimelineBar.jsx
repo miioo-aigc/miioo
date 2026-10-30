@@ -2,16 +2,19 @@
  * @file TimelineBar.jsx
  * @structure-index
  *
- * 时间线结构：素材展示辅助组件 L62；状态与缩放 L110；拖拽预览与提交 L326；
- * 定位与播放游标 L404；片段卡片 L459；轨道布局与工具栏 L529。
+ * 时间线结构：素材展示辅助组件 L65；状态与缩放 L113；拖拽预览与提交 L370；
+ * 定位与播放游标 L453；片段卡片 L508；轨道布局与工具栏 L578。
  *
- * 2026-10-29 音频波形随音量变化并分级告警；分离原声后隐藏视频片段波形。
+ * 2026-10-30 多选支持边界新增并补齐整组轨道；视频/字幕向上递增，音频向下递增。
  * 2026-10-29 点击时间轴内容时主动接管焦点，修复素材卡片拦截空格后无法播放。
  * 2026-10-28 真实波形独立Hook；常驻音轨与默认V1，补齐按键多选、相交框选与共同操作菜单。
  * 更新记录：2026-10-09 增强时间刻度对比度；吸顶刻度内补齐手柄到轨道游标线连接段。
  * 2026-10-15 全选高亮、拖拽快捷键隔离及 Esc 取消；键盘分发独立于时间线展示。2026-10-23 倍速文字改为 80% 白色，隔离横向滚动边界手势。
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import TrackDragHandle from './TrackDragHandle';
+import ConfirmDialog from '../ConfirmDialog';
+import { getTrackDeletionState } from '../../utils/TrackDeletion';
 import WaveformDisplay from './WaveformDisplay';
 import { useCompositionWaveforms } from './UseCompositionWaveforms';
 import TimelineToolbar from './TimelineToolbar';
@@ -136,26 +139,34 @@ export default function TimelineBar({ showToast }) {
   const [targetTrack, setTargetTrack] = useState(null);
   const [dragLayout, setDragLayout] = useState(null);
   const [showNewTrack, setShowNewTrack] = useState(null);
+  const [deleteTrackTarget, setDeleteTrackTarget] = useState(null);
+  const requestDeleteTrack = track => {
+    const state = useCompositionEditorStore.getState();
+    const { reason, count } = getTrackDeletionState(state.segments, state.trackSettings, track);
+    if (reason) { showToast?.(reason, 'warning'); return; }
+    if (count) setDeleteTrackTarget(track);
+    else state.deleteTrack(track);
+  };
   const layoutSegments = draggingId ? dragLayout.segments : segments;
 
   const { windows: visualWindows } = computeVisualWindows(segments);
   const { windows: audioAux } = computeAudioWindows(segments);
   const { windows: subtitleAux } = computeSubtitleWindows(segments);
-  const visualTracks = [...new Set(['V1', ...layoutSegments.filter((seg) => seg.type === 'video' || seg.type === 'image').map((seg) => seg.track || 'V1')])]
+  const visualTracks = [...new Set(['V1', ...Object.keys(trackSettings).filter((track) => /^V[1-6]$/.test(track)), ...layoutSegments.filter((seg) => seg.type === 'video' || seg.type === 'image').map((seg) => seg.track || 'V1')])]
     .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
   const audioTracks = [...new Set(['A1', ...Object.keys(trackSettings).filter((track) => /^A[1-6]$/.test(track)), ...layoutSegments.filter((seg) => seg.type === 'audio').map((seg) => seg.track || 'A1')])]
     .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
-  const subtitleTracks = [...new Set(['S1', ...layoutSegments.filter((seg) => seg.type === 'subtitle').map((seg) => seg.track || 'S1')])];
+  const subtitleTracks = [...new Set(['S1', ...Object.keys(trackSettings).filter((track) => /^S[1-6]$/.test(track)), ...layoutSegments.filter((seg) => seg.type === 'subtitle').map((seg) => seg.track || 'S1')])];
   const trackRows = [[subtitleTracks, 'S', 'subtitle'], [visualTracks, 'V', 'visual'], [audioTracks, 'A', 'audio']].flatMap(([tracks, prefix, type]) => {
     const max = Math.max(...tracks.map((track) => Number(track.slice(1))), ...Object.keys(trackSettings).filter((track) => track.startsWith(prefix)).map((track) => Number(track.slice(1))));
     return Array.from({ length: max }, (_, index) => {
-      const track = `${prefix}${index + 1}`;
+      const track = `${prefix}${prefix === 'A' ? index + 1 : max - index}`;
       if (!tracks.includes(track)) return [];
-      if (prefix !== 'A' && track !== 'V1' && !layoutSegments.some((seg) => (prefix === 'V' ? seg.type === 'video' || seg.type === 'image' : seg.type === type) && (seg.track || `${prefix}1`) === track)) return [];
       const height = prefix === 'S' ? TRACK_TOP_GAP + SUBTITLE_CLIP_H : prefix === 'A' ? AUDIO_ROW_H : VIDEO_ROW_H;
       const row = { track, type, height };
-      return draggingId && showNewTrack?.after === track && max < 6
-        ? [row, { track: `${prefix}${max + 1}`, type, height, isNew: true }] : [row];
+      if (!draggingId || showNewTrack?.anchor !== track || max >= 6) return [row];
+      const added = { track: `${prefix}${max + 1}`, type, height, isNew: true };
+      return showNewTrack.side === 'above' ? [added, row] : [row, added];
     }).flat();
   });
   const rowTop = (index) => RULER_H + trackRows.slice(0, index).reduce((total, row) => total + row.height, 0);
@@ -265,22 +276,32 @@ export default function TimelineBar({ showToast }) {
     const viewport = scrollRef.current.getBoundingClientRect();
     const inside = event.clientX >= viewport.left && event.clientX <= viewport.right
       && event.clientY >= viewport.top && event.clientY <= viewport.bottom;
-    const anchor = inside && existingRows.length < 6 ? existingRows.find((element) => {
-      const boundary = element.getBoundingClientRect().bottom;
-      const expanded = drag.newTrackAfter === element.dataset.dropTrack;
-      return event.clientY >= boundary - 16 && event.clientY <= boundary + (expanded ? (drag.isAudio ? AUDIO_ROW_H : VIDEO_ROW_H) : 16);
-    }) : null;
-    drag.newTrackAfter = anchor?.dataset.dropTrack || null;
-    setShowNewTrack(anchor ? { after: drag.newTrackAfter } : null);
-    const boundary = anchor?.getBoundingClientRect().bottom;
+    const maxTrack = Math.max(1, ...existingRows.map((element) => Number(element.dataset.dropTrack.slice(1))),
+      ...Object.keys(drag.before.trackSettings || {}).filter((track) => track.startsWith(prefix)).map((track) => Number(track.slice(1))));
+    const expandedRow = rows.find((element) => element.dataset.newTrack === 'true' && element.dataset.dropTrack.startsWith(prefix));
+    const expandedRect = expandedRow?.getBoundingClientRect();
+    let insertionTarget = null;
+    if (inside && maxTrack < 6) {
+      if (expandedRect && event.clientY >= expandedRect.top && event.clientY < expandedRect.bottom) {
+        insertionTarget = drag.newTrackTarget;
+      } else {
+        const first = existingRows[0];
+        if (first && Math.abs(event.clientY - first.getBoundingClientRect().top) <= 16) {
+          insertionTarget = { anchor: first.dataset.dropTrack, side: 'above', insertAt: Number(first.dataset.dropTrack.slice(1)) + (prefix === 'A' ? 0 : 1) };
+        } else {
+          const anchor = existingRows.find((element) => Math.abs(event.clientY - element.getBoundingClientRect().bottom) <= 16);
+          if (anchor) insertionTarget = { anchor: anchor.dataset.dropTrack, side: 'below', insertAt: Number(anchor.dataset.dropTrack.slice(1)) + (prefix === 'A' ? 1 : 0) };
+        }
+      }
+    }
+    drag.newTrackTarget = insertionTarget;
+    setShowNewTrack(insertionTarget);
     const row = rows.find((element) => {
       const rect = element.getBoundingClientRect();
       return element.dataset.newTrack !== 'true' && event.clientY >= rect.top && event.clientY < rect.bottom;
     });
-    const newTrackTarget = anchor && event.clientY >= boundary;
-    const track = !inside ? null : newTrackTarget
-      ? `${prefix}${existingRows.length + 1}` : row?.dataset.dropTrack;
-    drag.insertAt = newTrackTarget ? Number(anchor.dataset.dropTrack.slice(1)) + 1 : null;
+    const track = !inside ? null : insertionTarget ? `${prefix}${maxTrack + 1}` : row?.dataset.dropTrack;
+    drag.insertAt = insertionTarget?.insertAt ?? null;
     if (!track || !track.startsWith(prefix)) {
       drag.valid = false;
       setInsertionIndex(null);
@@ -291,6 +312,29 @@ export default function TimelineBar({ showToast }) {
     setTargetTrack(track);
     const pointerTime = (event.clientX - content.getBoundingClientRect().left) / zoom;
     const raw = pointerTime - drag.grabOffset;
+    if (drag.groupIds) {
+      drag.insertionPlan = null;
+      const sourceTrack = drag.before.segments.find(s => s.id === drag.id).track || (drag.prefix + '1');
+      const rowDelta = (Number(track.slice(1)) - Number(sourceTrack.slice(1))) * (drag.prefix === 'A' ? 1 : -1);
+      drag.moved = drag.moved || Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= 5;
+      if (drag.moved) {
+        suppressClickRef.current = true;
+        if (insertionTarget) {
+          const store = useCompositionEditorStore.getState();
+          drag.insertionPlan = store.planSelectionInsertion(drag.groupIds, drag.id, raw - drag.start, drag.before, insertionTarget);
+          drag.valid = Boolean(drag.insertionPlan);
+          // 新增轨道仅在松手时提交；预览使用临时轨号，避免改变边界命中布局。
+          const chosen = new Set(drag.groupIds);
+          useCompositionEditorStore.setState({ segments: drag.valid ? drag.before.segments.map(s => chosen.has(s.id) && (s.track || drag.prefix + '1') === sourceTrack
+            ? { ...s, track, start: drag.insertionPlan.segments.find(item => item.id === s.id).start } : s) : drag.before.segments });
+          setDraggingStart(null);
+          return;
+        }
+        drag.valid = useCompositionEditorStore.getState().previewSelectionDrag(drag.groupIds, raw - drag.start, rowDelta, drag.before);
+        setDraggingStart(null);
+      }
+      return;
+    }
     const insertion = getInsertionTarget(pointerTime, drag);
     const start = insertion?.time ?? getSnappedStart(raw, drag, event);
     drag.moved = drag.moved || Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= 5;
@@ -311,7 +355,7 @@ export default function TimelineBar({ showToast }) {
     updateVisualPointerDrag(event);
     if (drag.moved) {
       const store = useCompositionEditorStore.getState();
-      if (drag.valid) store.commitTrackDrag(drag.id, drag.before, drag.insertAt);
+      if (drag.valid) { if (drag.groupIds) store.commitSelectionDrag(drag.before, drag.insertionPlan); else store.commitTrackDrag(drag.id, drag.before, drag.insertAt); }
       else useCompositionEditorStore.setState({ segments: drag.before.segments });
     }
     if (!drag.moved) select(drag.id);
@@ -325,7 +369,7 @@ export default function TimelineBar({ showToast }) {
 
   const startTrackPointerDrag = (event, seg, win, isAudio) => {
     if (event.button !== 0 || event.target.closest('button') || pointerDragRef.current) return;
-    if (selection.modified(event) && seg.type !== 'subtitle') { suppressClickRef.current = false; return; }
+    if (selection.modified(event)) { suppressClickRef.current = false; return; }
     event.preventDefault();
     event.stopPropagation();
     const content = scrollRef.current?.firstElementChild;
@@ -343,7 +387,12 @@ export default function TimelineBar({ showToast }) {
     const pointerId = event.pointerId;
     drag.targetTrack = seg.track || `${drag.prefix}1`;
     suppressClickRef.current = false;
-    select(seg.id);
+    const selected = drag.before.selectedIds || [];
+    drag.groupIds = selected.length > 1 && selected.includes(seg.id) ? [...selected] : null;
+    drag.before.aspectRatio = useCompositionEditorStore.getState().aspectRatio;
+    drag.before.album = useCompositionEditorStore.getState().album;
+    drag.before.libraryAssetIds = useCompositionEditorStore.getState().libraryAssetIds;
+    if (!drag.groupIds) select(seg.id);
     const move = (moveEvent) => {
       if (moveEvent.pointerId === pointerId) updateVisualPointerDrag(moveEvent);
     };
@@ -471,11 +520,11 @@ export default function TimelineBar({ showToast }) {
         key={seg.id}
         draggable={false}
         data-clip-id={seg.id}
-        data-box-selectable={seg.type !== 'subtitle'}
-        onContextMenu={(event) => { if (seg.type !== 'subtitle') selection.openMenu(event, seg.id); }}
+        data-box-selectable="true"
+        onContextMenu={(event) => { selection.openMenu(event, seg.id); }}
         onDoubleClick={() => { if (seg.type === 'subtitle') document.getElementById('subtitle-text-editor')?.focus(); }}
         onPointerDown={(event) => { if (draggableSegment) startTrackPointerDrag(event, seg, win, isAudio); }}
-        onClick={(event) => { event.stopPropagation(); if (seg.type !== 'subtitle' && selection.toggle(event, seg.id)) return; if (suppressClickRef.current) { suppressClickRef.current = false; return; } select(seg.id); seekAtPointer(event.clientX); }}
+        onClick={(event) => { event.stopPropagation(); if (selection.toggle(event, seg.id)) return; if (suppressClickRef.current) { suppressClickRef.current = false; return; } select(seg.id); seekAtPointer(event.clientX); }}
         className={`group absolute top-0 overflow-hidden rounded-medium border-2 flex flex-col justify-between !cursor-default ${
           selected
             ? 'bg-white-10 border-stroke-active'
@@ -527,19 +576,23 @@ export default function TimelineBar({ showToast }) {
   };
 
   return (
-    <div className="relative flex h-full w-full min-h-0 select-none flex-col bg-neutral-200">
-      {selection.menu && <TimelineContextMenu position={selection.menu} onClose={() => selection.setMenu(null)} />}
+    <div data-timeline-root="true" className="relative flex h-full w-full min-h-0 select-none flex-col bg-neutral-200">
+      {deleteTrackTarget && <ConfirmDialog title={'删除 ' + deleteTrackTarget + ' 轨道？'}
+        description="删除轨道将同时删除轨道内的全部片段，素材区及资产库原文件不受影响。" confirmText="删除轨道"
+        onCancel={() => setDeleteTrackTarget(null)} onConfirm={() => { useCompositionEditorStore.getState().deleteTrack(deleteTrackTarget); setDeleteTrackTarget(null); }} />}
+      {selection.menu && <TimelineContextMenu onDeleteTrack={requestDeleteTrack} position={selection.menu} onClose={() => selection.setMenu(null)} />}
       <div className="shrink-0 pr-[208px]"><TimelineToolbar showToast={showToast} /></div>
       {/* 滚动容器：承载全部时间线内容，Ctrl/Cmd+滚轮缩放绑定其上 */}
       <div className="flex h-full min-h-0 flex-1 overflow-hidden">
-      <div className="relative w-[124px] shrink-0 overflow-hidden bg-neutral-200">
+      <div className="relative w-[146px] shrink-0 overflow-hidden bg-neutral-200">
       <div className="absolute inset-x-0 top-0 z-[60] bg-neutral-200" style={{ height: RULER_H }} />
       <div ref={trackLabelRef} style={{ paddingTop: RULER_H, willChange: 'transform' }}>
         {trackRows.map(({ track, height, isNew }) => (
-          <div key={track} className="group relative flex items-center justify-start gap-[6px] pl-[8px] text-font-size-12 text-text-hint" style={{ height, paddingTop: TRACK_TOP_GAP, boxSizing: 'border-box', fontFamily: FONT_MEDIUM }}>
-            {!isNew && (track[0] !== 'S' || segments.some((seg) => seg.type === 'subtitle' && (seg.track || 'S1') === track)) && <MainTrackButton track={track} active={mainTracks[track[0]] === track} onChange={setMainTrack} />}
-            {isNew && `+ ${track[0]}${Number(showNewTrack.after.slice(1)) + 1}`}
-            {!isNew && (track[0] !== 'S' || segments.some((seg) => seg.type === 'subtitle' && (seg.track || 'S1') === track)) && <TrackControls track={track} settings={trackSettings[track] || { hidden: false, volume: 1, excludeGaps: false }} onChange={setTrackSetting} showToast={showToast} />}
+          <div key={track} data-track-label={track} className="group relative flex items-center justify-start gap-[6px] pl-[8px] text-font-size-12 text-text-hint" style={{ height, paddingTop: TRACK_TOP_GAP, boxSizing: 'border-box', fontFamily: FONT_MEDIUM }}>
+            {!isNew && <TrackDragHandle track={track} />}
+            {!isNew && <MainTrackButton track={track} active={mainTracks[track[0]] === track} onChange={setMainTrack} />}
+            {isNew && `+ ${track[0]}${showNewTrack.insertAt}`}
+            {!isNew && <TrackControls track={track} settings={trackSettings[track] || { hidden: false, volume: 1, excludeGaps: false }} onChange={setTrackSetting} showToast={showToast} />}
           </div>
         ))}
       </div>
@@ -576,7 +629,11 @@ export default function TimelineBar({ showToast }) {
               ? computeVisualWindows(segments, track).windows
               : type === 'audio' ? computeAudioWindows(segments, track).windows : subtitleAux.filter((window) => (window.seg.track || 'S1') === track);
             const cardHeight = type === 'subtitle' ? SUBTITLE_CLIP_H : type === 'audio' ? AUDIO_CLIP_H : CLIP_H;
-            return <div key={track} data-drop-track={track} data-new-track={Boolean(isNew)} className={`absolute left-0 right-0 ${isNew ? 'border border-dashed border-stroke-active' : ''} ${targetTrack === track ? 'bg-tag-bg-blue' : ''}`} style={{ top: rowTop(index), height: trackRows[index].height }}>
+            return <div key={track} data-drop-track={track} data-new-track={Boolean(isNew)} onContextMenu={event => {
+              if (isNew || event.target.closest('[data-clip-id]')) return;
+              event.preventDefault(); event.stopPropagation();
+              selection.setMenu({ x: event.clientX, y: event.clientY, track });
+            }} className={`absolute left-0 right-0 ${isNew ? 'border border-dashed border-stroke-active' : ''} ${targetTrack === track ? 'bg-tag-bg-blue' : ''}`} style={{ top: rowTop(index), height: trackRows[index].height }}>
               <div className="relative" style={{ height: cardHeight, marginTop: TRACK_TOP_GAP }} onClick={(event) => { event.stopPropagation(); select(null); }}>
                 {rowWindows.map((window) => renderCard(window, type === 'audio'))}
                 {track === targetTrack && draggingId && insertionIndex != null && (

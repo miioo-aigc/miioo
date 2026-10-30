@@ -2,7 +2,8 @@ import { waveformPoints } from '../../utils/CompositionWaveform';
 const LABELS = { pending: '波形生成中…', failed: '波形不可用', missing_source: '源文件缺失', no_audio: '无音轨', unsupported: '不支持波形', timeout: '波形生成超时' };
 export default function WaveformDisplay({ segment, waveform, onRetry, trackSettings }) {
   const status = waveform?.status || (segment.assetId ? 'pending' : 'missing_source');
-  const points = waveformPoints(segment, waveform, trackSettings);
+  // 视频底部沿用音轨的完整对数高度标尺，仅绘制原有单色波形，区域尺寸不变。
+  const points = waveformPoints(segment, waveform, trackSettings, segment.type === 'video' ? 'danger' : undefined);
   if (status === 'ready' && points) return <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none h-full w-full" role="img" aria-label="音频波形">
     {segment.type === 'audio' ? <>
       <polygon points={waveformPoints(segment, waveform, trackSettings, 'danger')} fill="var(--color-red-300)" />

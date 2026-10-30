@@ -2,7 +2,7 @@ import VisualMediaStatus from './VisualMediaStatus';
 import { TextButton } from '../ui/TextButton';
 
 /** 媒体局部反馈；所有动作由媒体会话持有。 */
-export default function MediaLoadStatus({ status, message, requiresClick, onRetry, onPlay, onPause, overlay = true, visual = false, showLoading = true, loadingVariant = 'pixels' }) {
+export default function MediaLoadStatus({ status, message, requiresClick, onRetry, onPlay, onPause, overlay = true, visual = false, showLoading = true, loadingVariant = 'dots' }) {
   if (!showLoading && status === 'loading') return null;
   if (visual) return <VisualMediaStatus {...{ status, requiresClick, onRetry, onPlay, onPause, overlay, loadingVariant }} />;
   if (status !== 'loading' && status !== 'error' && !requiresClick) return null;

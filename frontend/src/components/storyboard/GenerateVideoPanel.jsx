@@ -52,8 +52,9 @@
  *   2026-07-15  将参考素材编辑区迁移至 ReferenceMediaEditor；本组件继续持有上传 API、模型能力限制、生成参数和页面级回调，所有依赖通过显式 props 传递
  *   2026-07-16  ReferenceMediaEditor 直接引入 StoryboardUploadSlots；本组件不再接收或转发 FrameUploadSlot / PanelUploadSlot，继续负责视频面板业务上传回调和生成参数
 
+ * 2026-10-30：视频模型选项保留模型标识，供图标匹配。
  * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
- * 当前定义定位：stripPromptMentions L102；normalizeDurationValue L106；areReferenceGroupsEqual L110；enrichReferenceSubject L114；GenerateVideoPanel L135。
+ * 当前定义定位：stripPromptMentions L103；normalizeDurationValue L107；areReferenceGroupsEqual L111；enrichReferenceSubject L115；GenerateVideoPanel L136。
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -799,7 +800,7 @@ export default function GenerateVideoPanel({
             <ModelReadStatus loading={modelsLoading} error={modelsError} empty={!videoModels.length} onRetry={retryModels} />
             <GenerationModelField
               value={modelsLoading ? '加载中...' : (currentVideoModel?.label || '请选择')}
-              options={videoModels.map(m => m.label)}
+              options={videoModels} modelId={model}
               onChange={(label) => {
                 const selected = videoModels.find(m => m.label === label);
                 if (selected) setModel(selected.value);

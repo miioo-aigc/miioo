@@ -9,6 +9,35 @@ const seed = () => store.setState({ mainTracks: { V: null, A: null, S: null }, t
   segments: [{ id: 'v', assetId: 'v', type: 'video', track: 'V1', start: 0, duration: 6, offset: 1, speed: 2, sourceUrl: 'v.mp4' }, { id: 'a', assetId: 'a', type: 'audio', track: 'A1', start: 0, duration: 6, offset: 3, speed: 1 }],
 });
 const windows = () => [...computeVisualWindows(store.getState().segments).windows, ...computeAudioWindows(store.getState().segments).windows];
+for (const snap of [false, true]) {
+  test(`批量分离按轨道上下及轨内左右排序，不受选择顺序影响，磁吸${snap}`, () => {
+    seed();
+    const video = store.getState().segments[0];
+    const videos = [
+      { ...video, id: 'lower', assetId: 'lower', track: 'V2', start: 0, duration: 2 },
+      { ...video, id: 'left', assetId: 'left', track: 'V1', start: 10, duration: 3 },
+      { ...video, id: 'right', assetId: 'right', track: 'V1', start: 20, duration: 4 },
+    ];
+    const existing = { id: 'existing', type: 'audio', track: 'A2', start: 0, duration: 5 };
+    store.setState({ segments: [...videos, existing], mainTracks: { A: 'A2' },
+      trackSettings: { A2: { excludeGaps: snap } } });
+    const before = store.getState().segments;
+    store.getState().selectMany(['right', 'lower', 'left']);
+    store.getState().applySelectionAction('detach');
+    const after = store.getState().segments;
+    const audio = computeAudioWindows(after, 'A2').windows.filter((w) => w.seg.id !== 'existing');
+    assert.deepEqual(audio.map((w) => w.seg.assetId), ['left', 'right', 'lower']);
+    assert.deepEqual(audio.map((w) => w.start), snap ? [5, 8, 12] : [10, 20, 24]);
+    assert.deepEqual(audio.map((w) => [w.seg.duration, w.seg.offset, w.seg.speed]), [[3, 1, 2], [4, 1, 2], [2, 1, 2]]);
+    assert.deepEqual(after.find((s) => s.id === 'existing'), existing);
+    assert.ok(after.filter((s) => s.type === 'video').every((s) => s.hasAudio === false));
+    assert.equal(store.getState().past.length, 1);
+    store.getState().undo();
+    assert.deepEqual(store.getState().segments, before);
+    store.getState().redo();
+    assert.deepEqual(store.getState().segments, after);
+  });
+}
 test('相交即可框选，完全不相交或仅贴边不选中', () => {
   const box = { left: 10, top: 10, right: 20, bottom: 20 };
   assert.equal(intersectsSelection(box, { left: 19, top: 19, right: 30, bottom: 30 }), true);
@@ -187,3 +216,21 @@ for (const snap of [false, true]) {
     assert.deepEqual(store.getState().segments, before);
   });
 }
+
+test('跨轨批量裁剪分别遵循吸附设置且一次撤销', () => {
+  for (const action of ['trimLeft', 'trimRight']) {
+    seed();
+    store.setState({ trackSettings: { V1: { excludeGaps: true }, A1: { excludeGaps: false } } });
+    const before = store.getState().segments;
+    store.getState().selectMany(['v', 'a']);
+    store.getState().applySelectionAction(action);
+    const [video, audio] = store.getState().segments;
+    assert.equal(video.start, 0);
+    assert.equal(audio.start, action === 'trimLeft' ? 2 : 0);
+    assert.equal(video.duration, action === 'trimLeft' ? 4 : 2);
+    assert.equal(audio.duration, video.duration);
+    assert.equal(store.getState().past.length, 1);
+    store.getState().undo();
+    assert.deepEqual(store.getState().segments, before);
+  }
+});

@@ -3,18 +3,17 @@
  * @description 创作输入区的弹窗组合接线层。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   CreationInputOverlays  L19–L55
- *     ├ 资产选择弹窗                                      L35–L41
- *     ├ 配音选择弹窗                                      L42–L45
- *     └ 真人素材弹窗                                      L47–L52
+ *   CreationInputOverlays  L18–L52
+ *     ├ 资产选择弹窗                                      L34–L43
+ *     └ 配音选择弹窗                                      L44–L49
  *
- * 组件只负责把三个输入区弹窗接入显式 props；资产转换、音色状态和生成参数
+ * 组件只负责把资产选择和配音两个弹窗接入显式 props；资产转换、音色状态和生成参数
  * 仍由 InputCard 持有，弹窗本体的接口和业务行为不在此处重新实现。
+ * 2026-10-30 移除创作输入区独立真人素材弹窗接线。
  */
 
 import CreationAssetPickerModal from './CreationAssetPickerModal';
 import DubbingVoiceModal from './CreationDubbingVoiceModal';
-import CreationLiveMaterialModal from './CreationLiveMaterialModal';
 
 export default function CreationInputOverlays({
   assetPickerOpen,
@@ -28,10 +27,6 @@ export default function CreationInputOverlays({
   onVoiceModalClose,
   onVoiceConfirm,
   showToast,
-  liveMaterialModalOpen,
-  onLiveMaterialModalClose,
-  onLiveMaterialConfirm,
-  liveMaterialInitialSelected = [],
   model = '',
 }) {
   return (
@@ -51,12 +46,6 @@ export default function CreationInputOverlays({
         onClose={onVoiceModalClose}
         onConfirm={onVoiceConfirm}
         showToast={showToast}
-      />
-      <CreationLiveMaterialModal
-        open={liveMaterialModalOpen}
-        onClose={onLiveMaterialModalClose}
-        onConfirm={onLiveMaterialConfirm}
-        initialSelected={liveMaterialInitialSelected}
       />
     </>
   );

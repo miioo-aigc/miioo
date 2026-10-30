@@ -56,7 +56,7 @@ export default function ScriptProgress({ episodes = [], episodeStatuses = {}, on
           {episodes.map((episode, index) => {
             const episodeNumber = episode.episode_number || index + 1;
             const status = episodeStatuses[index] || episode.status || 'pending';
-            const onOpen = status === 'generated' ? onEditEpisodeClick : onEpisodeClick;
+            const onOpen = ['generated', 'edited'].includes(status) ? onEditEpisodeClick : onEpisodeClick;
             const title = episode.title || episode.name || `第${episodeNumber}集`;
             return (
               <ScriptProgressCard

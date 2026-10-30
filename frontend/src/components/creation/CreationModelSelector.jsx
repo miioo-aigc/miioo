@@ -3,7 +3,7 @@ import { Dropdown, DropdownItem, FONT } from './CreationSelectorPrimitives';
 import { ModelIcon } from '../ui';
 
 // ─── Model selector ───────────────────────────────────────────────────────────
-export function ModelSelector({ value, onChange, options = [], disabled, onBeforeOpen }) {
+export function ModelSelector({ value, onChange, options = [], disabled, onBeforeOpen, menuMaxHeight = 160 }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -51,7 +51,7 @@ export function ModelSelector({ value, onChange, options = [], disabled, onBefor
           }}
         >
           <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0, opacity: 0.8 }}>
-            <ModelIcon name={currentLabel} />
+            <ModelIcon name={currentLabel} modelId={value} />
           </span>
           <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '16px', color: '#FFFFFFCC', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
               {currentLabel}
@@ -63,14 +63,14 @@ export function ModelSelector({ value, onChange, options = [], disabled, onBefor
         </button>
       }
     >
-      <div style={{ maxHeight: '160px', overflowY: 'auto' }}>
+      <div style={{ maxHeight: menuMaxHeight, overflowY: 'auto' }}>
         {options.map((opt) => (
           <DropdownItem
             key={opt.value}
             label={opt.label}
             selected={opt.value === value}
             onClick={() => { onChange(opt.value); setOpen(false); }}
-            icon={<ModelIcon name={opt.label} />}
+            icon={<ModelIcon name={opt.label} modelId={opt.value} />}
           />
         ))}
       </div>

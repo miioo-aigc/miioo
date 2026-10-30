@@ -1,5 +1,6 @@
 /**
  * @file useCreationGeneration.js
+ *   2026-10-30 独立新任务不受旧任务阻塞；本页活跃任务避免被恢复流程重复查询。
  * @structure-index
  *
  * ─── 生成动作 ───────────────────────────────────────────────
@@ -332,6 +333,7 @@ export function useCreationGeneration({
 
     const genId = `gen-${crypto.randomUUID()}`;
     request.genId = genId;
+    creationPendingStore.setActive(ownerId, genId, true);
     let snapshot = { ...createPendingTaskSnapshot({ genId, shotId, tab: currentTab, params }), ownerId, sessionId };
     try { creationPendingStore.save(snapshot); }
     catch (error) {
@@ -436,11 +438,12 @@ export function useCreationGeneration({
         showToast('info', '已停止前端等待，后台任务记录保留，重新进入后查询原任务');
       } else {
         params.onSubmissionError?.(error);
-        showToast('error', error?.taskFailed ? error.message : '任务状态暂未确认，记录已保留，请勿重复提交');
+        showToast('error', error?.taskFailed ? error.message : '任务状态暂未确认，记录已保留，可继续创建新任务');
         params.onFail?.(params.prompt);
       }
       return { success: false };
     } finally {
+      creationPendingStore.setActive(ownerId, genId, false);
       if (isCurrent()) decrementActive(getCreationTab(genType));
       requestsRef.current.delete(request);
       if (activeGenerationRef.current === request) {

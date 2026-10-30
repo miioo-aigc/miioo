@@ -1,5 +1,7 @@
 /**
  * @file CreationPage.jsx
+ *   当前恢复/认证入口：L372（2026-10-30）。
+ *   2026-10-30 跨标签任务恢复监听 storage，迟到编号接续轮询；恢复保留原卡片数量。
  * @structure-index：2026-10-21 历史按账号缓存，页面访问和请求代际保护迟到回写。
  *   2026-10-09：选帧查看导航由 viewSavedImage 副作用承接，保存草稿后切到图片并关闭视频详情。
  *
@@ -376,69 +378,79 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
     const { signal } = controller;
     const waiting = new Map();
 
-    let pending;
-    try {
-      pending = creationPendingStore.list(ownerId);
-      creationPendingStore.assertReady(ownerId);
-    } catch (error) {
-      showToast('error', error.message);
-    }
-    if (!pending?.length) return;
+    const seen = new Set();
+    const resume = () => {
+      let pending;
+      try {
+        pending = creationPendingStore.list(ownerId);
+      } catch (error) {
+        showToast('error', error.message);
+      }
+      if (!pending?.length) return;
 
-    pending
-      .map(normalizeCreationPendingTask)
-      .filter(Boolean)
-      .forEach((task) => {
-      const { taskId, genId, tab, genType } = task;
-      waiting.set(genId, task);
+      pending
+        .map(normalizeCreationPendingTask)
+        .filter(Boolean)
+        .forEach((task) => {
+        const { taskId, genId, tab, genType } = task;
+        if (seen.has(genId) || creationPendingStore.isActive(ownerId, genId)) return;
+        seen.add(genId);
+        waiting.set(genId, task);
 
-      // 先删除 store 中可能残留的同 genId 旧条目
-      storeDeleteGeneration(tab, genId);
+        // 先删除 store 中可能残留的同 genId 旧条目
+        storeDeleteGeneration(tab, genId);
 
-      // 重建占位卡片（按类型生成对应数量的占位）
-      addGeneration(tab, createCreationTaskPlaceholder({ ...task, count: 1 }));
-      incrementActive(genType === 'video' ? 'video' : (genType === 'dubbing' || genType === 'music') ? genType : 'image');
+        // 重建占位卡片（按类型生成对应数量的占位）
+        addGeneration(tab, createCreationTaskPlaceholder(task));
+        incrementActive(genType === 'video' ? 'video' : (genType === 'dubbing' || genType === 'music') ? genType : 'image');
 
-      // 重新轮询
-      const ids = task.taskIds || [taskId];
-      const pollPromise = Promise.all(ids.map(id => (genType === 'music'
-        ? apiPollCreationMusicTask(id, undefined, { signal })
-        : apiPollCreationTask(getCreationTaskType(genType), id, undefined, { signal }))
-        .catch(error => { if (error.taskFailed) return { failed: true }; throw error; })))
-        .then(mergeCreationRecoveryResults);
-      pollPromise
-        .then((result) => {
-          if (signal.aborted || !visit?.isCurrent()) return;
-          const { mediaUrls, cardIds, generation } = normalizeCreationTaskResult(result, task);
+        // 重新轮询
+        const ids = task.taskIds || [taskId];
+        const pollPromise = Promise.all(ids.map(id => (genType === 'music'
+          ? apiPollCreationMusicTask(id, undefined, { signal })
+          : apiPollCreationTask(getCreationTaskType(genType), id, undefined, { signal }))
+          .catch(error => { if (error.taskFailed) return { failed: true }; throw error; })))
+          .then(mergeCreationRecoveryResults);
+        pollPromise
+          .then((result) => {
+            if (signal.aborted || !visit?.isCurrent()) return;
+            const { mediaUrls, cardIds, generation } = normalizeCreationTaskResult(result, task);
 
-          if (!mediaUrls.length) {
-            showToast('error', '任务结果尚不完整，记录已保留，请勿重复提交');
+            if (!mediaUrls.length) {
+              showToast('error', '任务结果尚不完整，记录已保留，请勿重复提交');
+              storeDeleteGeneration(tab, genId);
+              return;
+            }
             storeDeleteGeneration(tab, genId);
-            return;
-          }
-          storeDeleteGeneration(tab, genId);
-          addGeneration(tab, generation);
-          if (cardIds?.length) storeUpdateCardIds(tab, genId, cardIds);
-          try { creationPendingStore.remove(ownerId, genId); }
-          catch (error) { showToast('error', error.message); }
-          // 新创作完成 → 清除历史缓存，下次刷新时能拿到新数据
-          invalidateHistory(tab);
-        })
-        .catch((err) => {
-          if (signal.aborted || !visit?.isCurrent()) return;
-          showToast('error', err?.taskFailed ? err.message : '原任务查询中断，记录已保留，请勿重复提交');
-          storeDeleteGeneration(tab, genId);
-          if (err.taskFailed) {
+            addGeneration(tab, generation);
+            if (cardIds?.length) storeUpdateCardIds(tab, genId, cardIds);
             try { creationPendingStore.remove(ownerId, genId); }
             catch (error) { showToast('error', error.message); }
-          }
-        })
-        .finally(() => {
-          waiting.delete(genId);
-          if (!signal.aborted) decrementActive(genType === 'video' ? 'video' : (genType === 'dubbing' || genType === 'music') ? genType : 'image');
-        });
-    });
+            // 新创作完成 → 清除历史缓存，下次刷新时能拿到新数据
+            invalidateHistory(tab);
+          })
+          .catch((err) => {
+            if (signal.aborted || !visit?.isCurrent()) return;
+            showToast('error', err?.taskFailed ? err.message : '原任务查询暂未完成，记录已保留，可继续创建新任务');
+            storeDeleteGeneration(tab, genId);
+            if (err.taskFailed) {
+              try { creationPendingStore.remove(ownerId, genId); }
+              catch (error) { showToast('error', error.message); }
+            }
+          })
+          .finally(() => {
+            waiting.delete(genId);
+            if (!signal.aborted) decrementActive(genType === 'video' ? 'video' : (genType === 'dubbing' || genType === 'music') ? genType : 'image');
+          });
+      });
+    };
+    const onStorage = event => {
+      if (event.key?.startsWith('miioo_creation_task:') || event.key === 'miioo_pending_tasks') resume();
+    };
+    window.addEventListener('storage', onStorage);
+    resume();
     return () => {
+      window.removeEventListener('storage', onStorage);
       controller.abort();
       for (const task of waiting.values()) {
         if (useCreationStore.getState().ownerId === String(ownerId)) storeDeleteGeneration(task.tab, task.genId);

@@ -8,6 +8,7 @@
  * 2026-09-28 音色占位测量使用布局尺寸，兼容画布缩放和展开动画。
  * 2026-09-28 开放音色间距及空态标识，供画布修正空编辑器光标；默认间距不变。
  * 2026-09-29 showFileCards 允许画布复用编辑与引用菜单，参考素材栏由画布单独编排。
+ * 2026-11-03 中文组字开始时隔离情绪句末光标，提交时修正浏览器保留的旧落点。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -133,6 +134,63 @@ function CreationPromptEditor({
 }) {
   const usesAdvancedDubbingTypography = genType === 'dubbing' && dubbingAdvancedEnabled;
   const voiceControlRef = useRef(null);
+  const compositionBoundaryRef = useRef(null);
+  const handleCompositionStart = () => {
+    compositionBoundaryRef.current = null;
+    if (!usesAdvancedDubbingTypography || disabled) return;
+    const selection = window.getSelection();
+    if (!selection?.isCollapsed || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    const container = range.startContainer;
+    const element = container.nodeType === Node.TEXT_NODE ? container.parentElement : container;
+    const text = element.closest?.('[data-emotion-text]');
+    const emotion = text?.closest('[data-emotion]');
+    if (!emotion || !editorRef.current?.contains(emotion)) return;
+    const tail = range.cloneRange();
+    tail.selectNodeContents(text);
+    tail.setStart(container, range.startOffset);
+    if (tail.toString().length !== 0) return;
+    const outside = document.createTextNode('');
+    compositionBoundaryRef.current = { text, emotion, outside, length: text.textContent.length };
+    emotion.after(outside);
+    const next = document.createRange();
+    next.setStart(outside, 0);
+    next.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(next);
+  };
+  const handleCompositionEnd = () => {
+    const boundary = compositionBoundaryRef.current;
+    compositionBoundaryRef.current = null;
+    if (!boundary) return;
+    const { text, emotion, outside, length } = boundary;
+    // 部分输入法已缓存原组字位置：只移出原正文之后的新增 DOM，不复制 event.data。
+    if (editorRef.current?.contains(emotion) && text.textContent.length > length) {
+      const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+      let remaining = length;
+      let node;
+      while ((node = walker.nextNode())) {
+        if (remaining <= node.textContent.length) break;
+        remaining -= node.textContent.length;
+      }
+      if (node) {
+        const suffix = document.createRange();
+        suffix.selectNodeContents(text);
+        suffix.setStart(node, remaining);
+        const plain = document.createTextNode(suffix.toString());
+        suffix.deleteContents();
+        emotion.after(plain);
+        const caret = document.createRange();
+        caret.setStart(plain, plain.length);
+        caret.collapse(true);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(caret);
+        editorRef.current.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+      }
+    }
+    if (!outside.textContent) outside.remove();
+  };
   const [voiceControlSize, setVoiceControlSize] = useState({ width: 0, height: 0 });
   const mentionFiles = files.filter((file) => (
     mentionQuery === '' || file.name.toLowerCase().includes(mentionQuery.toLowerCase())
@@ -236,6 +294,8 @@ function CreationPromptEditor({
           cursor: disabled ? 'not-allowed' : 'text',
         }}
         onInput={onInput}
+        onCompositionStart={handleCompositionStart}
+        onCompositionEnd={handleCompositionEnd}
         onBeforeInput={onBeforeInput}
         onKeyDown={onKeyDown}
         onPaste={onPaste}

@@ -1,14 +1,14 @@
 /**
  * @file ProjectList.jsx
- * @structure-index：2026-11-02
+ * @structure-index：2026-11-03
  * 页面职责：项目筛选、卡片操作与弹窗编排；新建入口复用 CreateCard。
  * FONT L34
  * 图标组件 L39
  * MoreMenu L86
  * RenameModal L103
- * NewProjectCard L234
- * ProjectCard L238
- * ProjectList L368
+ * NewProjectCard L248
+ * ProjectCard L252
+ * ProjectList L382
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-22  项目删除二次确认改用标准 ConfirmDialog
  *   2026-07-22  移除更多操作下拉菜单选项的黑色描边
@@ -102,6 +102,10 @@ function MoreMenu({ onRename, onCopy, onDelete, onClose }) {
 
 function RenameModal({ initialName, onConfirm, onCancel }) {
   const [value, setValue] = useState(initialName || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const savingRef = useRef(false);
+  const cancel = () => { if (!savingRef.current) onCancel(); };
   const inputRef = useRef(null);
   const [focused, setFocused] = useState(false);
 
@@ -110,14 +114,21 @@ function RenameModal({ initialName, onConfirm, onCancel }) {
     inputRef.current?.select();
   }, []);
 
-  function handleConfirm() {
+  async function handleConfirm() {
     const trimmed = value.trim();
-    if (trimmed) onConfirm(trimmed);
+    if (!trimmed || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    setError('');
+    try { await onConfirm(trimmed); }
+    catch (cause) { setError(cause.message || '保存项目名称失败，请重试'); }
+    finally { savingRef.current = false; setSaving(false); }
   }
 
   function handleKeyDown(e) {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === 'Enter') handleConfirm();
-    if (e.key === 'Escape') onCancel();
+    if (e.key === 'Escape') cancel();
   }
 
   return (
@@ -133,7 +144,7 @@ function RenameModal({ initialName, onConfirm, onCancel }) {
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
       }}
-      onClick={onCancel}
+      onClick={cancel}
     >
       <div
         style={{
@@ -165,7 +176,7 @@ function RenameModal({ initialName, onConfirm, onCancel }) {
             aria-label="关闭重命名弹窗"
             variant="secondary"
             size="small"
-            onClick={onCancel}
+            onClick={cancel}
             className="size-7 rounded-[6px] border-0 bg-transparent p-0 shadow-none hover:bg-white-5 active:bg-white-10"
           />
         </div>
@@ -196,6 +207,8 @@ function RenameModal({ initialName, onConfirm, onCancel }) {
               <input
                 ref={inputRef}
                 value={value}
+                maxLength={200}
+                disabled={saving}
                 onChange={(e) => setValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onFocus={() => setFocused(true)}
@@ -216,13 +229,14 @@ function RenameModal({ initialName, onConfirm, onCancel }) {
           </div>
         </div>
 
+        {error && <p role="alert" className="px-[24px] text-text-secondary">{error}</p>}
         {/* Footer */}
         <ButtonGroup
           className="gap-[16px] px-[24px] py-[16px]"
           style={{ background: '#161616' }}
         >
-          <TextButton onClick={onCancel}>取消</TextButton>
-          <Button variant="primary" onClick={handleConfirm} disabled={!value.trim()}>确认</Button>
+          <TextButton disabled={saving} onClick={cancel}>取消</TextButton>
+          <Button variant="primary" onClick={handleConfirm} disabled={saving || !value.trim()}>{saving ? '保存中…' : '确认'}</Button>
         </ButtonGroup>
       </div>
     </div>
@@ -463,8 +477,9 @@ export default function ProjectList({ title = '所有项目', projects = [], loa
       {renameTarget && (
         <RenameModal
           initialName={renameTarget.name}
-          onConfirm={(newName) => {
-            onRenameProject?.(renameTarget.id, newName);
+          onConfirm={async (newName) => {
+            if (!onRenameProject) throw new Error('项目重命名暂不可用');
+            await onRenameProject(renameTarget.id, newName);
             setRenameTarget(null);
           }}
           onCancel={() => setRenameTarget(null)}

@@ -15,7 +15,7 @@
  *   2026-10-21：空白右键复用节点动作菜单；新建节点二级菜单、撤销/重做；新建/粘贴固定右键坐标，清空仅有任务时确认。
  *   2026-10-21：正式项目详情及项目改名接线，项目名与画布名独立；加载及改名校验账号会话。
  *   2026-10-20：正式 records 文档读写、分批素材恢复及会话内幂等串行保存；加载失败禁止保存，分享复制不依赖保存。
- *   2026-10-19：UseCanvasSnapping 编排可选网格/边缘吸附，CanvasSnapGuides 显示辅助线；正文边界排除输入框，CanvasGrid 统一背景参数与可见网点中心，修正正文左上边框落点。
+ *   2026-10-19：UseCanvasSnapping 编排可选网格/边缘吸附，CanvasSnapGuides 显示辅助线；正文边界排除输入框，CanvasGrid 统一网格坐标；2026-11-03：CanvasGridBackground 在低缩放时平滑隐藏网点。
  *
  * ─── 页面区块 ────────────────────────────────────────────────────
  *   CanvasProjectHeader components/canvas；正式新建项目由首页回调，项目改名持久化；仅旧模拟详情保持会话内名称。删除接入撤销，仅运行/排队任务确认。
@@ -58,11 +58,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import CanvasTextEditor from '../components/canvas/CanvasTextEditor';
 import { useCanvasTextEditor } from '../components/canvas/UseCanvasTextEditor';
 import { useCanvasAutosave } from '../components/canvas/UseCanvasAutosave';
-import { CANVAS_GRID_GAP, CANVAS_GRID_DOT_SIZE, CANVAS_GRID_OFFSET } from '../components/canvas/CanvasGrid';
+import CanvasGridBackground from '../components/canvas/CanvasGridBackground';
 import { useCanvasSnapping } from '../components/canvas/UseCanvasSnapping';
 import CanvasSnapGuides from '../components/canvas/CanvasSnapGuides';
 import { getCanvasAssetNodeSize, prepareCanvasMediaAsset } from '../components/canvas/CanvasMediaSize';
-import { applyNodeChanges, Background, PanOnScrollMode, ReactFlow } from '@xyflow/react';
+import { applyNodeChanges, PanOnScrollMode, ReactFlow } from '@xyflow/react';
 import CanvasMiniMap from '../components/canvas/CanvasMiniMap';
 import { X } from 'lucide-react';
 import { showGlobalToast } from '../stores/toastStore';
@@ -866,7 +866,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
         onSelectionStart={() => { cancelPendingClicks(); setNodeMenu(null); setNodes((current) => setCanvasSelection(current, current.filter((node) => node.selected).map((node) => node.id))); }}
         proOptions={{ hideAttribution: true }} className="bg-surface-toolbar">
         {/* 固定圆点的屏幕半径，间距和位置仍由 React Flow 随视口变化。 */}
-        <Background variant="dots" gap={CANVAS_GRID_GAP} size={CANVAS_GRID_DOT_SIZE} offset={CANVAS_GRID_OFFSET} patternClassName="[r:0.5px]" color="rgba(255,255,255,0.16)" />
+        <CanvasGridBackground />
         {showMiniMap && <CanvasMiniMap />}
       </ReactFlow>
       <CanvasSnapGuides guides={snapGuides} viewport={viewport} />

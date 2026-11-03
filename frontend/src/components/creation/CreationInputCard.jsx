@@ -2,15 +2,15 @@
  * @file CreationInputCard.jsx
  * @description 创作输入区状态、素材接线、参数组装和生成回调适配。
  *
- * 该组件不调用页面 API、Store 或缓存；生成参数通过 onGenerate 显式交回页面，
+ * 该组件管理本地输入草稿，不调用页面 API 或 Store；生成参数通过 onGenerate 显式交回页面，
  * 页面继续负责生成请求、任务轮询、缓存和全局状态写回。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   草稿文件恢复工具                                   L111–L133
- *   InputCard 状态、Hook 与草稿接线                    L136–L478
- *   模式回退、素材选择与参数预填充                     L479–L783
- *   发送、失败/取消恢复与参数组装                      L784–L963
- *   CreationInputSurface 组合                           L969–L1147
+ *   草稿文件恢复工具                                   L113–L135
+ *   InputCard 状态、Hook 与草稿接线                    L138–L499
+ *   模式回退、素材选择与参数预填充                     L500–L804
+ *   发送、失败/取消恢复与参数组装                      L805–L987
+ *   CreationInputSurface 与弹窗组合                     L988–L1168
  *
  *   2026-08-18  配音面板改为语速/声调/音量，草稿与失败恢复同步新字段
  *   2026-08-11  图片/视频生成轮询期间保持输入区可用；IndexedDB 临时缓存各类型完整创作草稿
@@ -40,6 +40,7 @@
  *   2026-08-28  切换至纯文生全能参考模型时，确认后静默保留前两张图片为首尾帧；取消不提交模型切换
  *   2026-09-02  创作页首尾帧已有图片切换至不支持图片参考的全能参考时拦截切换
  * 2026-10-30 移除真人素材按钮及专属弹窗接线，保留资产库素材引用。
+ * 2026-11-03 草稿同步保存高级配音模式与效果，恢复阶段防止旧状态覆盖草稿。
  * 保留原因：输入区草稿恢复、素材状态与发送适配集中编排；验证资产选择与生成接线。
  */
 
@@ -56,6 +57,7 @@ import {
   readCreationDraft,
   readCreationDraftFromMemory,
   saveCreationDraft,
+  resolveDubbingDraftState,
 } from './CreationDraftStorage';
 import { readCreationDocumentText } from './CreationDocumentTextReader';
 import {
@@ -319,12 +321,14 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   // 切换 Tab 保存草稿时不能再依赖即将销毁的 DOM。
   const promptTextRef = useRef('');
   const hydratedGenTypeRef = useRef(null);
+  const pendingDubbingRestoreRef = useRef(null);
   const createDraftSnapshot = useCallback(() => {
     const currentFiles = getCurrentFiles();
     const promptSnapshot = getPromptSnapshot();
     return {
       prompt: promptSnapshot.text || promptTextRef.current,
       promptHTML: promptSnapshot.html,
+      ...(genType === 'dubbing' ? { dubbingAdvancedEnabled, dubbingEffects } : {}),
       files: currentFiles.files,
       firstFrameFile: currentFiles.firstFrameFile,
       lastFrameFile: currentFiles.lastFrameFile,
@@ -340,17 +344,27 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       selectedVoiceName,
       selectedVoiceSource,
     };
-  }, [count, getCurrentFiles, getPromptSnapshot, ratio, refMode, resolution, selectedVoiceId, selectedVoiceName, selectedVoiceSource, soundEnabled, videoDuration, videoRatio, videoResolution]);
+  }, [count, dubbingAdvancedEnabled, dubbingEffects, genType, getCurrentFiles, getPromptSnapshot, ratio, refMode, resolution, selectedVoiceId, selectedVoiceName, selectedVoiceSource, soundEnabled, videoDuration, videoRatio, videoResolution]);
 
   const persistDraft = useCallback((force = false) => {
+    // 同步内存恢复与异步磁盘恢复都必须等待模式、效果完成回写；
+    // 否则首次 effect 可能把已恢复的富文本和旧的普通模式一起存回草稿。
+    const pending = pendingDubbingRestoreRef.current;
+    if (genType === 'dubbing' && pending) {
+      if (pending.advancedEnabled !== dubbingAdvancedEnabled || pending.effects !== dubbingEffects) return;
+      pendingDubbingRestoreRef.current = null;
+    }
     if (!force && hydratedGenTypeRef.current !== genType) return;
     void saveCreationDraft(genType, createDraftSnapshot());
-  }, [createDraftSnapshot, genType]);
+  }, [createDraftSnapshot, dubbingAdvancedEnabled, dubbingEffects, genType]);
 
   useEffect(() => {
     const handleDraftsCleared = () => {
       // 先关闭当前类型的自动保存，避免清空素材触发的状态更新重新写入草稿。
       hydratedGenTypeRef.current = null;
+      pendingDubbingRestoreRef.current = null;
+      onDubbingAdvancedChange?.(false);
+      setDubbingEffects(createDefaultDubbingEffects());
       promptTextRef.current = '';
       setPromptCharacterCount(0);
       clearContent();
@@ -363,7 +377,7 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
 
     window.addEventListener(CREATION_DRAFTS_CLEARED_EVENT, handleDraftsCleared);
     return () => window.removeEventListener(CREATION_DRAFTS_CLEARED_EVENT, handleDraftsCleared);
-  }, [clearContent, clearFiles, clearFrameFiles]);
+  }, [clearContent, clearFiles, clearFrameFiles, onDubbingAdvancedChange]);
 
   useEffect(() => {
     onRegisterSaveDraft?.(() => persistDraft(true));
@@ -378,11 +392,18 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
   useEffect(() => {
     let cancelled = false;
     hydratedGenTypeRef.current = null;
+    pendingDubbingRestoreRef.current = null;
 
     const restoreDraft = (draft) => {
       if (cancelled) return;
       hydratedGenTypeRef.current = genType;
       if (prefillVersion && prefillData?.prompt !== undefined) return;
+      if (genType === 'dubbing') {
+        const restored = resolveDubbingDraftState(draft);
+        pendingDubbingRestoreRef.current = restored;
+        onDubbingAdvancedChange?.(restored.advancedEnabled);
+        setDubbingEffects(restored.effects);
+      }
       const prompt = draft?.prompt ?? '';
       promptTextRef.current = prompt;
       setPromptCharacterCount(prompt.length);

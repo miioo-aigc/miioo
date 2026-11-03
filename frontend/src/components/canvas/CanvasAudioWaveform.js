@@ -21,7 +21,9 @@ export function getAudioBars(analysis, time, count = 51) {
   if (!analysis || !Number.isFinite(time) || time < 0 || time >= analysis.duration) return Array(count).fill(3);
   const current = Math.floor(time / analysis.step);
   return Array.from({ length: count }, (_, index) => {
-    const amplitude = analysis.levels[current - count + 1 + index] || 0;
+    // 柱数变化只改变显示密度，仍展示同一段约 250ms 的声音。
+    const offset = count > 1 ? Math.round(50 * (1 - index / (count - 1))) : 0;
+    const amplitude = analysis.levels[current - offset] || 0;
     return 3 + 17 * Math.sqrt(Math.min(1, amplitude * 3));
   });
 }

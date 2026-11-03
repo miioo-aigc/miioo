@@ -34,13 +34,13 @@ export default function useCanvasCollections() {
         if (!valid()) return;
         if (!user.id) throw new Error('无法确定当前账号，请重新登录');
         const desired = preferred.current === undefined ? readCollectionMemory(user.id) : preferred.current;
-        let page = await api.collections({ limit: 60 }, controller.signal);
+        let page = await api.canvasCollections({ limit: 60 }, controller.signal);
         const items = [...page.items];
         const cursors = new Set();
         while (desired && !items.some((item) => item.id === desired) && page.next_cursor) {
           if (cursors.has(page.next_cursor)) throw new Error('集合分页异常，请重试');
           cursors.add(page.next_cursor);
-          page = await api.collections({ cursor: page.next_cursor, limit: 60 }, controller.signal);
+          page = await api.canvasCollections({ cursor: page.next_cursor, limit: 60 }, controller.signal);
           items.push(...page.items);
         }
         if (!valid()) return;
@@ -67,7 +67,7 @@ export default function useCanvasCollections() {
     const current = generation.current;
     setState((old) => ({ ...old, loading: true }));
     try {
-      const page = await api.collections({ cursor: state.cursor, limit: 60 });
+      const page = await api.canvasCollections({ cursor: state.cursor, limit: 60 });
       if (current === generation.current) setState((old) => ({ ...old, cursor: page.next_cursor,
         items: [...new Map([...old.items, ...page.items].map((item) => [item.id, item])).values()] }));
     } catch (cause) { if (current === generation.current) showGlobalToast('error', cause.message); }

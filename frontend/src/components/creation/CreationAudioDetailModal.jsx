@@ -1,6 +1,7 @@
 /**
  * @file CreationAudioDetailModal.jsx
  * @structure-index
+ * 2026-11-03：移除光晕依赖，真实声音柱形动画覆盖左侧区域，保留底部进度跳转。
  * 2026-10-26：音频播放等待不显示像素加载与占位；失败刷新及继续播放保留图标。
  * 2026-10-23 媒体等待、失败及一次联网重载；恢复后点击播放。
  *
@@ -10,6 +11,7 @@
  */
 
 import { useMediaPlayback } from '../../hooks/useMediaPlayback';
+import CreationAudioVisualizer from './CreationAudioVisualizer';
 import MediaLoadStatus from '../feedback/MediaLoadStatus';
 import { useEffect, useRef, useState } from 'react';
 import { useModalSize } from '../../utils/useModalSize';
@@ -20,7 +22,6 @@ import { stopVoicePreview } from '../../utils/voicePreviewPlayer';
 import CopyPromptButton from '../ui/CopyPromptButton';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
-const WAVEFORM = [14, 22, 11, 18, 28, 16, 24, 10, 19, 26, 13, 21, 30, 15, 23, 12, 20, 27, 14, 22, 10, 18, 26, 16, 24, 12, 20, 29, 15, 23, 11, 19, 27, 14, 22, 10, 18, 25, 13, 21, 29, 16, 24, 12, 20, 28, 15, 23];
 const DETAIL_PANEL_DIVIDER = <div style={{ height: '1px', backgroundColor: '#FFFFFF0A', marginLeft: '20px', marginRight: '20px', flexShrink: 0 }} />;
 
 function PanelAction({ icon, label, onClick, active = false }) {
@@ -165,20 +166,14 @@ export default function CreationAudioDetailModal({
           </div>
           <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, background: '#0D0D0D' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, minHeight: 0, padding: '32px' }}>
-                <div ref={waveformRef} role="slider" aria-label="音频进度" aria-valuemin="0" aria-valuemax={audioDuration || 0} aria-valuenow={currentTime} tabIndex={0} onClick={seek} style={{ width: '100%', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', padding: '0 16px', cursor: audioDuration ? 'pointer' : 'default', borderRadius: '12px', background: '#FFFFFF08' }}>
-                  {WAVEFORM.map((height, index) => {
-                    const active = index / WAVEFORM.length <= progress;
-                    const pulse = isPlaying ? 0.8 + Math.abs(Math.sin(currentTime * 8 + index * 0.7)) * 0.45 : 1;
-                    return <div key={index} style={{ width: '5px', height: `${height}px`, borderRadius: '3px', background: active ? '#2DC3E1' : '#FFFFFF33', transform: `scaleY(${pulse})`, transition: 'background 160ms, transform 120ms linear' }} />;
-                  })}
-                </div>
+              <div style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                <CreationAudioVisualizer audioRef={audioRef} url={audioUrl} playing={isPlaying} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px 16px 16px', background: '#111111', flexShrink: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                   <button type="button" aria-label={isPlaying ? '暂停播放' : '播放'} onClick={togglePlay} style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1px solid #FFFFFF26', background: '#FFFFFF1A', color: '#FFFFFF', cursor: 'pointer', padding: 0 }}>{isPlaying ? 'Ⅱ' : '▶'}</button>
                   <span style={{ width: '36px', color: '#FFFFFF99', fontFamily: FONT, fontSize: '12px' }}>{formatTime(currentTime)}</span>
-                  <div style={{ flex: 1, height: '3px', borderRadius: '2px', background: '#FFFFFF1F', overflow: 'hidden' }}><div style={{ width: `${progress * 100}%`, height: '100%', background: '#FFFFFFB3' }} /></div>
+                  <div ref={waveformRef} role="slider" aria-label="音频进度" aria-valuemin={0} aria-valuemax={audioDuration || 0} aria-valuenow={currentTime} tabIndex={0} onClick={seek} onKeyDown={(event) => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || !audioDuration) return; event.preventDefault(); const time = event.key === 'Home' ? 0 : event.key === 'End' ? audioDuration : Math.max(0, Math.min(audioDuration, currentTime + (event.key === 'ArrowRight' ? 5 : -5))); if (audioRef.current) audioRef.current.currentTime = time; setCurrentTime(time); }} style={{ flex: 1, padding: '8px 0', cursor: 'pointer' }}><div style={{ height: '3px', borderRadius: '2px', background: '#FFFFFF1F', overflow: 'hidden' }}><div style={{ width: `${progress * 100}%`, height: '100%', background: '#FFFFFFB3' }} /></div></div>
                   <span style={{ width: '36px', color: '#FFFFFF66', fontFamily: FONT, fontSize: '12px', textAlign: 'right' }}>{formatTime(audioDuration)}</span>
                   <button type="button" aria-label={muted ? '取消静音' : '静音'} onClick={() => setMuted((value) => !value)} style={{ padding: 0, border: 0, background: 'transparent', color: '#FFFFFF99', cursor: 'pointer', display: 'flex' }}>
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 6H1V10H3L7 13V3L3 6Z" fill="currentColor" />{muted ? <path d="M10 6L14 10M14 6L10 10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /> : <path d="M10 5C11.1 6.1 11.1 9.9 10 11M12.5 3C14.7 5.2 14.7 10.8 12.5 13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />}</svg>

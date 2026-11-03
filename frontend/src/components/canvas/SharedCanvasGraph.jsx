@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { ReactFlow, Background, PanOnScrollMode, useViewport } from '@xyflow/react';
-import { CANVAS_GRID_GAP, CANVAS_GRID_DOT_SIZE, CANVAS_GRID_OFFSET } from './CanvasGrid';
+import { ReactFlow, PanOnScrollMode, useViewport } from '@xyflow/react';
+import CanvasGridBackground from './CanvasGridBackground';
 import SharedCanvasNode from './SharedCanvasNode';
 import CanvasGroupNode from './CanvasGroupNode';
 import { getSharedCanvasPresentation } from './SharedCanvasGroups';
@@ -29,6 +29,6 @@ export default function SharedCanvasGraph({ graph }) {
     panOnDrag panOnScroll panOnScrollMode={PanOnScrollMode.Free} panOnScrollSpeed={0.5}
     zoomOnDoubleClick={false} zoomOnPinch proOptions={{ hideAttribution: true }}
     fitView fitViewOptions={{ padding: 0.2, maxZoom: 1 }} minZoom={0.01} maxZoom={4} colorMode="dark" className="bg-surface-toolbar">
-    <Background variant="dots" gap={CANVAS_GRID_GAP} size={CANVAS_GRID_DOT_SIZE} offset={CANVAS_GRID_OFFSET} patternClassName="[r:0.5px]" color="rgba(255,255,255,0.16)" />
+    <CanvasGridBackground />
   </ReactFlow>;
 }

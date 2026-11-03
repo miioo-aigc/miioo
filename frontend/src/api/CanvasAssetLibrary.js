@@ -6,6 +6,7 @@ import { apiUpdateAsset, apiDownloadAsset, apiGetAssetDetail } from './assets';
 // 按画布资产库需求契约请求；只在显式开发开关启用时模拟，不因请求失败降级。
 export const canvasLibraryMockEnabled = import.meta.env.DEV && import.meta.env.VITE_CANVAS_ASSET_LIBRARY_MOCK === 'true';
 const base = `${import.meta.env.VITE_API_BASE_URL || ''}/api/canvas-asset-library`;
+const canvasCollectionsBase = String(import.meta.env.VITE_API_BASE_URL || '') + '/api/canvas-assets';
 const development = canvasLibraryMockEnabled ? createCanvasAssetLibraryDevelopment() : null;
 const key = () => crypto.randomUUID();
 const messages = {
@@ -53,6 +54,19 @@ async function settle(result) {
   throw new Error('后台仍在处理中，请稍后刷新确认结果，不要重复提交');
 }
 
+// 画布资产页专用集合入口：服务端保证只返回 kind=canvas，避免项目资产集合混入左侧列表。
+async function requestCanvasCollections(params = {}, signal) {
+  if (development) return development.collections({ ...params, kind: 'canvas' });
+  const query = new URLSearchParams();
+  for (const [name, value] of Object.entries(params)) if (value != null) query.set(name, value);
+  const response = await authFetch(canvasCollectionsBase + '/collections?' + query, {
+    method: 'GET', signal, headers: { 'Content-Type': 'application/json' },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw Object.assign(new Error(data.message || '画布集合读取失败，请重试'), { status: response.status });
+  return data;
+}
+
 export const canvasAssetLibrary = {
   detail: (entry) => development ? development.detail(entry.asset_id ?? entry.asset?.id) : apiGetAssetDetail(entry.asset_id ?? entry.asset?.id).then((asset) => {
     if (!asset?.id) throw new Error('素材详情读取失败，请重试');
@@ -60,6 +74,7 @@ export const canvasAssetLibrary = {
   }),
   favorite: (entry, is_starred) => development ? development.favorite(entry.asset_id ?? entry.asset?.id, is_starred) : apiUpdateAsset(entry.asset_id ?? entry.asset?.id, { is_starred }),
   collections: (params = {}, signal) => development ? development.collections(params) : request(`/collections?${new URLSearchParams(params)}`, 'GET', undefined, signal),
+  canvasCollections: requestCanvasCollections,
   renameCollection: (id, body) => development ? development.renameCollection(id, body) : request(`/collections/${encodeURIComponent(id)}`, 'PATCH', { ...body, idempotency_key: key() }).then(settle),
   copyCollection: (id, body) => development ? development.copyCollection(id, body) : request(`/collections/${encodeURIComponent(id)}/copies`, 'POST', { idempotency_key: key(), ...body }),
   previewDownload: (id) => development ? development.previewDownload(id) : request(`/collections/${encodeURIComponent(id)}/downloads/preview`, 'POST', {}),

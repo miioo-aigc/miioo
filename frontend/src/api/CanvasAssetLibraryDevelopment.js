@@ -63,8 +63,8 @@ export function createCanvasAssetLibraryDevelopment() {
   };
   return {
     seedCollection,
-    async collections({ cursor = null, limit = 60 } = {}) {
-      const all = [...collections.values()].reverse().map((item) => ({ ...item }));
+    async collections({ cursor = null, limit = 60, kind } = {}) {
+      const all = [...collections.values()].filter((item) => !kind || item.kind === kind).reverse().map((item) => ({ ...item }));
       const offset = Number(cursor || 0);
       return { items: all.slice(offset, offset + limit), next_cursor: offset + limit < all.length ? String(offset + limit) : null };
     },

@@ -7,6 +7,7 @@ import useCanvasAssetLibrary from './UseCanvasAssetLibrary';
 import AssetsBatchToolbar from './AssetsBatchToolbar';
 import CanvasLibraryGrid from './CanvasLibraryGrid';
 import CanvasLibraryReadError from './CanvasLibraryReadError';
+import DotsLoading from '../DotsLoading';
 import { canvasLibraryItemKey, canvasLibraryToggleSelection, canvasLibrarySelectLoaded, canvasLibraryDrop, canvasLibraryPath } from './CanvasLibraryItems';
 import { CanvasLibraryDialog, CanvasLibraryDestinationDialog, CanvasLibraryDeleteDialog } from './CanvasLibraryDialogs';
 
@@ -81,7 +82,7 @@ export default function CanvasLibraryContents({ collection }) {
   }, { reload: false });
   const path = canvasLibraryPath(folder, parentId, collection.root_folder_id);
   return <section className="flex min-h-0 min-w-0 flex-1 flex-col text-text-primary">
-    {parentId && <header className="flex flex-wrap items-center justify-between gap-[12px] px-[24px] py-[8px]">
+    {parentId && <header className="flex flex-wrap items-center justify-between gap-[12px] px-[24px] py-[16px]">
       {parentId ? <nav aria-label="文件夹路径" className="flex min-w-0 flex-wrap items-center gap-[8px]">
         <button disabled={busy} title={collection.name} onClick={() => go(collection.root_folder_id)} onDragOver={(event) => !busy && event.preventDefault()} onDrop={(event) => !busy && canvasLibraryDrop(event, move, collection.root_folder_id)} className="max-w-[200px] truncate text-[14px] text-text-secondary">{collection.name}</button>
         {path.map((item) => <span key={item.id} className="flex min-w-0 items-center gap-[8px]"><span aria-hidden="true" className="text-[14px] text-text-secondary">/</span><button title={item.name} disabled={busy} onClick={() => go(item.id)} onDragOver={(event) => !busy && event.preventDefault()} onDrop={(event) => !busy && canvasLibraryDrop(event, move, item.id)} className="max-w-[200px] truncate text-[14px]">{item.name}</button></span>)}
@@ -103,7 +104,7 @@ export default function CanvasLibraryContents({ collection }) {
     <div className={`relative flex min-h-0 flex-1 flex-col overflow-auto px-[24px] pb-[24px] ${parentId ? '' : 'pt-[24px]'}`}>
       <CanvasLibraryGrid collectionId={collection.id} parentId={parentId} items={error ? [] : items} selected={selected} batch={batch} busy={busy || loading} onSelect={toggle} onCreate={() => rename()} onRename={rename} onOpen={(item) => item.type === 'folder' ? go(item.id) : setPreview(item)} onDelete={requestDelete} onMove={move} onDestination={(list) => setDestination({ list })} onDownload={download} />
       {error && <CanvasLibraryReadError busy={busy} onRetry={() => { clearSelection(); refresh(); }} />}
-      {loading && <p role="status" className="py-[24px] text-[14px] text-text-secondary">加载中...</p>}
+      {loading && <div role="status" aria-label="资产列表加载中" className="pointer-events-none absolute inset-0 flex items-center justify-center"><DotsLoading size={5} color="#2DC3E1" gap={4} /></div>}
       {cursor && <div className="pt-[24px] text-center"><Button variant="secondary" disabled={loading || busy} onClick={loadMore}>加载更多</Button></div>}
     </div>
     {nameDialog && <CanvasLibraryDialog title={nameDialog.item ? '重命名' : '新增文件夹'} busy={busy} onClose={() => setNameDialog(null)} footer={<><Button variant="secondary" disabled={busy} onClick={() => setNameDialog(null)}>取消</Button><Button disabled={busy || !name.trim()} loading={busy} onClick={saveName}>确认</Button></>}><TextField label="名称" autoFocus value={name} disabled={busy} onChange={(event) => setName(typeof event === 'string' ? event : event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing && name.trim() && !busy) saveName(); }} /></CanvasLibraryDialog>}

@@ -115,3 +115,38 @@ test('创建结果未知提醒核对列表，不自动重试', async () => {
   assert.equal(calls, 1);
   assert.match(state.messages[0][1], /刷新项目列表/);
 });
+
+
+function renameHarness() {
+  const owner = { session: 1 };
+  const scope = { current: owner };
+  let items = [{ id: 'p', name: '旧名称' }];
+  let finish, fail;
+  const calls = [];
+  const pending = new Promise((resolve, reject) => { finish = resolve; fail = reject; });
+  const body = hookSource.slice(hookSource.indexOf('  const rename ='), hookSource.indexOf('  return { items, loading'));
+  const rename = new Function('scope', 'getAuthSessionGeneration', 'isLoggedIn', 'getToken', 'apiUpdateProject', 'version', 'setLoading', 'setItems', body + '; return rename;')(scope, () => 1, true, () => true, (...args) => { calls.push(args); return pending; }, { current: 0 }, () => {}, update => { items = update(items); });
+  return { rename, scope, finish, fail, calls, items: () => items };
+}
+test('列表重命名等待服务器确认，只发送项目名称并回写服务端结果', async () => {
+  const h = renameHarness();
+  const task = h.rename('p', '新名称');
+  assert.deepEqual(h.calls, [['p', { name: '新名称' }]]);
+  assert.equal(h.items()[0].name, '旧名称');
+  h.finish({ id: 'p', name: '新名称' });
+  await task;
+  assert.equal(h.items()[0].name, '新名称');
+});
+test('列表重命名失败保留旧名称，切换会话后的结果不回写', async () => {
+  const h = renameHarness();
+  const task = h.rename('p', '新名称');
+  h.fail(Error('保存失败'));
+  await assert.rejects(task, /保存失败/);
+  assert.equal(h.items()[0].name, '旧名称');
+  const other = renameHarness();
+  const next = other.rename('p', '新名称');
+  other.scope.current = null;
+  other.finish({ id: 'p', name: '新名称' });
+  await next;
+  assert.equal(other.items()[0].name, '旧名称');
+});

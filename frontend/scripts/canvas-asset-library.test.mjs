@@ -4,6 +4,17 @@ import { readFileSync } from 'node:fs';
 import { createCanvasAssetLibraryDevelopment } from '../src/api/CanvasAssetLibraryDevelopment.js';
 import { canvasLibraryAudioUrl, canvasLibrarySelectLoaded, canvasLibraryToggleSelection } from '../src/components/assets/CanvasLibraryItems.js';
 
+test('画布资产侧栏使用仅画布集合接口，不读取混合项目集合', () => {
+  const api = readFileSync(new URL('../src/api/CanvasAssetLibrary.js', import.meta.url), 'utf8');
+  const hook = readFileSync(new URL('../src/components/assets/UseCanvasCollections.js', import.meta.url), 'utf8');
+  assert.match(api, /\/api\/canvas-assets/);
+  assert.match(api, /canvasCollections/);
+  assert.match(hook, /api\.canvasCollections\(\{ limit: 60 \}/);
+  assert.match(hook, /api\.canvasCollections\(\{ cursor: page\.next_cursor/);
+  assert.match(hook, /api\.canvasCollections\(\{ cursor: state\.cursor/);
+  assert.doesNotMatch(hook, /api\.collections\(/);
+});
+
 test('目录全选只覆盖已加载条目，逐项取消不会改变其余选择', () => {
   const loaded = [{ type: 'folder', id: 'folder-a' }, { type: 'entry', id: 'image-a' }, { type: 'entry', id: 'audio-a' }];
   const selected = canvasLibrarySelectLoaded(loaded);
@@ -190,4 +201,42 @@ test('路径导航在根目录不追加空项，子目录过滤无编号和重�
   assert.deepEqual(canvasLibraryPath(root, 1, 1), []);
   assert.deepEqual(canvasLibraryPath(current, 3, 1), [parent, current]);
   assert.deepEqual(canvasLibraryPath(null, 3, 1), []);
+});
+
+const apiSource = readFileSync(new URL('../src/api/CanvasAssetLibrary.js', import.meta.url), 'utf8');
+function collectionApi(fetcher, development = null) {
+  const start = apiSource.indexOf('async function requestCanvasCollections');
+  const end = apiSource.indexOf('export const canvasAssetLibrary', start);
+  return new Function('authFetch', 'development', 'canvasCollectionsBase', apiSource.slice(start, end) + '; return requestCanvasCollections;')(fetcher, development, 'https://example.test/api/canvas-assets');
+}
+test('实际请求使用专用地址，保留游标、取消信号和服务端空结果', async () => {
+  const signal = new AbortController().signal;
+  const page = { items: [], next_cursor: null };
+  const calls = [];
+  const read = collectionApi(async (url, options) => { calls.push({ url, options }); return { ok: true, json: async () => page }; });
+  assert.deepEqual(await read({ limit: 60, cursor: 'a+b/=' }, signal), page);
+  const url = new URL(calls[0].url);
+  assert.equal(url.pathname, '/api/canvas-assets/collections');
+  assert.equal(url.searchParams.get('cursor'), 'a+b/=');
+  assert.equal(url.searchParams.get('limit'), '60');
+  assert.equal(calls[0].options.signal, signal);
+});
+test('专用接口失败不回退到混合集合', async () => {
+  let calls = 0;
+  const read = collectionApi(async () => { calls++; return { ok: false, status: 404, json: async () => ({ message: '接口未部署' }) }; });
+  await assert.rejects(read(), { message: '接口未部署', status: 404 });
+  assert.equal(calls, 1);
+});
+test('开发数据按画布类型先过滤再分页，工作流集合不占页数', async (t) => {
+  const model = setup(t);
+  const a = model.seedCollection({ name: '画布甲', kind: 'canvas' });
+  model.seedCollection({ name: '工作流', kind: 'project' });
+  const b = model.seedCollection({ name: '画布乙', kind: 'canvas' });
+  model.seedCollection({ name: '历史', kind: 'historical' });
+  const read = collectionApi(() => { throw Error('不应联网'); }, model);
+  const first = await read({ limit: 1 });
+  assert.deepEqual(first.items.map(item => item.id), [b.id]);
+  const second = await read({ limit: 1, cursor: first.next_cursor });
+  assert.deepEqual(second.items.map(item => item.id), [a.id]);
+  assert.equal(second.next_cursor, null);
 });

@@ -94,3 +94,30 @@ test('保存期间切换项目，旧响应不回写、不创建草稿、不导�
   assert.deepEqual(h.events, ['save']);
   assert.equal(h.pending.current.size, 0);
 });
+
+// 执行首页实际选择表达式，覆盖导航与草稿页共享的数据边界。
+function restoredEditingState({ projectId = 'p', readProjectId = 'p', loading = false, error = '' } = {}) {
+  const episodes = [{ id: 'a', status: 'editing' }, { id: 'b', status: 'storyboarded' }, { id: 'c', status: 'scripted' }];
+  const from = homeSource.indexOf('  const editingEpisodes =');
+  const to = homeSource.indexOf('  const displayEpisodeStatuses', from);
+  assert.ok(from >= 0 && to > from);
+  const evaluate = new Function('episodesReadProjectId', 'activeProject', 'scriptEpisodes', 'unlockedSteps', 'projectRead', 'resolveEpisodeSteps',
+    homeSource.slice(from, to) + '; return { editingEpisodes, effectiveUnlockedSteps };');
+  return evaluate(readProjectId, { id: projectId }, episodes, new Set(), { loading, error }, resolveEpisodeSteps);
+}
+test('无痕无本地解锁记录：分集成功后其他资源失败或仍在加载也能进入第一集', () => {
+  for (const state of [{}, { error: '主体读取失败' }, { error: '剧本读取失败' }, { error: '概览读取失败' }, { error: '分镜读取失败' }, { loading: true }]) {
+    const result = restoredEditingState(state);
+    assert.equal(result.effectiveUnlockedSteps.has('edit'), true);
+    assert.deepEqual(result.editingEpisodes.filter(isEpisodeEditingUnlocked).map(e => e.id), ['a']);
+  }
+  const editPage = homeSource.slice(homeSource.indexOf('<EditPage'));
+  assert.match(editPage.slice(0, editPage.indexOf('/>')), /episodes=\{editingEpisodes\}/);
+});
+test('当前分集未确认、读取失败或切换项目，不复用其他项目解锁状态', () => {
+  for (const state of [{ readProjectId: null }, { readProjectId: null, error: '分集读取失败' }, { projectId: 'other' }]) {
+    const result = restoredEditingState(state);
+    assert.equal(result.effectiveUnlockedSteps.has('edit'), false);
+    assert.deepEqual(result.editingEpisodes, []);
+  }
+});

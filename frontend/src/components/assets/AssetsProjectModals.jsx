@@ -40,11 +40,12 @@ function ModalShell({ children, onClose, width, className = '' }) {
   );
 }
 
-function CloseButton({ onClick }) {
+function CloseButton({ onClick, disabled = false }) {
   return (
     <IconButton
       variant="link"
       size="small"
+      disabled={disabled}
       onClick={onClick}
       aria-label="关闭"
       icon={<CloseIcon />}
@@ -62,7 +63,9 @@ export function AssetsProjectRenameModal({
   title = '重命名',
   nameLabel = '项目名称',
   confirming = false,
+  confirmingText = '创建中...',
 }) {
+  const handleClose = () => { if (!confirming) onClose(); };
   const canConfirm = Boolean(value.trim());
   const isComposingRef = useRef(false);
 
@@ -72,16 +75,16 @@ export function AssetsProjectRenameModal({
     if (isComposing) return;
 
     if (event.key === 'Enter' && canConfirm && !confirming) onConfirm();
-    if (event.key === 'Escape') onClose();
+    if (event.key === 'Escape') handleClose();
   };
 
   return (
-    <ModalShell onClose={onClose} width="400px">
+    <ModalShell onClose={handleClose} width="400px">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', background: '#161616' }}>
         <span style={{ fontFamily: FONT_MEDIUM, fontWeight: 500, fontSize: '16px', lineHeight: '20px', color: '#FFFFFF' }}>
           {title}
         </span>
-        <CloseButton onClick={onClose} />
+        <CloseButton disabled={confirming} onClick={handleClose} />
       </div>
 
       <div style={{ padding: '8px 24px', background: '#161616' }}>
@@ -90,6 +93,7 @@ export function AssetsProjectRenameModal({
             {nameLabel}
           </span>
           <TextField
+            disabled={confirming}
             autoFocus
             value={value}
             onChange={(nextValue) => {
@@ -106,14 +110,14 @@ export function AssetsProjectRenameModal({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', padding: '16px 24px', background: '#161616' }}>
-        <Button variant="secondary" size="large" onClick={onClose}>取消</Button>
+        <Button variant="secondary" size="large" disabled={confirming} onClick={handleClose}>取消</Button>
         <Button
           variant="primary"
           size="large"
           disabled={!canConfirm || confirming}
           onClick={canConfirm && !confirming ? onConfirm : undefined}
         >
-          {confirming ? '创建中...' : '确认'}
+          {confirming ? confirmingText : '确认'}
         </Button>
       </div>
     </ModalShell>

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const source = readFileSync(new URL('../src/components/assets/AssetsProjectPanel.jsx', import.meta.url), 'utf8');
-const body = source.slice(source.indexOf('  const loadStoryboardPageCards ='), source.indexOf('\n  useEffect(() => {\n    apiGetProjects()'));
+const body = source.slice(source.indexOf('  const loadStoryboardPageCards ='), source.indexOf('\n  useEffect(() => {\n    let current = true;'));
 function fixture(total, media = async (_project, id) => [{ id, url: 'image', media_type: 'image' }]) {
   const pageMeta = {}, generation = { current: 0 }, requests = [];
   let assets = {};

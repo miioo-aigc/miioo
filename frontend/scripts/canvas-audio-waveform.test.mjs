@@ -24,3 +24,16 @@ test('柱条读取当前播放片段，不是固定图案；跳转后同步，�
   assert.ok(getAudioBars(levels, 1.5).some((height) => height > 3));
   assert.ok(getAudioBars(levels, 2).every((height) => height === 3));
 });
+
+test('增加柱数后全部柱条读取同一时间窗口，静音及结束均回落', () => {
+  const samples = new Float32Array(2000);
+  samples.fill(0.5, 1000);
+  const analysis = buildAudioLevels(buffer([samples]));
+  const original = getAudioBars(analysis, 1.1, 51);
+  const expanded = getAudioBars(analysis, 1.1, 151);
+  assert.equal(expanded.length, 151);
+  original.forEach((height, index) => assert.equal(expanded[index * 3], height));
+  assert.ok(getAudioBars(analysis, 1.5, 151).every((height) => height > 3));
+  assert.ok(getAudioBars(null, 1.5, 151).every((height) => height === 3));
+  assert.ok(getAudioBars(analysis, 2, 151).every((height) => height === 3));
+});

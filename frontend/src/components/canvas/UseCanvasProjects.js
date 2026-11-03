@@ -3,6 +3,7 @@ import { apiCreateCanvasProject, apiGetCanvasProjectEntry, apiListCanvasProjects
 import { getAuthSessionGeneration, getToken } from '../../api/request';
 import { normalizeProjectList } from '../../utils/projectAdapter';
 import { showGlobalToast } from '../../stores/toastStore';
+import { apiCopyProject, apiDeleteProject, apiUpdateProject } from '../../api/project';
 
 // 只编排正式项目入口；路由和登录弹窗仍由页面管理。
 export function useCanvasProjects({ active, context, isLoggedIn, onLogin, onOpen }) {
@@ -62,5 +63,33 @@ export function useCanvasProjects({ active, context, isLoggedIn, onLogin, onOpen
     }
   });
   const open = (project) => run((isCurrent) => apiGetCanvasProjectEntry(project.id, { isCurrent }));
-  return { items, loading, error, reload, create, open };
+  const rename = async (projectId, name) => {
+    const owner = scope.current;
+    const isCurrent = () => owner && owner === scope.current && owner.session === getAuthSessionGeneration();
+    if (!isLoggedIn || !getToken() || !isCurrent()) throw new Error('请重新登录后修改项目名称');
+    const updated = await apiUpdateProject(projectId, { name });
+    if (!isCurrent()) return;
+    if (String(updated?.id) !== String(projectId) || typeof updated?.name !== 'string') throw new Error('保存结果未确认，请刷新核对');
+    version.current++;
+    setLoading(false);
+    setItems(previous => previous.map(project => project.id === projectId ? { ...project, name: updated.name } : project));
+  };
+  const copy = (project) => run(async (isCurrent) => {
+    const created = await apiCopyProject(project.id);
+    if (!isCurrent()) return null;
+    if (!created?.id) throw new Error('复制结果未确认，请刷新项目列表核对');
+    version.current++;
+    setLoading(false);
+    setItems((previous) => [{ ...created, cover: created.cover ?? created.cover_url }, ...previous]);
+    return null;
+  });
+  const remove = (projectId) => run(async (isCurrent) => {
+    await apiDeleteProject(projectId);
+    if (!isCurrent()) return null;
+    version.current++;
+    setLoading(false);
+    setItems((previous) => previous.filter((project) => project.id !== projectId));
+    return null;
+  });
+  return { items, loading, error, reload, create, open, rename, copy, remove };
 }

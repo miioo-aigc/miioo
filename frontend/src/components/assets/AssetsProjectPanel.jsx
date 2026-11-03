@@ -6,17 +6,19 @@
  * 通过显式 props 组合展示组件，不把页面入口或目录入口作为隐式依赖。
  *
  * ─── 状态与数据流 ───────────────────────────────────
- *   项目、当前分类、资产数据、批量选择和弹窗状态                  L184
- *   分镜页组装 L291；首屏加载 L365；追加分页 L411；归属过滤 L526
+ *   项目、当前分类、资产数据、批量选择和弹窗状态                  L187
+ *   分镜页组装 L293；首屏加载 L367；追加分页 L413；归属过滤 L533
  *
  * ─── 业务动作 ───────────────────────────────────────
- *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L530
+ *   单项/批量删除、项目重命名/删除/复制/下载、音频详情补全             L537
  *   下载动作统一启动全局下载 Toast；有流式总长度时展示环形进度
  *
  * ─── 页面组合 ───────────────────────────────────────
- *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L763
+ *   项目列表、分类工具栏、AssetsProjectGrid、分页滚动层和弹窗       L770
  *
  * ─── 更新记录 ───────────────────────────────────────
+ *   2026-11-03  项目列表分页排除画布，保留历史空类型；校验选中归属及迟到请求。
+ *   2026-11-03  删除左侧项目列表标题及占位，保留侧栏内边距。
  *   2026-10-15  保留初始项目及分类、目标可见性校验；合并请求代际保护并校正索引
  *   2026-10-12  首屏与分页增加请求代际，项目切换清理旧列表及在途归属。
  *              2026-10-14 补充加载/失败重试与候选失败保留旧卡片；暂保留分页、删除与详情副作用集中编排，后续复核项目列表及账号边界。
@@ -41,7 +43,7 @@ import { createPortal } from 'react-dom';
 import { apiGetProjectAssetsPage, groupByCategory, calcProjectAssetsLimit, apiGetAssetDetail, apiRemoveAssets, apiUpdateAsset, apiDownloadAsset } from '../../api/assets';
 import { apiGetCreationAudio } from '../../api/creation';
 import { apiGetSubjects, apiGetSubjectDetail, apiGetEpisodes } from '../../api/subject';
-import { apiGetProjects, apiDeleteProject, apiUpdateProject, apiCopyProject, apiDownloadProjectAssets } from '../../api/project';
+import { apiGetWorkflowProjects, apiDeleteProject, apiUpdateProject, apiCopyProject, apiDownloadProjectAssets } from '../../api/project';
 import { apiGetStoryboards, apiListStoryboardMediaCandidates, apiCreateStoryboardMediaCandidate, apiDownloadStoryboardMediaCandidate } from '../../api/storyboard';
 import { buildStoryboardCandidatePayload } from '../../utils/storyboardCandidateAdapter';
 import { invalidate } from '../../utils/cache';
@@ -457,15 +459,20 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
   }, [applySubjectMeta, completeMorePage, failMorePage, loadStoryboardPageCards, markPageLoading, pageMeta]);
 
   useEffect(() => {
-    apiGetProjects().then((list) => {
-      const sortedProjects = Array.isArray(list)
-        ? [...list].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-        : [];
+    let current = true;
+    apiGetWorkflowProjects({ isCurrent: () => current }).then((sortedProjects) => {
+      if (!current) return;
       setProjects(sortedProjects);
       const target = sortedProjects.find((project) => String(project.id) === String(initialProjectId));
-      setActiveProject((prev) => prev ?? target?.id ?? (initialProjectId ? null : sortedProjects[0]?.id) ?? null);
-      if (initialProjectId && !target) showGlobalToast('目标项目不存在或无访问权限', 'error');
+      setActiveProject((prev) => {
+        if (initialProjectId) return target?.id ?? null;
+        return sortedProjects.find((project) => String(project.id) === String(prev))?.id ?? sortedProjects[0]?.id ?? null;
+      });
+      if (initialProjectId && !target) showGlobalToast('目标项目不属于工作流项目、已不存在或无访问权限', 'error');
+    }).catch((error) => {
+      if (current) showGlobalToast(error.message || '获取项目列表失败', 'error');
     });
+    return () => { current = false; };
   }, [initialProjectId]);
 
   // 项目或 tab 切换时加载首屏
@@ -775,13 +782,6 @@ export default function AssetsProjectPanel({ initialProjectId = null, initialCat
         borderRight: '1px solid #FFFFFF14',
         overflowY: 'auto',
       }}>
-        <div style={{
-          padding: '4px 8px 8px 8px',
-          fontFamily: FONT,
-          fontSize: '14px',
-          color: '#FFFFFF99',
-          letterSpacing: '0.02em',
-        }}>项目列表</div>
         {projects.map((p) => (
           <AssetsProjectListItem
             key={p.id}

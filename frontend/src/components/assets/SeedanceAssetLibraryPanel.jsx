@@ -12,6 +12,7 @@
  *
  *   2026-10-29 新建入口复用 CreateCard，尺寸与业务行为不变。
  * ─── 更新记录 ───────────────────────────────────────
+ *   2026-11-03  真人/虚拟人像素材组列表读取期间使用品牌青色 DotsLoading，并保持内容区居中。
  *   2026-07-24  按 Paper 设计稿新增真人人像素材库 UI，抽离文件夹卡片
  *   2026-07-24  按 Paper 设计稿校准「录入新的真人」卡片的渐变、描边和文字颜色
  *   2026-07-24  统一录入卡片和文件夹卡片的 270×180 基准比例及宽度边界
@@ -58,6 +59,7 @@ import AssetPickerModal from '../AssetPickerModal';
 import { apiDownloadAsset } from '../../api/assets';
 import { authFetch } from '../../api/request';
 import { normalizeImageUrl } from '../../utils/imageUrl';
+import DotsLoading from '../DotsLoading';
 
 const SUB_TABS = [
   { value: 'real', label: '真人人像' },
@@ -141,6 +143,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
   const [activeTab, setActiveTab] = useState(initialTab);
   const [folders, setFolders] = useState([]);
   const [virtualFolders, setVirtualFolders] = useState([]);
+  const [foldersLoading, setFoldersLoading] = useState(true);
   const [liveMaterialModalOpen, setLiveMaterialModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null);
@@ -201,6 +204,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
   }, []);
 
   const refreshFolders = useCallback(async () => {
+    setFoldersLoading(true);
     try {
       const groups = await apiListLiveMaterialGroups();
       const realGroups = groups.filter((group) => String(group.group_type || '').toUpperCase() !== 'AIGC');
@@ -213,6 +217,8 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
       setVirtualFolders(nextVirtualFolders);
     } catch (error) {
       console.warn('[SeedanceAssetLibraryPanel] 刷新素材库失败', error);
+    } finally {
+      setFoldersLoading(false);
     }
   }, [mapGroupToFolder]);
 
@@ -620,7 +626,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
           />
         </>
       ) : activeTab === 'real' ? (
-        <AssetFolderGrid className="min-h-0 flex-1 content-start overflow-y-auto px-[24px] py-[6px]">
+        foldersLoading ? <div role="status" aria-label="真人人像列表加载中" className="flex min-h-0 flex-1 items-center justify-center"><DotsLoading size={5} color="#2DC3E1" gap={4} /></div> : <AssetFolderGrid className="min-h-0 flex-1 content-start overflow-y-auto px-[24px] py-[6px]">
           <CreateCard label="录入新的真人" onClick={handleOpenLiveMaterialModal} className="max-w-[270px]" />
           {folders.map((folder) => (
             <SeedanceFolderCard
@@ -633,7 +639,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
           ))}
         </AssetFolderGrid>
       ) : (
-        <AssetFolderGrid className="min-h-0 flex-1 content-start overflow-y-auto px-[24px] py-[6px]">
+        foldersLoading ? <div role="status" aria-label="虚拟人像列表加载中" className="flex min-h-0 flex-1 items-center justify-center"><DotsLoading size={5} color="#2DC3E1" gap={4} /></div> : <AssetFolderGrid className="min-h-0 flex-1 content-start overflow-y-auto px-[24px] py-[6px]">
           <AddVirtualGroupCard onClick={handleOpenCreateVirtualGroup} />
           {virtualFolders.map((folder) => (
             <SeedanceFolderCard

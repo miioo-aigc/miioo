@@ -31,6 +31,7 @@
  *   2026-08-26  视频提示词上限调整为 5000 字。
  *   2026-08-27  @素材菜单最多展示 3 个条目，键盘选中项自动滚入菜单可视区域。
  *   2026-09-21  视频提示词输入上限由 5000 调整为 3000 字，与图片一致。
+ *   2026-11-03  高级配音情绪句末输入（含空格）移到情绪标签外；情绪句中间输入仍保留原情绪。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -1001,7 +1002,15 @@ export function useCreationPromptInteraction({
   }, [bindEmotionElement, dubbingAdvancedEnabled, genType, regularPromptCharacterLimit, shouldLimitRegularPrompt, showCharacterLimitToast]);
 
   const handleBeforeInput = useCallback((event) => {
-    const inputType = event.nativeEvent.inputType;
+    const nativeEvent = event.nativeEvent || {};
+    // React 在支持 textInput/composition polyfill 的浏览器里，会把原生
+    // textInput 转成 onBeforeInput；此时 inputType 不在 nativeEvent 上，
+    // 字符位于合成事件的 data 字段。统一取值，避免直接提前 return。
+    const eventData = typeof nativeEvent.data === 'string'
+      ? nativeEvent.data
+      : (typeof event.data === 'string' ? event.data : '');
+    const inputType = nativeEvent.inputType || event.inputType
+      || (eventData ? 'insertText' : '');
     const insertsText = inputType === 'insertText' || inputType === 'insertCompositionText';
     const insertsLineBreak = inputType === 'insertLineBreak' || inputType === 'insertParagraph';
     if (!insertsText && !insertsLineBreak) return;
@@ -1010,7 +1019,7 @@ export function useCreationPromptInteraction({
     const range = selection.getRangeAt(0);
     const editor = editorRef.current;
     if (!editor || !editor.contains(range.commonAncestorContainer)) return;
-    const insertedText = insertsLineBreak ? '\n' : (event.nativeEvent.data || '');
+    const insertedText = insertsLineBreak ? '\n' : eventData;
     if (shouldLimitRegularPrompt) {
       const currentLength = getPlainTextFromNode(editor).length;
       const selectedLength = getSelectedPlainText(range).length;
@@ -1031,28 +1040,72 @@ export function useCreationPromptInteraction({
       showCharacterLimitToast();
       return;
     }
-    if (event.nativeEvent.isComposing || inputType !== 'insertText' || !selection.isCollapsed || !event.nativeEvent.data) return;
-    const textElement = range.startContainer.nodeType === Node.TEXT_NODE
+    // 原生 insertCompositionText 仍交给浏览器完成组合过程；React 的
+    // compositionend/textInput 兜底事件会带最终 data，再执行句末切出。
+    if (nativeEvent.isComposing || inputType !== 'insertText' || !selection.isCollapsed || !eventData) return;
+    let textElement = range.startContainer.nodeType === Node.TEXT_NODE
       ? range.startContainer.parentElement?.closest?.('[data-emotion-text]')
       : range.startContainer.closest?.('[data-emotion-text]');
-    const emotionElement = textElement?.closest('[data-emotion]');
+    let emotionElement = textElement?.closest('[data-emotion]');
+    // Chromium 在情绪正文末尾有时把 beforeinput 的光标报告为外层编辑器
+    // 的“情绪标签之后”位置，此时从当前偏移量反查前一个情绪节点。
+    let outerCaret = false;
+    if (!emotionElement) {
+      const offset = range.startOffset;
+      const previous = range.startContainer.nodeType === Node.TEXT_NODE && offset === 0
+        ? range.startContainer.previousSibling
+        : range.startContainer.nodeType === Node.ELEMENT_NODE
+          ? range.startContainer.childNodes[offset - 1]
+          : null;
+      if (previous?.matches?.('[data-emotion]')) {
+        emotionElement = previous;
+        textElement = getEmotionTextElement(previous);
+        outerCaret = true;
+      }
+    }
     if (!textElement || !emotionElement) return;
 
-    const boundaryRange = document.createRange();
-    boundaryRange.selectNodeContents(textElement);
-    const atStart = range.compareBoundaryPoints(Range.START_TO_START, boundaryRange) === 0;
-    const atEnd = range.compareBoundaryPoints(Range.START_TO_END, boundaryRange) === 0;
+    // 不依赖 Range.compareBoundaryPoints：浏览器在 contentEditable 的文本节点
+    // 边界处可能返回不同的容器，导致句末光标未被识别。用 Range.toString()
+    // 计算光标前的正文长度，句末（包括嵌套文本节点的末尾）统一视为标签外。
+    const caretInTextElement = outerCaret || range.startContainer === textElement
+      || textElement.contains(range.startContainer);
+    if (!caretInTextElement) return;
+    let beforeLength;
+    let remainingLength;
+    try {
+      if (outerCaret) {
+        const contentRange = document.createRange();
+        contentRange.selectNodeContents(textElement);
+        beforeLength = contentRange.toString().length;
+        remainingLength = 0;
+      } else {
+        const beforeCaretRange = document.createRange();
+        beforeCaretRange.selectNodeContents(textElement);
+        beforeCaretRange.setEnd(range.startContainer, range.startOffset);
+        beforeLength = beforeCaretRange.toString().length;
+        const afterCaretRange = document.createRange();
+        afterCaretRange.selectNodeContents(textElement);
+        afterCaretRange.setStart(range.startContainer, range.startOffset);
+        remainingLength = afterCaretRange.toString().length;
+      }
+    } catch {
+      return;
+    }
+    const atStart = beforeLength === 0;
+    // remainingLength 为 0 才是情绪正文真实末尾；不使用 trim，确保末尾空格也能切出标签。
+    const atEnd = remainingLength === 0;
     if (!atStart && !atEnd) return;
 
     event.preventDefault();
-    const textNode = document.createTextNode(event.nativeEvent.data);
+    const textNode = document.createTextNode(eventData);
     emotionElement.parentNode?.insertBefore(textNode, atStart ? emotionElement : emotionElement.nextSibling);
     const nextRange = document.createRange();
     nextRange.setStart(textNode, textNode.textContent.length);
     nextRange.collapse(true);
     selection.removeAllRanges();
     selection.addRange(nextRange);
-    editorRef.current?.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: event.nativeEvent.data }));
+    editorRef.current?.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: eventData }));
   }, [dubbingAdvancedEnabled, genType, regularPromptCharacterLimit, shouldLimitRegularPrompt, showCharacterLimitToast]);
 
   const handleEditorBlur = useCallback(() => {

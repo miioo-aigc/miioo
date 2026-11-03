@@ -3,7 +3,28 @@
  *
  * IndexedDB 支持结构化克隆，可临时保存本地上传的 File/Blob、资产引用和参数，
  * 避免把大文件或 Blob URL 写入 sessionStorage/localStorage。
+ * 2026-11-03 配音模式与效果随草稿恢复，兼容未记录模式的旧富文本草稿。
  */
+
+import { DEFAULT_DUBBING_EFFECTS } from './CreationDubbingEffectsDefaults.js';
+
+export function resolveDubbingDraftState(draft) {
+  const advancedEnabled = typeof draft?.dubbingAdvancedEnabled === 'boolean'
+    ? draft.dubbingAdvancedEnabled
+    : /<[^>]+\sdata-(?:emotion|dubbing-inline-tag)(?:\s|=|>)/i.test(draft?.promptHTML ?? '');
+  return {
+    advancedEnabled,
+    effects: {
+      toneValues: {
+        ...DEFAULT_DUBBING_EFFECTS.toneValues,
+        ...(advancedEnabled ? draft?.dubbingEffects?.toneValues : {}),
+      },
+      selectedEffects: advancedEnabled && Array.isArray(draft?.dubbingEffects?.selectedEffects)
+        ? [...draft.dubbingEffects.selectedEffects]
+        : [],
+    },
+  };
+}
 
 const DATABASE_NAME = 'miioo-creation-drafts';
 const STORE_NAME = 'drafts';

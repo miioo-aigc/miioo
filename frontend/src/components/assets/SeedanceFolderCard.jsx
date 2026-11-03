@@ -2,6 +2,7 @@ import AsyncImagePreview from '../AsyncImagePreview';
 import RecoverableVideoPreview from '../creation/RecoverableVideoPreview';
 /**
  * Seedance 素材库文件夹卡片。
+ * 2026-11-03：操作按钮即时显示功能提示，默认文案为重命名；删除图标继承按钮颜色以响应红色悬停。
  * 按 Paper 设计稿复刻文件夹层级，并使用路径插值实现挡板形状动画。
  * 2026-11-02：支持外部拖拽悬停状态，复用挡板与预览动画。
  * 2026-11-02：画布文件夹复用右下角操作区，按需显示移动并支持禁用。
@@ -10,7 +11,7 @@ import RecoverableVideoPreview from '../creation/RecoverableVideoPreview';
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { normalizeImageUrl } from '../../utils/imageUrl';
-import { DeleteIcon } from '../ui';
+import { DeleteIcon, Tooltip } from '../ui';
 import { FileText, Music2, Move } from 'lucide-react';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -128,7 +129,7 @@ function getPreviewTransform(index, previewCount, isHovered) {
   return `translate(${translateX}px, ${translateY}px) rotate(${rotate}deg)`;
 }
 
-export default function SeedanceFolderCard({ name, count = 0, images = [], onOpen, onEdit, onMove, onDelete, disabled = false, editLabel = '编辑', presentationOnly = false, dragHovered = false }) {
+export default function SeedanceFolderCard({ name, count = 0, images = [], onOpen, onEdit, onMove, onDelete, disabled = false, editLabel = '重命名', presentationOnly = false, dragHovered = false }) {
   const previews = images.slice(0, 2);
   const canManage = Boolean(onEdit || onMove || onDelete);
   const actionWidth = [onEdit, onMove, onDelete].filter(Boolean).length * 30;
@@ -192,9 +193,9 @@ export default function SeedanceFolderCard({ name, count = 0, images = [], onOpe
           <span className={`shrink-0 text-[12px] leading-[16px] text-white/50${canManage ? ' transition-opacity group-hover:opacity-0 group-focus-within:opacity-0' : ''}`}>{count}</span>
           {canManage ? (
             <div className="absolute right-[0px] flex items-center gap-[6px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-              {onEdit && <button type="button" disabled={disabled} aria-label={editLabel + name} title={editLabel} onClick={(event) => { event.stopPropagation(); onEdit(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-[0px] text-white transition-colors hover:text-text-accent disabled:cursor-not-allowed disabled:opacity-50"><EditIcon /></button>}
-              {onMove && <button type="button" disabled={disabled} aria-label={"移动" + name} title="移动到" onClick={(event) => { event.stopPropagation(); onMove(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-[0px] text-white transition-colors hover:text-text-accent disabled:cursor-not-allowed disabled:opacity-50"><Move size={16} /></button>}
-              {onDelete && <button type="button" disabled={disabled} aria-label={"删除" + name} title="删除" onClick={(event) => { event.stopPropagation(); onDelete(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-[0px] text-white transition-colors hover:text-text-danger disabled:cursor-not-allowed disabled:opacity-50"><DeleteIcon /></button>}
+              {onEdit && <Tooltip label={editLabel} delay={0}><button type="button" disabled={disabled} aria-label={editLabel + name} onClick={(event) => { event.stopPropagation(); onEdit(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-[0px] text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"><EditIcon /></button></Tooltip>}
+              {onMove && <Tooltip label="移动到" delay={0}><button type="button" disabled={disabled} aria-label={"移动" + name} onClick={(event) => { event.stopPropagation(); onMove(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-[0px] text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"><Move size={16} /></button></Tooltip>}
+              {onDelete && <Tooltip label="删除" delay={0}><button type="button" disabled={disabled} aria-label={"删除" + name} onClick={(event) => { event.stopPropagation(); onDelete(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-[0px] text-white transition-colors hover:text-text-danger disabled:cursor-not-allowed disabled:opacity-50"><DeleteIcon color="currentColor" /></button></Tooltip>}
             </div>
           ) : null}
         </div>

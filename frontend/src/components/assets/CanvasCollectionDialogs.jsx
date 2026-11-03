@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Button, TextField } from '../ui';
 import { CanvasLibraryDialog, CanvasLibraryDeleteDialog } from './CanvasLibraryDialogs';
 
-function RenameDialog({ item, actions }) {
+export function RenameDialog({ item, actions, title = '重命名' }) {
   const [name, setName] = useState(item.name);
-  return <CanvasLibraryDialog title="重命名" busy={actions.busy} onClose={actions.close} footer={<><Button variant="secondary" disabled={actions.busy} onClick={actions.close}>取消</Button><Button disabled={actions.busy || !name.trim()} loading={actions.busy} onClick={() => actions.confirm(name)}>确认</Button></>}>
+  return <CanvasLibraryDialog title={title} busy={actions.busy} onClose={actions.close} footer={<><Button variant="secondary" disabled={actions.busy} onClick={actions.close}>取消</Button><Button disabled={actions.busy || !name.trim()} loading={actions.busy} onClick={() => actions.confirm(name)}>确认</Button></>}>
     <TextField label="名称" autoFocus value={name} disabled={actions.busy} onChange={(event) => setName(typeof event === 'string' ? event : event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing && name.trim() && !actions.busy) actions.confirm(name); }} />
   </CanvasLibraryDialog>;
 }

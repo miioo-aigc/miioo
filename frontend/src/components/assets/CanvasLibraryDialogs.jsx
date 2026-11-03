@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { Folder, ChevronRight, ArrowLeft, FolderOpen } from 'lucide-react';
 import { Button } from '../ui';
+import ConfirmDialog from '../ConfirmDialog';
 import Radio from '../ui/Radio';
 import ModalCloseButton from '../ui/ModalCloseButton';
 import useCanvasLibraryBrowser from './UseCanvasLibraryBrowser';
@@ -71,14 +72,14 @@ export function CanvasLibraryDestinationDialog({ collection, selection, sourceFo
 
 export function CanvasLibraryDeleteDialog({ preview, collection, busy, onClose, onConfirm }) {
   const impact = preview.impact;
-  return <CanvasLibraryDialog title="确认删除" busy={busy} onClose={onClose} footer={<>
-    <Button variant="secondary" disabled={busy} onClick={onClose}>取消</Button><Button variant="danger" loading={busy} onClick={onConfirm}>确认删除</Button>
-  </>}>
-    {collection && <p className="mb-[12px]">删除资产集合不会删除对应的画布项目。</p>}
-    <p>将删除 {impact.folder_count} 个文件夹、{impact.native_asset_count} 个原生素材，并移除 {impact.reference_only_count} 条引用收录。</p>
-    {impact.native_asset_count > 0 && <p className="mt-[12px] text-text-danger">原生素材的所有收录及画布引用将失效。节点与连线保留，只清空媒体内容。</p>}
-    {impact.reference_only_count > 0 && <p className="mt-[12px] text-text-secondary">仅移除引用收录时，不删除外部原件，也不清空画布节点的内容。</p>}
-    <p className="mt-[12px] text-text-secondary">影响 {impact.affected_project_count} 个项目、{impact.affected_canvas_count} 个画布、{impact.affected_node_count} 个节点。此操作没有前端恢复入口。</p>
-    {preview.affected_projects?.length > 0 && <p className="mt-[12px] break-words">涉及项目：{preview.affected_projects.map((item) => item.name).join('、')}{preview.next_projects_cursor ? '等' : ''}</p>}
-  </CanvasLibraryDialog>;
+  return <ConfirmDialog title="确认删除" busy={busy} manageFocus onCancel={onClose} onConfirm={onConfirm} confirmText="确认删除">
+    <div>
+      {collection && <p className="mb-[12px]">删除资产集合不会删除对应的画布项目。</p>}
+      <p>将删除 {impact.folder_count} 个文件夹、{impact.native_asset_count} 个原生素材，并移除 {impact.reference_only_count} 条引用收录。</p>
+      {impact.native_asset_count > 0 && <p className="mt-[12px] text-text-danger">原生素材的所有收录及画布引用将失效。节点与连线保留，只清空媒体内容。</p>}
+      {impact.reference_only_count > 0 && <p className="mt-[12px] text-text-secondary">仅移除引用收录时，不删除外部原件，也不清空画布节点的内容。</p>}
+      <p className="mt-[12px] text-text-secondary">影响 {impact.affected_project_count} 个项目、{impact.affected_canvas_count} 个画布、{impact.affected_node_count} 个节点。此操作没有前端恢复入口。</p>
+      {preview.affected_projects?.length > 0 && <p className="mt-[12px] break-words">涉及项目：{preview.affected_projects.map((item) => item.name).join('、')}{preview.next_projects_cursor ? '等' : ''}</p>}
+    </div>
+  </ConfirmDialog>;
 }

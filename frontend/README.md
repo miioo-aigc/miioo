@@ -23,6 +23,8 @@ npm run check:dev-cold-start
 
 ## 文档入口
 
+- [高级配音刷新恢复修复](docs/creation-dubbing-draft-restore-fix-2026-11-03.md) — 模式与草稿一致恢复、旧草稿兼容及用户验收结果
+- [高级配音情绪句末输入修复](docs/creation-dubbing-emotion-input-fix-2026-11-03.md) — 中文输入法有效修复机制与用户验收结果
 - [2026-11-02 工作进度](docs/work-progress-2026-11-02.md) — 画布资产库、验收结果和其他会话进度
 
 - [PROJECT.md](./PROJECT.md) — 项目背景、技术栈、开发规范、Git 流程、完整进度

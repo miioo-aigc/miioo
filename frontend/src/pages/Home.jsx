@@ -1,6 +1,6 @@
 /**
- * 2026-10-30 分集剪辑进度以服务器 editing/edited 为准；页面保留会话、请求及跳转编排。
- * 当前任务定位：项目入口 L268；项目详情读取 L589；导航解锁聚合 L1112；分集剪辑推进 L1120。
+ * 2026-11-03 剪辑只依赖当前项目分集读取成功，其他请求错误不再锁住入口；页面保留请求编排。
+ * 当前任务定位：项目入口 L268；项目详情读取 L591；导航解锁聚合 L1119；分集剪辑推进 L1127。
  * @file Home.jsx
  *   当前恢复/认证入口：L919（2026-10-30）。
  *   2026-10-30 登录启动复用当前凭证，取消开页时两次主动刷新；过期由请求层处理。
@@ -278,9 +278,11 @@ export default function Home({ onGoToAdmin }) {
   const scriptEditVersion = useRef(0);
   const episodeEditPending = useRef(new Set());
   const [projectRead, setProjectRead] = useState(null);
+  const [episodesReadProjectId, setEpisodesReadProjectId] = useState(null);
   const cancelProjectRead = useCallback(() => {
     projectDetailVersion.current++;
     projectDetailOwner.current = null;
+    setEpisodesReadProjectId(null);
     setProjectRead(null);
     setIsLoadingProject(false);
   }, []);
@@ -598,6 +600,7 @@ export default function Home({ onGoToAdmin }) {
     const sameProject = projectDetailOwner.current?.id === projectId && projectDetailOwner.current?.session === session;
     projectDetailOwner.current = { id: projectId, session };
     setProjectRead({ projectId, requestedStep, loading: true, error: '' });
+    setEpisodesReadProjectId(null);
     setIsLoadingProject(!sameProject);
     if (!sameProject) setSubjectPageMeta({
       chars: { nextOffset: null, hasMore: false, loading: true, rawList: [], error: false },
@@ -735,7 +738,10 @@ export default function Home({ onGoToAdmin }) {
       setScriptPhase(scriptContent ? 'view' : 'initial');
       setScriptHasStarted(!!scriptContent);
       }
-      if (episodesData && scriptUnchanged) setScriptEpisodes(episodesData);
+      if (episodesData && scriptUnchanged) {
+        setScriptEpisodes(episodesData);
+        setEpisodesReadProjectId(projectId);
+      }
 
       // 某类主体加载失败时：不覆盖已有卡片（避免误清空），仅在 meta 上标记 error 供 UI 提示重试。
       // 加载成功时才写入最新数据。
@@ -1109,7 +1115,8 @@ export default function Home({ onGoToAdmin }) {
     });
   };
 
-  const effectiveUnlockedSteps = useMemo(() => resolveEpisodeSteps(unlockedSteps, projectRead?.loading || projectRead?.error ? [] : scriptEpisodes), [unlockedSteps, scriptEpisodes, projectRead]);
+  const editingEpisodes = episodesReadProjectId && episodesReadProjectId === activeProject?.id ? scriptEpisodes : [];
+  const effectiveUnlockedSteps = resolveEpisodeSteps(unlockedSteps, editingEpisodes);
   const displayEpisodeStatuses = useMemo(() => buildEpisodeStatusMap({
     episode_progress: scriptEpisodes.map((episode, index) => ({
       episode_id: episode.id,
@@ -1968,6 +1975,9 @@ export default function Home({ onGoToAdmin }) {
                 onRetry={canvasProjects.reload}
                 onNewProject={handleCreateCanvas}
                 onOpenProject={canvasProjects.open}
+                onRenameProject={canvasProjects.rename}
+                onCopyProject={canvasProjects.copy}
+                onDeleteProject={canvasProjects.remove}
               />
             )}
             {activeKey === 'project' && projectRead && (
@@ -1996,7 +2006,7 @@ export default function Home({ onGoToAdmin }) {
                   loadProjectDetails(p.id);
                 }}
                 onRenameProject={(projectId, newName) => {
-                  apiUpdateProject(projectId, { name: newName }).then(() => {
+                  return apiUpdateProject(projectId, { name: newName }).then(() => {
                     setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, name: newName } : p)));
                   });
                 }}
@@ -2187,7 +2197,7 @@ export default function Home({ onGoToAdmin }) {
                 initialEpisodeId={editEntry?.projectId === activeProject.id ? editEntry.episodeId : null}
                 projectId={activeProject.id}
                 projectName={activeProject.name}
-                episodes={projectRead?.loading || projectRead?.error ? [] : scriptEpisodes}
+                episodes={editingEpisodes}
                 onStepChange={setActiveStep}
                 showToast={showToast}
               />

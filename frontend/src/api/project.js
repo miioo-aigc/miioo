@@ -37,6 +37,24 @@ export async function apiGetProjects({ search, limit, offset } = {}) {
   );
 }
 
+// 与首页一致：排除画布，保留未填写类型的历史工作流项目。
+// 接口仅支持类型精确匹配，不能用 project_type=video 替代此兼容查询。
+export async function apiGetWorkflowProjects({ isCurrent = () => true } = {}) {
+  const projects = new Map();
+  const limit = 200;
+  for (let offset = 0; isCurrent(); offset += limit) {
+    const page = await apiGetProjects({ limit, offset });
+    if (!isCurrent()) return [];
+    if (!Array.isArray(page)) throw new Error('项目列表返回格式异常');
+    for (const project of page) {
+      if (project.project_type !== 'canvas') projects.set(String(project.id), project);
+    }
+    // 必须依据原始页长度判断结束，全是画布的一页也要继续查询。
+    if (page.length < limit) break;
+  }
+  return [...projects.values()].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+}
+
 export async function apiGetProject(projectId) {
   return cached(
     K.project(projectId),
@@ -103,16 +121,18 @@ export async function apiCopyProject(projectId) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
+  if (!res.ok) await throwResponseError(res, '复制项目失败');
   const created = await res.json();
   invalidate(K.projectsPrefix()); // 项目列表已变
   return created;
 }
 
 export async function apiDeleteProject(projectId) {
-  await authFetch(`${BASE}/api/projects/${projectId}`, {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });
+  if (!res.ok) await throwResponseError(res, '删除项目失败');
   // 清掉该项目所有相关缓存
   invalidate(K.project(projectId));
   invalidate(K.projectOverview(projectId));

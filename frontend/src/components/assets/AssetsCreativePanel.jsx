@@ -11,6 +11,7 @@
  *   通过全局 Store、创作 API 和显式 UI 组件组合，不读取页面入口闭包。
  *
  * ─── 更新记录 ───────────────────────────────────────
+ *   2026-11-02  配音批量选择框移至左上角，保留原内容间距。
  *   2026-10-26  列表读取保留原反馈；像素加载仅用于媒体预览占位框
  *   2026-10-23  释放严格模式重放的旧请求锁；列表读取限时30秒，失败可重试并隔离旧回执
  *   2026-10-12  订阅视频编辑任务占位，复用视频加载卡；完成后仍写入本地历史
@@ -674,6 +675,8 @@ function AccountCreativePanel({ isLoggedIn, ownerId }) {
                     audioId={card.backendId}
                     prompt={card.prompt || ''}
                     batchMode={batchMode}
+                    selectionCheckboxPosition="left"
+                    reserveSelectionSpace={false}
                     isSelected={batchMode && selected.has(card.id)}
                     onToggleSelect={() => toggleSelect(card.id)}
                     favorited={isStarred}

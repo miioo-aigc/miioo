@@ -25,7 +25,7 @@ export default function HomeNavigationRail({
   return (
     <div className="flex flex-col items-start gap-0 px-[16px] self-stretch w-auto" style={{ position: 'relative', zIndex: 10 }}>
       <div
-        className="flex flex-col items-start justify-center py-24 flex-1"
+        className="flex flex-col items-start justify-center py-[24px] flex-1"
         style={{
           paddingLeft: '0px',
           paddingRight: '0px',
@@ -36,7 +36,7 @@ export default function HomeNavigationRail({
       </div>
 
       <div
-        className="py-24"
+        className="py-[24px]"
         style={{
           paddingLeft: '0px',
           paddingRight: '0px',

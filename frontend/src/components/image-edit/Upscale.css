@@ -7,7 +7,7 @@
 .upscale-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; flex-shrink: 0; min-height: 72px; padding: 16px 24px; background: var(--color-surface-toolbar); }
 .upscale-current-quality { grid-column: 3; grid-row: 1; justify-self: end; color: var(--color-white-60); font-size: var(--font-size-14); line-height: 20px; }
 .upscale-quality-options { grid-column: 2; grid-row: 1; display: flex; align-items: center; gap: 8px; }
-.upscale-quality-option { min-width: 72px; height: 36px; padding: var(--spacing-8) 24px; border: 0; border-radius: 6px; color: var(--color-white-80); background: var(--color-white-5); font-size: var(--font-size-14); line-height: 20px; cursor: pointer; transition: color 120ms ease, background-color 120ms ease; }
+.upscale-quality-option { min-width: 72px; height: 36px; padding: 8px 24px; border: 0; border-radius: 6px; color: var(--color-white-80); background: var(--color-white-5); font-size: var(--font-size-14); line-height: 20px; cursor: pointer; transition: color 120ms ease, background-color 120ms ease; }
 .upscale-quality-option > span { color: inherit; }
 .upscale-quality-option:hover,
 .upscale-quality-option:active,

@@ -156,8 +156,8 @@ const STEP_TABS = [
 
 function WorkflowStepTabs({ activeStep, onStepChange, unlockedSteps }) {
   return (
-    <div className="flex items-center gap-24 absolute" style={{ left: 'calc(50% - 9px)', top: '50%', translate: '-50% -50%' }}>
-      <div className="flex items-center gap-24">
+    <div className="flex items-center gap-[24px] absolute" style={{ left: 'calc(50% - 9px)', top: '50%', translate: '-50% -50%' }}>
+      <div className="flex items-center gap-[24px]">
         {STEP_TABS.map((tab) => {
           const isActive = tab.key === activeStep;
           const activeIndex = STEP_TABS.findIndex(t => t.key === activeStep);

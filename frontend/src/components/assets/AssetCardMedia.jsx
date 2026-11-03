@@ -54,7 +54,7 @@ export default function AssetCardMedia({
         <div style={{
           position: 'absolute',
           top: '8px',
-          right: '8px',
+          left: '8px',
           width: '18px',
           height: '18px',
           borderRadius: '4px',

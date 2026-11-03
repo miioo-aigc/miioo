@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { canvasAssetLibrary as api } from '../../api/CanvasAssetLibrary';
 
-/** 素材来源与目标目录共用的集合范围浏览，不使用全库空目录查询。 */
-export default function useCanvasLibraryBrowser(collection = null) {
-  const [path, setPath] = useState(() => collection ? [{ ...collection, id: collection.root_folder_id, collection_id: collection.id }] : []);
+/** 移动目标目录浏览，限定在当前集合内。 */
+export default function useCanvasLibraryBrowser(collection) {
+  const [path, setPath] = useState(() => [{ ...collection, id: collection.root_folder_id, collection_id: collection.id }]);
   const [page, setPage] = useState({ items: [], next_cursor: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -13,9 +13,7 @@ export default function useCanvasLibraryBrowser(collection = null) {
   const current = path.at(-1);
   const parentId = current?.id;
   const collectionId = path[0]?.collection_id;
-  const read = useCallback((cursor, signal) => collectionId
-    ? api.list({ collection_id: collectionId, parent_id: parentId, ...(cursor ? { cursor } : {}) }, signal)
-    : api.collections(cursor ? { cursor } : {}, signal).then((result) => ({ ...result, items: result.items.map((item) => ({ ...item, type: 'collection', collection_id: item.id, id: item.root_folder_id })) })), [collectionId, parentId]);
+  const read = useCallback((cursor, signal) => api.list({ collection_id: collectionId, parent_id: parentId, ...(cursor ? { cursor } : {}) }, signal, { includeCounts: false }), [collectionId, parentId]);
   useEffect(() => {
     const version = ++generation.current;
     const controller = new AbortController();
@@ -44,6 +42,7 @@ export default function useCanvasLibraryBrowser(collection = null) {
     finally { moreLock.current = false; }
   };
   return { path, page, loading, error, parentId, more, retry: () => setRetry((value) => value + 1),
+    root: () => { if (path.length <= 1) return; generation.current++; setPath((old) => old.slice(0, 1)); },
     enter: (item) => { generation.current++; setPath((old) => [...old, item]); },
-    back: () => { generation.current++; setPath((old) => old.slice(0, -1)); } };
+    back: () => { generation.current++; setPath((old) => old.length > 1 ? old.slice(0, -1) : old); } };
 }

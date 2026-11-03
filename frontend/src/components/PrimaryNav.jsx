@@ -136,15 +136,15 @@ export default function PrimaryNav({ items, activeKey = null, onChange, variant 
 
   const hasOpenPopup = isCompact && items.some((item) => item.popup && item.key === activeKey);
   const containerCls = isCompact
-    ? 'primary-nav flex flex-col items-center gap-8 self-stretch'
+    ? 'primary-nav flex flex-col items-center gap-[8px] self-stretch'
     : isVertical
-    ? 'primary-nav flex flex-col items-center justify-center gap-16 flex-1'
-    : 'primary-nav flex flex-col items-start gap-12';
+    ? 'primary-nav flex flex-col items-center justify-center gap-[16px] flex-1'
+    : 'primary-nav flex flex-col items-start gap-[12px]';
   const itemCls = isCompact
     ? 'primary-nav-item flex items-center justify-center rounded-full size-[32px]'
     : isVertical
     ? 'primary-nav-item flex flex-col items-center justify-center gap-[2px] rounded-[16px] size-[48px]'
-    : 'primary-nav-item flex items-center gap-8 px-20 py-12 rounded-full';
+    : 'primary-nav-item flex items-center gap-[8px] px-[20px] py-[12px] rounded-full';
 
   return (
     <div ref={containerRef} className={containerCls} style={isVertical ? { '--primary-nav-indicator-radius': '16px' } : undefined}>

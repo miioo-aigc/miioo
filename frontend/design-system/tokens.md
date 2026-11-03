@@ -15,7 +15,7 @@
 - `text-timeline-audio-waveform`：`#0095C7`，A1 青蓝色波形。
 
 - **颜色类名**前缀：`bg-`、`text-`、`border-`，例如 `bg-surface-card`、`text-text-primary`
-- **间距类名**前缀：`p-`、`m-`、`gap-`，例如 `p-spacing-16`、`gap-spacing-8`
+- **间距类名**前缀：`p-`、`m-`、`gap-`，例如 `p-[16px]`、`gap-[8px]`
 - **圆角类名**前缀：`rounded-`，例如 `rounded-medium`
 - **字号类名**：`text-font-size-14`
 - **字重类名**：`font-font-weight-medium`
@@ -257,23 +257,7 @@ style={{ boxShadow: '0 0 16px var(--color-glow)' }}
 
 ## 二、间距 Spacing
 
-间距系统基于 4px 基准单位，用于 padding、margin、gap 等所有间距场景。
-
-| Token 类名 | 值 | 典型用途 |
-|---|---|---|
-| `spacing-2` | 2px | 极小间距，图标与文字间距 |
-| `spacing-4` | 4px | 紧凑间距，标签内边距 |
-| `spacing-6` | 6px | 小间距 |
-| `spacing-8` | 8px | 组件内部间距，按钮内边距垂直方向 |
-| `spacing-12` | 12px | 组件内部间距，按钮内边距水平方向 |
-| `spacing-16` | 16px | 常用间距，卡片内边距 |
-| `spacing-20` | 20px | 中等间距 |
-| `spacing-24` | 24px | 较大间距，区块间距 |
-| `spacing-32` | 32px | 大间距，版块间距 |
-| `spacing-44` | 44px | 特大间距 |
-| `spacing-64` | 64px | 页面级间距 |
-
----
+2026-11-02：移除自定义间距变量。间距与依赖间距系统的尺寸统一使用明确像素值，保持迁移前实际尺寸。
 
 ## 三、圆角 Border Radius
 
@@ -312,7 +296,7 @@ style={{ boxShadow: '0 0 16px var(--color-glow)' }}
 
 **卡片容器**
 ```
-bg-surface-card · border border-stroke-normal · rounded-medium · p-spacing-16
+bg-surface-card · border border-stroke-normal · rounded-medium · p-[16px]
 ```
 
 **主要文字段落**
@@ -327,20 +311,20 @@ text-text-secondary · text-font-size-12 · font-font-weight-regular
 
 **输入框默认态**
 ```
-bg-input-bg-normal · border border-input-border-normal · rounded-small · px-spacing-12 · py-spacing-8 · text-text-primary · text-font-size-14
+bg-input-bg-normal · border border-input-border-normal · rounded-small · px-[12px] · py-[8px] · text-text-primary · text-font-size-14
 ```
 
 **Accent 按钮默认态**
 ```
-bg-btn-accent-bg-normal · border border-btn-accent-border · rounded-medium · px-spacing-16 · py-spacing-8 · text-btn-accent-text · text-font-size-14 · font-font-weight-medium
+bg-btn-accent-bg-normal · border border-btn-accent-border · rounded-medium · px-[16px] · py-[8px] · text-btn-accent-text · text-font-size-14 · font-font-weight-medium
 ```
 
 **Primary 按钮默认态**
 ```
-bg-btn-primary-bg-normal · border border-btn-primary-border · rounded-medium · px-spacing-16 · py-spacing-8 · text-btn-primary-text · text-font-size-14 · font-font-weight-medium
+bg-btn-primary-bg-normal · border border-btn-primary-border · rounded-medium · px-[16px] · py-[8px] · text-btn-primary-text · text-font-size-14 · font-font-weight-medium
 ```
 
 **标签 Tag**
 ```
-bg-tag-bg-blue · border border-tag-border · rounded-small · px-spacing-8 · py-spacing-4 · text-tag-text-blue · text-font-size-12 · font-font-weight-medium
+bg-tag-bg-blue · border border-tag-border · rounded-small · px-[8px] · py-[4px] · text-tag-text-blue · text-font-size-12 · font-font-weight-medium
 ```

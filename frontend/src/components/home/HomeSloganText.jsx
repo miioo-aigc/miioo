@@ -11,14 +11,18 @@ function HomeSloganText() {
   const ref1 = useRef(null);
 
   useEffect(() => {
+    const animations = [];
     const refs = [ref0, ref1];
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion) return;
+
     refs.forEach((ref, lineIdx) => {
       const container = ref.current;
       if (!container) return;
       const units = Array.from(container.querySelectorAll('[data-char]'));
       const lineStart = lineIdx * SOFT_BLUR_LINE_DELAY;
       units.forEach((span, i) => {
-        span.animate(
+        const animation = span.animate(
           [
             { opacity: 0, transform: 'translateY(16px)', filter: 'blur(12px)' },
             { opacity: 1, transform: 'translateY(0px)',  filter: 'blur(0px)'  },
@@ -27,16 +31,18 @@ function HomeSloganText() {
             duration: SOFT_BLUR_DURATION,
             delay: lineStart + i * SOFT_BLUR_STAGGER,
             easing: SOFT_BLUR_EASING,
-            fill: 'both',
+            fill: 'backwards',
           }
         );
+        animations.push(animation);
+        animation.finished.then(() => animation.cancel()).catch(() => {});
       });
     });
+    return () => animations.forEach((animation) => animation.cancel());
   }, []);
 
   const outerCharStyle = {
     display: 'inline-block',
-    willChange: 'transform, opacity, filter',
   };
 
   const lineStyles = [

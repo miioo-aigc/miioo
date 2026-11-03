@@ -321,7 +321,7 @@ export default function InputShowcase() {
         </Section>
 
         {/* 2. With inline button */}
-        <Section title="内嵌按钮 Inline Button" desc="右侧内嵌 Secondary 小按钮（h-6）">
+        <Section title="内嵌按钮 Inline Button" desc="右侧内嵌 Secondary 小按钮（现有高度 6px）">
           <Row>
             <Col>
               <Input

@@ -1,14 +1,14 @@
 /**
  * @file ProjectList.jsx
- * @structure-index：2026-10-27
+ * @structure-index：2026-11-02
  * 页面职责：项目筛选、卡片操作与弹窗编排；新建入口复用 CreateCard。
- * FONT L32
- * 图标组件 L37
- * MoreMenu L84
- * RenameModal L101
- * NewProjectCard L232
- * ProjectCard L236
- * ProjectList L366
+ * FONT L34
+ * 图标组件 L39
+ * MoreMenu L86
+ * RenameModal L103
+ * NewProjectCard L234
+ * ProjectCard L238
+ * ProjectList L368
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-22  项目删除二次确认改用标准 ConfirmDialog
  *   2026-07-22  移除更多操作下拉菜单选项的黑色描边
@@ -20,6 +20,7 @@
  *   2026-07-15  按当前代码补齐结构索引行号
 
  *   2026-10-27 新建项目与新建草稿共用 CreateCard 视觉。
+ *   2026-11-02 项目和画布列表复用素材库网格，卡片宽度统一为 216–270px。
  */
 import { useState, useRef, useEffect } from 'react';
 import defaultCover from '../assets/project-default-cover.png';
@@ -28,6 +29,7 @@ import { normalizeImageUrl } from '../utils/imageUrl';
 import { Button, ButtonGroup, CreateCard, DeleteIcon, DropdownMenu, IconButton, TextButton } from '../components/ui';
 import ConfirmDialog from '../components/ConfirmDialog';
 import RemoteReadStatus from '../components/feedback/RemoteReadStatus';
+import AssetFolderGrid from '../components/assets/AssetFolderGrid';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -443,7 +445,7 @@ export default function ProjectList({ title = '所有项目', projects = [], loa
         </div>
 
         {/* Card grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(240px, 16vw, 288px), 1fr))', gap: '16px' }}>
+        <AssetFolderGrid>
           <NewProjectCard onClick={onNewProject} />
           {filtered.map((project) => (
             <ProjectCard
@@ -455,7 +457,7 @@ export default function ProjectList({ title = '所有项目', projects = [], loa
               onOpen={(p) => onOpenProject?.(p)}
             />
           ))}
-        </div>
+        </AssetFolderGrid>
       </div>
 
       {renameTarget && (

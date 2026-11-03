@@ -1,6 +1,7 @@
 import { authFetch } from './request';
+import { withCanvasFolderCounts } from './CanvasLibraryCounts';
 import { createCanvasAssetLibraryDevelopment } from './CanvasAssetLibraryDevelopment';
-import { apiUpdateAsset, apiDownloadAsset } from './assets';
+import { apiUpdateAsset, apiDownloadAsset, apiGetAssetDetail } from './assets';
 
 // 按画布资产库需求契约请求；只在显式开发开关启用时模拟，不因请求失败降级。
 export const canvasLibraryMockEnabled = import.meta.env.DEV && import.meta.env.VITE_CANVAS_ASSET_LIBRARY_MOCK === 'true';
@@ -14,7 +15,7 @@ const messages = {
   PROJECT_FOLDER_LOCKED: '项目文件夹不允许独立重命名或移动',
   REVISION_CONFLICT: '内容已被修改，请刷新后重试',
   PERMISSION_DENIED: '没有操作权限', ASSET_UNAVAILABLE: '素材已失效或没有访问权限',
-  CROSS_COLLECTION_MOVE_FORBIDDEN: '跨集合不能移动，请通过添加素材创建引用',
+  CROSS_COLLECTION_MOVE_FORBIDDEN: '跨集合不能移动，请在所属项目内整理素材',
   ROOT_FOLDER_CREATION_FORBIDDEN: '不能自由创建项目级集合',
   COLLECTION_NOT_FOUND: '资产集合已不存在，请刷新列表',
   SELECTION_EXPIRED: '全选范围已过期，请重新全选',
@@ -53,6 +54,11 @@ async function settle(result) {
 }
 
 export const canvasAssetLibrary = {
+  detail: (entry) => development ? development.detail(entry.asset_id ?? entry.asset?.id) : apiGetAssetDetail(entry.asset_id ?? entry.asset?.id).then((asset) => {
+    if (!asset?.id) throw new Error('素材详情读取失败，请重试');
+    return asset;
+  }),
+  favorite: (entry, is_starred) => development ? development.favorite(entry.asset_id ?? entry.asset?.id, is_starred) : apiUpdateAsset(entry.asset_id ?? entry.asset?.id, { is_starred }),
   collections: (params = {}, signal) => development ? development.collections(params) : request(`/collections?${new URLSearchParams(params)}`, 'GET', undefined, signal),
   renameCollection: (id, body) => development ? development.renameCollection(id, body) : request(`/collections/${encodeURIComponent(id)}`, 'PATCH', { ...body, idempotency_key: key() }).then(settle),
   copyCollection: (id, body) => development ? development.copyCollection(id, body) : request(`/collections/${encodeURIComponent(id)}/copies`, 'POST', { idempotency_key: key(), ...body }),
@@ -60,13 +66,17 @@ export const canvasAssetLibrary = {
   downloadCollection: (id, body) => development ? development.downloadCollection(id, body) : request(`/collections/${encodeURIComponent(id)}/downloads`, 'POST', { idempotency_key: key(), ...body }),
   operation: (id, signal) => request(`/operations/${encodeURIComponent(id)}`, 'GET', undefined, signal),
   selection: (body) => development ? development.selection(body) : request('/selections', 'POST', body),
-  list: (params = {}, signal) => {
+  list: (params = {}, signal, { includeCounts = true } = {}) => {
     if (development) return development.list(params);
     const query = new URLSearchParams();
     for (const [name, value] of Object.entries(params)) if (value != null) query.set(name, value);
     return request(`/items?${query}`, 'GET', undefined, signal).then((page) => ({
       ...page, items: page.items.map((item) => item.type === 'folder' ? item : { ...item, asset_id: item.asset_id ?? item.asset?.id }),
-    }));
+    })).then((page) => includeCounts ? withCanvasFolderCounts(page, (parent_id, cursor) => {
+      const childQuery = new URLSearchParams({ collection_id: params.collection_id, parent_id });
+      if (cursor) childQuery.set('cursor', cursor);
+      return request(`/items?${childQuery}`, 'GET', undefined, signal);
+    }, signal) : page);
   },
   folder: (id, signal) => development ? development.folder(id) : request(`/folders/${encodeURIComponent(id)}`, 'GET', undefined, signal),
   create: (body) => development ? development.create(body) : request('/folders', 'POST', { ...body, idempotency_key: key() }).then(settle),
@@ -76,7 +86,6 @@ export const canvasAssetLibrary = {
     return request(`/folders/${encodeURIComponent(body.id)}`, 'PATCH', { name: body.name, base_revision: body.base_revision }).then(settle);
   },
   move: (body) => development ? development.move(body) : request('/moves', 'POST', { ...body, idempotency_key: key() }).then(settle),
-  references: (body) => development ? development.references(body) : request('/references', 'POST', { ...body, idempotency_key: key() }).then(settle),
   preview: (body) => development ? development.preview(body) : request('/deletions/preview', 'POST', body),
   commit: (body) => development ? development.commit(body) : request('/deletions/commit', 'POST', { ...body, idempotency_key: key() }).then(settle),
   async download(entry) {

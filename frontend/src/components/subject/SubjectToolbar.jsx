@@ -117,7 +117,7 @@ export default function SubjectToolbar({
           iconOnly
           aria-label="返回项目"
           onClick={onBack}
-          className="!size-6 !rounded-none !border-0 !bg-transparent !p-0 !shadow-none hover:!bg-transparent active:!bg-transparent"
+          className="!size-[6px] !rounded-none !border-0 !bg-transparent !p-0 !shadow-none hover:!bg-transparent active:!bg-transparent"
           contentClassName="!text-white/70 hover:!text-white"
         />
         <span style={{ fontFamily: FONT_MEDIUM, fontSize: '16px', lineHeight: '22px', color: '#FFFFFF', fontWeight: 500 }}>

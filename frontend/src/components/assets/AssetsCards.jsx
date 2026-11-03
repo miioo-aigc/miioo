@@ -196,10 +196,10 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
           )}
 
 
-          {/* top-right: batch checkbox or more menu */}
+          {/* 批量复选框位于左上角，更多菜单位于右上角 */}
           {batchMode ? (
             <div style={{
-              position: 'absolute', top: '8px', right: '8px',
+              position: 'absolute', top: '8px', left: '8px',
               width: '18px', height: '18px', borderRadius: '4px',
               border: selected ? '1px solid #2DC3E1' : '1px solid rgba(255,255,255,0.5)',
               backgroundColor: selected ? '#2DC3E1' : 'rgba(0,0,0,0.5)',

@@ -1,10 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useId } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, ChevronRight, ArrowLeft, X } from 'lucide-react';
+import { Folder, ChevronRight, ArrowLeft, FolderOpen } from 'lucide-react';
 import { Button } from '../ui';
+import Radio from '../ui/Radio';
+import ModalCloseButton from '../ui/ModalCloseButton';
 import useCanvasLibraryBrowser from './UseCanvasLibraryBrowser';
 
-export function CanvasLibraryDialog({ title, busy, onClose, children, footer }) {
+export function CanvasLibraryDialog({ title, busy, onClose, children, footer, fixedHeight = false }) {
   const ref = useRef(null);
   useEffect(() => {
     const previous = document.activeElement;
@@ -22,27 +24,47 @@ export function CanvasLibraryDialog({ title, busy, onClose, children, footer }) 
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   };
   return createPortal(<div className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/60 p-[16px] backdrop-blur-[12px]" onClick={() => !busy && onClose()}>
-      <section ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKey} onClick={(event) => event.stopPropagation()} className="flex max-h-[85vh] w-[480px] max-w-full flex-col overflow-hidden rounded-[8px] border border-white/10 bg-surface-modal text-text-primary">
-      <header className="flex items-center justify-between gap-[16px] p-[24px]"><h2 className="text-[16px]">{title}</h2><Button iconOnly icon={<X size={16} />} title="关闭" aria-label="关闭" disabled={busy} onClick={onClose} /></header>
-      <div className="overflow-auto px-[24px] pb-[24px] text-[14px]">{children}</div>
-      <footer className="flex flex-wrap justify-end gap-[8px] border-t border-white/10 p-[16px]">{footer}</footer>
+      <section ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKey} onClick={(event) => event.stopPropagation()} style={fixedHeight ? { height: '520px' } : undefined} className="flex max-h-[85vh] w-[480px] max-w-full flex-col overflow-hidden rounded-[8px] border border-white/10 bg-surface-modal text-text-primary">
+      <header className="flex shrink-0 items-center justify-between gap-[16px] p-[24px]"><h2 className="text-[16px]">{title}</h2><ModalCloseButton disabled={busy} onClick={onClose} /></header>
+      <div className={`min-h-0 overflow-auto px-[24px] pb-[24px] text-[14px] ${fixedHeight ? 'flex flex-1 flex-col' : ''}`}>{children}</div>
+      <footer className="flex shrink-0 flex-wrap justify-end gap-[8px] border-t border-white/10 p-[16px]">{footer}</footer>
     </section>
   </div>, document.body);
 }
 
-export function CanvasLibraryDestinationDialog({ collection, selection, mode = 'move', busy, onClose, onConfirm }) {
-  const browser = useCanvasLibraryBrowser(mode === 'move' ? collection : null);
-  const { path, page, loading, error, parentId } = browser;
+export function CanvasLibraryDestinationDialog({ collection, selection, sourceFolderId, busy, onClose, onConfirm }) {
+  const browser = useCanvasLibraryBrowser(collection);
+  const { path, page, loading, error } = browser;
+  const [target, setTarget] = useState(null);
+  const radioName = useId();
   const forbidden = new Set(selection.filter((item) => item.type === 'folder').map((item) => item.id));
-  return <CanvasLibraryDialog title={mode === 'move' ? '移动到' : '添加到文件夹'} busy={busy} onClose={onClose} footer={<>
+  forbidden.add(sourceFolderId);
+  const visibleFolders = page.items.filter((item) => item.type === 'folder' && !forbidden.has(item.id));
+  const root = { id: collection.root_folder_id, name: '项目根目录' };
+  const targetPath = (item) => item.id === root.id ? root.name : [...path.map((entry, index) => index === 0 ? root.name : entry.name), item.name].join(' / ');
+  const renderRow = (item, isRoot = false) => {
+    const disabled = busy || loading || Boolean(error) || forbidden.has(item.id);
+    return <div key={item.id} className="flex items-center gap-[12px] rounded-[6px] px-[12px] py-[12px] hover:bg-white/5">
+      <label className={`flex min-w-0 flex-1 items-center gap-[12px] ${disabled ? 'cursor-not-allowed opacity-30' : 'cursor-pointer'}`}>
+        <Radio name={radioName} value={item.id} checked={target?.id === item.id} disabled={disabled} onChange={() => setTarget({ id: item.id, path: targetPath(item) })} />
+        <Folder size={18} className="shrink-0" /><span className="truncate">{item.name}</span>
+      </label>
+      {(!isRoot || path.length > 1) && <button type="button" disabled={disabled} aria-label={isRoot ? '浏览项目根目录' : `进入${item.name}`} onClick={() => isRoot ? browser.root() : browser.enter(item)} className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-[6px] text-white-60 disabled:opacity-30"><ChevronRight size={16} /></button>}
+    </div>;
+  };
+  return <CanvasLibraryDialog fixedHeight title="移动到" busy={busy} onClose={onClose} footer={<>
+    <p title={target?.path} className="mr-auto min-w-0 flex-1 self-center truncate text-[12px] text-white-60">移动目标：{target?.path || '请选择目标文件夹'}</p>
     <Button variant="secondary" disabled={busy} onClick={onClose}>取消</Button>
-    <Button loading={busy} disabled={loading || Boolean(error) || !parentId || forbidden.has(parentId)} onClick={() => onConfirm(parentId)}>确认</Button>
+    <Button loading={busy} disabled={busy || loading || Boolean(error) || !target || forbidden.has(target.id)} onClick={() => onConfirm(target.id)}>确认</Button>
   </>}>
-    <div className="mb-[12px] flex items-center gap-[8px]"><Button iconOnly aria-label="返回上一级" title="返回上一级" icon={<ArrowLeft size={16} />} disabled={path.length <= (mode === 'move' ? 1 : 0) || busy} onClick={browser.back} /><span className="truncate">{path.at(-1)?.name || '画布资产'}</span></div>
+    {path.length > 1 && <button type="button" aria-label="返回上一级" title="返回上一级" disabled={busy || loading} onClick={browser.back} className="mb-[12px] flex h-[24px] w-[24px] shrink-0 items-center justify-center self-start rounded-[6px] text-white-60 hover:text-white disabled:opacity-30"><ArrowLeft size={16} /></button>}
+    <div role="group" aria-label="目标文件夹">
+      {path.length === 1 && !forbidden.has(root.id) && renderRow(root, true)}
+      {!loading && !error && visibleFolders.map((item) => renderRow(item))}
+    </div>
     {loading && <p role="status">加载中...</p>}
     {error && <div role="alert">加载失败<Button variant="link" onClick={browser.retry}>重试</Button></div>}
-    {!loading && !error && !page.items.some((item) => ['folder', 'collection'].includes(item.type)) && <p className="text-text-secondary">没有子文件夹</p>}
-    {page.items.filter((item) => ['folder', 'collection'].includes(item.type)).map((item) => <button key={item.id} disabled={busy || forbidden.has(item.id)} onClick={() => browser.enter(item)} className="flex w-full items-center gap-[12px] border-b border-white/10 py-[12px] text-left disabled:opacity-30"><Folder size={18} /><span className="min-w-0 flex-1 truncate">{item.name}</span><ChevronRight size={16} /></button>)}
+    {!loading && !error && visibleFolders.length === 0 && !page.next_cursor && <div role="status" className="flex min-h-[100px] flex-1 flex-col items-center justify-center gap-[12px] text-text-secondary"><FolderOpen size={64} strokeWidth={1} className="text-white/20" aria-hidden="true" /><p>没有子文件夹</p></div>}
     {page.next_cursor && <Button disabled={busy || loading} onClick={browser.more}>加载更多</Button>}
   </CanvasLibraryDialog>;
 }

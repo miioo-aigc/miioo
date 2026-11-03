@@ -21,6 +21,7 @@ export default function CreationCardActionButton({ icon, tooltip, onClick, disab
       )}
       <button
         type="button"
+        aria-label={tooltip}
         onClick={onClick}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}

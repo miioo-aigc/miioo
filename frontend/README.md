@@ -23,6 +23,8 @@ npm run check:dev-cold-start
 
 ## 文档入口
 
+- [2026-11-02 工作进度](docs/work-progress-2026-11-02.md) — 画布资产库、验收结果和其他会话进度
+
 - [PROJECT.md](./PROJECT.md) — 项目背景、技术栈、开发规范、Git 流程、完整进度
 - [AGENTS.md](./AGENTS.md) / [CLAUDE.md](./CLAUDE.md) — AI 协作总规则（两份内容完全一致）
 - [docs/architecture/](./docs/architecture/) — 组件、页面、状态和导入边界

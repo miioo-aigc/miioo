@@ -304,7 +304,7 @@ function SubjectImageCard({ subject, type = 'char', selected = false, onClick })
         height: '73px',          // h-18.25 × 4px = 73px
         paddingTop: '18px',      // pt-4.5
         paddingBottom: '12px',   // pb-3
-        paddingLeft: '16px',     // px-4
+        paddingLeft: '16px',     // 原设计稿水平内边距 16px
         paddingRight: '16px',
         display: 'flex',
         alignItems: 'flex-end',
@@ -376,7 +376,7 @@ function SubjectOverviewCard({ label, type = 'char', subjects = [], emptyLabel, 
           </span>
         </div>
       ) : (
-        /* gap-2 = 8px，对应 Paper 设计稿 */
+        /* 间距 8px，对应 Paper 设计稿 */
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',

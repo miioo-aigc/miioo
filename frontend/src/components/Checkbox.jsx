@@ -18,6 +18,7 @@ export default function Checkbox({
   onChange,
   className = '',
   style,
+  'aria-label': ariaLabel,
 }) {
   const [hoveredInternal, setHoveredInternal] = useState(false);
   const interactive = typeof onChange === 'function';
@@ -66,6 +67,15 @@ export default function Checkbox({
       role="checkbox"
       aria-checked={indeterminate ? 'mixed' : checked}
       aria-disabled={disabled}
+      aria-label={ariaLabel}
+      tabIndex={interactive && !disabled ? 0 : undefined}
+      onKeyDown={interactive && !disabled ? (event) => {
+        if (event.key === ' ' || event.key === 'Enter') {
+          event.preventDefault();
+          event.stopPropagation();
+          onChange(event);
+        }
+      } : undefined}
     >
       {checked && (
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"

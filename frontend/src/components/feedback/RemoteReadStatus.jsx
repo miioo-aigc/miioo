@@ -4,7 +4,7 @@ import { Button } from '../ui';
 export default function RemoteReadStatus({ loading, error, onRetry }) {
   if (!loading && !error) return null;
   return (
-    <div role={loading ? 'status' : 'alert'} className="flex shrink-0 flex-wrap items-center gap-spacing-8 p-spacing-16 text-text-secondary text-font-size-14">
+    <div role={loading ? 'status' : 'alert'} className="flex shrink-0 flex-wrap items-center gap-[8px] p-[16px] text-text-secondary text-font-size-14">
       <span>{loading ? '正在读取，请稍候…' : error}</span>
       {!loading && onRetry && <Button onClick={onRetry}>重试</Button>}
     </div>

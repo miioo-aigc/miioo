@@ -2,11 +2,13 @@
  * @file AssetPickerModal.jsx
  * @description 项目资产、创作资产与 Seedance 素材的统一选择弹窗。
  *
- * ─── 结构索引 ─────────────────────────────────────────── 2026-10-28：账号入口 L491、分页 L1126、内容读取反馈 L1639。
+ * ─── 结构索引 ───────────────────────────────────────────
+ *   2026-11-02：AssetCard L109、悬浮预览 L445、弹窗入口 L501、账号会话 L506。
  *   2026-10-29：修复共用弹窗项目选择回写；切换重新读取，加载和空态分离。
  *   更新：关闭卸载及账号/父项目/类型切换隔离；非创作读取错误重试、旧请求写回拦截和异步确认锁。
  *   更新：补全传入当前会话检查，失败走原重试反馈；共享补全限制并发并停止旧调度。
  *   后续：全量分页与服务端定稿/范围契约待处理，本轮不代表大容量目标完成。
+ *   2026-11-02：图片自动恢复、原图回退、中性占位；悬浮成功通知卡片恢复。
  *   AssetCard / 空态 / 悬浮预览：资产展示与预览
  *   AssetPickerModal：状态、数据适配、会话复位及请求
  *   toggle / handleConfirm / filteredAssets：选择、确认与筛选
@@ -25,6 +27,8 @@ import { createPortal } from 'react-dom';
 import { useCreationStore } from '../stores/creationStore';
 import { getAuthSessionGeneration } from '../api/request';
 import Checkbox from './Checkbox';
+import AsyncImagePreview from './AsyncImagePreview';
+import { reportImagePreviewReady } from '../utils/ImagePreviewLoad';
 import RemoteReadStatus from './feedback/RemoteReadStatus';
 import { generationsToFlatList } from '../utils/creativeDaysAdapter';
 import { apiGetProjects } from '../api/project';
@@ -261,7 +265,7 @@ function AssetCard({ asset, isSelected, isHovered, isDisabled, onMouseEnter, onM
             />
           )
         ) : asset.url ? (
-          <img src={normalizeImageUrl(asset.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }} />
+          <AsyncImagePreview plain automaticRecovery src={normalizeImageUrl(asset.url)} fallbackSrc={normalizeImageUrl(asset.fullUrl || asset.fileUrl)} imageStyle={{ width: '100%', height: '100%', objectFit: 'cover' }} style={{ opacity: isHovered && !isSelected ? 0.85 : 1, transition: 'opacity 100ms' }} />
         ) : asset.type === 'audio' ? (
           <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
             <path d="M12 26V8l16-3v18" stroke="#FFFFFF26" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -444,8 +448,12 @@ function AssetHoverPreview({ url, mouseX, mouseY }) {
 
   useEffect(() => {
     const img = new Image();
-    img.onload = () => setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onload = () => {
+      setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
+      reportImagePreviewReady(url);
+    };
     img.src = url;
+    return () => { img.onload = null; img.onerror = null; };
   }, [url]);
 
   if (!imgSize) return null;
@@ -485,7 +493,7 @@ function AssetHoverPreview({ url, mouseX, mouseY }) {
         backgroundColor: '#111',
       }}
     >
-      <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+      <AsyncImagePreview plain automaticRecovery src={url} imageStyle={{ objectFit: 'contain' }} />
     </div>
   );
 }

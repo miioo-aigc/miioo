@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { canvasAssetLibrary as api } from '../../api/CanvasAssetLibrary';
 import { showGlobalToast } from '../../stores/toastStore';
 
-/** 目录读取、游标与操作串行化；过期页面响应不得覆盖新目录。 */
+/** 目录读取、游标与操作串行化；过期页面响应不得覆盖新目录。
+ * 2026-11-02：移动后静默同步已加载范围，不清空列表或重置分页。
+ */
 export default function useCanvasAssetLibrary(collection) {
   const [parentId, setParentId] = useState(collection.root_folder_id);
   const [snapshot, setSnapshot] = useState({ items: [], folder: null, cursor: null });
@@ -31,6 +33,30 @@ export default function useCanvasAssetLibrary(collection) {
     return () => controller.abort();
   }, [collection.id, parentId, epoch]);
   const refresh = useCallback(() => setEpoch((value) => value + 1), []);
+  // 移动后静默重读已加载范围，保留旧卡片直到新快照准备好。
+  const syncAfterMove = async (moved, target) => {
+    const current = generation.current;
+    const keys = new Set(moved.map((item) => item.type + ':' + item.id));
+    const keepCount = Math.max(1, snapshot.items.length - (target === parentId ? 0 : moved.length));
+    try {
+      const folder = await api.folder(parentId);
+      const items = [];
+      let cursor;
+      do {
+        const page = await api.list({ collection_id: collection.id, parent_id: parentId, ...(cursor ? { cursor } : {}) });
+        items.push(...(page.items || []));
+        cursor = page.next_cursor || null;
+      } while (cursor && items.length < keepCount);
+      if (!mounted.current || current !== generation.current) return false;
+      setSnapshot({ items, folder, cursor });
+      return true;
+    } catch (cause) {
+      if (mounted.current && current === generation.current && target !== parentId) {
+        setSnapshot((previous) => ({ ...previous, items: previous.items.filter((item) => !keys.has(item.type + ':' + item.id)) }));
+      }
+      throw new Error('文件已移动，但目录同步失败：' + (cause.message || '请稍后重试'), { cause });
+    }
+  };
   const run = async (action, { reload = true } = {}) => {
     if (lock.current) return false;
     lock.current = true;
@@ -58,5 +84,5 @@ export default function useCanvasAssetLibrary(collection) {
     } catch (cause) { showGlobalToast('error', cause.message); }
     finally { moreLock.current = false; if (current === generation.current) setLoading(false); }
   };
-  return { parentId, navigate: setParentId, ...snapshot, loading, error, busy, refresh, run, loadMore };
+  return { parentId, navigate: setParentId, ...snapshot, loading, error, busy, refresh, run, loadMore, syncAfterMove };
 }

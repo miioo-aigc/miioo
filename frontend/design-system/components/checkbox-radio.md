@@ -6,6 +6,8 @@
 
 ## 一、共同规范
 
+2026-11-02：资产库项目资产、创作资产的卡片批量复选框统一位于左上角，距离顶部、左侧各8px；保留原尺寸、样式及选中逻辑。创作配音卡片关闭选择框内容预留空间，内容仍为16px内边距。更多菜单及收藏位置不变，项目音频列表原有左侧选择框不变。
+
 Checkbox 和 Radio 共用同一套 token，区别只在于形状和选中指示器：
 
 | 属性 | Checkbox | Radio |
@@ -135,3 +137,7 @@ function Radio({ checked, disabled, onChange }) {
 - Radio 同一组内必须只有一个选中项
 - 禁用态不可点击，不需要额外 tooltip 说明
 - 半选中状态（indeterminate）只用于表示"部分子项已选中"的父级 Checkbox
+
+## 已实现组件（2026-11-02）
+
+src/components/ui/Radio.jsx 使用原生单选输入保留键盘行为，16px 外圈、6px 圆点；接收 checked、disabled、onChange、name、value 和 aria-label。可放入 label 使名称一并可选。

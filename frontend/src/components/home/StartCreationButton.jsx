@@ -60,7 +60,7 @@ function StartCreationButton({ onClick }) {
         className="rounded-full absolute inset-0 bg-black"
       />
       <div
-        className="flex absolute items-center gap-12 left-[50%] top-[50%] p-0"
+        className="flex absolute items-center gap-[12px] left-[50%] top-[50%] p-0"
         style={{
           translate: '-50% -50%',
           color: contentColor,

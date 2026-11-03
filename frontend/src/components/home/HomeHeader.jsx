@@ -29,9 +29,9 @@ export default function HomeHeader({
   onGoToAssets,
 }) {
   return (
-    <div className="flex items-center px-24 py-12 justify-between gap-[37px] self-stretch">
+    <div className="flex items-center px-[24px] py-[12px] justify-between gap-[37px] self-stretch">
       <HomeLogo clickable={activeKey !== 'home'} onClick={onLogoClick} />
-      <div className="flex items-center gap-16 p-0">
+      <div className="flex items-center gap-[16px] p-0">
         <CreationManualButton />
         {isLoggedIn ? (
           <AccountMenu

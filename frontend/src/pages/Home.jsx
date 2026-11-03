@@ -517,7 +517,7 @@ export default function Home({ onGoToAdmin }) {
     if (!video) return;
     video.src = BG_VIDEOS[next];
     video.load();
-    video.play().catch(() => {});
+    if (!document.hidden) video.play().catch(() => {});
   };
 
   // 统一的退出登录处理函数

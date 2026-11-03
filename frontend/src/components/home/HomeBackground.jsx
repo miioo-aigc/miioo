@@ -7,13 +7,39 @@
  *
  * ─── 依赖边界 ──────────────────────────────────────────────────
  *   仅通过 isHome、videoRef、videoSrc 和 onVideoEnded 接收页面状态与事件；
- *   不读取导航、认证或业务数据，不执行视频切换副作用。
+ *   不读取导航、认证或业务数据；只管理媒体可见性和资源释放，不负责视频切换。
  *
  * ─── 更新记录 ──────────────────────────────────────────────────
+ *   2026-11-02  隐藏页面暂停播放，返回恢复，卸载显式释放媒体资源
  *   2026-07-16  从 Home.jsx 抽离背景展示层；页面继续负责视频索引和切换回调
  */
 
+import { useEffect } from 'react';
+
 export default function HomeBackground({ isHome, videoRef, videoSrc, onVideoEnded }) {
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!isHome || !video) return;
+    if (!video.hasAttribute('src')) video.src = videoSrc;
+    const syncPlayback = () => {
+      if (document.hidden) video.pause();
+      else video.play().catch(() => {});
+    };
+    const pause = () => video.pause();
+    document.addEventListener('visibilitychange', syncPlayback);
+    window.addEventListener('pagehide', pause);
+    window.addEventListener('pageshow', syncPlayback);
+    syncPlayback();
+    return () => {
+      document.removeEventListener('visibilitychange', syncPlayback);
+      window.removeEventListener('pagehide', pause);
+      window.removeEventListener('pageshow', syncPlayback);
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    };
+  }, [isHome, videoRef, videoSrc]);
+
   return (
     <>
       {isHome ? (
@@ -21,7 +47,7 @@ export default function HomeBackground({ isHome, videoRef, videoSrc, onVideoEnde
           <video
             ref={videoRef}
             src={videoSrc}
-            autoPlay
+            preload="metadata"
             muted
             playsInline
             onEnded={onVideoEnded}

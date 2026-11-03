@@ -1,17 +1,9 @@
 import { createPortal } from 'react-dom';
 import { Button } from './ui';
+import ModalCloseButton from './ui/ModalCloseButton';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
-
-function CloseIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-      <path d="M2.667 2.667L13.333 13.333" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M2.667 13.333L13.333 2.667" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 /**
  * 全局二次确认弹窗组件
@@ -90,26 +82,7 @@ export default function ConfirmDialog({
           >
             {title}
           </span>
-          <button
-            type="button"
-            onClick={onCancel}
-            aria-label="关闭"
-            style={{
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '24px',
-              height: '24px',
-              background: 'transparent',
-              border: 'none',
-              padding: 0,
-              cursor: 'pointer',
-              borderRadius: '6px',
-            }}
-          >
-            <CloseIcon />
-          </button>
+          <ModalCloseButton onClick={onCancel} />
         </div>
 
         {/* ── 内容区 ── */}

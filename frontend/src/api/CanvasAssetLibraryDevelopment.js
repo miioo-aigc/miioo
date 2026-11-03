@@ -140,6 +140,17 @@ export function createCanvasAssetLibraryDevelopment() {
       Object.assign(item, { name: name.trim(), revision: ++revision });
       return item;
     },
+    async detail(key) {
+      const asset = assets.get(key);
+      if (!asset) fail('素材已不存在', 'ASSET_UNAVAILABLE');
+      return { ...asset };
+    },
+    async favorite(key, is_starred) {
+      const asset = assets.get(key);
+      if (!asset) fail('素材已不存在', 'ASSET_UNAVAILABLE');
+      Object.assign(asset, { is_starred, revision: ++revision });
+      return { ...asset };
+    },
     async move({ selection, target_folder_id }) {
       if (!target_folder_id) fail('请选择目标文件夹', 'TARGET_NOT_FOUND');
       folder(target_folder_id);
@@ -167,7 +178,8 @@ export function createCanvasAssetLibraryDevelopment() {
       revision++;
       return { status: 'completed' };
     },
-    async references({ folder_id, asset_ids }) {
+    // 仅供测试注入已有引用，覆盖删除与复制规则，不提供页面添加能力。
+    async seedReferences({ folder_id, asset_ids }) {
       if (!folder_id) fail('请选择目标文件夹', 'TARGET_NOT_FOUND');
       folder(folder_id);
       for (const key of asset_ids) if (!assets.has(key)) fail('模拟模式只能添加本次会话已有的素材', 'ASSET_UNAVAILABLE');

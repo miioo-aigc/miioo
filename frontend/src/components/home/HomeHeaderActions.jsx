@@ -89,7 +89,7 @@ export function LoginButton({ onClick }) {
       <span className="absolute inset-0 rounded-full" style={{ backgroundImage: 'linear-gradient(in oklab 228.51deg, oklab(100% 0 0 / 40%) 11.17%, oklab(56.7% 0 0 / 30%) 45.43%)', opacity: pressed ? 1 : 0, transition: 'opacity 150ms ease' }} />
 
       {/* inner fill */}
-      <div className="flex items-center grow shrink basis-[0%] rounded-full px-20 gap-4 self-stretch relative overflow-hidden">
+      <div className="flex items-center grow shrink basis-[0%] rounded-full px-[20px] gap-[4px] self-stretch relative overflow-hidden">
         <span className="absolute inset-0 rounded-full" style={{ backgroundImage: 'linear-gradient(in oklab 180deg, oklab(23.1% 0 0) 0%, oklab(0% 0 0) 100%)', opacity: pressed ? 0 : hovered ? 0 : 1, transition: 'opacity 150ms ease' }} />
         <span className="absolute inset-0 rounded-full" style={{ backgroundImage: 'linear-gradient(in oklab 183.84deg, oklab(38% 0 0) 5.46%, oklab(0% 0 0) 108.34%)', opacity: hovered && !pressed ? 1 : 0, transition: 'opacity 150ms ease' }} />
         <span className="absolute inset-0 rounded-full" style={{ backgroundImage: 'linear-gradient(in oklab 183.84deg, oklab(9.1% 0 0) 5.46%, oklab(0% 0 0) 108.34%)', opacity: pressed ? 1 : 0, transition: 'opacity 150ms ease' }} />

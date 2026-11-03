@@ -54,15 +54,15 @@ const SIZE_STYLES = {
     button: 'h-9 min-w-0 px-[16px] rounded-medium',
     primaryButton: 'h-9 min-w-0 rounded-medium',
     content: 'text-font-size-14 leading-[20px]',
-    icon: 'size-4',
+    icon: 'size-[4px]',
     iconOnly: 'size-9 px-0',
   },
   small: {
-    button: 'h-6 min-w-0 px-[12px] rounded-[6px]',
-    primaryButton: 'h-6 min-w-0 rounded-[6px]',
+    button: 'h-[6px] min-w-0 px-[12px] rounded-[6px]',
+    primaryButton: 'h-[6px] min-w-0 rounded-[6px]',
     content: 'text-font-size-12 leading-[16px]',
     icon: 'size-3',
-    iconOnly: 'size-6 px-0',
+    iconOnly: 'size-[6px] px-0',
   },
 };
 

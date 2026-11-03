@@ -10,7 +10,7 @@ export default function AppPageBoundary({ children }) {
       description="页面加载或运行出现异常，请检查网络后重新加载。重新加载可能丢失未保存的内容。"
     >
       <Suspense fallback={
-        <div role="status" className="flex min-h-screen items-center justify-center p-spacing-32 text-text-secondary text-font-size-14">
+        <div role="status" className="flex min-h-screen items-center justify-center p-[32px] text-text-secondary text-font-size-14">
           加载中…
         </div>
       }>

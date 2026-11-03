@@ -3,13 +3,15 @@ import RecoverableVideoPreview from '../creation/RecoverableVideoPreview';
 /**
  * Seedance 素材库文件夹卡片。
  * 按 Paper 设计稿复刻文件夹层级，并使用路径插值实现挡板形状动画。
+ * 2026-11-02：支持外部拖拽悬停状态，复用挡板与预览动画。
+ * 2026-11-02：画布文件夹复用右下角操作区，按需显示移动并支持禁用。
  * 前方挡板使用同一条动态路径裁剪 HTML 毛玻璃层，保证曲线边缘与挡板完全重合。
  */
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { DeleteIcon } from '../ui';
-import { FileText, Music2 } from 'lucide-react';
+import { FileText, Music2, Move } from 'lucide-react';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 const FRONT_FILL_DEFAULT = 'M3.786 11.385L13.773 132.094C14.098 136.021 16.671 138.999 19.739 138.999H233.407C236.412 136.138 238.953 136.138 239.353 132.304L251.938 11.665C252.245 8.722 251.55 5.752 250.031 3.516C248.511 1.281 246.316 -0.001 244.009 -0.001H11.741C9.472 -0.001 7.309 1.239 5.792 3.411C4.275 5.583 3.546 8.481 3.786 11.385Z';
@@ -126,11 +128,13 @@ function getPreviewTransform(index, previewCount, isHovered) {
   return `translate(${translateX}px, ${translateY}px) rotate(${rotate}deg)`;
 }
 
-export default function SeedanceFolderCard({ name, count = 0, images = [], onOpen, onEdit, onDelete, presentationOnly = false }) {
+export default function SeedanceFolderCard({ name, count = 0, images = [], onOpen, onEdit, onMove, onDelete, disabled = false, editLabel = '编辑', presentationOnly = false, dragHovered = false }) {
   const previews = images.slice(0, 2);
-  const canManage = Boolean(onEdit || onDelete);
+  const canManage = Boolean(onEdit || onMove || onDelete);
+  const actionWidth = [onEdit, onMove, onDelete].filter(Boolean).length * 30;
   const instanceId = useId().replace(/:/g, '');
   const [isHovered, setIsHovered] = useState(false);
+  const animationHovered = isHovered || dragHovered;
   const [progress, setProgress] = useState(0);
   const progressRef = useRef(0);
 
@@ -138,7 +142,7 @@ export default function SeedanceFolderCard({ name, count = 0, images = [], onOpe
     let frameId;
     const start = performance.now();
     const initial = progressRef.current;
-    const target = isHovered ? 1 : 0;
+    const target = animationHovered ? 1 : 0;
     const duration = 240;
     const animate = (now) => {
       const elapsed = Math.min((now - start) / duration, 1);
@@ -150,17 +154,17 @@ export default function SeedanceFolderCard({ name, count = 0, images = [], onOpe
     };
     frameId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frameId);
-  }, [isHovered]);
+  }, [animationHovered]);
 
   return (
-    <article className="group aspect-[3/2] w-full min-w-0 max-w-[270px] min-h-0 cursor-pointer" role={presentationOnly ? undefined : 'button'} tabIndex={presentationOnly ? undefined : 0} style={{ fontFamily: FONT }} onClick={presentationOnly ? undefined : onOpen} onKeyDown={presentationOnly ? undefined : (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen?.(); } }} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} onFocus={() => setIsHovered(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsHovered(false); }}>
+    <article className="group aspect-[3/2] w-full min-w-0 max-w-[270px] min-h-0 cursor-pointer" role={presentationOnly ? undefined : 'button'} tabIndex={presentationOnly ? undefined : 0} style={{ fontFamily: FONT }} onClick={presentationOnly ? undefined : onOpen} onKeyDown={presentationOnly ? undefined : (event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen?.(); } }} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} onFocus={() => setIsHovered(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsHovered(false); }}>
       <div className="relative h-full w-full overflow-hidden">
         <BackFolder id={instanceId} />
         {previews.length > 1 ? (
           <FolderPreview
             preview={previews[0]}
             className="absolute left-[15.56%] top-[17.22%] h-[71.11%] w-[71.85%] rounded-[4px] border border-white/20 bg-cover bg-center opacity-40"
-            style={{ opacity: isHovered ? 1 : 0.4, transform: getPreviewTransform(0, previews.length, isHovered), transition: 'opacity 300ms ease, transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+            style={{ opacity: animationHovered ? 1 : 0.4, transform: getPreviewTransform(0, previews.length, animationHovered), transition: 'opacity 300ms ease, transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1)' }}
           />
         ) : null}
         {previews[0] ? (
@@ -169,14 +173,14 @@ export default function SeedanceFolderCard({ name, count = 0, images = [], onOpe
               <FolderPreview
                 preview={previews[0]}
                 className="h-full w-full rounded-[4px] border border-white/50 bg-cover bg-center"
-                style={{ transform: getPreviewTransform(1, previews.length, isHovered), transition: 'transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+                style={{ transform: getPreviewTransform(1, previews.length, animationHovered), transition: 'transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1)' }}
               />
             </div>
           ) : (
             <FolderPreview
               preview={previews[1]}
               className="absolute left-[11.11%] top-[22.78%] h-[71.11%] w-[71.85%] rounded-[4px] border border-white/50 bg-cover bg-center"
-              style={{ transform: getPreviewTransform(1, previews.length, isHovered), transition: 'transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+              style={{ transform: getPreviewTransform(1, previews.length, animationHovered), transition: 'transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1)' }}
             />
           )
         ) : null}
@@ -184,9 +188,15 @@ export default function SeedanceFolderCard({ name, count = 0, images = [], onOpe
         <FrontGlass progress={progress} />
         <FrontFolder id={instanceId} progress={progress} showFill={false} showStroke />
         <div className="absolute bottom-[16px] left-[24px] right-[28px] flex min-w-0 items-center">
-          <span className="min-w-0 flex-1 truncate text-[14px] leading-[18px] text-white" title={name}>{name}</span>
+          <span className="min-w-0 flex-1 truncate text-[14px] leading-[18px] text-white" title={name} style={canManage && isHovered ? { paddingRight: actionWidth } : undefined}>{name}</span>
           <span className={`shrink-0 text-[12px] leading-[16px] text-white/50${canManage ? ' transition-opacity group-hover:opacity-0 group-focus-within:opacity-0' : ''}`}>{count}</span>
-          {canManage ? <div className="absolute right-0 flex items-center gap-[6px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"><button type="button" aria-label={`编辑${name}`} title="编辑" onClick={(event) => { event.stopPropagation(); onEdit?.(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-0 text-white transition-colors hover:text-text-accent"><EditIcon /></button><button type="button" aria-label={`删除${name}`} title="删除" onClick={(event) => { event.stopPropagation(); onDelete?.(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-0 text-white transition-colors hover:text-text-danger"><DeleteIcon /></button></div> : null}
+          {canManage ? (
+            <div className="absolute right-[0px] flex items-center gap-[6px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+              {onEdit && <button type="button" disabled={disabled} aria-label={editLabel + name} title={editLabel} onClick={(event) => { event.stopPropagation(); onEdit(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-[0px] text-white transition-colors hover:text-text-accent disabled:cursor-not-allowed disabled:opacity-50"><EditIcon /></button>}
+              {onMove && <button type="button" disabled={disabled} aria-label={"移动" + name} title="移动到" onClick={(event) => { event.stopPropagation(); onMove(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-[0px] text-white transition-colors hover:text-text-accent disabled:cursor-not-allowed disabled:opacity-50"><Move size={16} /></button>}
+              {onDelete && <button type="button" disabled={disabled} aria-label={"删除" + name} title="删除" onClick={(event) => { event.stopPropagation(); onDelete(); }} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] border-0 bg-black/50 p-[0px] text-white transition-colors hover:text-text-danger disabled:cursor-not-allowed disabled:opacity-50"><DeleteIcon /></button>}
+            </div>
+          ) : null}
         </div>
       </div>
     </article>

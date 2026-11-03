@@ -1,6 +1,8 @@
 /**
  * @file CreationAudioResultCard.jsx
  * @structure-index
+ * 2026-11-02：资产库可关闭左侧选择框的内容留白，仅移动选择框。
+ * 2026-11-02：画布资产复用展示与播放，支持管理操作插槽及隐藏收藏和内置选择框。
  * 2026-10-26：音频播放等待不显示像素加载与占位；失败刷新及继续播放保留图标。
  * 2026-10-23 媒体等待、失败及一次联网重载；恢复后点击播放。
  *
@@ -75,14 +77,24 @@ export default function CreationAudioResultCard({
   onToggleSelect,
   selectionDisabled = false,
   selectionCheckboxPosition = 'right',
+  reserveSelectionSpace = true,
   favorited = false,
   onToggleFavorite,
+  showFavorite = true,
+  showSelection = true,
+  actions,
+  actionsWidth = 56,
+  height,
+  overlayActions = false,
+  fillWaveform = false,
+  retainUnavailableLayout = false,
 }) {
   const [hovered, setHovered] = useState(false);
   const [playback, setPlayback] = useState(() => getVoicePreviewState());
   const [starAnim, setStarAnim] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isDone = status === 'done' && audioUrl;
+  const showAudioLayout = isDone || (retainUnavailableLayout && status === 'done');
   const audioKey = String(playbackKey || audioId || id || `${audioUrl}:${prompt || ''}`);
   const media = playback.key === audioKey ? playback : { status: 'idle' };
   const playing = media.status === 'playing';
@@ -112,11 +124,11 @@ export default function CreationAudioResultCard({
   return (
     <>
       <div
-        style={{ width: '100%', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden', backgroundColor: hovered ? '#242424' : '#1A1A1A', transition: 'background-color 0.15s', position: 'relative', cursor: isDone && !selectionDisabled ? 'pointer' : 'default', outline: isSelected ? '2px solid #2DC3E1' : 'none', outlineOffset: '-2px', opacity: selectionDisabled ? 0.6 : 1 }}
+        style={{ width: '100%', height, aspectRatio: height ? undefined : '16/9', borderRadius: '8px', overflow: 'hidden', backgroundColor: hovered ? '#242424' : '#1A1A1A', transition: 'background-color 0.15s', position: 'relative', cursor: isDone && !selectionDisabled ? 'pointer' : 'default', outline: isSelected ? '2px solid #2DC3E1' : 'none', outlineOffset: '-2px', opacity: selectionDisabled ? 0.6 : 1 }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onClick={() => {
-          if (batchMode && isDone && !selectionDisabled) onToggleSelect?.();
+          if (batchMode && showAudioLayout && !selectionDisabled) onToggleSelect?.();
           if (!batchMode && isDone) onCardClick?.();
         }}
       >
@@ -124,8 +136,8 @@ export default function CreationAudioResultCard({
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <LoadingAnimation width={88} />
           </div>
-        ) : isDone ? (
-          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '12px', padding: batchMode && selectionCheckboxPosition === 'left' ? '36px 16px 16px' : '16px', boxSizing: 'border-box' }}>
+        ) : showAudioLayout ? (
+          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '12px', padding: batchMode && selectionCheckboxPosition === 'left' && reserveSelectionSpace ? '36px 16px 16px' : '16px', boxSizing: 'border-box' }}>
             <MediaLoadStatus visual showLoading={false} {...media} overlay={false} onPause={handlePlayClick} onRetry={() => retryVoicePreview(audioKey)} onPlay={handlePlayClick} />
             <CreationDubbingPromptPreview
               prompt={prompt}
@@ -133,12 +145,15 @@ export default function CreationAudioResultCard({
               title={prompt || ''}
               style={{ width: '100%', minHeight: 0, flex: 1, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, fontSize: '14px', lineHeight: '150%', color: '#FFFFFF99' }}
             />
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', paddingRight: hovered ? '56px' : 0, boxSizing: 'border-box', flexShrink: 0 }}>
+            {!isDone && <span style={{ fontSize: '12px', color: '#FFFFFF66' }}>音频暂不可播放</span>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', paddingRight: !overlayActions && !batchMode && (hovered || actions) ? `${actionsWidth}px` : 0, boxSizing: 'border-box', flexShrink: 0 }}>
               <button
                 type="button"
-                aria-label={media.status === 'loading' ? '取消加载' : playing ? '暂停播放' : '播放配音'}
+                disabled={!isDone}
+                title={!isDone ? '音频暂不可播放' : undefined}
+                aria-label={!isDone ? '音频暂不可播放' : media.status === 'loading' ? '取消加载' : playing ? '暂停播放' : '播放配音'}
                 onClick={handlePlayClick}
-                style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', backgroundColor: '#2DC3E1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', opacity: isDone ? 1 : 0.4, backgroundColor: '#2DC3E1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isDone ? 'pointer' : 'not-allowed', padding: 0, flexShrink: 0 }}
               >
                 {playing ? (
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="6" y="4" width="3" height="12" rx="1" fill="#FFFFFF" /><rect x="11" y="4" width="3" height="12" rx="1" fill="#FFFFFF" /></svg>
@@ -147,12 +162,14 @@ export default function CreationAudioResultCard({
                 )}
               </button>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '2px', height: '24px', flex: 1, minWidth: 0, overflow: 'hidden' }}>
-                {WAVEFORM_HEIGHTS.map((height, i) => (
+                {isDone && WAVEFORM_HEIGHTS.map((height, i) => (
                   <div
                     key={i}
                     style={{
                       width: '3px',
-                      flexShrink: 0,
+                      flexShrink: fillWaveform ? 1 : 0,
+                      flexGrow: fillWaveform ? 1 : 0,
+                      minWidth: fillWaveform ? 0 : undefined,
                       borderRadius: '2px',
                       backgroundColor: '#2DC3E180',
                       opacity: 0.4,
@@ -176,13 +193,13 @@ export default function CreationAudioResultCard({
           </div>
         )}
 
-        {batchMode && isDone && (
+        {showSelection && batchMode && showAudioLayout && (
           <div style={{ position: 'absolute', top: '8px', [selectionCheckboxPosition === 'left' ? 'left' : 'right']: '8px', zIndex: 1 }}>
             <Checkbox checked={isSelected} hovered={hovered} disabled={selectionDisabled} />
           </div>
         )}
 
-        {isDone && !batchMode && (hovered || favorited) && (
+        {showFavorite && isDone && !batchMode && (hovered || favorited) && (
           <button
             type="button"
             onClick={handleStarClick}
@@ -193,7 +210,7 @@ export default function CreationAudioResultCard({
           </button>
         )}
 
-        {hovered && isDone && !batchMode && (
+        {actions !== undefined ? (!batchMode && actions) : hovered && isDone && !batchMode && (
           <>
             <div style={{ position: 'absolute', bottom: '20px', right: '8px', display: 'flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
               <CreationCardActionButton

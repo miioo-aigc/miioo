@@ -1,6 +1,6 @@
 /** 引用只保存源节点身份与槽位；连线、缩略图实时派生，不复制素材。 */
 import { appendCanvasNode, createCanvasNode, updateSelectedNode } from './canvasNodeUtils.js';
-import { toCanvasAsset } from './CanvasAssets.js';
+import { applyCanvasAsset, toCanvasAsset } from './CanvasAssets.js';
 import { getCanvasAbsolutePosition } from './CanvasGroups.js';
 import { getCanvasAssetNodeSize } from './CanvasMediaSize.js';
 
@@ -83,7 +83,8 @@ export function addCanvasReference(nodes, targetId, selectedAsset, mode = 'all')
   source.data.asset = asset;
   const appended = appendCanvasNode(nodes, source, target.parentId);
   if (appended === nodes) return nodes;
-  const next = appended.map((node) => node.id === targetId ? {
+  const named = applyCanvasAsset(appended, source.id, asset);
+  const next = named.map((node) => node.id === targetId ? {
     ...node,
     data: { ...node.data, referenceInputs: [...references.map((reference) => ({ sourceId: reference.id, slot: reference.slot })), { sourceId: source.id, slot }], persistenceState: 'draft' },
   } : node);

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import CanvasNodeShell from './CanvasNodeShell';
 import FileUploadButton from '../ui/FileUploadButton';
+import { getCanvasFileName } from './CanvasFileName';
 import { readCanvasTextFile } from './CanvasTextFileReader';
 import CanvasTextResult from './CanvasTextResult';
 import CanvasInlineTextEditor from './CanvasInlineTextEditor';
@@ -52,6 +53,8 @@ export default function TextCanvasNode({ id, data, selected }) {
     setFileError('');
     try {
       data?.onContentChange?.(id, await readCanvasTextFile(file));
+      const name = getCanvasFileName(file.name);
+      if (name) data?.onRename?.(name);
     } catch (error) {
       setFileError(`文档读取失败：${error?.message || '请重新选择文件'}`);
       data?.onFileError?.(error);

@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Plus, Ellipsis, Pencil, Copy, Trash2 } from 'lucide-react';
+import { Check, SquarePlus, FileInput, Ellipsis, Pencil, Copy, Trash2 } from 'lucide-react';
 import { DropdownMenu, IconButton, TextField, Tooltip } from '../ui';
 import ConfirmDialog from '../ConfirmDialog';
 
-export default function CanvasListMenu({ canvases, activeCanvasId, busy, onSelectCanvas, onCreateCanvas, onRenameCanvas, onDuplicateCanvas, onDeleteCanvas }) {
+export default function CanvasListMenu({ canvases, activeCanvasId, busy, onSelectCanvas, onCreateCanvas, onRenameCanvas, onDuplicateCanvas, onDeleteCanvas, onImport, onClose }) {
   const [more, setMore] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -17,9 +17,9 @@ export default function CanvasListMenu({ canvases, activeCanvasId, busy, onSelec
       if (await onRenameCanvas(editing, name)) setEditing(null);
     } finally { submitting.current = false; }
   };
-  return <div className="absolute bottom-[40px] left-1/2 z-30 w-[176px] -translate-x-1/2 rounded-[8px] border border-stroke-normal bg-surface-card p-[4px]" style={{ boxShadow: '0 4px 16px var(--color-shadow)' }} onKeyDown={(event) => {
+  return <div role="dialog" aria-label="项目画布列表" className="absolute top-[calc(100%+8px)] left-0 z-30 w-[176px] rounded-[8px] border border-stroke-normal bg-surface-card p-[4px]" style={{ boxShadow: '0 4px 16px var(--color-shadow)' }} onKeyDown={(event) => {
     event.stopPropagation();
-    if (event.key === 'Escape' && !busy) { event.preventDefault(); setEditing(null); setMore(null); setDeleting(null); }
+    if (event.key === 'Escape' && !busy) { event.preventDefault(); if (deleting) setDeleting(null); else if (more) setMore(null); else if (editing) setEditing(null); else onClose(); }
   }}>
     <div className="max-h-[280px] overflow-y-auto" onScroll={() => setMore(null)}>
       {canvases.map((canvas) => <div key={canvas.id} className={`group/canvas-item flex h-[36px] items-center gap-[4px] rounded-[6px] px-[6px] ${canvas.id === activeCanvasId ? 'bg-white-10' : 'hover:bg-white-5'}`}>
@@ -47,7 +47,8 @@ export default function CanvasListMenu({ canvases, activeCanvasId, busy, onSelec
       </div>)}
     </div>
     <div className="my-[4px] h-px bg-stroke-normal" />
-    <button type="button" disabled={busy} onClick={onCreateCanvas} className="flex h-[32px] w-full items-center gap-[4px] rounded-[6px] border-0 bg-transparent px-[10px] text-[13px] text-text-secondary hover:bg-white-5 hover:text-text-primary disabled:cursor-wait"><Plus size={14} />新增画布</button>
+    <button type="button" disabled={busy} onClick={onCreateCanvas} className="flex h-[32px] w-full items-center gap-[4px] rounded-[6px] border-0 bg-transparent px-[10px] text-[13px] text-text-secondary hover:bg-white-5 hover:text-text-primary disabled:cursor-wait"><SquarePlus size={16} strokeWidth={1.7} />新增画布</button>
+    <button type="button" disabled={busy} onClick={onImport} className="flex h-[32px] w-full items-center gap-[4px] rounded-[6px] border-0 bg-transparent px-[10px] text-[13px] text-text-secondary hover:bg-white-5 hover:text-text-primary disabled:cursor-wait"><FileInput size={16} strokeWidth={1.7} />导入画布文件</button>
     {more && createPortal(<div onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}>
       <DropdownMenu width={160} onClose={() => setMore(null)} style={{ position: 'fixed', left: more.left, top: more.top, bottom: 'auto', right: 'auto', zIndex: 110 }} items={[
         { key: 'rename', label: '重命名', icon: <Pencil size={16} />, disabled: busy, onClick: () => { setEditing(more.canvas.id); setName(more.canvas.name || ''); } },

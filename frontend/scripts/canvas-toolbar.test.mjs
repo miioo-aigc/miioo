@@ -6,22 +6,21 @@ import { planCanvasAssetImport, applyCanvasAsset } from '../src/components/canva
 import { appendCanvasNode, createCanvasNode } from '../src/components/canvas/canvasNodeUtils.js';
 import { createCanvasHistory } from '../src/components/canvas/CanvasHistory.js';
 
-test('分享与项目菜单复用标准面板，重命名仅更新页面状态', () => {
+test('顶栏承接画布管理，底部仅保留编辑工具与分享', () => {
   const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
   const toolbar = read('../src/components/canvas/CanvasToolbar.jsx');
   const header = read('../src/components/canvas/CanvasProjectHeader.jsx');
+  const menu = read('../src/components/canvas/CanvasListMenu.jsx');
   const page = read('../src/pages/CanvasPage.jsx');
   for (const label of ['复制画布链接', '导出画布']) assert.ok(toolbar.includes(label));
-  for (const label of ['新建项目', '复制项目', '导入画布文件', '返回全部项目', '删除项目']) assert.ok(header.includes(label));
-  assert.match(toolbar, /<DropdownMenu/);
-  assert.match(toolbar, /<DropdownMenu width="max-content"/);
-  assert.match(header, /text-white-80 hover:text-text-primary/);
-  assert.match(header, /ChevronDown[^\n]+style=\{\{ color: 'var\(--color-white-80\)' \}\}/);
-  assert.match(header, /aria-label="项目菜单"/);
-  assert.match(header, /key: 'back', label: '返回全部项目', onClick: onBackProjects/);
-  assert.match(header, /key: 'delete'.*onClick: onUnsupported/);
-  assert.match(page, /onRename=\{\(name\) => setCanvas/);
-  assert.match(page, /onShare=\{canvasFiles.share\}/);
+  for (const label of ['新建项目', '复制项目', '返回全部项目', '删除项目']) assert.ok(!header.includes(label));
+  assert.ok(header.includes('返回画布项目列表'));
+  assert.ok(header.includes('label="项目名称"') && header.includes('label="画布名称"'));
+  assert.ok(header.includes('<CanvasListMenu'));
+  assert.ok(!toolbar.includes('<CanvasListMenu') && !toolbar.includes("key: 'canvases'"));
+  for (const label of ['新增画布', '导入画布文件', '重命名', '复制', '删除']) assert.ok(menu.includes(label));
+  assert.ok(page.includes('onRename={renameProject}'));
+  assert.ok(page.includes('onShare={canvasFiles.share}'));
 });
 
 test('移动和抓手快捷键，以及编辑和弹窗保护', () => {

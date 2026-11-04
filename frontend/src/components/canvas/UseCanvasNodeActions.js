@@ -5,6 +5,18 @@ import { copyCanvasNodes, pasteCanvasNodes, duplicateCanvasNodes, deleteCanvasNo
 import { getCanvasGroupFocus } from './CanvasGroupFocus';
 import { canMoveCanvasNodesInto, canvasTransferRoots, moveCanvasNodesInto } from './CanvasGroupTransfer';
 import { showGlobalToast } from '../../stores/toastStore';
+import { canvasDescendantIds } from './CanvasNodeActions';
+import { downloadUrlWithFeedback } from '../../utils/downloadFeedback';
+
+export function getCanvasDownloadTargets(nodes, selectedIds) {
+  const ids = canvasDescendantIds(nodes, selectedIds);
+  return nodes.filter((node) => ids.has(node.id) && node.type !== 'canvasGroup' && node.type !== 'text' && node.data?.asset?.url)
+    .map((node) => {
+      const asset = node.data.asset;
+      const url = asset.originalUrl || asset.original_url || asset.download_url || asset.downloadUrl || asset.url;
+      return url ? { url, filename: asset.name || `${node.data.label || '素材'}.${node.type === 'image' ? 'png' : node.type === 'video' ? 'mp4' : 'mp3'}` } : null;
+    }).filter(Boolean);
+}
 
 export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken, enabled, cancelPendingClicks, flowInstance, containerRef, dialog, setDialog }) {
   const [menu, setMenu] = useState(null);
@@ -60,6 +72,11 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
       showGlobalToast(`${label}已经移入${target.data.label}`, 'success');
     }
     if (action === 'copy') { setClipboard(copyCanvasNodes(nodes)); pasteCount.current = 0; }
+    if (action === 'download') {
+      const targets = getCanvasDownloadTargets(nodes, ids);
+      targets.forEach(({ url, filename }) => { void downloadUrlWithFeedback(url, filename); });
+      if (!targets.length) showGlobalToast('所选节点没有可下载的素材', 'error');
+    }
     if (action === 'duplicate') setNodes(duplicateCanvasNodes);
     if (action === 'paste') {
       const contents = clipboard;

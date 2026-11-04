@@ -1,10 +1,11 @@
 import { createPortal } from 'react-dom';
-import { Copy, CopyPlus, ClipboardPaste, Group, Ungroup, Layers, Layers2, Trash2, LogOut, FolderInput, Plus, Undo2, Redo2 } from 'lucide-react';
+import { Copy, CopyPlus, ClipboardPaste, Group, Ungroup, Layers, Layers2, Trash2, LogOut, FolderInput, Plus, Undo2, Redo2, Download } from 'lucide-react';
 import { DropdownMenu } from '../ui';
 import ConfirmDialog from '../ConfirmDialog';
 import { canMoveCanvasNodesInto } from './CanvasGroupTransfer';
 import CanvasNodeIcon from './CanvasNodeIcon';
 import { CANVAS_NODE_MENU_ITEMS } from './CanvasNodeAddMenuConfig';
+import { canvasDescendantIds } from './CanvasNodeActions';
 
 export default function CanvasNodeActionOverlays({ menu, dialog, nodes, canPaste, canUndo, canRedo, onAction, onCloseMenu, onCloseDialog, onConfirm, onAddNode }) {
   const node = nodes.find((item) => item.id === menu?.id);
@@ -30,6 +31,8 @@ export default function CanvasNodeActionOverlays({ menu, dialog, nodes, canPaste
       onClick: () => onAddNode(value, menu.flowPosition, null, null, node?.type === 'canvasGroup' ? node.id : undefined),
     })),
   };
+  const downloadIds = canvasDescendantIds(nodes, selected.map((item) => item.id));
+  const downloadable = nodes.some((item) => downloadIds.has(item.id) && item.type !== 'canvasGroup' && item.type !== 'text' && item.data?.asset?.url);
   const items = menu?.kind === 'pane' ? [
     createNode,
     item('paste', '粘贴', '⌘V', ClipboardPaste, !canPaste),
@@ -46,6 +49,7 @@ export default function CanvasNodeActionOverlays({ menu, dialog, nodes, canPaste
     addToGroup,
     item('moveOut', '移出组', '', LogOut, !node?.parentId),
     { key: 'delete-divider', type: 'separator' },
+    item('download', '下载', '', Download, !downloadable),
     item('delete', '删除组', '⌫ / del', Trash2),
   ] : [
     item('duplicate', '创建副本', '⌘D', CopyPlus),
@@ -55,6 +59,7 @@ export default function CanvasNodeActionOverlays({ menu, dialog, nodes, canPaste
     addToGroup,
     item('moveOut', '移出组', '', LogOut, !node?.parentId),
     { key: 'delete-divider', type: 'separator' },
+    item('download', '下载', '', Download, !downloadable),
     item('delete', '删除节点', '⌫ / del', Trash2),
   ];
   return <>

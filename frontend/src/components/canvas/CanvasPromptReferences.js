@@ -2,20 +2,28 @@
 export function getCanvasPromptReferences(nodes, targetId) {
   const target = nodes.find((node) => node.id === targetId);
   const inputs = [...(target?.data.referenceInputs || [])];
+  const appendSource = (sourceId) => {
+    if (inputs.some((input) => input.sourceId === sourceId)) return;
+    const slot = inputs.filter((input) => nodes.find((node) => node.id === input.sourceId)?.type !== 'text').length;
+    inputs.push({ sourceId, slot });
+  };
   for (const sourceId of target?.data.imageSourceIds || []) {
-    if (!inputs.some((input) => input.sourceId === sourceId)) inputs.push({ sourceId, slot: inputs.length });
+    appendSource(sourceId);
   }
   for (const sourceId of target?.data.videoSourceIds || []) {
-    if (!inputs.some((input) => input.sourceId === sourceId)) inputs.push({ sourceId, slot: inputs.length });
+    appendSource(sourceId);
   }
   for (const sourceId of target?.data.textSourceIds || []) {
-    if (!inputs.some((input) => input.sourceId === sourceId)) inputs.push({ sourceId, slot: inputs.length });
+    appendSource(sourceId);
   }
-  if (target?.type === 'image' && target.data.asset?.url && !inputs.some((input) => input.sourceId === target.id)) {
-    inputs.push({ sourceId: target.id, slot: inputs.length });
+  if (['image', 'video'].includes(target?.type) && target.data.asset?.url && !inputs.some((input) => input.sourceId === target.id)) {
+    appendSource(target.id);
   }
   return inputs.flatMap(({ sourceId, slot }) => {
     const source = nodes.find((node) => node.id === sourceId);
+    if (['text', 'image', 'video'].includes(target?.type) && sourceId !== targetId && source?.type === 'text' && source.data.content?.trim()) {
+      return [{ id: sourceId, type: 'text', label: source.data.label, content: source.data.content }];
+    }
     return ['image', 'video', 'audio'].includes(source?.type) && source.data.asset?.url
       ? [{ id: sourceId, slot, label: source.data.label, asset: source.data.asset, isCurrentNode: sourceId === targetId }] : [];
   });
@@ -24,7 +32,7 @@ export function getCanvasPromptReferences(nodes, targetId) {
 export function getCanvasPromptFiles(references, nodeType, mode) {
   return references.filter(({ asset, slot }) => asset?.url
     && (nodeType !== 'image' || asset.asset_type === 'image')
-    && (mode !== 'frame' || (slot < 2 && asset.asset_type === 'image')))
+    && (!['frame', 'start_end', 'first_frame'].includes(mode) || (slot < (mode === 'first_frame' ? 1 : 2) && asset.asset_type === 'image')))
     .map(({ id, label, asset }) => ({
       ...asset, _uid: id, name: label || asset.name || '参考素材',
       previewUrl: asset.asset_type === 'image' ? asset.url : asset.posterUrl,

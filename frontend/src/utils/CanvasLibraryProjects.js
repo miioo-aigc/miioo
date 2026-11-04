@@ -7,7 +7,7 @@ export function groupCanvasLibraryProjects(projects, canvases, collections) {
     const collection = byCanvas.get(canvas.id);
     if (!project || !collection || canvas.parent_canvas_id || canvas.status === 'archived') continue;
     if (project.canvases.some(item => item.id === collection.id)) continue;
-    project.canvases.push({ ...collection, name: canvas.title || collection.name, projectId: project.id });
+    project.canvases.push({ ...collection, name: canvas.title || collection.name, projectId: project.id, canvasCreatedAt: canvas.created_at });
   }
   return [...groups.values()].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(b.id).localeCompare(String(a.id)));
 }

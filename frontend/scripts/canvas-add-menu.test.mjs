@@ -18,12 +18,25 @@ test('共用添加节点菜单保留完整面板和四种节点回调', async ()
     const selected = [];
     const menu = CanvasNodeAddMenu({ onAddNode: (type) => selected.push(type) });
     assert.equal(menu.props.role, 'menu');
-    for (const item of menu.props.children) item.props.onClick();
+    for (const item of menu.props.children.flat().filter(Boolean)) item.props.onClick();
     assert.deepEqual(selected, ['text', 'image', 'video', 'audio']);
 
     const standalone = CanvasNodeAddMenu({});
     assert.equal(standalone.props.className, 'canvas-node-add-menu');
     assert.equal(standalone.props.style, undefined);
+
+    const actions = [];
+    const extended = CanvasNodeAddMenu({
+      onUpload: () => actions.push('upload'),
+      onSelectAssets: () => actions.push('assets'),
+    });
+    const extraItems = extended.props.children[1].props.children;
+    assert.equal(extraItems[0].props.role, 'separator');
+    assert.equal(extraItems[1].props.children[1].props.children, '本地上传');
+    assert.equal(extraItems[2].props.children[1].props.children, '从资产库选择');
+    extraItems[1].props.onClick();
+    extraItems[2].props.onClick();
+    assert.deepEqual(actions, ['upload', 'assets']);
   } finally {
     await server.close();
   }

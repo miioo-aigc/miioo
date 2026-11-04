@@ -55,7 +55,7 @@ export function useCanvasReferences(nodes, setNodes, openPicker, uploadFilesRef)
     await uploadFilesRef.current?.(files, { nodeId, purpose: 'reference', mode });
   }, [nodes, openPicker, uploadFilesRef]);
   const removeReference = useCallback((nodeId, sourceId) => {
-    setNodes((current) => disconnectCanvasImage(removeCanvasReference(current, nodeId, sourceId), nodeId, sourceId));
+    setNodes((current) => disconnectCanvasText(disconnectCanvasVideo(disconnectCanvasImage(removeCanvasReference(current, nodeId, sourceId), nodeId, sourceId), nodeId, sourceId), nodeId, sourceId));
   }, [setNodes]);
   const connectNodes = useCallback((current, connection, options) => {
     if (isCanvasVideoConnection(current, connection)) {

@@ -18,8 +18,8 @@ export default function CanvasEditableName({ name, onRename, onStart, className 
     if (save && next && next !== name) onRename?.(next);
     setEditing(false);
   };
-  return <span className={`canvas-editable-name nodrag nopan nowheel ${className}`}
-    onPointerDown={(event) => event.stopPropagation()}
+  return <span className={`canvas-editable-name ${editing ? 'nodrag nopan nowheel' : ''} ${className}`}
+    onPointerDown={(event) => { if (editing) event.stopPropagation(); }}
     onClick={(event) => event.stopPropagation()}
     onDoubleClick={(event) => {
       event.stopPropagation();

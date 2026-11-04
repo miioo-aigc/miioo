@@ -1,6 +1,8 @@
 /**
  * @file CanvasToolbar.jsx
  * @structure-index
+ *   2026-11-04：搜索节点移至资产入口之后、分割线之前，收起更多工具时保持可见。
+ *   2026-11-04：画布列表入口迁移至 CanvasProjectHeader，底部移除对应图标和参数。
  *
  * ─── 交互区 ─────────────────────────────────────────────────────
  *   AddNodeMenu 共用添加节点菜单的工具栏定位容器 L123
@@ -23,7 +25,6 @@ import { useEffect, useRef, useState } from 'react';
 import { DropdownMenu, IconButton, Tooltip } from '../ui';
 import { ChevronLeft, Magnet, MoreHorizontal, Redo2, Undo2 } from 'lucide-react';
 import CanvasNodeAddMenu from './CanvasNodeAddMenu.jsx';
-import CanvasListMenu from './CanvasListMenu.jsx';
 import './CanvasToolbar.css';
 
 const ICON_PROPS = {
@@ -57,10 +58,6 @@ function AssetLibraryIcon() {
   return <svg {...ICON_PROPS}><path d="M1.667 2.667C1.667 2.298 1.965 2 2.333 2H6.333L8 4H13.667C14.035 4 14.333 4.298 14.333 4.667V13.333C14.333 13.701 14.035 14 13.667 14H2.333C1.965 14 1.667 13.701 1.667 13.333V2.667Z" stroke="var(--color-white-80)" strokeLinejoin="round" /><path d="M8 6.667L8.748 8.304L10.536 8.509L9.21 9.726L9.567 11.491L8 10.605L6.433 11.491L6.79 9.726L5.464 8.509L7.252 8.304L8 6.667Z" stroke="var(--color-white-80)" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-function NodeListIcon() {
-  return <svg {...ICON_PROPS}><path d="M6 2H11.333V4H6V2ZM6 7H12.667V9H6V7ZM6 12H14.667V14H6V12Z" stroke="var(--color-white-80)" strokeLinecap="round" strokeLinejoin="round" /><path d="M2.667 3.667C3.035 3.667 3.333 3.368 3.333 3C3.333 2.632 3.035 2.333 2.667 2.333C2.298 2.333 2 2.632 2 3C2 3.368 2.298 3.667 2.667 3.667ZM2.667 8.667C3.035 8.667 3.333 8.368 3.333 8C3.333 7.632 3.035 7.333 2.667 7.333C2.298 7.333 2 7.632 2 8C2 8.368 2.298 8.667 2.667 8.667ZM2.667 13.667C3.035 13.667 3.333 13.368 3.333 13C3.333 12.632 3.035 12.333 2.667 12.333C2.298 12.333 2 12.632 2 13C2 13.368 2.298 13.667 2.667 13.667Z" stroke="var(--color-white-80)" /></svg>;
-}
-
 function SearchIcon() {
   return <svg {...ICON_PROPS}><path d="M7 12.667C10.13 12.667 12.667 10.13 12.667 7C12.667 3.87 10.13 1.333 7 1.333C3.87 1.333 1.333 3.87 1.333 7C1.333 10.13 3.87 12.667 7 12.667Z" stroke="var(--color-white-80)" strokeLinejoin="round" /><path d="M11.074 11.074L13.902 13.902" stroke="var(--color-white-80)" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
@@ -77,11 +74,10 @@ const TOOL_ITEMS = [
   { key: 'add', label: '添加节点', icon: GradientAddIcon },
   { key: 'move', label: '移动', icon: PointerIcon },
   { key: 'assets', label: '从资产库选择', icon: AssetLibraryIcon },
-  { key: 'canvases', label: '画布列表', icon: NodeListIcon },
+  { key: 'search', label: '搜索节点', icon: SearchIcon },
 ];
 
 const COLLAPSIBLE_TOOL_ITEMS = [
-  { key: 'search', label: '搜索节点', icon: SearchIcon },
   { key: 'map', label: '预览地图', icon: MiniMapIcon },
   { key: 'snap', label: '网格吸附', icon: Magnet },
   { key: 'share', label: '分享', icon: ShareNodesIcon },
@@ -124,7 +120,7 @@ function AddNodeMenu({ onAddNode }) {
   return <div className="absolute bottom-[40px] left-1/2 z-30 -translate-x-1/2"><CanvasNodeAddMenu onAddNode={onAddNode} /></div>;
 }
 
-export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, snapEnabled = false, onSnapChange, onOpenSearch, canvases = [], activeCanvasId, onSelectCanvas, onCreateCanvas, onRenameCanvas, onDuplicateCanvas, onDeleteCanvas, canvasListBusy, onOpenAssetPicker, onAddNode, onShare, canUndo, canRedo, onUndo, onRedo }) {
+export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, snapEnabled = false, onSnapChange, onOpenSearch, onOpenAssetPicker, onAddNode, onShare, canUndo, canRedo, onUndo, onRedo }) {
   const [openMenu, setOpenMenu] = useState(null);
   const [rightToolsExpanded, setRightToolsExpanded] = useState(false);
   const toolbarRef = useRef(null);
@@ -153,7 +149,6 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
     return <div key={key} className="relative flex size-[32px] shrink-0 items-center justify-center">
       {openMenu === key && key === 'add' && <AddNodeMenu onAddNode={(type) => { onAddNode?.(type); setOpenMenu(null); }} />}
       {openMenu === key && key === 'move' && <MoveMenu activeTool={activeTool} onToolChange={(tool) => { onToolChange(tool); setOpenMenu(null); }} />}
-      {openMenu === key && key === 'canvases' && <CanvasListMenu canvases={canvases} activeCanvasId={activeCanvasId} busy={canvasListBusy} onRenameCanvas={onRenameCanvas} onDuplicateCanvas={async (id) => { if (await onDuplicateCanvas(id)) setOpenMenu(null); }} onDeleteCanvas={onDeleteCanvas} onSelectCanvas={async (id) => { if (await onSelectCanvas?.(id)) setOpenMenu(null); }} onCreateCanvas={async () => { if (await onCreateCanvas?.()) setOpenMenu(null); }} />}
       {openMenu === key && key === 'share' && <ShareMenu onShare={onShare} onClose={() => setOpenMenu(null)} />}
       <Tooltip label={label} placement="top" offset={8}><button type="button" title={label} aria-label={label} aria-pressed={selected} onClick={() => handleToolClick(key)} className={`flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 transition-colors ${selected ? 'bg-white-10' : 'hover:bg-white-5'} ${(key === 'snap' || key === 'map') && selected ? 'text-text-accent' : 'text-white-80'}`}><Icon size={16} strokeWidth={1.7} /></button></Tooltip>
     </div>;

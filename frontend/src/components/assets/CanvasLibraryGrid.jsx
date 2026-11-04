@@ -14,7 +14,7 @@ import { canvasLibraryItemKey, canvasLibraryMedia, canvasLibraryAudioUrl, canvas
  * 2026-11-02：松手后卡片缩小飞入目标，末段淡出，失败恢复原卡片。
  * 2026-11-02：拖入文件夹复用悬停动画，拖离、放下及取消后清理。
  */
-export default function CanvasLibraryGrid({ collectionId, parentId, items, selected, batch, busy, onSelect, onOpen, onCreate, onRename, onDelete, onMove, onDestination, onDownload }) {
+export default function CanvasLibraryGrid({ collectionId, parentId, items, selected, batch, busy, onSelect, onOpen, onCreate, onRename, onDelete, onMove, onDestination, onDownload, pickerMode = false, isSelectionDisabled = () => false }) {
   const dragPreview = useCanvasDragPreview();
   const [dragOverKey, setDragOverKey] = useState(null);
   const draggedKeys = useRef(new Set());
@@ -78,16 +78,17 @@ export default function CanvasLibraryGrid({ collectionId, parentId, items, selec
   }, []);
 
   return <AssetFolderGrid>
-    <AddVirtualGroupCard label="新增文件夹" onClick={() => !busy && onCreate()} />
+    {!pickerMode && <AddVirtualGroupCard label="新增文件夹" onClick={() => !busy && onCreate()} />}
     {items.map((item) => {
       const key = canvasLibraryItemKey(item);
       const folder = item.type === 'folder';
       const locked = folder && item.kind === 'root';
       const media = canvasLibraryMedia(item);
       const audio = media.asset_type === 'audio' || media.asset_type?.startsWith('audio/');
-      const select = () => { if (!busy) onSelect(key); };
-      const open = () => { if (!busy) { if (batch) select(); else onOpen(item); } };
-      const handleDragOver = folder && !busy ? (event) => {
+      const disabled = busy || (!folder && isSelectionDisabled(item));
+      const select = () => { if (!disabled) onSelect(key); };
+      const open = () => { if (!busy) { if (pickerMode && folder) onOpen(item); else if (batch) select(); else onOpen(item); } };
+      const handleDragOver = folder && !busy && !pickerMode ? (event) => {
         if (!Array.from(event.dataTransfer.types).includes(canvasLibraryDragType)) return;
         event.preventDefault();
         const accepted = draggedKeys.current.size > 0 && !draggedKeys.current.has(key);
@@ -102,8 +103,8 @@ export default function CanvasLibraryGrid({ collectionId, parentId, items, selec
           <CreationCardActionButton icon={<Trash2 size={16} />} tooltip="删除" disabled={busy} onClick={() => onDelete([item])} />
         </div>
       ) : null;
-      return <div key={key} ref={(node) => { if (node) cardNodes.current.set(key, node); else cardNodes.current.delete(key); }} className={`group/library-card relative min-w-0 self-start ${folder ? 'max-w-[270px]' : ''}`} draggable={!busy && !locked} onDragStart={(event) => {
-        if (busy || locked) { event.preventDefault(); return; }
+      return <div key={key} ref={(node) => { if (node) cardNodes.current.set(key, node); else cardNodes.current.delete(key); }} className={`group/library-card relative min-w-0 self-start ${folder ? 'max-w-[270px]' : ''}`} draggable={!pickerMode && !busy && !locked} onDragStart={(event) => {
+        if (pickerMode || busy || locked) { event.preventDefault(); return; }
         const scope = selected.has(key) ? items.filter((entry) => selected.has(canvasLibraryItemKey(entry))) : [item];
         if (scope.some((entry) => entry.kind === 'project')) { event.preventDefault(); return; }
         draggedKeys.current = new Set(scope.map(canvasLibraryItemKey));
@@ -115,29 +116,29 @@ export default function CanvasLibraryGrid({ collectionId, parentId, items, selec
         if (event.currentTarget.contains(event.relatedTarget)) return;
         setDragOverKey((current) => current === key ? null : current);
         dragPreview.scale(false);
-      } : undefined} onDrop={folder && !busy ? (event) => {
+      } : undefined} onDrop={folder && !busy && !pickerMode ? (event) => {
         event.stopPropagation();
         setDragOverKey(null);
         draggedKeys.current.clear();
         canvasLibraryDrop(event, moveWithAnimation, item.id);
       } : undefined}>
         {folder ? (
-          <SeedanceFolderCard dragHovered={flightTarget === key || (!busy && dragOverKey === key)} name={item.name} count={item.count} images={item.images || []} disabled={busy} editLabel="重命名" onEdit={!batch && !locked ? () => onRename(item) : undefined} onMove={!batch && !locked ? () => onDestination([item]) : undefined} onDelete={!batch ? () => onDelete([item]) : undefined} onOpen={open} />
+          <SeedanceFolderCard dragHovered={flightTarget === key || (!busy && dragOverKey === key)} name={item.name} count={item.count} images={item.images || []} disabled={busy} editLabel="重命名" onEdit={!pickerMode && !batch && !locked ? () => onRename(item) : undefined} onMove={!pickerMode && !batch && !locked ? () => onDestination([item]) : undefined} onDelete={!pickerMode && !batch ? () => onDelete([item]) : undefined} onOpen={open} />
         ) : audio ? (
           <CreationAudioResultCard
             id={key} playbackKey={`canvas-library:${collectionId}:${key}`} status="done"
             audioUrl={canvasLibraryAudioUrl(item.asset)} retainUnavailableLayout prompt={typeof media.prompt === 'string' && media.prompt.trim() ? media.prompt : '暂无台词'}
             onCardClick={open} batchMode={batch} isSelected={selected.has(key)}
-            onToggleSelect={select} selectionDisabled={busy}
+            onToggleSelect={select} selectionDisabled={disabled}
             selectionCheckboxPosition="left" showSelection={false} showFavorite={false}
             actions={actions} height="160px" overlayActions fillWaveform
           />
         ) : (
-          <SeedanceAssetCard asset={media} width="100%" showActions={false} selected={selected.has(key)} disabled={busy} onClick={open} />
+          <SeedanceAssetCard asset={media} width="100%" showActions={false} selected={selected.has(key)} disabled={disabled} onClick={open} />
         )}
-        {batch && (
+        {batch && (!pickerMode || !folder) && (
           <div className={`absolute z-[4] ${folder ? 'left-[24px] top-[12px]' : 'left-[8px] top-[8px]'}`}>
-            <Checkbox checked={selected.has(key)} disabled={busy} aria-label={`选择${item.name || item.asset?.name || '素材'}`} onChange={(event) => { event.stopPropagation(); select(); }} />
+            <Checkbox checked={selected.has(key)} disabled={disabled} aria-label={`选择${item.name || item.asset?.name || '素材'}`} onChange={(event) => { event.stopPropagation(); select(); }} />
           </div>
         )}
         {!audio && actions}

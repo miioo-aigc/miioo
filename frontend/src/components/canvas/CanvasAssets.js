@@ -1,4 +1,5 @@
 /** 画布资产适配：保留来源信息，仅回填当前节点的前端草稿。 */
+import { getCanvasFileName } from './CanvasFileName.js';
 import { planCanvasImportPositions } from './CanvasImportLayout.js';
 import { getCanvasAssetNodeSize } from './CanvasMediaSize.js';
 export function getCanvasAudioTranscript(asset) {
@@ -23,7 +24,7 @@ export function applyCanvasAsset(nodes, nodeId, selectedAsset) {
   const asset = toCanvasAsset(selectedAsset, node?.type);
   if (!asset) return nodes;
   return nodes.map((item) => item.id === nodeId
-    ? { ...item, data: { ...item.data, asset, ...(item.type === 'audio' ? { transcript: getCanvasAudioTranscript(asset) } : {}), persistenceState: 'draft' } }
+    ? { ...item, data: { ...item.data, ...(asset.source === 'local-upload' && getCanvasFileName(asset.name) ? { label: getCanvasFileName(asset.name) } : {}), asset, ...(item.type === 'audio' ? { transcript: getCanvasAudioTranscript(asset) } : {}), persistenceState: 'draft' } }
     : item);
 }
 

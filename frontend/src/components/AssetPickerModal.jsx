@@ -1,14 +1,15 @@
 /**
  * @file AssetPickerModal.jsx
- * @description 项目资产、创作资产与 Seedance 素材的统一选择弹窗。
+ * @description 项目资产、画布资产、创作资产与 Seedance 素材的统一选择弹窗。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   2026-11-02：AssetCard L109、悬浮预览 L445、弹窗入口 L501、账号会话 L506。
+ *   当前：AssetCard L111、悬浮预览 L447、弹窗入口 L503、账号会话 L508。
  *   2026-10-29：修复共用弹窗项目选择回写；切换重新读取，加载和空态分离。
  *   更新：关闭卸载及账号/父项目/类型切换隔离；非创作读取错误重试、旧请求写回拦截和异步确认锁。
  *   更新：补全传入当前会话检查，失败走原重试反馈；共享补全限制并发并停止旧调度。
  *   后续：全量分页与服务端定稿/范围契约待处理，本轮不代表大容量目标完成。
  *   2026-11-02：图片自动恢复、原图回退、中性占位；悬浮成功通知卡片恢复。
+ *   2026-11-04：画布目录展示独立，跨来源选择及确认集中编排。
  *   AssetCard / 空态 / 悬浮预览：资产展示与预览
  *   AssetPickerModal：状态、数据适配、会话复位及请求
  *   toggle / handleConfirm / filteredAssets：选择、确认与筛选
@@ -22,7 +23,8 @@
  *   2026-08-20  Seedance 视频对齐资产库，通过原生视频短暂解码后停帧展示封面
  */
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import CanvasAssetPickerPanel from './assets/CanvasAssetPickerPanel';
 import { createPortal } from 'react-dom';
 import { useCreationStore } from '../stores/creationStore';
 import { getAuthSessionGeneration } from '../api/request';
@@ -531,6 +533,11 @@ function AccountAssetPickerModal({
 }) {
   const generationsByTab = useCreationStore((s) => s.generationsByTab);
   const favorites = useCreationStore((s) => s.favorites);
+  const canvasAssetsRef = useRef(new Map());
+  const rememberCanvasAssets = useCallback((assets) => {
+    assets.forEach(asset => canvasAssetsRef.current.set(asset.id, asset));
+  }, []);
+  useEffect(() => { if (!open) canvasAssetsRef.current.clear(); }, [open]);
 
   // 创作资产本地缓存（弹窗内懒加载，避免依赖 CreationPage 初始化）
   const [localCreativeAssets, setLocalCreativeAssets] = useState(null);
@@ -1242,7 +1249,7 @@ function AccountAssetPickerModal({
   const toggle = (asset) => {
     if (isPreSelected(asset)) return; // 预选项不可取消
     if (!selected.has(asset.id) && validateSelection) {
-      const all = [...Object.values(projectAssetsMap).flatMap((p) => Object.values(p).flat()), ...Object.values(creativeAssets).flat(), ...seedanceAssets];
+      const all = [...Object.values(projectAssetsMap).flatMap((p) => Object.values(p).flat()), ...Object.values(creativeAssets).flat(), ...seedanceAssets, ...canvasAssetsRef.current.values()];
       const byId = new Map(all.map((item) => [item.id, item]));
       if (!validateSelection([...selected].map((id) => byId.get(id)).filter(Boolean).concat(asset))) return;
     }
@@ -1274,6 +1281,7 @@ function AccountAssetPickerModal({
       ...Object.values(projectAssetsMap).flatMap(p => Object.values(p).flat()),
       ...Object.values(creativeAssets).flat(),
       ...seedanceAssets,
+      ...canvasAssetsRef.current.values(),
     ];
     const assetMap = Object.fromEntries(allAssets.map(a => [a.id, a]));
     // 只返回本次新增选择的资产，排除上轮已存在的预选项（preSelectedIds），避免上游重复输入
@@ -1391,6 +1399,7 @@ function AccountAssetPickerModal({
       const key = SUB_TAB_KEY_MAP[creativeSubTab];
       return creativeAssets[key] ?? [];
     }
+    if (activeTab === 'canvas') return []; // 目录由独立面板读取和筛选。
     return seedanceAssets;
   };
 
@@ -1474,8 +1483,8 @@ function AccountAssetPickerModal({
 
         {/* ── 顶部大 Tab + 搜索框 ── */}
         <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '24px', paddingRight: '24px', gap: '24px', flexShrink: 0 }}>
-          {['project', 'creative', ...(showSeedanceTab ? ['seedance'] : [])].map((tab) => {
-            const label = tab === 'project' ? '项目资产' : tab === 'creative' ? '创作资产' : 'seedance素材库';
+          {['project', 'canvas', 'creative', ...(showSeedanceTab ? ['seedance'] : [])].map((tab) => {
+            const label = tab === 'project' ? '项目资产' : tab === 'canvas' ? '画布资产' : tab === 'creative' ? '创作资产' : 'seedance素材库';
             const isActive = activeTab === tab;
             return (
               <div
@@ -1648,7 +1657,19 @@ function AccountAssetPickerModal({
         {/* ── 内容区（可滚动） ── */}
         <div onScroll={handleContentScroll} style={{ flex: 1, overflowY: 'auto', padding: '8px 24px', display: 'flex', flexDirection: 'column' }}>
           {confirmError && <RemoteReadStatus error={confirmError} />}
-          {activeTab === 'project' && projectsError && !projectsLoading ? <RemoteReadStatus error={projectsError} onRetry={() => setProjectsRetry((value) => value + 1)} /> : activeTab === 'project' && projectTabErrors[currentProjectTabKey] ? <RemoteReadStatus error={projectTabErrors[currentProjectTabKey]} onRetry={() => setProjectTabRetry(value => value + 1)} /> : activeTab === 'seedance' && seedanceError ? <RemoteReadStatus error={seedanceError} onRetry={() => setSeedanceRetry(value => value + 1)} /> : contentLoading ? <LoadingState /> : activeTab === 'seedance' && !activeSeedanceGroup ? (
+          {activeTab === 'canvas' ? (
+            <CanvasAssetPickerPanel
+              selected={selected} onToggle={toggle} onAssetsLoaded={rememberCanvasAssets}
+              isPreSelected={isPreSelected}
+              isDisabled={asset => isPreSelected(asset) || isExcludedAsset(asset)
+                || Boolean(asset.availability && asset.availability !== 'ready')}
+              accepts={asset => Boolean(asset.id && asset.url)
+                && (accept === 'all' || (accept === 'media'
+                  ? ['image', 'video'].includes(asset.asset_type) : asset.asset_type === accept))
+                && (!assetFilter || assetFilter(asset))
+                && (!search || (asset.name || '').includes(search))}
+            />
+          ) : activeTab === 'project' && projectsError && !projectsLoading ? <RemoteReadStatus error={projectsError} onRetry={() => setProjectsRetry((value) => value + 1)} /> : activeTab === 'project' && projectTabErrors[currentProjectTabKey] ? <RemoteReadStatus error={projectTabErrors[currentProjectTabKey]} onRetry={() => setProjectTabRetry(value => value + 1)} /> : activeTab === 'seedance' && seedanceError ? <RemoteReadStatus error={seedanceError} onRetry={() => setSeedanceRetry(value => value + 1)} /> : contentLoading ? <LoadingState /> : activeTab === 'seedance' && !activeSeedanceGroup ? (
             seedanceGroups.filter((group) => seedanceSubTab === 'virtual' ? String(group.group_type || '').toUpperCase() === 'AIGC' : String(group.group_type || '').toUpperCase() !== 'AIGC').length === 0 ? <EmptyState /> : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px', paddingTop: '8px', paddingBottom: '8px', alignContent: 'flex-start' }}>
                 {seedanceGroups.filter((group) => seedanceSubTab === 'virtual' ? String(group.group_type || '').toUpperCase() === 'AIGC' : String(group.group_type || '').toUpperCase() !== 'AIGC').map((group) => (

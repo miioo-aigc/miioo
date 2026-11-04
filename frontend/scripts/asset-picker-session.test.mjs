@@ -8,7 +8,7 @@ function deferred() {
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
-function fixture(callback) {
+function fixture(callback, canvasAsset = null) {
   const request = deferred(), session = { current: 0 }, busy = { current: false };
   let auth = 0, calls = 0, closes = 0, error = '', confirming = false;
   const asset = { id: 'asset', isSeedanceMaterial: true };
@@ -17,7 +17,8 @@ function fixture(callback) {
     confirmBusyRef: busy, creativeSessionRef: session, getAuthSessionGeneration: () => auth,
     setConfirmError: value => { error = value; }, setConfirming: value => { confirming = value; },
     projectAssetsMap: { project: { chars: [asset] } }, creativeAssets: {}, seedanceAssets: [],
-    selected: new Set(['asset']), preSelectedSet: new Set(),
+    canvasAssetsRef: { current: new Map(canvasAsset ? [[canvasAsset.id, canvasAsset]] : []) },
+    selected: new Set([canvasAsset?.id || 'asset']), preSelectedSet: new Set(),
     apiGetLiveMaterialAsset: () => request.promise, unwrapLiveMaterialAsset: value => value,
     toSeedancePickerAsset: value => value, validateSelection: () => true,
     onConfirm: async assets => { calls++; return callback?.(assets); },
@@ -27,6 +28,14 @@ function fixture(callback) {
   return { confirm, request, close: () => { session.current++; }, switchAccount: () => { auth++; },
     snapshot: () => ({ calls, closes, error, confirming, busy: busy.current }) };
 }
+test('已浏览画布的缓存素材通过统一确认回填真实编号和原件地址', async () => {
+  const asset = { id: 'canvas-asset', asset_id: 'canvas-asset', fileUrl: '/original', asset_type: 'image' };
+  let received;
+  const f = fixture(assets => { received = assets; }, asset);
+  await f.confirm();
+  assert.deepEqual(received, [asset]);
+  assert.equal(f.snapshot().closes, 1);
+});
 test('补全详情至回填全程阻止重复确认', async () => {
   const f = fixture(), pending = f.confirm();
   await f.confirm();

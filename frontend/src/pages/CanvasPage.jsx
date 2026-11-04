@@ -1,9 +1,11 @@
 /**
  * @file CanvasPage.jsx
  * @structure-index
+ *   2026-11-04：空白双击菜单新增上传与资产库入口，素材从双击位置开始排列；连线与工具栏菜单不变。
  *
+ *   2026-11-04：双名称分别编辑，画布管理迁入顶部，底部移除列表入口。
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L150；grouping L196；referenceGraph L210；mediaPreview L176；文档加载 L223；handleNodesChange L306；addNode L386；工具栏新增 L422；批量导入 L434；React Flow L815
+ *   CanvasPage L153；grouping L201；referenceGraph L215；mediaPreview L179；文档读取 L234；handleNodesChange L311；addNode L391；工具栏新增 L427；批量导入 L439；React Flow L830；2026-11-04：组顶部复用选区工具栏并接入组内居中新建。
  *   2026-10-27：保存失败复用带下载操作的提示，点击时导出最新草稿。
  *   2026-10-27：顶部云上传图标接入真实保存开始、成功、失败；旧请求不覆盖新改动。
  *   2026-10-27：上传整批完成统一提示，保存失败独立反馈；保留页面级会话与上传回填编排。
@@ -89,7 +91,7 @@ import { getCanvasToolShortcut } from '../components/canvas/CanvasToolShortcuts'
 import { addCanvasReference, getCanvasReferenceNodePosition } from '../components/canvas/CanvasReferences';
 import { planCanvasReferenceBatch } from '../components/canvas/CanvasReferenceBatch';
 import { getCanvasImportBounds, getCanvasToolbarNodePosition, preserveCanvasImportPanels } from '../components/canvas/CanvasImportLayout';
-import { getCanvasMediaFileType } from '../components/canvas/CanvasLocalMedia';
+import { getCanvasMediaAccept, getCanvasMediaFileType } from '../components/canvas/CanvasLocalMedia';
 import { useCanvasReferences } from '../components/canvas/UseCanvasReferences';
 import { useCanvasGrouping } from '../components/canvas/UseCanvasGrouping';
 import { useCanvasTextGeneration } from '../components/canvas/UseCanvasTextGeneration';
@@ -104,6 +106,7 @@ import { resolveCanvasLeftConnection } from '../components/canvas/CanvasLeftConn
 import { useCanvasNodeActions } from '../components/canvas/UseCanvasNodeActions';
 import { getCanvasStackPresentation, restoreCanvasStackPositionChange } from '../components/canvas/CanvasNodeActions';
 import CanvasNodeActionOverlays from '../components/canvas/CanvasNodeActionOverlays';
+import CanvasSelectionToolbar from '../components/canvas/CanvasSelectionToolbar';
 import CanvasMediaPreview from '../components/canvas/CanvasMediaPreview';
 import LocalImageEditor from '../components/image-edit/LocalImageEditor';
 import { useCanvasImageEdits } from '../components/canvas/UseCanvasImageEdits';
@@ -147,7 +150,7 @@ function UnsupportedAction({ onClose }) {
   return <div className="absolute bottom-[92px] left-1/2 z-20 flex w-[280px] -translate-x-1/2 items-center justify-between rounded-[12px] border border-white-10 bg-surface-modal px-[14px] py-[10px] text-[13px] text-text-secondary shadow-[0_8px_28px_rgba(0,0,0,0.35)]"><span>该入口将在后续阶段开放</span><button type="button" className="border-0 bg-transparent p-0 text-text-hint" onClick={onClose} aria-label="关闭提示"><X size={16} /></button></div>;
 }
 
-export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCreateProject, onSelectCanvas }) {
+export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSelectCanvas }) {
   const [canvas, setCanvas] = useState(null);
   const [project, setProject] = useState(null);
   const [currentUser, setCurrentUser] = useState({});
@@ -178,6 +181,8 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
   const { enabled: snapEnabled, toggle: toggleSnap, guides: snapGuides, apply: applySnap, clear: clearSnap } = useCanvasSnapping(canvasId, canvasContainerRef);
   const importAssetsRef = useRef(null);
   const uploadFilesRef = useRef(null);
+  const menuUploadInputRef = useRef(null);
+  const menuUploadTargetRef = useRef(null);
   const dragPositionsRef = useRef(new Map());
   const pendingNodeClicksRef = useRef(new Map());
   const cancelPendingClicks = useCallback(() => {
@@ -443,7 +448,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       return true;
     }
     const anchor = current.find((node) => node.id === target?.nodeId);
-    if (target && !anchor) return false;
+    if (target?.nodeId && !anchor) return false;
     const valid = assets.map((asset) => toCanvasAsset(asset, anchor?.type || 'video')).filter(Boolean);
     if (!valid.length) return false;
     const rect = canvasContainerRef.current?.getBoundingClientRect();
@@ -470,6 +475,10 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       } else {
         const center = flowInstance.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
         const imports = planCanvasAssetImport(valid, center, current);
+        if (target?.flowPosition && imports.length) {
+          const offset = { x: target.flowPosition.x - imports[0].position.x, y: target.flowPosition.y - imports[0].position.y };
+          imports.forEach(item => { item.position = { x: item.position.x + offset.x, y: item.position.y + offset.y }; });
+        }
         imports.forEach(({ type, position, asset }) => addNode(type, position, null, asset));
         if (valid.length > 1) importBounds = getCanvasImportBounds(imports.map((item) => ({ ...item.position, ...getCanvasAssetNodeSize(item.asset) })));
       }
@@ -591,7 +600,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     if (!flowInstance || !event.target.classList.contains('react-flow__pane')) return;
     event.preventDefault();
     window.getSelection()?.removeAllRanges();
-    const screen = getCanvasNodeMenuPosition(event, { width: window.innerWidth, height: window.innerHeight });
+    const screen = getCanvasNodeMenuPosition(event, { width: window.innerWidth, height: window.innerHeight }, { width: 180, height: 240 });
     setNodeMenu({ screen, flowPosition: flowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
   }, [flowInstance]);
   const getConnectionTarget = useCallback((event) => {
@@ -809,7 +818,13 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
     {imageEdits.editor && <LocalImageEditor key={`${imageEdits.editor.card.imageUrl}:${imageEdits.editor.mode}`} {...imageEdits.editor} onClose={imageEdits.close} />}
     {videoEdits.editor && <CanvasVideoEditor key={`${videoEdits.editor.videoUrl}:${videoEdits.editor.mode}`} editor={videoEdits.editor} onClose={videoEdits.close} />}
     <CanvasFileInput inputRef={canvasFiles.inputRef} onChange={canvasFiles.importFile} />
-    <CanvasProjectHeader saveStatus={autosave.status} canvasName={projectName} onBackHome={() => autosave.leave(onBackHome)} onBackProjects={() => autosave.leave(onBackProjects)} onCreateProject={() => autosave.leave(onCreateProject)} onImport={canvasFiles.open} onUnsupported={handleUnsupported} onRename={renameProject} />
+    <CanvasProjectHeader saveStatus={autosave.status} projectName={projectName} canvasName={canvas?.title} onBackHome={() => autosave.leave(onBackHome)} onBackProjects={() => autosave.leave(onBackProjects)} onImport={canvasFiles.open} onRename={renameProject}
+      canvases={canvasList.items}
+      activeCanvasId={canvasId}
+      canvasListBusy={canvasList.busy || loading || !!error}
+      onSelectCanvas={canvasList.select}
+      onCreateCanvas={canvasList.create}
+      onRenameCanvas={canvasList.rename} onDuplicateCanvas={canvasList.duplicate} onDeleteCanvas={canvasList.remove} />
     <CanvasUserMenu currentUser={currentUser} onLogout={() => autosave.leave(handleLogout)} onOpenProfile={() => setProfileOpen(true)} />
     <div ref={canvasContainerRef} className="absolute inset-0 bg-surface-toolbar">
       <ReactFlow viewport={viewport} minZoom={0.01}
@@ -867,11 +882,23 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
         proOptions={{ hideAttribution: true }} className="bg-surface-toolbar">
         {/* 固定圆点的屏幕半径，间距和位置仍由 React Flow 随视口变化。 */}
         <CanvasGridBackground />
+        <CanvasSelectionToolbar nodes={nodes} onAction={nodeActions.execute} />
         {showMiniMap && <CanvasMiniMap />}
       </ReactFlow>
       <CanvasSnapGuides guides={snapGuides} viewport={viewport} />
       {upstreamConnection && <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full" aria-hidden="true"><line x1={upstreamConnection.start?.x ?? upstreamConnection.end.x} y1={upstreamConnection.start?.y ?? upstreamConnection.end.y} x2={upstreamConnection.end.x} y2={upstreamConnection.end.y} stroke="var(--color-brand-main)" strokeWidth="2" /></svg>}
-      {(nodeMenu || pendingConnection) && <div className="pointer-events-none absolute inset-0 z-30"><div className="pointer-events-auto absolute" style={{ left: (pendingConnection || nodeMenu).screen.left, top: (pendingConnection || nodeMenu).screen.top }}><CanvasNodeAddMenu items={pendingConnection ? pendingMenuItems : CANVAS_NODE_MENU_ITEMS} onAddNode={(type) => pendingConnection
+      {(nodeMenu || pendingConnection) && <div className="pointer-events-none absolute inset-0 z-30"><div className="pointer-events-auto absolute" style={{ left: (pendingConnection || nodeMenu).screen.left, top: (pendingConnection || nodeMenu).screen.top }}><CanvasNodeAddMenu
+        onUpload={nodeMenu && !pendingConnection ? () => {
+          menuUploadTargetRef.current = { flowPosition: nodeMenu.flowPosition, session: saveSessionRef.current };
+          setNodeMenu(null);
+          menuUploadInputRef.current?.click();
+        } : undefined}
+        onSelectAssets={nodeMenu && !pendingConnection ? () => {
+          setAssetTarget({ flowPosition: nodeMenu.flowPosition });
+          setNodeMenu(null);
+          setAssetPickerOpen(true);
+        } : undefined}
+        items={pendingConnection ? pendingMenuItems : CANVAS_NODE_MENU_ITEMS} onAddNode={(type) => pendingConnection
         ? addNode(type, pendingConnection.flowPosition, pendingConnection)
         : addNode(type, nodeMenu.flowPosition)} /></div></div>}
     </div>
@@ -887,12 +914,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       onMiniMapChange={setShowMiniMap}
       onOpenSearch={() => { nodeActions.closeMenu(); setNodeMenu(null); search.show(); }}
       onAddNode={handleToolbarAddNode}
-      canvases={canvasList.items}
-      activeCanvasId={canvasId}
-      canvasListBusy={canvasList.busy || loading || !!error}
-      onSelectCanvas={canvasList.select}
-      onCreateCanvas={canvasList.create}
-      onRenameCanvas={canvasList.rename} onDuplicateCanvas={canvasList.duplicate} onDeleteCanvas={canvasList.remove}
+
       onShare={canvasFiles.share}
       canUndo={history.canUndo}
       canRedo={history.canRedo}
@@ -901,6 +923,13 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       onOpenAssetPicker={() => { setAssetTarget(null); setAssetPickerOpen(true); }}
     />
     {search.open && <CanvasSearchModal nodes={nodes} onClose={search.close} onSelect={search.select} />}
+    <input ref={menuUploadInputRef} type="file" hidden multiple accept={getCanvasMediaAccept('all')} onChange={(event) => {
+      const files = [...(event.target.files || [])];
+      event.target.value = '';
+      const target = menuUploadTargetRef.current;
+      menuUploadTargetRef.current = null;
+      if (files.length && target?.session === saveSessionRef.current) uploadFiles(files, { flowPosition: target.flowPosition });
+    }} />
     <AssetPickerModal
       open={assetPickerOpen}
       onClose={() => { setAssetPickerOpen(false); setAssetTarget(null); }}
@@ -912,7 +941,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onCre
       } : undefined}
       accept={assetTarget?.nodeType === 'video' ? 'all' : assetTarget?.nodeType || 'all'}
       selectionMode="multiple"
-      assetFilter={assetTarget ? (asset) => Boolean(toCanvasAsset(asset, assetTarget.nodeType)) : undefined}
+      assetFilter={assetTarget?.nodeType ? (asset) => Boolean(toCanvasAsset(asset, assetTarget.nodeType)) : undefined}
       includeSeedanceLibrary
     />
     <ProfileModal open={profileOpen} currentUser={currentUser} onClose={() => setProfileOpen(false)} onLogout={() => autosave.leave(handleLogout)} onProfileUpdated={(updated) => setCurrentUser((previous) => ({ ...previous, ...updated }))} />

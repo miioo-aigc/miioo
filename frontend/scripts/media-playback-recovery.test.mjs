@@ -9,10 +9,10 @@ class Media extends EventTarget {
   emit(name) { this.dispatchEvent(new Event(name)); }
 }
 const delay = ms => new Promise(r => setTimeout(r, ms));
-function setup(timeoutMs = 30000) {
+function setup(timeoutMs = 30000, options = {}) {
   const media = new Media(), network = new EventTarget(); network.navigator = { onLine: true };
   const states = [];
-  const session = createMediaPlaybackSession(media, { network, timeoutMs, onChange: s => states.push(s) });
+  const session = createMediaPlaybackSession(media, { network, timeoutMs, ...options, onChange: s => states.push(s) });
   return { media, session, states, net(name) { network.navigator.onLine = name === 'online'; network.dispatchEvent(new Event(name)); } };
 }
 test('等待不冒充播放，元数据预加载完成不要求整文件就绪', () => {
@@ -111,4 +111,59 @@ test('静音卡片恢复后悬停可播放，有声音频仍要求显式播放',
     assert.equal(h.media.plays, 1);
     assert.equal(h.session.getState().requiresClick, true);
   } finally { h.session.dispose(); }
+});
+
+
+test('音频超时最多重载三次，手动重试开启新一轮', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = setup(30, { timeoutRetries: 3 });
+  try {
+    h.session.start();
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      t.mock.timers.tick(30);
+      assert.equal(h.media.loads, attempt);
+      assert.equal(h.session.getState().status, 'loading');
+      assert.equal(h.states.some(state => state.status === 'error'), false);
+    }
+    t.mock.timers.tick(30);
+    assert.equal(h.session.getState().status, 'error');
+    h.net('offline'); h.net('online');
+    t.mock.timers.tick(2000);
+    assert.equal(h.media.loads, 3);
+    assert.equal(h.media.plays, 0);
+    h.session.reload();
+    t.mock.timers.tick(30);
+    assert.equal(h.media.loads, 5);
+  } finally { h.session.dispose(); }
+});
+
+test('连续超时保留进度，恢复后不自动播放', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = setup(30, { timeoutRetries: 3 });
+  try {
+    h.session.start();
+    t.mock.timers.tick(30);
+    t.mock.timers.tick(30);
+    h.media.readyState = 1;
+    h.media.emit('loadedmetadata');
+    assert.equal(h.media.currentTime, 12);
+    assert.equal(h.session.getState().status, 'ready');
+    assert.equal(h.session.getState().requiresClick, true);
+    t.mock.timers.tick(1000);
+    assert.equal(h.media.loads, 2);
+    assert.equal(h.media.plays, 0);
+  } finally { h.session.dispose(); }
+});
+
+test('取消等待或销毁会话后停止自动重试', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  for (const action of ['pause', 'dispose']) {
+    const h = setup(30, { timeoutRetries: 3 });
+    h.session.start();
+    t.mock.timers.tick(30);
+    h.session[action]();
+    t.mock.timers.tick(1000);
+    assert.equal(h.media.loads, 1);
+    h.session.dispose();
+  }
 });

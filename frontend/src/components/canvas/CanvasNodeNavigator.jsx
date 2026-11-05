@@ -4,10 +4,11 @@
  *   CanvasNodeNavigator 左下角节点导航器；收起为计数入口，展开为可搜索、筛选、分组浏览和定位的侧拉窗。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ChevronDown, FileText, Grid3X3, Image as ImageIcon, List, Video, Volume2 } from 'lucide-react';
+import { ChevronDown, FileText, Grid3X3, Image as ImageIcon, List, Video, Volume2 } from 'lucide-react';
 import AsyncImagePreview from '../AsyncImagePreview';
 import { Button } from '../ui/Button';
 import TextField from '../ui/TextField';
+import Tooltip from '../ui/Tooltip';
 import CanvasNodeIcon from './CanvasNodeIcon';
 import { CANVAS_SEARCH_TYPES, canvasSearchName, canvasSearchParts } from './CanvasSearch.js';
 import { getCanvasNodeNavigator } from './CanvasNodeNavigatorData.js';
@@ -21,6 +22,14 @@ function PanelGlyph() {
   return <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <path d="M4 2.5H12C12.828 2.5 13.5 3.172 13.5 4V12C13.5 12.828 12.828 13.5 12 13.5H4C3.172 13.5 2.5 12.828 2.5 12V4C2.5 3.172 3.172 2.5 4 2.5Z" fill="none" stroke="currentColor" />
     <path d="M4 2.5H5C5.828 2.5 6.5 3.172 6.5 4V12C6.5 12.828 5.828 13.5 5 13.5H4C3.172 13.5 2.5 12.828 2.5 12V4C2.5 3.172 3.172 2.5 4 2.5Z" fill="none" stroke="currentColor" />
+  </svg>;
+}
+
+function CollapseGlyph() {
+  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M4.7002 7.99719H14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M8.66663 12L4.66663 8L8.66663 4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M2 12V4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
   </svg>;
 }
 
@@ -162,16 +171,17 @@ export default function CanvasNodeNavigator({ nodes, open, onOpenChange, onLocat
           inputClassName="canvas-node-navigator__search-input"
           suffix={<Button type="submit" variant="secondary" size="small"
             className="canvas-node-navigator__search-button !h-6 !rounded-[6px] !px-2">搜索</Button>} />
-        <button type="button" className="canvas-node-navigator__view-toggle"
-          aria-label={viewMode === 'grid' ? '切换为列表展示' : '切换为宫格展示'}
-          title={viewMode === 'grid' ? '切换为列表展示' : '切换为宫格展示'}
-          aria-pressed={viewMode === 'list'}
-          onClick={() => setViewMode((current) => current === 'grid' ? 'list' : 'grid')}>
-          {viewMode === 'grid'
-            ? <Grid3X3 className="canvas-node-navigator__view-glyph--grid"
-              size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden="true" />
-            : <List size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden="true" />}
-        </button>
+        <Tooltip label={viewMode === 'grid' ? '切换为列表展示' : '切换为宫格展示'}>
+          <Button variant="secondary" size="large" iconOnly
+            className="canvas-node-navigator__view-toggle"
+            aria-label={viewMode === 'grid' ? '切换为列表展示' : '切换为宫格展示'}
+            aria-pressed={viewMode === 'list'}
+            onClick={() => setViewMode((current) => current === 'grid' ? 'list' : 'grid')}
+            icon={viewMode === 'grid'
+              ? <Grid3X3 className="canvas-node-navigator__view-glyph--grid"
+                size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden="true" />
+              : <List size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden="true" />} />
+        </Tooltip>
       </form>
       <div className="canvas-node-navigator__filters" role="group" aria-label="节点类型筛选">
         {CANVAS_SEARCH_TYPES.map((item) => <button key={item.value} type="button" aria-pressed={type === item.value}
@@ -190,7 +200,7 @@ export default function CanvasNodeNavigator({ nodes, open, onOpenChange, onLocat
       <div className="canvas-node-navigator__footer">
         <button type="button" className="canvas-node-navigator__back" aria-label="收起节点导航器" title="收起"
           onClick={close}>
-          <ArrowLeft size={14} strokeWidth={1.5} aria-hidden="true" />
+          <CollapseGlyph />
         </button>
         <span aria-live="polite">共 {data.count} 节点</span>
       </div>

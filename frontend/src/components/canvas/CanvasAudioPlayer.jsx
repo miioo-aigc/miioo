@@ -1,8 +1,7 @@
 /** 音频卡片展示：原生音频播放，柱条由当前播放片段的真实采样驱动。 */
 import { useRef, useState } from 'react';
 import { useMediaPlayback } from '../../hooks/useMediaPlayback';
-import MediaLoadStatus from '../feedback/MediaLoadStatus';
-import { Pause, Play } from 'lucide-react';
+import { LoaderCircle, Pause, Play, RotateCw } from 'lucide-react';
 import { useCanvasAudioWaveform } from './UseCanvasAudioWaveform';
 import CreationDubbingPromptPreview from '../creation/CreationDubbingPromptPreview';
 
@@ -14,8 +13,11 @@ function formatTime(seconds) {
 
 export default function CanvasAudioPlayer({ url, name, transcript }) {
   const audioRef = useRef(null);
-  const media = useMediaPlayback(audioRef, url);
+  const media = useMediaPlayback(audioRef, url, { timeoutRetries: 3 });
   const playing = media.status === 'playing';
+  const loading = media.status === 'loading';
+  const failed = media.status === 'error';
+  const actionLabel = failed ? '重新加载音频' : loading ? '正在加载，点击取消等待' : playing ? '暂停' : '播放';
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(NaN);
 
@@ -23,7 +25,8 @@ export default function CanvasAudioPlayer({ url, name, transcript }) {
 
   async function togglePlayback(event) {
     event.stopPropagation();
-    if (playing || media.status === 'loading') media.pause();
+    if (failed) media.retry();
+    else if (playing || loading) media.pause();
     else void media.play();
   }
 
@@ -34,12 +37,11 @@ export default function CanvasAudioPlayer({ url, name, transcript }) {
       onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
  />}
     <div className="canvas-node__audio-controls">
-      <button type="button" className="canvas-node__play nodrag nopan" onClick={togglePlayback} disabled={!url} aria-label={playing ? '暂停' : '播放'} title={playing ? '暂停' : '播放'}>
-        {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+      <button type="button" className="canvas-node__play nodrag nopan" onClick={togglePlayback} disabled={!url} aria-label={actionLabel} title={actionLabel}>
+        {loading ? <LoaderCircle size={16} className="animate-spin" /> : failed ? <RotateCw size={16} /> : playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
       </button>
       <span className="canvas-node__audio-time">{ `${formatTime(currentTime)}/${formatTime(duration)}`}</span>
     </div>
-    <MediaLoadStatus {...media} overlay={false} onPause={media.pause} onRetry={media.retry} onPlay={() => media.play()} />
     {transcript && <div className="canvas-node__transcript nodrag nopan nowheel">
       <CreationDubbingPromptPreview prompt={transcript} style={{ color: 'inherit', fontSize: 'inherit', lineHeight: 'inherit' }} />
     </div>}

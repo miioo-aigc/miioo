@@ -141,26 +141,16 @@
   line-height: 16px;
 }
 
+/* 视觉复用 Button 的 secondary 变体，这里只固定尺寸，避免影响表单行布局 */
 .canvas-node-navigator__view-toggle {
-  display: inline-flex;
   width: 36px;
   height: 36px;
   flex: 0 0 36px;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
   padding: 0;
-  border: 1px solid #ffffff0d;
-  border-radius: 8px;
-  background: #161616;
-  box-shadow: 3px 3px 8px #00000066;
-  outline: 1px solid #00000080;
-  color: #ffffff;
   cursor: pointer;
 }
 
 .canvas-node-navigator__view-toggle,
-.canvas-node-navigator__view-toggle:hover,
 .canvas-node-navigator__view-toggle:active,
 .canvas-node-navigator__view-toggle:focus,
 .canvas-node-navigator__view-toggle[aria-pressed="true"] {
@@ -185,6 +175,17 @@
 .canvas-node-navigator__view-toggle .canvas-node-navigator__view-glyph--grid * {
   color: #8a8a8a;
   stroke: currentColor;
+}
+
+/* 悬停时两种图标统一为 100% 白色 */
+.canvas-node-navigator__view-toggle:hover,
+.canvas-node-navigator__view-toggle:hover svg,
+.canvas-node-navigator__view-toggle:hover svg *,
+.canvas-node-navigator__view-toggle:hover .canvas-node-navigator__view-glyph--grid,
+.canvas-node-navigator__view-toggle:hover .canvas-node-navigator__view-glyph--grid * {
+  color: #ffffff;
+  opacity: 1;
+  stroke-opacity: 1;
 }
 
 .canvas-node-navigator__filters {

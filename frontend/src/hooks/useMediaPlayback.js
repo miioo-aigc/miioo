@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createMediaPlaybackSession } from '../utils/MediaPlaybackSession';
 
-export function useMediaPlayback(mediaRef, src, { autoPlay = false, deferred = false, mutedFallback = false } = {}) {
+export function useMediaPlayback(mediaRef, src, { autoPlay = false, deferred = false, mutedFallback = false, timeoutRetries = 0 } = {}) {
   const sessionRef = useRef(null);
   const [snapshot, setSnapshot] = useState({ src, status: 'idle' });
   useEffect(() => {
     const media = mediaRef.current;
     if (!media || !src) return undefined;
-    const session = createMediaPlaybackSession(media, { onChange: state => setSnapshot({ src, ...state }) });
+    const session = createMediaPlaybackSession(media, { timeoutRetries, onChange: state => setSnapshot({ src, ...state }) });
     sessionRef.current = session;
     queueMicrotask(() => { if (!deferred) session.start(); if (autoPlay) void session.play({ automatic: true, mutedFallback }); });
     return () => { session.dispose(); if (sessionRef.current === session) sessionRef.current = null; };
-  }, [mediaRef, src, autoPlay, deferred, mutedFallback]);
+  }, [mediaRef, src, autoPlay, deferred, mutedFallback, timeoutRetries]);
   const play = useCallback(options => sessionRef.current?.play(options), []);
   const pause = useCallback(() => sessionRef.current?.pause(), []);
   const retry = useCallback(() => sessionRef.current?.reload(), []);

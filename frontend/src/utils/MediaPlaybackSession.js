@@ -1,5 +1,5 @@
 /** 单个媒体元素的加载/播放会话；恢复只重载；默认显式播放，静音预览允许由悬停继续。 */
-export function createMediaPlaybackSession(media, { onChange, network = window, timeoutMs = 30000 } = {}) {
+export function createMediaPlaybackSession(media, { onChange, network = window, timeoutMs = 30000, timeoutRetries = 0 } = {}) {
   let disposed = false;
   let version = 0;
   let timer;
@@ -9,6 +9,7 @@ export function createMediaPlaybackSession(media, { onChange, network = window, 
   let autoUsed = false;
   let requiresClick = false;
   let position = 0;
+  let retriesUsed = 0;
   let state = { status: 'idle', message: '', requiresClick: false };
   const handlers = {};
   const publish = (status, message = '') => {
@@ -20,25 +21,34 @@ export function createMediaPlaybackSession(media, { onChange, network = window, 
   function wait() {
     clearWait();
     publish('loading');
-    timer = setTimeout(() => fail('媒体加载超时'), timeoutMs);
+    timer = setTimeout(() => {
+      if (disposed) return;
+      if (retriesUsed < timeoutRetries) {
+        retriesUsed++;
+        reload({ automatic: true });
+      } else fail('媒体加载超时');
+    }, timeoutMs);
   }
   function recover() {
+    if (timeoutRetries > 0 && retriesUsed >= timeoutRetries) return;
     if (!recovered || autoUsed || state.status !== 'error' || network.navigator?.onLine === false) return;
     autoUsed = true;
-    recoveryTimer = setTimeout(reload, 150 + Math.random() * 850);
+    recoveryTimer = setTimeout(() => reload({ automatic: true }), 150 + Math.random() * 850);
   }
   function fail(message = '媒体加载失败') {
     if (disposed) return;
     version++;
     clearWait();
-    position = Number.isFinite(media.currentTime) ? media.currentTime : 0;
+    if (!requiresClick) position = Number.isFinite(media.currentTime) ? media.currentTime : 0;
     requiresClick = true;
     publish('error', message);
     media.pause();
     recover();
   }
-  function reload() {
+  function reload({ automatic = false } = {}) {
     if (disposed) return;
+    if (!automatic) retriesUsed = 0;
+    if (!requiresClick) position = Number.isFinite(media.currentTime) ? media.currentTime : 0;
     version++;
     clearTimeout(recoveryTimer);
     requiresClick = true;
@@ -48,6 +58,7 @@ export function createMediaPlaybackSession(media, { onChange, network = window, 
   }
   function ready() {
     if (disposed || media.error || state.status === 'error') return;
+    retriesUsed = 0;
     if (requiresClick) {
       clearWait();
       if (position > 0 && Number.isFinite(media.duration)) {

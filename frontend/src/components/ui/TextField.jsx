@@ -4,7 +4,7 @@
  *
  * ─── 组件职责 ───────────────────────────────────────────────────────
  *   TextField 提供无业务的单行/多行受控文本输入视觉和交互
- *   支持字数统计、错误态、后缀插槽、字符过滤、多行高度；2026-10-09 新增可选垂直缩放 resizable。
+ *   支持字数统计、错误态、后缀插槽、字符过滤、多行高度；可关闭聚焦高亮并透传原生输入节点 ref。
  *
  * ─── 依赖边界 ───────────────────────────────────────────────────────
  *   只接收字段值、标签和事件回调，不调用 API、不读取 Store
@@ -15,9 +15,10 @@ const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
 // 边框/背景 Token 口径对齐 design-system/components/input.md
-function resolveBorderClass({ focused, hovered, error, disabled }) {
+function resolveBorderClass({ focused, hovered, error, disabled, showFocusState }) {
   if (error) return 'border-input-border-wrong';
   if (disabled) return 'border-input-border-normal';
+  if (!showFocusState) return 'border-input-border-normal';
   if (focused) return 'border-input-border-focus';
   if (hovered) return 'border-input-border-hover';
   return 'border-input-border-normal';
@@ -41,16 +42,25 @@ export default function TextField({
   wrapperClassName = '',
   wrapperStyle,
   inputClassName = '',
+  inputRef,
+  showFocusState = true,
   onChange,
+  onFocus,
   onBlur,
   ...inputProps
 }) {
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
 
-  const borderClass = resolveBorderClass({ focused, hovered, error, disabled: !!inputProps.disabled });
+  const borderClass = resolveBorderClass({
+    focused,
+    hovered,
+    error,
+    disabled: !!inputProps.disabled,
+    showFocusState,
+  });
   const bgClass = resolveBgClass({ disabled: !!inputProps.disabled });
-  const glowStyle = focused && !inputProps.disabled
+  const glowStyle = showFocusState && focused && !inputProps.disabled
     ? { boxShadow: '0px 0px 10px var(--color-glow)', mixBlendMode: 'lighten' }
     : {};
 
@@ -62,7 +72,8 @@ export default function TextField({
     onChange?.(patched);
   };
 
-  const handleBlur = () => { setFocused(false); onBlur?.(); };
+  const handleFocus = (event) => { setFocused(true); onFocus?.(event); };
+  const handleBlur = (event) => { setFocused(false); onBlur?.(event); };
 
   const fieldBaseClass =
     'flex w-full rounded-medium border border-solid [outline:1px_solid_var(--color-stroke-outline)] outline-offset-0 antialiased transition-[border-color] duration-150';
@@ -87,10 +98,11 @@ export default function TextField({
 
   const renderControl = () => {
     const commonProps = {
+      ref: inputRef,
       value,
       maxLength,
       onChange: handleChange,
-      onFocus: () => setFocused(true),
+      onFocus: handleFocus,
       onBlur: handleBlur,
       className: `${inputClass} ${inputClassName}`,
       style: inputStyle,

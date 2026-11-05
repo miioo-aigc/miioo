@@ -1,11 +1,13 @@
 /**
  * @file CanvasPage.jsx
  * @structure-index
+ *   2026-11-04：左下角节点导航器支持展开浏览、搜索筛选；定位节点时选中并居中，侧拉窗保持展开。
+ *   2026-11-04：CanvasSelectionInteraction 统一多选范围框、Shift加选和Ctrl/Command减选；剩一张恢复单选。
  *   2026-11-04：空白双击菜单新增上传与资产库入口，素材从双击位置开始排列；连线与工具栏菜单不变。
  *
  *   2026-11-04：双名称分别编辑，画布管理迁入顶部，底部移除列表入口。
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L153；grouping L201；referenceGraph L215；mediaPreview L179；文档读取 L234；handleNodesChange L311；addNode L391；工具栏新增 L427；批量导入 L439；React Flow L830；2026-11-04：组顶部复用选区工具栏并接入组内居中新建。
+ *   CanvasPage L157；grouping L207；referenceGraph L222；mediaPreview L183；文档读取 L238；handleNodesChange L319；addNode L399；工具栏新增 L435；批量导入 L447；React Flow L831；2026-11-04：组顶部复用选区工具栏并接入组内居中新建。
  *   2026-10-27：保存失败复用带下载操作的提示，点击时导出最新草稿。
  *   2026-10-27：顶部云上传图标接入真实保存开始、成功、失败；旧请求不覆盖新改动。
  *   2026-10-27：上传整批完成统一提示，保存失败独立反馈；保留页面级会话与上传回填编排。
@@ -26,6 +28,7 @@
  *   CanvasToolbar       components/canvas；底部画布工具栏；2026-10-10 文本节点更多入口复用右键菜单，仅选当前卡片。
  *   CanvasMediaPreview  components/canvas；2026-10-10 图片/视频双击打开悬浮预览，视频接续进度；固定关闭按钮与模糊遮罩。
  *   CanvasMiniMap       components/canvas；双层背景的交互预览地图；2026-10-19：经用户确认使用官方配置隐藏画部署名，保留许可证及开发环境提醒。
+ *   CanvasNodeNavigator components/canvas；左下角默认收起，展开为搜索、类型筛选、分组浏览侧拉窗；定位节点时保持展开。
  *
  * ─── 业务边界 ─── 2026-10-15：堆叠拖动坐标转换回展开布局坐标，双击点作为堆叠中心；2026-10-19：所有工具启用中键平移，保留左键行为。
  *   2026-10-14：UseCanvasList 接通同项目列表、新增、切换与重命名；2026-10-19 增加副本切换与归档后导航；切换先保存，失败保留当前画布。
@@ -82,6 +85,7 @@ import CanvasFileInput from '../components/canvas/CanvasFileInput';
 import { useCanvasFileActions } from '../components/canvas/UseCanvasFileActions';
 import CanvasToolbar from '../components/canvas/CanvasToolbar';
 import CanvasSearchModal from '../components/canvas/CanvasSearchModal';
+import CanvasNodeNavigator from '../components/canvas/CanvasNodeNavigator';
 import { useCanvasSearch } from '../components/canvas/UseCanvasSearch';
 import CanvasUserMenu from '../components/canvas/CanvasUserMenu';
 import AssetPickerModal from '../components/AssetPickerModal';
@@ -107,6 +111,7 @@ import { useCanvasNodeActions } from '../components/canvas/UseCanvasNodeActions'
 import { getCanvasStackPresentation, restoreCanvasStackPositionChange } from '../components/canvas/CanvasNodeActions';
 import CanvasNodeActionOverlays from '../components/canvas/CanvasNodeActionOverlays';
 import CanvasSelectionToolbar from '../components/canvas/CanvasSelectionToolbar';
+import CanvasSelectionInteraction from '../components/canvas/CanvasSelectionInteraction';
 import CanvasMediaPreview from '../components/canvas/CanvasMediaPreview';
 import LocalImageEditor from '../components/image-edit/LocalImageEditor';
 import { useCanvasImageEdits } from '../components/canvas/UseCanvasImageEdits';
@@ -190,7 +195,9 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     pendingNodeClicksRef.current.clear();
   }, []);
   const [searchOpen, setSearchOpen] = useState(false);
-  const history = useCanvasHistory(cancelPendingClicks, !assetPickerOpen && !profileOpen && !actionDialog && !searchOpen);
+  const [nodeNavigatorOpen, setNodeNavigatorOpen] = useState(false);
+  const history = useCanvasHistory(cancelPendingClicks,
+    !assetPickerOpen && !profileOpen && !actionDialog && !searchOpen);
   const { nodes, setNodes } = history;
   const textEditor = useCanvasTextEditor({ nodes, history, cancelPendingClicks });
   const imageEdits = useCanvasImageEdits({ nodes, setNodes, canvasId, cancelPendingClicks });
@@ -200,7 +207,8 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const search = useCanvasSearch({ nodes, setNodes, flowInstance, containerRef: canvasContainerRef, cancelPendingClicks, open: searchOpen, setOpen: setSearchOpen });
   const grouping = useCanvasGrouping(nodes, setNodes, cancelPendingClicks, false);
   const nodeActions = useCanvasNodeActions({ nodes, setNodes, undo: history.undo, redo: history.redo, getUndoToken: history.getUndoToken, cancelPendingClicks, flowInstance,
-    containerRef: canvasContainerRef, enabled: loadedCanvasId === canvasId && !error && !assetPickerOpen && !profileOpen && !searchOpen,
+    containerRef: canvasContainerRef,
+    enabled: loadedCanvasId === canvasId && !error && !assetPickerOpen && !profileOpen && !searchOpen,
     dialog: actionDialog, setDialog: setActionDialog });
   const generateText = useCanvasTextGeneration(nodes, setNodes, canvasId, cancelPendingClicks);
   const generateImage = useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, canvas?.project_id);
@@ -290,14 +298,15 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
         search.show();
         return;
       }
-      const tool = getCanvasToolShortcut(event, !loading && !error && !assetPickerOpen && !profileOpen && !actionDialog && !searchOpen);
+      const tool = getCanvasToolShortcut(event,
+        !loading && !error && !assetPickerOpen && !profileOpen && !actionDialog && !searchOpen && !nodeNavigatorOpen);
       if (!tool) return;
       event.preventDefault();
       setActiveTool(tool);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [loading, error, assetPickerOpen, profileOpen, actionDialog, searchOpen, search]);
+  }, [loading, error, assetPickerOpen, profileOpen, actionDialog, searchOpen, nodeNavigatorOpen, search]);
   const handleLogout = async () => {
     try {
       await apiLogout();
@@ -778,14 +787,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     if (activeTool === 'hand') return;
     const selectionId = grouping.resolveSelectionId(node);
     if (event.metaKey || event.ctrlKey || event.shiftKey) {
-      setNodes((current) => {
-        const ids = new Set(current.filter((item) => item.selected).map((item) => item.id));
-        if (selectionId !== node.id) {
-          if (ids.has(selectionId)) ids.delete(selectionId);
-          else ids.add(selectionId);
-        }
-        return setCanvasSelection(current, [...ids]);
-      });
+      // 修饰键选择由 CanvasSelectionInteraction 在捕获阶段统一处理。
       return;
     }
     if (selectionId !== node.id || node.type === 'canvasGroup') {
@@ -877,12 +879,13 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
           setNodes((current) => setCanvasSelection(current, []));
         }}
         panOnDrag={activeTool === 'hand' ? true : [1]} selectionOnDrag={activeTool === 'select'}
-        multiSelectionKeyCode={['Meta', 'Control', 'Shift']} selectionKeyCode={null}
+        multiSelectionKeyCode={null} selectionKeyCode={null}
         onSelectionStart={() => { cancelPendingClicks(); setNodeMenu(null); setNodes((current) => setCanvasSelection(current, current.filter((node) => node.selected).map((node) => node.id))); }}
         proOptions={{ hideAttribution: true }} className="bg-surface-toolbar">
         {/* 固定圆点的屏幕半径，间距和位置仍由 React Flow 随视口变化。 */}
         <CanvasGridBackground />
         <CanvasSelectionToolbar nodes={nodes} onAction={nodeActions.execute} />
+        <CanvasSelectionInteraction enabled={activeTool !== 'hand'} setNodes={setNodes} cancelPendingClicks={cancelPendingClicks} />
         {showMiniMap && <CanvasMiniMap />}
       </ReactFlow>
       <CanvasSnapGuides guides={snapGuides} viewport={viewport} />
@@ -902,6 +905,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
         ? addNode(type, pendingConnection.flowPosition, pendingConnection)
         : addNode(type, nodeMenu.flowPosition)} /></div></div>}
     </div>
+    <CanvasNodeNavigator nodes={nodes} open={nodeNavigatorOpen} onOpenChange={setNodeNavigatorOpen} onLocate={search.locate} />
     {loading && <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 text-[14px] text-text-hint">正在加载画布...</div>}
     {!loading && error && <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 text-[14px] text-text-danger">{error}</div>}
     {!loading && !error && canvas && nodes.length === 0 && <main className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-[16px] pb-[20px]"><CanvasCenterPrompt /></main>}

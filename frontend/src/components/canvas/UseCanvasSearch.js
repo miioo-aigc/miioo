@@ -13,15 +13,16 @@ export function useCanvasSearch({ nodes, setNodes, flowInstance, containerRef, c
     });
     return () => cancelAnimationFrame(frame);
   }, [targetId, nodes, flowInstance, containerRef]);
+  const locate = (id) => {
+    cancelPendingClicks();
+    setNodes((current) => revealCanvasSearchNode(current, id));
+    setTargetId(id);
+  };
   return {
     open,
     show: () => { cancelPendingClicks(); setOpen(true); },
     close: () => setOpen(false),
-    select: (id) => {
-      cancelPendingClicks();
-      setNodes((current) => revealCanvasSearchNode(current, id));
-      setTargetId(id);
-      setOpen(false);
-    },
+    locate,
+    select: (id) => { locate(id); setOpen(false); },
   };
 }

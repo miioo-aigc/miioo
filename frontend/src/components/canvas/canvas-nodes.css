@@ -1,5 +1,7 @@
 /* 平移状态优先于选择工具的光标，结束拖动后由 React Flow 自动恢复。 */
 .react-flow .react-flow__pane.dragging { cursor: grabbing; }
+/* 修饰键点击穿透多选范围层，命中真实卡片；正常状态保留范围拖动。 */
+.canvas-selection-modifying .react-flow__nodesselection-rect { pointer-events: none; }
 /* 连线操作层高于组背景和选中节点，避免背景模糊作用到剪刀；空白处继续穿透。 */
 .react-flow__edgelabel-renderer:has(.canvas-edge-action) { z-index: 1002; pointer-events: none; }
 .canvas-node { --file-upload-button-font-size: 14px; --file-upload-button-line-height: 18px; --file-upload-button-text-color: rgba(255, 255, 255, 0.60); position: relative; width: 240px; color: var(--color-text-primary); font-family: inherit; }

@@ -12,6 +12,7 @@ import CanvasSaveIndicator from './CanvasSaveIndicator';
 import CanvasHeaderName from './CanvasHeaderName';
 import CanvasListMenu from './CanvasListMenu';
 import { normalizeProjectName, PROJECT_NAME_MAX_LENGTH, validateProjectName } from './CanvasProjectName';
+import './CanvasProjectHeader.css';
 
 const normalizeCanvasName = (value) => value.slice(0, 100);
 const validateCanvasName = (value) => !value.trim() ? '画布名称不能为空' : value.length > 100 ? '画布名称不能超过100个字符' : '';
@@ -30,7 +31,7 @@ export default function CanvasProjectHeader({ saveStatus, projectName, canvasNam
   const closeAfter = (action) => async (...args) => {
     if (await action(...args)) setMenuOpen(false);
   };
-  return <div ref={headerRef} onKeyDown={(event) => { if (event.key === 'Escape') setMenuOpen(false); }} className="absolute left-0 top-0 z-20 flex h-[60px] items-end gap-[16px] bg-surface-toolbar px-[24px] py-[18px] antialiased">
+  return <div ref={headerRef} onKeyDown={(event) => { if (event.key === 'Escape') setMenuOpen(false); }} className="canvas-project-header absolute left-0 right-0 top-0 z-20 flex h-[60px] items-end gap-[16px] px-[24px] py-[18px] antialiased">
     <HomeLogo clickable onClick={onBackHome} />
     <div className="h-[16px] w-px shrink-0 bg-stroke-accent" />
     <div className="flex items-center gap-[8px]">

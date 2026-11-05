@@ -1,0 +1,37 @@
+.canvas-project-header {
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.canvas-project-header > * {
+  pointer-events: auto;
+}
+
+.canvas-project-header::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: '';
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgb(9 9 9 / 90%) 0%,
+    rgb(9 9 9 / 68%) 48%,
+    rgb(9 9 9 / 28%) 78%,
+    rgb(9 9 9 / 0%) 100%
+  );
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    rgb(0 0 0 / 72%) 72%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    rgb(0 0 0 / 72%) 72%,
+    transparent 100%
+  );
+}

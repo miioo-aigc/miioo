@@ -1,15 +1,9 @@
 /** 画布名称搜索：独立弹窗、类型筛选、匹配高亮与键盘导航。 */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Folders, LayoutDashboard, Search } from 'lucide-react';
-import CanvasNodeIcon from './CanvasNodeIcon';
-import { CANVAS_SEARCH_TYPES, canvasSearchName, canvasSearchParts, filterCanvasSearchNodes } from './CanvasSearch.js';
-
-function SearchTypeIcon({ type }) {
-  if (type === 'all') return <LayoutDashboard size={16} />;
-  if (type === 'canvasGroup') return <Folders size={16} />;
-  return <CanvasNodeIcon nodeType={type} />;
-}
+import { Search } from 'lucide-react';
+import CanvasSearchNodeRow, { CanvasSearchTypeIcon as SearchTypeIcon } from './CanvasSearchNodeRow';
+import { CANVAS_SEARCH_TYPES, filterCanvasSearchNodes } from './CanvasSearch.js';
 
 export default function CanvasSearchModal({ nodes, onClose, onSelect }) {
   const [query, setQuery] = useState('');
@@ -59,13 +53,8 @@ export default function CanvasSearchModal({ nodes, onClose, onSelect }) {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[16px] py-[8px]" aria-label="搜索结果">
         {!results.length && <div role="status" className="py-[32px] text-center text-[14px] text-text-hint">{nodes.length ? '未找到匹配节点' : '暂无节点'}</div>}
-        {results.map((node, index) => <button key={node.id} type="button" data-search-active={index === currentIndex} onFocus={() => setActiveIndex(index)} onClick={() => onSelect(node.id)} className={`flex w-full cursor-pointer items-start gap-[12px] rounded-medium border-0 px-[12px] py-[10px] text-left text-text-hint hover:bg-white-5 focus-visible:outline focus-visible:outline-stroke-active ${index === currentIndex ? 'bg-white-5' : 'bg-transparent'}`}>
-          <span className="mt-[2px] flex size-[36px] shrink-0 items-center justify-center rounded-medium border border-stroke-normal bg-white-8"><SearchTypeIcon type={node.type} /></span>
-          <span className="min-w-0 flex-1">
-            <span className={`block truncate text-[14px] font-medium leading-[20px] ${index === currentIndex ? 'text-text-primary' : ''}`} title={canvasSearchName(node)}>{canvasSearchParts(canvasSearchName(node), query).map((part, partIndex) => part.match ? <mark key={partIndex} className="bg-transparent text-text-accent">{part.text}</mark> : part.text)}</span>
-            <span className="mt-[4px] block truncate text-[12px] leading-[16px]">{node.type === 'canvasGroup' ? `${nodes.filter((item) => item.parentId === node.id).length} 个成员` : String(node.data?.prompt || node.data?.content || node.data?.transcript || '无提示词')}</span>
-          </span>
-        </button>)}
+        {results.map((node, index) => <CanvasSearchNodeRow key={node.id} node={node} nodes={nodes} query={query}
+          active={index === currentIndex} onFocus={() => setActiveIndex(index)} onClick={() => onSelect(node.id)} />)}
       </div>
     </section>
   </div>, document.body);

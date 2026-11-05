@@ -388,13 +388,17 @@ function Textarea({ placeholder = "hint", value = "", disabled = false, state = 
 | `errorMsg` | `string` | — | `error` 为 `true` 时显示的错误提示文字（红色，位于框下方） |
 | `suffix` | `ReactNode` | — | 单行专属后缀插槽（内嵌按钮、下拉箭头、计数等），多行忽略 |
 | `sanitize` | `(raw: string) => string` | — | 字符过滤函数，在 `onChange` 中先清洗再回传，回传事件 `e.target.value` 为过滤后的值 |
+| `inputRef` | `React.Ref` | — | 透传给内部原生 `input` / `textarea`，供业务层聚焦或读取原生节点 |
+| `showFocusState` | `boolean` | `true` | 为 `false` 时关闭聚焦描边与品牌发光，边框保持普通态，适用于不希望输入区出现高亮外框的搜索场景 |
 | `onChange` | `(e) => void` | — | 值变化回调，入参为已写入过滤值的事件对象 |
-| `onBlur` | `() => void` | — | 失焦回调（组件内部已处理 focused 状态复位） |
+| `onFocus` | `(e) => void` | — | 聚焦回调；组件内部先更新聚焦状态，再调用该回调 |
+| `onBlur` | `(e) => void` | — | 失焦回调；组件内部先复位聚焦状态，再调用该回调 |
 | `...inputProps` | — | — | 透传给原生 `input`/`textarea`（如 `placeholder`、`disabled`、原生 `maxLength` 由 `maxLength` prop 统一控制） |
 
 ### 7.2 状态与视觉口径
 
 - 默认/悬停/激活/禁用/错误五态描边、背景、发光（`box-shadow: 0 0 10px var(--color-glow); mix-blend-mode: lighten`）全部使用 `tokens.md` 的 `border-input-*`、`bg-input-*`、`--color-glow`，不硬编码色值。
+- `showFocusState={false}` 仅关闭聚焦和悬停的描边变化、品牌发光，不禁用输入、错误态或禁用态；画布节点导航搜索框使用该模式，避免文本输入时出现双层高亮。
 - 多行 `textarea` 高度默认 `120px`，通过 `height` prop 覆盖（如新建项目弹窗的描述框 `72px`）。
 - 计数与错误提示位置遵循上文"多行输入框不支持后缀插槽，字数统计默认放在输入框内右下角"与"错误态必须同时显示错误提示文字"。
 

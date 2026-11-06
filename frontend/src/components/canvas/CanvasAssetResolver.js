@@ -1,3 +1,6 @@
+import { collectCanvasResultAssetIds } from './CanvasNodeResults.js';
+import { readCanvasResultDocument } from './CanvasResultDocument.js';
+
 function mediaUrl(value, normalizeMediaUrl) {
   if (typeof value !== 'string' || !value.trim()) return undefined;
   const candidate = value.trim();
@@ -14,14 +17,18 @@ function mediaUrl(value, normalizeMediaUrl) {
 
 /** 媒体地址只在加载后注入运行态，保存时由文档适配器剥离。 */
 export async function resolveCanvasDocumentAssets(canvasId, nodes, resolve, { signal, normalizeMediaUrl = (value) => value } = {}) {
-  const ids = [...new Set(nodes.map((node) => node.data?.asset?.asset_id).filter(Boolean))];
+  const histories = nodes.map((node) => {
+    const state = readCanvasResultDocument(node.type, node.data);
+    return state === undefined ? null : collectCanvasResultAssetIds(state);
+  });
+  const ids = [...new Set(nodes.flatMap((node, index) => histories[index] ?? [node.data?.asset?.asset_id]).filter(Boolean))];
   const views = new Map();
   for (let offset = 0; offset < ids.length; offset += 200) {
     const batch = ids.slice(offset, offset + 200);
     const response = await resolve(canvasId, batch, { signal });
     if (!Array.isArray(response?.items)) throw new Error('素材解析响应缺少约定的素材列表');
     for (const id of batch) {
-      const view = response.items.find((item) => item.asset_id === id);
+      const view = response.items.find((item) => item?.asset_id === id);
       if (!view || !['ready', 'trashed', 'forbidden', 'missing'].includes(view.availability)) throw new Error('素材解析响应缺少完整的可用状态');
       const visible = ['ready', 'trashed'].includes(view.availability);
       const url = visible ? [view.original_url, view.download_url, view.preview_url].map((value) => mediaUrl(value, normalizeMediaUrl)).find(Boolean) : undefined;
@@ -32,9 +39,16 @@ export async function resolveCanvasDocumentAssets(canvasId, nodes, resolve, { si
           width: view.width, height: view.height, duration_ms: view.duration_ms } : {}) });
     }
   }
-  return nodes.map((node) => {
+  return nodes.map((node, index) => {
     const view = views.get(node.data?.asset?.asset_id);
-    return view ? { ...node, data: { ...node.data, asset: { ...view,
-      asset_type: view.asset_type || node.data.asset.asset_type, source: node.data.asset.source } } } : node;
+    if (histories[index] && histories[index].some((id) => views.get(id).asset_type !== undefined
+      && views.get(id).asset_type !== node.type)) throw new Error('解析素材类型与节点结果类型不一致');
+    if (!view && !histories[index]) return node;
+    return { ...node, data: { ...node.data,
+      ...(histories[index] ? { resultAssetViews: Object.fromEntries(histories[index].map((id) =>
+        [id, { ...views.get(id), asset_type: node.type }])) } : {}),
+      ...(view ? { asset: { ...view,
+        asset_type: view.asset_type || node.data.asset.asset_type, source: node.data.asset.source } } : {}),
+    } };
   });
 }

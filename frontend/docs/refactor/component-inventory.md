@@ -1,12 +1,40 @@
 # 组件重构盘点基线
 
-## 2026-11-04 画布节点导航侧拉窗（待手动验收）
+## 2026-11-06 侧拉窗定位缩放（Suzy 手动验收通过）
+
+UseCanvasSearch 的定位请求保存目标编号及 resetZoom 标记；侧拉窗调用 locate 默认恢复缩放，搜索弹窗 select 显式传入 resetZoom=false，保持原搜索行为。getCanvasSearchFocus 复用绝对坐标与尺寸计算，恢复模式取100%和视口宽高适配比例中的最小值，沿用水平96px、垂直160px的总预留空间。定位继续选中目标、展开祖先并使用300ms居中动画，不关闭侧拉窗。
+
+scripts/canvas-search.test.mjs 共6项测试通过，覆盖不同初始缩放恢复100%、超大节点按宽高适配、嵌套节点绝对坐标及搜索保留缩放。定向检查、构建、架构及差异检查通过；Suzy 于2026-11-06确认手动验收通过，未自动打开浏览器。
+
+## 2026-11-06 认证素材库批量上传（待手动验收）
+
+SeedanceFolderDetail 的本地文件输入启用多选，onUpload 传文件数组。SeedanceAssetLibraryPanel 将本地文件和资产原文件下载共用 SeedanceUploadQueue 的三个处理名额，批次持有上传锁与文件夹代际，唯一占位编号避免并发冲突，失败逐项收集并汇总。审核轮询追踪全部已上传素材编号，不能因首个素材审核结束就停止。AssetsPage、AssetPickerModal 及面板无障碍名称统一为“seedance认证素材库”。
+
+新增 scripts/seedance-upload-queue.test.mjs，覆盖三个并发、补位、失败隔离、稳定结果顺序、离开后停止派发和空批次。3项测试、定向检查、构建及架构检查通过；真实多选上传待手动验收。既有素材校验和上传接口契约保持不变。
+
+## 2026-11-06 资产选择弹窗项目下拉滚动（Suzy 手动验收通过）
+
+AssetPickerModal 的项目资产下拉保持32px行高且禁止压缩，面板最大246px，并按视口剩余高度收缩；启用内部纵向滚动。CanvasAssetPickerPanel 的项目选择器复用 Select，按34px行高设置实例菜单上限261px。两处均最多展示7.5项，包含顶部4px内距与上下2px边框，超出可滚动查看更多项目；不足时随内容收缩。未修改画布选择下拉、通用选择器默认高度或资产库页面左侧列表。
+
+Suzy 于2026-11-06手动验收通过。实现阶段构建、架构、定向代码及差异检查通过；定向检查有8条既有警告，全量检查仍有 Home.jsx 两处既有错误及11条警告。未自动打开浏览器。尺寸规则见[选择器规范](../../design-system/components/select.md)。
+
+## 2026-11-06 节点提示词草稿保存（Suzy 手动验收通过）
+
+CanvasPage 在节点展示映射中为所有类型统一注入 onPromptChange；CanvasCreationPanel 向音频面板透传 promptSnapshot，CanvasAudioCreationPanel 同时写回文本和编辑快照。沿用 CanvasDocument 与 UseCanvasAutosave 的文档保存恢复流程，不新增接口。关闭面板保留草稿，保存成功后刷新及重新进入可恢复，主动清空不复活旧内容。实施验证及限制见[修复记录](../canvas-prompt-draft-fix-2026-11-06.md)。
+
+## 2026-11-06 节点导航器动画图标（Suzy 手动验收通过）
+
+CanvasNodeNavigator 使用 morphicons/react 的 MorphIcon，在模块级 GRID_ICON（四个独立方块）与 LIST_ICON（原列表）路径数据之间变形；使用 spring="smooth"、reducedMotion="user"。morphicons 提供变形组件，不自带专用图标集，icon 参数接收路径数据而非 lucide-react 组件。保持同一个 MorphIcon 实例，切换 icon 属性驱动动画。依赖和锁文件已记录 morphicons 2.0.2。
+
+视图切换继续复用 Secondary Button 和 Tooltip；按钮36×36px、图标14×14px、线宽1.5px并保持绝对线宽。沿用宫格默认 #8a8a8a、列表默认白色及悬停纯白规则。最终四宫格／列表动画已由 Suzy 手动验收；不要恢复九宫格或误以为必须更换为库内图标。定向检查、构建和差异检查通过；初次接入架构检查通过。
+
+## 2026-11-04 画布节点导航侧拉窗（Suzy 手动验收通过）
 
 新增 CanvasNodeNavigator、CanvasNodeNavigatorData 与独立样式。组件默认以“共 N 节点”入口收在画布左下角，展开后按引用的侧拉窗样式实现搜索、类型筛选、宫格/列表切换、嵌套分组、未分组节点和底部计数；媒体预览复用 AsyncImagePreview，节点与类型能力复用 CanvasSearch。搜索输入复用 TextField 的 `showFocusState={false}` 模式，搜索按钮复用 Secondary 小按钮，右侧按钮切换内容视图；组合箭头独立控制展开，未分组节点直接平铺。列表模式与工具栏节点搜索弹窗共用 CanvasSearchNodeRow，保持图标容器、标题、摘要和当前项反馈一致。
 
 CanvasNodeNavigatorData 以真实 parentId 构建嵌套分组树，搜索命中后代时保留祖先路径，类型筛选隐藏无结果分组；顶层普通节点、父节点缺失的孤儿节点进入未分组。页面在 React Flow 容器外接入组件，避免面板点击触发画布 onPaneClick 清空选择。
 
-UseCanvasSearch 拆出 locate：导航器点击节点时展开祖先、仅选中目标并调用现有 getCanvasSearchFocus 居中，不关闭侧拉窗；中央搜索的 select 复用 locate 后关闭。侧拉窗展开期间关闭画布历史、节点动作和工具快捷键，Esc只关闭侧拉窗。筛选栏按视觉反馈调整为16px间距、左对齐和垂直居中，上下内边距分别为8px与12px；列表项标题颜色仅在导航器作用域内调整为半透明白色，搜索弹窗样式保持不变。收起入口与侧拉窗共用底部锚点容器，以300ms宽度和高度过渡从底部向上展开，收起时沿同一路径反向缩回，统计入口在动画末端淡入。8项导航与搜索测试、3项相邻选择回归、定向静态检查、构建、架构及差异检查通过；未自动打开浏览器，待手动验收。
+UseCanvasSearch 拆出 locate：导航器点击节点时展开祖先、仅选中目标并调用现有 getCanvasSearchFocus 居中，不关闭侧拉窗；中央搜索的 select 复用 locate 后关闭。侧拉窗展开期间关闭画布历史、节点动作和工具快捷键，Esc只关闭侧拉窗。筛选栏按视觉反馈调整为16px间距、左对齐和垂直居中，上下内边距分别为8px与12px；列表项标题颜色仅在导航器作用域内调整为半透明白色，搜索弹窗样式保持不变。收起入口与侧拉窗共用底部锚点容器，以300ms宽度和高度过渡从底部向上展开，收起时沿同一路径反向缩回，统计入口在动画末端淡入。8项导航与搜索测试、3项相邻选择回归、定向静态检查、构建、架构及差异检查通过；未自动打开浏览器；Suzy 已确认展开与原路径收起动画验收通过。
 
 ## 2026-11-04 多选范围与修饰键选择统一（Suzy 手动验收通过）
 
@@ -4391,3 +4419,31 @@ CreationAudioVisualizer 改为居中的 19 根蓝色发光圆头波形，使用�
 - 本地图片、视频、音频直接上传、批量新增与参考素材入口统一通过 CanvasAssets 应用无扩展名文件标题；文本文档读取成功后同样命名。仅移除最后一段扩展名，资产库导入保持原规则，异步上传回填不覆盖用户后续改名。
 - CanvasEditableName 普通状态允许节点拖拽，普通节点及展开/堆叠组共用；仅进入名称编辑时阻止拖拽，保留双击编辑、输入法与取消保护。
 - 搜索按钮移至分割线左侧已获用户验收通过。
+
+
+## 2026-11-06 节点顶部工具栏统一（用户验收通过）
+
+- 图片、视频、音频、文本及分组/多选工具栏共用 CanvasToolbarSurface 和 CanvasToolbarButton，继续复用基础 IconButton、Tooltip。
+- CanvasToolbarSurface.css 集中管理外壳和按钮状态：左右内边距16px、按钮间隔4px、工具栏高度42px、按钮点击区32px；移除按节点类型设置的固定宽度，改为内容自适应。
+- CanvasNodeToolbar 与 CanvasSelectionToolbar 保留各自动作、禁用条件、菜单坐标及定位逻辑；缩放补偿和显隐动画保持原有规则。用户于2026-11-06确认验收通过，最终左右内边距为16px、按钮间隔为4px。未自动打开浏览器。
+
+
+## 2026-11-06 音频台词刷新恢复（用户验收通过）
+
+用户于2026-11-06确认本项修复验收通过。
+
+- CanvasNodeResults 新增当前音频结果台词读取函数，生成批次使用 snapshot.prompt，严格匹配当前结果及素材编号。CanvasAssets、AudioCanvasNode、CanvasResultMutations 共用读取规则；历史切换不借用节点输入草稿。
+- 新增 canvas-audio-transcript-recovery.test.mjs，覆盖完整保存恢复和历史切换、无台词上传替换；相关30项测试通过。无需更改文档协议，已有生成快照可直接恢复台词。
+
+## 2026-11-06 音频替换回填补强（待手动验收）
+
+- 收尾：CanvasAssetReplace 对无永久编号素材使用地址作为身份回退；页面所有权的回填同样遵守节点任务保护。替换与音频等22项测试通过，页面及工具定向检查通过，构建和架构通过；全量检查仍有首页两处既有错误、11条警告。
+
+- CanvasAssets 的 finishCanvasPendingUpload 统一空结果编号比较，永久资产按编号识别，允许地址刷新；移除清理等待状态后的重复身份判断。
+- canvas-audio-replacement.test.mjs 覆盖等待期间原内容保留、空节点成功提交、旧结果历史保留、失败与目标变化保护；与资产、上传契约测试共15项通过。用户手动验收尚未进行。
+
+## 2026-11-06 音频节点超时恢复（已实现，待手动验收）
+
+- CanvasAudioPlayer 经 useMediaPlayback 启用 timeoutRetries: 3；MediaPlaybackSession 在超时后有限重载，默认其他调用方不启用该策略。
+- 原播放按钮承载加载转圈和最终重试入口，移除额外 MediaLoadStatus 区域，避免提示挤出波形；恢复后仍需显式播放。保留进度，暂停/卸载清理重试等待。
+- 14项媒体恢复测试、定向检查、构建、架构及差异检查通过；用户尚未单独确认音频功能手动验收。本条与顶部工具栏的已验收状态分开记录。

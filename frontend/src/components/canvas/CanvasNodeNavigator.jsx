@@ -2,9 +2,11 @@
  * @file CanvasNodeNavigator.jsx
  * @structure-index
  *   CanvasNodeNavigator 左下角节点导航器；收起为计数入口，展开为可搜索、筛选、分组浏览和定位的侧拉窗。
+ *   2026-11-06 宫格和列表图标接入 morphicons 平滑变形，宫格采用四个独立方块。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, FileText, Grid3X3, Image as ImageIcon, List, Video, Volume2 } from 'lucide-react';
+import { ChevronDown, FileText, Image as ImageIcon, Video, Volume2 } from 'lucide-react';
+import { MorphIcon } from 'morphicons/react';
 import AsyncImagePreview from '../AsyncImagePreview';
 import { Button } from '../ui/Button';
 import TextField from '../ui/TextField';
@@ -17,6 +19,22 @@ import CanvasSearchNodeRow from './CanvasSearchNodeRow';
 import './CanvasNodeNavigator.css';
 
 const EMPTY_COLLAPSED_GROUPS = new Set();
+
+// Morphicons consumes icon data, not React components.
+const GRID_ICON = [
+  ['rect', { width: 7, height: 7, x: 3, y: 3, rx: 1 }],
+  ['rect', { width: 7, height: 7, x: 14, y: 3, rx: 1 }],
+  ['rect', { width: 7, height: 7, x: 3, y: 14, rx: 1 }],
+  ['rect', { width: 7, height: 7, x: 14, y: 14, rx: 1 }],
+];
+const LIST_ICON = [
+  ['path', { d: 'M3 5h.01' }],
+  ['path', { d: 'M3 12h.01' }],
+  ['path', { d: 'M3 19h.01' }],
+  ['path', { d: 'M8 5h13' }],
+  ['path', { d: 'M8 12h13' }],
+  ['path', { d: 'M8 19h13' }],
+];
 
 function PanelGlyph() {
   return <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -177,10 +195,10 @@ export default function CanvasNodeNavigator({ nodes, open, onOpenChange, onLocat
             aria-label={viewMode === 'grid' ? '切换为列表展示' : '切换为宫格展示'}
             aria-pressed={viewMode === 'list'}
             onClick={() => setViewMode((current) => current === 'grid' ? 'list' : 'grid')}
-            icon={viewMode === 'grid'
-              ? <Grid3X3 className="canvas-node-navigator__view-glyph--grid"
-                size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden="true" />
-              : <List size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden="true" />} />
+            icon={<MorphIcon icon={viewMode === 'grid' ? GRID_ICON : LIST_ICON}
+              className={viewMode === 'grid' ? 'canvas-node-navigator__view-glyph--grid' : undefined}
+              size={14} strokeWidth={1.5} absoluteStrokeWidth
+              spring="smooth" reducedMotion="user" aria-hidden="true" />} />
         </Tooltip>
       </form>
       <div className="canvas-node-navigator__filters" role="group" aria-label="节点类型筛选">

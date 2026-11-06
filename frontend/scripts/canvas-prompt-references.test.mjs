@@ -68,21 +68,32 @@ test('空白文本不显示，文本不挤占首尾帧与自身素材槽位，�
     { id: 'image', type: 'image', data: { asset: { url: '/image', asset_type: 'image' } } },
   ];
   const refs = getCanvasPromptReferences(nodes, 'target');
-  assert.deepEqual(refs.map((ref) => ref.id), ['text', 'image', 'target']);
+  assert.deepEqual(refs.map((ref) => ref.id), ['text', 'image']);
   assert.equal(refs[1].slot, 0);
-  assert.equal(refs[2].slot, 1);
   assert.deepEqual(getCanvasPromptFiles(refs, 'video', 'first_frame').map((file) => file._uid), ['image']);
   nodes[1].data.content = '雪山';
   assert.equal(getCanvasPromptReferences(nodes, 'target')[0].content, '雪山');
 });
 
-test('当前图片节点已有图片时，也自动作为自身素材引用', () => {
-  const nodes = [
-    { id: 'target', type: 'image', data: { asset: { url: '/target.png', asset_type: 'image' } } },
-  ];
-  assert.equal(getCanvasPromptReferences(nodes, 'target')[0].isCurrentNode, true);
-  assert.deepEqual(getCanvasPromptFiles(getCanvasPromptReferences(nodes, 'target'), 'image', 'all').map((file) => file._uid), ['target']);
-});
+for (const type of ['text', 'image', 'video']) {
+  test(`${type}节点自身结果不进入提示词候选或文件，直接上游仍保留`, () => {
+    const own = createCanvasNode(type, { x: 0, y: 0 }, 'target');
+    own.data.asset = type === 'text' ? undefined : { url: `/target.${type === 'image' ? 'png' : 'mp4'}`, asset_type: type };
+    own.data.content = type === 'text' ? '自己的正文' : undefined;
+    own.data.referenceInputs = [{ sourceId: 'target', slot: 0 }];
+    own.data.imageSourceIds = ['target'];
+    own.data.videoSourceIds = ['target'];
+    own.data.textSourceIds = ['target'];
+    const upstream = createCanvasNode(type === 'text' ? 'text' : 'image', { x: 100, y: 0 }, 'upstream');
+    if (type === 'text') upstream.data.content = '上游正文';
+    else upstream.data.asset = { url: '/upstream.png', asset_type: 'image' };
+    own.data.referenceInputs.push({ sourceId: 'upstream', slot: 0 });
+    const refs = getCanvasPromptReferences([own, upstream], own.id);
+    assert.deepEqual(refs.map((item) => item.id), ['upstream']);
+    assert.equal(refs.some((item) => item.isCurrentNode), false);
+    assert.deepEqual(getCanvasPromptFiles(refs, type, 'all').map((file) => file._uid), type === 'text' ? [] : ['upstream']);
+  });
+}
 
 test('同名素材用源节点身份区分，首尾帧与图片模式限制可引用类型', () => {
   const refs = ['image', 'image', 'video', 'audio'].map((type, slot) => ({
@@ -124,7 +135,7 @@ test('画布视频节点将模型模式占位符传给共享编辑器，图片�
 });
 
 
-test('视频自身参考追加到外部参考之后、不可移除，首尾帧模式不作为可引用素材', () => {
+test('视频参考只包含外部参考，首尾帧模式按外部素材槽位过滤', () => {
   const nodes = [
     { id: 'image', type: 'image', data: { asset: { url: '/image.png', asset_type: 'image' } } },
     { id: 'video', type: 'video', data: { label: '视频2', videoSourceIds: ['image'], referenceInputs: [{ sourceId: 'image', slot: 0 }],
@@ -132,16 +143,15 @@ test('视频自身参考追加到外部参考之后、不可移除，首尾帧�
   ];
   const refs = getCanvasPromptReferences(nodes, 'video');
   assert.deepEqual(refs.map(({ id, isCurrentNode }) => ({ id, isCurrentNode })), [
-    { id: 'image', isCurrentNode: false }, { id: 'video', isCurrentNode: true },
+    { id: 'image', isCurrentNode: false },
   ]);
-  assert.equal(refs[1].asset.posterUrl, '/poster.png');
-  assert.deepEqual(getCanvasPromptFiles(refs, 'video', 'all').map((file) => file._uid), ['image', 'video']);
+  assert.deepEqual(getCanvasPromptFiles(refs, 'video', 'all').map((file) => file._uid), ['image']);
   for (const mode of ['frame', 'start_end', 'first_frame']) {
     assert.deepEqual(getCanvasPromptFiles(refs, 'video', mode).map((file) => file._uid), ['image']);
   }
   assert.equal(nodes[1].data.referenceInputs.length, 1);
   nodes[1].data.referenceInputs.push({ sourceId: 'video', slot: 1 });
-  assert.equal(getCanvasPromptReferences(nodes, 'video').filter((ref) => ref.id === 'video').length, 1);
+  assert.equal(getCanvasPromptReferences(nodes, 'video').filter((ref) => ref.id === 'video').length, 0);
   nodes[1].data.asset = null;
   assert.deepEqual(getCanvasPromptReferences(nodes, 'video').map((ref) => ref.id), ['image']);
 });

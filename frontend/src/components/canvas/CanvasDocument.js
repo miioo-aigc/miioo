@@ -1,9 +1,11 @@
 import { createCanvasNode, CANVAS_NODE_TYPES } from './canvasNodeUtils.js';
 import { orderParentsFirst } from './CanvasGroups.js';
+import { readCanvasResultDocument } from './CanvasResultDocument.js';
 
 const TRANSIENT_NODE_FIELDS = new Set([
   'selected', 'measured', 'dragging', 'resizing', 'creationPanelOpen', 'editing',
   'generating', 'generationPending', 'generationError', 'generationRequestId',
+  'submissionLocked', 'generationTaskIds', 'executionSourceIds', 'upstreamProtected', 'upstreamUpdated',
   'dragRelease', 'dragScaleX', 'dragScaleY', 'uploadError',
 ]);
 
@@ -16,6 +18,7 @@ const TRANSIENT_DATA_FIELDS = new Set([
   'onAddReference', 'onRemoveReference', 'connectionPulses', 'references', 'viewportZoom',
   'connectionTarget', 'connectionTargetStatus', 'connectingType',
   'ports', 'asset', 'persistenceState', 'stackMembers', 'expandedWidth', 'expandedHeight',
+  'nodeResults', 'resultAssetViews', 'onSelectResult',
 ]);
 
 const MEDIA_FIELDS = new Set([
@@ -45,7 +48,12 @@ function cleanObject(value, fields = new Set()) {
 
 export function serializeCanvasNode(node) {
   if (node.type !== 'canvasGroup' && !CANVAS_NODE_TYPES.includes(node.type)) throw new Error('画布包含不支持保存的节点类型');
+  const nodeResults = readCanvasResultDocument(node.type, node.data);
   const props = cleanObject(node.data || {}, TRANSIENT_DATA_FIELDS);
+  if (nodeResults !== undefined) {
+    props.nodeResults = nodeResults;
+    props.content = node.data.content ?? '';
+  }
   // 这些字段由当前节点状态生成，不能沿用上次读取的协议副本。
   for (const field of ['assetId', 'assetType', 'assetSource', 'parentId', 'groupWidth', 'groupHeight']) delete props[field];
   validateSources(props);
@@ -99,7 +107,16 @@ export function readCanvasDocument(item) {
     throw new Error('画布视口数据不合法，已停止加载');
   }
   // 开发草稿兼容读取；正式写入始终使用 records 格式。
-  if (Array.isArray(document.nodes) && document.schema_version === 1) return { nodes: document.nodes, edges: document.edges || [], viewport };
+  if (Array.isArray(document.nodes) && document.schema_version === 1) {
+    const nodes = document.nodes.map((node) => {
+      const nodeResults = readCanvasResultDocument(node.type, node.data);
+      if (nodeResults === undefined) return node;
+      const data = { ...node.data, nodeResults };
+      delete data.resultAssetViews;
+      return { ...node, data };
+    });
+    return { nodes, edges: document.edges || [], viewport };
+  }
   if ((item && Object.hasOwn(item, 'document') && !item.document) || Object.keys(document).length === 0) return { nodes: [], edges: [], viewport };
   if (document.engine !== 'xyflow' || document.schemaVersion !== 1 || !Array.isArray(document.records)) throw new Error('画布文档格式不符合约定，已停止加载以防覆盖原内容');
   if (document.businessBindings !== undefined && !Array.isArray(document.businessBindings)) throw new Error('画布绑定数据不合法，已停止加载');
@@ -115,11 +132,13 @@ export function readCanvasDocument(item) {
     validateSources(props);
     if (props.assetId && !UUID.test(props.assetId)) throw new Error('画布素材永久编号不合法，已停止加载');
     const group = record.type === 'canvasGroup';
+    const nodeResults = readCanvasResultDocument(group ? 'canvasGroup' : props.nodeType, props, { serialized: true });
     const node = group ? { id: record.id, type: 'canvasGroup', data: {} } : createCanvasNode(props.nodeType, undefined, record.id);
     return { ...node, position: { x: record.x, y: record.y }, selected: false,
       ...(props.parentId ? { parentId: props.parentId } : {}),
       ...(group ? { style: { width: props.groupWidth, height: props.groupHeight } } : {}),
       data: { ...node.data, ...cleanObject(props, TRANSIENT_DATA_FIELDS), creationPanelOpen: false,
+        ...(nodeResults !== undefined ? { nodeResults, content: props.content ?? '' } : {}),
         asset: props.assetId ? { asset_id: props.assetId, asset_type: props.assetType || props.nodeType, source: props.assetSource } : null },
     };
   });

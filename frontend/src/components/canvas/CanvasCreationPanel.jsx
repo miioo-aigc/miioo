@@ -38,7 +38,7 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', pro
     setLastPrompt(prompt);
     setDraft(prompt);
   }
-  if (nodeType === 'audio') return <CanvasAudioCreationPanel nodeId={nodeId} prompt={prompt} controls={mediaControls} draft={audioDraft} onDraftChange={onAudioDraftChange} onPromptChange={onPromptChange} onGenerate={onGenerate} />;
+  if (nodeType === 'audio') return <CanvasAudioCreationPanel nodeId={nodeId} prompt={prompt} promptSnapshot={promptSnapshot} controls={mediaControls} draft={audioDraft} onDraftChange={onAudioDraftChange} onPromptChange={onPromptChange} onGenerate={onGenerate} />;
   const textNode = nodeType === 'text';
   const selectedModel = getCanvasTextModelValue(modelState.options, model);
   const c = mediaControls;

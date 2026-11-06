@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createCanvasNode } from '../src/components/canvas/canvasNodeUtils.js';
 import {
   canConnectCanvasImage,
@@ -16,7 +17,7 @@ import { getCanvasReferenceNodePosition } from '../src/components/canvas/CanvasR
 
 const node = (type, id, imageSourceIds = [], content = '') => ({
   ...createCanvasNode(type, { x: 0, y: 0 }, id),
-  data: { ...createCanvasNode(type, { x: 0, y: 0 }, id).data, imageSourceIds, content, asset: type === 'image' ? { url: `/${id}.png` } : null },
+  data: { ...createCanvasNode(type, { x: 0, y: 0 }, id).data, imageSourceIds, content, asset: type === 'image' ? { url: `/${id}.png`, asset_id: '11111111-1111-4111-8111-111111111111', asset_type: 'image' } : null },
 });
 
 test('图片输入接受文本和图片，拒绝视频音频、反向连接和错误端口', () => {
@@ -83,165 +84,185 @@ test('左侧被占用时，在400px范围内优先选择上侧或左上斜向位
   assert.deepEqual(position, { x: 500, y: 180 });
 });
 
-test('图片节点已有图片时，图片创作计划会把自身图片作为素材', () => {
-  const target = node('image', 'target');
-  const plan = planCanvasImageGeneration([target], 'target', '保持构图并优化细节', 'image-model', { imageReferenceLimit: 1 });
-  assert.deepEqual(plan.sources.map((source) => source.id), ['target']);
-  assert.deepEqual(plan.sources[0].asset, target.data.asset);
-  assert.throws(() => planCanvasImageGeneration([target], 'target', '创作', 'image-model', { imageReferenceLimit: 0 }), /超过/);
-  const empty = node('image', 'empty');
-  empty.data.asset = null;
-  target.data.imageSourceIds = ['empty'];
-  assert.equal(canConnectCanvasImage([target, empty, node('image', 'new')], { source: 'new', target: 'target' }, 2), false);
-  assert.deepEqual(getCanvasImageReferenceStatus([target, empty], 'target', 1).overflowSourceIds, ['empty']);
-  assert.throws(() => planCanvasImageGeneration([target, empty], 'target', '创作', 'image-model', { imageReferenceLimit: 1 }), /超过/);
-});
-
 const generation = await import('../src/components/canvas/CanvasImageGeneration.js');
-const { getCanvasAbsolutePosition, groupCanvasNodes } = await import('../src/components/canvas/CanvasGroups.js');
+const { groupCanvasNodes } = await import('../src/components/canvas/CanvasGroups.js');
 const { createCanvasTextRequests } = await import('../src/components/canvas/CanvasTextRequests.js');
+const assetId = (index) => '11111111-1111-4111-8111-' + String(index).padStart(12, '0');
+const asset = (index) => ({ asset_id: assetId(index), asset_type: 'image', url: '/result-' + index });
+const targetNode = () => { const target = node('image', 'target'); target.data.asset = asset(100); return target; };
 
+test('自身结果及显式自引用均不参与输入，也不占参考名额', () => {
+  const target = targetNode(); target.data.imageSourceIds = ['target'];
+  const plan = planCanvasImageGeneration([target], target.id, '生成', 'model', { imageReferenceLimit: 0 });
+  assert.deepEqual(plan.sources, []);
+  assert.equal(plan.resultId, target.id);
+  assert.equal(plan.createsResult, false);
+});
 for (const count of [1, 2, 3, 4, 6, 9]) {
-  test('批量生成 ' + count + ' 张：卡片数量、排列和共同上游一致', () => {
-    const target = node('image', 'empty', ['ref', 'text']);
-    target.data.asset = null;
-    target.data.imageReferenceLimit = 2;
-    const initial = [node('image', 'ref'), node('text', 'text', [], '参考文字'), target];
-    const plan = planCanvasImageGeneration(initial, target.id, '生成', 'model', { count, ratio: '9:16' });
+  test('批量生成 ' + count + ' 张只更新同一节点并保留位置分组连线', () => {
+    const target = targetNode(); target.data.imageSourceIds = ['text'];
+    const initial = groupCanvasNodes([target], 'group'); initial.push(node('text', 'text', [], '参考正文'));
+    const before = structuredClone(initial);
+    const plan = planCanvasImageGeneration(initial, target.id, '生成', 'model', { count });
     const pending = generation.beginCanvasImageGeneration(initial, plan);
-    const results = plan.resultIds.map((id) => pending.find((item) => item.id === id));
-    assert.equal(results.length, count);
-    assert.equal(pending.length, initial.length + count - 1);
-    for (const result of results) {
-      assert.deepEqual(result.data.imageSourceIds, ['ref', 'text']);
-      assert.equal(result.data.generating, true);
-    }
-    if (count < 4) assert.equal(new Set(results.map((item) => item.position.x)).size, 1);
-    else {
-      assert.equal(new Set(results.map((item) => item.position.x)).size, Math.ceil(Math.sqrt(count)));
-      assert.ok(new Set(results.map((item) => item.position.y)).size > 1);
-    }
-    const assets = Array.from({ length: count }, (_, i) => ({ url: '/result-' + i, asset_type: 'image', width: 900, height: 1600 }));
-    const done = generation.applyCanvasImageResult(pending, plan, assets);
-    plan.resultIds.forEach((id, i) => {
-      const result = done.find((item) => item.id === id);
-      assert.equal(result.data.asset.url, assets[i].url);
-      assert.equal(result.data.generating, false);
-      assert.deepEqual(generation.getCanvasImageEdges(done).filter((edge) => edge.target === id).map((edge) => edge.source), ['ref', 'text']);
-    });
+    assert.equal(pending.length, initial.length);
+    const running = pending.find((item) => item.id === target.id);
+    assert.deepEqual(running.data.asset, target.data.asset);
+    assert.equal(running.data.submissionLocked, true);
+    assert.deepEqual(running.data.executionSourceIds, ['text']);
+    assert.equal(running.data.nodeResults, undefined);
+    plan.taskIds = ['real-server-task'];
+    const done = generation.applyCanvasImageResult(pending, plan, Array.from({ length: count }, (_, i) => asset(i)));
+    const output = done.find((item) => item.id === target.id);
+    assert.equal(output.data.asset.asset_id, assetId(0));
+    assert.equal(output.data.nodeResults.batches.length, 2);
+    assert.equal(output.data.nodeResults.batches[0].source, 'legacy');
+    assert.equal(output.data.nodeResults.batches[1].results.length, count);
+    assert.deepEqual(output.data.nodeResults.batches[1].taskIds, ['real-server-task']);
+    assert.equal(output.data.submissionLocked, false);
+    assert.equal(output.data.executionSourceIds, undefined);
+    assert.equal(output.data.generating, false);
+    assert.deepEqual(output.position, running.position);
+    assert.equal(output.parentId, running.parentId);
+    assert.deepEqual(output.data.imageSourceIds, ['text']);
+    assert.equal(done[0], initial[0]); assert.equal(done.at(-1), initial.at(-1));
+    assert.deepEqual(initial, before);
   });
 }
-
-test('已有图片生成多张时保留原图，新增结果都归组且连接原图与其他参考', () => {
-  const target = node('image', 'target', ['text']);
-  target.data.imageReferenceLimit = 2;
-  const initial = groupCanvasNodes([target], 'group');
-  initial.push(node('text', 'text', [], '参考文字'));
-  const before = getCanvasAbsolutePosition(initial, initial.find((item) => item.id === 'target'));
-  const plan = planCanvasImageGeneration(initial, 'target', '生成', 'model', { count: 4 });
-  const pending = generation.beginCanvasImageGeneration(initial, plan);
-  assert.equal(pending.length, initial.length + 4);
-  assert.equal(pending.find((item) => item.id === 'target').data.asset.url, '/target.png');
-  assert.deepEqual(getCanvasAbsolutePosition(pending, pending.find((item) => item.id === 'target')), before);
-  plan.resultIds.forEach((id) => {
-    const result = pending.find((item) => item.id === id);
-    assert.equal(result.parentId, 'group');
-    assert.deepEqual(result.data.imageSourceIds, ['text', 'target']);
-  });
+test('部分成功按稳定索引选第一有效UUID，不拿记录编号替代资产', () => {
+  const target = targetNode();
+  const plan = planCanvasImageGeneration([target], target.id, '生成', 'model', { count: 4 });
+  const assets = generation.getCanvasImageResultAssets({ images: ['/invalid', null, '/two', '/three'],
+    imageAssetIds: [null, null, assetId(2), assetId(3)], cardIds: [assetId(1)] });
+  assert.equal(generation.getCanvasImageGenerationSummary(plan, assets).successCount, 2);
+  const [done] = generation.applyCanvasImageResult(generation.beginCanvasImageGeneration([target], plan), plan, assets);
+  assert.equal(done.data.asset.asset_id, assetId(2));
+  assert.deepEqual(done.data.nodeResults.batches[1].results.map((result) => result.index), [2, 3]);
+  assert.equal(done.data.nodeResults.batches[1].status, 'partial');
 });
-
-test('删除首个结果不取消剩余任务，结果按原索引写入；全部删除才取消', () => {
-  const target = node('image', 'empty');
-  target.data.asset = null;
-  const plan = planCanvasImageGeneration([target], target.id, '生成', 'model', { count: 3 });
-  const requests = createCanvasTextRequests();
-  const controller = requests.start(plan);
-  const pending = generation.beginCanvasImageGeneration([target], plan).filter((item) => item.id !== plan.resultId);
-  requests.reconcile(pending);
-  assert.equal(controller.signal.aborted, false);
-  const done = generation.applyCanvasImageResult(pending, plan, [{ url: '/1' }, { url: '/2' }, { url: '/3' }]);
-  assert.equal(done.find((item) => item.id === plan.resultIds[1]).data.asset.url, '/2');
-  requests.reconcile([]);
-  assert.equal(controller.signal.aborted, true);
-});
-
-test('少返回图片时保留空卡片并提示，失败及迟到结果不覆盖已重试节点', () => {
-  const target = node('image', 'empty');
-  target.data.asset = null;
-  const plan = planCanvasImageGeneration([target], target.id, '生成', 'model', { count: 3 });
-  const pending = generation.beginCanvasImageGeneration([target], plan);
-  const done = generation.applyCanvasImageResult(pending, plan, [{ url: '/1' }]);
-  assert.match(done[1].data.generationError, /未返回/);
-  assert.ok(done.every((item) => !item.data.generating));
-  assert.deepEqual(generation.applyCanvasImageResult(done, plan, [{ url: '/late' }]), done);
-  assert.ok(generation.recoverCanvasImageGenerationFailure(pending, plan).every((item) => !item.data.generating));
-});
-
-test('批量地址按索引保留预览与原图，不因缺失地址错配', () => {
-  const assets = generation.getCanvasImageResultAssets({ images: ['/preview1', null, '/preview3'], imageOriginalUrls: ['/original1', null, '/original3'] });
-  assert.equal(assets[0].url, '/original1');
-  assert.equal(assets[0].previewUrl, '/preview1');
-  assert.equal(assets[1], null);
-  assert.equal(assets[2].url, '/original3');
-});
-
-test('混合成品比例排布不重叠，已有节点避让且不影响无关组', () => {
-  const target = node('image', 'target');
-  target.data.imageReferenceLimit = 1;
-  const unrelated = { id: 'other-group', type: 'canvasGroup', position: { x: 9000, y: 9000 }, style: { width: 800, height: 800 }, data: {} };
-  const obstacle = { ...node('image', 'obstacle'), position: { x: 320, y: 0 } };
-  const initial = [target, obstacle, unrelated];
-  const plan = planCanvasImageGeneration(initial, 'target', '生成', 'model', { count: 4 });
-  const pending = generation.beginCanvasImageGeneration(initial, plan);
-  assert.ok(pending.find((item) => item.id === plan.resultId).position.y > 264);
-  const assets = [
-    { width: 1600, height: 900 }, { width: 900, height: 1600 },
-    { width: 5000, height: 100 }, { width: 100, height: 5000 },
-  ].map((size, i) => ({ ...size, asset_type: 'image', url: '/' + i }));
-  const done = generation.applyCanvasImageResult(pending, plan, assets);
-  const { getCanvasAssetNodeSize } = awaitSize;
-  const rects = plan.resultIds.map((id) => {
-    const item = done.find((value) => value.id === id);
-    return { ...item.position, ...getCanvasAssetNodeSize(item.data.asset) };
-  });
-  for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {
-    const a = rects[i], b = rects[j];
-    assert.ok(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y);
+test('全部失败或无永久编号保留旧结果与历史，不创建失败批次', () => {
+  for (const assets of [[], [null], [{ url: '/not-durable', asset_id: 'temporary' }]]) {
+    const target = targetNode();
+    const plan = planCanvasImageGeneration([target], target.id, '生成', 'model', { count: 3 });
+    const [done] = generation.applyCanvasImageResult(generation.beginCanvasImageGeneration([target], plan), plan, assets);
+    assert.deepEqual(done.data.asset, target.data.asset);
+    assert.equal(done.data.nodeResults, undefined);
+    assert.equal(done.data.generating, false); assert.equal(done.data.submissionLocked, false);
   }
-  assert.deepEqual(done.find((item) => item.id === unrelated.id), { ...unrelated, selected: false, data: { creationPanelOpen: false } });
 });
-const awaitSize = await import('../src/components/canvas/CanvasMediaSize.js');
-
-test('图生图两张结果保存再恢复：资产编号、组归属、位置和上游完整保留', async () => {
+test('删除节点取消本地请求，迟到和重复结果不复活或重复追加', () => {
+  const target = targetNode(); const plan = planCanvasImageGeneration([target], target.id, '生成', 'model');
+  const requests = createCanvasTextRequests(); const controller = requests.start(plan);
+  const pending = generation.beginCanvasImageGeneration([target], plan);
+  requests.reconcile(pending); assert.equal(controller.signal.aborted, false);
+  assert.throws(() => requests.start({ ...plan, requestId: 'another' }), /正在创作/);
+  requests.reconcile([]); assert.equal(controller.signal.aborted, true);
+  assert.deepEqual(generation.applyCanvasImageResult([], plan, [asset(0)]), []);
+  const done = generation.applyCanvasImageResult(pending, plan, [asset(0)]);
+  assert.equal(generation.applyCanvasImageResult(done, plan, [asset(1)]), done);
+});
+test('起始更新用最新状态拒绝自身及被执行快照引用的节点', () => {
+  const target = targetNode(); const plan = planCanvasImageGeneration([target], target.id, '生成', 'model');
+  assert.throws(() => generation.beginCanvasImageGeneration([{ ...target, data: { ...target.data, generating: true } }], plan), /下游丢失参考素材/);
+  assert.throws(() => generation.beginCanvasImageGeneration([{ ...target, data: { ...target.data, submissionLocked: true } }], plan), /下游丢失参考素材/);
+  const downstream = { ...node('image', 'downstream'), data: { ...node('image', 'downstream').data, submissionLocked: true, executionSourceIds: ['target'] } };
+  assert.throws(() => generation.beginCanvasImageGeneration([target, downstream], plan), /下游丢失参考素材/);
+  assert.throws(() => generation.beginCanvasImageGeneration([], plan), /下游丢失参考素材/);
+});
+test('只读直接输入及空提示词正文合并，快照不随草稿变化', () => {
+  const target = targetNode(); target.data.referenceInputs = [{ sourceId: 'a', slot: 0 }, { sourceId: 'b', slot: 1 }];
+  const a = node('text', 'a', ['ancestor'], '甲'), b = node('text', 'b', [], '乙');
+  const params = { nested: { enabled: true } };
+  const plan = planCanvasImageGeneration([target, a, b], target.id, '', 'model', params);
+  assert.equal(plan.prompt, '甲\n\n乙'); assert.equal(plan.usesTextAsPrompt, true);
+  a.data.content = '后来草稿'; params.nested.enabled = false;
+  assert.equal(plan.sources[0].content, '甲'); assert.equal(plan.params.nested.enabled, true);
+  assert.deepEqual(plan.sources.map((source) => source.id), ['a', 'b']);
+});
+test('无效直接上游和执行中节点拒绝，旧URL结果不能静默丢失', () => {
+  const target = targetNode(); target.data.imageSourceIds = ['missing'];
+  assert.throws(() => planCanvasImageGeneration([target], target.id, '生成', 'model'), /失效/);
+  target.data.imageSourceIds = ['text']; const text = node('text', 'text', [], '');
+  assert.throws(() => planCanvasImageGeneration([target, text], target.id, '生成', 'model'), /有效结果/);
+  text.data.content = '正文'; text.data.generating = true;
+  assert.throws(() => planCanvasImageGeneration([target, text], target.id, '生成', 'model'), /正在创作/);
+  target.data.imageSourceIds = []; target.data.asset = { url: '/legacy-no-id' };
+  assert.throws(() => planCanvasImageGeneration([target], target.id, '生成', 'model'), /永久资产编号/);
+});
+test('同节点多候选序列化重读完整保留历史和当前投影', async () => {
   const { serializeCanvasDocument, readCanvasDocument } = await import('../src/components/canvas/CanvasDocument.js');
-  const { resolveCanvasDocumentAssets } = await import('../src/components/canvas/CanvasAssetResolver.js');
-  const ids = ['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333'];
-  const target = node('image', 'target', ['text']);
-  target.data.asset.asset_id = ids[0];
-  target.data.imageReferenceLimit = 2;
-  const initial = groupCanvasNodes([target], 'group');
-  initial.push(node('text', 'text', [], '参考文字'));
-  const plan = planCanvasImageGeneration(initial, 'target', '生成', 'model', { count: 2 });
-  const assets = generation.getCanvasImageResultAssets({images:['/p1','/p2'],imageOriginalUrls:['/o1','/o2'],imageAssetIds:ids.slice(1),cardIds:['record1','record2']});
-  const done = generation.applyCanvasImageResult(generation.beginCanvasImageGeneration(initial,plan),plan,assets);
-  const document = serializeCanvasDocument(done);
-  const read = readCanvasDocument({document:JSON.parse(JSON.stringify(document))});
-  const restored = await resolveCanvasDocumentAssets('canvas',read.nodes,async(_,assetIds)=>({items:assetIds.map(asset_id=>({asset_id,availability:'ready',media_type:'image',original_url:'/restored/'+asset_id}))}));
-  plan.resultIds.forEach((id,index)=>{
-    const before=done.find(n=>n.id===id), after=restored.find(n=>n.id===id);
-    assert.equal(after.data.asset.asset_id,ids[index+1]);
-    assert.equal(after.parentId,'group');
-    assert.deepEqual(after.position,before.position);
-    assert.deepEqual(after.data.imageSourceIds,['text','target']);
-    assert.ok(after.data.asset.url.startsWith('/restored/'));
-  });
+  const target = targetNode(); const plan = planCanvasImageGeneration([target], target.id, '生成', 'model', { count: 3 });
+  const done = generation.applyCanvasImageResult(generation.beginCanvasImageGeneration([target], plan), plan, [null, asset(1), asset(2)]);
+  const restored = readCanvasDocument(serializeCanvasDocument(done)).nodes[0];
+  assert.deepEqual(restored.data.nodeResults, done[0].data.nodeResults);
+  assert.equal(restored.data.asset.asset_id, assetId(1)); assert.deepEqual(restored.position, target.position);
 });
 
-test('资产编号空位不移位，也不能拿创作记录编号冒充', async () => {
- const { serializeCanvasDocument }=await import('../src/components/canvas/CanvasDocument.js');
- const id='22222222-2222-4222-8222-222222222222';
- const assets=generation.getCanvasImageResultAssets({images:['/one','/two'],imageAssetIds:[null,id],cardIds:[id,id]});
- assert.equal(assets[0].asset_id,null); assert.equal(assets[1].asset_id,id);
- const target=node('image','result');target.data.asset=assets[0];
- assert.throws(()=>serializeCanvasDocument([target]),/永久编号/);
+test('真实图片Hook登记任务编号并解锁，启用部分成功并提示数量', async () => {
+  const source = readFileSync(new URL('../src/components/canvas/UseCanvasImageGeneration.js', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf('export function useCanvasImageGeneration')).replace('export function', 'function');
+  let nodes = [targetNode()];
+  const toasts = [];
+  const writeOptions = [];
+  let activeRequests = 0;
+  const requestFactory = () => {
+    const requests = createCanvasTextRequests();
+    const start = requests.start; const finish = requests.finish;
+    requests.start = (...args) => { activeRequests++; return start(...args); };
+    requests.finish = (...args) => { activeRequests--; return finish(...args); };
+    return requests;
+  };
+  let latestNodes = nodes;
+  let omitTaskIdList = false;
+  let apiCallCount = 0;
+  const setNodes = (update, options) => {
+    writeOptions.push(options);
+    latestNodes = update(latestNodes);
+    nodes = latestNodes;
+  };
+  const dependencies = {
+    useCallback: (fn) => fn, useEffect: () => {}, useState: (init) => [init()],
+    createCanvasTextRequests: requestFactory, getAuthSessionGeneration: () => 1,
+    ensureCanvasImageAsset: async (value) => value, prepareCanvasMediaAsset: async (value) => value,
+    createCanvasProgressHandler: () => () => {},
+    showGlobalToast: (...args) => toasts.push(args), ...generation,
+    apiGenerateCreation: async (params, options) => {
+      apiCallCount++;
+      assert.equal(params.canvasPartialResults, true);
+      assert.equal(params.files.length, 0);
+      assert.equal(latestNodes[0].data.submissionLocked, true);
+      if (omitTaskIdList) {
+        options.onTaskCreated({ taskId: 'real-a' });
+        assert.equal(latestNodes[0].data.submissionLocked, true);
+        assert.deepEqual(latestNodes[0].data.generationTaskIds, []);
+      } else {
+        options.onTaskCreated({ taskIds: ['real-a', 'real-b'], taskId: 'real-a' });
+        assert.equal(latestNodes[0].data.submissionLocked, false);
+        assert.deepEqual(latestNodes[0].data.generationTaskIds, ['real-a', 'real-b']);
+      }
+      return { images: [null, '/two'], imageAssetIds: [null, assetId(2)] };
+    },
+  };
+  const hook = new Function(...Object.keys(dependencies), body + '; return useCanvasImageGeneration;')(...Object.values(dependencies));
+  await hook(nodes, setNodes, () => {}, 'project')({ nodeId: 'target', prompt: '生成', model: 'model', params: { count: 2 } });
+  assert.equal(nodes[0].data.asset.asset_id, assetId(2));
+  assert.equal(nodes[0].data.generating, false);
+  assert.deepEqual(nodes[0].data.nodeResults.batches[1].taskIds, ['real-a', 'real-b']);
+  assert.deepEqual(toasts, [['本次成功生成 1 / 2 张图片', 'warning']]);
+  assert.ok(writeOptions.length > 0 && writeOptions.every((options) => options?.origin === 'system'));
+  omitTaskIdList = true;
+  await hook(nodes, setNodes, () => {}, 'project')({ nodeId: 'target', prompt: '无完整任务数组', model: 'model', params: { count: 2 } });
+  assert.equal(nodes[0].data.submissionLocked, false);
+  assert.deepEqual(nodes[0].data.nodeResults.batches.at(-1).taskIds, []);
+  const staleNodes = nodes;
+  latestNodes = [...nodes, { ...node('image', 'downstream'), data: { ...node('image', 'downstream').data,
+    submissionLocked: true, executionSourceIds: ['target'] } }];
+  const beforeRejectedStart = latestNodes;
+  const callsBeforeRejectedStart = apiCallCount;
+  const rejectedRequestHook = new Function(...Object.keys(dependencies), body + '; return useCanvasImageGeneration;')(...Object.values(dependencies));
+  await rejectedRequestHook(staleNodes, setNodes, () => {}, 'project')({ nodeId: 'target', prompt: '并发生成', model: 'model' });
+  assert.equal(latestNodes, beforeRejectedStart);
+  assert.equal(apiCallCount, callsBeforeRejectedStart);
+  assert.equal(activeRequests, 0);
+  assert.deepEqual(toasts.at(-1), ['操作可能导致下游丢失参考素材，请稍后再试', 'error']);
 });

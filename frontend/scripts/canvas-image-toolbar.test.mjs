@@ -53,18 +53,17 @@ test('编辑适配优先原图且不使用节点编号伪造资产编号', () =>
   assert.equal(canvasImageEditCard({ url: '/local.png' }).creationAssetId, undefined);
 });
 
-test('编辑结果新增节点，保留原图及面板状态，避让且重复回调不重复插入', () => {
+test('图片编辑回原节点，保留原图历史及面板状态，重复回调不重复插入', () => {
   const source = createCanvasNode('image', { x: 0, y: 0 }, 'source');
-  source.data.asset = { url: '/original.png', asset_type: 'image' };
+  source.data.asset = { url: '/original.png', asset_type: 'image', asset_id: '10000000-0000-0000-0000-000000000001' };
   const before = structuredClone(source);
-  const asset = { url: '/edited.png', asset_type: 'image', width: 1024, height: 1024 };
+  const asset = { url: '/edited.png', asset_type: 'image', asset_id: '20000000-0000-0000-0000-000000000001', width: 1024, height: 1024 };
   const result = appendCanvasImageEdit([source], source, asset, 'result');
-  assert.equal(result.length, 2);
-  assert.deepEqual(result[0], before);
+  assert.equal(result.length, 1);
   assert.deepEqual(source, before);
-  assert.equal(result[1].data.asset.url, '/edited.png');
-  assert.equal(result[1].data.editSourceNodeId, source.id);
-  assert.equal(result[1].data.label, '图片2');
-  assert.ok(result[1].position.x >= 272);
+  assert.equal(result[0].data.asset.url, '/edited.png');
+  assert.equal(result[0].data.nodeResults.batches.length, 2);
+  assert.equal(result[0].data.label, source.data.label);
+  assert.deepEqual(result[0].position, source.position);
   assert.equal(appendCanvasImageEdit(result, source, asset, 'result'), result);
 });

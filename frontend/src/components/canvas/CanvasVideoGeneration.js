@@ -1,6 +1,6 @@
 /** 视频直连素材、能力校验和结果节点快照；不复用创作页的模式推断。 */
-import { appendCanvasNode, createCanvasNode } from './canvasNodeUtils.js';
-import { getCanvasAbsolutePosition, setCanvasSelection } from './CanvasGroups.js';
+import { setCanvasSelection } from './CanvasGroups.js';
+import { commitCanvasNodeOutput } from './CanvasResultMutations.js';
 import { isCanvasSeedanceVideoEdit } from './CanvasVideoModels.js';
 
 const TYPES = ['text', 'image', 'video', 'audio'];
@@ -8,6 +8,7 @@ const MEDIA_TYPES = ['image', 'video', 'audio'];
 const TYPE_LABELS = { image: '图片', video: '视频', audio: '音频' };
 const find = (nodes, id) => nodes.find((node) => node.id === id);
 const limit = (value) => Number.isInteger(value) && value >= 0 ? value : 0;
+const assetIdentity = (asset) => asset?.asset_id || asset?.assetId || asset?.backendId || asset?.url || null;
 
 function getCanvasVideoLimits(capabilities = {}, mode) {
   const limits = {
@@ -78,7 +79,6 @@ export function validateCanvasVideoReferenceAddition(nodes, targetId, asset) {
     const source = find(nodes, id);
     return source?.data.asset?.asset_type || source?.type;
   }).filter((type) => MEDIA_TYPES.includes(type));
-  if (target.data.asset?.url) existingTypes.push(target.data.asset.asset_type || 'video');
   return validateVideoAddition(existingTypes, asset.asset_type, target.data.videoCapabilities, target.data.model, target.data.generationMode);
 }
 
@@ -98,7 +98,7 @@ export function getCanvasVideoSourceIds(target) {
     ...(target?.data.videoSourceIds || []),
     ...(target?.data.textSourceIds || []),
     ...(target?.data.referenceInputs || []).sort((a, b) => a.slot - b.slot).map((input) => input.sourceId),
-  ])];
+  ])].filter((id) => id !== target?.id);
 }
 
 export function isCanvasVideoConnection(nodes, connection) {
@@ -115,9 +115,6 @@ export function getCanvasVideoReferenceStatus(nodes, targetId, capabilities, sou
   const mode = caps.selectedGenerationMode || target?.data.generationMode;
   const rule = getCanvasVideoMediaRule(caps, target?.data.model, mode);
   const counts = { image: 0, video: 0, audio: 0 };
-  const ownType = target?.data.asset?.url ? target.data.asset.asset_type || 'video' : null;
-  if (MEDIA_TYPES.includes(ownType)) counts[ownType] += 1;
-  const ownCount = MEDIA_TYPES.includes(ownType) ? 1 : 0;
   const mediaSourceIds = [];
   const overflowSourceIds = [];
   for (const id of sourceIds || getCanvasVideoSourceIds(target)) {
@@ -126,10 +123,9 @@ export function getCanvasVideoReferenceStatus(nodes, targetId, capabilities, sou
     if (!Object.hasOwn(counts, type)) continue;
     mediaSourceIds.push(id);
     counts[type] += 1;
-    if (counts[type] > rule.limits[type] || mediaSourceIds.length + ownCount > rule.totalLimit) overflowSourceIds.push(id);
+    if (counts[type] > rule.limits[type] || mediaSourceIds.length > rule.totalLimit) overflowSourceIds.push(id);
   }
-  return { mediaSourceIds, overflowSourceIds, canGenerate: overflowSourceIds.length === 0
-    && ownCount <= rule.totalLimit && (!ownCount || rule.limits[ownType] >= 1) };
+  return { mediaSourceIds, overflowSourceIds, canGenerate: overflowSourceIds.length === 0 };
 }
 
 export function canConnectCanvasVideo(nodes, connection, capabilities) {
@@ -142,7 +138,6 @@ export function canConnectCanvasVideo(nodes, connection, capabilities) {
     const item = find(nodes, id);
     return item?.data.asset?.asset_type || item?.type;
   }).filter((type) => MEDIA_TYPES.includes(type));
-  if (target.data.asset?.url) types.push(target.data.asset.asset_type || 'video');
   return validateVideoAddition(types, source.data.asset?.asset_type || source.type, caps,
     target.data.model, caps.selectedGenerationMode || target.data.generationMode).allowed;
 }
@@ -183,9 +178,10 @@ export function getCanvasVideoRequestModes(capabilities, mode) {
 }
 
 export function planCanvasVideoGeneration(nodes, nodeId, prompt, model, params = {}) {
+  if (nodes.find(node => node.id === nodeId)?.data.pendingCanvasUpload?.asset?.uploadStatus === 'uploading') throw new Error('素材正在替换上传，请稍后再试');
   const target = find(nodes, nodeId);
   if (target?.type !== 'video') throw new Error('视频节点已不存在');
-  if (!prompt?.trim()) throw new Error('请输入创作提示词');
+  if (target.data.generating || target.data.submissionLocked || target.data.editing || target.data.upstreamProtected) throw new Error('当前节点正在执行或受到任务保护');
   if (!model) throw new Error('请选择可用的视频模型');
   const capabilities = params.capabilities || target.data.videoCapabilities || {};
   const mode = params.generationMode || target.data.generationMode;
@@ -194,48 +190,93 @@ export function planCanvasVideoGeneration(nodes, nodeId, prompt, model, params =
     ? { ...params, ratio: 'adaptive', duration: '-1' } : params;
   const modes = getCanvasVideoRequestModes(capabilities, mode);
   const ids = getCanvasVideoSourceIds(target);
-  if (target.data.asset?.url) ids.push(target.id);
-  const sources = ids.map((id) => find(nodes, id)).filter((source) => TYPES.includes(source?.type)).map((source) => ({
+  const upstream = ids.map((id) => find(nodes, id));
+  if (upstream.some((source) => source?.data.generating || source?.data.submissionLocked || source?.data.editing)) throw new Error('直接上游正在提交或生成');
+  if (upstream.some((source) => !TYPES.includes(source?.type))) throw new Error('直接上游素材已不存在');
+  const sources = upstream.map((source) => ({
     id: source.id, type: source.type === 'text' ? 'text' : source.data.asset?.asset_type || source.type,
-    label: source.data.label, content: source.type === 'text' ? source.data.content : undefined, asset: source.data.asset || undefined,
+    label: source.data.label, content: source.type === 'text' ? source.data.content : undefined,
+    asset: source.type === 'text' ? undefined : structuredClone(source.data.asset),
   }));
   const images = sources.filter((source) => source.type === 'image' && source.asset?.url);
   const occupancy = validateCanvasVideoMedia(sources.filter((source) => MEDIA_TYPES.includes(source.type)).map((source) => source.type),
     capabilities, model, mode);
   if (!occupancy.allowed) throw new Error(occupancy.message);
+  if (sources.some((source) => source.type === 'text' ? !source.content?.trim()
+    : !source.asset?.url || ['missing', 'forbidden'].includes(source.asset.availability))) throw new Error('直接上游缺少有效结果');
   const mediaValidation = validateCanvasVideoMedia(
     sources.filter((source) => MEDIA_TYPES.includes(source.type) && source.asset?.url).map((source) => source.type),
     capabilities, model, mode, { final: true },
   );
   if (!mediaValidation.allowed) throw new Error(mediaValidation.message);
-  const createsResult = Boolean(target.data.asset?.url);
-  return { nodeId, prompt, model, sources, capabilities, generationMode: mode,
+  const instruction = prompt?.trim() ? prompt : sources.filter((source) => source.type === 'text').map((source) => source.content).join('\n\n');
+  if (!instruction?.trim()) throw new Error('请输入创作提示词');
+  const snapshotParams = JSON.parse(JSON.stringify({
+    ...effectiveParams,
+    generation_mode: modes.generation_mode,
+    reference_mode: modes.reference_mode,
+    capabilities: undefined,
+    generationMode: undefined,
+  }));
+  const snapshot = { prompt: instruction, model, generationMode: mode, params: snapshotParams,
+    inputs: sources.map((source) => source.type === 'text' ? { nodeId: source.id, content: source.content }
+      : { nodeId: source.id, type: source.type, assetId: source.asset.asset_id || source.asset.assetId || source.asset.backendId || null }) };
+  return { nodeId, prompt: instruction, model, sources, capabilities, generationMode: mode,
+    referenceMaterials: prompt?.trim() ? sources.filter((source) => source.type === 'text') : [],
+    snapshot, submittedAt: Date.now(), taskIds: [], originalAssetId: assetIdentity(target.data.asset),
     params: { ...effectiveParams, ...modes, videoCapabilities: capabilities, supportedGenerationModes: capabilities.supported_generation_modes, videoDuration: effectiveParams.duration,
       firstFrameUrl: ['first_frame', 'start_end'].includes(mode) ? images[0]?.asset.url : undefined,
       lastFrameUrl: mode === 'start_end' ? images[1]?.asset.url : undefined },
-    requestId: crypto.randomUUID(), createsResult, resultId: createsResult ? `canvas-video-${crypto.randomUUID()}` : nodeId };
+    requestId: crypto.randomUUID(), createsResult: false, resultId: nodeId };
 }
 
 export function beginCanvasVideoGeneration(nodes, plan) {
+  if (nodes.find(node => node.id === plan.nodeId)?.data.pendingCanvasUpload?.asset?.uploadStatus === 'uploading') throw new Error('素材正在替换上传，请稍后再试');
   const target = find(nodes, plan.nodeId);
-  if (!target) return nodes;
-  const pending = nodes.map((node) => node.id === plan.nodeId ? { ...node, data: { ...node.data, creationPanelOpen: false,
-    generating: !plan.createsResult, generationRequestId: plan.createsResult ? undefined : plan.requestId, generationError: '' } } : node);
-  if (!plan.createsResult) return pending;
-  const position = getCanvasAbsolutePosition(nodes, target);
-  const result = createCanvasNode('video', { x: position.x + 320, y: position.y }, plan.resultId);
-  while (nodes.some((node) => { const p = getCanvasAbsolutePosition(nodes, node); return Math.abs(p.x - result.position.x) < 260 && Math.abs(p.y - result.position.y) < 280; })) result.position.y += 300;
-  result.data = { ...result.data, model: plan.model, prompt: plan.prompt, videoCapabilities: plan.capabilities, generationMode: plan.generationMode,
-    generating: true, generationRequestId: plan.requestId, videoSourceIds: plan.sources.map((source) => source.id) };
-  return setCanvasSelection(appendCanvasNode(pending, result), [result.id], false);
+  if (!target) throw new Error('视频节点已不存在，已取消本次创作');
+  if (target.data.generating || target.data.submissionLocked) throw new Error('当前视频节点正在提交或生成，已取消本次创作');
+  const protectedBy = nodes.find((node) => node.id !== target.id && node.data.submissionLocked
+    && Array.isArray(node.data.executionSourceIds) && node.data.executionSourceIds.includes(target.id));
+  if (protectedBy) throw new Error('当前视频节点已被其他任务作为上游保护，已取消本次创作');
+  return nodes.map((node) => node.id === plan.nodeId ? { ...node, data: { ...node.data, creationPanelOpen: false,
+    generating: true, generationRequestId: plan.requestId, generationError: '', submissionLocked: true,
+    executionSourceIds: plan.sources.map((source) => source.id), generationTaskIds: [] } } : node);
+}
+
+export function acceptCanvasVideoSubmission(nodes, plan, { taskId, taskIds } = {}) {
+  const ids = Array.isArray(taskIds) && taskIds.length ? taskIds : [taskId];
+  if (ids.some((id) => typeof id !== 'string' || !id.trim())) throw new Error('视频任务缺少真实服务端编号');
+  plan.taskIds = [...new Set([...(plan.taskIds || []), ...ids])];
+  return nodes.map((node) => node.id === plan.nodeId && node.data.generationRequestId === plan.requestId
+    ? { ...node, data: { ...node.data, submissionLocked: false, generationTaskIds: [...plan.taskIds] } } : node);
 }
 
 export function recoverCanvasVideoGenerationFailure(nodes, plan) {
   return nodes.map((node) => node.id === plan.resultId && node.data.generationRequestId === plan.requestId
-    ? { ...node, data: { ...node.data, generating: false, generationError: '', generationRequestId: undefined } } : node);
+    ? { ...node, data: { ...node.data, generating: false, generationError: '', generationRequestId: undefined,
+      submissionLocked: false, executionSourceIds: undefined, generationTaskIds: undefined } } : node);
 }
 
 export function applyCanvasVideoResult(nodes, plan, asset) {
   if (!nodes.some((node) => node.id === plan.resultId && node.data.generationRequestId === plan.requestId)) return nodes;
-  return recoverCanvasVideoGenerationFailure(nodes, plan).map((node) => node.id === plan.resultId && !node.data.asset?.url ? { ...node, data: { ...node.data, asset } } : node);
+  const completedAt = Date.now();
+  const committed = nodes.map((node) => {
+    if (node.id !== plan.resultId || node.data.generationRequestId !== plan.requestId) return node;
+    if (assetIdentity(node.data.asset) !== plan.originalAssetId) return node;
+    return commitCanvasNodeOutput(node, { id: plan.requestId, batchId: plan.requestId, source: 'generation', requestedCount: 1,
+      results: [{ id: `result-${plan.requestId}`, index: 0, type: 'video', assetId: asset.asset_id }],
+      submittedAt: plan.submittedAt, completedAt, snapshot: plan.snapshot, taskIds: plan.taskIds }, { [asset.asset_id]: asset });
+  });
+  return recoverCanvasVideoGenerationFailure(committed, plan);
+}
+
+/** 只接受接口明确透传的资产编号，绝不以任务编号、卡片编号或地址代替。 */
+export function getCanvasGeneratedVideoAsset(result) {
+  const url = result?.videos?.[0] || result?.videoUrl || result?.url;
+  const assetId = result?.videoAssetIds?.[0];
+  if (!url) throw new Error('视频生成未返回有效结果');
+  if (typeof assetId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(assetId)) {
+    throw new Error('视频生成未返回永久资产编号，已保留旧结果');
+  }
+  return { url, asset_id: assetId, asset_type: 'video', source: 'ai-generated', ...(result.posterUrl ? { posterUrl: result.posterUrl } : {}) };
 }

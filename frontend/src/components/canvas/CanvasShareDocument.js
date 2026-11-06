@@ -1,5 +1,6 @@
 import { getCanvasMediaSize, prepareCanvasMediaAsset } from './CanvasMediaSize.js';
 import { readCanvasDocument } from './CanvasDocument.js';
+import { assertCanvasSharePrivacy } from './CanvasSharePrivacy.js';
 
 export function safeCanvasMediaUrl(value) {
   if (typeof value !== 'string' || !value.trim()) return undefined;
@@ -26,6 +27,7 @@ export async function prepareCanvasShareMedia(graph) {
 }
 
 export function readCanvasShareDocument(payload) {
+  assertCanvasSharePrivacy(payload);
   const doc = payload?.document;
   if (!doc || doc.engine !== 'xyflow' || doc.schemaVersion !== 1 || !Array.isArray(doc.records)) {
     throw new Error('此画布的文档格式暂不支持，需后端提供约定的公开文档');

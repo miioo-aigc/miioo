@@ -1,13 +1,16 @@
 /**
  * @file CanvasPage.jsx
  * @structure-index
+ *   2026-11-06：所有节点统一写回提示词及快照，恢复和导入节点草稿随画布保存。
  *   2026-11-04：左下角节点导航器支持展开浏览、搜索筛选；定位节点时选中并居中，侧拉窗保持展开。
  *   2026-11-04：CanvasSelectionInteraction 统一多选范围框、Shift加选和Ctrl/Command减选；剩一张恢复单选。
  *   2026-11-04：空白双击菜单新增上传与资产库入口，素材从双击位置开始排列；连线与工具栏菜单不变。
  *
  *   2026-11-04：双名称分别编辑，画布管理迁入顶部，底部移除列表入口。
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L157；grouping L207；referenceGraph L222；mediaPreview L183；文档读取 L238；handleNodesChange L319；addNode L399；工具栏新增 L435；批量导入 L447；React Flow L831；2026-11-04：组顶部复用选区工具栏并接入组内居中新建。
+ *   CanvasPage L161；结果选择 L206；历史素材映射恢复 L228；grouping L265；referenceGraph L298；文档读取 L323；handleNodesChange L396；节点素材回调 L470；addNode L485；工具栏新增 L525；批量导入/替换 L532；上传 L655；React Flow L1015。
+ *   2026-11-06：媒体替换独立单素材分支，上传与素材库均复核目标会话/节点，普通导入和参考流程保持原语义。
+ *   2026-11-06：统一结果切换、节点级任务操作保护、文本结果历史、直接上游更新标识及复制/导入历史预览恢复。
  *   2026-10-27：保存失败复用带下载操作的提示，点击时导出最新草稿。
  *   2026-10-27：顶部云上传图标接入真实保存开始、成功、失败；旧请求不覆盖新改动。
  *   2026-10-27：上传整批完成统一提示，保存失败独立反馈；保留页面级会话与上传回填编排。
@@ -90,7 +93,8 @@ import { useCanvasSearch } from '../components/canvas/UseCanvasSearch';
 import CanvasUserMenu from '../components/canvas/CanvasUserMenu';
 import AssetPickerModal from '../components/AssetPickerModal';
 import ProfileModal from '../components/ProfileModal';
-import { applyCanvasAsset, planCanvasAssetImport, toCanvasAsset } from '../components/canvas/CanvasAssets';
+import { applyCanvasAsset, finishCanvasPendingUpload, getCanvasPermanentAssetId, planCanvasAssetImport, toCanvasAsset } from '../components/canvas/CanvasAssets';
+import { beginCanvasReplacement, createCanvasReplacementPending, createCanvasReplacementSnapshot, isCanvasReplacementTargetCurrent, validateCanvasAssetReplacement } from '../components/canvas/CanvasAssetReplace.js';
 import { getCanvasToolShortcut } from '../components/canvas/CanvasToolShortcuts';
 import { addCanvasReference, getCanvasReferenceNodePosition } from '../components/canvas/CanvasReferences';
 import { planCanvasReferenceBatch } from '../components/canvas/CanvasReferenceBatch';
@@ -122,6 +126,8 @@ import { resolveCanvasDocumentAssets } from '../components/canvas/CanvasAssetRes
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { createCanvasSaveSession } from '../components/canvas/CanvasSaveSession';
 import { useCanvasList } from '../components/canvas/UseCanvasList';
+import { selectCanvasNodeOutput, commitCanvasNodeOutput } from '../components/canvas/CanvasResultMutations.js';
+import { guardCanvasNodeChanges, getCanvasOperationLocks, mergeCanvasResolvedAssetViews } from '../components/canvas/CanvasOperationGuards.js';
 
 // 浏览器 click 先于 dblclick 触发；保留极短窗口，避免双击时先展开创作框。
 const CANVAS_SINGLE_CLICK_DELAY = 200;
@@ -196,9 +202,63 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   }, []);
   const [searchOpen, setSearchOpen] = useState(false);
   const [nodeNavigatorOpen, setNodeNavigatorOpen] = useState(false);
+  const restorePreviewRef = useRef(new Map());
   const history = useCanvasHistory(cancelPendingClicks,
     !assetPickerOpen && !profileOpen && !actionDialog && !searchOpen);
   const { nodes, setNodes } = history;
+  const onSelectResult = useCallback((nodeId, resultId) => {
+    try {
+      setNodes((current) => {
+        if (getCanvasOperationLocks(current).upstreamProtected.has(nodeId)) {
+          throw new Error('当前节点结果受到任务保护，请稍后再试');
+        }
+        return current.map((node) => node.id === nodeId ? selectCanvasNodeOutput(node, resultId) : node);
+      });
+    } catch (selectError) { showGlobalToast(selectError.message, 'warning'); }
+  }, [setNodes]);
+  const commitUserText = useCallback((nodeId, content) => {
+    const current = history.getCurrentNodes();
+    const node = current.find((item) => item.id === nodeId && item.type === 'text');
+    if (!node || !content.trim() || node.data.generating || node.data.generationPending || node.data.editing
+      || node.data.submissionLocked) return false;
+    const now = Date.now(), id = `canvas-text-edit-${crypto.randomUUID()}`;
+    setNodes((items) => items.map((item) => item.id === nodeId ? commitCanvasNodeOutput(item, {
+      id, source: 'edit', requestedCount: 1, results: [{ id: `${id}-result`, index: 0, type: 'text', content }],
+      submittedAt: now, completedAt: now, snapshot: { source: 'inline-edit' }, taskIds: [],
+    }) : item));
+    return true;
+  }, [history, setNodes]);
+  const resolvePreviewAssets = useCallback(async (targetNodes, ids) => {
+    const unique = [...new Set(ids)];
+    if (!unique.length || isDevelopmentCanvas(canvasId)) return;
+    const token = {};
+    const owner = saveSessionRef.current;
+    const session = getAuthSessionGeneration();
+    unique.forEach((nodeId) => restorePreviewRef.current.set(nodeId, token));
+    try {
+      const resolved = await resolveCanvasDocumentAssets(canvasId, targetNodes.filter((node) => unique.includes(node.id)),
+        apiResolveCanvasAssetViews, { normalizeMediaUrl: normalizeImageUrl });
+      if (saveSessionRef.current !== owner || session !== getAuthSessionGeneration()) return;
+      setNodes((current) => {
+        const resolvedById = new Map(resolved.map((node) => [node.id, node]));
+        return current.map((node) => {
+          if (restorePreviewRef.current.get(node.id) !== token) return node;
+          const enriched = resolvedById.get(node.id);
+          if (!enriched) return node;
+          return mergeCanvasResolvedAssetViews(node, enriched);
+        });
+      }, { record: false, origin: 'system' });
+    } catch (error) { if (saveSessionRef.current === owner) showGlobalToast(error.message || '历史素材预览恢复失败', 'warning'); }
+  }, [canvasId, setNodes]);
+  useEffect(() => {
+    if (loadedCanvasId !== canvasId) return;
+    const present = new Set(nodes.map((node) => node.id));
+    for (const id of restorePreviewRef.current.keys()) if (!present.has(id)) restorePreviewRef.current.delete(id);
+    const missing = nodes.filter((node) => !restorePreviewRef.current.has(node.id)
+      && node.data.nodeResults?.batches.some((batch) => batch.results.some((result) => result.assetId
+        && !node.data.resultAssetViews?.[result.assetId])));
+    if (missing.length) void resolvePreviewAssets(missing, missing.map((node) => node.id));
+  }, [nodes, canvasId, loadedCanvasId, resolvePreviewAssets]);
   const textEditor = useCanvasTextEditor({ nodes, history, cancelPendingClicks });
   const imageEdits = useCanvasImageEdits({ nodes, setNodes, canvasId, cancelPendingClicks });
   const videoEdits = useCanvasVideoEdits({ nodes, setNodes, canvasId, cancelPendingClicks });
@@ -214,6 +274,24 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const generateImage = useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, canvas?.project_id);
   const generateVideo = useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks);
   const generateAudio = useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks);
+  const upstreamUpdatedIds = new Set();
+  for (const target of nodes) {
+    const lastBatch = target.data.nodeResults?.batches?.filter((batch) => batch.snapshot?.inputs)
+      .sort((left, right) => (right.completedAt ?? right.submittedAt ?? -1) - (left.completedAt ?? left.submittedAt ?? -1))[0];
+    if (!lastBatch) continue;
+    for (const input of lastBatch.snapshot.inputs) {
+      const source = nodes.find((node) => node.id === input.nodeId);
+      if (!source) continue;
+      const currentResultId = source.data.nodeResults?.currentResultId;
+      const currentResult = currentResultId ? source.data.nodeResults?.batches?.flatMap((batch) => batch.results || [])
+        .find((result) => result.id === currentResultId) : null;
+      const currentAssetId = currentResult?.assetId || source.data.asset?.asset_id || null;
+      const changed = input.resultId ? input.resultId !== currentResultId
+        : input.assetId ? input.assetId !== currentAssetId
+          : Object.hasOwn(input, 'content') && input.content !== (source.data.content || '');
+      if (changed) upstreamUpdatedIds.add(target.id);
+    }
+  }
   const enterNodeRef = useRef(grouping.enterNode);
   useEffect(() => { enterNodeRef.current = grouping.enterNode; }, [grouping.enterNode]);
   const openReferencePicker = useCallback((target) => {
@@ -255,7 +333,8 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
           setError('');
           setProject(projectDetails);
           setCanvas(documentResult.value);
-          setNodes(restoredNodes, { record: false });
+          restorePreviewRef.current.clear();
+          setNodes(restoredNodes, { record: false, origin: 'load' });
           setViewport(document.viewport);
           setViewportZoom(document.viewport.zoom || 1);
           setCanvasRevision(documentResult.value?.revision ?? null);
@@ -318,19 +397,20 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
 
   const handleUnsupported = notifyUnsupported;
   const handleNodesChange = useCallback((changes) => {
-    if (changes.some((change) => change.type === 'select' || change.type === 'remove')) cancelPendingClicks();
+    const safeChanges = guardCanvasNodeChanges(history.getCurrentNodes(), changes);
+    if (safeChanges.some((change) => change.type === 'select' || change.type === 'remove')) cancelPendingClicks();
     setNodes((current) => {
-      const persistedChanges = changes.filter((change) => !(change.type === 'dimensions' && current.find((node) => node.id === change.id)?.data.stacked));
+      const persistedChanges = safeChanges.filter((change) => !(change.type === 'dimensions' && current.find((node) => node.id === change.id)?.data.stacked));
       let next = applyNodeChanges(persistedChanges.map((change) => restoreCanvasStackPositionChange(change, current)), current);
-      const moving = changes.filter((change) => change.type === 'position' && change.position && typeof change.dragging === 'boolean');
+      const moving = safeChanges.filter((change) => change.type === 'position' && change.position && typeof change.dragging === 'boolean');
       if (moving.length) {
         next = applySnap(next, moving.map((change) => change.id), viewportZoom);
         if (moving.every((change) => !change.dragging)) clearSnap();
       }
       if (next.filter((node) => node.selected).length !== 1) next = setCanvasSelection(next, next.filter((node) => node.selected).map((node) => node.id));
       return fitCanvasGroups(next);
-    }, { record: changes.some((change) => !['select', 'dimensions'].includes(change.type)) });
-  }, [cancelPendingClicks, setNodes, applySnap, clearSnap, viewportZoom]);
+    }, { record: safeChanges.some((change) => !['select', 'dimensions'].includes(change.type)) });
+  }, [cancelPendingClicks, setNodes, applySnap, clearSnap, viewportZoom, history]);
   const cancelPendingNodeClick = useCallback((nodeId) => {
     const timer = pendingNodeClicksRef.current.get(nodeId);
     if (!timer) return;
@@ -387,14 +467,18 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       ? { ...item, data: { ...item.data, generationMode } }
       : item));
   }, [setNodes]);
-  const handleNodeAssetChange = useCallback((nodeId, asset) => {
+  const handleNodeAssetChange = useCallback((nodeId, asset, options = {}) => {
+    if (asset == null) return;
     const assets = Array.isArray(asset) ? asset : [asset];
+    const target = options.purpose === 'replace'
+      ? { nodeId, nodeType: options.nodeType, purpose: 'replace' }
+      : { nodeId };
     const files = assets.map((item) => item.file).filter(Boolean);
-    return files.length ? uploadFilesRef.current?.(files, { nodeId }) : importAssetsRef.current?.(assets, { nodeId });
+    return files.length ? uploadFilesRef.current?.(files, target) : importAssetsRef.current?.(assets, target);
   }, []);
-  const handleNodeSelectAsset = useCallback((nodeId, nodeType) => {
+  const handleNodeSelectAsset = useCallback((nodeId, nodeType, options = {}) => {
     cancelPendingClicks();
-    setAssetTarget({ nodeId, nodeType });
+    setAssetTarget({ nodeId, nodeType, ...(options.purpose === 'replace' ? { purpose: 'replace' } : {}) });
     setAssetPickerOpen(true);
   }, [cancelPendingClicks]);
   const addNode = useCallback((type, position, connection = null, asset = null, parentId) => {
@@ -404,7 +488,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     node.data.onImageReferenceLimitChange = handleImageReferenceLimitChange;
     node.data.onVideoCapabilitiesChange = handleVideoCapabilitiesChange;
     node.data.onGenerationModeChange = handleGenerationModeChange;
-    node.data.onContentChange = (nodeId, content) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, content } } : item));
+    node.data.onContentChange = commitUserText;
     node.data.onCancelPendingClick = cancelPendingNodeClick;
     node.data.onEnterEditing = (nodeId) => {
       cancelPendingNodeClick(nodeId);
@@ -432,7 +516,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     }
     setNodeMenu(null);
     setPendingConnection(null);
-  }, [cancelPendingNodeClick, generateAudio, generateImage, generateText, generateVideo, handleGenerationModeChange, handleImageReferenceLimitChange, handleUnsupported, handleVideoCapabilitiesChange, nodes.length, referenceGraph, setNodes]);
+  }, [cancelPendingNodeClick, commitUserText, generateAudio, generateImage, generateText, generateVideo, handleGenerationModeChange, handleImageReferenceLimitChange, handleUnsupported, handleVideoCapabilitiesChange, nodes.length, referenceGraph, setNodes]);
   const handleToolbarAddNode = useCallback((type) => {
     if (loading || error || !flowInstance || !canvasContainerRef.current) return;
     const rect = canvasContainerRef.current.getBoundingClientRect();
@@ -446,9 +530,45 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       { zoom: flowInstance.getZoom(), duration: 300 });
   }, [addNode, cancelPendingClicks, error, flowInstance, history, loading]);
   const importAssets = useCallback(async (assets, target = null) => {
-    assets = await Promise.all(assets.map((asset) => prepareCanvasMediaAsset(toCanvasAsset(asset, 'video') || asset)));
+    const owner = saveSessionRef.current;
+    const session = getAuthSessionGeneration();
+    const isCurrentSession = () => saveSessionRef.current === owner && session === getAuthSessionGeneration();
+    const replaceSnapshot = target?.purpose === 'replace'
+      ? createCanvasReplacementSnapshot(history.getSnapshot().nodes.find((node) => node.id === target.nodeId))
+      : null;
+    if (target?.purpose === 'replace') {
+      const valid = validateCanvasAssetReplacement(history.getSnapshot().nodes, target.nodeId, target.nodeType, assets);
+      if (!valid) { showGlobalToast('warning', '替换需要选择一个与当前节点类型一致的有效素材'); return false; }
+      assets = [valid];
+      assets = await Promise.all(assets.map((asset) => prepareCanvasMediaAsset(asset)));
+      if (!isCurrentSession()) return false;
+    } else {
+      assets = await Promise.all(assets.map((asset) => prepareCanvasMediaAsset(toCanvasAsset(asset, 'video') || asset)));
+    }
     if (!canvasContainerRef.current) return false;
     const current = history.getSnapshot().nodes;
+    if (target?.purpose === 'replace') {
+      if (!isCanvasReplacementTargetCurrent(current, replaceSnapshot)) return false;
+      const node = current.find((item) => item.id === target.nodeId);
+      const asset = assets[0];
+      if (!(asset.file && asset.uploadStatus === 'uploading')) {
+        if (!getCanvasPermanentAssetId(asset)) return false;
+        const next = applyCanvasAsset(current, target.nodeId, asset);
+        if (next === current) return false;
+        cancelPendingClicks();
+        return setNodes(next);
+      }
+      const pending = createCanvasReplacementPending(node, assets[0]);
+      if (!pending) return false;
+      cancelPendingClicks();
+      const write = { accepted: false };
+      const accepted = setNodes((items) => {
+        const next = beginCanvasReplacement(items, replaceSnapshot, pending);
+        write.accepted = next !== items;
+        return next;
+      });
+      return accepted !== false && write.accepted;
+    }
     if (target?.purpose === 'reference') {
       const result = planCanvasReferenceBatch(current, target.nodeId, assets, target.mode);
       if (!result.allowed) { showGlobalToast('warning', result.message); return false; }
@@ -536,6 +656,17 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     const owner = saveSessionRef.current;
     const session = getAuthSessionGeneration();
     const isCurrent = () => saveSessionRef.current === owner && session === getAuthSessionGeneration();
+    const replaceSnapshot = target?.purpose === 'replace'
+      ? createCanvasReplacementSnapshot(history.getSnapshot().nodes.find((node) => node.id === target.nodeId))
+      : null;
+    if (target?.purpose === 'replace' && (!replaceSnapshot || replaceSnapshot.type !== target.nodeType
+      || files.length !== 1 || !getCanvasMediaFileType(files[0], target.nodeType)
+      || !validateCanvasAssetReplacement(history.getSnapshot().nodes, target.nodeId, target.nodeType, [{
+        asset_type: getCanvasMediaFileType(files[0], target.nodeType), url: 'blob:replace-validation',
+      }]))) {
+      showGlobalToast('warning', '替换需要上传一个与当前节点类型一致的文件');
+      return false;
+    }
     const validFiles = files.filter((file) => getCanvasMediaFileType(file, 'all'));
     if (!validFiles.length) {
       showGlobalToast('warning', '请选择有效的图片、视频或音频文件');
@@ -552,29 +683,94 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       uploadError: null,
       file,
     }));
-    const imported = await importAssets(assets, target);
+    let imported;
+    if (target?.purpose === 'replace') {
+      const prepared = await Promise.all(assets.map((asset) => prepareCanvasMediaAsset(asset)));
+      if (!isCurrent() || !isCanvasReplacementTargetCurrent(history.getSnapshot().nodes, replaceSnapshot)) {
+        assets.forEach((asset) => URL.revokeObjectURL(asset.url));
+        return false;
+      }
+      imported = importAssetsRef.current?.(prepared, { nodeId: target.nodeId, nodeType: target.nodeType, purpose: 'replace' });
+      imported = await imported;
+    } else imported = await importAssets(assets, target);
+    if (target?.purpose === 'replace') {
+      if (!imported || !isCurrent()) {
+        assets.forEach((asset) => URL.revokeObjectURL(asset.url));
+        return false;
+      }
+      const targetNode = history.getSnapshot().nodes.find((node) => node.id === target.nodeId);
+      if (!targetNode || targetNode.type !== target.nodeType) {
+        assets.forEach((asset) => URL.revokeObjectURL(asset.url));
+        return false;
+      }
+      const pending = history.getSnapshot().nodes.find((node) => node.id === target.nodeId)?.data.pendingCanvasUpload;
+      if (!pending || pending.owner !== 'page-replace' || pending.asset.url !== assets[0].url) {
+        assets.forEach((asset) => URL.revokeObjectURL(asset.url));
+        return false;
+      }
+      try {
+        const uploaded = await (assets[0].asset_type === 'image'
+          ? ensureCanvasImageAsset(assets[0], { projectId: canvas?.project_id })
+          : uploadCanvasAsset(assets[0].file, assets[0].asset_type, { projectId: canvas?.project_id }));
+        if (!isCurrent()) return false;
+        const write = { accepted: false };
+        const accepted = setNodes((current) => {
+          const next = finishCanvasPendingUpload(current, target.nodeId, pending, uploaded);
+          write.accepted = next !== current;
+          return next;
+        });
+        if (accepted === false || !write.accepted) return false;
+        const committed = history.getSnapshot().nodes.find((node) => node.id === target.nodeId);
+        if (committed?.data?.nodeResults?.currentResultId !== `${pending.operationId}-result`) return false;
+        showGlobalToast('success', '替换成功');
+        try { if (isCurrent()) await persistCanvas(); }
+        catch (saveError) { if (isCurrent()) reportSaveError(saveError); }
+        return true;
+      } catch (uploadError) {
+        if (isCurrent()) {
+          setNodes((current) => finishCanvasPendingUpload(current, target.nodeId, pending, null, uploadError));
+          showGlobalToast('error', `替换上传失败：${uploadError.message}`);
+        }
+        return false;
+      } finally {
+        URL.revokeObjectURL(assets[0].url);
+      }
+    }
     if (!imported) {
       assets.forEach((asset) => URL.revokeObjectURL(asset.url));
-      return;
+      return false;
     }
-    const importedNodes = history.getSnapshot().nodes.filter((node) => assets.some((asset) => node.data?.asset?.url === asset.url));
+    if (!isCurrent()) return false;
+    const importedNodes = history.getSnapshot().nodes.filter((node) => assets.some((asset) => target?.purpose === 'replace'
+      ? (node.data?.pendingCanvasUpload?.asset?.url === asset.url || node.data?.asset?.url === asset.url)
+      : node.data?.asset?.url === asset.url));
     const outcomes = await Promise.all(assets.map(async (asset) => {
-      const node = importedNodes.find((item) => item.data?.asset?.url === asset.url);
+      const node = importedNodes.find((item) => target?.purpose === 'replace'
+        ? (item.data?.pendingCanvasUpload?.asset?.url === asset.url || item.data?.asset?.url === asset.url)
+        : item.data?.asset?.url === asset.url);
       if (!node) return;
       try {
         const uploaded = await (asset.asset_type === 'image'
           ? ensureCanvasImageAsset(asset, { projectId: canvas?.project_id })
           : uploadCanvasAsset(asset.file, asset.asset_type, { projectId: canvas?.project_id }));
         if (!isCurrent()) return;
-        setNodes((current) => current.map((item) => item.id === node.id && item.data?.asset?.url === asset.url
-          ? { ...item, data: { ...item.data, asset: { ...item.data.asset, ...uploaded, file: undefined } } }
-          : item));
+        const writeResult = { accepted: false };
+        const accepted = setNodes((current) => {
+          const result = current.map((item) => item.id === node.id && item.data?.asset?.url === asset.url
+            ? { ...item, data: { ...item.data, asset: { ...item.data.asset, ...uploaded, file: undefined } } }
+            : item);
+          writeResult.accepted = result !== current;
+          return result;
+        });
+        if (accepted === false || !writeResult.accepted) return;
         return true;
       } catch (uploadError) {
         if (!isCurrent()) return;
-        setNodes((current) => current.map((item) => item.id === node.id && item.data?.asset?.url === asset.url
-          ? { ...item, data: { ...item.data, asset: { ...item.data.asset, uploadStatus: 'error', uploadError: uploadError.message } } }
-          : item));
+        setNodes((current) => {
+          return current.map((item) => item.id === node.id && item.data?.asset?.url === asset.url
+            ? { ...item, data: { ...item.data, asset: { ...item.data.asset, uploadStatus: 'error', uploadError: uploadError.message } } }
+            : item);
+        });
         return { name: asset.name, message: uploadError.message };
       }
     }));
@@ -591,6 +787,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     } catch (saveError) {
       if (isCurrent()) reportSaveError(saveError);
     }
+    return undefined;
   }, [canvas, history, importAssets, persistCanvas, setNodes, reportSaveError]);
   useEffect(() => { uploadFilesRef.current = uploadFiles; }, [uploadFiles]);
   const handleCanvasDrop = useCallback((event) => {
@@ -833,11 +1030,10 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
         onDragOver={handleCanvasDragOver} onDrop={handleCanvasDrop}
         onWheelCapture={handleCanvasWheelCapture}
         onMove={(_, nextViewport) => { setViewport(nextViewport); setViewportZoom(nextViewport.zoom); }}
-        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, onAssetChange: handleNodeAssetChange, onSelectAsset: handleNodeSelectAsset, viewportZoom, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
+        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, upstreamProtected: getCanvasOperationLocks(nodes).upstreamProtected.has(node.id), upstreamUpdated: upstreamUpdatedIds.has(node.id), onSelectResult, onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)), onAssetChange: handleNodeAssetChange, onSelectAsset: handleNodeSelectAsset, viewportZoom, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
           onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); },
           onEditContent: (id) => { clearPendingConnection(); setNodeMenu(null); nodeActions.closeMenu(); textEditor.open(id); },
-          onContentChange: (nodeId, content) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, content } } : item)),
-          onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)),
+          onContentChange: (nodeId, content) => commitUserText(nodeId, content),
           onModelChange: (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item)),
           onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : node.type === 'image' ? { onGenerate: generateImage, onImageEdit: imageEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); }, onPreview: (asset) => setMediaPreview({ asset, nodeType: node.type }) } : node.type === 'video' ? { onGenerate: generateVideo, onVideoEdit: videoEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); }, onPreview: (asset) => setMediaPreview({ asset, nodeType: node.type }) } : node.type === 'audio' ? { onGenerate: generateAudio, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); } } : {}) } }))} edges={presentation.edges} edgeTypes={CANVAS_EDGE_TYPES} onEdgesChange={referenceGraph.onEdgesChange}
         deleteKeyCode={null}
@@ -943,9 +1139,11 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
         if (!result.allowed) showGlobalToast('warning', result.message);
         return result.allowed;
       } : undefined}
-      accept={assetTarget?.nodeType === 'video' ? 'all' : assetTarget?.nodeType || 'all'}
-      selectionMode="multiple"
-      assetFilter={assetTarget?.nodeType ? (asset) => Boolean(toCanvasAsset(asset, assetTarget.nodeType)) : undefined}
+      accept={assetTarget?.purpose === 'replace' ? assetTarget.nodeType : assetTarget?.nodeType === 'video' ? 'all' : assetTarget?.nodeType || 'all'}
+      selectionMode={assetTarget?.purpose === 'replace' ? 'single' : 'multiple'}
+      strictAssetType={assetTarget?.purpose === 'replace'}
+      assetFilter={assetTarget?.purpose === 'replace' ? (asset) => String(asset?.asset_type || asset?.assetType || asset?.type || '').toLowerCase().split('/')[0] === assetTarget.nodeType
+        : assetTarget?.nodeType ? (asset) => Boolean(toCanvasAsset(asset, assetTarget.nodeType)) : undefined}
       includeSeedanceLibrary
     />
     <ProfileModal open={profileOpen} currentUser={currentUser} onClose={() => setProfileOpen(false)} onLogout={() => autosave.leave(handleLogout)} onProfileUpdated={(updated) => setCurrentUser((previous) => ({ ...previous, ...updated }))} />

@@ -43,3 +43,25 @@ test('绝对坐标居中且保留缩放，堆叠组使用呈现尺寸', () => {
   assert.equal(getCanvasSearchFocus(nodes, 'missing', viewport, 1), null);
   assert.ok(getCanvasSearchFocus(nodes, 'a', { width: 200, height: 300 }, 1).zoom < 1);
 });
+
+test('侧拉窗定位恢复默认缩放，搜索定位保持当前缩放', () => {
+  const viewport = { width: 1200, height: 900 };
+  for (const zoom of [0.1, 0.5, 1, 2]) {
+    assert.deepEqual(getCanvasSearchFocus(nodes, 'a', viewport, zoom, { resetZoom: true }),
+      { x: 260, y: 392, zoom: 1 });
+    assert.equal(getCanvasSearchFocus(nodes, 'a', viewport, zoom).zoom, zoom);
+  }
+});
+
+test('恢复默认缩放时超大节点按视口宽高适配，且保持居中', () => {
+  const large = [{ id: 'large', type: 'image', position: { x: 100, y: 200 },
+    measured: { width: 2000, height: 1600 }, data: {} }];
+  for (const viewport of [{ width: 1200, height: 900 }, { width: 500, height: 900 }]) {
+    const focus = getCanvasSearchFocus(large, 'large', viewport, 0.1, { resetZoom: true });
+    assert.equal(focus.x, 1100);
+    assert.equal(focus.y, 1000);
+    assert.equal(focus.zoom, Math.min(1, (viewport.width - 96) / 2000, (viewport.height - 160) / 1600));
+    assert.ok(2000 * focus.zoom <= viewport.width - 96);
+    assert.ok(1600 * focus.zoom <= viewport.height - 160);
+  }
+});

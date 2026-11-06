@@ -322,6 +322,7 @@ export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = 
         return {
           audios: audioUrl ? [audioUrl] : [],
           audioIds: [result.id || result.audio_id || result.audioId || pollData.id || pollData.audio_id].filter(Boolean),
+          audioAssetIds: [result.asset_id || result.assetId || pollData.asset_id || pollData.assetId || null],
         };
       } else {
         const result = pollData.result;
@@ -809,7 +810,10 @@ export async function apiHideCreationHistory(tab) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tab }),
   });
-  return res.json();
+  if (!res.ok) throw new Error(`清空创作历史失败（${res.status}）`);
+  const result = await res.json();
+  if (result?.success !== true) throw new Error('后端未确认创作历史已清空');
+  return result;
 }
 
 export async function apiGetCreationAudio(audioId) {
@@ -1299,7 +1303,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
 
       onTaskCreated?.({ taskId, params });
 
-      const { audios, audioIds } = await pollTask(
+      const { audios, audioIds, audioAssetIds } = await pollTask(
         `${BASE}/api/creation/audios/tasks/${taskId}`,
         (pollData) => {
           const result = pollData.result;
@@ -1308,10 +1312,11 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
           return {
             audios: audioUrl ? [audioUrl] : [],
             audioIds: [result.id || result.audio_id || result.audioId || pollData.id || pollData.audio_id].filter(Boolean),
+            audioAssetIds: [result.asset_id || result.assetId || pollData.asset_id || pollData.assetId || null],
           };
         },
       );
-      return { taskId, audios, audioIds };
+      return { taskId, audios, audioIds, audioAssetIds };
     }
 
     const genData = await apiGenerateCreationAudio(dubbingBody, { signal });
@@ -1327,6 +1332,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
         || genData?.result?.audioUrl;
     if (audioUrl) return {
       audios: [audioUrl],
+      audioAssetIds: [genData?.asset_id || genData?.assetId || genData?.result?.asset_id || genData?.result?.assetId || null],
       audioIds: [
         genData?.id,
         genData?.audio_id,
@@ -1342,7 +1348,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
 
     onTaskCreated?.({ taskId, params });
 
-    const { audios, audioIds } = await pollTask(
+    const { audios, audioIds, audioAssetIds } = await pollTask(
       `${BASE}/api/creation/audios/tasks/${taskId}`,
       (pollData) => {
         const result = pollData.result;
@@ -1351,10 +1357,11 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
         return {
           audios: audioUrl ? [audioUrl] : [],
           audioIds: [result.id || result.audio_id || result.audioId || pollData.id || pollData.audio_id].filter(Boolean),
+          audioAssetIds: [result.asset_id || result.assetId || pollData.asset_id || pollData.assetId || null],
         };
       },
     );
-    return { taskId, audios, audioIds };
+    return { taskId, audios, audioIds, audioAssetIds };
   }
 
   // ── 音乐生成 ────────────────────────────────────────────────────────────
@@ -1467,7 +1474,11 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
               referenceImages: pollData.reference_images || pollData.referenceImages || [],
             };
           },
-        )
+        ).catch((error) => {
+          if (!params.canvasPartialResults || !error?.taskFailed || signal?.aborted || error?.name === 'AbortError') throw error;
+          return { images: [null], imageDownloadUrls: [null], imageOriginalUrls: [null],
+            cardIds: [null], imageAssetIds: [null], referenceImages: [] };
+        })
       )
     );
 
@@ -1559,15 +1570,16 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
 
   onTaskCreated?.({ taskId, params });
 
-  const { videos, cardIds, posterUrl, referenceModeLabel } = await pollTask(
+  const { videos, cardIds, videoAssetIds, posterUrl, referenceModeLabel } = await pollTask(
     `${BASE}/api/creation/videos/tasks/${taskId}`,
     (pollData) => {
       const result = pollData.result;
-      if (!result) return { videos: [], cardIds: [], posterUrl: undefined };
+      if (!result) return { videos: [], cardIds: [], videoAssetIds: [], posterUrl: undefined };
       const videoUrl = getVideoResultUrl(result);
       return {
         videos: [videoUrl].filter(Boolean),
-        cardIds: [result.id],
+        cardIds: videoUrl ? [result.id] : [],
+        videoAssetIds: videoUrl ? [result.asset_id || result.assetId || null] : [],
         posterUrl: result.posterUrl || result.poster_url
           || result.thumbnailUrl || result.thumbnail_url || undefined,
         referenceModeLabel: result.referenceModeLabel || result.reference_mode_label || undefined,
@@ -1575,7 +1587,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
     },
   );
   return {
-    taskId, videos, cardIds, posterUrl,
+    taskId, videos, cardIds, videoAssetIds, posterUrl,
     referenceImages: refUrls,
     referenceVideos: uploadedRefVideos,
     referenceAudios: uploadedRefAudios,

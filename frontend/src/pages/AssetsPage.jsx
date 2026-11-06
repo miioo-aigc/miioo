@@ -6,7 +6,7 @@
  * 分别由 src/components/assets/ 目录承载，页面不持有资产 API 或卡片细节。
  *
  * ─── 主页面入口 ────────────────────────────────────
- *   AssetsPage：模块切换（项目资产 / 画布资产 / 创作资产 / seedance素材库）与页面外框 L41
+ *   AssetsPage：模块切换（项目资产 / 画布资产 / 创作资产 / seedance认证素材库）与页面外框 L41
  *   AssetsProjectPanel：项目资产筛选、分页、批量操作和详情回调编排
  *   AssetsCreativePanel：创作资产历史分页、收藏和批量操作编排
  *   SeedanceAssetLibraryPanel：Seedance2.0素材库子 Tab 和文件夹组合
@@ -33,7 +33,7 @@ const MODULE_TABS = [
   { key: 'project', label: '项目资产' },
   { key: 'canvas', label: '画布资产' },
   { key: 'creative', label: '创作资产' },
-  { key: 'seedance', label: 'seedance素材库' },
+  { key: 'seedance', label: 'seedance认证素材库' },
 ];
 // 展示列表与可访问模块分离，隐藏页签不影响 module=canvas 直达。
 const VISIBLE_MODULE_TABS = MODULE_TABS.filter((tab) => tab.key !== 'canvas' || SHOW_CANVAS_ENTRIES);

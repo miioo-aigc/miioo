@@ -2,8 +2,10 @@
 import { readCanvasDocument } from './CanvasDocument.js';
 import { safeCanvasMediaUrl } from './CanvasShareDocument.js';
 import { serializeCanvasFile } from './CanvasFile.js';
+import { assertCanvasSharePrivacy } from './CanvasSharePrivacy.js';
 
 export async function serializeSharedCanvasFile(payload, origin) {
+  assertCanvasSharePrivacy(payload);
   const assets = new Map((payload.assets || []).map((asset) => [asset.asset_id, asset]));
   const mediaUrl = (value) => {
     const safe = safeCanvasMediaUrl(value);

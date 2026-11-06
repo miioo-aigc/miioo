@@ -1,4 +1,4 @@
-/** 独立文本任务生命周期；最多5个，同源可并发，删除结果或切换页面时中止。 */
+/** 同节点覆盖；文本接口仅返回终态正文，无服务端任务编号，提交锁保留到终态。 */
 import { useCallback, useEffect, useState } from 'react';
 import { apiGenerateCanvasText } from '../../api/llm';
 import { showGlobalToast } from '../../stores/toastStore';
@@ -22,17 +22,18 @@ export function useCanvasTextGeneration(nodes, setNodes, canvasId, cancelPending
     }
     catch (error) { showGlobalToast(error.message, 'error'); return; }
     cancelPendingClicks();
-    setNodes((current) => beginCanvasTextGeneration(current, plan));
     try {
+      setNodes((current) => beginCanvasTextGeneration(current, plan), { origin: 'system' });
       const output = await apiGenerateCanvasText({ ...plan, signal: controller.signal });
       if (!controller.signal.aborted) {
-        setNodes((current) => applyCanvasTextResult(current, plan, output), { record: false });
+        setNodes((current) => applyCanvasTextResult(current, plan, output), { record: false, origin: 'system' });
       }
     } catch (error) {
       if (!controller.signal.aborted) {
         showGlobalToast(`文本创作失败：${error.message || '请重试'}`, 'error');
-        setNodes((current) => recoverCanvasTextGenerationFailure(current, plan), { record: false });
+        setNodes((current) => recoverCanvasTextGenerationFailure(current, plan), { record: false, origin: 'system' });
       }
+      controller.abort();
     } finally {
       requests.finish(plan.requestId);
     }

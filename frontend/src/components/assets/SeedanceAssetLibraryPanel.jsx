@@ -1,9 +1,9 @@
 /**
  * @file SeedanceAssetLibraryPanel.jsx
  * @structure-index
- *   2026-10-14：folderReadVersion L162；handleOpenFolder L233 / handleBackToFolders L586 隔离读取、上传与轮询；详情提供错误重试。
+ *   2026-11-06：folderReadVersion L166；handleOpenFolder L245 / handleBackToFolders L615 隔离读取、批量上传与轮询；两种来源共用三个并发名额，逐项失败汇总。
  * ─── 页面区块 ───────────────────────────────────────
- *   SeedanceAssetLibraryPanel：Seedance2.0素材库子 Tab 和文件夹网格
+ *   SeedanceAssetLibraryPanel：seedance认证素材库子 Tab 和文件夹网格
  *   真人素材组：从真人素材接口读取，空数据时仅展示录入入口
  *   SeedanceFolderDetail：打开文件夹后的图片/视频列表与上传入口
  *   AddVirtualGroupCard：虚拟人像素材库的新建素材组入口
@@ -60,6 +60,7 @@ import { apiDownloadAsset } from '../../api/assets';
 import { authFetch } from '../../api/request';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import DotsLoading from '../DotsLoading';
+import { runSeedanceUploadQueue } from './SeedanceUploadQueue';
 
 const SUB_TABS = [
   { value: 'real', label: '真人人像' },
@@ -174,6 +175,11 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
   }, []);
 
   const handleTabChange = (value) => {
+    folderReadVersion.current++;
+    stopAssetStatusPolling();
+    setUploading(false);
+    uploadPending.current = false;
+    setAssetPickerOpen(false);
     setActiveTab(value);
     setActiveFolder(null);
     setFolderAssets([]);
@@ -309,10 +315,13 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
     });
   }, []);
 
-  const startAssetStatusPolling = useCallback((groupId, targetAssetId = null) => {
-    if (assetPollRef.current && assetPollTargetRef.current?.groupId === groupId) return;
+  const startAssetStatusPolling = (groupId, targetAssetId = null) => {
+    if (assetPollRef.current && assetPollTargetRef.current?.groupId === groupId) {
+      if (targetAssetId) assetPollTargetRef.current.assetIds.add(targetAssetId);
+      return;
+    }
     stopAssetStatusPolling();
-    assetPollTargetRef.current = { groupId, assetId: targetAssetId };
+    assetPollTargetRef.current = { groupId, assetIds: new Set(targetAssetId ? [targetAssetId] : []) };
     const target = assetPollTargetRef.current;
     const version = folderReadVersion.current;
     const isCurrent = () => assetPollTargetRef.current === target && version === folderReadVersion.current;
@@ -324,12 +333,15 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
       try {
         const assets = await apiListLiveMaterialAssets(groupId, { refresh: true });
         if (!isCurrent()) return;
-        const targetAsset = targetAssetId ? assets.find((asset) => asset.id === targetAssetId) : null;
+        const targetsFinished = target.assetIds.size > 0 && [...target.assetIds].every((id) => {
+          const asset = assets.find((item) => item.id === id);
+          return asset && (isLiveAssetApproved(asset) || isLiveAssetRejected(asset));
+        });
         setFolderAssets((current) => {
           return applyServerAssets(assets, current);
         });
         // 目标素材尚未出现在刷新结果中时不能停止，否则会跳过上游审核同步。
-        if (targetAsset && (isLiveAssetApproved(targetAsset) || isLiveAssetRejected(targetAsset))) {
+        if (!uploadPending.current && targetsFinished) {
           stopAssetStatusPolling();
           await refreshFolders();
         }
@@ -342,15 +354,9 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
 
     assetPollRef.current = setInterval(refreshStatus, 4000);
     refreshStatus();
-  }, [applyServerAssets, refreshFolders, stopAssetStatusPolling]);
+  };
 
-  const handleUploadAsset = async (file) => {
-    if (!activeFolder || folderAssetsLoading || uploadPending.current) return;
-    uploadPending.current = true;
-    setUploading(true);
-    const version = folderReadVersion.current;
-    const isCurrent = () => version === folderReadVersion.current;
-    const placeholderId = `uploading-${Date.now()}`;
+  const uploadAsset = async (file, { groupId, isCurrent, placeholderId }) => {
     const placeholderType = String(file.type || '').toLowerCase().startsWith('video/') ? 'video' : 'image';
     const uploadingPlaceholder = {
       id: placeholderId,
@@ -366,14 +372,13 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
       if (validation.error || !validation.type) {
         setFolderAssets((current) => current.filter((asset) => asset.id !== placeholderId));
         if (validation.errorCode === 'resolution') {
-          setResolutionDialogOpen(true);
-          return;
+          return { error: validation.error || '分辨率不符合要求', resolution: true };
         }
-        showToast(validation.error || '当前素材类型暂不支持上传', 'error');
-        return;
+        return { error: validation.error || '当前素材类型暂不支持上传' };
       }
-      const asset = await apiUploadLiveMaterialAsset(activeFolder.id, file, validation.type, file.name);
+      const asset = await apiUploadLiveMaterialAsset(groupId, file, validation.type, file.name);
       if (!isCurrent()) return;
+      if (!asset?.id) throw new Error('上传未返回素材编号');
       if (asset?.id) {
         uploadedAssetNamesRef.current.set(asset.id, file.name);
       }
@@ -388,7 +393,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
       setFolderAssets((current) => [pendingAsset, ...current.filter((item) => item.id !== placeholderId && item.id !== pendingAsset.id)]);
       // 与创作模块保持一致：上传成功后无条件启动素材组审核轮询。
       // 审核同步由 assets?refresh=true 触发，不能依赖上传接口返回的初始 status。
-      startAssetStatusPolling(activeFolder.id, asset.id);
+      startAssetStatusPolling(groupId, asset.id);
 
       // 首帧生成不阻塞上传请求，避免浏览器无法解码视频时导致接口永远不被调用。
       if (validation.type === 'video' && asset?.id) {
@@ -407,15 +412,12 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
       }
     } catch (error) {
       if (!isCurrent()) return;
-      console.warn('[SeedanceAssetLibraryPanel] 上传真人素材失败', error);
-      setFolderAssets((current) => current.filter((item) => item.id !== placeholderId));
-      showToast('上传失败，请重试');
+      console.warn('[SeedanceAssetLibraryPanel] 上传素材失败', error);
+      return { error: error.message || '上传失败，请重试' };
     } finally {
-      if (isCurrent()) {
-        uploadPending.current = false;
-        setUploading(false);
-      }
+      if (isCurrent()) setFolderAssets((current) => current.filter((item) => item.id !== placeholderId));
     }
+    return { success: true };
   };
 
   const assetToFile = async (asset) => {
@@ -460,22 +462,43 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
     return new File([blob], name, { type });
   };
 
-  const handleSelectLibraryAssets = async (selectedAssets) => {
-    setAssetPickerOpen(false);
-    if (!Array.isArray(selectedAssets) || selectedAssets.length === 0) return;
+  const uploadBatch = async (items, fromLibrary = false) => {
+    if (!activeFolder || folderAssetsLoading || uploadPending.current || !items?.length) return;
+    uploadPending.current = true;
+    setUploading(true);
     const version = folderReadVersion.current;
+    const groupId = activeFolder.id;
+    const isCurrent = () => version === folderReadVersion.current;
+    const batchId = crypto.randomUUID();
     try {
-      for (const asset of selectedAssets) {
-        if (version !== folderReadVersion.current) return;
-        const file = await assetToFile(asset);
-        if (version !== folderReadVersion.current) return;
-        await handleUploadAsset(file);
+      const results = await runSeedanceUploadQueue(items, async (item, index) => {
+        const file = fromLibrary ? await assetToFile(item) : item;
+        if (!isCurrent()) return;
+        return uploadAsset(file, { groupId, isCurrent, placeholderId: `uploading-${batchId}-${index}` });
+      }, isCurrent);
+      if (!isCurrent()) return;
+      const succeeded = results.filter((result) => result?.success).length;
+      const failed = results.filter((result) => result?.error);
+      if (failed.some((result) => result.resolution)) setResolutionDialogOpen(true);
+      if (failed.length) {
+        const details = results.flatMap((result, index) => result?.error
+          ? [`${items[index].name || `素材${index + 1}`}：${result.error}`] : []);
+        setNotice({ title: '批量上传结果', message: `上传成功 ${succeeded} 个，失败 ${failed.length} 个。成功素材已提交认证审核。${details.join('；')}` });
+      } else {
+        showToast(`已上传 ${succeeded} 个素材，已提交认证审核`, 'success');
       }
-    } catch (error) {
-      if (version !== folderReadVersion.current) return;
-      console.warn('[SeedanceAssetLibraryPanel] 导入资产库素材失败', error);
-      showToast('资产导入失败，请重试');
+    } finally {
+      if (isCurrent()) {
+        uploadPending.current = false;
+        setUploading(false);
+      }
     }
+  };
+
+  const handleUploadAssets = (files) => uploadBatch(files);
+  const handleSelectLibraryAssets = (selectedAssets) => {
+    setAssetPickerOpen(false);
+    return uploadBatch(selectedAssets, true);
   };
 
   const handleConfirmDeleteAsset = async () => {
@@ -605,7 +628,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
   }, [stopAssetStatusPolling]);
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden" aria-label="seedance素材库">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden" aria-label="seedance认证素材库">
       <div className="flex h-[48px] shrink-0 items-start justify-between px-[24px]">
         <Tabs options={SUB_TABS} value={activeTab} onChange={handleTabChange} variant="plain-ghost" gap="24px" />
       </div>
@@ -619,7 +642,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
             onRetry={() => handleOpenFolder(activeFolder)}
             uploading={uploading}
             onBack={handleBackToFolders}
-            onUpload={handleUploadAsset}
+            onUpload={handleUploadAssets}
             onSelectFromLibrary={() => setAssetPickerOpen(true)}
             onPreview={setPreviewAsset}
             onDelete={setAssetDeleteTarget}
@@ -713,6 +736,7 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
       <AssetPickerModal
         open={assetPickerOpen}
         accept="media"
+        selectionMode="multiple"
         onClose={() => setAssetPickerOpen(false)}
         onConfirm={handleSelectLibraryAssets}
       />

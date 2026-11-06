@@ -169,3 +169,22 @@ test('版本冲突不改用服务器版本覆盖原文档', async () => {
   await assert.rejects(session.save('c', 9, { value: 2 }), /冲突/);
   assert.deepEqual(calls[0], calls[1]);
 });
+
+
+test('四类节点提示词及编辑快照保存后恢复，主动清空不恢复旧草稿', () => {
+  for (const type of ['text', 'image', 'video', 'audio']) {
+    const node = createCanvasNode(type, { x: 0, y: 0 }, type);
+    node.data.prompt = '第一行提示词\n第二行';
+    node.data.promptSnapshot = { requestText: node.data.prompt, html: '第一行提示词<div>第二行</div>' };
+    node.data.creationPanelOpen = true;
+    const restored = readCanvasDocument(JSON.parse(JSON.stringify(serializeCanvasDocument([node])))).nodes[0];
+    assert.equal(restored.data.prompt, node.data.prompt);
+    assert.deepEqual(restored.data.promptSnapshot, node.data.promptSnapshot);
+    assert.equal(restored.data.creationPanelOpen, false);
+    restored.data.prompt = '';
+    restored.data.promptSnapshot = { requestText: '', html: '' };
+    const cleared = readCanvasDocument(serializeCanvasDocument([restored])).nodes[0];
+    assert.equal(cleared.data.prompt, '');
+    assert.equal(cleared.data.promptSnapshot.html, '');
+  }
+});

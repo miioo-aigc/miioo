@@ -8,7 +8,8 @@ const shell = await readSource('CanvasNodeShell.jsx');
 const textNode = await readSource('TextCanvasNode.jsx');
 const actions = await readSource('UseCanvasNodeActions.js');
 const presence = await readSource('CanvasCreationPresence.jsx');
-const styles = await readSource('canvas-nodes.css');
+const styles = await readSource('canvas-nodes.css') + await readSource('CanvasToolbarSurface.css');
+const button = await readSource('CanvasToolbarButton.jsx');
 
 test('上下间距均位于反向缩放层内，固定为8屏幕像素', () => {
   assert.match(styles, /\.canvas-node__toolbar-scale \{[^}]*top: 24px;[^}]*scale\(var\(--canvas-inverse-zoom, 1\)\) translateY\(calc\(-100% - 32px\)\)/);
@@ -45,9 +46,9 @@ test('工具栏与输入框共用激活条件和显隐动画，缩放补偿独�
 });
 
 test('工具栏复用透明图标按钮，图标不收缩且保留悬停提示', () => {
-  assert.match(toolbar, /<IconButton[^>]*variant="link"/);
+  assert.match(button, /<IconButton[^>]*variant="link"/);
   assert.match(toolbar, /<Icon size=\{16\}[^>]*className="shrink-0"/);
-  assert.match(toolbar, /<Tooltip key=\{key\} label=\{label\} placement="top"/);
+  assert.match(button, /<Tooltip label=\{label\} placement="top"/);
 });
 
 test('空白正文禁止复制下载，但编辑与更多保留入口', () => {
@@ -55,7 +56,7 @@ test('空白正文禁止复制下载，但编辑与更多保留入口', () => {
   assert.match(toolbar, /disabled=\{isDisabled\(key\)\}/);
   assert.match(toolbar, /!enabled \|\| \(key !== 'edit' && !hasContent\)/);
   assert.match(textNode, /if \(!data\?\.content\?\.trim\(\)\) return/);
-  assert.match(toolbar, /aria-label="更多" aria-haspopup="menu"/);
+  assert.match(toolbar, /label="更多" aria-haspopup="menu"/);
 });
 
 test('更多按按钮屏幕坐标打开共用菜单，单选当前卡片并保持激活', () => {

@@ -9,6 +9,10 @@ import {
   getCanvasVideoRequestModes,
   planCanvasVideoGeneration,
   beginCanvasVideoGeneration,
+  acceptCanvasVideoSubmission,
+  recoverCanvasVideoGenerationFailure,
+  applyCanvasVideoResult,
+  getCanvasGeneratedVideoAsset,
   validateCanvasVideoMedia,
   validateCanvasVideoReferenceAddition,
 } from '../src/components/canvas/CanvasVideoGeneration.js';
@@ -38,6 +42,37 @@ const capabilities = {
   max_total_attachments: 3,
 };
 
+test('视频起始基于最新状态拒绝并发及受保护上游，解除提交锁后可执行', () => {
+  const nodes = [node('video', 'target', [], { asset: null })];
+  const plan = planCanvasVideoGeneration(nodes, 'target', '生成', 'model', { capabilities, generationMode: 'text_to_video' });
+  for (const flag of ['generating', 'submissionLocked']) {
+    const current = [{ ...nodes[0], data: { ...nodes[0].data, [flag]: true } }];
+    assert.throws(() => beginCanvasVideoGeneration(current, plan), /正在提交或生成/);
+  }
+  const locked = { id: 'other', data: { submissionLocked: true, executionSourceIds: ['target'] } };
+  assert.throws(() => beginCanvasVideoGeneration([...nodes, locked], plan), /上游保护/);
+  assert.doesNotThrow(() => beginCanvasVideoGeneration([...nodes, { ...locked, data: { ...locked.data, submissionLocked: false } }], plan));
+  assert.throws(() => beginCanvasVideoGeneration([], plan), /已不存在/);
+});
+
+test('视频资产对象重新解析不阻止相同资产回填，真正换资产仍拒绝旧结果并结束生成', () => {
+  const oldId = '11111111-1111-4111-8111-111111111111';
+  const newId = '22222222-2222-4222-8222-222222222222';
+  const nodes = [node('video', 'target', [], { asset: { asset_id: oldId, asset_type: 'video', url: '/old' } })];
+  const plan = planCanvasVideoGeneration(nodes, 'target', '生成', 'model', { capabilities, generationMode: 'text_to_video' });
+  const pending = beginCanvasVideoGeneration(nodes, plan);
+  const resolved = pending.map((item) => ({ ...item, data: { ...item.data, asset: { ...item.data.asset, url: '/refreshed' } } }));
+  const asset = getCanvasGeneratedVideoAsset({ videos: ['/new'], videoAssetIds: [newId] });
+  const done = applyCanvasVideoResult(resolved, plan, asset);
+  assert.equal(done[0].data.asset.asset_id, newId);
+  assert.equal(done[0].data.generating, false);
+  assert.equal(done[0].data.nodeResults.batches.length, 2);
+  const changed = pending.map((item) => ({ ...item, data: { ...item.data, asset: { ...item.data.asset, asset_id: newId } } }));
+  const rejected = applyCanvasVideoResult(changed, plan, asset);
+  assert.equal(rejected[0].data.nodeResults, undefined);
+  assert.equal(rejected[0].data.generating, false);
+});
+
 test('Seedance 编辑请求强制使用智能与 -1，即便传入了旧参数', () => {
   for (const mode of ['video_ref', 'video_edit']) {
     const caps = { ...capabilities, supported_generation_modes: [mode], generation_reference_mode_map: { [mode]: 'video_ref' } };
@@ -51,6 +86,20 @@ test('Seedance 编辑请求强制使用智能与 -1，即便传入了旧参数',
     assert.equal(plan.params.generation_mode, mode);
     assert.equal(plan.params.reference_mode, 'video_ref');
   }
+});
+
+test('视频计划冻结媒体资产和结构化参数快照，不受后续草稿修改影响', () => {
+  const sourceAsset = { url: '/source.mp4', asset_id: '11111111-1111-4111-8111-111111111111', asset_type: 'video', metadata: { crop: { x: 1 } } };
+  const source = node('video', 'source', [], { asset: sourceAsset });
+  const target = node('video', 'target', ['source'], { asset: null, videoCapabilities: capabilities, generationMode: 'reference_subjects' });
+  const params = { capabilities, generationMode: 'reference_subjects', camera: { moves: ['push'], framing: { width: 16 } } };
+  const plan = planCanvasVideoGeneration([source, target], 'target', '保留结构', 'video-model', params);
+  sourceAsset.metadata.crop.x = 99;
+  params.camera.moves.push('tilt');
+  assert.equal(plan.sources[0].asset.metadata.crop.x, 1);
+  assert.deepEqual(plan.snapshot.params.camera, { moves: ['push'], framing: { width: 16 } });
+  assert.equal(plan.snapshot.params.generation_mode, 'reference_subjects');
+  assert.equal(plan.snapshot.params.reference_mode, 'multi_image');
 });
 
 test('视频节点接受文本、图片、视频、音频，拒绝反向连接和错误端口', () => {
@@ -136,7 +185,7 @@ test('空媒体占名额；其他类型超限不阻止仍有名额的媒体与�
   assert.equal(validateCanvasVideoReferenceAddition(nodes, 'target', { asset_type: 'audio' }).allowed, true);
   assert.throws(() => planCanvasVideoGeneration(nodes, 'target', '创作', 'model', { capabilities: caps, generationMode: 'reference_subjects' }), /最多支持/);
   target.data.videoSourceIds = ['i1'];
-  assert.doesNotThrow(() => planCanvasVideoGeneration(nodes, 'target', '创作', 'model', { capabilities: caps, generationMode: 'reference_subjects' }));
+  assert.throws(() => planCanvasVideoGeneration(nodes, 'target', '创作', 'model', { capabilities: caps, generationMode: 'reference_subjects' }), /缺少有效结果/);
   assert.equal(canConnectCanvasVideo(nodes, { source: 'a', target: 'target' }, { ...caps, max_total_attachments: 1 }), false);
 });
 
@@ -145,18 +194,63 @@ test('视频请求模式使用映射值，文生视频明确发送 reference_mod
   assert.deepEqual(getCanvasVideoRequestModes(capabilities, 'reference_subjects'), { generation_mode: 'reference_subjects', reference_mode: 'multi_image' });
 });
 
-test('已有视频内容时提前创建空结果节点并继承直连上游', () => {
+test('已有视频内容时原节点进入生成态，不创建新结果节点并保留旧资产', () => {
   const source = node('text', 'source');
-  const target = node('video', 'target', ['source'], { asset: { url: '/target.mp4', asset_type: 'video' } });
+  const oldAsset = { url: '/target.mp4', asset_id: '11111111-1111-4111-8111-111111111111', asset_type: 'video' };
+  const target = node('video', 'target', ['source'], { asset: oldAsset });
   const editCapabilities = { ...capabilities, supported_generation_modes: ['reference_subjects'], generation_reference_mode_map: { reference_subjects: 'multi_image' } };
   const plan = planCanvasVideoGeneration([source, target], 'target', '继续创作', 'video-model', { capabilities: editCapabilities, generationMode: 'reference_subjects' });
-  assert.equal(plan.createsResult, true);
+  assert.equal(plan.createsResult, false);
+  assert.equal(plan.resultId, 'target');
   const next = beginCanvasVideoGeneration([source, target], plan);
   const result = next.find((item) => item.id === plan.resultId);
   assert.ok(result);
   assert.equal(result.data.generating, true);
-  assert.deepEqual(result.data.videoSourceIds, ['source', 'target']);
-  assert.equal(result.data.asset, null);
+  assert.equal(result.data.submissionLocked, true);
+  assert.deepEqual(result.data.executionSourceIds, ['source']);
+  assert.deepEqual(result.data.asset, oldAsset);
+});
+
+test('视频受理保存真实任务编号后解锁，失败回退保留旧结果', () => {
+  const source = node('text', 'source');
+  const oldAsset = { url: '/old.mp4', asset_id: '11111111-1111-4111-8111-111111111111', asset_type: 'video' };
+  const target = node('video', 'target', ['source'], { asset: oldAsset });
+  const caps = { ...capabilities, supported_generation_modes: ['reference_subjects'], generation_reference_mode_map: { reference_subjects: 'multi_image' } };
+  const plan = planCanvasVideoGeneration([source, target], 'target', '新视频', 'model', { capabilities: caps, generationMode: 'reference_subjects' });
+  const pending = beginCanvasVideoGeneration([source, target], plan);
+  assert.equal(pending.find((item) => item.id === 'target').data.submissionLocked, true);
+  const accepted = acceptCanvasVideoSubmission(pending, plan, { taskId: 'server-task-1' });
+  const acceptedTarget = accepted.find((item) => item.id === 'target');
+  assert.equal(acceptedTarget.data.submissionLocked, false);
+  assert.deepEqual(acceptedTarget.data.generationTaskIds, ['server-task-1']);
+  const failed = recoverCanvasVideoGenerationFailure(accepted, plan);
+  const failedTarget = failed.find((item) => item.id === 'target');
+  assert.deepEqual(failedTarget.data.asset, oldAsset);
+  assert.equal(failedTarget.data.generating, false);
+  assert.equal(failedTarget.data.generationTaskIds, undefined);
+});
+
+test('视频只接受真实永久 videoAssetIds，不以任务、卡片或 URL 冒充资产编号', () => {
+  const assetId = '12345678-1234-1234-1234-123456789abc';
+  assert.deepEqual(getCanvasGeneratedVideoAsset({ videos: ['/new.mp4'], videoAssetIds: [assetId] }), {
+    url: '/new.mp4', asset_id: assetId, asset_type: 'video', source: 'ai-generated',
+  });
+  for (const result of [
+    { videos: ['/new.mp4'], taskId: assetId },
+    { videos: ['/new.mp4'], cardIds: [assetId] },
+    { videos: ['/new.mp4'] },
+    { videos: ['/new.mp4'], videoAssetIds: ['/new.mp4'] },
+  ]) assert.throws(() => getCanvasGeneratedVideoAsset(result), /永久资产编号/);
+});
+
+test('删除节点或请求身份过期后，迟到视频结果不可回写', () => {
+  const target = node('video', 'target', [], { asset: { url: '/old.mp4', asset_id: '11111111-1111-4111-8111-111111111111', asset_type: 'video' } });
+  const plan = planCanvasVideoGeneration([target], 'target', '新视频', 'model', { capabilities, generationMode: 'text_to_video' });
+  const pending = beginCanvasVideoGeneration([target], plan);
+  const asset = getCanvasGeneratedVideoAsset({ videos: ['/new.mp4'], videoAssetIds: ['12345678-1234-1234-1234-123456789abc'] });
+  assert.deepEqual(applyCanvasVideoResult([], plan, asset), []);
+  const replaced = pending.map((item) => item.id === 'target' ? { ...item, data: { ...item.data, generationRequestId: 'new-request' } } : item);
+  assert.equal(applyCanvasVideoResult(replaced, plan, asset), replaced);
 });
 
 test('视频节点的文本连线与媒体连线共用一条顺序稳定的边', () => {

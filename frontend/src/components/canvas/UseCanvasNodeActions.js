@@ -39,7 +39,11 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
   const closeMenu = useCallback(() => setMenu(null), []);
   const closeDialog = useCallback(() => setDialog(null), [setDialog]);
   const deleteNodes = useCallback((ids, hasTasks = false, clear = false) => {
-    setNodes((current) => deleteCanvasNodes(current, ids));
+    const accepted = setNodes((current) => deleteCanvasNodes(current, ids));
+    if (accepted === false) {
+      showGlobalToast('操作可能导致下游丢失参考素材，请稍后再试', 'warning');
+      return;
+    }
     const token = getUndoToken();
     const label = clear ? '画布已清空' : '删除成功';
     showGlobalToast('success', hasTasks ? `${label}，撤销仅恢复节点，不保证找回生成结果。` : `${label}，可以撤销 ⌘Z 找回`, {
@@ -67,9 +71,12 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
     if (action === 'moveInto' && canMoveCanvasNodesInto(nodes, ids, targetId)) {
       const target = nodes.find((node) => node.id === targetId);
       const moved = canvasTransferRoots(nodes, ids).filter((node) => node.parentId !== targetId);
-      setNodes((current) => moveCanvasNodesInto(current, ids, targetId));
-      const label = moved.length === 1 ? moved[0].data.label : `${moved[0].data.label}等${moved.length}项`;
-      showGlobalToast(`${label}已经移入${target.data.label}`, 'success');
+      const accepted = setNodes((current) => moveCanvasNodesInto(current, ids, targetId));
+      if (accepted === false) showGlobalToast('操作可能导致下游丢失参考素材，请稍后再试', 'warning');
+      else {
+        const label = moved.length === 1 ? moved[0].data.label : `${moved[0].data.label}等${moved.length}项`;
+        showGlobalToast(`${label}已经移入${target.data.label}`, 'success');
+      }
     }
     if (action === 'copy') { setClipboard(copyCanvasNodes(nodes)); pasteCount.current = 0; }
     if (action === 'download') {
@@ -105,8 +112,9 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
         const parent = nodes.find((group) => group.id === node.parentId);
         return parent ? [`${node.data.label}已经移出${parent.data.label}`] : [];
       });
-      setNodes((current) => moveCanvasNodesOut(current, ids));
-      if (messages.length) showGlobalToast(messages.join('；'), 'success');
+      const accepted = setNodes((current) => moveCanvasNodesOut(current, ids));
+      if (accepted === false) showGlobalToast('操作可能导致下游丢失参考素材，请稍后再试', 'warning');
+      else if (messages.length) showGlobalToast(messages.join('；'), 'success');
     }
     if (action === 'clear' && nodes.length) {
       const allIds = nodes.map((node) => node.id);

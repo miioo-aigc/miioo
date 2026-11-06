@@ -1,7 +1,7 @@
 /**
  * Seedance 素材库文件夹详情。
  * 负责图片/视频展示和上传入口，数据请求与页面状态由父面板编排。
- * 2026-10-29 上传入口复用 CreateCard，保留 242×160px 尺寸及上传菜单。
+ * 2026-11-06 本地上传支持多选，onUpload 接收文件数组；保留 CreateCard 242×160px 尺寸及上传菜单。
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -28,9 +28,9 @@ export default function SeedanceFolderDetail({ folder, assets = [], loading = fa
   }, [uploadMenuOpen]);
 
   const handleFileChange = (event) => {
-    const file = event.target.files?.[0];
+    const files = Array.from(event.target.files || []);
     event.target.value = '';
-    if (file) onUpload?.(file);
+    if (files.length) onUpload?.(files);
   };
 
   return (
@@ -65,6 +65,7 @@ export default function SeedanceFolderDetail({ folder, assets = [], loading = fa
           ref={inputRef}
           accept=".jpeg,.jpg,.png,.webp,.gif,.heic,.mp4,.mov,.mp3,.wav,image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,audio/mpeg,audio/wav"
           type="file"
+          multiple
           style={{ display: 'none' }}
           onChange={handleFileChange}
         />

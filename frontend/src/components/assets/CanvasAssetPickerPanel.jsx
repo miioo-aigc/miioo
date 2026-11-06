@@ -36,7 +36,8 @@ function CanvasPickerContents({ collection, selected, onToggle, onAssetsLoaded, 
   </div>;
 }
 
-/** 弹窗只读入口：项目、画布联动；素材选择交回父弹窗统一管理。 */
+/** 弹窗只读入口：项目、画布联动；素材选择交回父弹窗统一管理。
+ * 2026-11-06：项目菜单最多7.5项（34px行高 + 顶部内距与边框），超出内部滚动。 */
 export default function CanvasAssetPickerPanel(props) {
   const [state, setState] = useState({ items: [], loading: true, error: '' });
   const [projectId, setProjectId] = useState(null);
@@ -60,6 +61,7 @@ export default function CanvasAssetPickerPanel(props) {
   return <div className="flex min-h-0 flex-1 flex-col gap-[16px] pt-[4px]">
     <div className="flex flex-wrap items-center gap-[16px]">
       <Select value={projectId || ''} displayValue={project?.name || '选择项目'} loading={state.loading} hideTriggerBorder
+        menuMaxHeight="261px" menuStyle={{ boxSizing: "border-box", overscrollBehaviorY: "contain" }}
         menuAriaLabel="选择项目" options={state.items.map(item => ({ value: item.id, label: item.name }))}
         onChange={id => { setProjectId(id); setCanvasId(state.items.find(item => item.id === id)?.canvases[0]?.id || null); }} />
       <Select value={canvasId || ''} displayValue={collection?.name || '暂无画布'} hideTriggerBorder

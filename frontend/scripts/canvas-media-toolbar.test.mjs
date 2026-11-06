@@ -12,17 +12,22 @@ test('图片与视频超清仅默认态共用亮度补偿', () => {
   assert.ok(css.includes(`${selector('image')},\n${selector('video')} { opacity: 0.75; }`));
 });
 
-test('视频结果与选帧新增正确类型、保留源节点并去重', () => {
+test('视频编辑回原节点，跨类型选帧独立新增且不污染视频历史', () => {
   for (const type of ['video', 'image']) {
     const source = createCanvasNode('video', { x: 100, y: 100 }, 'source');
-    source.data.asset = { asset_type: 'video', url: '/original.mp4' };
-    const asset = { asset_type: type, url: '/result', width: 1920, height: 1080 };
+    source.data.asset = { asset_type: 'video', url: '/original.mp4', asset_id: '10000000-0000-0000-0000-000000000001' };
+    const asset = { asset_type: type, url: '/result', asset_id: '20000000-0000-0000-0000-000000000001', width: 1920, height: 1080 };
     const result = appendCanvasMediaEdit([source], source, asset, 'result', type);
-    assert.equal(result.length, 2);
-    assert.equal(result[0].data.asset.url, '/original.mp4');
-    assert.equal(result[1].type, type);
-    assert.equal(result[1].data.editSourceNodeId, 'source');
-    assert.notDeepEqual(result[1].position, source.position);
+    assert.equal(result.length, type === 'image' ? 2 : 1);
+    if (type === 'image') {
+      assert.deepEqual(result[0], source);
+      assert.equal(result[1].type, 'image');
+      assert.equal(result[1].data.editSourceNodeId, 'source');
+      assert.notDeepEqual(result[1].position, source.position);
+    } else {
+      assert.equal(result[0].data.asset.url, '/result');
+      assert.equal(result[0].data.nodeResults.batches.length, 2);
+    }
     assert.equal(appendCanvasMediaEdit(result, source, asset, 'result', type), result);
   }
 });
@@ -33,9 +38,11 @@ test('视频音频共用固定尺寸定位与工具栏，视频编辑限制真�
   assert.ok(toolbar.includes("asset?.asset_type !== 'video'"));
   assert.ok(toolbar.includes('<VideoEditIcon label={label} />'));
   const css = read('src/components/canvas/canvas-nodes.css');
-  for (const [type, width] of [['video', 284], ['audio', 108]]) {
-    assert.ok(css.includes(`[data-node-type='${type}'] .canvas-node__toolbar-scale,\n.canvas-node[data-node-type='${type}'] .canvas-node__toolbar { width: ${width}px; }`));
-  }
+  const sharedStyles = read('src/components/canvas/CanvasToolbarSurface.css');
+  assert.match(sharedStyles, /width: max-content; padding: 0 16px;/);
+  assert.match(sharedStyles, /gap: 4px;/);
+  assert.doesNotMatch(css, /toolbar \{ width: \d+px/);
+
 });
 
 test('图标由详情与画布复用，颜色继承四态规则', () => {

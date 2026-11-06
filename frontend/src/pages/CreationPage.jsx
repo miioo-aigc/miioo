@@ -1,6 +1,6 @@
 /**
  * @file CreationPage.jsx
- *   当前恢复/认证入口：L372（2026-10-30）。
+ *   2026-11-06：视频历史首屏/分页过滤已隐藏记录；清空复用后端持久隐藏，明确成功后清缓存，保留资产。
  *   2026-10-30 跨标签任务恢复监听 storage，迟到编号接续轮询；恢复保留原卡片数量。
  * @structure-index：2026-10-21 历史按账号缓存，页面访问和请求代际保护迟到回写。
  *   2026-10-09：选帧查看导航由 viewSavedImage 副作用承接，保存草稿后切到图片并关闭视频详情。
@@ -150,6 +150,7 @@ const SESSION_KEY = 'miioo_creation_session_id';
 export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiConfigured = true, onShowNoModelNotice }) {  const [activeTab, setActiveTab] = useState('image');
   const visitRef = useRef(null);
   const historyRequestsRef = useRef({});
+  const clearingHistoryRef = useRef(null);
   const invalidateHistory = (tab) => {
     historyRequestsRef.current[tab] = null;
     invalidate(creationHistoryPrefix(ownerId, tab), 'local');
@@ -259,8 +260,8 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
         // 本地缓存只用于「秒开」(hydrateHistoryFromCache)，不能作为权威数据。
         // 否则刚创作完成、但缓存尚未包含的新内容会在刷新后被旧缓存覆盖而「凭空消失」。
         const requestParams = { page: 1, page_size: PAGE_SIZE };
-        // 视频列表需要与资产库保持「全部创作资产」的查询口径；图片和配音仍保留创作页的隐藏历史规则。
-        if (tab !== 'video') requestParams.exclude_hidden = true;
+        // 创作历史过滤已隐藏记录；资产库独立读取全部资产。
+        requestParams.exclude_hidden = true;
         const networkResp = await apiMap[tab](requestParams);
         if (!isCurrent()) return;
         pageResp = networkResp;
@@ -280,7 +281,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
         }
       } else {
         const requestParams = { page: nextPage, page_size: PAGE_SIZE };
-        if (tab !== 'video') requestParams.exclude_hidden = true;
+        requestParams.exclude_hidden = true;
         pageResp = await apiMap[tab](requestParams);
         if (!isCurrent()) return;
         list = getCreationHistoryList(pageResp);
@@ -774,6 +775,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
   async function handleClearHistory() {
     const visit = visitRef.current;
     if (!visit?.isCurrent()) return;
+    if (clearingHistoryRef.current === visit) return;
     setClearHistoryConfirm(false);
     // 音乐 Tab 暂无后端历史接口（/api/creation/history/hide 仅支持 image/video/dubbing），
     // 仅清空本地展示与缓存，保持与配音等 Tab 的数据隔离。
@@ -783,6 +785,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
       showToast('success', '本页创作历史已清空');
       return;
     }
+    clearingHistoryRef.current = visit;
     try {
       const res = await apiHideCreationHistory(activeTab);
       if (!visit.isCurrent()) return;
@@ -798,6 +801,8 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
       if (!visit.isCurrent()) return;
       console.error('[CreationPage] 清空创作历史失败:', err);
       showToast('error', '清空失败，请重试');
+    } finally {
+      if (clearingHistoryRef.current === visit) clearingHistoryRef.current = null;
     }
   }
 
@@ -910,7 +915,9 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
         onBatchDeleteConfirm={() => { setBatchDeleteConfirm(false); deleteSelected(); }}
         onBatchDeleteCancel={() => setBatchDeleteConfirm(false)}
         clearHistoryConfirm={clearHistoryConfirm}
-        clearHistoryDescription={`仅清空当前页（${CREATION_TABS.find((t) => t.key === activeTab)?.label ?? activeTab}）的历史记录，创作资产仍可在资产库找到。确定继续吗？`}
+        clearHistoryDescription={activeTab === 'video'
+          ? '清空当前账号的全部视频创作历史，包括尚未加载的记录。不会删除资产，视频资产仍可在资产库找到。确定继续吗？'
+          : `仅清空当前页（${CREATION_TABS.find((t) => t.key === activeTab)?.label ?? activeTab}）的历史记录，创作资产仍可在资产库找到。确定继续吗？`}
         onClearHistoryConfirm={handleClearHistory}
         onClearHistoryCancel={() => setClearHistoryConfirm(false)}
         videoDetail={videoDetailModal}

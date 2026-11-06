@@ -1,7 +1,7 @@
 /**
  * @file CanvasNodeShell.jsx
  * @structure-index
- * CanvasNodeShell L33：节点标题、卡片、端口、顶部工具栏和创作面板组合；模型加载及卸载保护。2026-10-10 能力加载完成后再回填连线校验能力。
+ * CanvasNodeShell L39：节点标题、卡片、端口、顶部工具栏和创作面板组合；模型加载及卸载保护。2026-10-10 能力加载完成后再回填连线校验能力。
  * 2026-10-10：标题接收视口缩放保持固定尺寸；工具栏与输入框共用激活条件及显隐动画。
  * 2026-10-10：激活节点显示固定屏幕尺寸的顶部工具栏；下方创作面板按视口缩放反向补偿。
  * 2026-10-09：图片与视频主体采用等面积尺寸，最长边限制为480px。
@@ -16,7 +16,9 @@
  * 2026-10-08：手动接线成功后沿卡片边界播放一次双路流光。
 
  * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
- * 当前定义定位：CanvasNodeShell L37。
+ * 2026-11-06：接入统一结果入口；生成态隐藏旧内容、锁定工具栏，提交态锁定节点交互。
+ * 2026-11-06：结果入口定位基准改为卡片主体，固定在卡片内部右上角。
+ * 当前定义定位：CanvasNodeShell L39。
  */
 import { useEffect, useState } from 'react';
 import ModelReadStatus from '../feedback/ModelReadStatus';
@@ -31,6 +33,7 @@ import CanvasLocalUpload from './CanvasLocalUpload';
 import CanvasGenerationLoading from './CanvasGenerationLoading';
 import CanvasNodeConnectionPulse from './CanvasConnectionPulse';
 import CanvasNodeToolbar from './CanvasNodeToolbar';
+import CanvasNodeResultControls from './CanvasNodeResultControls';
 import './canvas-nodes.css';
 import { useCanvasMediaSize } from './UseCanvasMediaSize';
 
@@ -51,17 +54,24 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
     if (!data?.generationMode && mediaControls.refMode) data?.onGenerationModeChange?.(data?.nodeId, mediaControls.refMode);
   }, [data?.generationMode, data?.nodeId, data?.onGenerationModeChange, data?.onVideoCapabilitiesChange, mediaControls.refMode, mediaControls.videoCapabilities, mediaControls.loading, nodeType]);
   const creationOpen = Boolean(selected && data?.creationPanelOpen);
-  return <div className={`canvas-node ${selected ? 'canvas-node--selected' : ''}`} data-node-type={nodeType} data-media-sized={Boolean(mediaSize)} style={mediaSize ? { '--canvas-media-width': `${mediaSize.width}px`, '--canvas-media-height': `${mediaSize.height}px` } : undefined}>
-    <div className="canvas-node__toolbar-scale" inert={!creationOpen} style={{ '--canvas-inverse-zoom': 1 / (data?.viewportZoom || 1) }}><CanvasCreationPresence open={creationOpen} className="canvas-node__toolbar-presence"><CanvasNodeToolbar nodeType={nodeType} content={data?.content} asset={data?.asset} onAction={data?.onToolbarAction} onMore={data?.onMore} onPreview={data?.onPreview} /></CanvasCreationPresence></div>
+  const submissionLocked = Boolean(data?.submissionLocked);
+  const guardSubmission = event => {
+    if (!submissionLocked) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  return <div className={`canvas-node ${selected ? 'canvas-node--selected' : ''}`} inert={submissionLocked} onPointerDownCapture={guardSubmission} onClickCapture={guardSubmission} onDoubleClickCapture={guardSubmission} onKeyDownCapture={guardSubmission} data-node-type={nodeType} data-media-sized={Boolean(mediaSize)} style={mediaSize ? { '--canvas-media-width': `${mediaSize.width}px`, '--canvas-media-height': `${mediaSize.height}px` } : undefined}>
+    <div className="canvas-node__toolbar-scale" inert={!creationOpen} style={{ '--canvas-inverse-zoom': 1 / (data?.viewportZoom || 1) }}><CanvasCreationPresence open={creationOpen} className="canvas-node__toolbar-presence"><fieldset className="canvas-node__interaction-guard" disabled={Boolean(data?.generating || submissionLocked)} inert={Boolean(data?.generating || submissionLocked)}><CanvasNodeToolbar nodeType={nodeType} content={data?.content} asset={data?.asset} onAction={data?.onToolbarAction} onMore={data?.onMore} onPreview={data?.onPreview} /></fieldset></CanvasCreationPresence></div>
     <CanvasNodeHeader nodeType={nodeType} title={title} zoom={data?.viewportZoom || 1} onRename={data?.onRename} onStart={data?.onRenameStart} />
     <div className="canvas-node__frame" aria-busy={Boolean(data?.generating)} data-state={data?.editing ? 'editing' : 'default'} data-connection-target={data?.connectionTarget ? 'true' : 'false'} data-connection-target-status={data?.connectionTargetStatus || ''} data-dragging={data?.dragging ? 'true' : 'false'} data-drag-release={data?.dragRelease ? 'true' : 'false'} style={{ '--canvas-drag-scale-x': data?.dragScaleX || 1, '--canvas-drag-scale-y': data?.dragScaleY || 1 }}>
       <CanvasNodePorts ports={data?.ports} connectingType={data?.connectingType} nodeActive={Boolean(selected || data?.editing || data?.generating)} onUpstreamConnectStart={(event) => data?.onUpstreamConnectStart?.(data?.nodeId, event)} />
       {data?.connectionPulses?.length > 0 && <CanvasNodeConnectionPulse pulses={data.connectionPulses} onMeasure={data.onPulseMeasure} />}
-      {nodeType !== 'text' && <div className="canvas-node__local-upload-slot" hidden={Boolean(data?.asset?.url || data?.transcript)}>
+      {nodeType !== 'text' && <div className="canvas-node__local-upload-slot" inert={Boolean(data?.generating || submissionLocked)} hidden={Boolean(data?.generating || data?.asset?.url || data?.transcript)}>
         <CanvasLocalUpload nodeType={nodeType} onAssetChange={(asset) => data?.onAssetChange?.(data.nodeId, asset)} />
       </div>}
-      {children}
+      <div className="canvas-node__result-body" aria-hidden={Boolean(data?.generating)} inert={Boolean(data?.generating || submissionLocked)}>{children}</div>
       {data?.generating && <CanvasGenerationLoading key={data.generationRequestId} message={data.generationMessageRequestId === data.generationRequestId ? data.generationMessage : undefined} />}
+      <CanvasNodeResultControls data={data} title={title} nodeType={nodeType} />
     </div>
     <CanvasCreationPresence open={creationOpen}><div className="canvas-creation-scale" style={{ '--canvas-inverse-zoom': 1 / (data?.viewportZoom || 1) }}><ModelReadStatus loading={nodeType === 'text' ? modelState.loading : mediaControls.loading} error={nodeType === 'text' ? modelState.error : mediaControls.error} empty={!(nodeType === 'text' ? modelState.options : mediaControls.options).length} onRetry={nodeType === 'text' ? textDirectory.retry : mediaControls.retry} /><CanvasCreationPanel
       key={data?.promptImportVersion || 0}

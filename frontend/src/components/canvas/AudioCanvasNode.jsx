@@ -5,7 +5,7 @@ import FileUploadButton from '../ui/FileUploadButton';
 import { downloadUrlWithFeedback } from '../../utils/downloadFeedback';
 
 export default function AudioCanvasNode({ id, data, selected }) {
-  const transcript = getCanvasAudioTranscript(data?.asset || { transcript: data?.transcript });
+  const transcript = getCanvasAudioTranscript(data?.asset || { transcript: data?.transcript }, data?.nodeResults);
   const handleToolbarAction = (action) => {
     const asset = data?.asset;
     if (action !== 'download' || !asset?.url) return;

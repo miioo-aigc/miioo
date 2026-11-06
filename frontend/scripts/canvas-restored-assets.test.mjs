@@ -25,7 +25,11 @@ function fixture() {
   // 验证实际 React Flow 公共数据接线，而不是仅验证回调定义存在。
   const renderSource = source.split('nodes={presentation.nodes.map')[1];
   assert.ok(renderSource, '所有渲染节点应统一补齐素材动作');
-  const binding = renderSource.split('data: { ...node.data, ')[1].split(', viewportZoom,')[0];
+  const binding = ['onAssetChange', 'onSelectAsset'].map((key) => {
+    const match = renderSource.match(new RegExp(`\\b${key}:\\s*(handleNode\\w+)\\b`));
+    assert.ok(match, `恢复节点应接入 ${key}`);
+    return `${key}: ${match[1]}`;
+  }).join(', ');
   const data = new Function('node', 'handleNodeAssetChange', 'handleNodeSelectAsset',
     'return { ...node.data, ' + binding + ' };')(node, actions.handleNodeAssetChange, actions.handleNodeSelectAsset);
   return { node, data, calls };
@@ -49,4 +53,11 @@ test('无本地文件的素材变更仍走现有回填，不重复上传', () =>
   const asset = { asset_type: 'image', url: 'https://example.test/image.png' };
   assert.equal(data.onAssetChange(node.id, asset), true);
   assert.deepEqual(calls, [['import', [asset], { nodeId: node.id }]]);
+});
+
+test('恢复节点的多个本地文件统一交给上传流程', () => {
+  const { node, data, calls } = fixture();
+  const files = [{ name: '第一张.png' }, { name: '第二张.png' }];
+  assert.equal(data.onAssetChange(node.id, files.map((file) => ({ file, url: 'blob:preview' }))), true);
+  assert.deepEqual(calls, [['upload', files, { nodeId: node.id }]]);
 });

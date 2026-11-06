@@ -6,28 +6,13 @@
 .react-flow__edgelabel-renderer:has(.canvas-edge-action) { z-index: 1002; pointer-events: none; }
 .canvas-node { --file-upload-button-font-size: 14px; --file-upload-button-line-height: 18px; --file-upload-button-text-color: rgba(255, 255, 255, 0.60); position: relative; width: 240px; color: var(--color-text-primary); font-family: inherit; }
 /* 以卡片上沿定位：固定24px标题区，加8px工具栏间距。 */
-.canvas-node__toolbar-scale { position: absolute; z-index: 12; top: 24px; left: 50%; width: 152px; height: 42px; transform: translateX(-50%) scale(var(--canvas-inverse-zoom, 1)) translateY(calc(-100% - 32px)); transform-origin: top center; }
-.canvas-node__toolbar { display: flex; width: 152px; height: 42px; box-sizing: border-box; align-items: center; justify-content: center; gap: 12px; border: 1px solid var(--color-stroke-normal); border-radius: 22px; outline: 1px solid var(--color-stroke-outline); background: var(--color-surface-toolbar); box-shadow: 0 4px 16px var(--color-shadow); }
-.canvas-node__toolbar-button { width: 32px !important; height: 32px !important; border-radius: 50% !important; color: var(--color-white-80); }
-.canvas-node__toolbar-button:hover:not(:disabled) { background: var(--color-white-5); color: var(--color-text-primary); }
-.canvas-node__toolbar-button:active:not(:disabled) { color: var(--color-white-60); }
-.canvas-node__toolbar-button:disabled { color: var(--color-white-40); opacity: 1; }
-.canvas-node__toolbar-icon { color: inherit !important; }
-.canvas-selection-toolbar { width: auto; min-width: 152px; padding: 0 8px; gap: 4px; }
+.canvas-node__toolbar-scale { position: absolute; z-index: 12; top: 24px; left: 50%; width: max-content; height: 42px; transform: translateX(-50%) scale(var(--canvas-inverse-zoom, 1)) translateY(calc(-100% - 32px)); transform-origin: top center; }
 .canvas-selection-toolbar__separator { width: 1px; height: 20px; margin: 0 4px; background: var(--color-stroke-normal); }
 .canvas-selection-toolbar__delete:hover:not(:disabled) { color: var(--color-state-error); }
 /* 实心超清图标仅在默认态补偿视觉重量，其他状态保持统一色值。 */
 .canvas-node[data-node-type='image'] .canvas-node__toolbar-button[aria-label='智能超清']:not(:hover):not(:active):not(:disabled) svg,
 .canvas-node[data-node-type='video'] .canvas-node__toolbar-button[aria-label='智能超清']:not(:hover):not(:active):not(:disabled) svg { opacity: 0.75; }
 .canvas-node__toolbar-presence { width: 100%; transform-origin: bottom center; transform: scale(0.3); opacity: 0; }
-.canvas-node[data-node-type='text'] .canvas-node__toolbar-scale,
-.canvas-node[data-node-type='text'] .canvas-node__toolbar { width: 196px; }
-.canvas-node[data-node-type='image'] .canvas-node__toolbar-scale,
-.canvas-node[data-node-type='image'] .canvas-node__toolbar { width: 460px; }
-.canvas-node[data-node-type='video'] .canvas-node__toolbar-scale,
-.canvas-node[data-node-type='video'] .canvas-node__toolbar { width: 328px; }
-.canvas-node[data-node-type='audio'] .canvas-node__toolbar-scale,
-.canvas-node[data-node-type='audio'] .canvas-node__toolbar { width: 108px; }
 .canvas-media-preview { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.48); backdrop-filter: blur(12px); }
 .canvas-media-preview__media { display: block; width: auto; height: auto; max-width: 80vw; max-height: 80vh; object-fit: contain; }
 .canvas-media-preview__close { position: fixed; top: 16px; right: 16px; z-index: 1; display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; border: 1px solid var(--color-stroke-normal); border-radius: 50%; background: var(--color-surface-toolbar); color: var(--color-white-80); cursor: pointer; }

@@ -53,16 +53,23 @@ test('图片批量参考参与生成，整批撤销重做', () => {
   assert.equal(history.getSnapshot().nodes.length, 3);
   history.dispose();
 });
-test('参考超量整批拒绝，计入当前素材和手动连线', () => {
+test('参考数量排除当前结果，只计入手动连线和新增素材', () => {
   const target = createCanvasNode('image', { x: 0, y: 0 }, 'target');
   target.data.imageReferenceLimit = 2;
   target.data.asset = image(0);
-  const nodes = [target];
+  const upstream = createCanvasNode('image', { x: 0, y: 0 }, 'upstream');
+  upstream.data.asset = image('upstream');
+  target.data.imageSourceIds = ['upstream'];
+  const nodes = [target, upstream];
   const result = planCanvasReferenceBatch(nodes, target.id, [image(1), image(2)]);
   assert.equal(result.allowed, false);
   assert.equal(result.nodes, nodes);
   target.data.imageReferenceLimit = 0;
   assert.equal(planCanvasReferenceBatch(nodes, target.id, [image(1)]).allowed, false);
+  target.data.imageReferenceLimit = 2;
+  target.data.imageSourceIds = [];
+  const ownOnly = planCanvasReferenceBatch([target], target.id, [image(1), image(2)]);
+  assert.equal(ownOnly.allowed, true);
 });
 test('视频逐项累加类型和总数限制', () => {
   const target = createCanvasNode('video', { x: 0, y: 0 }, 'target');

@@ -47,7 +47,7 @@ export function revealCanvasSearchNode(nodes, id) {
   return setCanvasSelection(setCanvasGroupsStacked(nodes, [...ancestors], false), [id]);
 }
 
-export function getCanvasSearchFocus(nodes, id, viewport, currentZoom) {
+export function getCanvasSearchFocus(nodes, id, viewport, currentZoom, { resetZoom = false } = {}) {
   const node = nodes.find((item) => item.id === id);
   if (!node) return null;
   const position = getCanvasAbsolutePosition(nodes, node);
@@ -56,6 +56,6 @@ export function getCanvasSearchFocus(nodes, id, viewport, currentZoom) {
   const height = stacked ? 300 : node.style?.height ?? node.measured?.height ?? 264;
   return {
     x: position.x + width / 2, y: position.y + height / 2,
-    zoom: Math.min(currentZoom, Math.max(1, viewport.width - 96) / width, Math.max(1, viewport.height - 160) / height),
+    zoom: Math.min(resetZoom ? 1 : currentZoom, Math.max(1, viewport.width - 96) / width, Math.max(1, viewport.height - 160) / height),
   };
 }

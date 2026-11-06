@@ -3,7 +3,8 @@
  * @description 项目资产、画布资产、创作资产与 Seedance 素材的统一选择弹窗。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   当前：AssetCard L111、悬浮预览 L447、弹窗入口 L503、账号会话 L508。
+ *   当前：AssetCard L112、悬浮预览 L448、弹窗入口 L504、账号会话 L509。
+ *   2026-11-06：项目下拉最多展示7.5项，超出内部滚动，列表项保持固定高度。
  *   2026-10-29：修复共用弹窗项目选择回写；切换重新读取，加载和空态分离。
  *   更新：关闭卸载及账号/父项目/类型切换隔离；非创作读取错误重试、旧请求写回拦截和异步确认锁。
  *   更新：补全传入当前会话检查，失败走原重试反馈；共享补全限制并发并停止旧调度。
@@ -502,7 +503,7 @@ function AssetHoverPreview({ url, mouseX, mouseY }) {
 
 export default function AssetPickerModal(props) {
   const ownerId = useCreationStore((state) => state.ownerId);
-  return props.open ? <AccountAssetPickerModal key={JSON.stringify([ownerId, props.projectId, props.accept])} {...props} /> : null;
+  return props.open ? <AccountAssetPickerModal key={JSON.stringify([ownerId, props.projectId, props.accept, props.selectionMode, props.strictAssetType])} {...props} /> : null;
 }
 
 function AccountAssetPickerModal({
@@ -530,6 +531,7 @@ function AccountAssetPickerModal({
   selectionMode = 'multiple',
   assetFilter,
   validateSelection,
+  strictAssetType = false,
 }) {
   const generationsByTab = useCreationStore((s) => s.generationsByTab);
   const favorites = useCreationStore((s) => s.favorites);
@@ -1405,6 +1407,10 @@ function AccountAssetPickerModal({
 
   const rawAssets = getCurrentAssets();
   const filteredAssets = rawAssets.filter(a => {
+    if (strictAssetType) {
+      const assetType = String(a?.asset_type || a?.assetType || a?.type || '').toLowerCase().split('/')[0];
+      if (!['image', 'video', 'audio'].includes(assetType) || assetType !== accept) return false;
+    }
     if (assetFilter && !assetFilter(a)) return false;
     if (accept === 'media') {
       const assetType = String(a?.asset_type || a?.assetType || a?.type || '').toLowerCase();
@@ -1484,7 +1490,7 @@ function AccountAssetPickerModal({
         {/* ── 顶部大 Tab + 搜索框 ── */}
         <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '24px', paddingRight: '24px', gap: '24px', flexShrink: 0 }}>
           {['project', 'canvas', 'creative', ...(showSeedanceTab ? ['seedance'] : [])].map((tab) => {
-            const label = tab === 'project' ? '项目资产' : tab === 'canvas' ? '画布资产' : tab === 'creative' ? '创作资产' : 'seedance素材库';
+            const label = tab === 'project' ? '项目资产' : tab === 'canvas' ? '画布资产' : tab === 'creative' ? '创作资产' : 'seedance认证素材库';
             const isActive = activeTab === tab;
             return (
               <div
@@ -1564,6 +1570,11 @@ function AccountAssetPickerModal({
                           left: projectMenuRect?.left ?? 0,
                           zIndex: 1201,
                           minWidth: projectMenuRect?.width ?? 120,
+                          // 7.5 × 32px 行高 + 顶部4px内距 + 上下2px边框。
+                          maxHeight: `min(246px, calc(100dvh - ${projectMenuRect?.top ?? 0}px - 8px))`,
+                          boxSizing: "border-box",
+                          overflowY: "auto",
+                          overscrollBehaviorY: "contain",
                           background: '#1C1C1C',
                           border: '1px solid #FFFFFF14',
                           borderRadius: '10px',
@@ -1583,6 +1594,7 @@ function AccountAssetPickerModal({
                             style={{
                               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                               height: '32px', paddingLeft: '12px', paddingRight: '12px', borderRadius: '7px',
+                              flexShrink: 0,
                               cursor: 'pointer',
                               background: projectHovIdx === i ? '#FFFFFF0F' : 'transparent',
                               transition: 'background 80ms',

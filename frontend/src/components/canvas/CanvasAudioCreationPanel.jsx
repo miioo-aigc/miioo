@@ -21,12 +21,13 @@ import { showGlobalToast } from '../../stores/toastStore';
 
 const NO_FILES = [];
 
-export default function CanvasAudioCreationPanel({ nodeId, prompt = '', controls, draft, onDraftChange, onPromptChange, onGenerate }) {
+export default function CanvasAudioCreationPanel({ nodeId, prompt = '', promptSnapshot, controls, draft, onDraftChange, onPromptChange, onGenerate }) {
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [hasText, setHasText] = useState(Boolean(prompt.trim()));
-  const [prefillData] = useState(() => ({ prompt, promptHTML: draft?.snapshot?.html }));
-  const lastRequestTextRef = useRef(prompt.trim());
+  const [prefillData] = useState(() => ({ prompt, promptHTML: promptSnapshot?.html ?? draft?.snapshot?.html }));
+  const lastRequestTextRef = useRef(prompt);
+  const lastHtmlRef = useRef(promptSnapshot?.html ?? draft?.snapshot?.html);
   const { zoom } = useViewport();
   const showToast = useCallback((_type, message) => setFeedback(message), []);
   const editor = useCreationPromptInteraction({
@@ -47,9 +48,10 @@ export default function CanvasAudioCreationPanel({ nodeId, prompt = '', controls
     setHasText(Boolean(snapshot.requestText?.trim()));
     latest.current.onDraftChange((current) => current?.snapshot?.html === snapshot.html
       ? current : { ...current, snapshot });
-    if (lastRequestTextRef.current !== snapshot.requestText) {
+    if (lastRequestTextRef.current !== snapshot.requestText || lastHtmlRef.current !== snapshot.html) {
       lastRequestTextRef.current = snapshot.requestText;
-      latest.current.onPromptChange?.(snapshot.requestText);
+      lastHtmlRef.current = snapshot.html;
+      latest.current.onPromptChange?.(snapshot.requestText, snapshot);
     }
   }, [getPromptSnapshot]);
 

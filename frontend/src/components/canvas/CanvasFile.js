@@ -1,6 +1,7 @@
 /** 可移植画布文件：复用节点复制协议，导入重新分配所有内部编号。 */
 import { copyCanvasNodes, pasteCanvasNodes } from './CanvasNodeActions.js';
 import { getCanvasAbsolutePosition, orderParentsFirst } from './CanvasGroups.js';
+import { readCanvasResultDocument } from './CanvasResultDocument.js';
 
 export const CANVAS_FILE_LIMIT = 100 * 1024 * 1024;
 const types = new Set(['text', 'image', 'video', 'audio', 'canvasGroup']);
@@ -16,6 +17,7 @@ export function parseCanvasFile(text) {
       || !Number.isFinite(node.position?.x) || !Number.isFinite(node.position?.y)
       || !node.data || typeof node.data !== 'object' || Array.isArray(node.data) || typeof node.data.label !== 'string') fail();
     if (node.type === 'canvasGroup' && (!Number.isFinite(node.style?.width) || node.style.width <= 0 || !Number.isFinite(node.style?.height) || node.style.height <= 0)) fail();
+    readCanvasResultDocument(node.type, node.data);
     byId.set(node.id, node);
   }
   for (const node of file.nodes) {

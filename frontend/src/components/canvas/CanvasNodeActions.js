@@ -1,9 +1,32 @@
-/** 节点编辑纯函数；剪贴板仅保存草稿内容，不携带运行态。 */
+/** 节点编辑纯函数；剪贴板保留完整结果历史，不携带运行态。 */
 import { fitCanvasGroups, getCanvasAbsolutePosition, setCanvasSelection } from './CanvasGroups.js';
+import { readCanvasResultDocument } from './CanvasResultDocument.js';
+import { projectCanvasCurrentResult } from './CanvasNodeResults.js';
 
 const sourceLists = ['textSourceIds', 'imageSourceIds', 'videoSourceIds', 'audioSourceIds'];
 const transient = new Set(['generating', 'generationPending', 'generationError', 'generationRequestId',
+  'generationMessage', 'generationMessageRequestId', 'generationProgress', 'taskId', 'taskIds', 'requestId',
+  'generationTaskIds', 'executionSourceIds', 'pendingCanvasUpload',
+  'activeTask', 'activeRequest', 'executionSnapshot', 'taskSnapshot', 'taskIdentity',
+  'controller', 'abortController', 'signal', 'submissionLocked', 'outputLocked',
+  'deleteLocked', 'upstreamProtected', 'dependencyCount', 'resultAssetViews',
   'creationPanelOpen', 'editing', 'dragging', 'dragRelease', 'dragScaleX', 'dragScaleY']);
+
+/** 只剥离顶层运行态；批次内 taskIds 和 snapshot 是不可变溯源数据。 */
+export function stripCanvasNodeRuntimeData(data) {
+  return Object.fromEntries(Object.entries(data).filter(([key]) => !transient.has(key)));
+}
+
+function copyData(node) {
+  const nodeResults = readCanvasResultDocument(node.type, node.data);
+  const data = stripCanvasNodeRuntimeData(node.data);
+  delete data.nodeResults;
+  if (nodeResults !== undefined) Object.assign(data, projectCanvasCurrentResult(nodeResults));
+  const copied = structuredClone(Object.fromEntries(Object.entries(data)
+    .filter(([, value]) => typeof value !== 'function')));
+  if (nodeResults !== undefined) copied.nodeResults = nodeResults;
+  return copied;
+}
 
 export function canvasDescendantIds(nodes, ids) {
   const result = new Set(ids);
@@ -37,8 +60,7 @@ export function copyCanvasNodes(nodes) {
     parentId: ids.has(node.parentId) ? node.parentId : undefined,
     position: ids.has(node.parentId) ? { ...node.position } : getCanvasAbsolutePosition(nodes, node),
     ...(node.style ? { style: { ...node.style } } : {}),
-    data: structuredClone(Object.fromEntries(Object.entries(node.data)
-      .filter(([key, value]) => !transient.has(key) && typeof value !== 'function'))),
+    data: copyData(node),
   }));
 }
 
@@ -50,7 +72,7 @@ export function pasteCanvasNodes(nodes, clipboard, position, makeId = () => cryp
   const copies = clipboard.map((node) => ({ ...node, id: mapping.get(node.id),
     parentId: mapping.get(node.parentId),
     position: node.parentId ? { ...node.position } : { x: node.position.x - origin.x + position.x, y: node.position.y - origin.y + position.y },
-    data: { ...remapSources(structuredClone(node.data), (id) => mapping.get(id)),
+    data: { ...remapSources(copyData(node), (id) => mapping.get(id)),
       label: options.preserveLabels ? node.data.label : `${node.data.label} 副本`, creationPanelOpen: false, persistenceState: 'draft' },
   }));
   return setCanvasSelection([...nodes, ...copies], copies.filter((node) => !node.parentId).map((node) => node.id));

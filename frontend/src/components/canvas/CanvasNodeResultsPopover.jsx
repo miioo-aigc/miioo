@@ -1,9 +1,10 @@
 /** 统一结果浮层：结果、锁定和分页由宿主控制，仅持有媒体预览和定位状态。 */
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Pause, Play, RefreshCw } from 'lucide-react';
-import Checkbox from '../Checkbox';
-import { Button, IconButton, ModalCloseButton } from '../ui';
+import { RefreshCw } from 'lucide-react';
+import Radio from '../ui/Radio';
+import { Button, ModalCloseButton } from '../ui';
+import CanvasAudioPlayer from './CanvasAudioPlayer';
 import MediaLoadStatus from '../feedback/MediaLoadStatus';
 import { getCanvasCurrentResult, getCanvasResultHistory } from './CanvasNodeResults.js';
 import './CanvasNodeResultsPopover.css';
@@ -113,7 +114,7 @@ export default function CanvasNodeResultsPopover({
           {batches.filter(batch => batch.status === 'partial').map(batch =>
             <p key={batch.id} role="status">部分成功 {batch.results.length}/{batch.requestedCount}</p>)}
           {items.length > 0 && <div className={items[0]?.type === 'text' ? 'canvas-results-popover__list' : 'canvas-results-popover__grid'}>
-              {items.map(result => <ResultItem key={result.id} result={result}
+              {items.map(result => <ResultItem key={result.id} result={result} groupName={titleId}
                 current={result.id === current?.id} media={mediaByResultId[result.id]}
                 disabled={switchingDisabled} lockReason={lockReason} onSelect={onSelect} onRetryMedia={onRetryMedia} />)}
           </div>}
@@ -134,11 +135,9 @@ function ResultItem(props) {
   return <ResultPreview key={props.media?.status + ':' + props.media?.src} {...props} />;
 }
 
-function ResultPreview({ result, current, media, disabled, lockReason, onSelect, onRetryMedia }) {
+function ResultPreview({ result, current, media, disabled, lockReason, onSelect, onRetryMedia, groupName }) {
   const [previewStatus, setPreviewStatus] = useState('loading');
   const [attempt, setAttempt] = useState(0);
-  const audioRef = useRef(null);
-  const [playing, setPlaying] = useState(false);
   const text = result.type === 'text';
   const available = text || (media?.status === 'ready' && Boolean(media.src));
   const ready = text || (available && previewStatus === 'ready');
@@ -150,30 +149,24 @@ function ResultPreview({ result, current, media, disabled, lockReason, onSelect,
     onRetryMedia?.(result.id);
   };
   const label = (text ? '文本' : result.type === 'image' ? '图片' : result.type === 'audio' ? '音频' : '视频') + '结果 ' + (result.index + 1);
-  return <article className="canvas-results-popover__result" data-current={current || undefined} aria-label={label}>
+  const selectable = !current && !disabled && ready;
+  const select = () => { if (selectable) onSelect?.(result.id); };
+  return <article className="canvas-results-popover__result" data-current={current || undefined}
+    data-selectable={selectable || undefined} aria-label={label} onClick={event => {
+      if (event.target.closest('button, input, label, a, audio, video, [role="button"], .canvas-results-popover__selection, .canvas-node__transcript, .canvas-results-popover__text')) return;
+      if (window.getSelection()?.toString()) return;
+      select();
+    }}>
     {text ? <div className="canvas-results-popover__text" tabIndex={0} aria-label={label + '正文'}>{result.content}</div>
       : <div className={'canvas-results-popover__media canvas-results-popover__media--' + result.type}>
         {available && previewStatus !== 'error' && (result.type === 'image'
           ? <img key={attempt} src={media.src} alt={label} draggable={false} loading="lazy"
             onLoad={() => setPreviewStatus('ready')} onError={() => setPreviewStatus('error')} />
-          : result.type === 'audio' ? <audio ref={audioRef} key={attempt} src={media.src} preload="metadata"
-            onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)}
-            onLoadedMetadata={() => setPreviewStatus('ready')} onError={() => { setPlaying(false); setPreviewStatus('error'); }} />
+          : result.type === 'audio' ? <CanvasAudioPlayer key={attempt} url={media.src} name={label}
+            transcript={media.transcript} compact onReady={() => setPreviewStatus('ready')}
+            onError={() => setPreviewStatus('error')} />
           : <video key={attempt} src={media.src} poster={media.poster} controls playsInline preload="metadata" aria-label={label + '预览'}
             onLoadedData={() => setPreviewStatus('ready')} onError={() => setPreviewStatus('error')} />)}
-        {result.type === 'audio' && available && !failed && <IconButton variant="secondary"
-          className="canvas-results-popover__audio-play" style={{ width: 32, height: 32, borderRadius: '50%',
-            border: 'none', opacity: 1, backgroundColor: 'var(--color-brand-main)', backgroundImage: 'none',
-            boxShadow: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', padding: 0, flexShrink: 0 }}
-          aria-label={(playing ? '暂停' : '播放') + label} title={playing ? '暂停' : '播放'}
-          onClick={async () => {
-            const audio = audioRef.current;
-            if (!audio) return;
-            if (!audio.paused) { audio.pause(); return; }
-            try { await audio.play(); } catch { setPlaying(false); setPreviewStatus('error'); }
-          }}>{playing ? <Pause size={20} fill="#FFFFFF" strokeWidth={0} aria-hidden="true" />
-            : <Play size={20} fill="#FFFFFF" strokeWidth={0} aria-hidden="true" />}</IconButton>}
         {available && previewStatus === 'loading' && result.type !== 'audio' && <div className={result.type === 'video' ? 'canvas-results-popover__video-loading' : undefined}>
           <MediaLoadStatus status="loading" visual />
         </div>}
@@ -185,10 +178,8 @@ function ResultPreview({ result, current, media, disabled, lockReason, onSelect,
       </div>}
     <div className="canvas-results-popover__selection"
       title={lockReason || (!ready ? (failed ? message : '素材尚未就绪') : undefined)}>
-      <Checkbox checked={current} disabled={current || disabled || !ready}
-        aria-label={current ? label + '，当前结果' : '将' + label + '设为当前结果'} onChange={() => {
-          if (!current && !disabled && ready) onSelect?.(result.id);
-        }} />
+      <Radio name={groupName} value={result.id} checked={current} disabled={disabled || !ready}
+        aria-label={current ? label + '，当前结果' : '将' + label + '设为当前结果'} onChange={select} />
     </div>
   </article>;
 }

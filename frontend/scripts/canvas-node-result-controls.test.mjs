@@ -125,6 +125,21 @@ test('入口使用真实屏幕锚点，选择仅转发节点编号和结果编�
   assert.equal(ui.find('popover')[0].props.open, false);
 });
 
+test('打开媒体详情关闭历史，重渲染不恢复，卸载清理监听', () => {
+  const listeners = environment();
+  const ui = host(Controls, { data: data('image'), nodeType: 'image' });
+  const cleanup = ui.mount();
+  click(ui); ui.render();
+  assert.equal(ui.find('popover')[0].props.open, true);
+  window.dispatchEvent(new CustomEvent('canvas-media-preview-open'));
+  ui.render();
+  assert.equal(ui.find('popover')[0].props.open, false);
+  ui.render();
+  assert.equal(ui.find('popover')[0].props.open, false);
+  cleanup.forEach(callback => callback?.());
+  assert.equal(listeners.size, 0);
+});
+
 test('打开另一节点关闭原浮层，卸载清理自定义事件监听', () => {
   const listeners = environment();
   const first = host(Controls, { data: data('image'), nodeType: 'image' }), second = host(Controls, { data: data('image'), nodeType: 'image' });
@@ -174,7 +189,7 @@ test('按资产编号适配预览，拒绝其他当前素材和不可用地址',
   node.resultAssetViews = { [assetId]: { availability: 'forbidden', url: '/forbidden' } }; ui.render();
   assert.equal(ui.find('popover')[0].props.mediaByResultId['结果'].src, undefined);
   node.resultAssetViews[assetId] = { availability: 'trashed', url: '/history', posterUrl: '/poster' }; ui.render();
-  assert.deepEqual(ui.find('popover')[0].props.mediaByResultId['结果'], { status: 'ready', src: '/history', poster: '/poster', message: undefined });
+  assert.deepEqual(ui.find('popover')[0].props.mediaByResultId['结果'], { status: 'ready', src: '/history', poster: '/poster', message: undefined, transcript: undefined });
 });
 
 test('生成仍可浏览，所有保护阻止切换，提交锁定关闭并禁用入口', () => {

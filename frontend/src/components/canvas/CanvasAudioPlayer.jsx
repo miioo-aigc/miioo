@@ -11,7 +11,7 @@ function formatTime(seconds) {
   return [Math.floor(value / 3600), Math.floor(value / 60) % 60, value % 60].map((part) => String(part).padStart(2, '0')).join(':');
 }
 
-export default function CanvasAudioPlayer({ url, name, transcript }) {
+export default function CanvasAudioPlayer({ url, name, transcript, compact = false, onReady, onError }) {
   const audioRef = useRef(null);
   const media = useMediaPlayback(audioRef, url, { timeoutRetries: 3 });
   const playing = media.status === 'playing';
@@ -30,9 +30,10 @@ export default function CanvasAudioPlayer({ url, name, transcript }) {
     else void media.play();
   }
 
-  return <div className={`canvas-node__audio ${transcript ? 'canvas-node__audio--transcript' : ''}`}>
+  return <div className={`canvas-node__audio ${transcript ? 'canvas-node__audio--transcript' : ''} ${compact ? 'canvas-node__audio--compact' : ''}`}>
     {url && <audio ref={audioRef} src={url} preload="metadata" aria-label={name || '音频预览'}
-      onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+      onLoadedMetadata={(event) => { setDuration(event.currentTarget.duration); onReady?.(); }}
+      onError={onError}
       onDurationChange={(event) => setDuration(event.currentTarget.duration)}
       onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
  />}

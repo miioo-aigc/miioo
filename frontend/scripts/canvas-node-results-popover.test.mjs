@@ -29,9 +29,10 @@ const imports = {
   'react-dom': { createPortal: value => value },
   'lucide-react': { Check: 'check', RefreshCw: 'refresh', Play: 'play', Pause: 'pause' },
   '../ui': { Button: 'button', IconButton: 'icon-button', ModalCloseButton: 'close-button' },
-  '../Checkbox': { default: 'checkbox' },
+  '../ui/Radio': { default: 'radio' },
   '../feedback/MediaLoadStatus': { default: 'media-status' },
   './CanvasNodeResults.js': protocol,
+  './CanvasAudioPlayer': { default: 'audio-player' },
   './CanvasNodeResultsPopover.css': {},
 };
 // 按语法树替换模块边界，保留真实组件主体，不依赖实验性虚拟机模块。
@@ -101,7 +102,7 @@ function session(overrides = {}) {
   render();
   return { props, render, listeners, focused, effects: () => effects, layouts: () => layouts,
     find: type => nodes.filter(node => node.type === type),
-    choose: () => nodes.filter(node => node.type === 'checkbox') };
+    choose: () => nodes.filter(node => node.type === 'radio') };
 }
 
 test('统一列表按新到旧排列，浏览不切换，只有明确动作通知宿主', () => {
@@ -116,7 +117,9 @@ test('统一列表按新到旧排列，浏览不切换，只有明确动作通�
   ui.choose()[0].props.onChange();
   assert.deepEqual(calls, ['结果20']);
   assert.equal(JSON.stringify(results), before);
-  assert.equal(ui.choose()[1].props.disabled, true);
+  assert.equal(ui.choose()[1].props.disabled, false);
+  assert.equal(ui.choose()[0].props.name, ui.choose()[1].props.name);
+  assert.deepEqual(ui.choose().map(node => node.props.value), ['结果20', '结果10']);
   assert.equal(ui.choose()[1].props.checked, true);
   ui.choose()[1].props.onChange();
   assert.deepEqual(calls, ['结果20']);
@@ -133,6 +136,29 @@ test('图片、视频和音频跨批次共用两列网格，不渲染批次标�
     assert.equal(ui.find('section').length, 0);
     assert.equal(ui.find('h3').length, 0);
   }
+});
+
+test('卡片点击可选择，内部交互和文本选择不切换，未就绪及锁定仍禁选', () => {
+  const selected = [];
+  const ui = session({ results: makeResults('image'),
+    mediaByResultId: { '结果20': { status: 'ready', src: '/image.png' } },
+    onSelect: id => selected.push(id) });
+  window.getSelection = () => ({ toString: () => '' });
+  const click = () => ui.find('article')[0].props.onClick({ target: { closest: () => null } });
+  click();
+  assert.deepEqual(selected, []);
+  ui.find('img')[0].props.onLoad(); ui.render();
+  click();
+  assert.deepEqual(selected, ['结果20']);
+  ui.find('article')[0].props.onClick({ target: { closest: selector => {
+    for (const excluded of ['button', 'video', '.canvas-node__transcript', '.canvas-results-popover__selection']) assert.ok(selector.includes(excluded));
+    return {};
+  } } });
+  window.getSelection = () => ({ toString: () => '选中文字' });
+  click();
+  window.getSelection = () => null;
+  ui.props.generating = true; ui.render(); click();
+  assert.deepEqual(selected, ['结果20']);
 });
 
 test('生成、编辑、依赖保护和切换等待均拦截显式切换回调', () => {
@@ -173,38 +199,26 @@ test('音频历史支持试听，就绪后才允许恢复，失败禁止选择',
   const ui = session({ results: makeResults('audio'),
     mediaByResultId: { '结果20': { status: 'ready', src: '/音频.mp3' } },
     onSelect: id => selected.push(id) });
-  assert.equal(ui.find('audio').length, 1);
+  assert.equal(ui.find('audio-player').length, 1);
   assert.equal(ui.find('video').length, 0);
-  assert.equal(ui.find('audio')[0].props.controls, undefined);
-  assert.equal(ui.find('icon-button')[0].props.style.width, 32);
-  assert.equal(ui.find('icon-button')[0].props.style.height, 32);
+  assert.equal(ui.find('audio-player')[0].props.compact, true);
   assert.equal(ui.find('div').filter(node => node.props.className === 'canvas-results-popover__grid').length, 1);
   assert.equal(ui.choose()[0].props.disabled, true);
-  ui.find('audio')[0].props.onLoadedMetadata(); ui.render();
+  ui.find('audio-player')[0].props.onReady(); ui.render();
   ui.choose()[0].props.onChange();
   assert.deepEqual(selected, ['结果20']);
-  ui.find('audio')[0].props.onError(); ui.render();
+  ui.find('audio-player')[0].props.onError(); ui.render();
   assert.equal(ui.choose()[0].props.disabled, true);
 });
 
-test('音频中央按钮播放、暂停、结束同步图标，播放失败禁用恢复', async () => {
+test('历史音频复用紧凑播放器并传递所属结果的配音文本', () => {
   const ui = session({ results: makeResults('audio'),
-    mediaByResultId: { '结果20': { status: 'ready', src: '/audio.mp3' } } });
-  let plays = 0, pauses = 0;
-  const audio = { paused: true, async play() { plays++; }, pause() { pauses++; } };
-  ui.find('audio')[0].props.ref.current = audio;
-  await ui.find('icon-button')[0].props.onClick();
-  assert.equal(plays, 1);
-  ui.find('audio')[0].props.onPlay(); ui.render();
-  assert.match(ui.find('icon-button')[0].props['aria-label'], /^暂停/);
-  audio.paused = false; ui.find('audio')[0].props.ref.current = audio;
-  await ui.find('icon-button')[0].props.onClick();
-  assert.equal(pauses, 1);
-  ui.find('audio')[0].props.onEnded(); ui.render();
-  assert.match(ui.find('icon-button')[0].props['aria-label'], /^播放/);
-  ui.find('audio')[0].props.ref.current = { paused: true, play: () => Promise.reject(new Error('失败')) };
-  await ui.find('icon-button')[0].props.onClick(); ui.render();
-  assert.equal(ui.choose()[0].props.disabled, true);
+    mediaByResultId: { '结果20': { status: 'ready', src: '/audio.mp3', transcript: '历史配音文本' } } });
+  const player = ui.find('audio-player')[0];
+  assert.equal(player.props.url, '/audio.mp3');
+  assert.equal(player.props.transcript, '历史配音文本');
+  assert.equal(player.props.compact, true);
+  assert.match(css, /canvas-node__transcript/);
 });
 
 test('文本完整保留且可聚焦，视频使用独立控件和本体就绪事件', () => {
@@ -266,6 +280,11 @@ test('浮层宽340高600且约束视口，图片完整展示并保持两列', ()
   assert.match(css, /height: 600px;/);
   assert.ok(css.includes('grid-template-columns: repeat(2, minmax(0, 1fr))'));
   assert.doesNotMatch(css.slice(css.indexOf('@media')), /grid-template-columns/);
+});
+
+test('全部结果的复选框悬浮右上角，不占内容布局', () => {
+  assert.match(css, /.canvas-results-popover__selection { position: absolute; top: 8px; right: 8px; z-index: 2; }/);
+  assert.doesNotMatch(css, /padding: 30px 8px 8px/);
 });
 
 test('浮窗优先在入口右侧，右侧不足时回退左侧', () => {

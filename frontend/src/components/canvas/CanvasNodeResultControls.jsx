@@ -23,7 +23,12 @@ export default function CanvasNodeResultControls({ data, title = '节点', nodeT
       if (event.detail !== instanceId) setAnchorRect(null);
     };
     window.addEventListener(OPEN_EVENT, closeOther);
-    return () => window.removeEventListener(OPEN_EVENT, closeOther);
+    const closeForPreview = () => setAnchorRect(null);
+    window.addEventListener('canvas-media-preview-open', closeForPreview);
+    return () => {
+      window.removeEventListener(OPEN_EVENT, closeOther);
+      window.removeEventListener('canvas-media-preview-open', closeForPreview);
+    };
   }, [instanceId]);
 
   useEffect(() => {
@@ -53,6 +58,8 @@ export default function CanvasNodeResultControls({ data, title = '节点', nodeT
         : view?.status === 'loading' ? 'loading' : view?.url ? 'ready' : 'unavailable',
       src: unavailable ? undefined : view?.url,
       poster: unavailable ? undefined : view?.posterUrl,
+      transcript: unavailable ? '' : batch.source === 'generation' && typeof batch.snapshot?.prompt === 'string'
+        ? batch.snapshot.prompt.trim() : view?.source !== 'local-preview' ? view?.transcript : '',
       message: view?.message,
     };
   }

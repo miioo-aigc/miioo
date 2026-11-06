@@ -188,6 +188,9 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const [pendingConnection, setPendingConnection] = useState(null);
   const [upstreamConnection, setUpstreamConnection] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
+  useEffect(() => {
+    if (mediaPreview) window.dispatchEvent(new CustomEvent('canvas-media-preview-open'));
+  }, [mediaPreview]);
   const [actionDialog, setActionDialog] = useState(null);
   const { enabled: snapEnabled, toggle: toggleSnap, guides: snapGuides, apply: applySnap, clear: clearSnap } = useCanvasSnapping(canvasId, canvasContainerRef);
   const importAssetsRef = useRef(null);

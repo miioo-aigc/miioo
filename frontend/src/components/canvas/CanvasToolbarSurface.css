@@ -1,5 +1,5 @@
-/* 顶部工具栏：左右16px、按钮间隔4px、点击区32px。 */
-.canvas-node__toolbar { display: flex; width: max-content; padding: 0 16px; height: 42px; box-sizing: border-box; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--color-stroke-normal); border-radius: 22px; outline: 1px solid var(--color-stroke-outline); background: var(--color-surface-toolbar); box-shadow: 0 4px 16px var(--color-shadow); }
+/* 顶部工具栏：左右16px、按钮间隔8px、点击区32px。 */
+.canvas-node__toolbar { display: flex; width: max-content; padding: 0 16px; height: 42px; box-sizing: border-box; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--color-stroke-normal); border-radius: 22px; outline: 1px solid var(--color-stroke-outline); background: var(--color-surface-toolbar); box-shadow: 0 4px 16px var(--color-shadow); }
 .canvas-node__toolbar-button { width: 32px !important; height: 32px !important; border-radius: 50% !important; color: var(--color-white-80); }
 .canvas-node__toolbar-button:hover:not(:disabled) { background: var(--color-white-5); color: var(--color-text-primary); }
 .canvas-node__toolbar-button:active:not(:disabled) { color: var(--color-white-60); }

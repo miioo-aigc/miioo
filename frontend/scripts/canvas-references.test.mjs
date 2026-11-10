@@ -28,6 +28,15 @@ test('参考图创建独立编号节点，目标保持展开，连线和缩略�
   assert.equal(getCanvasReferenceEdges(nodes)[0].source, nodes[1].id);
   assert.equal(getCanvasReferenceEdges(nodes)[0].targetHandle, 'video-input');
 });
+test('新参考素材节点只登记一次导入，不产生 legacy 历史', () => {
+  const target = createCanvasNode('image', undefined, 'target');
+  const permanent = { asset_id: '11111111-1111-4111-8111-111111111111', asset_type: 'image', url: '/reference.png' };
+  const nodes = addCanvasReference([target], 'target', permanent, 'all');
+  const source = nodes.find((node) => node.id !== 'target');
+  assert.deepEqual(source.data.nodeResults.batches.map((batch) => batch.source), ['upload']);
+  assert.equal(source.data.asset.asset_id, permanent.asset_id);
+  assert.equal(target.data.nodeResults, undefined);
+});
 test('首尾帧最多两张，删除首帧不改变尾帧身份，补充图片填回首帧', () => {
   let nodes = [createCanvasNode('video', undefined, 'target')];
   nodes = addCanvasReference(nodes, 'target', asset, 'frame');

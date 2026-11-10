@@ -45,10 +45,10 @@ export default function CanvasSelectionToolbar({ nodes, onAction }) {
       {actions.map(({ key, label, Icon, disabled, submenu }) => <CanvasToolbarButton key={key} label={label} disabled={disabled} onClick={(event) => {
           if (submenu) { const rect = event.currentTarget.getBoundingClientRect(); setMenu(activeMenu?.key === key ? null : { key, selectionKey, x: rect.left, y: rect.bottom + 6 }); }
           else onAction(key);
-        }}><Icon size={16} strokeWidth={1.5} /></CanvasToolbarButton>)}
+        }}><Icon size={20} strokeWidth={1.5} /></CanvasToolbarButton>)}
       <span className="canvas-selection-toolbar__separator" />
-      <CanvasToolbarButton label="下载" disabled={!media} onClick={() => onAction('download')}><Download size={16} strokeWidth={1.5} /></CanvasToolbarButton>
-      <CanvasToolbarButton label={singleGroup ? '删除组' : '删除'} className="canvas-selection-toolbar__delete" onClick={() => onAction('delete')}><Trash2 size={16} strokeWidth={1.5} /></CanvasToolbarButton>
+      <CanvasToolbarButton label="下载" disabled={!media} onClick={() => onAction('download')}><Download size={20} strokeWidth={1.5} /></CanvasToolbarButton>
+      <CanvasToolbarButton label={singleGroup ? '删除组' : '删除'} className="canvas-selection-toolbar__delete" onClick={() => onAction('delete')}><Trash2 size={20} strokeWidth={1.5} /></CanvasToolbarButton>
       {activeMenu && <DropdownMenu items={menuItems} onClose={() => setMenu(null)} width="200px" style={{ position: 'fixed', left: activeMenu.x, top: activeMenu.y, zIndex: 110 }} />}
     </CanvasToolbarSurface>
   </NodeToolbar>;

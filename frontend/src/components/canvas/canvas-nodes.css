@@ -73,6 +73,8 @@
 .canvas-node__header-slot { position: relative; height: 24px; }
 .canvas-node__header { position: absolute; top: 24px; left: 0; display: flex; align-items: center; gap: 4px; width: calc(100% * var(--canvas-header-zoom, 1)); height: 16px; transform: scale(var(--canvas-header-inverse-zoom, 1)) translateY(-24px); transform-origin: top left; color: var(--color-text-secondary); font-size: 12px; line-height: 16px; }
 .canvas-node__header .canvas-editable-name { flex: 1; min-width: 0; }
+/* 「上游已更新」贴在卡片上沿外的右上角，与标题同行右对齐，随标题一起做视口反缩放。 */
+.canvas-node__header-updated { flex: 0 0 auto; padding: 2px 6px; border: 1px solid var(--color-tag-border); border-radius: var(--radius-small); background: var(--color-tag-bg-yellow); color: var(--color-tag-text-yellow); font-size: 12px; line-height: 16px; white-space: nowrap; }
 .canvas-node__frame { --canvas-drag-scale-x: 1; --canvas-drag-scale-y: 1; position: relative; display: flex; width: 240px; min-height: 240px; box-sizing: border-box; align-items: center; justify-content: center; overflow: visible; border: 1px solid var(--color-stroke-normal); border-radius: 16px; outline: 1px solid var(--color-stroke-outline); background: var(--color-surface-content-area); transition: border-color 160ms ease; }
 /* 保留内容布局与本地素材生命周期，生成时只展示外壳、端口及加载动画。 */
 .canvas-node__frame[aria-busy='true'] > :not(.canvas-node__port):not(.canvas-node__loading) { visibility: hidden; pointer-events: none; }
@@ -84,9 +86,7 @@
 /* 连线反馈优先于悬停、编辑、输入聚焦和多选描边，结束后恢复原状态。 */
 .canvas-node__frame[data-connection-target-status='valid'] { border-color: var(--color-blue-alpha-60) !important; }
 .canvas-node__frame[data-connection-target-status='invalid'] { border-color: var(--color-red-alpha-60) !important; }
-.canvas-node:has(.canvas-creation-panel__editor:focus) > .canvas-node__frame,
-.canvas-node:has(.canvas-creation-panel__editor:focus) > .canvas-node__frame:not([data-state='editing']),
-.canvas-node__frame[data-state='editing'] { border-color: var(--color-stroke-active); }
+/* 聚焦输入框不再叠加卡片级蓝色描边；激活态统一由白色描边表示。 */
 .canvas-node__frame::before, .canvas-node__frame::after { content: ''; position: absolute; top: 50%; z-index: 7; width: 22px; height: 44px; pointer-events: auto; transform: translateY(-50%); }
 .canvas-node__frame::before { left: -22px; }
 .canvas-node__frame::after { right: -22px; }
@@ -106,7 +106,9 @@
 .canvas-node__empty-state { display: flex; width: 100%; min-height: 240px; align-items: center; justify-content: center; padding: 12px; box-sizing: border-box; color: var(--color-text-hint); font-size: 13px; text-align: center; }
 .canvas-node__empty { color: var(--color-text-hint); }
 .canvas-node__empty-state { flex-direction: column; gap: 8px; }
-.canvas-node__local-upload-slot { position: absolute; top: 94px; left: 50%; transform: translateX(-50%); z-index: 1; }
+/* 本地上传与卡片正文里的「从资产库选择」同属一个层级：两者都不提升 z-index，
+   让创作面板及其参数弹层按文档顺序覆盖在卡片内容之上。 */
+.canvas-node__local-upload-slot { position: absolute; top: 94px; left: 50%; transform: translateX(-50%); }
 .canvas-node__local-upload { display: flex; flex-direction: column; align-items: center; }
 .canvas-node__upload-error { position: absolute; top: 64px; width: 210px; text-align: center; font-size: 12px; color: var(--color-text-danger); }
 .canvas-node:not([data-node-type='text']) .canvas-node__empty-state { padding-top: 42px; }
@@ -128,6 +130,13 @@
 .canvas-node[data-media-sized='true'] > .canvas-creation-presence { margin-left: calc((var(--canvas-media-width) - 240px) / 2); }
 .canvas-video { position: relative; width: 100%; min-height: 80px; overflow: hidden; border-radius: 15px; }
 .canvas-video__drag-surface { position: absolute; inset: 0; }
+/* 原生控制条显示时，拖动层只在底部控制条上方让位，控制条区域独立接收指针事件。 */
+.canvas-video__drag-surface[data-controls='true'] { bottom: var(--canvas-video-controls-height, 48px); }
+/* 卡片中央常驻播放按钮：只在未播放时出现，点击发起播放并让卡片进入激活态，播放中图标自动收起。 */
+.canvas-video__play { position: absolute; z-index: 3; top: 50%; left: 50%; display: flex; padding: 0; border: 0; background: transparent; transform: translate(-50%, -50%); cursor: pointer; }
+.canvas-video__play > * { transition: filter 100ms; }
+.canvas-video__play:hover > * { filter: brightness(1.25); }
+.canvas-video__play:focus-visible { outline: 1px solid var(--color-stroke-active); outline-offset: 2px; }
 .canvas-node__frame:has(.canvas-node__audio) { min-height: 0; }
 .canvas-node__audio { display: flex; width: 100%; height: 98px; box-sizing: border-box; flex-direction: column; justify-content: space-between; gap: 8px; padding: 16px; }
 .canvas-node__audio--transcript { height: 238px; }
@@ -152,7 +161,6 @@
 /* 空编辑器没有文字行盒，使用内边距定位光标；有内容后恢复浮动绕排。 */
 .canvas-audio-creation-panel .creation-prompt-editor--voice-wrap[data-empty='true'] { box-sizing: border-box; padding-left: var(--creation-voice-wrap-width); }
 .canvas-audio-creation-panel .creation-prompt-editor--voice-wrap[data-empty='true']::before { display: none; }
-.canvas-node:has(.canvas-audio-creation-panel .composer-surface__editor:focus) > .canvas-node__frame { border-color: var(--color-stroke-active); }
 .canvas-creation-presence { width: 240px; transform-origin: top center; transform: scale(0.3); opacity: 0; }
 .canvas-creation-scale { width: 240px; padding-top: 8px; transform: scale(var(--canvas-inverse-zoom, 1)); transform-origin: top center; }
 .canvas-creation-presence[inert] { pointer-events: none; }
@@ -163,7 +171,6 @@
 .canvas-creation-panel[data-video-text-mode='true'] .canvas-media-prompt-editor { transform: translateY(-52px); }
 .canvas-media-prompt-editor { position: relative; display: flex; width: 100%; height: 64px; flex-shrink: 0; }
 .canvas-media-prompt-editor > div > span { max-width: 100%; flex-wrap: wrap; }
-.canvas-node:has(.canvas-media-prompt-editor .composer-surface__editor:focus) > .canvas-node__frame { border-color: var(--color-stroke-active); }
 .canvas-reference-bar { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; width: 100%; padding-bottom: 4px; user-select: none; }
 .canvas-reference-bar__menu, .canvas-reference-bar__item { position: relative; flex-shrink: 0; }
 .canvas-reference-bar__menu { transition: transform 300ms ease, opacity 300ms ease; transform-origin: top left; }
@@ -189,8 +196,9 @@ button.canvas-reference-bar__slot:disabled { opacity: 0.4; cursor: not-allowed; 
 .canvas-node-add-menu button:hover { background: var(--color-white-5); color: var(--color-text-primary); }
 .canvas-node-add-menu, .canvas-node-add-menu * { -webkit-user-select: none; user-select: none; }
 
-/* 2px 描边覆盖原1px边框并向外延伸1px，不挤压正文或改变节点测量尺寸。 */
-.canvas-node.canvas-node--selected > .canvas-node__frame:not([data-state='editing']) { border-color: transparent; outline: 2px solid var(--color-white-40); outline-offset: -1px; }
+/* 激活态（选中或编辑中）统一使用 2px 白色描边，覆盖原1px边框并向外延伸1px，不挤压正文或改变节点测量尺寸。 */
+.canvas-node.canvas-node--selected > .canvas-node__frame,
+.canvas-node__frame[data-state='editing'] { border-color: transparent; outline: 2px solid var(--color-white-40); outline-offset: -1px; }
 
 /* 引用主操作禁用不禁用媒体刷新；保留原槽位的焦点和悬停反馈。 */
 [role="button"].canvas-reference-bar__slot { cursor: pointer; }

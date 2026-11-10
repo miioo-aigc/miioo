@@ -31,7 +31,8 @@ export default function SharedCanvasNode({ data }) {
     content = <div ref={textRef} data-text-preview="true" className="canvas-node__text-content nodrag nopan" style={{ pointerEvents: 'auto', overscrollBehavior: 'contain' }} aria-label="文本内容">{text(data.content) ? <CanvasTextResult content={data.content} /> : <span className="canvas-node__text-placeholder">暂无内容</span>}</div>;
   } else if (unavailable) content = missing;
   else if (mediaType === 'image' && image) content = <AsyncImagePreview plain src={image} fallbackSrc={safeCanvasMediaUrl(asset.original_url)} imageStyle={{ objectFit: 'contain' }} alt={text(asset.title) || '画布图片'} draggable={false} imageClassName="canvas-node__media" />;
-  else if (mediaType === 'video' && preview) content = <CanvasVideoPlayer key={preview} src={preview} poster={poster} />;
+  // 分享页没有选中态，视频直接进入激活态：自动播放并常驻控制条，由浏览者自行控制进度和声音。
+  else if (mediaType === 'video' && preview) content = <CanvasVideoPlayer key={preview} src={preview} poster={poster} active />;
   else if (mediaType === 'audio' && preview) content = <CanvasAudioPlayer key={preview} url={preview} name={asset.title} transcript={text(data.transcript)} />;
   else content = missing;
   return (

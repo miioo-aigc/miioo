@@ -11,7 +11,17 @@ function formatTime(seconds) {
   return [Math.floor(value / 3600), Math.floor(value / 60) % 60, value % 60].map((part) => String(part).padStart(2, '0')).join(':');
 }
 
-export default function CanvasAudioPlayer({ url, name, transcript, compact = false, onReady, onError }) {
+/** 只显示总时长：不足一小时用 mm:ss，超过一小时用 h:mm:ss，元数据未就绪用 --:--。 */
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
+  const value = Math.floor(seconds);
+  const minutes = Math.floor(value / 60);
+  const rest = value % 60;
+  if (minutes >= 60) return [Math.floor(minutes / 60), minutes % 60, rest].map((part) => String(part).padStart(2, '0')).join(':');
+  return String(minutes).padStart(2, '0') + ':' + String(rest).padStart(2, '0');
+}
+
+export default function CanvasAudioPlayer({ url, name, transcript, compact = false, timeMode = 'progress', onReady, onError }) {
   const audioRef = useRef(null);
   const media = useMediaPlayback(audioRef, url, { timeoutRetries: 3 });
   const playing = media.status === 'playing';
@@ -35,13 +45,13 @@ export default function CanvasAudioPlayer({ url, name, transcript, compact = fal
       onLoadedMetadata={(event) => { setDuration(event.currentTarget.duration); onReady?.(); }}
       onError={onError}
       onDurationChange={(event) => setDuration(event.currentTarget.duration)}
-      onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+      onTimeUpdate={(event) => { if (timeMode !== 'duration') setCurrentTime(event.currentTarget.currentTime); }}
  />}
     <div className="canvas-node__audio-controls">
       <button type="button" className="canvas-node__play nodrag nopan" onClick={togglePlayback} disabled={!url} aria-label={actionLabel} title={actionLabel}>
         {loading ? <LoaderCircle size={16} className="animate-spin" /> : failed ? <RotateCw size={16} /> : playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
       </button>
-      <span className="canvas-node__audio-time">{ `${formatTime(currentTime)}/${formatTime(duration)}`}</span>
+      <span className="canvas-node__audio-time">{ timeMode === 'duration' ? formatDuration(duration) : `${formatTime(currentTime)}/${formatTime(duration)}` }</span>
     </div>
     {transcript && <div className="canvas-node__transcript nodrag nopan nowheel">
       <CreationDubbingPromptPreview prompt={transcript} style={{ color: 'inherit', fontSize: 'inherit', lineHeight: 'inherit' }} />

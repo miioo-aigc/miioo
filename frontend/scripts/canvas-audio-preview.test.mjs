@@ -9,3 +9,10 @@ test('音频台词复用创作页高级标记预览，保留字号和滚动容�
   assert.match(source, /<CreationDubbingPromptPreview\s+prompt=\{transcript\}/);
   assert.match(source, /fontSize: 'inherit', lineHeight: 'inherit'/);
 });
+
+test('音频只显示总时长模式复用同一播放器，不显示当前进度', () => {
+  const source = readFileSync(new URL('../src/components/canvas/CanvasAudioPlayer.jsx', import.meta.url), 'utf8');
+  assert.match(source, /function formatDuration\(seconds\)/);
+  assert.match(source, /timeMode === 'duration' \? formatDuration\(duration\)/);
+  assert.match(source, /timeMode = 'progress'/);
+});

@@ -2,10 +2,11 @@
 import { useRef, useState } from 'react';
 import { getCanvasImagePreview, getCanvasVideoPoster } from './CanvasMediaSources';
 import StoryboardMediaPreview from '../storyboard/StoryboardMediaPreview';
-import { Plus, Music2, FileText } from 'lucide-react';
+import { Plus, FileText } from 'lucide-react';
 import { ReferenceRemoveButton, Tooltip } from '../ui';
 import CreationUploadMenu from '../creation/CreationUploadMenu';
 import { getCanvasMediaAccept, getCanvasMediaFileType } from './CanvasLocalMedia';
+import CanvasNodeIcon from './CanvasNodeIcon';
 
 export default function CanvasReferenceBar({ nodeType = 'image', references = [], mode, collapsed = false, insertableIds = [], onInsert, onAdd, onRemove }) {
   const [open, setOpen] = useState(false);
@@ -36,7 +37,7 @@ export default function CanvasReferenceBar({ nodeType = 'image', references = []
           onKeyDown={event => { if (event.target === event.currentTarget && canInsert && ['Enter', ' '].includes(event.key)) { event.preventDefault(); onInsert(reference.id); } }}
           onClick={() => { if (canInsert) onInsert(reference.id); }}>
           {textReference && <FileText size={20} aria-label="参考文本" />}
-          {reference.asset && (reference.asset.asset_type === 'audio' ? <Music2 size={20} aria-label="参考音频" />
+          {reference.asset && (reference.asset.asset_type === 'audio' ? <CanvasNodeIcon nodeType="audio" size={20} />
             : <StoryboardMediaPreview media={{ ...reference.asset, media_type: reference.asset.asset_type, media_preview_url: reference.asset.asset_type === 'video' ? getCanvasVideoPoster(reference.asset) : getCanvasImagePreview(reference.asset) }} />)}
           {frame && !textReference && <span className="canvas-reference-bar__label">{label}</span>}
         </div>

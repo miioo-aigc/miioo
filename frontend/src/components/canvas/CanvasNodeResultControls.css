@@ -9,7 +9,6 @@
 .canvas-node-replace__menu { z-index: 60 !important; }
 /* 结果入口移入卡片后，仍允许在已受理的生成期间浏览历史。 */
 .canvas-node .canvas-node__frame[aria-busy='true'] > .canvas-node-result-controls { visibility: visible; pointer-events: auto; }
-.canvas-node-result-controls__updated { padding: 2px 6px; border: 1px solid var(--color-tag-border); border-radius: var(--radius-small); background: var(--color-tag-bg-yellow); color: var(--color-tag-text-yellow); font-size: var(--font-size-12); line-height: 16px; overflow-wrap: anywhere; }
 .canvas-node__interaction-guard { display: contents; }
 .canvas-node__result-body { display: contents; }
 .canvas-node__result-body[aria-hidden='true'] { visibility: hidden; pointer-events: none; }

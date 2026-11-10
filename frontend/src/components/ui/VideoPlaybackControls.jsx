@@ -1,4 +1,5 @@
 import { Pause, Play } from 'lucide-react';
+import VideoCircleBadge from './VideoCircleBadge';
 
 export default function VideoPlaybackControls({ isPlaying, feedbackVisible, onToggle, onToggleKeyDown, bottomInset = 48 }) {
   return <>
@@ -11,9 +12,7 @@ export default function VideoPlaybackControls({ isPlaying, feedbackVisible, onTo
       onKeyDown={onToggleKeyDown}
     />
     {feedbackVisible && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }} aria-hidden="true">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '56px', height: '56px', borderRadius: '50%', backdropFilter: 'blur(8px)', background: '#FFFFFF1F', border: '1px solid #FFFFFF33', color: '#FFFFFF' }}>
-        {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
-      </div>
+      <VideoCircleBadge size={56}>{isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}</VideoCircleBadge>
     </div>}
   </>;
 }

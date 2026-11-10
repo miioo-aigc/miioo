@@ -41,32 +41,33 @@ test('缺少尺寸时使用缩略图或封面探测，不额外读取原图和�
   assert.deepEqual(requests, ['/thumb.jpg', '/thumb.jpg']);
 });
 
-test('视频悬停延迟结束后才挂载地址，快速移出取消加载', async () => {
+test('视频未激活不请求地址，激活后才挂载地址并播放', () => {
   const source = readFileSync(new URL('../src/components/canvas/CanvasVideoPlayer.jsx', import.meta.url), 'utf8');
   const body = source.slice(source.indexOf('  const videoRef'), source.indexOf('  return <div'));
-  let pending;
   let loads = 0;
   let plays = 0;
   const video = { getAttribute: () => video.src, load: () => loads++, play: async () => plays++, pause() {} };
-  const factory = vm.runInNewContext('(function(src, poster) {' + body + '; return { start, stop, videoRef }; })', {
-    useRef: (current) => ({ current }), useEffect() {}, useMediaPlayback: ref => ({ pause: () => ref.current?.pause(), play: () => ref.current?.play() }), document: { querySelector: () => null },
-    setTimeout: (callback) => { pending = callback; }, clearTimeout: () => { pending = undefined; },
+  const createPlayer = (effects) => vm.runInNewContext('(function(src, poster, active) {' + body + '; return { videoRef }; })', {
+    useRef: (current) => ({ current }), useEffect: (effect) => { effects.push(effect); },
+    useMediaPlayback: ref => ({ pause: () => ref.current?.pause(), play: (options) => ref.current?.play(options) }),
+    document: { addEventListener: () => {}, removeEventListener: () => {} },
+    window: { addEventListener: () => {}, removeEventListener: () => {} },
+    hasBlockingDialog: () => false,
   });
-  const player = factory('/original.mp4');
-  player.videoRef.current = video;
+  const inactiveEffects = [];
+  const inactive = createPlayer(inactiveEffects)('/original.mp4', undefined, false);
+  inactive.videoRef.current = video;
+  inactiveEffects[0]();
   assert.equal(video.src, undefined);
-  player.start({ buttons: 0 });
   assert.equal(loads, 0);
-  player.stop();
-  assert.equal(pending, undefined);
-  player.start({ buttons: 0 });
-  await pending();
+  assert.equal(plays, 0);
+  const activeEffects = [];
+  const active = createPlayer(activeEffects)('/original.mp4', undefined, true);
+  active.videoRef.current = video;
+  activeEffects[0]();
   assert.equal(video.src, '/original.mp4');
   assert.equal(loads, 1);
   assert.equal(plays, 1);
-  player.start({ buttons: 0 });
-  await pending();
-  assert.equal(loads, 1);
 });
 
 test('详情优先原图及文件地址，卡片继续使用缩略图', () => {

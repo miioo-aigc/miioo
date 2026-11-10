@@ -1,6 +1,8 @@
 /**
  * @file CanvasPage.jsx
  * @structure-index
+ *   2026-11-09：空白右键与展开组右键的「新建节点」二级菜单新增本地上传、从资产库选择，复用双击菜单入口；右键组时新素材归入该组。
+ *   2026-11-09：参考能力未加载时按「未知」处理，连线不标红、不拦截，能力回填后再按真实上限判定。
  *   2026-11-06：所有节点统一写回提示词及快照，恢复和导入节点草稿随画布保存。
  *   2026-11-04：左下角节点导航器支持展开浏览、搜索筛选；定位节点时选中并居中，侧拉窗保持展开。
  *   2026-11-04：CanvasSelectionInteraction 统一多选范围框、Shift加选和Ctrl/Command减选；剩一张恢复单选。
@@ -51,7 +53,7 @@
  *   2026-09-28：接入捏合、框选、修饰键多选和真正组合；组合交互与几何计算独立维护。
  *   2026-09-28：接入历史（2026-10-21 上限调整为50步）及5任务并发；拖动和删除按事务记录，发送取消延迟选中。
  *   2026-09-29：触控板双指捏合缩放，双指自由方向滚动画布；输入区域继续隔离画布滚动。
- *   2026-09-29：图片参考按模型 max_reference_images 能力允许图片连线；未声明能力或达到上限时拒绝并提示。
+ *   2026-09-29：图片参考按模型 max_reference_images 能力允许图片连线；达到上限时拒绝并提示（2026-11-09 起未声明能力不再拒绝）。
  *   2026-09-30：左侧端口支持反向拖拽，为当前节点添加上游节点；复用统一连接校验和新增节点菜单。
  *   2026-09-30：反向连线预览改用画布容器坐标，补充指针取消、失焦、Esc 和鼠标左键生命周期清理。
  *   2026-10-08：移除空画布中央四个操作按钮，保留空态提示与底部工具栏。
@@ -470,6 +472,12 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       ? { ...item, data: { ...item.data, generationMode } }
       : item));
   }, [setNodes]);
+  // 模型选择随节点持久化，但回调本身是临时字段，加载后必须按 nodeId 重新注入。
+  const handleNodeModelChange = useCallback((nodeId, model) => {
+    setNodes((current) => current.map((item) => item.id === nodeId
+      ? { ...item, data: { ...item.data, model } }
+      : item));
+  }, [setNodes]);
   const handleNodeAssetChange = useCallback((nodeId, asset, options = {}) => {
     if (asset == null) return;
     const assets = Array.isArray(asset) ? asset : [asset];
@@ -487,7 +495,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const addNode = useCallback((type, position, connection = null, asset = null, parentId) => {
     const node = createCanvasNode(type, position || { x: 160 + (nodes.length % 3) * 280, y: 160 + Math.floor(nodes.length / 3) * 300 });
     node.data.onPromptChange = (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item));
-    node.data.onModelChange = (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item));
+    node.data.onModelChange = handleNodeModelChange;
     node.data.onImageReferenceLimitChange = handleImageReferenceLimitChange;
     node.data.onVideoCapabilitiesChange = handleVideoCapabilitiesChange;
     node.data.onGenerationModeChange = handleGenerationModeChange;
@@ -519,19 +527,49 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     }
     setNodeMenu(null);
     setPendingConnection(null);
-  }, [cancelPendingNodeClick, commitUserText, generateAudio, generateImage, generateText, generateVideo, handleGenerationModeChange, handleImageReferenceLimitChange, handleUnsupported, handleVideoCapabilitiesChange, nodes.length, referenceGraph, setNodes]);
-  const handleToolbarAddNode = useCallback((type) => {
-    if (loading || error || !flowInstance || !canvasContainerRef.current) return;
+  }, [cancelPendingNodeClick, commitUserText, generateAudio, generateImage, generateText, generateVideo, handleGenerationModeChange, handleImageReferenceLimitChange, handleNodeModelChange, handleUnsupported, handleVideoCapabilitiesChange, nodes.length, referenceGraph, setNodes]);
+  const getToolbarFlowPosition = useCallback(() => {
+    if (!flowInstance || !canvasContainerRef.current) return null;
     const rect = canvasContainerRef.current.getBoundingClientRect();
     const center = flowInstance.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
     const visibleNodes = getCanvasStackPresentation(history.getSnapshot().nodes, []).nodes;
+    return getCanvasToolbarNodePosition(visibleNodes, center, getCanvasAssetNodeSize(null));
+  }, [flowInstance, history]);
+  const handleToolbarAddNode = useCallback((type) => {
+    if (loading || error) return;
+    const position = getToolbarFlowPosition();
+    if (!position) return;
     const size = getCanvasAssetNodeSize(null);
-    const position = getCanvasToolbarNodePosition(visibleNodes, center, size);
     cancelPendingClicks();
     addNode(type, position);
     flowInstance.setCenter(position.x + size.width / 2, position.y + size.height / 2,
       { zoom: flowInstance.getZoom(), duration: 300 });
-  }, [addNode, cancelPendingClicks, error, flowInstance, history, loading]);
+  }, [addNode, cancelPendingClicks, error, flowInstance, getToolbarFlowPosition, loading]);
+  const handleToolbarUpload = useCallback(() => {
+    if (loading || error) return;
+    const flowPosition = getToolbarFlowPosition();
+    if (!flowPosition) return;
+    menuUploadTargetRef.current = { flowPosition, session: saveSessionRef.current };
+    menuUploadInputRef.current?.click();
+  }, [error, getToolbarFlowPosition, loading]);
+  const handleToolbarSelectAssets = useCallback(() => {
+    if (loading || error) return;
+    const flowPosition = getToolbarFlowPosition();
+    if (!flowPosition) return;
+    setAssetTarget({ flowPosition });
+    setAssetPickerOpen(true);
+  }, [error, getToolbarFlowPosition, loading]);
+  // 双击空白菜单与右键菜单共用入口；右键展开组时带上组归属，素材直接落进该组。
+  const openMenuUpload = useCallback((target) => {
+    if (!target?.flowPosition) return;
+    menuUploadTargetRef.current = { flowPosition: target.flowPosition, parentId: target.parentId, session: saveSessionRef.current };
+    menuUploadInputRef.current?.click();
+  }, []);
+  const openMenuAssetPicker = useCallback((target) => {
+    if (!target?.flowPosition) return;
+    setAssetTarget({ flowPosition: target.flowPosition, parentId: target.parentId });
+    setAssetPickerOpen(true);
+  }, []);
   const importAssets = useCallback(async (assets, target = null) => {
     const owner = saveSessionRef.current;
     const session = getAuthSessionGeneration();
@@ -611,7 +649,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
           const offset = { x: target.flowPosition.x - imports[0].position.x, y: target.flowPosition.y - imports[0].position.y };
           imports.forEach(item => { item.position = { x: item.position.x + offset.x, y: item.position.y + offset.y }; });
         }
-        imports.forEach(({ type, position, asset }) => addNode(type, position, null, asset));
+        imports.forEach(({ type, position, asset }) => addNode(type, position, null, asset, target?.parentId));
         if (valid.length > 1) importBounds = getCanvasImportBounds(imports.map((item) => ({ ...item.position, ...getCanvasAssetNodeSize(item.asset) })));
       }
       if (valid.length > 1) setNodes((items) => preserveCanvasImportPanels(current, items));
@@ -941,7 +979,9 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       return;
     }
     if (!source || connectingHandleType !== 'source' || target) {
-      if (source && target && sourceNode?.type === 'image' && target.type === 'image') {
+      // 能力未加载时 imageReferenceLimit 为 undefined（未知）：不误报「不支持图片参考」。
+      if (source && target && sourceNode?.type === 'image' && target.type === 'image'
+        && Number.isInteger(target.data?.imageReferenceLimit)) {
         showGlobalToast(target.data?.imageReferenceLimit > 0
           ? `当前图片模型最多支持 ${target.data.imageReferenceLimit} 张参考图，无法继续连接`
           : '当前图片模型不支持图片参考，无法连接图片节点', 'error');
@@ -1033,11 +1073,10 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
         onDragOver={handleCanvasDragOver} onDrop={handleCanvasDrop}
         onWheelCapture={handleCanvasWheelCapture}
         onMove={(_, nextViewport) => { setViewport(nextViewport); setViewportZoom(nextViewport.zoom); }}
-        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, upstreamProtected: getCanvasOperationLocks(nodes).upstreamProtected.has(node.id), upstreamUpdated: upstreamUpdatedIds.has(node.id), onSelectResult, onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)), onAssetChange: handleNodeAssetChange, onSelectAsset: handleNodeSelectAsset, viewportZoom, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
+        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, upstreamProtected: getCanvasOperationLocks(nodes).upstreamProtected.has(node.id), upstreamUpdated: upstreamUpdatedIds.has(node.id), onSelectResult, onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)), onModelChange: handleNodeModelChange, onAssetChange: handleNodeAssetChange, onSelectAsset: handleNodeSelectAsset, viewportZoom, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
           onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); },
           onEditContent: (id) => { clearPendingConnection(); setNodeMenu(null); nodeActions.closeMenu(); textEditor.open(id); },
           onContentChange: (nodeId, content) => commitUserText(nodeId, content),
-          onModelChange: (nodeId, model) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, model } } : item)),
           onCancelPendingClick: cancelPendingNodeClick, onEnterEditing: grouping.enterNode } : node.type === 'image' ? { onGenerate: generateImage, onImageEdit: imageEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); }, onPreview: (asset) => setMediaPreview({ asset, nodeType: node.type }) } : node.type === 'video' ? { onGenerate: generateVideo, onVideoEdit: videoEdits.open, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); }, onPreview: (asset) => setMediaPreview({ asset, nodeType: node.type }) } : node.type === 'audio' ? { onGenerate: generateAudio, onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); } } : {}) } }))} edges={presentation.edges} edgeTypes={CANVAS_EDGE_TYPES} onEdgesChange={referenceGraph.onEdgesChange}
         deleteKeyCode={null}
         onPaneContextMenu={(event) => { clearPendingConnection(); setNodeMenu(null); nodeActions.onPaneContextMenu(event); }}
@@ -1091,14 +1130,12 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       {upstreamConnection && <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full" aria-hidden="true"><line x1={upstreamConnection.start?.x ?? upstreamConnection.end.x} y1={upstreamConnection.start?.y ?? upstreamConnection.end.y} x2={upstreamConnection.end.x} y2={upstreamConnection.end.y} stroke="var(--color-brand-main)" strokeWidth="2" /></svg>}
       {(nodeMenu || pendingConnection) && <div className="pointer-events-none absolute inset-0 z-30"><div className="pointer-events-auto absolute" style={{ left: (pendingConnection || nodeMenu).screen.left, top: (pendingConnection || nodeMenu).screen.top }}><CanvasNodeAddMenu
         onUpload={nodeMenu && !pendingConnection ? () => {
-          menuUploadTargetRef.current = { flowPosition: nodeMenu.flowPosition, session: saveSessionRef.current };
           setNodeMenu(null);
-          menuUploadInputRef.current?.click();
+          openMenuUpload({ flowPosition: nodeMenu.flowPosition });
         } : undefined}
         onSelectAssets={nodeMenu && !pendingConnection ? () => {
-          setAssetTarget({ flowPosition: nodeMenu.flowPosition });
           setNodeMenu(null);
-          setAssetPickerOpen(true);
+          openMenuAssetPicker({ flowPosition: nodeMenu.flowPosition });
         } : undefined}
         items={pendingConnection ? pendingMenuItems : CANVAS_NODE_MENU_ITEMS} onAddNode={(type) => pendingConnection
         ? addNode(type, pendingConnection.flowPosition, pendingConnection)
@@ -1117,6 +1154,8 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       onMiniMapChange={setShowMiniMap}
       onOpenSearch={() => { nodeActions.closeMenu(); setNodeMenu(null); search.show(); }}
       onAddNode={handleToolbarAddNode}
+      onUpload={handleToolbarUpload}
+      onSelectAssets={handleToolbarSelectAssets}
 
       onShare={canvasFiles.share}
       canUndo={history.canUndo}
@@ -1131,7 +1170,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       event.target.value = '';
       const target = menuUploadTargetRef.current;
       menuUploadTargetRef.current = null;
-      if (files.length && target?.session === saveSessionRef.current) uploadFiles(files, { flowPosition: target.flowPosition });
+      if (files.length && target?.session === saveSessionRef.current) uploadFiles(files, { flowPosition: target.flowPosition, parentId: target.parentId });
     }} />
     <AssetPickerModal
       open={assetPickerOpen}
@@ -1154,6 +1193,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     {textEditor.session && <CanvasTextEditor key={textEditor.session.id} {...textEditor.session} onCancel={textEditor.close} onSave={textEditor.save} />}
     <CanvasNodeActionOverlays menu={nodeActions.menu} dialog={nodeActions.dialog} nodes={nodes}
       canUndo={history.canUndo} canRedo={history.canRedo} onAddNode={addNode} canPaste={nodeActions.clipboard.length > 0} onAction={nodeActions.execute} onCloseMenu={nodeActions.closeMenu}
+      onUpload={openMenuUpload} onSelectAssets={openMenuAssetPicker}
       onCloseDialog={nodeActions.closeDialog} onNameChange={nodeActions.setName} onConfirm={nodeActions.confirm} />
   </div>;
 }

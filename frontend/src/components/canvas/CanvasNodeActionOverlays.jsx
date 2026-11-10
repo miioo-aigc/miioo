@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { Copy, CopyPlus, ClipboardPaste, Group, Ungroup, Layers, Layers2, Trash2, LogOut, FolderInput, Plus, Undo2, Redo2, Download } from 'lucide-react';
+import { Copy, CopyPlus, ClipboardPaste, Group, Ungroup, Layers, Layers2, Trash2, LogOut, FolderInput, FolderOpen, Plus, Undo2, Redo2, Download, Upload } from 'lucide-react';
 import { DropdownMenu } from '../ui';
 import ConfirmDialog from '../ConfirmDialog';
 import { canMoveCanvasNodesInto } from './CanvasGroupTransfer';
@@ -7,7 +7,7 @@ import CanvasNodeIcon from './CanvasNodeIcon';
 import { CANVAS_NODE_MENU_ITEMS } from './CanvasNodeAddMenuConfig';
 import { canvasDescendantIds } from './CanvasNodeActions';
 
-export default function CanvasNodeActionOverlays({ menu, dialog, nodes, canPaste, canUndo, canRedo, onAction, onCloseMenu, onCloseDialog, onConfirm, onAddNode }) {
+export default function CanvasNodeActionOverlays({ menu, dialog, nodes, canPaste, canUndo, canRedo, onAction, onCloseMenu, onCloseDialog, onConfirm, onAddNode, onUpload, onSelectAssets }) {
   const node = nodes.find((item) => item.id === menu?.id);
   const selected = nodes.filter((item) => item.selected);
   const groups = nodes.filter((item) => item.type === 'canvasGroup');
@@ -24,12 +24,19 @@ export default function CanvasNodeActionOverlays({ menu, dialog, nodes, canPaste
     label: <span className="flex items-center justify-between gap-[16px]"><span>{label}</span><span className="shrink-0 text-[12px] text-text-hint">{shortcut}</span></span>,
     icon: <Icon size={16} />, disabled, danger: key === 'clear', dangerOnHover: key === 'delete', onClick: () => onAction(key),
   });
+  // 空白处右键不带组归属；展开组右键把新素材归入当前组，与菜单里的四类新建节点一致。
+  const createNodeTarget = { flowPosition: menu?.flowPosition, parentId: node?.type === 'canvasGroup' ? node.id : undefined };
   const createNode = {
     key: 'create', label: '新建节点', icon: <Plus size={16} />,
-    items: CANVAS_NODE_MENU_ITEMS.map(({ value, label }) => ({
-      key: value, label, icon: <CanvasNodeIcon nodeType={value} />,
-      onClick: () => onAddNode(value, menu.flowPosition, null, null, node?.type === 'canvasGroup' ? node.id : undefined),
-    })),
+    items: [
+      ...CANVAS_NODE_MENU_ITEMS.map(({ value, label }) => ({
+        key: value, label, icon: <CanvasNodeIcon nodeType={value} />,
+        onClick: () => onAddNode(value, menu.flowPosition, null, null, createNodeTarget.parentId),
+      })),
+      ...(onUpload || onSelectAssets ? [{ key: 'create-divider', type: 'separator' }] : []),
+      ...(onUpload ? [{ key: 'create-upload', label: '本地上传', icon: <Upload size={16} />, onClick: () => onUpload(createNodeTarget) }] : []),
+      ...(onSelectAssets ? [{ key: 'create-assets', label: '从资产库选择', icon: <FolderOpen size={16} />, onClick: () => onSelectAssets(createNodeTarget) }] : []),
+    ],
   };
   const downloadIds = canvasDescendantIds(nodes, selected.map((item) => item.id));
   const downloadable = nodes.some((item) => downloadIds.has(item.id) && item.type !== 'canvasGroup' && item.type !== 'text' && item.data?.asset?.url);

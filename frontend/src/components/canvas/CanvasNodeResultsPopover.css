@@ -30,17 +30,20 @@
 .canvas-results-popover__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .canvas-results-popover__list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .canvas-results-popover__result { min-width: 0; overflow: hidden; border: 1px solid var(--color-stroke-normal); border-radius: var(--radius-medium); }
+.canvas-results-popover__result:hover { border-color: var(--color-stroke-accent); }
 .canvas-results-popover__result[data-current] { border-color: var(--color-stroke-active); }
-.canvas-results-popover__result { position: relative; }
+.canvas-results-popover__result { position: relative; transition: border-color 0.15s ease; }
 .canvas-results-popover__result[data-selectable] { cursor: pointer; }
 .canvas-results-popover__result :is(.canvas-node__transcript, .canvas-results-popover__text) { cursor: text; }
 .canvas-results-popover__selection { position: absolute; top: 8px; right: 8px; z-index: 2; }
 .canvas-results-popover__media { position: relative; aspect-ratio: 1 / 1; background: var(--color-surface-card); }
 .canvas-results-popover__media audio { display: none; }
-.canvas-results-popover .canvas-node__audio--compact { position: absolute; inset: 0; height: 100%; min-width: 0; padding: 8px; gap: 4px; }
+.canvas-results-popover__media video { pointer-events: none; }
+.canvas-results-popover .canvas-node__audio--compact { position: absolute; inset: 0; height: 100%; min-width: 0; padding: 8px; gap: 8px; }
 .canvas-results-popover .canvas-node__audio-controls { gap: 6px; }
-.canvas-results-popover .canvas-node__play { width: 32px; height: 32px; flex: 0 0 32px; border: none; border-radius: 50%; background: var(--color-brand-main); color: #fff; padding: 0; box-shadow: none; }
-.canvas-results-popover .canvas-node__audio-time { min-width: 0; overflow-wrap: anywhere; font-size: 10px; line-height: 12px; }
+.canvas-results-popover .canvas-node__play { width: 24px; height: 24px; flex: 0 0 24px; padding: 0; }
+.canvas-results-popover .canvas-node__play svg { width: 10px; height: 10px; }
+.canvas-results-popover .canvas-node__audio-time { min-width: 0; white-space: nowrap; font-size: 12px; line-height: 16px; }
 .canvas-results-popover .canvas-node__transcript { font-size: 12px; line-height: 16px; }
 .canvas-results-popover .canvas-node__waveform { height: 16px; min-height: 16px; flex-shrink: 0; }
 .canvas-results-popover .canvas-node__waveform i { flex: 1 1 0; min-width: 0; }

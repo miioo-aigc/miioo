@@ -1,16 +1,64 @@
 # 组件重构盘点基线
 
+## 2026-11-09 拖线新建节点时连线闪红修复：能力未加载按「未知」处理（Suzy 手动验收通过）
+
+从已有节点拖线到空白处释放、在菜单里新建图片/视频节点后，新建节点会先按直连素材保留关系；渲染红线与否取决于目标节点上的能力字段（图片 `imageReferenceLimit`、视频 `videoCapabilities`），而这两个字段要等模型目录请求返回后由 CanvasNodeShell 回填。此前 CanvasImageGeneration / CanvasVideoGeneration 把「能力未加载」与「真实上限 0」都折算成 0，导致新节点在回填前的整个网络往返窗口内被判为溢出、连线闪红。
+
+本次把两种状态拆开：`imageReferenceLimit(node)`、`getImageReferenceLimit(capabilities)`、视频侧 `limit(value)` 在非法或缺失时返回 `undefined`（未知），`getCanvasImageReferenceStatus`、`getCanvasVideoReferenceStatus`、`countCanvasVideoMedia`、`validateVideoAddition`、`canConnectCanvasImage`、`canConnectCanvasVideo`、`getCanvasImageConnectionError`、CanvasReferenceBatch 的图片批次名额、CanvasPage 的连线失败轻提示统一改为「未知不标红、不判不合法、不拦截」，等能力回填后按真实上限走原有判定。真实上限为 0 的模型（如文生视频的图片参考为 0）仍会照旧标红并拒绝；空对象 `{}` 视为未声明，同样按未知处理。
+
+同步更新 canvas-image-generation、canvas-new-connection、canvas-video-generation 三个测试文件的断言口径，新增「真实上限为 0 仍标红拦截」「未知不标红不拦截」回归。定向 86 项测试、定向 eslint、构建、架构及差异检查通过；`frontend/docs` 之外的既有失败（canvas-image-toolbar、canvas-node、canvas-groups、canvas-audio-composer、canvas-development 的 `onCreateProject` 源匹配）与本次改动无关。Suzy 于 2026-11-09 确认手动验收通过，未自动打开浏览器。
+
+## 2026-11-09 画布右键「新建节点」增加本地上传与资产库入口（Suzy 手动验收通过）
+
+CanvasNodeActionOverlays 只负责组装菜单：createNode.items 在 CANVAS_NODE_MENU_ITEMS 的四类节点之后追加一条分隔线与【本地上传】【从资产库选择】，两者仅在对应用回调存在时出现；同时构造 createNodeTarget，携带 menu.flowPosition，并在菜单来自展开组（node.type === 'canvasGroup'）时带上该组 id 作为 parentId。CanvasPage 把双击菜单与右键菜单的上传、资产库入口收敛到 openMenuUpload / openMenuAssetPicker，并透传 parentId：上传经 menuUploadTargetRef 走隐藏 input → uploadFiles(files, { flowPosition, parentId })；资产库选择走 setAssetTarget({ flowPosition, parentId })；导入的无锚点分支按 parentId 归入组。未新增组件或接口，沿用既有上传/资产库链路。
+
+## 2026-11-09 视频卡片中央常驻播放按钮，播放后收起（Suzy 手动验收通过）
+
+CanvasVideoPlayer 在画面上方居中放一个 32×32px 的常驻播放按钮，作为「这是视频」的标识：未播放时常驻显示，不随鼠标移入移出消失；`media.status === 'playing'` 时收起，暂停或播完重新出现。按钮底座抽成 `ui/VideoCircleBadge.jsx`（半透明毛玻璃圆 `#FFFFFF1F` + 1px `#FFFFFF33` 描边 + `blur(8px)` + 白色图标，尺寸由 `size` 传入），创作视频详情弹窗的播放反馈块改为复用同一组件（size 56），画布卡片传 size 32，形成单一视觉来源。点击按钮沿用真实点击手势发起播放（绕开自动播放策略拦截）并继续冒泡让卡片进入激活态；加载中转圈、失败可点击重载。同期彻底删除此前「悬停播放/移出暂停」路径（`onPointerEnter`/`onPointerLeave`、延迟定时器、`hovered`/`focused` 状态均已移除），画面上不再叠加任何文字状态层（移除 MediaLoadStatus 引用），播放进度只由用户操作原生控制条决定。同步移除拖动层的显隐联动，改为仅在原生控制条上方让位（`.canvas-video__drag-surface[data-controls='true']` 设 `bottom: 48px`），控制条区域独立接收指针事件。CanvasVideoPlayer 文件头结构索引与日期记录已同步。canvas-video-player 8 项测试、canvas-media-sources 测试、定向 eslint、构建、架构及差异检查通过。Suzy 于 2026-11-09 确认手动验收通过，未自动打开浏览器。
+
+## 2026-11-09 「移动到」弹窗圆角调整为16px（待手动验收）
+
+CanvasLibraryDialog 新增可选 `radiusClass` 参数（默认 `rounded-[8px]`），把基础弹窗外框圆角从写死改为可覆盖；CanvasLibraryDestinationDialog（aria-label「移动到」）传入 `rounded-[16px]`，其余复用该基础组件的弹窗（重命名、新增文件夹、确认部分下载、确认删除等）仍为8px。高度继续由 `fixedHeight` 提供 520px。定向 eslint、canvas-asset-library 17 项测试与构建通过，未自动打开浏览器。
+
+## 2026-11-09 音频图标统一到音频节点标题图案（待手动验收）
+
+CanvasReferenceBar 与 CanvasGroupStackPreview 移除 `lucide-react` 的 Music2 依赖，改用 `./CanvasNodeIcon` 并传 `nodeType="audio"`，使音频参考卡片（size 20）与组合堆叠音频成员（size 28）复用音频节点标题的同一图案，形成单一图标来源。颜色未改动：图标为 `stroke="currentColor"`，参考槽沿用槽位色、堆叠预览沿用 `.canvas-stack-preview__card` 的 `--color-text-hint`。CanvasNodeIcon 组件本身未改动，仍被节点标题、添加菜单、导航、搜索结果行等复用。SeedanceFolderCard 的音频图标仍是 Music2，未纳入本次范围，与前端口径的差异在此登记。定向测试、eslint、构建、架构及差异检查通过，未自动打开浏览器。
+
+## 2026-11-09 修复高级配音停顿/语气词菜单飘出输入框（Suzy 手动验收通过）
+
+新增纯函数模块 DubbingInlineMenuPosition（isDegenerateRect / resolveInlineMenuAnchorRect / resolveInlineMenuOffset），useCreationPromptInteraction 的 positionInlineMenu 改为调用它。空 contentEditable 的折叠光标没有客户端矩形、boundingRect 退化为 (0,0,0,0) 时，锚点回退到文本区左上角光标行（读编辑器 padding 与行高），菜单落在该行下方 8px，空间不足翻到上方并夹在视口内；有内容时保持原行为。停顿与语气词共用该入口，情绪菜单因需先选中文本未受影响。新增 scripts/dubbing-inline-menu-position.test.mjs 5 项测试；定向 eslint、script 回归、构建、架构及差异检查通过。Suzy 于 2026-11-09 确认手动验收通过，未自动打开浏览器。
+
+## 2026-11-09 激活节点上游连线高亮，仅 1 跳（Suzy 手动验收通过）
+
+UseCanvasReferences 新增 `activeUpstreamEdgeIds`，由 CanvasEdgeHighlight.js 的纯函数 `getActiveUpstreamEdgeIds(nodes, edges)` 计算：取所有激活节点（`selected`，与卡片白色描边判定一致，`data.editing` 也算），筛出 `target` 落在其中的连线，仅 1 跳、不扩散祖先链。最终 `highlighted` 改为「悬停链高亮 ∪ 激活上游高亮」，两种来源互不覆盖；渲染仍走 CanvasConnectionEdge 既有的白色描边（`--color-white-50`，`data.overflow` 时跳过）。新增 scripts/canvas-edge-highlight.test.mjs 共 5 项断言锁定 1 跳边界。定向测试、构建、架构及差异检查通过，Suzy 于 2026-11-09 确认手动验收通过，未自动打开浏览器。
+
+## 2026-11-09 移除画布节点卡片的模型读取状态行（Suzy 手动验收通过）
+
+CanvasNodeShell 移除对 feedback/ModelReadStatus 的引用与渲染，节点卡片下方不再出现「正在读取，请稍候…」及模型读取失败提示。该行的 loading 文案来自通用读取反馈组件 RemoteReadStatus，触发条件是媒体节点读取模型目录未结束。隐藏后模型加载与失败反馈由创作面板内的模型下拉承担：加载中显示「加载中」，失败显示「模型加载失败」，无模型显示「暂无可用模型」。ModelReadStatus 仍被 SubjectPage、BatchGenerateModal、script/InputCard、分镜生成面板与批量生成弹窗复用，组件本身未改动。定向 eslint 无错误（保留既有 2 条 useEffect 依赖告警），canvas-node-result-controls 12 项测试、构建、架构及差异检查通过。Suzy 于 2026-11-09 确认手动验收通过，未自动打开浏览器。
+
+## 2026-11-09 视频卡片激活自动播放、悬停显示原生控制条（已被文首「中央常驻播放按钮」方案取代）
+
+VideoCanvasNode 将 ReactFlow 注入的 `selected` 作为 `active` 传给 CanvasVideoPlayer，视频卡片进入激活态即请求预览地址并带声自动播放，不再依赖悬停。CanvasVideoPlayer 复用视频元素原生控制条（进度、静音、音量），但默认隐藏，仅在悬停或键盘聚焦（`hovered || focused`）时以 `controls={controlsVisible}` 显示。画面上层拖动层按控制条显隐切换 `pointerEvents`：显示时 `none` 让控制条可点击，隐藏时 `auto` 保留卡片拖动。点击卡片自身不中断激活态播放，取消选中、点击别处或窗口失焦才停止，悬停播放保留为补充路径。抽出的纯函数 `shouldPauseCanvasVideo` 放在 CanvasVideoInteraction.js，便于 scripts/canvas-video-player.test.mjs 直接单测。带声自动播放受浏览器策略约束时由控制条提供手动入口。定向测试、构建、架构及差异检查通过，未自动打开浏览器。
+
+补充修复：`shouldPauseCanvasVideo` 增加非 `Node` target 守卫。`window` 失焦事件的 `event.target` 是 `window` 对象，直接 `container.contains(target)` 会抛 `Failed to execute 'contains' on 'Node'`；现在 target 不是 `Node` 实例时直接按「卡片之外」停止，不再调用 `contains`。新增 1 项回归测试。
+
+后续口径（以代码现状为准）：悬停显示/播放路径已全部移除，原生控制条只在卡片激活态常驻；未播放时改由中央 32×32 播放按钮承担入口，播放中按钮收起。
+
+## 2026-11-06 顶部工具栏图标放大到20px（待手动验收）
+
+画布卡片与组的顶部工具栏图标由16px放大到20px，统一在 CanvasNodeToolbar 与 CanvasSelectionToolbar 内把内联的 size 由16改为20。ImageEditIcon、VideoEditIcon 收敛为可传 size 的参数化组件（默认16px），既服务图片/视频详情页（不传参、保持16px），也服务画布工具栏（传入20px），避免详情页图标被动变大。新增断言锁定画布20px、详情页16px的边界。同时按用户要求把按钮间隔从4px改为8px，仅改 CanvasToolbarSurface.css 的 gap，卡片工具栏与选择工具栏统一生效，取代此前「按钮间隔4px」的当前值记录；定向测试、构建、架构及差异检查通过，保留既有失败项。未自动打开浏览器。
+
 ## 2026-11-06 侧拉窗定位缩放（Suzy 手动验收通过）
 
 UseCanvasSearch 的定位请求保存目标编号及 resetZoom 标记；侧拉窗调用 locate 默认恢复缩放，搜索弹窗 select 显式传入 resetZoom=false，保持原搜索行为。getCanvasSearchFocus 复用绝对坐标与尺寸计算，恢复模式取100%和视口宽高适配比例中的最小值，沿用水平96px、垂直160px的总预留空间。定位继续选中目标、展开祖先并使用300ms居中动画，不关闭侧拉窗。
 
 scripts/canvas-search.test.mjs 共6项测试通过，覆盖不同初始缩放恢复100%、超大节点按宽高适配、嵌套节点绝对坐标及搜索保留缩放。定向检查、构建、架构及差异检查通过；Suzy 于2026-11-06确认手动验收通过，未自动打开浏览器。
 
-## 2026-11-06 认证素材库批量上传（待手动验收）
+## 2026-11-06 认证素材库批量上传（Suzy 手动验收通过）
 
 SeedanceFolderDetail 的本地文件输入启用多选，onUpload 传文件数组。SeedanceAssetLibraryPanel 将本地文件和资产原文件下载共用 SeedanceUploadQueue 的三个处理名额，批次持有上传锁与文件夹代际，唯一占位编号避免并发冲突，失败逐项收集并汇总。审核轮询追踪全部已上传素材编号，不能因首个素材审核结束就停止。AssetsPage、AssetPickerModal 及面板无障碍名称统一为“seedance认证素材库”。
 
-新增 scripts/seedance-upload-queue.test.mjs，覆盖三个并发、补位、失败隔离、稳定结果顺序、离开后停止派发和空批次。3项测试、定向检查、构建及架构检查通过；真实多选上传待手动验收。既有素材校验和上传接口契约保持不变。
+新增 scripts/seedance-upload-queue.test.mjs，覆盖三个并发、补位、失败隔离、稳定结果顺序、离开后停止派发和空批次。3项测试、定向检查、构建及架构检查通过。Suzy 于 2026-11-09 确认手动验收通过。既有素材校验和上传接口契约保持不变。
 
 ## 2026-11-06 资产选择弹窗项目下拉滚动（Suzy 手动验收通过）
 
@@ -3855,7 +3903,8 @@ AssetsProjectPanel 分镜分类改为每页200条、按原始分镜数推进偏�
 
 - `video-edit/VideoUpscaleModal.jsx`：视频预览、画质局部状态、加载失败禁用及生成占位反馈；输入仅为视频地址、封面地址和关闭回调，不读取详情页闭包或调用生成 API。
 - `image-edit/UpscaleControls.jsx`：图片与视频共用画质按钮和底部按钮；保持图片选项与尺寸不变。
-- `ui/VideoPlaybackControls.jsx`：纯展示播放点击层和中央状态反馈，接收播放状态、反馈可见性与切换回调；原生视频 controls 和播放器 ref 仍归使用方。
+- `ui/VideoPlaybackControls.jsx`：纯展示播放点击层和中央状态反馈，接收播放状态、反馈可见性与切换回调；中央反馈块复用 `ui/VideoCircleBadge`（size 56），原生视频 controls 和播放器 ref 仍归使用方。
+- `ui/VideoCircleBadge.jsx`：视频中央圆形徽标底座（半透明毛玻璃圆 + 白色图标），尺寸由 `size` 传入、默认 56；当前被创作视频详情弹窗（56）与画布视频卡片中央播放按钮（32）复用，无业务依赖。
 - 创作详情保留原播放事件、定时器及自动播放副作用，新增打开编辑前暂停；分镜详情负责视频 ref、弹窗开关，通过 `VideoEditContext` 向面板工具按钮提供打开回调，图片分支不提供回调。
 - 外壳增加可选层级参数以兼容分镜详情叠层；视频不传基准尺寸。定向 ESLint、构建通过；全仓历史阻塞和浏览器待验收项见 `docs/video-edit-modal-progress.md`。
 # 2026-09-29 增补：轨道控制
@@ -4420,6 +4469,11 @@ CreationAudioVisualizer 改为居中的 19 根蓝色发光圆头波形，使用�
 - CanvasEditableName 普通状态允许节点拖拽，普通节点及展开/堆叠组共用；仅进入名称编辑时阻止拖拽，保留双击编辑、输入法与取消保护。
 - 搜索按钮移至分割线左侧已获用户验收通过。
 
+
+## 2026-11-06 卡片激活态统一白色描边（待手动验收）
+
+- 激活态（选中或编辑中）统一使用 2px 白色描边 `var(--color-white-40)`；移除 `.canvas-node__frame[data-state='editing']` 及创作面板编辑器、音频创作面板、媒体 prompt 编辑器聚焦时给卡片外框加的 `var(--color-stroke-active)` 描边，聚焦输入框不再叠加第二层颜色。
+- 悬停描边与连线反馈保持原规则；canvas-node.test.mjs 的激活态断言同步更新。定向测试、构建、架构及差异检查通过，等待用户手动验收，未自动打开浏览器。
 
 ## 2026-11-06 节点顶部工具栏统一（用户验收通过）
 

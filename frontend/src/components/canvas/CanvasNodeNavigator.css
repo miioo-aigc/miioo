@@ -3,8 +3,9 @@
   left: 24px;
   bottom: 24px;
   z-index: 40;
-  width: 118px;
+  width: max-content;
   height: 44px;
+  interpolate-size: allow-keywords;
   box-sizing: border-box;
   overflow: hidden;
   border: 1px solid var(--color-stroke-normal);
@@ -30,10 +31,9 @@
 }
 
 .canvas-node-navigator__collapsed {
-  position: absolute;
-  inset: 0;
+  position: relative;
   display: flex;
-  width: 100%;
+  width: max-content;
   height: 100%;
   align-items: center;
   justify-content: space-between;

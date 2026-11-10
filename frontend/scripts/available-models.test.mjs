@@ -7,12 +7,16 @@ test('可用模型目录隔离乱序、失败、空列表、账号切换和卸�
   let state, cleanup, notify, generation = 1;
   const calls = [];
   const source = read('src/hooks/useAvailableModels.js').split(String.fromCharCode(10)).filter(line => !line.startsWith('import ')).join(String.fromCharCode(10)).replace('export function', 'function');
-  const hook = new Function('useEffect', 'useState', 'apiListModels', 'getAuthSessionGeneration', 'subscribeModelConfig', source + '; return useAvailableModels;')(
-    fn => { cleanup = fn(); }, initial => [initial, next => { state = next; }],
+  const hook = new Function('useCallback', 'useEffect', 'useState', 'apiListModels', 'getAuthSessionGeneration', 'subscribeModelConfig', 'peekCache', 'subscribe', 'invalidate', 'K', 'MEDIUM', source + '; return useAvailableModels;')(
+    fn => fn,
+    fn => { cleanup = fn(); },
+    initial => { state = typeof initial === 'function' ? initial() : initial; return [state, next => { state = typeof next === 'function' ? next(state) : next; }]; },
     args => new Promise((resolve, reject) => calls.push({ args, resolve, reject })),
-    () => generation, fn => { notify = fn; return () => { notify = null; }; });
+    () => generation, fn => { notify = fn; return () => { notify = null; }; },
+    () => undefined, () => () => {}, () => {},
+    { modelsAvailable: category => `models:${category || 'all'}:available` }, { STATIC: 'local' });
   hook('image'); notify(1);
-  assert.deepEqual(calls[0].args, { category: 'image', fresh: true, availableOnly: true });
+  assert.deepEqual(calls[0].args, { category: 'image', availableOnly: true });
   calls[1].resolve([{ model_id: 'new', is_enabled: true }, { model_id: 'off', is_enabled: false }]); await tick();
   calls[0].resolve([{ model_id: 'old', is_enabled: true }]); await tick();
   assert.deepEqual(state.models.map(m => m.model_id), ['new']);

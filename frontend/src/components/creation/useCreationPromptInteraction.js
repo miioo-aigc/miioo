@@ -32,9 +32,11 @@
  *   2026-08-27  @素材菜单最多展示 3 个条目，键盘选中项自动滚入菜单可视区域。
  *   2026-09-21  视频提示词输入上限由 5000 调整为 3000 字，与图片一致。
  *   2026-11-03  高级配音情绪句末输入（含空格）移到情绪标签外；情绪句中间输入仍保留原情绪。
+ *   2026-11-09  空输入时停顿/语气词菜单回退到文本区左上角光标行，修复菜单飘到输入框外。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { resolveInlineMenuAnchorRect, resolveInlineMenuOffset } from './DubbingInlineMenuPosition';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const PROMPT_CHARACTER_LIMIT = 3000;
@@ -458,23 +460,24 @@ export function useCreationPromptInteraction({
   }, [disabled, hasTextSelection, positionEmotionMenu]);
 
   const positionInlineMenu = useCallback((range, menuWidth, menuHeight) => {
-    const rect = getRangeRect(range);
-    const editorRect = editorRef.current?.getBoundingClientRect();
+    const editor = editorRef.current;
+    const editorRect = editor?.getBoundingClientRect();
     if (!editorRect) return { top: 0, left: 0 };
-    const gap = 8;
-    const margin = 8;
-    const belowTop = rect.bottom + gap;
-    const aboveTop = rect.top - menuHeight - gap;
-    const top = belowTop + menuHeight <= window.innerHeight - margin
-      ? belowTop
-      : aboveTop >= margin
-        ? aboveTop
-        : Math.max(margin, Math.min(belowTop, window.innerHeight - menuHeight - margin));
-    const left = Math.max(margin, Math.min(rect.left, window.innerWidth - menuWidth - margin));
-    return {
-      top: top - editorRect.top,
-      left: left - editorRect.left,
-    };
+    // 空输入时折叠光标没有可用矩形，回退到文本区左上角的光标行，避免菜单按视口原点计算而飘走。
+    const style = getComputedStyle(editor);
+    const toNumber = (value) => Number.parseFloat(value) || 0;
+    const caretTop = editorRect.top + toNumber(style.paddingTop);
+    const caretLeft = editorRect.left + toNumber(style.paddingLeft);
+    const caretLineHeight = toNumber(style.lineHeight);
+    const anchorRect = resolveInlineMenuAnchorRect(getRangeRect(range), {
+      top: caretTop,
+      bottom: caretTop + caretLineHeight,
+      left: caretLeft,
+      right: caretLeft,
+      width: 0,
+      height: caretLineHeight,
+    });
+    return resolveInlineMenuOffset(anchorRect, editorRect, menuWidth, menuHeight, window.innerWidth, window.innerHeight);
   }, []);
 
   const getCursorRange = useCallback(() => {

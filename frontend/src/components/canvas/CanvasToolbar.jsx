@@ -116,11 +116,11 @@ function MoveMenu({ activeTool, onToolChange }) {
   return <ToolbarMenu className="w-[144px]">{[{ tool: 'select', label: '移动', key: 'V' }, { tool: 'hand', label: '抓手工具', key: 'H' }].map((item) => <MenuButton key={item.tool} active={activeTool === item.tool} onClick={() => onToolChange(item.tool)}><span className="flex w-full items-center justify-between gap-[12px]"><span>{item.label}</span><span className="text-text-hint">{item.key}</span></span></MenuButton>)}</ToolbarMenu>;
 }
 
-function AddNodeMenu({ onAddNode }) {
-  return <div className="absolute bottom-[40px] left-1/2 z-30 -translate-x-1/2"><CanvasNodeAddMenu onAddNode={onAddNode} /></div>;
+function AddNodeMenu({ onAddNode, onUpload, onSelectAssets }) {
+  return <div className="absolute bottom-[40px] left-1/2 z-30 -translate-x-1/2"><CanvasNodeAddMenu onAddNode={onAddNode} onUpload={onUpload} onSelectAssets={onSelectAssets} /></div>;
 }
 
-export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, snapEnabled = false, onSnapChange, onOpenSearch, onOpenAssetPicker, onAddNode, onShare, canUndo, canRedo, onUndo, onRedo }) {
+export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, snapEnabled = false, onSnapChange, onOpenSearch, onOpenAssetPicker, onAddNode, onUpload, onSelectAssets, onShare, canUndo, canRedo, onUndo, onRedo }) {
   const [openMenu, setOpenMenu] = useState(null);
   const [rightToolsExpanded, setRightToolsExpanded] = useState(false);
   const toolbarRef = useRef(null);
@@ -147,7 +147,9 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
   const renderTool = ({ key, label, icon: Icon }) => {
     const selected = key === 'move' ? activeTool === 'hand' : key === 'map' ? showMiniMap : key === 'snap' ? snapEnabled : openMenu === key;
     return <div key={key} className="relative flex size-[32px] shrink-0 items-center justify-center">
-      {openMenu === key && key === 'add' && <AddNodeMenu onAddNode={(type) => { onAddNode?.(type); setOpenMenu(null); }} />}
+      {openMenu === key && key === 'add' && <AddNodeMenu onAddNode={(type) => { onAddNode?.(type); setOpenMenu(null); }}
+        onUpload={() => { onUpload?.(); setOpenMenu(null); }}
+        onSelectAssets={() => { onSelectAssets?.(); setOpenMenu(null); }} />}
       {openMenu === key && key === 'move' && <MoveMenu activeTool={activeTool} onToolChange={(tool) => { onToolChange(tool); setOpenMenu(null); }} />}
       {openMenu === key && key === 'share' && <ShareMenu onShare={onShare} onClose={() => setOpenMenu(null)} />}
       <Tooltip label={label} placement="top" offset={8}><button type="button" title={label} aria-label={label} aria-pressed={selected} onClick={() => handleToolClick(key)} className={`flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 transition-colors ${selected ? 'bg-white-10' : 'hover:bg-white-5'} ${(key === 'snap' || key === 'map') && selected ? 'text-text-accent' : 'text-white-80'}`}><Icon size={16} strokeWidth={1.7} /></button></Tooltip>

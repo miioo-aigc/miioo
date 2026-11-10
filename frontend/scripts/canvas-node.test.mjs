@@ -10,14 +10,15 @@ test('正文编辑时排除悬停描边并保留创作输入框', () => {
   assert.match(shell, /selected && data\?\.creationPanelOpen/);
 });
 
-test('文本节点单选不新增蓝框，保留正文编辑或创作输入聚焦描边', () => {
+test('卡片激活态只用白色描边，聚焦输入框不叠加蓝色描边', () => {
   const css = readFileSync(new URL('../src/components/canvas/canvas-nodes.css', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../src/components/canvas/CanvasNodeShell.jsx', import.meta.url), 'utf8');
   assert.match(shell, /data-node-type=\{nodeType\}/);
-  assert.doesNotMatch(css, /\.canvas-node--selected \.canvas-node__frame/);
-  assert.doesNotMatch(css, /\.canvas-node--selected[^}]*border-color/);
-  assert.ok(css.includes('.canvas-node:has(.canvas-creation-panel__editor:focus) > .canvas-node__frame'));
-  assert.ok(css.includes(".canvas-node__frame[data-state='editing']"));
+  assert.ok(css.includes('.canvas-node.canvas-node--selected > .canvas-node__frame'));
+  assert.ok(css.includes(".canvas-node__frame[data-state='editing'] { border-color: transparent; outline: 2px solid var(--color-white-40);"));
+  assert.doesNotMatch(css, /creation-panel__editor:focus\) > \.canvas-node__frame/);
+  assert.doesNotMatch(css, /composer-surface__editor:focus\) > \.canvas-node__frame/);
+  assert.doesNotMatch(css, /\.canvas-node__frame\[data-state='editing'\] \{ border-color: var\(--color-stroke-active\)/);
 });
 
 test('新增或单击节点不描边外壳，多选描边仅作用于卡片本体', () => {
@@ -33,6 +34,12 @@ test('四类节点直接复用公共上传按钮', () => {
     assert.match(source, /import FileUploadButton from '..\/ui\/FileUploadButton'/);
     assert.match(source, /<FileUploadButton/);
   }
+});
+
+test('本地上传与从资产库选择同层，创作面板及参数弹层覆盖在卡片内容之上', () => {
+  const css = readFileSync(new URL('../src/components/canvas/canvas-nodes.css', import.meta.url), 'utf8');
+  assert.ok(css.includes('.canvas-node__local-upload-slot { position: absolute; top: 94px; left: 50%; transform: translateX(-50%); }'));
+  assert.doesNotMatch(css, /\.canvas-node__local-upload-slot \{[^}]*z-index/);
 });
 
 test('文本卡片原地编辑复用正文并隔离画布键盘事件', () => {

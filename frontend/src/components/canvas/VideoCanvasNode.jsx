@@ -22,7 +22,7 @@ export default function VideoCanvasNode({ id, data, selected }) {
       ? <AsyncImagePreview plain imageClassName="canvas-node__media" src={getCanvasImagePreview(asset)} fallbackSrc={getCanvasOriginalImage(asset)} imageStyle={{ objectFit: 'contain' }} alt={asset.name || '参考图片'} draggable={false} />
       : asset.asset_type === 'audio'
         ? <CanvasAudioPlayer key={asset.url} url={asset.url} name={asset.name} transcript={getCanvasAudioTranscript(asset)} />
-        : <CanvasVideoPlayer key={asset.url} src={asset.url} poster={getCanvasVideoPoster(asset)} />
+        : <CanvasVideoPlayer key={asset.url} src={asset.url} poster={getCanvasVideoPoster(asset)} active={selected} />
       : <div className="canvas-node__empty-state"><FileUploadButton className="nodrag nopan" onClick={() => data?.onSelectAsset?.(id, 'video')}>从资产库选择</FileUploadButton></div>}
   </CanvasNodeShell>;
 }

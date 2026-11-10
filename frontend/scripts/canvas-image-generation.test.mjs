@@ -32,13 +32,16 @@ test('图片输入接受文本和图片，拒绝视频音频、反向连接和�
 test('图片参考上限读取后端字段 max_reference_images', () => {
   assert.equal(getImageReferenceLimit({ max_reference_images: 2 }), 2);
   assert.equal(getImageReferenceLimit({ max_reference_images: 0 }), 0);
+  assert.equal(getImageReferenceLimit({}), undefined);
+  assert.equal(getImageReferenceLimit(), undefined);
 });
 
-test('历史图片连线仍按直连素材识别，未声明能力按零张处理', () => {
+test('历史图片连线仍按直连素材识别，能力未声明时按未知处理不标红', () => {
   const nodes = [node('image', 'i1'), node('image', 'i2'), node('text', 't'), node('image', 'target', ['i1', 't', 'i2'])];
   nodes.at(-1).data.asset = null;
   assert.deepEqual(getCanvasImageReferenceStatus(nodes, 'target', 1), { imageSourceIds: ['i1', 'i2'], overflowSourceIds: ['i2'], canGenerate: false });
-  assert.deepEqual(getCanvasImageReferenceStatus(nodes, 'target', undefined), { imageSourceIds: ['i1', 'i2'], overflowSourceIds: ['i1', 'i2'], canGenerate: false });
+  assert.deepEqual(getCanvasImageReferenceStatus(nodes, 'target', undefined), { imageSourceIds: ['i1', 'i2'], overflowSourceIds: [], canGenerate: true });
+  assert.deepEqual(getCanvasImageReferenceStatus(nodes, 'target'), { imageSourceIds: ['i1', 'i2'], overflowSourceIds: [], canGenerate: true });
   assert.equal(getCanvasImageReferenceStatus(nodes, 'target', 2).canGenerate, true);
 });
 
@@ -52,20 +55,35 @@ test('支持参考图时允许图片连线，文本连线不受图片数量限�
   assert.deepEqual(getCanvasImageEdges(withText).map((edge) => `${edge.source}->${edge.target}`), ['i1->target', 't->target']);
 });
 
-test('达到上限或未声明能力时拒绝图片连线并提供原因', () => {
+test('达到上限时拒绝图片连线并提供原因，能力未知时放行', () => {
   const nodes = [node('image', 'i1'), node('image', 'i2'), node('image', 'target', ['i1'])];
   assert.equal(canConnectCanvasImage(nodes, { source: 'i2', target: 'target' }, 1), false);
   assert.match(getCanvasImageConnectionError(nodes, { source: 'i2', target: 'target' }, 1), /最多支持 1 张/);
+  assert.equal(canConnectCanvasImage(nodes, { source: 'i2', target: 'target' }), true);
+  assert.equal(getCanvasImageConnectionError(nodes, { source: 'i2', target: 'target' }), '');
+});
+
+test('真实上限为 0 时仍标红并拒绝新增图片参考', () => {
+  const nodes = [node('image', 'i1'), node('image', 'i2'), node('image', 'target', ['i1'])];
+  nodes.at(-1).data.imageReferenceLimit = 0;
+  const status = getCanvasImageReferenceStatus(nodes, 'target');
+  assert.deepEqual(status.overflowSourceIds, ['i1']);
+  assert.equal(status.canGenerate, false);
+  assert.equal(getCanvasImageEdges(nodes).find((edge) => edge.source === 'i1').className, 'canvas-edge--overflow');
   assert.equal(canConnectCanvasImage(nodes, { source: 'i2', target: 'target' }), false);
   assert.match(getCanvasImageConnectionError(nodes, { source: 'i2', target: 'target' }), /不支持图片参考/);
 });
 
-test('未声明图片参考能力时，图片历史连线保留并阻止图片创作', () => {
+test('未声明图片参考能力时保留图片历史连线，不因未知拦截创作', () => {
   const nodes = [node('image', 'source'), node('image', 'target', ['source'])];
   assert.equal(hasUnsupportedCanvasImageReferences(nodes, 'target'), true);
   // 已存在的历史连线允许幂等连接；真正新增图片素材仍会被能力上限拦截。
   assert.equal(canConnectCanvasImage(nodes, { source: 'source', target: 'target' }), true);
-  assert.throws(() => planCanvasImageGeneration(nodes, 'target', '生成一张图', 'image-model'), /参考图片数量超过当前模型上限/);
+  assert.doesNotThrow(() => planCanvasImageGeneration(nodes, 'target', '生成一张图', 'image-model'));
+  // 真实上限为 0 时仍拦截创作。
+  const blocked = [node('image', 'source'), node('image', 'target', ['source'])];
+  blocked.at(-1).data.imageReferenceLimit = 0;
+  assert.throws(() => planCanvasImageGeneration(blocked, 'target', '生成一张图', 'image-model'), /参考图片数量超过当前模型上限/);
 });
 
 test('新增图片素材节点优先放在目标卡片左侧400px内且不重叠', () => {

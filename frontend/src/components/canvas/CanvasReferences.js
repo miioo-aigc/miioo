@@ -76,11 +76,11 @@ export function addCanvasReference(nodes, targetId, selectedAsset, mode = 'all')
   if (frameImage && slot >= 2) return nodes;
   const position = getCanvasReferenceNodePosition(nodes, target, getCanvasAssetNodeSize(asset));
   const source = createCanvasNode(asset.asset_type, position);
+  // 新素材节点保持空 asset：首次提交由 applyCanvasAsset 完成，预置 asset 会被迁移逻辑误判成一条 legacy 历史。
   // 复用页面提供的节点动作，不能复制目标节点的内容、编辑态或参数。
   for (const key of ['onPromptChange', 'onModelChange', 'onContentChange', 'onCancelPendingClick', 'onEnterEditing', 'onGenerate', 'onAssetChange', 'onSelectAsset']) {
     source.data[key] = target.data[key];
   }
-  source.data.asset = asset;
   const appended = appendCanvasNode(nodes, source, target.parentId);
   if (appended === nodes) return nodes;
   const named = applyCanvasAsset(appended, source.id, asset);

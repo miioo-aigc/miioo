@@ -7,7 +7,7 @@ import Radio from '../ui/Radio';
 import ModalCloseButton from '../ui/ModalCloseButton';
 import useCanvasLibraryBrowser from './UseCanvasLibraryBrowser';
 
-export function CanvasLibraryDialog({ title, busy, onClose, children, footer, fixedHeight = false }) {
+export function CanvasLibraryDialog({ title, busy, onClose, children, footer, fixedHeight = false, radiusClass = 'rounded-[8px]' }) {
   const ref = useRef(null);
   useEffect(() => {
     const previous = document.activeElement;
@@ -25,7 +25,7 @@ export function CanvasLibraryDialog({ title, busy, onClose, children, footer, fi
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   };
   return createPortal(<div className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/60 p-[16px] backdrop-blur-[12px]" onClick={() => !busy && onClose()}>
-      <section ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKey} onClick={(event) => event.stopPropagation()} style={fixedHeight ? { height: '520px' } : undefined} className="flex max-h-[85vh] w-[480px] max-w-full flex-col overflow-hidden rounded-[8px] border border-white/10 bg-surface-modal text-text-primary">
+      <section ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKey} onClick={(event) => event.stopPropagation()} style={fixedHeight ? { height: '520px' } : undefined} className={`flex max-h-[85vh] w-[480px] max-w-full flex-col overflow-hidden ${radiusClass} border border-white/10 bg-surface-modal text-text-primary`}>
       <header className="flex shrink-0 items-center justify-between gap-[16px] p-[24px]"><h2 className="text-[16px]">{title}</h2><ModalCloseButton disabled={busy} onClick={onClose} /></header>
       <div className={`min-h-0 overflow-auto px-[24px] pb-[24px] text-[14px] ${fixedHeight ? 'flex flex-1 flex-col' : ''}`}>{children}</div>
       <footer className="flex shrink-0 flex-wrap justify-end gap-[8px] border-t border-white/10 p-[16px]">{footer}</footer>
@@ -53,7 +53,7 @@ export function CanvasLibraryDestinationDialog({ collection, selection, sourceFo
       {(!isRoot || path.length > 1) && <button type="button" disabled={disabled} aria-label={isRoot ? '浏览项目根目录' : `进入${item.name}`} onClick={() => isRoot ? browser.root() : browser.enter(item)} className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-[6px] text-white-60 disabled:opacity-30"><ChevronRight size={16} /></button>}
     </div>;
   };
-  return <CanvasLibraryDialog fixedHeight title="移动到" busy={busy} onClose={onClose} footer={<>
+  return <CanvasLibraryDialog fixedHeight radiusClass="rounded-[16px]" title="移动到" busy={busy} onClose={onClose} footer={<>
     <p title={target?.path} className="mr-auto min-w-0 flex-1 self-center truncate text-[12px] text-white-60">移动目标：{target?.path || '请选择目标文件夹'}</p>
     <Button variant="secondary" disabled={busy} onClick={onClose}>取消</Button>
     <Button loading={busy} disabled={busy || loading || Boolean(error) || !target || forbidden.has(target.id)} onClick={() => onConfirm(target.id)}>确认</Button>

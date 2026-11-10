@@ -13,7 +13,7 @@ const stop = event => event.stopPropagation();
 
 /** props 完整契约见 docs/节点结果浮层初版设计-2026-11-06.md。 */
 export default function CanvasNodeResultsPopover({
-  open = false, results, nodeName = '节点', anchorRect, returnFocusRef,
+  open = false, results, anchorRect, returnFocusRef,
   mediaByResultId = {}, generating = false, editing = false, upstreamProtected = false,
   selectionPending = false, selectionError = '', loading = false, error = '',
   hasMore = false, loadingMore = false, loadMoreError = '',
@@ -76,6 +76,19 @@ export default function CanvasNodeResultsPopover({
 
   useEffect(() => {
     if (!open) return undefined;
+    // 点击浮层和入口以外的区域自动收起，入口自身保留开关行为。
+    const closeOutside = event => {
+      const target = event.target;
+      if (panelRef.current?.contains(target)) return;
+      if (returnFocusRef?.current?.contains(target)) return;
+      onClose?.();
+    };
+    document.addEventListener('pointerdown', closeOutside, true);
+    return () => document.removeEventListener('pointerdown', closeOutside, true);
+  }, [open, onClose, returnFocusRef]);
+
+  useEffect(() => {
+    if (!open) return undefined;
     const close = event => {
       if (event.key !== 'Escape' || event.isComposing) return;
       event.preventDefault();
@@ -100,7 +113,7 @@ export default function CanvasNodeResultsPopover({
       onWheel={stop} onKeyDown={stop} onKeyUp={stop} onContextMenu={stop}
       onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}>
       <header className="canvas-results-popover__header">
-        <h2 id={titleId}>{nodeName}</h2>
+        <h2 id={titleId}>历史记录</h2>
         <ModalCloseButton onClick={onClose} />
       </header>
       <div className="canvas-results-popover__scroll" aria-busy={loading || loadingMore}>
@@ -153,7 +166,7 @@ function ResultPreview({ result, current, media, disabled, lockReason, onSelect,
   const select = () => { if (selectable) onSelect?.(result.id); };
   return <article className="canvas-results-popover__result" data-current={current || undefined}
     data-selectable={selectable || undefined} aria-label={label} onClick={event => {
-      if (event.target.closest('button, input, label, a, audio, video, [role="button"], .canvas-results-popover__selection, .canvas-node__transcript, .canvas-results-popover__text')) return;
+      if (event.target.closest('button, input, label, a, audio, [role="button"], .canvas-results-popover__selection, .canvas-node__transcript, .canvas-results-popover__text')) return;
       if (window.getSelection()?.toString()) return;
       select();
     }}>
@@ -163,9 +176,9 @@ function ResultPreview({ result, current, media, disabled, lockReason, onSelect,
           ? <img key={attempt} src={media.src} alt={label} draggable={false} loading="lazy"
             onLoad={() => setPreviewStatus('ready')} onError={() => setPreviewStatus('error')} />
           : result.type === 'audio' ? <CanvasAudioPlayer key={attempt} url={media.src} name={label}
-            transcript={media.transcript} compact onReady={() => setPreviewStatus('ready')}
+            transcript={media.transcript} compact timeMode="duration" onReady={() => setPreviewStatus('ready')}
             onError={() => setPreviewStatus('error')} />
-          : <video key={attempt} src={media.src} poster={media.poster} controls playsInline preload="metadata" aria-label={label + '预览'}
+          : <video key={attempt} src={media.src} poster={media.poster} playsInline preload="metadata" aria-label={label + '预览'}
             onLoadedData={() => setPreviewStatus('ready')} onError={() => setPreviewStatus('error')} />)}
         {available && previewStatus === 'loading' && result.type !== 'audio' && <div className={result.type === 'video' ? 'canvas-results-popover__video-loading' : undefined}>
           <MediaLoadStatus status="loading" visual />

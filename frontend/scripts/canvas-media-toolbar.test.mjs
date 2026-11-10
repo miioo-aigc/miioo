@@ -36,11 +36,11 @@ test('视频音频共用固定尺寸定位与工具栏，视频编辑限制真�
   const toolbar = read('src/components/canvas/CanvasNodeToolbar.jsx');
   assert.ok(toolbar.includes("['智能超清', '去字幕', '选帧', '剪辑']"));
   assert.ok(toolbar.includes("asset?.asset_type !== 'video'"));
-  assert.ok(toolbar.includes('<VideoEditIcon label={label} />'));
+  assert.ok(toolbar.includes('<VideoEditIcon label={label} size={20} />'));
   const css = read('src/components/canvas/canvas-nodes.css');
   const sharedStyles = read('src/components/canvas/CanvasToolbarSurface.css');
   assert.match(sharedStyles, /width: max-content; padding: 0 16px;/);
-  assert.match(sharedStyles, /gap: 4px;/);
+  assert.match(sharedStyles, /gap: 8px;/);
   assert.doesNotMatch(css, /toolbar \{ width: \d+px/);
 
 });

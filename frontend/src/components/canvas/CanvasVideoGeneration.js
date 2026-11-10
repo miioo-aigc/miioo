@@ -1,4 +1,6 @@
-/** 视频直连素材、能力校验和结果节点快照；不复用创作页的模式推断。 */
+/** 视频直连素材、能力校验和结果节点快照；不复用创作页的模式推断。
+ * 2026-11-09：参考上限区分「能力未加载」与「真实 0」；未知期间不标红、不拦截，回填后按真实值判定。
+ */
 import { setCanvasSelection } from './CanvasGroups.js';
 import { commitCanvasNodeOutput } from './CanvasResultMutations.js';
 import { isCanvasSeedanceVideoEdit } from './CanvasVideoModels.js';
@@ -7,7 +9,8 @@ const TYPES = ['text', 'image', 'video', 'audio'];
 const MEDIA_TYPES = ['image', 'video', 'audio'];
 const TYPE_LABELS = { image: '图片', video: '视频', audio: '音频' };
 const find = (nodes, id) => nodes.find((node) => node.id === id);
-const limit = (value) => Number.isInteger(value) && value >= 0 ? value : 0;
+// 未声明能力返回 undefined（未知），与「模型真实上限为 0」区分开；未知不参与溢出比较。
+const limit = (value) => Number.isInteger(value) && value >= 0 ? value : undefined;
 const assetIdentity = (asset) => asset?.asset_id || asset?.assetId || asset?.backendId || asset?.url || null;
 
 function getCanvasVideoLimits(capabilities = {}, mode) {
@@ -44,6 +47,7 @@ function countCanvasVideoMedia(types, rule) {
     if (!MEDIA_TYPES.includes(type)) continue;
     counts[type] += 1;
     total += 1;
+    // limits[type] 为 undefined 表示能力未加载；与未知数值比较恒为 false，不判定溢出。
     if (!overflowType && (counts[type] > rule.limits[type] || total > rule.totalLimit)) overflowType = type;
   }
   return { counts, total, overflowType };
@@ -86,6 +90,7 @@ export function validateCanvasVideoReferenceAddition(nodes, targetId, asset) {
 function validateVideoAddition(types, type, capabilities, model, mode) {
   const rule = getCanvasVideoMediaRule(capabilities, model, mode);
   const count = types.filter((existing) => existing === type).length;
+  // 上限未知（undefined）时不拦截新增，等能力回填后由溢出判定兜底。
   if (count >= rule.limits[type]) return { allowed: false, message: rule.limits[type] === 0
     ? `当前参考模式不支持${TYPE_LABELS[type]}素材`
     : `当前参考模式最多支持${rule.limits[type]}${type === 'image' ? '张' : '条'}${TYPE_LABELS[type]}素材` };
@@ -123,6 +128,7 @@ export function getCanvasVideoReferenceStatus(nodes, targetId, capabilities, sou
     if (!Object.hasOwn(counts, type)) continue;
     mediaSourceIds.push(id);
     counts[type] += 1;
+    // 能力未加载时 limits[type] 为 undefined，比较恒为 false，不标记溢出。
     if (counts[type] > rule.limits[type] || mediaSourceIds.length > rule.totalLimit) overflowSourceIds.push(id);
   }
   return { mediaSourceIds, overflowSourceIds, canGenerate: overflowSourceIds.length === 0 };

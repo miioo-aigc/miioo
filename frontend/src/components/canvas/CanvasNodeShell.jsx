@@ -18,10 +18,11 @@
  * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
  * 2026-11-06：接入统一结果入口；生成态隐藏旧内容、锁定工具栏，提交态锁定节点交互。
  * 2026-11-06：结果入口定位基准改为卡片主体，固定在卡片内部右上角。
+ * 2026-11-09：移除节点卡片下方的模型读取状态行；模型加载与失败反馈改由创作面板内的模型下拉呈现。
+ * 2026-11-10：「上游已更新」标识移出卡片内结果入口，改由标题行右上角承载，随标题反向缩放。
  * 当前定义定位：CanvasNodeShell L39。
  */
 import { useEffect, useState } from 'react';
-import ModelReadStatus from '../feedback/ModelReadStatus';
 import { useAvailableModels } from '../../hooks/useAvailableModels';
 import { getCanvasTextModels } from './CanvasTextModels';
 import { useCanvasMediaControls } from './UseCanvasMediaControls';
@@ -62,7 +63,7 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
   };
   return <div className={`canvas-node ${selected ? 'canvas-node--selected' : ''}`} inert={submissionLocked} onPointerDownCapture={guardSubmission} onClickCapture={guardSubmission} onDoubleClickCapture={guardSubmission} onKeyDownCapture={guardSubmission} data-node-type={nodeType} data-media-sized={Boolean(mediaSize)} style={mediaSize ? { '--canvas-media-width': `${mediaSize.width}px`, '--canvas-media-height': `${mediaSize.height}px` } : undefined}>
     <div className="canvas-node__toolbar-scale" inert={!creationOpen} style={{ '--canvas-inverse-zoom': 1 / (data?.viewportZoom || 1) }}><CanvasCreationPresence open={creationOpen} className="canvas-node__toolbar-presence"><fieldset className="canvas-node__interaction-guard" disabled={Boolean(data?.generating || submissionLocked)} inert={Boolean(data?.generating || submissionLocked)}><CanvasNodeToolbar nodeType={nodeType} content={data?.content} asset={data?.asset} onAction={data?.onToolbarAction} onMore={data?.onMore} onPreview={data?.onPreview} /></fieldset></CanvasCreationPresence></div>
-    <CanvasNodeHeader nodeType={nodeType} title={title} zoom={data?.viewportZoom || 1} onRename={data?.onRename} onStart={data?.onRenameStart} />
+    <CanvasNodeHeader nodeType={nodeType} title={title} zoom={data?.viewportZoom || 1} onRename={data?.onRename} onStart={data?.onRenameStart} selectOnClick upstreamUpdated={Boolean(data?.upstreamUpdated)} />
     <div className="canvas-node__frame" aria-busy={Boolean(data?.generating)} data-state={data?.editing ? 'editing' : 'default'} data-connection-target={data?.connectionTarget ? 'true' : 'false'} data-connection-target-status={data?.connectionTargetStatus || ''} data-dragging={data?.dragging ? 'true' : 'false'} data-drag-release={data?.dragRelease ? 'true' : 'false'} style={{ '--canvas-drag-scale-x': data?.dragScaleX || 1, '--canvas-drag-scale-y': data?.dragScaleY || 1 }}>
       <CanvasNodePorts ports={data?.ports} connectingType={data?.connectingType} nodeActive={Boolean(selected || data?.editing || data?.generating)} onUpstreamConnectStart={(event) => data?.onUpstreamConnectStart?.(data?.nodeId, event)} />
       {data?.connectionPulses?.length > 0 && <CanvasNodeConnectionPulse pulses={data.connectionPulses} onMeasure={data.onPulseMeasure} />}
@@ -73,7 +74,7 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
       {data?.generating && <CanvasGenerationLoading key={data.generationRequestId} message={data.generationMessageRequestId === data.generationRequestId ? data.generationMessage : undefined} />}
       <CanvasNodeResultControls data={data} title={title} nodeType={nodeType} />
     </div>
-    <CanvasCreationPresence open={creationOpen}><div className="canvas-creation-scale" style={{ '--canvas-inverse-zoom': 1 / (data?.viewportZoom || 1) }}><ModelReadStatus loading={nodeType === 'text' ? modelState.loading : mediaControls.loading} error={nodeType === 'text' ? modelState.error : mediaControls.error} empty={!(nodeType === 'text' ? modelState.options : mediaControls.options).length} onRetry={nodeType === 'text' ? textDirectory.retry : mediaControls.retry} /><CanvasCreationPanel
+    <CanvasCreationPresence open={creationOpen}><div className="canvas-creation-scale" style={{ '--canvas-inverse-zoom': 1 / (data?.viewportZoom || 1) }}><CanvasCreationPanel
       key={data?.promptImportVersion || 0}
       nodeId={data?.nodeId}
       nodeType={nodeType}

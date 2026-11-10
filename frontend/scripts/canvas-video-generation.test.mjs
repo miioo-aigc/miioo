@@ -167,6 +167,8 @@ test('模型专属最终约束校验视频数量和音频唯一素材', () => {
 test('视频素材上限按媒体类型和总媒体数计算，文本不计入总数，超限按连接顺序标记', () => {
   const nodes = [node('text', 'text'), node('image', 'image1'), node('image', 'image2'), node('video', 'video1'), node('audio', 'audio1'), node('video', 'target', ['text', 'image1', 'image2', 'video1', 'audio1'])];
   nodes.at(-1).data.asset = null;
+  // 能力已回填到节点后，边渲染才有真实上限可判定。
+  nodes.at(-1).data.videoCapabilities = capabilities;
   const status = getCanvasVideoReferenceStatus(nodes, 'target', capabilities);
   assert.deepEqual(status.mediaSourceIds, ['image1', 'image2', 'video1', 'audio1']);
   assert.deepEqual(status.overflowSourceIds, ['audio1']);

@@ -90,7 +90,7 @@ export default function CanvasGroupNode({ id, data, selected }) {
     <Handle type="target" position={Position.Left} id="stack-input" isConnectable={false} style={{ opacity: 0, pointerEvents: 'none' }} />
     <Handle type="source" position={Position.Right} id="stack-output" isConnectable={false} style={{ opacity: 0, pointerEvents: 'none' }} />
     <div className="canvas-group__name" style={{ '--canvas-group-name-zoom': zoom, '--canvas-group-name-inverse-zoom': 1 / zoom }}>
-      {data.readOnly ? <span title={data.label}>{data.label}</span> : <CanvasEditableName name={data.label} onRename={data.onRename} onStart={data.onRenameStart} />}
+      {data.readOnly ? <span title={data.label}>{data.label}</span> : <CanvasEditableName name={data.label} onRename={data.onRename} onStart={data.onRenameStart} selectOnClick />}
     </div>
   </div>;
 }

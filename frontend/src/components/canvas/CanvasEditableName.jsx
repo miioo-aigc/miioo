@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import './CanvasEditableName.css';
 
-export default function CanvasEditableName({ name, onRename, onStart, className = '' }) {
+// selectOnClick 打开时，非编辑态的单击继续冒泡，交给 React Flow 节点层完成选中。
+export default function CanvasEditableName({ name, onRename, onStart, className = '', selectOnClick = false }) {
   const [editing, setEditing] = useState(false);
   const inputRef = useRef(null);
   const composingRef = useRef(false);
@@ -20,7 +21,7 @@ export default function CanvasEditableName({ name, onRename, onStart, className 
   };
   return <span className={`canvas-editable-name ${editing ? 'nodrag nopan nowheel' : ''} ${className}`}
     onPointerDown={(event) => { if (editing) event.stopPropagation(); }}
-    onClick={(event) => event.stopPropagation()}
+    onClick={(event) => { if (editing || !selectOnClick) event.stopPropagation(); }}
     onDoubleClick={(event) => {
       event.stopPropagation();
       if (editing || !onRename) return;

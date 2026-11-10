@@ -1,5 +1,6 @@
 /** 图片节点的有向素材连线、模型上限和生成快照规则。
  * 2026-11-06：图片批次原位提交，候选按返回索引保留，不创建结果节点。
+ * 2026-11-09：参考图上限区分「能力未加载」与「真实 0」；未知期间不标红、不拦截，回填后按真实值判定。
  */
 import { setCanvasSelection } from './CanvasGroups.js';
 import { migrateLegacyCanvasResults } from './CanvasResultCompatibility.js';
@@ -19,13 +20,14 @@ function findNode(nodes, id) {
 
 function imageReferenceLimit(node) {
   const value = node?.data?.imageReferenceLimit;
-  return Number.isInteger(value) && value >= 0 ? value : 0;
+  // 未声明能力返回 undefined（未知），与「模型真实上限为 0」区分开。
+  return Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
 export function getImageReferenceLimit(capabilities) {
   // 图片模型能力由后端以 snake_case 返回；保留旧字段仅用于兼容历史草稿。
   const value = capabilities?.max_reference_images ?? capabilities?.maxReferenceImages;
-  return Number.isInteger(value) && value >= 0 ? value : 0;
+  return Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
 export function isCanvasImageConnection(nodes, connection) {
@@ -42,6 +44,8 @@ export function getCanvasImageReferenceStatus(nodes, targetId, limit) {
     .filter((id) => ['text', 'image'].includes(findNode(nodes, id)?.type));
   const imageSourceIds = sourceIds.filter((id) => findNode(nodes, id)?.type === 'image');
   const effectiveLimit = Number.isInteger(limit) && limit >= 0 ? limit : imageReferenceLimit(target);
+  // 能力未加载时按「未知」处理：不标红、不拦截，等真实上限回填后再判定。
+  if (!Number.isInteger(effectiveLimit)) return { imageSourceIds, overflowSourceIds: [], canGenerate: true };
   const overflowSourceIds = imageSourceIds.slice(effectiveLimit);
   return { imageSourceIds, overflowSourceIds, canGenerate: imageSourceIds.length <= effectiveLimit };
 }
@@ -56,7 +60,9 @@ export function canConnectCanvasImage(nodes, connection, limit) {
   const sourceIds = directSourceIds(target);
   if (sourceIds.includes(connection.source)) return true;
   if (findNode(nodes, connection.source)?.type !== 'image') return true;
-  return getCanvasImageReferenceStatus(nodes, target.id, limit).imageSourceIds.length < (Number.isInteger(limit) && limit >= 0 ? limit : imageReferenceLimit(target));
+  const effectiveLimit = Number.isInteger(limit) && limit >= 0 ? limit : imageReferenceLimit(target);
+  if (!Number.isInteger(effectiveLimit)) return true;
+  return getCanvasImageReferenceStatus(nodes, target.id, effectiveLimit).imageSourceIds.length < effectiveLimit;
 }
 
 export function getCanvasImageConnectionError(nodes, connection, limit) {
@@ -64,6 +70,8 @@ export function getCanvasImageConnectionError(nodes, connection, limit) {
   if (findNode(nodes, connection.source)?.type !== 'image') return '';
   const target = findNode(nodes, connection.target);
   const effectiveLimit = Number.isInteger(limit) && limit >= 0 ? limit : imageReferenceLimit(target);
+  // 能力未加载时不提前报错，等真实上限回填后再给原因。
+  if (!Number.isInteger(effectiveLimit)) return '';
   if (effectiveLimit === 0) return '当前图片模型不支持图片参考，无法连接图片节点';
   if (!canConnectCanvasImage(nodes, connection, effectiveLimit)) return `当前图片模型最多支持 ${effectiveLimit} 张参考图，无法继续连接`;
   return '';

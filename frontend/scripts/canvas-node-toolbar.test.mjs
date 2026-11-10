@@ -47,7 +47,7 @@ test('工具栏与输入框共用激活条件和显隐动画，缩放补偿独�
 
 test('工具栏复用透明图标按钮，图标不收缩且保留悬停提示', () => {
   assert.match(button, /<IconButton[^>]*variant="link"/);
-  assert.match(toolbar, /<Icon size=\{16\}[^>]*className="shrink-0"/);
+  assert.match(toolbar, /<Icon size=\{20\}[^>]*className="shrink-0"/);
   assert.match(button, /<Tooltip label=\{label\} placement="top"/);
 });
 

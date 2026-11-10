@@ -34,8 +34,22 @@ test('七项图片编辑顺序固定，下载和更多复用文本图标', () =>
   const toolbar = readFileSync(new URL('../src/components/canvas/CanvasNodeToolbar.jsx', import.meta.url), 'utf8');
   assert.ok(toolbar.includes("['裁剪', '翻转', '多机位', '局部重绘', '智能超清', '消除笔', '扩图']"));
   assert.ok(toolbar.includes("{ key: 'download', label: '下载', Icon: Download }"));
-  assert.ok(toolbar.includes('<Ellipsis size={16}'));
+  assert.ok(toolbar.includes('<Ellipsis size={20}'));
   assert.ok(toolbar.includes("nodeType === 'image' ? Boolean(asset?.url)"));
+});
+
+test('顶部工具栏图标统一放大到20px，图片详情页保持默认16px', () => {
+  const toolbar = readFileSync(new URL('../src/components/canvas/CanvasNodeToolbar.jsx', import.meta.url), 'utf8');
+  assert.ok(toolbar.includes('<ImageEditIcon label={label} size={20} />'));
+  assert.ok(toolbar.includes('<VideoEditIcon label={label} size={20} />'));
+  assert.ok(toolbar.includes('<Eye size={20}'));
+  assert.ok(toolbar.includes('<Ellipsis size={20}'));
+  const detail = readFileSync(new URL('../src/components/ImageDetailModal.jsx', import.meta.url), 'utf8');
+  assert.ok(!detail.includes('size={20}'));
+  const selection = readFileSync(new URL('../src/components/canvas/CanvasSelectionToolbar.jsx', import.meta.url), 'utf8');
+  assert.ok(selection.includes('<Icon size={20}'));
+  assert.ok(selection.includes('<Download size={20}'));
+  assert.ok(selection.includes('<Trash2 size={20}'));
 });
 
 test('详情与画布使用同一图标组件且图标继承状态颜色', () => {

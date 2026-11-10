@@ -19,6 +19,8 @@ export const TTL = {
 export const K = {
   // 模型列表，按 category 区分
   models: (category) => `models:${category || 'all'}`,
+  // 仅可用模型（availableOnly）单独成键，与后台管理用的全量列表互不覆盖
+  modelsAvailable: (category) => `models:${category || 'all'}:available`,
   defaultModels: () => 'models:defaults',
   visualStyles: () => 'visual-styles',
   voiceLibrary: (params = {}) => `voices-library:${stable(params)}`,

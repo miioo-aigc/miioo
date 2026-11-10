@@ -2,8 +2,8 @@
 import { useRef } from 'react';
 import { useMediaPlayback } from '../../hooks/useMediaPlayback';
 import AsyncImagePreview from '../AsyncImagePreview';
-import { Music2 } from 'lucide-react';
 import { getCanvasImagePreview, getCanvasOriginalImage, getCanvasVideoPoster } from './CanvasMediaSources';
+import CanvasNodeIcon from './CanvasNodeIcon';
 
 // 240px 卡片旋转后的中心统一对齐 312px 外框中心 (156, 156)。
 const CARD_TRANSFORMS = [
@@ -17,7 +17,7 @@ function MemberPreview({ member }) {
   if (member.type === 'video' && member.asset?.url) return getCanvasVideoPoster(member.asset)
     ? <AsyncImagePreview plain decorative imageClassName="canvas-stack-preview__media" src={getCanvasVideoPoster(member.asset)} alt="" draggable={false} decoding="async" />
     : <StackVideo key={member.asset.url} src={member.asset.url} />;
-  if (member.type === 'audio' && member.asset?.url) return <div className="canvas-stack-preview__empty"><Music2 size={28} /><span>{member.asset.name || member.label}</span></div>;
+  if (member.type === 'audio' && member.asset?.url) return <div className="canvas-stack-preview__empty"><CanvasNodeIcon nodeType="audio" size={28} /><span>{member.asset.name || member.label}</span></div>;
   if (member.content) return <div className="canvas-stack-preview__text">{member.content}</div>;
   if (member.readOnly) return <div className="canvas-stack-preview__empty">暂无内容</div>;
   const hint = { text: '支持.docx/.txt/.md', image: '支持图片上传', video: '支持视频上传', audio: '支持音频上传' }[member.type];

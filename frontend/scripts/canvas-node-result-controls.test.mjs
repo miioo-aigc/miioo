@@ -80,11 +80,15 @@ function host(Component, props) {
     class: name => nodes.find(node => node.props?.className?.split(' ').includes(name)) };
 }
 const assetId = '11111111-1111-4111-8111-111111111111';
-function data(type = 'text') {
-  const nodeResults = protocol.commitCanvasResultBatch(protocol.createCanvasNodeResults(), {
-    id: '批次', source: 'generation', requestedCount: 1, submittedAt: 1, completedAt: 1,
-    results: [{ id: '结果', index: 0, type, ...(type === 'text' ? { content: '文本' } : { assetId }) }],
-  });
+function data(type = 'text', resultCount = 2) {
+  let nodeResults = protocol.createCanvasNodeResults();
+  for (let index = 0; index < resultCount; index += 1) {
+    const last = index === resultCount - 1;
+    nodeResults = protocol.commitCanvasResultBatch(nodeResults, {
+      id: '批次' + index, source: 'generation', requestedCount: 1, submittedAt: index + 1, completedAt: index + 1,
+      results: [{ id: last ? '结果' : '历史结果' + index, index: 0, type, ...(type === 'text' ? { content: '文本' } : { assetId }) }],
+    });
+  }
   return { nodeId: '节点', nodeResults };
 }
 function environment() {
@@ -105,6 +109,14 @@ function environment() {
 }
 const click = ui => ui.find('button')[0].props.onClick({ currentTarget: { getBoundingClientRect: () => ({ left: 30, top: 40, bottom: 72 }) } });
 
+test('只有一条结果不显示历史入口，两条结果才显示', () => {
+  environment();
+  const single = host(Controls, { data: data('image', 1), nodeType: 'image' });
+  assert.equal(single.find('button').length, 0);
+  const multiple = host(Controls, { data: data('image', 2), nodeType: 'image' });
+  assert.equal(multiple.find('button').length, 1);
+  assert.match(multiple.find('button')[0].props['aria-label'], /查看.*结果（2）/);
+});
 test('入口使用真实屏幕锚点，选择仅转发节点编号和结果编号', () => {
   environment();
   const calls = [], node = data();
@@ -212,13 +224,21 @@ test('上游标识来自受控数据；缺少结果和回调不伪造业务状�
   const ui = host(Controls, { data: { upstreamUpdated: true } });
   assert.equal(ui.find('button').length, 0);
   assert.equal(ui.find('popover').length, 0);
-  assert.equal(ui.find('span')[0].props.children, '上游已更新');
+  assert.equal(ui.find('span').length, 0);
   const withResults = host(Controls, { data: data('image'), nodeType: 'image' });
   assert.equal(withResults.find('popover')[0].props.onSelect, undefined);
   let stopped = 0;
   withResults.find('div')[0].props.onPointerDown({ stopPropagation: () => stopped++ });
   withResults.find('div')[0].props.onWheel({ stopPropagation: () => stopped++ });
   assert.equal(stopped, 2);
+});
+
+test('上游标识改由标题行承载，壳层按受控数据透传到节点标题', () => {
+  environment();
+  const shell = host(Shell, { nodeType: 'image', data: { ...data('image'), upstreamUpdated: true }, children: element('old-result', {}) });
+  assert.equal(shell.find('CanvasNodeHeader')[0].props.upstreamUpdated, true);
+  const clear = host(Shell, { nodeType: 'image', data: data('image'), children: element('old-result', {}) });
+  assert.equal(clear.find('CanvasNodeHeader')[0].props.upstreamUpdated, false);
 });
 
 test('文本不显示历史或替换；媒体替换按保护状态禁用，提交锁定两个入口', () => {

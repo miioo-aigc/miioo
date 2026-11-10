@@ -1,4 +1,6 @@
-/** 批量参考素材先完整校验，再一次写入；拒绝时不留下部分节点。 */
+/** 批量参考素材先完整校验，再一次写入；拒绝时不留下部分节点。
+ * 2026-11-09：图片参考上限未知（能力未加载）时不拦截新增，等真实上限回填后再判定。
+ */
 import { toCanvasAsset } from './CanvasAssets.js';
 import { preserveCanvasImportPanels } from './CanvasImportLayout.js';
 import { addCanvasReference, getCanvasReferences } from './CanvasReferences.js';
@@ -15,9 +17,12 @@ export function planCanvasReferenceBatch(nodes, targetId, assets, mode) {
       const validation = validateCanvasVideoReferenceAddition(next, targetId, asset);
       if (!validation.allowed) return { ...validation, nodes };
     } else {
-      const limit = target.data.imageReferenceLimit || 0;
-      const count = getCanvasPromptReferences(next, targetId).filter((item) => item.asset.asset_type === 'image').length;
-      if (count >= limit) return { allowed: false, message: `当前图片模型最多支持 ${limit} 张参考图`, nodes };
+      // 能力未加载时 imageReferenceLimit 为 undefined（未知）：不拦截，等真实上限回填后再判定。
+      const limit = target.data.imageReferenceLimit;
+      if (Number.isInteger(limit)) {
+        const count = getCanvasPromptReferences(next, targetId).filter((item) => item.asset.asset_type === 'image').length;
+        if (count >= limit) return { allowed: false, message: `当前图片模型最多支持 ${limit} 张参考图`, nodes };
+      }
     }
     if (mode === 'frame' && asset.asset_type === 'image'
       && getCanvasReferences(next, targetId).filter((item) => item.slot < 2 && item.asset.asset_type === 'image').length >= 2) {

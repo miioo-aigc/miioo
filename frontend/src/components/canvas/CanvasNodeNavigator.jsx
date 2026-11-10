@@ -5,7 +5,7 @@
  *   2026-11-06 宫格和列表图标接入 morphicons 平滑变形，宫格采用四个独立方块。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, FileText, Image as ImageIcon, Video, Volume2 } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { MorphIcon } from 'morphicons/react';
 import AsyncImagePreview from '../AsyncImagePreview';
 import { Button } from '../ui/Button';
@@ -65,11 +65,7 @@ function HighlightedName({ name, query }) {
 }
 
 function PreviewFallback({ type }) {
-  const props = { size: 20, strokeWidth: 1.2, 'aria-hidden': true };
-  if (type === 'text') return <FileText {...props} />;
-  if (type === 'video') return <Video {...props} />;
-  if (type === 'audio') return <Volume2 {...props} />;
-  return <ImageIcon {...props} />;
+  return <CanvasNodeIcon nodeType={type} size={20} />;
 }
 
 function NodeCard({ item, nodes, query, onLocate, viewMode }) {

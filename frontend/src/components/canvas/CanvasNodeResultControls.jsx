@@ -78,10 +78,9 @@ export default function CanvasNodeResultControls({ data, title = '节点', nodeT
     <div className="canvas-node-result-controls nodrag nopan nowheel"
       style={{ '--canvas-result-inverse-zoom': 1 / Math.max(1, data?.viewportZoom || 1) }}
       onPointerDown={stop} onMouseDown={stop} onClick={stop} onDoubleClick={stop} onWheel={stop}>
-      {data?.upstreamUpdated && <span role="status" className="canvas-node-result-controls__updated">上游已更新</span>}
       {nodeType !== 'text' && Boolean(data?.asset?.url) && <CanvasNodeReplaceControl data={data} nodeType={nodeType}
         disabled={outputLocked || selectionPending} />}
-      {nodeType !== 'text' && count > 0 && <Tooltip label={'查看结果（' + count + '）'}>
+      {nodeType !== 'text' && count > 1 && <Tooltip label={'查看结果（' + count + '）'}>
         <IconButton ref={triggerRef} className="canvas-node-result-controls__trigger"
         variant="secondary" style={{ paddingTop: 8, paddingBottom: 8, alignSelf: 'auto', height: 'auto', width: 32,
           boxShadow: 'none', backgroundColor: 'transparent',
@@ -98,7 +97,7 @@ export default function CanvasNodeResultControls({ data, title = '节点', nodeT
       </Tooltip>}
     </div>
     {results && nodeType !== 'text' && <CanvasNodeResultsPopover open={Boolean(anchorRect) && !data?.submissionLocked}
-      results={results} nodeName={title} anchorRect={anchorRect} returnFocusRef={triggerRef}
+      results={results} anchorRect={anchorRect} returnFocusRef={triggerRef}
       mediaByResultId={mediaByResultId} generating={Boolean(data?.generating || data?.generationPending)} editing={Boolean(data?.editing || data?.outputLocked)}
       upstreamProtected={Boolean(data?.upstreamProtected)} selectionPending={selectionPending}
       selectionError={data?.selectionError} onClose={() => setAnchorRect(null)}

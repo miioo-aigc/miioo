@@ -26,13 +26,13 @@ export default function CanvasNodeToolbar({ nodeType, content, asset, onAction, 
   const isDisabled = (key) => !enabled || (key !== 'edit' && !hasContent) || (nodeType === 'video' && key !== 'download' && asset?.asset_type !== 'video');
   return <CanvasToolbarSurface label="节点内容工具栏">
     {actions.map(({ key, label, Icon }) => <CanvasToolbarButton key={key} label={label} disabled={isDisabled(key)} onClick={() => onAction?.(key)}>
-      {Icon ? <Icon size={16} strokeWidth={1.5} className="shrink-0" /> : nodeType === 'video' ? <VideoEditIcon label={label} /> : <ImageEditIcon label={label} />}
+      {Icon ? <Icon size={20} strokeWidth={1.5} className="shrink-0" /> : nodeType === 'video' ? <VideoEditIcon label={label} size={20} /> : <ImageEditIcon label={label} size={20} />}
     </CanvasToolbarButton>)}
     {['image', 'video'].includes(nodeType) && <CanvasToolbarButton label="查看详情" disabled={!hasContent} onClick={() => onPreview?.(asset)}>
-      <Eye size={16} strokeWidth={1.5} className="shrink-0" />
+      <Eye size={20} strokeWidth={1.5} className="shrink-0" />
     </CanvasToolbarButton>}
     {enabled && <CanvasToolbarButton label="更多" aria-haspopup="menu" onClick={(event) => onMore?.(event.currentTarget.getBoundingClientRect())}>
-      <Ellipsis size={16} strokeWidth={1.5} className="shrink-0" />
+      <Ellipsis size={20} strokeWidth={1.5} className="shrink-0" />
     </CanvasToolbarButton>}
   </CanvasToolbarSurface>;
 }

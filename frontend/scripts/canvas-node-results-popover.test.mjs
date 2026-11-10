@@ -70,7 +70,7 @@ function session(overrides = {}) {
   const localStates = new Map();
   const listeners = new Map();
   const focused = [];
-  const panel = { style: {}, focus: () => focused.push('浮层'), getBoundingClientRect: () => ({
+  const panel = { style: {}, contains: () => false, focus: () => focused.push('浮层'), getBoundingClientRect: () => ({
     width: Math.min(340, parseFloat(panel.style.maxWidth) || 340),
     height: Math.min(600, parseFloat(panel.style.maxHeight) || 600),
   }) };
@@ -100,7 +100,7 @@ function session(overrides = {}) {
     return nodes;
   }
   render();
-  return { props, render, listeners, focused, effects: () => effects, layouts: () => layouts,
+  return { props, render, listeners, focused, panel, effects: () => effects, layouts: () => layouts,
     find: type => nodes.filter(node => node.type === type),
     choose: () => nodes.filter(node => node.type === 'radio') };
 }
@@ -151,7 +151,9 @@ test('卡片点击可选择，内部交互和文本选择不切换，未就绪�
   click();
   assert.deepEqual(selected, ['结果20']);
   ui.find('article')[0].props.onClick({ target: { closest: selector => {
-    for (const excluded of ['button', 'video', '.canvas-node__transcript', '.canvas-results-popover__selection']) assert.ok(selector.includes(excluded));
+    for (const excluded of ['button', '.canvas-node__transcript', '.canvas-results-popover__selection']) assert.ok(selector.includes(excluded));
+    // 视频卡片无播放控件，点击视频本体用于选择，不能把 video 排除在选择之外。
+    assert.equal(selector.includes('video'), false);
     return {};
   } } });
   window.getSelection = () => ({ toString: () => '选中文字' });
@@ -218,22 +220,43 @@ test('历史音频复用紧凑播放器并传递所属结果的配音文本', ()
   assert.equal(player.props.url, '/audio.mp3');
   assert.equal(player.props.transcript, '历史配音文本');
   assert.equal(player.props.compact, true);
+  assert.equal(player.props.timeMode, 'duration');
   assert.match(css, /canvas-node__transcript/);
+  // 历史卡片只显示静态总时长，单行不换行，不再显示当前进度。
+  assert.match(css, /\.canvas-results-popover \.canvas-node__audio-time {[^}]*white-space: nowrap/);
+  assert.equal(/\.canvas-results-popover \.canvas-node__audio-time {[^}]*overflow-wrap/.test(css), false);
+  // 紧凑态播放按钮 24px，播放区与台词区间距 8px。
+  assert.match(css, /\.canvas-results-popover \.canvas-node__play { width: 24px; height: 24px; flex: 0 0 24px;/);
+  // 配色复用节点卡片播放按钮，不覆盖品牌青底和白色图标。
+  assert.equal(/\.canvas-results-popover \.canvas-node__play {[^}]*color-brand-main/.test(css), false);
+  assert.equal(/\.canvas-results-popover \.canvas-node__play {[^}]*color: #fff/.test(css), false);
+  // 播放三角图标使用 10px，在 24px 圆钮内保持紧凑。
+  assert.match(css, /\.canvas-results-popover \.canvas-node__play svg { width: 10px; height: 10px; }/);
+  assert.match(css, /\.canvas-results-popover \.canvas-node__audio--compact {[^}]*gap: 8px;/);
 });
 
-test('文本完整保留且可聚焦，视频使用独立控件和本体就绪事件', () => {
+test('文本完整保留且可聚焦，视频不显示播放控件且点击用于选择', () => {
   const text = session();
   assert.equal(text.find('div').filter(node => node.props.className === 'canvas-results-popover__text').length, 2);
   const video = session({ results: makeResults('video'), mediaByResultId: { '结果20': { status: 'ready', src: '/视频.mp4' } } });
-  assert.equal(video.find('video')[0].props.controls, true);
+  assert.equal(video.find('video')[0].props.controls, undefined);
   assert.equal(video.find('video')[0].props.preload, 'metadata');
   assert.equal(video.choose()[0].props.disabled, true);
   assert.equal(video.find('div').filter(node => node.props.className === 'canvas-results-popover__video-loading').length, 1);
+  // 视频本体不接收指针事件，点击落到卡片容器上触发选择。
+  assert.match(css, /\.canvas-results-popover__media video { pointer-events: none; }/);
   assert.match(css, /.canvas-results-popover__video-loading {[^}]*pointer-events: none/);
   assert.ok(css.includes('.canvas-results-popover__video-loading * { pointer-events: none; }'));
   video.find('video')[0].props.onLoadedData(); video.render();
   assert.equal(video.choose()[0].props.disabled, false);
   assert.equal(video.find('div').filter(node => node.props.className === 'canvas-results-popover__video-loading').length, 0);
+});
+
+test('全部历史卡片悬停时描边变色，当前结果保持激活描边', () => {
+  assert.match(css, /\.canvas-results-popover__result:hover { border-color: var\(--color-stroke-accent\); }/);
+  const hoverIndex = css.indexOf('.canvas-results-popover__result:hover');
+  const currentIndex = css.indexOf('.canvas-results-popover__result[data-current]');
+  assert.ok(hoverIndex > -1 && currentIndex > hoverIndex, '当前结果规则需位于悬停规则之后以保持激活描边');
 });
 
 test('加载、失败、空态及分页只使用受控状态和真实回调', () => {
@@ -264,6 +287,25 @@ test('退出键关闭并清理监听，焦点返回入口，指针滚轮不传�
   cleanups.forEach(cleanup => cleanup?.());
   assert.deepEqual(ui.focused, ['浮层', '入口']);
   assert.equal(ui.listeners.size, 0);
+});
+
+test('标题固定为历史记录，点击浮层与入口外区域收起', () => {
+  let closed = 0;
+  const trigger = { current: { contains: () => false } };
+  const ui = session({ onClose: () => closed++, returnFocusRef: trigger });
+  assert.deepEqual(ui.find('h2').map(node => node.props.children), ['历史记录']);
+  ui.effects().forEach(effect => effect());
+  const pointerdown = ui.listeners.get('pointerdown');
+  assert.equal(typeof pointerdown, 'function');
+  const inside = { id: '浮层内' };
+  ui.panel.contains = target => target === inside;
+  pointerdown({ target: inside });
+  assert.equal(closed, 0);
+  pointerdown({ target: { id: '画布空白' } });
+  assert.equal(closed, 1);
+  trigger.current.contains = () => true;
+  pointerdown({ target: { id: '历史入口' } });
+  assert.equal(closed, 1);
 });
 
 test('浮层宽340高600且约束视口，图片完整展示并保持两列', () => {

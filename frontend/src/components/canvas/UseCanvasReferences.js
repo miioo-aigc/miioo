@@ -5,6 +5,7 @@ import { appendCanvasNode } from './canvasNodeUtils';
 import { CANVAS_CARD_PULSE_DURATION, getCanvasPulseTiming } from './CanvasPulseMotion';
 import { showGlobalToast } from '../../stores/toastStore';
 import { getCanvasReferenceEdges, removeCanvasReference } from './CanvasReferences';
+import { getActiveUpstreamEdgeIds } from './CanvasEdgeHighlight';
 import { getCanvasPromptReferences } from './CanvasPromptReferences';
 import { connectTextToAudio, disconnectTextAudio, getTextAudioEdges, isTextAudioConnection } from './CanvasTextAudio';
 import { getCanvasMediaFileType } from './CanvasLocalMedia';
@@ -117,11 +118,12 @@ export function useCanvasReferences(nodes, setNodes, openPicker, uploadFilesRef)
       || edge.id === hoveredEdgeId
     )).map((edge) => edge.id));
   }, [graphEdges, hoveredEdgeId]);
+  const activeUpstreamEdgeIds = useMemo(() => getActiveUpstreamEdgeIds(nodes, graphEdges), [nodes, graphEdges]);
   const edges = graphEdges.map((edge) => ({ ...edge, type: 'canvasConnection', data: {
     ...edge.data,
     pulses: pulses.filter((pulse) => pulse.source === edge.source && pulse.target === edge.target),
     onPulseMeasure,
-    highlighted: highlightedEdgeIds.has(edge.id),
+    highlighted: highlightedEdgeIds.has(edge.id) || activeUpstreamEdgeIds.has(edge.id),
     onHover: setHoveredEdgeId,
     onDelete: (edgeId) => removeEdges([edgeId]),
   } }));

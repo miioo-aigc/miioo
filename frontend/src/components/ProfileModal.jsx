@@ -92,11 +92,14 @@ function ProfileField({ label, value, onChange, placeholder, maxLength, onBlurSa
   };
 
   const handleChange = (e) => {
-    if (filterInput) {
-      const filtered = filterInput(e.target.value);
-      onChange({ ...e, target: { ...e.target, value: filtered } });
-    } else {
+    // 过滤与长度上限都在这里兜底：maxLength 属性对输入法组合态、粘贴等不可靠。
+    let next = e.target.value;
+    if (filterInput) next = filterInput(next);
+    if (maxLength) next = next.slice(0, maxLength);
+    if (next === e.target.value) {
       onChange(e);
+    } else {
+      onChange({ ...e, target: { ...e.target, value: next } });
     }
   };
 

@@ -9,13 +9,17 @@ const node = (type, id) => createCanvasNode(type, { x: 0, y: 0 }, id);
 const connection = { source: 'source', target: 'target' };
 const options = { retainInvalid: true };
 
-test('图片拖线新建保留关系，等待能力再提示；普通接线仍拦截', () => {
+test('图片拖线新建保留关系，能力未知时放行不报错，加载后按真实上限判定', () => {
   const initial = [node('image', 'source'), node('image', 'target')];
-  assert.equal(connectCanvasImage(initial, connection), initial);
+  // 能力未加载时按「未知」处理：普通接线放行，不再当作 0 张拦截。
+  const direct = connectCanvasImage(initial, connection);
+  assert.deepEqual(direct.find((item) => item.id === 'target').data.imageSourceIds, ['source']);
+  // 拖线新建：保留关系并静默等待能力回填。
   const connected = connectCanvasImage(initial, connection, undefined, options);
   assert.equal(getCanvasImageEdges(connected).length, 1);
   assert.equal(getCanvasNewConnectionError(connected, connection), null);
   connected[1].data.imageReferenceLimit = 0;
+  // 真实上限为 0 时才报错并标红。
   assert.match(getCanvasNewConnectionError(connected, connection), /不支持图片参考/);
   assert.equal(getCanvasImageEdges(connected)[0].data.overflow, true);
   assert.throws(() => planCanvasImageGeneration(connected, 'target', '测试', 'model'), /参考/);
@@ -25,13 +29,19 @@ test('图片拖线新建保留关系，等待能力再提示；普通接线仍�
 });
 
 for (const type of ['image', 'video', 'audio']) {
-  test(`${type}拖线新建视频保留关系，能力更新后重新判定红线`, () => {
+  test(`${type}拖线新建视频保留关系，能力未知不标红、更新后重新判定`, () => {
     const initial = [node(type, 'source'), node('video', 'target')];
-    assert.equal(connectCanvasVideo(initial, connection), initial);
+    // 能力未加载时按「未知」处理：普通接线同样放行，不当作 0 条拦截。
+    assert.equal(getCanvasVideoEdges(connectCanvasVideo(initial, connection)).length, 1);
     const connected = connectCanvasVideo(initial, connection, undefined, options);
     assert.equal(getCanvasVideoEdges(connected).length, 1);
     assert.equal(getCanvasNewConnectionError(connected, connection), null);
     connected[1].data.videoCapabilities = {};
+    // 空能力对象视为「未声明」：不报错、不标红。
+    assert.equal(getCanvasNewConnectionError(connected, connection), '');
+    assert.equal(getCanvasVideoEdges(connected)[0].data.overflow, false);
+    connected[1].data.videoCapabilities = { max_reference_images: 0, max_reference_videos: 0, max_reference_audios: 0 };
+    // 真实上限为 0 时仍拒绝并标红。
     assert.match(getCanvasNewConnectionError(connected, connection), /不支持/);
     assert.equal(getCanvasVideoEdges(connected)[0].data.overflow, true);
     connected[1].data.videoCapabilities = { max_reference_images: 1, max_reference_videos: 1, max_reference_audios: 1 };

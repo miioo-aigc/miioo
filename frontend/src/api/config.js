@@ -143,10 +143,11 @@ export async function apiListModels({ category, fresh = false, availableOnly = f
     return unwrapModelResponse(await res.json());
   };
 
-  if (fresh || availableOnly) return fetchModels();
+  // fresh 是显式强制刷新；availableOnly 只是筛选维度，单独成键后同样可以缓存。
+  if (fresh) return fetchModels();
 
   const cachedModels = await cached(
-    K.models(category),
+    availableOnly ? K.modelsAvailable(category) : K.models(category),
     fetchModels,
     { medium: MEDIUM.STATIC, ttl: TTL.STATIC },
   );

@@ -329,3 +329,40 @@ test('提交锁定拦截当前节点输入，工具栏原回调及样式类保�
   assert.equal(ui.find('CanvasNodeToolbar')[0].props.onAction, action);
   assert.ok(ui.class('canvas-node__toolbar-scale'));
 });
+
+test('多图生成提示挂在入口右侧，查看即上报并在浮层打开后隐藏', () => {
+  environment();
+  const acknowledges = [];
+  const node = { ...data('image', 2), resultHintCount: 3, onAcknowledgeResultHint: id => acknowledges.push(id) };
+  const ui = host(Controls, { data: node, nodeType: 'image' });
+  const hint = ui.class('canvas-node-result-controls__hint');
+  assert.equal(hint.type, 'button');
+  assert.equal(hint.props.children, '已生成3个结果，点击查看');
+  assert.match(ui.class('canvas-node-result-controls').props.className, /canvas-node-result-controls--hint/);
+  hint.props.onClick({ currentTarget: { getBoundingClientRect: () => ({ left: 30, top: 40, bottom: 72 }) } });
+  ui.render();
+  assert.deepEqual(acknowledges, ['节点']);
+  assert.equal(ui.find('popover')[0].props.open, true);
+  assert.equal(ui.find('popover')[0].props.anchorRect.left, 30);
+  assert.equal(ui.class('canvas-node-result-controls__hint'), undefined);
+  assert.doesNotMatch(ui.class('canvas-node-result-controls').props.className, /--hint/);
+  node.resultHintCount = undefined; ui.render();
+  assert.equal(ui.class('canvas-node-result-controls__hint'), undefined);
+  // 阈值由宿主持有，组件只按传入值渲染，重复叠加提示次数不会失真。
+  const hostDriven = host(Controls, { data: { ...data('image', 2), resultHintCount: 1 }, nodeType: 'image' });
+  assert.equal(hostDriven.class('canvas-node-result-controls__hint').props.children, '已生成1个结果，点击查看');
+});
+
+test('单张结果、没有多图提示或文本节点都不显示气泡', () => {
+  environment();
+  assert.equal(host(Controls, { data: { ...data('image', 1), resultHintCount: 3 }, nodeType: 'image' })
+    .class('canvas-node-result-controls__hint'), undefined);
+  const plain = host(Controls, { data: data('image', 2), nodeType: 'image' });
+  assert.equal(plain.class('canvas-node-result-controls__hint'), undefined);
+  assert.doesNotMatch(plain.class('canvas-node-result-controls').props.className, /--hint/);
+  assert.equal(host(Controls, { data: { ...data('image', 2), resultHintCount: 0 }, nodeType: 'image' })
+    .class('canvas-node-result-controls__hint'), undefined);
+  const text = host(Controls, { data: { ...data('text', 2), resultHintCount: 3 }, nodeType: 'text' });
+  assert.equal(text.class('canvas-node-result-controls__hint'), undefined);
+  assert.equal(text.find('popover').length, 0);
+});

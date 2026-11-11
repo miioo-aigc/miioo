@@ -1,5 +1,6 @@
 /** 图片节点原位创作；永久资产按稳定索引提交同一结果批次。
  * 2026-11-06：受理后登记真实任务编号，部分成功保留候选并提示数量。
+ * 2026-11-11：多图成功时回调宿主（第五参数），用于右上角历史入口的一次性提示；提示属于运行态，不写入画布文档。
  */
 import { useCallback, useEffect, useState } from 'react';
 import { apiGenerateCreation } from '../../api/creation';
@@ -11,7 +12,7 @@ import { prepareCanvasMediaAsset } from './CanvasMediaSize';
 import { createCanvasTextRequests } from './CanvasTextRequests';
 import { createCanvasProgressHandler } from './CanvasGenerationProgress';
 
-export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, projectId) {
+export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, projectId, onMultiResultCommitted) {
   const [requests] = useState(createCanvasTextRequests);
   useEffect(() => () => requests.abortAll(), [requests]);
   useEffect(() => { requests.reconcile(nodes); }, [nodes, requests]);
@@ -68,6 +69,8 @@ export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, p
       if (!controller.signal.aborted && session === getAuthSessionGeneration()) {
         systemSetNodes((current) => applyCanvasImageResult(current, plan, assets), { record: false });
         if (successCount < plan.requestedCount) showGlobalToast(`本次成功生成 ${successCount} / ${plan.requestedCount} 张图片`, 'warning');
+        // 只把「本次一次生成多张」的通知交给宿主；宿主只保留到用户查看或刷新为止。
+        if (successCount > 1) onMultiResultCommitted?.(plan.nodeId, successCount);
       }
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -77,5 +80,5 @@ export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, p
     } finally {
       requests.finish(plan.requestId);
     }
-  }, [cancelPendingClicks, nodes, projectId, requests, setNodes]);
+  }, [cancelPendingClicks, nodes, onMultiResultCommitted, projectId, requests, setNodes]);
 }

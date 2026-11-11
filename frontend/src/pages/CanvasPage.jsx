@@ -1,6 +1,7 @@
 /**
  * @file CanvasPage.jsx
  * @structure-index
+ *   2026-11-11：图片节点一次生成多张后，右上角历史入口旁显示运行态气泡；查看或刷新即消失，不写入画布文档与撤销历史。
  *   2026-11-09：空白右键与展开组右键的「新建节点」二级菜单新增本地上传、从资产库选择，复用双击菜单入口；右键组时新素材归入该组。
  *   2026-11-09：参考能力未加载时按「未知」处理，连线不标红、不拦截，能力回填后再按真实上限判定。
  *   2026-11-06：所有节点统一写回提示词及快照，恢复和导入节点草稿随画布保存。
@@ -10,7 +11,7 @@
  *
  *   2026-11-04：双名称分别编辑，画布管理迁入顶部，底部移除列表入口。
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L161；结果选择 L206；历史素材映射恢复 L228；grouping L265；referenceGraph L298；文档读取 L323；handleNodesChange L396；节点素材回调 L470；addNode L485；工具栏新增 L525；批量导入/替换 L532；上传 L655；React Flow L1015。
+ *   CanvasPage L161；结果选择 L206；历史素材映射恢复 L228；grouping L265；图片多结果提示 L279；referenceGraph L298；文档读取 L323；handleNodesChange L396；节点素材回调 L470；addNode L485；工具栏新增 L525；批量导入/替换 L532；上传 L655；React Flow L1015。
  *   2026-11-06：媒体替换独立单素材分支，上传与素材库均复核目标会话/节点，普通导入和参考流程保持原语义。
  *   2026-11-06：统一结果切换、节点级任务操作保护、文本结果历史、直接上游更新标识及复制/导入历史预览恢复。
  *   2026-10-27：保存失败复用带下载操作的提示，点击时导出最新草稿。
@@ -275,8 +276,17 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     containerRef: canvasContainerRef,
     enabled: loadedCanvasId === canvasId && !error && !assetPickerOpen && !profileOpen && !searchOpen,
     dialog: actionDialog, setDialog: setActionDialog });
+  // 多图生成完成后的历史入口提示属运行态：只保留到用户查看或刷新页面，不写入画布文档与撤销历史。
+  const [resultHintCounts, setResultHintCounts] = useState({});
+  const acknowledgeResultHint = useCallback((nodeId) => {
+    setResultHintCounts((current) => Object.hasOwn(current, nodeId)
+      ? Object.fromEntries(Object.entries(current).filter(([id]) => id !== nodeId)) : current);
+  }, []);
+  const retainMultiResultHint = useCallback((nodeId, count) => {
+    setResultHintCounts((current) => ({ ...current, [nodeId]: count }));
+  }, []);
   const generateText = useCanvasTextGeneration(nodes, setNodes, canvasId, cancelPendingClicks);
-  const generateImage = useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, canvas?.project_id);
+  const generateImage = useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, canvas?.project_id, retainMultiResultHint);
   const generateVideo = useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks);
   const generateAudio = useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks);
   const upstreamUpdatedIds = new Set();
@@ -1073,7 +1083,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
         onDragOver={handleCanvasDragOver} onDrop={handleCanvasDrop}
         onWheelCapture={handleCanvasWheelCapture}
         onMove={(_, nextViewport) => { setViewport(nextViewport); setViewportZoom(nextViewport.zoom); }}
-        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, upstreamProtected: getCanvasOperationLocks(nodes).upstreamProtected.has(node.id), upstreamUpdated: upstreamUpdatedIds.has(node.id), onSelectResult, onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)), onModelChange: handleNodeModelChange, onAssetChange: handleNodeAssetChange, onSelectAsset: handleNodeSelectAsset, viewportZoom, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
+        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, upstreamProtected: getCanvasOperationLocks(nodes).upstreamProtected.has(node.id), upstreamUpdated: upstreamUpdatedIds.has(node.id), resultHintCount: resultHintCounts[node.id], onAcknowledgeResultHint: acknowledgeResultHint, onSelectResult, onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)), onModelChange: handleNodeModelChange, onAssetChange: handleNodeAssetChange, onSelectAsset: handleNodeSelectAsset, viewportZoom, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
           onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); },
           onEditContent: (id) => { clearPendingConnection(); setNodeMenu(null); nodeActions.closeMenu(); textEditor.open(id); },
           onContentChange: (nodeId, content) => commitUserText(nodeId, content),

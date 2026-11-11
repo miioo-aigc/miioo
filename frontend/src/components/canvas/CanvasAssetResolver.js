@@ -33,10 +33,12 @@ export async function resolveCanvasDocumentAssets(canvasId, nodes, resolve, { si
       const visible = ['ready', 'trashed'].includes(view.availability);
       const url = visible ? [view.original_url, view.download_url, view.preview_url].map((value) => mediaUrl(value, normalizeMediaUrl)).find(Boolean) : undefined;
       if (visible && !url) throw new Error('画布素材恢复失败：可用素材缺少有效媒体地址，已停止加载以保护原内容');
+      // 台词只由素材域提供：解析响应没有该字段时保持省略，行为与补齐前一致。
+      const transcript = visible && view.media_type === 'audio' && typeof view.transcript === 'string' ? view.transcript.trim() : '';
       views.set(id, { asset_id: id, asset_type: view.media_type, availability: view.availability,
         ...(visible ? { originalUrl: mediaUrl(view.original_url, normalizeMediaUrl) || mediaUrl(view.download_url, normalizeMediaUrl) } : {}),
         ...(visible ? { name: view.title, url, thumbnailUrl: mediaUrl(view.thumbnail_url, normalizeMediaUrl), previewUrl: mediaUrl(view.preview_url, normalizeMediaUrl), posterUrl: mediaUrl(view.poster_url, normalizeMediaUrl),
-          width: view.width, height: view.height, duration_ms: view.duration_ms } : {}) });
+          width: view.width, height: view.height, duration_ms: view.duration_ms, ...(transcript ? { transcript } : {}) } : {}) });
     }
   }
   return nodes.map((node, index) => {

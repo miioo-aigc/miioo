@@ -1,5 +1,19 @@
 # 组件重构盘点基线
 
+## 2026-11-11 图片多结果历史入口气泡提示（待手动验收）
+
+图片节点一次生成多张图片后，右上角历史入口旁显示一次性气泡「已生成 X 个结果，点击查看」。
+
+- UseCanvasImageGeneration：新增第 5 个参数 `onMultiResultCommitted(nodeId, count)`，只在本次成功多于一张时、写结果之后回调；签名与依赖数组已同步。
+- CanvasPage：新增运行态 state `resultHintCounts`（`retainMultiResultHint` / `acknowledgeResultHint`），渲染 ReactFlow 节点时注入 `resultHintCount` 与 `onAcknowledgeResultHint`。提示只活在页面运行态，不写入 node.data，故不进画布文档、序列化与撤销历史，刷新即消失。
+- CanvasNodeResultControls：非文本节点、结果数大于 1、浮层未打开时渲染 `.canvas-node-result-controls__hint` 气泡，点击复用 `toggleResults`（打开浮层并上报已查看）；`hintVisible` 时根节点加 `--hint` class 保持入口可见。CSS 侧气泡绝对定位在入口右侧、垂直居中，内边距 `4px 8px`、圆角 4px，沿用 `--color-tooltip-bg` 与 `--font-size-12`，描边用 `--color-stroke-normal`（1px）；指向入口的小三角改由 `::before` 的 45° 旋转方块绘制，仅保留左/下两条描边，填充与气泡同色并压住气泡左边框，使整体轮廓连续。
+
+结果协议、接口与浮层逻辑未改动，未新增组件或依赖。
+
+## 2026-11-10 画布音频台词解析响应接通（前端已就绪，待后端补字段）
+
+CanvasAssetResolver 在 `resolveCanvasDocumentAssets` 里重建素材视图时，把解析响应的 `transcript` 纳入白名单：仅「可见（ready/trashed）+ media_type=audio + 非空字符串」时写入（trim 后），否则省略字段。白名单其余字段（编号、类型、名称、各类媒体地址、宽高时长、可用性）未变，非音频素材不受影响。读取侧未改：AudioCanvasNode 经 `getCanvasAudioTranscript` 读 `data.asset`，历史结果浮层 CanvasNodeResultControls 读 `resultAssetViews[assetId]`，两者共用解析响应重建出的同一份视图，所以后端补字段后卡片与历史浮层同时生效。后端未上线时字段缺失，行为与改动前一致（向后兼容）。未新增组件或接口。
+
 ## 2026-11-09 拖线新建节点时连线闪红修复：能力未加载按「未知」处理（Suzy 手动验收通过）
 
 从已有节点拖线到空白处释放、在菜单里新建图片/视频节点后，新建节点会先按直连素材保留关系；渲染红线与否取决于目标节点上的能力字段（图片 `imageReferenceLimit`、视频 `videoCapabilities`），而这两个字段要等模型目录请求返回后由 CanvasNodeShell 回填。此前 CanvasImageGeneration / CanvasVideoGeneration 把「能力未加载」与「真实上限 0」都折算成 0，导致新节点在回填前的整个网络往返窗口内被判为溢出、连线闪红。

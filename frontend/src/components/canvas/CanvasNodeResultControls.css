@@ -3,8 +3,13 @@
 .canvas-node-result-controls__trigger:focus-visible { border-color: var(--color-stroke-active); }
 .canvas-node-result-controls__trigger { opacity: 0; pointer-events: none; }
 .canvas-node__frame:hover > .canvas-node-result-controls .canvas-node-result-controls__trigger,
+.canvas-node-result-controls--hint .canvas-node-result-controls__trigger,
 .canvas-node-result-controls:has([aria-expanded='true']) .canvas-node-result-controls__trigger,
 .canvas-node-result-controls:has(:focus-visible) .canvas-node-result-controls__trigger { opacity: 1; pointer-events: auto; }
+/* 多图生成完成后的一次性提示：沿用 Tooltip 皮肤（#090909 + 10px 模糊），叠加常规描边，左侧补指向入口的小三角。 */
+.canvas-node-result-controls__hint { position: absolute; left: calc(100% + 8px); top: 50%; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 4px 8px; transform: translateY(-50%); border: 1px solid var(--color-stroke-normal); border-radius: 4px; background-color: var(--color-tooltip-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: var(--color-text-primary); font-family: inherit; font-size: var(--font-size-12); font-weight: var(--font-weight-regular); line-height: 16px; white-space: nowrap; cursor: pointer; }
+/* 小三角用 45° 旋转的方块：左/下两条边即描边，底部盖住气泡左边框形成开口，轮廓连成一条线。 */
+.canvas-node-result-controls__hint::before { content: ''; position: absolute; left: -4px; top: 50%; width: 8px; height: 8px; transform: translateY(-50%) rotate(45deg); border-bottom: 1px solid var(--color-stroke-normal); border-left: 1px solid var(--color-stroke-normal); background-color: var(--color-tooltip-bg); }
 .canvas-node-result-replace { position: relative; display: inline-flex; flex: 0 0 auto; }
 .canvas-node-replace__menu { z-index: 60 !important; }
 /* 结果入口移入卡片后，仍允许在已受理的生成期间浏览历史。 */

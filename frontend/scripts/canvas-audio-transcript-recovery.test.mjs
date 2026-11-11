@@ -22,6 +22,14 @@ async function refresh(node) {
     items: ids.map((asset_id) => ({ asset_id, media_type: 'audio', availability: 'ready', download_url: '/restored.mp3' })),
   })))[0];
 }
+// 解析响应按后端约定携带 transcript 时，刷新后由素材视图恢复；缺字段时行为不变。
+async function refreshWithViews(node, view, mediaType = 'audio') {
+  const document = JSON.parse(JSON.stringify(serializeCanvasDocument([node])));
+  const restored = readCanvasDocument({ document });
+  return (await resolveCanvasDocumentAssets('canvas', restored.nodes, async (_, ids) => ({
+    items: ids.map((asset_id) => ({ asset_id, media_type: mediaType, availability: 'ready', download_url: '/restored.mp3', ...view })),
+  })))[0];
+}
 test('生成台词经过真实保存、读取与素材恢复后仍绑定当前结果，忽略编辑后的提示词', async () => {
   let node = { id: 'audio', type: 'audio', position: { x: 0, y: 0 }, data: { asset: null } };
   node = generate(node, first, '第一段台词');
@@ -46,4 +54,29 @@ test('不借用其他结果或输入框台词，无历史时仍兼容素材自�
   const node = generate({ id: 'audio', type: 'audio', data: {} }, first, '对应台词');
   assert.equal(getCanvasAudioTranscript({ asset_id: second, transcript: '错误素材' }, node.data.nodeResults), '');
   assert.equal(getCanvasAudioTranscript({ transcript: ' 素材台词 ' }), '素材台词');
+});
+test('刷新时从解析响应的台词字段恢复，卡片与历史浮层读同一份素材视图', async () => {
+  // 资产库选入的音频：本地不保存台词，只保存素材编号。
+  let node = { id: 'audio', type: 'audio', position: { x: 0, y: 0 }, data: { asset: null } };
+  node = commitCanvasMediaOutput(node, { asset_id: uploaded, asset_type: 'audio', url: '/upload.mp3', source: 'asset-library' }, 'upload');
+  assert.equal(transcript(node), '');
+  node = await refreshWithViews(node, { transcript: ' 后端补齐的台词 ' });
+  assert.equal(node.data.asset.transcript, '后端补齐的台词');
+  assert.equal(node.data.resultAssetViews[uploaded].transcript, '后端补齐的台词');
+  assert.equal(transcript(node), '后端补齐的台词');
+  // 历史结果浮层直接读同一份素材视图。
+  assert.equal(node.data.resultAssetViews[uploaded].transcript, '后端补齐的台词');
+});
+test('解析响应缺少台词字段时行为不变，非音频或空台词不注入', async () => {
+  const node = commitCanvasMediaOutput({ id: 'audio', type: 'audio', position: { x: 0, y: 0 }, data: {} },
+    { asset_id: uploaded, asset_type: 'audio', url: '/upload.mp3', source: 'asset-library' }, 'upload');
+  const missing = await refreshWithViews(node, {});
+  assert.equal(missing.data.asset.transcript, undefined);
+  assert.equal(transcript(missing), '');
+  const blank = await refreshWithViews(node, { transcript: '   ' });
+  assert.equal(blank.data.asset.transcript, undefined);
+  const image = commitCanvasMediaOutput({ id: 'image', type: 'image', position: { x: 0, y: 0 }, data: {} },
+    { asset_id: second, asset_type: 'image', url: '/image.png', source: 'asset-library' }, 'upload');
+  const nonAudio = await refreshWithViews(image, { transcript: '不该出现' }, 'image');
+  assert.equal(nonAudio.data.asset.transcript, undefined);
 });

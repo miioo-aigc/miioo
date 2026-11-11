@@ -232,6 +232,7 @@ test('真实图片Hook登记任务编号并解锁，启用部分成功并提示�
   };
   let latestNodes = nodes;
   let omitTaskIdList = false;
+  let fullBatch = false;
   let apiCallCount = 0;
   const setNodes = (update, options) => {
     writeOptions.push(options);
@@ -258,27 +259,37 @@ test('真实图片Hook登记任务编号并解锁，启用部分成功并提示�
         assert.equal(latestNodes[0].data.submissionLocked, false);
         assert.deepEqual(latestNodes[0].data.generationTaskIds, ['real-a', 'real-b']);
       }
-      return { images: [null, '/two'], imageAssetIds: [null, assetId(2)] };
+      return fullBatch ? { images: ['/one', '/two'], imageAssetIds: [assetId(1), assetId(2)] }
+        : { images: [null, '/two'], imageAssetIds: [null, assetId(2)] };
     },
   };
+  const hints = [];
+  const hint = (nodeId, count) => hints.push([nodeId, count]);
   const hook = new Function(...Object.keys(dependencies), body + '; return useCanvasImageGeneration;')(...Object.values(dependencies));
-  await hook(nodes, setNodes, () => {}, 'project')({ nodeId: 'target', prompt: '生成', model: 'model', params: { count: 2 } });
+  await hook(nodes, setNodes, () => {}, 'project', hint)({ nodeId: 'target', prompt: '生成', model: 'model', params: { count: 2 } });
   assert.equal(nodes[0].data.asset.asset_id, assetId(2));
   assert.equal(nodes[0].data.generating, false);
   assert.deepEqual(nodes[0].data.nodeResults.batches[1].taskIds, ['real-a', 'real-b']);
   assert.deepEqual(toasts, [['本次成功生成 1 / 2 张图片', 'warning']]);
   assert.ok(writeOptions.length > 0 && writeOptions.every((options) => options?.origin === 'system'));
+  assert.deepEqual(hints, []);
+  toasts.length = 0;
   omitTaskIdList = true;
-  await hook(nodes, setNodes, () => {}, 'project')({ nodeId: 'target', prompt: '无完整任务数组', model: 'model', params: { count: 2 } });
+  await hook(nodes, setNodes, () => {}, 'project', hint)({ nodeId: 'target', prompt: '无完整任务数组', model: 'model', params: { count: 2 } });
   assert.equal(nodes[0].data.submissionLocked, false);
   assert.deepEqual(nodes[0].data.nodeResults.batches.at(-1).taskIds, []);
+  assert.deepEqual(hints, []);
+  fullBatch = true;
+  await hook(nodes, setNodes, () => {}, 'project', hint)({ nodeId: 'target', prompt: '一次生成两张', model: 'model', params: { count: 2 } });
+  assert.deepEqual(hints, [['target', 2]]);
+  assert.deepEqual(toasts, [['本次成功生成 1 / 2 张图片', 'warning']]);
   const staleNodes = nodes;
   latestNodes = [...nodes, { ...node('image', 'downstream'), data: { ...node('image', 'downstream').data,
     submissionLocked: true, executionSourceIds: ['target'] } }];
   const beforeRejectedStart = latestNodes;
   const callsBeforeRejectedStart = apiCallCount;
   const rejectedRequestHook = new Function(...Object.keys(dependencies), body + '; return useCanvasImageGeneration;')(...Object.values(dependencies));
-  await rejectedRequestHook(staleNodes, setNodes, () => {}, 'project')({ nodeId: 'target', prompt: '并发生成', model: 'model' });
+  await rejectedRequestHook(staleNodes, setNodes, () => {}, 'project', hint)({ nodeId: 'target', prompt: '并发生成', model: 'model' });
   assert.equal(latestNodes, beforeRejectedStart);
   assert.equal(apiCallCount, callsBeforeRejectedStart);
   assert.equal(activeRequests, 0);

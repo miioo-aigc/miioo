@@ -1,5 +1,25 @@
 # miioo 项目进度管理文档
 
+## 2026-11-11 图片多结果历史入口气泡提示（待手动验收）
+
+需求：图片节点卡片一次生成多张图片后，要在右上角历史记录入口旁显示气泡「已生成 X 个结果，点击查看」，样式为复用 Tooltip 皮肤再叠加一个指向左侧的小三角。时机与消失：生成完成后出现，用户点击查看后消失，或刷新页面后消失（不常驻、不持久化）。
+
+实现：UseCanvasImageGeneration 新增第 5 个参数 `onMultiResultCommitted(nodeId, count)`，仅在「本次成功生成多于一张」时、写结果之后回调宿主；单张成功或部分成功只剩一张时不触发。CanvasPage 用运行态 state `resultHintCounts` 承接（`retainMultiResultHint` 写入、`acknowledgeResultHint` 在查看时清除），渲染 ReactFlow 节点时把 `resultHintCount` 与 `onAcknowledgeResultHint` 注入 data；这份数据只存在于页面运行态，不写入 node.data，因此不进入画布文档、保存协议与撤销历史，刷新即消失。CanvasNodeResultControls 在图片/视频/音频节点（非文本节点）且结果数大于 1 且未打开浮层时渲染气泡，点击后与历史入口走同一 `toggleResults`：打开浮层并上报「已查看」使气泡消失；气泡存在期间入口按钮保持可见（`--hint` class），避免气泡指向不存在的入口。结果协议、接口与浮层逻辑未改动。
+
+补充（同日）：按反馈给气泡加上常规描边 `border: 1px solid var(--color-stroke-normal)`，内边距改为 `4px 8px`、圆角改为 `4px`。小三角不再用纯色 border 三角，改为 45° 旋转的 8×8 方块：只留左、下两条 1px 描边构成指向入口的折线，方块填充与气泡同色并盖住气泡左边框形成开口，使「气泡边框 + 三角描边」连成一条轮廓线。
+
+验证：canvas-node-result-controls 新增 2 项（气泡渲染与点击后消失、单张/无计数/零计数/文本节点不显示），连同 canvas-image-generation（新增成功张数触发回调、部分成功不触发）、canvas-node-results-popover、canvas-result-mutations 共 64 项定向测试全过；定向 eslint 无输出、vite build 成功、check:architecture 通过（仅既有文件规模提醒）、git diff --check 干净。未自动打开浏览器，等待用户手动验收。
+
+## 2026-11-10 画布音频台词解析响应接通（前端已就绪，待后端补字段）
+
+承接 2026-11-09 的交接文档：[画布音频台词字段-后端交接-2026-11-09.md](docs/画布音频台词字段-后端交接-2026-11-09.md)。用户确认希望后端补齐字段后前端「自然而然地」恢复台词、不再等前端排期，因此先把读取侧接通。
+
+改动：CanvasAssetResolver 在按解析响应重建素材视图时，把 `transcript` 纳入白名单。仅当素材可见（`ready` / `trashed`）、`media_type = audio`、且 `transcript` 是非空字符串时写入（trim 后），其余情况保持字段省略。读取路径不变：卡片（AudioCanvasNode）与历史结果浮层（CanvasNodeResultControls）都读同一份 `resultAssetViews` / `data.asset`。
+
+兼容性：后端未上线时解析响应没有该字段，视图与行为与补齐前完全一致；后端上线后刷新画布即自动显示台词，无需再发前端。仍遵守「台词只由素材域提供、画布文档不复制台词」的口径，本次未删除画布文档里的冗余 `data.transcript`（交接文档第五节第 3 项，留待后续评估）。
+
+验证：scripts/canvas-audio-transcript-recovery.test.mjs 新增 2 项（响应带 transcript 时刷新恢复、缺字段／空台词／非音频不注入），4 项全过；canvas-assets、canvas-node-result-controls、canvas-node-results-popover、canvas-audio-preview、canvas-audio-replacement、canvas-import-layout、canvas-picker-assets、canvas-local-media、canvas-media-sources 定向测试全过；定向 eslint 无输出、vite build 成功、check:architecture 通过、git diff --check 干净。canvas-audio-composer（3 项）与 canvas-node（3 项）为既有失败，与本次改动无关。未自动打开浏览器，等待用户手动验收（需后端先补字段）。
+
 ## 2026-11-09 拖线新建节点时连线闪红修复：能力未加载按「未知」处理（Suzy 手动验收通过）
 
 用户反馈：已有节点 A，从 A 拖出连线到空白处释放，弹出菜单里选新建图片或视频节点后，连线会先变成红色闪一下，怀疑是新建节点瞬间没拿到模型能力上限、被当成上限为 0。核对后确认就是这样：新建节点会先按直连素材关系落一条连线，连不连红取决于目标节点的能力字段（图片 `imageReferenceLimit`、视频 `videoCapabilities`），而这两个字段要等模型目录请求返回后由 CanvasNodeShell 回填；旧代码把「能力未加载」与「真实上限 0」都折算成 0，于是新节点在回填前的整个网络往返窗口内被判为溢出、连线闪红。

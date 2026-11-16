@@ -28,7 +28,7 @@ export default function SharedCanvasGraph({ graph }) {
     }}
     panOnDrag panOnScroll panOnScrollMode={PanOnScrollMode.Free} panOnScrollSpeed={0.5}
     zoomOnDoubleClick={false} zoomOnPinch proOptions={{ hideAttribution: true }}
-    fitView fitViewOptions={{ padding: 0.2, maxZoom: 1 }} minZoom={0.01} maxZoom={4} colorMode="dark" className="bg-surface-toolbar">
+    fitView fitViewOptions={{ padding: 0.2, maxZoom: 1 }} minZoom={0.01} maxZoom={4} colorMode="dark" className="bg-[#121212]">
     <CanvasGridBackground />
   </ReactFlow>;
 }

@@ -1,0 +1,31 @@
+.canvas-generation-history__overlay { position: fixed; inset: 0; z-index: 900; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0,0,0,.5); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.canvas-generation-history { display: flex; width: min(1040px, calc(100vw - 48px)); height: min(760px, calc(100vh - 48px)); min-height: 320px; flex-direction: column; overflow: hidden; border: 1px solid #FFFFFF14; border-radius: 16px; background: #161616; color: #FFFFFF; }
+.canvas-generation-history__header { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; padding: 16px 24px; font-family: 'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif; font-size: 16px; font-weight: 500; line-height: 20px; }
+.canvas-generation-history__header button { display: flex; width: 28px; height: 28px; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: transparent; color: #FFFFFF66; cursor: pointer; transition: background 100ms,color 100ms; }
+.canvas-generation-history__header button:hover { background: #FFFFFF14; color: #FFFFFFCC; }
+.canvas-generation-history__controls { display: flex; flex-shrink: 0; align-items: center; justify-content: flex-start; gap: 16px; padding: 0 24px 16px; }
+.canvas-generation-history__selectors { display: flex; align-items: center; gap: 16px; }
+.canvas-generation-history__tabs { display: flex; align-items: center; gap: 24px; }
+.canvas-generation-history__tabs button { position: relative; border: 0; padding: 12px 0 6px; background: transparent; color: #FFFFFF99; cursor: pointer; font-family: 'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif; font-size: 14px; line-height: 20px; transition: color 150ms; }
+.canvas-generation-history__tabs button:hover { color: #FFFFFFCC; }
+.canvas-generation-history__tabs button.is-active { color: #FFFFFF; font-family: 'AlibabaPuHuiTi_2_65_Medium','Alibaba PuHuiTi 2.0',system-ui,sans-serif; font-weight: 500; }
+.canvas-generation-history__body { flex: 1; min-height: 0; overflow: auto; padding: 8px 24px 24px; }
+.canvas-generation-history__state { display: flex; min-height: 260px; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #FFFFFF40; font-family: 'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif; font-size: 14px; line-height: 20px; text-align: center; }
+.canvas-generation-history__state p { margin: 0; color: #FFFFFF99; }
+.canvas-generation-history__empty { min-height: 100%; gap: 12px; color: #FFFFFF99; transform: translateY(-8px); }
+.canvas-generation-history__empty p { color: #FFFFFF99; font-size: 14px; line-height: 20px; }
+.canvas-generation-history__day { margin-top: 8px; }
+.canvas-generation-history__day h3 { margin: 8px 0 14px; color: #FFFFFF99; font-family: 'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif; font-size: 13px; font-weight: 400; line-height: 18px; }
+.canvas-generation-history__grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(175px,1fr)); gap: 16px; }
+.canvas-generation-history__card { position: relative; aspect-ratio: 1 / 1; overflow: hidden; border: 1px solid #FFFFFF14; border-radius: 10px; background: #1A1A1A; cursor: pointer; }
+.canvas-generation-history__card > img,.canvas-generation-history__card > video { width: 100%; height: 100%; object-fit: cover; }
+.canvas-generation-history__audio { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #FFFFFF99; background: radial-gradient(circle at 50% 45%,rgba(45,195,225,.18),transparent 62%),#1A1A1A; }
+.canvas-generation-history__audio span:first-child { color: #2DC3E1; font-size: 44px; }
+.canvas-generation-history__type { position: absolute; left: 8px; bottom: 8px; padding: 3px 7px; border-radius: 5px; background: rgba(0,0,0,.55); color: white; font-family: 'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif; font-size: 11px; }
+.canvas-generation-history__actions { position: absolute; inset: 0 0 auto; display: flex; justify-content: flex-end; gap: 4px; padding: 8px; opacity: 0; background: linear-gradient(rgba(0,0,0,.56),transparent); transition: opacity .14s; }
+.canvas-generation-history__card:hover .canvas-generation-history__actions,.canvas-generation-history__card:focus-within .canvas-generation-history__actions { opacity: 1; }
+.canvas-generation-history__actions button { display: flex; width: 24px; height: 24px; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: #00000080; color: #FFFFFFCC; cursor: pointer; transition: background-color .15s; }
+.canvas-generation-history__actions button:hover { background: #000000B3; }
+.canvas-generation-history__actions button:disabled { opacity: .5; cursor: progress; }
+@media (max-width: 640px) { .canvas-generation-history__overlay { padding: 10px; } .canvas-generation-history { width: calc(100vw - 20px); height: calc(100vh - 20px); } .canvas-generation-history__controls { align-items: flex-start; flex-wrap: wrap; } .canvas-generation-history__grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+.canvas-generation-history__empty > img { display: block; width: 48px; height: 48px; opacity: 0.5; transform: translateX(2px); }

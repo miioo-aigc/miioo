@@ -94,5 +94,5 @@ export function normalizeEditedImage(image) {
   const remoteUrl = image.original_url || image.originalUrl;
   const creationAssetId = image.asset_id || image.id;
   if (!remoteUrl || !creationAssetId) throw new Error('编辑结果缺少原图或资产编号');
-  return { ...readEditMetadata(image), metadata_json: image.metadata_json, remoteUrl, originalUrl: remoteUrl, creationAssetId, backendId: creationAssetId, model: image.model, prompt: mayShowEditPrompt(image) ? image.prompt : '', ratio: image.aspect_ratio, resolution: image.resolution, source: 'backend-image-edit' };
+  return { ...readEditMetadata(image), width: image.width, height: image.height, metadata_json: image.metadata_json, remoteUrl, originalUrl: remoteUrl, creationAssetId, backendId: creationAssetId, model: image.model, prompt: mayShowEditPrompt(image) ? image.prompt : '', ratio: image.aspect_ratio, resolution: image.resolution, source: 'backend-image-edit' };
 }

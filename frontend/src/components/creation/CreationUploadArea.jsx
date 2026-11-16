@@ -80,7 +80,7 @@ export function UploadPlaceholder({ onFileSelect, onAssetPick, onDirectClick, to
 
   return (
     <div ref={wrapperRef} style={{ position: 'relative', flexShrink: 0 }}>
-      {tooltip ? <Tooltip label={tooltip} offset={12} color="#FFFFFF99">{trigger}</Tooltip> : trigger}
+      {tooltip ? <Tooltip label={tooltip} offset={12}>{trigger}</Tooltip> : trigger}
       {menuOpen && (
         <CreationUploadMenu
           onClose={() => setMenuOpen(false)}

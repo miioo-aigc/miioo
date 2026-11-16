@@ -1,4 +1,11 @@
-/* 平移状态优先于选择工具的光标，结束拖动后由 React Flow 自动恢复。 */
+/* 移动工具使用箭头；抓手及实际平移保持抓取反馈。 */
+.react-flow[data-canvas-tool='select'] .react-flow__pane:not(.dragging),
+.react-flow[data-canvas-tool='select'] .react-flow__node:not(.dragging),
+.react-flow[data-canvas-tool='select'] .react-flow__nodesselection-rect { cursor: default; }
+/* React Flow 按住空格时为画布添加 draggable，释放/失焦时自动移除。 */
+.react-flow[data-canvas-tool='select'] .react-flow__pane.draggable:not(.dragging),
+.react-flow[data-canvas-tool='select']:has(.react-flow__pane.draggable) .react-flow__node:not(.dragging),
+.react-flow[data-canvas-tool='select']:has(.react-flow__pane.draggable) .react-flow__nodesselection-rect { cursor: grab; }
 .react-flow .react-flow__pane.dragging { cursor: grabbing; }
 /* 修饰键点击穿透多选范围层，命中真实卡片；正常状态保留范围拖动。 */
 .canvas-selection-modifying .react-flow__nodesselection-rect { pointer-events: none; }
@@ -36,17 +43,20 @@
 .canvas-group { position: relative; width: 100%; height: 100%; box-sizing: border-box; border: 1px solid var(--color-stroke-normal); border-radius: 20px; background: var(--color-white-5); }
 .canvas-group__name { position: absolute; top: 0; left: 0; display: flex; align-items: center; width: calc(100% * var(--canvas-group-name-zoom, 1)); height: 16px; transform: scale(var(--canvas-group-name-inverse-zoom, 1)) translateY(-24px); transform-origin: top left; color: var(--color-text-secondary); font-size: 12px; line-height: 16px; }
 .canvas-group__name .canvas-editable-name { flex: 1; min-width: 0; }
+.canvas-group__name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-group > .canvas-group-morph__frame,
+.canvas-group-stack > .canvas-group-morph__frame { border-width: var(--canvas-group-border-width, 1px); border-color: rgba(255, 255, 255, 0.15); background: var(--color-white-10); }
 .canvas-group-member .canvas-creation-presence { position: absolute; top: 100%; }
 .canvas-group-stack { position: relative; width: 100%; height: 100%; }
-.canvas-group-morph__frame { position: absolute; inset: 0; pointer-events: none; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.canvas-group-morph__frame { position: absolute; inset: 0; pointer-events: none; }
 .canvas-group:hover > .canvas-group-morph__frame,
 .canvas-group-stack:hover > .canvas-group-morph__frame { border-color: var(--color-stroke-accent); }
 .canvas-group[data-selected="true"] > .canvas-group-morph__frame,
-.canvas-group-stack[data-selected="true"] > .canvas-group-morph__frame { border-color: transparent; outline: 2px solid var(--color-white-40); outline-offset: -1px; }
+.canvas-group-stack[data-selected="true"] > .canvas-group-morph__frame { border-color: var(--color-white-60); outline: none; }
 .canvas-group-morph__stack { position: absolute; left: 0; top: 0; width: 312px; height: 312px; }
 .canvas-stack-preview { position: relative; width: 100%; height: 100%; box-sizing: border-box; pointer-events: none; user-select: none; font-synthesis: none; overflow-wrap: anywhere; -webkit-font-smoothing: antialiased; }
 .canvas-stack-preview__card { position: absolute; left: 0; top: 0; width: 240px; height: 240px; transform-origin: top left; color: var(--color-text-hint); font-size: 12px; line-height: 16px; }
-.canvas-stack-preview__surface { position: relative; width: 100%; height: 100%; box-sizing: border-box; overflow: hidden; border: 1px solid var(--color-stroke-normal); border-radius: 16px; outline: 1px solid var(--color-stroke-outline); background: var(--color-surface-content-area); transform: rotate(0deg); transform-origin: center; transition: transform 200ms ease-in-out, box-shadow 200ms ease-in-out; }
+.canvas-stack-preview__surface { position: relative; width: 100%; height: 100%; box-sizing: border-box; overflow: hidden; border: 1px solid var(--color-stroke-normal); border-radius: 16px; background: var(--color-surface-content-area); transform: rotate(0deg); transform-origin: center; transition: transform 200ms ease-in-out, box-shadow 200ms ease-in-out; }
 /* DOM 中最后一张位于最上层；两张封面时同样从上到下取 5、3 度。 */
 .canvas-stack-preview__card:nth-last-child(1) { --canvas-stack-hover-angle: 5deg; }
 .canvas-stack-preview__card:nth-last-child(2) { --canvas-stack-hover-angle: 3deg; }
@@ -71,17 +81,14 @@
 
 .react-flow__selection { border: 1px solid var(--color-stroke-active); background: var(--color-tag-bg-blue); }
 .canvas-node__header-slot { position: relative; height: 24px; }
-.canvas-node__header { position: absolute; top: 24px; left: 0; display: flex; align-items: center; gap: 4px; width: calc(100% * var(--canvas-header-zoom, 1)); height: 16px; transform: scale(var(--canvas-header-inverse-zoom, 1)) translateY(-24px); transform-origin: top left; color: var(--color-text-secondary); font-size: 12px; line-height: 16px; }
+.canvas-node__header { position: absolute; top: 24px; left: 0; display: flex; align-items: center; gap: 4px; width: 100%; height: 16px; transform: translateY(-24px); transform-origin: top left; color: var(--color-text-secondary); font-size: 12px; line-height: 16px; }
 .canvas-node__header .canvas-editable-name { flex: 1; min-width: 0; }
 /* 「上游已更新」贴在卡片上沿外的右上角，与标题同行右对齐，随标题一起做视口反缩放。 */
-.canvas-node__header-updated { flex: 0 0 auto; padding: 2px 6px; border: 1px solid var(--color-tag-border); border-radius: var(--radius-small); background: var(--color-tag-bg-yellow); color: var(--color-tag-text-yellow); font-size: 12px; line-height: 16px; white-space: nowrap; }
-.canvas-node__frame { --canvas-drag-scale-x: 1; --canvas-drag-scale-y: 1; position: relative; display: flex; width: 240px; min-height: 240px; box-sizing: border-box; align-items: center; justify-content: center; overflow: visible; border: 1px solid var(--color-stroke-normal); border-radius: 16px; outline: 1px solid var(--color-stroke-outline); background: var(--color-surface-content-area); transition: border-color 160ms ease; }
+.canvas-node__header-updated { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; padding: 4px 6px; border: 1px solid var(--color-tag-border); border-radius: var(--radius-small); background: var(--color-tag-bg-yellow); color: var(--color-tag-text-yellow); font-size: 12px; line-height: 16px; white-space: nowrap; }
+.canvas-node__frame { position: relative; display: flex; width: 240px; min-height: 240px; box-sizing: border-box; align-items: center; justify-content: center; overflow: visible; border: 1px solid var(--color-stroke-normal); border-radius: 16px; background: var(--color-surface-content-area); transition: border-color 160ms ease; }
 /* 保留内容布局与本地素材生命周期，生成时只展示外壳、端口及加载动画。 */
 .canvas-node__frame[aria-busy='true'] > :not(.canvas-node__port):not(.canvas-node__loading) { visibility: hidden; pointer-events: none; }
 .canvas-node__loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-.canvas-node__frame[data-dragging='true'] { transform: scale(var(--canvas-drag-scale-x), var(--canvas-drag-scale-y)); transition: transform 120ms ease-out, border-color 160ms ease; transform-origin: center; }
-.canvas-node__frame[data-drag-release='true'] { animation: canvas-node-drag-release 280ms cubic-bezier(0.22, 1.35, 0.36, 1); }
-@keyframes canvas-node-drag-release { 0% { transform: scale(var(--canvas-drag-scale-x), var(--canvas-drag-scale-y)); } 58% { transform: scale(calc(1 - (var(--canvas-drag-scale-x) - 1) * 0.32), calc(1 - (var(--canvas-drag-scale-y) - 1) * 0.32)); } 100% { transform: scale(1); } }
 .canvas-node:hover .canvas-node__frame:not([data-state='editing']) { border-color: var(--color-stroke-accent); }
 /* 连线反馈优先于悬停、编辑、输入聚焦和多选描边，结束后恢复原状态。 */
 .canvas-node__frame[data-connection-target-status='valid'] { border-color: var(--color-blue-alpha-60) !important; }
@@ -129,6 +136,13 @@
 .canvas-node[data-media-sized='true'] .canvas-video { height: 100%; min-height: 0; }
 .canvas-node[data-media-sized='true'] > .canvas-creation-presence { margin-left: calc((var(--canvas-media-width) - 240px) / 2); }
 .canvas-video { position: relative; width: 100%; min-height: 80px; overflow: hidden; border-radius: 15px; }
+/* 只缩小按钮和时间文字，不缩放原生控制面板或时间轴，
+   避免浏览器进度填充与轨道宽度使用不同的缩放坐标。全屏保留默认大小。 */
+.canvas-video > video:not(:fullscreen)::-webkit-media-controls-play-button,
+.canvas-video > video:not(:fullscreen)::-webkit-media-controls-mute-button,
+.canvas-video > video:not(:fullscreen)::-webkit-media-controls-fullscreen-button { transform: scale(0.8); }
+.canvas-video > video:not(:fullscreen)::-webkit-media-controls-current-time-display,
+.canvas-video > video:not(:fullscreen)::-webkit-media-controls-time-remaining-display { font-size: 11px; }
 .canvas-video__drag-surface { position: absolute; inset: 0; }
 /* 原生控制条显示时，拖动层只在底部控制条上方让位，控制条区域独立接收指针事件。 */
 .canvas-video__drag-surface[data-controls='true'] { bottom: var(--canvas-video-controls-height, 48px); }
@@ -151,7 +165,15 @@
 .canvas-node__waveform { display: flex; height: 32px; min-height: 20px; align-items: flex-end; gap: 2px; overflow: hidden; }
 .canvas-node__waveform i { display: block; width: 2px; flex: 0 0 2px; border-radius: 4px; background: var(--color-white-10); }
 .canvas-node__waveform[data-active='true'] i { background: var(--color-brand-main); }
-.canvas-creation-panel { position: relative; left: 50%; transform: translateX(-50%); width: 600px; box-sizing: border-box; margin-top: 0; }
+.canvas-creation-panel { --creation-send-size: 36px; position: relative; left: 50%; transform: translateX(-50%); width: 700px; box-sizing: border-box; margin-top: 0; }
+.canvas-creation-panel:not(.canvas-audio-creation-panel) .composer-surface { --composer-font-size: 14px; --composer-line-height: 22px; }
+.canvas-creation-panel:not(.canvas-audio-creation-panel) .composer-surface__body { margin-bottom: 8px; }
+.canvas-creation-panel__expand { position: absolute; right: 17px; top: 17px; z-index: 3; }
+.canvas-creation-panel__expand-button { width: 32px !important; height: 32px !important; border-radius: 6px; }
+.canvas-creation-panel__expand-button span { color: var(--color-white-60) !important; }
+.canvas-creation-panel__expand-button:hover { background: var(--color-white-8); }
+.canvas-creation-panel__expand-button:hover span { color: var(--color-white-100) !important; }
+.canvas-creation-panel[data-expanded='false']:has(.canvas-creation-panel__expand) .canvas-reference-bar { padding-right: 44px; box-sizing: border-box; }
 .canvas-audio-creation-panel { width: max-content; }
 .canvas-audio-creation-panel .composer-surface__toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
 .canvas-audio-creation-panel__advanced-row { display: flex; align-items: center; justify-content: space-between; gap: 32px; }
@@ -161,15 +183,17 @@
 /* 空编辑器没有文字行盒，使用内边距定位光标；有内容后恢复浮动绕排。 */
 .canvas-audio-creation-panel .creation-prompt-editor--voice-wrap[data-empty='true'] { box-sizing: border-box; padding-left: var(--creation-voice-wrap-width); }
 .canvas-audio-creation-panel .creation-prompt-editor--voice-wrap[data-empty='true']::before { display: none; }
-.canvas-creation-presence { width: 240px; transform-origin: top center; transform: scale(0.3); opacity: 0; }
+/* 动画 transform 会建立层叠上下文；整个创作层需高于端口(8)及其命中区(7)，
+   否则内部菜单的 z-index 无法越过端口。顶部节点工具栏保留在更高层(12)。 */
+.canvas-creation-presence { position: relative; z-index: 10; width: 240px; transform-origin: top center; transform: scale(0.3); opacity: 0; }
 .canvas-creation-scale { width: 240px; padding-top: 8px; transform: scale(var(--canvas-inverse-zoom, 1)); transform-origin: top center; }
 .canvas-creation-presence[inert] { pointer-events: none; }
 .canvas-creation-panel__editor { width: 100%; align-self: stretch; box-sizing: border-box; }
 .canvas-creation-panel[data-references='true'] .composer-surface__body { flex-direction: column; height: auto; gap: 8px; }
-.canvas-creation-panel[data-references='true'] .canvas-creation-panel__editor { height: 64px; flex-shrink: 0; }
+.canvas-creation-panel[data-references='true'] .canvas-creation-panel__editor { height: 98px; flex-shrink: 0; }
 .canvas-creation-panel[data-references='true'] .canvas-media-prompt-editor { transition: transform 300ms ease; }
 .canvas-creation-panel[data-video-text-mode='true'] .canvas-media-prompt-editor { transform: translateY(-52px); }
-.canvas-media-prompt-editor { position: relative; display: flex; width: 100%; height: 64px; flex-shrink: 0; }
+.canvas-media-prompt-editor { position: relative; display: flex; width: 100%; height: 98px; flex-shrink: 0; }
 .canvas-media-prompt-editor > div > span { max-width: 100%; flex-wrap: wrap; }
 .canvas-reference-bar { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; width: 100%; padding-bottom: 4px; user-select: none; }
 .canvas-reference-bar__menu, .canvas-reference-bar__item { position: relative; flex-shrink: 0; }
@@ -196,9 +220,9 @@ button.canvas-reference-bar__slot:disabled { opacity: 0.4; cursor: not-allowed; 
 .canvas-node-add-menu button:hover { background: var(--color-white-5); color: var(--color-text-primary); }
 .canvas-node-add-menu, .canvas-node-add-menu * { -webkit-user-select: none; user-select: none; }
 
-/* 激活态（选中或编辑中）统一使用 2px 白色描边，覆盖原1px边框并向外延伸1px，不挤压正文或改变节点测量尺寸。 */
+/* 激活态（选中或编辑中）按视口缩放补偿为屏幕 2px 白色描边，偏移保持屏幕 -1px，不挤压正文或改变节点测量尺寸。 */
 .canvas-node.canvas-node--selected > .canvas-node__frame,
-.canvas-node__frame[data-state='editing'] { border-color: transparent; outline: 2px solid var(--color-white-40); outline-offset: -1px; }
+.canvas-node__frame[data-state='editing'] { border-color: transparent; outline: var(--canvas-node-outline-width, 2px) solid var(--color-white-40); outline-offset: var(--canvas-node-outline-offset, -1px); }
 
 /* 引用主操作禁用不禁用媒体刷新；保留原槽位的焦点和悬停反馈。 */
 [role="button"].canvas-reference-bar__slot { cursor: pointer; }
@@ -210,3 +234,36 @@ button.canvas-reference-bar__slot:disabled { opacity: 0.4; cursor: not-allowed; 
 
 /* 首尾帧模式下的视频整体淡化，包含未参与文字；排除内部媒体的重复淡化。 */
 .canvas-reference-bar__slot--inactive-video { opacity: 0.5; }
+
+.canvas-node__dismiss-updated { width: 16px !important; height: 16px !important; min-width: 0; color: inherit; border-radius: 3px; }
+.canvas-node__dismiss-updated span { color: inherit !important; }
+.canvas-node__dismiss-updated:hover { background: var(--color-white-8); }
+
+
+/* 文本卡片尺寸包含上方 24px 标题区。 */
+.canvas-node[data-node-type='text'] { width: var(--canvas-text-width, 240px); }
+.canvas-node[data-node-type='text'] .canvas-node__frame { width: 100%; height: var(--canvas-text-height, 240px); min-height: 0; }
+/* 正文滚动视口右侧内收4px、上下各留8px，滚动条始终位于卡片圆角内。
+   同步扣除内边距，保持文字原有起始位置；滚动状态不对整个视口做圆角裁切。 */
+.canvas-node[data-node-type='text'] .canvas-node__text-content { width: calc(100% - 4px); height: calc(var(--canvas-text-height, 240px) - 18px); max-height: none; min-width: 0; margin: 8px 4px 8px 0; padding: 4px 8px 4px 12px; border-radius: 8px; }
+.canvas-node[data-node-type='text'] .canvas-node__text-content[data-text-preview='true']:not([data-scroll-enabled='true']) { clip-path: inset(0 0 4px round 8px); }
+/* clip-path、mask 会连同原生滚动条一起裁切；选中时通过内收留白保证边界。 */
+.canvas-node[data-node-type='text'] .canvas-node__text-content[data-scroll-enabled='true'] { clip-path: none; mask-image: none; -webkit-mask-image: none; border-radius: 0; }
+.react-flow__resize-control.canvas-text-resize { display: flex; align-items: center; justify-content: center; color: var(--color-white-60); cursor: nwse-resize; z-index: 10; border-radius: 4px; }
+.react-flow__resize-control.canvas-text-resize:hover { color: white; }
+.react-flow__resize-control.canvas-text-resize svg { transform: translate(-2px, -2px); }
+
+/* 只有选中节点允许正文滚动；透明轨道保持排版稳定，活动后 900ms 隐藏滑块。 */
+.canvas-node__text-content[data-scroll-enabled='false'] { overflow-y: hidden; }
+.canvas-node__text-content[data-scroll-enabled='true'] { scrollbar-width: thin; scrollbar-color: transparent transparent; scrollbar-gutter: stable; }
+.canvas-node__text-content[data-scroll-enabled='true'][data-scrolling='true'] { scrollbar-color: rgba(255,255,255,0.30) transparent; }
+.canvas-node__text-content[data-scroll-enabled='true']::-webkit-scrollbar { width: 3px; }
+.canvas-node__text-content[data-scroll-enabled='true']::-webkit-scrollbar-track { background: transparent; }
+.canvas-node__text-content[data-scroll-enabled='true']::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
+.canvas-node__text-content[data-scroll-enabled='true'][data-scrolling='true']::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.30); }
+
+/* Chromium 使用精确 3px 宽度，避免标准 thin 覆盖自定义滚动条。 */
+@supports selector(::-webkit-scrollbar) {
+  .canvas-node__text-content[data-scroll-enabled='true'],
+  .canvas-node__text-content[data-scroll-enabled='true'][data-scrolling='true'] { scrollbar-width: auto; scrollbar-color: auto; }
+}

@@ -15,10 +15,10 @@
   pointer-events: none;
   background: linear-gradient(
     to bottom,
-    rgb(9 9 9 / 90%) 0%,
-    rgb(9 9 9 / 68%) 48%,
-    rgb(9 9 9 / 28%) 78%,
-    rgb(9 9 9 / 0%) 100%
+    rgb(18 18 18 / 90%) 0%,
+    rgb(18 18 18 / 68%) 48%,
+    rgb(18 18 18 / 28%) 78%,
+    rgb(18 18 18 / 0%) 100%
   );
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);

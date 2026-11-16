@@ -6,18 +6,20 @@ import { hasBlockingDialog } from '../src/components/canvas/CanvasModalGuard.js'
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
-test('视频卡片激活时把选中态传给播放器以自动播放', () => {
+test('视频卡片选中态只控制播放器激活状态', () => {
   const node = read('../src/components/canvas/VideoCanvasNode.jsx');
   assert.doesNotMatch(node, /canvas-node__media nodrag/);
   assert.match(node, /<CanvasVideoPlayer[^>]*active=\{selected\}/);
 });
 
-test('激活态请求预览地址并带声自动播放，不随鼠标移入移出自动启停', () => {
+test('自动播放通过手势识别隔离拖动，保留手动播放', () => {
   const player = read('../src/components/canvas/CanvasVideoPlayer.jsx');
   assert.match(player, /export default function CanvasVideoPlayer\(\{ src, poster, active = false \}\)/);
   assert.match(player, /video\.muted = false/);
   // 激活态有声播放（不静默降级）。
-  assert.match(player, /void play\(\{ automatic: true \}\);/);
+  assert.doesNotMatch(player, /automatic: true|autoPlay/);
+  assert.match(player, /useCanvasVideoAutoplay\(videoRef, containerRef, active, src, play, pause\)/);
+  assert.match(player, /void play\(\)/);
   // 悬停自动播放/暂停已移除，播放进度只由用户在控制条上决定。
   assert.doesNotMatch(player, /onPointerEnter|onPointerLeave|mutedFallback|setTimeout/);
   assert.match(player, /shouldPauseCanvasVideo\(active, containerRef\.current, event\?\.target\)/);
@@ -50,7 +52,7 @@ test('卡片中央 32×32 播放按钮常驻，播放开始后收起', () => {
   assert.doesNotMatch(player, /MediaLoadStatus/);
 });
 
-test('自动播放只被可见的模态对话框阻断，常驻收起面板不阻断', () => {
+test('手动播放被可见模态阻断，常驻收起面板不阻断', () => {
   const player = read('../src/components/canvas/CanvasVideoPlayer.jsx');
   assert.match(player, /hasBlockingDialog\(\)/);
   assert.doesNotMatch(player, /document\.querySelector\('\[role="dialog"\]'\)/);

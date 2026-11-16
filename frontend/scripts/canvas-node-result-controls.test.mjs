@@ -50,6 +50,7 @@ const Controls = await load('CanvasNodeResultControls.jsx', {
 });
 
 const shellDependencies = Object.fromEntries([
+  '../ui/Button',
   '../feedback/ModelReadStatus', './CanvasCreationPanel', './CanvasCreationPresence', './CanvasNodeHeader',
   './CanvasNodePorts', './CanvasLocalUpload', './CanvasGenerationLoading', './CanvasConnectionPulse',
   './CanvasNodeToolbar', './CanvasNodeResultControls',
@@ -108,6 +109,16 @@ function environment() {
   return listeners;
 }
 const click = ui => ui.find('button')[0].props.onClick({ currentTarget: { getBoundingClientRect: () => ({ left: 30, top: 40, bottom: 72 }) } });
+
+test('文本提交锁保留取消入口，其他节点仍保持inert', () => {
+  let cancels = 0;
+  const ui = host(Shell, { nodeType: 'text', data: { generating: true, submissionLocked: true, onCancelText: () => cancels++ } });
+  assert.equal(ui.class('canvas-node').props.inert, false);
+  ui.find('Button')[0].props.onClick({ stopPropagation() {} });
+  assert.equal(cancels, 1);
+  const media = host(Shell, { nodeType: 'image', data: { generating: true, submissionLocked: true } });
+  assert.equal(media.class('canvas-node').props.inert, true);
+});
 
 test('只有一条结果不显示历史入口，两条结果才显示', () => {
   environment();
@@ -365,4 +376,23 @@ test('单张结果、没有多图提示或文本节点都不显示气泡', () =>
   const text = host(Controls, { data: { ...data('text', 2), resultHintCount: 3 }, nodeType: 'text' });
   assert.equal(text.class('canvas-node-result-controls__hint'), undefined);
   assert.equal(text.find('popover').length, 0);
+});
+
+for (const nodeType of ['image', 'video']) test(nodeType + ' 二次编辑使用任务编号播放动画，结束恢复内容', () => {
+  const node = { asset: { url: '/old' }, editing: true, canvasEditOperation: 'edit-task',
+    generationRequestId: 'old-task', generationMessageRequestId: 'old-task', generationMessage: '旧任务提示' };
+  const ui = host(Shell, { nodeType, data: node, selected: true });
+  assert.equal(ui.class('canvas-node__frame').props['aria-busy'], true);
+  assert.equal(ui.class('canvas-node__result-body').props['aria-hidden'], true);
+  assert.equal(ui.find('CanvasGenerationLoading')[0].key, 'edit-task');
+  assert.equal(ui.find('CanvasGenerationLoading')[0].props.message, undefined);
+  assert.equal(ui.find('CanvasCreationPanel')[0].props.generating, true);
+  assert.equal(ui.find('fieldset')[0].props.disabled, true);
+  delete node.canvasEditOperation;
+  delete node.editing;
+  ui.render();
+  assert.equal(ui.find('CanvasGenerationLoading').length, 0);
+  assert.equal(ui.class('canvas-node__result-body').props['aria-hidden'], false);
+  node.editing = true; ui.render();
+  assert.equal(ui.find('CanvasGenerationLoading').length, 0);
 });

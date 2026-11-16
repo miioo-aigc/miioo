@@ -30,7 +30,7 @@ export default function CanvasListMenu({ canvases, activeCanvasId, busy, onSelec
             if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); void submit(); }
           }} /> : <button type="button" disabled={busy} onClick={() => onSelectCanvas(canvas.id)} title={canvas.name}
           className="min-w-0 flex-1 truncate border-0 bg-transparent py-[6px] text-left text-[13px] text-text-secondary hover:text-text-primary disabled:cursor-wait">{canvas.name || '未命名画布'}</button>}
-        <Tooltip label={editing === canvas.id ? '保存名称' : '更多选项'}>
+        <Tooltip variant="canvas" label={editing === canvas.id ? '保存名称' : '更多选项'}>
           <span className={`shrink-0 ${editing === canvas.id || more?.canvas.id === canvas.id ? '' : 'invisible group-hover/canvas-item:visible group-focus-within/canvas-item:visible'}`}><IconButton aria-label={editing === canvas.id ? '保存名称' : `${canvas.name}更多选项`} aria-haspopup={editing === canvas.id ? undefined : 'menu'} aria-expanded={more?.canvas.id === canvas.id} variant="link" className="!size-[24px]" disabled={busy || (editing === canvas.id && !name.trim())}
             contentClassName="!text-text-secondary group-hover:!text-text-primary group-active:!text-text-secondary"
             onClick={(event) => {

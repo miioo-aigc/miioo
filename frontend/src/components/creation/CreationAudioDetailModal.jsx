@@ -18,6 +18,7 @@ import { useModalSize } from '../../utils/useModalSize';
 import ConfirmDialog from '../ConfirmDialog';
 import CreationDubbingPromptPreview from './CreationDubbingPromptPreview';
 import { DeleteIcon, FavoriteIcon, Tooltip } from '../ui';
+import { Plus } from 'lucide-react';
 import { stopVoicePreview } from '../../utils/voicePreviewPlayer';
 import CopyPromptButton from '../ui/CopyPromptButton';
 
@@ -82,6 +83,8 @@ export default function CreationAudioDetailModal({
   onDelete,
   favorited = false,
   onFavorite,
+  historyMode = false,
+  onAddToCanvas,
 }) {
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const audioRef = useRef(null);
@@ -186,7 +189,7 @@ export default function CreationAudioDetailModal({
             </div>
             <div style={{ width: '340px', display: 'flex', flexDirection: 'column', minHeight: 0, flexShrink: 0, background: '#161616', borderLeft: '1px solid #FFFFFF0F', color: '#FFFFFF', position: 'relative' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, padding: '12px 20px', borderBottom: '1px solid #FFFFFF0A', backgroundColor: '#161616' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>{historyMode ? <button type="button" aria-label="添加到画布" title="添加到画布" onClick={onAddToCanvas} style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, borderRadius: 6, background: 'transparent', color: '#FFFFFFCC', cursor: 'pointer' }}><Plus size={16} /></button> : <>
                   <PanelAction
                     label="收藏"
                     active={favorited}
@@ -194,8 +197,8 @@ export default function CreationAudioDetailModal({
                     icon={<div style={{ transform: starAnim ? 'scale(1.25)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', display: 'flex' }}><FavoriteIcon filled={favorited} color="rgba(255,255,255,0.8)" /></div>}
                   />
                   <PanelAction label="下载" onClick={onDownload} icon={<DownloadIcon />} />
-                </div>
-                <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon size={14} />} />
+                </>}</div>
+                {!historyMode && <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon size={14} />} />}
               </div>
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                 {DETAIL_PANEL_DIVIDER}
@@ -243,7 +246,7 @@ export default function CreationAudioDetailModal({
           </div>
         </div>
       </div>
-      {confirmDelete && <ConfirmDialog title="确认删除" description="删除后无法恢复，确定要删除这段配音吗？" confirmText="确认删除" onConfirm={() => { setConfirmDelete(false); onDelete?.(); }} onCancel={() => setConfirmDelete(false)} zIndex={1100} />}
+      {!historyMode && confirmDelete && <ConfirmDialog title="确认删除" description="删除后无法恢复，确定要删除这段配音吗？" confirmText="确认删除" onConfirm={() => { setConfirmDelete(false); onDelete?.(); }} onCancel={() => setConfirmDelete(false)} zIndex={1100} />}
     </>
   );
 }

@@ -188,3 +188,29 @@ test('四类节点提示词及编辑快照保存后恢复，主动清空不恢�
     assert.equal(cleared.data.promptSnapshot.html, '');
   }
 });
+
+test('文本自定义尺寸保存与读取保持一致，旧文本保持默认尺寸', () => {
+  const node = { ...createCanvasNode('text', undefined, 'resized-text'), width: 420, height: 384 };
+  const restored = readCanvasDocument(serializeCanvasDocument([node])).nodes[0];
+  assert.equal(restored.width, 420);
+  assert.equal(restored.height, 384);
+  const legacy = readCanvasDocument(serializeCanvasDocument([createCanvasNode('text', undefined, 'legacy-text')])).nodes[0];
+  assert.equal(legacy.width, 240);
+  assert.equal(legacy.height, 264);
+});
+
+test('连续调整文本尺寸只生成一条历史，撤销和重做恢复宽高', async () => {
+  const { createCanvasHistory } = await import('../src/components/canvas/CanvasHistory.js');
+  const history = createCanvasHistory([createCanvasNode('text', undefined, 'text')]);
+  history.begin();
+  for (const width of [300, 360, 420]) history.setNodes(nodes => nodes.map(node => ({ ...node, width, height: 384, resizing: true })));
+  history.setNodes(nodes => nodes.map(node => ({ ...node, resizing: false })));
+  history.end();
+  history.undo();
+  assert.equal(history.getSnapshot().nodes[0].width, 240);
+  assert.equal(history.getSnapshot().nodes[0].height, 264);
+  assert.equal(history.getSnapshot().canUndo, false);
+  history.redo();
+  assert.equal(history.getSnapshot().nodes[0].width, 420);
+  assert.equal(history.getSnapshot().nodes[0].height, 384);
+});

@@ -6,7 +6,7 @@ import '@xyflow/react/dist/style.css';
 
 export default function SharedCanvasView({ title, graph, loading, error, onRetry, onCopy, copying, onDownload, downloading, canDownload }) {
   return (
-    <main className="relative h-dvh min-h-[320px] bg-surface-toolbar text-text-primary [font-synthesis:none] antialiased">
+    <main className="relative h-dvh min-h-[320px] bg-[#121212] text-text-primary [font-synthesis:none] antialiased">
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-[16px] px-[24px] py-[16px]">
         <a href="/" aria-label="访问官网首页" className="pointer-events-auto shrink-0"><HomeLogo width={66} height={20} /></a>
         <span aria-hidden="true" className="h-[16px] w-[1px] translate-y-[4px] bg-stroke-accent" />

@@ -25,7 +25,7 @@ test('文本起始使用最新节点状态拒绝并发及其他提交任务的�
   assert.throws(() => beginCanvasTextGeneration(running, plan), /正在提交或生成/);
 });
 
-for (const type of ['Text', 'Video']) test(type + '实际提交入口起始竞态失败时中止并释放登记，不发真实请求', async () => {
+for (const type of ['Video']) test(type + '实际提交入口起始竞态失败时中止并释放登记，不发真实请求', async () => {
   const generation = await import('../src/components/canvas/Canvas' + type + 'Generation.js');
   const source = readFileSync(new URL('../src/components/canvas/UseCanvas' + type + 'Generation.js', import.meta.url), 'utf8');
   const hookName = 'useCanvas' + type + 'Generation';

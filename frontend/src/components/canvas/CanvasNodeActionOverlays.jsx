@@ -39,17 +39,17 @@ export default function CanvasNodeActionOverlays({ menu, dialog, nodes, canPaste
     ],
   };
   const downloadIds = canvasDescendantIds(nodes, selected.map((item) => item.id));
-  const downloadable = nodes.some((item) => downloadIds.has(item.id) && item.type !== 'canvasGroup' && item.type !== 'text' && item.data?.asset?.url);
+  const downloadable = nodes.some((item) => downloadIds.has(item.id) && item.type !== 'canvasGroup' && (item.type === 'text' ? item.data?.content?.trim() : item.data?.asset?.url));
   const items = menu?.kind === 'pane' ? [
     createNode,
-    item('paste', '粘贴', '⌘V', ClipboardPaste, !canPaste),
+    item('paste', '粘贴节点', '⌘V', ClipboardPaste, !canPaste),
     item('undo', '撤销', '⌘Z', Undo2, !canUndo),
     item('redo', '重做', '⌘⇧Z', Redo2, !canRedo),
     item('clear', '清空画布', '', Trash2, !nodes.length),
   ] : node?.type === 'canvasGroup' ? [
     ...(!node.data.stacked && menu?.flowPosition ? [createNode, { key: 'create-divider', type: 'separator' }] : []),
     item('duplicate', '创建副本', '⌘D', CopyPlus),
-    item('copy', '复制', '⌘C', Copy),
+    item('copy', '复制节点', '⌘C', Copy),
     { key: 'copy-divider', type: 'separator' },
     item('ungroup', '解组', '⌘⇧G', Ungroup),
     node.data.stacked ? item('unstack', '取消堆叠', '⌘⌥⇧G', Layers2) : item('stack', '堆叠组', '⌘⌥G', Layers),
@@ -60,7 +60,7 @@ export default function CanvasNodeActionOverlays({ menu, dialog, nodes, canPaste
     item('delete', '删除组', '⌫ / del', Trash2),
   ] : [
     item('duplicate', '创建副本', '⌘D', CopyPlus),
-    item('copy', '复制', '⌘C', Copy),
+    item('copy', '复制节点', '⌘C', Copy),
     { key: 'copy-divider', type: 'separator' },
     item('group', '组合', '⌘G', Group),
     addToGroup,
@@ -71,6 +71,8 @@ export default function CanvasNodeActionOverlays({ menu, dialog, nodes, canPaste
   ];
   return <>
     {menu && (node || menu.kind === 'pane') && createPortal(<DropdownMenu items={items} onClose={onCloseMenu} width="200px" style={{
+      ...(['text', 'image', 'video', 'audio'].includes(node?.type) ? { borderColor: 'rgba(255, 255, 255, 0.15)' } : {}),
+      '--dropdown-menu-item-gap': '6px',
       position: 'fixed', bottom: 'auto', right: 'auto', zIndex: 100,
       maxWidth: 'calc(100vw - 16px)', maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',
       left: Math.max(8, Math.min(menu.x, window.innerWidth - 208)),

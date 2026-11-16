@@ -7,7 +7,7 @@ import { showGlobalToast } from '../../stores/toastStore';
 import { getCanvasPromptFiles } from './CanvasPromptReferences';
 import { validateCanvasVideoMedia } from './CanvasVideoGeneration';
 
-export default function CanvasMediaPromptEditor({ ref, nodeType, mode, model, capabilities, placeholder, references, prompt, snapshot, onChange, onFocusChange, onSend, composingRef }) {
+export default function CanvasMediaPromptEditor({ ref, nodeType, mode, model, capabilities, placeholder, references, prompt, snapshot, onChange, onFocusChange, onSend, composingRef, expanded = false }) {
   const files = getCanvasPromptFiles(references, nodeType, mode);
   const [prefillData] = useState(() => ({ prompt, promptHTML: snapshot?.html, files }));
   const { zoom } = useViewport();
@@ -80,7 +80,7 @@ export default function CanvasMediaPromptEditor({ ref, nodeType, mode, model, ca
   return <div className="canvas-media-prompt-editor"
     onCompositionStart={() => { composingRef.current = true; }}
     onCompositionEnd={() => { composingRef.current = false; editor.handleInput(); sync(); }}
-    onKeyDown={(event) => event.stopPropagation()} onKeyUp={(event) => event.stopPropagation()}>
+    onKeyDown={(event) => { if (event.key !== 'Escape') event.stopPropagation(); }} onKeyUp={(event) => event.stopPropagation()}>
     <CreationPromptEditor
       editorRef={editorRef} files={files} genType={nodeType} refMode={mode} showFileCards={false}
       placeholderText={placeholder}
@@ -91,7 +91,7 @@ export default function CanvasMediaPromptEditor({ ref, nodeType, mode, model, ca
       onFocus={() => { editor.handleEditorFocus(); onFocusChange(true); }}
       onBlur={() => { editor.handleEditorBlur(); onFocusChange(false); sync(); }}
       mentionOpen={editor.mentionOpen} mentionQuery={editor.mentionQuery}
-      mentionPos={{ top: editor.mentionPos.top / zoom, left: editor.mentionPos.left / zoom }}
+      mentionPos={{ top: editor.mentionPos.top / (expanded ? 1 : zoom), left: editor.mentionPos.left / (expanded ? 1 : zoom) }}
       mentionMenuRef={editor.mentionMenuRef} mentionIndex={editor.mentionIndex}
       onMentionSelect={(file) => { if (editor.insertMention(file)) sync(); }}
       onMentionIndexChange={editor.setMentionIndex}

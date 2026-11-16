@@ -2,12 +2,13 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { createCanvasAutosave } from './CanvasAutosave';
 import { serializeCanvasDocument } from './CanvasDocument';
 import { showGlobalToast } from '../../stores/toastStore';
+import { isActiveText } from './CanvasDurableText.js';
 
 export function useCanvasAutosave({ enabled, nodes, edges, viewport, persist, paused, acknowledgeRef, canvasId, onSaveError }) {
   const controller = useRef(null);
   const [status, setStatus] = useState('idle');
   let key;
-  let canSave = !paused && !nodes.some((node) => node.data?.generating || node.data?.generationPending);
+  let canSave = !paused && !nodes.some((node) => isActiveText(node) || node.data?.generating || node.data?.generationPending);
   try { key = JSON.stringify(serializeCanvasDocument(nodes, edges, viewport)); }
   catch {
     // 上传中仍是未保存状态，但不能把临时素材写入后端。

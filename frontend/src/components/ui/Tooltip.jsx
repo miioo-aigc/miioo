@@ -16,17 +16,24 @@
  *   2026-08-21  支持按使用场景配置提示面板描边颜色
  *   2026-08-21  支持在指定最大宽度内自然换行
  *   2026-09-16  支持 followCursor 模式，提示跟随鼠标移动
+ *   2026-11-12  全站统一文字提示样式，默认延迟 300ms
  *   2026-09-29  支持可选显示延迟，移开及卸载时清理定时器
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-export default function Tooltip({ label, children, offset = 4, color = '#FFFFFF', borderColor, multiline = false, placement = 'top', fontSize = 12, lineHeight = 16, maxWidth, followCursor = false, delay = 0 }) {
+export default function Tooltip({ label, children, offset, color, borderColor, multiline = false, placement = 'top', fontSize = 12, lineHeight = 16, maxWidth, followCursor = false, delay }) {
+  offset ??= 8;
+  delay ??= 300;
+  color ??= 'rgba(255,255,255,0.90)';
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState(null);
   const timerRef = useRef(null);
+  const animateTooltip = useCallback((element) => {
+    if (element) element.animate([{ opacity: 0 }, { opacity: 1 }], { duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 120, easing: 'ease-out' });
+  }, []);
   useEffect(() => () => window.clearTimeout(timerRef.current), []);
 
   function handleMouseEnter(event) {
@@ -58,11 +65,14 @@ export default function Tooltip({ label, children, offset = 4, color = '#FFFFFF'
       onMouseEnter={handleMouseEnter}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
+      onPointerDownCapture={handleMouseLeave}
+      onClickCapture={handleMouseLeave}
     >
       {children}
       {visible && position && createPortal(
         <span
           role="tooltip"
+          ref={animateTooltip}
           style={{
             position: 'fixed',
             left: position.left,
@@ -79,15 +89,16 @@ export default function Tooltip({ label, children, offset = 4, color = '#FFFFFF'
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            padding: '2px 8px',
-            borderRadius: '2px',
-            backgroundColor: '#090909',
-            border: borderColor ? `1px solid ${borderColor}` : undefined,
+            padding: '6px 10px',
+            borderRadius: '6px',
+            backgroundColor: 'var(--color-tooltip-bg)',
+            border: borderColor ? `1px solid ${borderColor}` : '1px solid rgba(255,255,255,0.10)',
             backdropFilter: 'blur(10px)',
             WebkitBackdropFilter: 'blur(10px)',
             maxWidth: maxWidth ? `${maxWidth}px` : undefined,
             whiteSpace: multiline ? 'pre-line' : maxWidth ? 'normal' : 'nowrap',
             color,
+            fontWeight: 400,
             fontFamily: FONT,
             fontSize: `${fontSize}px`,
             lineHeight: `${lineHeight}px`,

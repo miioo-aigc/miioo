@@ -76,13 +76,13 @@ export default function CanvasGroupNode({ id, data, selected }) {
   }, [stacked, membersSnapshot, data.expandedWidth, data.expandedHeight, offsetX, offsetY]);
   useEffect(() => { updateNodeInternals(id); }, [id, data.stacked, updateNodeInternals]);
   return <div ref={rootRef} className={stacked ? 'canvas-group-stack' : 'canvas-group'} data-selected={selected}
-    style={stacked ? undefined : { borderColor: 'transparent', background: 'transparent' }}>
+    style={{ '--canvas-group-border-width': (1 / zoom) + 'px', ...(stacked ? {} : { borderColor: 'transparent', background: 'transparent' }) }}>
     <div ref={frameRef} className="canvas-group canvas-group-morph__frame" />
     <div ref={stackRef} className="canvas-group-morph__stack" style={{ opacity: stacked ? 1 : 0, pointerEvents: stacked ? 'auto' : 'none' }} aria-hidden={!stacked}>
       <CanvasGroupStackPreview members={data.stackMembers} />
     </div>
     {data.readOnly && stacked && <div className="absolute inset-0">
-      <Tooltip label="双击展开组" followCursor>
+      <Tooltip variant="canvas" label="双击展开组" followCursor>
         <span className="block h-[312px] w-[312px]" />
       </Tooltip>
     </div>}

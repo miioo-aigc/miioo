@@ -42,7 +42,7 @@ test('顶部工具栏图标统一放大到20px，图片详情页保持默认16px
   const toolbar = readFileSync(new URL('../src/components/canvas/CanvasNodeToolbar.jsx', import.meta.url), 'utf8');
   assert.ok(toolbar.includes('<ImageEditIcon label={label} size={20} />'));
   assert.ok(toolbar.includes('<VideoEditIcon label={label} size={20} />'));
-  assert.ok(toolbar.includes('<Eye size={20}'));
+  assert.ok(toolbar.includes('<Maximize2 size={20}'));
   assert.ok(toolbar.includes('<Ellipsis size={20}'));
   const detail = readFileSync(new URL('../src/components/ImageDetailModal.jsx', import.meta.url), 'utf8');
   assert.ok(!detail.includes('size={20}'));

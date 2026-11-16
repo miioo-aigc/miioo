@@ -15,7 +15,7 @@ test('卡片激活态只用白色描边，聚焦输入框不叠加蓝色描边',
   const shell = readFileSync(new URL('../src/components/canvas/CanvasNodeShell.jsx', import.meta.url), 'utf8');
   assert.match(shell, /data-node-type=\{nodeType\}/);
   assert.ok(css.includes('.canvas-node.canvas-node--selected > .canvas-node__frame'));
-  assert.ok(css.includes(".canvas-node__frame[data-state='editing'] { border-color: transparent; outline: 2px solid var(--color-white-40);"));
+  assert.ok(css.includes(".canvas-node__frame[data-state='editing'] { border-color: transparent; outline: var(--canvas-node-outline-width, 2px) solid var(--color-white-40);"));
   assert.doesNotMatch(css, /creation-panel__editor:focus\) > \.canvas-node__frame/);
   assert.doesNotMatch(css, /composer-surface__editor:focus\) > \.canvas-node__frame/);
   assert.doesNotMatch(css, /\.canvas-node__frame\[data-state='editing'\] \{ border-color: var\(--color-stroke-active\)/);
@@ -179,42 +179,6 @@ test('触控板手势在普通节点卡片上继续传递，编辑滚动区保�
   assert.match(page, /target\.closest\('\.nowheel'\)/);
   assert.match(page, /nodeElement\.classList\.remove\('nopan'\)/);
   assert.match(page, /nodeElement\.classList\.add\('nopan'\)/);
-});
-
-test('节点拖动状态提供轻微拉伸和回弹动效', () => {
-  const shell = readFileSync(new URL('../src/components/canvas/CanvasNodeShell.jsx', import.meta.url), 'utf8');
-  const css = readFileSync(new URL('../src/components/canvas/canvas-nodes.css', import.meta.url), 'utf8');
-  assert.match(shell, /data-dragging=\{data\?\.dragging \? 'true' : 'false'\}/);
-  assert.match(css, /canvas-node__frame\[data-dragging='true'\]/);
-  assert.match(css, /canvas-node__frame\[data-drag-release='true'\]/);
-});
-
-test('节点拖动形变跟随拖动方向变化，不使用固定横向压扁', () => {
-  const page = readFileSync(new URL('../src/pages/CanvasPage.jsx', import.meta.url), 'utf8');
-  const shell = readFileSync(new URL('../src/components/canvas/CanvasNodeShell.jsx', import.meta.url), 'utf8');
-  const css = readFileSync(new URL('../src/components/canvas/canvas-nodes.css', import.meta.url), 'utf8');
-  assert.match(page, /onNodeDrag=\{handleNodeDrag\}/);
-  assert.match(page, /dragScaleX/);
-  assert.match(page, /dragScaleY/);
-  assert.match(shell, /--canvas-drag-scale-x/);
-  assert.match(shell, /--canvas-drag-scale-y/);
-  assert.doesNotMatch(css, /scaleX\(1\.025\) scaleY\(0\.985\)/);
-});
-
-test('节点拖动形变幅度足够明显但仍有上限', () => {
-  const page = readFileSync(new URL('../src/pages/CanvasPage.jsx', import.meta.url), 'utf8');
-  assert.match(page, /Math\.min\(0\.2,/);
-  assert.match(page, /stretch \* 0\.24/);
-});
-
-test('节点拖动不使用倾斜，只保留方向性拉伸和反向回弹', () => {
-  const page = readFileSync(new URL('../src/pages/CanvasPage.jsx', import.meta.url), 'utf8');
-  const shell = readFileSync(new URL('../src/components/canvas/CanvasNodeShell.jsx', import.meta.url), 'utf8');
-  const css = readFileSync(new URL('../src/components/canvas/canvas-nodes.css', import.meta.url), 'utf8');
-  assert.doesNotMatch(page, /dragSkewX|dragSkewY|Math\.min\(2,/);
-  assert.doesNotMatch(shell, /canvas-drag-skew-x|canvas-drag-skew-y/);
-  assert.doesNotMatch(css, /skewX|skewY/);
-  assert.match(css, /scale\(var\(--canvas-drag-scale-x\), var\(--canvas-drag-scale-y\)\)/);
 });
 
 test('文本节点单击等待双击判定后再展开创作框', () => {

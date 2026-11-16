@@ -35,7 +35,7 @@ export default function CanvasProjectHeader({ saveStatus, projectName, canvasNam
     <HomeLogo clickable onClick={onBackHome} />
     <div className="h-[16px] w-px shrink-0 bg-stroke-accent" />
     <div className="flex items-center gap-[8px]">
-      <Tooltip label="返回画布项目列表" placement="bottom" offset={8}>
+      <Tooltip variant="canvas" label="返回画布项目列表" placement="bottom" offset={8}>
         <IconButton aria-label="返回画布项目列表" variant="link" className="!size-[18px]" onClick={onBackProjects}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="white" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M2.00001 8H14" /><path d="M6 4L2 8L6 12" />

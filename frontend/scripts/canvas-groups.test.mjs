@@ -73,7 +73,7 @@ test('组内成员不再依赖双击解锁，点击身份不提升为父组', ()
   assert.match(hook, /resolveSelectionId: \(node\) => node.id/);
 });
 
-test('直接拖动组内成员后只移动该成员，释放后保持8px边距', () => {
+test('直接拖动组内成员后只移动该成员，释放后保留20px边距', () => {
   const initial = groups.groupCanvasNodes([node('a', 100, 200), node('b', 400, 300)], 'g');
   const selected = groups.setCanvasSelection(initial, ['a']);
   assert.equal(selected[0].selected, false);
@@ -81,17 +81,17 @@ test('直接拖动组内成员后只移动该成员，释放后保持8px边距',
   const during = groups.fitCanvasGroups(moving);
   assert.deepEqual(during[0].position, initial[0].position);
   const released = groups.fitCanvasGroups(during.map((item) => ({ ...item, dragging: false })));
-  assert.deepEqual(groups.getCanvasAbsolutePosition(released, released[1]), { x: 52, y: 162 });
+  assert.deepEqual(groups.getCanvasAbsolutePosition(released, released[1]), { x: 40, y: 150 });
   assert.deepEqual(groups.getCanvasAbsolutePosition(released, released[2]), { x: 400, y: 300 });
-  assert.deepEqual(released[1].position, { x: 8, y: 8 });
+  assert.deepEqual(released[1].position, { x: 20, y: 20 });
 });
 
-test('分组保留世界坐标，四边为8px，父节点在成员之前', () => {
+test('分组保留世界坐标，四边20px且组名位于框外，父节点在成员之前', () => {
   assert.equal(typeof groups.groupCanvasNodes, 'function');
   const original = [node('a', 100, 200), node('b', 400, 300)];
   const result = groups.groupCanvasNodes(original, 'g');
-  assert.deepEqual(result[0].position, { x: 92, y: 192 });
-  assert.deepEqual(result[0].style, { width: 556, height: 380 });
+  assert.deepEqual(result[0].position, { x: 80, y: 180 });
+  assert.deepEqual(result[0].style, { width: 580, height: 404 });
   assert.equal(result[0].data.label, '组合1');
   assert.equal(result[0].selected, true);
   for (const child of result.slice(1)) {
@@ -176,7 +176,7 @@ test('成员移动或尺寸改变后重新贴合边界，其他成员世界坐�
   const changed = original.map((item) => item.id === 'a' ? { ...item, position: { x: -50, y: -20 } } : item);
   const before = groups.getCanvasAbsolutePosition(changed, changed[2]);
   const fitted = groups.fitCanvasGroups(changed);
-  assert.deepEqual(fitted[1].position, { x: 8, y: 8 });
+  assert.deepEqual(fitted[1].position, { x: 20, y: 20 });
   assert.deepEqual(groups.getCanvasAbsolutePosition(fitted, fitted[2]), before);
 });
 

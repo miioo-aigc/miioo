@@ -24,17 +24,13 @@ test('上下间距均位于反向缩放层内，固定为8屏幕像素', () => {
   }
 });
 
-test('标题字号图标与间距固定，宽度匹配卡片屏幕宽度并保留省略', async () => {
+test('标题随画布缩放，宽度匹配卡片并保留省略', async () => {
   const header = await readSource('CanvasNodeHeader.jsx');
   const names = await readSource('CanvasEditableName.css');
-  assert.ok(header.includes("'--canvas-header-inverse-zoom': 1 / zoom"));
-  assert.ok(styles.includes('width: calc(100% * var(--canvas-header-zoom, 1))'));
+  assert.ok(!header.includes('--canvas-header-inverse-zoom'));
+  assert.ok(!styles.includes('--canvas-header-inverse-zoom'));
   assert.ok(styles.includes('translateY(-24px)'));
   assert.ok(names.includes('text-overflow: ellipsis'));
-  for (const zoom of [0.01, 0.5, 1, 2, 4]) {
-    assert.equal(16 / zoom * zoom, 16);
-    assert.equal(240 * zoom / zoom * zoom, 240 * zoom);
-  }
 });
 
 test('工具栏与输入框共用激活条件和显隐动画，缩放补偿独立保留', () => {

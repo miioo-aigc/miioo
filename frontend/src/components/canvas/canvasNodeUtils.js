@@ -29,6 +29,7 @@ export function createCanvasNode(type, position = { x: 0, y: 0 }, id = createId(
     type,
     position,
     selected: true,
+    ...(type === 'text' ? { width: 240, height: 264 } : {}),
     data: {
       nodeType: type,
       label: `${NODE_LABELS[type]}1`,

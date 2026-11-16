@@ -213,7 +213,7 @@ style={{ boxShadow: '0 0 16px var(--color-glow)' }}
 
 | Token 类名 | 引用梯度值 → 最终色值 | 用途 |
 |---|---|---|
-| `bg-tooltip-bg` | neutral-500 → #090909 | Tooltip 背景，配合 `backdrop-blur-[10px]` |
+| `bg-tooltip-bg` | #242424 | Tooltip 背景，配合 `backdrop-blur-[10px]` |
 
 ---
 

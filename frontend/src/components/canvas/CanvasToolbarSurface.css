@@ -3,5 +3,18 @@
 .canvas-node__toolbar-button { width: 32px !important; height: 32px !important; border-radius: 50% !important; color: var(--color-white-80); }
 .canvas-node__toolbar-button:hover:not(:disabled) { background: var(--color-white-5); color: var(--color-text-primary); }
 .canvas-node__toolbar-button:active:not(:disabled) { color: var(--color-white-60); }
+.canvas-node__toolbar-button[aria-expanded='true']:not(:disabled) { background: var(--color-white-5); color: var(--color-text-primary); }
 .canvas-node__toolbar-button:disabled { color: var(--color-white-40); opacity: 1; }
 .canvas-node__toolbar-icon { color: inherit !important; }
+.canvas-node__toolbar-group { display: flex; align-items: center; gap: 8px; }
+.canvas-node__toolbar-separator { width: 1px; height: 20px; flex-shrink: 0; background: var(--color-stroke-normal); }
+.canvas-node__toolbar-button--label { width: auto !important; padding: 0 8px; border-radius: 16px !important; white-space: nowrap; }
+
+/* 文本、图片、视频和音频节点共用的内容工具栏规格。 */
+.canvas-node__toolbar--content { padding: 0 4px; background: #141414; border-color: rgba(255, 255, 255, 0.15); }
+.canvas-node__toolbar--content .canvas-node__toolbar-group { gap: 1px; }
+.canvas-node__toolbar--content .canvas-node__toolbar-button--label { padding: 0 14px; }
+.canvas-node__toolbar--content .canvas-node__toolbar-icon { gap: 6px; }
+.canvas-node__toolbar--content .canvas-node__toolbar-separator { background: rgba(255, 255, 255, 0.15); }
+.canvas-node__toolbar--content .canvas-node__toolbar-button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.10); }
+.canvas-node__toolbar--content .canvas-node__toolbar-button[aria-expanded='true']:not(:disabled) { background: rgba(255, 255, 255, 0.10); }

@@ -67,7 +67,7 @@ export function normalizeCanvasResultBatch(batch) {
     ids.add(result.id);
     if (!['text', 'image', 'video', 'audio'].includes(result.type)) fail('结果类型无效');
     if (result.type === 'text') {
-      if (typeof result.content !== 'string' || !result.content.trim()) fail('文本结果为空');
+      if (typeof result.content !== 'string' || (!result.content.trim() && batch.source !== 'edit')) fail('文本结果为空');
       results.push({ id: result.id, index: result.index, type: result.type, content: result.content });
     } else {
       if (!UUID.test(result.assetId || '')) fail('媒体结果缺少永久资产编号');

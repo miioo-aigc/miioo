@@ -4,6 +4,17 @@ export function createCanvasSaveSession(update, createId = () => crypto.randomUU
   let revision = null;
   let tail = Promise.resolve();
   return {
+    // 文本历史写入与画布 PATCH 共用队列；失败的 PATCH 必须先确认，不能跳过。
+    mutate(action) {
+      const operation = tail.then(async () => {
+        if (pending) throw new Error('画布保存尚未确认，请先重试保存');
+        return action((next) => {
+          if (Number.isInteger(next)) revision = Math.max(revision ?? 0, next);
+        });
+      });
+      tail = operation.catch(() => {});
+      return operation;
+    },
     save(canvasId, baseRevision, document) {
       const operation = tail.then(async () => {
         const content = JSON.stringify(document);

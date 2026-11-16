@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 import ConfirmDialog from './ConfirmDialog';
 import WechatOfficialQr from './WechatOfficialQr';
 import { createSerialPolling } from '../utils/serialPolling';
-import { apiGetCurrentUser, apiDeleteAccount, apiGetWechatQrCode, apiPollWechatBind, apiUnbindWechat, apiSendPhoneCode, apiVerifyPhoneCode, apiRebindPhone } from '../api/user';
+import { apiGetCurrentUser, apiDeleteAccount, apiGetWechatQrCode, apiPollWechatBind, apiUnbindWechat, apiSendRebindPhoneCode, apiSendPhoneUnbindCode, apiRebindPhone } from '../api/user';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { showGlobalToast } from '../stores/toastStore';
 
@@ -316,11 +316,12 @@ function GhostBtn({ children, onClick }) {
   );
 }
 
-function PrimaryBtn({ children, onClick }) {
+function PrimaryBtn({ children, onClick, disabled = false }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className="[font-synthesis:none] flex flex-col items-start h-[36px] rounded-medium [outline:1px_solid_var(--color-stroke-outline)] outline-offset-0 [box-shadow:var(--color-shadow)_3px_3px_8px] shrink-0 antialiased p-[1px] cursor-pointer border-none"
       style={{ backgroundImage: GRADIENT_BTN }}
     >
@@ -333,16 +334,16 @@ function PrimaryBtn({ children, onClick }) {
   );
 }
 
-function CodeInput({ value, onChange, phone, maskedPhone }) {
+function CodeInput({ value, onChange, onSend, disabled = false }) {
   const [countdown, setCountdown] = useState(0);
   const [inputState, setInputState] = useState('normal');
   const timerRef = useRef(null);
 
-  const { loading, run } = useProfileOperation(phone || maskedPhone);
+  const { loading, run } = useProfileOperation();
   const handleSend = async () => {
-    if (countdown > 0) return;
+    if (disabled || countdown > 0 || typeof onSend !== 'function') return;
     await run(async (current) => {
-      await apiSendPhoneCode(phone || maskedPhone);
+      await onSend();
       if (current()) setCountdown(60);
     });
   };
@@ -353,7 +354,7 @@ function CodeInput({ value, onChange, phone, maskedPhone }) {
     return () => clearTimeout(timerRef.current);
   }, [countdown]);
 
-  const canSend = !loading && countdown === 0;
+  const canSend = !disabled && !loading && countdown === 0 && typeof onSend === 'function';
 
   const borderClass = inputState === 'focus'
     ? 'border-input-border-focus'
@@ -374,6 +375,7 @@ function CodeInput({ value, onChange, phone, maskedPhone }) {
     >
       <input
         value={value}
+        disabled={disabled || loading}
         onChange={onChange}
         onFocus={() => setInputState('focus')}
         onBlur={() => setInputState('normal')}
@@ -398,68 +400,9 @@ function CodeInput({ value, onChange, phone, maskedPhone }) {
   );
 }
 
-function PhoneUnbindStep1({ currentPhone, onNext, onCancel }) {
-  const [code, setCode] = useState('');
-  const [codeError, setCodeError] = useState(false);
-  const { loading, run, cancel } = useProfileOperation(`${currentPhone}:${code}`);
-  const handleCancel = () => { cancel(); onCancel(); };
-
-  const handleNext = async () => {
-    if (!code) { setCodeError(true); return; }
-    await run(async (current) => {
-      const res = await apiVerifyPhoneCode(currentPhone, code);
-      if (!current()) return;
-      if (!res.valid) { setCodeError(true); return; }
-      setCodeError(false);
-      onNext();
-    });
-  };
-
-  return (
-    <div
-      style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
-      onClick={handleCancel}
-    >
-      <div
-        style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', background: '#161616', border: '0.555556px solid rgba(255,255,255,0.08)', borderRadius: '16px', overflow: 'hidden', width: '400px' }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'space-between', width: '100%', padding: '16px 24px', boxSizing: 'border-box', borderRadius: '16px 16px 0 0' }}>
-          <span style={{ flex: 1, fontFamily: FONT_MEDIUM, fontWeight: 500, color: '#FFFFFF', fontSize: '16px', lineHeight: '20px' }}>手机号解绑</span>
-          <button type="button" onClick={handleCancel} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', flexShrink: 0 }}>
-            <CloseIcon />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '16px', padding: '8px 24px', width: '100%', boxSizing: 'border-box' }}>
-          {/* Phone display */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', alignSelf: 'stretch' }}>
-            <span style={{ fontFamily: FONT_REGULAR, color: 'rgba(255,255,255,0.6)', fontSize: '14px', lineHeight: '18px' }}>手机号</span>
-            <span style={{ fontFamily: FONT_REGULAR, color: '#FFFFFF', fontSize: '14px', lineHeight: '18px' }}>{currentPhone}</span>
-          </div>
-          {/* Code field */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px', alignSelf: 'stretch' }}>
-            <span style={{ fontFamily: FONT_REGULAR, color: 'rgba(255,255,255,0.6)', fontSize: '14px', lineHeight: '18px' }}>验证码</span>
-            <CodeInput value={code} onChange={e => { setCode(e.target.value); setCodeError(false); }} maskedPhone={currentPhone} />
-            <div style={{ padding: '0 13px', opacity: codeError ? 1 : 0, transition: 'opacity 120ms' }}>
-              <span style={{ fontFamily: FONT_REGULAR, color: '#F75F5F', fontSize: '14px', lineHeight: '18px' }}>验证码错误</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'flex-end', width: '100%', padding: '16px 24px', boxSizing: 'border-box', borderRadius: '0 0 16px 16px' }}>
-          <GhostBtn onClick={handleCancel}>取消</GhostBtn>
-          <PrimaryBtn onClick={handleNext}>{loading ? '验证中…' : '下一步'}</PrimaryBtn>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PhoneUnbindStep2({ onBind, onCancel }) {
+function PhoneRebindDialog({ onBind, onCancel }) {
+  const sendingRef = useRef(false);
+  const [sending, setSending] = useState(false);
   const [newPhone, setNewPhone] = useState('');
   const [code, setCode] = useState('');
   const [phoneError, setPhoneError] = useState(false);
@@ -468,14 +411,23 @@ function PhoneUnbindStep2({ onBind, onCancel }) {
   const handleCancel = () => { cancel(); onCancel(); };
   const [phoneInputState, setPhoneInputState] = useState('normal');
 
+  const handleSend = async () => {
+    if (sendingRef.current || loading) return;
+    sendingRef.current = true;
+    setSending(true);
+    try { return await apiSendRebindPhoneCode(newPhone); }
+    finally { sendingRef.current = false; setSending(false); }
+  };
+
   const handleBind = async () => {
+    if (sendingRef.current) return;
     const phoneOk = /^1\d{10}$/.test(newPhone);
     if (!phoneOk) { setPhoneError(true); return; }
     if (!code) { setCodeError(true); return; }
     await run(async (current, markSent) => {
       markSent();
       const updated = await apiRebindPhone(newPhone, code);
-      if (current()) onBind(newPhone, updated);
+      if (current()) onBind(updated.phone.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2'), updated);
     });
   };
 
@@ -509,7 +461,8 @@ function PhoneUnbindStep2({ onBind, onCancel }) {
             >
               <input
                 value={newPhone}
-                onChange={e => { setNewPhone(e.target.value); setPhoneError(false); }}
+                disabled={loading || sending}
+                onChange={e => { setNewPhone(e.target.value); setCode(''); setPhoneError(false); }}
                 onFocus={() => setPhoneInputState('focus')}
                 onBlur={() => setPhoneInputState('normal')}
                 placeholder="请输入11位数字手机号"
@@ -525,7 +478,7 @@ function PhoneUnbindStep2({ onBind, onCancel }) {
           {/* Code field */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px', alignSelf: 'stretch' }}>
             <span style={{ fontFamily: FONT_REGULAR, color: 'rgba(255,255,255,0.6)', fontSize: '14px', lineHeight: '18px' }}>验证码</span>
-            <CodeInput key={newPhone} value={code} onChange={e => { setCode(e.target.value); setCodeError(false); }} phone={newPhone} />
+            <CodeInput key={newPhone} value={code} onChange={e => { setCode(e.target.value); setCodeError(false); }} onSend={handleSend} disabled={loading || sending} />
             <div style={{ padding: '0 13px', opacity: codeError ? 1 : 0, transition: 'opacity 120ms' }}>
               <span style={{ fontFamily: FONT_REGULAR, color: '#F75F5F', fontSize: '14px', lineHeight: '18px' }}>验证码错误</span>
             </div>
@@ -535,7 +488,7 @@ function PhoneUnbindStep2({ onBind, onCancel }) {
         {/* Footer */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'flex-end', width: '100%', padding: '16px 24px', boxSizing: 'border-box', borderRadius: '0 0 16px 16px' }}>
           <GhostBtn onClick={handleCancel}>取消</GhostBtn>
-          <PrimaryBtn onClick={handleBind}>{loading ? '绑定中…' : '绑定'}</PrimaryBtn>
+          <PrimaryBtn onClick={handleBind} disabled={loading || sending}>{loading ? '绑定中…' : '绑定'}</PrimaryBtn>
         </div>
       </div>
     </div>
@@ -544,19 +497,27 @@ function PhoneUnbindStep2({ onBind, onCancel }) {
 
 
 function DeleteVerifyDialog({ maskedPhone, onConfirm, onCancel }) {
+  const sendingRef = useRef(false);
+  const [sending, setSending] = useState(false);
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState(false);
   const { loading, run, cancel } = useProfileOperation(`${maskedPhone}:${code}`);
   const handleCancel = () => { cancel(); onCancel(); };
 
+  const handleSend = async () => {
+    if (sendingRef.current || loading) return;
+    sendingRef.current = true;
+    setSending(true);
+    try { return await apiSendPhoneUnbindCode(); }
+    finally { sendingRef.current = false; setSending(false); }
+  };
+
   const handleConfirm = async () => {
-    if (!code) { setCodeError(true); return; }
+    if (sendingRef.current) return;
+    if (maskedPhone && !code) { setCodeError(true); return; }
     await run(async (current, markSent) => {
-      const res = await apiVerifyPhoneCode(maskedPhone, code);
       if (!current()) return;
-      if (!res.valid) { setCodeError(true); return; }
-      setCodeError(false);
-      await onConfirm(current, markSent);
+      await onConfirm(current, markSent, maskedPhone ? code : undefined);
     });
   };
 
@@ -571,7 +532,7 @@ function DeleteVerifyDialog({ maskedPhone, onConfirm, onCancel }) {
       >
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'space-between', width: '100%', padding: '16px 24px', boxSizing: 'border-box' }}>
-          <span style={{ flex: 1, fontFamily: FONT_MEDIUM, fontWeight: 500, color: '#FFFFFF', fontSize: '16px', lineHeight: '20px' }}>验证手机号</span>
+          <span style={{ flex: 1, fontFamily: FONT_MEDIUM, fontWeight: 500, color: '#FFFFFF', fontSize: '16px', lineHeight: '20px' }}>{maskedPhone ? '验证手机号' : '确认注销账号'}</span>
           <button type="button" onClick={handleCancel} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', flexShrink: 0 }}>
             <CloseIcon />
           </button>
@@ -579,6 +540,7 @@ function DeleteVerifyDialog({ maskedPhone, onConfirm, onCancel }) {
 
         {/* Body */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '16px', padding: '8px 24px', width: '100%', boxSizing: 'border-box' }}>
+          {maskedPhone ? <>
           {/* Phone display */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px', alignSelf: 'stretch' }}>
             <span style={{ fontFamily: FONT_REGULAR, color: 'rgba(255,255,255,0.6)', fontSize: '14px', lineHeight: '18px' }}>手机号</span>
@@ -587,11 +549,12 @@ function DeleteVerifyDialog({ maskedPhone, onConfirm, onCancel }) {
           {/* Code field */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px', alignSelf: 'stretch' }}>
             <span style={{ fontFamily: FONT_REGULAR, color: 'rgba(255,255,255,0.6)', fontSize: '14px', lineHeight: '18px' }}>验证码</span>
-            <CodeInput value={code} onChange={e => { setCode(e.target.value); setCodeError(false); }} maskedPhone={maskedPhone} />
+            <CodeInput value={code} onChange={e => { setCode(e.target.value); setCodeError(false); }} onSend={handleSend} disabled={loading || sending} />
             <div style={{ padding: '0 13px', opacity: codeError ? 1 : 0, transition: 'opacity 120ms' }}>
               <span style={{ fontFamily: FONT_REGULAR, color: '#F75F5F', fontSize: '14px', lineHeight: '18px' }}>验证码错误</span>
             </div>
           </div>
+          </> : <span className="text-text-secondary text-font-size-14">当前账号未绑定手机号，确认后将注销账号。</span>}
         </div>
 
         {/* Footer */}
@@ -599,10 +562,10 @@ function DeleteVerifyDialog({ maskedPhone, onConfirm, onCancel }) {
           <GhostBtn onClick={handleCancel}>取消</GhostBtn>
           <button
             type="button"
-            disabled={loading || !code}
+            disabled={loading || sending || (maskedPhone && !code)}
             onClick={handleConfirm}
             className="[font-synthesis:none] flex items-center justify-center h-9 px-[16px] rounded-medium shrink-0 bg-btn-danger-bg-normal hover:bg-btn-danger-bg-hover active:bg-btn-danger-bg-active border border-btn-danger-border [outline:1px_solid_var(--color-stroke-outline)] outline-offset-0 antialiased"
-            style={{ cursor: loading || !code ? 'default' : 'pointer', opacity: loading || !code ? 0.5 : 1 }}
+            style={{ cursor: loading || sending || (maskedPhone && !code) ? 'default' : 'pointer', opacity: loading || sending || (maskedPhone && !code) ? 0.5 : 1 }}
           >
             <span className="text-btn-danger-text text-font-size-14 font-font-weight-medium shrink-0" style={{ fontFamily: FONT_MEDIUM }}>
               {loading ? '注销中…' : '确认注销'}
@@ -923,10 +886,10 @@ function ProfileSession({
       {deleteStep === 'verify' && (
         <DeleteVerifyDialog
           maskedPhone={boundPhone}
-          onConfirm={async (current, markSent) => {
+          onConfirm={async (current, markSent, code) => {
             if (!current()) return;
             markSent();
-            await apiDeleteAccount();
+            await apiDeleteAccount(code);
             if (!current()) return;
             setDeleteStep(null);
             onLogout?.();
@@ -934,15 +897,8 @@ function ProfileSession({
           onCancel={() => setDeleteStep(null)}
         />
       )}
-      {phoneUnbindStep === 'step1' && (
-        <PhoneUnbindStep1
-          currentPhone={boundPhone}
-          onNext={() => setPhoneUnbindStep('step2')}
-          onCancel={() => setPhoneUnbindStep(null)}
-        />
-      )}
-      {phoneUnbindStep === 'step2' && (
-        <PhoneUnbindStep2
+      {phoneUnbindStep && (
+        <PhoneRebindDialog
           onBind={handlePhoneRebindSuccess}
           onCancel={() => setPhoneUnbindStep(null)}
         />

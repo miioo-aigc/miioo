@@ -234,6 +234,7 @@ test('真实图片Hook登记任务编号并解锁，启用部分成功并提示�
   let omitTaskIdList = false;
   let fullBatch = false;
   let apiCallCount = 0;
+  let apiError = null;
   const setNodes = (update, options) => {
     writeOptions.push(options);
     latestNodes = update(latestNodes);
@@ -259,6 +260,7 @@ test('真实图片Hook登记任务编号并解锁，启用部分成功并提示�
         assert.equal(latestNodes[0].data.submissionLocked, false);
         assert.deepEqual(latestNodes[0].data.generationTaskIds, ['real-a', 'real-b']);
       }
+      if (apiError) throw apiError;
       return fullBatch ? { images: ['/one', '/two'], imageAssetIds: [assetId(1), assetId(2)] }
         : { images: [null, '/two'], imageAssetIds: [null, assetId(2)] };
     },
@@ -279,10 +281,23 @@ test('真实图片Hook登记任务编号并解锁，启用部分成功并提示�
   assert.equal(nodes[0].data.submissionLocked, false);
   assert.deepEqual(nodes[0].data.nodeResults.batches.at(-1).taskIds, []);
   assert.deepEqual(hints, []);
+  apiError = Object.assign(
+    new Error('OneLinkAI 账户余额不足（当前余额 ¥0.009536，本次至少需要 ¥0.100000），请充值或调整可用额度后重试'),
+    { taskFailed: true, code: 'UPSTREAM_AUTH_INVALID' },
+  );
+  await hook(nodes, setNodes, () => {}, 'project', hint)({ nodeId: 'target', prompt: '余额不足', model: 'model', params: { count: 1 } });
+  assert.equal(nodes[0].data.generating, false);
+  assert.equal(nodes[0].data.submissionLocked, false);
+  assert.deepEqual(toasts.at(-1), [
+    '图片创作失败：OneLinkAI 账户余额不足（当前余额 ¥0.009536，本次至少需要 ¥0.100000），请充值或调整可用额度后重试',
+    'error',
+  ]);
+  apiError = null;
+  toasts.length = 0;
   fullBatch = true;
   await hook(nodes, setNodes, () => {}, 'project', hint)({ nodeId: 'target', prompt: '一次生成两张', model: 'model', params: { count: 2 } });
   assert.deepEqual(hints, [['target', 2]]);
-  assert.deepEqual(toasts, [['本次成功生成 1 / 2 张图片', 'warning']]);
+  assert.deepEqual(toasts, []);
   const staleNodes = nodes;
   latestNodes = [...nodes, { ...node('image', 'downstream'), data: { ...node('image', 'downstream').data,
     submissionLocked: true, executionSourceIds: ['target'] } }];

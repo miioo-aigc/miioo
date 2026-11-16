@@ -6,11 +6,11 @@ import { projectCanvasCurrentResult } from './CanvasNodeResults.js';
 const sourceLists = ['textSourceIds', 'imageSourceIds', 'videoSourceIds', 'audioSourceIds'];
 const transient = new Set(['generating', 'generationPending', 'generationError', 'generationRequestId',
   'generationMessage', 'generationMessageRequestId', 'generationProgress', 'taskId', 'taskIds', 'requestId',
-  'generationTaskIds', 'executionSourceIds', 'pendingCanvasUpload',
+  'generationTaskIds', 'executionSourceIds', 'pendingCanvasUpload', 'textSubmission', 'outputVersion',
   'activeTask', 'activeRequest', 'executionSnapshot', 'taskSnapshot', 'taskIdentity',
   'controller', 'abortController', 'signal', 'submissionLocked', 'outputLocked',
   'deleteLocked', 'upstreamProtected', 'dependencyCount', 'resultAssetViews',
-  'creationPanelOpen', 'editing', 'dragging', 'dragRelease', 'dragScaleX', 'dragScaleY']);
+  'creationPanelOpen', 'editing', 'dragging']);
 
 /** 只剥离顶层运行态；批次内 taskIds 和 snapshot 是不可变溯源数据。 */
 export function stripCanvasNodeRuntimeData(data) {

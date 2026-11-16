@@ -1,4 +1,4 @@
 .canvas-mini-map > .react-flow__minimap-svg {
   border-radius: var(--radius-medium);
-  background-color: var(--color-surface-toolbar);
+  background-color: var(--color-surface-card);
 }

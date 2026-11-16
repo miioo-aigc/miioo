@@ -178,6 +178,34 @@ export function apiGetCanvasRuns(canvasId, { status, limit = 20, signal } = {}) 
   return canvasAction(canvasId, `/runs?${query}`, { signal });
 }
 
+/** Generation-history endpoints are a frontend contract pending backend support. */
+function canvasGenerationHistoryUrl(canvasId, suffix = '') {
+  if (!canvasId) throw new Error('缺少画布编号');
+  return `${canvasUrl(`/${encodeURIComponent(canvasId)}/generation-history`)}${suffix}`;
+}
+
+export async function apiListCanvasGenerationHistory(canvasId, { targetCanvasId = canvasId, type = 'all', limit = 50, cursor, signal } = {}) {
+  const params = new URLSearchParams({ target_canvas_id: targetCanvasId, type, limit: String(limit) });
+  if (cursor) params.set('cursor', cursor);
+  const query = `?${params.toString()}`;
+  const response = await authFetch(canvasGenerationHistoryUrl(canvasId, query), { signal, headers: { 'Content-Type': 'application/json' } });
+  if (response.status === 404 || response.status === 501) throw new Error('生成历史服务暂未开放，请等待后端接口上线');
+  if (!response.ok) await throwCanvasResponseError(response, '生成历史读取失败');
+  const payload = await response.json();
+  const records = Array.isArray(payload) ? payload : payload?.items;
+  if (!Array.isArray(records)) throw new Error('生成历史返回格式异常');
+  return records;
+}
+
+export async function apiDeleteCanvasGenerationHistory(canvasId, historyId, { targetCanvasId = canvasId, signal } = {}) {
+  if (!historyId) throw new Error('缺少生成历史编号');
+  const query = new URLSearchParams({ target_canvas_id: targetCanvasId });
+  const response = await authFetch(canvasGenerationHistoryUrl(canvasId, `/${encodeURIComponent(historyId)}?${query}`), { method: 'DELETE', signal });
+  if (response.status === 404 || response.status === 501) throw new Error('生成历史删除服务暂未开放');
+  if (!response.ok) await throwCanvasResponseError(response, '删除生成历史失败');
+  return response.status === 204 ? null : response.json();
+}
+
 export function apiGetCanvasRun(canvasId, runId, { signal } = {}) {
   if (!runId) throw new Error('任务编号不能为空');
   return canvasAction(canvasId, `/runs/${encodeURIComponent(runId)}`, { signal });

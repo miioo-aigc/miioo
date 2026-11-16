@@ -4,7 +4,7 @@ import ImageEditChrome, { ImageEditFooter } from './image-edit/ImageEditChrome';
 import { CropIcon, RotateCounterClockwiseIcon, RotateClockwiseIcon, FlipHorizontalIcon, FlipVerticalIcon, OriginalRatioIcon, CustomRatioIcon, RatioIcon } from './ui';
 import { showGlobalToast } from '../stores/toastStore';
 import ImageCropEditor from './ImageCropEditor';
-import { renderImageCropBlob } from '../utils/imageCrop';
+import { renderImageCropResult } from '../utils/imageCrop';
 import useImageEditSubmission from '../hooks/useImageEditSubmission';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
@@ -26,7 +26,7 @@ function ToolButton({ label, icon, disabled, onClick, selected }) {
 }
 
 export default function ImageCropModal({ imageUrl, sourceAsset, onSave, onClose, onComplete = onClose }) {
-  const { submit: saveEdit } = useImageEditSubmission({ card: sourceAsset, onSave, onComplete });
+  const { submit: saveEdit, stage } = useImageEditSubmission({ card: sourceAsset, onSave, onComplete });
   const { width: modalW, height: modalH } = useModalSize();
   const editorRef = useRef(null);
   const [editState, setEditState] = useState({ imageSize: { width: 0, height: 0 }, crop: { x: 0, y: 0, width: 1, height: 1 }, zoom: 1, panX: 0, panY: 0 });
@@ -46,10 +46,11 @@ export default function ImageCropModal({ imageUrl, sourceAsset, onSave, onClose,
     setSaving(true);
     try {
       const { image, imageSize, crop, zoom, panX, panY } = editorRef.current.getEditState();
-      const blob = await renderImageCropBlob({ image, crop, rotation, flipX, flipY, zoom, panX, panY, imageWidth: imageSize.width, imageHeight: imageSize.height });
+      const { blob, width, height } = await renderImageCropResult({ image, crop, rotation, flipX, flipY, zoom, panX, panY, imageWidth: imageSize.width, imageHeight: imageSize.height });
       if (!blob) throw new Error('裁剪结果生成失败');
       await saveEdit({
         mode: 'crop',
+        outputSize: { width, height },
         file: new File([blob], '图片裁剪.png', { type: 'image/png' }),
       });
     } catch (error) {
@@ -65,7 +66,7 @@ export default function ImageCropModal({ imageUrl, sourceAsset, onSave, onClose,
   const stageRatio = sourceRatio ? (isQuarterTurn ? 1 / sourceRatio : sourceRatio) : undefined;
   const stageWidth = stageRatio ? Math.min(stageMaxWidth, stageMaxHeight * stageRatio) : stageMaxWidth;
 
-  return <ImageEditChrome title="图片裁剪" onClose={onClose} busy={saving} footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={handleSave} busy={saving} disabled={!editState.imageSize.width} />}>
+  return <ImageEditChrome title="图片裁剪" onClose={onClose} busy={saving} footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={handleSave} busy={saving} label={saving ? (stage || '正在处理图片') : '保存'} disabled={!editState.imageSize.width} />}>
     <div style={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0 }}>
       <div style={{ height: '64px', padding: '16px 24px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#090909', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

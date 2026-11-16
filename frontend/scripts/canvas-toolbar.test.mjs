@@ -62,11 +62,11 @@ test('资产按类型导入、保留音频台词、多选错开且整批撤销�
   history.dispose();
 });
 
-test('工具栏恢复搜索分享入口、菜单后缀及收起布局契约', () => {
+test('工具栏历史入口、菜单后缀及收起布局契约', () => {
   const toolbar = readFileSync(new URL('../src/components/canvas/CanvasToolbar.jsx', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../src/components/canvas/CanvasToolbar.css', import.meta.url), 'utf8');
   assert.doesNotMatch(toolbar, /当前项目画布/);
-  assert.match(toolbar, /key: 'search', label: '搜索节点', icon: SearchIcon \}/);
+  assert.match(toolbar, /key: 'history', label: '生成历史', icon: History \}/);
   assert.match(toolbar, /key: 'share', label: '分享', icon: ShareNodesIcon \}/);
   assert.match(toolbar, /filter\(\(item\) => !item.hidden\)/);
   assert.match(toolbar, /justify-between gap-\[12px\]/);

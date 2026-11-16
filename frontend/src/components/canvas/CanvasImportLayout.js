@@ -21,6 +21,38 @@ export function getCanvasToolbarNodePosition(nodes, center, size = { width: WIDT
   return { x: right + GAP, y: center.y - size.height / 2 };
 }
 
+/** One generated media node: place at viewport center, then search nearby gaps if occupied. */
+export function getCanvasViewportCenterNodePosition(nodes, center, size = { width: WIDTH, height: HEIGHT }) {
+  const visible = nodes.filter((node) => !node.hidden);
+  const occupied = visible.map((node) => {
+    const position = getCanvasAbsolutePosition(nodes, node);
+    const fallback = getCanvasAssetNodeSize(node.data?.asset);
+    const stacked = node.type === 'canvasGroup' && node.data?.stacked;
+    return { x: position.x, y: position.y,
+      width: stacked ? 300 : Number(node.measured?.width ?? node.width ?? node.style?.width ?? fallback.width) || WIDTH,
+      height: stacked ? 300 : Number(node.measured?.height ?? node.height ?? node.style?.height ?? fallback.height) || HEIGHT };
+  });
+  const overlaps = (point) => occupied.some((rect) => point.x < rect.x + rect.width + GAP
+    && point.x + size.width + GAP > rect.x && point.y < rect.y + rect.height + GAP
+    && point.y + size.height + GAP > rect.y);
+  const origin = { x: center.x - size.width / 2, y: center.y - size.height / 2 };
+  if (!overlaps(origin)) return origin;
+  for (let ring = 1; ring < 1000; ring += 1) {
+    const candidates = [];
+    for (let step = -ring; step <= ring; step += 1) {
+      candidates.push({ x: origin.x + step * (size.width + GAP), y: origin.y - ring * (size.height + GAP) });
+      candidates.push({ x: origin.x + step * (size.width + GAP), y: origin.y + ring * (size.height + GAP) });
+    }
+    for (let step = -ring + 1; step < ring; step += 1) {
+      candidates.push({ x: origin.x - ring * (size.width + GAP), y: origin.y + step * (size.height + GAP) });
+      candidates.push({ x: origin.x + ring * (size.width + GAP), y: origin.y + step * (size.height + GAP) });
+    }
+    const available = candidates.find((point) => !overlaps(point));
+    if (available) return available;
+  }
+  return origin;
+}
+
 export function getCanvasImportBounds(positions) {
   if (!positions.length) return null;
   const x = Math.min(...positions.map((p) => p.x));

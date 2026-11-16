@@ -2,9 +2,10 @@ import { useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { createScriptEditorExtensions } from './ScriptEditorExtensions';
 import EditorToolbar from './EditorToolbar';
+import { EditorHistory } from './EditorHistory';
 import { ensureScriptEditorStyle } from './ScriptStyles';
 
-export default function ScriptEditor({ initialContent, onContentChange, containerRef }) {
+export default function ScriptEditor({ initialContent, onContentChange, containerRef, historyDepth = 0 }) {
   useEffect(() => {
     ensureScriptEditorStyle();
   }, []);
@@ -15,7 +16,7 @@ export default function ScriptEditor({ initialContent, onContentChange, containe
   });
 
   const editor = useEditor({
-    extensions: createScriptEditorExtensions(),
+    extensions: [...createScriptEditorExtensions(), ...(historyDepth > 0 ? [EditorHistory.configure({ depth: historyDepth })] : [])],
     content: initialContent || '',
     immediatelyRender: false,
     onUpdate: ({ editor: currentEditor }) => {

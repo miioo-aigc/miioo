@@ -1,7 +1,7 @@
 /**
  * @file SeedanceAssetLibraryPanel.jsx
  * @structure-index
- *   2026-11-06：folderReadVersion L166；handleOpenFolder L245 / handleBackToFolders L615 隔离读取、批量上传与轮询；两种来源共用三个并发名额，逐项失败汇总。
+ *   2026-11-06：folderReadVersion L167；handleOpenFolder L246 / handleBackToFolders L617 隔离读取、批量上传与轮询；两种来源共用三个并发名额，逐项失败汇总。
  * ─── 页面区块 ───────────────────────────────────────
  *   SeedanceAssetLibraryPanel：seedance认证素材库子 Tab 和文件夹网格
  *   真人素材组：从真人素材接口读取，空数据时仅展示录入入口
@@ -30,6 +30,7 @@
  *   2026-08-17  文件夹上传入口增加本地上传/资产库选择，并限制资产库选择为图片和视频
  *   2026-08-17  资产库导入优先下载原图地址，避免将 AVIF 缩略图上传至 Seedance
  *   2026-09-02  素材组新增、重命名、删除的 400 错误透传 detail，并通过确认型 Notice 展示
+ *   2026-11-13  打开素材文件夹失败时，页面错误态和 Toast 直接展示后端反馈。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -262,8 +263,9 @@ export default function SeedanceAssetLibraryPanel({ initialTab = 'real' }) {
     } catch (error) {
       if (version !== folderReadVersion.current) return;
       console.warn('[SeedanceAssetLibraryPanel] 获取文件夹素材失败', error);
-      setFolderReadError('素材读取失败，请重试');
-      showToast('素材加载失败，请返回后重试');
+      const message = error?.message || '素材读取失败，请重试';
+      setFolderReadError(message);
+      showToast(message);
     } finally {
       if (version === folderReadVersion.current) setFolderAssetsLoading(false);
     }

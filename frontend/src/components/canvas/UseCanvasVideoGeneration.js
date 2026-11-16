@@ -10,7 +10,7 @@ export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks) {
   const [requests] = useState(createCanvasTextRequests);
   useEffect(() => () => requests.abortAll(), [requests]);
   useEffect(() => { requests.reconcile(nodes); }, [nodes, requests]);
-  return useCallback(async ({ nodeId, prompt, model, params = {}, capabilities, generationMode }) => {
+  return useCallback(async ({ nodeId, prompt, model, params = {}, capabilities, generationMode, onAccepted, onRejected }) => {
     const systemSetNodes = (updater, options = {}) => setNodes(updater, { ...options, origin: 'system' });
     let plan;
     let controller;
@@ -18,6 +18,7 @@ export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks) {
       plan = planCanvasVideoGeneration(nodes, nodeId, prompt, model, { ...params, capabilities, generationMode });
       controller = requests.start(plan);
     } catch (error) {
+      onRejected?.(error.message);
       showGlobalToast(error.message, 'error');
       return;
     }
@@ -34,13 +35,16 @@ export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks) {
             ? task.taskIds : [task?.taskId].filter(Boolean);
           plan.taskIds = [...new Set(taskIds)];
           systemSetNodes((current) => acceptCanvasVideoSubmission(current, plan, task), { record: false });
+          if (taskIds.length) onAccepted?.();
         },
       });
       if (controller.signal.aborted) return;
       const asset = getCanvasGeneratedVideoAsset(result);
+      onAccepted?.();
       if (!controller.signal.aborted) systemSetNodes((current) => applyCanvasVideoResult(current, plan, asset), { record: false });
     } catch (error) {
       if (!controller.signal.aborted) {
+        onRejected?.(error.message || '请重试');
         showGlobalToast(`视频创作失败：${error.message || '请重试'}`, 'error');
         systemSetNodes((current) => recoverCanvasVideoGenerationFailure(current, plan), { record: false });
       }

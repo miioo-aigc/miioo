@@ -29,7 +29,7 @@ export default function CanvasConnectionEdge({ id, sourceX, sourceY, targetX, ta
       <div className={`canvas-edge-action nodrag nopan absolute transition-opacity ${hovered ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
         style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
         onPointerEnter={() => setEdgeHover(true)} onPointerLeave={() => setEdgeHover(false)}>
-        <Tooltip label="删除连线" offset={6}>
+        <Tooltip variant="canvas" label="删除连线" offset={6}>
           <button type="button" aria-label="断开连线"
             className="flex size-[32px] items-center justify-center rounded-full border border-stroke-normal bg-surface-content-area text-text-primary transition-colors active:text-text-hint"
             style={{ boxShadow: '0 0 4px var(--color-shadow)' }}

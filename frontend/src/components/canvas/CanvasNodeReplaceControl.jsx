@@ -40,7 +40,7 @@ export default function CanvasNodeReplaceControl({ data, nodeType, disabled }) {
     }
   };
   return <div className="canvas-node-result-replace nodrag nopan" onPointerDown={event => event.stopPropagation()} onMouseDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
-    <Tooltip label="替换">
+    <Tooltip variant="canvas" label="替换">
       <span><IconButton ref={triggerRef} aria-label="替换" title="替换" disabled={locked} aria-expanded={visible}
         variant="secondary" style={{ paddingTop: 8, paddingBottom: 8, alignSelf: 'auto', height: 'auto', width: 32,
           boxShadow: 'none', backgroundColor: 'transparent',

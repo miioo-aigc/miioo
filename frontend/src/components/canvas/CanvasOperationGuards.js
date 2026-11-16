@@ -29,7 +29,7 @@ export function getCanvasOperationLocks(nodes) {
 function protectedDataChange(before, after, locks) {
   const a = before.data || {}, b = after.data || {};
   for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    if (['selected', 'measured', 'dragging', 'dragRelease', 'dragScaleX', 'dragScaleY', 'generationProgress', 'generationMessage'].includes(key)) continue;
+    if (['selected', 'measured', 'dragging', 'generationProgress', 'generationMessage'].includes(key)) continue;
     if (!same(a[key], b[key])) {
       if (['content', 'asset', 'nodeResults'].includes(key)) return true;
       if (locks.outputLocked?.has(before.id) && ['content', 'asset', 'nodeResults'].includes(key)) return true;

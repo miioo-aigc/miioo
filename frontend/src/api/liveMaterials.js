@@ -207,7 +207,7 @@ export async function apiListLiveMaterialAssets(groupId, { refresh, signal } = {
     ? `${BASE}/api/live-materials/groups/${groupId}/assets?refresh=true`
     : `${BASE}/api/live-materials/groups/${groupId}/assets`;
   const res = await authFetch(url, { signal });
-  if (!res.ok) throw new Error(`获取真人素材失败: ${res.status}`);
+  if (!res.ok) throw await createLiveMaterialApiError(res, '获取真人素材失败');
   return res.json();
 }
 

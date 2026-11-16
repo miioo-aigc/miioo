@@ -1,5 +1,7 @@
 /** 文本卡片按主方向消费手势，避免斜向滑动同时移动正文和画布。 */
 export function handleCanvasTextWheel(event, element, panBy) {
+  // 未选中文本不消费手势，由画布继续处理平移或缩放。
+  if (element.dataset.scrollEnabled === 'false') return;
   // 预览捏合交给 React Flow，沿用鼠标锚点、缩放速度及上下限。
   if (event.ctrlKey && element.dataset.textPreview === 'true') return;
   event.preventDefault();

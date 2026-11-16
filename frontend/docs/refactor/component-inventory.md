@@ -1,5 +1,9 @@
 # 组件重构盘点基线
 
+## 2026-11-11 移除节点拖动形变
+
+已删除拖动方向采样、缩放状态、松手回弹定时器、DOM 属性及 CSS 动画；保留拖动、吸附、分组尺寸更新与撤销事务。下文历史记录中的拖动拉伸方案已废止。
+
 ## 2026-11-11 图片多结果历史入口气泡提示（待手动验收）
 
 图片节点一次生成多张图片后，右上角历史入口旁显示一次性气泡「已生成 X 个结果，点击查看」。
@@ -4515,3 +4519,17 @@ CreationAudioVisualizer 改为居中的 19 根蓝色发光圆头波形，使用�
 - CanvasAudioPlayer 经 useMediaPlayback 启用 timeoutRetries: 3；MediaPlaybackSession 在超时后有限重载，默认其他调用方不启用该策略。
 - 原播放按钮承载加载转圈和最终重试入口，移除额外 MediaLoadStatus 区域，避免提示挤出波形；恢复后仍需显式播放。保留进度，暂停/卸载清理重试等待。
 - 14项媒体恢复测试、定向检查、构建、架构及差异检查通过；用户尚未单独确认音频功能手动验收。本条与顶部工具栏的已验收状态分开记录。
+
+## 2026-11-12 画布排列工具栏
+
+- CanvasSelectionToolbar 新增独立图标排列组，复用 CanvasToolbarButton、DropdownMenu，提供宫格、水平、垂直排列。
+- CanvasArrangement 负责同父级选中根项与单个展开组直接子节点的几何布局；32px间距、保留原点、嵌套组整体移动，堆叠单组/跨层级/提交锁禁用。
+- UseCanvasNodeActions 经现有 setNodes 写入位置与组框，复用撤销、重做及保存流程。
+- 6项排列测试、定向ESLint、构建及架构检查通过；全量lint仍有Home.jsx两项既有错误。浏览器视觉与实际保存刷新待验收。
+
+### 文本节点尺寸调整（2026-11-13）
+
+TextCanvasNode 复用 React Flow NodeResizeControl，仅选中时显示右下角手柄。最小宽 180px、节点总高 144px（含 24px 标题），默认 240×264px。尺寸变化由 CanvasPage 归并为一次历史事务，CanvasDocument 保存及读取宽高，CanvasGroups 使用显式尺寸计算父组范围。
+# 2026-11-13 文本持久任务接线
+
+新增 CanvasTextSubmissions（API）、CanvasTextTask（串行任务驱动）、CanvasDurableText（历史协议适配），扩展 UseCanvasTextGeneration 与 CanvasSaveSession；取消入口复用 Button。CanvasPage 仅注入保存桥接及导航/删除取消回调，未加入请求 URL 或新业务展示区块。页面既有体量保留，任务驱动和历史适配已独立。112 项相关测试通过，线上待验收，详见 ../canvas-text-durable-integration-2026-11-13.md。

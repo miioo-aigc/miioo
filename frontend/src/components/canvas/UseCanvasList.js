@@ -87,6 +87,7 @@ export function useCanvasList({ canvas, persistCanvas, onSelectCanvas, onRenamed
   const remove = (targetId) => run(async () => {
     if (!ready) throw new Error('画布列表尚未加载完成，请稍后重试');
     if (listed.length <= 1) throw new Error('项目至少需要保留一个画布');
+    if (targetId === id) await save();
     await apiArchiveCanvasDocument(targetId);
     const remaining = listed.filter((item) => item.id !== targetId);
     setItems(remaining);

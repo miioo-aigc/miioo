@@ -78,10 +78,11 @@ export default function CanvasMiniMap() {
       className="react-flow__minimap canvas-mini-map rounded-medium border border-solid border-stroke-normal p-[8px] [outline:1px_solid_var(--color-stroke-outline)]">
       <svg ref={svg} width={174} height={124} className="react-flow__minimap-svg"
         viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`} role="img" aria-label="画布预览地图">
+        <rect {...viewport} fill={rects.length ? 'var(--color-black-50)' : 'none'} pointerEvents="none" />
         {rects.map((rect) => <rect key={rect.id} x={rect.x} y={rect.y}
-          width={rect.width} height={rect.height} rx={5} ry={5} fill="var(--color-brand-main)" />)}
+          width={rect.width} height={rect.height} rx={5} ry={5} fill="var(--color-white-20)" />)}
         <rect {...viewport} fill="none" pointerEvents="none"
-          stroke={rects.length ? 'var(--color-stroke-outline)' : 'transparent'}
+          stroke={rects.length ? 'var(--color-white-30)' : 'transparent'}
           strokeWidth={view.scale} />
       </svg>
     </Panel>

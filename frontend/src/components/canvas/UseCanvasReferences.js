@@ -5,7 +5,7 @@ import { appendCanvasNode } from './canvasNodeUtils';
 import { CANVAS_CARD_PULSE_DURATION, getCanvasPulseTiming } from './CanvasPulseMotion';
 import { showGlobalToast } from '../../stores/toastStore';
 import { getCanvasReferenceEdges, removeCanvasReference } from './CanvasReferences';
-import { getActiveUpstreamEdgeIds } from './CanvasEdgeHighlight';
+import { getActiveAdjacentEdgeIds } from './CanvasEdgeHighlight';
 import { getCanvasPromptReferences } from './CanvasPromptReferences';
 import { connectTextToAudio, disconnectTextAudio, getTextAudioEdges, isTextAudioConnection } from './CanvasTextAudio';
 import { getCanvasMediaFileType } from './CanvasLocalMedia';
@@ -92,38 +92,13 @@ export function useCanvasReferences(nodes, setNodes, openPicker, uploadFilesRef)
     }),
     ...getTextAudioEdges(nodes), ...getCanvasTextEdges(nodes), ...getCanvasImageEdges(nodes), ...getCanvasVideoEdges(nodes),
   ], [nodes]);
-  const highlightedEdgeIds = useMemo(() => {
-    if (!hoveredEdgeId) return new Set();
-    const hovered = graphEdges.find((edge) => edge.id === hoveredEdgeId);
-    if (!hovered) return new Set();
-    const upstreamNodeIds = new Set([hovered.source]);
-    const downstreamNodeIds = new Set([hovered.target]);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      graphEdges.forEach((edge) => {
-        if (upstreamNodeIds.has(edge.target) && !upstreamNodeIds.has(edge.source)) {
-          upstreamNodeIds.add(edge.source);
-          changed = true;
-        }
-        if (downstreamNodeIds.has(edge.source) && !downstreamNodeIds.has(edge.target)) {
-          downstreamNodeIds.add(edge.target);
-          changed = true;
-        }
-      });
-    }
-    return new Set(graphEdges.filter((edge) => (
-      (upstreamNodeIds.has(edge.source) && upstreamNodeIds.has(edge.target))
-      || (downstreamNodeIds.has(edge.source) && downstreamNodeIds.has(edge.target))
-      || edge.id === hoveredEdgeId
-    )).map((edge) => edge.id));
-  }, [graphEdges, hoveredEdgeId]);
-  const activeUpstreamEdgeIds = useMemo(() => getActiveUpstreamEdgeIds(nodes, graphEdges), [nodes, graphEdges]);
+  const hoveredEdgeIds = hoveredEdgeId ? new Set([hoveredEdgeId]) : new Set();
+  const activeAdjacentEdgeIds = useMemo(() => getActiveAdjacentEdgeIds(nodes, graphEdges), [nodes, graphEdges]);
   const edges = graphEdges.map((edge) => ({ ...edge, type: 'canvasConnection', data: {
     ...edge.data,
     pulses: pulses.filter((pulse) => pulse.source === edge.source && pulse.target === edge.target),
     onPulseMeasure,
-    highlighted: highlightedEdgeIds.has(edge.id) || activeUpstreamEdgeIds.has(edge.id),
+    highlighted: hoveredEdgeIds.has(edge.id) || activeAdjacentEdgeIds.has(edge.id),
     onHover: setHoveredEdgeId,
     onDelete: (edgeId) => removeEdges([edgeId]),
   } }));

@@ -30,6 +30,7 @@ test('实际Hook接线：刷新保护、页面离开先保存、后退取消及�
   let restored = '';
   const use = runInNewContext(source + ';useCanvasAutosave', {
     useState: () => ['idle', () => {}], useLayoutEffect: (fn) => effects.push(fn), useRef: () => ref, createCanvasAutosave,
+    isActiveText: (node) => ["preparing", "queued", "running"].includes(node.data?.textSubmission?.status),
     serializeCanvasDocument: (nodes) => ({ nodes }),
     showGlobalToast: (...args) => messages.push(args),
     window: { location: { href: '/canvas/a' }, confirm: () => false, history: { pushState: (_, __, url) => { restored = url; } },

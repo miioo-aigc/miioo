@@ -10,11 +10,11 @@
   overflow: hidden;
   border: 1px solid var(--color-stroke-normal);
   border-radius: 16px;
-  background: var(--color-surface-modal);
+  background: #191919;
   color: var(--color-text-primary);
   font-family: 'AlibabaPuHuiTi_2_55_Regular', 'Alibaba_PuHuiTi_2.0', system-ui, sans-serif;
   font-synthesis: none;
-  outline: 1px solid var(--color-stroke-outline);
+
   transition:
     width 300ms cubic-bezier(0.22, 1, 0.36, 1),
     height 300ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -231,12 +231,30 @@
 }
 
 .canvas-node-navigator__empty {
-  display: grid;
+  display: flex;
   min-height: 160px;
   flex: 1;
-  place-items: center;
-  color: var(--color-text-hint);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #FFFFFF99;
   font-size: 14px;
+  text-align: center;
+}
+
+.canvas-node-navigator__empty img {
+  display: block;
+  width: 48px;
+  height: 48px;
+  opacity: 0.5;
+  transform: translateX(2px);
+}
+
+.canvas-node-navigator__empty span {
+  color: #FFFFFF99;
+  font-size: 14px;
+  line-height: 20px;
 }
 
 .canvas-node-navigator__group {
@@ -453,3 +471,5 @@
     transition: none;
   }
 }
+
+.canvas-node-navigator-shell > span { height: 100%; }

@@ -10,6 +10,7 @@
  *   复用 components/ui/Button；不引用页面、API、Store 或生成编排
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *   2026-11-11  支持通过 CSS 变量调整按钮尺寸，画布使用 36px
  *   2026-07-16  从 CreationPage.jsx 抽离
  *   2026-08-07  配音生成中允许再次点击按钮停止当前请求
  *   2026-08-11  移除点击后额外焦点外圈，保留发送按钮原有流光特效
@@ -100,15 +101,15 @@ export default function CreationSendButton({ onClick, disabled = false, loading 
         onMouseDown={() => !isDisabled && setPressed(true)}
         onMouseUp={() => setPressed(false)}
         onClick={isDisabled ? undefined : onClick}
-        className="!w-10 !h-10 !min-w-0 !rounded-full !p-0 !bg-transparent !border-0 !shadow-none"
+        className="!w-[var(--creation-send-size,40px)] !h-[var(--creation-send-size,40px)] !min-w-0 !rounded-full !p-0 !bg-transparent !border-0 !shadow-none"
         contentClassName="!w-full !h-full !min-w-0 !rounded-full !p-0 !bg-transparent !text-transparent"
         style={{
           borderRadius: '9999px',
           position: 'relative',
           flexShrink: 0,
           boxShadow: '#2DC3E133 0px 0px 12px',
-          width: '40px',
-          height: '40px',
+          width: 'var(--creation-send-size, 40px)',
+          height: 'var(--creation-send-size, 40px)',
           cursor: isDisabled ? 'not-allowed' : 'pointer',
           transform: isDisabled ? 'scale(1)' : scale,
           transition: 'transform 0.15s cubic-bezier(0.4,0,0.2,1), opacity 0.15s',

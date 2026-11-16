@@ -142,6 +142,7 @@ function EllipsisTooltipText({ text, style }) {
       {tooltipVisible && tooltipPosition && createPortal(
         <div
           role="tooltip"
+          className="tooltip-enter"
           style={{
             position: 'fixed',
             left: `${tooltipPosition.left}px`,
@@ -151,20 +152,20 @@ function EllipsisTooltipText({ text, style }) {
             pointerEvents: 'none',
             boxSizing: 'border-box',
             maxWidth: '200px',
-            padding: '4px 8px',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '2px',
-            background: '#090909',
+            padding: '6px 10px',
+            border: '1px solid rgba(255,255,255,0.10)',
+            borderRadius: '6px',
+            background: 'var(--color-tooltip-bg)',
             backdropFilter: 'blur(10px)',
             WebkitBackdropFilter: 'blur(10px)',
-            color: '#FFFFFF',
+            color: 'rgba(255,255,255,0.90)',
             fontFamily: FONT,
             fontSize: '12px',
             lineHeight: '16px',
             whiteSpace: 'normal',
             overflowWrap: 'anywhere',
             wordBreak: 'break-word',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+            fontWeight: 400,
           }}
         >
           {text}

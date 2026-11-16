@@ -13,7 +13,7 @@ import { mergeCreationVideoDetail } from '../../utils/creationDetailAdapter';
 import { showGlobalToast } from '../../stores/toastStore';
 import { canvasLibraryAudioUrl } from './CanvasLibraryItems';
 
-export default function CanvasLibraryDetail({ entry, onClose, onDownload, onDelete, onChanged }) {
+export default function CanvasLibraryDetail({ entry, onClose, onDownload, onDelete, onChanged, historyMode = false, onAddToCanvas }) {
   const [asset, setAsset] = useState(entry.asset || {});
   const saving = useRef(false);
   const active = useRef(true);
@@ -21,6 +21,7 @@ export default function CanvasLibraryDetail({ entry, onClose, onDownload, onDele
   const assetId = entry.asset_id ?? entry.asset?.id;
   const edits = useLocalImageEdits(`creation:${assetId}`);
   useEffect(() => {
+    if (historyMode) return undefined;
     active.current = true;
     let cancelled = false;
     const requestedVersion = version.current;
@@ -28,7 +29,7 @@ export default function CanvasLibraryDetail({ entry, onClose, onDownload, onDele
       if (!cancelled && requestedVersion === version.current) setAsset((current) => ({ ...current, ...detail }));
     }).catch((error) => { if (!cancelled) showGlobalToast(error.message, 'error'); });
     return () => { cancelled = true; active.current = false; };
-  }, [entry]);
+  }, [entry, historyMode]);
 
   async function favorite() {
     if (saving.current) return;
@@ -36,6 +37,7 @@ export default function CanvasLibraryDetail({ entry, onClose, onDownload, onDele
     version.current += 1;
     const next = !(asset.is_starred ?? asset.is_favorite);
     try {
+      if (historyMode) return;
       await canvasAssetLibrary.favorite(entry, next);
       if (active.current) setAsset((current) => ({ ...current, is_starred: next }));
       onChanged();
@@ -60,9 +62,9 @@ export default function CanvasLibraryDetail({ entry, onClose, onDownload, onDele
   const shared = { onClose, onDownload, onDelete, onFavorite: favorite };
   const starred = Boolean(asset.is_starred ?? asset.is_favorite);
   return createPortal(type === 'audio' ? (
-    <CreationAudioDetailModal {...normalizeAudioAssetDetail(asset)} {...shared} audioUrl={canvasLibraryAudioUrl(asset)} favorited={starred} />
+    <CreationAudioDetailModal {...normalizeAudioAssetDetail(asset)} {...shared} audioUrl={canvasLibraryAudioUrl(asset)} favorited={starred} historyMode={historyMode} onAddToCanvas={onAddToCanvas} />
   ) : (
     <AssetCardCreativeDetail {...shared} asset={type === 'video' ? mergeCreationVideoDetail(card, asset) : card}
-      url={card.imageUrl} starred={starred} onCreateImage={edits.save} />
+      url={card.imageUrl} starred={starred} onCreateImage={historyMode ? undefined : edits.save} historyMode={historyMode} onAddToCanvas={onAddToCanvas} />
   ), document.body);
 }

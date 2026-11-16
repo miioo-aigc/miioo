@@ -1,0 +1,23 @@
+.canvas-prompt-dialog-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--color-black-50); }
+.canvas-prompt-dialog { width: 960px; max-width: 100%; height: 640px; max-height: calc(100dvh - 48px); display: flex; flex-direction: column; border: 1px solid var(--color-stroke-normal); border-radius: 20px; background: var(--color-surface-card); color: var(--color-text-primary); box-sizing: border-box; }
+.canvas-prompt-dialog { position: relative; padding: 18px; }
+.canvas-prompt-dialog__collapse { position: absolute; right: 18px; top: 18px; z-index: 3; }
+.canvas-prompt-dialog .canvas-creation-panel { position: static; transform: none; width: 100%; flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0; }
+.canvas-prompt-dialog .composer-surface { flex: 1; min-height: 0; background: transparent; padding: 0; }
+.canvas-prompt-dialog .composer-surface__inner { min-height: 0; padding: 0; }
+.canvas-prompt-dialog .canvas-creation-panel .composer-surface__body { flex: 1; min-height: 0; height: auto; margin-bottom: 16px; }
+.canvas-prompt-dialog .canvas-reference-bar { flex-shrink: 0; overflow: visible; padding-right: 44px; box-sizing: border-box; }
+.canvas-prompt-dialog .canvas-reference-bar__menu > div { top: calc(100% + 8px); bottom: auto !important; }
+.canvas-prompt-dialog .composer-surface::before, .canvas-prompt-dialog .composer-surface::after, .canvas-prompt-dialog .composer-surface > [data-beam-bloom] { display: none; }
+.canvas-prompt-dialog .canvas-media-prompt-editor { flex: 1; min-height: 0; height: auto; }
+.canvas-prompt-dialog .canvas-creation-panel[data-video-text-mode='true'] .canvas-media-prompt-editor { transform: none; }
+.canvas-prompt-dialog .composer-surface__toolbar { flex-shrink: 0; gap: 12px; }
+.canvas-prompt-dialog [role='alert'] { margin: 0 16px 8px; }
+.canvas-prompt-dialog .composer-surface__editor { scrollbar-width: thin; scrollbar-color: transparent transparent; scrollbar-gutter: stable; }
+.canvas-prompt-dialog .composer-surface__editor:hover,
+.canvas-prompt-dialog .composer-surface__editor[data-scrolling='true'] { scrollbar-color: var(--color-white-30) transparent; }
+.canvas-prompt-dialog .composer-surface__editor::-webkit-scrollbar { display: block; width: 6px; height: 6px; }
+.canvas-prompt-dialog .composer-surface__editor::-webkit-scrollbar-track { background: transparent; }
+.canvas-prompt-dialog .composer-surface__editor::-webkit-scrollbar-thumb { background: transparent; border-radius: 6px; }
+.canvas-prompt-dialog .composer-surface__editor:hover::-webkit-scrollbar-thumb,
+.canvas-prompt-dialog .composer-surface__editor[data-scrolling='true']::-webkit-scrollbar-thumb { background: var(--color-white-30); }

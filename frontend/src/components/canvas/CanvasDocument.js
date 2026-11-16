@@ -6,7 +6,7 @@ const TRANSIENT_NODE_FIELDS = new Set([
   'selected', 'measured', 'dragging', 'resizing', 'creationPanelOpen', 'editing',
   'generating', 'generationPending', 'generationError', 'generationRequestId',
   'submissionLocked', 'generationTaskIds', 'executionSourceIds', 'upstreamProtected', 'upstreamUpdated',
-  'dragRelease', 'dragScaleX', 'dragScaleY', 'uploadError',
+  'uploadError',
 ]);
 
 const TRANSIENT_DATA_FIELDS = new Set([
@@ -55,7 +55,7 @@ export function serializeCanvasNode(node) {
     props.content = node.data.content ?? '';
   }
   // 这些字段由当前节点状态生成，不能沿用上次读取的协议副本。
-  for (const field of ['assetId', 'assetType', 'assetSource', 'parentId', 'groupWidth', 'groupHeight']) delete props[field];
+  for (const field of ['assetId', 'assetType', 'assetSource', 'parentId', 'groupWidth', 'groupHeight', 'textWidth', 'textHeight']) delete props[field];
   validateSources(props);
   const asset = node.data?.asset;
   if (asset) {
@@ -73,6 +73,10 @@ export function serializeCanvasNode(node) {
     props.groupWidth = node.style?.width;
     props.groupHeight = node.style?.height;
   } else props.nodeType = node.type;
+  if (node.type === 'text') {
+    if (Number.isFinite(node.width)) props.textWidth = node.width;
+    if (Number.isFinite(node.height)) props.textHeight = node.height;
+  }
   return {
     id: node.id, type: node.type === 'canvasGroup' ? 'canvasGroup' : 'free-canvas-node',
     x: node.position.x, y: node.position.y, props,
@@ -135,6 +139,7 @@ export function readCanvasDocument(item) {
     const nodeResults = readCanvasResultDocument(group ? 'canvasGroup' : props.nodeType, props, { serialized: true });
     const node = group ? { id: record.id, type: 'canvasGroup', data: {} } : createCanvasNode(props.nodeType, undefined, record.id);
     return { ...node, position: { x: record.x, y: record.y }, selected: false,
+      ...(props.nodeType === 'text' ? { width: Number.isFinite(props.textWidth) ? Math.max(180, props.textWidth) : 240, height: Number.isFinite(props.textHeight) ? Math.max(144, props.textHeight) : 264 } : {}),
       ...(props.parentId ? { parentId: props.parentId } : {}),
       ...(group ? { style: { width: props.groupWidth, height: props.groupHeight } } : {}),
       data: { ...node.data, ...cleanObject(props, TRANSIENT_DATA_FIELDS), creationPanelOpen: false,

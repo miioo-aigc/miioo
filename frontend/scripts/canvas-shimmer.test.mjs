@@ -7,9 +7,9 @@ const read = (path) => readFileSync(new URL(`../src/components/${path}`, import.
 test('节点生成时隐藏内部内容但保留布局与端口，发送按钮防止重复提交', () => {
   const shell = read('canvas/CanvasNodeShell.jsx');
   assert.match(shell, /import CanvasGenerationLoading from '\.\/CanvasGenerationLoading'/);
-  assert.match(shell, /<div className="canvas-node__result-body" aria-hidden=\{Boolean\(data\?\.generating\)\} inert=\{Boolean\(data\?\.generating \|\| submissionLocked\)\}>\{children\}<\/div>/);
-  assert.match(shell, /data\?\.generating && <CanvasGenerationLoading key=\{data\.generationRequestId\}/);
-  assert.match(shell, /aria-busy=\{Boolean\(data\?\.generating\)\}/);
+  assert.match(shell, /<div className="canvas-node__result-body" aria-hidden=\{generating\} inert=\{Boolean\(generating \|\| submissionLocked\)\}>\{children\}<\/div>/);
+  assert.match(shell, /generating && <CanvasGenerationLoading key=\{generationKey\}/);
+  assert.match(shell, /aria-busy=\{generating\}/);
   const css = read('canvas/canvas-nodes.css');
   assert.match(css, /\.canvas-node__frame\[aria-busy='true'\] > :not\(\.canvas-node__port\):not\(\.canvas-node__loading\)\s*\{\s*visibility: hidden;\s*pointer-events: none;\s*\}/);
   const resultCss = read('canvas/CanvasNodeResultControls.css');
@@ -24,8 +24,8 @@ test('节点生成时隐藏内部内容但保留布局与端口，发送按钮�
   assert.match(animation, /<MeshGradient/);
   assert.match(animation, /<ProgressMessage message=\{text\}/);
   const panel = read('canvas/CanvasCreationPanel.jsx');
-  assert.match(panel, /<CreationSendButton[^\n]*disabled=\{generating \|\| !modelAvailable\}/);
-  assert.match(panel, /if \(generating \|\| composingRef.current \|\| !modelAvailable\) return/);
+  assert.match(panel, /<CreationSendButton[^\n]*disabled=\{generating \|\| submitting \|\| !modelAvailable\}/);
+  assert.match(panel, /if \(generating \|\| submitting \|\| composingRef.current \|\| !modelAvailable\) return/);
 });
 
 test('剧本复用公共扫光，效果不拦截鼠标且支持减少动态效果', () => {

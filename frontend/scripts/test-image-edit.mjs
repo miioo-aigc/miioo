@@ -83,3 +83,7 @@ await assert.rejects(api.apiPrepareEditSource({ id: 'subject-id', blob: new Blob
 assert.equal((await api.apiPrepareEditSource({ creationAssetId: 'existing', imageUrl: 'source' })).id, 'existing');
 assert.ok(calls.every((call) => !call.url.includes('basic-edit')));
 console.log('图片编辑接口分支测试通过');
+
+const sizedImage = api.normalizeEditedImage({ ...image, width: 1379, height: 977 });
+assert.equal(sizedImage.width, 1379);
+assert.equal(sizedImage.height, 977);

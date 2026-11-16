@@ -17,6 +17,7 @@ import { getCanvasNodeNavigator } from './CanvasNodeNavigatorData.js';
 import { getCanvasImagePreview, getCanvasVideoPoster } from './CanvasMediaSources.js';
 import CanvasSearchNodeRow from './CanvasSearchNodeRow';
 import './CanvasNodeNavigator.css';
+import nodeNavigatorEmptyIcon from '../../assets/node-navigator-empty.svg';
 
 const EMPTY_COLLAPSED_GROUPS = new Set();
 
@@ -168,6 +169,7 @@ export default function CanvasNodeNavigator({ nodes, open, onOpenChange, onLocat
   };
   return <div className="canvas-node-navigator-shell" data-open={open ? 'true' : 'false'}
     onContextMenu={(event) => event.stopPropagation()}>
+    <Tooltip variant="canvas" label="展开节点侧栏" placement="top" offset={8}>
     <button type="button" className="canvas-node-navigator__collapsed"
       aria-haspopup="dialog" aria-expanded={open} aria-hidden={open ? 'true' : undefined}
       tabIndex={open ? -1 : undefined} aria-label={`展开节点导航器，共 ${nodes.length} 节点`}
@@ -175,6 +177,7 @@ export default function CanvasNodeNavigator({ nodes, open, onOpenChange, onLocat
       <span className="canvas-node-navigator__panel-glyph"><PanelGlyph /></span>
       <span>共 {nodes.length} 节点</span>
     </button>
+    </Tooltip>
     <aside ref={panelRef} className="canvas-node-navigator" role="dialog" aria-label="节点导航器"
       aria-hidden={!open} inert={open ? undefined : true}>
       <form className="canvas-node-navigator__search-row" role="search"
@@ -185,7 +188,7 @@ export default function CanvasNodeNavigator({ nodes, open, onOpenChange, onLocat
           inputClassName="canvas-node-navigator__search-input"
           suffix={<Button type="submit" variant="secondary" size="small"
             className="canvas-node-navigator__search-button !h-6 !rounded-[6px] !px-2">搜索</Button>} />
-        <Tooltip label={viewMode === 'grid' ? '切换为列表展示' : '切换为宫格展示'}>
+        <Tooltip variant="canvas" label={viewMode === 'grid' ? '切换为列表展示' : '切换为宫格展示'}>
           <Button variant="secondary" size="large" iconOnly
             className="canvas-node-navigator__view-toggle"
             aria-label={viewMode === 'grid' ? '切换为列表展示' : '切换为宫格展示'}
@@ -202,7 +205,7 @@ export default function CanvasNodeNavigator({ nodes, open, onOpenChange, onLocat
           onClick={() => setType(item.value)}>{item.label}</button>)}
       </div>
       <div className="canvas-node-navigator__content" aria-live="polite" data-view={viewMode}>
-        {!nodes.length && <div className="canvas-node-navigator__empty" role="status">暂无节点</div>}
+        {!nodes.length && <div className="canvas-node-navigator__empty" role="status"><img src={nodeNavigatorEmptyIcon} width={48} height={48} alt="" aria-hidden="true" /><span>暂无节点</span></div>}
         {nodes.length > 0 && data.count === 0 && <div className="canvas-node-navigator__empty" role="status">未找到匹配节点</div>}
         {data.groups.map((group) => <GroupSection key={group.id} group={group} nodes={nodes} query={query}
           collapsedGroups={visibleCollapsedGroups} onToggleGroup={toggleGroup} onLocate={onLocate} viewMode={viewMode} />)}
@@ -212,10 +215,12 @@ export default function CanvasNodeNavigator({ nodes, open, onOpenChange, onLocat
         </div>}
       </div>
       <div className="canvas-node-navigator__footer">
-        <button type="button" className="canvas-node-navigator__back" aria-label="收起节点导航器" title="收起"
+        <Tooltip variant="canvas" label="收起节点侧栏" placement="top" offset={8}>
+        <button type="button" className="canvas-node-navigator__back" aria-label="收起节点侧栏"
           onClick={close}>
           <CollapseGlyph />
         </button>
+        </Tooltip>
         <span aria-live="polite">共 {data.count} 节点</span>
       </div>
     </aside>

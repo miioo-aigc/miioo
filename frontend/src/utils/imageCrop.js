@@ -1,4 +1,4 @@
-export function renderImageCropBlob({ image, crop, rotation, flipX, flipY, zoom, panX, panY, imageWidth, imageHeight }) {
+export function renderImageCropResult({ image, crop, rotation, flipX, flipY, zoom, panX, panY, imageWidth, imageHeight }) {
   const isQuarterTurn = Math.abs(rotation || 0) % 180 === 90;
   const orientedWidth = isQuarterTurn ? imageHeight : imageWidth;
   const orientedHeight = isQuarterTurn ? imageWidth : imageHeight;
@@ -19,5 +19,9 @@ export function renderImageCropBlob({ image, crop, rotation, flipX, flipY, zoom,
   canvas.height = outputHeight;
   const context = canvas.getContext('2d');
   context.drawImage(orientedCanvas, crop.x * orientedWidth, crop.y * orientedHeight, outputWidth, outputHeight, 0, 0, outputWidth, outputHeight);
-  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve({ blob, width: outputWidth, height: outputHeight }), 'image/png'));
+}
+
+export async function renderImageCropBlob(options) {
+  return (await renderImageCropResult(options)).blob;
 }

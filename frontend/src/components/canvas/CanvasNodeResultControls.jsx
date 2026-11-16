@@ -97,7 +97,7 @@ export default function CanvasNodeResultControls({ data, title = '节点', nodeT
       onPointerDown={stop} onMouseDown={stop} onClick={stop} onDoubleClick={stop} onWheel={stop}>
       {nodeType !== 'text' && Boolean(data?.asset?.url) && <CanvasNodeReplaceControl data={data} nodeType={nodeType}
         disabled={outputLocked || selectionPending} />}
-      {nodeType !== 'text' && count > 1 && <Tooltip label={'查看结果（' + count + '）'}>
+      {nodeType !== 'text' && count > 1 && <Tooltip variant="canvas" label={'查看结果（' + count + '）'}>
         <IconButton ref={triggerRef} className="canvas-node-result-controls__trigger"
         variant="secondary" style={{ paddingTop: 8, paddingBottom: 8, alignSelf: 'auto', height: 'auto', width: 32,
           boxShadow: 'none', backgroundColor: 'transparent',

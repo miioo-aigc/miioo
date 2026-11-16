@@ -113,18 +113,18 @@ test('请求失败提示错误且释放提交锁', async () => {
 });
 function deleteHandler(op, verify, confirm) {
   const body = source.slice(source.indexOf('  const handleConfirm = async () => {', source.indexOf('function DeleteVerifyDialog')), source.indexOf('\n  return (', source.indexOf('function DeleteVerifyDialog')));
-  return new Function('run', 'apiVerifyPhoneCode', 'onConfirm', 'setCodeError', 'code', 'maskedPhone', body + '\nreturn handleConfirm;')(op.run, verify, confirm, () => {}, '123456', '13800000000');
+  return new Function('run', 'apiVerifyPhoneCode', 'onConfirm', 'setCodeError', 'code', 'maskedPhone', 'sendingRef', body + '\nreturn handleConfirm;')(op.run, verify, confirm, () => {}, '123456', '13800000000', { current: false });
 }
-test('实际注销验证回调：取消后不调用注销接口', async () => {
-  const h = harness(), op = h.render(), d = deferred(); let deletes = 0;
-  const fn = deleteHandler(op, () => d.promise, async () => { deletes++; });
-  const pending = fn(); op.cancel(); d.resolve({ valid: true }); await pending;
-  assert.equal(deletes, 0);
+test('实际注销回调：请求已发送后取消，不执行迟到的退出', async () => {
+  const h = harness(), op = h.render(), d = deferred(); let logouts = 0;
+  const fn = deleteHandler(op, null, async current => { await d.promise; if (current()) logouts++; });
+  const pending = fn(); op.cancel(); d.resolve(); await pending;
+  assert.equal(logouts, 0);
 });
 for (const failure of [false, true]) {
   test('实际注销接线：' + (failure ? '接口失败不退出' : '成功仅注销并退出一次'), async () => {
     const h = harness(), op = h.render(); let deletes = 0, logouts = 0;
-    const start = source.indexOf('onConfirm={async (current, markSent) => {');
+    const start = source.indexOf('onConfirm={async (current, markSent, code) => {');
     const body = source.slice(start + 'onConfirm={'.length, source.indexOf('\n          }}', start) + 12);
     const confirm = new Function('apiDeleteAccount', 'setDeleteStep', 'onLogout', 'return (' + body + ');')(async () => { deletes++; if (failure) throw new Error('服务失败'); }, () => {}, () => { logouts++; });
     const fn = deleteHandler(op, async () => ({ valid: true }), confirm);
@@ -133,3 +133,16 @@ for (const failure of [false, true]) {
   });
 }
 
+
+for (const fails of [false, true]) test('资料短信：防连点，失败不倒计时 ' + fails, async () => {
+  const h = harness(), op = h.render(), d = deferred(); let sends = 0; const changes = [];
+  const start = source.indexOf('function CodeInput(');
+  const body = source.slice(start, source.indexOf('  const borderClass', start));
+  const factory = new Function('useState', 'useRef', 'useProfileOperation', 'useEffect', body + 'return handleSend; } return CodeInput;');
+  const click = factory(v => [v, x => changes.push(x)], v => ({ current: v }), () => op, () => {})({
+    onSend: async () => { sends++; await d.promise; if (fails) throw new Error('发送失败'); },
+  });
+  const pending = click(); await click(); assert.equal(sends, 1);
+  d.resolve(); await pending;
+  assert.equal(changes.includes(60), !fails);
+});

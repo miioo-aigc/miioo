@@ -4,11 +4,69 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import * as assets from '../src/components/canvas/CanvasAssets.js';
 import * as edits from '../src/components/canvas/CanvasImageEdits.js';
+import * as scopes from '../src/utils/CreationEditScope.js';
 import { getCanvasOperationLocks, guardCanvasSystemUpdate, guardCanvasNodeUpdate } from '../src/components/canvas/CanvasOperationGuards.js';
 
 const oldId = '10000000-0000-0000-0000-000000000001';
 const newId = '20000000-0000-0000-0000-000000000001';
 const node = (type = 'image') => ({ id: 'source', type, data: { asset: { asset_id: oldId, asset_type: type, url: '/old' } } });
+
+test('画布图片保存使用账号范围，业务目标保留源资产，裁剪翻转均可回写', async () => {
+  for (const mode of ['裁剪', '翻转']) {
+    const calls = [];
+    const hook = mount('UseCanvasImageEdits', [node()], {
+      savePendingImage: async (...args) => {
+        calls.push(args);
+        return { id: newId, asset_id: newId, originalUrl: '/new' };
+      },
+    });
+    hook.result.open('source', mode);
+    assert.equal(hook.editor.onSave.scope, `creation:owner:account-a:${oldId}`);
+    assert.equal(hook.editor.onSave.destinationScope, `creation:${oldId}`);
+    const pending = { image: { asset_id: newId } };
+    await hook.editor.onSave.pending(pending);
+    assert.equal(calls[0][0], hook.editor.onSave.scope);
+    assert.equal(calls[0][1], pending);
+    assert.equal(hook.nodes[0].data.asset.asset_id, newId);
+  }
+});
+
+test('账号未就绪时提前阻止打开编辑器', () => {
+  const hook = mount('UseCanvasImageEdits', [node()], {
+    useCreationStore: Object.assign((select) => select({ ownerId: null }), { getState: () => ({ ownerId: null }) }),
+  });
+  hook.result.open('source', '裁剪');
+  assert.equal(hook.editor, undefined);
+  assert.match(hook.toasts[0][0], /账号信息尚未就绪/);
+});
+
+test('账号或会话变化后阻止保存和异步结果回写，包括图片尺寸读取期间', async () => {
+  for (const phase of ['before', 'save', 'prepare']) {
+    for (const change of ['owner', 'session']) {
+      let ownerId = 'account-a', session = 1, resolve, calls = 0;
+      const deferred = () => new Promise((done) => { resolve = done; });
+      const image = { id: newId, asset_id: newId, originalUrl: '/new' };
+      const hook = mount('UseCanvasImageEdits', [node()], {
+        useCreationStore: Object.assign((select) => select({ ownerId }), { getState: () => ({ ownerId }) }),
+        getAuthSessionGeneration: () => session,
+        savePendingImage: () => { calls++; return phase === 'save' ? deferred() : Promise.resolve(image); },
+        prepareCanvasMediaAsset: phase === 'prepare' ? deferred : async (value) => value,
+      });
+      hook.result.open('source', '裁剪');
+      const switchAccount = () => { if (change === 'owner') ownerId = 'account-b'; else session++; };
+      if (phase === 'before') switchAccount();
+      const saving = hook.editor.onSave.pending({});
+      if (phase !== 'before') {
+        await new Promise((done) => setImmediate(done));
+        switchAccount();
+        resolve(image);
+      }
+      await assert.rejects(saving, { name: 'AbortError' });
+      assert.equal(hook.nodes[0].data.asset.asset_id, oldId);
+      if (phase === 'before') assert.equal(calls, 0);
+    }
+  }
+});
 
 function mount(file, initial, overrides = {}) {
   let nodes = initial, editor;
@@ -18,7 +76,8 @@ function mount(file, initial, overrides = {}) {
     .replace(/^import .*;$/mg, '').replace(/export /g, '');
   const name = file === 'UseCanvasImageEdits' ? 'useCanvasImageEdits' : 'useCanvasVideoEdits';
   const api = runInNewContext(source + ';' + name, {
-    ...assets, ...edits, crypto, getCanvasOperationLocks, useCallback: (fn) => fn, useEffect: (fn) => effects.push(fn),
+    ...assets, ...edits, ...scopes, crypto, DOMException, getCanvasOperationLocks, useCallback: (fn) => fn, useEffect: (fn) => effects.push(fn),
+    useCreationStore: Object.assign((select) => select({ ownerId: 'account-a' }), { getState: () => ({ ownerId: 'account-a' }) }),
     useRef: (current) => ({ current }), useState: () => [null, (value) => { editor = value; }],
     prepareCanvasMediaAsset: async (asset) => asset, getAuthSessionGeneration: () => 1,
     showGlobalToast: (...args) => toasts.push(args), ...overrides,

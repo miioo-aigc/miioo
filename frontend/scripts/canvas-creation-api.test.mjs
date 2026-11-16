@@ -14,8 +14,16 @@ const success = (id, assetId) => ({ status: 'completed', images: [{
   original_url: `/${id}.png`, download_url: `/${id}/download`,
 }] });
 const failed = { status: 'failed', error_msg: '任务生成失败' };
+const quotaFailed = {
+  status: 'failed',
+  error_msg: 'OneLinkAI API Key 无效或已失效',
+  error: {
+    code: 'UPSTREAM_AUTH_INVALID',
+    message: '预扣费额度失败, 用户剩余额度: ¥0.009536, 需要预扣费额度: ¥0.100000',
+  },
+};
 
-function loadApi({ taskIds = ['first', 'second'], polls = {}, onTimer } = {}) {
+function loadApi({ taskIds = ['first', 'second'], polls = {}, imageDetails = {}, onTimer } = {}) {
   const calls = [], timers = new Map();
   let timerId = 0;
   const api = runInNewContext(apiSource + ';({apiGenerateCreation})', {
@@ -39,6 +47,14 @@ function loadApi({ taskIds = ['first', 'second'], polls = {}, onTimer } = {}) {
       const path = new URL(url).pathname;
       if (path === '/api/creation/images/generate') return Response.json({ task_ids: taskIds });
       if (path === '/api/creation/videos/generate') return Response.json({ task_id: taskIds[0] });
+      if (path.startsWith('/api/creation/images/')) {
+        const imageId = decodeURIComponent(path.split('/').at(-1));
+        assert.ok(Object.hasOwn(imageDetails, imageId), `未预期的图片详情请求：${path}`);
+        const response = typeof imageDetails[imageId] === 'function'
+          ? await imageDetails[imageId](options)
+          : imageDetails[imageId];
+        return response instanceof Response ? response : Response.json(response);
+      }
       const taskId = path.split('/').at(-1);
       assert.ok(Object.hasOwn(polls, taskId), `未预期的请求：${path}`);
       const response = typeof polls[taskId] === 'function' ? await polls[taskId](options) : polls[taskId];
@@ -48,7 +64,9 @@ function loadApi({ taskIds = ['first', 'second'], polls = {}, onTimer } = {}) {
     assertImageReferenceUrls() {}, validateVideoRequestImages: async () => {},
     assertVideoReferencePixels: async () => {}, assertVideoRequestCapabilities() {},
     toAbsoluteUrl: (url) => url, getSeedance20AudioReferenceErrorMessage: () => '',
-    throwResponseError: async (response) => { throw new Error(`请求失败（${response.status}）`); },
+    throwResponseError: async (response) => {
+      throw Object.assign(new Error(`请求失败（${response.status}）`), { status: response.status });
+    },
   });
   return { ...api, calls, timers };
 }
@@ -70,12 +88,150 @@ test('画布部分成功按任务顺序保留全部结果列的空位及永久�
   assert.equal(api.timers.size, 0);
 });
 
-test('画布全部任务失败返回完整空位，由调用方判断零成功', async () => {
+test('图片任务终态缺少永久资产编号时按记录 ID 补查详情', async () => {
+  const api = loadApi({
+    taskIds: ['first'],
+    polls: {
+      first: {
+        status: 'completed',
+        images: [{ id: 'card-without-asset', original_url: '/generated.png' }],
+      },
+    },
+    imageDetails: {
+      'card-without-asset': {
+        id: 'card-without-asset',
+        asset_id: assetB,
+        original_url: '/generated.png',
+      },
+    },
+  });
+  const result = await api.apiGenerateCreation({ genType: 'image', count: 1 });
+  assert.deepEqual(plain(result.imageAssetIds), [assetB]);
+  assert.deepEqual(plain(result.cardIds), ['card-without-asset']);
+  assert.equal(api.calls.filter(({ url }) => url.endsWith('/api/creation/images/card-without-asset')).length, 1);
+});
+
+test('图片详情补查失败只将当前结果留空，其他成功结果仍可保存', async () => {
+  const api = loadApi({
+    polls: {
+      first: {
+        status: 'completed',
+        images: [{ id: 'detail-failed', original_url: '/failed-detail.png' }],
+      },
+      second: success('card-ok', assetA),
+    },
+    imageDetails: {
+      'detail-failed': Response.json({ detail: '详情暂不可用' }, { status: 503 }),
+    },
+  });
+  const result = await api.apiGenerateCreation({
+    genType: 'image',
+    count: 2,
+    canvasPartialResults: true,
+  });
+  assert.deepEqual(plain(result.images), ['/failed-detail.png', '/card-ok.webp']);
+  assert.deepEqual(plain(result.imageAssetIds), [null, assetA]);
+  assert.deepEqual(plain(result.cardIds), ['detail-failed', 'card-ok']);
+});
+
+test('已有合法永久资产编号时不再请求图片详情', async () => {
+  const api = loadApi({ taskIds: ['first'], polls: { first: success('card-with-asset', assetA) } });
+  const result = await api.apiGenerateCreation({ genType: 'image', count: 1 });
+  assert.deepEqual(plain(result.imageAssetIds), [assetA]);
+  assert.equal(api.calls.filter(({ url }) => url.endsWith('/api/creation/images/card-with-asset')).length, 0);
+});
+
+test('图片详情补查遇到鉴权失败时向上报错，不伪装成缺失结果', async () => {
+  const api = loadApi({
+    taskIds: ['first'],
+    polls: {
+      first: {
+        status: 'completed',
+        images: [{ id: 'detail-forbidden', original_url: '/generated.png' }],
+      },
+    },
+    imageDetails: {
+      'detail-forbidden': Response.json({ detail: '无权读取图片详情' }, { status: 403 }),
+    },
+  });
+  await assert.rejects(
+    api.apiGenerateCreation({ genType: 'image', canvasPartialResults: true }),
+    (error) => error.status === 403 && error.message === '请求失败（403）',
+  );
+});
+
+test('画布全部任务失败时透传第一个任务错误', async () => {
   const api = loadApi({ polls: { first: failed, second: failed } });
+  await assert.rejects(
+    api.apiGenerateCreation({ genType: 'image', count: 2, canvasPartialResults: true }),
+    (error) => error.message === '任务生成失败'
+      && error.rawMessage === '任务生成失败'
+      && error.taskFailed === true,
+  );
+});
+
+test('任务完成但没有图片并伴随任务失败时仍透传真实任务错误', async () => {
+  const api = loadApi({ polls: {
+    first: { status: 'completed', images: [] },
+    second: failed,
+  } });
+  await assert.rejects(
+    api.apiGenerateCreation({ genType: 'image', count: 2, canvasPartialResults: true }),
+    (error) => error.message === '任务生成失败' && error.taskFailed === true,
+  );
+});
+
+test('临时图片结果不能掩盖另一任务的余额不足错误', async () => {
+  const api = loadApi({
+    polls: {
+      first: { status: 'completed', images: [{
+        id: 'temporary-image', original_url: '/temporary.png',
+      }] },
+      second: quotaFailed,
+    },
+    imageDetails: {
+      'temporary-image': { id: 'temporary-image', original_url: '/temporary.png' },
+    },
+  });
+  await assert.rejects(
+    api.apiGenerateCreation({ genType: 'image', count: 2, canvasPartialResults: true }),
+    (error) => error.taskFailed === true
+      && error.code === 'UPSTREAM_AUTH_INVALID'
+      && error.message === 'OneLinkAI 账户余额不足（当前余额 ¥0.009536，本次至少需要 ¥0.100000），请充值或调整可用额度后重试'
+      && error.rawMessage.includes('预扣费额度失败'),
+  );
+});
+
+test('嵌套任务错误也能提取为可执行提示', async () => {
+  const api = loadApi({ taskIds: ['first'], polls: {
+    first: {
+      status: 'failed',
+      error: {
+        code: 'UPSTREAM_AUTH_INVALID',
+        detail: { message: 'OneLinkAI API Key 无效或已失效' },
+      },
+    },
+  } });
+  await assert.rejects(
+    api.apiGenerateCreation({ genType: 'image', count: 1, canvasPartialResults: true }),
+    (error) => error.taskFailed === true
+      && error.code === 'UPSTREAM_AUTH_INVALID'
+      && error.message === 'OneLinkAI API Key 无效或已失效，请在 API 配置中更新后重试',
+  );
+});
+
+test('完成任务只有原图地址时仍按部分成功返回', async () => {
+  const api = loadApi({ polls: {
+    first: { status: 'completed', images: [{
+      id: 'original-only', asset_id: assetA, original_url: '/original-only.png',
+    }] },
+    second: failed,
+  } });
   const result = await api.apiGenerateCreation({ genType: 'image', count: 2, canvasPartialResults: true });
-  for (const key of ['images', 'imageOriginalUrls', 'imageDownloadUrls', 'cardIds', 'imageAssetIds']) {
-    assert.deepEqual(plain(result[key]), [null, null], key);
-  }
+  assert.deepEqual(plain(result.images), ['/original-only.png', null]);
+  assert.deepEqual(plain(result.imageDownloadUrls), ['/original-only.png', null]);
+  assert.deepEqual(plain(result.imageOriginalUrls), ['/original-only.png', null]);
+  assert.deepEqual(plain(result.imageAssetIds), [assetA, null]);
 });
 
 test('默认入口和显式关闭部分结果时，单任务失败仍使整个调用失败', async () => {

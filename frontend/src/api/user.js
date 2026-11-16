@@ -16,12 +16,13 @@ export async function apiUpdateProfile({ nickname, avatar_url }) {
   return data;
 }
 
-export async function apiDeleteAccount() {
+export async function apiDeleteAccount(code) {
   const res = await authFetch(`${BASE}/api/users/me`, {
     method: 'DELETE',
+    body: JSON.stringify(code ? { code } : {}),
     headers: { 'Content-Type': 'application/json' },
   });
-  const data = await requirePhoneSuccess(res);
+  const data = await requireProfilePhoneSuccess(res, '注销失败，请稍后重试');
   if (typeof data?.message !== 'string') throw new Error('注销结果未确认，请重新登录核对账号状态');
 }
 
@@ -238,32 +239,63 @@ export async function apiVerifyPhoneCode(phone, code) {
   return { valid: true };
 }
 
-export async function apiRebindPhone(newPhone, code) {
-  if (import.meta.env.VITE_USE_MOCK === 'true') {
-    return { success: true };
+// 2026-11-11 短信交接合同：换绑传新号码，注销号码由服务端读取。
+const PROFILE_PHONE_ERRORS = new Set([
+  '手机号格式错误', '请输入正确的手机号', '手机号非法', '未绑定手机号', '当前账号未绑定手机号',
+  '新手机号不能与当前手机号相同', '新手机号与当前手机号相同', '手机号已被占用', '该手机号已被使用',
+  '请先获取验证码', '验证码已过期', '手机号已变更', '验证码错误',
+  '验证码错误次数过多，请重新获取', '发送过于频繁，请稍后再试', '请求过于频繁，请稍后重试',
+]);
+
+async function requireProfilePhoneSuccess(res, fallback) {
+  const data = await res.json().catch(() => null);
+  if (!res.ok || data?.success === false) {
+    const detail = [data?.detail, data?.message].find(value => PROFILE_PHONE_ERRORS.has(value));
+    const message = res.status < 500 && detail ? detail
+      : res.status === 429 ? '请求过于频繁，请稍后重试' : fallback;
+    throw Object.assign(new Error(message), { status: res.status });
   }
-  const res = await authFetch(`${BASE}/api/users/me/phone/rebind`, {
+  return data;
+}
+
+async function requireSmsSuccess(res) {
+  const fallback = '验证码发送失败，请稍后重试';
+  const data = await requireProfilePhoneSuccess(res, fallback);
+  if (typeof data?.message !== 'string' || !Number.isFinite(data.expires_in) || data.expires_in <= 0) {
+    throw new Error(fallback);
+  }
+  return data;
+}
+
+function validateRebindPhone(phone) {
+  if (typeof phone !== 'string' || !/^1\d{10}$/.test(phone)) throw new Error('手机号格式错误');
+}
+
+export async function apiSendRebindPhoneCode(phone) {
+  validateRebindPhone(phone);
+  const res = await authFetch(BASE + '/api/users/me/phone/rebind/send-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone }),
+  });
+  return requireSmsSuccess(res);
+}
+
+export async function apiRebindPhone(newPhone, code) {
+  validateRebindPhone(newPhone);
+  const res = await authFetch(BASE + '/api/users/me/phone/rebind', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone: newPhone, code }),
   });
-  const data = await requirePhoneSuccess(res);
-  if (!data || data.phone !== newPhone) throw new Error('换绑结果未确认，请重新读取个人资料');
+  const data = await requireProfilePhoneSuccess(res, '换绑失败，请稍后重试');
+  if (!data?.id || data.phone_bound !== true || typeof data.phone !== 'string' || !data.phone) {
+    throw new Error('换绑结果未确认，请重新读取个人资料');
+  }
   return data;
 }
 
 export async function apiSendPhoneUnbindCode() {
-  const res = await authFetch(`${BASE}/api/users/me/phone/unbind/send-code`, {
-    method: 'POST',
-  });
-  await requirePhoneSuccess(res);
-}
-
-export async function apiUnbindPhone(code) {
-  const res = await authFetch(`${BASE}/api/users/me/phone/unbind`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
-  });
-  await requirePhoneSuccess(res);
+  const res = await authFetch(BASE + '/api/users/me/phone/unbind/send-code', { method: 'POST' });
+  return requireSmsSuccess(res);
 }

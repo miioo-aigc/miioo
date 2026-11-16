@@ -15,8 +15,10 @@
  * 当前定义定位：CanvasCreationPanel L28。
  */
 import { useRef, useState } from 'react';
+import { Maximize2 } from 'lucide-react';
+import CanvasPromptDialog from './CanvasPromptDialog';
 import CanvasMediaControls from './CanvasMediaControls';
-import { ComposerSurface, Select } from '../ui';
+import { ComposerSurface, Select, IconButton } from '../ui';
 import { getCanvasTextModelValue } from './CanvasTextModels';
 import CreationSendButton from '../creation/CreationSendButton';
 import CanvasReferenceBar from './CanvasReferenceBar';
@@ -25,7 +27,9 @@ import CanvasMediaPromptEditor from './CanvasMediaPromptEditor';
 import { getCanvasVideoPromptPlaceholder } from './CanvasVideoModels';
 import { getCanvasPromptFiles } from './CanvasPromptReferences';
 
-export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', promptSnapshot, references = [], model = '', modelState = { options: [], loading: false }, generating = false, generationError = '', mediaControls, audioDraft, onAudioDraftChange, onModelChange, onPromptChange, onGenerate, onAddReference, onRemoveReference }) {
+export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', promptSnapshot, references = [], model = '', modelState = { options: [], loading: false }, generating = false, generationError = '', mediaControls, audioDraft, onAudioDraftChange, onModelChange, onPromptChange, onGenerate, onAddReference, onRemoveReference, expanded = false, onExpandedChange }) {
+  const [submitError, setSubmitError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [focused, setFocused] = useState(false);
   const [draft, setDraft] = useState(prompt);
   const [lastPrompt, setLastPrompt] = useState(prompt);
@@ -63,16 +67,25 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', pro
       ? references.filter((reference) => reference.type === 'text' || (reference.slot < 2 && reference.asset?.asset_type === 'image'))
       : references;
   const send = (snapshot = mediaSnapshotRef.current) => {
-    if (generating || composingRef.current || !modelAvailable) return;
+    if (generating || submitting || composingRef.current || !modelAvailable) return;
+    setSubmitError('');
+    if (expanded) setSubmitting(true);
     onGenerate?.({ nodeId, prompt: mediaNode ? snapshot?.requestText ?? draft : draft,
+      ...(expanded ? { onAccepted: () => { setSubmitting(false); onExpandedChange?.(false); }, onRejected: (message) => { setSubmitting(false); setSubmitError(message); } } : {}),
       references: activeReferences, model: textNode ? selectedModel : (nodeType === 'video' ? c.requestModel : c.model),
       ...(!textNode ? { promptHTML: snapshot?.html, params: mediaParams, imageReferenceLimit: c?.imageReferenceLimit,
         capabilities: c?.videoCapabilities, generationMode: c?.refMode } : {}),
     });
   };
   const videoTextMode = nodeType === 'video' && referenceMode === 'text_to_video';
-  return <section className="canvas-creation-panel nodrag nowheel" data-references={hasReferences} data-video-text-mode={videoTextMode && !references.some((reference) => reference.type === 'text')} aria-label="节点创作输入" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
-    <ComposerSurface width="100%" focused={focused} toolbar={<>
+  const panel = <section className="canvas-creation-panel nodrag nowheel" data-expanded={expanded} data-references={hasReferences} data-video-text-mode={videoTextMode && !references.some((reference) => reference.type === 'text')} aria-label="节点创作输入" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
+    {mediaNode && !expanded && <div className="canvas-creation-panel__expand">
+      <IconButton aria-label="展开编辑" variant="link"
+        className="canvas-creation-panel__expand-button" onClick={() => onExpandedChange?.(true)}>
+        <Maximize2 size={18} strokeWidth={1.5} />
+      </IconButton>
+    </div>}
+    <ComposerSurface width="100%" focused={focused} beamActive={!expanded} toolbar={<>
       {textNode ? <Select
         value={selectedModel}
         displayValue={modelState.options.find((option) => option.value === selectedModel)?.label || (modelState.error ? '模型加载失败' : '暂无可用文本模型')}
@@ -84,7 +97,7 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', pro
         onChange={onModelChange}
       /> : <CanvasMediaControls nodeType={nodeType} controls={mediaControls} />}
       <div className="canvas-creation-panel__actions">
-        <CreationSendButton onClick={() => send()} disabled={generating || !modelAvailable} />
+        <CreationSendButton onClick={() => send()} disabled={generating || submitting || !modelAvailable} />
       </div>
     </>}>
       {hasReferences && <CanvasReferenceBar nodeType={nodeType} references={references} mode={referenceMode} collapsed={videoTextMode} onAdd={onAddReference} onRemove={onRemoveReference}
@@ -95,7 +108,7 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', pro
         nodeType={nodeType} mode={referenceMode} references={activeReferences}
         model={c?.model} capabilities={c?.videoCapabilities}
         placeholder={nodeType === 'video' ? placeholder : undefined}
-        prompt={prompt} snapshot={promptSnapshot} composingRef={composingRef}
+        prompt={prompt} snapshot={promptSnapshot} composingRef={composingRef} expanded={expanded}
         onFocusChange={setFocused} onSend={send}
         onChange={(snapshot) => {
           mediaSnapshotRef.current = snapshot;
@@ -130,6 +143,7 @@ export default function CanvasCreationPanel({ nodeId, nodeType, prompt = '', pro
         rows={2}
       />}
     </ComposerSurface>
-    {generationError && <p role="alert" className="text-[12px] text-text-danger">{generationError}</p>}
+    {(submitError || generationError) && <p role="alert" className="text-[12px] text-text-danger">{submitError || generationError}</p>}
   </section>;
+  return expanded ? <CanvasPromptDialog onClose={() => onExpandedChange?.(false)}>{panel}</CanvasPromptDialog> : panel;
 }

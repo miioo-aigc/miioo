@@ -3,7 +3,7 @@ import { useModalSize } from '../../utils/useModalSize';
 import ImageEditChrome, { ImageEditFooter } from './ImageEditChrome';
 import ImageCropEditor from '../ImageCropEditor';
 import { FlipHorizontalIcon, FlipVerticalIcon, RotateClockwiseIcon, RotateCounterClockwiseIcon } from '../ui';
-import { renderImageCropBlob } from '../../utils/imageCrop';
+import { renderImageCropResult } from '../../utils/imageCrop';
 import { showGlobalToast } from '../../stores/toastStore';
 import useImageEditSubmission from '../../hooks/useImageEditSubmission';
 
@@ -28,7 +28,7 @@ function ToolButton({ label, icon, onClick, selected }) {
 }
 
 export default function ImageFlipModal({ imageUrl, sourceAsset, onSave, onClose, onComplete = onClose }) {
-  const { submit: saveEdit } = useImageEditSubmission({ card: sourceAsset, onSave, onComplete });
+  const { submit: saveEdit, stage } = useImageEditSubmission({ card: sourceAsset, onSave, onComplete });
   const { width: modalW, height: modalH } = useModalSize();
   const editorRef = useRef(null);
   const [editState, setEditState] = useState({ imageSize: { width: 0, height: 0 } });
@@ -49,10 +49,11 @@ export default function ImageFlipModal({ imageUrl, sourceAsset, onSave, onClose,
     setSaving(true);
     try {
       const { image, imageSize, crop, zoom, panX, panY } = editorRef.current.getEditState();
-      const blob = await renderImageCropBlob({ image, crop, rotation, flipX, flipY, zoom, panX, panY, imageWidth: imageSize.width, imageHeight: imageSize.height });
+      const { blob, width, height } = await renderImageCropResult({ image, crop, rotation, flipX, flipY, zoom, panX, panY, imageWidth: imageSize.width, imageHeight: imageSize.height });
       if (!blob) throw new Error('翻转结果生成失败');
       await saveEdit({
         mode: 'flip',
+        outputSize: { width, height },
         file: new File([blob], '图片翻转.png', { type: 'image/png' }),
       });
     } catch (error) {
@@ -75,7 +76,7 @@ export default function ImageFlipModal({ imageUrl, sourceAsset, onSave, onClose,
     title="图片翻转"
     onClose={onClose}
     busy={saving}
-    footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={handleSave} busy={saving} disabled={!editState.imageSize.width} />}
+    footer={<ImageEditFooter onReset={reset} onClose={onClose} onSubmit={handleSave} busy={saving} label={saving ? (stage || '正在处理图片') : '保存'} disabled={!editState.imageSize.width} />}
   >
     <div style={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0 }}>
       <div style={{ height: '64px', padding: '16px 24px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#090909', flexShrink: 0 }}>

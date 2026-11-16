@@ -113,7 +113,7 @@ export default function CanvasNodeResultsPopover({
       onWheel={stop} onKeyDown={stop} onKeyUp={stop} onContextMenu={stop}
       onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}>
       <header className="canvas-results-popover__header">
-        <h2 id={titleId}>历史记录</h2>
+        <h2 id={titleId}>历史版本</h2>
         <ModalCloseButton onClick={onClose} />
       </header>
       <div className="canvas-results-popover__scroll" aria-busy={loading || loadingMore}>

@@ -35,6 +35,7 @@ import { apiGetLiveMaterialPreviewByRef } from '../api/liveMaterials';
 import { showGlobalToast } from '../stores/toastStore';
 import CopyPromptButton from './ui/CopyPromptButton';
 import { DeleteIcon, FavoriteIcon, Tooltip } from './ui';
+import { Plus } from 'lucide-react';
 import VideoPlaybackControls from './ui/VideoPlaybackControls';
 import MediaVideoPlayerBar from './ui/MediaVideoPlayerBar';
 import VideoUpscaleModal from './video-edit/VideoUpscaleModal';
@@ -284,6 +285,8 @@ export default function CreationVideoDetailModal({
   onFavorite,
   sourceAsset,
   frameResultDestination = null,
+  historyMode = false,
+  onAddToCanvas,
 }) {
   console.log('CreationVideoDetailModal props:', { videoUrl, posterUrl, prompt, model, ratio, resolution, duration });
 
@@ -404,7 +407,7 @@ export default function CreationVideoDetailModal({
           <div className="w-[340px] flex flex-col min-h-0 h-full shrink-0 bg-[#161616] border-l border-l-solid border-l-[#FFFFFF0F]">
             <div className="flex items-center justify-between shrink-0 py-[12px] px-[20px] bg-[#161616] border-b border-b-solid border-b-[#FFFFFF0A]">
               <div className="flex items-center gap-[8px]">
-                <PanelAction
+                {historyMode ? <button type="button" aria-label="添加到画布" title="添加到画布" onClick={onAddToCanvas} className="flex size-[32px] items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-white-80 hover:bg-white-10"><Plus size={16} /></button> : <PanelAction
                   label="收藏"
                   active={favorited}
                   onClick={() => {
@@ -417,10 +420,10 @@ export default function CreationVideoDetailModal({
                       <FavoriteIcon filled={favorited} />
                     </div>
                   )}
-                />
-                <PanelAction label="下载" onClick={onDownload} icon={<DownloadIcon />} />
+                />}
+                {!historyMode && <PanelAction label="下载" onClick={onDownload} icon={<DownloadIcon />} />}
               </div>
-              <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon size={14} />} />
+              {!historyMode && <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon size={14} />} />}
             </div>
 
             {/* Scrollable content area */}
@@ -636,7 +639,7 @@ export default function CreationVideoDetailModal({
               <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
             </div>
 
-            <div
+            {!historyMode && <div
               style={{
                 display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0,
                 width: '100%', padding: '16px 20px 16px', boxSizing: 'border-box',
@@ -668,16 +671,16 @@ export default function CreationVideoDetailModal({
                   icon={<VideoEditIcon label="剪辑" />}
                 />
               </div>
-            </div>
+            </div>}
           </div>
         </div>
       </div>
     </div>
-    {upscaleOpen && <VideoUpscaleModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setUpscaleOpen(false)} onCloseDetail={onClose} />}
-    {subtitleOpen && <VideoSubtitleModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setSubtitleOpen(false)} onCloseDetail={onClose} />}
-    {trimOpen && <VideoTrimModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setTrimOpen(false)} onCloseDetail={onClose} />}
-    {frameOpen && <VideoFrameModal key={originalVideoUrl || videoUrl} videoUrl={videoUrl} originalVideoUrl={originalVideoUrl || videoUrl} sourceAsset={sourceAsset} resultDestination={frameResultDestination} onClose={() => setFrameOpen(false)} />}
-    {confirmDelete && (
+    {!historyMode && upscaleOpen && <VideoUpscaleModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setUpscaleOpen(false)} onCloseDetail={onClose} />}
+    {!historyMode && subtitleOpen && <VideoSubtitleModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setSubtitleOpen(false)} onCloseDetail={onClose} />}
+    {!historyMode && trimOpen && <VideoTrimModal key={videoUrl} videoUrl={videoUrl} posterUrl={posterUrl} sourceAsset={sourceAsset} onClose={() => setTrimOpen(false)} onCloseDetail={onClose} />}
+    {!historyMode && frameOpen && <VideoFrameModal key={originalVideoUrl || videoUrl} videoUrl={videoUrl} originalVideoUrl={originalVideoUrl || videoUrl} sourceAsset={sourceAsset} resultDestination={frameResultDestination} onClose={() => setFrameOpen(false)} />}
+    {!historyMode && confirmDelete && (
       <ConfirmDialog
         title="确认删除"
         description="删除后无法恢复，确定要删除这个视频吗？"

@@ -1,6 +1,9 @@
 /**
  * @file CanvasPage.jsx
+ * 2026-11-13：持久文本任务接线；准备先保存、刷新恢复、专用取消、服务端历史回填。
+ * 2026-11-13：文本节点尺寸拖动纳入单次历史事务，沿用组边界更新。
  * @structure-index
+ *   2026-11-11：移除节点拖动形变与回弹，拖动回调仅保留吸附清理、点击取消和历史事务。
  *   2026-11-11：图片节点一次生成多张后，右上角历史入口旁显示运行态气泡；查看或刷新即消失，不写入画布文档与撤销历史。
  *   2026-11-09：空白右键与展开组右键的「新建节点」二级菜单新增本地上传、从资产库选择，复用双击菜单入口；右键组时新素材归入该组。
  *   2026-11-09：参考能力未加载时按「未知」处理，连线不标红、不拦截，能力回填后再按真实上限判定。
@@ -11,7 +14,7 @@
  *
  *   2026-11-04：双名称分别编辑，画布管理迁入顶部，底部移除列表入口。
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L161；结果选择 L206；历史素材映射恢复 L228；grouping L265；图片多结果提示 L279；referenceGraph L298；文档读取 L323；handleNodesChange L396；节点素材回调 L470；addNode L485；工具栏新增 L525；批量导入/替换 L532；上传 L655；React Flow L1015。
+ *   CanvasPage L172；grouping L281；referenceGraph L307；handleNodesChange L406；addNode L479；上传 L716；React Flow L1092。
  *   2026-11-06：媒体替换独立单素材分支，上传与素材库均复核目标会话/节点，普通导入和参考流程保持原语义。
  *   2026-11-06：统一结果切换、节点级任务操作保护、文本结果历史、直接上游更新标识及复制/导入历史预览恢复。
  *   2026-10-27：保存失败复用带下载操作的提示，点击时导出最新草稿。
@@ -65,7 +68,8 @@
  *   2026-10-09：工具栏批量导入整块避让并聚焦，批量操作保留原输入框状态；媒体预读尺寸，按实际卡片边界排列及聚焦。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { getCanvasUpstreamUpdates } from '../components/canvas/CanvasUpstreamUpdates';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import CanvasTextEditor from '../components/canvas/CanvasTextEditor';
 import { useCanvasTextEditor } from '../components/canvas/UseCanvasTextEditor';
 import { useCanvasAutosave } from '../components/canvas/UseCanvasAutosave';
@@ -91,17 +95,18 @@ import CanvasFileInput from '../components/canvas/CanvasFileInput';
 import { useCanvasFileActions } from '../components/canvas/UseCanvasFileActions';
 import CanvasToolbar from '../components/canvas/CanvasToolbar';
 import CanvasSearchModal from '../components/canvas/CanvasSearchModal';
+import CanvasGenerationHistory from '../components/canvas/CanvasGenerationHistory';
 import CanvasNodeNavigator from '../components/canvas/CanvasNodeNavigator';
 import { useCanvasSearch } from '../components/canvas/UseCanvasSearch';
 import CanvasUserMenu from '../components/canvas/CanvasUserMenu';
 import AssetPickerModal from '../components/AssetPickerModal';
 import ProfileModal from '../components/ProfileModal';
-import { applyCanvasAsset, finishCanvasPendingUpload, getCanvasPermanentAssetId, planCanvasAssetImport, toCanvasAsset } from '../components/canvas/CanvasAssets';
+import { applyCanvasAsset, commitCanvasMediaOutput, finishCanvasPendingUpload, getCanvasPermanentAssetId, planCanvasAssetImport, toCanvasAsset } from '../components/canvas/CanvasAssets';
 import { beginCanvasReplacement, createCanvasReplacementPending, createCanvasReplacementSnapshot, isCanvasReplacementTargetCurrent, validateCanvasAssetReplacement } from '../components/canvas/CanvasAssetReplace.js';
 import { getCanvasToolShortcut } from '../components/canvas/CanvasToolShortcuts';
 import { addCanvasReference, getCanvasReferenceNodePosition } from '../components/canvas/CanvasReferences';
 import { planCanvasReferenceBatch } from '../components/canvas/CanvasReferenceBatch';
-import { getCanvasImportBounds, getCanvasToolbarNodePosition, preserveCanvasImportPanels } from '../components/canvas/CanvasImportLayout';
+import { getCanvasImportBounds, getCanvasToolbarNodePosition, getCanvasViewportCenterNodePosition, preserveCanvasImportPanels } from '../components/canvas/CanvasImportLayout';
 import { getCanvasMediaAccept, getCanvasMediaFileType } from '../components/canvas/CanvasLocalMedia';
 import { useCanvasReferences } from '../components/canvas/UseCanvasReferences';
 import { useCanvasGrouping } from '../components/canvas/UseCanvasGrouping';
@@ -184,6 +189,8 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const [canvasRevision, setCanvasRevision] = useState(null);
   const saveSessionRef = useRef(null);
   const acknowledgeSaveRef = useRef(null);
+  const textBridgeRef = useRef(null);
+  const textCancelRef = useRef(null);
   const [connectingNodeId, setConnectingNodeId] = useState(null);
   const [connectingHandleType, setConnectingHandleType] = useState('');
   const [connectionTargetId, setConnectionTargetId] = useState(null);
@@ -200,13 +207,13 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const uploadFilesRef = useRef(null);
   const menuUploadInputRef = useRef(null);
   const menuUploadTargetRef = useRef(null);
-  const dragPositionsRef = useRef(new Map());
   const pendingNodeClicksRef = useRef(new Map());
   const cancelPendingClicks = useCallback(() => {
     pendingNodeClicksRef.current.forEach((timer) => window.clearTimeout(timer));
     pendingNodeClicksRef.current.clear();
   }, []);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [generationHistoryOpen, setGenerationHistoryOpen] = useState(false);
   const [nodeNavigatorOpen, setNodeNavigatorOpen] = useState(false);
   const restorePreviewRef = useRef(new Map());
   const history = useCanvasHistory(cancelPendingClicks,
@@ -273,7 +280,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const search = useCanvasSearch({ nodes, setNodes, flowInstance, containerRef: canvasContainerRef, cancelPendingClicks, open: searchOpen, setOpen: setSearchOpen });
   const grouping = useCanvasGrouping(nodes, setNodes, cancelPendingClicks, false);
   const nodeActions = useCanvasNodeActions({ nodes, setNodes, undo: history.undo, redo: history.redo, getUndoToken: history.getUndoToken, cancelPendingClicks, flowInstance,
-    containerRef: canvasContainerRef,
+    containerRef: canvasContainerRef, beforeDelete: (ids) => textCancelRef.current?.(ids),
     enabled: loadedCanvasId === canvasId && !error && !assetPickerOpen && !profileOpen && !searchOpen,
     dialog: actionDialog, setDialog: setActionDialog });
   // 多图生成完成后的历史入口提示属运行态：只保留到用户查看或刷新页面，不写入画布文档与撤销历史。
@@ -285,28 +292,12 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const retainMultiResultHint = useCallback((nodeId, count) => {
     setResultHintCounts((current) => ({ ...current, [nodeId]: count }));
   }, []);
-  const generateText = useCanvasTextGeneration(nodes, setNodes, canvasId, cancelPendingClicks);
+  const textTasks = useCanvasTextGeneration(nodes, setNodes, canvasId, cancelPendingClicks, textBridgeRef);
+  const generateText = textTasks.generate;
+  useEffect(() => { textCancelRef.current = textTasks.cancel; }, [textTasks.cancel]);
   const generateImage = useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, canvas?.project_id, retainMultiResultHint);
   const generateVideo = useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks);
   const generateAudio = useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks);
-  const upstreamUpdatedIds = new Set();
-  for (const target of nodes) {
-    const lastBatch = target.data.nodeResults?.batches?.filter((batch) => batch.snapshot?.inputs)
-      .sort((left, right) => (right.completedAt ?? right.submittedAt ?? -1) - (left.completedAt ?? left.submittedAt ?? -1))[0];
-    if (!lastBatch) continue;
-    for (const input of lastBatch.snapshot.inputs) {
-      const source = nodes.find((node) => node.id === input.nodeId);
-      if (!source) continue;
-      const currentResultId = source.data.nodeResults?.currentResultId;
-      const currentResult = currentResultId ? source.data.nodeResults?.batches?.flatMap((batch) => batch.results || [])
-        .find((result) => result.id === currentResultId) : null;
-      const currentAssetId = currentResult?.assetId || source.data.asset?.asset_id || null;
-      const changed = input.resultId ? input.resultId !== currentResultId
-        : input.assetId ? input.assetId !== currentAssetId
-          : Object.hasOwn(input, 'content') && input.content !== (source.data.content || '');
-      if (changed) upstreamUpdatedIds.add(target.id);
-    }
-  }
   const enterNodeRef = useRef(grouping.enterNode);
   useEffect(() => { enterNodeRef.current = grouping.enterNode; }, [grouping.enterNode]);
   const openReferencePicker = useCallback((target) => {
@@ -314,6 +305,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     setAssetPickerOpen(true);
   }, []);
   const referenceGraph = useCanvasReferences(grouping.nodes, setNodes, openReferencePicker, uploadFilesRef);
+  const { upstreamUpdatedIds, upstreamUpdateKeys } = getCanvasUpstreamUpdates(nodes, referenceGraph.edges);
   const presentation = getCanvasStackPresentation(referenceGraph.nodes, referenceGraph.edges);
 
   const clearPendingConnection = useCallback(() => {
@@ -349,7 +341,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
           setProject(projectDetails);
           setCanvas(documentResult.value);
           restorePreviewRef.current.clear();
-          setNodes(restoredNodes, { record: false, origin: 'load' });
+          setNodes(fitCanvasGroups(restoredNodes), { record: false, origin: 'load' });
           setViewport(document.viewport);
           setViewportZoom(document.viewport.zoom || 1);
           setCanvasRevision(documentResult.value?.revision ?? null);
@@ -412,7 +404,10 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
 
   const handleUnsupported = notifyUnsupported;
   const handleNodesChange = useCallback((changes) => {
-    const safeChanges = guardCanvasNodeChanges(history.getCurrentNodes(), changes);
+    const currentNodes = history.getCurrentNodes();
+    const safeChanges = guardCanvasNodeChanges(currentNodes, changes);
+    const resizeChanges = safeChanges.filter((change) => change.type === 'dimensions' && typeof change.resizing === 'boolean');
+    if (resizeChanges.some((change) => change.resizing && !currentNodes.find((node) => node.id === change.id)?.resizing)) { cancelPendingClicks(); history.begin(); }
     if (safeChanges.some((change) => change.type === 'select' || change.type === 'remove')) cancelPendingClicks();
     setNodes((current) => {
       const persistedChanges = safeChanges.filter((change) => !(change.type === 'dimensions' && current.find((node) => node.id === change.id)?.data.stacked));
@@ -424,7 +419,8 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       }
       if (next.filter((node) => node.selected).length !== 1) next = setCanvasSelection(next, next.filter((node) => node.selected).map((node) => node.id));
       return fitCanvasGroups(next);
-    }, { record: safeChanges.some((change) => !['select', 'dimensions'].includes(change.type)) });
+    }, { record: safeChanges.some((change) => !['select', 'dimensions'].includes(change.type) || (change.type === 'dimensions' && (change.setAttributes || typeof change.resizing === 'boolean'))) });
+    if (resizeChanges.some((change) => change.resizing === false)) history.end();
   }, [cancelPendingClicks, setNodes, applySnap, clearSnap, viewportZoom, history]);
   const cancelPendingNodeClick = useCallback((nodeId) => {
     const timer = pendingNodeClicksRef.current.get(nodeId);
@@ -432,37 +428,15 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     window.clearTimeout(timer);
     pendingNodeClicksRef.current.delete(nodeId);
   }, []);
-  const handleNodeDragStart = useCallback((_, node) => {
+  const handleNodeDragStart = useCallback(() => {
     clearSnap();
     cancelPendingClicks();
     history.begin();
-    dragPositionsRef.current.set(node.id, node.position);
-    setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, dragging: true, dragRelease: false } } : item));
-  }, [cancelPendingClicks, history, setNodes, clearSnap]);
-  const handleNodeDrag = useCallback((_, node) => {
-    const previous = dragPositionsRef.current.get(node.id) || node.position;
-    const deltaX = node.position.x - previous.x;
-    const deltaY = node.position.y - previous.y;
-    const distance = Math.hypot(deltaX, deltaY);
-    if (distance < 0.01) return;
-
-    const stretch = snapEnabled ? 0 : Math.min(0.2, Math.max(0.02, distance * 0.012));
-    const horizontal = Math.abs(deltaX) >= Math.abs(deltaY);
-    const dragScaleX = horizontal ? 1 + stretch : 1 - stretch * 0.24;
-    const dragScaleY = horizontal ? 1 - stretch * 0.24 : 1 + stretch;
-    dragPositionsRef.current.set(node.id, node.position);
-    setNodes((current) => current.map((item) => item.id === node.id ? {
-      ...item,
-      data: { ...item.data, dragging: true, dragRelease: false, dragScaleX, dragScaleY },
-    } : item));
-  }, [setNodes, snapEnabled]);
-  const handleNodeDragStop = useCallback((_, node) => {
+  }, [cancelPendingClicks, history, clearSnap]);
+  const handleNodeDragStop = useCallback(() => {
     clearSnap();
-    setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, dragging: false, dragRelease: true } } : item));
-    dragPositionsRef.current.delete(node.id);
     history.end();
-    window.setTimeout(() => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, dragRelease: false, dragScaleX: 1, dragScaleY: 1 } } : item)), 280);
-  }, [history, setNodes, clearSnap]);
+  }, [history, clearSnap]);
   const handleImageReferenceLimitChange = useCallback((nodeId, imageReferenceLimit) => {
     setNodes((current) => {
       const target = current.find((item) => item.id === nodeId);
@@ -672,11 +646,12 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     return true;
   }, [history, setNodes, cancelPendingClicks, addNode, flowInstance]);
   useEffect(() => { importAssetsRef.current = importAssets; }, [importAssets]);
-  const persistCanvas = useCallback(async () => {
+  const persistCanvas = useCallback(async (allowTextTask = false) => {
     if (!canvasId || loadedCanvasId !== canvasId || error || !Number.isInteger(canvasRevision)
       || saveSessionRef.current?.canvasId !== canvasId) return false;
     const snapshot = history.getSnapshot();
-    if (snapshot.nodes.some((node) => node.data?.generating || node.data?.generationPending)) return false;
+    if (snapshot.nodes.some((node) => (node.data?.generating || node.data?.generationPending)
+      && !(allowTextTask && node.type === "text" && node.data.textSubmission))) return false;
     if (snapshot.nodes.some((node) => {
       const asset = node.data?.asset;
       return asset && (!asset.asset_id || asset.uploadStatus === 'uploading' || asset.uploadStatus === 'error');
@@ -698,9 +673,44 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     if (Number.isInteger(result?.revision)) setCanvasRevision(result.revision);
     return true;
   }, [canvasId, loadedCanvasId, error, canvasRevision, history, referenceGraph.edges, viewport]);
-  const canvasList = useCanvasList({ canvas, persistCanvas, onSelectCanvas, onBackProjects,
+  useLayoutEffect(() => {
+    textBridgeRef.current = { ready: loadedCanvasId === canvasId && !error, getNodes: history.getCurrentNodes,
+      persist: persistCanvas, mutate: (action) => {
+        const owner = saveSessionRef.current;
+        if (!owner || owner.canvasId !== canvasId) throw new Error("画布会话已结束");
+        return owner.session.mutate(action);
+      } };
+  }, [canvasId, loadedCanvasId, error, history.getCurrentNodes, persistCanvas]);
+  const saveBeforeNavigation = async () => { await textTasks.cancel(); return persistCanvas(); };
+  const leaveCanvas = async (action) => {
+    try { await textTasks.cancel(); await autosave.leave(action); }
+    catch (failure) { showGlobalToast(failure.message || "取消任务失败，请重试", "error"); }
+  };
+  const canvasList = useCanvasList({ canvas, persistCanvas: saveBeforeNavigation, onSelectCanvas, onBackProjects,
     onRenamed: (title, revision) => { setCanvas((current) => ({ ...current, title })); setCanvasRevision(revision); } });
   const reportSaveError = canvasFiles.reportSaveError;
+  const addHistoryAssetToCanvas = useCallback(async (asset) => {
+    if (loading || error || !flowInstance || !canvasContainerRef.current) return false;
+    const prepared = await prepareCanvasMediaAsset(toCanvasAsset(asset, 'video'));
+    if (!prepared || !getCanvasPermanentAssetId(prepared)) {
+      showGlobalToast('生成历史缺少可导入的媒体文件', 'error');
+      return false;
+    }
+    const rect = canvasContainerRef.current.getBoundingClientRect();
+    const center = flowInstance.screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+    const size = getCanvasAssetNodeSize(prepared);
+    const position = getCanvasViewportCenterNodePosition(history.getSnapshot().nodes, center, size);
+    cancelPendingClicks();
+    const node = createCanvasNode(prepared.asset_type, position);
+    node.data.asset = prepared;
+    node.data.persistenceState = 'draft';
+    const committed = commitCanvasMediaOutput(node, prepared, 'generation', 'history-' + crypto.randomUUID());
+    setNodes((current) => appendCanvasNode(current, committed));
+    flowInstance.setCenter(position.x + size.width / 2, position.y + size.height / 2,
+      { zoom: flowInstance.getZoom(), duration: 300 });
+    showGlobalToast('success', '已添加到画布');
+    return true;
+  }, [cancelPendingClicks, error, flowInstance, history, loading, setNodes]);
   const autosave = useCanvasAutosave({ canvasId, onSaveError: reportSaveError, enabled: loadedCanvasId === canvasId && !error,
     nodes, edges: referenceGraph.edges, viewport, persist: persistCanvas, paused: canvasList.busy, acknowledgeRef: acknowledgeSaveRef });
   const uploadFiles = useCallback(async (files, target = null) => {
@@ -1070,20 +1080,20 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     {imageEdits.editor && <LocalImageEditor key={`${imageEdits.editor.card.imageUrl}:${imageEdits.editor.mode}`} {...imageEdits.editor} onClose={imageEdits.close} />}
     {videoEdits.editor && <CanvasVideoEditor key={`${videoEdits.editor.videoUrl}:${videoEdits.editor.mode}`} editor={videoEdits.editor} onClose={videoEdits.close} />}
     <CanvasFileInput inputRef={canvasFiles.inputRef} onChange={canvasFiles.importFile} />
-    <CanvasProjectHeader saveStatus={autosave.status} projectName={projectName} canvasName={canvas?.title} onBackHome={() => autosave.leave(onBackHome)} onBackProjects={() => autosave.leave(onBackProjects)} onImport={canvasFiles.open} onRename={renameProject}
+    <CanvasProjectHeader saveStatus={autosave.status} projectName={projectName} canvasName={canvas?.title} onBackHome={() => leaveCanvas(onBackHome)} onBackProjects={() => leaveCanvas(onBackProjects)} onImport={canvasFiles.open} onRename={renameProject}
       canvases={canvasList.items}
       activeCanvasId={canvasId}
       canvasListBusy={canvasList.busy || loading || !!error}
       onSelectCanvas={canvasList.select}
       onCreateCanvas={canvasList.create}
       onRenameCanvas={canvasList.rename} onDuplicateCanvas={canvasList.duplicate} onDeleteCanvas={canvasList.remove} />
-    <CanvasUserMenu currentUser={currentUser} onLogout={() => autosave.leave(handleLogout)} onOpenProfile={() => setProfileOpen(true)} />
-    <div ref={canvasContainerRef} className="absolute inset-0 bg-surface-toolbar">
+    <CanvasUserMenu currentUser={currentUser} onLogout={() => leaveCanvas(handleLogout)} onOpenProfile={() => setProfileOpen(true)} />
+    <div ref={canvasContainerRef} className="absolute inset-0 bg-[#121212]">
       <ReactFlow viewport={viewport} minZoom={0.01}
         onDragOver={handleCanvasDragOver} onDrop={handleCanvasDrop}
         onWheelCapture={handleCanvasWheelCapture}
         onMove={(_, nextViewport) => { setViewport(nextViewport); setViewportZoom(nextViewport.zoom); }}
-        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, upstreamProtected: getCanvasOperationLocks(nodes).upstreamProtected.has(node.id), upstreamUpdated: upstreamUpdatedIds.has(node.id), resultHintCount: resultHintCounts[node.id], onAcknowledgeResultHint: acknowledgeResultHint, onSelectResult, onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)), onModelChange: handleNodeModelChange, onAssetChange: handleNodeAssetChange, onSelectAsset: handleNodeSelectAsset, viewportZoom, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText,
+        nodes={presentation.nodes.map((node) => ({ ...node, data: { ...node.data, moreOpen: nodeActions.menu?.id === node.id, upstreamProtected: getCanvasOperationLocks(nodes).upstreamProtected.has(node.id), upstreamUpdated: upstreamUpdatedIds.has(node.id), upstreamUpdateKey: upstreamUpdateKeys.get(node.id), resultHintCount: resultHintCounts[node.id], onAcknowledgeResultHint: acknowledgeResultHint, onSelectResult, onPromptChange: (nodeId, prompt, promptSnapshot) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, prompt, promptSnapshot } } : item)), onModelChange: handleNodeModelChange, onAssetChange: handleNodeAssetChange, onSelectAsset: handleNodeSelectAsset, viewportZoom, onRenameStart: cancelPendingClicks, onRename: (label) => setNodes((current) => current.map((item) => item.id === node.id ? { ...item, data: { ...item.data, label } } : item)), connectionTarget: node.id === connectionTargetId, connectionTargetStatus: node.id === connectionTargetId ? connectionTargetStatus : '', connectingType: node.id === connectingNodeId ? connectingHandleType : (node.id === upstreamConnection?.nodeId ? 'target' : ''), onUpstreamConnectStart: handleUpstreamConnectStart, onImageReferenceLimitChange: handleImageReferenceLimitChange, onVideoCapabilitiesChange: handleVideoCapabilitiesChange, onGenerationModeChange: handleGenerationModeChange, ...(node.type === 'text' ? { onGenerate: generateText, onCancelText: () => textTasks.cancel([node.id]).catch((failure) => showGlobalToast(failure.message, "error")),
           onMore: (rect) => { clearPendingConnection(); nodeActions.onMore(node.id, rect); },
           onEditContent: (id) => { clearPendingConnection(); setNodeMenu(null); nodeActions.closeMenu(); textEditor.open(id); },
           onContentChange: (nodeId, content) => commitUserText(nodeId, content),
@@ -1097,7 +1107,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
         onNodesChange={handleNodesChange} onNodeClick={handleNodeClick}
         onConnectStart={handleConnectStart}
         onConnectEnd={handleConnectEnd}
-        onBeforeDelete={async ({ nodes: removedNodes, edges: removedEdges }) => { cancelPendingClicks(); if (removedNodes.length || removedEdges.length) history.begin(); return true; }}
+        onBeforeDelete={async ({ nodes: removedNodes, edges: removedEdges }) => { try { await textTasks.cancel(removedNodes.map((node) => node.id)); } catch (failure) { showGlobalToast(failure.message, "error"); return false; } cancelPendingClicks(); if (removedNodes.length || removedEdges.length) history.begin(); return true; }}
         onDelete={() => history.end()}
         onNodeDoubleClick={(event, node) => {
           if (node.type === 'canvasGroup') { nodeActions.onGroupDoubleClick(event, node); return; }
@@ -1114,7 +1124,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
           }
           if (activeTool !== 'hand' && node.type !== 'canvasGroup' && !event.target.closest('button, input, textarea')) grouping.enterNode(node.id);
         }}
-        onNodeDragStart={handleNodeDragStart} onNodeDrag={handleNodeDrag} onNodeDragStop={handleNodeDragStop}
+        onNodeDragStart={handleNodeDragStart} onNodeDragStop={handleNodeDragStop}
         onSelectionDragStart={() => { clearSnap(); history.begin(); }}
         onSelectionDragStop={() => { clearSnap(); history.end(); }}
         onDoubleClick={handlePaneDoubleClick} zoomOnDoubleClick={false} zoomOnPinch={true}
@@ -1129,7 +1139,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
         panOnDrag={activeTool === 'hand' ? true : [1]} selectionOnDrag={activeTool === 'select'}
         multiSelectionKeyCode={null} selectionKeyCode={null}
         onSelectionStart={() => { cancelPendingClicks(); setNodeMenu(null); setNodes((current) => setCanvasSelection(current, current.filter((node) => node.selected).map((node) => node.id))); }}
-        proOptions={{ hideAttribution: true }} className="bg-surface-toolbar">
+        proOptions={{ hideAttribution: true }} className="bg-[#121212]" data-canvas-tool={activeTool}>
         {/* 固定圆点的屏幕半径，间距和位置仍由 React Flow 随视口变化。 */}
         <CanvasGridBackground />
         <CanvasSelectionToolbar nodes={nodes} onAction={nodeActions.execute} />
@@ -1162,7 +1172,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       showMiniMap={showMiniMap}
       snapEnabled={snapEnabled} onSnapChange={toggleSnap}
       onMiniMapChange={setShowMiniMap}
-      onOpenSearch={() => { nodeActions.closeMenu(); setNodeMenu(null); search.show(); }}
+      onOpenHistory={() => { nodeActions.closeMenu(); setNodeMenu(null); setGenerationHistoryOpen(true); }}
       onAddNode={handleToolbarAddNode}
       onUpload={handleToolbarUpload}
       onSelectAssets={handleToolbarSelectAssets}
@@ -1175,6 +1185,9 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       onOpenAssetPicker={() => { setAssetTarget(null); setAssetPickerOpen(true); }}
     />
     {search.open && <CanvasSearchModal nodes={nodes} onClose={search.close} onSelect={search.select} />}
+    <CanvasGenerationHistory open={generationHistoryOpen} canvasId={canvasId} targetCanvasId={canvasId}
+      canvases={canvasList.items.filter((item) => (item.project_id || null) === (canvas?.project_id || null))}
+      onClose={() => setGenerationHistoryOpen(false)} onAddToCanvas={addHistoryAssetToCanvas} />
     <input ref={menuUploadInputRef} type="file" hidden multiple accept={getCanvasMediaAccept('all')} onChange={(event) => {
       const files = [...(event.target.files || [])];
       event.target.value = '';
@@ -1198,7 +1211,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
         : assetTarget?.nodeType ? (asset) => Boolean(toCanvasAsset(asset, assetTarget.nodeType)) : undefined}
       includeSeedanceLibrary
     />
-    <ProfileModal open={profileOpen} currentUser={currentUser} onClose={() => setProfileOpen(false)} onLogout={() => autosave.leave(handleLogout)} onProfileUpdated={(updated) => setCurrentUser((previous) => ({ ...previous, ...updated }))} />
+    <ProfileModal open={profileOpen} currentUser={currentUser} onClose={() => setProfileOpen(false)} onLogout={() => leaveCanvas(handleLogout)} onProfileUpdated={(updated) => setCurrentUser((previous) => ({ ...previous, ...updated }))} />
     {mediaPreview && <CanvasMediaPreview asset={mediaPreview.asset} nodeType={mediaPreview.nodeType} playback={mediaPreview.playback} onClose={() => setMediaPreview(null)} />}
     {textEditor.session && <CanvasTextEditor key={textEditor.session.id} {...textEditor.session} onCancel={textEditor.close} onSave={textEditor.save} />}
     <CanvasNodeActionOverlays menu={nodeActions.menu} dialog={nodeActions.dialog} nodes={nodes}

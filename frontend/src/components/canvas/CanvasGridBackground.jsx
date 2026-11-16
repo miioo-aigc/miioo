@@ -18,5 +18,5 @@ export default function CanvasGridBackground() {
 
   return <Background variant="dots" gap={CANVAS_GRID_GAP} size={CANVAS_GRID_DOT_SIZE}
     offset={CANVAS_GRID_OFFSET} patternClassName="[r:0.5px]"
-    color={`rgba(255,255,255,${0.16 * opacity})`} />;
+    color={`rgba(255,255,255,${0.20 * opacity})`} />;
 }

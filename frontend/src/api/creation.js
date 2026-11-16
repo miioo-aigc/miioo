@@ -4,6 +4,7 @@ const CREATION_VIDEO_POLL_TIMEOUT_MS = 3600000;
 const CREATION_BASIC_EDIT_POLL_TIMEOUT_MS = 600000;
 const CREATION_POLL_INTERVAL_MS = 3000;
 const CREATION_POLL_TRANSIENT_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+const CREATION_IMAGE_ASSET_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { readResponseBlobWithProgress } from '../utils/responseBlobProgress';
 import { validateVideoRequestImages } from './VideoReferenceValidation.js';
 import { assertVideoReferencePixels } from '../utils/VideoReferencePixels.js';
@@ -59,6 +60,101 @@ function waitForPollInterval(signal) {
 function createPollResponseError(message, status) {
   const error = new Error(message);
   error.status = status;
+  return error;
+}
+
+const CREATION_TASK_ERROR_FIELDS = [
+  'error_msg',
+  'errorMsg',
+  'error_message',
+  'errorMessage',
+  'message',
+  'msg',
+  'detail',
+  'details',
+  'error',
+  'errors',
+  'reason',
+  'params',
+  'task',
+  'result',
+  'data',
+  'upstream_error',
+  'upstreamError',
+];
+
+function collectCreationTaskErrorMessages(value, output, depth = 0) {
+  if (depth > 5 || value == null) return;
+  if (typeof value === 'string') {
+    const message = value.trim();
+    if (message && !output.includes(message)) output.push(message);
+    return;
+  }
+  if (value instanceof Error) {
+    collectCreationTaskErrorMessages(value.message, output, depth + 1);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.slice(0, 12).forEach((item) => collectCreationTaskErrorMessages(item, output, depth + 1));
+    return;
+  }
+  if (typeof value !== 'object') return;
+  CREATION_TASK_ERROR_FIELDS.forEach((field) => {
+    if (Object.hasOwn(value, field)) {
+      collectCreationTaskErrorMessages(value[field], output, depth + 1);
+    }
+  });
+}
+
+function getCreationTaskErrorMessage(pollData) {
+  const messages = [];
+  collectCreationTaskErrorMessages(pollData, messages);
+  return messages.join('；');
+}
+
+function extractCreationErrorAmount(rawMessage, label) {
+  const match = String(rawMessage || '').match(new RegExp(
+    `${label}\\s*[:：]?\\s*(?:¥|￥|CNY|RMB)?\\s*([0-9]+(?:\\.[0-9]+)?)`,
+    'i',
+  ));
+  return match?.[1] || '';
+}
+
+function getFriendlyCreationTaskError(rawMessage) {
+  const raw = String(rawMessage || '').trim();
+  if (!raw) return '';
+
+  const seedanceMessage = getSeedance20AudioReferenceErrorMessage(raw);
+  if (seedanceMessage) return seedanceMessage;
+
+  const isQuotaError = /预扣费额度失败|余额不足|额度不足|剩余额度[\s\S]*预扣费额度|insufficient\s+(?:balance|quota|credit)/i.test(raw);
+  if (isQuotaError) {
+    const remaining = extractCreationErrorAmount(raw, '用户剩余额度');
+    const required = extractCreationErrorAmount(raw, '需要预扣费额度');
+    const amountDetail = remaining && required
+      ? `（当前余额 ¥${remaining}，本次至少需要 ¥${required}）`
+      : '';
+    return `OneLinkAI 账户余额不足${amountDetail}，请充值或调整可用额度后重试`;
+  }
+
+  if (/UPSTREAM_AUTH_INVALID|API\s*Key\s*(?:无效|已失效)|invalid\s+api\s*key/i.test(raw)) {
+    return 'OneLinkAI API Key 无效或已失效，请在 API 配置中更新后重试';
+  }
+  if (/copyright/i.test(raw)) {
+    return '生成内容可能涉及版权限制，请修改素材或创作描述后重试';
+  }
+  if (/sensitive|policy/i.test(raw)) {
+    return '生成内容触发了内容安全限制，请修改素材或创作描述后重试';
+  }
+  return raw;
+}
+
+function createCreationTaskError(pollData, fallback = 'Generation failed') {
+  const rawMessage = getCreationTaskErrorMessage(pollData);
+  const error = new Error(getFriendlyCreationTaskError(rawMessage) || fallback);
+  error.rawMessage = rawMessage;
+  error.code = pollData?.error?.code || pollData?.code || undefined;
+  error.taskFailed = true;
   return error;
 }
 
@@ -158,6 +254,45 @@ function getImageUrls(image) {
   return { previewUrl, originalUrl, downloadUrl };
 }
 
+function getDurableImageAssetId(image) {
+  const assetId = image?.asset_id || image?.assetId;
+  return typeof assetId === 'string' && CREATION_IMAGE_ASSET_ID_PATTERN.test(assetId)
+    ? assetId
+    : null;
+}
+
+function isRecoverableImageDetailError(error) {
+  return error?.isNetworkError
+    || error instanceof TypeError
+    || error?.status === 404
+    || error?.status === 408
+    || error?.status === 429
+    || error?.status >= 500;
+}
+
+async function hydrateCreationImageAssetId(image, { signal } = {}) {
+  const directAssetId = getDurableImageAssetId(image);
+  if (directAssetId) return directAssetId;
+  if (!image?.id) return null;
+
+  throwIfAborted(signal);
+  try {
+    const detail = await apiGetCreationImage(image.id, { signal });
+    throwIfAborted(signal);
+    if (!detail || typeof detail !== 'object' || Array.isArray(detail)) {
+      const error = new Error('创作图片详情返回结构异常');
+      error.invalidResponse = true;
+      throw error;
+    }
+    return getDurableImageAssetId(detail);
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) throw createAbortError();
+    if (error?.invalidResponse || error instanceof SyntaxError) throw error;
+    if (isRecoverableImageDetailError(error)) return null;
+    throw error;
+  }
+}
+
 function getBasicEditImageResult(pollData) {
   const candidates = [
     ...(Array.isArray(pollData?.results) ? pollData.results : []),
@@ -212,7 +347,7 @@ async function pollBasicEditCreationImageTask(taskId, { signal } = {}) {
     if (!pollData) continue;
     const status = String(pollData.status || '').toLowerCase();
     if (status === 'failed' || status === 'error') {
-      throw new Error(pollData.error_msg || pollData.errorMsg || pollData.message || '图片编辑失败');
+      throw createCreationTaskError(pollData, '图片编辑失败');
     }
     if (status === 'done' || status === 'completed' || status === 'success' || status === 'partial') {
       const image = normalizeBasicEditImage(getBasicEditImageResult(pollData));
@@ -264,6 +399,7 @@ async function pollBasicEditCreationImageTask(taskId, { signal } = {}) {
  *   2026-10-26  图片轮询额外保留 imageAssetIds，按结果索引含空位合并，独立于创作记录 cardIds。
  *   2026-10-26  图片参考统一上传、资产绑定与地址校验，上传失败停止生成；视频分支保留原契约。
  *   2026-10-23  视频提交前检查原图加载及上传完整性，失败停止提交并检查提交响应。
+ *   2026-11-13  图片任务终态缺 asset_id 时按记录 ID 补查详情，只接受合法 UUID 永久资产编号。
  */
 
 function isMiniMaxSpeechModel(model) {
@@ -339,25 +475,7 @@ export async function apiPollCreationTask(type, taskId, timeoutMs, { signal } = 
     }
 
     if (status === 'failed' || status === 'error') {
-      const rawMsg = pollData.error_msg || pollData.errorMsg || '';
-      let userMessage = getSeedance20AudioReferenceErrorMessage(rawMsg);
-      if (userMessage) {
-        const err = new Error(userMessage);
-        err.rawMessage = rawMsg;
-        err.taskFailed = true;
-        throw err;
-      }
-      if (rawMsg.includes('copyright')) {
-        userMessage = '生成内容可能涉及版权限制，请修改素材或创作描述后重试';
-      } else if (rawMsg.includes('sensitive') || rawMsg.includes('policy')) {
-        userMessage = '生成内容触发了内容安全限制，请修改素材或创作描述后重试';
-      } else {
-        userMessage = rawMsg || 'Generation failed';
-      }
-      const err = new Error(userMessage);
-      err.rawMessage = rawMsg;
-      err.taskFailed = true;
-      throw err;
+      throw createCreationTaskError(pollData);
     }
   }
   throw new Error(type === 'audio' ? '配音生成超过600秒，已停止轮询' : 'Generation timeout');
@@ -484,10 +602,12 @@ export async function apiListCreationImages(filters = {}, { signal } = {}) {
   return res.json();
 }
 
-export async function apiGetCreationImage(imageId) {
-  const res = await authFetch(`${BASE}/api/creation/images/${imageId}`, {
+export async function apiGetCreationImage(imageId, { signal } = {}) {
+  const res = await authFetch(`${BASE}/api/creation/images/${encodeURIComponent(imageId)}`, {
     headers: { 'Content-Type': 'application/json' },
+    signal,
   });
+  if (!res.ok) await throwResponseError(res, `创作图片详情读取失败（${res.status}）`);
   return res.json();
 }
 
@@ -771,8 +891,7 @@ export async function apiPollCreationMusicTask(taskId, timeoutMs = Infinity, { s
       return { audios: audioUrl ? [audioUrl] : [], audioIds: [] };
     }
     if (status === 'failed' || status === 'error' || status === 'cancelled' || status === 'canceled') {
-      const rawMsg = pollData.error_msg || pollData.errorMsg || pollData.message || '';
-      throw Object.assign(new Error(rawMsg || '音乐生成失败'), { taskFailed: true });
+      throw createCreationTaskError(pollData, '音乐生成失败');
     }
   }
   throw new Error('音乐生成超过600秒，已停止轮询');
@@ -1000,23 +1119,7 @@ export async function apiPollVideoTask(taskId, timeoutMs = CREATION_VIDEO_POLL_T
       };
     }
     if (status === 'failed' || status === 'error') {
-      const rawMsg = pollData.error_msg || pollData.errorMsg || '';
-      let userMessage = getSeedance20AudioReferenceErrorMessage(rawMsg);
-      if (userMessage) {
-        const err = new Error(userMessage);
-        err.rawMessage = rawMsg;
-        throw err;
-      }
-      if (rawMsg.includes('copyright')) {
-        userMessage = '生成的视频内容可能涉及版权限制，请修改素材或创作描述后重试';
-      } else if (rawMsg.includes('sensitive') || rawMsg.includes('policy')) {
-        userMessage = '生成内容触发了内容安全限制，请修改素材或创作描述后重试';
-      } else {
-        userMessage = rawMsg || 'Generation failed';
-      }
-      const err = new Error(userMessage);
-      err.rawMessage = rawMsg;
-      throw err;
+      throw createCreationTaskError(pollData);
     }
   }
   throw new Error('Generation timeout');
@@ -1051,25 +1154,7 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
         return extractFn(pollData);
       }
       if (status === 'failed' || status === 'error') {
-        const rawMsg = pollData.error_msg || pollData.errorMsg || '';
-        let userMessage = getSeedance20AudioReferenceErrorMessage(rawMsg);
-        if (userMessage) {
-          const err = new Error(userMessage);
-          err.rawMessage = rawMsg;
-          err.taskFailed = true;
-          throw err;
-        }
-        if (rawMsg.includes('copyright')) {
-          userMessage = '生成的视频内容可能涉及版权限制，请修改素材或创作描述后重试';
-        } else if (rawMsg.includes('sensitive') || rawMsg.includes('policy')) {
-          userMessage = '生成内容触发了内容安全限制，请修改素材或创作描述后重试';
-        } else {
-          userMessage = rawMsg || 'Generation failed';
-        }
-        const err = new Error(userMessage);
-        err.rawMessage = rawMsg;
-        err.taskFailed = true;
-        throw err;
+        throw createCreationTaskError(pollData);
       }
     }
     throw new Error(isDubbing ? '配音生成超过600秒，已停止轮询' : 'Generation timeout');
@@ -1462,25 +1547,34 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
       taskIds.map((tid) =>
         pollTask(
           `${BASE}/api/creation/tasks/${tid}`,
-          (pollData) => {
+          async (pollData) => {
             const imgs = pollData.images || [];
             const imageUrls = imgs.map(getImageUrls);
+            const imageAssetIds = await Promise.all(
+              imgs.map((img) => hydrateCreationImageAssetId(img, { signal })),
+            );
             return {
               images: imageUrls.map(({ previewUrl }) => previewUrl),
               imageDownloadUrls: imageUrls.map(({ downloadUrl }) => downloadUrl),
               imageOriginalUrls: imageUrls.map(({ originalUrl }) => originalUrl),
               cardIds: imgs.map((img) => img.id),
-              imageAssetIds: imgs.map((img) => img.asset_id || img.assetId || null),
+              imageAssetIds,
               referenceImages: pollData.reference_images || pollData.referenceImages || [],
             };
           },
         ).catch((error) => {
           if (!params.canvasPartialResults || !error?.taskFailed || signal?.aborted || error?.name === 'AbortError') throw error;
           return { images: [null], imageDownloadUrls: [null], imageOriginalUrls: [null],
-            cardIds: [null], imageAssetIds: [null], referenceImages: [] };
+            cardIds: [null], imageAssetIds: [null], referenceImages: [], taskFailure: error };
         })
       )
     );
+
+    const firstTaskFailure = pollResults.find((result) => result.taskFailure)?.taskFailure;
+    const hasDurableCompletedImage = pollResults.some((result) => !result.taskFailure
+      && result.imageAssetIds?.some((assetId, index) => getDurableImageAssetId({ asset_id: assetId })
+        && Boolean(result.images?.[index] || result.imageOriginalUrls?.[index] || result.imageDownloadUrls?.[index])));
+    if (firstTaskFailure && !hasDurableCompletedImage) throw firstTaskFailure;
 
     const allImages = pollResults.flatMap((r) => r.images);
     const allImageDownloadUrls = pollResults.flatMap((r) => r.imageDownloadUrls || []);

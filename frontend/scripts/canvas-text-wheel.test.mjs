@@ -8,7 +8,7 @@ function run(deltaX, deltaY, options = {}) {
   let stopped = false;
   let position = options.position ?? 50;
   const element = {
-    dataset: { textPreview: String(!options.editing) },
+    dataset: { textPreview: String(!options.editing), scrollEnabled: String(options.selected !== false) },
     clientHeight: 238,
     get scrollTop() { return position; },
     set scrollTop(value) { position = Math.max(0, Math.min(100, value)); },
@@ -18,7 +18,7 @@ function run(deltaX, deltaY, options = {}) {
     preventDefault() { prevented = true; },
     stopPropagation() { stopped = true; },
   }, element, (delta) => pans.push(delta));
-  const isolated = !options.ctrlKey || Boolean(options.editing);
+  const isolated = options.selected !== false && (!options.ctrlKey || Boolean(options.editing));
   assert.equal(prevented, isolated);
   assert.equal(stopped, isolated);
   return { pans, position };
@@ -45,4 +45,10 @@ test('预览捏合冒泡给画布，不滚正文或平移；编辑状态继续�
   assert.deepEqual(run(0, -20, { ctrlKey: true }), { pans: [], position: 50 });
   assert.deepEqual(run(0, 20, { ctrlKey: true }), { pans: [], position: 50 });
   assert.deepEqual(run(40, 20, { ctrlKey: true, editing: true }), { pans: [], position: 50 });
+});
+
+test('未选中时不滚动正文、不拦截画布手势', () => {
+  assert.deepEqual(run(0, 30, { selected: false }), { pans: [], position: 50 });
+  assert.deepEqual(run(30, 0, { selected: false }), { pans: [], position: 50 });
+  assert.deepEqual(run(0, -20, { selected: false, ctrlKey: true }), { pans: [], position: 50 });
 });

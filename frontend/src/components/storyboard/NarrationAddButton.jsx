@@ -33,7 +33,7 @@ export default function NarrationAddButton({ onClick, tooltip = '新增角色台
         </svg>
       </button>
       {hovered && tooltipPos && createPortal(
-        <div style={{ position: 'fixed', left: tooltipPos.x, top: tooltipPos.y, transform: 'translate(-50%, calc(-100% - 6px))', whiteSpace: 'nowrap', background: '#2A2A2A', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', padding: '5px 8px', fontSize: '12px', lineHeight: '16px', color: 'rgba(255,255,255,0.60)', fontFamily: FONT, pointerEvents: 'none', zIndex: 9999, boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}>
+        <div className="tooltip-enter" role="tooltip" style={{ position: 'fixed', left: tooltipPos.x, top: tooltipPos.y, transform: 'translate(-50%, calc(-100% - 6px))', whiteSpace: 'nowrap', background: 'var(--color-tooltip-bg)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', lineHeight: '16px', color: 'rgba(255,255,255,0.90)', fontFamily: FONT, pointerEvents: 'none', zIndex: 9999, fontWeight: 400 }}>
           {tooltip}
         </div>,
         document.body

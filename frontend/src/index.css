@@ -261,7 +261,7 @@ video[controls] {
   /* ----------------------------------------------------------
      Tooltip
      ---------------------------------------------------------- */
-  --color-tooltip-bg: #090909;                   /* 背景 → Neutral/500，配合 backdrop-blur-[10px] */
+  --color-tooltip-bg: #242424;                   /* 全站文字提示背景 */
 
   /* ----------------------------------------------------------
      Checkbox / Radio
@@ -981,3 +981,7 @@ body {
 .timeline-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.42);
 }
+
+@keyframes tooltip-enter { from { opacity: 0; } to { opacity: 1; } }
+.tooltip-enter { animation: tooltip-enter 120ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .tooltip-enter { animation: none; } }

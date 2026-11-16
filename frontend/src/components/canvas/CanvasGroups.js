@@ -1,5 +1,5 @@
 /** 组合几何与选中状态；坐标始终使用画布单位。 */
-const PADDING = 8;
+const PADDING = 20;
 
 export function getCanvasAbsolutePosition(nodes, node) {
   const position = { ...node.position };
@@ -15,10 +15,20 @@ export function getCanvasAbsolutePosition(nodes, node) {
 }
 
 function bounds(nodes) {
-  const x = Math.min(...nodes.map((node) => node.position.x)) - PADDING;
-  const y = Math.min(...nodes.map((node) => node.position.y)) - PADDING;
-  const right = Math.max(...nodes.map((node) => node.position.x + (node.type === 'canvasGroup' ? node.style.width : node.measured?.width ?? 240)));
-  const bottom = Math.max(...nodes.map((node) => node.position.y + (node.type === 'canvasGroup' ? node.style.height : node.measured?.height ?? 264)));
+  // 堆叠组在文档中仍保留展开尺寸，包围框必须使用实际展示的偏移与312px尺寸。
+  const boxes = nodes.map((node) => {
+    const group = node.type === 'canvasGroup';
+    const stacked = group && node.data?.stacked;
+    const x = node.position.x + (stacked ? node.data.stackOffset?.x || 0 : 0);
+    const y = node.position.y + (stacked ? node.data.stackOffset?.y || 0 : 0);
+    return { x, y: y - (group ? 24 : 0),
+      right: x + (stacked ? 312 : group ? node.style.width : node.width ?? node.measured?.width ?? 240),
+      bottom: y + (stacked ? 312 : group ? node.style.height : node.height ?? node.measured?.height ?? 264) };
+  });
+  const x = Math.min(...boxes.map((box) => box.x)) - PADDING;
+  const y = Math.min(...boxes.map((box) => box.y)) - PADDING;
+  const right = Math.max(...boxes.map((box) => box.right));
+  const bottom = Math.max(...boxes.map((box) => box.bottom));
   return { x, y, width: right - x + PADDING, height: bottom - y + PADDING };
 }
 

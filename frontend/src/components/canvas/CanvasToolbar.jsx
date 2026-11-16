@@ -23,15 +23,16 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { DropdownMenu, IconButton, Tooltip } from '../ui';
-import { ChevronLeft, Magnet, MoreHorizontal, Redo2, Undo2 } from 'lucide-react';
+import { ChevronLeft, History, Magnet, MoreHorizontal, Redo2, Undo2 } from 'lucide-react';
 import CanvasNodeAddMenu from './CanvasNodeAddMenu.jsx';
 import './CanvasToolbar.css';
 
 const ICON_PROPS = {
-  width: 16,
-  height: 16,
+  width: 18,
+  height: 18,
   viewBox: '0 0 16 16',
   fill: 'none',
+  strokeWidth: 1.5,
   'aria-hidden': true,
 };
 
@@ -45,7 +46,7 @@ function GradientAddIcon() {
         </linearGradient>
       </defs>
       <path d="M8 14.667C11.682 14.667 14.667 11.682 14.667 8C14.667 4.318 11.682 1.333 8 1.333C4.318 1.333 1.333 4.318 1.333 8C1.333 11.682 4.318 14.667 8 14.667Z" fill="url(#canvas-toolbar-add-fill)" stroke="url(#canvas-toolbar-add-fill)" strokeLinejoin="round" />
-      <path d="M8 5.333V10.667M5.333 8H10.667" stroke="var(--color-surface-base)" strokeWidth="1.33" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 5.333V10.667M5.333 8H10.667" stroke="var(--color-surface-base)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -56,10 +57,6 @@ function PointerIcon() {
 
 function AssetLibraryIcon() {
   return <svg {...ICON_PROPS}><path d="M1.667 2.667C1.667 2.298 1.965 2 2.333 2H6.333L8 4H13.667C14.035 4 14.333 4.298 14.333 4.667V13.333C14.333 13.701 14.035 14 13.667 14H2.333C1.965 14 1.667 13.701 1.667 13.333V2.667Z" stroke="var(--color-white-80)" strokeLinejoin="round" /><path d="M8 6.667L8.748 8.304L10.536 8.509L9.21 9.726L9.567 11.491L8 10.605L6.433 11.491L6.79 9.726L5.464 8.509L7.252 8.304L8 6.667Z" stroke="var(--color-white-80)" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-
-function SearchIcon() {
-  return <svg {...ICON_PROPS}><path d="M7 12.667C10.13 12.667 12.667 10.13 12.667 7C12.667 3.87 10.13 1.333 7 1.333C3.87 1.333 1.333 3.87 1.333 7C1.333 10.13 3.87 12.667 7 12.667Z" stroke="var(--color-white-80)" strokeLinejoin="round" /><path d="M11.074 11.074L13.902 13.902" stroke="var(--color-white-80)" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function MiniMapIcon() {
@@ -74,7 +71,7 @@ const TOOL_ITEMS = [
   { key: 'add', label: '添加节点', icon: GradientAddIcon },
   { key: 'move', label: '移动', icon: PointerIcon },
   { key: 'assets', label: '从资产库选择', icon: AssetLibraryIcon },
-  { key: 'search', label: '搜索节点', icon: SearchIcon },
+  { key: 'history', label: '生成历史', icon: History },
 ];
 
 const COLLAPSIBLE_TOOL_ITEMS = [
@@ -120,7 +117,7 @@ function AddNodeMenu({ onAddNode, onUpload, onSelectAssets }) {
   return <div className="absolute bottom-[40px] left-1/2 z-30 -translate-x-1/2"><CanvasNodeAddMenu onAddNode={onAddNode} onUpload={onUpload} onSelectAssets={onSelectAssets} /></div>;
 }
 
-export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, snapEnabled = false, onSnapChange, onOpenSearch, onOpenAssetPicker, onAddNode, onUpload, onSelectAssets, onShare, canUndo, canRedo, onUndo, onRedo }) {
+export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, onMiniMapChange, snapEnabled = false, onSnapChange, onOpenHistory, onOpenAssetPicker, onAddNode, onUpload, onSelectAssets, onShare, canUndo, canRedo, onUndo, onRedo }) {
   const [openMenu, setOpenMenu] = useState(null);
   const [rightToolsExpanded, setRightToolsExpanded] = useState(false);
   const toolbarRef = useRef(null);
@@ -140,7 +137,7 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
       return;
     }
     if (key === 'assets') { setOpenMenu(null); onOpenAssetPicker?.(); return; }
-    if (key === 'search') { setOpenMenu(null); onOpenSearch?.(); return; }
+    if (key === 'history') { setOpenMenu(null); onOpenHistory?.(); return; }
     setOpenMenu((current) => (current === key ? null : key));
   };
 
@@ -152,23 +149,23 @@ export default function CanvasToolbar({ activeTool, onToolChange, showMiniMap, o
         onSelectAssets={() => { onSelectAssets?.(); setOpenMenu(null); }} />}
       {openMenu === key && key === 'move' && <MoveMenu activeTool={activeTool} onToolChange={(tool) => { onToolChange(tool); setOpenMenu(null); }} />}
       {openMenu === key && key === 'share' && <ShareMenu onShare={onShare} onClose={() => setOpenMenu(null)} />}
-      <Tooltip label={label} placement="top" offset={8}><button type="button" title={label} aria-label={label} aria-pressed={selected} onClick={() => handleToolClick(key)} className={`flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 transition-colors ${selected ? 'bg-white-10' : 'hover:bg-white-5'} ${(key === 'snap' || key === 'map') && selected ? 'text-text-accent' : 'text-white-80'}`}><Icon size={16} strokeWidth={1.7} /></button></Tooltip>
+      <Tooltip variant="canvas" label={label} placement="top" offset={8}><button type="button" title={label} aria-label={label} aria-pressed={selected} onClick={() => handleToolClick(key)} className={`flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 transition-colors ${selected ? 'bg-white-10' : 'hover:bg-white-5'} ${(key === 'snap' || key === 'map') && selected ? 'text-text-accent' : 'text-white-80'}`}><Icon size={18} strokeWidth={1.5} /></button></Tooltip>
     </div>;
   };
 
   return (
-    <div ref={toolbarRef} className="absolute bottom-[24px] left-1/2 z-20 flex -translate-x-1/2 items-center gap-[12px] overflow-visible rounded-full border border-stroke-normal bg-surface-content-area px-[16px] py-[4px] outline outline-1 outline-black-90">
+    <div ref={toolbarRef} className="canvas-bottom-toolbar absolute bottom-[24px] left-1/2 z-20 flex -translate-x-1/2 items-center gap-[12px] overflow-visible rounded-full border border-stroke-normal bg-[#191919] px-[16px] py-[4px]">
       {TOOL_ITEMS.map(renderTool)}
       <div className="h-[16px] w-px shrink-0 rounded-full bg-stroke-normal" />
-      {!rightToolsExpanded && <Tooltip label="更多工具" placement="top" offset={8}><button type="button" aria-label="展开更多工具" title="展开更多工具" onClick={() => setRightToolsExpanded(true)} className="flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 hover:bg-white-5"><MoreHorizontal size={16} strokeWidth={1.7} color="var(--color-white-80)" /></button></Tooltip>}
+      {!rightToolsExpanded && <Tooltip variant="canvas" label="更多工具" placement="top" offset={8}><button type="button" aria-label="展开更多工具" title="展开更多工具" onClick={() => setRightToolsExpanded(true)} className="flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 hover:bg-white-5"><MoreHorizontal size={18} strokeWidth={1.5} color="var(--color-white-80)" /></button></Tooltip>}
       <div className={`canvas-toolbar__right-tools ${rightToolsExpanded ? 'canvas-toolbar__right-tools--expanded' : ''}`} aria-hidden={!rightToolsExpanded} inert={!rightToolsExpanded}>
         <div className="canvas-toolbar__right-tools-content">
           {rightToolsExpanded && (canUndo || canRedo) && <>
-            <Tooltip label="撤销" placement="top"><span><IconButton aria-label="撤销" variant="link" className="!size-[32px] rounded-full hover:bg-white-5" contentClassName="!text-text-secondary" disabled={!canUndo} onClick={onUndo}><Undo2 size={16} /></IconButton></span></Tooltip>
-            <Tooltip label="重做" placement="top"><span><IconButton aria-label="重做" variant="link" className="!size-[32px] rounded-full hover:bg-white-5" contentClassName="!text-text-secondary" disabled={!canRedo} onClick={onRedo}><Redo2 size={16} /></IconButton></span></Tooltip>
+            <Tooltip variant="canvas" label="撤销" placement="top"><span><IconButton aria-label="撤销" variant="link" className="!size-[32px] rounded-full hover:bg-white-5" contentClassName="!text-text-secondary" disabled={!canUndo} onClick={onUndo}><Undo2 size={18} strokeWidth={1.5} /></IconButton></span></Tooltip>
+            <Tooltip variant="canvas" label="重做" placement="top"><span><IconButton aria-label="重做" variant="link" className="!size-[32px] rounded-full hover:bg-white-5" contentClassName="!text-text-secondary" disabled={!canRedo} onClick={onRedo}><Redo2 size={18} strokeWidth={1.5} /></IconButton></span></Tooltip>
           </>}
           {COLLAPSIBLE_TOOL_ITEMS.filter((item) => !item.hidden).map(renderTool)}
-          {rightToolsExpanded && <Tooltip label="收起工具" placement="top" offset={8}><button type="button" aria-label="收起工具" title="收起工具" onClick={() => { setOpenMenu(null); setRightToolsExpanded(false); }} className="flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 hover:bg-white-5"><ChevronLeft size={16} strokeWidth={1.7} color="var(--color-white-80)" /></button></Tooltip>}
+          {rightToolsExpanded && <Tooltip variant="canvas" label="收起工具" placement="top" offset={8}><button type="button" aria-label="收起工具" title="收起工具" onClick={() => { setOpenMenu(null); setRightToolsExpanded(false); }} className="flex size-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 hover:bg-white-5"><ChevronLeft size={18} strokeWidth={1.5} color="var(--color-white-80)" /></button></Tooltip>}
         </div>
       </div>
     </div>

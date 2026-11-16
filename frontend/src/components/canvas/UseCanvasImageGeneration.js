@@ -16,7 +16,7 @@ export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, p
   const [requests] = useState(createCanvasTextRequests);
   useEffect(() => () => requests.abortAll(), [requests]);
   useEffect(() => { requests.reconcile(nodes); }, [nodes, requests]);
-  return useCallback(async ({ nodeId, prompt, model, params = {} }) => {
+  return useCallback(async ({ nodeId, prompt, model, params = {}, onAccepted, onRejected }) => {
     const systemSetNodes = (update, options = {}) => setNodes(update, { ...options, origin: 'system' });
     let plan;
     let controller;
@@ -24,6 +24,7 @@ export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, p
       plan = planCanvasImageGeneration(nodes, nodeId, prompt, model, params);
       controller = requests.start(plan);
     } catch (error) {
+      onRejected?.(error.message);
       showGlobalToast(error.message, 'error');
       return;
     }
@@ -32,6 +33,7 @@ export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, p
       systemSetNodes((current) => beginCanvasImageGeneration(current, plan));
     } catch (error) {
       requests.finish(plan.requestId);
+      onRejected?.(error.message);
       showGlobalToast(error.message, 'error');
       return;
     }
@@ -60,20 +62,23 @@ export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, p
           if (controller.signal.aborted || session !== getAuthSessionGeneration()) return;
           systemSetNodes((current) => current.map((node) => node.id === plan.nodeId && node.data.generationRequestId === plan.requestId
             ? { ...node, data: { ...node.data, generationTaskIds: plan.taskIds, submissionLocked: false } } : node), { record: false });
+          onAccepted?.();
         },
       });
       const results = getCanvasImageResultAssets(result);
       const { successCount } = getCanvasImageGenerationSummary(plan, results);
-      if (!successCount) throw new Error('图片生成未返回具有永久资产编号的有效结果');
+      if (!successCount) throw new Error('图片任务已结束，但没有返回可用的永久资产，请重试');
       const assets = await Promise.all(results.map((asset) => asset ? prepareCanvasMediaAsset(asset) : null));
       if (!controller.signal.aborted && session === getAuthSessionGeneration()) {
         systemSetNodes((current) => applyCanvasImageResult(current, plan, assets), { record: false });
+        onAccepted?.();
         if (successCount < plan.requestedCount) showGlobalToast(`本次成功生成 ${successCount} / ${plan.requestedCount} 张图片`, 'warning');
         // 只把「本次一次生成多张」的通知交给宿主；宿主只保留到用户查看或刷新为止。
         if (successCount > 1) onMultiResultCommitted?.(plan.nodeId, successCount);
       }
     } catch (error) {
       if (!controller.signal.aborted) {
+        onRejected?.(error.message || '请重试');
         showGlobalToast(`图片创作失败：${error.message || '请重试'}`, 'error');
         systemSetNodes((current) => recoverCanvasImageGenerationFailure(current, plan), { record: false });
       }

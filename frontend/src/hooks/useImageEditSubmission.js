@@ -7,6 +7,7 @@ import { imageEditSessionCheck } from '../api/ImageEditSession';
 import { imageEditSubmissionOwner, reserveImageEditSubmission, recordImageEditReceipt, finishImageEditSubmission } from '../stores/ImageEditSubmissionJournal';
 
 export default function useImageEditSubmission({ card, onSave, onComplete, keepOpen = false }) {
+  const [stage, setStage] = useState('');
   const [busy, setBusy] = useState(false);
   const [comparison, setComparison] = useState({ active: false, result: null, error: '', retrySave: false });
   const running = useRef(false);
@@ -18,6 +19,7 @@ export default function useImageEditSubmission({ card, onSave, onComplete, keepO
     if (running.current) return;
     running.current = true;
     setBusy(true);
+    setStage('正在准备保存');
     setComparison((value) => ({ ...value, error: '' }));
     try {
       sessionCheck.current();
@@ -29,7 +31,7 @@ export default function useImageEditSubmission({ card, onSave, onComplete, keepO
         sessionCheck.current();
         const destination = await prepareImageEditDestination(onSave.destinationScope || onSave.scope, source.id);
         sessionCheck.current();
-        pending.current = { request, source, destination, owner };
+        pending.current = { request, source, destination, owner, outputSize: options?.outputSize };
       }
       const work = pending.current;
       if (work.uncertain) throw new Error('上次提交结果尚不明确，请先核查任务或资产库，避免重复生成');
@@ -44,15 +46,21 @@ export default function useImageEditSubmission({ card, onSave, onComplete, keepO
         }
         work.uncertain = true;
         if (work.request.file) {
+          setStage('正在上传图片');
           work.image = await uploadImageEditFile(work.request.file, { sourceAssetId: work.source.id, editMode: work.request.edit_mode });
         } else {
           work.accepted = await apiSubmitImageEdit(work.source, { ...work.request, business_context: work.destination });
+        }
+        if (work.image && work.outputSize) {
+          const hasSize = [work.image.width, work.image.height].every((value) => Number.isFinite(Number(value)) && Number(value) > 0);
+          if (!hasSize) work.image = { ...work.image, ...work.outputSize };
         }
         work.uncertain = false;
       }
       await recordImageEditReceipt(work.journal, { accepted: work.accepted, image: work.image });
       sessionCheck.current();
       setComparison((value) => ({ ...value, active: true }));
+      setStage('正在保存并更新');
       const result = await onSave.pending({ accepted: work.accepted, image: work.image, mode: work.request.edit_mode,
         destination: work.destination, sourceId: work.source.id });
       sessionCheck.current();
@@ -76,7 +84,8 @@ export default function useImageEditSubmission({ card, onSave, onComplete, keepO
     } finally {
       running.current = false;
       setBusy(false);
+      setStage('');
     }
   }
-  return { busy, submit, comparison };
+  return { busy, stage, submit, comparison };
 }

@@ -4,7 +4,7 @@ import { stripCanvasNodeRuntimeData } from './CanvasNodeActions.js';
 import { readCanvasResultDocument } from './CanvasResultDocument.js';
 const HISTORY_LIMIT = 50;
 const transient = new Set(['selected', 'measured', 'dragging', 'resizing', 'creationPanelOpen', 'editing',
-  'generating', 'generationPending', 'generationError', 'generationRequestId', 'dragRelease', 'dragScaleX', 'dragScaleY']);
+  'generating', 'generationPending', 'generationError', 'generationRequestId']);
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const clean = (value) => Object.fromEntries(Object.entries(value).filter(([key]) => !transient.has(key)));
 const resultFields = new Set(['nodeResults', 'content', 'asset']);

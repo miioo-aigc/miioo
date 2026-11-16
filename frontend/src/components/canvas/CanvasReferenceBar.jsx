@@ -31,7 +31,7 @@ export default function CanvasReferenceBar({ nodeType = 'image', references = []
       const textReference = reference.type === 'text';
       const label = textReference ? '参考文本' : frame ? reference.id && !isFrameImage(reference) ? '未参与' : reference.slot === 0 ? '首帧' : '尾帧' : '参考素材';
       const canInsert = Boolean(onInsert && insertableIds.includes(reference.id));
-      return <Tooltip key={reference.id || `empty-${reference.slot}`} label={reference.id ? reference.label || label : label} placement="top"><div className={'canvas-reference-bar__item' + (textReference ? ' canvas-reference-bar__item--text' : '')} onMouseEnter={() => setHovered(reference.id)} onMouseLeave={() => setHovered(null)} onFocus={() => setHovered(reference.id)} onBlur={() => setHovered(null)}>
+      return <Tooltip variant="canvas" key={reference.id || `empty-${reference.slot}`} label={reference.id ? reference.label || label : label} placement="top"><div className={'canvas-reference-bar__item' + (textReference ? ' canvas-reference-bar__item--text' : '')} onMouseEnter={() => setHovered(reference.id)} onMouseLeave={() => setHovered(null)} onFocus={() => setHovered(reference.id)} onBlur={() => setHovered(null)}>
         <div role={textReference ? 'img' : 'button'} tabIndex={canInsert ? 0 : -1} className={'canvas-reference-bar__slot' + (frame && reference.asset?.asset_type === 'video' ? ' canvas-reference-bar__slot--inactive-video' : '')}
           aria-label={'引用' + (reference.label || reference.asset?.name || label)} aria-disabled={!canInsert}
           onKeyDown={event => { if (event.target === event.currentTarget && canInsert && ['Enter', ' '].includes(event.key)) { event.preventDefault(); onInsert(reference.id); } }}

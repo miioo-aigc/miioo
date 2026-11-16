@@ -43,7 +43,7 @@ function EmptyIconShell({ children }) {
   );
 }
 
-function CreationEmptyIconImage() {
+export function CreationEmptyIconImage() {
   return (
     <EmptyIconShell>
       {/* 图片边框 */}

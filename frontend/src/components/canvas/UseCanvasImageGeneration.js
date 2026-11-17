@@ -11,12 +11,17 @@ import { applyCanvasImageResult, beginCanvasImageGeneration, getCanvasImageGener
 import { prepareCanvasMediaAsset } from './CanvasMediaSize';
 import { createCanvasTextRequests } from './CanvasTextRequests';
 import { createCanvasProgressHandler } from './CanvasGenerationProgress';
+import { dispatchCanvasAssetsChanged } from '../../utils/canvasAssetsEvents';
 
-export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, projectId, onMultiResultCommitted) {
+export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, projectId, creationSessionId, canvasId, onMultiResultCommitted) {
   const [requests] = useState(createCanvasTextRequests);
   useEffect(() => () => requests.abortAll(), [requests]);
   useEffect(() => { requests.reconcile(nodes); }, [nodes, requests]);
   return useCallback(async ({ nodeId, prompt, model, params = {}, onAccepted, onRejected }) => {
+    if (!creationSessionId) {
+      showGlobalToast('创作会话尚未加载，请稍后重试', 'error');
+      return;
+    }
     const systemSetNodes = (update, options = {}) => setNodes(update, { ...options, origin: 'system' });
     let plan;
     let controller;
@@ -53,7 +58,7 @@ export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, p
       }), { record: false });
       const imageReferences = sources.filter((source) => source.type === 'image').map((source) => source.asset);
       const referenceMaterials = sources.filter((source) => source.type === 'text' ? !plan.usesTextAsPrompt && source.content?.trim() : source.asset);
-      const result = await apiGenerateCreation({ ...plan.params, canvasPartialResults: true, genType: 'image', prompt: plan.prompt, model: plan.model, files: imageReferences, referenceMaterials, project_id: projectId }, {
+      const result = await apiGenerateCreation({ ...plan.params, canvasPartialResults: true, genType: 'image', prompt: plan.prompt, model: plan.model, files: imageReferences, referenceMaterials, project_id: projectId, session_id: creationSessionId }, {
         signal: controller.signal, onProgress: createCanvasProgressHandler(systemSetNodes, plan.requestId, controller.signal),
         onTaskCreated: ({ taskIds } = {}) => {
           if (!Array.isArray(taskIds) || taskIds.length === 0
@@ -70,7 +75,21 @@ export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, p
       if (!successCount) throw new Error('图片任务已结束，但没有返回可用的永久资产，请重试');
       const assets = await Promise.all(results.map((asset) => asset ? prepareCanvasMediaAsset(asset) : null));
       if (!controller.signal.aborted && session === getAuthSessionGeneration()) {
-        systemSetNodes((current) => applyCanvasImageResult(current, plan, assets), { record: false });
+        const committedAssetIds = new Set(getCanvasImageGenerationSummary(plan, assets).results
+          .map((result) => result.assetId)
+          .filter(Boolean));
+        let wroteResult = false;
+        const accepted = systemSetNodes((current) => {
+          const next = applyCanvasImageResult(current, plan, assets);
+          const target = next.find((node) => node.id === plan.nodeId);
+          const batch = target?.data?.nodeResults?.batches
+            ?.find((item) => item.id === plan.batchId);
+          wroteResult = committedAssetIds.size > 0
+            && [...committedAssetIds].every((assetId) => batch?.results
+              ?.some((result) => result.assetId === assetId));
+          return next;
+        }, { record: false });
+        if (accepted !== false && wroteResult) dispatchCanvasAssetsChanged(canvasId);
         onAccepted?.();
         if (successCount < plan.requestedCount) showGlobalToast(`本次成功生成 ${successCount} / ${plan.requestedCount} 张图片`, 'warning');
         // 只把「本次一次生成多张」的通知交给宿主；宿主只保留到用户查看或刷新为止。
@@ -85,5 +104,5 @@ export function useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, p
     } finally {
       requests.finish(plan.requestId);
     }
-  }, [cancelPendingClicks, nodes, onMultiResultCommitted, projectId, requests, setNodes]);
+  }, [cancelPendingClicks, canvasId, creationSessionId, nodes, onMultiResultCommitted, projectId, requests, setNodes]);
 }

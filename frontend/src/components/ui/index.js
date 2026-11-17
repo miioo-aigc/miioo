@@ -15,7 +15,7 @@ export { default as Tabs } from './Tabs';
 export { default as Tooltip } from './Tooltip';
 export { ModelIcon } from './ModelIcon';
 export { ReferenceModeIcon } from './ReferenceModeIcon';
-export { FavoriteIcon, DeleteIcon } from './ActionIcons';
+export { FavoriteIcon, DeleteIcon, AddToCanvasIcon } from './ActionIcons';
 export { CropIcon, RotateCounterClockwiseIcon, RotateClockwiseIcon, FlipHorizontalIcon, FlipVerticalIcon, OriginalRatioIcon, CustomRatioIcon } from './ImageEditIcons';
 export { RatioIcon } from './RatioIcon';
 export { EditFilmIcon, EditExportIcon } from './EditIcons';

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiReadCanvasLibraryProjects } from '../../api/CanvasLibraryProjects';
 import { apiGetCurrentUser } from '../../api/user';
 import { getAuthSessionGeneration } from '../../api/request';
+import { removeCanvasLibraryCollection, removeCanvasLibraryProject } from '../../utils/CanvasLibraryProjects';
 import { readCollectionMemory, saveCollectionMemory } from './UseCanvasCollections';
 
 export default function useCanvasLibraryProjects() {
@@ -36,5 +37,21 @@ export default function useCanvasLibraryProjects() {
     saveCollectionMemory(state.owner, id);
     setState(old => ({ ...old, selectedId: target.id, collectionId: id }));
   };
-  return { ...state, project, collection: project?.canvases.find(item => item.id === state.collectionId), selectCanvas, refresh };
+  const forgetProject = useCallback((projectId) => {
+    setState((old) => {
+      const next = removeCanvasLibraryProject(old, projectId);
+      if (next.collectionId !== old.collectionId) saveCollectionMemory(next.owner, next.collectionId);
+      return next;
+    });
+  }, []);
+  const forgetCollection = useCallback((collectionId) => {
+    setState((old) => {
+      const next = removeCanvasLibraryCollection(old, collectionId);
+      if (next.collectionId !== old.collectionId) saveCollectionMemory(next.owner, next.collectionId);
+      return next;
+    });
+    // 本地切换先卸载旧目录，再用服务端结果校准侧栏；两步在同一轮交互中完成。
+    setEpoch(value => value + 1);
+  }, []);
+  return { ...state, project, collection: project?.canvases.find(item => item.id === state.collectionId), selectCanvas, forgetProject, forgetCollection, refresh };
 }

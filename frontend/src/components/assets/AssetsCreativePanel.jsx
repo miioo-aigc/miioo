@@ -286,11 +286,11 @@ function AccountCreativePanel({ isLoggedIn, ownerId }) {
     const pageSize = calcCreativePageSize();
 
     try {
-      // 资产库不传 exclude_hidden；只重试读取，不创建或删除资产。
+      // 资产库只按创作产物过滤，不传 exclude_hidden；只重试读取，不创建或删除资产。
       const listApi = tab === 'image' ? apiListCreationImages
         : tab === 'video' ? apiListCreationVideos : apiListCreationAudios;
       const resp = await readCreationHistoryPage(
-        (signal) => listApi({ page: nextPage, page_size: pageSize }, { signal }),
+        (signal) => listApi({ page: nextPage, page_size: pageSize, creation_only: true }, { signal }),
         { signal: request.signal },
       );
 

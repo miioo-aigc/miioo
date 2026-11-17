@@ -15,7 +15,7 @@ export default function CanvasAssetLibraryPanel() {
     <CanvasCollectionSidebar library={library} busy={library.loading || projectActions.busy} onAction={projectActions.open} />
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {library.error ? <CanvasLibraryReadError busy={library.loading} onRetry={() => library.refresh()} />
-        : library.collection ? <CanvasLibraryContents key={library.collection.id} collection={library.collection} />
+        : library.collection ? <CanvasLibraryContents key={library.collection.id} collection={library.collection} onCollectionUnavailable={library.forgetCollection} />
           : <div role="status" className="absolute inset-0 flex flex-col items-center justify-center gap-[12px] px-[24px] text-center text-[14px] text-text-secondary">
             {library.loading ? <DotsLoading size={5} color="#2DC3E1" gap={4} /> : <><EmptyAssetState /><p>暂无画布资产，请先创建画布项目</p></>}
           </div>}

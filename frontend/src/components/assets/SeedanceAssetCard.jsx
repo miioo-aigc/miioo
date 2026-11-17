@@ -96,6 +96,8 @@ const SeedanceAssetCard = memo(function SeedanceAssetCard({
   showActions = true,
   showSelection = false,
   width = '242px',
+  height = '160px',
+  aspectRatio,
 }) {
   const [generatedPoster, setGeneratedPoster] = useState(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -131,7 +133,7 @@ const SeedanceAssetCard = memo(function SeedanceAssetCard({
 
   return (
     <div
-      style={{ width, height: '160px', maxWidth: '100%', flex: width === '100%' ? '1 1 auto' : `0 0 ${width}`, minWidth: 0, borderRadius: '8px', position: 'relative', overflow: 'hidden', cursor: disabled ? 'not-allowed' : canPreview || onClick ? 'pointer' : 'default', boxSizing: 'border-box', background: '#1A1A1A', opacity: disabled ? 0.6 : 1 }}
+      style={{ width, height: aspectRatio ? undefined : height, aspectRatio, maxWidth: '100%', flex: width === '100%' ? '1 1 auto' : `0 0 ${width}`, minWidth: 0, borderRadius: '8px', position: 'relative', overflow: 'hidden', cursor: disabled ? 'not-allowed' : canPreview || onClick ? 'pointer' : 'default', boxSizing: 'border-box', background: '#1A1A1A', opacity: disabled ? 0.6 : 1 }}
       title={asset.name || undefined}
       onClick={handleClick}
       onMouseEnter={() => setIsHovered(true)}

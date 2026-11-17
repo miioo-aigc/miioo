@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createCanvasAssetLibraryDevelopment } from '../src/api/CanvasAssetLibraryDevelopment.js';
-import { canvasLibraryAudioUrl, canvasLibrarySelectLoaded, canvasLibraryToggleSelection } from '../src/components/assets/CanvasLibraryItems.js';
+import { canvasLibraryVisiblePage } from '../src/api/CanvasLibraryPresetFolders.js';
+import { canvasLibraryAudioUrl, canvasLibraryDeletionInvalidatesCollection, canvasLibraryDeletionNavigation, canvasLibraryRemoveItems, canvasLibrarySelectLoaded, canvasLibraryToggleSelection } from '../src/components/assets/CanvasLibraryItems.js';
 
 test('画布资产侧栏使用仅画布集合接口，不读取混合项目集合', () => {
   const api = readFileSync(new URL('../src/api/CanvasAssetLibrary.js', import.meta.url), 'utf8');
@@ -47,6 +48,66 @@ test('资产库不提供手动添加素材或引用入口', () => {
   assert.doesNotMatch(api, /async upload\(|\/uploads/);
 });
 
+test('删除命中当前目录时回到最近有效祖先，删除子项时保留当前目录', () => {
+  const root = { id: 'root', name: '项目' };
+  const parent = { id: 'parent', name: '父目录' };
+  const current = { id: 'current', name: '当前目录', ancestors: [root, parent] };
+  const folderItem = (id) => ({ type: 'folder', id });
+
+  assert.deepEqual(
+    canvasLibraryDeletionNavigation(current, current.id, root.id, [folderItem(current.id)]),
+    { pathAffected: true, destinationId: parent.id },
+  );
+  assert.deepEqual(
+    canvasLibraryDeletionNavigation(current, current.id, root.id, [folderItem(parent.id)]),
+    { pathAffected: true, destinationId: root.id },
+  );
+  assert.deepEqual(
+    canvasLibraryDeletionNavigation(current, current.id, root.id, [folderItem(root.id)]),
+    { pathAffected: true, destinationId: null },
+  );
+  assert.deepEqual(
+    canvasLibraryDeletionNavigation(current, current.id, root.id, [folderItem('sibling')]),
+    { pathAffected: false, destinationId: null },
+  );
+  assert.deepEqual(
+    canvasLibraryDeletionNavigation(current, current.id, root.id, [{ type: 'entry', id: 'image' }]),
+    { pathAffected: false, destinationId: null },
+  );
+});
+
+test('删除普通素材或子文件夹时只移除已提交条目', () => {
+  const loaded = [
+    { type: 'folder', id: 'folder-a' },
+    { type: 'entry', id: 'image-a' },
+    { type: 'entry', id: 'audio-a' },
+  ];
+  assert.deepEqual(
+    canvasLibraryRemoveItems(loaded, [{ type: 'folder', id: 'folder-a' }, { type: 'entry', id: 'image-a' }]),
+    [{ type: 'entry', id: 'audio-a' }],
+  );
+  assert.equal(canvasLibraryRemoveItems(loaded, []), loaded);
+});
+
+test('只有集合删除失败才允许移除当前画布，普通素材删除失败保留当前选择', () => {
+  const collectionNotFound = { code: 'COLLECTION_NOT_FOUND' };
+  assert.equal(canvasLibraryDeletionInvalidatesCollection(collectionNotFound, [{ type: 'entry', id: 'image' }]), false);
+  assert.equal(canvasLibraryDeletionInvalidatesCollection(collectionNotFound, [{ type: 'folder', id: 'folder' }]), false);
+  assert.equal(canvasLibraryDeletionInvalidatesCollection(collectionNotFound, [{ type: 'collection', id: 'canvas' }]), true);
+  assert.equal(canvasLibraryDeletionInvalidatesCollection({ code: 'ASSET_UNAVAILABLE' }, [{ type: 'collection', id: 'canvas' }]), false);
+});
+
+test('删除提交关闭自动重载，成功后就地移除或按删除范围导航', () => {
+  const contents = readFileSync(new URL('../src/components/assets/CanvasLibraryContents.jsx', import.meta.url), 'utf8');
+  assert.match(contents, /api\.commit\(\{ preview_token: target\.preview_token \}\)/);
+  assert.match(contents, /\}, \{ reload: false \}\);/);
+  assert.match(contents, /canvasLibraryDeletionNavigation\(folder, parentId/);
+  assert.match(contents, /if \(!next\.pathAffected\) \{ removeItems\(target\.selection\); return; \}/);
+  assert.match(contents, /canvasLibraryDeletionInvalidatesCollection\(commitError, target\.selection\)/);
+  assert.match(contents, /onCollectionUnavailable\?\.\(collection\.id\)/);
+  assert.match(contents, /if \(next\.destinationId\) navigate\(next\.destinationId\)/);
+});
+
 const setup = (t) => {
   const api = createCanvasAssetLibraryDevelopment();
   t.after(() => api.dispose());
@@ -55,10 +116,27 @@ const setup = (t) => {
 const upload = (api, folder) => api.seedAsset(new File(['image'], '角色.png', { type: 'image/png' }), folder.id);
 const remove = async (api, item) => api.commit(await api.preview({ selection: [item] }));
 const root = (api, name) => {
-  const item = api.seedCollection({ name, defaults: false });
+  const item = api.seedCollection({ name });
   return { id: item.root_folder_id, collection_id: item.id, type: 'folder' };
 };
 const list = async (api, folder, params = {}) => api.list({ collection_id: folder.collection_id, parent_id: folder.id, ...params });
+
+test('画布资产按稳定分类编号隐藏系统预设目录，不误伤同名普通目录', () => {
+  const presetFolders = ['role', 'scene', 'prop', 'storyboard', 'audio'].map((category_key) => ({
+    type: 'folder', id: category_key, category_key,
+  }));
+  const visibleItems = [
+    { type: 'folder', id: 'custom-role', name: '角色', category_key: null },
+    { type: 'folder', id: 'custom-audio', name: '音频' },
+    { type: 'entry', id: 'image-1', asset: { id: 'asset-1', media_type: 'image' } },
+  ];
+  const page = canvasLibraryVisiblePage({
+    items: [...presetFolders, ...visibleItems],
+    next_cursor: 'next',
+  });
+  assert.deepEqual(page.items, visibleItems);
+  assert.equal(page.next_cursor, 'next');
+});
 
 test('详情和收藏使用真实素材编号，收藏结果可重新读取', async (t) => {
   const api = setup(t);
@@ -152,14 +230,15 @@ test('原生素材测试数据仅允许图片视频音频', async (t) => {
   await assert.rejects(api.seedAsset(new File(['text'], '文本.txt', { type: 'text/plain' }), a.id), { code: 'UNSUPPORTED_MEDIA_TYPE' });
 });
 
-test('集合倒序分页、默认类型目录可删改、复制集合素材独立', async (t) => {
+test('集合倒序分页、新集合不带预设目录、普通目录可删改、复制素材独立', async (t) => {
   const api = setup(t);
   const a = api.seedCollection({ name: '甲' });
   const b = api.seedCollection({ name: '乙' });
   const page = await api.collections({ limit: 1 });
   assert.equal(page.items[0].id, b.id);
   assert.equal((await api.collections({ cursor: page.next_cursor })).items[0].id, a.id);
-  const directory = (await api.list({ collection_id: a.id, parent_id: a.root_folder_id })).items[0];
+  assert.deepEqual((await api.list({ collection_id: a.id, parent_id: a.root_folder_id })).items, []);
+  const directory = await api.create({ name: '角色', parent_id: a.root_folder_id });
   await api.rename({ ...directory, name: '人物' });
   await remove(api, directory);
   const original = await upload(api, { id: a.root_folder_id });

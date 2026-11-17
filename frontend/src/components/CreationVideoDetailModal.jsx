@@ -35,7 +35,7 @@ import { apiGetLiveMaterialPreviewByRef } from '../api/liveMaterials';
 import { showGlobalToast } from '../stores/toastStore';
 import CopyPromptButton from './ui/CopyPromptButton';
 import { DeleteIcon, FavoriteIcon, Tooltip } from './ui';
-import { Plus } from 'lucide-react';
+import { AddToCanvasButton } from './actions';
 import VideoPlaybackControls from './ui/VideoPlaybackControls';
 import MediaVideoPlayerBar from './ui/MediaVideoPlayerBar';
 import VideoUpscaleModal from './video-edit/VideoUpscaleModal';
@@ -405,9 +405,9 @@ export default function CreationVideoDetailModal({
 
           {/* Right: params panel */}
           <div className="w-[340px] flex flex-col min-h-0 h-full shrink-0 bg-[#161616] border-l border-l-solid border-l-[#FFFFFF0F]">
-            <div className="flex items-center justify-between shrink-0 py-[12px] px-[20px] bg-[#161616] border-b border-b-solid border-b-[#FFFFFF0A]">
+            {!historyMode && <div className="flex items-center justify-between shrink-0 py-[12px] px-[20px] bg-[#161616] border-b border-b-solid border-b-[#FFFFFF0A]">
               <div className="flex items-center gap-[8px]">
-                {historyMode ? <button type="button" aria-label="添加到画布" title="添加到画布" onClick={onAddToCanvas} className="flex size-[32px] items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-white-80 hover:bg-white-10"><Plus size={16} /></button> : <PanelAction
+                <PanelAction
                   label="收藏"
                   active={favorited}
                   onClick={() => {
@@ -420,11 +420,11 @@ export default function CreationVideoDetailModal({
                       <FavoriteIcon filled={favorited} />
                     </div>
                   )}
-                />}
-                {!historyMode && <PanelAction label="下载" onClick={onDownload} icon={<DownloadIcon />} />}
+                />
+                <PanelAction label="下载" onClick={onDownload} icon={<DownloadIcon />} />
               </div>
-              {!historyMode && <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon size={14} />} />}
-            </div>
+              <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon size={14} />} />
+            </div>}
 
             {/* Scrollable content area */}
             <div className="flex-1 overflow-y-auto min-h-0">
@@ -638,6 +638,15 @@ export default function CreationVideoDetailModal({
 
               <div className="h-px shrink-0 bg-[#FFFFFF0A] my-0 mx-[20px]" />
             </div>
+
+            {historyMode && <div
+              style={{
+                display: 'flex', justifyContent: 'flex-end', flexShrink: 0,
+                padding: '16px 20px', borderTop: '1px solid #FFFFFF0A', backgroundColor: '#161616',
+              }}
+            >
+              <AddToCanvasButton onClick={onAddToCanvas} />
+            </div>}
 
             {!historyMode && <div
               style={{

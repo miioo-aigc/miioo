@@ -10,9 +10,14 @@ import AssetFolderGrid from './AssetFolderGrid';
 import useCanvasDragPreview from './UseCanvasDragPreview';
 import { canvasLibraryItemKey, canvasLibraryMedia, canvasLibraryAudioUrl, canvasLibraryDragType, canvasLibraryDrop } from './CanvasLibraryItems';
 
+const CREATIVE_CARD_MIN_WIDTH = 240;
+const CREATIVE_CARD_ASPECT_RATIO = '16 / 9';
+
 /** 卡片、选择与拖放展示；所有写入经上层串行执行。
  * 2026-11-02：松手后卡片缩小飞入目标，末段淡出，失败恢复原卡片。
  * 2026-11-02：拖入文件夹复用悬停动画，拖离、放下及取消后清理。
+ * 2026-11-17：音频卡由卡片本体直接发起拖动，覆盖区域与图片、视频卡保持一致。
+ * 2026-11-17：新增文件夹、文件夹及媒体卡统一为创作资产网格的列宽与 16:9 比例。
  */
 export default function CanvasLibraryGrid({ collectionId, parentId, items, selected, batch, busy, onSelect, onOpen, onCreate, onRename, onDelete, onMove, onDestination, onDownload, pickerMode = false, isSelectionDisabled = () => false }) {
   const dragPreview = useCanvasDragPreview();
@@ -77,8 +82,8 @@ export default function CanvasLibraryGrid({ collectionId, parentId, items, selec
     };
   }, []);
 
-  return <AssetFolderGrid>
-    {!pickerMode && <AddVirtualGroupCard label="新增文件夹" onClick={() => !busy && onCreate()} />}
+  return <AssetFolderGrid minCardWidth={CREATIVE_CARD_MIN_WIDTH} maxCardWidth={Number.POSITIVE_INFINITY}>
+    {!pickerMode && <AddVirtualGroupCard label="新增文件夹" maxWidth="none" aspectRatio={CREATIVE_CARD_ASPECT_RATIO} onClick={() => !busy && onCreate()} />}
     {items.map((item) => {
       const key = canvasLibraryItemKey(item);
       const folder = item.type === 'folder';
@@ -86,8 +91,19 @@ export default function CanvasLibraryGrid({ collectionId, parentId, items, selec
       const media = canvasLibraryMedia(item);
       const audio = media.asset_type === 'audio' || media.asset_type?.startsWith('audio/');
       const disabled = busy || (!folder && isSelectionDisabled(item));
+      const canDrag = !pickerMode && !busy && !locked;
       const select = () => { if (!disabled) onSelect(key); };
       const open = () => { if (!busy) { if (pickerMode && folder) onOpen(item); else if (batch) select(); else onOpen(item); } };
+      const startDrag = (event) => {
+        if (!canDrag) { event.preventDefault(); return; }
+        const scope = selected.has(key) ? items.filter((entry) => selected.has(canvasLibraryItemKey(entry))) : [item];
+        if (scope.some((entry) => entry.kind === 'project')) { event.preventDefault(); return; }
+        draggedKeys.current = new Set(scope.map(canvasLibraryItemKey));
+        setDragOverKey(null);
+        dragPreview.start(event);
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData(canvasLibraryDragType, JSON.stringify(scope.map((entry) => ({ type: entry.type, id: entry.id, collection_id: collectionId, source_folder_id: parentId, base_revision: entry.revision }))));
+      };
       const handleDragOver = folder && !busy && !pickerMode ? (event) => {
         if (!Array.from(event.dataTransfer.types).includes(canvasLibraryDragType)) return;
         event.preventDefault();
@@ -103,16 +119,7 @@ export default function CanvasLibraryGrid({ collectionId, parentId, items, selec
           <CreationCardActionButton icon={<Trash2 size={16} />} tooltip="删除" disabled={busy} onClick={() => onDelete([item])} />
         </div>
       ) : null;
-      return <div key={key} ref={(node) => { if (node) cardNodes.current.set(key, node); else cardNodes.current.delete(key); }} className={`group/library-card relative min-w-0 self-start ${folder ? 'max-w-[270px]' : ''}`} draggable={!pickerMode && !busy && !locked} onDragStart={(event) => {
-        if (pickerMode || busy || locked) { event.preventDefault(); return; }
-        const scope = selected.has(key) ? items.filter((entry) => selected.has(canvasLibraryItemKey(entry))) : [item];
-        if (scope.some((entry) => entry.kind === 'project')) { event.preventDefault(); return; }
-        draggedKeys.current = new Set(scope.map(canvasLibraryItemKey));
-        setDragOverKey(null);
-        dragPreview.start(event);
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData(canvasLibraryDragType, JSON.stringify(scope.map((entry) => ({ type: entry.type, id: entry.id, collection_id: collectionId, source_folder_id: parentId, base_revision: entry.revision }))));
-      }} onDragEnter={handleDragOver} onDragOver={handleDragOver} onDragLeave={folder ? (event) => {
+      return <div key={key} ref={(node) => { if (node) cardNodes.current.set(key, node); else cardNodes.current.delete(key); }} className="group/library-card relative min-w-0 self-start" draggable={canDrag && !audio} onDragStart={audio ? undefined : startDrag} onDragEnter={handleDragOver} onDragOver={handleDragOver} onDragLeave={folder ? (event) => {
         if (event.currentTarget.contains(event.relatedTarget)) return;
         setDragOverKey((current) => current === key ? null : current);
         dragPreview.scale(false);
@@ -123,7 +130,7 @@ export default function CanvasLibraryGrid({ collectionId, parentId, items, selec
         canvasLibraryDrop(event, moveWithAnimation, item.id);
       } : undefined}>
         {folder ? (
-          <SeedanceFolderCard dragHovered={flightTarget === key || (!busy && dragOverKey === key)} name={item.name} count={item.count} images={item.images || []} disabled={busy} editLabel="重命名" onEdit={!pickerMode && !batch && !locked ? () => onRename(item) : undefined} onMove={!pickerMode && !batch && !locked ? () => onDestination([item]) : undefined} onDelete={!pickerMode && !batch ? () => onDelete([item]) : undefined} onOpen={open} />
+          <SeedanceFolderCard maxWidth="none" aspectRatio={CREATIVE_CARD_ASPECT_RATIO} dragHovered={flightTarget === key || (!busy && dragOverKey === key)} name={item.name} count={item.count} images={item.images || []} disabled={busy} editLabel="重命名" onEdit={!pickerMode && !batch && !locked ? () => onRename(item) : undefined} onMove={!pickerMode && !batch && !locked ? () => onDestination([item]) : undefined} onDelete={!pickerMode && !batch ? () => onDelete([item]) : undefined} onOpen={open} />
         ) : audio ? (
           <CreationAudioResultCard
             id={key} playbackKey={`canvas-library:${collectionId}:${key}`} status="done"
@@ -131,10 +138,11 @@ export default function CanvasLibraryGrid({ collectionId, parentId, items, selec
             onCardClick={open} batchMode={batch} isSelected={selected.has(key)}
             onToggleSelect={select} selectionDisabled={disabled}
             selectionCheckboxPosition="left" showSelection={false} showFavorite={false}
-            actions={actions} height="160px" overlayActions fillWaveform
+            actions={actions} overlayActions fillWaveform
+            cardDraggable={canDrag} onCardDragStart={startDrag}
           />
         ) : (
-          <SeedanceAssetCard asset={media} width="100%" showActions={false} selected={selected.has(key)} disabled={disabled} onClick={open} />
+          <SeedanceAssetCard asset={media} width="100%" aspectRatio={CREATIVE_CARD_ASPECT_RATIO} showActions={false} selected={selected.has(key)} disabled={disabled} onClick={open} />
         )}
         {batch && (!pickerMode || !folder) && (
           <div className={`absolute z-[4] ${folder ? 'left-[24px] top-[12px]' : 'left-[8px] top-[8px]'}`}>

@@ -615,12 +615,12 @@ export async function apiGetCreationImage(imageId, { signal } = {}) {
  * 保存创作图片的基础裁剪结果。服务端会保留原资产，并创建新的编辑结果资产。
  * crop 坐标均为相对于原图的 0 到 1 比例值。
  */
-export async function apiBasicEditCreationImage(imageId, { operations = ['crop'], crop, signal } = {}) {
+export async function apiBasicEditCreationImage(imageId, { operations = ['crop'], crop, canvasId, signal } = {}) {
   if (!imageId) throw new Error('缺少创作图片 ID');
   const res = await authFetch(`${BASE}/api/creation/images/${encodeURIComponent(imageId)}/basic-edit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ operations, crop }),
+    body: JSON.stringify({ operations, crop, ...(canvasId ? { canvas_id: canvasId } : {}) }),
     signal,
   });
   if (!res.ok) await throwResponseError(res, `保存图片编辑结果失败（${res.status}）`);
@@ -747,11 +747,12 @@ export async function apiDownloadCreationImage(imageId, { onProgress } = {}) {
 
 // ── 创作视频 ──────────────────────────────────────────────────────────────────
 
-export async function apiListCreationVideos({ page, page_size, exclude_hidden } = {}, { signal } = {}) {
+export async function apiListCreationVideos({ page, page_size, exclude_hidden, creation_only } = {}, { signal } = {}) {
   const params = new URLSearchParams();
   if (page !== undefined) params.append('page', page);
   if (page_size !== undefined) params.append('page_size', page_size);
   if (exclude_hidden !== undefined) params.append('exclude_hidden', exclude_hidden);
+  if (creation_only !== undefined) params.append('creation_only', creation_only);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/videos?${query}` : `${BASE}/api/creation/videos`;
   const res = await authFetch(url, { signal, headers: { 'Content-Type': 'application/json' } });
@@ -906,13 +907,14 @@ export async function apiGenerateShotAudio(shotId, data) {
   return res.json();
 }
 
-export async function apiListCreationAudios({ page, page_size, is_favorite, search, exclude_hidden } = {}, { signal } = {}) {
+export async function apiListCreationAudios({ page, page_size, is_favorite, search, exclude_hidden, creation_only } = {}, { signal } = {}) {
   const params = new URLSearchParams();
   if (page !== undefined) params.append('page', page);
   if (page_size !== undefined) params.append('page_size', page_size);
   if (is_favorite !== undefined) params.append('is_favorite', is_favorite);
   if (search) params.append('search', search);
   if (exclude_hidden !== undefined) params.append('exclude_hidden', exclude_hidden);
+  if (creation_only !== undefined) params.append('creation_only', creation_only);
   const query = params.toString();
   const url = query ? `${BASE}/api/creation/audios?${query}` : `${BASE}/api/creation/audios`;
   const res = await authFetch(url, { signal, headers: { 'Content-Type': 'application/json' } });

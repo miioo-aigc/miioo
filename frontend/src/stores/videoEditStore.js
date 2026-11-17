@@ -66,7 +66,13 @@ export async function runVideoEdit(source, options, onStarted) {
           videoEditPayload(options);
           pending.current = {
             options, ownerId: useVideoEditStore.getState().ownerId,
-            source: { asset_id: validateSourceAsset(source), model: source.model, ratio: source.ratio, resolution: source.resolution },
+            source: {
+              asset_id: validateSourceAsset(source),
+              canvas_id: source.canvas_id,
+              model: source.model,
+              ratio: source.ratio,
+              resolution: source.resolution,
+            },
           };
         }
       }
@@ -91,7 +97,10 @@ export async function runVideoEdit(source, options, onStarted) {
       if (!work.accepted) {
         work.uncertain = true;
         remember(storageKey, work);
-        work.accepted = await submitVideoEdit(source, work.options);
+        work.accepted = await submitVideoEdit(work.source, {
+          ...work.options,
+          canvas_id: work.source.canvas_id,
+        });
         work.uncertain = false;
         remember(storageKey, work);
       }

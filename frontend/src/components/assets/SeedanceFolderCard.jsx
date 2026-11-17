@@ -129,7 +129,21 @@ function getPreviewTransform(index, previewCount, isHovered) {
   return `translate(${translateX}px, ${translateY}px) rotate(${rotate}deg)`;
 }
 
-export default function SeedanceFolderCard({ name, count = 0, images = [], onOpen, onEdit, onMove, onDelete, disabled = false, editLabel = '重命名', presentationOnly = false, dragHovered = false }) {
+export default function SeedanceFolderCard({
+  name,
+  count = 0,
+  images = [],
+  onOpen,
+  onEdit,
+  onMove,
+  onDelete,
+  disabled = false,
+  editLabel = '重命名',
+  presentationOnly = false,
+  dragHovered = false,
+  maxWidth = '270px',
+  aspectRatio = '3 / 2',
+}) {
   const previews = images.slice(0, 2);
   const canManage = Boolean(onEdit || onMove || onDelete);
   const actionWidth = [onEdit, onMove, onDelete].filter(Boolean).length * 30;
@@ -158,7 +172,7 @@ export default function SeedanceFolderCard({ name, count = 0, images = [], onOpe
   }, [animationHovered]);
 
   return (
-    <article className="group aspect-[3/2] w-full min-w-0 max-w-[270px] min-h-0 cursor-pointer" role={presentationOnly ? undefined : 'button'} tabIndex={presentationOnly ? undefined : 0} style={{ fontFamily: FONT }} onClick={presentationOnly ? undefined : onOpen} onKeyDown={presentationOnly ? undefined : (event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen?.(); } }} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} onFocus={() => setIsHovered(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsHovered(false); }}>
+    <article className="group w-full min-w-0 min-h-0 cursor-pointer" role={presentationOnly ? undefined : 'button'} tabIndex={presentationOnly ? undefined : 0} style={{ fontFamily: FONT, maxWidth, aspectRatio }} onClick={presentationOnly ? undefined : onOpen} onKeyDown={presentationOnly ? undefined : (event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen?.(); } }} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} onFocus={() => setIsHovered(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsHovered(false); }}>
       <div className="relative h-full w-full overflow-hidden">
         <BackFolder id={instanceId} />
         {previews.length > 1 ? (

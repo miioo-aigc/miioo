@@ -92,7 +92,10 @@ export default function useCanvasCollectionActions(library) {
     const current = dialog;
     try {
       if (current.kind === 'rename') { await api.renameCollection(current.item.id, { name: name.trim(), base_revision: current.item.revision }); library.refresh(); }
-      else if (current.kind === 'delete') { await api.commit({ preview_token: current.preview.preview_token }); library.refresh(); }
+      else if (current.kind === 'delete') {
+        await api.commit({ preview_token: current.preview.preview_token });
+        library.forgetCollection(current.item.id);
+      }
       else settle(await api.downloadCollection(current.item.id, { preview_token: current.preview.preview_token, allow_partial: true }), 'download');
       setDialog(null);
     } catch (cause) {

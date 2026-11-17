@@ -11,6 +11,7 @@ import { uploadCanvasAsset } from '../../api/canvasAssets';
 import { apiGetCanvasDocument } from '../../api/canvas';
 import { getAuthSessionGeneration } from '../../api/request';
 import { showGlobalToast } from '../../stores/toastStore';
+import { dispatchCanvasAssetsChanged } from '../../utils/canvasAssetsEvents';
 
 export function useCanvasImageEdits({ nodes, setNodes, canvasId, cancelPendingClicks }) {
   const ownerId = useCreationStore((state) => state.ownerId);
@@ -79,6 +80,7 @@ export function useCanvasImageEdits({ nodes, setNodes, canvasId, cancelPendingCl
     // 继续使用源资产的真实创作归属，不把画布编号伪装成创作会话。
     const onSave = Object.assign(() => {}, {
       scope,
+      canvasId,
       destinationScope: imageEditBusinessScope(scope),
       pending: async (pending) => {
         checkContext();
@@ -110,6 +112,7 @@ export function useCanvasImageEdits({ nodes, setNodes, canvasId, cancelPendingCl
               return next;
             }, { origin: 'system' });
             if (!committed || accepted === false) throw new Error('编辑结果未写回：源节点已删除、结果已变化或受到任务保护');
+            dispatchCanvasAssetsChanged(canvasId);
           } else {
             throw new Error('画布已切换，编辑结果未写回');
           }

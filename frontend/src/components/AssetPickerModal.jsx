@@ -1164,7 +1164,7 @@ function AccountAssetPickerModal({
         : type === 'video'
           ? apiListCreationVideos
           : apiListCreationAudios;
-      const resp = await listApi({ page, page_size: CREATIVE_PAGE_SIZE });
+      const resp = await listApi({ page, page_size: CREATIVE_PAGE_SIZE, creation_only: true });
       if (!isCurrent()) return;
 
       const list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);

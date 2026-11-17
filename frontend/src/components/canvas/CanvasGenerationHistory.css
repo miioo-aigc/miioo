@@ -18,14 +18,15 @@
 .canvas-generation-history__day h3 { margin: 8px 0 14px; color: #FFFFFF99; font-family: 'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif; font-size: 13px; font-weight: 400; line-height: 18px; }
 .canvas-generation-history__grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(175px,1fr)); gap: 16px; }
 .canvas-generation-history__card { position: relative; aspect-ratio: 1 / 1; overflow: hidden; border: 1px solid #FFFFFF14; border-radius: 10px; background: #1A1A1A; cursor: pointer; }
+.canvas-generation-history__card.is-unavailable { cursor: default; }
 .canvas-generation-history__card > img,.canvas-generation-history__card > video { width: 100%; height: 100%; object-fit: cover; }
-.canvas-generation-history__audio { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #FFFFFF99; background: radial-gradient(circle at 50% 45%,rgba(45,195,225,.18),transparent 62%),#1A1A1A; }
-.canvas-generation-history__audio span:first-child { color: #2DC3E1; font-size: 44px; }
-.canvas-generation-history__type { position: absolute; left: 8px; bottom: 8px; padding: 3px 7px; border-radius: 5px; background: rgba(0,0,0,.55); color: white; font-family: 'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif; font-size: 11px; }
-.canvas-generation-history__actions { position: absolute; inset: 0 0 auto; display: flex; justify-content: flex-end; gap: 4px; padding: 8px; opacity: 0; background: linear-gradient(rgba(0,0,0,.56),transparent); transition: opacity .14s; }
+.canvas-generation-history__unavailable { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; padding: 24px; color: #FFFFFF66; background: repeating-linear-gradient(135deg,#1A1A1A,#1A1A1A 10px,#1D1D1D 10px,#1D1D1D 20px); font-family: 'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif; font-size: 13px; line-height: 18px; text-align: center; }
+.canvas-generation-history__audio { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; color: #FFFFFF66; background: var(--color-surface-card); }
+.canvas-generation-history__actions { position: absolute; inset: auto 0 0; display: flex; min-height: 72px; align-items: flex-end; justify-content: flex-end; gap: 4px; padding: 8px; opacity: 0; background: linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,.32) 48%,transparent); transition: opacity .14s; }
 .canvas-generation-history__card:hover .canvas-generation-history__actions,.canvas-generation-history__card:focus-within .canvas-generation-history__actions { opacity: 1; }
 .canvas-generation-history__actions button { display: flex; width: 24px; height: 24px; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: #00000080; color: #FFFFFFCC; cursor: pointer; transition: background-color .15s; }
 .canvas-generation-history__actions button:hover { background: #000000B3; }
 .canvas-generation-history__actions button:disabled { opacity: .5; cursor: progress; }
+.canvas-generation-history__more { display: flex; min-height: 64px; align-items: center; justify-content: center; gap: 12px; padding-top: 16px; color: #FFFFFF99; font-size: 13px; line-height: 18px; }
 @media (max-width: 640px) { .canvas-generation-history__overlay { padding: 10px; } .canvas-generation-history { width: calc(100vw - 20px); height: calc(100vh - 20px); } .canvas-generation-history__controls { align-items: flex-start; flex-wrap: wrap; } .canvas-generation-history__grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 .canvas-generation-history__empty > img { display: block; width: 48px; height: 48px; opacity: 0.5; transform: translateX(2px); }

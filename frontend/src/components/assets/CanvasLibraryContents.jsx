@@ -8,15 +8,16 @@ import AssetsBatchToolbar from './AssetsBatchToolbar';
 import CanvasLibraryGrid from './CanvasLibraryGrid';
 import CanvasLibraryReadError from './CanvasLibraryReadError';
 import DotsLoading from '../DotsLoading';
-import { canvasLibraryItemKey, canvasLibraryToggleSelection, canvasLibrarySelectLoaded, canvasLibraryDrop, canvasLibraryPath } from './CanvasLibraryItems';
+import { canvasLibraryItemKey, canvasLibraryToggleSelection, canvasLibrarySelectLoaded, canvasLibraryDrop, canvasLibraryPath, canvasLibraryDeletionNavigation, canvasLibraryDeletionInvalidatesCollection } from './CanvasLibraryItems';
 import { CanvasLibraryDialog, CanvasLibraryDestinationDialog, CanvasLibraryDeleteDialog } from './CanvasLibraryDialogs';
 
 // 2026-11-02：移动等待飞入动画，静默同步成功后提示文件移动成功。
 // 2026-11-02：移除顶部刷新入口，路径使用斜杠分隔，上下内边距为 8px。
+// 2026-11-17：普通条目删除后就地移除；命中当前路径时跳至最近有效祖先。
 /** 画布资产业务编排：目录、批量操作和管理弹窗；不双写真实画布。 */
-export default function CanvasLibraryContents({ collection }) {
-  const library = useCanvasAssetLibrary(collection);
-  const { parentId, items, folder, loading, error, busy, navigate, refresh, run, loadMore, cursor, syncAfterMove } = library;
+export default function CanvasLibraryContents({ collection, onCollectionUnavailable }) {
+  const library = useCanvasAssetLibrary(collection, onCollectionUnavailable);
+  const { parentId, items, folder, loading, error, busy, navigate, refresh, removeItems, run, loadMore, cursor, syncAfterMove } = library;
   const [batch, setBatch] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [nameDialog, setNameDialog] = useState(null);
@@ -58,15 +59,34 @@ export default function CanvasLibraryContents({ collection }) {
   };
   const requestDelete = async (list) => {
     const result = await run(() => api.preview({ selection: selection(list) }), { reload: false });
-    if (result) setDeletion(result);
+    if (result) setDeletion({ ...result, selection: list });
     else clearSelection();
   };
   const confirmDelete = async () => {
-    const result = await run(() => api.commit({ preview_token: deletion.preview_token }));
+    const target = deletion;
+    let commitError;
+    const result = await run(async () => {
+      try {
+        return await api.commit({ preview_token: target.preview_token });
+      } catch (cause) {
+        commitError = cause;
+        throw cause;
+      }
+    }, { reload: false });
     // 失败也关闭旧预检，强制用户重新预检、重新确认，禁止复用过期范围。
     setDeletion(null);
     clearSelection();
-    if (!result) refresh();
+    if (!result) {
+      // 集合已失效时继续刷新旧目录只会重复触发 404，应让外层重新选择有效项目/画布。
+      if (canvasLibraryDeletionInvalidatesCollection(commitError, target.selection)) onCollectionUnavailable?.(collection.id);
+      else refresh();
+      return;
+    }
+    const next = canvasLibraryDeletionNavigation(folder, parentId, collection.root_folder_id, target.selection);
+    if (!next.pathAffected) { removeItems(target.selection); return; }
+    setBatch(false);
+    if (next.destinationId) navigate(next.destinationId);
+    else onCollectionUnavailable?.(collection.id);
   };
   const download = (list) => run(async () => {
     for (const item of list) {

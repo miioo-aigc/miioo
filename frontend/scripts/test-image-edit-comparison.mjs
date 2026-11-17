@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
-let slots = [], cursor = 0, calls = [], saves = [], closeCount = 0, failSave = false, terminal = false;
+let slots = [], cursor = 0, calls = [], saves = [], uploads = [], closeCount = 0, failSave = false, terminal = false;
 let release;
 let session = 1, changeDuringPrepare = false;
 let journalBlocked = false, journalUnavailable = false, failSubmit = false;
@@ -38,7 +38,7 @@ const dependencies = {
   },
   '../api/ImageEditSave': {
     prepareImageEditDestination: async () => { if (changeDuringPrepare) session++; return { scope: 'subject:p:s' }; },
-    uploadImageEditFile: async () => ({ id: 'upload' }),
+    uploadImageEditFile: async (_file, options) => { uploads.push(options); return { id: 'upload' }; },
   },
 };
 const module = new vm.SourceTextModule(await readFile(new URL('../src/hooks/useImageEditSubmission.js', import.meta.url), 'utf8'), { context });
@@ -46,7 +46,7 @@ await module.link((name) => new vm.SyntheticModule(Object.keys(dependencies[name
   for (const [key, value] of Object.entries(dependencies[name])) this.setExport(key, value);
 }, { context }));
 await module.evaluate();
-const onSave = Object.assign(() => {}, { scope: 'subject:p:s', pending: async (work) => {
+const onSave = Object.assign(() => {}, { scope: 'subject:p:s', canvasId: 'canvas-1', pending: async (work) => {
   if (release) await new Promise((resolve) => { release = resolve; });
   if (failSave) throw Object.assign(new Error('保存失败'), { terminal });
   const result = { imageUrl: work.accepted?.task_id || 'upload' };
@@ -58,11 +58,13 @@ function render(card = { id: 'original' }, keepOpen = true) {
   return module.namespace.default({ card, onSave, keepOpen, onComplete: () => { closeCount++; } });
 }
 await render().submit({ mode: 'outpaint', prompt: '第一轮' });
+assert.equal(calls[0].options.canvas_id, 'canvas-1');
 assert.equal(render().comparison.result.imageUrl, 'task-1');
 assert.equal(closeCount, 0);
 await render({ id: 'changed-parent' }).submit({ mode: 'outpaint', prompt: '第二轮' });
 assert.equal(calls[1].source.id, 'original');
 assert.equal(calls[1].options.prompt, '第二轮');
+assert.equal(calls[1].options.canvas_id, 'canvas-1');
 assert.equal(saves.length, 2);
 assert.equal(render().comparison.result.imageUrl, 'task-2');
 
@@ -70,9 +72,11 @@ failSave = true;
 await render().submit({ mode: 'outpaint' });
 assert.equal(render().comparison.result.imageUrl, 'task-2');
 assert.equal(render().comparison.retrySave, true);
+const callsBeforeRetrySave = calls.length;
 failSave = false;
 await render().submit({ mode: 'outpaint' });
 assert.equal(calls.length, 3);
+assert.equal(calls.length, callsBeforeRetrySave, '保存重试不得重复提交生成');
 assert.equal(render().comparison.result.imageUrl, 'task-3');
 
 failSave = true; terminal = true;
@@ -96,6 +100,7 @@ assert.equal(saves.length, 5);
 slots = [];
 await render({ id: 'crop' }, false).submit({ mode: 'crop', file: {} });
 assert.equal(closeCount, 1);
+assert.equal(uploads.at(-1).canvasId, 'canvas-1');
 slots = []; changeDuringPrepare = true;
 const previousCalls = calls.length;
 await render().submit({ mode: 'outpaint' });

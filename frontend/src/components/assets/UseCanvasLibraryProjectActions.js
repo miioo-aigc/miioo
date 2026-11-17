@@ -4,7 +4,9 @@ import { getAuthSessionGeneration } from '../../api/request';
 import { downloadBlob } from '../../utils/downloadBlob';
 import { showGlobalToast } from '../../stores/toastStore';
 
-/** 左侧项目级操作；所有请求使用项目编号，不能传资产集合编号。 */
+/** 左侧项目级操作；所有请求使用项目编号，不能传资产集合编号。
+ * 2026-11-17：删除当前项目后先移除失效集合，避免内容区继续读取已删除目录。
+ */
 export default function useCanvasLibraryProjectActions(library) {
   const [dialog, setDialog] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -53,7 +55,10 @@ export default function useCanvasLibraryProjectActions(library) {
     if (target.kind === 'rename' && !name?.trim()) return;
     return run(async (current) => {
       if (target.kind === 'rename') await apiUpdateProject(target.item.id, { name: name.trim() });
-      else await apiDeleteProject(target.item.id);
+      else {
+        await apiDeleteProject(target.item.id);
+        if (current()) library.forgetProject(target.item.id);
+      }
       if (!current()) return;
       setDialog(null);
       library.refresh();

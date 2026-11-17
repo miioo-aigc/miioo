@@ -83,6 +83,23 @@ responses = [{ status: 202, data: {} }];
 await assert.rejects(submitVideoEdit(source, subtitle), /未返回任务编号/);
 const frameSource = await readFile(new URL('../src/components/video-edit/VideoFrameModal.jsx', import.meta.url), 'utf8');
 assert.match(frameSource, /onClick=\{download\}/);
-assert.match(frameSource, /mode: 'frame_extract', timestamp: times\[index\]/);
-assert.doesNotMatch(frameSource, /new File|onPrepare|exportFrame/);
+assert.match(frameSource, /onExport: \(_blob, _index, timestamp\) => submission\.submit\(\{ mode: 'frame_extract', timestamp,/);
+assert.match(frameSource, /onClick=\{exportFrame\}/);
+assert.doesNotMatch(frameSource, /new File|onPrepare/);
+
+const canvasSource = { ...source, canvasEditScope: 'canvas-1:node-1' };
+const canvasModes = [
+  { mode: 'upscale', resolution: '1080P', duration: 4, canvas_id: 'canvas-1' },
+  { ...subtitle, canvas_id: 'canvas-1' },
+  { mode: 'trim', start_time: 0.2, end_time: 0.3, duration: 4, canvas_id: 'canvas-1' },
+  { mode: 'frame_extract', timestamp: 1.234, canvas_id: 'canvas-1' },
+];
+for (const options of canvasModes) {
+  const payload = videoEditPayload(options);
+  assert.equal(payload.body.canvas_id, 'canvas-1', `${options.mode} 参数应保留画布身份`);
+  responses = [{ status: 201, data: { id: 'result', video_url: '/result.mp4', original_url: '/frame.png' } }];
+  await submitVideoEdit(canvasSource, options);
+  assert.equal(calls.at(-1).body.canvas_id, 'canvas-1', `${options.mode} 请求应携带画布身份`);
+  assert.equal(Object.hasOwn(calls.at(-1).body, 'canvasEditScope'), false);
+}
 console.log('视频编辑测试通过：时长门槛、模型、剪辑边界、抽帧参数、异步回读、失败响应、下载与保存分离');

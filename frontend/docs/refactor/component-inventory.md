@@ -4533,3 +4533,23 @@ TextCanvasNode 复用 React Flow NodeResizeControl，仅选中时显示右下角
 # 2026-11-13 文本持久任务接线
 
 新增 CanvasTextSubmissions（API）、CanvasTextTask（串行任务驱动）、CanvasDurableText（历史协议适配），扩展 UseCanvasTextGeneration 与 CanvasSaveSession；取消入口复用 Button。CanvasPage 仅注入保存桥接及导航/删除取消回调，未加入请求 URL 或新业务展示区块。页面既有体量保留，任务驱动和历史适配已独立。112 项相关测试通过，线上待验收，详见 ../canvas-text-durable-integration-2026-11-13.md。
+
+## 2026-11-16 生成历史“添加到画布”动作
+
+- `AddToCanvasIcon`：公共业务动作图标，复用于生成历史卡片操作区及详情弹窗按钮。
+- `AddToCanvasButton`：图片、视频、音频详情历史模式的共享图标加文字按钮，启用态使用手型光标，禁用态使用不可用光标。
+- `ImageDetailModal`、`CreationVideoDetailModal`、`CreationAudioDetailModal`：历史模式隐藏右上角操作区，在右侧信息栏底部固定展示添加动作。普通详情原有收藏、下载、删除及编辑区不变。
+- 历史详情添加成功后关闭生成历史；音频历史详情仅在用户主动操作后播放，普通详情保持自动播放。
+
+## 2026-11-17 画布资产删除后的失效路径保护
+
+- `CanvasLibraryContents` 删除提交使用 `{ reload: false }`，避免成功后继续读取已删除的目录；命中当前目录或其祖先时导航到最近有效父目录。只有 `type: collection` 的删除失败才按 `COLLECTION_NOT_FOUND` 解除当前画布；普通素材或目录删除失败时保留当前选择并刷新内容，避免误切到同项目其他画布。
+- 普通素材和当前路径外的子文件夹删除成功后会从已加载快照中就地移除，不再清空列表并重新请求；仅删除当前目录或其祖先时导航并重新读取最近有效父目录。
+- `UseCanvasLibraryProjects` 增加删除项目后的本地状态清理，当前项目的画布集合会先解除挂载，再刷新项目数据，避免内容区继续请求已删除的 collection。
+- 新增目录删除导航和项目选择切换回归测试。
+
+## 2026-11-17 画布资产卡片尺寸对齐
+
+- `CanvasLibraryGrid` 复用创作资产的 `240px` 最小列宽和 `16:9` 卡片比例，不再限制文件夹相关卡片最大为 `270px`。
+- `AddVirtualGroupCard` 与 `SeedanceFolderCard` 增加可选最大宽度和宽高比参数，默认值保持 Seedance 素材库原有尺寸。
+- `SeedanceAssetCard` 支持可选宽高比；画布资产媒体卡使用 `16:9`，音频卡移除固定 `160px` 高度并沿用自身 `16:9` 布局。

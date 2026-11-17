@@ -23,11 +23,13 @@ test('画布图片保存使用账号范围，业务目标保留源资产，裁�
     hook.result.open('source', mode);
     assert.equal(hook.editor.onSave.scope, `creation:owner:account-a:${oldId}`);
     assert.equal(hook.editor.onSave.destinationScope, `creation:${oldId}`);
+    assert.equal(hook.editor.onSave.canvasId, 'canvas');
     const pending = { image: { asset_id: newId } };
     await hook.editor.onSave.pending(pending);
     assert.equal(calls[0][0], hook.editor.onSave.scope);
     assert.equal(calls[0][1], pending);
     assert.equal(hook.nodes[0].data.asset.asset_id, newId);
+    assert.deepEqual(hook.assetsChanged, ['canvas']);
   }
 });
 
@@ -63,6 +65,7 @@ test('账号或会话变化后阻止保存和异步结果回写，包括图片�
       }
       await assert.rejects(saving, { name: 'AbortError' });
       assert.equal(hook.nodes[0].data.asset.asset_id, oldId);
+      assert.deepEqual(hook.assetsChanged, []);
       if (phase === 'before') assert.equal(calls, 0);
     }
   }
@@ -70,7 +73,7 @@ test('账号或会话变化后阻止保存和异步结果回写，包括图片�
 
 function mount(file, initial, overrides = {}) {
   let nodes = initial, editor;
-  const writes = [], toasts = [];
+  const writes = [], toasts = [], assetsChanged = [];
   const effects = [];
   const source = readFileSync(new URL(`../src/components/canvas/${file}.js`, import.meta.url), 'utf8')
     .replace(/^import .*;$/mg, '').replace(/export /g, '');
@@ -80,7 +83,8 @@ function mount(file, initial, overrides = {}) {
     useCreationStore: Object.assign((select) => select({ ownerId: 'account-a' }), { getState: () => ({ ownerId: 'account-a' }) }),
     useRef: (current) => ({ current }), useState: () => [null, (value) => { editor = value; }],
     prepareCanvasMediaAsset: async (asset) => asset, getAuthSessionGeneration: () => 1,
-    showGlobalToast: (...args) => toasts.push(args), ...overrides,
+    showGlobalToast: (...args) => toasts.push(args),
+    dispatchCanvasAssetsChanged: (...args) => assetsChanged.push(...args), ...overrides,
   });
   const result = api({ nodes, canvasId: 'canvas', cancelPendingClicks: () => {},
     setNodes: (update, options = {}) => {
@@ -93,7 +97,15 @@ function mount(file, initial, overrides = {}) {
       return accepted;
     } });
   effects.forEach((effect) => effect());
-  return { result, writes, toasts, get editor() { return editor; }, get nodes() { return nodes; }, replace: (next) => { nodes = next; } };
+  return {
+    result,
+    writes,
+    toasts,
+    assetsChanged,
+    get editor() { return editor; },
+    get nodes() { return nodes; },
+    replace: (next) => { nodes = next; },
+  };
 }
 
 test('首传成功后独立批量导入每个节点补交一次上传批次', () => {
@@ -122,15 +134,24 @@ test('图片保存晚到时拒绝覆盖新资产', async () => {
   await assert.rejects(saving, /未写回/);
   assert.equal(hook.nodes[0].data.nodeResults, undefined);
   assert.equal(hook.nodes[0].data.asset.asset_id, newId);
+  assert.deepEqual(hook.assetsChanged, []);
 });
 
 test('视频编辑回原节点，选帧独立新增且不污染视频历史，删除后不复活', async () => {
   for (const mode of ['trim', 'frame_extract']) {
+    const calls = [];
     const hook = mount('UseCanvasVideoEdits', [node('video')], {
-      runVideoEdit: async () => ({ id: newId, asset_id: newId, video_url: '/new', original_url: '/frame' }),
+      runVideoEdit: async (...args) => {
+        calls.push(args);
+        return { id: newId, asset_id: newId, video_url: '/new', original_url: '/frame' };
+      },
     });
     hook.result.open('source', mode);
+    assert.equal(hook.editor.sourceAsset.canvas_id, 'canvas');
+    assert.equal(hook.editor.sourceAsset.canvasEditScope, 'canvas:source');
     await hook.editor.submit(hook.editor.sourceAsset, { mode });
+    assert.equal(calls[0][0].canvas_id, 'canvas');
+    assert.equal(Object.hasOwn(calls[0][1], 'canvasEditScope'), false);
     assert.equal(hook.nodes.length, mode === 'trim' ? 1 : 2);
     assert.equal(hook.nodes[0].data.asset.asset_id, mode === 'trim' ? newId : oldId);
     if (mode === 'frame_extract') {
@@ -139,6 +160,7 @@ test('视频编辑回原节点，选帧独立新增且不污染视频历史，�
       assert.equal(hook.nodes[1].data.asset.asset_id, newId);
     }
     assert.equal(hook.toasts.some((toast) => toast[1] === 'success'), true);
+    assert.deepEqual(hook.assetsChanged, ['canvas']);
   }
   let resolve;
   const hook = mount('UseCanvasVideoEdits', [node('video')], { runVideoEdit: () => new Promise((done) => { resolve = done; }) });
@@ -148,6 +170,7 @@ test('视频编辑回原节点，选帧独立新增且不污染视频历史，�
   resolve({ id: newId, asset_id: newId, video_url: '/new' });
   await saving;
   assert.equal(hook.nodes.length, 0);
+  assert.deepEqual(hook.assetsChanged, []);
 });
 
 test('替换上传接管暂存文件，沿用画布项目归属，成功后提交', async () => {
@@ -192,6 +215,7 @@ test('仅打开关闭编辑器不设置任务状态，保存期间设置并在�
       assert.equal(hook.nodes[0].data.editing, undefined);
       assert.equal(hook.nodes[0].data.canvasEditOperation, undefined);
       assert.ok(hook.writes.every((options) => options.origin === 'system'));
+      if (fail) assert.deepEqual(hook.assetsChanged, []);
     }
   }
 });
@@ -212,6 +236,7 @@ test('运行期间新增下游执行锁，图片视频回写都拒绝且视频�
     assert.equal(hook.nodes[0].data.asset.asset_id, oldId);
     assert.equal(hook.nodes[0].data.editing, undefined);
     assert.equal(hook.toasts.some((toast) => toast[1] === 'success'), false);
+    assert.deepEqual(hook.assetsChanged, []);
   }
 });
 
@@ -225,6 +250,7 @@ test('视频结果缺少永久编号或源已删除时不提示成功', async ()
     resolve({ id: 'temporary-result', video_url: '/new' });
     assert.equal(await saving, undefined);
     assert.equal(hook.toasts.some((toast) => toast[1] === 'success'), false);
+    assert.deepEqual(hook.assetsChanged, []);
   }
 });
 

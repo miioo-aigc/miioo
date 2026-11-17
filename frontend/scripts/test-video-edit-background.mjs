@@ -11,6 +11,8 @@ let reads = 0;
 let finish;
 let fail;
 let resumeQuery;
+const submitted = [];
+const payloadOptions = [];
 const context = vm.createContext({
   console,
   setTimeout: (callback) => { resumeQuery = callback; },
@@ -22,8 +24,8 @@ const exports = {
   openVideoFrameDestination: () => {},
   create,
   validateSourceAsset: (source) => { if (!source?.asset_id) throw new Error('缺少资产'); return source.asset_id; },
-  videoEditPayload: (options) => { if (options.duration < 3) throw new Error('时长不足'); },
-  submitVideoEdit: async () => { submits++; return { task_id: 'task' }; },
+  videoEditPayload: (options) => { payloadOptions.push(options); if (options.duration < 3) throw new Error('时长不足'); },
+  submitVideoEdit: async (source, options) => { submits++; submitted.push({ source, options }); return { task_id: 'task' }; },
   resolveVideoEdit: () => { reads++; return new Promise((resolve, reject) => { finish = resolve; fail = reject; }); },
   showGlobalToast: (...args) => toasts.push(args),
   invalidate: () => {},
@@ -48,7 +50,7 @@ const module = new vm.SourceTextModule(await readFile(new URL('../src/stores/vid
 await module.link(() => dependency);
 await module.evaluate();
 const { runVideoEdit, useVideoEditStore, videoEditKey } = module.namespace;
-const source = { asset_id: 'source' };
+const source = { asset_id: 'source', canvas_id: 'canvas-1' };
 const options = { mode: 'upscale', resolution: '1080P', duration: 4 };
 const key = videoEditKey(source, 'upscale');
 await runVideoEdit(source, { ...options, duration: 2 });
@@ -60,6 +62,9 @@ const unsubscribe = useVideoEditStore.subscribe(() => notifications++);
 const job = runVideoEdit(source, options);
 await new Promise(setImmediate);
 assert.equal(useVideoEditStore.getState().tasks[key].busy, true);
+assert.equal(submitted.at(-1).source.canvas_id, 'canvas-1');
+assert.equal(submitted.at(-1).options.canvas_id, 'canvas-1');
+assert.equal(Object.hasOwn(submitted.at(-1).options, 'canvasEditScope'), false);
 assert.equal(saved.length, 1);
 assert.equal(saved[0][1].cards[0].status, 'loading');
 const placeholderId = saved[0][1].id;
@@ -81,10 +86,13 @@ await new Promise(setImmediate);
 fail(Object.assign(new Error('读取失败'), { status: 503 }));
 await new Promise(setImmediate);
 assert.equal(useVideoEditStore.getState().tasks[key].busy, true);
+assert.equal(useVideoEditStore.getState().tasks[key].pending.source.canvas_id, 'canvas-1');
 assert.equal(useVideoEditStore.getState().notices.length, 0);
 assert.equal(saved.length, 2);
 assert.equal(saved[1][1].cards[0].status, 'loading');
+const submitsBeforeRecoveryQuery = submits;
 await runVideoEdit(source, options);
+assert.equal(submits, submitsBeforeRecoveryQuery, '查询原任务时不得重新提交');
 resumeQuery();
 await new Promise(setImmediate);
 assert.equal(submits, 2);
@@ -149,12 +157,20 @@ for (const mode of ['upscale', 'subtitle_remove']) {
 console.log('后台视频任务测试通过：校验、卸载后写回、去重、恢复、剪辑即时关闭、失败移除与确认通知');
 
 for (const mode of ['upscale', 'subtitle_remove', 'trim', 'frame_extract']) {
-  const canvasSource = { ...source, canvasEditScope: 'canvas:node' };
+  const canvasSource = {
+    ...source,
+    canvas_id: 'canvas-loop',
+    canvasEditScope: 'canvas-loop:node',
+  };
   assert.notEqual(videoEditKey(canvasSource, mode), videoEditKey(source, mode));
   const beforeSaved = saved.length;
   const job = runVideoEdit(canvasSource, { ...options, mode, persistToCreation: false, suppressSuccessToast: true });
   await new Promise(setImmediate);
   assert.equal(saved.length, beforeSaved, '画布不创建创作页占位');
+  assert.equal(submitted.at(-1).source.canvas_id, 'canvas-loop');
+  assert.equal(submitted.at(-1).options.canvas_id, 'canvas-loop');
+  assert.equal(Object.hasOwn(submitted.at(-1).options, 'canvasEditScope'), false);
+  assert.equal(Object.hasOwn(payloadOptions.at(-1), 'canvasEditScope'), false);
   finish({ id: `canvas-${mode}`, video_url: '/canvas.mp4', original_url: '/frame.png' });
   const result = await job;
   assert.equal(result.id, `canvas-${mode}`);

@@ -40,6 +40,7 @@ export async function apiSubmitImageEdit(source, options = {}) {
       business_context: { project_id: context.project_id, session_id: context.session_id, shot_id: context.shot_id },
       idempotency_key: options.idempotency_key,
       save_to_assets: true, inherit_project_style: false,
+      ...(options.canvas_id ? { canvas_id: options.canvas_id } : {}),
     });
   }
   if (mode === 'erase' || mode === 'inpaint') {
@@ -49,11 +50,16 @@ export async function apiSubmitImageEdit(source, options = {}) {
       mask_data_url: options.mask,
       model: 'gpt-image-2',
       ...(mode === 'inpaint' ? { prompt: options.prompt.trim() } : {}),
+      ...(options.canvas_id ? { canvas_id: options.canvas_id } : {}),
     });
   }
   if (mode === 'upscale') {
     if (!['2K', '3K', '4K'].includes(options.target_resolution)) throw new Error('请选择有效的超清画质');
-    return request(`${path}/upscale`, { resolution: options.target_resolution, model: 'doubao-seedream-5.0-lite' });
+    return request(`${path}/upscale`, {
+      resolution: options.target_resolution,
+      model: 'doubao-seedream-5.0-lite',
+      ...(options.canvas_id ? { canvas_id: options.canvas_id } : {}),
+    });
   }
   if (mode === 'outpaint') {
     const expansion = options.expandOptions || options;
@@ -67,6 +73,7 @@ export async function apiSubmitImageEdit(source, options = {}) {
       reference_images: [source.url],
       project_id: context.project_id, session_id: context.session_id, shot_id: context.shot_id,
       save_to_assets: true, inherit_project_style: false,
+      ...(options.canvas_id ? { canvas_id: options.canvas_id } : {}),
     });
   }
   throw new Error('该编辑模式尚未接入，未提交生成');

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
+import { isSeedanceVideoModel } from '../src/utils/videoModelCapabilities.js';
 import { waitForCreationVideoImages } from '../src/api/CreationVideoReferences.js';
 
 class DeferredImage {
@@ -75,7 +76,7 @@ function loadApi(fetcher, wait = async () => {}) {
   return runInNewContext(apiSource + '\n({apiGenerateCreation})', {
     authFetch: fetcher, File, FormData, URLSearchParams, URL,
     setTimeout, clearTimeout, console: { log() {}, warn() {} },
-    validateVideoRequestImages: wait, assertVideoReferencePixels: async () => {}, assertVideoRequestCapabilities() {},
+    validateVideoRequestImages: wait, assertVideoReferencePixels: async () => {}, assertVideoRequestCapabilities() {}, isSeedanceVideoModel,
     toAbsoluteUrl: (url) => url,
     throwResponseError: async () => { throw new Error('请求失败'); },
   });

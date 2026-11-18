@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
+import { isSeedanceVideoModel, assertVideoRequestCapabilities } from '../src/utils/videoModelCapabilities.js';
+import { planCanvasVideoGeneration } from '../src/components/canvas/CanvasVideoGeneration.js';
 
 const apiSource = readFileSync(new URL('../src/api/creation.js', import.meta.url), 'utf8')
   .replace(/^import .*;$/mg, '').replace(/export /g, '')
@@ -14,6 +16,40 @@ const success = (id, assetId) => ({ status: 'completed', images: [{
   original_url: `/${id}.png`, download_url: `/${id}/download`,
 }] });
 const failed = { status: 'failed', error_msg: '任务生成失败' };
+
+test('画布 Seedance 音频跨层提交按实际模型校验并保留无扩展名素材类型', async () => {
+  const capabilities = { supported_generation_modes: ['full'], generation_reference_mode_map: { full: 'full' },
+    max_reference_images: 9, max_reference_videos: 3, max_reference_audios: 3 };
+  const nodes = [
+    { id: 'image', type: 'image', data: { asset: { asset_id: assetA, asset_type: 'image', name: '参考图', url: '/media/image' } } },
+    { id: 'audio', type: 'audio', data: { asset: { asset_id: assetB, asset_type: 'audio', name: '配音', url: '/media/audio' } } },
+    { id: 'target', type: 'video', data: { videoSourceIds: ['image', 'audio'] } },
+  ];
+  const plan = planCanvasVideoGeneration(nodes, 'target', '生成视频', 'doubao-seedance-2-0-fast', { capabilities, generationMode: 'full' });
+  assert.equal(plan.params.isSeedance, true);
+  for (const flag of [undefined, false, true]) {
+    const api = loadApi({ validateVideo: true, taskIds: ['video-task'], polls: {
+      'video-task': { status: 'completed', result: { video_url: '/result.mp4', asset_id: assetA } },
+    } });
+    await api.apiGenerateCreation({ genType: 'video', prompt: plan.prompt, model: plan.model,
+      ...plan.params, isSeedance: flag, files: plan.sources.map((source) => source.asset) });
+    const body = JSON.parse(api.calls[0].options.body);
+    assert.equal(body.model, plan.model);
+    assert.equal(body.reference_audio_url, '/media/audio');
+    assert.deepEqual(body.attachments.map((item) => item.asset_type), ['image', 'audio']);
+    assert.deepEqual(body.reference_image_asset_ids, [assetA]);
+    assert.equal(body.attachments[1].asset_id, assetB);
+    assert.equal(Object.hasOwn(body, 'isSeedance'), false);
+  }
+  const switched = planCanvasVideoGeneration(nodes, 'target', '生成视频', 'kling-v3', { capabilities, generationMode: 'full', isSeedance: true });
+  assert.equal(switched.params.isSeedance, false);
+  for (const audio of [nodes[1].data.asset, { type: 'audio/wav', url: '/media/audio' }, { name: '配音', url: '/audio.WAV?token=test' }]) {
+    const api = loadApi({ validateVideo: true });
+    await assert.rejects(api.apiGenerateCreation({ genType: 'video', model: 'kling-v3',
+      ...switched.params, isSeedance: true, files: [audio] }), /仅 Seedance/);
+    assert.equal(api.calls.length, 0);
+  }
+});
 const quotaFailed = {
   status: 'failed',
   error_msg: 'OneLinkAI API Key 无效或已失效',
@@ -23,7 +59,7 @@ const quotaFailed = {
   },
 };
 
-function loadApi({ taskIds = ['first', 'second'], polls = {}, imageDetails = {}, onTimer } = {}) {
+function loadApi({ taskIds = ['first', 'second'], polls = {}, imageDetails = {}, onTimer, validateVideo = false } = {}) {
   const calls = [], timers = new Map();
   let timerId = 0;
   const api = runInNewContext(apiSource + ';({apiGenerateCreation})', {
@@ -62,7 +98,8 @@ function loadApi({ taskIds = ['first', 'second'], polls = {}, imageDetails = {},
     },
     buildImageReferences: async () => ({ reference_images: [], attachments: [] }),
     assertImageReferenceUrls() {}, validateVideoRequestImages: async () => {},
-    assertVideoReferencePixels: async () => {}, assertVideoRequestCapabilities() {},
+    assertVideoReferencePixels: async () => {}, isSeedanceVideoModel,
+    assertVideoRequestCapabilities: validateVideo ? assertVideoRequestCapabilities : () => {},
     toAbsoluteUrl: (url) => url, getSeedance20AudioReferenceErrorMessage: () => '',
     throwResponseError: async (response) => {
       throw Object.assign(new Error(`请求失败（${response.status}）`), { status: response.status });

@@ -9,6 +9,20 @@ import { readResponseBlobWithProgress } from '../utils/responseBlobProgress';
 import { validateVideoRequestImages } from './VideoReferenceValidation.js';
 import { assertVideoReferencePixels } from '../utils/VideoReferencePixels.js';
 
+// 校验与组装共用类型解析，支持没有扩展名的画布资产及受控 URL。
+function getCreationReferenceType(file) {
+  const explicit = String(file?.asset_type || file?.assetType || '').toLowerCase();
+  if (['image', 'video', 'audio'].includes(explicit)) return explicit;
+  const mime = String(file?.type || '').toLowerCase().split('/')[0];
+  if (['image', 'video', 'audio'].includes(mime)) return mime;
+  for (const value of [file?.name, file?.url]) {
+    const path = String(value || '').split(/[?#]/)[0];
+    if (/\.(mp4|mov|avi|webm|mkv|wmv|flv)$/i.test(path)) return 'video';
+    if (/\.(mp3|wav|aac|ogg|flac|m4a|wma)$/i.test(path)) return 'audio';
+  }
+  return 'image';
+}
+
 function isLikelyImageMediaUrl(url) {
   return /\.(?:avif|bmp|gif|jpe?g|png|webp)(?:[?#].*)?$/i.test(String(url || ''));
 }
@@ -362,25 +376,26 @@ async function pollBasicEditCreationImageTask(taskId, { signal } = {}) {
 /**
  * 结构索引（api/creation.js）
  * ─── 音乐生成（自由函数）────────────────────────
- *   [接口] apiGenerateCreationMusic()              L743   POST /api/music/generate （音乐生成/翻唱）
- *   [提取] extractMusicResultUrl()                  L753   从 url/audio_url/result/results[] 提取音乐结果
- *   [轮询] apiPollCreationMusicTask()                L771   GET /api/tasks/{task_id} 持续查询到终态，支持 AbortSignal
+ *   [接口] apiGenerateCreationMusic()              L866   POST /api/music/generate （音乐生成/翻唱）
+ *   [提取] extractMusicResultUrl()                  L876   从 url/audio_url/result/results[] 提取音乐结果
+ *   [轮询] apiPollCreationMusicTask()                L894   GET /api/tasks/{task_id} 持续查询到终态，支持 AbortSignal
  * ─── 视频生成（apiGenerateCreation）────────────────────────
- *   [函数] apiGenerateCreation()                    L1036  入口：按 genType 分流 图片/视频/配音/音乐
- *   [上传] 参考文件分类循环                           L1135  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
+ *   [函数] apiGenerateCreation()                    L1147  入口：按 genType 分流 图片/视频/配音/音乐
+ *   [上传] 参考文件分类循环                           L1189  图片/视频/音频 → refUrls/refAssetIds/refVideo/refAudio
  *                                                        （图片 asset_id 兜底：assetId || backendId || asset_id）
- *   [上传] 首/尾帧上传                               L1200  仅视频首尾帧模式使用
- *   [分支] 配音同步/异步生成与任务轮询                L1233  短文本直取音频，长文本轮询
+ *   [上传] 首/尾帧上传                               L1285  仅视频首尾帧模式使用
+ *   [分支] 配音同步/异步生成与任务轮询                L1317  短文本直取音频，长文本轮询
  *                                                        普通/高级模式统一透传 voice_setting
  *                                                        配音任务轮询最多 600 秒，可通过 AbortSignal 停止
- *   [分支] 音乐生成与任务轮询                        L1377  上传参考音频 → POST /api/music/generate → 轮询任务
- *   [分支] 图片生成（多张并行）                      L1434  count>1 可返回多 task_ids 并行轮询
- *   [分支] 视频生成                                  L1509  generation_mode / reference_mode / attachments
- *   [校验] 视频能力与音频门禁                         L1103  上传前校验 generation_mode、reference_mode 与能力映射
- *   [组装] @ 数字资产绑定 attachments                L1528  CreationAssetBinding[]，source:'mention'
- *   [组装] 视频生成请求体 body                       L1536  generation_mode / reference_mode / attachments / reference_image_asset_ids / first_frame_url
- *   [日志] [video-generate] 调试日志                 L1572  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
+ *   [分支] 音乐生成与任务轮询                        L1464  上传参考音频 → POST /api/music/generate → 轮询任务
+ *   [分支] 图片生成（多张并行）                      L1521  count>1 可返回多 task_ids 并行轮询
+ *   [分支] 视频生成                                  L1609  generation_mode / reference_mode / attachments
+ *   [校验] 视频能力与音频门禁                         L1193  上传前校验 generation_mode、reference_mode 与能力映射
+ *   [组装] @ 数字资产绑定 attachments                L1628  CreationAssetBinding[]，source:'mention'
+ *   [组装] 视频生成请求体 body                       L1636  generation_mode / reference_mode / attachments / reference_image_asset_ids / first_frame_url
+ *   [日志] [video-generate] 调试日志                 L1672  打印实际发出的 generation_mode / reference_mode / refAssetIds / attachments
  * ─── 更新记录 ───────────────────────────────────────────────────────
+ *  2026-11-18  按实际模型识别 Seedance，校验与附件组装统一素材类型解析。
  *  2026-08-28  视频新请求不再发送已下线的 multi_shot 参数；参考模式继续由后端映射结果决定
  *   2026-08-12  新增音乐生成支持：POST /api/music/generate、通用任务中心 GET /api/tasks/{task_id} 轮询（最多 600 秒），
  *               音乐分支与图片/视频/配音完全隔离，参考音频上传不阻塞整体生成
@@ -486,7 +501,7 @@ import { authFetch } from './request.js';
 import { throwResponseError } from './error.js';
 import { toAbsoluteUrl } from '../utils/imageUrl.js';
 import { captureVideoLastFrame } from '../utils/videoUtils';
-import { assertVideoRequestCapabilities, getSeedance20AudioReferenceErrorMessage } from '../utils/videoModelCapabilities';
+import { assertVideoRequestCapabilities, isSeedanceVideoModel, getSeedance20AudioReferenceErrorMessage } from '../utils/videoModelCapabilities';
 
 // ── 创作会话（Session）───────────────────────────────────────────────────────
 
@@ -1174,17 +1189,13 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
   // 上传参考文件（按媒体类型分类：图片 / 视频 / 音频）
   const files = params.files ? (Array.isArray(params.files) ? params.files : [params.files]) : [];
   if (isVideo) {
-    const hasAudioFile = files.some((file) => {
-      const mime = String(file?.type || '').toLowerCase();
-      const name = String(file?.name || file?.url || '').split('?')[0].toLowerCase();
-      return mime.startsWith('audio/') || /\.(mp3|wav|aac|ogg|flac|m4a|wma)$/.test(name);
-    });
+    const hasAudioFile = files.some((file) => getCreationReferenceType(file) === 'audio');
     assertVideoRequestCapabilities({
       generationMode: params.generation_mode,
       referenceMode: params.reference_mode,
       capabilities: params.videoCapabilities || {},
       supportedGenerationModes: params.supportedGenerationModes || [],
-      isSeedance: Boolean(params.isSeedance),
+      isSeedance: isSeedanceVideoModel({ modelId: params.model || 'doubao-seedance-2.0' }),
       hasAudio: hasAudioFile || Boolean(params.reference_audio_url),
     });
   }
@@ -1209,10 +1220,9 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
   for (const f of imageBindings ? [] : files) {
     // 已经有 URL 的资产（如「用作参考图」、资产库选择的素材），直接分类使用
     if (f && typeof f === 'object' && !(f instanceof File) && (f.url || (isVideo && f.assetId))) {
-      const mime = (f.type || '').toLowerCase();
-      const name = (f.name || '').toLowerCase();
-      const isVid = mime.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|wmv|flv)$/.test(name);
-      const isAud = mime.startsWith('audio/') || /\.(mp3|wav|aac|ogg|flac|m4a|wma)$/.test(name);
+      const referenceType = getCreationReferenceType(f);
+      const isVid = referenceType === 'video';
+      const isAud = referenceType === 'audio';
       if (isVid) {
         uploadedRefVideos.push(f.url);
         uploadedMediaReferences.push({ asset_type: 'video', url: f.url, asset_id: f.assetId || f.backendId || f.asset_id });
@@ -1234,9 +1244,9 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
       if (isVideo) throw new Error('参考素材尚未准备完成，请移除后重新添加');
       continue;
     }
-    const mime = f.type.toLowerCase();
-    const isVid = mime.startsWith('video/');
-    const isAud = mime.startsWith('audio/');
+    const referenceType = getCreationReferenceType(f);
+    const isVid = referenceType === 'video';
+    const isAud = referenceType === 'audio';
     try {
       if (isVid) {
         const result = await apiUploadCreationVideo({ file: f, category: 'reference', ...uploadContext, signal });

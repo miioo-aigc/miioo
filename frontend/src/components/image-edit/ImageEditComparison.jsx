@@ -50,7 +50,7 @@ export function ComparisonImage({ src, alt, view, onViewChange }) {
   }} onPointerMove={move} onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={() => { dragRef.current = null; }}
   onDoubleClick={() => onViewChange?.({ ...INITIAL_COMPARISON_VIEW })}>
     {!failed && <img key={attempt} src={src} alt={alt} draggable={false} onLoad={() => setLoaded(true)} onError={() => setFailed(true)} style={{ transform: `translate(${(view?.x || 0) * 100}%, ${(view?.y || 0) * 100}%) scale(${zoom})`, transformOrigin: 'center' }} />}
-    {!loaded && !failed && <div className="edit-comparison-message" role="status" aria-label="图片加载中"><DotsLoading /></div>}
+    {!loaded && !failed && <div className="edit-comparison-message" role="status" aria-label="图片加载中"><DotsLoading color="#2DC3E1" /></div>}
     {failed && <div className="edit-comparison-message" role="alert">图片加载失败<Button size="small" onClick={() => { setFailed(false); setLoaded(false); setAttempt((value) => value + 1); }}>重新加载</Button></div>}
   </div>;
 }

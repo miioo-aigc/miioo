@@ -89,7 +89,7 @@ function SubjectMoreMenu({ onDownload, onDelete }) {
 
   const items = [
     { label: '下载', icon: <DownloadIcon />, action: () => { onDownload?.(); setOpen(false); } },
-    { label: '删除', icon: <DeleteIcon />, danger: true, action: () => { setOpen(false); setShowConfirm(true); } },
+    { label: '删除', icon: <DeleteIcon color="currentColor" />, danger: true, action: () => { setOpen(false); setShowConfirm(true); } },
   ];
 
   return (
@@ -114,7 +114,7 @@ function SubjectMoreMenu({ onDownload, onDelete }) {
                 key={item.label}
                 type="button"
                 className="flex items-center gap-[4px] px-[12px] rounded-md shrink-0 cursor-pointer border-0 text-left"
-                style={{ height: '36px', color: item.danger ? (hoveredIndex === index ? '#F75F5F' : '#FF7A7A99') : (hoveredIndex === index ? 'var(--color-select-item-text-hover)' : 'var(--color-select-item-text-normal)'), backgroundColor: hoveredIndex === index ? 'var(--color-select-item-bg-hover)' : 'transparent', transition: 'background-color 0.1s, color 0.1s' }}
+                style={{ height: '36px', color: hoveredIndex === index ? (item.danger ? '#F75F5F' : 'var(--color-select-item-text-hover)') : 'var(--color-select-item-text-normal)', backgroundColor: hoveredIndex === index ? 'var(--color-select-item-bg-hover)' : 'transparent', transition: 'background-color 0.1s, color 0.1s' }}
                 onMouseEnter={() => setHoveredIndex(index)}
                 onMouseLeave={() => setHoveredIndex(null)}
                 onClick={(event) => { event.stopPropagation(); item.action(); }}

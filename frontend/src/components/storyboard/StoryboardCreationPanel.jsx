@@ -8,6 +8,7 @@
  *   页签状态           维护图片/视频页签并通知页面记忆最近使用的页签
  *
  * ─── 更新记录 ───────────────────────────────────────────────
+ *   2026-11-19         本地上传/资产库选择分镜期间在候选列表插入 DotsLoading 占位卡，保存完成后自动移除
  *   2026-10-08         编辑任务候选占位复用 LoadingAnimation
  *   2026-07-23         按 Paper 设计稿重写创作弹窗布局和候选区样式
  *   2026-10-26  固定媒体框接入有限恢复；刷新与业务操作隔离。
@@ -176,23 +177,30 @@ function UploadEntry({ onUpload, onOpenAssets }) {
 export default function StoryboardCreationPanel({ initialTab = 'image', onTabChange, onClose, candidates = [], projectId, storyboardId, onCandidateMedia, onFinalizeToggle, onPreview, onDownload, children }) {
   const [tab, setTab] = useState(initialTab);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const [pendingCandidates, setPendingCandidates] = useState([]);
   const changeTab = (next) => { setTab(next); onTabChange?.(next); };
 
   async function handleUpload(file) {
     const mediaType = getUploadMediaType(file);
     if (!mediaType) return;
+    const placeholderId = `local-upload-${mediaType}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setPendingCandidates((prev) => [...prev, { id: placeholderId, media_type: mediaType, pending: true }]);
     try {
       const result = mediaType === 'video'
         ? await apiUploadStoryboardVideo(projectId, storyboardId, file)
         : await apiUploadCreationImage({ file, category: 'storyboard', project_id: projectId });
       const url = normalizeImageUrl(result?.uploaded_url || result?.uploadedUrl || result?.video_url || result?.videoUrl || result?.url || result?.file_url || '');
-      if (url) onCandidateMedia?.({ id: result?.id || result?.asset_id || url, url, media_type: mediaType, source: 'local-upload' });
+      if (url) await onCandidateMedia?.({ id: result?.id || result?.asset_id || url, url, media_type: mediaType, source: 'local-upload' });
     } catch {
       // 具体错误由页面统一提示；上传入口不能阻塞弹窗布局。
+    } finally {
+      // 占位卡保持到上传与候选保存都结束，避免回显前出现空白。
+      setPendingCandidates((prev) => prev.filter((item) => item.id !== placeholderId));
     }
   }
 
   function handleAssets(assets) {
+    setAssetPickerOpen(false);
     (assets || []).forEach((asset) => {
       const metadata = parseAssetMetadata(asset);
       const parameterContainers = getAssetParameterContainers(asset, metadata);
@@ -200,31 +208,41 @@ export default function StoryboardCreationPanel({ initialTab = 'image', onTabCha
       const url = normalizeImageUrl(asset.fileUrl || asset.originalUrl || asset.original_url || asset.thumbnailUrl || asset.thumbnail_url || asset.url || asset.file_url);
       const rawType = String(asset.asset_type || asset.assetType || asset.media_type || asset.mediaType || asset.type || '').toLowerCase();
       const mediaType = rawType.startsWith('video') ? 'video' : rawType.startsWith('image') ? 'image' : null;
-      if (url && mediaType) onCandidateMedia?.({
-        id: asset.id || url,
-        asset_id: asset.asset_id || asset.assetId || asset.id || null,
-        url,
-        thumbnail_url: asset.thumbnailUrl || asset.thumbnail_url || null,
-        poster_url: asset.posterUrl || asset.poster_url || asset.thumbnailUrl || asset.thumbnail_url || null,
-        download_url: asset.downloadUrl || asset.download_url || asset.fileUrl || asset.file_url || url,
-        media_type: mediaType,
-        source: 'asset-library',
-        detailSource: 'asset-library',
-        prompt: asset.input_prompt ?? asset.inputPrompt ?? asset.prompt_raw ?? asset.promptRaw ?? asset.prompt ?? asset.prompt_resolved ?? asset.promptResolved ?? metadata.input_prompt ?? metadata.inputPrompt ?? metadata.prompt_raw ?? metadata.promptRaw ?? metadata.prompt ?? metadata.prompt_resolved ?? metadata.promptResolved ?? mergedParams.input_prompt ?? mergedParams.inputPrompt ?? mergedParams.prompt,
-        input_prompt: asset.input_prompt ?? asset.inputPrompt ?? asset.prompt_raw ?? asset.promptRaw ?? asset.prompt ?? asset.prompt_resolved ?? asset.promptResolved ?? metadata.input_prompt ?? metadata.inputPrompt ?? metadata.prompt_raw ?? metadata.promptRaw ?? metadata.prompt ?? metadata.prompt_resolved ?? metadata.promptResolved ?? mergedParams.input_prompt ?? mergedParams.inputPrompt ?? mergedParams.prompt,
-        prompt_raw: asset.prompt_raw ?? asset.promptRaw ?? metadata.prompt_raw ?? metadata.promptRaw ?? mergedParams.prompt_raw ?? mergedParams.promptRaw,
-        prompt_resolved: asset.prompt_resolved ?? asset.promptResolved ?? metadata.prompt_resolved ?? metadata.promptResolved ?? mergedParams.prompt_resolved ?? mergedParams.promptResolved,
-        model: asset.model ?? metadata.model ?? mergedParams.model,
-        resolution: asset.resolution ?? asset.size ?? metadata.resolution ?? metadata.size ?? mergedParams.resolution ?? mergedParams.size,
-        duration: asset.duration ?? metadata.duration ?? mergedParams.duration,
-        ratio: asset.ratio ?? asset.aspect_ratio ?? asset.aspectRatio ?? metadata.ratio ?? metadata.aspect_ratio ?? metadata.aspectRatio ?? mergedParams.ratio ?? mergedParams.aspect_ratio ?? mergedParams.aspectRatio,
-        reference_images: asset.reference_images ?? asset.referenceImages ?? metadata.reference_images ?? metadata.referenceImages ?? mergedParams.reference_images ?? mergedParams.referenceImages,
-        reference_image_urls: asset.reference_image_urls ?? asset.referenceImageUrls ?? metadata.reference_image_urls ?? metadata.referenceImages ?? mergedParams.reference_image_urls ?? mergedParams.referenceImageUrls,
-        genParams: getAssetGenerationParams(asset, metadata),
-        metadata: { ...metadata, params: mergedParams },
-      });
+      if (!url || !mediaType) return;
+      const placeholderId = `asset-library-${mediaType}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setPendingCandidates((prev) => [...prev, { id: placeholderId, media_type: mediaType, pending: true }]);
+      (async () => {
+        try {
+          await onCandidateMedia?.({
+            id: asset.id || url,
+            asset_id: asset.asset_id || asset.assetId || asset.id || null,
+            url,
+            thumbnail_url: asset.thumbnailUrl || asset.thumbnail_url || null,
+            poster_url: asset.posterUrl || asset.poster_url || asset.thumbnailUrl || asset.thumbnail_url || null,
+            download_url: asset.downloadUrl || asset.download_url || asset.fileUrl || asset.file_url || url,
+            media_type: mediaType,
+            source: 'asset-library',
+            detailSource: 'asset-library',
+            prompt: asset.input_prompt ?? asset.inputPrompt ?? asset.prompt_raw ?? asset.promptRaw ?? asset.prompt ?? asset.prompt_resolved ?? asset.promptResolved ?? metadata.input_prompt ?? metadata.inputPrompt ?? metadata.prompt_raw ?? metadata.promptRaw ?? metadata.prompt ?? metadata.prompt_resolved ?? metadata.promptResolved ?? mergedParams.input_prompt ?? mergedParams.inputPrompt ?? mergedParams.prompt,
+            input_prompt: asset.input_prompt ?? asset.inputPrompt ?? asset.prompt_raw ?? asset.promptRaw ?? asset.prompt ?? asset.prompt_resolved ?? asset.promptResolved ?? metadata.input_prompt ?? metadata.inputPrompt ?? metadata.prompt_raw ?? metadata.promptRaw ?? metadata.prompt ?? metadata.prompt_resolved ?? metadata.promptResolved ?? mergedParams.input_prompt ?? mergedParams.inputPrompt ?? mergedParams.prompt,
+            prompt_raw: asset.prompt_raw ?? asset.promptRaw ?? metadata.prompt_raw ?? metadata.promptRaw ?? mergedParams.prompt_raw ?? mergedParams.promptRaw,
+            prompt_resolved: asset.prompt_resolved ?? asset.promptResolved ?? metadata.prompt_resolved ?? metadata.promptResolved ?? mergedParams.prompt_resolved ?? mergedParams.promptResolved,
+            model: asset.model ?? metadata.model ?? mergedParams.model,
+            resolution: asset.resolution ?? asset.size ?? metadata.resolution ?? metadata.size ?? mergedParams.resolution ?? mergedParams.size,
+            duration: asset.duration ?? metadata.duration ?? mergedParams.duration,
+            ratio: asset.ratio ?? asset.aspect_ratio ?? asset.aspectRatio ?? metadata.ratio ?? metadata.aspect_ratio ?? metadata.aspectRatio ?? mergedParams.ratio ?? mergedParams.aspect_ratio ?? mergedParams.aspectRatio,
+            reference_images: asset.reference_images ?? asset.referenceImages ?? metadata.reference_images ?? metadata.referenceImages ?? mergedParams.reference_images ?? mergedParams.referenceImages,
+            reference_image_urls: asset.reference_image_urls ?? asset.referenceImageUrls ?? metadata.reference_image_urls ?? metadata.referenceImages ?? mergedParams.reference_image_urls ?? mergedParams.referenceImageUrls,
+            genParams: getAssetGenerationParams(asset, metadata),
+            metadata: { ...metadata, params: mergedParams },
+          });
+        } catch {
+          // 具体错误由页面统一提示；占位卡不能一直悬挂在候选列表。
+        } finally {
+          setPendingCandidates((prev) => prev.filter((item) => item.id !== placeholderId));
+        }
+      })();
     });
-    setAssetPickerOpen(false);
   }
 
   return (
@@ -240,6 +258,7 @@ export default function StoryboardCreationPanel({ initialTab = 'image', onTabCha
         <aside style={{ width: '141px', flex: '0 0 141px', minHeight: 0, display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 24px 8px 16px', boxSizing: 'border-box', overflowY: 'auto', background: '#161616', borderLeft: '1px solid #FFFFFF14' }}>
           <UploadEntry onUpload={handleUpload} onOpenAssets={() => setAssetPickerOpen(true)} />
           {candidates.map((item, index) => <CandidateItem key={item.id || item.url || index} item={item} onSelect={() => onFinalizeToggle?.(item)} onPreview={onPreview} onDownload={onDownload} />)}
+          {pendingCandidates.map((item) => <CandidateItem key={item.id} item={item} />)}
         </aside>
         <AssetPickerModal accept="media" open={assetPickerOpen} onClose={() => setAssetPickerOpen(false)} projectId={projectId} onConfirm={handleAssets} />
       </div>

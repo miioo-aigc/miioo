@@ -1,3 +1,5 @@
+import { resolveOriginalMediaPath } from './imageUrl';
+
 const GENERATION_KEYS = new Set([
   'model', 'resolution', 'size', 'duration', 'ratio', 'aspect_ratio', 'aspectRatio',
   'sound_effect', 'soundEffect', 'generate_audio', 'generateAudio', 'audio_setting', 'audioSetting',
@@ -111,7 +113,9 @@ function buildMediaMetadata(media, metadata, generationParams, prompt) {
 
 export function buildStoryboardCandidatePayload(media) {
   const mediaType = media.mediaType || media.media_type || (media.type?.startsWith('video') ? 'video' : 'image');
-  const mediaUrl = media.url || media.fileUrl || media.file_url;
+  // 受控下载地址（/api/media/downloads/...token）不能作为候选媒体地址：既超过后端长度上限
+  // 又会短时过期，后端要求改用原始 /uploads/... 路径。这里统一还原。
+  const mediaUrl = resolveOriginalMediaPath(media.url || media.fileUrl || media.file_url);
   const isVideo = mediaType === 'video';
   const videoSourceUrl = media.preview_video_url || media.previewVideoUrl;
   const metadata = readMetadata(media);
@@ -127,13 +131,13 @@ export function buildStoryboardCandidatePayload(media) {
     payload: {
       media_type: mediaType,
       url: mediaUrl,
-      thumbnail_url: isVideo
+      thumbnail_url: resolveOriginalMediaPath(isVideo
         ? safeImageUrl(media.thumbnail_url || media.thumbnailUrl || media.poster_url || media.posterUrl)
-        : (media.thumbnail_url || media.thumbnailUrl || mediaUrl),
-      poster_url: isVideo
+        : (media.thumbnail_url || media.thumbnailUrl || mediaUrl)),
+      poster_url: resolveOriginalMediaPath(isVideo
         ? safeImageUrl(media.poster_url || media.posterUrl || media.thumbnail_url || media.thumbnailUrl)
-        : (media.poster_url || media.posterUrl || null),
-      download_url: media.download_url || media.downloadUrl || null,
+        : (media.poster_url || media.posterUrl || null)),
+      download_url: resolveOriginalMediaPath(media.download_url || media.downloadUrl || null),
       source: media.source || 'ai-generated',
       asset_id: media.asset_id || media.assetId || null,
       metadata: buildMediaMetadata(media, metadata, generationParams, prompt),

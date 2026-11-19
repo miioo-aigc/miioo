@@ -40,10 +40,10 @@ export default function StoryboardFinalizedCard({ shot, media, loading = false, 
   const isHoverVideo = hovered && hoverPreview?.media === media && hoverPreview?.isVideo;
   return (
     <div data-storyboard-finalized-card="true" onClick={onSelect} onMouseEnter={enter} onMouseMove={move} onMouseLeave={leave} style={{ width: `${cardSize.width}px`, height: `${cardSize.height}px`, position: 'relative', flexShrink: 0, overflow: 'hidden', borderRadius: '8px', border: 0, boxShadow: `0 0 0 1px ${selected ? '#2DC3E1' : 'rgba(255,255,255,0.10)'}`, background: hasMedia ? '#101111' : '#242424', cursor: 'pointer', transition: 'border-color 150ms, box-shadow 150ms' }}>
-      {hasMedia && <StoryboardMediaPreview media={media} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'fill' }} />}
+      {hasMedia && <StoryboardMediaPreview media={media} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />}
       {isHoverVideo && (
         <div style={{ position: 'absolute', inset: 0, background: '#101111' }}>
-          <RecoverableVideoPreview key={hoverPreview.url} src={hoverPreview.url} poster={src} hovered objectFit="fill" />
+          <RecoverableVideoPreview key={hoverPreview.url} src={hoverPreview.url} poster={src} hovered objectFit="contain" />
         </div>
       )}
       <span style={{ position: 'absolute', top: '6px', left: '12px', padding: '0 8px', borderRadius: '3px', background: '#000000CC', color: '#FFFFFFCC', fontSize: '12px', lineHeight: '20px' }}>{String(shot.number).padStart(2, '0')}</span>

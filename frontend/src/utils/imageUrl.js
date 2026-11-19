@@ -71,6 +71,53 @@ export function toAbsoluteUrl(url) {
   return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
 }
 
+const CONTROLLED_DOWNLOAD_PREFIX = '/api/media/downloads/';
+
+function readUrlPathname(url) {
+  try {
+    return new URL(url, 'https://localhost').pathname;
+  } catch {
+    return url;
+  }
+}
+
+function decodeBase64UrlText(segment) {
+  if (!segment) return null;
+  try {
+    const normalized = segment.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+    const binary = atob(padded);
+    return new TextDecoder().decode(Uint8Array.from(binary, (ch) => ch.charCodeAt(0)));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 受控下载地址 `/api/media/downloads/{token}` 是短时入口，长度也常常超过后端候选媒体的
+ * 地址上限。候选媒体接口只接受原始媒体路径，因此这里从 token 负载里还原 `/uploads/...` 原路径。
+ * 非受控地址原样返回；解码失败也原样返回，交由后端按原有规则校验。
+ */
+export function resolveOriginalMediaPath(url) {
+  if (typeof url !== 'string' || !url) return url;
+  const pathname = readUrlPathname(url);
+  if (!pathname.startsWith(CONTROLLED_DOWNLOAD_PREFIX)) return url;
+  const token = pathname.slice(CONTROLLED_DOWNLOAD_PREFIX.length).split('/')[0];
+  if (!token) return url;
+  for (const segment of token.split('.')) {
+    const text = decodeBase64UrlText(segment);
+    if (!text || !text.startsWith('{')) continue;
+    try {
+      const payload = JSON.parse(text);
+      const original = payload?.download_url || payload?.original_url || payload?.file_url;
+      if (typeof original === 'string' && original.startsWith('/')) return original;
+    } catch {
+      // 非 JSON 段（例如签名）跳过，继续尝试下一段。
+    }
+  }
+  return url;
+}
+
 /** 检查 URL 是否为 AI 模型可消费的安全格式（排除 AVIF / 派生资产等模型不支持的格式） */
 export function isSafeImageUrl(url) {
   if (!url) return false;

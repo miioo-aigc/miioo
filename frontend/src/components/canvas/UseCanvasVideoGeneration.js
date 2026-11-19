@@ -6,6 +6,7 @@ import { createCanvasTextRequests } from './CanvasTextRequests';
 import { createCanvasProgressHandler } from './CanvasGenerationProgress';
 import { acceptCanvasVideoSubmission, getCanvasGeneratedVideoAsset, applyCanvasVideoResult, beginCanvasVideoGeneration, planCanvasVideoGeneration, recoverCanvasVideoGenerationFailure } from './CanvasVideoGeneration';
 import { dispatchCanvasAssetsChanged } from '../../utils/canvasAssetsEvents';
+import { validateSeedance20AudioReferences } from '../../utils/SeedanceAudioValidation';
 
 export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks, creationSessionId, canvasId, projectId) {
   const [requests] = useState(createCanvasTextRequests);
@@ -21,6 +22,12 @@ export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks, c
     let controller;
     try {
       plan = planCanvasVideoGeneration(nodes, nodeId, prompt, model, { ...params, capabilities, generationMode });
+      // Seedance 2.0 家族的音频参考在点击生成时统一校验并提示；2.5 不限制。
+      const audioValidation = await validateSeedance20AudioReferences(
+        plan.sources.filter((source) => source.type === 'audio').map((source) => source.asset),
+        { modelId: model, modelName: params.modelName },
+      );
+      if (!audioValidation.ok) throw new Error(audioValidation.message);
       controller = requests.start(plan);
     } catch (error) {
       onRejected?.(error.message);

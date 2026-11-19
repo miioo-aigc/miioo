@@ -815,6 +815,9 @@ export async function apiGenerateStoryboardImage(projectId, storyboardId, params
 
 export async function apiGenerateStoryboardVideo(projectId, storyboardId, params) {
   await validateVideoRequestImages(params);
+  const hasAudioReference = Boolean(params.reference_audio_url)
+    || (Array.isArray(params.attachments)
+      && params.attachments.some((item) => item?.asset_type === 'audio'));
   if (params.videoCapabilities || params.supportedGenerationModes) {
     assertVideoRequestCapabilities({
       generationMode: params.generate_mode,
@@ -822,7 +825,7 @@ export async function apiGenerateStoryboardVideo(projectId, storyboardId, params
       capabilities: params.videoCapabilities || {},
       supportedGenerationModes: params.supportedGenerationModes || [],
       isSeedance: Boolean(params.isSeedance),
-      hasAudio: Boolean(params.reference_audio_url),
+      hasAudio: hasAudioReference,
     });
   }
   const {
@@ -830,12 +833,14 @@ export async function apiGenerateStoryboardVideo(projectId, storyboardId, params
     videoCapabilities,
     supportedGenerationModes,
     isSeedance,
+    reference_audios: referenceAudios,
     ...requestParams
   } = params;
   void modelName;
   void videoCapabilities;
   void supportedGenerationModes;
   void isSeedance;
+  void referenceAudios;
   const res = await authFetch(
     `${BASE}/api/projects/${projectId}/storyboards/${storyboardId}/generate-video`,
     {

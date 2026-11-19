@@ -3110,6 +3110,7 @@ function hasStoryboardMediaHint(shot = {}) {
               return isNaN(parsed) ? undefined : parsed;
             })();
             const isFrameReference = params.uiReferenceMode === 'frame';
+            const referenceAudios = isFrameReference ? [] : (params.reference_audios || []);
             const referencePayload = isFrameReference
               ? {}
               : buildStoryboardVideoReferencePayload(
@@ -3119,6 +3120,7 @@ function hasStoryboardMediaHint(shot = {}) {
                     || shot.creationForm?.video?.refSubjects,
                   shot.mainRefs,
                 ),
+                referenceAudios,
               );
             const taskResp = await apiGenerateStoryboardVideo(projectId, shot.id, {
                 model: params.model,
@@ -3141,7 +3143,10 @@ function hasStoryboardMediaHint(shot = {}) {
                 supportedGenerationModes: params.supportedGenerationModes,
                 isSeedance: params.isSeedance,
                 reference_video_url: isFrameReference ? undefined : toAbsoluteUrl(params.reference_video_url),
-                reference_audio_url: isFrameReference ? undefined : toAbsoluteUrl(params.reference_audio_url),
+                // 完整音频数组已随 attachments 提交；单值字段只保留第一段以兼容旧后端口径。
+                reference_audio_url: isFrameReference
+                  ? undefined
+                  : toAbsoluteUrl(referenceAudios[0]?.url || params.reference_audio_url),
               });
             const savedReferenceImages = referencePayload.reference_images;
             taskId = getStoryboardTaskId(taskResp);
@@ -3163,7 +3168,10 @@ function hasStoryboardMediaHint(shot = {}) {
                 firstFrameUrl: params.first_frame_url || undefined,
                 lastFrameUrl: params.last_frame_url || undefined,
                 referenceVideoUrl: params.reference_video_url || undefined,
-                referenceAudioUrl: params.reference_audio_url || undefined,
+                referenceAudioUrl: referenceAudios[0]?.url || params.reference_audio_url || undefined,
+                referenceAudioUrls: referenceAudios.length > 1
+                  ? referenceAudios.map((item) => item.url).filter(Boolean)
+                  : undefined,
               };
               const currentShot = shotsRef.current.find((s) => s.id === shot.id);
               if (currentShot && !currentShot.storyboardVideo) {
@@ -3177,7 +3185,7 @@ function hasStoryboardMediaHint(shot = {}) {
                 );
                 return updated;
               });
-              await saveGeneratedCandidateMedia(shot.id, { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated', prompt: params.prompt, model: params.model, resolution: params.resolution, duration: durationValue, ratio: projectRatio, referenceImages: savedReferenceImages, genParams: { model: params.model, resolution: params.resolution, duration: durationValue, sound_effect: params.sound, ratio: projectRatio, generate_mode: params.generate_mode, reference_mode: params.reference_mode, reference_images: savedReferenceImages, first_frame_url: params.first_frame_url, last_frame_url: params.last_frame_url, reference_video_url: isFrameReference ? undefined : params.reference_video_url, reference_audio_url: isFrameReference ? undefined : params.reference_audio_url } }, taskId, isCurrent);
+              await saveGeneratedCandidateMedia(shot.id, { id: `vid-${shot.id}`, url: normalizedUrl, name: 'generated.mp4', type: 'video/mp4', media_type: 'video', source: 'ai-generated', prompt: params.prompt, model: params.model, resolution: params.resolution, duration: durationValue, ratio: projectRatio, referenceImages: savedReferenceImages, genParams: { model: params.model, resolution: params.resolution, duration: durationValue, sound_effect: params.sound, ratio: projectRatio, generate_mode: params.generate_mode, reference_mode: params.reference_mode, reference_images: savedReferenceImages, first_frame_url: params.first_frame_url, last_frame_url: params.last_frame_url, reference_video_url: isFrameReference ? undefined : params.reference_video_url, reference_audio_url: isFrameReference ? undefined : (referenceAudios[0]?.url || params.reference_audio_url), reference_audio_urls: referenceAudios.length > 1 ? referenceAudios.map((item) => item.url).filter(Boolean) : undefined } }, taskId, isCurrent);
               if (!isCurrent()) return;
               settled = true;
               return { url: normalizedUrl };

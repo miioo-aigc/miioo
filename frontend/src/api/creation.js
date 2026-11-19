@@ -502,6 +502,7 @@ import { throwResponseError } from './error.js';
 import { toAbsoluteUrl } from '../utils/imageUrl.js';
 import { captureVideoLastFrame } from '../utils/videoUtils';
 import { assertVideoRequestCapabilities, isSeedanceVideoModel, getSeedance20AudioReferenceErrorMessage } from '../utils/videoModelCapabilities';
+import { validateSeedance20AudioReferences } from '../utils/SeedanceAudioValidation';
 
 // ── 创作会话（Session）───────────────────────────────────────────────────────
 
@@ -1198,6 +1199,18 @@ export async function apiGenerateCreation(params, { onTaskCreated, onProgress, s
       isSeedance: isSeedanceVideoModel({ modelId: params.model || 'doubao-seedance-2.0' }),
       hasAudio: hasAudioFile || Boolean(params.reference_audio_url),
     });
+  }
+  // 创作与画布共用本提交路径；Seedance 2.0 家族的音频参考在这里统一做时长/段数/合计兜底。
+  // 无音频时不进入校验，避免多一次 await 打断调用方的同步时序。
+  if (isVideo) {
+    const audioReferences = files.filter((file) => getCreationReferenceType(file) === 'audio');
+    if (audioReferences.length > 0) {
+      const audioValidation = await validateSeedance20AudioReferences(audioReferences, {
+        modelId: params.model || 'doubao-seedance-2.0',
+        modelName: params.modelName,
+      });
+      if (!audioValidation.ok) throw new Error(audioValidation.message);
+    }
   }
   if (isVideo) {
     for (const file of [...files, params.firstFrameFile, params.lastFrameFile]) {

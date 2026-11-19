@@ -4,6 +4,7 @@ import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import { isSeedanceVideoModel } from '../src/utils/videoModelCapabilities.js';
 import { waitForCreationVideoImages } from '../src/api/CreationVideoReferences.js';
+import { validateSeedance20AudioReferences } from '../src/utils/SeedanceAudioValidation.js';
 
 class DeferredImage {
   static instances = [];
@@ -78,6 +79,7 @@ function loadApi(fetcher, wait = async () => {}) {
     setTimeout, clearTimeout, console: { log() {}, warn() {} },
     validateVideoRequestImages: wait, assertVideoReferencePixels: async () => {}, assertVideoRequestCapabilities() {}, isSeedanceVideoModel,
     toAbsoluteUrl: (url) => url,
+    validateSeedance20AudioReferences,
     throwResponseError: async () => { throw new Error('请求失败'); },
   });
 }

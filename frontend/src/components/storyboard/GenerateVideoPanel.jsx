@@ -93,6 +93,8 @@ import {
   shouldConfirmFrameModeForAllReferenceMedia,
 } from '../../utils/videoModelCapabilities';
 import { resolveVideoModelRoute } from '../../utils/videoModelAdapter';
+import { validateSeedance20AudioReferences } from '../../utils/SeedanceAudioValidation';
+import { readMediaDuration } from '../../utils/ReadMediaDuration.js';
 import {
   getEffectiveReferenceCapabilities,
   getReferenceLimitMessage,
@@ -586,10 +588,20 @@ export default function GenerateVideoPanel({
       const uploadedUrl = normalizeImageUrl(getUploadedImageUrl(result));
       if (!uploadedUrl) throw new Error('上传接口未返回参考图地址');
 
+      // 音频在点击生成时才做 Seedance 2.0 规则校验，这里先记录真实时长与体积；
+      // 读取失败不阻断上传，校验阶段按“缺少元数据”放行由后端兜底。
+      let audioMeta = {};
+      if (type === 'audio') {
+        const duration = await readMediaDuration(file, 'audio');
+        audioMeta = {
+          duration: typeof duration === 'number' ? duration : undefined,
+          size: typeof file?.size === 'number' ? file.size : undefined,
+        };
+      }
       // 不再自动插入提示词标签，标签由用户手动 @ 引入
       return normalizeStoryboardReferenceGroups({
         [type === 'audio' ? 'audios' : type === 'video' ? 'videos' : 'images']:
-          [{ id: getUploadedImageId(result, uploadedUrl), assetId: getUploadedImageId(result), url: uploadedUrl, name: file.name, type: file.type }],
+          [{ id: getUploadedImageId(result, uploadedUrl), assetId: getUploadedImageId(result), url: uploadedUrl, name: file.name, type: file.type, ...audioMeta }],
       })[type === 'audio' ? 'audios' : type === 'video' ? 'videos' : 'images'][0];
     } catch (error) {
       console.error('参考媒体上传失败:', error);
@@ -668,6 +680,16 @@ export default function GenerateVideoPanel({
       onShowToast?.(referenceLimitMessage, 'warning');
       return;
     }
+    // Seedance 2.0 家族的音频参考在点击生成时统一校验并提示；
+    // 2.5 不限制，非 Seedance 模型直接放行。
+    const audioValidation = await validateSeedance20AudioReferences(routeAudios, {
+      modelId: model,
+      modelName: currentVideoModel?.label,
+    });
+    if (!audioValidation.ok) {
+      onShowToast?.(audioValidation.message, 'warning');
+      return;
+    }
     const requestRoute = resolveVideoModelRoute({
       modelOption: currentVideoModel,
       generationMode: routeResult.generationMode,
@@ -725,7 +747,8 @@ export default function GenerateVideoPanel({
         videoCapabilities: requestCapabilities,
         supportedGenerationModes: requestCapabilities.supported_generation_modes || [],
         isSeedance,
-        // 当前分镜生成接口仍接收单个 URL；UI 可按模型能力收集多个素材，提交时保持既有接口契约。
+        // 音频参考可收集多段：完整数组随 attachments 提交，单值字段仅作旧后端口径兜底。
+        reference_audios: routeAudios.length > 0 ? routeAudios : undefined,
         reference_video_url: routeVideos[0]?.url,
         reference_audio_url: routeAudios[0]?.url,
       });

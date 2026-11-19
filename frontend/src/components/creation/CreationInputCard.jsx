@@ -79,6 +79,7 @@ import {
   VIDEO_REFERENCE_MODES,
 } from '../../utils/videoModelCapabilities';
 import { resolveVideoModelRoute } from '../../utils/videoModelAdapter';
+import { validateSeedance20AudioReferences } from '../../utils/SeedanceAudioValidation';
 
 function createDefaultDubbingEffects() {
   return {
@@ -862,6 +863,15 @@ function InputCard({ onGenerate, onCancelGeneration, width = '800px', disabled =
       videoReferenceMode = referenceRouteResult.referenceMode;
       if (refMode?.startsWith('kling_') && !requestRoute) {
         showToast?.('warning', '当前 Kling V3 专项能力暂不可用，请刷新模型数据后重试');
+        return;
+      }
+      // Seedance 2.0 家族的音频参考在点击生成时统一校验并提示，2.5 不限制。
+      const audioValidation = await validateSeedance20AudioReferences(
+        savedFiles.filter(isAudioFile),
+        { modelId: requestModel, modelName: currentModel?.label },
+      );
+      if (!audioValidation.ok) {
+        showToast?.('warning', audioValidation.message);
         return;
       }
     }

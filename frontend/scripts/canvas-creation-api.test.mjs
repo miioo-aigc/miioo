@@ -4,6 +4,7 @@ import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import { isSeedanceVideoModel, assertVideoRequestCapabilities } from '../src/utils/videoModelCapabilities.js';
 import { planCanvasVideoGeneration } from '../src/components/canvas/CanvasVideoGeneration.js';
+import { validateSeedance20AudioReferences } from '../src/utils/SeedanceAudioValidation.js';
 
 const apiSource = readFileSync(new URL('../src/api/creation.js', import.meta.url), 'utf8')
   .replace(/^import .*;$/mg, '').replace(/export /g, '')
@@ -101,6 +102,7 @@ function loadApi({ taskIds = ['first', 'second'], polls = {}, imageDetails = {},
     assertVideoReferencePixels: async () => {}, isSeedanceVideoModel,
     assertVideoRequestCapabilities: validateVideo ? assertVideoRequestCapabilities : () => {},
     toAbsoluteUrl: (url) => url, getSeedance20AudioReferenceErrorMessage: () => '',
+    validateSeedance20AudioReferences,
     throwResponseError: async (response) => {
       throw Object.assign(new Error(`请求失败（${response.status}）`), { status: response.status });
     },

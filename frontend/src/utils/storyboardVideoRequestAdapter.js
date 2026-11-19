@@ -6,6 +6,7 @@
  */
 
 import { toSafeStoryboardReferenceUrls } from './storyboardReferenceAdapter';
+import { toAbsoluteUrl } from './imageUrl';
 
 function readValue(item, keys) {
   for (const key of keys) {
@@ -164,7 +165,7 @@ function getReferenceUrl(item) {
  * 真人使用 live_material；AIGC 使用 asset:// 引用附件。两者都不能把
  * 浏览器预览图当成模型输入。
  */
-export function buildStoryboardVideoReferencePayload(referenceMedia = []) {
+export function buildStoryboardVideoReferencePayload(referenceMedia = [], referenceAudios = []) {
   const items = Array.isArray(referenceMedia) ? referenceMedia.filter(Boolean) : [];
   const liveGroups = new Map();
   const regularItems = [];
@@ -195,7 +196,7 @@ export function buildStoryboardVideoReferencePayload(referenceMedia = []) {
   if (referenceImageAssetIds.length) {
     payload.reference_image_asset_ids = [...new Set(referenceImageAssetIds)];
   }
-  const attachments = regularItems
+  const imageAttachments = regularItems
     .map((item) => {
       const url = toSafeStoryboardReferenceUrls([{ ...item, url: getReferenceUrl(item) }])[0];
       if (!url) return null;
@@ -208,6 +209,23 @@ export function buildStoryboardVideoReferencePayload(referenceMedia = []) {
       };
     })
     .filter(Boolean);
+  // 音频参考不进 reference_images，按 CreationAssetBinding 追加到 attachments，
+  // 与创作/画布共用同一后端消费口径；URL 用绝对地址避免后端按相对路径解析。
+  const audioAttachments = (Array.isArray(referenceAudios) ? referenceAudios : [])
+    .filter(Boolean)
+    .map((item) => {
+      const url = toAbsoluteUrl(getReferenceUrl(item));
+      if (!url) return null;
+      return {
+        asset_id: getAssetId(item) || undefined,
+        asset_type: 'audio',
+        url,
+        role: 'reference',
+        source: 'mention',
+      };
+    })
+    .filter(Boolean);
+  const attachments = [...imageAttachments, ...audioAttachments];
   if (attachments.length) payload.attachments = attachments;
 
   const liveMaterial = [...liveGroups.values()].find((group) => group.asset_ids.length);

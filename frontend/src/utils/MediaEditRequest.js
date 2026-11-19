@@ -36,7 +36,7 @@ export function buildImageEditRequest(asset, options = {}) {
     business_context: input.business_context || asset.business_context || asset.metadata_json?.business_context || undefined,
     idempotency_key: input.idempotency_key || createIdempotencyKey(), model: input.model ?? null,
     model_requirement: input.model_requirement, model_status: input.model_status || 'awaiting-backend-contract' };
-  const fields = ['prompt', 'mask', 'image', 'file', 'target_resolution', 'left_expansion_ratio', 'right_expansion_ratio', 'up_expansion_ratio', 'down_expansion_ratio'];
+  const fields = ['prompt', 'mask', 'image', 'file', 'target_resolution', 'left_expansion_ratio', 'right_expansion_ratio', 'up_expansion_ratio', 'down_expansion_ratio', 'canvas_id'];
   fields.forEach((key) => { if (input[key] !== undefined && (edit_mode === 'inpaint' || edit_mode === 'outpaint' || key !== 'prompt')) request[key] = input[key]; });
   if (edit_mode === 'outpaint') validateExpansion(request);
   if (!['inpaint', 'outpaint'].includes(edit_mode)) delete request.prompt;
@@ -56,7 +56,7 @@ export function buildVideoEditRequest(asset, options = {}) {
     idempotency_key: options.idempotency_key || createIdempotencyKey(), model: options.model ?? null, model_requirement: options.model_requirement,
     model_status: options.model_status || 'awaiting-backend-contract',
     business_context: options.business_context || asset.business_context || asset.metadata_json?.business_context || undefined };
-  ['start_time_seconds', 'end_time_seconds', 'frame_time_seconds', 'target_resolution', 'metadata', 'file'].forEach((key) => { if (options[key] !== undefined) request[key] = options[key]; });
+  ['start_time_seconds', 'end_time_seconds', 'frame_time_seconds', 'target_resolution', 'metadata', 'file', 'canvas_id'].forEach((key) => { if (options[key] !== undefined) request[key] = options[key]; });
   if (!['upscale', 'subtitle_remove', 'frame_extract', 'trim'].includes(request.edit_mode)) throw new Error('不支持的视频编辑模式');
   if (request.edit_mode === 'trim' && (!Number.isFinite(request.start_time_seconds) || !Number.isFinite(request.end_time_seconds) || request.start_time_seconds < 0 || request.end_time_seconds <= request.start_time_seconds)) throw new Error('剪辑结束时间必须晚于开始时间');
   if (request.edit_mode === 'upscale') {

@@ -25,7 +25,10 @@ export default function useImageEditSubmission({ card, onSave, onComplete, keepO
       sessionCheck.current();
       if (!onSave?.scope || !onSave.pending) throw new Error('当前列表未连接云端编辑保存');
       if (!pending.current) {
-        const request = buildImageEditRequest(keepOpen ? originalCard.current : card, options);
+        const request = buildImageEditRequest(
+          keepOpen ? originalCard.current : card,
+          { ...options, canvas_id: onSave.canvasId }
+        );
         const owner = imageEditSubmissionOwner();
         const source = await apiPrepareEditSource(keepOpen ? originalCard.current : card);
         sessionCheck.current();
@@ -47,7 +50,11 @@ export default function useImageEditSubmission({ card, onSave, onComplete, keepO
         work.uncertain = true;
         if (work.request.file) {
           setStage('正在上传图片');
-          work.image = await uploadImageEditFile(work.request.file, { sourceAssetId: work.source.id, editMode: work.request.edit_mode });
+          work.image = await uploadImageEditFile(work.request.file, {
+            sourceAssetId: work.source.id,
+            editMode: work.request.edit_mode,
+            canvasId: work.request.canvas_id,
+          });
         } else {
           work.accepted = await apiSubmitImageEdit(work.source, { ...work.request, business_context: work.destination });
         }

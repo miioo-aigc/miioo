@@ -1,5 +1,8 @@
 /**
  * @file CanvasPage.jsx
+ * 2026-11-19：整画布保存前同步已迁移文本编辑历史，复用串行队列与幂等操作；页面仅保留会话编排。
+ * 2026-11-16：下游拖线落至空白处并打开新增节点菜单时保留连接预览，选择节点或关闭菜单后清理。
+ * 2026-11-19：视频及音频生成补传所属项目，供服务端归档画布资产；2026-11-16：生成与编辑绑定真实创作会话及画布身份；结果写回稳定资产后刷新素材。
  * 2026-11-13：持久文本任务接线；准备先保存、刷新恢复、专用取消、服务端历史回填。
  * 2026-11-13：文本节点尺寸拖动纳入单次历史事务，沿用组边界更新。
  * @structure-index
@@ -14,7 +17,7 @@
  *
  *   2026-11-04：双名称分别编辑，画布管理迁入顶部，底部移除列表入口。
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L172；grouping L281；referenceGraph L307；handleNodesChange L406；addNode L479；上传 L716；React Flow L1092。
+ *   CanvasPage L195；grouping L304；referenceGraph L332；handleNodesChange L431；addNode L504；上传 L787；React Flow L1122。
  *   2026-11-06：媒体替换独立单素材分支，上传与素材库均复核目标会话/节点，普通导入和参考流程保持原语义。
  *   2026-11-06：统一结果切换、节点级任务操作保护、文本结果历史、直接上游更新标识及复制/导入历史预览恢复。
  *   2026-10-27：保存失败复用带下载操作的提示，点击时导出最新草稿。
@@ -71,13 +74,15 @@
 import { getCanvasUpstreamUpdates } from '../components/canvas/CanvasUpstreamUpdates';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import CanvasTextEditor from '../components/canvas/CanvasTextEditor';
+import { syncCanvasTextEdits } from '../components/canvas/CanvasTextEdits';
+import * as canvasTextApi from '../api/CanvasTextSubmissions';
 import { useCanvasTextEditor } from '../components/canvas/UseCanvasTextEditor';
 import { useCanvasAutosave } from '../components/canvas/UseCanvasAutosave';
 import CanvasGridBackground from '../components/canvas/CanvasGridBackground';
 import { useCanvasSnapping } from '../components/canvas/UseCanvasSnapping';
 import CanvasSnapGuides from '../components/canvas/CanvasSnapGuides';
 import { getCanvasAssetNodeSize, prepareCanvasMediaAsset } from '../components/canvas/CanvasMediaSize';
-import { applyNodeChanges, PanOnScrollMode, ReactFlow } from '@xyflow/react';
+import { applyNodeChanges, getBezierPath, PanOnScrollMode, ReactFlow } from '@xyflow/react';
 import CanvasMiniMap from '../components/canvas/CanvasMiniMap';
 import { X } from 'lucide-react';
 import { showGlobalToast } from '../stores/toastStore';
@@ -129,13 +134,14 @@ import LocalImageEditor from '../components/image-edit/LocalImageEditor';
 import { useCanvasImageEdits } from '../components/canvas/UseCanvasImageEdits';
 import { useCanvasVideoEdits } from '../components/canvas/UseCanvasVideoEdits';
 import CanvasVideoEditor from '../components/canvas/CanvasVideoEditor';
-import { readCanvasDocument, serializeCanvasDocument } from '../components/canvas/CanvasDocument';
+import { getCanvasUnavailableAssetIds, readCanvasDocument, removeUnavailableCanvasReferences, serializeCanvasDocument } from '../components/canvas/CanvasDocument';
 import { resolveCanvasDocumentAssets } from '../components/canvas/CanvasAssetResolver';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import { createCanvasSaveSession } from '../components/canvas/CanvasSaveSession';
 import { useCanvasList } from '../components/canvas/UseCanvasList';
 import { selectCanvasNodeOutput, commitCanvasNodeOutput } from '../components/canvas/CanvasResultMutations.js';
 import { guardCanvasNodeChanges, getCanvasOperationLocks, mergeCanvasResolvedAssetViews } from '../components/canvas/CanvasOperationGuards.js';
+import { filterCanvasGenerationSources, getCanvasGenerationImportAsset } from '../utils/canvasGenerationHistoryAdapter';
 
 // 浏览器 click 先于 dblclick 触发；保留极短窗口，避免双击时先展开创作框。
 const CANVAS_SINGLE_CLICK_DELAY = 200;
@@ -153,16 +159,33 @@ function getCanvasUpstreamTypes(targetType) {
     .map(([sourceType]) => sourceType);
 }
 
-function getLeftPortCenter(nodeId, containerRect) {
+function getPortCenter(nodeId, position, containerRect) {
   const nodeElement = [...document.querySelectorAll('.react-flow__node[data-id]')]
     .find((element) => element.getAttribute('data-id') === nodeId);
-  const port = nodeElement?.querySelector('.canvas-node__port-anchor');
+  const port = nodeElement?.querySelector(`.canvas-node__port-anchor[data-handlepos="${position}"]`);
   if (!port) return null;
   const rect = port.getBoundingClientRect();
   return {
     x: rect.left + rect.width / 2 - (containerRect?.left || 0),
     y: rect.top + rect.height / 2 - (containerRect?.top || 0),
   };
+}
+
+function getLeftPortCenter(nodeId, containerRect) {
+  return getPortCenter(nodeId, 'left', containerRect);
+}
+
+function getPendingConnectionPath(start, end) {
+  if (!start || !end) return '';
+  const [path] = getBezierPath({
+    sourceX: start.x,
+    sourceY: start.y,
+    sourcePosition: 'right',
+    targetX: end.x,
+    targetY: end.y,
+    targetPosition: 'left',
+  });
+  return path;
 }
 
 function UnsupportedAction({ onClose }) {
@@ -232,7 +255,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const commitUserText = useCallback((nodeId, content) => {
     const current = history.getCurrentNodes();
     const node = current.find((item) => item.id === nodeId && item.type === 'text');
-    if (!node || !content.trim() || node.data.generating || node.data.generationPending || node.data.editing
+    if (!node || typeof content !== 'string' || node.data.generating || node.data.generationPending || node.data.editing
       || node.data.submissionLocked) return false;
     const now = Date.now(), id = `canvas-text-edit-${crypto.randomUUID()}`;
     setNodes((items) => items.map((item) => item.id === nodeId ? commitCanvasNodeOutput(item, {
@@ -280,6 +303,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const search = useCanvasSearch({ nodes, setNodes, flowInstance, containerRef: canvasContainerRef, cancelPendingClicks, open: searchOpen, setOpen: setSearchOpen });
   const grouping = useCanvasGrouping(nodes, setNodes, cancelPendingClicks, false);
   const nodeActions = useCanvasNodeActions({ nodes, setNodes, undo: history.undo, redo: history.redo, getUndoToken: history.getUndoToken, cancelPendingClicks, flowInstance,
+    projectId: canvas?.project_id,
     containerRef: canvasContainerRef, beforeDelete: (ids) => textCancelRef.current?.(ids),
     enabled: loadedCanvasId === canvasId && !error && !assetPickerOpen && !profileOpen && !searchOpen,
     dialog: actionDialog, setDialog: setActionDialog });
@@ -295,9 +319,10 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const textTasks = useCanvasTextGeneration(nodes, setNodes, canvasId, cancelPendingClicks, textBridgeRef);
   const generateText = textTasks.generate;
   useEffect(() => { textCancelRef.current = textTasks.cancel; }, [textTasks.cancel]);
-  const generateImage = useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, canvas?.project_id, retainMultiResultHint);
-  const generateVideo = useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks);
-  const generateAudio = useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks);
+  const creationSessionId = canvas?.creation_session_id || canvas?.creationSessionId;
+  const generateImage = useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, canvas?.project_id, creationSessionId, canvasId, retainMultiResultHint);
+  const generateVideo = useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks, creationSessionId, canvasId, canvas?.project_id);
+  const generateAudio = useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks, creationSessionId, canvasId, canvas?.project_id);
   const enterNodeRef = useRef(grouping.enterNode);
   useEffect(() => { enterNodeRef.current = grouping.enterNode; }, [grouping.enterNode]);
   const openReferencePicker = useCallback((target) => {
@@ -323,7 +348,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     const session = getAuthSessionGeneration();
     const isCurrent = () => !cancelled && session === getAuthSessionGeneration();
     const controller = new AbortController();
-    saveSessionRef.current = { canvasId, session: createCanvasSaveSession(apiUpdateCanvasDocument) };
+    saveSessionRef.current = { canvasId, session: createCanvasSaveSession(apiUpdateCanvasDocument), textEdits: new Map() };
     Promise.allSettled([apiGetCanvasDocument(canvasId), isDevelopmentCanvas(canvasId) ? Promise.resolve({}) : apiGetCurrentUser()]).then(async ([documentResult, userResult]) => {
       if (!isCurrent()) return;
       if (documentResult.status === 'rejected') {
@@ -658,21 +683,62 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     })) return false;
     const owner = saveSessionRef.current;
     const session = getAuthSessionGeneration();
-    const document = serializeCanvasDocument(snapshot.nodes, referenceGraph.edges, viewport);
+    let document;
     const feedback = acknowledgeSaveRef.current;
     feedback?.start?.();
     let result;
     try {
+      await owner.session.recover();
+      if (!isDevelopmentCanvas(canvasId)) await owner.session.mutate(async (accept) => {
+        let retry;
+        let attempts = 0;
+        do {
+          retry = false;
+          await syncCanvasTextEdits({ canvasId, nodes: history.getCurrentNodes(), api: canvasTextApi,
+            operations: owner.textEdits, accept,
+            check: () => { if (saveSessionRef.current !== owner || session !== getAuthSessionGeneration()) throw new Error('画布会话已结束'); },
+            apply: (original, synced) => setNodes(items => items.map(node => {
+              if (node.id !== original.id) return node;
+              if (node.data.nodeResults !== original.data.nodeResults) {
+                retry = true;
+                return { ...node, data: { ...node.data, outputVersion: synced.data.outputVersion } };
+              }
+              return { ...node, data: { ...node.data, content: synced.data.content, nodeResults: synced.data.nodeResults, outputVersion: synced.data.outputVersion } };
+            }), { record: false, origin: 'system' }),
+          });
+          if (retry && ++attempts >= 3) throw new Error('文本仍在编辑，已保留草稿，请稍后重试保存');
+        } while (retry);
+      });
+      document = serializeCanvasDocument(history.getCurrentNodes(), referenceGraph.edges, viewport);
       result = await owner.session.save(canvasId, canvasRevision, document);
     } catch (saveError) {
-      if (saveSessionRef.current === owner && session === getAuthSessionGeneration()) feedback?.fail?.();
-      throw saveError;
+      if (saveSessionRef.current !== owner || session !== getAuthSessionGeneration()) throw saveError;
+      const unavailableAssetIds = getCanvasUnavailableAssetIds(saveError);
+      if (!unavailableAssetIds.length) {
+        feedback?.fail?.();
+        throw saveError;
+      }
+      try {
+        const currentNodes = history.getCurrentNodes();
+        const cleanedNodes = removeUnavailableCanvasReferences(currentNodes, unavailableAssetIds);
+        if (cleanedNodes === currentNodes) {
+          feedback?.fail?.();
+          throw saveError;
+        }
+        setNodes(cleanedNodes, { record: false, origin: 'system' });
+        document = serializeCanvasDocument(cleanedNodes, referenceGraph.edges, viewport);
+        result = await owner.session.save(canvasId, canvasRevision, document);
+      } catch (retryError) {
+        if (retryError !== saveError && saveSessionRef.current === owner
+          && session === getAuthSessionGeneration()) feedback?.fail?.();
+        throw retryError;
+      }
     }
     if (saveSessionRef.current !== owner || session !== getAuthSessionGeneration()) return false;
     feedback?.(document);
     if (Number.isInteger(result?.revision)) setCanvasRevision(result.revision);
     return true;
-  }, [canvasId, loadedCanvasId, error, canvasRevision, history, referenceGraph.edges, viewport]);
+  }, [canvasId, loadedCanvasId, error, canvasRevision, history, referenceGraph.edges, viewport, setNodes]);
   useLayoutEffect(() => {
     textBridgeRef.current = { ready: loadedCanvasId === canvasId && !error, getNodes: history.getCurrentNodes,
       persist: persistCanvas, mutate: (action) => {
@@ -691,7 +757,12 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const reportSaveError = canvasFiles.reportSaveError;
   const addHistoryAssetToCanvas = useCallback(async (asset) => {
     if (loading || error || !flowInstance || !canvasContainerRef.current) return false;
-    const prepared = await prepareCanvasMediaAsset(toCanvasAsset(asset, 'video'));
+    const importAsset = getCanvasGenerationImportAsset(asset);
+    if (!importAsset) {
+      showGlobalToast('该历史素材当前不可用，无法添加到画布', 'error');
+      return false;
+    }
+    const prepared = await prepareCanvasMediaAsset(toCanvasAsset(importAsset, importAsset.asset_type));
     if (!prepared || !getCanvasPermanentAssetId(prepared)) {
       showGlobalToast('生成历史缺少可导入的媒体文件', 'error');
       return false;
@@ -1011,11 +1082,15 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     }
     const clientX = event?.clientX ?? connectionState?.pointer?.x ?? 0;
     const clientY = event?.clientY ?? connectionState?.pointer?.y ?? 0;
+    const containerRect = canvasContainerRef.current?.getBoundingClientRect();
+    const lineStart = getPortCenter(source, 'right', containerRect);
+    const lineEnd = { x: clientX - (containerRect?.left || 0), y: clientY - (containerRect?.top || 0) };
     setPendingConnection({
       source,
       sourceHandle,
       screen: getCanvasNodeMenuPosition({ clientX, clientY }, { width: window.innerWidth, height: window.innerHeight }),
       flowPosition: flowInstance?.screenToFlowPosition({ x: clientX, y: clientY }) || { x: 0, y: 0 },
+      linePath: getPendingConnectionPath(lineStart, lineEnd),
     });
     setConnectingNodeId(null);
     setConnectingHandleType('');
@@ -1089,7 +1164,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       onRenameCanvas={canvasList.rename} onDuplicateCanvas={canvasList.duplicate} onDeleteCanvas={canvasList.remove} />
     <CanvasUserMenu currentUser={currentUser} onLogout={() => leaveCanvas(handleLogout)} onOpenProfile={() => setProfileOpen(true)} />
     <div ref={canvasContainerRef} className="absolute inset-0 bg-[#121212]">
-      <ReactFlow viewport={viewport} minZoom={0.01}
+      <ReactFlow viewport={viewport} minZoom={0.2} maxZoom={3}
         onDragOver={handleCanvasDragOver} onDrop={handleCanvasDrop}
         onWheelCapture={handleCanvasWheelCapture}
         onMove={(_, nextViewport) => { setViewport(nextViewport); setViewportZoom(nextViewport.zoom); }}
@@ -1148,6 +1223,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       </ReactFlow>
       <CanvasSnapGuides guides={snapGuides} viewport={viewport} />
       {upstreamConnection && <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full" aria-hidden="true"><line x1={upstreamConnection.start?.x ?? upstreamConnection.end.x} y1={upstreamConnection.start?.y ?? upstreamConnection.end.y} x2={upstreamConnection.end.x} y2={upstreamConnection.end.y} stroke="var(--color-brand-main)" strokeWidth="2" /></svg>}
+      {pendingConnection?.linePath && <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full" aria-hidden="true"><path d={pendingConnection.linePath} fill="none" stroke="var(--color-brand-main)" strokeWidth="2" /></svg>}
       {(nodeMenu || pendingConnection) && <div className="pointer-events-none absolute inset-0 z-30"><div className="pointer-events-auto absolute" style={{ left: (pendingConnection || nodeMenu).screen.left, top: (pendingConnection || nodeMenu).screen.top }}><CanvasNodeAddMenu
         onUpload={nodeMenu && !pendingConnection ? () => {
           setNodeMenu(null);
@@ -1186,7 +1262,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     />
     {search.open && <CanvasSearchModal nodes={nodes} onClose={search.close} onSelect={search.select} />}
     <CanvasGenerationHistory open={generationHistoryOpen} canvasId={canvasId} targetCanvasId={canvasId}
-      canvases={canvasList.items.filter((item) => (item.project_id || null) === (canvas?.project_id || null))}
+      canvases={filterCanvasGenerationSources(canvasList.items, canvasId, canvas?.project_id)}
       onClose={() => setGenerationHistoryOpen(false)} onAddToCanvas={addHistoryAssetToCanvas} />
     <input ref={menuUploadInputRef} type="file" hidden multiple accept={getCanvasMediaAccept('all')} onChange={(event) => {
       const files = [...(event.target.files || [])];

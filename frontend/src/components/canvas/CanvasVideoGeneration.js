@@ -1,6 +1,8 @@
 /** 视频直连素材、能力校验和结果节点快照；不复用创作页的模式推断。
  * 2026-11-09：参考上限区分「能力未加载」与「真实 0」；未知期间不标红、不拦截，回填后按真实值判定。
+ * 2026-11-18：按实际模型补齐 Seedance 标记，避免音频参考误拦截。
  */
+import { isSeedanceVideoModel } from '../../utils/videoModelCapabilities.js';
 import { setCanvasSelection } from './CanvasGroups.js';
 import { commitCanvasNodeOutput } from './CanvasResultMutations.js';
 import { isCanvasSeedanceVideoEdit } from './CanvasVideoModels.js';
@@ -230,7 +232,7 @@ export function planCanvasVideoGeneration(nodes, nodeId, prompt, model, params =
   return { nodeId, prompt: instruction, model, sources, capabilities, generationMode: mode,
     referenceMaterials: prompt?.trim() ? sources.filter((source) => source.type === 'text') : [],
     snapshot, submittedAt: Date.now(), taskIds: [], originalAssetId: assetIdentity(target.data.asset),
-    params: { ...effectiveParams, ...modes, videoCapabilities: capabilities, supportedGenerationModes: capabilities.supported_generation_modes, videoDuration: effectiveParams.duration,
+    params: { ...effectiveParams, ...modes, isSeedance: isSeedanceVideoModel({ modelId: model }), videoCapabilities: capabilities, supportedGenerationModes: capabilities.supported_generation_modes, videoDuration: effectiveParams.duration,
       firstFrameUrl: ['first_frame', 'start_end'].includes(mode) ? images[0]?.asset.url : undefined,
       lastFrameUrl: mode === 'start_end' ? images[1]?.asset.url : undefined },
     requestId: crypto.randomUUID(), createsResult: false, resultId: nodeId };

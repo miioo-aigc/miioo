@@ -5,12 +5,17 @@ import { showGlobalToast } from '../../stores/toastStore';
 import { createCanvasTextRequests } from './CanvasTextRequests';
 import { createCanvasProgressHandler } from './CanvasGenerationProgress';
 import { acceptCanvasVideoSubmission, getCanvasGeneratedVideoAsset, applyCanvasVideoResult, beginCanvasVideoGeneration, planCanvasVideoGeneration, recoverCanvasVideoGenerationFailure } from './CanvasVideoGeneration';
+import { dispatchCanvasAssetsChanged } from '../../utils/canvasAssetsEvents';
 
-export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks) {
+export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks, creationSessionId, canvasId, projectId) {
   const [requests] = useState(createCanvasTextRequests);
   useEffect(() => () => requests.abortAll(), [requests]);
   useEffect(() => { requests.reconcile(nodes); }, [nodes, requests]);
   return useCallback(async ({ nodeId, prompt, model, params = {}, capabilities, generationMode, onAccepted, onRejected }) => {
+    if (!creationSessionId) {
+      showGlobalToast('创作会话尚未加载，请稍后重试', 'error');
+      return;
+    }
     const systemSetNodes = (updater, options = {}) => setNodes(updater, { ...options, origin: 'system' });
     let plan;
     let controller;
@@ -27,7 +32,7 @@ export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks) {
       systemSetNodes((current) => beginCanvasVideoGeneration(current, plan));
       const files = plan.sources.filter((source) => source.type !== 'text' && source.asset?.url).map((source) => source.asset);
       const referenceMaterials = plan.referenceMaterials;
-      const result = await apiGenerateCreation({ genType: 'video', prompt: plan.prompt, model: plan.model, files, referenceMaterials, ...plan.params }, {
+      const result = await apiGenerateCreation({ genType: 'video', prompt: plan.prompt, model: plan.model, files, referenceMaterials, ...plan.params, project_id: projectId, session_id: creationSessionId }, {
         signal: controller.signal, onProgress: createCanvasProgressHandler(systemSetNodes, plan.requestId, controller.signal),
         onTaskCreated: (task) => {
           if (controller.signal.aborted) return;
@@ -41,7 +46,18 @@ export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks) {
       if (controller.signal.aborted) return;
       const asset = getCanvasGeneratedVideoAsset(result);
       onAccepted?.();
-      if (!controller.signal.aborted) systemSetNodes((current) => applyCanvasVideoResult(current, plan, asset), { record: false });
+      if (!controller.signal.aborted) {
+        let wroteResult = false;
+        const accepted = systemSetNodes((current) => {
+          const next = applyCanvasVideoResult(current, plan, asset);
+          const target = next.find((node) => node.id === plan.resultId);
+          wroteResult = target?.data?.asset?.asset_id === asset.asset_id
+            && target.data.nodeResults?.batches
+              ?.some((batch) => batch.results.some((result) => result.assetId === asset.asset_id));
+          return next;
+        }, { record: false });
+        if (accepted !== false && wroteResult) dispatchCanvasAssetsChanged(canvasId);
+      }
     } catch (error) {
       if (!controller.signal.aborted) {
         onRejected?.(error.message || '请重试');
@@ -52,5 +68,5 @@ export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks) {
     } finally {
       requests.finish(plan.requestId);
     }
-  }, [cancelPendingClicks, nodes, requests, setNodes]);
+  }, [cancelPendingClicks, canvasId, creationSessionId, nodes, projectId, requests, setNodes]);
 }

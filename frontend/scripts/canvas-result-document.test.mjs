@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { serializeCanvasDocument, readCanvasDocument } from '../src/components/canvas/CanvasDocument.js';
+import {
+  getCanvasUnavailableAssetIds,
+  removeUnavailableCanvasReferences,
+  serializeCanvasDocument,
+  readCanvasDocument,
+} from '../src/components/canvas/CanvasDocument.js';
 import { resolveCanvasDocumentAssets } from '../src/components/canvas/CanvasAssetResolver.js';
 import { createCanvasNode } from '../src/components/canvas/canvasNodeUtils.js';
 import { createCanvasNodeResults, commitCanvasResultBatch, selectCanvasNodeResult, projectCanvasCurrentResult } from '../src/components/canvas/CanvasNodeResults.js';
@@ -151,7 +156,7 @@ test('全部历史与旧节点资产全局去重按200分批，映射按资产�
   assert.deepEqual(save(restored[0]), save(node));
 });
 
-test('明确失效状态保留历史及定稿，清理旧地址且不自动换成可用历史', async () => {
+test('明确失效状态清理不可保存历史并回退到可用定稿，回收站状态仍保留', async () => {
   for (const availability of ['missing', 'forbidden', 'trashed']) {
     const node = fixture();
     node.data.asset.url = '/stale';
@@ -169,8 +174,87 @@ test('明确失效状态保留历史及定稿，清理旧地址且不自动换�
       assert.equal(restored.data.asset.url, undefined);
       assert.equal(restored.data.resultAssetViews[assetId(1)].url, undefined);
       assert.equal(restored.data.resultAssetViews[assetId(1)].name, undefined);
+      const saved = save(restored);
+      assert.equal(saved.records[0].props.nodeResults.batches.length, 1);
+      assert.deepEqual(saved.records[0].props.nodeResults.batches[0].results.map((result) => result.assetId), [assetId(0)]);
+      assert.equal(saved.records[0].props.nodeResults.currentResultId, 'result-0');
+      assert.equal(saved.records[0].props.assetId, assetId(0));
+    } else {
+      assert.deepEqual(save(restored), save(node));
     }
-    assert.deepEqual(save(restored), save(node));
+  }
+});
+
+test('仅清理失效的非当前历史，保留可用结果、当前定稿和未受影响的批次', () => {
+  const node = fixture('image', 3);
+  node.data.resultAssetViews = {
+    [assetId(0)]: { availability: 'ready' },
+    [assetId(1)]: { availability: 'missing' },
+    [assetId(2)]: { availability: 'ready' },
+  };
+  const saved = save(node).records[0].props;
+  assert.deepEqual(saved.nodeResults.batches.map((batch) => batch.id), ['batch-0', 'batch-2']);
+  assert.equal(saved.nodeResults.currentResultId, 'result-2');
+  assert.equal(saved.assetId, assetId(2));
+  assert.equal(node.data.nodeResults.batches.length, 3);
+});
+
+test('后端失效清单清理结果、历史快照和旧式素材字段，同时保留节点及普通文本', () => {
+  const node = fixture('image', 3);
+  node.data.nodeResults.currentResultId = 'result-1';
+  node.data.nodeResults.selections.push({ resultId: 'result-1', reason: 'select' });
+  Object.assign(node.data, projectCanvasCurrentResult(node.data.nodeResults));
+  node.data.nodeResults.batches[0].snapshot.inputs = [
+    { nodeId: 'source-missing', type: 'image', assetId: assetId(1) },
+    { nodeId: 'source-ready', type: 'image', assetId: assetId(0) },
+  ];
+  node.data.resultAssetViews = {
+    [assetId(0)]: { availability: 'ready' },
+    [assetId(1)]: { availability: 'missing' },
+    [assetId(2)]: { availability: 'ready' },
+  };
+  node.data.prompt = `正文保留 ${assetId(1)}`;
+  node.data.settings = {
+    sourceAssetId: assetId(1),
+    keepAssetId: assetId(0),
+    linkedId: assetId(1),
+    imageAssetIds: [assetId(1), assetId(0)],
+  };
+
+  const nodes = removeUnavailableCanvasReferences([node], [assetId(1).toUpperCase()]);
+
+  assert.equal(nodes.length, 1);
+  assert.equal(nodes[0].id, node.id);
+  assert.equal(nodes[0].data.prompt, node.data.prompt);
+  assert.deepEqual(nodes[0].data.nodeResults.batches.map((batch) => batch.id), ['batch-0', 'batch-2']);
+  assert.equal(nodes[0].data.nodeResults.currentResultId, 'result-2');
+  assert.equal(nodes[0].data.asset.asset_id, assetId(2));
+  assert.deepEqual(nodes[0].data.nodeResults.batches[0].snapshot.inputs, [
+    { nodeId: 'source-ready', type: 'image', assetId: assetId(0) },
+  ]);
+  assert.equal(nodes[0].data.resultAssetViews[assetId(1)], undefined);
+  assert.equal(nodes[0].data.settings.sourceAssetId, undefined);
+  assert.equal(nodes[0].data.settings.imageAssetIds.includes(assetId(1)), false);
+  assert.equal(nodes[0].data.settings.keepAssetId, assetId(0));
+  assert.equal(nodes[0].data.settings.linkedId, assetId(1));
+});
+
+test('失效素材错误只在 ASSET_UNAVAILABLE 时返回权威清单', () => {
+  assert.deepEqual(getCanvasUnavailableAssetIds({
+    code: 'ASSET_UNAVAILABLE', detail: { asset_ids: [assetId(1), assetId(1), ''] },
+  }), [assetId(1)]);
+  assert.deepEqual(getCanvasUnavailableAssetIds({
+    status: 404, detail: { code: 'OTHER', asset_ids: [assetId(1)] },
+  }), []);
+});
+
+test('旧节点当前素材丢失或无权时只保存节点壳，可用状态仍保留素材编号', () => {
+  for (const availability of ['ready', 'trashed', 'missing', 'forbidden']) {
+    const node = createCanvasNode('image', undefined, `legacy-${availability}`);
+    node.data.asset = { asset_id: assetId(7), asset_type: 'image', availability };
+    const props = save(node).records[0].props;
+    assert.equal(props.assetId, ['missing', 'forbidden'].includes(availability) ? undefined : assetId(7));
+    assert.equal(props.nodeType, 'image');
   }
 });
 

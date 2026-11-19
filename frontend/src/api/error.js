@@ -32,6 +32,19 @@ function pickFirstString(payload, paths = []) {
   return '';
 }
 
+export function getResponseErrorCode(payload) {
+  const detailCode = payload?.detail && typeof payload.detail === 'object' && !Array.isArray(payload.detail)
+    ? payload.detail.code
+    : '';
+  const payloadCode = payload?.code;
+  const code = typeof detailCode === 'string' && detailCode.trim()
+    ? detailCode.trim()
+    : typeof payloadCode === 'string'
+      ? payloadCode.trim()
+      : '';
+  return code || '';
+}
+
 function normalizeStructuredDetail(detail) {
   if (Array.isArray(detail)) {
     return detail

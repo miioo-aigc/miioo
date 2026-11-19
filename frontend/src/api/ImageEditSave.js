@@ -31,7 +31,7 @@ export async function prepareImageEditDestination(scope, sourceId) {
   return { kind, ...readCreationContext(source) };
 }
 
-export async function uploadImageEditFile(file, { sourceAssetId, editMode } = {}) {
+export async function uploadImageEditFile(file, { sourceAssetId, editMode, canvasId } = {}) {
   if (!sourceAssetId || /^(local[-_:]|blob:)/.test(sourceAssetId)) throw new Error('缺少真实源资产编号');
   if (!['crop', 'flip'].includes(editMode)) throw new Error('不支持的图片编辑保存类型');
   if (!(file instanceof Blob) || !file.size) throw new Error('缺少编辑结果文件');
@@ -39,6 +39,7 @@ export async function uploadImageEditFile(file, { sourceAssetId, editMode } = {}
   form.append('file', file, 'image-edit.png');
   form.append('source_asset_id', sourceAssetId);
   form.append('edit_mode', editMode);
+  if (canvasId) form.append('canvas_id', canvasId);
   const response = await authFetchForm(`${BASE}/api/creation/images/edit-result`, { method: 'POST', body: form });
   const data = await response.json();
   if (!response.ok) throw Object.assign(new Error(typeof data.detail === 'string' ? data.detail : `保存编辑图片失败（${response.status}）`), {

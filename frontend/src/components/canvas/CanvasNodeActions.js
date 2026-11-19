@@ -59,6 +59,8 @@ export function copyCanvasNodes(nodes) {
     id: node.id, type: node.type,
     parentId: ids.has(node.parentId) ? node.parentId : undefined,
     position: ids.has(node.parentId) ? { ...node.position } : getCanvasAbsolutePosition(nodes, node),
+    ...(Number.isFinite(node.width) ? { width: node.width } : {}),
+    ...(Number.isFinite(node.height) ? { height: node.height } : {}),
     ...(node.style ? { style: { ...node.style } } : {}),
     data: copyData(node),
   }));

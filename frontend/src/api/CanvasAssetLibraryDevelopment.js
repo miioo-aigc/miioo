@@ -20,15 +20,11 @@ export function createCanvasAssetLibraryDevelopment() {
     while (current?.parent_id) current = folder(current.parent_id);
     return current?.collection_id;
   };
-  const seedCollection = ({ name, kind = 'project', defaults = true }) => {
+  const seedCollection = ({ name, kind = 'project' }) => {
     const root = { id: id(), type: 'folder', parent_id: null, name, kind: 'root', revision: ++revision };
     const item = { id: id(), name, kind, root_folder_id: root.id, revision, created_at: new Date().toISOString() };
     root.collection_id = item.id;
     folders.set(root.id, root); collections.set(item.id, item);
-    if (defaults) for (const name of ['角色', '场景', '道具', '分镜', '音频']) {
-      const child = { id: id(), type: 'folder', parent_id: root.id, name, kind: 'normal', revision };
-      folders.set(child.id, child);
-    }
     return { ...item };
   };
   const descendants = (key) => {
@@ -81,7 +77,7 @@ export function createCanvasAssetLibraryDevelopment() {
       const original = collections.get(key);
       if (!original) fail('集合不存在', 'COLLECTION_NOT_FOUND');
       if (base_revision != null && original.revision !== base_revision) fail('内容已改变', 'REVISION_CONFLICT');
-      const copy = seedCollection({ name: `${original.name}-副本`, kind: 'copy', defaults: false });
+      const copy = seedCollection({ name: `${original.name}-副本`, kind: 'copy' });
       const clone = (sourceId, targetId) => {
         for (const child of items(sourceId)) {
           if (child.type === 'folder') {

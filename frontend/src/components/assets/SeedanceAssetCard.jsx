@@ -96,6 +96,9 @@ const SeedanceAssetCard = memo(function SeedanceAssetCard({
   showActions = true,
   showSelection = false,
   width = '242px',
+  height = '160px',
+  aspectRatio,
+  lazyVideoPreview = false,
 }) {
   const [generatedPoster, setGeneratedPoster] = useState(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -115,7 +118,7 @@ const SeedanceAssetCard = memo(function SeedanceAssetCard({
   const canPreview = Boolean(imageUrl || videoUrl || isAudio);
 
   useEffect(() => {
-    if (!isVideo || imageUrl || !videoUrl || asset.localFile) return undefined;
+    if (lazyVideoPreview || !isVideo || imageUrl || !videoUrl || asset.localFile) return undefined;
     let cancelled = false;
     fetch(normalizedVideoUrl, { mode: 'cors' })
       .then((response) => response.blob())
@@ -123,7 +126,7 @@ const SeedanceAssetCard = memo(function SeedanceAssetCard({
       .then((poster) => { if (!cancelled) setGeneratedPoster(poster); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [asset.localFile, asset.name, imageUrl, isVideo, normalizedVideoUrl, videoUrl]);
+  }, [asset.localFile, asset.name, imageUrl, isVideo, normalizedVideoUrl, videoUrl, lazyVideoPreview]);
 
   const handleClick = () => {
     if (!disabled) onClick?.(asset);
@@ -131,20 +134,20 @@ const SeedanceAssetCard = memo(function SeedanceAssetCard({
 
   return (
     <div
-      style={{ width, height: '160px', maxWidth: '100%', flex: width === '100%' ? '1 1 auto' : `0 0 ${width}`, minWidth: 0, borderRadius: '8px', position: 'relative', overflow: 'hidden', cursor: disabled ? 'not-allowed' : canPreview || onClick ? 'pointer' : 'default', boxSizing: 'border-box', background: '#1A1A1A', opacity: disabled ? 0.6 : 1 }}
+      style={{ width, height: aspectRatio ? undefined : height, aspectRatio, maxWidth: '100%', flex: width === '100%' ? '1 1 auto' : `0 0 ${width}`, minWidth: 0, borderRadius: '8px', position: 'relative', overflow: 'hidden', cursor: disabled ? 'not-allowed' : canPreview || onClick ? 'pointer' : 'default', boxSizing: 'border-box', background: '#1A1A1A', opacity: disabled ? 0.6 : 1 }}
       title={asset.name || undefined}
       onClick={handleClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {isVideo && normalizedVideoUrl ? (
+      {isVideo && normalizedVideoUrl && (!lazyVideoPreview || isHovered) ? (
         <AssetLibraryPlayer src={normalizedVideoUrl} poster={posterUrl || undefined} label={asset.name || '视频素材'} muted hovered={isHovered} controls={false} objectFit="cover"
           onError={() => setFailedMediaUrls(current => current.has(videoUrl) ? current : new Set([...current, videoUrl]))} />
       ) : isAudio ? (
         <AssetLibraryPlayer type="audio" src={normalizeImageUrl(asset.source_url || asset.preview_url)} label={asset.name || '音频素材'} />
       ) : normalizedImageUrl ? (
         <AsyncImagePreview visual plain src={normalizedImageUrl} fallbackSrc={imageUrls.length > 1 ? normalizeImageUrl(imageUrls.at(-1)) : undefined} alt={asset.name || '图片素材'} />
-      ) : null}
+      ) : lazyVideoPreview && isVideo ? <div className="flex h-full items-center justify-center text-[14px] text-text-secondary">视频</div> : lazyVideoPreview ? <div className="flex h-full items-center justify-center text-[14px] text-text-secondary">预览暂不可用</div> : null}
 
       {isUploading || reviewState !== 'approved' ? (
         <div style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#00000099', pointerEvents: 'none' }}>

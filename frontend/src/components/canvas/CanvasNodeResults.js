@@ -175,6 +175,38 @@ export function collectCanvasResultAssetIds(state) {
   return [...new Set(state.batches.flatMap((batch) => normalizeCanvasResultBatch(batch).results.map((result) => result.assetId).filter(Boolean)))];
 }
 
+/** 仅移除解析器明确判定为丢失或无权限的素材结果；失效批次清空后一并删除。 */
+export function removeCanvasResultsByAssetIds(state, assetIds) {
+  validateCanvasNodeResults(state);
+  const unavailable = new Set([...(assetIds instanceof Set ? assetIds : assetIds || [])]
+    .map((value) => typeof value === 'string' ? value.trim().toLowerCase() : value));
+  if (!unavailable.size) return state;
+  let changed = false;
+  const batches = [];
+  for (const batch of state.batches) {
+    const results = batch.results.filter((result) => !result.assetId
+      || !unavailable.has(result.assetId.trim().toLowerCase()));
+    if (results.length === batch.results.length) {
+      batches.push(batch);
+      continue;
+    }
+    changed = true;
+    if (!results.length) continue;
+    batches.push({ ...batch, results,
+      status: results.length === batch.requestedCount ? 'complete' : 'partial' });
+  }
+  if (!changed) return state;
+  const resultIds = new Set(batches.flatMap((batch) => batch.results.map((result) => result.id)));
+  let selections = state.selections.filter((selection) => resultIds.has(selection.resultId));
+  let currentResultId = resultIds.has(state.currentResultId) ? state.currentResultId : selections.at(-1)?.resultId;
+  if (!currentResultId && resultIds.size) {
+    currentResultId = batches.flatMap((batch) => batch.results)[0].id;
+    selections = [...selections, { resultId: currentResultId, reason: 'select' }];
+  }
+  if (!resultIds.size) currentResultId = null;
+  return validateCanvasNodeResults({ ...state, batches, currentResultId, selections });
+}
+
 /** Newest submission first, stable ties; selecting history never changes order. */
 export function getCanvasResultHistory(state) {
   validateCanvasNodeResults(state);

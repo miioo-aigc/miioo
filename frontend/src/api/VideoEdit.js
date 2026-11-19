@@ -15,24 +15,40 @@ export function videoEditPayload(options) {
       || x + width > 1 + 1e-6 || y + height > 1 + 1e-6) {
       throw new Error('字幕区域无效，请在视频画面内重新调整');
     }
-    return { endpoint: 'subtitle-remove', body: { model: 'happyhorse-1.0-video-edit', region: { x, y, width, height } } };
+    return { endpoint: 'subtitle-remove', body: {
+      model: 'happyhorse-1.0-video-edit',
+      region: { x, y, width, height },
+      ...(options.canvas_id ? { canvas_id: options.canvas_id } : {}),
+    } };
   }
   if (options.mode === 'frame_extract') {
     if (!Number.isFinite(options.timestamp) || options.timestamp < 0) throw new Error('未找到有效的选帧时间');
-    return { endpoint: 'extract-frame', body: { timestamp: options.timestamp, format: 'png' } };
+    return { endpoint: 'extract-frame', body: {
+      timestamp: options.timestamp,
+      format: 'png',
+      ...(options.canvas_id ? { canvas_id: options.canvas_id } : {}),
+    } };
   }
   if (options.mode === 'trim') {
     const { start_time, end_time, duration } = options;
     if (![start_time, end_time, duration].every(Number.isFinite) || start_time < 0 || end_time > duration || end_time - start_time < 0.1 - 1e-8) throw new Error('请选择至少0.1秒且不超出原视频的剪辑区间');
     if (end_time - start_time > 600) throw new Error('单段剪辑不能超过600秒');
-    return { endpoint: 'trim', body: { start_time, end_time } };
+    return { endpoint: 'trim', body: {
+      start_time,
+      end_time,
+      ...(options.canvas_id ? { canvas_id: options.canvas_id } : {}),
+    } };
   }
   if (options.mode === 'upscale') {
     const minimum = { '1080P': 3, '4K': 2 }[options.resolution];
     if (!minimum) throw new Error('请选择1080P或4K画质');
     if (!Number.isFinite(options.duration) || options.duration <= 0) throw new Error('尚未读取到视频时长，请稍后重试');
     if (options.duration < minimum) throw new Error(`${options.resolution}超清要求源视频至少${minimum}秒，当前约${options.duration.toFixed(2)}秒`);
-    return { endpoint: 'upscale', body: { resolution: options.resolution, model: options.resolution === '1080P' ? 'happyhorse-1.0-video-edit' : 'doubao-seedance-2.0' } };
+    return { endpoint: 'upscale', body: {
+      resolution: options.resolution,
+      model: options.resolution === '1080P' ? 'happyhorse-1.0-video-edit' : 'doubao-seedance-2.0',
+      ...(options.canvas_id ? { canvas_id: options.canvas_id } : {}),
+    } };
   }
   throw new Error('该视频编辑功能暂未接入');
 }

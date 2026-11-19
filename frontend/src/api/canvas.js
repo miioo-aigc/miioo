@@ -1,5 +1,5 @@
 import { authFetch } from './request.js';
-import { throwResponseError } from './error.js';
+import { getResponseErrorCode, throwResponseError } from './error.js';
 import { archiveDevelopmentCanvas, duplicateDevelopmentCanvas, getDevelopmentCanvas, isDevelopmentCanvas, updateDevelopmentCanvas } from './CanvasDevelopment.js';
 
 const BASE = import.meta.env.VITE_API_BASE_URL;
@@ -89,8 +89,9 @@ export async function throwCanvasResponseError(response, fallback) {
     await throwResponseError(response, fallback);
   } catch (error) {
     const detail = error.rawPayload?.detail;
+    const code = getResponseErrorCode(error.rawPayload);
+    if (code) error.code = code;
     if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
-      error.code = detail.code;
       error.detail = detail;
     }
     throw error;
@@ -178,31 +179,35 @@ export function apiGetCanvasRuns(canvasId, { status, limit = 20, signal } = {}) 
   return canvasAction(canvasId, `/runs?${query}`, { signal });
 }
 
-/** Generation-history endpoints are a frontend contract pending backend support. */
 function canvasGenerationHistoryUrl(canvasId, suffix = '') {
   if (!canvasId) throw new Error('缺少画布编号');
   return `${canvasUrl(`/${encodeURIComponent(canvasId)}/generation-history`)}${suffix}`;
 }
 
-export async function apiListCanvasGenerationHistory(canvasId, { targetCanvasId = canvasId, type = 'all', limit = 50, cursor, signal } = {}) {
+export async function apiListCanvasGenerationHistory(canvasId, { targetCanvasId, type = 'all', limit = 50, cursor, signal } = {}) {
+  if (typeof canvasId !== 'string' || !canvasId.trim()) throw new Error('生成历史缺少有效 canvasId');
+  if (typeof targetCanvasId !== 'string' || !targetCanvasId.trim()) throw new Error('生成历史缺少有效 targetCanvasId');
+  if (!['all', 'image', 'video', 'audio'].includes(type)) throw new Error('不支持的媒体类型');
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error('生成历史查询数量需为1至200');
   const params = new URLSearchParams({ target_canvas_id: targetCanvasId, type, limit: String(limit) });
   if (cursor) params.set('cursor', cursor);
   const query = `?${params.toString()}`;
   const response = await authFetch(canvasGenerationHistoryUrl(canvasId, query), { signal, headers: { 'Content-Type': 'application/json' } });
-  if (response.status === 404 || response.status === 501) throw new Error('生成历史服务暂未开放，请等待后端接口上线');
-  if (!response.ok) await throwCanvasResponseError(response, '生成历史读取失败');
+  if (!response.ok) await throwCanvasResponseError(response, `生成历史读取失败（${response.status}）`);
   const payload = await response.json();
-  const records = Array.isArray(payload) ? payload : payload?.items;
-  if (!Array.isArray(records)) throw new Error('生成历史返回格式异常');
-  return records;
+  return {
+    items: Array.isArray(payload.items) ? payload.items : [],
+    next_cursor: payload.next_cursor ?? null,
+  };
 }
 
-export async function apiDeleteCanvasGenerationHistory(canvasId, historyId, { targetCanvasId = canvasId, signal } = {}) {
-  if (!historyId) throw new Error('缺少生成历史编号');
+export async function apiDeleteCanvasGenerationHistory(canvasId, historyId, { targetCanvasId, signal } = {}) {
+  if (typeof canvasId !== 'string' || !canvasId.trim()) throw new Error('生成历史缺少有效 canvasId');
+  if (typeof targetCanvasId !== 'string' || !targetCanvasId.trim()) throw new Error('生成历史缺少有效 targetCanvasId');
+  if (typeof historyId !== 'string' || !historyId.trim()) throw new Error('生成历史缺少有效 historyId');
   const query = new URLSearchParams({ target_canvas_id: targetCanvasId });
   const response = await authFetch(canvasGenerationHistoryUrl(canvasId, `/${encodeURIComponent(historyId)}?${query}`), { method: 'DELETE', signal });
-  if (response.status === 404 || response.status === 501) throw new Error('生成历史删除服务暂未开放');
-  if (!response.ok) await throwCanvasResponseError(response, '删除生成历史失败');
+  if (!response.ok) await throwCanvasResponseError(response, `删除生成历史失败（${response.status}）`);
   return response.status === 204 ? null : response.json();
 }
 

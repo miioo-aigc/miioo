@@ -1,4 +1,5 @@
-/** 图片/视频提示词适配：复用创作页编辑器及卡片引用，保留节点草稿并隔离画布事件。 */
+/** 2026-11-19：中文组字开始即隐藏占位提示，组字期间不改写编辑正文。
+ * 图片/视频提示词适配：复用创作页编辑器及卡片引用，保留节点草稿并隔离画布事件。 */
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useViewport } from '@xyflow/react';
 import CreationPromptEditor from '../creation/CreationPromptEditor';
@@ -9,6 +10,7 @@ import { validateCanvasVideoMedia } from './CanvasVideoGeneration';
 
 export default function CanvasMediaPromptEditor({ ref, nodeType, mode, model, capabilities, placeholder, references, prompt, snapshot, onChange, onFocusChange, onSend, composingRef, expanded = false }) {
   const files = getCanvasPromptFiles(references, nodeType, mode);
+  const [isComposing, setIsComposing] = useState(false);
   const [prefillData] = useState(() => ({ prompt, promptHTML: snapshot?.html, files }));
   const { zoom } = useViewport();
   const canInsertMention = useCallback((file, replacingFileRef = '', editor) => {
@@ -78,13 +80,13 @@ export default function CanvasMediaPromptEditor({ ref, nodeType, mode, model, ca
   }, [fileIds, editorRef, handleInput, sync]);
 
   return <div className="canvas-media-prompt-editor"
-    onCompositionStart={() => { composingRef.current = true; }}
-    onCompositionEnd={() => { composingRef.current = false; editor.handleInput(); sync(); }}
+    onCompositionStart={() => { composingRef.current = true; setIsComposing(true); }}
+    onCompositionEnd={() => { composingRef.current = false; setIsComposing(false); editor.handleInput(); sync(); }}
     onKeyDown={(event) => { if (event.key !== 'Escape') event.stopPropagation(); }} onKeyUp={(event) => event.stopPropagation()}>
     <CreationPromptEditor
       editorRef={editorRef} files={files} genType={nodeType} refMode={mode} showFileCards={false}
       placeholderText={placeholder}
-      hasContent={editor.hasContent}
+      hasContent={isComposing || editor.hasContent}
       onInput={() => { if (!composingRef.current) { editor.handleInput(); sync(); } }}
       onBeforeInput={editor.handleBeforeInput} onPaste={editor.handlePaste}
       onKeyDown={(event) => editor.handleKeyDown(event, () => onSend(getPromptSnapshot()))}

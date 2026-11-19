@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { canvasAssetLibrary as api, canvasLibraryMockEnabled } from '../../api/CanvasAssetLibrary';
 import { apiGetCurrentUser } from '../../api/user';
 import { showGlobalToast } from '../../stores/toastStore';
+import { CANVAS_ASSETS_CHANGED_EVENT } from '../../utils/canvasAssetsEvents';
 
 export const collectionMemoryKey = (owner) => `miioo:canvas-library:${owner}:collection`;
 export function readCollectionMemory(owner) {
@@ -23,6 +24,31 @@ export default function useCanvasCollections() {
   const generation = useRef(0);
   const moreLock = useRef(false);
   const refresh = useCallback((id) => { if (id !== undefined) preferred.current = id; setEpoch((n) => n + 1); }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
+    let timer = null;
+    const schedule = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        setEpoch((value) => value + 1);
+      }, 250);
+    };
+    const handleAssetsChanged = schedule;
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') schedule();
+    };
+    window.addEventListener(CANVAS_ASSETS_CHANGED_EVENT, handleAssetsChanged);
+    window.addEventListener('focus', schedule);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(CANVAS_ASSETS_CHANGED_EVENT, handleAssetsChanged);
+      window.removeEventListener('focus', schedule);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
     const current = ++generation.current;

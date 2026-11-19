@@ -4533,3 +4533,55 @@ TextCanvasNode 复用 React Flow NodeResizeControl，仅选中时显示右下角
 # 2026-11-13 文本持久任务接线
 
 新增 CanvasTextSubmissions（API）、CanvasTextTask（串行任务驱动）、CanvasDurableText（历史协议适配），扩展 UseCanvasTextGeneration 与 CanvasSaveSession；取消入口复用 Button。CanvasPage 仅注入保存桥接及导航/删除取消回调，未加入请求 URL 或新业务展示区块。页面既有体量保留，任务驱动和历史适配已独立。112 项相关测试通过，线上待验收，详见 ../canvas-text-durable-integration-2026-11-13.md。
+
+## 2026-11-19 画布生成历史视频预览与详情层级修复
+
+- 节点剪贴板改为登录会话内共享内存状态，按真实项目编号限制读取；切换 / 新建同项目画布可粘贴，其他项目不可粘贴，登录代际变化后丢弃旧内容。复制保留节点宽高，沿用内部引用映射、运行态剥离及目标画布资产解析；不新增后端收录请求。
+
+- 文本节点底部创作面板以当前节点宽度居中定位，保留 240px 定位层和缩放动画，拖动改变节点宽度时同步更新水平位置。
+
+- 文本节点拖动尺寸限制为 240–960px 宽、264–1200px 高（最小值与新建默认尺寸一致）；正文手动编辑允许保存空字符串，修复最后一个字无法删除，覆盖卡片内编辑与弹窗保存。
+
+- `CanvasTextEditor`：打开后自动聚焦正文末尾，空文本直接输入；`ScriptEditor` 增加默认关闭的 `autoFocus` 参数，等待编辑器挂载与弹窗打开后聚焦并清理待执行帧。
+
+- `CanvasToolbarSurface`：共用悬浮栏及子元素禁用浏览器文字选择，避免多选节点时连带选中操作标签，按钮操作保持不变。
+
+- `CanvasAudioPlayer`：台词预览移除 `nowheel`、`nodrag`、`nopan`，支持滚轮平移画布及按住台词 / 留白拖动节点；播放按钮保留独立点击操作。
+
+- `CanvasAudioPlayer`：播放控件旁复用 `IconButton` 增加「从头播放」，播放 / 暂停时均可回到零秒并开始播放；加载中、错误或无地址时禁用，保留现有重试入口。
+
+- `useCanvasAudioGeneration`：补齐 `canvas.project_id` 到配音请求，覆盖同步与长文本异步配音共用请求参数；Hook 用例验证项目、会话、结果写回和刷新。存量资产未做补归档。
+
+- `useCanvasVideoGeneration`：从 `CanvasPage` 接收真实 `canvas.project_id` 并传入生成请求，与图片生成保持项目归属一致；现有 Hook 回归用例覆盖项目与会话参数。存量视频补归档和真实服务端入库仍需联调验证。
+
+- `CanvasGenerationHistory`：有 `thumbnail_url` / `poster_url` 时使用懒加载图片展示卡片，避免请求视频元数据；无封面时保留视频预览兜底及预览失败刷新。
+- `CreationVideoDetailModal`：历史模式层级为 1000，覆盖层级 900 的生成历史；普通模式维持 200。
+
+## 2026-11-16 生成历史“添加到画布”动作
+
+- `AddToCanvasIcon`：公共业务动作图标，复用于生成历史卡片操作区及详情弹窗按钮。
+- `AddToCanvasButton`：图片、视频、音频详情历史模式的共享图标加文字按钮，启用态使用手型光标，禁用态使用不可用光标。
+- `ImageDetailModal`、`CreationVideoDetailModal`、`CreationAudioDetailModal`：历史模式隐藏右上角操作区，在右侧信息栏底部固定展示添加动作。普通详情原有收藏、下载、删除及编辑区不变。
+- 历史详情添加成功后关闭生成历史；音频历史详情仅在用户主动操作后播放，普通详情保持自动播放。
+
+## 2026-11-17 画布资产删除后的失效路径保护
+
+- `CanvasLibraryContents` 删除提交使用 `{ reload: false }`，避免成功后继续读取已删除的目录；命中当前目录或其祖先时导航到最近有效父目录。只有 `type: collection` 的删除失败才按 `COLLECTION_NOT_FOUND` 解除当前画布；普通素材或目录删除失败时保留当前选择并刷新内容，避免误切到同项目其他画布。
+- 普通素材和当前路径外的子文件夹删除成功后会从已加载快照中就地移除，不再清空列表并重新请求；仅删除当前目录或其祖先时导航并重新读取最近有效父目录。
+- `UseCanvasLibraryProjects` 增加删除项目后的本地状态清理，当前项目的画布集合会先解除挂载，再刷新项目数据，避免内容区继续请求已删除的 collection。
+- 新增目录删除导航和项目选择切换回归测试。
+
+## 2026-11-17 画布资产卡片尺寸对齐
+
+- `CanvasLibraryGrid` 复用创作资产的 `240px` 最小列宽和 `16:9` 卡片比例，不再限制文件夹相关卡片最大为 `270px`。
+- `AddVirtualGroupCard` 与 `SeedanceFolderCard` 增加可选最大宽度和宽高比参数，默认值保持 Seedance 素材库原有尺寸。
+- `SeedanceAssetCard` 支持可选宽高比；画布资产媒体卡使用 `16:9`，音频卡移除固定 `160px` 高度并沿用自身 `16:9` 布局。
+
+
+### 2026-11-19 文本编辑持久化修复
+
+- CanvasTextEdits：复用 CanvasDurableText 的文本历史适配和 edit 请求，已迁移节点在整画布 PATCH 前同步；节点内编辑及专注编辑共用入口。
+- CanvasPage：保留画布会话、节点写回、任务及保存队列编排；文本协议由独立模块承担，未新增 UI。
+- CanvasSaveSession：先恢复未确认 PATCH，再执行文本历史写入；网络重试保留幂等身份。
+- CanvasAutosave：相同失败草稿不因重渲染自动提交；409 暂停自动重试，保留本地草稿和离开保护。
+- 验证：定向测试覆盖追加历史后保存、响应丢失、远端结果冲突、会话失效及原保存行为；线上浏览器验证待执行。

@@ -18,7 +18,7 @@ import { useModalSize } from '../../utils/useModalSize';
 import ConfirmDialog from '../ConfirmDialog';
 import CreationDubbingPromptPreview from './CreationDubbingPromptPreview';
 import { DeleteIcon, FavoriteIcon, Tooltip } from '../ui';
-import { Plus } from 'lucide-react';
+import { AddToCanvasButton } from '../actions';
 import { stopVoicePreview } from '../../utils/voicePreviewPlayer';
 import CopyPromptButton from '../ui/CopyPromptButton';
 
@@ -89,7 +89,7 @@ export default function CreationAudioDetailModal({
   const { width: modalW, height: modalH, scale: modalScale } = useModalSize();
   const audioRef = useRef(null);
   const waveformRef = useRef(null);
-  const media = useMediaPlayback(audioRef, audioUrl, { autoPlay: true });
+  const media = useMediaPlayback(audioRef, audioUrl, { autoPlay: !historyMode });
   const isPlaying = media.status === 'playing';
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
@@ -161,7 +161,7 @@ export default function CreationAudioDetailModal({
   const voiceOriginDisplayName = voiceOriginLabel || 'MiniMax';
   return (
     <>
-      <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)' }} onClick={onClose}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: historyMode ? 1000 : 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)' }} onClick={onClose}>
         <div style={{ width: modalW, height: modalH, transform: `scale(${modalScale})`, transformOrigin: 'center', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '16px', background: '#161616', border: '1px solid #FFFFFF14', boxShadow: '#00000099 -10px 24px 64px' }} onClick={(event) => event.stopPropagation()}>
           <div style={{ height: '64px', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, fontFamily: FONT, color: '#FFFFFF', fontSize: '16px' }}>
             查看音频详情
@@ -188,8 +188,8 @@ export default function CreationAudioDetailModal({
               <audio key={audioUrl} ref={audioRef} src={audioUrl} preload="metadata" />
             </div>
             <div style={{ width: '340px', display: 'flex', flexDirection: 'column', minHeight: 0, flexShrink: 0, background: '#161616', borderLeft: '1px solid #FFFFFF0F', color: '#FFFFFF', position: 'relative' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, padding: '12px 20px', borderBottom: '1px solid #FFFFFF0A', backgroundColor: '#161616' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>{historyMode ? <button type="button" aria-label="添加到画布" title="添加到画布" onClick={onAddToCanvas} style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, borderRadius: 6, background: 'transparent', color: '#FFFFFFCC', cursor: 'pointer' }}><Plus size={16} /></button> : <>
+              {!historyMode && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, padding: '12px 20px', borderBottom: '1px solid #FFFFFF0A', backgroundColor: '#161616' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <PanelAction
                     label="收藏"
                     active={favorited}
@@ -197,9 +197,9 @@ export default function CreationAudioDetailModal({
                     icon={<div style={{ transform: starAnim ? 'scale(1.25)' : 'scale(1)', transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)', display: 'flex' }}><FavoriteIcon filled={favorited} color="rgba(255,255,255,0.8)" /></div>}
                   />
                   <PanelAction label="下载" onClick={onDownload} icon={<DownloadIcon />} />
-                </>}</div>
-                {!historyMode && <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon size={14} />} />}
-              </div>
+                </div>
+                <PanelAction label="删除" onClick={() => setConfirmDelete(true)} icon={<DeleteIcon size={14} />} />
+              </div>}
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                 {DETAIL_PANEL_DIVIDER}
                 <section style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 20px', flexShrink: 0 }}>
@@ -242,6 +242,9 @@ export default function CreationAudioDetailModal({
                 </section>
                 {DETAIL_PANEL_DIVIDER}
               </div>
+              {historyMode && <div style={{ display: 'flex', justifyContent: 'flex-end', flexShrink: 0, padding: '16px 20px', borderTop: '1px solid #FFFFFF0A', backgroundColor: '#161616' }}>
+                <AddToCanvasButton onClick={onAddToCanvas} />
+              </div>}
             </div>
           </div>
         </div>

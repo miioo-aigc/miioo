@@ -46,6 +46,7 @@ export default function CanvasLibraryDetail({ entry, onClose, onDownload, onDele
     } finally { saving.current = false; }
   }
 
+  const unavailable = ['trashed', 'forbidden', 'missing'].includes(asset.availability);
   let metadata = asset.metadata_json || asset.metadata || {};
   if (typeof metadata === 'string') { try { metadata = JSON.parse(metadata) || {}; } catch { metadata = {}; } }
   const type = String(asset.media_type || asset.asset_type || entry.asset?.media_type || '').split('/')[0];
@@ -61,7 +62,9 @@ export default function CanvasLibraryDetail({ entry, onClose, onDownload, onDele
   };
   const shared = { onClose, onDownload, onDelete, onFavorite: favorite };
   const starred = Boolean(asset.is_starred ?? asset.is_favorite);
-  return createPortal(type === 'audio' ? (
+  return createPortal(unavailable ? (
+    <div role="dialog" aria-modal="true" aria-label="素材不可用" className="fixed inset-0 z-[2200] flex items-center justify-center bg-black/70"><div className="rounded-[12px] bg-[#1A1A1A] p-[24px] text-text-primary"><p>素材不可用或没有访问权限</p><button className="mt-[16px] underline" onClick={onClose}>关闭</button></div></div>
+  ) : type === 'audio' ? (
     <CreationAudioDetailModal {...normalizeAudioAssetDetail(asset)} {...shared} audioUrl={canvasLibraryAudioUrl(asset)} favorited={starred} historyMode={historyMode} onAddToCanvas={onAddToCanvas} />
   ) : (
     <AssetCardCreativeDetail {...shared} asset={type === 'video' ? mergeCreationVideoDetail(card, asset) : card}

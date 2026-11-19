@@ -30,3 +30,25 @@ export function DeleteIcon({ size = 16, color = '#FFFFFFCC', style, ...props }) 
     </svg>
   );
 }
+
+export function AddToCanvasIcon({
+  size = 16,
+  color = 'currentColor',
+  style,
+  ...props
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 1024 1024"
+      fill={color}
+      aria-hidden="true"
+      style={{ flexShrink: 0, ...style }}
+      {...props}
+    >
+      <path d="M831.6 639.6h-63.9v127.9H639.9v63.9h127.8v127.9h63.9V831.4h127.9v-63.9H831.6z" />
+      <path d="M564.3 925.2c0-18.5-15-33.6-33.6-33.6H287.3c-86.2 0-156.4-70.2-156.4-156.4V286.9c0-86.2 70.1-156.4 156.4-156.4h448.4c86.2 0 156.4 70.2 156.4 156.4v238.8c0 18.5 15 33.6 33.6 33.6s33.6-15 33.6-33.6V286.9C959.2 163.6 859 63.3 735.7 63.3H287.3C164 63.3 63.7 163.6 63.7 286.8v448.3c0 123.2 100.3 223.5 223.6 223.5h243.4c18.6 0.1 33.6-14.9 33.6-33.4z" />
+    </svg>
+  );
+}

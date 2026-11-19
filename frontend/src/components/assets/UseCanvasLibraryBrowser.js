@@ -10,6 +10,7 @@ export default function useCanvasLibraryBrowser(collection) {
   const [retry, setRetry] = useState(0);
   const generation = useRef(0);
   const moreLock = useRef(false);
+  const cursors = useRef(new Set());
   const current = path.at(-1);
   const parentId = current?.id;
   const collectionId = path[0]?.collection_id;
@@ -19,6 +20,7 @@ export default function useCanvasLibraryBrowser(collection) {
     const controller = new AbortController();
     Promise.resolve().then(async () => {
       if (controller.signal.aborted) return;
+      cursors.current.clear();
       setLoading(true); setError(''); setPage({ items: [], next_cursor: null });
       try {
         const result = await read(null, controller.signal);
@@ -37,7 +39,9 @@ export default function useCanvasLibraryBrowser(collection) {
     const version = generation.current;
     try {
       const result = await read(page.next_cursor);
-      if (version === generation.current) setPage((old) => ({ ...result, items: [...new Map([...old.items, ...result.items].map((item) => [item.id, item])).values()] }));
+      if (result.next_cursor === page.next_cursor || cursors.current.has(page.next_cursor)) throw new Error('目录分页游标重复，请重试');
+      cursors.current.add(page.next_cursor);
+      if (version === generation.current) setPage((old) => ({ ...result, items: [...new Map([...old.items, ...result.items].map((item) => [item.type + ':' + item.id, item])).values()] }));
     } catch (cause) { if (version === generation.current) setError(cause.message); }
     finally { moreLock.current = false; }
   };

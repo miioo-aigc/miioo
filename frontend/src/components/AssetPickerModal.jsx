@@ -1164,7 +1164,7 @@ function AccountAssetPickerModal({
         : type === 'video'
           ? apiListCreationVideos
           : apiListCreationAudios;
-      const resp = await listApi({ page, page_size: CREATIVE_PAGE_SIZE });
+      const resp = await listApi({ page, page_size: CREATIVE_PAGE_SIZE, creation_only: true });
       if (!isCurrent()) return;
 
       const list = Array.isArray(resp) ? resp : (resp?.list ?? resp?.items ?? resp?.data ?? []);
@@ -1667,7 +1667,7 @@ function AccountAssetPickerModal({
         </div>
 
         {/* ── 内容区（可滚动） ── */}
-        <div onScroll={handleContentScroll} style={{ flex: 1, overflowY: 'auto', padding: '8px 24px', display: 'flex', flexDirection: 'column' }}>
+        <div onScroll={handleContentScroll} style={{ flex: 1, minHeight: 0, overflowY: activeTab === 'canvas' ? 'hidden' : 'auto', padding: '8px 24px', display: 'flex', flexDirection: 'column' }}>
           {confirmError && <RemoteReadStatus error={confirmError} />}
           {activeTab === 'canvas' ? (
             <CanvasAssetPickerPanel

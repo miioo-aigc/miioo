@@ -164,10 +164,36 @@ test('丢响应后先重放原请求，新编辑在确认版本后以新幂等�
 
 test('版本冲突不改用服务器版本覆盖原文档', async () => {
   const calls = [];
-  const session = createCanvasSaveSession(async (_, body) => { calls.push(body); throw Object.assign(new Error('冲突'), { status: 409 }); }, () => 'fixed');
+  let counter = 0;
+  const session = createCanvasSaveSession(async (_, body) => {
+    calls.push(body);
+    if (calls.length === 1) throw Object.assign(new Error('冲突'), { status: 409 });
+    return { revision: body.baseRevision + 1 };
+  }, () => `save-${++counter}`);
   await assert.rejects(session.save('c', 2, { value: 1 }), /冲突/);
-  await assert.rejects(session.save('c', 9, { value: 2 }), /冲突/);
-  assert.deepEqual(calls[0], calls[1]);
+  await session.save('c', 9, { value: 2 });
+  assert.notEqual(calls[0].clientSaveId, calls[1].clientSaveId);
+  assert.equal(calls[1].clientSaveId, 'save-2');
+  assert.equal(calls[1].baseRevision, 9);
+});
+
+test('失效素材永久失败不重放，下一次编辑提交新的幂等请求', async () => {
+  const calls = [];
+  let counter = 0;
+  const session = createCanvasSaveSession(async (_, body) => {
+    calls.push(body);
+    if (calls.length === 1) throw Object.assign(new Error('画布引用了不可用的素材'), {
+      status: 404,
+      code: 'ASSET_UNAVAILABLE',
+      detail: { asset_ids: [assetId] },
+    });
+    return { revision: body.baseRevision + 1 };
+  }, () => `save-${++counter}`);
+  await assert.rejects(session.save('c', 7, { value: 'bad' }), /不可用的素材/);
+  await session.save('c', 7, { value: 'cleaned' });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].clientSaveId, 'save-2');
+  assert.notDeepEqual(calls[1].document, calls[0].document);
 });
 
 

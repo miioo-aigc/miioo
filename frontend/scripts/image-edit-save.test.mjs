@@ -66,6 +66,7 @@ assert.equal((await prepareImageEditDestination('creation:source', 'source')).se
 sourceImage = { shotId: 'shot-only' };
 assert.equal((await prepareImageEditDestination('creation:source', 'source')).shot_id, 'shot-only');
 const file = new Blob(['pixels'], { type: 'image/png' });
+let successfulSaveCalls = 0;
 for (const editMode of ['crop', 'flip']) {
   assert.equal(await uploadImageEditFile(file, { sourceAssetId: 'source', editMode }), image);
   const call = calls.at(-1);
@@ -75,11 +76,20 @@ for (const editMode of ['crop', 'flip']) {
   assert.equal(call.body.get('source_asset_id'), 'source');
   assert.equal(call.body.get('edit_mode'), editMode);
   assert.equal(await call.body.get('file').text(), 'pixels');
+  successfulSaveCalls++;
+
+  assert.equal(await uploadImageEditFile(file, {
+    sourceAssetId: 'source', editMode, canvasId: 'canvas-1',
+  }), image);
+  const canvasCall = calls.at(-1);
+  assert.deepEqual([...canvasCall.body.keys()], ['file', 'source_asset_id', 'edit_mode', 'canvas_id']);
+  assert.equal(canvasCall.body.get('canvas_id'), 'canvas-1');
+  successfulSaveCalls++;
 }
 await assert.rejects(uploadImageEditFile(file, { sourceAssetId: 'local-test', editMode: 'crop' }));
 await assert.rejects(uploadImageEditFile(file, { sourceAssetId: 'source', editMode: 'erase' }));
 await assert.rejects(uploadImageEditFile(new Blob(), { sourceAssetId: 'source', editMode: 'crop' }));
-assert.equal(calls.length, 2);
+assert.equal(calls.length, successfulSaveCalls);
 response = { ok: false, status: 404, json: async () => ({ detail: 'missing source' }) };
 await assert.rejects(uploadImageEditFile(file, { sourceAssetId: 'source', editMode: 'crop' }), (error) => error.terminal && error.message === 'missing source');
 response = { ok: false, status: 500, json: async () => ({}) };

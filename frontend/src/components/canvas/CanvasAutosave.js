@@ -10,6 +10,8 @@ export function createCanvasAutosave({ schedule = setTimeout, cancel = clearTime
   let state = 'idle';
   let statusTimer;
   let requests = 0;
+  let blockedKey;
+  let conflict = false;
   const publish = (next) => {
     if (disposed) return;
     cancel(statusTimer);
@@ -28,6 +30,7 @@ export function createCanvasAutosave({ schedule = setTimeout, cancel = clearTime
     if (!writable) return false;
     running = Promise.resolve().then(() => disposed ? false : persist());
     try { return await running; }
+    catch (error) { blockedKey = current; conflict = error.status === 409; clear(); throw error; }
     finally { running = null; }
   };
   const update = (key, canSave, save) => {
@@ -38,8 +41,9 @@ export function createCanvasAutosave({ schedule = setTimeout, cancel = clearTime
     const changed = current !== key;
     current = key;
     if (changed || !canSave) clear();
+    if (changed) blockedKey = undefined;
     if (changed) publish(requests ? 'saving' : current === saved ? 'idle' : 'pending');
-    if (current !== saved && canSave && timer === undefined) {
+    if (current !== saved && !conflict && current !== blockedKey && canSave && timer === undefined) {
       timer = schedule(() => {
         timer = undefined;
         if (running) {

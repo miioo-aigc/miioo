@@ -5,6 +5,7 @@ import { appendCanvasMediaEdit, beginCanvasMediaEdit, finishCanvasMediaEdit } fr
 import { getCanvasOperationLocks } from './CanvasOperationGuards.js';
 import { prepareCanvasMediaAsset } from './CanvasMediaSize';
 import { getCanvasPermanentAssetId, isCanvasOutputProtected } from './CanvasAssets.js';
+import { dispatchCanvasAssetsChanged } from '../../utils/canvasAssetsEvents';
 
 export function useCanvasVideoEdits({ nodes, setNodes, canvasId, cancelPendingClicks }) {
   const [editor, setEditor] = useState(null);
@@ -55,6 +56,7 @@ export function useCanvasVideoEdits({ nodes, setNodes, canvasId, cancelPendingCl
           showGlobalToast('编辑结果未写回：源节点已删除、结果已变化或受到任务保护', 'error');
           return;
         }
+        dispatchCanvasAssetsChanged(canvasId);
         showGlobalToast(type === 'image' ? '选帧图片已保存' : '编辑视频已保存', 'success');
       }
       return result;
@@ -62,7 +64,21 @@ export function useCanvasVideoEdits({ nodes, setNodes, canvasId, cancelPendingCl
         if (currentCanvas.current === canvasId) setNodes((current) => finishCanvasMediaEdit(current, nodeId, operation), { origin: 'system', record: false });
       }
     };
-    setEditor({ canvasId, mode, submit, sourceAsset: { ...asset, canvasEditScope: `${canvasId}:${nodeId}`, originalUrl, videoUrl: originalUrl }, videoUrl: originalUrl, originalVideoUrl: originalUrl, posterUrl: asset.posterUrl });
+    setEditor({
+      canvasId,
+      mode,
+      submit,
+      sourceAsset: {
+        ...asset,
+        canvas_id: canvasId,
+        canvasEditScope: `${canvasId}:${nodeId}`,
+        originalUrl,
+        videoUrl: originalUrl,
+      },
+      videoUrl: originalUrl,
+      originalVideoUrl: originalUrl,
+      posterUrl: asset.posterUrl,
+    });
   }, [nodes, setNodes, canvasId, cancelPendingClicks]);
   return { editor: editor?.canvasId === canvasId ? editor : null, open, close: () => setEditor(null) };
 }

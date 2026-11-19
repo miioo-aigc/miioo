@@ -35,9 +35,10 @@
  *   2026-08-25  创作历史占位卡复用 LoadingAnimation，宽度 88px、高度按比例自适应
  *   2026-08-31  配音结果卡接入共享播放器，保证同时只播放一段音频
  *   2026-09-04  收藏和删除图标统一复用 ui 公共组件
+ *   2026-11-17  画布资产音频卡由卡片本体承接拖动，避免内部命中区域不一致
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import MediaLoadStatus from '../feedback/MediaLoadStatus';
 import Checkbox from '../Checkbox';
 import ConfirmDialog from '../ConfirmDialog';
@@ -88,11 +89,14 @@ export default function CreationAudioResultCard({
   overlayActions = false,
   fillWaveform = false,
   retainUnavailableLayout = false,
+  cardDraggable = false,
+  onCardDragStart,
 }) {
   const [hovered, setHovered] = useState(false);
   const [playback, setPlayback] = useState(() => getVoicePreviewState());
   const [starAnim, setStarAnim] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const suppressCardDrag = useRef(false);
   const isDone = status === 'done' && audioUrl;
   const showAudioLayout = isDone || (retainUnavailableLayout && status === 'done');
   const audioKey = String(playbackKey || audioId || id || `${audioUrl}:${prompt || ''}`);
@@ -121,10 +125,24 @@ export default function CreationAudioResultCard({
     }
   }
 
+  function handleCardDragStart(event) {
+    if (suppressCardDrag.current) {
+      event.preventDefault();
+      return;
+    }
+    onCardDragStart?.(event);
+  }
+
   return (
     <>
       <div
-        style={{ width: '100%', height, aspectRatio: height ? undefined : '16/9', borderRadius: '8px', overflow: 'hidden', backgroundColor: hovered ? '#242424' : '#1A1A1A', transition: 'background-color 0.15s', position: 'relative', cursor: isDone && !selectionDisabled ? 'pointer' : 'default', outline: isSelected ? '2px solid #2DC3E1' : 'none', outlineOffset: '-2px', opacity: selectionDisabled ? 0.6 : 1 }}
+        data-canvas-audio-drag-handle={cardDraggable ? 'true' : undefined}
+        draggable={cardDraggable || undefined}
+        onDragStart={cardDraggable ? handleCardDragStart : undefined}
+        onPointerDownCapture={cardDraggable ? (event) => {
+          suppressCardDrag.current = Boolean(event.target.closest?.('button, a, input, textarea, select, [data-canvas-card-no-drag="true"]'));
+        } : undefined}
+        style={{ width: '100%', height, aspectRatio: height ? undefined : '16/9', borderRadius: '8px', overflow: 'hidden', backgroundColor: hovered ? '#242424' : '#1A1A1A', transition: 'background-color 0.15s', position: 'relative', cursor: isDone && !selectionDisabled ? 'pointer' : 'default', outline: isSelected ? '2px solid #2DC3E1' : 'none', outlineOffset: '-2px', opacity: selectionDisabled ? 0.6 : 1, userSelect: 'none', WebkitUserSelect: 'none' }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onClick={() => {

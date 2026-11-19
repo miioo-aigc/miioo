@@ -21,9 +21,10 @@ export function useCanvasList({ canvas, persistCanvas, onSelectCanvas, onRenamed
       if (isDevelopmentCanvas(id)) return listDevelopmentCanvases(projectId);
       const result = [];
       for (let page = 1; ; page += 1) {
-        const data = await apiListCanvasDocuments({ projectId, page });
+        const data = await apiListCanvasDocuments({ projectId, status: 'active', page, pageSize: 100 });
         result.push(...data.items);
-        if (result.length >= data.total || !data.items.length) break;
+        if (result.length >= data.total) break;
+        if (!data.items.length) throw new Error('画布列表分页不完整，请重试');
       }
       return result.filter((item) => (item.project_id || null) === (projectId || null));
     };

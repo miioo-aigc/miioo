@@ -260,7 +260,8 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
         // 本地缓存只用于「秒开」(hydrateHistoryFromCache)，不能作为权威数据。
         // 否则刚创作完成、但缓存尚未包含的新内容会在刷新后被旧缓存覆盖而「凭空消失」。
         const requestParams = { page: 1, page_size: PAGE_SIZE };
-        // 创作历史过滤已隐藏记录；资产库独立读取全部资产。
+        // 创作历史只读取创作产物并过滤已隐藏记录；资产库独立读取全部资产。
+        requestParams.creation_only = true;
         requestParams.exclude_hidden = true;
         const networkResp = await apiMap[tab](requestParams);
         if (!isCurrent()) return;
@@ -281,6 +282,7 @@ export default function CreationPage({ ownerId, isLoggedIn, onLoginClick, apiCon
         }
       } else {
         const requestParams = { page: nextPage, page_size: PAGE_SIZE };
+        requestParams.creation_only = true;
         requestParams.exclude_hidden = true;
         pageResp = await apiMap[tab](requestParams);
         if (!isCurrent()) return;

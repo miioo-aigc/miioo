@@ -6,12 +6,14 @@ export default function AssetFolderGrid({
   children,
   className = '',
   gap = 16,
+  columns,
   minCardWidth = 216,
   maxCardWidth = 270,
 }) {
   const gridRef = useRef(null);
 
   useEffect(() => {
+    if (columns) return undefined;
     const grid = gridRef.current;
     const observer = new ResizeObserver(([entry]) => {
       const { columns, cardWidth } = getAssetFolderGridSizing(
@@ -24,7 +26,7 @@ export default function AssetFolderGrid({
     });
     observer.observe(grid);
     return () => observer.disconnect();
-  }, [gap, maxCardWidth, minCardWidth]);
+  }, [columns, gap, maxCardWidth, minCardWidth]);
 
   const maxTrack = Number.isFinite(maxCardWidth) ? `${maxCardWidth}px` : '1fr';
 
@@ -32,7 +34,7 @@ export default function AssetFolderGrid({
     <div
       ref={gridRef}
       className={`grid items-start justify-start ${className}`}
-      style={{ gridTemplateColumns: `var(--asset-folder-columns, repeat(auto-fill, minmax(min(${minCardWidth}px, 100%), ${maxTrack})))`, gap }}
+      style={{ gridTemplateColumns: columns ? 'repeat(' + columns + ', minmax(0, 1fr))' : `var(--asset-folder-columns, repeat(auto-fill, minmax(min(${minCardWidth}px, 100%), ${maxTrack})))`, gap }}
     >
       {children}
     </div>

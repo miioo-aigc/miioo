@@ -21,6 +21,17 @@ export function createCanvasSaveSession(update, createId = () => crypto.randomUU
     }
   };
   return {
+    recover() {
+      const operation = tail.then(async () => {
+        if (!pending) return;
+        const result = await attempt(pending.canvasId, pending.body);
+        if (!Number.isInteger(result?.revision)) throw new Error('保存响应缺少画布版本');
+        revision = result.revision;
+        pending = null;
+      });
+      tail = operation.catch(() => {});
+      return operation;
+    },
     // 文本历史写入与画布 PATCH 共用队列；失败的 PATCH 必须先确认，不能跳过。
     mutate(action) {
       const operation = tail.then(async () => {

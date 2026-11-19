@@ -82,7 +82,7 @@ export default function CanvasLibraryGrid({ collectionId, parentId, items, selec
     };
   }, []);
 
-  return <AssetFolderGrid minCardWidth={CREATIVE_CARD_MIN_WIDTH} maxCardWidth={Number.POSITIVE_INFINITY}>
+  return <AssetFolderGrid columns={pickerMode ? 3 : undefined} minCardWidth={CREATIVE_CARD_MIN_WIDTH} maxCardWidth={Number.POSITIVE_INFINITY}>
     {!pickerMode && <AddVirtualGroupCard label="新增文件夹" maxWidth="none" aspectRatio={CREATIVE_CARD_ASPECT_RATIO} onClick={() => !busy && onCreate()} />}
     {items.map((item) => {
       const key = canvasLibraryItemKey(item);

@@ -1,5 +1,6 @@
 /**
  * @file CanvasPage.jsx
+ * 2026-11-19：整画布保存前同步已迁移文本编辑历史，复用串行队列与幂等操作；页面仅保留会话编排。
  * 2026-11-16：下游拖线落至空白处并打开新增节点菜单时保留连接预览，选择节点或关闭菜单后清理。
  * 2026-11-19：视频及音频生成补传所属项目，供服务端归档画布资产；2026-11-16：生成与编辑绑定真实创作会话及画布身份；结果写回稳定资产后刷新素材。
  * 2026-11-13：持久文本任务接线；准备先保存、刷新恢复、专用取消、服务端历史回填。
@@ -16,7 +17,7 @@
  *
  *   2026-11-04：双名称分别编辑，画布管理迁入顶部，底部移除列表入口。
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L192；grouping L301；referenceGraph L328；handleNodesChange L427；addNode L500；上传 L742；React Flow L1122。
+ *   CanvasPage L195；grouping L304；referenceGraph L332；handleNodesChange L431；addNode L504；上传 L787；React Flow L1122。
  *   2026-11-06：媒体替换独立单素材分支，上传与素材库均复核目标会话/节点，普通导入和参考流程保持原语义。
  *   2026-11-06：统一结果切换、节点级任务操作保护、文本结果历史、直接上游更新标识及复制/导入历史预览恢复。
  *   2026-10-27：保存失败复用带下载操作的提示，点击时导出最新草稿。
@@ -73,6 +74,8 @@
 import { getCanvasUpstreamUpdates } from '../components/canvas/CanvasUpstreamUpdates';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import CanvasTextEditor from '../components/canvas/CanvasTextEditor';
+import { syncCanvasTextEdits } from '../components/canvas/CanvasTextEdits';
+import * as canvasTextApi from '../api/CanvasTextSubmissions';
 import { useCanvasTextEditor } from '../components/canvas/UseCanvasTextEditor';
 import { useCanvasAutosave } from '../components/canvas/UseCanvasAutosave';
 import CanvasGridBackground from '../components/canvas/CanvasGridBackground';
@@ -345,7 +348,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     const session = getAuthSessionGeneration();
     const isCurrent = () => !cancelled && session === getAuthSessionGeneration();
     const controller = new AbortController();
-    saveSessionRef.current = { canvasId, session: createCanvasSaveSession(apiUpdateCanvasDocument) };
+    saveSessionRef.current = { canvasId, session: createCanvasSaveSession(apiUpdateCanvasDocument), textEdits: new Map() };
     Promise.allSettled([apiGetCanvasDocument(canvasId), isDevelopmentCanvas(canvasId) ? Promise.resolve({}) : apiGetCurrentUser()]).then(async ([documentResult, userResult]) => {
       if (!isCurrent()) return;
       if (documentResult.status === 'rejected') {
@@ -680,11 +683,33 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     })) return false;
     const owner = saveSessionRef.current;
     const session = getAuthSessionGeneration();
-    let document = serializeCanvasDocument(snapshot.nodes, referenceGraph.edges, viewport);
+    let document;
     const feedback = acknowledgeSaveRef.current;
     feedback?.start?.();
     let result;
     try {
+      await owner.session.recover();
+      if (!isDevelopmentCanvas(canvasId)) await owner.session.mutate(async (accept) => {
+        let retry;
+        let attempts = 0;
+        do {
+          retry = false;
+          await syncCanvasTextEdits({ canvasId, nodes: history.getCurrentNodes(), api: canvasTextApi,
+            operations: owner.textEdits, accept,
+            check: () => { if (saveSessionRef.current !== owner || session !== getAuthSessionGeneration()) throw new Error('画布会话已结束'); },
+            apply: (original, synced) => setNodes(items => items.map(node => {
+              if (node.id !== original.id) return node;
+              if (node.data.nodeResults !== original.data.nodeResults) {
+                retry = true;
+                return { ...node, data: { ...node.data, outputVersion: synced.data.outputVersion } };
+              }
+              return { ...node, data: { ...node.data, content: synced.data.content, nodeResults: synced.data.nodeResults, outputVersion: synced.data.outputVersion } };
+            }), { record: false, origin: 'system' }),
+          });
+          if (retry && ++attempts >= 3) throw new Error('文本仍在编辑，已保留草稿，请稍后重试保存');
+        } while (retry);
+      });
+      document = serializeCanvasDocument(history.getCurrentNodes(), referenceGraph.edges, viewport);
       result = await owner.session.save(canvasId, canvasRevision, document);
     } catch (saveError) {
       if (saveSessionRef.current !== owner || session !== getAuthSessionGeneration()) throw saveError;

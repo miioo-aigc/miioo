@@ -98,13 +98,16 @@
 .canvas-node__frame::before { left: -22px; }
 .canvas-node__frame::after { right: -22px; }
 .canvas-node__port { z-index: 8; width: 6px; height: 6px; min-width: 6px; min-height: 6px; border: 0; border-radius: 50%; background: transparent; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
-.canvas-node__port::before { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; border: 0; border-radius: 50%; background: var(--color-text-hint); transform: translate(-50%, -50%); transition: width 120ms ease, height 120ms ease, border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease; }
+/* 圆心对齐 1px 节点边框中心线；灰色圆点与深色描边遮住底层边框，热区保持 44px。 */
+.canvas-node__port::before { content: ''; position: absolute; left: 50%; top: 50%; box-sizing: content-box; width: 8px; height: 8px; border: 2px solid #121212; border-radius: 50%; background: #7A7A7A; box-shadow: none; transform: translate(-50%, -50%); transition: width 120ms ease, height 120ms ease, border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease; }
 .canvas-node__port-anchor { overflow: visible; }
+.canvas-node__port-anchor.react-flow__handle-left { left: -0.5px; }
+.canvas-node__port-anchor.react-flow__handle-right { right: -0.5px; }
 .canvas-node__port-hit-area { position: absolute; left: 50%; top: 50%; z-index: 1; display: block; width: 44px; height: 44px; border-radius: 50%; transform: translate(-50%, -50%); }
 .canvas-node:hover .canvas-node__port, .canvas-node__port--visible { opacity: 1; }
 .canvas-node:hover .canvas-node__port-hit-area, .canvas-node__port--visible .canvas-node__port-hit-area { pointer-events: all; }
-.canvas-node__port--enlarged::before { width: 24px; height: 24px; border: 1px solid var(--color-stroke-accent); background: var(--color-surface-content-area); box-shadow: var(--color-shadow) 0 2px 8px; }
-.canvas-node__port--enlarged::after { content: ''; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; border-radius: 50%; background: #555555; transform: translate(-50%, -50%); }
+.canvas-node__port--enlarged::before { width: 24px; height: 24px; border: 1px solid #121212; background: var(--color-surface-content-area); box-shadow: var(--color-shadow) 0 2px 8px; }
+.canvas-node__port--enlarged::after { content: ''; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; border-radius: 50%; background: #7A7A7A; transform: translate(-50%, -50%); }
 .canvas-node__port--active::before { border-color: var(--color-brand-main); background-color: var(--color-surface-base); background-image: linear-gradient(var(--color-blue-alpha-10)); }
 .canvas-node__port--active::after { background: var(--color-brand-main); }
 .react-flow__connectionline path { stroke: var(--color-brand-main); stroke-width: 2px; }

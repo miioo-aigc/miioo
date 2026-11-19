@@ -1667,7 +1667,7 @@ function AccountAssetPickerModal({
         </div>
 
         {/* ── 内容区（可滚动） ── */}
-        <div onScroll={handleContentScroll} style={{ flex: 1, overflowY: 'auto', padding: '8px 24px', display: 'flex', flexDirection: 'column' }}>
+        <div onScroll={handleContentScroll} style={{ flex: 1, minHeight: 0, overflowY: activeTab === 'canvas' ? 'hidden' : 'auto', padding: '8px 24px', display: 'flex', flexDirection: 'column' }}>
           {confirmError && <RemoteReadStatus error={confirmError} />}
           {activeTab === 'canvas' ? (
             <CanvasAssetPickerPanel

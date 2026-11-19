@@ -4576,3 +4576,12 @@ TextCanvasNode 复用 React Flow NodeResizeControl，仅选中时显示右下角
 - `CanvasLibraryGrid` 复用创作资产的 `240px` 最小列宽和 `16:9` 卡片比例，不再限制文件夹相关卡片最大为 `270px`。
 - `AddVirtualGroupCard` 与 `SeedanceFolderCard` 增加可选最大宽度和宽高比参数，默认值保持 Seedance 素材库原有尺寸。
 - `SeedanceAssetCard` 支持可选宽高比；画布资产媒体卡使用 `16:9`，音频卡移除固定 `160px` 高度并沿用自身 `16:9` 布局。
+
+
+### 2026-11-19 文本编辑持久化修复
+
+- CanvasTextEdits：复用 CanvasDurableText 的文本历史适配和 edit 请求，已迁移节点在整画布 PATCH 前同步；节点内编辑及专注编辑共用入口。
+- CanvasPage：保留画布会话、节点写回、任务及保存队列编排；文本协议由独立模块承担，未新增 UI。
+- CanvasSaveSession：先恢复未确认 PATCH，再执行文本历史写入；网络重试保留幂等身份。
+- CanvasAutosave：相同失败草稿不因重渲染自动提交；409 暂停自动重试，保留本地草稿和离开保护。
+- 验证：定向测试覆盖追加历史后保存、响应丢失、远端结果冲突、会话失效及原保存行为；线上浏览器验证待执行。

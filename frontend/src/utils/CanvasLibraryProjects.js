@@ -1,13 +1,17 @@
-/** 项目名称来自项目；画布标题来自画布；资产操作始终使用集合身份。 */
+/** 集合为事实来源；缺失项目或画布元数据不隐藏集合。 */
 export function groupCanvasLibraryProjects(projects, canvases, collections) {
-  const byCanvas = new Map(collections.filter(item => item.kind === 'canvas').map(item => [item.bound_canvas_id, item]));
-  const groups = new Map(projects.filter(item => item.project_type === 'canvas').map(project => [project.id, { ...project, canvases: [] }]));
-  for (const canvas of canvases) {
-    const project = groups.get(canvas.project_id);
-    const collection = byCanvas.get(canvas.id);
-    if (!project || !collection || canvas.parent_canvas_id || canvas.status === 'archived') continue;
-    if (project.canvases.some(item => item.id === collection.id)) continue;
-    project.canvases.push({ ...collection, name: canvas.title || collection.name, projectId: project.id, canvasCreatedAt: canvas.created_at });
+  const canvasById = new Map(canvases.map(item => [item.id, item]));
+  const groups = new Map(projects.filter(item => item.project_type === 'canvas').map(project => [project.id, { ...project, projectId: project.id, canvases: [] }]));
+  const seen = new Set();
+  for (const collection of collections) {
+    if (collection.kind !== 'canvas' || seen.has(collection.id)) continue;
+    seen.add(collection.id);
+    const canvas = canvasById.get(collection.bound_canvas_id);
+    const projectId = collection.source_project_id ?? canvas?.project_id ?? null;
+    const key = projectId || ('standalone:' + collection.id);
+    if (!groups.has(key)) groups.set(key, { id: key, projectId, metadataMissing: true, name: collection.name, canvases: [] });
+    groups.get(key).canvases.push({ ...collection, projectId,
+      displayName: collection.bound_canvas_id ? collection.name : '项目共享资产', canvasCreatedAt: canvas?.created_at });
   }
   return [...groups.values()].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(b.id).localeCompare(String(a.id)));
 }
@@ -16,7 +20,7 @@ export function groupCanvasLibraryProjects(projects, canvases, collections) {
 export function removeCanvasLibraryProject(state, projectId) {
   const items = state.items.filter((item) => item.id !== projectId);
   if (state.selectedId !== projectId) return { ...state, items };
-  const project = items[0];
+  const project = items.find(item => item.canvases.length) || items[0];
   return {
     ...state,
     items,

@@ -23,8 +23,6 @@ export default function useCanvasCollections() {
   const preferred = useRef(undefined);
   const generation = useRef(0);
   const moreLock = useRef(false);
-  const itemsRef = useRef(state.items);
-  useEffect(() => { itemsRef.current = state.items; }, [state.items]);
   const refresh = useCallback((id) => { if (id !== undefined) preferred.current = id; setEpoch((n) => n + 1); }, []);
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
@@ -37,11 +35,7 @@ export default function useCanvasCollections() {
         setEpoch((value) => value + 1);
       }, 250);
     };
-    const handleAssetsChanged = (event) => {
-      const canvasId = event?.detail?.canvasId;
-      if (!canvasId || !itemsRef.current.some((item) => String(item.bound_canvas_id || '') === String(canvasId))) return;
-      schedule();
-    };
+    const handleAssetsChanged = schedule;
     const handleVisibilityChange = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') schedule();
     };

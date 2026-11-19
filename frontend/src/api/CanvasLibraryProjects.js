@@ -34,6 +34,16 @@ export async function apiReadCanvasLibraryProjects(isCurrent = () => true, signa
       if (size === items.size) throw new Error('画布列表分页未推进');
     }
   };
-  const [projects, canvases, collections] = await Promise.all([apiListCanvasProjects({ isCurrent }), readCanvases(), readCollections()]);
-  return groupCanvasLibraryProjects(projects, canvases, collections);
+  const [projectResult, canvasResult, collectionResult] = await Promise.allSettled([
+    apiListCanvasProjects({ isCurrent }), readCanvases(), readCollections(),
+  ]);
+  if (collectionResult.status === 'rejected') throw collectionResult.reason;
+  for (const result of [projectResult, canvasResult]) {
+    if (result.status === 'rejected' && [401, 403].includes(result.reason?.status)) throw result.reason;
+  }
+  return { items: groupCanvasLibraryProjects(
+    projectResult.status === 'fulfilled' ? projectResult.value : [],
+    canvasResult.status === 'fulfilled' ? canvasResult.value : [], collectionResult.value),
+    warning: [projectResult, canvasResult].some(result => result.status === 'rejected')
+      ? '部分项目信息读取失败，已保留可访问的资产集合' : '' };
 }

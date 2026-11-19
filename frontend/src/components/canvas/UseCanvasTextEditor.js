@@ -22,8 +22,8 @@ export function useCanvasTextEditor({ nodes, history, cancelPendingClicks }) {
     close: () => setSession(null),
     save: (content) => {
       if (!session) return;
-      if (typeof content !== 'string' || !content.trim()) {
-        showGlobalToast('文本结果不能为空', 'warning');
+      if (typeof content !== 'string') {
+        showGlobalToast('文本内容格式无效', 'warning');
         return false;
       }
       const current = history.getCurrentNodes?.() || nodes;

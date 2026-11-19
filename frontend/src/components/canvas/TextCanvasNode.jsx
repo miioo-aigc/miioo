@@ -57,7 +57,7 @@ export default function TextCanvasNode({ id, data, selected, width, height }) {
   };
 
   return <>
-    {selected && !data?.submissionLocked && <NodeResizeControl nodeId={id} position="bottom-right" minWidth={180} minHeight={144} className="canvas-text-resize nodrag nopan" style={{ background: 'transparent', border: 0, width: 20, height: 20 }}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M4 11 11 4M8 11l3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg></NodeResizeControl>}
+    {selected && !data?.submissionLocked && <NodeResizeControl nodeId={id} position="bottom-right" minWidth={240} minHeight={264} maxWidth={960} maxHeight={1200} className="canvas-text-resize nodrag nopan" style={{ background: 'transparent', border: 0, width: 20, height: 20 }}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M4 11 11 4M8 11l3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg></NodeResizeControl>}
     <CanvasNodeShell nodeType="text" title={data?.label || '文本'} selected={selected} data={{ ...data, nodeId: id, textWidth: width || 240, textHeight: (height || 264) - 24, editing, onToolbarAction: handleToolbarAction }} onPromptChange={data?.onPromptChange} onAddReference={data?.onAddReference} onGenerate={data?.onGenerate}>
     <div ref={contentRef} data-text-preview={!editing} data-scroll-enabled={Boolean(selected)} className={`canvas-node__text-content ${editing ? 'nodrag nowheel nopan' : ''}`} onDoubleClick={handleDoubleClick}>
       {editing ? <CanvasInlineTextEditor

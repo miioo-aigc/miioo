@@ -1,4 +1,38 @@
 import test from 'node:test';
+import { createCanvasNodeClipboard } from '../src/components/canvas/CanvasNodeClipboard.js';
+
+test('共享剪贴板跨画布读取、项目隔离及登录会话隔离', () => {
+  const clipboard = createCanvasNodeClipboard();
+  const source = [{ id: 'text', type: 'text', position: { x: 0, y: 0 }, data: { content: '正文' } }];
+  let updates = 0;
+  const unsubscribe = clipboard.subscribe(() => updates++);
+  clipboard.write('project-a', 1, source);
+  source[0].data.content = '源节点后续修改';
+  assert.equal(clipboard.read('project-a', 1)[0].data.content, '正文');
+  assert.equal(clipboard.read('project-b', 1).length, 0);
+  assert.equal(clipboard.read('project-a', 1).length, 1);
+  assert.equal(clipboard.read('project-a', 2).length, 0);
+  assert.equal(clipboard.read('project-a', 1).length, 0);
+  assert.equal(updates, 1);
+  unsubscribe();
+});
+
+test('跨画布粘贴保留尺寸与内部连线，创建新身份并剥离运行任务', () => {
+  const nodes = [
+    { id: 'a', type: 'text', selected: true, width: 700, height: 800, position: { x: 0, y: 0 }, data: { content: '正文', label: '文本', generating: true, generationTaskIds: ['task'] } },
+    { id: 'b', type: 'image', selected: true, position: { x: 800, y: 0 }, data: { label: '图片', imageSourceIds: ['a', 'outside'] } },
+  ];
+  const clipboard = createCanvasNodeClipboard();
+  clipboard.write('project', 0, copyCanvasNodes(nodes));
+  let sequence = 0;
+  const pasted = pasteCanvasNodes([], clipboard.read('project', 0), { x: 100, y: 200 }, () => String(++sequence));
+  assert.equal(pasted[0].width, 700);
+  assert.equal(pasted[0].height, 800);
+  assert.notEqual(pasted[0].id, 'a');
+  assert.deepEqual(pasted[1].data.imageSourceIds, [pasted[0].id]);
+  assert.equal(pasted[0].data.generating, undefined);
+  assert.equal(pasted[0].data.generationTaskIds, undefined);
+});
 import assert from 'node:assert/strict';
 import { copyCanvasNodes, pasteCanvasNodes, deleteCanvasNodes, hasCanvasDeletionTasks, moveCanvasNodesOut, setCanvasGroupsStacked, getCanvasStackPresentation } from '../src/components/canvas/CanvasNodeActions.js';
 import { createCanvasHistory } from '../src/components/canvas/CanvasHistory.js';

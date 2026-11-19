@@ -5,7 +5,7 @@ import EditorToolbar from './EditorToolbar';
 import { EditorHistory } from './EditorHistory';
 import { ensureScriptEditorStyle } from './ScriptStyles';
 
-export default function ScriptEditor({ initialContent, onContentChange, containerRef, historyDepth = 0 }) {
+export default function ScriptEditor({ initialContent, onContentChange, containerRef, historyDepth = 0, autoFocus = false }) {
   useEffect(() => {
     ensureScriptEditorStyle();
   }, []);
@@ -23,6 +23,15 @@ export default function ScriptEditor({ initialContent, onContentChange, containe
       onContentChangeRef.current?.(currentEditor.storage.markdown.getMarkdown());
     },
   });
+
+  useEffect(() => {
+    if (!autoFocus || !editor) return undefined;
+    // 等待正文挂载及父级模态框打开后再聚焦，避免焦点被 showModal 接管。
+    const frame = window.requestAnimationFrame(() => {
+      if (!editor.isDestroyed) editor.commands.focus('end', { scrollIntoView: false });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [autoFocus, editor]);
 
   return (
     <div style={{ alignSelf: 'stretch', display: 'flex', flex: 1, minHeight: 0, flexDirection: 'column', gap: '12px', overflow: 'hidden' }}>

@@ -13,7 +13,6 @@ export function isCanvasLibraryPresetFolder(item) {
 }
 
 export function canvasLibraryVisiblePage(page) {
-  if (!Array.isArray(page?.items)) return page;
-  const items = page.items.filter((item) => !isCanvasLibraryPresetFolder(item));
-  return items.length === page.items.length ? page : { ...page, items };
+  // 历史分类目录可能含媒体或子目录，始终保留服务端返回的入口。
+  return page;
 }

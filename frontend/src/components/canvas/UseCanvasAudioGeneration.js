@@ -7,7 +7,7 @@ import { createCanvasProgressHandler } from './CanvasGenerationProgress';
 import { planCanvasAudioGeneration, beginCanvasAudioGeneration, acceptCanvasAudioSubmission, finishCanvasAudioGeneration } from './CanvasAudioGeneration';
 import { dispatchCanvasAssetsChanged } from '../../utils/canvasAssetsEvents';
 
-export function useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks, creationSessionId, canvasId) {
+export function useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks, creationSessionId, canvasId, projectId) {
   const [requests] = useState(createCanvasTextRequests);
   useEffect(() => () => requests.abortAll(), [requests]);
   useEffect(() => { requests.reconcile(nodes); }, [nodes, requests]);
@@ -37,7 +37,7 @@ export function useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks, c
     try {
       const files = plan.sources.filter((source) => source.type === 'audio' && source.asset?.url).map((source) => source.asset);
       const result = await apiGenerateCreation({ ...plan.params, genType: 'dubbing', prompt: plan.prompt,
-        model: plan.model, files, canvasAudioReferences: true, session_id: creationSessionId }, { signal: controller.signal,
+        model: plan.model, files, canvasAudioReferences: true, project_id: projectId, session_id: creationSessionId }, { signal: controller.signal,
         onProgress: createCanvasProgressHandler(setNodes, plan.requestId, controller.signal),
         onTaskCreated: (task) => {
           if (controller.signal.aborted) return;
@@ -69,5 +69,5 @@ export function useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks, c
         setNodes((current) => finishCanvasAudioGeneration(current, plan), { origin: 'system', record: false });
       }
     } finally { requests.finish(plan.requestId); }
-  }, [cancelPendingClicks, canvasId, creationSessionId, nodes, requests, setNodes]);
+  }, [cancelPendingClicks, canvasId, creationSessionId, nodes, projectId, requests, setNodes]);
 }

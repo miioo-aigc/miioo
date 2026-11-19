@@ -1,7 +1,7 @@
 /**
  * @file CanvasPage.jsx
  * 2026-11-16：下游拖线落至空白处并打开新增节点菜单时保留连接预览，选择节点或关闭菜单后清理。
- * 2026-11-16：生成与编辑绑定真实创作会话及画布身份；生成结果真实写回稳定资产后刷新素材；生成历史接入服务端游标、资产可用性和媒体类型。
+ * 2026-11-19：视频及音频生成补传所属项目，供服务端归档画布资产；2026-11-16：生成与编辑绑定真实创作会话及画布身份；结果写回稳定资产后刷新素材。
  * 2026-11-13：持久文本任务接线；准备先保存、刷新恢复、专用取消、服务端历史回填。
  * 2026-11-13：文本节点尺寸拖动纳入单次历史事务，沿用组边界更新。
  * @structure-index
@@ -252,7 +252,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const commitUserText = useCallback((nodeId, content) => {
     const current = history.getCurrentNodes();
     const node = current.find((item) => item.id === nodeId && item.type === 'text');
-    if (!node || !content.trim() || node.data.generating || node.data.generationPending || node.data.editing
+    if (!node || typeof content !== 'string' || node.data.generating || node.data.generationPending || node.data.editing
       || node.data.submissionLocked) return false;
     const now = Date.now(), id = `canvas-text-edit-${crypto.randomUUID()}`;
     setNodes((items) => items.map((item) => item.id === nodeId ? commitCanvasNodeOutput(item, {
@@ -300,6 +300,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   const search = useCanvasSearch({ nodes, setNodes, flowInstance, containerRef: canvasContainerRef, cancelPendingClicks, open: searchOpen, setOpen: setSearchOpen });
   const grouping = useCanvasGrouping(nodes, setNodes, cancelPendingClicks, false);
   const nodeActions = useCanvasNodeActions({ nodes, setNodes, undo: history.undo, redo: history.redo, getUndoToken: history.getUndoToken, cancelPendingClicks, flowInstance,
+    projectId: canvas?.project_id,
     containerRef: canvasContainerRef, beforeDelete: (ids) => textCancelRef.current?.(ids),
     enabled: loadedCanvasId === canvasId && !error && !assetPickerOpen && !profileOpen && !searchOpen,
     dialog: actionDialog, setDialog: setActionDialog });
@@ -317,8 +318,8 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
   useEffect(() => { textCancelRef.current = textTasks.cancel; }, [textTasks.cancel]);
   const creationSessionId = canvas?.creation_session_id || canvas?.creationSessionId;
   const generateImage = useCanvasImageGeneration(nodes, setNodes, cancelPendingClicks, canvas?.project_id, creationSessionId, canvasId, retainMultiResultHint);
-  const generateVideo = useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks, creationSessionId, canvasId);
-  const generateAudio = useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks, creationSessionId, canvasId);
+  const generateVideo = useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks, creationSessionId, canvasId, canvas?.project_id);
+  const generateAudio = useCanvasAudioGeneration(nodes, setNodes, cancelPendingClicks, creationSessionId, canvasId, canvas?.project_id);
   const enterNodeRef = useRef(grouping.enterNode);
   useEffect(() => { enterNodeRef.current = grouping.enterNode; }, [grouping.enterNode]);
   const openReferencePicker = useCallback((target) => {
@@ -1138,7 +1139,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       onRenameCanvas={canvasList.rename} onDuplicateCanvas={canvasList.duplicate} onDeleteCanvas={canvasList.remove} />
     <CanvasUserMenu currentUser={currentUser} onLogout={() => leaveCanvas(handleLogout)} onOpenProfile={() => setProfileOpen(true)} />
     <div ref={canvasContainerRef} className="absolute inset-0 bg-[#121212]">
-      <ReactFlow viewport={viewport} minZoom={0.01}
+      <ReactFlow viewport={viewport} minZoom={0.2} maxZoom={3}
         onDragOver={handleCanvasDragOver} onDrop={handleCanvasDrop}
         onWheelCapture={handleCanvasWheelCapture}
         onMove={(_, nextViewport) => { setViewport(nextViewport); setViewportZoom(nextViewport.zoom); }}

@@ -2,6 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { commitCanvasNodeOutput } from '../src/components/canvas/CanvasResultMutations.js';
+
+test('页面正文提交允许删除最后一个字，并保留可回选的旧结果', () => {
+  const page = readFileSync(new URL('../src/pages/CanvasPage.jsx', import.meta.url), 'utf8');
+  const callback = page.slice(page.indexOf('  const commitUserText ='), page.indexOf('  const resolvePreviewAssets ='));
+  let nodes = [{ id: 'text-1', type: 'text', data: { content: '今' } }];
+  const context = vm.createContext({
+    useCallback: fn => fn, history: { getCurrentNodes: () => nodes },
+    setNodes: update => { nodes = update(nodes); },
+    commitCanvasNodeOutput: (node, batch) => commitCanvasNodeOutput(node, JSON.parse(JSON.stringify(batch))),
+    crypto: { randomUUID: () => 'clear-text' },
+  });
+  vm.runInContext(callback + ';globalThis.submit = commitUserText;', context);
+  assert.equal(context.submit('text-1', ''), true);
+  assert.equal(nodes[0].data.content, '');
+  assert.ok(nodes[0].data.nodeResults.batches.some(batch => batch.results.some(result => result.content === '今')));
+});
 const source = readFileSync(new URL('../src/components/canvas/CanvasInlineTextEditor.jsx', import.meta.url), 'utf8');
 function mount() {
   const changes = [], refs = [], effects = [], listeners = new Map(), timers = [];

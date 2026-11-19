@@ -8,7 +8,7 @@ import SeedanceFolderCard from './SeedanceFolderCard';
 import SeedanceAssetCard from './SeedanceAssetCard';
 import AssetFolderGrid from './AssetFolderGrid';
 import useCanvasDragPreview from './UseCanvasDragPreview';
-import { canvasLibraryItemKey, canvasLibraryMedia, canvasLibraryAudioUrl, canvasLibraryDragType, canvasLibraryDrop } from './CanvasLibraryItems';
+import { canvasLibraryItemKey, canvasLibraryUnavailable, canvasLibraryMedia, canvasLibraryAudioUrl, canvasLibraryDragType, canvasLibraryDrop } from './CanvasLibraryItems';
 
 const CREATIVE_CARD_MIN_WIDTH = 240;
 const CREATIVE_CARD_ASPECT_RATIO = '16 / 9';
@@ -90,10 +90,11 @@ export default function CanvasLibraryGrid({ collectionId, parentId, items, selec
       const locked = folder && item.kind === 'root';
       const media = canvasLibraryMedia(item);
       const audio = media.asset_type === 'audio' || media.asset_type?.startsWith('audio/');
-      const disabled = busy || (!folder && isSelectionDisabled(item));
-      const canDrag = !pickerMode && !busy && !locked;
+      const unavailable = !folder && canvasLibraryUnavailable(item);
+      const disabled = busy || unavailable || (!folder && isSelectionDisabled(item));
+      const canDrag = !pickerMode && !busy && !locked && !unavailable;
       const select = () => { if (!disabled) onSelect(key); };
-      const open = () => { if (!busy) { if (pickerMode && folder) onOpen(item); else if (batch) select(); else onOpen(item); } };
+      const open = () => { if (!disabled) { if (pickerMode && folder) onOpen(item); else if (batch) select(); else onOpen(item); } };
       const startDrag = (event) => {
         if (!canDrag) { event.preventDefault(); return; }
         const scope = selected.has(key) ? items.filter((entry) => selected.has(canvasLibraryItemKey(entry))) : [item];
@@ -111,7 +112,7 @@ export default function CanvasLibraryGrid({ collectionId, parentId, items, selec
         setDragOverKey(accepted ? key : null);
         dragPreview.scale(accepted);
       } : undefined;
-      const actions = !batch && !folder ? (
+      const actions = !batch && !folder && !unavailable ? (
         <div className="absolute bottom-[8px] right-[8px] z-[3] flex gap-[4px] opacity-0 transition-opacity group-hover/library-card:opacity-100 group-focus-within/library-card:opacity-100" onClick={(event) => event.stopPropagation()}>
           <CreationCardActionButton icon={<Pencil size={16} />} tooltip="重命名" disabled={busy} onClick={() => onRename(item)} />
           <CreationCardActionButton icon={<Move size={16} />} tooltip="移动到" disabled={busy} onClick={() => onDestination([item])} />
@@ -131,6 +132,8 @@ export default function CanvasLibraryGrid({ collectionId, parentId, items, selec
       } : undefined}>
         {folder ? (
           <SeedanceFolderCard maxWidth="none" aspectRatio={CREATIVE_CARD_ASPECT_RATIO} dragHovered={flightTarget === key || (!busy && dragOverKey === key)} name={item.name} count={item.count} images={item.images || []} disabled={busy} editLabel="重命名" onEdit={!pickerMode && !batch && !locked ? () => onRename(item) : undefined} onMove={!pickerMode && !batch && !locked ? () => onDestination([item]) : undefined} onDelete={!pickerMode && !batch ? () => onDelete([item]) : undefined} onOpen={open} />
+        ) : unavailable ? (
+          <div role="status" className="flex aspect-video items-center justify-center rounded-[8px] bg-white/5 text-[14px] text-text-secondary">{{ trashed: '素材已移入回收站', forbidden: '无权访问素材', missing: '素材已不存在' }[item.asset.availability]}</div>
         ) : audio ? (
           <CreationAudioResultCard
             id={key} playbackKey={`canvas-library:${collectionId}:${key}`} status="done"
@@ -142,7 +145,7 @@ export default function CanvasLibraryGrid({ collectionId, parentId, items, selec
             cardDraggable={canDrag} onCardDragStart={startDrag}
           />
         ) : (
-          <SeedanceAssetCard asset={media} width="100%" aspectRatio={CREATIVE_CARD_ASPECT_RATIO} showActions={false} selected={selected.has(key)} disabled={disabled} onClick={open} />
+          <SeedanceAssetCard asset={media} width="100%" aspectRatio={CREATIVE_CARD_ASPECT_RATIO} showActions={false} lazyVideoPreview selected={selected.has(key)} disabled={disabled} onClick={open} />
         )}
         {batch && (!pickerMode || !folder) && (
           <div className={`absolute z-[4] ${folder ? 'left-[24px] top-[12px]' : 'left-[8px] top-[8px]'}`}>

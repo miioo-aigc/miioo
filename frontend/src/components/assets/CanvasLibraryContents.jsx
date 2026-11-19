@@ -8,7 +8,7 @@ import AssetsBatchToolbar from './AssetsBatchToolbar';
 import CanvasLibraryGrid from './CanvasLibraryGrid';
 import CanvasLibraryReadError from './CanvasLibraryReadError';
 import DotsLoading from '../DotsLoading';
-import { canvasLibraryItemKey, canvasLibraryToggleSelection, canvasLibrarySelectLoaded, canvasLibraryDrop, canvasLibraryPath, canvasLibraryDeletionNavigation, canvasLibraryDeletionInvalidatesCollection } from './CanvasLibraryItems';
+import { canvasLibraryItemKey, canvasLibraryUnavailable, canvasLibraryToggleSelection, canvasLibrarySelectLoaded, canvasLibraryDrop, canvasLibraryPath, canvasLibraryDeletionNavigation, canvasLibraryDeletionInvalidatesCollection } from './CanvasLibraryItems';
 import { CanvasLibraryDialog, CanvasLibraryDestinationDialog, CanvasLibraryDeleteDialog } from './CanvasLibraryDialogs';
 
 // 2026-11-02：移动等待飞入动画，静默同步成功后提示文件移动成功。
@@ -26,16 +26,16 @@ export default function CanvasLibraryContents({ collection, onCollectionUnavaila
   const [deletion, setDeletion] = useState(null);
   const [preview, setPreview] = useState(null);
   const chosen = items.filter((item) => selected.has(canvasLibraryItemKey(item)));
-  const mediaOnly = chosen.length > 0 && chosen.every((item) => item.type !== 'folder');
+  const mediaOnly = chosen.length > 0 && chosen.every((item) => item.type !== 'folder' && !canvasLibraryUnavailable(item));
   const canMove = chosen.length > 0;
   const selection = (list) => list.map(({ type, id, revision, base_revision }) => ({ type, id, base_revision: base_revision ?? revision }));
-  const allSelected = items.length > 0 && chosen.length === items.length;
+  const allSelected = items.length > 0 && chosen.length === items.filter(item => !canvasLibraryUnavailable(item)).length;
   const clearSelection = () => setSelected(new Set());
   const go = (id) => { if (busy) return; setBatch(false); clearSelection(); navigate(id || collection.root_folder_id); };
   const toggle = (key) => { if (!busy && !loading) setSelected((old) => canvasLibraryToggleSelection(old, key)); };
   const selectAll = () => {
     if (busy || loading || error) return;
-    setSelected(canvasLibrarySelectLoaded(items, !allSelected));
+    setSelected(canvasLibrarySelectLoaded(items.filter(item => !canvasLibraryUnavailable(item)), !allSelected));
   };
   const rename = (item = null) => { setName(item?.name || item?.asset?.name || ''); setNameDialog({ item }); };
   const saveName = async () => {
@@ -123,7 +123,7 @@ export default function CanvasLibraryContents({ collection, onCollectionUnavaila
     </header>}
     <div className={`relative flex min-h-0 flex-1 flex-col overflow-auto px-[24px] pb-[24px] ${parentId ? '' : 'pt-[24px]'}`}>
       <CanvasLibraryGrid collectionId={collection.id} parentId={parentId} items={error ? [] : items} selected={selected} batch={batch} busy={busy || loading} onSelect={toggle} onCreate={() => rename()} onRename={rename} onOpen={(item) => item.type === 'folder' ? go(item.id) : setPreview(item)} onDelete={requestDelete} onMove={move} onDestination={(list) => setDestination({ list })} onDownload={download} />
-      {error && <CanvasLibraryReadError busy={busy} onRetry={() => { clearSelection(); refresh(); }} />}
+      {error && <CanvasLibraryReadError message={error} busy={busy} onRetry={() => { clearSelection(); refresh(); }} />}
       {loading && <div role="status" aria-label="资产列表加载中" className="pointer-events-none absolute inset-0 flex items-center justify-center"><DotsLoading size={5} color="#2DC3E1" gap={4} /></div>}
       {cursor && <div className="pt-[24px] text-center"><Button variant="secondary" disabled={loading || busy} onClick={loadMore}>加载更多</Button></div>}
     </div>

@@ -3,16 +3,17 @@
  * @structure-index
  * 2026-10-29：主视频改用共享 VideoPlayerBar；参考图片失败只显示文字，保留主媒体恢复反馈。
  *
- * ─── 辅助组件与工具 ─────────────────────────────── L48–L260
+ * ─── 辅助组件与工具 ─────────────────────────────── L50–L262
  *   formatVideoDuration / ReferenceVideoCard / CopyPromptButton / PanelAction / EditTool 详情字段、参考素材与操作按钮
  *
- * ─── 创作视频详情弹窗 ───────────────────────────── L261–L707
+ * ─── 创作视频详情弹窗 ───────────────────────────── L263–L720
  *   CreationVideoDetailModal                        视频预览、详情信息和操作回调
  *   视频播放区                                      点击画面切换播放状态，中央反馈显示 0.5 秒后隐藏，底部复用共享控制栏
  *   右侧信息区                                      顶部操作、中间滚动、底部视频编辑固定布局
  *
  *   2026-10-23 媒体失败重载后点击播放，等待与播放状态分离
  * ─── 更新记录 ─────────────────────────────────────
+ *   2026-11-19                                       历史视频详情层级提升至 1000，覆盖生成历史弹窗
  *   2026-10-10                                       四项编辑图标抽为 VideoEditIcon，与画布复用；选帧预览与原画下载分离
  *   2026-09-07                                       中央播放状态短暂显示 0.5 秒；外层圆角裁剪；右栏改为固定布局；更新视频编辑按钮图标
  *   2026-09-03                                       视频控制组件样式对齐分镜详情弹窗，保留创作页业务架构
@@ -340,7 +341,7 @@ export default function CreationVideoDetailModal({
     <>
     <div
       style={{
-        position: 'fixed', inset: 0, zIndex: 200,
+        position: 'fixed', inset: 0, zIndex: historyMode ? 1000 : 200,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         backgroundColor: 'rgba(0,0,0,0.6)',
         backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',

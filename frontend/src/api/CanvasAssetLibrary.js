@@ -64,7 +64,8 @@ async function requestCanvasCollections(params = {}, signal) {
     method: 'GET', signal, headers: { 'Content-Type': 'application/json' },
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw Object.assign(new Error(data.message || '画布集合读取失败，请重试'), { status: response.status });
+  if (!response.ok) throw Object.assign(new Error(data.message || data.detail?.message || '画布集合读取失败，请重试'), { status: response.status, code: data.code || data.detail?.code });
+  if (!Array.isArray(data.items) || data.items.some(item => !item.id || !item.root_folder_id || item.kind !== 'canvas')) throw new Error('画布集合列表格式异常');
   return data;
 }
 
@@ -100,7 +101,8 @@ export const canvasAssetLibrary = {
       let cursor = params.cursor;
       while (true) {
         const page = await readPage(cursor);
-        if (page.items.length || !page.next_cursor || seenCursors.has(page.next_cursor)) return page;
+        if (page.next_cursor && (page.next_cursor === cursor || seenCursors.has(page.next_cursor))) throw new Error('目录分页游标重复，请重试');
+        if (page.items.length || !page.next_cursor) return page;
         seenCursors.add(page.next_cursor);
         cursor = page.next_cursor;
       }
@@ -113,7 +115,12 @@ export const canvasAssetLibrary = {
       return request(`/items?${childQuery}`, 'GET', undefined, signal);
     }, signal);
   },
-  folder: (id, signal) => development ? development.folder(id) : request(`/folders/${encodeURIComponent(id)}`, 'GET', undefined, signal),
+  folder: async (id, signal) => {
+    const data = development ? await development.folder(id) : await request('/folders/' + encodeURIComponent(id), 'GET', undefined, signal);
+    const folder = data.folder || data;
+    if (!folder.id) throw new Error('目录响应格式异常');
+    return { ...folder, ancestors: data.ancestors || folder.ancestors || [], permissions: data.permissions ?? folder.permissions, revision: data.revision ?? folder.revision, depth: data.depth ?? folder.depth };
+  },
   create: (body) => development ? development.create(body) : request('/folders', 'POST', { ...body, idempotency_key: key() }).then(settle),
   rename: (body) => {
     if (development) return development.rename(body);

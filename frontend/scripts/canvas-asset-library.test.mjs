@@ -121,7 +121,7 @@ const root = (api, name) => {
 };
 const list = async (api, folder, params = {}) => api.list({ collection_id: folder.collection_id, parent_id: folder.id, ...params });
 
-test('画布资产按稳定分类编号隐藏系统预设目录，不误伤同名普通目录', () => {
+test('画布资产保留旧分类目录及普通目录入口', () => {
   const presetFolders = ['role', 'scene', 'prop', 'storyboard', 'audio'].map((category_key) => ({
     type: 'folder', id: category_key, category_key,
   }));
@@ -134,7 +134,7 @@ test('画布资产按稳定分类编号隐藏系统预设目录，不误伤同�
     items: [...presetFolders, ...visibleItems],
     next_cursor: 'next',
   });
-  assert.deepEqual(page.items, visibleItems);
+  assert.deepEqual(page.items, [...presetFolders, ...visibleItems]);
   assert.equal(page.next_cursor, 'next');
 });
 
@@ -318,4 +318,14 @@ test('开发数据按画布类型先过滤再分页，工作流集合不占页�
   const second = await read({ limit: 1, cursor: first.next_cursor });
   assert.deepEqual(second.items.map(item => item.id), [a.id]);
   assert.equal(second.next_cursor, null);
+});
+
+test('媒体摘要分离条目和资产编号，读取正式地址与毫秒时长', async () => {
+ const {canvasLibraryMedia,canvasLibraryUnavailable} = await import('../src/components/assets/CanvasLibraryItems.js');
+ const entry={id:'entry',asset:{id:'asset',media_type:'video',preview_url:'/preview',poster_url:'/poster',duration_ms:5000,availability:'ready'}};
+ const media=canvasLibraryMedia(entry);
+ assert.equal(media.id,'asset'); assert.equal(media.entryId,'entry'); assert.equal(media.url,'/preview'); assert.equal(media.duration,5);
+ const missing={...entry,asset:{...entry.asset,availability:'forbidden'}};
+ assert.equal(canvasLibraryUnavailable(missing),true); assert.equal(canvasLibraryMedia(missing).preview_url,undefined);
+ assert.equal(canvasLibraryMedia({asset:{media_type:'image',thumbnail_url:'/thumb'}}).url,'/thumb');
 });

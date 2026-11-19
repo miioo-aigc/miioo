@@ -437,10 +437,13 @@ function CanvasGenerationHistoryDialog({ canvasId, canvases = [], targetCanvasId
               <div className="canvas-generation-history__grid">
                 {items.map((record) => {
                   const ready = isCanvasGenerationRecordReady(record);
+                  const videoPoster = record.type === 'video'
+                    ? record.asset.thumbnail_url || record.asset.poster_url
+                    : '';
                   const preview = record.asset.preview_url
                     || record.asset.url
                     || canvasLibraryAudioUrl(record.asset);
-                  const previewUnavailable = !ready || previewFailed.has(record.assetId) || !preview;
+                  const previewUnavailable = !ready || previewFailed.has(record.assetId) || !(videoPoster || preview);
                   const cardBusy = busyId === (record.historyId || record.assetId)
                     || detailBusyId === (record.historyId || record.assetId);
                   return (
@@ -467,6 +470,14 @@ function CanvasGenerationHistoryDialog({ canvasId, canvases = [], targetCanvasId
                         <div className="canvas-generation-history__audio" aria-hidden="true">
                           <CanvasNodeIcon nodeType="audio" size={24} />
                         </div>
+                      ) : videoPoster ? (
+                        <img
+                          src={videoPoster}
+                          alt={record.asset.name || '生成视频'}
+                          loading="lazy"
+                          decoding="async"
+                          onError={() => void refreshPreview(record)}
+                        />
                       ) : record.type === 'video' ? (
                         <video
                           src={preview}

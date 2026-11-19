@@ -137,6 +137,7 @@ test('视频 Hook 在缺会话时零请求零锁，稳定结果写回后只刷�
   handler = async (params, options) => {
     harness.calls.api += 1;
     assert.equal(params.session_id, 'creation-session');
+    assert.equal(params.project_id, 'canvas-project-1');
     options.onTaskCreated({ taskIds: ['video-task'] });
     return { videos: ['/result.mp4'], videoAssetIds: [VIDEO_ASSET_ID] };
   };
@@ -149,7 +150,7 @@ test('视频 Hook 在缺会话时零请求零锁，稳定结果写回后只刷�
   assert.equal(harness.getActiveRequests(), 0);
   assert.deepEqual(harness.calls.toasts, [['创作会话尚未加载，请稍后重试', 'error']]);
 
-  const generateWithSession = harness.hook(initial, harness.setNodes, () => {}, 'creation-session', 'canvas-1');
+  const generateWithSession = harness.hook(initial, harness.setNodes, () => {}, 'creation-session', 'canvas-1', 'canvas-project-1');
   await generateWithSession({ nodeId: 'video-node', prompt: '生成视频', model: 'video-model' });
   assert.equal(harness.calls.api, 1);
   assert.equal(harness.getLatest()[0].data.asset.asset_id, VIDEO_ASSET_ID);
@@ -206,16 +207,17 @@ test('视频计划和启动异常被 Hook 消化，不产生二次异常或占�
   assert.match(harness.calls.toasts.at(-1)[0], /视频节点已不存在/);
 });
 
-test('音频 Hook 把创作会话带入请求，结果稳定写入后只刷新一次', async () => {
+test('音频 Hook 把所属项目与创作会话带入请求，结果稳定写入后只刷新一次', async () => {
   const harness = createAudioHarness(async (params, options) => {
     harness.calls.api += 1;
     assert.equal(params.session_id, 'creation-session');
+    assert.equal(params.project_id, 'canvas-project-1');
     options.onTaskCreated({ taskIds: ['audio-task'] });
     return { audios: ['/result.mp3'], audioAssetIds: [AUDIO_ASSET_ID] };
   });
   const initial = [audioNode()];
   harness.setLatest(initial);
-  const generate = harness.hook(initial, harness.setNodes, () => {}, 'creation-session', 'canvas-1');
+  const generate = harness.hook(initial, harness.setNodes, () => {}, 'creation-session', 'canvas-1', 'canvas-project-1');
   await generate({ nodeId: 'audio-node', prompt: '生成音频', model: 'audio-model' });
   assert.equal(harness.calls.api, 1);
   assert.equal(harness.getLatest()[0].data.asset.asset_id, AUDIO_ASSET_ID);

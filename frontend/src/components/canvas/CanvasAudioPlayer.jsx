@@ -1,7 +1,8 @@
 /** 音频卡片展示：原生音频播放，柱条由当前播放片段的真实采样驱动。 */
 import { useRef, useState } from 'react';
 import { useMediaPlayback } from '../../hooks/useMediaPlayback';
-import { LoaderCircle, Pause, Play, RotateCw } from 'lucide-react';
+import { LoaderCircle, Pause, Play, RotateCcw, RotateCw } from 'lucide-react';
+import { IconButton } from '../ui';
 import { useCanvasAudioWaveform } from './UseCanvasAudioWaveform';
 import CreationDubbingPromptPreview from '../creation/CreationDubbingPromptPreview';
 
@@ -40,6 +41,16 @@ export default function CanvasAudioPlayer({ url, name, transcript, compact = fal
     else void media.play();
   }
 
+  function restartPlayback(event) {
+    event.stopPropagation();
+    const audio = audioRef.current;
+    if (!audio || !url || failed || loading) return;
+    media.pause();
+    audio.currentTime = 0;
+    setCurrentTime(0);
+    void media.play();
+  }
+
   return <div className={`canvas-node__audio ${transcript ? 'canvas-node__audio--transcript' : ''} ${compact ? 'canvas-node__audio--compact' : ''}`}>
     {url && <audio ref={audioRef} src={url} preload="metadata" aria-label={name || '音频预览'}
       onLoadedMetadata={(event) => { setDuration(event.currentTarget.duration); onReady?.(); }}
@@ -48,12 +59,22 @@ export default function CanvasAudioPlayer({ url, name, transcript, compact = fal
       onTimeUpdate={(event) => { if (timeMode !== 'duration') setCurrentTime(event.currentTarget.currentTime); }}
  />}
     <div className="canvas-node__audio-controls">
-      <button type="button" className="canvas-node__play nodrag nopan" onClick={togglePlayback} disabled={!url} aria-label={actionLabel} title={actionLabel}>
-        {loading ? <LoaderCircle size={16} className="animate-spin" /> : failed ? <RotateCw size={16} /> : playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
-      </button>
+      <IconButton variant="secondary" className="canvas-node__audio-restart nodrag nopan" onClick={togglePlayback} disabled={!url} aria-label={actionLabel} title={actionLabel}>
+        {loading ? <LoaderCircle size={14} className="animate-spin" /> : failed ? <RotateCw size={14} /> : playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+      </IconButton>
+      <IconButton
+        variant="secondary"
+        className="canvas-node__audio-restart nodrag nopan"
+        aria-label="从头播放"
+        title="从头播放"
+        disabled={!url || failed || loading}
+        onClick={restartPlayback}
+      >
+        <RotateCcw size={14} />
+      </IconButton>
       <span className="canvas-node__audio-time">{ timeMode === 'duration' ? formatDuration(duration) : `${formatTime(currentTime)}/${formatTime(duration)}` }</span>
     </div>
-    {transcript && <div className="canvas-node__transcript nodrag nopan nowheel">
+    {transcript && <div className="canvas-node__transcript">
       <CreationDubbingPromptPreview prompt={transcript} style={{ color: 'inherit', fontSize: 'inherit', lineHeight: 'inherit' }} />
     </div>}
     <div ref={waveformRef} className="canvas-node__waveform" data-active={active} aria-hidden="true">

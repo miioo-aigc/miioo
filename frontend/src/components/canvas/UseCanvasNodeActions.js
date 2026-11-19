@@ -1,6 +1,8 @@
 import { arrangeCanvasNodes } from './CanvasArrangement';
 /** 菜单与快捷键共用动作入口；弹窗状态隔离画布快捷键。 */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { getAuthSessionGeneration } from '../../api/request';
+import { createCanvasNodeClipboard } from './CanvasNodeClipboard';
 import { groupCanvasNodes, setCanvasSelection, ungroupCanvasNodes } from './CanvasGroups';
 import { copyCanvasNodes, pasteCanvasNodes, duplicateCanvasNodes, deleteCanvasNodes, hasCanvasDeletionTasks, moveCanvasNodesOut, setCanvasGroupsStacked } from './CanvasNodeActions';
 import { getCanvasGroupFocus } from './CanvasGroupFocus';
@@ -9,6 +11,8 @@ import { showGlobalToast } from '../../stores/toastStore';
 import { canvasDescendantIds } from './CanvasNodeActions';
 import { downloadCanvasText } from './CanvasTextDownload';
 import { downloadUrlWithFeedback } from '../../utils/downloadFeedback';
+
+const nodeClipboard = createCanvasNodeClipboard();
 
 export function getCanvasDownloadTargets(nodes, selectedIds) {
   const ids = canvasDescendantIds(nodes, selectedIds);
@@ -20,9 +24,9 @@ export function getCanvasDownloadTargets(nodes, selectedIds) {
     }).filter(Boolean);
 }
 
-export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken, enabled, cancelPendingClicks, flowInstance, containerRef, dialog, setDialog, beforeDelete }) {
+export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken, enabled, cancelPendingClicks, flowInstance, containerRef, dialog, setDialog, beforeDelete, projectId }) {
   const [menu, setMenu] = useState(null);
-  const [clipboard, setClipboard] = useState([]);
+  const clipboard = useSyncExternalStore(nodeClipboard.subscribe, () => nodeClipboard.read(projectId, getAuthSessionGeneration()));
   const pasteCount = useRef(0);
   const [focusGroupId, setFocusGroupId] = useState(null);
   useEffect(() => {
@@ -86,7 +90,7 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
       const accepted = setNodes((current) => arrangeCanvasNodes(current, targetId));
       if (accepted === false) showGlobalToast('当前节点暂不可移动，请稍后再试', 'warning');
     }
-    if (action === 'copy') { setClipboard(copyCanvasNodes(nodes)); pasteCount.current = 0; }
+    if (action === 'copy') { nodeClipboard.write(projectId, getAuthSessionGeneration(), copyCanvasNodes(nodes)); pasteCount.current = 0; }
     if (action === 'download') {
       const downloadIds = canvasDescendantIds(nodes, ids);
       const texts = nodes.filter((node) => downloadIds.has(node.id) && node.type === 'text' && node.data?.content?.trim());
@@ -97,7 +101,7 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
     }
     if (action === 'duplicate') setNodes(duplicateCanvasNodes);
     if (action === 'paste') {
-      const contents = clipboard;
+      const contents = nodeClipboard.read(projectId, getAuthSessionGeneration());
       const roots = contents.filter((node) => !node.parentId);
       if (roots.length) {
         const offset = 32 * ++pasteCount.current;
@@ -137,7 +141,7 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
       else deleteNodes(ids);
     }
     setMenu(null);
-  }, [enabled, dialog, undo, redo, cancelPendingClicks, nodes, clipboard, containerRef, menu, flowInstance, setNodes, setDialog, deleteNodes]);
+  }, [enabled, dialog, undo, redo, cancelPendingClicks, nodes, projectId, containerRef, menu, flowInstance, setNodes, setDialog, deleteNodes]);
 
   useEffect(() => {
     const onKeyDown = (event) => {

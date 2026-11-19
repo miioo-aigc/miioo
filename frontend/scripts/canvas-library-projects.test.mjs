@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { groupCanvasLibraryProjects, removeCanvasLibraryCollection, removeCanvasLibraryProject } from '../src/utils/CanvasLibraryProjects.js';
-test('项目名称独立、同项目多画布合并、排除工作流及子画布', () => {
+test('集合为权威，画布过滤不隐藏已返回集合', () => {
  const projects = [{id:'p',name:'新项目名',project_type:'canvas',created_at:'2026-01-01'},{id:'q',project_type:'canvas',created_at:'2026-02-01'},{id:'w',project_type:'video'}];
  const canvases = [{id:'a',project_id:'p',title:'画布甲'},{id:'b',project_id:'p',title:'画布乙'},{id:'c',project_id:'w'},{id:'d',project_id:'p',parent_canvas_id:'a'}];
  const collections = canvases.map(c=>({id:'col-'+c.id,bound_canvas_id:c.id,kind:'canvas',name:'旧名称'}));
  const result=groupCanvasLibraryProjects(projects,canvases,collections);
- assert.deepEqual(result.map(p=>p.id),['q','p']);
+ assert.deepEqual(result.map(p=>p.id),['q','p','w']);
  assert.equal(result[1].name,'新项目名');
- assert.deepEqual(result[1].canvases.map(c=>[c.id,c.name]),[['col-a','画布甲'],['col-b','画布乙']]);
+ assert.deepEqual(result[1].canvases.map(c=>[c.id,c.name]),[['col-a','旧名称'],['col-b','旧名称'],['col-d','旧名称']]);
  assert.equal(result[0].canvases.length,0);
 });
 
@@ -95,4 +95,12 @@ test('集合失效会通知外层丢弃旧集合，并在切换选择后保存�
  assert.match(reader, /cause\.code === 'COLLECTION_NOT_FOUND'/);
  assert.match(reader, /onCollectionUnavailable\?\.\(collection\.id\)/);
  assert.match(contents, /useCanvasAssetLibrary\(collection, onCollectionUnavailable\)/);
+});
+
+test('共享集合与旧集合共存，缺失来源保留入口', () => {
+ const shared = {id:'s',kind:'canvas',source_project_id:'p',bound_canvas_id:null,root_folder_id:'r'};
+ const groups = groupCanvasLibraryProjects([], [], [shared, shared, {id:'old',kind:'canvas',source_project_id:'p',bound_canvas_id:'unknown'}, {id:'orphan',kind:'canvas'}]);
+ assert.deepEqual(groups.find(x=>x.id==='p').canvases.map(x=>x.id), ['s','old']);
+ assert.equal(groups.find(x=>x.id==='p').canvases[0].root_folder_id,'r');
+ assert.equal(groups.find(x=>x.id==='standalone:orphan').projectId,null);
 });

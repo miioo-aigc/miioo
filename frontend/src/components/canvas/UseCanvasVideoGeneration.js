@@ -7,7 +7,7 @@ import { createCanvasProgressHandler } from './CanvasGenerationProgress';
 import { acceptCanvasVideoSubmission, getCanvasGeneratedVideoAsset, applyCanvasVideoResult, beginCanvasVideoGeneration, planCanvasVideoGeneration, recoverCanvasVideoGenerationFailure } from './CanvasVideoGeneration';
 import { dispatchCanvasAssetsChanged } from '../../utils/canvasAssetsEvents';
 
-export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks, creationSessionId, canvasId) {
+export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks, creationSessionId, canvasId, projectId) {
   const [requests] = useState(createCanvasTextRequests);
   useEffect(() => () => requests.abortAll(), [requests]);
   useEffect(() => { requests.reconcile(nodes); }, [nodes, requests]);
@@ -32,7 +32,7 @@ export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks, c
       systemSetNodes((current) => beginCanvasVideoGeneration(current, plan));
       const files = plan.sources.filter((source) => source.type !== 'text' && source.asset?.url).map((source) => source.asset);
       const referenceMaterials = plan.referenceMaterials;
-      const result = await apiGenerateCreation({ genType: 'video', prompt: plan.prompt, model: plan.model, files, referenceMaterials, ...plan.params, session_id: creationSessionId }, {
+      const result = await apiGenerateCreation({ genType: 'video', prompt: plan.prompt, model: plan.model, files, referenceMaterials, ...plan.params, project_id: projectId, session_id: creationSessionId }, {
         signal: controller.signal, onProgress: createCanvasProgressHandler(systemSetNodes, plan.requestId, controller.signal),
         onTaskCreated: (task) => {
           if (controller.signal.aborted) return;
@@ -68,5 +68,5 @@ export function useCanvasVideoGeneration(nodes, setNodes, cancelPendingClicks, c
     } finally {
       requests.finish(plan.requestId);
     }
-  }, [cancelPendingClicks, canvasId, creationSessionId, nodes, requests, setNodes]);
+  }, [cancelPendingClicks, canvasId, creationSessionId, nodes, projectId, requests, setNodes]);
 }

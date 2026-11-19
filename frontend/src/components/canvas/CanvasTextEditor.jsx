@@ -23,7 +23,7 @@ export default function CanvasTextEditor({ title, content, onCancel, onSave }) {
     onWheel={(event) => event.stopPropagation()} onContextMenu={(event) => event.stopPropagation()}>
     <div className="flex h-full min-h-0 flex-col gap-[16px] p-[24px]">
       <h2 className="m-0 shrink-0 truncate text-font-size-16 font-font-weight-medium">{title} · 编辑内容</h2>
-      <ScriptEditor historyDepth={10} initialContent={content} onContentChange={setDraft} />
+      <ScriptEditor autoFocus historyDepth={10} initialContent={content} onContentChange={setDraft} />
       <div className="flex shrink-0 justify-end gap-[12px]">
         <Button variant="secondary" onClick={onCancel}>取消</Button>
         <Button variant="primary" onClick={() => onSave(draft)}>保存</Button>

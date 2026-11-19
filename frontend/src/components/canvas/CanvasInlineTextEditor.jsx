@@ -31,7 +31,7 @@ export default function CanvasInlineTextEditor({ initialContent, onContentChange
     content: initialContent,
     parseOptions: { preserveWhitespace: 'full' },
     immediatelyRender: false,
-    autofocus: true,
+    autofocus: 'end',
     editorProps: { attributes: { role: 'textbox', 'aria-label': '文本节点正文', 'aria-multiline': 'true' } },
     onUpdate: ({ editor: currentEditor }) => {
       dirtyRef.current = true;

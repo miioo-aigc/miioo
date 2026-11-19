@@ -15,17 +15,25 @@ export function canvasLibraryToggleSelection(selected, key) {
 }
 // 兼容画布原件地址和创作音频地址；空白字段不阻断后续候选。
 export function canvasLibraryAudioUrl(asset = {}) {
+  if (['trashed', 'forbidden', 'missing'].includes(asset.availability)) return '';
   return [asset.original_url, asset.originalUrl, asset.audio_url, asset.audioUrl,
     asset.url, asset.file_url, asset.fileUrl, asset.source_url, asset.sourceUrl,
     asset.preview_url, asset.previewUrl]
     .find((value) => typeof value === 'string' && value.trim())?.trim() || '';
 }
-export const canvasLibraryMedia = (entry) => ({
-  ...entry.asset, id: entry.id, asset_type: entry.asset?.media_type,
-  file_url: entry.asset?.url || entry.asset?.file_url,
-  preview_url: entry.asset?.preview_url || entry.asset?.url || entry.asset?.file_url,
-  status: 'ready',
-});
+export const canvasLibraryUnavailable = (entry) => ['trashed', 'forbidden', 'missing'].includes(entry.asset?.availability);
+export function canvasLibraryMedia(entry) {
+  const asset = entry.asset || {};
+  const type = String(asset.media_type || '').split('/')[0];
+  const unavailable = canvasLibraryUnavailable(entry);
+  return { ...asset, id: asset.id, entryId: entry.id, asset_type: type,
+    url: unavailable ? undefined : type === 'image' ? asset.thumbnail_url || asset.preview_url || asset.url : asset.preview_url || asset.original_url || asset.url || asset.file_url,
+    file_url: unavailable ? undefined : asset.preview_url || asset.original_url || asset.url || asset.file_url,
+    preview_url: unavailable ? undefined : asset.preview_url || asset.original_url || asset.url || asset.file_url,
+    status: unavailable ? asset.availability : 'ready',
+    duration: asset.duration_ms == null ? undefined : asset.duration_ms / 1000,
+  };
+}
 export const canvasLibraryDragType = 'application/x-miioo-canvas-library';
 export function canvasLibraryDrop(event, onMove, targetId) {
   event.preventDefault();

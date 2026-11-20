@@ -6,7 +6,7 @@ import { createCanvasNodeClipboard } from './CanvasNodeClipboard';
 import { groupCanvasNodes, setCanvasSelection, ungroupCanvasNodes } from './CanvasGroups';
 import { copyCanvasNodes, pasteCanvasNodes, duplicateCanvasNodes, deleteCanvasNodes, hasCanvasDeletionTasks, moveCanvasNodesOut, setCanvasGroupsStacked } from './CanvasNodeActions';
 import { getCanvasGroupFocus } from './CanvasGroupFocus';
-import { canMoveCanvasNodesInto, canvasTransferRoots, moveCanvasNodesInto } from './CanvasGroupTransfer';
+import { canMoveCanvasNodesInto, canvasTransferRoots, moveCanvasNodesInto, canvasTransferBox } from './CanvasGroupTransfer';
 import { showGlobalToast } from '../../stores/toastStore';
 import { canvasDescendantIds } from './CanvasNodeActions';
 import { downloadCanvasText } from './CanvasTextDownload';
@@ -29,6 +29,24 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
   const clipboard = useSyncExternalStore(nodeClipboard.subscribe, () => nodeClipboard.read(projectId, getAuthSessionGeneration()));
   const pasteCount = useRef(0);
   const [focusGroupId, setFocusGroupId] = useState(null);
+  const [focusMovedIds, setFocusMovedIds] = useState(null);
+  useEffect(() => {
+    if (!focusMovedIds || !flowInstance) return;
+    const frame = requestAnimationFrame(() => {
+      const boxes = nodes.filter((node) => focusMovedIds.includes(node.id)).map((node) => canvasTransferBox(nodes, node));
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (boxes.length && rect) {
+        const x = Math.min(...boxes.map((box) => box.x));
+        const y = Math.min(...boxes.map((box) => box.y));
+        const width = Math.max(...boxes.map((box) => box.x + box.width)) - x;
+        const height = Math.max(...boxes.map((box) => box.y + box.height)) - y;
+        const zoom = Math.min(1, Math.max(1, rect.width - 96) / width, Math.max(1, rect.height - 160) / height);
+        flowInstance.setCenter(x + width / 2, y + height / 2, { zoom, duration: 300 });
+      }
+      setFocusMovedIds(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusMovedIds, flowInstance, nodes, containerRef]);
   useEffect(() => {
     if (!focusGroupId || !flowInstance) return;
     const frame = requestAnimationFrame(() => {
@@ -82,6 +100,7 @@ export function useCanvasNodeActions({ nodes, setNodes, undo, redo, getUndoToken
       const accepted = setNodes((current) => moveCanvasNodesInto(current, ids, targetId));
       if (accepted === false) showGlobalToast('操作可能导致下游丢失参考素材，请稍后再试', 'warning');
       else {
+        setFocusMovedIds(moved.map((node) => node.id));
         const label = moved.length === 1 ? moved[0].data.label : `${moved[0].data.label}等${moved.length}项`;
         showGlobalToast(`${label}已经移入${target.data.label}`, 'success');
       }

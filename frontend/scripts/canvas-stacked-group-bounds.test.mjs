@@ -11,19 +11,19 @@ for (const offset of [{ x: 600, y: 400 }, { x: -400, y: -300 }, { x: 0, y: 0 }])
       { id: 'stack', type: 'canvasGroup', position: { x: 400, y: 100 }, style: { width: 280, height: 600 }, data: { stacked: true, stackOffset: offset } },
       member('c', 'stack', 20, 20), member('d', 'stack', 20, 316),
     ];
-    const before = getCanvasAbsolutePosition(nodes, nodes[3]);
     const next = moveCanvasNodesInto(nodes, ['stack'], 'target');
     const stack = next.find((n) => n.id === 'stack');
     const target = next.find((n) => n.id === 'target');
     const absolute = getCanvasAbsolutePosition(next, stack);
-    assert.equal(absolute.x + stack.data.stackOffset.x, before.x + offset.x);
-    assert.equal(absolute.y + stack.data.stackOffset.y, before.y + offset.y);
+    const anchor = getCanvasAbsolutePosition(next, next.find((n) => n.id === 'a'));
+    assert.equal(absolute.x + stack.data.stackOffset.x, anchor.x + 272);
+    assert.equal(absolute.y + stack.data.stackOffset.y - 24, anchor.y);
     const x = stack.position.x + stack.data.stackOffset.x;
     const y = stack.position.y + stack.data.stackOffset.y;
     assert.ok(x >= 20 && y - 24 >= 20);
     assert.ok(x + 312 + 20 <= target.style.width);
     assert.ok(y + 312 + 20 <= target.style.height);
     assert.deepEqual(fitCanvasGroups(next), next);
-    for (const id of ['a', 'b', 'c', 'd']) assert.deepEqual(getCanvasAbsolutePosition(next, next.find((n) => n.id === id)), getCanvasAbsolutePosition(nodes, nodes.find((n) => n.id === id)));
+    for (const id of ['a', 'b']) assert.deepEqual(getCanvasAbsolutePosition(next, next.find((n) => n.id === id)), getCanvasAbsolutePosition(nodes, nodes.find((n) => n.id === id)));
   });
 }

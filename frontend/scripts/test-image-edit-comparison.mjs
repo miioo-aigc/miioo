@@ -6,6 +6,7 @@ let slots = [], cursor = 0, calls = [], saves = [], uploads = [], closeCount = 0
 let release;
 let session = 1, changeDuringPrepare = false;
 let journalBlocked = false, journalUnavailable = false, failSubmit = false;
+let prepareGate = null;
 const context = vm.createContext({});
 const dependencies = {
   '../stores/ImageEditSubmissionJournal': {
@@ -33,7 +34,7 @@ const dependencies = {
   '../utils/MediaEditRequest': { buildImageEditRequest: (card, options) => ({ ...options, edit_mode: options.mode, sourceId: card.id }) },
   '../stores/toastStore': { showGlobalToast() {} },
   '../api/ImageEdit': {
-    apiPrepareEditSource: async (card) => ({ id: card.id }),
+    apiPrepareEditSource: async (card) => { if (prepareGate) await prepareGate; return { id: card.id }; },
     apiSubmitImageEdit: async (source, options) => { calls.push({ source, options }); if (failSubmit) throw new Error('网络中断'); return { task_id: `task-${calls.length}` }; },
   },
   '../api/ImageEditSave': {
@@ -57,6 +58,22 @@ function render(card = { id: 'original' }, keepOpen = true) {
   cursor = 0;
   return module.namespace.default({ card, onSave, keepOpen, onComplete: () => { closeCount++; } });
 }
+// 首次点击就展开，不能等原图准备或提交接口返回后才展开。
+for (const mode of ['inpaint', 'erase', 'outpaint', 'upscale', 'multi_angle']) {
+  slots = [];
+  let resume;
+  prepareGate = new Promise((resolve) => { resume = resolve; });
+  const job = render().submit({ mode });
+  assert.equal(render().busy, true);
+  assert.equal(render().comparison.active, true, `${mode} 准备原图期间应已展开右侧`);
+  assert.equal(render().comparison.result, null);
+  resume();
+  await job;
+  assert.ok(render().comparison.result?.imageUrl, `${mode} 完成后保留结果`);
+  assert.equal(closeCount, 0);
+}
+prepareGate = null;
+slots = []; calls = []; saves = [];
 await render().submit({ mode: 'outpaint', prompt: '第一轮' });
 assert.equal(calls[0].options.canvas_id, 'canvas-1');
 assert.equal(render().comparison.result.imageUrl, 'task-1');
@@ -108,6 +125,9 @@ assert.equal(calls.length, previousCalls, '准备归属期间切账号不得提�
 changeDuringPrepare = false; slots = []; journalUnavailable = true;
 await render().submit({ mode: 'outpaint' });
 assert.equal(calls.length, previousCalls, '日志保存失败不得提交');
+assert.equal(render().comparison.active, true, '准备失败仍保留右侧错误反馈');
+assert.equal(render().busy, false);
+assert.ok(render().comparison.error);
 journalUnavailable = false; failSubmit = true;
 await render().submit({ mode: 'outpaint' });
 assert.equal(calls.length, previousCalls + 1);

@@ -20,7 +20,8 @@ export default function useImageEditSubmission({ card, onSave, onComplete, keepO
     running.current = true;
     setBusy(true);
     setStage('正在准备保存');
-    setComparison((value) => ({ ...value, error: '' }));
+    // 对比弹窗在提交开始时展开，准备原图和等待接口期间也显示进度。
+    setComparison((value) => ({ ...value, active: keepOpen || value.active, error: '' }));
     try {
       sessionCheck.current();
       if (!onSave?.scope || !onSave.pending) throw new Error('当前列表未连接云端编辑保存');

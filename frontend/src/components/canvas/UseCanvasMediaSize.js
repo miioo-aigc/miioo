@@ -10,5 +10,6 @@ export function useCanvasMediaSize(asset) {
     });
     return () => { active = false; };
   }, [asset]);
-  return getCanvasMediaSize(asset) || (resolved?.source === asset ? resolved.size : null);
+  // 原图探测完成后覆盖历史宽高，也修复重新打开的旧节点。
+  return (resolved?.source === asset ? resolved.size : null) || getCanvasMediaSize(asset);
 }

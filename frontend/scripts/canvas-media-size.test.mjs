@@ -36,3 +36,41 @@ test('混合比例网格无重叠，聚焦覆盖所有实际卡片', () => {
     for (const b of rects.slice(i + 1)) assert.ok(a.x + a.width + 32 <= b.x || b.x + b.width + 32 <= a.x || a.y + a.height + 32 <= b.y || b.y + b.height + 32 <= a.y);
   }
 });
+
+test('同一原图以真实尺寸覆盖历史宽高，三个入口保持一致并复用探测', async () => {
+  const previous = globalThis.Image;
+  const sources = [];
+  globalThis.Image = class {
+    set src(value) {
+      sources.push(value);
+      this.naturalWidth = 900; this.naturalHeight = 1200;
+      queueMicrotask(() => this.onload?.());
+    }
+  };
+  try {
+    const assets = [
+      { width: 1920, height: 1080, thumbnailUrl: '/wide-thumbnail.png' },
+      { width: 900, height: 1200 },
+      {},
+    ].map((asset) => ({ ...asset, asset_type: 'image', url: '/same-original.png' }));
+    const prepared = await Promise.all(assets.map(prepareCanvasMediaAsset));
+    for (const asset of prepared) {
+      assert.equal(asset.width, 900); assert.equal(asset.height, 1200);
+      assert.deepEqual(getCanvasAssetNodeSize(asset), getCanvasAssetNodeSize(prepared[0]));
+    }
+    assert.deepEqual(sources, ['/same-original.png']);
+    assert.equal(assets[0].width, 1920, '不改写原始资产和用户保存的布局');
+  } finally { globalThis.Image = previous; }
+});
+
+test('原图读取失败保留已有尺寸，后续允许重新探测', async () => {
+  const previous = globalThis.Image;
+  let attempts = 0;
+  globalThis.Image = class { set src(_value) { attempts++; queueMicrotask(() => this.onerror?.()); } };
+  try {
+    const asset = { asset_type: 'image', url: '/unavailable-original.png', width: 800, height: 600 };
+    assert.equal(await prepareCanvasMediaAsset(asset), asset);
+    assert.equal(await prepareCanvasMediaAsset(asset), asset);
+    assert.equal(attempts, 2);
+  } finally { globalThis.Image = previous; }
+});

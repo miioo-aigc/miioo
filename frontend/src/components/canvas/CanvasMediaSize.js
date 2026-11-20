@@ -1,7 +1,29 @@
-import { getCanvasImagePreview, getCanvasVideoPoster } from './CanvasMediaSources.js';
+import { getCanvasImagePreview, getCanvasOriginalImage, getCanvasVideoPoster } from './CanvasMediaSources.js';
 
 const AREA = 240 * 240;
 const MAX_EDGE = 480;
+const imageDimensions = new Map();
+
+// 生成记录的宽高可能是请求尺寸；以原文件解码后的尺寸统一所有入口。
+function readImageDimensions(url) {
+  if (imageDimensions.has(url)) return imageDimensions.get(url);
+  const task = new Promise((resolve) => {
+    const image = new Image();
+    const finish = () => {
+      clearTimeout(timer);
+      image.onload = image.onerror = null;
+      resolve(image.naturalWidth > 0 && image.naturalHeight > 0
+        ? { width: image.naturalWidth, height: image.naturalHeight } : null);
+    };
+    const timer = setTimeout(finish, 8000);
+    image.onload = image.onerror = finish;
+    image.src = url;
+  });
+  imageDimensions.set(url, task);
+  if (imageDimensions.size > 200) imageDimensions.delete(imageDimensions.keys().next().value);
+  task.then((size) => { if (!size && imageDimensions.get(url) === task) imageDimensions.delete(url); });
+  return task;
+}
 
 export function getCanvasMediaSize(asset) {
   if (!asset || !['image', 'video'].includes(asset.asset_type)) return null;
@@ -23,6 +45,11 @@ export function getCanvasAssetNodeSize(asset) {
 
 // Import layout and rendered nodes share the same metadata probe; failed media keeps its default card.
 export function prepareCanvasMediaAsset(asset) {
+  if (asset?.asset_type === 'image') {
+    const url = getCanvasOriginalImage(asset) || getCanvasImagePreview(asset);
+    if (!url) return Promise.resolve(asset);
+    return readImageDimensions(url).then((size) => size ? { ...asset, ...size } : asset);
+  }
   if (getCanvasMediaSize(asset) || !['image', 'video'].includes(asset?.asset_type) || !asset.url) return Promise.resolve(asset);
   return new Promise((resolve) => {
     const poster = asset.asset_type === 'video' ? getCanvasVideoPoster(asset) : undefined;

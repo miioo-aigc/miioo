@@ -8,6 +8,7 @@ import { getCanvasResultAudioTranscript } from './CanvasNodeResults.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function getCanvasPermanentAssetId(asset) {
+  if (asset?.liveMaterialAssetId || asset?.isSeedanceMaterial) return null;
   return [asset?.asset_id, asset?.creationAssetId, asset?.assetId, asset?.backendId, asset?.id]
     .find((value) => typeof value === 'string' && UUID.test(value)) || null;
 }
@@ -18,6 +19,14 @@ export function isCanvasOutputProtected(node) {
 }
 
 export function commitCanvasMediaOutput(node, asset, source, operationId = `${source}-${getCanvasPermanentAssetId(asset)}`) {
+  if (asset?.liveMaterialAssetId) {
+    if (!UUID.test(asset.liveMaterialAssetId) || asset.asset_type !== node.type) return node;
+    const data = { ...node.data, assetUnavailable: false, assetResolveError: false, asset: { ...asset, asset_id: null, assetId: null } };
+    delete data.nodeResults;
+    delete data.resultAssetViews;
+    return { ...node, data };
+  }
+  if (node.data.asset?.liveMaterialAssetId) node = { ...node, data: { ...node.data, asset: null } };
   const assetId = getCanvasPermanentAssetId(asset);
   if (!assetId || asset.asset_type !== node.type || !['image', 'video', 'audio'].includes(node.type)) return node;
   const view = { ...asset, asset_id: assetId };
@@ -76,7 +85,8 @@ export function toCanvasAsset(asset, nodeType) {
   if (!url) return null;
   const thumbnailUrl = asset.thumbnailUrl || asset.thumbnail_url
     || (asset.fileUrl && asset.url !== url ? asset.url : undefined);
-  return { ...asset, thumbnailUrl, asset_type: type, url, name: asset.name || '未命名素材' };
+  const liveMaterialAssetId = asset.liveMaterialAssetId || (asset.isSeedanceMaterial ? asset.id : null);
+  return { ...asset, ...(liveMaterialAssetId ? { liveMaterialAssetId, asset_id: null, assetId: null } : {}), thumbnailUrl, asset_type: type, url, name: asset.name || '未命名素材' };
 }
 
 export function applyCanvasAsset(nodes, nodeId, selectedAsset) {
@@ -85,7 +95,7 @@ export function applyCanvasAsset(nodes, nodeId, selectedAsset) {
   if (!asset || asset.asset_type !== node.type || isCanvasOutputProtected(node)
     || node.data.pendingCanvasUpload?.asset?.uploadStatus === 'uploading') return nodes;
   const preview = asset.source === 'local-preview' || ['uploading', 'error'].includes(asset.uploadStatus)
-    || !getCanvasPermanentAssetId(asset);
+    || (!getCanvasPermanentAssetId(asset) && !UUID.test(asset.liveMaterialAssetId || ''));
   // 旧输出仍是当前投影；替换上传单独暂存，由编辑 Hook 接管上传。
   if (preview && ['image', 'video', 'audio'].includes(node.type) && (node.data.asset || node.data.nodeResults?.batches.length)) {
     if (node.data.pendingCanvasUpload?.asset?.uploadStatus === 'uploading') return nodes;

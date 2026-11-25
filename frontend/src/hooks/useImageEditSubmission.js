@@ -22,9 +22,11 @@ export default function useImageEditSubmission({ card, onSave, onComplete, keepO
     setStage('正在准备保存');
     // 对比弹窗在提交开始时展开，准备原图和等待接口期间也显示进度。
     setComparison((value) => ({ ...value, active: keepOpen || value.active, error: '' }));
+    let finishHostSubmission;
     try {
       sessionCheck.current();
       if (!onSave?.scope || !onSave.pending) throw new Error('当前列表未连接云端编辑保存');
+      finishHostSubmission = onSave.beginSubmission?.();
       if (!pending.current) {
         const request = buildImageEditRequest(
           keepOpen ? originalCard.current : card,
@@ -90,6 +92,7 @@ export default function useImageEditSubmission({ card, onSave, onComplete, keepO
       setComparison((value) => ({ ...value, result: error.preview || value.result, error: error.message || '图片编辑失败，请重试', retrySave: Boolean(pending.current?.accepted || pending.current?.image) }));
       showGlobalToast(error.message || '图片编辑失败，请重试', 'error');
     } finally {
+      finishHostSubmission?.();
       running.current = false;
       setBusy(false);
       setStage('');

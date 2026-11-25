@@ -5,7 +5,7 @@ import { projectCanvasCurrentResult, removeCanvasResultsByAssetIds } from './Can
 
 const TRANSIENT_NODE_FIELDS = new Set([
   'selected', 'measured', 'dragging', 'resizing', 'creationPanelOpen', 'editing',
-  'generating', 'generationPending', 'generationError', 'generationRequestId',
+  'generating', 'generationPending', 'generationError', 'generationRequestId', 'canvasEditOperation',
   'submissionLocked', 'generationTaskIds', 'executionSourceIds', 'upstreamProtected', 'upstreamUpdated',
   'uploadError',
 ]);
@@ -19,11 +19,11 @@ const TRANSIENT_DATA_FIELDS = new Set([
   'onAddReference', 'onRemoveReference', 'connectionPulses', 'references', 'viewportZoom',
   'connectionTarget', 'connectionTargetStatus', 'connectingType',
   'ports', 'asset', 'persistenceState', 'stackMembers', 'expandedWidth', 'expandedHeight',
-  'nodeResults', 'resultAssetViews', 'onSelectResult',
+  'nodeResults', 'resultAssetViews', 'onSelectResult', 'assetUnavailable', 'assetResolveError',
 ]);
 
 const MEDIA_FIELDS = new Set([
-  'src', 'url', 'file_url', 'fileUrl', 'preview_url', 'previewUrl', 'download_url', 'downloadUrl',
+  'fullUrl', 'assetRefUrl', 'src', 'url', 'file_url', 'fileUrl', 'preview_url', 'previewUrl', 'download_url', 'downloadUrl',
   'thumbnail_url', 'thumbnailUrl', 'poster_url', 'posterUrl', 'blob_url', 'blobUrl',
   'file_path', 'filePath', 'persistentUrl', 'original_url', 'originalUrl', 'sourceUrl', 'source_url', 'file',
 ]);
@@ -62,7 +62,7 @@ const DROP_VALUE = Symbol('drop-unavailable-asset-reference');
 const normalizeAssetId = (value) => typeof value === 'string' ? value.trim().toLowerCase() : '';
 const getAssetIdFieldKind = (key) => {
   const normalized = String(key || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-  if (!normalized) return null;
+  if (!normalized || normalized.startsWith('livematerial')) return null;
   if (normalized.endsWith('assetids')) return 'multiple';
   if (normalized.endsWith('assetid')) return 'single';
   return null;
@@ -223,13 +223,14 @@ export function serializeCanvasNode(node) {
     props.content = content ?? '';
   }
   // 这些字段由当前节点状态生成，不能沿用上次读取的协议副本。
-  for (const field of ['assetId', 'assetType', 'assetSource', 'parentId', 'groupWidth', 'groupHeight', 'textWidth', 'textHeight']) delete props[field];
+  for (const field of ['assetId', 'liveMaterialAssetId', 'assetType', 'assetSource', 'parentId', 'groupWidth', 'groupHeight', 'textWidth', 'textHeight']) delete props[field];
   validateSources(props);
-  if (asset && !unavailableAssetIds.has(asset.asset_id)) {
-    if (!UUID.test(asset.asset_id || '') || ['uploading', 'error'].includes(asset.uploadStatus)) {
+  if (asset && (asset.liveMaterialAssetId || !unavailableAssetIds.has(asset.asset_id))) {
+    if (!UUID.test(asset.liveMaterialAssetId || asset.asset_id || '') || ['uploading', 'error'].includes(asset.uploadStatus)) {
       throw new Error('素材尚未取得有效的永久编号，不能保存画布');
     }
-    props.assetId = asset.asset_id;
+    props.assetId = asset.liveMaterialAssetId ? '' : asset.asset_id;
+    if (asset.liveMaterialAssetId) props.liveMaterialAssetId = asset.liveMaterialAssetId;
     props.assetType = asset.asset_type || node.type;
     props.assetSource = asset.source;
   }
@@ -302,6 +303,7 @@ export function readCanvasDocument(item) {
     ids.add(record.id);
     validateSources(props);
     if (props.assetId && !UUID.test(props.assetId)) throw new Error('画布素材永久编号不合法，已停止加载');
+    if (props.liveMaterialAssetId && !UUID.test(props.liveMaterialAssetId)) throw new Error('虚拟认证素材编号不合法，已停止加载');
     const group = record.type === 'canvasGroup';
     const nodeResults = readCanvasResultDocument(group ? 'canvasGroup' : props.nodeType, props, { serialized: true });
     const node = group ? { id: record.id, type: 'canvasGroup', data: {} } : createCanvasNode(props.nodeType, undefined, record.id);
@@ -311,7 +313,7 @@ export function readCanvasDocument(item) {
       ...(group ? { style: { width: props.groupWidth, height: props.groupHeight } } : {}),
       data: { ...node.data, ...cleanObject(props, TRANSIENT_DATA_FIELDS), creationPanelOpen: false,
         ...(nodeResults !== undefined ? { nodeResults, content: props.content ?? '' } : {}),
-        asset: props.assetId ? { asset_id: props.assetId, asset_type: props.assetType || props.nodeType, source: props.assetSource } : null },
+        asset: props.liveMaterialAssetId ? { liveMaterialAssetId: props.liveMaterialAssetId, asset_type: props.assetType || props.nodeType, source: props.assetSource } : props.assetId ? { asset_id: props.assetId, asset_type: props.assetType || props.nodeType, source: props.assetSource } : null },
     };
   });
   for (const node of nodes) {

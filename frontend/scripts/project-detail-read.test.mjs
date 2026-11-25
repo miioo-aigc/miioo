@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { resolveEpisodeSteps, isEpisodeEditingUnlocked } from '../src/utils/EpisodeEditingProgress.js';
 
 const source = readFileSync(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
 const body = source.match(/const loadProjectDetails = async \(projectId, requestedStep = null\) => \{([\s\S]*?)\n  \};/)?.[1];
@@ -41,6 +42,42 @@ function harness(overrides = {}) {
   const read = new Function(...Object.keys(deps), `return async (projectId, requestedStep = null) => {${body}}`)(...Object.values(deps));
   return { state, deps, read };
 }
+
+for (const order of ['先恢复剧本', '先读取分集']) {
+  test(`${order}：剧本结构回调不覆盖剪辑进度，导航和草稿页仍只开放第一集`, async () => {
+    const batch = deferred();
+    const episodes = [{ id: 'a', status: 'editing' }, { id: 'b', status: 'storyboarded' }];
+    const h = harness({ apiGetScriptWorkspace: () => batch.promise, apiGetEpisodes: async () => episodes });
+    const callback = source.match(/const handleScriptEpisodesChange = useCallback\(\(value\) => \{([\s\S]*?)\n  \}, \[\]\);/)?.[1];
+    assert.ok(callback);
+    const restore = new Function('scriptEditVersion', 'setScriptEpisodes', 'value', callback);
+    const restoreScript = () => restore(h.deps.scriptEditVersion, h.deps.setScriptEpisodes, [{ id: 'a', status: 'pending' }]);
+    const pending = h.read('p');
+    await new Promise(resolve => setImmediate(resolve));
+    if (order === '先恢复剧本') restoreScript();
+    batch.resolve({ content: 'script' });
+    await pending;
+    if (order === '先读取分集') restoreScript();
+    assert.equal(h.state.setEpisodesReadProjectId, 'p');
+    assert.deepEqual(h.state.setConfirmedEditingEpisodes, episodes);
+    assert.equal(resolveEpisodeSteps([], h.state.setConfirmedEditingEpisodes).has('edit'), true);
+    assert.deepEqual(h.state.setConfirmedEditingEpisodes.filter(isEpisodeEditingUnlocked).map(e => e.id), ['a']);
+    assert.deepEqual(h.state.setScriptEpisodes, [{ id: 'a', status: 'pending' }]);
+  });
+}
+
+test('刷新分集失败时清除先前确认的剪辑进度，不使用旧结果开放入口', async () => {
+  let fail = false;
+  const h = harness({ apiGetEpisodes: async () => {
+    if (fail) throw Error('读取失败');
+    return [{ id: 'a', status: 'editing' }];
+  } });
+  await h.read('p');
+  fail = true;
+  await h.read('p');
+  assert.equal(h.state.setEpisodesReadProjectId, null);
+  assert.deepEqual(h.state.setConfirmedEditingEpisodes, []);
+});
 
 test('甲详情迟到不覆盖乙，也不结束乙的加载', async () => {
   const a = deferred(); const b = deferred();

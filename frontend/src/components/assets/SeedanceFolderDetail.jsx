@@ -4,6 +4,7 @@
  * 2026-11-06 本地上传支持多选，onUpload 接收文件数组；保留 CreateCard 242×160px 尺寸及上传菜单。
  */
 
+import ListLoading from '../feedback/ListLoading';
 import { useEffect, useRef, useState } from 'react';
 import SeedanceAssetCard from './SeedanceAssetCard';
 import { Button, CreateCard } from '../ui';
@@ -57,10 +58,10 @@ export default function SeedanceFolderDetail({ folder, assets = [], loading = fa
         <span style={{ fontFamily: FONT, fontSize: '14px', lineHeight: '18px', color: '#FFFFFF' }}>{folder.name}</span>
       </div>
 
-      {loading && <div role="status" className="text-text-secondary text-font-size-14">正在读取素材…</div>}
       {error && !loading && <div role="alert" className="text-text-secondary text-font-size-14">{error} <Button onClick={onRetry}>重试</Button></div>}
       <div style={{ position: 'relative', flex: '1 1 0%', minHeight: '200px' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignContent: 'flex-start' }}>
+        {loading && <ListLoading style={{ position: 'absolute', inset: 0, height: '100%' }} />}
+        <div style={{ display: loading ? 'none' : 'flex', flexWrap: 'wrap', gap: '12px', alignContent: 'flex-start' }}>
         <input
           ref={inputRef}
           accept=".jpeg,.jpg,.png,.webp,.gif,.heic,.mp4,.mov,.mp3,.wav,image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,audio/mpeg,audio/wav"

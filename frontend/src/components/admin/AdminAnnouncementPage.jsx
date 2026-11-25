@@ -1,3 +1,4 @@
+import ListLoading from '../feedback/ListLoading';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiGetAdminAnnouncements, apiPublishAdminAnnouncement, apiUpdateAdminAnnouncement, apiDeleteAdminAnnouncement } from '../../api/admin';
 import useAdminRemoteList from '../../hooks/useAdminRemoteList';
@@ -45,7 +46,7 @@ export default function AdminAnnouncementPage({ refreshSignal = 0, showToast }) 
         <ActionButton variant="secondary" onClick={() => { setSearch(keyword.trim()); setPage(1); reload(); }}>搜索</ActionButton>
         <ActionButton variant="secondary" onClick={reload} disabled={loading}>刷新</ActionButton>
       </div>
-      {loading ? <EmptyState message="加载中..." /> : error ? <p role="alert" className="text-text-danger">{error}</p> : !data?.list.length ? <EmptyState message="暂无公告" /> : (
+      {loading ? <ListLoading style={{ minHeight: 220 }} /> : error ? <p role="alert" className="text-text-danger">{error}</p> : !data?.list.length ? <EmptyState message="暂无公告" /> : (
         <AnnouncementList items={data.list} busy={busy} onEdit={(item) => setEditor({ item })} onDelete={setDeleting}
           onPublish={(item) => mutate(() => apiPublishAdminAnnouncement(item.id), '公告已发布')}
           onToggle={(item) => mutate(() => apiUpdateAdminAnnouncement(item.id, { isActive: !item.isActive }), item.isActive ? '公告已停用' : '公告已启用')} />

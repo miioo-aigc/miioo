@@ -11,6 +11,36 @@ const oldId = '10000000-0000-0000-0000-000000000001';
 const newId = '20000000-0000-0000-0000-000000000001';
 const node = (type = 'image') => ({ id: 'source', type, data: { asset: { asset_id: oldId, asset_type: type, url: '/old' } } });
 
+test('图片提交准备阶段即启动节点动画，关闭弹窗及轮询期间保持，完成后清理', async () => {
+  let resolve;
+  const hook = mount('UseCanvasImageEdits', [node()], {
+    savePendingImage: () => new Promise((done) => { resolve = done; }),
+  });
+  hook.result.open('source', '局部重绘');
+  const editor = hook.editor;
+  const finish = editor.onSave.beginSubmission();
+  const operation = hook.nodes[0].data.canvasEditOperation;
+  assert.ok(operation);
+  hook.result.close();
+  assert.equal(hook.nodes[0].data.canvasEditOperation, operation);
+  const saving = editor.onSave.pending({});
+  assert.equal(hook.nodes[0].data.canvasEditOperation, operation);
+  resolve({ id: newId, asset_id: newId, originalUrl: '/new' });
+  await saving;
+  finish();
+  assert.equal(hook.nodes[0].data.canvasEditOperation, undefined);
+  assert.equal(hook.nodes[0].data.asset.asset_id, newId);
+});
+
+test('图片提交准备失败可清理节点动画，未提交时关闭不启动动画', () => {
+  const hook = mount('UseCanvasImageEdits', [node()]);
+  hook.result.open('source', '局部重绘');
+  const finish = hook.editor.onSave.beginSubmission();
+  assert.equal(hook.nodes[0].data.editing, true);
+  finish();
+  assert.equal(hook.nodes[0].data.editing, undefined);
+});
+
 test('画布图片保存使用账号范围，业务目标保留源资产，裁剪翻转均可回写', async () => {
   for (const mode of ['裁剪', '翻转']) {
     const calls = [];
@@ -75,13 +105,14 @@ function mount(file, initial, overrides = {}) {
   let nodes = initial, editor;
   const writes = [], toasts = [], assetsChanged = [];
   const effects = [];
+  const refs = [];
   const source = readFileSync(new URL(`../src/components/canvas/${file}.js`, import.meta.url), 'utf8')
     .replace(/^import .*;$/mg, '').replace(/export /g, '');
   const name = file === 'UseCanvasImageEdits' ? 'useCanvasImageEdits' : 'useCanvasVideoEdits';
   const api = runInNewContext(source + ';' + name, {
     ...assets, ...edits, ...scopes, crypto, DOMException, getCanvasOperationLocks, useCallback: (fn) => fn, useEffect: (fn) => effects.push(fn),
     useCreationStore: Object.assign((select) => select({ ownerId: 'account-a' }), { getState: () => ({ ownerId: 'account-a' }) }),
-    useRef: (current) => ({ current }), useState: () => [null, (value) => { editor = value; }],
+    useRef: (current) => { const ref = { current }; refs.push(ref); return ref; }, useState: () => [null, (value) => { editor = value; }],
     prepareCanvasMediaAsset: async (asset) => asset, getAuthSessionGeneration: () => 1,
     showGlobalToast: (...args) => toasts.push(args),
     dispatchCanvasAssetsChanged: (...args) => assetsChanged.push(...args), ...overrides,
@@ -93,6 +124,7 @@ function mount(file, initial, overrides = {}) {
       const guarded = options.origin === 'system' ? guardCanvasSystemUpdate(nodes, next)
         : guardCanvasNodeUpdate(nodes, next, { origin: options.origin });
       const accepted = guarded !== nodes;
+      refs.filter((ref) => ref.current === nodes).forEach((ref) => { ref.current = guarded; });
       nodes = guarded;
       return accepted;
     } });

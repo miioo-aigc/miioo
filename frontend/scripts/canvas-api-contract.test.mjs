@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { throwResponseError } from '../src/api/error.js';
+import { getResponseErrorCode, throwResponseError } from '../src/api/error.js';
 
 const source = readFileSync(new URL('../src/api/canvas.js', import.meta.url), 'utf8')
   .replace(/^import .*;\n/gm, '')
@@ -20,7 +20,7 @@ function setup({ status = 200, payload = { ok: true } } = {}) {
     apiGetSharedCanvas, apiImportSharedCanvas, apiUpdateCanvasDocument, apiReorderCanvasDocuments,
     apiListCanvasDocuments,
     apiGetCanvasRuns, apiGetCanvasRun, apiCancelCanvasRun, apiReconcileCanvasRuns })`, {
-    authFetch: request('auth'), fetch: request('public'), throwResponseError,
+    authFetch: request('auth'), fetch: request('public'), throwResponseError, getResponseErrorCode,
     isDevelopmentCanvas: (id) => id.startsWith('dev-'), URLSearchParams,
   });
   return { api, calls };
@@ -35,6 +35,15 @@ test('资产解析去重保序，保留失效分类，不修改返回结构', as
   assert.throws(() => api.apiResolveCanvasAssetViews('canvas', Array.from({ length: 201 }, (_, i) => String(i))), /200/);
   assert.throws(() => api.apiResolveCanvasAssetViews('canvas', [null]), /资产编号/);
   assert.equal(calls.length, 1);
+});
+
+test('虚拟与普通身份分域发送并合计限制批次大小', async () => {
+  const { api, calls } = setup();
+  const id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  await api.apiResolveCanvasAssetViews('canvas', [id], { liveMaterialAssetIds: [id, id] });
+  assert.deepEqual(JSON.parse(calls[0].options.body), { asset_ids: [id], live_material_asset_ids: [id] });
+  assert.throws(() => api.apiResolveCanvasAssetViews('canvas', [], { liveMaterialAssetIds: ['bad'] }), /永久编号/);
+  assert.throws(() => api.apiResolveCanvasAssetViews('canvas', Array.from({ length: 200 }, (_, i) => String(i)), { liveMaterialAssetIds: [id] }), /200/);
 });
 
 test('画布列表透传 OpenAPI 已声明的过滤与树范围参数', async () => {

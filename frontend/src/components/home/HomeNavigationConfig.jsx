@@ -122,6 +122,6 @@ const BOTTOM_NAV_ITEMS = [
     ),
   },
 ];
-const BG_VIDEOS = ["/video/bg-video-01.mp4", "/video/bg-video-02.mp4", "/video/bg-video-03.mp4", "/video/bg-video-04.mp4", "/video/bg-video-05.mp4", "/video/bg-video-06.mp4", "/video/bg-video-07.mp4", "/video/bg-video-08.mp4"];
+const BG_VIDEOS = ["/video/bg-video-01.webm", "/video/bg-video-02.webm", "/video/bg-video-03.webm", "/video/bg-video-04.webm", "/video/bg-video-05.webm", "/video/bg-video-06.webm", "/video/bg-video-07.webm", "/video/bg-video-08.webm"];
 
 export { NAV_ITEMS, BOTTOM_NAV_ITEMS, BG_VIDEOS };

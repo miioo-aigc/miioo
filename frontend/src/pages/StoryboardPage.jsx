@@ -1,4 +1,6 @@
 /**
+ * @structure-index 2026-11-24：候选加载 L867；候选回读 L966；定稿保存 L2180；候选展示 L2574。
+ * 更新：统一唯一候选定稿、取消状态及请求互斥；页面继续保留 API 与状态编排。
  * 2026-10-30 分集剪辑进度以服务器 editing/edited 为准；页面保留会话、请求及跳转编排。
  * 当前任务定位：页面入口 L282；按当前分集进入剪辑 L1957。
  * @file StoryboardPage.jsx
@@ -212,6 +214,7 @@ import {
   enrichStoryboardVideoReferenceMedia,
 } from '../utils/storyboardVideoRequestAdapter';
 import { buildStoryboardCandidatePayload, normalizeSavedStoryboardCandidate } from '../utils/storyboardCandidateAdapter';
+import { applyStoryboardFinalization, findFinalizedCandidate } from '../utils/StoryboardFinalization';
 import { areStoryboardMediaSame, mergeStoryboardMediaItems } from '../utils/storyboardMediaDedup';
 import { mergeStoryboardMediaItems as mergeDisplayCandidates } from '../components/storyboard/StoryboardMediaItems';
 import { insertStoryboardShot, moveStoryboardShot, removeStoryboardShot, renumberStoryboardShots } from '../utils/storyboardShotUtils';
@@ -526,6 +529,7 @@ export default function StoryboardPage({ ownerId, projectId, projectName = '两�
   useEffect(() => { generatingImageShotIdsRef.current = generatingImageShotIds; }, [generatingImageShotIds]);
   useEffect(() => { generatingVideoShotIdsRef.current = generatingVideoShotIds; }, [generatingVideoShotIds]);
   const mediaRequestVersionRef = useRef(new Map());
+  const finalizationPendingRef = useRef(new Set());
   const [timelinePreviewMedia, setTimelinePreviewMedia] = useState(null);
   const [creationPanel, setCreationPanel] = useState(null); // { shot, tab }
   const [regenerateModalOpen, setRegenerateModalOpen] = useState(false);
@@ -869,7 +873,7 @@ function hasStoryboardMediaHint(shot = {}) {
       && !generatingImageShotIdsRef.current.has(shot.id)
       && !generatingVideoShotIdsRef.current.has(shot.id)
     ));
-    const shotsToRequest = validShots.filter((shot) => !shotsWithoutMedia.includes(shot));
+    const shotsToRequest = validShots.filter((shot) => !shotsWithoutMedia.includes(shot) && !finalizationPendingRef.current.has(shot.id));
     const loadingIds = shotsToRequest.map((shot) => shot.id);
     const skippedIds = shotsWithoutMedia.map((shot) => shot.id);
     const requestVersions = new Map(loadingIds.map((id) => {
@@ -898,7 +902,7 @@ function hasStoryboardMediaHint(shot = {}) {
         return next;
       });
     }
-    const entries = await Promise.all(shotsToRequest.map(async (shot) => {
+    const responses = await Promise.all(shotsToRequest.map(async (shot) => {
       const backendId = shot.backendId || shot.id;
       try {
         const items = await apiListStoryboardMediaCandidates(projectId, backendId);
@@ -907,27 +911,15 @@ function hasStoryboardMediaHint(shot = {}) {
         return [shot.id, fallbackCandidates(shot), shot];
       }
     }));
+    const entries = responses.filter(([id]) => mediaRequestVersionRef.current.get(id) === requestVersions.get(id));
     const nextCandidates = Object.fromEntries(entries.map(([id, items]) => [id, items]));
-    const nextFinalized = Object.fromEntries(entries.map(([id, items, shot]) => {
-      const explicitFinalized = items.find((item) => item.is_finalized || item.isFinalized);
-      if (explicitFinalized) return [id, explicitFinalized];
-
-      // 兼容后端候选接口暂未返回 is_finalized，但分镜主记录已有定稿地址的情况。
-      const storyboardMedia = [shot.storyboardImage, shot.storyboardVideo].filter(Boolean);
-      const matched = storyboardMedia.find((media) => {
-        return items.some((item) => areStoryboardMediaSame(item, media));
-      });
-      if (!matched) return [id, null];
-      return [id, items.find((item) => areStoryboardMediaSame(item, matched)) || null];
-    }));
+    // 候选明确返回未定稿时，不从旧分镜地址恢复勾选。
+    const nextFinalized = Object.fromEntries(entries.map(([id, items]) => [id, findFinalizedCandidate(items)]));
     setCandidateMediaMap((prev) => {
       const merged = { ...prev };
       Object.entries(nextCandidates).forEach(([shotId, items]) => {
         const finalized = nextFinalized[shotId];
-        merged[shotId] = mergeStoryboardMediaItems(prev[shotId] || [], items).map((item) => ({
-          ...item,
-          is_finalized: finalized ? areStoryboardMediaSame(item, finalized) : Boolean(item.is_finalized),
-        }));
+        merged[shotId] = applyStoryboardFinalization(mergeStoryboardMediaItems(prev[shotId] || [], items), finalized);
       });
       return merged;
     });
@@ -974,13 +966,16 @@ function hasStoryboardMediaHint(shot = {}) {
   const refreshCandidateForShot = useCallback(async (shot) => {
     const backendId = shot?.backendId || shot?.id;
     if (!isBackendStoryboardId(backendId)) return;
+    const version = (mediaRequestVersionRef.current.get(shot.id) || 0) + 1;
+    mediaRequestVersionRef.current.set(shot.id, version);
     try {
       const items = await apiListStoryboardMediaCandidates(projectId, backendId);
+      if (mediaRequestVersionRef.current.get(shot.id) !== version) return;
       setCandidateMediaMap((prev) => ({
         ...prev,
-        [shot.id]: mergeStoryboardMediaItems(prev[shot.id] || [], items),
+        [shot.id]: applyStoryboardFinalization(mergeStoryboardMediaItems(prev[shot.id] || [], items), findFinalizedCandidate(items)),
       }));
-      setFinalizedMediaMap((prev) => ({ ...prev, [shot.id]: items.find((item) => item.is_finalized) || null }));
+      setFinalizedMediaMap((prev) => ({ ...prev, [shot.id]: findFinalizedCandidate(items) }));
     } catch (error) {
       console.warn('[StoryboardPage] 刷新分镜候选媒体失败:', error);
     }
@@ -1981,18 +1976,7 @@ function hasStoryboardMediaHint(shot = {}) {
   async function handleTimelineFinalizeChange(media, nextValue) {
     if (isGenerating || homeIsGenerating) return;
     if (!timelinePreviewMedia?.shot || !media) return;
-    // 先更新弹窗本地状态，让 Toggle 即时响应，不再等 PATCH + 候选刷新
-    setTimelinePreviewMedia((prev) => prev ? {
-      ...prev,
-      finalized: nextValue,
-      media: prev.media?.id === media.id ? { ...prev.media, is_finalized: nextValue } : prev.media,
-      candidates: (prev.candidates || []).map((item) => ({
-        ...item,
-        is_finalized: item.id === media.id ? nextValue : false,
-      })),
-    } : prev);
-    // PATCH + 候选刷新后台执行，不阻塞 toggle 渲染
-    handleFinalizeToggle(timelinePreviewMedia.shot, media, nextValue).catch(console.error);
+    await handleFinalizeToggle(timelinePreviewMedia.shot, media, nextValue);
   }
 
 
@@ -2196,6 +2180,9 @@ function hasStoryboardMediaHint(shot = {}) {
   async function handleFinalizeToggle(shot, media, requestedFinalized) {
     if (isGenerating || homeIsGenerating) return;
     if (media?.localEdit) { showGlobalToast('本地编辑图片暂不支持同步定稿', 'info'); return; }
+    if (finalizationPendingRef.current.has(shot.id)) return;
+    finalizationPendingRef.current.add(shot.id);
+    mediaRequestVersionRef.current.set(shot.id, (mediaRequestVersionRef.current.get(shot.id) || 0) + 1);
     const current = finalizedMediaMap[shot.id];
     const shouldFinalize = typeof requestedFinalized === 'boolean'
       ? requestedFinalized
@@ -2223,16 +2210,18 @@ function hasStoryboardMediaHint(shot = {}) {
         persistedMedia.id,
         { is_finalized: shouldFinalize },
       );
-      const nextFinalized = shouldFinalize ? { ...media, ...persistedMedia, ...updatedMedia, is_finalized: true } : null;
+      const nextFinalized = shouldFinalize ? { ...media, ...persistedMedia, ...updatedMedia, is_finalized: true, isFinalized: true } : null;
       setFinalizedMediaMap((prev) => ({ ...prev, [shot.id]: nextFinalized }));
+      setTimelinePreviewMedia((prev) => prev?.shot?.id === shot.id ? {
+        ...prev,
+        finalized: Boolean(nextFinalized && areStoryboardMediaSame(prev.media, nextFinalized)),
+        media: applyStoryboardFinalization([prev.media], nextFinalized)[0],
+      } : prev);
       setCandidateMediaMap((prev) => ({
         ...prev,
-        [shot.id]: mergeStoryboardMediaItems(prev[shot.id] || [], [
-          { ...persistedMedia, ...updatedMedia, is_finalized: shouldFinalize },
-        ]).map((item) => ({
-          ...item,
-          is_finalized: nextFinalized ? areStoryboardMediaSame(item, nextFinalized) : false,
-        })),
+        [shot.id]: applyStoryboardFinalization(mergeStoryboardMediaItems(prev[shot.id] || [], [
+          { ...persistedMedia, ...updatedMedia, is_finalized: shouldFinalize, isFinalized: shouldFinalize },
+        ]), nextFinalized),
       }));
       if (nextFinalized) {
         const isVideo = nextFinalized.media_type === 'video';
@@ -2244,14 +2233,16 @@ function hasStoryboardMediaHint(shot = {}) {
       } else {
         updateShot(shot.id, {
           ...shot,
-          storyboardImage: current?.media_type === 'image' ? null : shot.storyboardImage,
-          storyboardVideo: current?.media_type === 'video' ? null : shot.storyboardVideo,
+          storyboardImage: null,
+          storyboardVideo: null,
         });
       }
       // 以后端返回的状态为准，确保互斥定稿和兼容字段回写完成后页面一致。
       await refreshCandidateForShot(shot);
     } catch (error) {
       showToast(error.message || '保存定稿失败', 'error');
+    } finally {
+      finalizationPendingRef.current.delete(shot.id);
     }
   }
 
@@ -2580,13 +2571,15 @@ function hasStoryboardMediaHint(shot = {}) {
   const resolvedMediaLoadingMap = Object.fromEntries(
     shots.map((shot) => [shot.id, isMediaLoading(shot)]),
   );
-  const getCreationCandidates = (shotId) => mergeDisplayCandidates(
+  const getCreationCandidates = (shotId) => applyStoryboardFinalization(mergeDisplayCandidates(
     mergeDisplayCandidates(
       candidateMediaMap[shotId] || [],
       fallbackCandidates(shots.find((shot) => shot.id === shotId)),
     ),
     [...(pendingCandidateMap[shotId] || []), ...(localImageScopes[accountImageEditScope(`storyboard:${projectId}:${shotId}`, ownerId)] || [])],
-  );
+  ), Object.prototype.hasOwnProperty.call(finalizedMediaMap, shotId)
+    ? finalizedMediaMap[shotId]
+    : findFinalizedCandidate(candidateMediaMap[shotId] || fallbackCandidates(shots.find((shot) => shot.id === shotId))));
   const currentShotImages = useMemo(() => {
     const shotId = videoPanel?.shot?.id;
     if (!shotId) return [];

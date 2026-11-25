@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useMediaPlayback } from '../../hooks/useMediaPlayback';
 import MediaLoadStatus from '../feedback/MediaLoadStatus';
 
-function VideoPreviewSession({ src, poster, hovered, objectFit = 'cover' }) {
+function VideoPreviewSession({ src, poster, hovered, objectFit = 'cover', timeoutMs }) {
   const ref = useRef(null);
   const [posterReady, setPosterReady] = useState(false);
   const [frameReady, setFrameReady] = useState(false);
-  const media = useMediaPlayback(ref, src);
+  const media = useMediaPlayback(ref, src, { timeoutMs });
   const { play, pause } = media;
   const hoverRecoveryAttempted = useRef(false);
   useEffect(() => {

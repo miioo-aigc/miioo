@@ -10,7 +10,7 @@ const transient = new Set(['generating', 'generationPending', 'generationError',
   'activeTask', 'activeRequest', 'executionSnapshot', 'taskSnapshot', 'taskIdentity',
   'controller', 'abortController', 'signal', 'submissionLocked', 'outputLocked',
   'deleteLocked', 'upstreamProtected', 'dependencyCount', 'resultAssetViews',
-  'creationPanelOpen', 'editing', 'dragging']);
+  'creationPanelOpen', 'editing', 'canvasEditOperation', 'dragging']);
 
 /** 只剥离顶层运行态；批次内 taskIds 和 snapshot 是不可变溯源数据。 */
 export function stripCanvasNodeRuntimeData(data) {

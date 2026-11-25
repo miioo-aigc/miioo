@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState, useCallback, useRef } from 'react'
+const OnelinkCallback = lazy(() => import('./components/auth/OnelinkCallback'))
 const Home = lazy(() => import('./pages/Home'))
 const CompositionEditorPage = lazy(() => import('./pages/CompositionEditorPage'))
 const AdminConsolePage = lazy(() => import('./pages/AdminConsolePage'))
@@ -12,7 +13,7 @@ import { showGlobalToast } from './stores/toastStore'
 import { apiGetCurrentUser } from './api/user'
 import { getAuthSessionGeneration } from './api/request'
 
-function App() {
+function App({ onelinkCallback }) {
   const shareRoute = parseCanvasShareRoute(window.location.pathname)
   const [adminView, setAdminView] = useState(false)
   const [adminUser, setAdminUser] = useState(null)
@@ -48,6 +49,10 @@ function App() {
   const handleBackHome = useCallback(() => {
     setAdminView(false)
   }, [])
+
+  if (onelinkCallback) {
+    return <Suspense fallback={null}><OnelinkCallback capture={onelinkCallback} /></Suspense>
+  }
 
   if (adminView) {
     return (

@@ -1,3 +1,4 @@
+import ListLoading from '../feedback/ListLoading';
 import { StoryboardIconPlus } from './StoryboardActionPrimitives';
 
 export default function StoryboardShotList({
@@ -43,7 +44,7 @@ export default function StoryboardShotList({
       }))}
       {isLoadingMoreShots && (
         <div style={{ flexShrink: 0, height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF99', fontSize: '12px' }}>
-          正在加载更多分镜
+          <ListLoading more />
         </div>
       )}
       {dragId && (

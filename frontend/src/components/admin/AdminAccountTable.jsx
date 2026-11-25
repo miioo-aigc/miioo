@@ -1,3 +1,4 @@
+import ListLoading from '../feedback/ListLoading';
 const FONT_MEDIUM = "'AlibabaPuHuiTi_2_65_Medium','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
 const FONT_REGULAR = "'AlibabaPuHuiTi 2_55 Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
@@ -47,7 +48,7 @@ function EmptyState({ loading }) {
       className="flex min-h-[220px] items-center justify-center rounded-medium border border-dashed border-stroke-normal bg-neutral-200 text-font-size-14 text-text-secondary"
       style={{ fontFamily: FONT_REGULAR }}
     >
-      {loading ? '账号列表加载中...' : '当前没有匹配到账号'}
+      {loading ? <ListLoading /> : '当前没有匹配到账号'}
     </div>
   );
 }

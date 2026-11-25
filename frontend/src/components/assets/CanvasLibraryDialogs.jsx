@@ -1,3 +1,4 @@
+import ListLoading from '../feedback/ListLoading';
 import { useEffect, useRef, useState, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { Folder, ChevronRight, ArrowLeft, FolderOpen } from 'lucide-react';
@@ -63,7 +64,7 @@ export function CanvasLibraryDestinationDialog({ collection, selection, sourceFo
       {path.length === 1 && !forbidden.has(root.id) && renderRow(root, true)}
       {!loading && !error && visibleFolders.map((item) => renderRow(item))}
     </div>
-    {loading && <p role="status">加载中...</p>}
+    {loading && <ListLoading />}
     {error && <div role="alert">加载失败<Button variant="link" onClick={browser.retry}>重试</Button></div>}
     {!loading && !error && visibleFolders.length === 0 && !page.next_cursor && <div role="status" className="flex min-h-[100px] flex-1 flex-col items-center justify-center gap-[12px] text-text-secondary"><FolderOpen size={64} strokeWidth={1} className="text-white/20" aria-hidden="true" /><p>没有子文件夹</p></div>}
     {page.next_cursor && <Button disabled={busy || loading} onClick={browser.more}>加载更多</Button>}

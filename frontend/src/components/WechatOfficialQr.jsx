@@ -9,6 +9,7 @@ export default function WechatOfficialQr({ authUrl, onReady, onError, containerI
   const containerRef = useRef(null);
   const wxLoginInstanceRef = useRef(null);
   const observerRef = useRef(null);
+  const resizeObserverRef = useRef(null);
 
   useEffect(() => {
     if (!authUrl || !containerRef.current) return;
@@ -59,16 +60,7 @@ export default function WechatOfficialQr({ authUrl, onReady, onError, containerI
       });
     };
 
-    // 3. 自定义 CSS：隐藏二维码页面的标题/提示文字，居中显示
-    const customCss = [
-      '.impowerBox .qrcode { margin: 0 auto; }',
-      '.impowerBox .title { display: none; }',
-      '.impowerBox .info { display: none; }',
-      '.impowerBox .status { display: none; }',
-      '.impowerBox .wrap { overflow: hidden; }',
-    ].join('');
-    const href = `data:text/css;charset=utf-8,${encodeURIComponent(customCss)}`;
-
+    // 保留官方页面原始布局，从外层整体缩放，不依赖跨域页面加载自定义样式。
     const initWxLogin = async () => {
       try {
         await loadWxScript();
@@ -89,7 +81,6 @@ export default function WechatOfficialQr({ authUrl, onReady, onError, containerI
           state,
           scope,
           style: 'black',
-          href,
         });
 
         // 监听 iframe 插入，自适应容器大小
@@ -100,7 +91,7 @@ export default function WechatOfficialQr({ authUrl, onReady, onError, containerI
               const containerWidth = container.offsetWidth;
               const containerHeight = container.offsetHeight;
               
-              // WxLogin 默认内容尺寸约 300×400
+              // 官方嵌入页面使用 300×400 视口，整体缩放以完整展示内容。
               const originalWidth = 300;
               const originalHeight = 400;
               
@@ -124,6 +115,9 @@ export default function WechatOfficialQr({ authUrl, onReady, onError, containerI
             }
             return false;
           };
+
+          resizeObserverRef.current = new ResizeObserver(fitIframe);
+          resizeObserverRef.current.observe(container);
 
           // 尝试立即适配
           if (!fitIframe()) {
@@ -151,6 +145,8 @@ export default function WechatOfficialQr({ authUrl, onReady, onError, containerI
     initWxLogin();
 
     return () => {
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
       if (observerRef.current) {
         observerRef.current.disconnect();
         observerRef.current = null;
@@ -165,7 +161,7 @@ export default function WechatOfficialQr({ authUrl, onReady, onError, containerI
     <div
       ref={containerRef}
       id={containerId}
-      className="w-full h-full overflow-hidden"
+      className="relative w-full h-full overflow-hidden"
     />
   );
 }

@@ -12,7 +12,7 @@ export function createCanvasReplacementSnapshot(node) {
   return {
     id: node.id,
     type: node.type,
-    assetIdentity: getCanvasPermanentAssetId(node.data?.asset) || node.data?.asset?.url || null,
+    assetIdentity: node.data?.asset?.liveMaterialAssetId ? `live:${node.data.asset.liveMaterialAssetId}` : getCanvasPermanentAssetId(node.data?.asset) || node.data?.asset?.url || null,
     currentResultId: node.data?.nodeResults?.currentResultId,
     pendingCanvasUpload: node.data?.pendingCanvasUpload || null,
   };

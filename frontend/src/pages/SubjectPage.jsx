@@ -4,11 +4,11 @@
  *
  * ─── 全局常量 & 工具函数 ──────────────────────────────────────────
  *   SubjectEmptyIcons / SubjectExtractionState / SubjectEditorSlot components/subject/
- *   SUBJECT_LOADING_TEXTS                                           L159
+ *   SUBJECT_LOADING_TEXTS                                           L160
  *   downloadBlob                                                  utils/downloadBlob.js
- *   INITIAL_CHARS                                                  L179
- *   sleep                                                           L197
- *   batchGeneratedImagesCache                                      L203
+ *   INITIAL_CHARS                                                  L180
+ *   sleep                                                           L198
+ *   batchGeneratedImagesCache                                      L204
  *   主体面板会话缓存 / pending 任务存储                               utils/subjectPanelStorage.js / subjectPendingGenerationStore.js
  *   normalizeSubjectList                                           utils/subjectAdapter.js
  *   getSubjectDownloadName                                          主体下载文件名适配
@@ -32,7 +32,7 @@
  *
  * ─── 业务组件 ────────────────────────────────────────────────────
  *   ConfirmStoryboardModal                                          components/subject/ConfirmStoryboardModal.jsx
- *   <EditSubjectPanel>                                             L249
+ *   <EditSubjectPanel>                                             L250
  *     ├─ [状态/Ref] 模型、字段、图片、弹窗与保存队列状态            面板内部
  *     ├─ [函数] 生成、定稿、保存及图片动作句柄                      面板内部
  *     ├─ [纯数据] 详情图片映射、参考图快照和生成参数由域工具完成
@@ -48,12 +48,12 @@
  *   SubjectGridViewport / SubjectWorkspace 主体列表和工作区组合    src/components/subject/
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
- *   export default function SubjectPage()                          L1110
- *     ├─ [状态] activeTab / 认证模式 / 提取 / 批量；选中主体        L1856
- *     ├─ [副作用] 页面生命周期、单任务恢复与详情恢复               L1112 / L1399 / L1509
- *     ├─ [函数] 批量生成、添加、下载、删除                         L1628 起
+ *   export default function SubjectPage()                          L1111
+ *     ├─ [状态] activeTab / 认证模式 / 提取 / 批量；选中主体        L1857
+ *     ├─ [副作用] 页面生命周期、单任务恢复与详情恢复               L1113 / L1400 / L1510
+ *     ├─ [函数] 批量生成、添加、下载、删除                         L1629 起
  *     ├─ [副作用] 缓存订阅、资产删除和滚动加载                     主页面内
- *     └─ [渲染] SubjectWorkspace 和弹窗组合                       L2335
+ *     └─ [渲染] SubjectWorkspace 和弹窗组合                       L2336
  *
  * ─── 更新记录 ──────────────────────────────────────────────────────
  *   2026-10-20  主体独立缓存校验及读写确认，损坏保留、提交前阻断；清理失败保留任务，完成结果保存失败留会话并提示。任务/认证/缓存/分页副作用集中编排暂保留；验证提交/恢复/收尾，未作视觉修改。
@@ -126,7 +126,8 @@
  *   2026-07-03  修复媒体详情弹窗参考图数据源
 
  * 2026-10-23：模型目录仅采用服务器可用项，失败/空目录暂停提交并保留草稿。
- * 当前定义定位：sanitizeDownloadPart L165；getSubjectDownloadName L173；sleep L201；appendBatchGeneratedImage L209；dedupeBatchGeneratedImages L217；getGeneratedSubjectImageId L227；getGeneratedSubjectReferenceImages L241；EditSubjectPanel L253；SubjectPage L1110。
+ * 当前定义定位：sanitizeDownloadPart L166；getSubjectDownloadName L174；sleep L202；appendBatchGeneratedImage L210；dedupeBatchGeneratedImages L218；getGeneratedSubjectImageId L228；getGeneratedSubjectReferenceImages L242；EditSubjectPanel L254；SubjectPage L1111。
+ *   2026-11-23  列表加载统一青色圆点，首屏居中、追加置底。
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -2364,6 +2365,7 @@ export default function SubjectPage({ projectId, ownerId, projectName = '两只�
         },
         onDownloadImage: handleDownloadSubjectImage, onDeleteSubject: handleDeleteSubject, onAdd: handleAdd,
         emptyIcons: SubjectEmptyIcons, sentinelRef: subjectSentinelRef,
+        loadingMore: subjectsLoading,
         hasMore: (activeTab === 'char' && hasMoreChars) || (activeTab === 'scene' && hasMoreScenes) || (activeTab === 'prop' && hasMoreProps),
         certificationMode: isSeedanceCertificationMode,
         certificationBySubject,

@@ -4,6 +4,7 @@ import { sendVerificationCode, loginWithPhone, apiGetWechatQrCode, apiPollWechat
 import { getAuthSessionGeneration } from '../api/request';
 import { createSerialPolling } from '../utils/serialPolling';
 import WechatOfficialQr from './WechatOfficialQr';
+import LoginAlternatives from './LoginAlternatives';
 import { showGlobalToast } from '../stores/toastStore';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba_PuHuiTi_2.0',system-ui,sans-serif";
@@ -62,9 +63,10 @@ function ModalHeader({ onClose }) {
         gap: 16,
         justifyContent: 'space-between',
         width: '100%',
-        paddingTop: 16,
-        paddingBottom: 16,
-        paddingLeft: 24,
+        flexShrink: 0,
+        paddingTop: 24,
+        paddingBottom: 24,
+        paddingLeft: 32,
         paddingRight: 32,
         position: 'relative',
         backgroundColor: '#161616',
@@ -85,7 +87,7 @@ function ModalHeader({ onClose }) {
           style={{
             height: 20,
             display: 'flex',
-            alignItems: 'flex-start',
+            alignItems: 'center',
             justifyContent: 'flex-start',
             fontFamily: FONT_MEDIUM,
             fontWeight: 500,
@@ -104,7 +106,7 @@ function ModalHeader({ onClose }) {
         style={{
           position: 'absolute',
           top: 16,
-          right: 16,
+          right: 32,
           padding: 0,
           margin: 0,
           border: 0,
@@ -119,39 +121,6 @@ function ModalHeader({ onClose }) {
       >
         <CloseIcon />
       </button>
-    </div>
-  );
-}
-
-function TabButton({ active, children, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        padding: 0,
-        margin: 0,
-        border: 0,
-        background: 'transparent',
-        cursor: 'pointer',
-        width: 'fit-content',
-        fontFamily: active ? FONT_MEDIUM : FONT,
-        fontWeight: active ? 500 : 400,
-        color: active ? '#FFFFFF' : '#FFFFFF99',
-        fontSize: 14,
-        lineHeight: '18px',
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Tabs({ tab, onChange }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24, alignSelf: 'stretch', justifyContent: 'center' }}>
-      <TabButton active={tab === 'phone'} onClick={() => onChange('phone')}>手机号</TabButton>
-      <TabButton active={tab === 'wechat'} onClick={() => onChange('wechat')}>微信扫码</TabButton>
     </div>
   );
 }
@@ -296,7 +265,7 @@ function Field({ label, placeholder, value, onChange, suffix, error, errorText, 
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, alignSelf: 'stretch', padding: 0 }}>
       <div style={{ alignSelf: 'stretch', fontFamily: FONT, color: '#FFFFFF99', fontSize: 14, lineHeight: '18px' }}>{label}</div>
       <TextInput placeholder={placeholder} value={value} onChange={onChange} suffix={suffix} error={error} onBlur={onBlur} onKeyDown={onKeyDown} onPaste={onPaste} inputMode={inputMode} />
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0, paddingLeft: 12, paddingRight: 12, alignSelf: 'stretch', opacity: error && errorText ? 1 : 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0, paddingLeft: 13, paddingRight: 13, alignSelf: 'stretch', opacity: error && errorText ? 1 : 0 }}>
         <div style={{ width: 'fit-content', fontFamily: FONT, color: '#F75F5F', fontSize: 14, lineHeight: '18px' }}>{errorText || ''}</div>
       </div>
     </div>
@@ -372,7 +341,7 @@ function Agreement({ checked, onToggle }) {
           href="https://gcn0je6sgrhe.feishu.cn/wiki/FIspwGURtikxiwk28svc4thOn9c?from=from_copylink"
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: '#2DC3E1', textDecoration: 'none', cursor: 'pointer' }}
+          style={{ color: 'inherit', textDecoration: 'none', cursor: 'pointer' }}
           onMouseEnter={(e) => { e.target.style.textDecoration = 'underline'; }}
           onMouseLeave={(e) => { e.target.style.textDecoration = 'none'; }}
         >
@@ -383,7 +352,7 @@ function Agreement({ checked, onToggle }) {
           href="https://gcn0je6sgrhe.feishu.cn/wiki/LKlewdQJ0iaYVmkOPXVc4PWgnoc?from=from_copylink"
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: '#2DC3E1', textDecoration: 'none', cursor: 'pointer' }}
+          style={{ color: 'inherit', textDecoration: 'none', cursor: 'pointer' }}
           onMouseEnter={(e) => { e.target.style.textDecoration = 'underline'; }}
           onMouseLeave={(e) => { e.target.style.textDecoration = 'none'; }}
         >
@@ -488,7 +457,6 @@ function PhoneLoginView({ onLogin, onChangeTab, onShowToast, cancelRef }) {
   return (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 24, width: '100%', paddingLeft: 32, paddingRight: 32, backgroundColor: '#161616' }}>
-        <Tabs tab="phone" onChange={onChangeTab} />
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, alignSelf: 'stretch', padding: 0 }}>
           <Field
             label="手机号"
@@ -514,10 +482,11 @@ function PhoneLoginView({ onLogin, onChangeTab, onShowToast, cancelRef }) {
           />
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, justifyContent: 'space-between', width: '100%', backgroundColor: '#161616', padding: 32 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, justifyContent: 'space-between', width: '100%', backgroundColor: '#161616', padding: '24px 32px' }}>
         <PrimaryButton onClick={handleLogin}>{loggingIn ? '登录中…' : '登录'}</PrimaryButton>
         <Agreement checked={agreed} onToggle={() => setAgreed((value) => !value)} />
       </div>
+      <LoginAlternatives onWechat={() => onChangeTab('wechat')} />
     </>
   );
 }
@@ -643,19 +612,15 @@ function WechatView({ onBackToPhone, onLoginSuccess, onNeedBind, onShowToast, on
 
   return (
     <>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, paddingLeft: 32, paddingRight: 32, alignSelf: 'stretch', flex: 1, backgroundColor: '#161616' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24, alignSelf: 'stretch', padding: 0, justifyContent: 'center' }}>
-          <TabButton active={false} onClick={onBackToPhone}>手机号</TabButton>
-          <TabButton active onClick={() => {}}>微信扫码</TabButton>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 32px', flex: 1, minHeight: 0, alignSelf: 'stretch', backgroundColor: '#161616' }}>
+        <div style={{ width: '100%', height: '100%', position: 'relative' }}>
           <div
             type="button"
             onClick={isExpiredOrError ? loadQrCode : undefined}
             style={{
               position: 'relative',
-              width: 284,
-              height: 284,
+              width: '100%',
+              height: '100%',
               flexShrink: 0,
               padding: 0,
               border: 0,
@@ -695,9 +660,10 @@ function WechatView({ onBackToPhone, onLoginSuccess, onNeedBind, onShowToast, on
           </div>
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, justifyContent: 'space-between', width: '100%', backgroundColor: '#161616', paddingTop: 0, paddingRight: 32, paddingBottom: 32, paddingLeft: 32 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, justifyContent: 'space-between', width: '100%', backgroundColor: '#161616', padding: '8px 32px', flexShrink: 0 }}>
         <Agreement checked={agreed} onToggle={() => setAgreed((value) => !value)} />
       </div>
+      <LoginAlternatives onPhone={onBackToPhone} showHeading={false} />
     </>
   );
 }
@@ -801,12 +767,14 @@ function BindPhoneView({ onBind, onBack, onShowToast, bindToken, sessionId, canc
 
   return (
     <>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 16, width: '100%', paddingLeft: 32, paddingRight: 32, flex: 1, backgroundColor: '#161616' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 32, flex: 1, width: '100%', paddingLeft: 32, paddingRight: 32, backgroundColor: '#161616' }}>
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
+            height: 36,
+            flexShrink: 0,
             paddingLeft: 12,
             paddingRight: 12,
             paddingTop: 8,
@@ -848,7 +816,7 @@ function BindPhoneView({ onBind, onBack, onShowToast, bindToken, sessionId, canc
           />
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, justifyContent: 'space-between', width: '100%', backgroundColor: '#161616', padding: 32 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, justifyContent: 'space-between', width: '100%', backgroundColor: '#161616', padding: 32, flexShrink: 0 }}>
         <PrimaryButton onClick={handleBind}>绑定并登录</PrimaryButton>
         <button
           type="button"
@@ -971,14 +939,16 @@ export default function LoginModal({ open, onClose, onSuccess, initialWechatBind
           display: 'flex',
           alignItems: 'flex-start',
           borderRadius: 16,
-          overflow: 'clip',
+          overflowX: 'hidden',
+          overflowY: 'auto',
           width: 400,
-          height: 470 ,
-          transition: 'height 200ms ease',
+          maxWidth: 'calc(100vw - 32px)',
+          maxHeight: 'calc(100dvh - 32px)',
+          backgroundColor: 'var(--color-surface-modal)',
         }}
         onClick={(event) => event.stopPropagation()}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: 1, alignSelf: 'stretch', padding: 0, backgroundColor: '#161616' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', height: step === 'login' && tab === 'wechat' ? 529 : undefined, minHeight: step === 'bind' ? 529 : undefined, flexShrink: 0, padding: 0, backgroundColor: '#161616' }}>
           <ModalHeader onClose={handleClose} />
           {step === 'bind' ? (
             <BindPhoneView cancelRef={cancelLoginRef} onBind={handleLoginSuccess} onBack={() => { cancelLoginRef.current?.(); setStep('login'); }} onShowToast={showToast} bindToken={bindToken} sessionId={wechatSessionId} />

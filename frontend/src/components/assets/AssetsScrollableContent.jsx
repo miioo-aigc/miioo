@@ -2,6 +2,7 @@
  * 资产列表的滚动展示壳。
  * 只负责空态、滚动容器、分页哨兵和加载提示，不触碰分页请求或筛选状态。
  */
+import ListLoading from '../feedback/ListLoading';
 import { Button } from '../ui';
 
 export default function AssetsScrollableContent({
@@ -56,15 +57,14 @@ export default function AssetsScrollableContent({
         paddingLeft: isAudio ? '32px' : '24px',
         paddingRight: isAudio ? '32px' : '24px',
         ...layoutStyle,
+        ...(isEmpty && loading ? { display: 'flex', flexDirection: 'column' } : {}),
       }}
     >
       {isEmpty ? (!loading && !error ? emptyState : null) : children}
       {error && !loading && <div role="alert" className="text-text-secondary text-font-size-14" style={{ gridColumn: '1 / -1' }}>{error} <Button onClick={onRetry}>重试</Button></div>}
       <div ref={sentinelRef} style={{ width: '100%', height: '1px', flexShrink: 0 }} />
       {loading && (
-        <div style={{ width: '100%', display: 'flex', justifyContent: 'center', padding: '16px 0', flexShrink: 0 }}>
-          <span style={{ fontFamily: "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif", fontSize: '13px', color: '#FFFFFF40' }}>加载中…</span>
-        </div>
+        <ListLoading more={!isEmpty} style={isEmpty ? { height: '100%' } : undefined} />
       )}
     </div>
   );

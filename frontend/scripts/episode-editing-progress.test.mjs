@@ -59,6 +59,7 @@ function enterHarness() {
   const to = homeSource.indexOf('  // 加载更多主体', from);
   const body = homeSource.slice(from, to) + '; return handleStartEpisodeEdit;';
   const events = [];
+  const confirmed = { episodes: [], projectId: null };
   const owner = { current: { id: 'p' } }, version = { current: 1 }, pending = { current: new Set() };
   let finish;
   const response = new Promise(resolve => { finish = resolve; });
@@ -68,10 +69,12 @@ function enterHarness() {
     setScriptEpisodes: update => { events.push(update([{ id: 'e', status: 'storyboarded' }, { id: 'other', status: 'storyboarded' }])); },
     prepareOnlineEditing: async () => { events.push('draft'); return { draft: null, skipped: 0 }; },
     window: { history: { pushState: (...args) => events.push(args[2]) } }, URLSearchParams,
+    setConfirmedEditingEpisodes: update => { confirmed.episodes = update(confirmed.episodes); },
+    setEpisodesReadProjectId: id => { confirmed.projectId = id; },
     setEditEntry: () => events.push('entry'), setActiveStep: () => events.push('navigate'), showToast: () => {},
   };
   const enter = new Function(...Object.keys(args), body)(...Object.values(args));
-  return { enter, finish, events, owner, pending };
+  return { enter, finish, events, owner, pending, confirmed };
 }
 test('进入剪辑等待保存，同集重复点击只提交一次，只回写该集', async () => {
   const h = enterHarness();
@@ -84,6 +87,8 @@ test('进入剪辑等待保存，同集重复点击只提交一次，只回写�
   assert.equal(h.events[2], 'draft');
   assert.equal(h.events.at(-1), 'navigate');
   assert.equal(h.pending.current.size, 0);
+  assert.deepEqual(h.confirmed.episodes, [{ id: 'e', project_id: 'p', status: 'editing' }]);
+  assert.equal(h.confirmed.projectId, 'p');
 });
 test('保存期间切换项目，旧响应不回写、不创建草稿、不导航', async () => {
   const h = enterHarness();
@@ -93,6 +98,7 @@ test('保存期间切换项目，旧响应不回写、不创建草稿、不导�
   await running;
   assert.deepEqual(h.events, ['save']);
   assert.equal(h.pending.current.size, 0);
+  assert.deepEqual(h.confirmed, { episodes: [], projectId: null });
 });
 
 // 执行首页实际选择表达式，覆盖导航与草稿页共享的数据边界。
@@ -101,7 +107,7 @@ function restoredEditingState({ projectId = 'p', readProjectId = 'p', loading = 
   const from = homeSource.indexOf('  const editingEpisodes =');
   const to = homeSource.indexOf('  const displayEpisodeStatuses', from);
   assert.ok(from >= 0 && to > from);
-  const evaluate = new Function('episodesReadProjectId', 'activeProject', 'scriptEpisodes', 'unlockedSteps', 'projectRead', 'resolveEpisodeSteps',
+  const evaluate = new Function('episodesReadProjectId', 'activeProject', 'confirmedEditingEpisodes', 'unlockedSteps', 'projectRead', 'resolveEpisodeSteps',
     homeSource.slice(from, to) + '; return { editingEpisodes, effectiveUnlockedSteps };');
   return evaluate(readProjectId, { id: projectId }, episodes, new Set(), { loading, error }, resolveEpisodeSteps);
 }

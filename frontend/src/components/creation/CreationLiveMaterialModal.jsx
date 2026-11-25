@@ -3,14 +3,14 @@
  * @structure-index
  *
  * ─── 组件职责 ─────────────────────────────────────────────────────
- *   CreationLiveMaterialModal 真人素材组、素材选择、扫码授权和上传审核状态展示 L334
- *   GroupCard / AssetCard 模态框内部展示与交互卡片 L65 / L197
+ *   CreationLiveMaterialModal 真人素材组、素材选择、扫码授权和上传审核状态展示 L336
+ *   GroupCard / AssetCard 模态框内部展示与交互卡片 L67 / L199
  *
  * ─── 数据流与副作用 ─────────────────────────────────────────────
  *   open / initialSelected → 加载素材组并恢复已选素材
  *   onConfirm → 向 InputCard 返回可用于生成请求的真人素材元数据
  *   qrOnly / onCreated → 为资产库复用仅扫码录入流程，不展示素材库管理页
- *   API、认证轮询、上传审核轮询和删除操作均封装在本业务域组件内；认证错误状态 L343，创建与关闭提示 L394 / L436，确认弹窗 L589
+ *   API、认证轮询、上传审核轮询和删除操作均封装在本业务域组件内；认证错误状态 L345，创建与关闭提示 L396 / L438，确认弹窗 L591
  *
  * ─── 引用边界 ─────────────────────────────────────────────────────
  *   通过显式 props 接入页面；不读取 CreationPage 闭包
@@ -20,8 +20,10 @@
  *   2026-07-16  从 CreationPage.jsx 抽离真人素材入口及弹窗组合
  *   2026-10-29  真人录入遮罩补充20px背景模糊；仅扫码模式避免叠加模糊，成功状态保持一致。
  *   2026-09-21  创建认证会话失败时仅对 400 且含有效 detail 的响应复用确认弹窗，其他错误保留短提示
+ *   2026-11-23  列表加载统一青色圆点，首屏居中、追加置底。
  */
 
+import ListLoading from '../feedback/ListLoading';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
@@ -624,7 +626,7 @@ export default function CreationLiveMaterialModal({ open, onClose, onConfirm, in
             </div>
           )}
           {loading ? (
-            <div style={{ color: '#FFFFFF66', fontFamily: FONT, fontSize: '13px' }}>加载中...</div>
+            <ListLoading />
           ) : view === 'groups' ? (
             /* Groups view */
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: GAP }}>

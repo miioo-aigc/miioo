@@ -45,9 +45,9 @@ export default function AssetCardMedia({
       onMouseLeave={() => onHoverChange?.(false)}
     >
       {asset.videoUrl ? (
-        <RecoverableVideoPreview src={asset.videoUrl} hovered={hovered} objectFit={videoObjectFit} />
+        <RecoverableVideoPreview src={asset.videoUrl} hovered={hovered} objectFit={videoObjectFit} timeoutMs={null} />
       ) : url ? (
-        <AsyncImagePreview visual plain src={url} alt={name} imageStyle={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+        <AsyncImagePreview visual plain src={url} alt={name} timeoutMs={null} imageStyle={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
       ) : null}
 
       {batchMode ? (

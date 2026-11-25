@@ -1,3 +1,5 @@
+/** 2026-11-24：候选与兼容媒体展示统一限制最多一个定稿。 */
+import { applyStoryboardFinalization, findFinalizedCandidate } from '../../utils/StoryboardFinalization';
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { normalizeImageUrl } from '../../utils/imageUrl';
@@ -97,9 +99,10 @@ export default function StoryboardShotMediaColumn({ candidates = [], image, vide
   const hoverBoundary = useHoverPreviewBoundary(() => setPreview(null));
   const pendingMedia = candidates.filter((item) => item?.pending);
   const candidateMedia = candidates.filter((item) => !item?.pending);
-  const media = candidateMedia.length > 0
+  const rawMedia = candidateMedia.length > 0
     ? candidateMedia
     : [image, video].filter(Boolean).map((item) => ({ ...item, media_type: item.type?.startsWith('video') ? 'video' : 'image', is_finalized: true }));
+  const media = applyStoryboardFinalization(rawMedia, findFinalizedCandidate(rawMedia));
   const hasPendingMedia = pendingMedia.length > 0 || (generating && media.length === 0);
 
   function handleFile(event) {

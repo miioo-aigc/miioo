@@ -1,3 +1,4 @@
+import ListLoading from '../feedback/ListLoading';
 import { useEffect, useState } from 'react';
 import { Select, Button } from '../ui';
 import DotsLoading from '../DotsLoading';
@@ -29,7 +30,7 @@ function CanvasPickerContents({ collection, selected, onToggle, onAssetsLoaded, 
         isSelectionDisabled={item => isDisabled(toCanvasPickerAsset(item))}
         onOpen={item => library.navigate(item.id)}
         onSelect={key => { const item = items.find(item => canvasLibraryItemKey(item) === key); if (item) onToggle(toCanvasPickerAsset(item)); }} />
-      {library.loading && <p role="status" className="text-[14px] text-text-secondary">正在加载画布资产…</p>}
+      {library.loading && <ListLoading more={library.items.length > 0} />}
       {!library.loading && !items.length && <p className="text-[14px] text-text-secondary">暂无可选素材</p>}
       {library.cursor && <Button variant="link" disabled={library.loading} onClick={library.loadMore}>加载更多</Button>}
     </>}

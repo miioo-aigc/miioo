@@ -1,20 +1,21 @@
 /**
+ * 2026-11-23 剪辑独立保存服务器确认的分集列表，避免剧本结构恢复覆盖或阻止进度确认。
  * 2026-11-03 剪辑只依赖当前项目分集读取成功，其他请求错误不再锁住入口；页面保留请求编排。
- * 当前任务定位：项目入口 L268；项目详情读取 L591；导航解锁聚合 L1119；分集剪辑推进 L1127。
+ * 当前任务定位：项目入口 L270；项目详情读取 L595；导航解锁聚合 L1126；分集剪辑推进 L1134。
  * @file Home.jsx
- *   当前恢复/认证入口：L919（2026-10-30）。
+ *   当前恢复/认证入口：L920（2026-10-30）。
  *   2026-10-30 登录启动复用当前凭证，取消开页时两次主动刷新；过期由请求层处理。
- *   2026-10-28 主体页账号接线：SubjectPage L2070，传入当前登录账号，按项目及账号重建生成会话。
+ *   2026-10-28 主体页账号接线：SubjectPage L2071，传入当前登录账号，按项目及账号重建生成会话。
  *   2026-10-26 微信回调：内嵌窗口仅发送会话通知；顶层登录/绑定显式编排，保留页面认证副作用。
- * @structure-update：2026-10-21 正式项目入口由 UseCanvasProjects 编排（L302）；账号变化同步重置创作 Store（L401），认证与恢复编排仍保留首页。
- * @structure-index：2026-10-21 readProjects L318；详情读取 L575；主体抽取 L1227；智能分镜 L1493；重新分镜 L1722；恢复 L1741。
+ * @structure-update：2026-10-21 正式项目入口由 UseCanvasProjects 编排（L303）；账号变化同步重置创作 Store（L402），认证与恢复编排仍保留首页。
+ * @structure-index：2026-10-21 readProjects L319；详情读取 L576；主体抽取 L1228；智能分镜 L1494；重新分镜 L1723；恢复 L1742。
  *   2026-10-19：缓存无分页元信息，仅作为刷新信号；解锁探测绕过缓存，页面保留认证、缓存与请求编排，不因规模移动副作用。
  *   2026-10-12：登录用户确认后恢复已受理的视频编辑任务；保留认证与恢复的页面编排边界。
- *   2026-10-13：公告提醒 L2185 主动查看全部进入消息中心系统页签；按用户隔离已读状态。
+ *   2026-10-13：公告提醒 L2186 主动查看全部进入消息中心系统页签；按用户隔离已读状态。
  *   2026-10-14：画布内部切换路由；仅增加导航接线，认证、缓存和任务恢复仍保留页面编排。
- *   2026-10-14：项目保存队列 L267；按项目隔离保存回写，页面继续保留请求编排。
+ *   2026-10-14：项目保存队列 L268；按项目隔离保存回写，页面继续保留请求编排。
  * ─── 全局常量 & 配置 ───────────────────────────────────────────────
- *   页面业务模块懒加载                                          L146–L152
+ *   页面业务模块懒加载                                          L147–L153
  *   NAV_ITEMS / BOTTOM_NAV_ITEMS                                  components/home/HomeNavigationConfig.jsx
  *   STEP_TABS / WorkflowStepTabs                                components/home/WorkflowStepTabs.jsx
  *   BG_VIDEOS                                                   components/home/HomeNavigationConfig.jsx
@@ -32,19 +33,19 @@
  *
  * ─── 主页面入口 ─────────────────────────────────────────────────
  *   2026-10-09 画布项目菜单返回自由画布列表，保留品牌图标返回首页；仅新增导航接线
- *   export default function Home()                               L258
- *     ├─ [懒加载] 页面业务模块按需加载                             L146–L152
- *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L259–L441
- *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L442 / L499 / L510
- *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L575 / L1137 / L1161
- *     │           handleExtractSubjects / handleGenerateStoryboards        L1227 / L1493
+ *   export default function Home()                               L259
+ *     ├─ [懒加载] 页面业务模块按需加载                             L147–L153
+ *     ├─ [状态] 页面导航、模态开关、登录/API 状态、项目及工作流数据   L260–L442
+ *     ├─ [函数] showToast / handleVideoEnded / handleLogout          L443 / L500 / L511
+ *     │           loadProjectDetails / handleUnlockStep / loadMoreSubjects L576 / L1138 / L1162
+ *     │           handleExtractSubjects / handleGenerateStoryboards        L1228 / L1494
  *     │           handleScriptFinalized / handleNavChange / handleBottomNavChange / handleProjectCreated
- *                                                               L1789 / L1796 / L1834 / L1850
- *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L536 / L550 / L557 / L567
- *     │           微信回调与鉴权初始化                                   L873 / L937
- *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L1003 / L1016 / L1053 / L1480
- *     ├─ [底部导航配置] bottomNavItems                             L1818
- *     └─ [渲染] 页面组合、画布与剪辑导航、Suspense                  L1893
+ *                                                               L1790 / L1797 / L1835 / L1851
+ *     ├─ [副作用] 项目 ID / 步骤 / 导航 / 解锁状态持久化                 L537 / L551 / L558 / L568
+ *     │           微信回调与鉴权初始化                                   L874 / L938
+ *     │           项目列表、主体缓存、强制登出订阅及待处理提取恢复         L1004 / L1017 / L1054 / L1481
+ *     ├─ [底部导航配置] bottomNavItems                             L1819
+ *     └─ [渲染] 页面组合、画布与剪辑导航、Suspense                  L1894
  *
  * ─── 更新记录：2026-10-20 存储损坏不视为空；保存、清理异常统一捕获，失败重试纳入统一链 ───
  *   2026-09-22  新增独立画布列表入口；超长入口保留认证、历史与任务恢复集中编排，本次只接路由，验证导航及刷新，不迁移生成流程
@@ -90,6 +91,7 @@
  *   2026-10-12  同步 V1.5 最新画布导航，保留剪辑入口并校正合并后的索引
  *   2026-10-15  合并远程剪辑模块，保留本地主体请求保护、公告及画布接线；校正结构索引
  *   2026-10-22  剧本进度按显示状态跳转，剪辑中进入草稿列表并携带分集；保持页面业务编排边界。
+ *   2026-11-23  列表加载统一青色圆点，首屏居中、追加置底。
  */
 
 import { apiStartEpisodeEditing } from '../api/EpisodeEditing';
@@ -279,10 +281,12 @@ export default function Home({ onGoToAdmin }) {
   const episodeEditPending = useRef(new Set());
   const [projectRead, setProjectRead] = useState(null);
   const [episodesReadProjectId, setEpisodesReadProjectId] = useState(null);
+  const [confirmedEditingEpisodes, setConfirmedEditingEpisodes] = useState([]);
   const cancelProjectRead = useCallback(() => {
     projectDetailVersion.current++;
     projectDetailOwner.current = null;
     setEpisodesReadProjectId(null);
+    setConfirmedEditingEpisodes([]);
     setProjectRead(null);
     setIsLoadingProject(false);
   }, []);
@@ -601,6 +605,7 @@ export default function Home({ onGoToAdmin }) {
     projectDetailOwner.current = { id: projectId, session };
     setProjectRead({ projectId, requestedStep, loading: true, error: '' });
     setEpisodesReadProjectId(null);
+    setConfirmedEditingEpisodes([]);
     setIsLoadingProject(!sameProject);
     if (!sameProject) setSubjectPageMeta({
       chars: { nextOffset: null, hasMore: false, loading: true, rawList: [], error: false },
@@ -738,9 +743,11 @@ export default function Home({ onGoToAdmin }) {
       setScriptPhase(scriptContent ? 'view' : 'initial');
       setScriptHasStarted(!!scriptContent);
       }
-      if (episodesData && scriptUnchanged) {
-        setScriptEpisodes(episodesData);
+      if (episodesData) {
+        // 剧本结构恢复或编辑不能阻止服务器进度确认，也不能覆盖剪辑访问依据。
+        setConfirmedEditingEpisodes(episodesData);
         setEpisodesReadProjectId(projectId);
+        if (scriptUnchanged) setScriptEpisodes(episodesData);
       }
 
       // 某类主体加载失败时：不覆盖已有卡片（避免误清空），仅在 meta 上标记 error 供 UI 提示重试。
@@ -1115,7 +1122,7 @@ export default function Home({ onGoToAdmin }) {
     });
   };
 
-  const editingEpisodes = episodesReadProjectId && episodesReadProjectId === activeProject?.id ? scriptEpisodes : [];
+  const editingEpisodes = episodesReadProjectId && episodesReadProjectId === activeProject?.id ? confirmedEditingEpisodes : [];
   const effectiveUnlockedSteps = resolveEpisodeSteps(unlockedSteps, editingEpisodes);
   const displayEpisodeStatuses = useMemo(() => buildEpisodeStatusMap({
     episode_progress: scriptEpisodes.map((episode, index) => ({
@@ -1137,6 +1144,10 @@ export default function Home({ onGoToAdmin }) {
       const updated = await apiStartEpisodeEditing(projectId, episodeId);
       if (!isCurrent()) return;
       setScriptEpisodes(previous => previous.map(episode => String(episode.id) === String(updated.id) ? { ...episode, ...updated } : episode));
+      setConfirmedEditingEpisodes(previous => previous.some(episode => String(episode.id) === String(updated.id))
+        ? previous.map(episode => String(episode.id) === String(updated.id) ? { ...episode, ...updated } : episode)
+        : [...previous, updated]);
+      setEpisodesReadProjectId(projectId);
       const { draft, skipped } = await prepareOnlineEditing(projectId, episodeId);
       if (!isCurrent()) return;
       const query = new URLSearchParams({ episode_id: episodeId });
@@ -1981,7 +1992,7 @@ export default function Home({ onGoToAdmin }) {
               />
             )}
             {activeKey === 'project' && projectRead && (
-              <RemoteReadStatus loading={projectRead.loading} error={projectRead.error}
+              <RemoteReadStatus loading={projectRead.loading} centered error={projectRead.error}
                 onRetry={() => loadProjectDetails(projectRead.projectId, projectRead.requestedStep)} />
             )}
             {activeKey === 'project' && isLoadingProject && !projectRead && (

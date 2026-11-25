@@ -1,8 +1,10 @@
+import ListLoading from './ListLoading';
 import { Button } from '../ui';
 
 // 请求归属和重试策略由调用方负责，此组件只呈现读取反馈。
-export default function RemoteReadStatus({ loading, error, onRetry }) {
+export default function RemoteReadStatus({ loading, error, onRetry, centered = false }) {
   if (!loading && !error) return null;
+  if (loading && centered) return <ListLoading />;
   return (
     <div role={loading ? 'status' : 'alert'} className="flex shrink-0 flex-wrap items-center gap-[8px] p-[16px] text-text-secondary text-font-size-14">
       <span>{loading ? '正在读取，请稍候…' : error}</span>

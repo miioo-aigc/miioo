@@ -1,3 +1,4 @@
+import ListLoading from '../feedback/ListLoading';
 import { useRef, useState } from 'react';
 import { Plus, Upload } from 'lucide-react';
 import { readSubtitleFile } from '../../utils/SubtitleImport';
@@ -40,6 +41,6 @@ export default function SubtitleLibraryPanel() {
       }} />
     </div>
     {message && <p role="status" className="text-font-size-12 text-text-secondary whitespace-pre-wrap">{message}</p>}
-    {busy && <span className="text-text-hint text-font-size-12">正在读取字幕…</span>}
+    {busy && <ListLoading />}
   </section>;
 }

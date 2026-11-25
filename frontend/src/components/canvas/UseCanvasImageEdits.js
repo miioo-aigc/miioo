@@ -77,22 +77,43 @@ export function useCanvasImageEdits({ nodes, setNodes, canvasId, cancelPendingCl
     };
     cancelPendingClicks();
     const card = canvasImageEditCard(source.data.asset);
+    let submissionOperation = null;
+    const beginSubmission = () => {
+      checkContext();
+      const operation = crypto.randomUUID();
+      let started = false;
+      const accepted = setNodes((current) => {
+        const next = beginCanvasMediaEdit(current, source, operation);
+        started = next !== current;
+        return next;
+      }, { origin: 'system', record: false });
+      if (!started || accepted === false) throw new Error('源节点受到任务保护，请重新打开编辑');
+      submissionOperation = operation;
+      return () => {
+        if (submissionOperation === operation) submissionOperation = null;
+        if (isCurrentAccount() && currentCanvas.current === canvasId) {
+          setNodes((current) => finishCanvasMediaEdit(current, nodeId, operation), { origin: 'system', record: false });
+        }
+      };
+    };
     // 继续使用源资产的真实创作归属，不把画布编号伪装成创作会话。
     const onSave = Object.assign(() => {}, {
       scope,
       canvasId,
       destinationScope: imageEditBusinessScope(scope),
+      beginSubmission,
       pending: async (pending) => {
         checkContext();
         const live = latestNodes.current.find((node) => node.id === nodeId);
-        if (currentCanvas.current !== canvasId || !live || isCanvasOutputProtected(live)
+        const ownsSubmission = Boolean(submissionOperation) && live?.data.canvasEditOperation === submissionOperation;
+        if (currentCanvas.current !== canvasId || !live || (!ownsSubmission && isCanvasOutputProtected(live))
           || getCanvasPermanentAssetId(live.data.asset) !== getCanvasPermanentAssetId(source.data.asset)
           || live.data.nodeResults?.currentResultId !== source.data.nodeResults?.currentResultId) {
           throw new Error('源节点已删除、结果已变化或受到任务保护，请重新打开编辑');
         }
-        const operation = crypto.randomUUID();
-        let started = false;
-        setNodes((current) => {
+        const operation = submissionOperation || crypto.randomUUID();
+        let started = Boolean(ownsSubmission);
+        if (!ownsSubmission) setNodes((current) => {
           const next = beginCanvasMediaEdit(current, source, operation);
           started = next !== current;
           return next;

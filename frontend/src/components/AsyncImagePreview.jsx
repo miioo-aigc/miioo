@@ -10,16 +10,16 @@ export default function AsyncImagePreview(props) {
   return <ImagePreviewSession key={[props.src, props.fallbackSrc].join('|')} {...props} />;
 }
 
-function ImagePreviewSession({ src, alt = '', style, imageStyle, imageClassName, fallbackSrc, decorative = false, onMouseDown, resolveSrc, plain = false, visual = false, retryOnError = true, automaticRecovery = false }) {
+function ImagePreviewSession({ src, alt = '', style, imageStyle, imageClassName, fallbackSrc, decorative = false, onMouseDown, resolveSrc, plain = false, visual = false, retryOnError = true, automaticRecovery = false, timeoutMs }) {
   const [resolution, setResolution] = useState({ status: src ? 'loading' : 'error' });
   const loader = useRef(null);
   useEffect(() => {
     if (!src) return undefined;
-    const session = createImagePreviewLoad({ src, fallbackSrc, resolveSrc, onChange: setResolution, automaticRecovery });
+    const session = createImagePreviewLoad({ src, fallbackSrc, resolveSrc, onChange: setResolution, automaticRecovery, timeoutMs });
     loader.current = session;
     queueMicrotask(session.start);
     return () => session.dispose();
-  }, [src, fallbackSrc, resolveSrc, automaticRecovery]);
+  }, [src, fallbackSrc, resolveSrc, automaticRecovery, timeoutMs]);
   const { status, resolvedSrc, message } = resolution;
   return (
     <div onMouseDown={onMouseDown} style={{

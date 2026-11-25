@@ -1,3 +1,4 @@
+import ListLoading from './feedback/ListLoading';
 import { useState, useEffect, useRef } from 'react';
 import { apiMarkAnnouncementRead, apiMarkNotificationRead } from '../api/user';
 import useNotificationFeed from '../hooks/useNotificationFeed';
@@ -285,7 +286,7 @@ export default function NotificationCenterModal({ open, onClose, showToast, user
           <div key={activeTab} className="flex flex-col gap-[8px] py-[8px] px-[24px] bg-surface-modal overflow-y-auto flex-1 min-h-0">
             {loading && notifications.length === 0 ? (
               <div className="flex items-center justify-center flex-1">
-                <span className="text-[#FFFFFF99] text-sm">加载中...</span>
+                <ListLoading />
               </div>
             ) : loadError && notifications.length === 0 ? (
               <button type="button" onClick={loadNotifications}>加载失败，点击重试</button>
@@ -300,7 +301,7 @@ export default function NotificationCenterModal({ open, onClose, showToast, user
                 />
               ))
             )}
-            {notifications.length > 0 && loading && <div role="status" className="shrink-0 py-[8px] text-center text-[12px] text-text-hint">加载中...</div>}
+            {notifications.length > 0 && loading && <ListLoading more />}
             {notifications.length > 0 && loadError && <button type="button" className="shrink-0 py-[8px] text-[12px] text-text-secondary" onClick={loadNotifications}>加载失败，点击重试</button>}
             {hasMore && <div ref={setSentinel} className="h-[1px] shrink-0" aria-hidden="true" />}
           </div>

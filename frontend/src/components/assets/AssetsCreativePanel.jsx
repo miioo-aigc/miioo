@@ -1,6 +1,6 @@
 /**
  * @file AssetsCreativePanel.jsx
- * @structure-index：2026-10-26 账号入口 L56、访问隔离 L61、历史分页 L274、读取反馈 L656。
+ * @structure-index：2026-10-26 账号入口 L58、访问隔离 L63、历史分页 L276、读取反馈 L658。
  *   更新：按账号重建局部状态；分页、音频详情及收藏回执校验账号与认证代际。
  *
  * ─── 组件职责 ───────────────────────────────────────
@@ -17,8 +17,10 @@
  *   2026-10-12  订阅视频编辑任务占位，复用视频加载卡；完成后仍写入本地历史
  *   2026-10-08  视频编辑完成事件按产物类型写入本地列表，不替换原资产
  *   2026-09-18  下载入口接入全局下载 Toast/进度反馈
+ *   2026-11-23  列表加载统一青色圆点，首屏居中、追加置底。
  */
 
+import ListLoading from '../feedback/ListLoading';
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { getAuthSessionGeneration } from '../../api/request';
 import { createCreationHistoryVisit } from '../../utils/CreationHistoryScope';
@@ -654,7 +656,8 @@ function AccountCreativePanel({ isLoggedIn, ownerId }) {
         alignItems: days.length === 0 ? 'center' : undefined,
         justifyContent: days.length === 0 ? 'center' : undefined,
       }}>
-        <RemoteReadStatus loading={isLoggedIn && (!activeHistoryMeta?.initialized || activeHistoryMeta.loading)} error={activeHistoryMeta?.error} onRetry={() => loadHistoryPage(activeType)} />
+        {isLoggedIn && days.length === 0 && (!activeHistoryMeta?.initialized || activeHistoryMeta.loading) && <ListLoading />}
+        <RemoteReadStatus error={activeHistoryMeta?.loading ? null : activeHistoryMeta?.error} onRetry={() => loadHistoryPage(activeType)} />
         {days.length === 0 ? (
           !activeHistoryMeta?.error && !activeHistoryMeta?.loading && (!isLoggedIn || activeHistoryMeta?.initialized) && <EmptyCreativeAssets type={activeType} />
         ) : days.map((day) => (
@@ -709,7 +712,7 @@ function AccountCreativePanel({ isLoggedIn, ownerId }) {
         <div ref={loadMoreSentinelRef} style={{ width: '100%', height: '1px', flexShrink: 0 }} />
         {activeHistoryMeta?.loading && generations.length > 0 && (
           <div role="status" aria-label="正在加载更多创作资产" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '32px' }}>
-            <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #FFFFFF1A', borderTopColor: '#2DC3E1', animation: 'spin 1s linear infinite' }} />
+            <ListLoading more />
           </div>
         )}
       </div>

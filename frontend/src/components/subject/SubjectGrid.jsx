@@ -8,7 +8,9 @@
  *
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-15  从 SubjectPage 抽离角色/场景/道具网格渲染区
+ *   2026-11-23  列表加载统一青色圆点，首屏居中、追加置底。
  */
+import ListLoading from '../feedback/ListLoading';
 import { Button } from '../ui';
 import { AddSubjectCard, SubjectCard } from './SubjectCard';
 import { getCurrentSubjectCertificationStatus } from './SubjectCertificationAdapter';
@@ -46,6 +48,7 @@ export default function SubjectGrid({
   emptyIcons,
   sentinelRef,
   hasMore = false,
+  loadingMore = false,
   certificationMode = false,
   certificationBySubject = {},
   certificationGroups = [],
@@ -106,9 +109,9 @@ export default function SubjectGrid({
       })}
       <AddSubjectCard onClick={onAdd} />
       <div ref={sentinelRef} style={{ gridColumn: '1 / -1', height: '1px' }} />
-      {hasMore && (
+      {hasMore && loadingMore && (
         <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
-          <span style={{ fontSize: '13px', color: '#FFFFFF40', fontFamily: "'AlibabaPuHuiTi_2_55_Regular',system-ui,sans-serif" }}>加载中…</span>
+          <ListLoading more />
         </div>
       )}
     </>

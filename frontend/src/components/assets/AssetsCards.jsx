@@ -185,9 +185,9 @@ export function ProjectAssetCard({ name, desc, url, starred = false, selected, b
           }}
         >
           {isVideo && asset.videoUrl ? (
-            <RecoverableVideoPreview src={asset.videoUrl} hovered={hov} />
+            <RecoverableVideoPreview src={asset.videoUrl} hovered={hov} timeoutMs={null} />
           ) : url ? (
-            <AsyncImagePreview visual plain src={url} alt={name} imageStyle={{ objectFit: 'cover' }} />
+            <AsyncImagePreview visual plain src={url} alt={name} timeoutMs={null} imageStyle={{ objectFit: 'cover' }} />
           ) : (
             <svg width="40" height="40" viewBox="0 0 40 40" fill="none" style={{ flexShrink: 0 }}>
               <circle cx="20" cy="20" r="20" fill="#FFFFFF0A" />

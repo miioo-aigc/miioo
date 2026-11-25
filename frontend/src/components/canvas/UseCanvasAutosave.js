@@ -54,7 +54,7 @@ export function useCanvasAutosave({ enabled, nodes, edges, viewport, persist, pa
       try { await instance.flush(); }
       catch (error) { if (controller.current === instance) onSaveError?.(error); return; }
       if (instance.dirty()) {
-        showGlobalToast('warning', '画布仍有未保存内容，请等待上传或生成完成后重试');
+        showGlobalToast('warning', '画布仍有未保存内容，请等待上传或生成完成；素材缺少有效身份时请重新导入或移除');
         return;
       }
     }

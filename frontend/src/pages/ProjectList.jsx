@@ -2,13 +2,13 @@
  * @file ProjectList.jsx
  * @structure-index：2026-11-03
  * 页面职责：项目筛选、卡片操作与弹窗编排；新建入口复用 CreateCard。
- * FONT L34
- * 图标组件 L39
- * MoreMenu L86
- * RenameModal L103
- * NewProjectCard L248
- * ProjectCard L252
- * ProjectList L382
+ * FONT L36
+ * 图标组件 L41
+ * MoreMenu L88
+ * RenameModal L105
+ * NewProjectCard L250
+ * ProjectCard L254
+ * ProjectList L384
  * ─── 更新记录 ───────────────────────────────────────────────────────
  *   2026-07-22  项目删除二次确认改用标准 ConfirmDialog
  *   2026-07-22  移除更多操作下拉菜单选项的黑色描边
@@ -21,7 +21,9 @@
 
  *   2026-10-27 新建项目与新建草稿共用 CreateCard 视觉。
  *   2026-11-02 项目和画布列表复用素材库网格，卡片宽度统一为 216–270px。
+ *   2026-11-23  列表加载统一青色圆点，首屏居中、追加置底。
  */
+import ListLoading from '../components/feedback/ListLoading';
 import { useState, useRef, useEffect } from 'react';
 import defaultCover from '../assets/project-default-cover.png';
 import { formatRelativeTime } from '../utils/formatTime';
@@ -405,9 +407,10 @@ export default function ProjectList({ title = '所有项目', projects = [], loa
           background: 'rgb(22, 22, 22)',
           border: '1px solid rgba(255, 255, 255, 0.08)',
           minHeight: '100%',
+          display: 'flex', flexDirection: 'column',
         }}
       >
-        <RemoteReadStatus loading={loading} error={error} onRetry={onRetry} />
+        <RemoteReadStatus error={loading ? null : error} onRetry={onRetry} />
         {/* Header row */}
         <div
           style={{
@@ -459,7 +462,7 @@ export default function ProjectList({ title = '所有项目', projects = [], loa
         </div>
 
         {/* Card grid */}
-        <AssetFolderGrid>
+        {loading ? <ListLoading /> : <AssetFolderGrid>
           <NewProjectCard onClick={onNewProject} />
           {filtered.map((project) => (
             <ProjectCard
@@ -471,7 +474,7 @@ export default function ProjectList({ title = '所有项目', projects = [], loa
               onOpen={(p) => onOpenProject?.(p)}
             />
           ))}
-        </AssetFolderGrid>
+        </AssetFolderGrid>}
       </div>
 
       {renameTarget && (

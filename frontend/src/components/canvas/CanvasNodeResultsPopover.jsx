@@ -1,4 +1,5 @@
 /** 统一结果浮层：结果、锁定和分页由宿主控制，仅持有媒体预览和定位状态。 */
+import ListLoading from '../feedback/ListLoading';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RefreshCw } from 'lucide-react';
@@ -116,10 +117,10 @@ export default function CanvasNodeResultsPopover({
         <h2 id={titleId}>历史版本</h2>
         <ModalCloseButton onClick={onClose} />
       </header>
-      <div className="canvas-results-popover__scroll" aria-busy={loading || loadingMore}>
+      <div className="canvas-results-popover__scroll" style={{ flex: 1 }} aria-busy={loading || loadingMore}>
         {lockReason && <p id={lockId} role="status">{lockReason}</p>}
         {selectionError && <p role="alert" className="canvas-results-popover__error">{selectionError}</p>}
-        {loading ? <p role="status">结果加载中…</p> : error ? <div role="alert">
+        {loading ? <ListLoading /> : error ? <div role="alert">
           <p className="canvas-results-popover__error">{error}</p>
           {onRetry && <Button size="small" variant="secondary" icon={<RefreshCw size={14} />} onClick={onRetry}>重试加载</Button>}
         </div> : <>
@@ -132,7 +133,7 @@ export default function CanvasNodeResultsPopover({
                 disabled={switchingDisabled} lockReason={lockReason} onSelect={onSelect} onRetryMedia={onRetryMedia} />)}
           </div>}
           {loadMoreError && <p role="alert" className="canvas-results-popover__error">{loadMoreError}</p>}
-          {loadingMore && <p role="status">正在加载更多结果…</p>}
+          {loadingMore && <ListLoading more />}
           {(hasMore || loadMoreError) && <Button size="small" variant="secondary" disabled={loadingMore || !onLoadMore}
             onClick={onLoadMore} icon={loadMoreError ? <RefreshCw size={14} /> : undefined}>
             {loadMoreError ? '重试加载更多' : '加载更多结果'}

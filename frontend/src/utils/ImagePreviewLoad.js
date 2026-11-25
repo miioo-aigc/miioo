@@ -87,7 +87,10 @@ export function createImagePreviewLoad({ src, fallbackSrc, resolveSrc, onChange,
       }
     }
     publish();
-    timer = setTimeout(() => finish('error', '图片加载超时'), timeoutMs);
+    // timeoutMs 为空时把判错权交给图片请求自身；适用于允许弱网长时间加载的场景。
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      timer = setTimeout(() => finish('error', '图片加载超时'), timeoutMs);
+    }
     Promise.resolve().then(() => {
       if (!active()) return null;
       return resolveSrc ? resolveSrc(source, { signal: controller.signal }) : source;

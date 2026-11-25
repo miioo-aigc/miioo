@@ -17,7 +17,8 @@
  *
  *   2026-11-04：双名称分别编辑，画布管理迁入顶部，底部移除列表入口。
  * ─── 页面编排 ─────────────────────────────────────────────────────
- *   CanvasPage L195；grouping L304；referenceGraph L332；handleNodesChange L431；addNode L504；上传 L787；React Flow L1122。
+ *   CanvasPage L196；grouping L305；referenceGraph L333；handleNodesChange L433；addNode L506；上传 L789；React Flow L1169。
+ *   2026-11-24：保存接受虚拟认证素材身份；恢复失败保留节点并提示。页面保持既有会话编排，本轮不拆分。
  *   2026-11-06：媒体替换独立单素材分支，上传与素材库均复核目标会话/节点，普通导入和参考流程保持原语义。
  *   2026-11-06：统一结果切换、节点级任务操作保护、文本结果历史、直接上游更新标识及复制/导入历史预览恢复。
  *   2026-10-27：保存失败复用带下载操作的提示，点击时导出最新草稿。
@@ -363,6 +364,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
           );
           if (!isCurrent()) return;
           setError('');
+          if (restoredNodes.some(node => node.data.assetUnavailable)) showGlobalToast('warning', '部分虚拟认证素材暂不可用，已保留节点，请刷新重试或重新从资产库导入');
           setProject(projectDetails);
           setCanvas(documentResult.value);
           restorePreviewRef.current.clear();
@@ -679,7 +681,7 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
       && !(allowTextTask && node.type === "text" && node.data.textSubmission))) return false;
     if (snapshot.nodes.some((node) => {
       const asset = node.data?.asset;
-      return asset && (!asset.asset_id || asset.uploadStatus === 'uploading' || asset.uploadStatus === 'error');
+      return asset && ((!asset.asset_id && !asset.liveMaterialAssetId) || asset.uploadStatus === 'uploading' || asset.uploadStatus === 'error');
     })) return false;
     const owner = saveSessionRef.current;
     const session = getAuthSessionGeneration();

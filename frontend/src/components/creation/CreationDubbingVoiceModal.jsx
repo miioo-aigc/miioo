@@ -43,7 +43,9 @@
  *   2026-09-04  支持通过 zIndex 覆盖弹窗层级，供台词分配弹窗中的二级音色弹窗置于上层；
  *               截断 Portal 事件冒泡，避免点击音色卡片误关闭外层台词弹窗
  *   2026-09-01  选择音色弹窗每次打开默认展开筛选条件，仍支持手动收起
+ *   2026-11-23  列表加载统一青色圆点，首屏居中、追加置底。
  */
+import ListLoading from '../feedback/ListLoading';
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { apiAddVoiceFavorite, apiGetOfficialVoices, apiRemoveVoiceFavorite } from "../../api/voices";
@@ -319,7 +321,7 @@ export default function DubbingVoiceModal({ open, onClose, onConfirm, showToast,
           </div>
           {filtersVisible && <DubbingVoiceFilters filters={voiceFilters} options={officialFilterOptions} onChange={handleFilterChange} />}
           <div style={{ minHeight: 0, flex: 1 }}>
-            {officialLoading && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}><span style={{ color: "#FFFFFF66", fontFamily: FONT, fontSize: "14px", lineHeight: "18px", textAlign: "center" }}>官方音色加载中</span></div>}
+            {officialLoading && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}><ListLoading /></div>}
             {!officialLoading && officialError && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}><span style={{ color: "#FFFFFF66", fontFamily: FONT, fontSize: "14px", lineHeight: "18px", textAlign: "center" }}>{officialError}</span></div>}
             {!officialLoading && !officialError && visibleVoices.length === 0 && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}><VoiceListEmptyState message={searchValue.trim() ? "没有匹配的音色" : isFavoritesTab ? "暂无收藏音色" : "暂无音色"} /></div>}
             {!officialLoading && !officialError && visibleVoices.length > 0 && <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", alignContent: "start", gap: "12px", minHeight: 0, height: "100%", overflowY: "auto", overflowX: "hidden", paddingRight: "4px" }}>{visibleVoices.map((voice) => <DubbingVoiceCard key={voice.id} voice={voice} selected={selectedVoiceId === voice.id} favorited={officialFavoriteIds.has(voice.id)} favoriteLoading={favoriteUpdatingId === voice.id} onSelect={handleVoiceSelect} onFavoriteToggle={handleFavoriteToggle} />)}</div>}

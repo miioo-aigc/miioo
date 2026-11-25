@@ -1,3 +1,4 @@
+import ListLoading from '../feedback/ListLoading';
 import {
   PaginationControls,
   Toggle,
@@ -27,7 +28,7 @@ export default function AdminModelVisibilityTable({
   if (!items.length) {
     return (
       <div className="rounded-medium border border-dashed border-stroke-normal bg-neutral-200 px-[16px] py-[24px] text-center text-font-size-14 text-text-secondary" style={{ fontFamily: FONT_REGULAR }}>
-        {loading ? '模型开放列表加载中...' : '当前没有匹配到模型'}
+        {loading ? <ListLoading /> : '当前没有匹配到模型'}
       </div>
     );
   }

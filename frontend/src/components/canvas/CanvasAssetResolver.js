@@ -21,7 +21,28 @@ export async function resolveCanvasDocumentAssets(canvasId, nodes, resolve, { si
     const state = readCanvasResultDocument(node.type, node.data);
     return state === undefined ? null : collectCanvasResultAssetIds(state);
   });
-  const ids = [...new Set(nodes.flatMap((node, index) => histories[index] ?? [node.data?.asset?.asset_id]).filter(Boolean))];
+  const ids = [...new Set(nodes.flatMap((node, index) => node.data?.asset?.liveMaterialAssetId ? [] : histories[index] ?? [node.data?.asset?.asset_id]).filter(Boolean))];
+  const liveIds = [...new Set(nodes.map(node => node.data?.asset?.liveMaterialAssetId).filter(Boolean))];
+  const liveViews = new Map();
+  for (let offset = 0; offset < liveIds.length; offset += 180) {
+    const batch = liveIds.slice(offset, offset + 180);
+    try {
+      const response = await resolve(canvasId, [], { signal, liveMaterialAssetIds: batch });
+      if (!Array.isArray(response?.live_material_items)) throw new Error('虚拟认证素材解析响应缺少素材列表');
+      for (const id of batch) {
+        const view = response.live_material_items.find(item => item.live_material_asset_id === id);
+        const url = view?.availability === 'ready' ? mediaUrl(view.preview_url, normalizeMediaUrl) : undefined;
+        const ready = Boolean(url && ['image', 'video'].includes(view.media_type));
+        liveViews.set(id, { liveMaterialAssetId: id, availability: ready ? 'ready' : ['missing', 'forbidden', 'unavailable'].includes(view?.availability) ? view.availability : 'unavailable',
+          ...(ready ? { asset_type: view.media_type, name: view.title, url, previewUrl: url,
+            originalUrl: mediaUrl(view.original_url, normalizeMediaUrl),
+            thumbnailUrl: mediaUrl(view.thumbnail_url, normalizeMediaUrl), posterUrl: mediaUrl(view.poster_url, normalizeMediaUrl) } : {}) });
+      }
+    } catch (error) {
+      if (signal?.aborted || error?.name === 'AbortError') throw error;
+      for (const id of batch) liveViews.set(id, { liveMaterialAssetId: id, availability: 'unavailable', resolveError: true });
+    }
+  }
   const views = new Map();
   for (let offset = 0; offset < ids.length; offset += 200) {
     const batch = ids.slice(offset, offset + 200);
@@ -42,6 +63,13 @@ export async function resolveCanvasDocumentAssets(canvasId, nodes, resolve, { si
     }
   }
   return nodes.map((node, index) => {
+    const liveId = node.data?.asset?.liveMaterialAssetId;
+    if (liveId) {
+      const view = liveViews.get(liveId);
+      const ready = view?.availability === 'ready' && view.asset_type === node.type;
+      return { ...node, data: { ...node.data, assetUnavailable: !ready, assetResolveError: Boolean(view?.resolveError),
+        asset: ready ? { ...view, source: node.data.asset.source } : { liveMaterialAssetId: liveId, asset_type: node.type, availability: view?.availability === 'ready' ? 'unavailable' : view?.availability } } };
+    }
     const view = views.get(node.data?.asset?.asset_id);
     if (histories[index] && histories[index].some((id) => views.get(id).asset_type !== undefined
       && views.get(id).asset_type !== node.type)) throw new Error('解析素材类型与节点结果类型不一致');

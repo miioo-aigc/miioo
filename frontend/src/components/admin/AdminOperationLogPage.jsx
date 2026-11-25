@@ -1,3 +1,4 @@
+import ListLoading from '../feedback/ListLoading';
 import { useMemo, useState } from 'react';
 import { apiGetAdminOperationLogs } from '../../api/admin';
 import useAdminRemoteList from '../../hooks/useAdminRemoteList';
@@ -29,7 +30,7 @@ export default function AdminOperationLogPage({ refreshSignal = 0 }) {
       onChange={(key, value) => setDraft((prev) => ({ ...prev, [key]: value }))} onSearch={search}
       onReset={() => { setDraft(EMPTY); setFilters(EMPTY); setPage(1); setValidation(''); reload(); }} />
     {(validation || error) && <p role="alert" className="mb-[16px] text-text-danger">{validation || error}</p>}
-    {loading ? <EmptyState message="加载中..." /> : data?.list.length ? <OperationLogTable key={`${page}:${revision}:${refreshSignal}`} items={data.list} /> : !error && <EmptyState message="当前筛选条件下没有操作记录" />}
+    {loading ? <ListLoading style={{ minHeight: 220 }} /> : data?.list.length ? <OperationLogTable key={`${page}:${revision}:${refreshSignal}`} items={data.list} /> : !error && <EmptyState message="当前筛选条件下没有操作记录" />}
     <PaginationControls page={page} pageSize={20} total={data?.total || 0} hasMore={data?.hasMore || false} loading={loading} onPrev={() => setPage(page - 1)} onNext={() => setPage(page + 1)} />
   </SectionShell>;
 }

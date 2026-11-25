@@ -11,6 +11,8 @@ export function migrateLegacyCanvasResults(node, { batchId, resultId } = {}) {
   }
   const data = node.data || {};
   const state = createCanvasNodeResults();
+  // 虚拟素材身份不属于普通资产结果协议；后续生成/编辑只迁移新结果。
+  if (data.asset?.liveMaterialAssetId) return state;
   if (node.type === 'text' && data.content !== undefined && typeof data.content !== 'string') throw new Error('旧文本正文必须是字符串');
   if (node.type === 'text' ? !data.content?.trim() : !data.asset && !data.assetId) return state;
   const result = node.type === 'text'

@@ -1,3 +1,4 @@
+import ListLoading from '../feedback/ListLoading';
 import { LoaderCircle, RefreshCw } from 'lucide-react';
 import {
   ActionButton,
@@ -27,7 +28,7 @@ export default function AdminVoiceLibraryTable({
   if (!items.length) {
     return (
       <div className="rounded-medium border border-dashed border-stroke-normal bg-neutral-200 px-[16px] py-[24px] text-center text-font-size-14 text-text-secondary" style={{ fontFamily: FONT_REGULAR }}>
-        {loading ? '音色库加载中...' : '当前没有匹配到音色'}
+        {loading ? <ListLoading /> : '当前没有匹配到音色'}
       </div>
     );
   }

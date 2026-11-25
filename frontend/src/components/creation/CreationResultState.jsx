@@ -3,19 +3,19 @@
  * @structure-index
  *
  * ─── 状态 ─────────────────────────────────────────────────────
- *   scrollRef / sentinelRef                                      结果列表滚动容器与分页哨兵 L93
- *   autoFillCountRef                                             视口未满时的自动分页次数 L95
- *   prefillVersion / prefillData                                 重新编辑和参考图回填 InputCard 的数据 L96
- *   reeditPendingRef / reeditPending                            详情恢复去重与发送门禁 L98
+ *   scrollRef / sentinelRef                                      结果列表滚动容器与分页哨兵 L95
+ *   autoFillCountRef                                             视口未满时的自动分页次数 L97
+ *   prefillVersion / prefillData                                 重新编辑和参考图回填 InputCard 的数据 L98
+ *   reeditPendingRef / reeditPending                            详情恢复去重与发送门禁 L100
  *
  * ─── 数据流与副作用 ───────────────────────────────────────────
- *   generations → allCards                                      生成记录扁平化与最新优先排序 L102
+ *   generations → allCards                                      生成记录扁平化与最新优先排序 L104
  *   onLoadMore                                                    IntersectionObserver 与视口自动填充
  *   onVideoCardClick / onDownloadCard / onDeleteCard / toggleFavorite 页面业务回调
- *   renderInputCard                                               以渲染回调接入页面内 InputCard，避免反向依赖页面 L175
+ *   renderInputCard                                               以渲染回调接入页面内 InputCard，避免反向依赖页面 L177
  *
  * ─── 组件结构 ─────────────────────────────────────────────────
- *   CreationResultState                                           结果滚动区、结果卡片、加载态和底部输入区 L60
+ *   CreationResultState                                           结果滚动区、结果卡片、加载态和底部输入区 L62
  *   CreationVideoResultCard / CreationImageResultCard             图片与视频结果展示
  *   CreationAudioResultCard                                      配音结果展示（与图片/视频共用 240px 最小列宽、16px 间距、16:9 卡片）
  *
@@ -38,8 +38,10 @@
  *   2026-09-08  多机位复用 onGenerate 创建独立任务，收到任务编号后关闭编辑弹窗
  *   2026-10-08  编辑占位进入既有 generations 数据流，复用最新优先展示
  *   2026-10-10  创作视频详情补齐新生成卡片的真实资产编号，保留历史编号与全局校验
+ *   2026-11-23  列表加载统一青色圆点，首屏居中、追加置底。
  */
 
+import ListLoading from '../feedback/ListLoading';
 import { useEffect, useRef, useState } from 'react';
 import { apiGetCreationVideo, apiGetVideoLastFrame } from '../../api/creation';
 import {
@@ -370,8 +372,7 @@ export default function CreationResultState({
         <div ref={sentinelRef} style={{ height: '1px', flexShrink: 0 }} />
         {(historyLoading && allCards.length > 0) && (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '24px 0', gap: '8px' }}>
-            <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: '#2DC3E1', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
-            <span style={{ fontFamily: FONT, fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>加载中…</span>
+            <ListLoading more />
           </div>
         )}
       </div>
@@ -386,9 +387,7 @@ export default function CreationResultState({
           pointerEvents: 'none',
         }}>
           <DotsLoading size={6} color="#2DC3E1" gap={4} />
-          <span style={{ fontFamily: FONT, fontSize: '12px', lineHeight: '18px', color: '#FFFFFF99' }}>
-            正在获取数据，请稍后
-          </span>
+
         </div>
       )}
 

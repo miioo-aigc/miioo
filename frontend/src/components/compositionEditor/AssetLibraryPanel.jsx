@@ -1,3 +1,4 @@
+import ListLoading from '../feedback/ListLoading';
 import { useMemo, useRef, useState } from 'react';
 import { Tabs, DropdownMenu, DeleteIcon } from '../ui';
 import AssetPickerModal from '../AssetPickerModal';
@@ -163,9 +164,7 @@ export default function AssetLibraryPanel({ albumState, onFetch, episodeNumber, 
           </div>
         )}
         {albumState.loading && (
-          <div className="py-[32px] text-center">
-            <span className="text-text-hint text-font-size-14">素材加载中…</span>
-          </div>
+          <ListLoading style={{ height: '100%' }} />
         )}
 
         {!albumState.loading && albumState.error && (

@@ -21,13 +21,16 @@ export function createMediaPlaybackSession(media, { onChange, network = window, 
   function wait() {
     clearWait();
     publish('loading');
-    timer = setTimeout(() => {
-      if (disposed) return;
-      if (retriesUsed < timeoutRetries) {
-        retriesUsed++;
-        reload({ automatic: true });
-      } else fail('媒体加载超时');
-    }, timeoutMs);
+    // timeoutMs 为空时持续等待媒体元素自己的成功或 error 事件，不人为中断慢请求。
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        if (disposed) return;
+        if (retriesUsed < timeoutRetries) {
+          retriesUsed++;
+          reload({ automatic: true });
+        } else fail('媒体加载超时');
+      }, timeoutMs);
+    }
   }
   function recover() {
     if (timeoutRetries > 0 && retriesUsed >= timeoutRetries) return;

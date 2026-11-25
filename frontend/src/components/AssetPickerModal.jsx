@@ -3,7 +3,8 @@
  * @description 项目资产、画布资产、创作资产与 Seedance 素材的统一选择弹窗。
  *
  * ─── 结构索引 ───────────────────────────────────────────
- *   当前：AssetCard L112、悬浮预览 L448、弹窗入口 L504、账号会话 L509。
+ *   当前：AssetCard L113、悬浮预览 L450、弹窗入口 L506、账号会话 L511。
+ *   2026-11-24：认证素材选择与确认保留独立素材身份，避免画布保存时混入普通资产。
  *   2026-11-06：项目下拉最多展示7.5项，超出内部滚动，列表项保持固定高度。
  *   2026-10-29：修复共用弹窗项目选择回写；切换重新读取，加载和空态分离。
  *   更新：关闭卸载及账号/父项目/类型切换隔离；非创作读取错误重试、旧请求写回拦截和异步确认锁。
@@ -400,6 +401,7 @@ function toSeedancePickerAsset(rawAsset, group = {}) {
 
   return {
     id: asset.id,
+    liveMaterialAssetId: asset.id,
     name: asset.name || group.name || '未命名',
     url: normalizedMediaUrl,
     // fileUrl 必须是可展示/下载的真实媒体地址，不能复用 asset:// 服务商引用。
@@ -1292,6 +1294,7 @@ function AccountAssetPickerModal({
       .map(id => assetMap[id])
       .map((asset) => {
         if (!asset) return null;
+        if (asset.liveMaterialAssetId) return asset;
         const assetId = asset.assetId || asset.asset_id || asset.id;
         return assetId && assetId !== asset.id ? { ...asset, id: assetId, pickerId: asset.id } : asset;
       })

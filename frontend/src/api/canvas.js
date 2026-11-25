@@ -124,13 +124,15 @@ export function apiDuplicateCanvasDocument(canvasId, { title, clientRequestId } 
 }
 
 /** 返回运行时媒体视图；调用方不得将这些地址写回画布文档。 */
-export function apiResolveCanvasAssetViews(canvasId, assetIds, { signal } = {}) {
+export function apiResolveCanvasAssetViews(canvasId, assetIds, { signal, liveMaterialAssetIds = [] } = {}) {
   if (!Array.isArray(assetIds) || assetIds.some((id) => typeof id !== 'string' || !id.trim())) {
     throw new Error('资产编号必须是非空字符串数组');
   }
   const ids = [...new Set(assetIds)];
-  if (ids.length > 200) throw new Error('单次最多解析200个资产');
-  return canvasAction(canvasId, '/resolve-assets', { method: 'POST', body: { asset_ids: ids }, signal });
+  if (!Array.isArray(liveMaterialAssetIds) || liveMaterialAssetIds.some(id => !UUID.test(id))) throw new Error('虚拟认证素材编号必须是合法永久编号');
+  const liveIds = [...new Set(liveMaterialAssetIds)];
+  if (ids.length + liveIds.length > 200) throw new Error('单次最多解析200个资产');
+  return canvasAction(canvasId, '/resolve-assets', { method: 'POST', body: { asset_ids: ids, ...(liveIds.length ? { live_material_asset_ids: liveIds } : {}) }, signal });
 }
 
 export function apiGetCanvasShareStatus(canvasId, { signal } = {}) {

@@ -19,3 +19,5 @@
 保留 placement、offset、delay、maxWidth、multiline、followCursor 等场景参数。显式延迟和位置优先于默认值。多行文本可使用换行符及 multiline，自动换行使用 maxWidth。
 
 不要同时添加原生 title，避免重复提示。文件媒体悬浮预览、通知与确认弹窗不属于文字 Tooltip。
+
+触发容器的类名可通过 `className` 追加，用于在弹性布局中保持占位（例如与相邻按钮等分整行）。

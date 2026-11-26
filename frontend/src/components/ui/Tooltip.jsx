@@ -18,13 +18,14 @@
  *   2026-09-16  支持 followCursor 模式，提示跟随鼠标移动
  *   2026-11-12  全站统一文字提示样式，默认延迟 300ms
  *   2026-09-29  支持可选显示延迟，移开及卸载时清理定时器
+ *   2026-11-25  支持为触发容器追加类名，便于在弹性布局中保持占位
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 const FONT = "'AlibabaPuHuiTi_2_55_Regular','Alibaba PuHuiTi 2.0',system-ui,sans-serif";
 
-export default function Tooltip({ label, children, offset, color, borderColor, multiline = false, placement = 'top', fontSize = 12, lineHeight = 16, maxWidth, followCursor = false, delay }) {
+export default function Tooltip({ label, children, offset, color, borderColor, multiline = false, placement = 'top', fontSize = 12, lineHeight = 16, maxWidth, followCursor = false, delay, className = '' }) {
   offset ??= 8;
   delay ??= 300;
   color ??= 'rgba(255,255,255,0.90)';
@@ -61,6 +62,7 @@ export default function Tooltip({ label, children, offset, color, borderColor, m
 
   return (
     <span
+      className={className}
       style={{ display: 'inline-flex', position: 'relative' }}
       onMouseEnter={handleMouseEnter}
       onMouseMove={handleMouseMove}

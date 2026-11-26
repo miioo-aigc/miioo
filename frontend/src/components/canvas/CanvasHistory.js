@@ -132,6 +132,8 @@ export function createCanvasHistory(initial = []) {
     setNodes: (update, options = {}) => {
       // 来源正文与音频派生台词在同一历史步骤更新，撤销时不会再次触发同步。
       const next = syncCanvasAudioText(typeof update === 'function' ? update(nodes) : update);
+      if (next === nodes || (next.length === nodes.length
+        && next.every((node, index) => node === nodes[index]))) return;
       next.forEach((node) => readCanvasResultDocument(node.type, node.data));
       for (const node of next) {
         if (node.data.asset?.url?.startsWith('blob:')) previewUrls.add(node.data.asset.url);

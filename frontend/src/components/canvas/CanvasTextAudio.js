@@ -5,7 +5,7 @@ const joinText = (parts) => parts.filter((text) => text?.trim()).join('\n');
 
 export function syncCanvasAudioText(nodes) {
   const sources = new Map(nodes.map((node) => [node.id, node]));
-  return nodes.map((node) => {
+  const next = nodes.map((node) => {
     const sync = node.data.textSync;
     if (node.type !== 'audio' || !sync || sync.edited) return node;
     if ((node.data.prompt || '') !== sync.prompt) {
@@ -25,6 +25,7 @@ export function syncCanvasAudioText(nodes) {
         promptImportVersion: (node.data.promptImportVersion || 0) + 1 } : {}),
     } };
   });
+  return next.some((node, index) => node !== nodes[index]) ? next : nodes;
 }
 
 export function isTextAudioConnection(nodes, connection) {

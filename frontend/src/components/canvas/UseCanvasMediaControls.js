@@ -32,9 +32,9 @@ export function useCanvasMediaControls(nodeType, selectedModel, onModelChange, o
   }, [genType, model, catalog.capabilities, nodeType]);
   const params = useCreationParamsState({ creationParams: baseCreationParams, genType });
   const selectedOption = nodeType === 'video' ? catalog.options.find((option) => option.value === model) : null;
-  const videoCapabilities = nodeType === 'video' && model
+  const videoCapabilities = useMemo(() => (nodeType === 'video' && model
     ? resolveCanvasVideoCapabilities(selectedOption, catalog.capabilities?.[model], params.refMode)
-    : undefined;
+    : undefined), [catalog.capabilities, model, nodeType, params.refMode, selectedOption]);
   const requestModel = nodeType === 'video' ? resolveCanvasVideoModel(selectedOption, params.refMode) : model;
   const creationParams = useMemo(() => {
     if (nodeType !== 'video' || !model) return baseCreationParams;

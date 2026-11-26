@@ -474,9 +474,14 @@ export default function CanvasPage({ canvasId, onBackHome, onBackProjects, onSel
     });
   }, [setNodes]);
   const handleVideoCapabilitiesChange = useCallback((nodeId, capabilities) => {
-    setNodes((current) => current.map((item) => item.id === nodeId
-      ? { ...item, data: { ...item.data, videoCapabilities: capabilities } }
-      : item));
+    setNodes((current) => {
+      const target = current.find((item) => item.id === nodeId);
+      if (!target || target.data.videoCapabilities === capabilities
+        || JSON.stringify(target.data.videoCapabilities) === JSON.stringify(capabilities)) return current;
+      return current.map((item) => item.id === nodeId
+        ? { ...item, data: { ...item.data, videoCapabilities: capabilities } }
+        : item);
+    });
   }, [setNodes]);
   const handleGenerationModeChange = useCallback((nodeId, generationMode) => {
     setNodes((current) => current.map((item) => item.id === nodeId

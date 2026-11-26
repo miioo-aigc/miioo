@@ -47,19 +47,31 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
   const [promptExpanded, setPromptExpanded] = useState(false);
   const mediaSize = useCanvasMediaSize(['image', 'video'].includes(nodeType) ? data?.asset : null);
   const mediaControls = useCanvasMediaControls(nodeType, data?.model, (value) => data?.onModelChange?.(data?.nodeId, value), (value) => data?.onGenerationModeChange?.(data?.nodeId, value));
-  useEffect(() => {
-    if (!mediaControls.loading && nodeType === 'image' && Number.isInteger(mediaControls.imageReferenceLimit)) {
-      data?.onImageReferenceLimitChange?.(data?.nodeId, mediaControls.imageReferenceLimit);
-    }
-  }, [data?.nodeId, data?.onImageReferenceLimitChange, mediaControls.imageReferenceLimit, mediaControls.loading, nodeType]);
-  useEffect(() => {
-    if (mediaControls.loading || nodeType !== 'video' || !mediaControls.videoCapabilities) return;
-    data?.onVideoCapabilitiesChange?.(data?.nodeId, mediaControls.videoCapabilities);
-    if (!data?.generationMode && mediaControls.refMode) data?.onGenerationModeChange?.(data?.nodeId, mediaControls.refMode);
-  }, [data?.generationMode, data?.nodeId, data?.onGenerationModeChange, data?.onVideoCapabilitiesChange, mediaControls.refMode, mediaControls.videoCapabilities, mediaControls.loading, nodeType]);
-  const creationOpen = Boolean(selected && data?.creationPanelOpen);
+  const {
+    nodeId,
+    onImageReferenceLimitChange,
+    videoCapabilities,
+    onVideoCapabilitiesChange,
+    generationMode,
+    onGenerationModeChange
+  } = data || {};
   const submissionLocked = Boolean(data?.submissionLocked);
   const generating = Boolean(data?.generating || data?.canvasEditOperation);
+  useEffect(() => {
+    if (!mediaControls.loading && nodeType === 'image' && Number.isInteger(mediaControls.imageReferenceLimit)) {
+      onImageReferenceLimitChange?.(nodeId, mediaControls.imageReferenceLimit);
+    }
+  }, [mediaControls.imageReferenceLimit, mediaControls.loading, nodeId, nodeType, onImageReferenceLimitChange]);
+  useEffect(() => {
+    if (mediaControls.loading || nodeType !== 'video' || !mediaControls.videoCapabilities) return;
+    // 生成期间节点被锁定，暂停能力回填；任务结束后再同步，避免无效发布形成更新循环。
+    if (generating || submissionLocked) return;
+    if (videoCapabilities !== mediaControls.videoCapabilities) {
+      onVideoCapabilitiesChange?.(nodeId, mediaControls.videoCapabilities);
+    }
+    if (!generationMode && mediaControls.refMode) onGenerationModeChange?.(nodeId, mediaControls.refMode);
+  }, [generationMode, generating, mediaControls.refMode, mediaControls.videoCapabilities, mediaControls.loading, nodeId, nodeType, onGenerationModeChange, onVideoCapabilitiesChange, submissionLocked, videoCapabilities]);
+  const creationOpen = Boolean(selected && data?.creationPanelOpen);
   const generationKey = data?.canvasEditOperation || data?.generationRequestId;
   const guardSubmission = event => {
     if (!submissionLocked || event.target?.closest?.('[data-text-cancel]')) return;

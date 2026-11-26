@@ -161,6 +161,13 @@ test('HappyHorse 聚合项只展示真实子模型模式并路由真实模型能
   assert.equal(option.generationModes.includes('first_frame'), false);
 });
 
+test('视频能力缺省回退保持同一引用，避免节点能力回填形成新状态', () => {
+  const first = resolveCanvasVideoCapabilities(undefined, undefined, 'text_to_video');
+  const second = resolveCanvasVideoCapabilities(null, null, 'text_to_video');
+  assert.equal(first, second);
+  assert.equal(Object.isFrozen(first), true);
+});
+
 test('清单指定的参考模式名称只覆盖对应模型', () => {
   const capabilities = { supported_generation_modes: ['reference_subjects', 'video_ref'] };
   assert.deepEqual(getCanvasVideoParams(capabilities, 'veo-3.1-fast').refModes, [

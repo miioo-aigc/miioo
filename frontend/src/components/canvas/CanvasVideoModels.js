@@ -14,6 +14,7 @@ const MODE_LABELS = {
 };
 
 const DEFAULT_PROMPT_PLACEHOLDER = '描述你想生成的内容';
+const EMPTY_CANVAS_VIDEO_CAPABILITIES = Object.freeze({});
 
 const HAPPYHORSE_GROUPS = [
   { value: 'happyhorse-1.0', label: 'HappyHorse 1.0', order: 5, pattern: /^happyhorse-1\.0-(t2v|i2v|r2v|video-edit)$/i },
@@ -239,7 +240,7 @@ export function resolveCanvasVideoModel(option, mode) {
 }
 
 export function resolveCanvasVideoCapabilities(option, fallback, mode) {
-  return option?.capabilitiesByGenerationMode?.[mode] || fallback || {};
+  return option?.capabilitiesByGenerationMode?.[mode] || fallback || EMPTY_CANVAS_VIDEO_CAPABILITIES;
 }
 
 export function isCanvasSeedanceVideoEdit(model, mode) {

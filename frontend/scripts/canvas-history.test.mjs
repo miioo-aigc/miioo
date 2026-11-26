@@ -58,6 +58,18 @@ test('一次拖动一条历史，恢复节点不恢复请求和输入框', () =>
   assert.equal(Boolean(restored.data.creationPanelOpen), false);
   assert.equal(restored.data.generationRequestId, undefined);
 });
+test('无实际变化的节点更新不通知订阅者，也不写入历史', () => {
+  const history = createCanvasHistory([node('a')]);
+  let notifications = 0;
+  const unsubscribe = history.subscribe(() => { notifications += 1; });
+  const before = history.getSnapshot();
+  history.setNodes((nodes) => nodes);
+  history.setNodes((nodes) => nodes.map((item) => item));
+  assert.equal(notifications, 0);
+  assert.equal(history.getSnapshot(), before);
+  assert.equal(history.getSnapshot().canUndo, false);
+  unsubscribe();
+});
 test('撤销位置不丢失异步正文，连续文字输入合并，重做恢复已生成结果', () => {
   const history = createCanvasHistory([node('a')]);
   history.setNodes((nodes) => nodes.map((n) => ({ ...n, position: { x: 20, y: 0 } })));

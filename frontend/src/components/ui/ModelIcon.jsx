@@ -1,6 +1,6 @@
 /**
  * @file ModelIcon.jsx
- * 通用模型品牌图标库：按模型名称关键词匹配并渲染对应品牌单色图标。
+ * 通用模型品牌图标库：优先按显式模型标识匹配，再按模型名称关键词渲染品牌单色图标。
  *
  * ─── 职责 ─────────────────────────────────────────────────────────────
  *   1. 内置各模型品牌的单色 SVG 图标组件（默认 16×16，白色）
@@ -16,15 +16,21 @@
  *     { id: 'xxx', keywords: ['关键词1', '中文名'], el: <XxxIcon /> }
  *   关键词为「不区分大小写 + 忽略空格/连接符」的子串匹配，命中任意一个即显示该图标。
  *
- *   Vega 按 modelId 匹配，使用白色填充及选择器原有透明度规则。
+ *   Vega、Wan 按 modelId 匹配，使用白色填充及选择器原有透明度规则。
  * ─── 更新记录 ─────────────────────────────────────────────────────────
+ *   2026-11-26  Wan 按 wan3.0-video 系列模型标识兜底，并补充“万相”名称关键词。
  *   2026-10-30  接入 Vega 原始矢量图形及模型标识匹配。
  *   2026-08-19  新增 5 个图片模型图标（Seedream/Kling/Vidu/GPT/Nano banana）
  *   2026-08-19  补充视频/音频图标（HappyHorse/Wan/Veo/MiniMax）；Seedance 复用 Seedream 图标；匹配忽略空格与连接符
  *   2026-08-19  从创作域提升为通用基础组件，供主体页/分镜页复用
  */
 import { cloneElement } from 'react';
-import { isVegaModelIcon } from '../../utils/ModelIconMatch';
+import {
+  isVegaModelIcon,
+  isWanModelIcon,
+  matchesModelIconKeywords,
+  WAN_MODEL_KEYWORDS,
+} from '../../utils/ModelIconMatch';
 
 const FILL = '#FFFFFF';
 
@@ -124,7 +130,7 @@ const MODEL_ICON_ELEMENTS = [
   { id: 'gpt', keywords: ['gpt'], el: <GPTIcon /> },
   { id: 'banana', keywords: ['nanobanana', 'banana', 'gemini'], el: <BananaIcon /> },
   { id: 'happyhorse', keywords: ['happyhorse'], el: <HappyHorseIcon /> },
-  { id: 'wan', keywords: ['wan'], el: <WanIcon /> },
+  { id: 'wan', keywords: WAN_MODEL_KEYWORDS, el: <WanIcon /> },
   { id: 'veo', keywords: ['veo'], el: <VeoIcon /> },
   { id: 'minimax', keywords: ['minimax'], el: <MiniMaxIcon /> },
 ];
@@ -132,14 +138,14 @@ const MODEL_ICON_ELEMENTS = [
 /** 按模型名称匹配图标元素；未命中返回 null（图标位置留空）。 */
 function getModelIconElement(name) {
   if (!name) return null;
-  const norm = String(name).toLowerCase().replace(/[\s_\-•·]/g, '');
-  const entry = MODEL_ICON_ELEMENTS.find(({ keywords }) => keywords.some((k) => norm.includes(k)));
+  const entry = MODEL_ICON_ELEMENTS.find(({ keywords }) => matchesModelIconKeywords(name, keywords));
   return entry?.el ?? null;
 }
 
 /** 渲染匹配到的模型图标；未匹配返回 null。 */
 export function ModelIcon({ name, modelId, size = 16 }) {
   if (isVegaModelIcon(modelId)) return <VegaIcon size={size} />;
+  if (isWanModelIcon(modelId)) return <WanIcon size={size} />;
   const element = getModelIconElement(name);
   return element ? cloneElement(element, { size }) : null;
 }

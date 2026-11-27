@@ -5,7 +5,7 @@
  * 2026-10-10：标题接收视口缩放保持固定尺寸；工具栏与输入框共用激活条件及显隐动画。
  * 2026-10-10：激活节点显示固定屏幕尺寸的顶部工具栏；下方创作面板按视口缩放反向补偿。
  * 2026-10-09：图片与视频主体采用等面积尺寸，最长边限制为480px。
- * 2026-10-09：生成态改用 Paper 动态背景及循环进度文字；保留布局、端口及发送保护。
+ * 2026-10-09：生成态使用 Paper Shaders 动态背景及循环进度文字；保留布局、端口及发送保护。
  * 2026-09-29：端口默认隐藏，卡片悬停显示，端口悬停放大，拖拽连线期间保持激活并置于媒体内容上层；合法目标卡片显示接收描边。
  * 2026-09-28：常驻外壳保留高级音频草稿，收起编辑器不清空音色或效果器。
  * 2026-09-28：透传参考图来源、模式、文件及移除动作，保持媒体参数生命周期。
@@ -33,8 +33,9 @@ import CanvasCreationPresence from './CanvasCreationPresence';
 import CanvasNodeHeader from './CanvasNodeHeader';
 import CanvasNodePorts from './CanvasNodePorts';
 import CanvasLocalUpload from './CanvasLocalUpload';
-import CanvasGenerationLoading from './CanvasGenerationLoading';
+import CanvasGenerationLoading, { CanvasGenerationFallback } from './CanvasGenerationLoading';
 import CanvasNodeConnectionPulse from './CanvasConnectionPulse';
+import CanvasEffectBoundary from './CanvasEffectBoundary';
 import CanvasNodeToolbar from './CanvasNodeToolbar';
 import CanvasNodeResultControls from './CanvasNodeResultControls';
 import './canvas-nodes.css';
@@ -83,12 +84,16 @@ export default function CanvasNodeShell({ nodeType, title, selected = false, dat
     <CanvasNodeHeader nodeType={nodeType} title={title} zoom={data?.viewportZoom || 1} onRename={data?.onRename} onStart={data?.onRenameStart} selectOnClick upstreamUpdated={Boolean(data?.upstreamUpdated)} upstreamUpdateKey={data?.upstreamUpdateKey} />
     <div className="canvas-node__frame" aria-busy={generating} data-state={data?.editing ? 'editing' : 'default'} data-connection-target={data?.connectionTarget ? 'true' : 'false'} data-connection-target-status={data?.connectionTargetStatus || ''}>
       <CanvasNodePorts ports={data?.ports} connectingType={data?.connectingType} nodeActive={Boolean(selected || data?.editing || generating)} onUpstreamConnectStart={(event) => data?.onUpstreamConnectStart?.(data?.nodeId, event)} />
-      {data?.connectionPulses?.length > 0 && <CanvasNodeConnectionPulse pulses={data.connectionPulses} onMeasure={data.onPulseMeasure} />}
+      {data?.connectionPulses?.length > 0 && <CanvasEffectBoundary fallback={null}>
+        <CanvasNodeConnectionPulse pulses={data.connectionPulses} onMeasure={data.onPulseMeasure} />
+      </CanvasEffectBoundary>}
       {nodeType !== 'text' && <div className="canvas-node__local-upload-slot" inert={Boolean(generating || submissionLocked)} hidden={Boolean(generating || data?.asset?.url || data?.transcript)}>
         <CanvasLocalUpload nodeType={nodeType} onAssetChange={(asset) => data?.onAssetChange?.(data.nodeId, asset)} />
       </div>}
       <div className="canvas-node__result-body" aria-hidden={generating} inert={Boolean(generating || submissionLocked)}>{children}</div>
-      {generating && <CanvasGenerationLoading key={generationKey} message={!data?.canvasEditOperation && data.generationMessageRequestId === data.generationRequestId ? data.generationMessage : undefined} />}
+      {generating && <CanvasEffectBoundary fallback={<CanvasGenerationFallback message={data.generationMessage} />}>
+        <CanvasGenerationLoading key={generationKey} message={!data?.canvasEditOperation && data.generationMessageRequestId === data.generationRequestId ? data.generationMessage : undefined} />
+      </CanvasEffectBoundary>}
       {generating && data?.onCancelText && <div data-text-cancel className="nodrag nopan" style={{ position: "absolute", bottom: 16, left: 0, right: 0, zIndex: 20, textAlign: "center" }}><Button variant="secondary" size="small" onClick={(event) => { event.stopPropagation(); data.onCancelText(); }}>取消生成</Button></div>}
       <CanvasNodeResultControls data={data} title={title} nodeType={nodeType} />
     </div>

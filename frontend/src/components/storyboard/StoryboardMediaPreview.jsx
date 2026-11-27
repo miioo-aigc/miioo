@@ -24,14 +24,14 @@ function getSourceUrl(media) {
 }
 
 /** 按源隔离预览；无封面视频直接使用原生首帧，不缓存跨资源截图。 */
-export default function StoryboardMediaPreview({ media, alt = '', style, className, hovered = false, retryOnError = true }) {
+export default function StoryboardMediaPreview({ media, alt = '', style, className, hovered = false, retryOnError = false, timeoutMs = null }) {
   const video = isVideoMedia(media);
   const previewUrl = getPreviewUrl(media);
   const sourceUrl = getSourceUrl(media);
   const objectFit = style?.objectFit || 'cover';
   return <div className={className} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', ...style }}>
     {video && !previewUrl
-      ? <RecoverableVideoPreview key={sourceUrl} src={sourceUrl} hovered={hovered} objectFit={objectFit} />
-      : <AsyncImagePreview retryOnError={retryOnError} visual plain src={previewUrl || sourceUrl} fallbackSrc={!video ? sourceUrl : undefined} alt={alt} imageStyle={{ objectFit }} />}
+      ? <RecoverableVideoPreview key={sourceUrl} src={sourceUrl} hovered={hovered} objectFit={objectFit} timeoutMs={timeoutMs} showRetry={retryOnError} />
+      : <AsyncImagePreview retryOnError={retryOnError} showRetry={retryOnError} timeoutMs={timeoutMs} visual plain src={previewUrl || sourceUrl} fallbackSrc={!video ? sourceUrl : undefined} alt={alt} imageStyle={{ objectFit }} />}
   </div>;
 }

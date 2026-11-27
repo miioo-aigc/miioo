@@ -43,6 +43,7 @@
  *   2026-08-31  项目信息 Tab 支持自定义视觉风格入口卡片展示
  *   2026-08-31  自定义视觉风格卡片恢复普通深色卡片结构
  *   2026-10-22  剧本进度按显示状态跳转，剪辑中进入草稿列表并携带分集；保持页面业务编排边界。
+ *   2026-11-27  项目信息 Tab 的项目名称字数上限由 30 调整为 50，历史名称不做截断。
  */
 
 import { lazy, Suspense, useState, useRef, useEffect } from 'react';
@@ -624,7 +625,7 @@ export default function GlobalSettings({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="输入项目名称"
-                  maxLength={30}
+                  maxLength={50}
                 />
               </div>
             </div>

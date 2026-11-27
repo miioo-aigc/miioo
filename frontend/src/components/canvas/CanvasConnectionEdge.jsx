@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { BaseEdge, EdgeLabelRenderer, getBezierPath } from '@xyflow/react';
 import { Tooltip } from '../ui';
 import { CanvasPulsePath } from './CanvasConnectionPulse';
+import CanvasEffectBoundary from './CanvasEffectBoundary';
 
 function ScissorsIcon() {
   return <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
@@ -24,7 +25,9 @@ export default function CanvasConnectionEdge({ id, sourceX, sourceY, targetX, ta
     <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
     <path d={edgePath} fill="none" stroke="transparent" strokeWidth="20" className="react-flow__edge-interaction" />
     {highlighted && !data?.overflow && <path d={edgePath} fill="none" stroke="var(--color-white-50)" strokeWidth="2" className="pointer-events-none" />}
-    {data?.pulses?.map((pulse) => <CanvasPulsePath key={pulse.id} path={edgePath} pulse={pulse} onMeasure={data.onPulseMeasure} />)}
+    {data?.pulses?.map((pulse) => <CanvasEffectBoundary key={pulse.id} fallback={null}>
+      <CanvasPulsePath path={edgePath} pulse={pulse} onMeasure={data.onPulseMeasure} />
+    </CanvasEffectBoundary>)}
     <EdgeLabelRenderer>
       <div className={`canvas-edge-action nodrag nopan absolute transition-opacity ${hovered ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
         style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}

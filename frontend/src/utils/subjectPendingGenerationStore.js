@@ -4,32 +4,72 @@
  */
 
 const STORAGE_KEY = 'miioo:pending_subject_gens';
+const LEGACY_ARCHIVE_STORAGE_KEY = 'miioo:pending_subject_gens_archive';
 export function createSubjectGenerationStore(getStorage) {
   const records = new Map();
   const unsaved = new Map();
   let storageError = null;
   const failure = cause => Object.assign(new Error('主体任务缓存读写异常，已暂停新生成；请保留当前页面，勿清空缓存或刷新后重试', { cause }), { code: 'SUBJECT_GENERATION_STORAGE' });
   const key = (project, owner, id) => JSON.stringify([String(project), String(owner), String(id)]);
+  const writeStorage = (storageKey, raw) => {
+    const storage = getStorage();
+    storage.setItem(storageKey, raw);
+    if (storage.getItem(storageKey) !== raw) throw new Error('缓存写入未确认');
+  };
+  const migrateCompletedLegacyEntries = entries => {
+    const legacyDone = entries.filter(([, value]) => value.ownerId == null && value.status === 'done');
+    if (!legacyDone.length) return entries;
+
+    const storage = getStorage();
+    const archiveRaw = storage.getItem(LEGACY_ARCHIVE_STORAGE_KEY);
+    const archive = archiveRaw === null ? [] : JSON.parse(archiveRaw);
+    if (!Array.isArray(archive)) throw new Error('历史任务备份不是列表');
+    const archived = new Map();
+    for (const entry of archive) {
+      if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string'
+        || !entry[1] || typeof entry[1] !== 'object' || Array.isArray(entry[1])) {
+        throw new Error('历史任务备份损坏');
+      }
+      archived.set(entry[0], JSON.stringify(entry[1]));
+    }
+
+    const additions = [];
+    for (const entry of legacyDone) {
+      const [id, value] = entry;
+      const serialized = JSON.stringify(value);
+      if (archived.has(id)) {
+        if (archived.get(id) !== serialized) throw new Error('历史任务备份冲突');
+        continue;
+      }
+      archived.set(id, serialized);
+      additions.push(entry);
+    }
+    if (additions.length) writeStorage(LEGACY_ARCHIVE_STORAGE_KEY, JSON.stringify([...archive, ...additions]));
+
+    const activeEntries = entries.filter(([, value]) => value.ownerId != null || value.status !== 'done');
+    writeStorage(STORAGE_KEY, JSON.stringify(activeEntries));
+    return activeEntries;
+  };
   const read = () => {
     const raw = getStorage().getItem(STORAGE_KEY);
     if (raw === null) return new Map();
     const entries = JSON.parse(raw);
     if (!Array.isArray(entries)) throw new Error('缓存不是列表');
-    const result = new Map();
+    const seen = new Set();
     for (const entry of entries) {
       if (!Array.isArray(entry) || entry.length !== 2) throw new Error('缓存条目损坏');
       const [id, value] = entry;
-      if (typeof id !== 'string' || result.has(id) || !value || typeof value !== 'object' || Array.isArray(value)
+      if (typeof id !== 'string' || seen.has(id) || !value || typeof value !== 'object' || Array.isArray(value)
         || !['pending', 'done'].includes(value.status)) throw new Error('缓存任务损坏');
+      seen.add(id);
       if (value.status === 'done' && ![value.rawUrl, value.imageUrl].some(url => typeof url === 'string' && url.trim())) throw new Error('完成记录缺少图片');
       if (value.createdAt != null && (!Number.isFinite(value.createdAt) || value.createdAt <= 0)) throw new Error('任务时间损坏');
       if (value.placeholderId != null && (typeof value.placeholderId !== 'string' || !value.placeholderId)) throw new Error('任务占位损坏');
       if (['knownImageIds', 'knownImageUrls', 'refImages'].some(field => value[field] != null && !Array.isArray(value[field]))) throw new Error('任务图片记录损坏');
       if (value.ownerId != null && (!value.ownerId || value.projectId == null || value.subjectId == null
         || id !== key(value.projectId, value.ownerId, value.subjectId))) throw new Error('缓存归属损坏');
-      result.set(id, value);
     }
-    return result;
+    return new Map(migrateCompletedLegacyEntries(entries));
   };
   const refresh = () => {
     const disk = read();
@@ -43,8 +83,7 @@ export function createSubjectGenerationStore(getStorage) {
   };
   const write = next => {
     const raw = JSON.stringify([...next]);
-    getStorage().setItem(STORAGE_KEY, raw);
-    if (getStorage().getItem(STORAGE_KEY) !== raw) throw new Error('缓存写入未确认');
+    writeStorage(STORAGE_KEY, raw);
     unsaved.clear();
     storageError = null;
   };
@@ -105,7 +144,7 @@ export function belongsToSubjectOwner(record, projectId, ownerId) {
     && String(record.projectId) === String(projectId) && String(record.ownerId) === String(ownerId);
 }
 
-// 未标注归属的旧记录留在原 Map 中，不暴露给当前页面，也不覆盖它们。
+// 未标注归属的已完成记录迁移到历史区；未完成记录继续留在活动区阻止新提交。
 export function getSubjectGenerationScope(projectId, ownerId, onError, store = generationStore) {
   const pendingGenerations = store.records;
   const key = id => JSON.stringify([String(projectId), String(ownerId), String(id)]);

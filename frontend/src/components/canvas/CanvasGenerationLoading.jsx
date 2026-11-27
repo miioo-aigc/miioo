@@ -1,10 +1,18 @@
-/** 节点生成态：Paper 动态背景与持续循环的 mask-reveal-up 进度文案。 */
+/** 节点生成态：Paper Shaders 动态背景与持续循环的 mask-reveal-up 进度文案。 */
 import { useEffect, useRef, useState } from 'react';
-import { DotOrbit, MeshGradient } from '@paper-design/shaders-react';
 import { getCanvasProgressMessage } from './CanvasGenerationProgress';
+import CanvasEffectBoundary from './CanvasEffectBoundary';
+import CanvasGenerationShader from './CanvasGenerationShader';
 import './CanvasGenerationLoading.css';
 
-const layerStyle = { position: 'absolute', inset: 0, width: '100%', height: '100%' };
+function getReducedMotionQuery() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return null;
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)');
+  } catch {
+    return null;
+  }
+}
 
 function ProgressMessage({ message, reducedMotion }) {
   const elementRef = useRef(null);
@@ -12,6 +20,7 @@ function ProgressMessage({ message, reducedMotion }) {
   useEffect(() => { latestRef.current = message; }, [message]);
   useEffect(() => {
     const element = elementRef.current;
+    if (!element) return;
     if (reducedMotion || !element.animate) {
       element.textContent = latestRef.current;
       return;
@@ -68,18 +77,33 @@ function ProgressMessage({ message, reducedMotion }) {
   </div>;
 }
 
+const fallbackBackground = <div className="canvas-generation-loading__fallback" aria-hidden="true" />;
+
+export function CanvasGenerationFallback({ message }) {
+  const text = getCanvasProgressMessage(message);
+  return <div className="canvas-node__loading canvas-generation-loading canvas-generation-loading--fallback" role="status" aria-label={text}>
+    {fallbackBackground}
+    <div className="canvas-generation-loading__message">
+      <span>{text}</span>
+    </div>
+  </div>;
+}
+
 export default function CanvasGenerationLoading({ message }) {
-  const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const [reducedMotion, setReducedMotion] = useState(() => getReducedMotionQuery()?.matches ?? false);
   useEffect(() => {
-    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const query = getReducedMotionQuery();
+    if (!query) return;
     const update = () => setReducedMotion(query.matches);
+    if (typeof query.addEventListener !== 'function') return;
     query.addEventListener('change', update);
     return () => query.removeEventListener('change', update);
   }, []);
   const text = getCanvasProgressMessage(message);
   return <div className="canvas-node__loading canvas-generation-loading" role="status" aria-label={text}>
-    <DotOrbit scale={0.1} size={0.6} sizeRange={0.48} spreading={0.1} speed={reducedMotion ? 0 : 1} stepsPerColor={1} frame={9563964.609994078} colors={['#FFFFFF0A']} colorBack="#00000000" style={{ ...layerStyle, backgroundColor: '#000000' }} />
-    <MeshGradient speed={reducedMotion ? 0 : 2} scale={1.45} distortion={0.43} swirl={0.07} frame={17999729.999991026} colors={['#FFFFFF99', '#00000080', '#2DC3E1']} style={{ ...layerStyle, mixBlendMode: 'color-dodge' }} />
-    <ProgressMessage message={text} reducedMotion={reducedMotion} />
+    <CanvasGenerationShader reducedMotion={reducedMotion} />
+    <CanvasEffectBoundary fallback={<div className="canvas-generation-loading__message"><span>{text}</span></div>}>
+      <ProgressMessage message={text} reducedMotion={reducedMotion} />
+    </CanvasEffectBoundary>
   </div>;
 }
